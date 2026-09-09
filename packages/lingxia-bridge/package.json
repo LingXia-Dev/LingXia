@@ -39,6 +39,8 @@
     "build:modules:es2020": "tsc -p tsconfig.modules.json",
     "build:modules:es5": "tsc -p tsconfig.modules.legacy.json",
     "build:types": "tsc -p tsconfig.json --emitDeclarationOnly",
+    "build:v3-test": "tsc -p tsconfig.v3-test.json",
+    "test": "npm run build:es2020 && npm run build:es5 && npm run build:v3-test && node ./test-support/test-protocol-v3.mjs && node ./test-support/test-bridge-required-v3.mjs && node ./test-support/test-control-bootstrap.mjs",
     "dev": "rolldown -c -w",
     "clean": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
     "prepublishOnly": "npm run build"

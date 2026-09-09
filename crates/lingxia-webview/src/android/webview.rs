@@ -7,7 +7,8 @@ use crate::webview::{
     WebViewCreateSender, WebViewCreateStage,
 };
 use crate::{
-    LoadDataRequest, UserAgentOverride, WebViewController, WebViewError, WebViewScriptError,
+    DocumentGeneration, DocumentOutboundGate, LoadDataRequest, NativeWebViewId, UserAgentOverride,
+    WebViewController, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
 use jni::objects::{Global, JObject, JValue};
@@ -38,6 +39,7 @@ pub(crate) struct PendingWebViewCreation {
 type WebViewSendersMap = Arc<Mutex<HashMap<u64, PendingWebViewCreation>>>;
 type PendingEvalRequests = Arc<Mutex<HashMap<u64, PendingEvalEntry>>>;
 type PendingScreenshotRequests = Arc<Mutex<HashMap<u64, PendingScreenshotEntry>>>;
+type PendingDocumentMessages = Arc<Mutex<HashMap<u64, PendingDocumentMessage>>>;
 
 enum PendingEvalResponse {
     Success(String),
@@ -62,6 +64,13 @@ struct PendingScreenshotEntry {
     sender: oneshot::Sender<PendingScreenshotResponse>,
 }
 
+pub(crate) struct PendingDocumentMessage {
+    pub(crate) native_view_id: NativeWebViewId,
+    pub(crate) generation: DocumentGeneration,
+    pub(crate) gate: Arc<dyn DocumentOutboundGate>,
+    pub(crate) message: String,
+}
+
 // Global map to store senders for WebView creation
 pub(crate) static WEBVIEW_SENDERS: OnceLock<WebViewSendersMap> = OnceLock::new();
 static NEXT_CREATE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
@@ -69,6 +78,8 @@ static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
 static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLock::new();
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
+static PENDING_DOCUMENT_MESSAGES: OnceLock<PendingDocumentMessages> = OnceLock::new();
+static NEXT_DOCUMENT_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 const EVAL_PARSE_GUARD_MS: u64 = 1000;
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
@@ -114,6 +125,30 @@ fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
 
 fn pending_screenshot_requests() -> &'static PendingScreenshotRequests {
     PENDING_SCREENSHOT_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+pub(crate) fn take_pending_document_message(request_id: u64) -> Option<PendingDocumentMessage> {
+    pending_document_messages().lock().ok()?.remove(&request_id)
+}
+
+fn pending_document_messages() -> &'static PendingDocumentMessages {
+    PENDING_DOCUMENT_MESSAGES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+fn next_document_message_id() -> Result<u64, WebViewError> {
+    NEXT_DOCUMENT_MESSAGE_ID
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current
+                .checked_add(1)
+                .filter(|next| *next <= i64::MAX as u64)
+        })
+        .map_err(|_| WebViewError::WebView("document message id space exhausted".to_string()))
+}
+
+fn clear_pending_document_messages_for_instance(native_view_id: NativeWebViewId) {
+    if let Ok(mut pending) = pending_document_messages().lock() {
+        pending.retain(|_, entry| entry.native_view_id != native_view_id);
+    }
 }
 
 pub(crate) fn complete_pending_screenshot_request(
@@ -206,6 +241,7 @@ pub(crate) fn apply_http_proxy(
 pub struct WebViewInner {
     java_webview: Option<Global<JObject<'static>>>,
     pub(crate) webtag: WebTag,
+    native_view_id: NativeWebViewId,
 }
 
 impl WebViewInner {
@@ -295,10 +331,15 @@ impl WebViewInner {
     }
 
     /// Create WebViewInner from existing Java WebView object (called from onWebViewReady)
-    pub(crate) fn from_java_object(java_webview: Global<JObject<'static>>, webtag: WebTag) -> Self {
+    pub(crate) fn from_java_object(
+        java_webview: Global<JObject<'static>>,
+        webtag: WebTag,
+        native_view_id: NativeWebViewId,
+    ) -> Self {
         WebViewInner {
             java_webview: Some(java_webview),
             webtag,
+            native_view_id,
         }
     }
 
@@ -307,12 +348,38 @@ impl WebViewInner {
             .as_ref()
             .expect("Android WebView global reference is missing")
     }
+
+    pub(crate) fn load_trusted_data(
+        &self,
+        request: LoadDataRequest<'_>,
+    ) -> Result<crate::events::normalizer::NativeKey, WebViewError> {
+        with_env(|env| -> Result<u64, Box<dyn std::error::Error>> {
+            let data = env.new_string(request.data)?;
+            let base_url = env.new_string(request.base_url)?;
+            let history_url = env.new_string(request.history_url.unwrap_or(request.base_url))?;
+            let token = env
+                .call_method(
+                    self.get_java_webview(),
+                    jni_str!("loadTrustedHtmlData"),
+                    jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)J"),
+                    &[(&data).into(), (&base_url).into(), (&history_url).into()],
+                )?
+                .j()?;
+            u64::try_from(token).map_err(|_| "Android returned an invalid load token".into())
+        })
+        .map_err(|error| {
+            WebViewError::WebView(format!(
+                "Failed to start trusted Android HTML load: {error:?}"
+            ))
+        })
+    }
 }
 
 impl Drop for WebViewInner {
     fn drop(&mut self) {
         fail_pending_eval_requests_for_webtag(&self.webtag);
         fail_pending_screenshot_requests_for_webtag(&self.webtag);
+        clear_pending_document_messages_for_instance(self.native_view_id);
         let Some(java_webview) = self.java_webview.take() else {
             return;
         };
@@ -693,6 +760,46 @@ impl WebViewController for WebViewInner {
             Ok(())
         })
         .map_err(|e| WebViewError::WebView(format!("Failed to post message: {:?}", e)))
+    }
+
+    fn post_message_to_document(
+        &self,
+        expected_generation: DocumentGeneration,
+        gate: Arc<dyn DocumentOutboundGate>,
+        message: &str,
+    ) -> Result<(), WebViewError> {
+        let request_id = next_document_message_id()?;
+        pending_document_messages()
+            .lock()
+            .map_err(|_| {
+                WebViewError::WebView("Android document message queue poisoned".to_string())
+            })?
+            .insert(
+                request_id,
+                PendingDocumentMessage {
+                    native_view_id: self.native_view_id,
+                    generation: expected_generation,
+                    gate,
+                    message: message.to_string(),
+                },
+            );
+
+        let scheduled = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+            env.call_method(
+                self.get_java_webview(),
+                jni_str!("scheduleDocumentMessage"),
+                jni_sig!("(J)V"),
+                &[(request_id as i64).into()],
+            )?;
+            Ok(())
+        });
+        if let Err(error) = scheduled {
+            let _ = take_pending_document_message(request_id);
+            return Err(WebViewError::WebView(format!(
+                "Failed to schedule Android document message: {error:?}"
+            )));
+        }
+        Ok(())
     }
 
     fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {

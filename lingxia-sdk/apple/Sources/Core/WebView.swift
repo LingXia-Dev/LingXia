@@ -15,6 +15,8 @@ extension WKWebView {
 
     private static var appIdKey: UInt8 = 0
     private static var currentPathKey: UInt8 = 0
+    private static var nativeComponentPageInstanceKey: UInt8 = 0
+    private static var nativeComponentAttachmentGenerationKey: UInt8 = 0
 
     var appId: String? {
         get {
@@ -32,6 +34,51 @@ extension WKWebView {
         set {
             objc_setAssociatedObject(self, &Self.currentPathKey, newValue, .OBJC_ASSOCIATION_COPY_NONATOMIC)
         }
+    }
+
+    var nativeComponentSurfaceBinding: NativeComponentSurfaceBinding {
+        guard let pageInstanceID = objc_getAssociatedObject(
+            self, &Self.nativeComponentPageInstanceKey) as? String,
+            !pageInstanceID.isEmpty
+        else {
+            return .unproven
+        }
+        let generation = (objc_getAssociatedObject(
+            self, &Self.nativeComponentAttachmentGenerationKey) as? NSNumber)?.uint64Value ?? 0
+        let identity = UInt(bitPattern: Unmanaged.passUnretained(self).toOpaque())
+        guard let binding = NativeComponentPageBinding(
+            pageInstanceID: pageInstanceID,
+            webViewIdentity: identity,
+            attachmentGeneration: generation
+        ) else {
+            return .unproven
+        }
+        return .lxAppPage(binding)
+    }
+
+    /// Bind the native-component handler to one native-created PageInstance.
+    /// Empty bindings explicitly classify browser/external surfaces as unproven.
+    @MainActor
+    fileprivate func bindNativeComponentPageInstance(_ rawPageInstanceID: String?) {
+        let pageInstanceID = rawPageInstanceID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let current = objc_getAssociatedObject(
+            self, &Self.nativeComponentPageInstanceKey) as? String ?? ""
+        guard current != pageInstanceID else { return }
+        let generation = (objc_getAssociatedObject(
+            self, &Self.nativeComponentAttachmentGenerationKey) as? NSNumber)?.uint64Value ?? 0
+        objc_setAssociatedObject(
+            self,
+            &Self.nativeComponentAttachmentGenerationKey,
+            NSNumber(value: generation &+ 1),
+            .OBJC_ASSOCIATION_RETAIN_NONATOMIC
+        )
+        objc_setAssociatedObject(
+            self,
+            &Self.nativeComponentPageInstanceKey,
+            pageInstanceID.isEmpty ? nil : pageInstanceID,
+            .OBJC_ASSOCIATION_COPY_NONATOMIC
+        )
     }
 
     /// Simple page loaded check
@@ -130,6 +177,7 @@ final class WebViewManager {
             return nil
         }
         let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        webView.bindNativeComponentPageInstance(trimmed)
         if debuggingEnabled {
             if #available(iOS 16.4, macOS 13.3, *) {
                 webView.isInspectable = true
@@ -179,6 +227,7 @@ final class WebViewManager {
             return nil
         }
         let webView = Unmanaged<WKWebView>.fromOpaque(rawPointer).takeUnretainedValue()
+        webView.bindNativeComponentPageInstance(binding.pageInstanceId)
         if debuggingEnabled {
             if #available(iOS 16.4, macOS 13.3, *) {
                 webView.isInspectable = true

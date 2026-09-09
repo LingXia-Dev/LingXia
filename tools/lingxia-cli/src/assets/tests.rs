@@ -5,7 +5,7 @@ use super::{
 };
 use crate::config::{
     AppLinkHosts, AppLinksConfig, EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer,
-    PerEnvHosts, ResolvedEnv, ThemeConfig,
+    PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -43,6 +43,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
@@ -89,6 +90,7 @@ fn generated_app_json_excludes_ui_fields() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
@@ -125,6 +127,48 @@ fn generated_app_json_omits_home_identity_for_native_host() {
 }
 
 #[test]
+fn generated_app_json_emits_settings_destination_only_when_configured() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo-home");
+    let without = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let without: serde_json::Value = serde_json::from_str(&without).unwrap();
+    assert!(without.get("settingsDestination").is_none());
+
+    config.settings_destination = Some(SettingsDestination::BrowserControlPage {
+        route: "/settings/privacy".to_string(),
+        query: Some(std::collections::BTreeMap::from([
+            ("source".to_string(), serde_json::json!("sidebar")),
+            ("highlight".to_string(), serde_json::json!(true)),
+        ])),
+    });
+    let with = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let with: serde_json::Value = serde_json::from_str(&with).unwrap();
+    assert_eq!(
+        with["settingsDestination"],
+        serde_json::json!({
+            "kind": "browserControlPage",
+            "route": "/settings/privacy",
+            "query": { "highlight": true, "source": "sidebar" }
+        })
+    );
+}
+
+#[test]
+fn showcase_generated_app_json_uses_the_static_browser_settings_page() {
+    let project = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/lingxia-showcase");
+    let config = LingXiaConfig::load(&project).unwrap();
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let generated: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+
+    assert_eq!(
+        generated["settingsDestination"],
+        serde_json::json!({
+            "kind": "browserControlPage",
+            "route": "/settings"
+        })
+    );
+}
+
+#[test]
 fn generated_app_json_includes_dev_ws_url_when_configured() {
     let config = LingXiaConfig {
         app: Some(HostAppConfig {
@@ -146,6 +190,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
@@ -194,6 +239,7 @@ fn generated_app_json_includes_app_link_hosts() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
@@ -236,6 +282,7 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
@@ -305,6 +352,7 @@ fn generated_app_json_includes_capabilities() {
             media_capture: Default::default(),
         }),
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: None,
         surfaces: None,
@@ -365,6 +413,7 @@ fn generated_ui_json_preserves_generated_ui_config() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(ui.clone()),
         surfaces: None,
@@ -411,6 +460,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(ui),
         surfaces: None,
@@ -463,6 +513,7 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(ui),
         surfaces: None,
@@ -603,6 +654,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
             media_capture: Default::default(),
         }),
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
@@ -645,6 +697,7 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },
@@ -716,6 +769,7 @@ fn app_ui_icon_preparation_requires_svg() {
         features: None,
         capabilities: None,
         theme: None,
+        settings_destination: None,
         browser: None,
         generated_ui: Some(serde_json::json!({
             "launch": { "initialSurface": "main" },

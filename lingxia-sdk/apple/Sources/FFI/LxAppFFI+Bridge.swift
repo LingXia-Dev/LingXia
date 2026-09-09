@@ -293,19 +293,13 @@ extension LxApp {
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            if visible {
-                // Declared surfaces first; else fall back to built-in browser
-                // routes (downloads/settings) opened as main browser tabs.
-                if runtime.openManagedSurface(
-                    id: idString,
-                    role: roleString.isEmpty ? nil : roleString,
-                    edge: edgeString.isEmpty ? nil : edgeString
-                ) {
-                    return true
-                }
-                return runtime.shell.openBuiltinShellSurface(id: idString)
-            }
-            return runtime.closeManagedSurface(id: idString)
+            return LxAppDeclaredSurfaceVisibilityRouter.setVisible(
+                in: runtime,
+                id: idString,
+                visible: visible,
+                role: roleString.isEmpty ? nil : roleString,
+                edge: edgeString.isEmpty ? nil : edgeString
+            )
             #else
             _ = visible
             return false
@@ -690,6 +684,16 @@ extension LxApp {
         executeOnMain { LxAppAppearanceRegistry.hostIsDark() }
     }
 
+    /// 0 follows the system, 1 pins light, 2 pins dark.
+    nonisolated static func setHostColorMode(mode: Int32) {
+        let dark: Bool? = mode == 1 ? false : (mode == 2 ? true : nil)
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                LxAppAppearanceRegistry.setHostColorMode(dark: dark)
+            }
+        }
+    }
+
     /// Runtime signal: the home page finished its first render — dismiss the
     /// startup splash overlay.
     nonisolated static func onHomeFirstReady() {
@@ -845,10 +849,8 @@ extension LxApp {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
             switch page {
-            case 0:
-                return runtime.openBuiltinBrowserPage(id: "settings")
             case 1:
-                return runtime.openBuiltinBrowserPage(id: "downloads")
+                return runtime.shell.openBuiltinShellSurface(id: "downloads")
             default:
                 return false
             }

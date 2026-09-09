@@ -28,12 +28,12 @@ mod wifi;
 
 pub(crate) use app::request_windows_app_exit;
 pub use app::{
-    Platform, set_windows_activate_browser_tab_handler, set_windows_app_exit_handler,
-    set_windows_builtin_browser_page_handler, set_windows_close_browser_tab_handler,
-    set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
-    set_windows_open_url_handler, set_windows_shell_pins_handler,
-    set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
-    set_windows_tray_menu_handler,
+    Platform, current_locale, set_windows_activate_browser_tab_handler,
+    set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
+    set_windows_close_browser_tab_handler, set_windows_lxapp_hidden_handler,
+    set_windows_lxapp_main_activation_handler, set_windows_open_url_handler,
+    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
+    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
 };
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
@@ -48,8 +48,8 @@ pub use surface::{
 };
 pub use ui_update::{
     set_windows_capsule_rect_provider, set_windows_home_first_ready_handler,
-    set_windows_host_appearance_dark, set_windows_ui_update_async_handler,
-    set_windows_ui_update_handler, sync_windows_ui,
+    set_windows_host_appearance_dark, set_windows_host_color_mode_handler,
+    set_windows_ui_update_async_handler, set_windows_ui_update_handler, sync_windows_ui,
 };
 pub use update::apply_staged_windows_update;
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};

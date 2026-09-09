@@ -10,6 +10,55 @@ struct LxAppGeneratedAppConfig: Decodable, Sendable {
     let cacheMaxSizeMB: Int?
     let capabilities: LxAppGeneratedCapabilitiesConfig?
     let theme: LxAppGeneratedThemeConfig?
+    let settingsDestination: LxAppGeneratedSettingsDestination?
+}
+
+enum LxAppGeneratedSettingsDestination: Decodable, Sendable {
+    case controlAppPage(appId: String, page: String, query: [String: LxAppJSONValue]?)
+    case browserControlPage(route: String, query: [String: LxAppJSONValue]?)
+    case nativeAction(actionId: String)
+
+    private enum Kind: String, Decodable {
+        case controlAppPage
+        case browserControlPage
+        case nativeAction
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case appId
+        case page
+        case query
+        case route
+        case actionId
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(Kind.self, forKey: .kind) {
+        case .controlAppPage:
+            self = .controlAppPage(
+                appId: try container.decode(String.self, forKey: .appId),
+                page: try container.decode(String.self, forKey: .page),
+                query: try container.decodeIfPresent(
+                    [String: LxAppJSONValue].self,
+                    forKey: .query
+                )
+            )
+        case .browserControlPage:
+            self = .browserControlPage(
+                route: try container.decode(String.self, forKey: .route),
+                query: try container.decodeIfPresent(
+                    [String: LxAppJSONValue].self,
+                    forKey: .query
+                )
+            )
+        case .nativeAction:
+            self = .nativeAction(
+                actionId: try container.decode(String.self, forKey: .actionId)
+            )
+        }
+    }
 }
 
 struct LxAppGeneratedCapabilitiesConfig: Decodable, Sendable {

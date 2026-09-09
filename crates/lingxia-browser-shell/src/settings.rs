@@ -1,14 +1,11 @@
-use crate::host::{HostCancel, HostResult, StreamContext, await_or_cancel};
+use crate::host::{HostCancel, HostResult, await_or_cancel};
 use crate::platform_error::map_platform_error;
 use lingxia_app_context::app_config;
-use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_service::file::ChooseDirectoryRequest;
 use lxapp::LxApp;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::OnceLock;
-use tokio::sync::broadcast;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,36 +25,6 @@ struct DownloadSettingsResult {
     can_choose_directory: bool,
 }
 
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LanguageSettingsResult {
-    language: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SetLanguageInput {
-    language: String,
-}
-
-fn language_channel() -> &'static broadcast::Sender<LanguageSettingsResult> {
-    static CHANNEL: OnceLock<broadcast::Sender<LanguageSettingsResult>> = OnceLock::new();
-    CHANNEL.get_or_init(|| broadcast::channel(16).0)
-}
-
-/// Native chrome hook fired after the display language changes, so platform
-/// shells can re-render translated labels (webui pages follow the
-/// `settings.watchLanguage` stream instead).
-pub fn set_display_language_change_listener(listener: Box<dyn Fn() + Send + Sync>) {
-    lxapp::add_display_language_change_listener(listener);
-}
-
-fn language_settings_result(app: &LxApp) -> HostResult<LanguageSettingsResult> {
-    let language = lingxia_service::settings::display_language(&app.app_data_dir())
-        .map_err(|error| lxapp::LxAppError::Runtime(error.to_string()))?;
-    Ok(LanguageSettingsResult { language })
-}
-
 fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     let effective = lingxia_service::downloads::dir(&app.app_data_dir());
     let configured = lingxia_service::settings::download_dir(&app.app_data_dir())
@@ -72,9 +39,8 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
     })
 }
 
-#[lingxia::native("app.getInfo")]
-fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
-    crate::require_builtin_browser(&app)?;
+#[lingxia::framework_native("app.getInfo", audience = "browser-control-only")]
+fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     let (product_name, version) = match app_config() {
         Some(cfg) => (cfg.product_name.clone(), cfg.product_version.clone()),
         None => (String::new(), String::new()),
@@ -88,18 +54,16 @@ fn get_app_info(app: Arc<LxApp>) -> HostResult<AppInfo> {
     })
 }
 
-#[lingxia::native("downloads.getSettings")]
+#[lingxia::framework_native("downloads.getSettings", audience = "browser-control-only")]
 fn get_download_settings(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     download_settings_result(&app)
 }
 
-#[lingxia::native("downloads.chooseDirectory")]
+#[lingxia::framework_native("downloads.chooseDirectory", audience = "browser-control-only")]
 async fn choose_download_directory(
     app: Arc<LxApp>,
     mut cancel: HostCancel,
 ) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     let current_dir = lingxia_service::downloads::dir(&app.app_data_dir())
         .to_string_lossy()
         .to_string();
@@ -127,76 +91,36 @@ async fn choose_download_directory(
     download_settings_result(&app)
 }
 
-#[lingxia::native("downloads.resetDirectory")]
+#[lingxia::framework_native("downloads.resetDirectory", audience = "browser-control-only")]
 fn reset_download_directory(app: Arc<LxApp>) -> HostResult<DownloadSettingsResult> {
-    crate::require_builtin_browser(&app)?;
     lingxia_service::downloads::reset_dir(&app.app_data_dir())
         .map_err(|e| lxapp::LxAppError::Runtime(e.to_string()))?;
     download_settings_result(&app)
 }
 
-/// Readable by any lxapp: the host's display language is what every screen has
-/// to render in, and a Logic worker already reads it from `lx.app` base info.
-/// This write path stays browser-private; the home lxapp writes through
-/// `lx.app.setDisplayLanguage`.
-#[lingxia::native("settings.getLanguage")]
-fn get_display_language(app: Arc<LxApp>) -> HostResult<LanguageSettingsResult> {
-    language_settings_result(&app)
-}
-
-#[lingxia::native("settings.setLanguage")]
-fn set_display_language(
-    app: Arc<LxApp>,
-    input: SetLanguageInput,
-) -> HostResult<LanguageSettingsResult> {
-    crate::require_builtin_browser(&app)?;
-    let language = input
-        .language
-        .parse::<lxapp::DisplayLanguage>()
-        .map_err(lxapp::LxAppError::InvalidParameter)?;
-    lxapp::set_display_language(language)?;
-    language_settings_result(&app)
-}
-
-#[lingxia::native("settings.watchLanguage", stream)]
-async fn watch_display_language(
-    app: Arc<LxApp>,
-    mut stream: StreamContext<LanguageSettingsResult>,
-) -> HostResult<()> {
-    let mut receiver = language_channel().subscribe();
-    stream.send(language_settings_result(&app)?)?;
-    loop {
-        tokio::select! {
-            _ = stream.canceled() => return Ok(()),
-            received = receiver.recv() => {
-                match received {
-                    Ok(language) => stream.send(language)?,
-                    Err(broadcast::error::RecvError::Lagged(_)) => {
-                        stream.send(language_settings_result(&app)?)?;
-                    }
-                    Err(broadcast::error::RecvError::Closed) => return stream.end(()),
-                }
-            }
-        }
-    }
-}
-
-pub(crate) fn register() {
+pub(crate) fn register_routes() {
     lxapp::host::register_host_entry(get_app_info_host());
     lxapp::host::register_host_entry(get_download_settings_host());
     lxapp::host::register_host_entry(choose_download_directory_host());
     lxapp::host::register_host_entry(reset_download_directory_host());
-    lxapp::host::register_host_entry(get_display_language_host());
-    lxapp::host::register_host_entry(set_display_language_host());
-    lxapp::host::register_host_entry(watch_display_language_host());
-    lxapp::add_display_language_change_listener(Box::new(|| {
-        let Some(runtime) = lxapp::get_platform() else {
-            return;
-        };
-        let Ok(language) = lingxia_service::settings::display_language(&runtime.app_data_dir())
-        else {
-            return;
-        };
-        let _ = language_channel().send(LanguageSettingsResult { language });
-    }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn framework_routes_are_browser_control_only() {
+        for route in [
+            get_app_info_host(),
+            get_download_settings_host(),
+            choose_download_directory_host(),
+            reset_download_directory_host(),
+        ] {
+            assert_eq!(
+                route.audience(),
+                lxapp::host::RouteAudience::BrowserControlOnly
+            );
+        }
+    }
 }

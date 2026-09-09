@@ -138,7 +138,11 @@ export default function UIPage() {
 
 
   return (
-    <div className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto">
+    <div
+      className="h-screen bg-linear-to-br from-surface-50 to-surface-100 flex flex-col overflow-y-auto"
+      data-testid="ui-page"
+      data-instance-tag={instanceTag}
+    >
       <div className="flex-1 overflow-y-auto">
         <div className="pb-6 px-4 pt-6">
         {chromeError && (
@@ -931,7 +935,7 @@ export default function UIPage() {
               <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  <code className="text-xs">lx.appearance.set()</code> picks this lxapp&apos;s branch
+                  <code className="text-xs">lx.app.control.appearance.setPreference()</code> sets the product&apos;s scheme
                   independently of the host shell; the preference persists per lxapp.
                 </p>
               </div>

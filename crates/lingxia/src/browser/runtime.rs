@@ -18,6 +18,22 @@ pub(crate) fn register_bundled_app() {
     lingxia_browser::register_bundled_app();
 }
 
+pub(crate) fn navigate_trusted_control_page(
+    authority: &lxapp::NativeControlPlaneAuthority,
+    url: &str,
+) -> Result<(String, u64), lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    {
+        let navigation = lingxia_browser::navigate_trusted_control_page(authority, url)?;
+        Ok((navigation.tab_id, navigation.browser_session_id))
+    }
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (authority, url);
+        unavailable()
+    }
+}
+
 #[cfg(all(feature = "browser-runtime", not(feature = "browser-shell")))]
 pub(crate) fn install_runtime_once() {
     use std::sync::OnceLock;
@@ -40,7 +56,11 @@ pub(crate) fn warmup() {
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 pub(crate) fn open(url: &str, tab_id: Option<&str>) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
-    return lingxia_browser::open(url, tab_id);
+    return if lingxia_browser::extract_url_scheme(url).as_deref() == Some("lingxia") {
+        lingxia_browser::open_trusted(super::native_control_authority()?, url, tab_id)
+    } else {
+        lingxia_browser::open(url, tab_id)
+    };
     #[cfg(not(feature = "browser-runtime"))]
     {
         let _ = (url, tab_id);
@@ -56,6 +76,31 @@ pub(crate) fn open_for_app(
 ) -> Result<String, lxapp::LxAppError> {
     #[cfg(feature = "browser-runtime")]
     return lingxia_browser::open_for_app(appid, session_id, url, tab_id);
+    #[cfg(not(feature = "browser-runtime"))]
+    {
+        let _ = (appid, session_id, url, tab_id);
+        unavailable()
+    }
+}
+
+/// Opens one host-selected internal browser route for an existing app-owned
+/// tab. The native authority is supplied here rather than crossing the Apple
+/// FFI, so ordinary app navigation cannot opt into trusted control pages.
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub(crate) fn open_trusted_for_app(
+    appid: &str,
+    session_id: u64,
+    url: &str,
+    tab_id: Option<&str>,
+) -> Result<String, lxapp::LxAppError> {
+    #[cfg(feature = "browser-runtime")]
+    return lingxia_browser::open_trusted_for_app(
+        super::native_control_authority()?,
+        appid,
+        session_id,
+        url,
+        tab_id,
+    );
     #[cfg(not(feature = "browser-runtime"))]
     {
         let _ = (appid, session_id, url, tab_id);

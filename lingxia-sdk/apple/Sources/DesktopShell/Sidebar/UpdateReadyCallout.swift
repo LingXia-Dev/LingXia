@@ -54,7 +54,7 @@ final class UpdateReadyCallout: NSView {
     private func setup(appName: String, state: UpdateCalloutState) {
         wantsLayer = true
         layer?.cornerRadius = Style.cornerRadius
-        layer?.backgroundColor = Style.background.cgColor
+        layer?.backgroundColor = themeCGColor(Style.background)
         // Soft drop shadow so it reads as a floating bubble.
         shadow = NSShadow()
         layer?.shadowColor = NSColor.black.cgColor
@@ -111,22 +111,22 @@ final class UpdateReadyCallout: NSView {
 
     override func mouseEntered(with event: NSEvent) {
         NSCursor.pointingHand.set()
-        layer?.backgroundColor = Style.hovered().cgColor
+        layer?.backgroundColor = themeCGColor(Style.hovered())
     }
 
     override func mouseExited(with event: NSEvent) {
         NSCursor.arrow.set()
-        layer?.backgroundColor = Style.background.cgColor
+        layer?.backgroundColor = themeCGColor(Style.background)
     }
 
     override func mouseDown(with event: NSEvent) {
         // Brief press feedback, then fire.
-        layer?.backgroundColor = Style.pressed().cgColor
+        layer?.backgroundColor = themeCGColor(Style.pressed())
     }
 
     override func mouseUp(with event: NSEvent) {
         let inside = bounds.contains(convert(event.locationInWindow, from: nil))
-        layer?.backgroundColor = Style.background.cgColor
+        layer?.backgroundColor = themeCGColor(Style.background)
         if inside {
             onClick()
         }

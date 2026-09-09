@@ -412,6 +412,19 @@
         <div class="section">
           <div class="row">
             <div class="row-main">
+              <div class="row-title" data-i18n="settings.appearance">Appearance</div>
+              <div class="row-value" id="appearanceStatus" data-i18n="settings.appearanceCopy">Light or dark for the whole app.</div>
+            </div>
+            <div class="row-control language">
+              <div class="language-options" id="appearanceOptions" role="radiogroup" data-i18n-aria-label="settings.appearance" aria-label="Appearance">
+                <button class="language-option" data-appearance="auto" type="button" role="radio" data-i18n="settings.appearanceAuto">System</button>
+                <button class="language-option" data-appearance="light" type="button" role="radio" data-i18n="settings.appearanceLight">Light</button>
+                <button class="language-option" data-appearance="dark" type="button" role="radio" data-i18n="settings.appearanceDark">Dark</button>
+              </div>
+            </div>
+          </div>
+          <div class="row">
+            <div class="row-main">
               <div class="row-title" data-i18n="settings.language">Language</div>
               <div class="row-value" id="languageStatus" data-i18n="settings.languageCopy">Choose the language used by LingXia browser pages.</div>
             </div>
@@ -797,31 +810,71 @@
           option.disabled = !!disabled;
         });
       }
-      syncLanguageOptions('auto', false);
-      callHost('settings.getLanguage').then(function (result) {
-        configuredLanguage = result && result.language || null;
+      // Only the radio state. This page renders in the product language the
+      // same way every other document does, through the bridge.
+      function applyLanguagePreference(preference) {
+        if (preference) configuredLanguage = preference;
         syncLanguageOptions(configuredLanguage || 'auto', false);
-      }, function () {
+      }
+      syncLanguageOptions('auto', false);
+      callHost('app.getDisplayLanguagePreference').then(applyLanguagePreference, function () {
         syncLanguageOptions('auto', false);
       });
+      if (window.LingXiaBridge && typeof window.LingXiaBridge.stream === 'function') {
+        var languagePreferenceWatch = window.LingXiaBridge.stream('app.watchDisplayLanguagePreference');
+        languagePreferenceWatch.onEvent(applyLanguagePreference);
+      }
       languageOptions.forEach(function (option) {
         option.addEventListener('click', function () {
           var next = option.dataset.language;
           if (next === (configuredLanguage || 'auto')) return;
           syncLanguageOptions(next, true);
-          callHost('settings.setLanguage', { language: next }).then(function (result) {
-            configuredLanguage = result && result.language || null;
-            if (configuredLanguage) {
-              i18n.setLocale(configuredLanguage);
-            } else {
-              i18n.useSystemLocale();
-            }
-            window.location.reload();
+          callHost('app.setDisplayLanguagePreference', { preference: next }).then(function (preference) {
+            applyLanguagePreference(preference);
           }, function (error) {
-            console.error('[Settings] settings.setLanguage error:', error);
+            console.error('[Settings] app.setDisplayLanguagePreference error:', error);
             syncLanguageOptions(configuredLanguage || 'auto', false);
             languageStatus.textContent = t('settings.languageSaveFailed');
             languageStatus.style.color = '#c01048';
+          });
+        });
+      });
+      var appearanceStatus = document.getElementById('appearanceStatus');
+      var appearanceOptions = Array.prototype.slice.call(document.querySelectorAll('[data-appearance]'));
+      var configuredAppearance = null;
+      function syncAppearanceOptions(preference, disabled) {
+        appearanceOptions.forEach(function (option) {
+          var selected = option.dataset.appearance === preference;
+          option.classList.toggle('active', selected);
+          option.setAttribute('aria-checked', selected ? 'true' : 'false');
+          option.disabled = !!disabled;
+        });
+      }
+      function applyAppearancePreference(preference) {
+        if (preference) configuredAppearance = preference;
+        syncAppearanceOptions(configuredAppearance || 'auto', false);
+      }
+      syncAppearanceOptions('auto', false);
+      callHost('app.getAppearancePreference').then(applyAppearancePreference, function () {
+        syncAppearanceOptions('auto', false);
+      });
+      if (window.LingXiaBridge && typeof window.LingXiaBridge.stream === 'function') {
+        // The system can flip while this page is open, and `auto` moves with it.
+        var appearanceWatch = window.LingXiaBridge.stream('app.watchAppearancePreference');
+        appearanceWatch.onEvent(applyAppearancePreference);
+      }
+      appearanceOptions.forEach(function (option) {
+        option.addEventListener('click', function () {
+          var next = option.dataset.appearance;
+          if (next === (configuredAppearance || 'auto')) return;
+          syncAppearanceOptions(next, true);
+          callHost('app.setAppearancePreference', { preference: next }).then(function (preference) {
+            applyAppearancePreference(preference);
+          }, function (error) {
+            console.error('[Settings] app.setAppearancePreference error:', error);
+            syncAppearanceOptions(configuredAppearance || 'auto', false);
+            appearanceStatus.textContent = t('settings.appearanceSaveFailed');
+            appearanceStatus.style.color = '#c01048';
           });
         });
       });

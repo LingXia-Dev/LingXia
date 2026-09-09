@@ -3,9 +3,9 @@
 //! unforgeable drivers.
 //! macOS is the reference platform where every capability is live.
 
-use crate::auto_err;
 use crate::page::png_dimensions;
 use crate::resolve::{json_to_js, resolve_lxapp_by_id};
+use crate::{auto_err, require_host_context};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, LxAppStartupOptions, ReleaseType};
 use rong::{
@@ -108,11 +108,13 @@ impl JSLxAppManager {
 
     #[js_method]
     async fn list(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         to_js(&ctx, &lxapp::list_lxapps())
     }
 
     #[js_method]
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let (appid, path, _) = lxapp::get_current_lxapp();
         to_js(&ctx, &json!({ "appid": appid, "currentPage": path }))
     }
@@ -138,7 +140,8 @@ impl JSLxAppManager {
     }
 
     #[js_method]
-    async fn open(&self, _ctx: JSContext, options: OpenOpt) -> JSResult<JSOpenResult> {
+    async fn open(&self, ctx: JSContext, options: OpenOpt) -> JSResult<JSOpenResult> {
+        require_host_context(&ctx)?;
         let rt = release_type(options.release_type.as_deref())?;
         let app = lxapp::open_lxapp(
             &options.appid,
@@ -153,6 +156,7 @@ impl JSLxAppManager {
 
     #[js_method]
     async fn close(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let app = resolve_lxapp_by_id(app_ref(&options.app))?;
         reject_self(&ctx, &app, "close")?;
@@ -161,6 +165,7 @@ impl JSLxAppManager {
 
     #[js_method]
     async fn restart(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let app = resolve_lxapp_by_id(app_ref(&options.app))?;
         reject_self(&ctx, &app, "restart")?;
@@ -169,6 +174,7 @@ impl JSLxAppManager {
 
     #[js_method]
     async fn uninstall(&self, ctx: JSContext, options: Optional<AppOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let app = resolve_lxapp_by_id(app_ref(&options.app))?;
         reject_self(&ctx, &app, "uninstall")?;
@@ -178,6 +184,7 @@ impl JSLxAppManager {
     /// Enumerate the host app's windows (`lxdev lxapp windows`).
     #[js_method]
     async fn windows(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         use lingxia_platform::traits::screenshot::AppScreenshot;
         let platform =
             lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
@@ -193,9 +200,10 @@ impl JSLxAppManager {
     #[js_method]
     async fn screenshot(
         &self,
-        _ctx: JSContext,
+        ctx: JSContext,
         options: Optional<WindowOpt>,
     ) -> JSResult<JSAppScreenshot> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         use lingxia_platform::traits::screenshot::AppScreenshot;
         let platform =
@@ -248,6 +256,7 @@ impl JSDeviceDriver {
     /// The device presets the host runner offers.
     #[js_method]
     async fn list(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let entries = lxapp::device::device_list().map_err(auto_err)?;
         to_js(&ctx, &entries)
     }
@@ -255,6 +264,7 @@ impl JSDeviceDriver {
     /// The currently selected device and orientation.
     #[js_method]
     async fn get(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let state = lxapp::device::device_get().map_err(auto_err)?;
         to_js(&ctx, &state)
     }
@@ -262,6 +272,7 @@ impl JSDeviceDriver {
     /// Update the simulated environment; only provided fields change.
     #[js_method]
     async fn set(&self, ctx: JSContext, options: DeviceSetOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         if options.id.is_none()
             && options.landscape.is_none()
             && options.appearance.is_none()
@@ -522,7 +533,8 @@ impl JSBrowserDriver {
     }
 
     #[js_method]
-    async fn open(&self, _ctx: JSContext, options: BrowserOpenOpt) -> JSResult<JSTabResult> {
+    async fn open(&self, ctx: JSContext, options: BrowserOpenOpt) -> JSResult<JSTabResult> {
+        require_host_context(&ctx)?;
         let tab = lingxia_browser::open(&options.url, options.tab.as_deref())
             .map_err(|err| auto_err(err.to_string()))?;
         Ok(JSTabResult { tab })
@@ -530,16 +542,19 @@ impl JSBrowserDriver {
 
     #[js_method]
     async fn tabs(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         to_js(&ctx, &lingxia_browser::tabs())
     }
 
     #[js_method]
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         to_js(&ctx, &lingxia_browser::automation_current_tab())
     }
 
     #[js_method]
     async fn activate(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let info = lingxia_browser::activate(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))?;
@@ -547,28 +562,32 @@ impl JSBrowserDriver {
     }
 
     #[js_method]
-    async fn close(&self, _ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+    async fn close(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         lingxia_browser::close(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))
     }
 
     #[js_method]
-    async fn reload(&self, _ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+    async fn reload(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         lingxia_browser::reload(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))
     }
 
     #[js_method]
-    async fn back(&self, _ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+    async fn back(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         lingxia_browser::go_back(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))
     }
 
     #[js_method]
-    async fn forward(&self, _ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+    async fn forward(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         lingxia_browser::go_forward(&resolve_tab_id(&options.tab)?)
             .map_err(|err| auto_err(err.to_string()))
@@ -578,6 +597,7 @@ impl JSBrowserDriver {
     /// navigation the script triggers and resolves to `{ value, navigation }`.
     #[js_method]
     async fn eval(&self, ctx: JSContext, options: BrowserEvalOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         let wait_navigation = options.wait_navigation.unwrap_or(false);
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(BROWSER_EVAL_DEFAULT_MS));
@@ -603,6 +623,7 @@ impl JSBrowserDriver {
     /// text/value (ignoring `maxText`).
     #[js_method]
     async fn query(&self, ctx: JSContext, options: BrowserQueryOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         let max_text = if options.full.unwrap_or(false) {
             None
@@ -621,6 +642,7 @@ impl JSBrowserDriver {
     /// `{ navigation: true, complete? }`.
     #[js_method]
     async fn wait(&self, ctx: JSContext, options: BrowserWaitOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         let condition = browser_wait_condition(&options)?;
         let timeout = Duration::from_millis(
@@ -639,6 +661,7 @@ impl JSBrowserDriver {
     /// triggers and resolves to the navigation payload (else `null`).
     #[js_method]
     async fn click(&self, ctx: JSContext, options: BrowserClickOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         let wait_navigation = options.wait_navigation.unwrap_or(false);
         let timeout = browser_wait_duration(options.timeout_ms);
@@ -653,7 +676,8 @@ impl JSBrowserDriver {
     }
 
     #[js_method(rename = "type")]
-    async fn type_text(&self, _ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+    async fn type_text(&self, ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::type_text(&tab, &options.css, &options.text)
             .await
@@ -661,7 +685,8 @@ impl JSBrowserDriver {
     }
 
     #[js_method]
-    async fn fill(&self, _ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+    async fn fill(&self, ctx: JSContext, options: BrowserTextOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::fill(&tab, &options.css, &options.text)
             .await
@@ -672,6 +697,7 @@ impl JSBrowserDriver {
     /// resolves to the navigation payload (else `null`).
     #[js_method]
     async fn press(&self, ctx: JSContext, options: BrowserPressOpt) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         let wait_navigation = options.wait_navigation.unwrap_or(false);
         let timeout = browser_wait_duration(options.timeout_ms);
@@ -686,7 +712,8 @@ impl JSBrowserDriver {
     }
 
     #[js_method]
-    async fn scroll(&self, _ctx: JSContext, options: BrowserScrollOpt) -> JSResult<()> {
+    async fn scroll(&self, ctx: JSContext, options: BrowserScrollOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::scroll(&tab, options.dx.unwrap_or(0.0), options.dy.unwrap_or(0.0))
             .await
@@ -695,7 +722,8 @@ impl JSBrowserDriver {
 
     /// Scroll the matching element into view (same verb as `page.scrollTo`).
     #[js_method(rename = "scrollTo")]
-    async fn scroll_to(&self, _ctx: JSContext, options: BrowserSelectorOpt) -> JSResult<()> {
+    async fn scroll_to(&self, ctx: JSContext, options: BrowserSelectorOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::scroll_to(&tab, &options.css)
             .await
@@ -706,9 +734,10 @@ impl JSBrowserDriver {
     #[js_method]
     async fn screenshot(
         &self,
-        _ctx: JSContext,
+        ctx: JSContext,
         options: Optional<TabOpt>,
     ) -> JSResult<JSAppScreenshot> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let tab = resolve_tab_id(&options.tab)?;
         let bytes = lingxia_browser::take_screenshot(&tab)
@@ -725,6 +754,7 @@ impl JSBrowserDriver {
 
     #[js_method(getter, enumerable)]
     fn cookies(&self, ctx: JSContext) -> JSResult<JSObject> {
+        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSBrowserCookies>(&ctx)?.instance(JSBrowserCookies::new()))
     }
 }
@@ -780,6 +810,7 @@ impl JSBrowserCookies {
 
     #[js_method]
     async fn list(&self, ctx: JSContext, options: Optional<CookiesListOpt>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let tab = resolve_tab_id(&options.tab)?;
         let cookies = if options.all.unwrap_or(false) {
@@ -792,7 +823,8 @@ impl JSBrowserCookies {
     }
 
     #[js_method]
-    async fn set(&self, _ctx: JSContext, options: CookieSetOpt) -> JSResult<()> {
+    async fn set(&self, ctx: JSContext, options: CookieSetOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         use lingxia_webview::{WebViewCookieSameSite, WebViewCookieSetRequest};
         let tab = resolve_tab_id(&options.tab)?;
         let same_site = options
@@ -820,7 +852,8 @@ impl JSBrowserCookies {
     }
 
     #[js_method]
-    async fn delete(&self, _ctx: JSContext, options: CookieDeleteOpt) -> JSResult<()> {
+    async fn delete(&self, ctx: JSContext, options: CookieDeleteOpt) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::delete_cookie(
             &tab,
@@ -833,7 +866,8 @@ impl JSBrowserCookies {
     }
 
     #[js_method]
-    async fn clear(&self, _ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+    async fn clear(&self, ctx: JSContext, options: Optional<TabOpt>) -> JSResult<()> {
+        require_host_context(&ctx)?;
         let options = options.0.unwrap_or_default();
         let tab = resolve_tab_id(&options.tab)?;
         lingxia_browser::clear_cookies(&tab)

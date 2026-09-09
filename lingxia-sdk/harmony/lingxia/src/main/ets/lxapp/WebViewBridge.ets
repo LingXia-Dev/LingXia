@@ -5,6 +5,10 @@ import {
   handleWebViewLoadError as coreHandleWebViewLoadError,
   handleWebViewNavigationPolicy as coreHandleWebViewNavigationPolicy,
   notifyWebViewControllerCreated as coreNotifyWebViewControllerAttached,
+  notifyWebViewDocumentCommit as coreNotifyWebViewDocumentCommit,
+  notifyWebViewPageBegin as coreNotifyWebViewPageBegin,
+  notifyWebViewPageEnd as coreNotifyWebViewPageEnd,
+  notifyWebViewRenderExited as coreNotifyWebViewRenderExited,
   WebViewInfo,
   WebTagParts,
   WebViewManager as CoreWebViewManager,
@@ -51,6 +55,36 @@ export class WebViewManager {
 
   static findWebview(appId: string, path: string): webview.WebviewController | null {
     return CoreWebViewManager.findWebview(appId, path);
+  }
+
+  static getGenerationForController(webtag: string, controller: webview.WebviewController): string {
+    return CoreWebViewManager.getGenerationForController(webtag, controller);
+  }
+
+  static pageBegin(webtag: string, controller: webview.WebviewController, url: string): string {
+    return coreNotifyWebViewPageBegin(webtag, controller, url);
+  }
+
+  static documentCommit(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    return coreNotifyWebViewDocumentCommit(webtag, controller, pageEpoch, url);
+  }
+
+  static pageEnd(
+    webtag: string,
+    controller: webview.WebviewController,
+    pageEpoch: string,
+    url: string
+  ): boolean {
+    return coreNotifyWebViewPageEnd(webtag, controller, pageEpoch, url);
+  }
+
+  static renderExited(webtag: string, controller: webview.WebviewController): boolean {
+    return coreNotifyWebViewRenderExited(webtag, controller);
   }
 
   static destroyWebview(webtag: string, generation?: string): boolean {
@@ -168,24 +202,28 @@ export function isEphemeralDataMode(webtag: string): boolean {
 
 export function handleWebViewNavigationPolicy(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   hasUserGesture: boolean,
   isMainFrame: boolean
 ): boolean {
-  return coreHandleWebViewNavigationPolicy(webtag, url, hasUserGesture, isMainFrame);
+  return coreHandleWebViewNavigationPolicy(webtag, nativeViewToken, url, hasUserGesture, isMainFrame);
 }
 
 export function handleWebViewLoadError(
   webtag: string,
+  nativeGeneration: string,
+  pageEpoch: string,
   url: string,
   errorCode: number,
   description: string
 ): void {
-  coreHandleWebViewLoadError(webtag, url, errorCode, description);
+  coreHandleWebViewLoadError(webtag, nativeGeneration, pageEpoch, url, errorCode, description);
 }
 
 export function handleWebViewDownloadStart(
   webtag: string,
+  nativeViewToken: string,
   url: string,
   userAgent: string,
   contentDisposition: string,
@@ -194,6 +232,7 @@ export function handleWebViewDownloadStart(
 ): void {
   coreHandleWebViewDownloadStart(
     webtag,
+    nativeViewToken,
     url,
     userAgent,
     contentDisposition,
@@ -202,8 +241,8 @@ export function handleWebViewDownloadStart(
   );
 }
 
-export function notifyWebViewControllerAttached(webtag: string): void {
-  coreNotifyWebViewControllerAttached(webtag);
+export function notifyWebViewControllerAttached(webtag: string, nativeViewToken: string): void {
+  coreNotifyWebViewControllerAttached(webtag, nativeViewToken);
 }
 
 export function getAllWebViewInfos(): WebViewInfo[] {

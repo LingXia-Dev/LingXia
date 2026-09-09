@@ -35,6 +35,7 @@ macro_rules! flag_capabilities {
 }
 
 flag_capabilities! {
+    "control" => |lxapp: &Arc<LxApp>| lxapp.is_control_app();
     "terminal" => |lxapp: &Arc<LxApp>| terminal_supported(lxapp);
     "autostart" => |_: &Arc<LxApp>| autostart_supported();
     "notifications" => |_: &Arc<LxApp>| lingxia_app_context::capability::notifications();
@@ -48,6 +49,13 @@ flag_capabilities! {
     "mediaCapture" => |_: &Arc<LxApp>| lingxia_app_context::capability::media_capture();
 }
 
+/// `lx.app.control`'s presence check, so the two can never disagree. The
+/// session class is assigned natively when the session is created; nothing a
+/// caller says reaches it.
+pub(crate) fn is_control_app(ctx: &rong::JSContext) -> bool {
+    LxApp::from_ctx(ctx).is_ok_and(|lxapp| lxapp.is_control_app())
+}
+
 /// `lx.terminal`'s presence check, so the two can never disagree.
 fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
     #[cfg(feature = "terminal")]
@@ -58,6 +66,21 @@ fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
     {
         let _ = lxapp;
         false
+    }
+}
+
+/// Whether this exact JS context is the focused, host-bundled Terminal
+/// Settings runtime. Terminal support on the ControlSurface class alone is not
+/// enough: its ordinary home context still exposes the full Logic surface.
+fn terminal_settings_context(ctx: &JSContext) -> JSResult<bool> {
+    #[cfg(feature = "terminal")]
+    {
+        crate::terminal::owns_context(ctx)
+    }
+    #[cfg(not(feature = "terminal"))]
+    {
+        let _ = ctx;
+        Ok(false)
     }
 }
 
@@ -135,7 +158,7 @@ fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
 /// a context that does not expose an API reports false for it.
 fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let terminal_settings = terminal_supported(&lxapp);
+    let terminal_settings = terminal_settings_context(&ctx)?;
     // Taken as a value, not a `JSObject`: an untyped caller passing a string or
     // null would otherwise be rejected by argument conversion, with a shape
     // that does not match the invalid-parameter errors every other bad query
@@ -229,7 +252,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
         /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
+        type LxCapabilityFlag = r###"'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
 
         /// Surface placements accepted by `lx.supports`.
         type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;

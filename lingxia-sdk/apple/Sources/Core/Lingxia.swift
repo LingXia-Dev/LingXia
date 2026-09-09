@@ -16,9 +16,8 @@ public enum Lingxia {
     public nonisolated static let lxAppRegistryDidChangeNotification =
         Notification.Name("LingxiaLxAppRegistryDidChange")
 
-    /// Effective display language selected by the runtime. A saved user
-    /// choice takes precedence over the locale supplied during
-    /// initialization.
+    /// Effective display language selected by the runtime after resolving a
+    /// Runner session override, saved preference, and current system locale.
     ///
     /// Before `quickStart()`/`initializeRuntime()` completes, the Rust side
     /// cannot yet resolve a saved override, so this falls back to the real

@@ -5,7 +5,7 @@
 > Status: Active
 > Class: Normative internal specification
 > Scope: Bridge (Rust) <-> View (`window.LingXiaBridge`)
-> Version: protocol `v = 2`
+> Versions: `LegacyV2` (`v = 2`) and document-bound `RequiredV3` (`v = 3`)
 
 This document defines the current LingXia bridge contract. It is the single authority for on-wire behavior between the View runtime and the Bridge endpoint. When other notes, drafts, or implementation comments disagree with this document, this document wins.
 
@@ -72,6 +72,27 @@ Routing rules:
 - View is authoritative for user interaction and channel-originated input.
 - The protocol does not require JS to sit between Host and View; Host handlers MAY produce streams and responses directly.
 
+### 2.3 Connection profiles
+
+There are two protocol profiles. Native selects one; a page can neither choose
+its own nor negotiate down:
+
+| Profile | Used by | How native selects it | Authority model |
+|---|---|---|---|
+| `LegacyV2` | ordinary lxapp View document | no control bootstrap is installed | app-session identity comes from the native page owner; a wire frame is not a document credential |
+| `RequiredV3` | host-attested browser control document | native bootstrap pins `requiredProtocol: 3` for one committed document | every frame is bound to that document's active `DocumentSession` |
+
+`role` in `hello` names the protocol endpoint (`view`) and is neither a
+`CallerClass` nor a `RouteAudience`. Native derives caller identity from the
+owning app session or the active browser `DocumentSession`; the route registry
+then compares that identity against the route's fixed audience. `appid`, URL,
+`role`, `cap`, and payload fields MUST NOT raise a caller's authority.
+
+An ordinary page stays `LegacyV2`; V3 support existing in the same process does
+not upgrade it. A browser control document stays `RequiredV3`; a missing,
+malformed, V2, or future-version bootstrap or traffic MUST NOT degrade it to
+V2.
+
 ## 3. Protocol Overview
 
 ### 3.1 View-initiated Families
@@ -110,7 +131,9 @@ Although streaming requests are View-initiated, the **data flows from Bridge to 
 
 ### 4.1 Version
 
-All frames in this specification use protocol version `2`.
+The frame definitions below use V2 examples, because both profiles share the
+same business payload. `LegacyV2` emits `v: 2`; `RequiredV3` emits `v: 3` and
+adds the per-direction binding defined in 4.2.1.
 
 ### 4.2 Envelope
 
@@ -120,6 +143,31 @@ Every frame MUST include:
 - `kind`: frame kind
 
 Frames are JSON objects transported over an ordered bidirectional message path.
+
+#### 4.2.1 RequiredV3 binding per frame family
+
+The V3 codec owns the security fields exclusively. Callers pass family payload
+fields only; a payload carrying `v`, `kind`, `sessionId`, or `secret` MUST be
+rejected and MUST NOT override the envelope.
+
+| Direction | Families | Required envelope |
+|---|---|---|
+| document → native | `hello`, `req`, `res`, `notify`, `cancel`, `ch.open`, `ch.data`, `ch.close`, `state.ack` | `v: 3`, exact `kind`, current public `sessionId`, document secret |
+| native → document | `helloAck`, `ready`, `req`, `res`, `event`, `state.snapshot`, `state.patch`, `ch.ack`, `ch.data`, `ch.close` | `v: 3`, exact `kind`, current public `sessionId`; `secret` MUST be absent |
+
+Before decoding a typed payload or looking up a route, native MUST validate
+frame size, version, the permitted direction/kind, native WebView identity, the
+committed `DocumentGeneration`, top-level proof, transport, public session id,
+and secret. Before delivery, the document MUST validate version,
+direction/kind, and public session id. A duplicate top-level security key is
+malformed. The secret is captured only by the one-shot bootstrap codec: it MUST
+NOT be copied into runtime config, written to a log or error, or sent from
+native to the document.
+
+The console forwarding sideband is no exception. A browser control console
+envelope carries `v: 3`, `kind: "console"`, `sessionId`, and `secret`, and
+passes the same current-document checks before reaching its separately
+rate-limited log path.
 
 ### 4.3 Identifiers
 
@@ -148,9 +196,57 @@ Capability is derived from the target name (`method` for `req`/`notify`, `topic`
 
 If the declared capability does not match the derived capability, the receiver MUST reject the frame.
 
+`cap` is a routing-consistency assertion, not caller authentication. A correct
+`cap` MUST NOT satisfy a `CallerClass`, `RouteAudience`, `AppScope`, or
+`DocumentSession` check.
+
+### 4.6 Bounds, queues, and rate limits
+
+These bounds are a fail-closed ingress contract, not tuning hints:
+
+| Bound | Current limit | On exceeding it |
+|---|---:|---|
+| single native WebView message | 64 KiB | rejected before any LingXia-owned payload is materialized, wherever the platform adapter can read the raw length; on every platform, rejected no later than enqueue |
+| single WebView ingress queue | 1,024 frames, 1 MiB total | new frames are rejected; already-accepted frames keep FIFO order |
+| browser V3 predecode frame | 64 KiB | rejected before a typed payload is allocated |
+| browser `sessionId` or `secret` probe field | 512 bytes | rejected as a malformed envelope |
+| document JS pre-ready outbox | 256 frames | the operation is rejected with `BRIDGE_OUTBOX_FULL` |
+| browser console sideband | 32 messages per one-second window | excess messages are dropped and a `console_rate_limited` diagnostic is recorded |
+
+The document side enforces the message bound too, before it posts: an oversized
+frame would be dropped by native without a reply, so the sender rejects the
+operation with `BRIDGE_MESSAGE_TOO_LARGE` rather than leaving it to time out.
+
+WebView ingress uses a single bounded FIFO dispatcher and MUST NOT spawn a
+thread per message. After close, new frames are rejected and queued frames that
+have not been admitted are discarded. Request and channel timeouts start when
+the frame is actually sent, not while it waits in the pre-ready outbox.
+Rejection counters are labelled by reason; logs are sampled only when the count
+is 1 or a power of 2, and a diagnostic MUST NOT contain the frame, the URL, the
+public session id, or the secret.
+
+The native outer cap does not depend on JSON or typed decode. Apple accepts
+only an `NSString` body and checks its UTF-8 byte length before copying it into
+a Rust `String`; a non-string body no longer reaches `NSJSONSerialization`.
+Android scans Java UTF-16 and computes the standard UTF-8 length at both
+entries — `MessagePort` and the API 21/22 `JavascriptInterface` — and rejects
+before the payload crosses JNI into a Rust `String`. HarmonyOS uses ArkWeb's
+`data_length` directly, on both the regular and console ports, rejecting before
+a byte slice or UTF-8 `String` exists. The WebView2 callback API hands the
+Windows host an `HSTRING` already, so LingXia cannot read the raw byte length
+before WebView2 itself materializes the string; Windows still applies the same
+64 KiB rejection before the bounded queue and V3 typed decode. This platform
+limitation produces no protocol or authority downgrade.
+
 ## 5. Session Establishment
 
 Application traffic begins only after a successful handshake.
+
+Before sending `hello`, the JS runtime consumes the native bootstrap exactly
+once. With no bootstrap it selects `LegacyV2`; a valid bootstrap pins
+`RequiredV3` with `protocolsSupported: [3]`; a bootstrap that is present but
+invalid enters a blocked state and sends no frames at all. `RequiredV3` never
+advertises `[2, 3]`.
 
 | Step | Direction | Purpose |
 |---|---|---|
@@ -211,6 +307,56 @@ LingXia profile:
 - View MUST queue outbound application frames until `ready` is received.
 - Queued operation timeouts begin when the frame is actually sent, not while queued.
 - Bridge MUST reject premature frames with `BRIDGE_NOT_READY`.
+
+### 5.5 Negotiation failure
+
+- `LegacyV2` accepts only V2; `RequiredV3` accepts only V3.
+- `helloAck` MUST match the nonce and the single required protocol. A V3
+  `helloAck`, and every native frame after it, MUST also match the current
+  public `sessionId`.
+- `ready` is ignored until a valid `helloAck` has been accepted.
+- The document attempts the handshake at most three times, with a 10-second
+  timeout each. Once exhausted, queued requests and channels are rejected with
+  `BRIDGE_HANDSHAKE_FAILED`.
+- V2 traffic, mixed-version traffic, a wrong binding, an unsupported or future
+  version, a stale generation, a subframe, and an unproven transport all fail
+  closed: none of them may install a connection, return a schema, or reach
+  route dispatch.
+- Navigation, reload, renderer loss, WebView replacement, and teardown MUST
+  revoke the document connection along with its queued and in-flight work; a
+  stale completion MUST NOT be sent over a successor binding.
+
+### 5.6 Platform provenance and downgrade
+
+| Platform | RequiredV3 proof | When it cannot be proven |
+|---|---|---|
+| Apple | current native WebView, committed generation, and top-level `WKScriptMessage` frame proof | fail closed |
+| Android API 23+ | a host-issued load token correlated with commit, then a fresh per-document `MessagePort` | stale, external, and reused ports are rejected; navigation, reload, crash, and teardown close the port |
+| Android API 21/22 | no document-scoped transport exists; `JavascriptInterface` is always `Unproven` | rendering continues, but BrowserControl is unavailable; reported as `android_api_below_23` / `android_21_22_unproven_transport` |
+| Windows | WebView2 navigation identity plus current top-level document/generation proof | fail closed on a stale, frame, or source mismatch |
+| HarmonyOS | a host-issued trusted load intent and non-reused native key correlated with the ArkTS page epoch across accepted start and commit, then a fresh per-document port bound to the native WebView, generation, port, and callback token | a stale, external, or reused port, reload, renderer loss, or teardown revokes the binding and fails closed |
+
+Generic V2 delivery for ordinary lxapp traffic may keep its platform fallbacks.
+RequiredV3 MUST NOT use them: document-bound native output goes through the
+platform's generation-aware send path and MUST NOT degrade to a bare string or
+an `evaluateJavascript` send.
+
+### 5.7 Restoration and renderer termination
+
+History and BFCache can restore old HTML together with old credentials without
+re-entering the host-issued loader. If an internal document's commit does not
+match the current trusted start, native MUST keep it unauthenticated, detach
+the old page lifecycle, and schedule a fresh trusted native load. A new session
+may be established only once the fresh load's `NavigationId`, generation,
+attestation, secret, and public `sessionId` all match; restored old frames and
+stale reload completions MUST NOT reach the successor.
+
+Renderer termination MUST clear the committed document generation before
+notifying upper layers or attempting a reload. Apple's content-process
+termination follows that order; navigation, reload, crash, and teardown revoke
+the old port and session on every other enabled backend as well. An external
+history entry may present normally, but never gains BrowserControl authority
+from doing so.
 
 ## 6. Frame Definitions
 

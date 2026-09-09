@@ -17,12 +17,13 @@ pub mod runtime;
 mod shell;
 mod terminal;
 
-use lxapp::{LxApp, LxAppSecurityPrivilege, lx};
+use lxapp::host::AppResourceGrant;
+use lxapp::{LxApp, lx};
 use rong::{
     Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
     function::Optional, js_class, js_method,
 };
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, OnceLock, Weak};
 
 /// Operate on the calling lxapp itself.
 const PRIV_AUTOMATION: &str = "automation";
@@ -35,27 +36,64 @@ pub(crate) fn auto_err(msg: impl AsRef<str>) -> RongJSError {
 }
 
 fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
-    // Dev/test hosts grant automation implicitly — including the host tier — so
-    // scripts can drive the app without declaring privileges: a `lingxia dev`
-    // session, or the Runner (which calls `set_automation_auto_grant`). Product
-    // hosts fall through to the manifest gate below; note that gate is
-    // self-declared today, pending cloud-side privilege grants for `host`.
-    if lxapp::is_dev_session() || lxapp::automation_auto_grant() {
-        return Ok(());
-    }
-    let privilege = LxAppSecurityPrivilege::new(id).map_err(|err| auto_err(err.to_string()))?;
-    if app.has_security_privilege(&privilege) {
+    let grant = match id {
+        PRIV_AUTOMATION => AppResourceGrant::Automation,
+        PRIV_HOST => AppResourceGrant::AutomationHost,
+        _ => return Err(auto_err(format!("unknown automation privilege: {id}"))),
+    };
+    if app.has_resource_grant(grant) {
         Ok(())
     } else {
         Err(auto_err(format!(
-            "{id}_privilege_required: declare \"{id}\" in lxapp.json security.privileges"
+            "{id}_privilege_required: requires both the \"{id}\" manifest request and a sealed native grant"
         )))
+    }
+}
+
+/// Revalidate a retained host-tier driver against the context that invokes it.
+/// This makes every handle fail as soon as its owning lxapp session closes.
+pub(crate) fn require_host_context(ctx: &JSContext) -> JSResult<()> {
+    if host_automation_authority(ctx).is_some() {
+        return Ok(());
+    }
+    let app = LxApp::from_ctx(ctx)?;
+    require_privilege(&app, PRIV_HOST)
+}
+
+pub(crate) fn require_target_context(ctx: &JSContext, target: &Arc<LxApp>) -> JSResult<()> {
+    if host_automation_authority(ctx).is_some() {
+        return Ok(());
+    }
+    let caller = LxApp::from_ctx(ctx)?;
+    if Arc::ptr_eq(&caller, target) && caller.session_id() == target.session_id() {
+        require_privilege(&caller, PRIV_AUTOMATION)
+    } else {
+        require_privilege(&caller, PRIV_HOST)
     }
 }
 
 /// Sealed marker for an isolated context created by `AutomationRuntime`.
 #[derive(Debug, Clone)]
 struct HostAutomationAuthority;
+
+static NATIVE_TERMINAL_AUTHORITY: OnceLock<
+    lxapp::terminal_automation::TerminalAutomationAuthority,
+> = OnceLock::new();
+
+/// Install terminal access issued by the native host bootstrap. An isolated
+/// automation context carries only its private marker; it cannot mint this
+/// process capability itself.
+#[doc(hidden)]
+pub fn __install_native_terminal_authority(
+    authority: lxapp::terminal_automation::TerminalAutomationAuthority,
+) -> bool {
+    NATIVE_TERMINAL_AUTHORITY.set(authority).is_ok()
+}
+
+pub(crate) fn native_terminal_authority()
+-> Option<&'static lxapp::terminal_automation::TerminalAutomationAuthority> {
+    NATIVE_TERMINAL_AUTHORITY.get()
+}
 
 #[cfg(feature = "runtime")]
 fn attach_host_automation_authority(ctx: &JSContext) {
@@ -162,11 +200,6 @@ impl JSAutomation {
         self.require_host()?;
         #[cfg(feature = "desktop")]
         {
-            if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
-                return Err(auto_err(
-                    "desktop tier requires a trusted host automation runtime or dev host",
-                ));
-            }
             Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
                 .instance(desktop::JSDesktopDriver::new()))
         }
@@ -183,11 +216,6 @@ impl JSAutomation {
     #[js_method(getter, enumerable)]
     fn terminal(&self, ctx: JSContext) -> JSResult<JSObject> {
         self.require_host()?;
-        if !(self.host_runtime || lxapp::is_dev_session() || lxapp::automation_auto_grant()) {
-            return Err(auto_err(
-                "terminal tier requires a trusted host automation runtime or dev host",
-            ));
-        }
         Ok(Class::lookup::<terminal::JSTerminalDriver>(&ctx)?
             .instance(terminal::JSTerminalDriver::new()))
     }

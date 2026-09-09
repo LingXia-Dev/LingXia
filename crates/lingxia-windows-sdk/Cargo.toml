@@ -2,6 +2,8 @@
 name = "lingxia-windows-sdk"
 version.workspace = true
 edition.workspace = true
+# Consumed from source because the Windows bindings are git-pinned.
+publish = false
 description = "Pure Rust Windows SDK for LingXia"
 license = "MIT"
 readme = "README.md"

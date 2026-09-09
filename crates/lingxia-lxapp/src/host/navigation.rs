@@ -187,7 +187,7 @@ host_api_async!(
 );
 
 pub(crate) fn register_all() {
-    register_host_module!("navigation", {
+    register_host_module!("navigation", crate::host::RouteAudience::AppSessionOnly, {
         "navigateTo" => Arc::new(NavigateTo),
         "navigateBack" => Arc::new(NavigateBack),
         "redirectTo" => Arc::new(RedirectTo),

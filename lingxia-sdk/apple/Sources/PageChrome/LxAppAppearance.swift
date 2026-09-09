@@ -11,11 +11,13 @@ import AppKit
 enum LxAppAppearanceRegistry {
     private static var schemes: [String: Bool] = [:]
     private static var webViews: [String: NSHashTable<WKWebView>] = [:]
+    private static var hostLocaleObserver: NSObjectProtocol?
     #if os(macOS)
     private static var hostAppearanceObserver: NSKeyValueObservation?
     #endif
 
     static func hostIsDark() -> Bool {
+        observeHostLocale()
         #if os(iOS)
         return UIScreen.main.traitCollection.userInterfaceStyle == .dark
         #else
@@ -26,6 +28,36 @@ enum LxAppAppearanceRegistry {
         }
         return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
         #endif
+    }
+
+    /// Pin the host's own chrome to a scheme, or hand it back to the system.
+    /// Every lxapp still resolving `auto` follows through the runtime, which
+    /// re-resolves them when this changes `NSApp.effectiveAppearance`.
+    static func setHostColorMode(dark: Bool?) {
+        #if os(macOS)
+        // Read once so the effectiveAppearance observer is installed before the
+        // assignment that will fire it.
+        _ = hostIsDark()
+        guard let dark else {
+            NSApp.appearance = nil
+            return
+        }
+        NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        #else
+        // iOS hosts a single lxapp window; its scheme is applied per lxapp.
+        _ = dark
+        #endif
+    }
+
+    static func observeHostLocale() {
+        guard hostLocaleObserver == nil else { return }
+        hostLocaleObserver = NotificationCenter.default.addObserver(
+            forName: NSLocale.currentLocaleDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in onHostLocaleChanged(Locale.current.identifier) }
+        }
     }
 
     /// The lxapp's applied scheme, if one has been resolved yet.

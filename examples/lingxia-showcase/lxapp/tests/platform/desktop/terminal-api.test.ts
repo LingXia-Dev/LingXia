@@ -90,6 +90,35 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     await manager.close({ app: TERMINAL_APP_ID }).catch(() => undefined);
   });
 
+  await t.step('the ControlSurface follows host language updates', async () => {
+    await terminal.page.waitFor({ page: 'settings', css: 'body', state: 'visible' });
+    const preference = await app.eval({
+      script: 'return lx.app.control.displayLanguage.getPreference()',
+    }) as string;
+    try {
+      for (const language of ['zh-CN', 'en-US']) {
+        await app.eval({
+          script: `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
+        });
+        await eventually(
+          () => terminal.page.eval({
+            page: 'settings',
+            // The bridge also writes the HTML language tag. Check translated
+            // content to prove the screen re-rendered, not just that the
+            // document was stamped.
+            script: "document.querySelector('#type-heading')?.textContent",
+          }),
+          (heading) => heading === (language === 'zh-CN' ? '字体' : 'Type'),
+          { describe: `terminal settings to render ${language}`, timeoutMs: 10_000 },
+        );
+      }
+    } finally {
+      await app.eval({
+        script: `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(preference)})`,
+      });
+    }
+  });
+
   const result = await terminal.eval({
     timeoutMs: 30_000,
     script: `

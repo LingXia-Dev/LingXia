@@ -443,6 +443,7 @@ Common error codes:
 | `BRIDGE_METHOD_NOT_FOUND` | method name doesn't match any Logic handler |
 | `BRIDGE_TOPIC_NOT_FOUND` | channel topic not registered |
 | `BRIDGE_TIMEOUT` | request timed out |
+| `BRIDGE_MESSAGE_TOO_LARGE` | the encoded frame exceeded the 64 KiB native message limit — split the payload, or move the bulk through a file or a stream |
 | `BRIDGE_INTERNAL_ERROR` | unexpected error in Logic or Bridge |
 
 For streams, check `chat.error` after `chat.streaming` becomes `false`. For channels, check `session.error` after `session.connected` becomes `false`.
@@ -467,14 +468,48 @@ All of these are fixed for the life of a page, so they resolve once. In the `lin
 
 ## Display Language
 
-Use the host language instead of persisting a second preference:
+The product has one language. Follow it; never keep a second preference of your
+own, and never offer the user a language picker inside a screen — the one that
+edits the setting is the product's Settings surface.
 
-- **View**: `useDisplayLanguage()` in React/Vue;
-  `getDisplayLanguage()` in `@lingxia/html`.
-- **Logic**: `lx.app.getBaseInfo().displayLanguage` returns the effective tag.
-  The home lxapp may set the host preference with
-  `lx.app.setDisplayLanguage('auto' | 'en-US' | 'zh-CN')`; every other lxapp
-  inherits. `'auto'` follows `getBaseInfo().locale`.
+- **View**: `useDisplayLanguage()` in React/Vue; `getDisplayLanguage()` and
+  `subscribeDisplayLanguage(cb)` in `@lingxia/html`. A plain-HTML page that
+  bundles nothing reads `window.LingXiaBridge.displayLanguage.get()` and
+  `.subscribe(cb)`.
+- **Logic**: `lx.app.displayLanguage.get()` returns the tag in effect;
+  `lx.app.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
+  Logic needs the second one because the strings it hands to native chrome —
+  navigation bar titles, tab bar labels, modal text — are yours, and nothing
+  re-renders them for you.
 
-The bridge initializes `document.documentElement.lang`. Map the host tag to the
-lxapp's supported catalogs and fallback.
+The two subscriptions differ on purpose. View's `subscribe(cb)` fires **only on
+change**, so it plugs into `useSyncExternalStore` without an extra render; take
+the current value from `get()`. Logic's `watch(cb)` **starts with the current
+value**, and that first call is synchronous — it runs before `watch` returns,
+so the unsubscribe it returns is not yet bound inside it.
+
+Narrowing the tag to the catalogs you ship is yours to do, and is not a
+language setting: `ja-JP` with only `en`/`zh` shipped renders `en`, while the
+product stays in `ja-JP`.
+
+The Settings surface — the Control app, or the host's browser-form settings —
+additionally gets `lx.app.control.displayLanguage`:
+
+```ts
+lx.app.control?.displayLanguage.getPreference()          // 'auto' | BCP-47 tag
+await lx.app.control?.displayLanguage.setPreference('zh-CN')
+lx.app.control?.displayLanguage.watchPreference((p) => …)
+```
+
+`lx.app.control` is present only in that app, so `lx.app.control?.…` and
+`lx.supports({ capability: 'control' })` always agree. `watchPreference` tracks
+what the user chose, so a system locale change under `'auto'` moves
+`displayLanguage.watch` without waking it.
+
+A `lingxia dev --display-language` session shadows the *effective* language
+without touching the preference. Inside that session `get()` and
+`getPreference()` disagree by design, and a `setPreference(...)` persists but
+changes nothing on screen until the shadow is gone — the runtime logs a warning
+saying so. Check a Settings screen's own effect in a session without the flag.
+
+The bridge initializes `document.documentElement.lang`.

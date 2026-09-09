@@ -3,10 +3,10 @@
 //! requests as the devtool handlers (`app.mouse` / `app.keyboard` RPCs), so
 //! coordinates, buttons, and the modifier vocabulary can never drift.
 
-use crate::auto_err;
 use crate::resolve::json_to_js;
 #[cfg(target_os = "windows")]
 use crate::resolve::resolve_lxapp_by_id;
+use crate::{auto_err, require_host_context};
 use lingxia_platform::traits::{keyboard, mouse};
 use rong::{FromJSObject, HostError, JSContext, JSResult, JSValue, js_class, js_method};
 use std::sync::Arc;
@@ -29,6 +29,7 @@ async fn app_mouse(
     window: Option<String>,
     action: mouse::AppMouseAction,
 ) -> JSResult<JSValue> {
+    require_host_context(ctx)?;
     use lingxia_platform::traits::mouse::AppMouse;
     let platform = lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
     let result = platform
@@ -47,6 +48,7 @@ async fn app_keyboard(
     window: Option<String>,
     action: keyboard::AppKeyboardAction,
 ) -> JSResult<JSValue> {
+    require_host_context(ctx)?;
     use lingxia_platform::traits::keyboard::AppKeyboard;
     let platform = lxapp::get_platform().ok_or_else(|| auto_err("platform is not initialized"))?;
     let result = platform

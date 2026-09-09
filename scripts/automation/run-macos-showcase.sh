@@ -83,6 +83,15 @@ for framework_index in "${!frameworks[@]}"; do
   test_status=$?
   set -e
 
+  if (( test_status != 0 )); then
+    # Capture the blocked native thread before cleanup kills the host. Limit
+    # collection to app executables built in this repository checkout.
+    while read -r runtime_pid; do
+      /usr/bin/sample "$runtime_pid" 3 -file "$result_dir/native-sample-$runtime_pid.txt" || true
+    done < <(ps -axo pid=,comm= | awk -v root="$repo_root/" \
+      'index($0, root) && /\/Contents\/MacOS\// { print $1 }')
+  fi
+
   (cd "$showcase_root" && "$lxdev" logs --json --limit 5000) > "$result_dir/session.jsonl"
   error_logs=$(cd "$showcase_root" && "$lxdev" logs --level error --json --limit 1000)
   if [[ -n "$error_logs" ]]; then

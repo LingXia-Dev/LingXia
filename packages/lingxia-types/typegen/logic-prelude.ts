@@ -128,9 +128,23 @@ declare global {
      */
     autostart?: AutostartApi;
 
+    /** The language this lxapp renders in. Every lxapp follows it. */
+    readonly displayLanguage: DisplayLanguageApi;
+
+    /** The light/dark scheme this lxapp renders in. */
+    readonly appearance: AppearanceApi;
+
+    /**
+     * Product-wide settings, and their single writer. Present only in the
+     * Control app the host sealed at build time; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.control?.…` and the query are interchangeable.
+     */
+    readonly control?: ControlApi;
+
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the home lxapp; other lxapps get a permission error.
+     * Restricted to the Control app; other lxapps get a permission error.
      */
     cache: AppCacheApi;
   }

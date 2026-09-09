@@ -50,6 +50,11 @@ browser:
   webui:
     path: ../../crates/lingxia-browser-shell/webui
 
+# Host-owned Settings chrome resolves this sealed destination on every click.
+settingsDestination:
+  kind: browserControlPage
+  route: /settings
+
 capabilities:
   notifications: true
   browser: true

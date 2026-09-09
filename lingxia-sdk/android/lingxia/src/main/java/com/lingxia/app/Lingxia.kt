@@ -175,8 +175,7 @@ object Lingxia {
 
     private fun getSystemLocale(): String {
         return try {
-            val locale = java.util.Locale.getDefault()
-            "${locale.language}-${locale.country}"
+            java.util.Locale.getDefault().toLanguageTag()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to get system locale, using default", e)
             "en-US"
@@ -436,6 +435,7 @@ object Lingxia {
             android.content.res.Configuration.UI_MODE_NIGHT_MASK
         application.registerComponentCallbacks(object : android.content.ComponentCallbacks {
             override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
+                NativeApi.onHostLocaleChanged(getSystemLocale())
                 val newNightBit = newConfig.uiMode and
                     android.content.res.Configuration.UI_MODE_NIGHT_MASK
                 if (newNightBit != nightBit) {

@@ -8,6 +8,14 @@ impl UIUpdate for Platform {
         ffi::host_appearance_dark()
     }
 
+    fn set_host_color_mode(&self, dark: Option<bool>) {
+        ffi::set_host_color_mode(match dark {
+            None => 0,
+            Some(false) => 1,
+            Some(true) => 2,
+        });
+    }
+
     fn notify_home_first_ready(&self) {
         ffi::on_home_first_ready();
     }

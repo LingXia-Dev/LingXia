@@ -1,11 +1,9 @@
 //! Trusted terminal-settings API.
 
-use lingxia_platform::traits::ui::UIUpdate;
+use crate::authorization::{self, LogicRoute};
 use lingxia_terminal::TerminalTheme;
 use lingxia_terminal_config::runtime::{MutationError, ThemePreviewLease};
-use lingxia_terminal_config::{
-    ConfigError, SETTINGS_APP_ID, TerminalConfig, ThemeMode, ThemeStore,
-};
+use lingxia_terminal_config::{ConfigError, SETTINGS_APP_ID, ThemeStore};
 use lxapp::LxApp;
 use rong::{
     FromJSObject, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
@@ -74,11 +72,7 @@ impl JSContextService for TerminalContextService {
         self.active.set(false);
         self.listeners.borrow_mut().clear();
         self.change_pump.borrow_mut().take();
-        let system_is_dark = self
-            .app
-            .upgrade()
-            .map(|app| app.runtime.host_appearance_dark())
-            .unwrap_or(false);
+        let system_is_dark = lxapp::host_appearance_dark();
         for lease in self.previews.borrow_mut().drain() {
             lingxia_terminal_config::runtime::end_theme_preview_for_request(
                 lingxia_terminal_config::runtime::create_theme_preview_request(lease),
@@ -90,27 +84,47 @@ impl JSContextService for TerminalContextService {
     }
 }
 
-pub(crate) fn eligible(app: &LxApp) -> bool {
+pub(crate) fn eligible(app: &Arc<LxApp>) -> bool {
     cfg!(any(target_os = "macos", target_os = "windows"))
         && lingxia_app_context::terminal_enabled()
-        && app.appid == SETTINGS_APP_ID
-        && app.is_host_bundled()
+        // Presence is presentation only. Every call below independently uses
+        // the central invocation authorization path.
+        && app.app_session_class() == lxapp::AppSessionClass::ControlSurface
 }
 
 pub(crate) fn owns_context(ctx: &JSContext) -> JSResult<bool> {
-    Ok(eligible(LxApp::from_ctx(ctx)?.as_ref()))
+    let invocation = authorization::invocation_from_context(ctx)?;
+    let app = invocation.lxapp();
+    // This chooses the focused settings runtime profile; it is not an
+    // authorization decision. Every API call below separately requires the
+    // native-assigned ControlSurface session.
+    Ok(eligible(&app)
+        && authorization::authorize(&invocation, LogicRoute::TerminalSettingsGet).is_ok()
+        && app.appid == SETTINGS_APP_ID
+        && app.is_host_bundled())
 }
 
-fn require_access(ctx: &JSContext) -> JSResult<Arc<LxApp>> {
-    let app = LxApp::from_ctx(ctx)?;
-    if eligible(&app) {
-        return Ok(app);
+fn require_access(ctx: &JSContext, route: LogicRoute) -> JSResult<Arc<LxApp>> {
+    let invocation = authorization::invocation_from_context(ctx)?;
+    authorization::authorize(&invocation, route).map_err(|denied| {
+        HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            format!(
+                "{} requires the host-bundled Terminal Settings control surface",
+                denied.route().name()
+            ),
+        )
+    })?;
+    if !cfg!(any(target_os = "macos", target_os = "windows"))
+        || !lingxia_app_context::terminal_enabled()
+    {
+        return Err(HostError::new(
+            rong::error::E_PERMISSION_DENIED,
+            "lx.terminal requires native host terminal support",
+        )
+        .into());
     }
-    Err(HostError::new(
-        rong::error::E_PERMISSION_DENIED,
-        "lx.terminal is restricted to the host-bundled Terminal Settings app",
-    )
-    .into())
+    Ok(invocation.lxapp())
 }
 
 fn terminal_namespace(ctx: &JSContext) -> JSResult<JSObject> {
@@ -136,10 +150,10 @@ fn child_namespace(parent: &JSObject, ctx: &JSContext, name: &str) -> JSResult<J
     }
 }
 
-fn context(ctx: &JSContext) -> JSResult<(Arc<LxApp>, PathBuf, bool)> {
-    let app = require_access(ctx)?;
+fn context(ctx: &JSContext, route: LogicRoute) -> JSResult<(Arc<LxApp>, PathBuf, bool)> {
+    let app = require_access(ctx, route)?;
     let data_dir = app.app_data_dir();
-    let system_is_dark = app.runtime.host_appearance_dark();
+    let system_is_dark = lxapp::host_appearance_dark();
     Ok((app, data_dir, system_is_dark))
 }
 
@@ -195,17 +209,8 @@ fn mutation_error(error: MutationError) -> RongJSError {
     }
 }
 
-fn effective_is_dark(config: &TerminalConfig, system_is_dark: bool) -> bool {
-    match config.theme.mode {
-        ThemeMode::System => system_is_dark,
-        ThemeMode::Light => false,
-        ThemeMode::Dark => true,
-    }
-}
-
 fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
     let state = lingxia_terminal_config::runtime::settings_snapshot(data_dir, system_is_dark);
-    let effective_dark = effective_is_dark(&state.value, system_is_dark);
     let selected = state.value.theme.selected(system_is_dark);
     let scheme_exists = ThemeStore::new(data_dir).get(selected).is_some();
     let mut warnings = Vec::new();
@@ -237,8 +242,9 @@ fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
         "overrides": state.overrides,
         "value": state.value,
         "effective": {
-            "systemAppearance": if system_is_dark { "dark" } else { "light" },
-            "appearance": if effective_dark { "dark" } else { "light" },
+            // The terminal ships a light scheme and a dark one; which is in
+            // use follows the product, so there is one answer, not two.
+            "appearance": if system_is_dark { "dark" } else { "light" },
             "colorScheme": scheme_exists.then_some(selected),
             "font": resolved,
         },
@@ -246,21 +252,24 @@ fn snapshot_value(data_dir: &Path, system_is_dark: bool) -> serde_json::Value {
     })
 }
 
-fn snapshot_to_js(ctx: &JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, system_is_dark) = context(ctx)?;
+fn snapshot_to_js(ctx: &JSContext, route: LogicRoute) -> JSResult<JSValue> {
+    let (_, data_dir, system_is_dark) = context(ctx, route)?;
     to_js(ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
 async fn settings_get(ctx: JSContext) -> JSResult<JSValue> {
-    snapshot_to_js(&ctx)
+    snapshot_to_js(&ctx, LogicRoute::TerminalSettingsGet)
 }
 
-async fn settings_update(
-    ctx: JSContext,
-    patch: JSObject,
-    options: RevisionOptions,
-) -> JSResult<JSValue> {
-    let (_, data_dir, system_is_dark) = context(&ctx)?;
+async fn settings_update(ctx: JSContext, patch: JSValue, options: JSValue) -> JSResult<JSValue> {
+    let (_, data_dir, system_is_dark) = context(&ctx, LogicRoute::TerminalSettingsUpdate)?;
+    let patch = patch.into_object().ok_or_else(|| {
+        RongJSError::from(HostError::new(
+            rong::error::E_INVALID_ARG,
+            "terminal settings patch must be an object",
+        ))
+    })?;
+    let options = options.to_rust::<RevisionOptions>()?;
     let patch = object_json(&patch, "terminal settings patch")?;
     lingxia_terminal_config::runtime::apply_config_if_revision(
         &data_dir,
@@ -272,8 +281,9 @@ async fn settings_update(
     to_js(&ctx, &snapshot_value(&data_dir, system_is_dark))
 }
 
-async fn settings_reset(ctx: JSContext, options: ResetOptions) -> JSResult<JSValue> {
-    let (_, data_dir, system_is_dark) = context(&ctx)?;
+async fn settings_reset(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
+    let (_, data_dir, system_is_dark) = context(&ctx, LogicRoute::TerminalSettingsReset)?;
+    let options = options.to_rust::<ResetOptions>()?;
     lingxia_terminal_config::runtime::reset_config_if_revision(
         &data_dir,
         options.scope.as_deref(),
@@ -285,12 +295,13 @@ async fn settings_reset(ctx: JSContext, options: ResetOptions) -> JSResult<JSVal
 }
 
 async fn schemes_list(ctx: JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, _) = context(&ctx)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesList)?;
     to_js(&ctx, &ThemeStore::new(&data_dir).list_with_schemes())
 }
 
-async fn schemes_import(ctx: JSContext, options: ImportOptions) -> JSResult<JSValue> {
-    let (app, data_dir, _) = context(&ctx)?;
+async fn schemes_import(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
+    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalSchemesImport)?;
+    let options = options.to_rust::<ImportOptions>()?;
     let scheme = lingxia_terminal_config::parse_scheme(&options.text).map_err(|error| {
         HostError::new(
             rong::error::E_INVALID_DATA,
@@ -316,7 +327,7 @@ async fn schemes_import(ctx: JSContext, options: ImportOptions) -> JSResult<JSVa
         &name,
         &scheme,
         options.overwrite.unwrap_or(false),
-        app.runtime.host_appearance_dark(),
+        lxapp::host_appearance_dark(),
     )
     .map_err(|error| match error {
         lingxia_terminal_config::runtime::ThemeImportError::AlreadyExists(_) => {
@@ -331,19 +342,20 @@ async fn schemes_import(ctx: JSContext, options: ImportOptions) -> JSResult<JSVa
 }
 
 async fn fonts_list(ctx: JSContext) -> JSResult<JSValue> {
-    require_access(&ctx)?;
+    require_access(&ctx, LogicRoute::TerminalFontsList)?;
     to_js(&ctx, &lingxia_terminal_config::runtime::installed_fonts())
 }
 
 #[cfg(target_os = "windows")]
 async fn conpty_status(ctx: JSContext) -> JSResult<JSValue> {
-    let (_, data_dir, _) = context(&ctx)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsStatus)?;
     to_js(&ctx, &lingxia_terminal_config::windows::status(&data_dir))
 }
 
 #[cfg(target_os = "windows")]
-async fn conpty_install(ctx: JSContext, options: InstallConptyOptions) -> JSResult<JSValue> {
-    let (app, data_dir, _) = context(&ctx)?;
+async fn conpty_install(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
+    let (app, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsInstall)?;
+    let options = options.to_rust::<InstallConptyOptions>()?;
     let logical_path = options.path.trim();
     if !logical_path.starts_with("lx://temp/") {
         return Err(HostError::new(
@@ -372,15 +384,15 @@ async fn conpty_install(ctx: JSContext, options: InstallConptyOptions) -> JSResu
 }
 
 #[cfg(target_os = "windows")]
-async fn conpty_set_enabled(ctx: JSContext, options: SetConptyEnabledOptions) -> JSResult<JSValue> {
-    let (_, data_dir, _) = context(&ctx)?;
+async fn conpty_set_enabled(ctx: JSContext, options: JSValue) -> JSResult<JSValue> {
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalWindowsSetEnabled)?;
+    let options = options.to_rust::<SetConptyEnabledOptions>()?;
     let status = lingxia_terminal_config::windows::set_enabled(&data_dir, options.enabled)
         .map_err(|error| HostError::new(rong::error::E_INVALID_STATE, error.to_string()))?;
     to_js(&ctx, &status)
 }
 
-fn preview_theme(ctx: &JSContext, input: JSValue, data_dir: &Path) -> JSResult<TerminalTheme> {
-    require_access(ctx)?;
+fn preview_theme(input: JSValue, data_dir: &Path) -> JSResult<TerminalTheme> {
     let theme = if input.is_string() {
         let name = input.to_rust::<String>().map_err(|_| {
             HostError::new(
@@ -423,7 +435,7 @@ fn promise_from_result(ctx: &JSContext, result: JSResult<()>) -> JSResult<Promis
 }
 
 fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
-    let (_, data_dir, _) = context(&ctx)?;
+    let (_, data_dir, _) = context(&ctx, LogicRoute::TerminalPreviewCreate)?;
     let lease = lingxia_terminal_config::runtime::create_theme_preview_lease();
     let service = ctx
         .get_service::<TerminalContextService>()
@@ -441,6 +453,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
             &ctx,
             move |ctx: JSContext, input: JSValue| -> JSResult<Promise> {
                 let result = (|| {
+                    require_access(&ctx, LogicRoute::TerminalPreviewShow)?;
                     if show_closed.get() {
                         return Err(HostError::new(
                             rong::error::E_INVALID_STATE,
@@ -448,7 +461,7 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
                         )
                         .into());
                     }
-                    let theme = preview_theme(&ctx, input, &show_data_dir)?;
+                    let theme = preview_theme(input, &show_data_dir)?;
                     lingxia_terminal_config::runtime::preview_theme_for_request(
                         lingxia_terminal_config::runtime::create_theme_preview_request(lease),
                         &theme,
@@ -473,14 +486,14 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
         "clear",
         JSFunc::new(&ctx, move |ctx: JSContext| -> JSResult<Promise> {
             let result = (|| {
-                let app = require_access(&ctx)?;
+                let app = require_access(&ctx, LogicRoute::TerminalPreviewClear)?;
                 if clear_closed.get() {
                     return Ok(());
                 }
                 lingxia_terminal_config::runtime::end_theme_preview_for_request(
                     lingxia_terminal_config::runtime::create_theme_preview_request(lease),
                     &clear_data_dir,
-                    app.runtime.host_appearance_dark(),
+                    lxapp::host_appearance_dark(),
                 );
                 Ok(())
             })();
@@ -494,14 +507,14 @@ fn create_preview(ctx: JSContext) -> JSResult<JSObject> {
         "close",
         JSFunc::new(&ctx, move |ctx: JSContext| -> JSResult<Promise> {
             let result = (|| {
-                let app = require_access(&ctx)?;
+                let app = require_access(&ctx, LogicRoute::TerminalPreviewClose)?;
                 if closed.replace(true) {
                     return Ok(());
                 }
                 lingxia_terminal_config::runtime::end_theme_preview_for_request(
                     lingxia_terminal_config::runtime::create_theme_preview_request(lease),
                     &close_data_dir,
-                    app.runtime.host_appearance_dark(),
+                    lxapp::host_appearance_dark(),
                 );
                 lingxia_terminal_config::runtime::retire_theme_preview_lease(lease);
                 leases.borrow_mut().remove(&lease);
@@ -522,8 +535,9 @@ fn install_on_change(
     let listeners = listeners.clone();
     let on_change = JSFunc::new(
         ctx,
-        move |ctx: JSContext, listener: JSFunc| -> JSResult<JSFunc> {
-            require_access(&ctx)?;
+        move |ctx: JSContext, listener: JSValue| -> JSResult<JSFunc> {
+            require_access(&ctx, LogicRoute::TerminalSettingsOnChange)?;
+            let listener = listener.to_rust::<JSFunc>()?;
             let slot = {
                 let mut slots = listeners.borrow_mut();
                 slots.push(Some(listener));
@@ -550,14 +564,10 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
     let active = service.active.clone();
     let listeners = service.listeners.clone();
     let ctx_for_pump = ctx.clone();
-    let app = service.app.clone();
     let pump = Promise::from_future(&ctx.clone(), None, async move {
         let mut seen_revision = lingxia_terminal_config::runtime::generation();
         let mut seen_fonts = lingxia_terminal_config::runtime::font_generation();
-        let mut seen_dark = app
-            .upgrade()
-            .map(|app| app.runtime.host_appearance_dark())
-            .unwrap_or(false);
+        let mut seen_dark = lxapp::host_appearance_dark();
         while active.get() {
             tokio::time::sleep(Duration::from_millis(200)).await;
             if !active.get() || listeners.borrow().iter().all(Option::is_none) {
@@ -565,17 +575,14 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
             }
             let revision = lingxia_terminal_config::runtime::generation();
             let fonts = lingxia_terminal_config::runtime::font_generation();
-            let system_is_dark = app
-                .upgrade()
-                .map(|app| app.runtime.host_appearance_dark())
-                .unwrap_or(false);
+            let system_is_dark = lxapp::host_appearance_dark();
             if (revision, fonts, system_is_dark) == (seen_revision, seen_fonts, seen_dark) {
                 continue;
             }
             seen_revision = revision;
             seen_fonts = fonts;
             seen_dark = system_is_dark;
-            let value = snapshot_to_js(&ctx_for_pump)?;
+            let value = snapshot_to_js(&ctx_for_pump, LogicRoute::TerminalSettingsOnChange)?;
             let callbacks: Vec<JSFunc> = listeners.borrow().iter().flatten().cloned().collect();
             for callback in callbacks {
                 let _ = callback.call::<_, JSValue>(None, (value.clone(),));
@@ -588,8 +595,11 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
 }
 
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
-    let app = LxApp::from_ctx(ctx)?;
-    if !eligible(&app) {
+    let invocation = authorization::invocation_from_context(ctx)?;
+    let app = invocation.lxapp();
+    if !eligible(&app)
+        || authorization::authorize(&invocation, LogicRoute::TerminalSettingsGet).is_err()
+    {
         return Ok(());
     }
 
@@ -645,13 +655,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn effective_appearance_honors_pinned_mode() {
-        let mut config = TerminalConfig::default();
-        config.theme.mode = ThemeMode::Light;
-        assert!(!effective_is_dark(&config, true));
-        config.theme.mode = ThemeMode::Dark;
-        assert!(effective_is_dark(&config, false));
-        config.theme.mode = ThemeMode::System;
-        assert!(effective_is_dark(&config, true));
+    fn every_terminal_api_is_in_the_central_control_inventory() {
+        for route in LogicRoute::ALL
+            .iter()
+            .filter(|route| route.name().starts_with("lx.terminal."))
+        {
+            assert_eq!(
+                authorization::logic_route_inventory()[route.name()]
+                    .policy()
+                    .audience(),
+                lxapp::host::RouteAudience::ControlSurfaceOnly
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 //! `LxAppDriver` — one selected lxapp's page, navigation, and Logic surfaces.
 
-use crate::resolve::{json_to_js, upgrade};
+use crate::resolve::{json_to_js, upgrade_authorized};
 use crate::{host, nav, page};
 use lxapp::LxApp;
 use rong::{
@@ -79,27 +79,27 @@ impl JSLxAppDriver {
 
     #[js_method(getter, enumerable)]
     fn page(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(Class::lookup::<page::JSPageDriver>(&ctx)?.instance(page::JSPageDriver::new(&app)))
     }
 
     #[js_method(getter, enumerable)]
     fn nav(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(Class::lookup::<nav::JSNavDriver>(&ctx)?.instance(nav::JSNavDriver::new(&app)))
     }
 
     #[js_method]
     async fn info(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let info = serde_json::to_value(app.runtime_info())
             .map_err(|err| crate::auto_err(err.to_string()))?;
         json_to_js(&ctx, &info)
     }
 
     #[js_method]
-    async fn pages(&self, _ctx: JSContext) -> JSResult<Vec<JSPageConfig>> {
-        let app = upgrade(&self.lxapp)?;
+    async fn pages(&self, ctx: JSContext) -> JSResult<Vec<JSPageConfig>> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let pages = app
             .runtime_info()
             .page_entries
@@ -117,7 +117,7 @@ impl JSLxAppDriver {
     /// public SurfaceHandle contract instead of inspecting host layout state.
     #[js_method(rename = "surfaceLayout")]
     async fn surface_layout(&self, ctx: JSContext) -> JSResult<JSValue> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let layout = app
             .surface_derived_layout()
             .ok_or_else(|| crate::auto_err("surface layout is unavailable"))?;
@@ -132,7 +132,7 @@ impl JSLxAppDriver {
     /// avoid a re-entrant deadlock.
     #[js_method]
     async fn eval(&self, ctx: JSContext, options: JSEvalOptions) -> JSResult<JSValue> {
-        let app = upgrade(&self.lxapp)?;
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
         host::reject_self(&ctx, &app, "eval")?;
         let timeout = Duration::from_millis(options.timeout_ms.unwrap_or(5_000));
         let capture_calls = options.capture_calls.unwrap_or(false);

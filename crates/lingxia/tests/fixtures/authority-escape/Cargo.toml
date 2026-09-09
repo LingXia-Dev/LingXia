@@ -1,0 +1,20 @@
+[package]
+name = "lingxia-authority-escape"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+all-lxapp-features = [
+    "lxapp/automation",
+    "lxapp/process",
+    "lxapp/standard",
+    "lxapp/test-utils",
+]
+
+[dependencies]
+lingxia = { path = "../../..", default-features = false }
+lxapp = { package = "lingxia-lxapp", path = "../../../../lingxia-lxapp", default-features = false }

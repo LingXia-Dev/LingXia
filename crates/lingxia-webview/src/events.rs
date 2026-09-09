@@ -26,7 +26,7 @@ static NAVIGATION_ID_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 impl NavigationId {
     /// Allocate the next process-wide id. Normalizer-internal.
     pub(crate) fn next() -> Self {
-        Self(NAVIGATION_ID_SEQUENCE.fetch_add(1, Ordering::Relaxed))
+        Self(next_navigation_id(&NAVIGATION_ID_SEQUENCE))
     }
 
     pub fn get(self) -> u64 {
@@ -38,6 +38,14 @@ impl NavigationId {
     pub fn from_raw(raw: u64) -> Self {
         Self(raw)
     }
+}
+
+fn next_navigation_id(sequence: &AtomicU64) -> u64 {
+    sequence
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+            current.checked_add(1)
+        })
+        .expect("navigation identity space exhausted")
 }
 
 /// Formats as `nav#42` for logs and diagnostics.
@@ -254,6 +262,18 @@ impl ObservedWebViewState {
 mod tests {
     use super::*;
     use crate::traits::{LoadError, LoadErrorKind};
+
+    #[test]
+    fn navigation_ids_exhaust_instead_of_wrapping() {
+        let sequence = AtomicU64::new(u64::MAX - 1);
+        assert_eq!(next_navigation_id(&sequence), u64::MAX - 1);
+        assert_eq!(sequence.load(Ordering::Relaxed), u64::MAX);
+        assert!(
+            std::panic::catch_unwind(|| next_navigation_id(&sequence)).is_err(),
+            "an exhausted process-wide identity must never wrap"
+        );
+        assert_eq!(sequence.load(Ordering::Relaxed), u64::MAX);
+    }
 
     fn id(raw: u64) -> NavigationId {
         NavigationId(raw)

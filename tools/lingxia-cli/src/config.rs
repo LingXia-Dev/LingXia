@@ -37,6 +37,9 @@ pub struct LingXiaConfig {
     /// Application-wide native UI colors emitted into `app.json`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<ThemeConfig>,
+    /// Static destination used by host-owned Settings affordances.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settings_destination: Option<SettingsDestination>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub browser: Option<BrowserConfig>,
     /// Generated UI structure (`ui.json`). Built from `surfaces` at load time;
@@ -124,7 +127,9 @@ impl Default for FeaturesConfig {
 
 // One shared definition with the runtime (which reads it back from app.json),
 // so a capability can never exist on one side only.
-pub use lingxia_app_context::{CapabilitiesConfig, ThemeConfig};
+pub use lingxia_app_context::{CapabilitiesConfig, SettingsDestination, ThemeConfig};
+
+pub(crate) const BROWSER_CONTROL_PROTOCOL_VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -1834,6 +1839,7 @@ impl LingXiaConfig {
             features: Some(FeaturesConfig::default()),
             capabilities: Some(CapabilitiesConfig::default()),
             theme: None,
+            settings_destination: None,
             browser: None,
             generated_ui: None,
             surfaces: None,
@@ -1908,6 +1914,9 @@ impl LingXiaConfig {
 
     fn validate(&self) -> Result<()> {
         validate_capability_dependencies(self.capabilities.as_ref())?;
+        if let Some(destination) = self.settings_destination.as_ref() {
+            destination.validate().map_err(|message| anyhow!(message))?;
+        }
         if let Some(app) = &self.app {
             if app.project_name.trim().is_empty() {
                 return Err(anyhow!("app.projectName must not be empty"));
@@ -2778,6 +2787,71 @@ mod tests {
     }
 
     #[test]
+    fn settings_destination_authoring_round_trips_and_validates() {
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        let yaml_without_destination = yaml::to_string(&config).unwrap();
+        assert!(!yaml_without_destination.contains("settingsDestination"));
+
+        config.settings_destination = Some(SettingsDestination::ControlAppPage {
+            app_id: "my-app".to_string(),
+            page: "settings".to_string(),
+            query: Some(BTreeMap::from([
+                ("tab".to_string(), json!("general")),
+                ("preview".to_string(), json!(true)),
+                ("empty".to_string(), Value::Null),
+            ])),
+        });
+        let serialized = yaml::to_string(&config).unwrap();
+        assert!(serialized.contains("kind: controlAppPage"));
+        let parsed: LingXiaConfig = yaml::from_str(&serialized).unwrap();
+        assert_eq!(parsed.settings_destination, config.settings_destination);
+        parsed.validate().expect("valid settings destination");
+
+        config.settings_destination = Some(SettingsDestination::BrowserControlPage {
+            route: "/settings".to_string(),
+            query: None,
+        });
+        config.validate().expect("valid browser destination");
+
+        config.settings_destination = Some(SettingsDestination::NativeAction {
+            action_id: "openPreferences".to_string(),
+        });
+        config.validate().expect("valid native destination");
+    }
+
+    #[test]
+    fn settings_destination_authoring_rejects_unknown_and_invalid_values() {
+        let unknown = r#"
+kind: nativeAction
+actionId: openPreferences
+route: /wrong
+"#;
+        assert!(yaml::from_str::<SettingsDestination>(unknown).is_err());
+
+        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
+        for destination in [
+            SettingsDestination::ControlAppPage {
+                app_id: " ".to_string(),
+                page: "settings".to_string(),
+                query: None,
+            },
+            SettingsDestination::BrowserControlPage {
+                route: "/settings".to_string(),
+                query: Some(BTreeMap::from([(
+                    "nested".to_string(),
+                    json!({ "no": true }),
+                )])),
+            },
+            SettingsDestination::NativeAction {
+                action_id: String::new(),
+            },
+        ] {
+            config.settings_destination = Some(destination);
+            assert!(config.validate().is_err());
+        }
+    }
+
+    #[test]
     fn rejects_sdk_reserved_app_id_in_resources_bundles() {
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config
@@ -2801,6 +2875,22 @@ mod tests {
             msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
+    }
+
+    #[test]
+    fn browser_webui_does_not_take_a_control_protocol_version() {
+        for source in ["path: ./browser-webui", "package: '@example/browser-webui'"] {
+            let valid = format!("browser:\n  webui:\n    {source}\n");
+            let config: LingXiaConfig = yaml::from_str(&valid).unwrap();
+            config.validate().unwrap();
+
+            let with_pin =
+                format!("browser:\n  webui:\n    {source}\n    controlProtocolVersion: 3\n");
+            let error = yaml::from_str::<LingXiaConfig>(&with_pin)
+                .unwrap_err()
+                .to_string();
+            assert!(error.contains("controlProtocolVersion"), "{error}");
+        }
     }
 
     #[test]
@@ -4416,6 +4506,116 @@ surfaces:
             "https://example.com/windows"
         );
         assert_eq!(windows["surfaces"][0]["content"]["kind"], "url");
+    }
+
+    #[test]
+    fn static_settings_schema_survives_six_desktop_host_shapes() {
+        let cases = [
+            (
+                "Logic home",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+features: { appService: true }
+settingsDestination: { kind: controlAppPage, appId: home, page: settings }
+surfaces: [{ lxapp: home, role: main, launch: true }]
+"#,
+                Some("controlAppPage"),
+            ),
+            (
+                "logic:false home",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+features: { appService: false }
+settingsDestination: { kind: controlAppPage, appId: home, page: settings }
+surfaces: [{ lxapp: home, role: main, launch: true }]
+"#,
+                Some("controlAppPage"),
+            ),
+            (
+                "browser main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { browser: true }
+settingsDestination: { kind: browserControlPage, route: /settings }
+surfaces: [{ native: browser, role: main, launch: true }]
+"#,
+                Some("browserControlPage"),
+            ),
+            (
+                "terminal main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { terminal: true }
+settingsDestination: { kind: nativeAction, actionId: openPreferences }
+surfaces: [{ native: terminal, role: main, launch: true }]
+"#,
+                Some("nativeAction"),
+            ),
+            (
+                "URL main",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+  homeAppId: home
+capabilities: { browser: true }
+settingsDestination: { kind: browserControlPage, route: /settings }
+surfaces: [{ url: https://example.com, role: main, launch: true }]
+"#,
+                Some("browserControlPage"),
+            ),
+            (
+                "pure native",
+                r#"
+app:
+  projectName: demo
+  productName: Demo
+  productVersion: 0.1.0
+  platforms: [windows]
+features: { appService: false }
+capabilities: { terminal: true }
+surfaces: [{ native: terminal, role: main, launch: true }]
+"#,
+                None,
+            ),
+        ];
+
+        for (shape, yaml, expected_kind) in cases {
+            let config = load_config_yaml(yaml)
+                .unwrap_or_else(|error| panic!("{shape} config failed: {error}"));
+            let actual_kind =
+                config
+                    .settings_destination
+                    .as_ref()
+                    .map(|destination| match destination {
+                        SettingsDestination::ControlAppPage { .. } => "controlAppPage",
+                        SettingsDestination::BrowserControlPage { .. } => "browserControlPage",
+                        SettingsDestination::NativeAction { .. } => "nativeAction",
+                    });
+            assert_eq!(actual_kind, expected_kind, "{shape}");
+        }
     }
 
     #[test]

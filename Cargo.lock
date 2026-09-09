@@ -499,7 +499,7 @@ dependencies = [
  "bitflags 2.13.1",
  "cexpr",
  "clang-sys",
- "itertools 0.13.0",
+ "itertools 0.12.1",
  "log",
  "prettyplease",
  "proc-macro2",
@@ -2794,15 +2794,6 @@ dependencies = [
 
 [[package]]
 name = "itertools"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
-dependencies = [
- "either",
-]
-
-[[package]]
-name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
@@ -3007,6 +2998,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "language-tags"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4345964bb142484797b161f473a503a434de77149dd8c7427788c6e13379388"
+
+[[package]]
 name = "lazy-regex"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3204,6 +3201,7 @@ dependencies = [
  "lingxia-settings",
  "lingxia-transfer",
  "lingxia-webview",
+ "ring",
  "rong",
  "serde",
  "serde_json",
@@ -3264,6 +3262,7 @@ dependencies = [
  "indicatif",
  "json5",
  "jsonschema",
+ "language-tags",
  "libc",
  "lingxia-app-context",
  "lingxia-control-protocol",
@@ -3471,6 +3470,7 @@ dependencies = [
  "futures",
  "http",
  "http-body-util",
+ "language-tags",
  "lingxia-app-context",
  "lingxia-log",
  "lingxia-media",
@@ -3487,6 +3487,7 @@ dependencies = [
  "redb",
  "ring",
  "rong",
+ "rong_command",
  "rong_console",
  "rong_event",
  "rong_http",
@@ -3676,6 +3677,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "windows 0.62.2",
 ]
 
 [[package]]
@@ -6412,9 +6414,9 @@ dependencies = [
 
 [[package]]
 name = "rong_command"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fd408eb9651e9d910af00dfb426f7f518bbf46a736534067e6482df84e4d882f"
+checksum = "5c8b6a7648a40065d2b34b72b5353b5683837105e0b80607d91e6c361ed94be2"
 dependencies = [
  "libc",
  "rong",
@@ -6647,9 +6649,9 @@ dependencies = [
 
 [[package]]
 name = "rong_rt"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3526d9565dbe1cf76dbfe414991bc33df7d6a962b16ab25532fdba520dd5828"
+checksum = "24b2a70c918b2472c63cd50a7817db2a6df5fdfdd58ab5195e22b647bb3010de"
 dependencies = [
  "bytes",
  "futures",
@@ -6666,6 +6668,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-stream",
+ "tower-service",
  "url",
 ]
 
@@ -6696,9 +6699,9 @@ dependencies = [
 
 [[package]]
 name = "rong_storage"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "251ca968561a0e9cd058beb2fc5498c3da8ec44d50d86f75c08cc5dfc063f490"
+checksum = "8ef875abc3ebb3445a3826f46d6efa25d848aa09e1c93403e96e930a560ab307"
 dependencies = [
  "futures",
  "redb",
@@ -7869,7 +7872,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32497e9a4c7b38532efcdebeef879707aa9f794296a4f0244f6f69e9bc8574bd"
 dependencies = [
  "fastrand",
- "getrandom 0.4.3",
+ "getrandom 0.3.4",
  "once_cell",
  "rustix",
  "windows-sys 0.61.2",

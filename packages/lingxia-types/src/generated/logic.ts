@@ -131,9 +131,23 @@ declare global {
      */
     autostart?: AutostartApi;
 
+    /** The language this lxapp renders in. Every lxapp follows it. */
+    readonly displayLanguage: DisplayLanguageApi;
+
+    /** The light/dark scheme this lxapp renders in. */
+    readonly appearance: AppearanceApi;
+
+    /**
+     * Product-wide settings, and their single writer. Present only in the
+     * Control app the host sealed at build time; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.control?.…` and the query are interchangeable.
+     */
+    readonly control?: ControlApi;
+
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the home lxapp; other lxapps get a permission error.
+     * Restricted to the Control app; other lxapps get a permission error.
      */
     cache: AppCacheApi;
   }
@@ -216,14 +230,14 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
  * has run, which is why — like `checkUpdate` and `screenshot` — it is
- * available only to the home lxapp and other lxapps get a permission
+ * available only to the Control app and other lxapps get a permission
  * error.
  */
 export type AppCacheApi = {
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
     size(): Promise<number>;
     /**
-     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * Clear reclaimable host caches. Control app only. Live session usercache and
      * temp are preserved, including the caller's. Does not restart any lxapp.
      * Userdata, KV, Downloads, cookies, valid installs and host components survive.
      * Per-category failures are reported; setup/worker failures reject the call.
@@ -335,8 +349,26 @@ export type AppSurface = SurfaceBase & SurfaceShowable & {
     readonly realized: 'main' | 'aside';
 };
 
-export type AppearanceApi = globalThis.AppearanceApi;
+/** `lx.app.appearance` — the scheme this lxapp renders in. */
+export type AppearanceApi = {
+    /**
+     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
+     * `lxapp.json` reports that; every other lxapp reports the product's.
+     */
+    get(): ResolvedAppearance;
+    /**
+     * Follow it, starting with the current value. Returns an unsubscribe.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
+    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+};
 
+/**
+ * What the product's light/dark scheme is set to. `'auto'` follows
+ * the system.
+ */
 export type AppearancePreference = 'auto' | 'light' | 'dark';
 
 /**
@@ -355,8 +387,8 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
  * is called, so the decision stays with the user (typically a settings-page
  * toggle, default off).
  * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
- * are available only to the home lxapp; other lxapps receive a permission
- * error.
+ * are available only to the native-assigned Control app; other lxapps receive
+ * a permission error.
  */
 export type AutostartApi = {
     /**
@@ -379,12 +411,12 @@ export type BinaryFileData = ArrayBuffer | ArrayBufferView;
 
 /**
  * Built-in browser product page. Opening one requires
- * `capabilities.browser` and is restricted to the home lxapp.
+ * `capabilities.browser` and is restricted to the native-assigned Control app.
  */
-export type BuiltinShellPage = 'settings' | 'downloads';
+export type BuiltinShellPage = 'downloads';
 
 /**
- * A host builtin page such as settings or downloads. The shell owns
+ * A host builtin page such as downloads. The shell owns
  * its lifetime and its visibility, so this handle reports identity:
  * there is no `show` / `hide`, and the inherited `close()` rejects
  * with `unsupported_placement`.
@@ -559,6 +591,57 @@ export type ConnectWifiOptions = {
     password?: string;
 };
 
+/**
+ * `lx.app.control` — product-wide settings, and their single writer.
+ * Present only in the Control app. Bind it once rather than repeating
+ * `lx.app.control!`:
+ * ```js
+ * const control = lx.app.control;
+ * if (!control) return; // not the Control app
+ * await control.appearance.setPreference('dark');
+ * ```
+ */
+export type ControlApi = {
+    readonly displayLanguage: ControlDisplayLanguageApi;
+    readonly appearance: ControlAppearanceApi;
+};
+
+/** `lx.app.control.appearance` — the product's own light/dark setting. */
+export type ControlAppearanceApi = {
+    /** What the user chose for the whole product. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.app.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
+};
+
+/**
+ * `lx.app.control.displayLanguage` — the preference behind that
+ * language, for the one surface that edits it.
+ */
+export type ControlDisplayLanguageApi = {
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
+    getPreference(): DisplayLanguagePreference;
+    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+};
+
 /** A surface declared by the host in `lingxia.yaml`. */
 export type DeclaredSurface = SurfaceBase & SurfaceShowable & {
     readonly kind: 'declared';
@@ -571,8 +654,34 @@ export type DeviceOrientationChangeEvent = {
     value: DeviceOrientation;
 };
 
-/** Host display-language setting. `"auto"` follows the system locale. */
-export type DisplayLanguageSetting = 'auto' | 'en-US' | 'zh-CN';
+/** `lx.app.displayLanguage` — the language this lxapp renders in. */
+export type DisplayLanguageApi = {
+    /**
+     * The language in effect right now, as a canonical BCP-47 tag. Map it to
+     * the catalogs this lxapp actually ships and fall back where it has none;
+     * that narrowing is yours, and is not a language setting of its own.
+     */
+    get(): string;
+    /**
+     * Follow the language, starting with the current value. Returns an
+     * unsubscribe.
+     *
+     * Logic needs this because the strings it hands to native chrome —
+     * navigation bar titles, tab bar labels, modal and action-sheet text — are
+     * the app's own, and nothing re-renders them on its behalf.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
+    watch(callback: (language: string) => void): () => void;
+};
+
+/**
+ * What the product's language is set to: `'auto'` follows the system,
+ * or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
+ * autocomplete while still accepting a tag.
+ */
+export type DisplayLanguagePreference = 'auto' | (string & {});
 
 export type DownloadDestination = 'app' | 'downloads';
 
@@ -820,7 +929,7 @@ export type LxAppEnvVersion = 'release' | 'preview' | 'developer';
 export type LxAppReleaseType = 'release' | 'preview' | 'developer';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so
@@ -1326,8 +1435,8 @@ export type ShareTitleOptions = {
 };
 
 /**
- * App-owned host-shell chrome. Mutations are available only to the home
- * lxapp's Logic context; other lxapps receive a permission error.
+ * App-owned host-shell chrome. Mutations are available only to the
+ * Control app's Logic context; other lxapps receive a permission error.
  */
 export type ShellApi = {
     /**
@@ -1338,7 +1447,7 @@ export type ShellApi = {
     sidebarActions: ShellSidebarActionsApi;
     /** Compose another lxapp into a shell slot. */
     openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
-    /** Open a host builtin page such as settings or downloads. */
+    /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration
@@ -1369,7 +1478,7 @@ export type ShellOpenAppOptions = {
 };
 
 /**
- * The declared-surface options only the home lxapp may use.
+ * The declared-surface options only the native-assigned Control app may use.
  * Creating an extra instance and overriding a placement both mutate
  * shared shell composition, so they live here and not on
  * `lx.surface.openDeclared` — which consumes a declaration exactly as
@@ -1468,7 +1577,7 @@ export type ShellSidebarActionUpdate = {
 };
 
 /**
- * Role and edge overrides the home lxapp may apply to a live declared
+ * Role and edge overrides the native-assigned Control app may apply to a live declared
  * surface. A stable root rejects non-main roles.
  */
 export type ShellSurfacePatch = {
@@ -1655,7 +1764,7 @@ export type SurfaceError = Error & {
  */
 export type SurfaceErrorCode = /** The placement cannot be realized by this host build. */
 'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the home lxapp. */
+/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
  | 'denied'
 /** No such declared surface, lxapp, or builtin page. */
  | 'not_declared'
@@ -1898,8 +2007,7 @@ export type TerminalSettingsSnapshot = {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
-        /** Host appearance before applying terminal.theme.mode. */
-        systemAppearance: 'light' | 'dark';
+        /** The scheme the product is in, and therefore the terminal too. */
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {
@@ -1921,10 +2029,11 @@ export type TerminalSettingsWarning = {
     message: string;
 };
 
-export type TerminalThemeMode = 'system' | 'light' | 'dark';
-
+/**
+ * A light scheme and a dark one. Which is in use follows the
+ * product's light/dark setting; the terminal has no switch of its own.
+ */
 export type TerminalThemeSettings = {
-    mode: TerminalThemeMode;
     light: string;
     dark: string;
 };
@@ -1958,7 +2067,7 @@ export type UpdateFailedInfo = UpdateReadyInfo & {
 
 /**
  * Callback-based updates for this lxapp's bundle. Available to every
- * lxapp. To update the native host app, the home lxapp uses the
+ * lxapp. To update the native host app, the Control app uses the
  * task-based `lx.app.checkUpdate()` API instead.
  */
 export type UpdateManager = {
@@ -2205,19 +2314,12 @@ export type WindowsTerminalInlineImageStatus = {
     };
 };
 
-/** Host app base information. */
+/**
+ * Host app identity. Everything here is fixed for the life of the process;
+ * the language the app renders in is not, and lives on
+ * `lx.app.displayLanguage`.
+ */
 export interface AppBaseInfo {
-  /**
-   * Raw system locale, unaffected by a saved in-app language override.
-   * For the language the UI should actually render in, use
-   * `display_language` instead.
-   */
-  locale: string;
-  /**
-   * Effective display language: a saved user override when set, else
-   * `locale`. This is what native chrome and `lx.*` i18n strings follow.
-   */
-  displayLanguage: string;
   /**
    * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
    * `"Harmony"`. Matches the View-side `usePlatform().os` value.
@@ -2226,11 +2328,6 @@ export interface AppBaseInfo {
   productName: string;
   version: string;
   SDKVersion: string;
-}
-
-export interface AppearanceState {
-  preference: AppearancePreference;
-  resolved: ResolvedAppearance;
 }
 
 /** Device info APIs. */
@@ -2380,15 +2477,6 @@ export declare class LxFile {
 }
 
 declare global {
-  interface AppearanceApi {
-    /** Read the appearance preference and the light/dark value it resolves to. */
-    get(): AppearanceState;
-    /** Set the appearance preference to `auto`, `light`, or `dark`. */
-    set(preference: AppearancePreference): Promise<void>;
-  }
-}
-
-declare global {
   interface FileSystemApi {
     /**
      * Create a lazy reference to a LingXia-managed path.
@@ -2423,12 +2511,12 @@ declare global {
      * is what the user sees of the whole app — host-drawn navigation chrome,
      * native overlays, and every composited WebView, not just this lxapp's web
      * content. Because that view can include other lxapps' UI, the API is
-     * restricted to the home lxapp, like the other host-level APIs on `lx.app`.
+     * restricted to the Control app, like the other host-level APIs on `lx.app`.
      */
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
     /**
      * Check whether the host app has an update.
-     * This host-level capability is restricted to the home lxapp. Calling it opts
+     * This host-level capability is restricted to the Control app. Calling it opts
      * the process into custom update handling. Incompatible updates are hidden as
      * `hasUpdate: false`; platforms that cannot apply a package may still return
      * metadata and reject when `update.apply()` is invoked.
@@ -2436,20 +2524,14 @@ declare global {
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
     readonly envVersion: HostAppEnvVersion;
     /**
-     * Read the host app's identity: locale, display language, OS, product name,
-     * product version, and SDK runtime version.
+     * Read the host app's identity: OS, product name, product version, and SDK
+     * runtime version.
      */
     getBaseInfo(): AppBaseInfo;
     /**
-     * Follow the host's effective display language.
-     * `getBaseInfo().displayLanguage` answers what it is now; this answers when it
-     * changes. Logic needs both because the strings it hands to native chrome —
-     * navigation bar titles, tab bar labels, modal and action-sheet text — are the
-     * app's own, and nothing re-renders them on its behalf.
-     */
-    onDisplayLanguageChange(callback: (language: string) => void): () => void;
-    /**
      * Exit the host app immediately without a confirmation dialog.
+     * Control app only: quitting the product is not an lxapp's decision. Other
+     * lxapps get a permission error.
      * If the user should confirm first, call `lx.showModal(...)` and invoke this
      * only after confirmation.
      */
@@ -2457,16 +2539,11 @@ declare global {
     /**
      * Set the app-icon badge, for example an unread count.
      * This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-     * on mobile. Null or an empty string clears it. Unsupported platforms treat
-     * the call as a no-op.
+     * on mobile — the product's own icon, not the calling lxapp's, so it is
+     * Control app only and other lxapps get a permission error. Null or an empty
+     * string clears it. Unsupported platforms treat the call as a no-op.
      */
     setBadge(value: string | number | null): void;
-    /**
-     * Set the host display language. `"auto"` follows the system locale;
-     * `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
-     * tag from `getBaseInfo().displayLanguage`. Restricted to the home lxapp.
-     */
-    setDisplayLanguage(language: DisplayLanguageSetting): void;
   }
 }
 
@@ -2656,7 +2733,6 @@ declare global {
      * an invalid selection.
      */
     showActionSheet(options: ShowActionSheetOptions): Promise<ActionSheetResult>;
-    readonly appearance: AppearanceApi;
     /**
      * Shows a confirmation modal.
      * Resolves `{ canceled: false }` when the user confirms and `{ canceled: true }`
@@ -2723,7 +2799,7 @@ declare global {
     readonly tray: TrayApi;
     /**
      * Return the callback-based update manager for this lxapp's bundle. This is
-     * available to every lxapp and is distinct from the home-only
+     * available to every lxapp and is distinct from the Control-app-only
      * `lx.app.checkUpdate()`, which updates the native host app.
      */
     getUpdateManager(): UpdateManager;
@@ -2748,14 +2824,14 @@ declare global {
   interface ShellApi {
     /**
      * `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
-     * slot. Home-lxapp only; the namespace is the privilege.
+     * slot. Control-app only; the namespace is the privilege.
      */
     openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
-    /** `lx.shell.openBuiltin(page)` — a host builtin page. Home-lxapp only. */
+    /** `lx.shell.openBuiltin(page)` — a host builtin page. Control-app only. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * `lx.shell.openDeclared(id, options?)` — the declared surface, plus the
-     * keyed multi-instance form and placement overrides. Home-lxapp only.
+     * keyed multi-instance form and placement overrides. Control-app only.
      */
     openDeclared(id: string, options?: ShellOpenDeclaredOptions): Promise<DeclaredSurface>;
     /** `lx.shell.reconfigure(id, patch)` — re-place a live declared surface. */
@@ -2767,9 +2843,9 @@ declare global {
   interface ShellSidebarActionsApi {
     /**
      * Atomically replaces the complete desktop sidebar action declaration. Only the
-     * home lxapp may call this API. Ids must be non-empty and unique across both
+     * Control app may call this API. Ids must be non-empty and unique across both
      * placements; header accepts at most two entries. Icons must be bundled relative
-     * paths or runtime-managed `lx://` paths accessible to the home lxapp.
+     * paths or runtime-managed `lx://` paths accessible to the Control app.
      * Every entry is bound to its generation-scoped callback. The shell invokes that
      * callback but never infers navigation or selected state. Validation or host
      * projection failure leaves the previous generation active. `replace([])` clears
@@ -2779,21 +2855,21 @@ declare global {
     replace(items: ShellSidebarAction[]): void;
     /**
      * Atomically updates the icon, label, and/or disabled state of one stable id.
-     * Only the home lxapp may call this API. The patch must be non-empty; unknown
+     * Only the Control app may call this API. The patch must be non-empty; unknown
      * fields are rejected. The callback and placement stay unchanged. Throws
      * `E_NOT_FOUND` when `id` is not in the current declaration.
      */
     update(id: string, patch: ShellSidebarActionUpdate): void;
     /**
      * Atomically removes one stable id and its generation-scoped callback. Only the
-     * home lxapp may call this API. Throws `E_NOT_FOUND` when `id` is not in the
+     * Control app may call this API. Throws `E_NOT_FOUND` when `id` is not in the
      * current declaration.
      */
     remove(id: string): void;
     /**
-     * Atomically clears every runtime sidebar action and callback. Only the home
-     * lxapp may call this API. Equivalent to `replace([])` and safe when already
-     * empty; the home lxapp must still redeclare actions after the next Logic launch.
+     * Atomically clears every runtime sidebar action and callback. Only the
+     * Control app may call this API. Equivalent to `replace([])` and safe when already
+     * empty; the Control app must still redeclare actions after the next Logic launch.
      */
     clear(): void;
   }

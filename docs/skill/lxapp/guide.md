@@ -742,13 +742,22 @@ Each `update()` is one transaction: `null` resets a field to its declared
 value, omitted fields keep their current state, and an invalid patch rejects
 without applying anything.
 
-`await lx.appearance.set('auto' | 'light' | 'dark')` sets the lxapp's own
-light/dark branch independently of the host shell; the preference persists per
-lxapp, and `lx.appearance.get()` synchronously returns it alongside the
-resolved branch. The runtime projects the resolved branch into every page as
-`color-scheme` plus a `data-theme="light|dark"` attribute on `<html>` — key
-theme CSS off `[data-theme]` (with a `prefers-color-scheme` fallback for
-no-JS first paint), since platform media queries may lag an in-place switch.
+Light/dark is a product setting, not a per-lxapp one. `lx.app.appearance.get()`
+returns the scheme this lxapp renders in, and `.watch(cb)` follows it. An lxapp
+whose UI only works in one scheme declares it once in `lxapp.json`:
+
+```json
+{ "appearance": "dark" }
+```
+
+That is a static declaration, like a page's `color-scheme` — not a preference,
+and not something the user picks per app. Editing the product's setting belongs
+to the Settings surface through `lx.app.control?.appearance`.
+
+The runtime projects the resolved scheme into every page as `color-scheme` plus
+a `data-theme="light|dark"` attribute on `<html>` — key theme CSS off
+`[data-theme]` (with a `prefers-color-scheme` fallback for no-JS first paint),
+since platform media queries may lag an in-place switch.
 
 ### Laying out under immersive chrome
 

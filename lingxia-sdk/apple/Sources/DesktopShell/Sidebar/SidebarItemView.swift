@@ -108,7 +108,7 @@ class SidebarItemView: NSView {
         // Badge background
         badgeBackground.translatesAutoresizingMaskIntoConstraints = false
         badgeBackground.wantsLayer = true
-        badgeBackground.layer?.backgroundColor = NSColor.systemRed.cgColor
+        badgeBackground.layer?.backgroundColor = themeCGColor(NSColor.systemRed)
         badgeBackground.layer?.cornerRadius = 7.5
         badgeBackground.isHidden = true
         addSubview(badgeBackground)
@@ -124,7 +124,7 @@ class SidebarItemView: NSView {
         // Red dot
         redDotView.translatesAutoresizingMaskIntoConstraints = false
         redDotView.wantsLayer = true
-        redDotView.layer?.backgroundColor = NSColor.systemRed.cgColor
+        redDotView.layer?.backgroundColor = themeCGColor(NSColor.systemRed)
         redDotView.layer?.cornerRadius = 4
         redDotView.isHidden = true
         addSubview(redDotView)
@@ -253,14 +253,14 @@ class SidebarItemView: NSView {
     private func updateAppearance() {
         let accent = selectedTint ?? LxAppHostTheme.accent
         accentBar.isHidden = !isSelected
-        accentBar.layer?.backgroundColor = accent.cgColor
+        accentBar.layer?.backgroundColor = themeCGColor(accent)
         loadIcon(path: iconPath)
         if isSelected {
             // Windows-baseline selected card: a light floating card on the
             // dark base, accent icon + accent bar. The title takes the
             // tabbar's selectedColor (mobile parity); a near-neutral dark
             // stands in when the app declares none.
-            selectionBackground.layer?.backgroundColor = LxAppHostTheme.selectionBackground.cgColor
+            selectionBackground.layer?.backgroundColor = themeCGColor(LxAppHostTheme.selectionBackground)
             selectionBackground.shadow = {
                 let shadow = NSShadow()
                 shadow.shadowBlurRadius = 6
@@ -274,7 +274,7 @@ class SidebarItemView: NSView {
         } else if isHovered {
             selectionBackground.shadow = nil
             titleLabel.font = NSFont.systemFont(ofSize: 13, weight: .regular)
-            selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            selectionBackground.layer?.backgroundColor = themeCGColor(NSColor.labelColor.withAlphaComponent(0.06))
             titleLabel.textColor = unselectedTint ?? LxAppHostTheme.foreground
             iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
         } else {

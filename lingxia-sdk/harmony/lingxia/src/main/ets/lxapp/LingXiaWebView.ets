@@ -25,7 +25,8 @@ import {
   handleWebViewNavigationPolicy,
   isEphemeralDataMode,
   isBrowserRelaxed as isWebViewBrowserRelaxed,
-  notifyWebViewControllerAttached
+  notifyWebViewControllerAttached,
+  WebViewManager
 } from './WebViewBridge';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
@@ -78,6 +79,7 @@ export struct LingXiaWebView {
   private embedSyncScheduled: boolean = false
   private embedSyncTimerId: number | null = null
   private lastFullscreenId: string = ''
+  private pageEpoch: string = ''
 
   aboutToDisappear() {
     this.cleanupEmbedManager();
@@ -134,6 +136,7 @@ export struct LingXiaWebView {
             } catch {}
             return handleWebViewNavigationPolicy(
               this.webTag,
+              WebViewManager.getGenerationForController(this.webTag, this.controller),
               url,
               hasUserGesture,
               isMainFrame
@@ -148,6 +151,7 @@ export struct LingXiaWebView {
         }
         handleWebViewDownloadStart(
           this.webTag,
+          WebViewManager.getGenerationForController(this.webTag, this.controller),
           event.url ?? '',
           event.userAgent ?? '',
           event.contentDisposition ?? '',
@@ -161,10 +165,39 @@ export struct LingXiaWebView {
         }
         handleWebViewLoadError(
           this.webTag,
+          WebViewManager.getGenerationForController(this.webTag, this.controller),
+          this.pageEpoch,
           event.request.getRequestUrl() ?? '',
           event.error.getErrorCode(),
           event.error.getErrorInfo() ?? 'unknown error'
         );
+      })
+      .onPageBegin((event) => {
+        this.pageEpoch = WebViewManager.pageBegin(
+          this.webTag,
+          this.controller,
+          event?.url ?? ''
+        );
+      })
+      .onPageVisible(() => {
+        WebViewManager.documentCommit(
+          this.webTag,
+          this.controller,
+          this.pageEpoch,
+          this.controller.getUrl() ?? ''
+        );
+      })
+      .onPageEnd((event) => {
+        WebViewManager.pageEnd(
+          this.webTag,
+          this.controller,
+          this.pageEpoch,
+          event?.url ?? ''
+        );
+      })
+      .onRenderExited(() => {
+        this.pageEpoch = '';
+        WebViewManager.renderExited(this.webTag, this.controller);
       })
       .onShowFileSelector((event) => {
         if (!event) {
@@ -172,6 +205,7 @@ export struct LingXiaWebView {
         }
         return requestWebFileChooser(
           this.webTag,
+          WebViewManager.getGenerationForController(this.webTag, this.controller),
           (selectedPaths: Array<string>) => {
             event.result.handleFileList(selectedPaths);
           },
@@ -208,8 +242,11 @@ export struct LingXiaWebView {
       .onAppear(() => {
         hilog.info(DOMAIN, TAG, `WebView component appeared for webTag: ${this.webTag}`);
         if (!this.controllerAcked) {
-          notifyWebViewControllerAttached(this.webTag);
-          this.controllerAcked = true;
+          const nativeViewToken = WebViewManager.getGenerationForController(this.webTag, this.controller);
+          if (nativeViewToken) {
+            notifyWebViewControllerAttached(this.webTag, nativeViewToken);
+            this.controllerAcked = true;
+          }
         }
       })
       .onControllerAttached(() => {

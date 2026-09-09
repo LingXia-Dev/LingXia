@@ -50,7 +50,7 @@ editor applies the correct environment to each file.
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
 Most methods are flat on `lx`. Related capabilities use typed namespaces such
-as `lx.env`, `lx.app`, `lx.appearance`, `lx.navigationBar`, `lx.tabBar`,
+as `lx.env`, `lx.app`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
 map. Page Chrome geometry is a View concern exposed through the framework
 page-chrome helpers and the low-level `window.lxPageChrome` snapshot.
@@ -75,6 +75,35 @@ OS process APIs are a separate host capability with opt-in declarations at
 
 ## Runtime convention
 
+### The product owns its settings
+
+A setting the user recognises as belonging to the whole product — its language,
+its light/dark scheme — has exactly one value and exactly one writer, the
+product's Settings surface. No lxapp, panel, or built-in screen keeps a second
+one, and none offers the user a picker of its own.
+
+Narrowing what the product hands you is a different thing, and is invisible to
+the user: shipping catalogs for two languages and falling back for the rest, or
+declaring in `lxapp.json` that this lxapp's UI only works in dark. Those are
+static properties of your code, not preferences someone chose.
+
+So each of these reads the same way: a pair on `lx.app` that every lxapp
+follows, and a writer behind `lx.app.control` that only the Control app has.
+
+```ts
+lx.app.displayLanguage.get();        lx.app.displayLanguage.watch(cb);
+lx.app.appearance.get();             lx.app.appearance.watch(cb);
+
+lx.app.control?.displayLanguage.setPreference('zh-CN');
+lx.app.control?.appearance.setPreference('dark');
+```
+
+`get`/`watch` answer what is in effect. `getPreference`/`setPreference`/
+`watchPreference` answer what the user chose — a system change under `'auto'`
+moves the first pair and leaves the second quiet.
+
+### Everything else
+
 Unsupported cosmetic capabilities with no meaningful result, such as desktop
 tray presentation on mobile, are silent no-ops. Result-bearing operations and
 invalid usage reject or throw. Each generated method's JSDoc is authoritative
@@ -96,9 +125,22 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`. Presence and `lx.supports()` are answered
-from one registry, so `('terminal' in lx)` and `lx.supports({ capability: 'terminal' })`
-can never disagree.
+`lx.terminal`, `lx.app.autostart`, `lx.app.control`. Presence and
+`lx.supports()` are answered from one registry, so `('terminal' in lx)` and
+`lx.supports({ capability: 'terminal' })` can never disagree.
+
+`lx.app.control` holds the product-wide settings and their single writer. It is
+injected only into the app the host sealed as its Control app at build time, so
+the same lxapp opened as a guest elsewhere simply does not have it. Write
+`lx.app.control?.…`.
+
+`lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
+are additionally restricted to the host-bundled Terminal Settings session the
+native host assigned as a control surface; not even the Control app reaches
+them. A matching app id or bundled source does not grant this authority.
+
+Which session is which, the full list of Control-app-only calls, and what a
+refusal reads like: [The Control app](../app/control-app.md).
 
 ---
 

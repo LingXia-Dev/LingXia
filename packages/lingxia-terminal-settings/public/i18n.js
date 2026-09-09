@@ -3,10 +3,10 @@
 
   /*
    * Same contract as the browser package's i18n: `data-i18n` attributes in the
-   * markup, a two-locale dictionary, and the host's language followed live
-   * through `settings.watchLanguage`. Sharing the shape matters more than
-   * sharing the file - a settings screen that picked its own convention would
-   * be the one surface a translator has to learn twice.
+   * markup, a two-locale dictionary, and the product's language followed live
+   * through the bridge. Sharing the shape matters more than sharing the file -
+   * a settings screen that picked its own convention would be the one surface a
+   * translator has to learn twice.
    */
   var dictionaries = {
     'en-US': {
@@ -22,19 +22,9 @@
       'app.conflict': 'Settings changed elsewhere. Reloaded the latest values.',
       'app.externalChange': 'Terminal settings changed elsewhere. Apply will reload the latest values.',
 
-      'general.title': 'General',
-      'general.language': 'Language',
-      'general.languageHint': 'Only changes this screen. The app decides the rest.',
-      'general.followApp': 'Same as app',
-
       'appearance.title': 'Appearance',
-      'appearance.mode': 'Mode',
-      'appearance.modeHint': 'Which scheme a terminal uses.',
-      'appearance.system': 'System',
-      'appearance.light': 'Light',
-      'appearance.dark': 'Dark',
       'appearance.scheme': 'Color scheme',
-      'appearance.schemeHint': 'Mode chooses whether light or dark schemes are shown. Select one to preview it.',
+      'appearance.schemeHint': "The product's light/dark setting chooses which of these pairs is shown. Select one to preview it.",
       'appearance.empty': 'No schemes yet. Import one below.',
       'appearance.import': 'Import a scheme',
       'appearance.importHint': 'Choose a compatible color-scheme file.',
@@ -80,19 +70,9 @@
       'app.conflict': '设置已在其他位置更改，已重新加载最新值。',
       'app.externalChange': '终端设置已在其他位置更改。应用时会重新加载最新值。',
 
-      'general.title': '通用',
-      'general.language': '语言',
-      'general.languageHint': '仅更改本页面，其余部分由应用决定。',
-      'general.followApp': '与应用一致',
-
       'appearance.title': '外观',
-      'appearance.mode': '模式',
-      'appearance.modeHint': '终端使用哪一套配色。',
-      'appearance.system': '跟随系统',
-      'appearance.light': '浅色',
-      'appearance.dark': '深色',
       'appearance.scheme': '配色方案',
-      'appearance.schemeHint': '模式决定显示浅色或深色配色，点击即可预览。',
+      'appearance.schemeHint': '产品的浅色/深色设置决定显示哪一套配色，点击即可预览。',
       'appearance.empty': '还没有配色方案,可在下方导入。',
       'appearance.import': '导入配色',
       'appearance.importHint': '选择兼容的配色方案文件。',
@@ -127,8 +107,6 @@
     }
   };
 
-  var LOCALE_STORAGE_KEY = 'lingxia.webui.locale';
-
   function normalizeLocale(value) {
     // Hosts hand this over in several shapes ("zh-CN", "zh_Hans_CN", "en_CN").
     // Only the language subtag decides, so an underscore or a region that does
@@ -139,28 +117,22 @@
     return null;
   }
 
-  function storedLocale() {
-    try {
-      return normalizeLocale(global.localStorage.getItem(LOCALE_STORAGE_KEY));
-    } catch (_) {
-      return null;
+  // The product owns the language; this screen only narrows it to a catalog it
+  // actually ships. `navigator` is the fallback for a document opened outside a
+  // host, never a preference of its own.
+  function hostLocale() {
+    var bridge = global.LingXiaBridge;
+    if (bridge && bridge.displayLanguage) {
+      var narrowed = normalizeLocale(bridge.displayLanguage.get());
+      if (narrowed) return narrowed;
     }
-  }
-
-  function systemLocale() {
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length
       ? navigator.languages
       : [navigator.language || 'en-US'];
-    return /^zh(?:-|$)/i.test(String(candidates[0] || ''))
-      ? 'zh-CN'
-      : 'en-US';
+    return normalizeLocale(candidates[0]) || 'en-US';
   }
 
-  function resolveLocale() {
-    return storedLocale() || systemLocale();
-  }
-
-  var locale = resolveLocale();
+  var locale = hostLocale();
 
   function interpolate(value, variables) {
     return String(value).replace(/\{([a-zA-Z0-9_]+)\}/g, function (_, key) {
@@ -201,114 +173,23 @@
     }
   }
 
-  function setLocale(value) {
-    var next = normalizeLocale(value);
-    if (!next) return locale;
+  // Re-apply in place rather than reload: this document was injected with the
+  // bridge configuration, and navigating to the base URL fetches the raw file
+  // without it, leaving a screen whose Logic calls are never answered.
+  function adoptHostLocale() {
+    var next = hostLocale();
+    if (next === locale) return;
     locale = next;
     api.locale = locale;
-    try {
-      global.localStorage.setItem(LOCALE_STORAGE_KEY, locale);
-    } catch (_) {}
     apply();
-    return locale;
-  }
-
-  function useSystemLocale() {
-    try {
-      global.localStorage.removeItem(LOCALE_STORAGE_KEY);
-    } catch (_) {}
-    locale = systemLocale();
-    api.locale = locale;
-    apply();
-    return locale;
   }
 
   var api = {
     locale: locale,
     t: t,
-    apply: apply,
-    setLocale: setLocale,
-    useSystemLocale: useSystemLocale,
-    /// Drop this screen's own choice and take the app's language again. The
-    /// host decides it, so this is not the same as the operating system's.
-    followApp: function () {
-      try {
-        global.localStorage.removeItem(LOCALE_STORAGE_KEY);
-      } catch (_) {}
-      if (typeof api._refreshFromHost === 'function') {
-        api._refreshFromHost();
-        return locale;
-      }
-      return useSystemLocale();
-    },
-    storageKey: LOCALE_STORAGE_KEY
+    apply: apply
   };
   global.LingXiaI18n = api;
-
-  function syncLocaleFromHost() {
-    var bridge = global.LingXiaBridge;
-    if (!bridge || typeof bridge.invoke !== 'function') return;
-    function adoptHostLocale(result) {
-      if (result && result.language == null) {
-        useSystemLocale();
-        return;
-      }
-      var hostLocale = normalizeLocale(result && result.language);
-      if (!hostLocale || hostLocale === locale) return;
-      // Reached with no stored override, so this is the app's language, not a
-      // choice this screen made.
-      // setLocale re-applies every translation in place. Reloading instead
-      // would destroy the page: its document was injected with the bridge
-      // configuration, and navigating to the base URL fetches the raw file
-      // without it, leaving a screen whose Logic calls are never answered.
-      setLocale(hostLocale);
-    }
-    api._refreshFromHost = refreshFromHost;
-    function refreshFromHost() {
-      bridge.invoke('settings.getLanguage').then(adoptHostLocale, function () {});
-    }
-    var languageWatchRetryMs = 1000;
-    var languageWatchRetryTimer = null;
-    function scheduleLanguageWatch() {
-      if (languageWatchRetryTimer != null) return;
-      languageWatchRetryTimer = global.setTimeout(function () {
-        languageWatchRetryTimer = null;
-        attachLanguageWatch();
-      }, languageWatchRetryMs);
-      languageWatchRetryMs = Math.min(languageWatchRetryMs * 2, 30000);
-    }
-    function attachLanguageWatch() {
-      if (typeof bridge.stream !== 'function') return;
-      var watch = bridge.stream('settings.watchLanguage');
-      var startedAt = Date.now();
-      api.languageWatch = watch;
-      watch.onEvent(adoptHostLocale);
-      watch.onError(function () {
-        if (api.languageWatch !== watch) return;
-        api.languageWatch = null;
-        // Transport reset: re-sync immediately, then reconnect with backoff.
-        // Only a stream that stayed healthy for a while resets the backoff —
-        // the seed event must not, or a flapping stream reconnects at the
-        // floor forever.
-        if (Date.now() - startedAt > 30000) languageWatchRetryMs = 1000;
-        refreshFromHost();
-        scheduleLanguageWatch();
-      });
-    }
-    refreshFromHost();
-    attachLanguageWatch();
-  }
-
-  if (typeof global.addEventListener === 'function') {
-    global.addEventListener('storage', function (event) {
-      if (event.key !== LOCALE_STORAGE_KEY) return;
-      var next = normalizeLocale(event.newValue) || resolveLocale();
-      if (next === locale) return;
-      locale = next;
-      api.locale = locale;
-      apply();
-    });
-  }
 
   // Translate what is already in the markup. The browser package leaves this
   // to each page's own script; a settings screen with no logic worker has no
@@ -321,5 +202,7 @@
     }
   }
 
-  syncLocaleFromHost();
+  if (global.LingXiaBridge && global.LingXiaBridge.displayLanguage) {
+    global.LingXiaBridge.displayLanguage.subscribe(adoptHostLocale);
+  }
 })(window);

@@ -1,31 +1,22 @@
-use crate::i18n::{
-    js_error_from_business_code_with_detail, js_error_from_lxapp_error,
-    js_error_from_platform_error, js_invalid_parameter_error, js_service_unavailable_error,
-};
-use lingxia_app_context::{app_config, env_version, home_app_id};
+use crate::authorization::{self, LogicRoute};
+use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
+use lingxia_app_context::{app_config, env_version};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::LxApp;
-use lxapp::{DISPLAY_LANGUAGE_CHANGE_EVENT, register_app_handler, unregister_app_handler_token};
-use rong::{IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue};
-use std::cell::Cell;
+use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue};
 
+mod appearance;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod autostart;
 mod cache;
+mod display_language;
 mod screenshot;
 mod update;
 
-/// Host app base information.
+/// Host app identity. Everything here is fixed for the life of the process;
+/// the language the app renders in is not, and lives on
+/// `lx.app.displayLanguage`.
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
-    /// Raw system locale, unaffected by a saved in-app language override.
-    /// For the language the UI should actually render in, use
-    /// `display_language` instead.
-    locale: String,
-    /// Effective display language: a saved user override when set, else
-    /// `locale`. This is what native chrome and `lx.*` i18n strings follow.
-    #[js_name = "displayLanguage"]
-    display_language: String,
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
     /// `"Harmony"`. Matches the View-side `usePlatform().os` value.
     os: String,
@@ -37,16 +28,12 @@ struct AppBaseInfo {
     sdk_version: String,
 }
 
-/// Read the host app's identity: locale, display language, OS, product name,
-/// product version, and SDK runtime version.
-fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let locale = lxapp.runtime.get_system_locale();
+/// Read the host app's identity: OS, product name, product version, and SDK
+/// runtime version.
+fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
     let app_cfg =
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(AppBaseInfo {
-        locale: locale.to_string(),
-        display_language: lxapp::display_language(),
         os: lingxia_platform::os_label().to_string(),
         product_name: app_cfg.product_name.clone(),
         version: app_cfg.product_version.clone(),
@@ -56,10 +43,15 @@ fn get_app_base_info(ctx: JSContext) -> JSResult<AppBaseInfo> {
 
 /// Exit the host app immediately without a confirmation dialog.
 ///
+/// Control app only: quitting the product is not an lxapp's decision. Other
+/// lxapps get a permission error.
+///
 /// If the user should confirm first, call `lx.showModal(...)` and invoke this
 /// only after confirmation.
 fn exit_app(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppExit)?;
+    let lxapp = invocation.lxapp();
+    lxapp::clear_active_display_language_session_override();
     lxapp
         .runtime
         .exit()
@@ -69,10 +61,12 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 /// Set the app-icon badge, for example an unread count.
 ///
 /// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-/// on mobile. Null or an empty string clears it. Unsupported platforms treat
-/// the call as a no-op.
+/// on mobile — the product's own icon, not the calling lxapp's, so it is
+/// Control app only and other lxapps get a permission error. Null or an empty
+/// string clears it. Unsupported platforms treat the call as a no-op.
 fn set_app_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
+    let lxapp = invocation.lxapp();
     let text = badge_text(value, "lx.app.setBadge")?;
     lxapp
         .runtime
@@ -99,21 +93,6 @@ pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
     .into())
 }
 
-/// Guard for host-app-level APIs (`checkUpdate`, `screenshot`, `autostart`):
-/// only the home lxapp may call them; others get a permission error.
-pub(crate) fn ensure_home_lxapp(lxapp: &LxApp, api_name: &str) -> JSResult<()> {
-    let home_appid = home_app_id()
-        .ok_or_else(|| js_service_unavailable_error("home lxapp is not configured"))?;
-    if lxapp.appid == home_appid {
-        return Ok(());
-    }
-
-    Err(js_error_from_business_code_with_detail(
-        3000,
-        format!("{api_name} is only available in the home lxapp"),
-    ))
-}
-
 /// The native host app around this lxapp — its identity, updates, and window.
 fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
@@ -131,6 +110,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let app = app_namespace(ctx)?;
     init_base(ctx)?;
     register_app_controls(ctx)?;
+    init_control_namespace(ctx, &app)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
     cache::init(ctx, &app)?;
@@ -142,9 +122,30 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 /// Register read-only host identity for every lxapp context, including focused
 /// system apps that intentionally do not receive the broader `lx.*` surface.
+///
+/// `lx.app.displayLanguage` belongs here: rendering in the product's language
+/// is what every context does, control surfaces included.
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
-    register_app_base_api(ctx)
+    register_app_base_api(ctx)?;
+    let app = app_namespace(ctx)?;
+    display_language::init_follower(ctx, &app)?;
+    appearance::init_follower(ctx, &app)
+}
+
+/// `lx.app.control` — the members that edit product-wide settings, and the one
+/// writer for each. Injected only into the ControlApp session, so
+/// `lx.app.control?.…` and `lx.supports({ capability: 'control' })` always
+/// agree. Every member behind it still authorizes on its own.
+fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+    if !crate::capability::is_control_app(ctx) {
+        return Ok(());
+    }
+    let control = JSObject::new(ctx);
+    display_language::init_control(ctx, &control)?;
+    appearance::init_control(ctx, &control)?;
+    app.set("control", control)?;
+    Ok(())
 }
 
 rong::js_api! {
@@ -154,49 +155,11 @@ rong::js_api! {
     }
 }
 
-/// Set the host display language. `"auto"` follows the system locale;
-/// `"en-US"` and `"zh-CN"` pin the product. Every lxapp inherits the resolved
-/// tag from `getBaseInfo().displayLanguage`. Restricted to the home lxapp.
-fn set_js_display_language(ctx: JSContext, language: String) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    ensure_home_lxapp(&lxapp, "lx.app.setDisplayLanguage")?;
-    let language = language
-        .parse::<lxapp::DisplayLanguage>()
-        .map_err(js_invalid_parameter_error)?;
-    lxapp::set_display_language(language).map_err(|error| js_error_from_lxapp_error(&error))
-}
-
-/// Follow the host's effective display language.
-///
-/// `getBaseInfo().displayLanguage` answers what it is now; this answers when it
-/// changes. Logic needs both because the strings it hands to native chrome —
-/// navigation bar titles, tab bar labels, modal and action-sheet text — are the
-/// app's own, and nothing re-renders them on its behalf.
-fn on_display_language_change(ctx: JSContext, callback: JSFunc) -> JSResult<JSFunc> {
-    // Invoke immediately with the current value, like every other `on*`
-    // subscription, so a caller never needs a separate read to get started.
-    let _ = callback.call::<_, ()>(None, (lxapp::display_language(),));
-    let token = register_app_handler(&ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, callback)?;
-    let off_ctx = ctx.clone();
-    let unsubscribed = Cell::new(false);
-    JSFunc::new(&ctx, move || {
-        if unsubscribed.get() {
-            return;
-        }
-        unregister_app_handler_token(&off_ctx, DISPLAY_LANGUAGE_CHANGE_EVENT, token);
-        unsubscribed.set(true);
-    })
-}
-
 rong::js_api! {
     fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         const envVersion: "HostAppEnvVersion" = env_version().as_str();
         fn getBaseInfo = get_app_base_info;
-        fn onDisplayLanguageChange(
-            ts_params = "callback: (language: string) => void",
-            ts_return = "() => void"
-        ) = on_display_language_change;
     }
 }
 
@@ -205,7 +168,5 @@ rong::js_api! {
         namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
         fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
-        fn setDisplayLanguage(ts_params = "language: DisplayLanguageSetting") =
-            set_js_display_language;
     }
 }

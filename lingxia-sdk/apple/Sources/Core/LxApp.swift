@@ -233,6 +233,7 @@ final class LxAppCore {
         let initResult = lingxiaInit(directoryConfig.dataPath, directoryConfig.cachesPath, locale)
 
         if initResult.ok {
+            LxAppAppearanceRegistry.observeHostLocale()
             instance = LxAppCore()
             let rawHomeAppId = initResult.home_app_id.toString()
             let homeAppId = rawHomeAppId.isEmpty ? nil : rawHomeAppId

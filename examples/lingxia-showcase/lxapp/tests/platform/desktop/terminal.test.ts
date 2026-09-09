@@ -158,7 +158,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   }
 });
 
-desktopTerminalTest('applies terminal mode to native chrome before terminal input', {
+desktopTerminalTest('applies a selected color scheme to native chrome before Apply', {
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],
@@ -197,13 +197,16 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
   const settingsApp = lx.automation().lxapp('app.lingxia.terminal-settings');
   const page = settingsApp.page;
   let initial: TerminalWorkspaceSnapshot | undefined;
+  const previousAppearance = await app.eval({
+    script: 'return lx.app.control.appearance.getPreference()',
+  }) as string;
 
   try {
     // The action bar is intentionally hidden until the draft becomes dirty;
     // its button is still a reliable page-readiness marker once attached.
     await page.waitFor({ css: '#save', state: 'attached', timeoutMs: 10_000 });
     await page.waitFor({
-      css: '[data-mode][aria-pressed="true"]',
+      css: 'button[data-theme][aria-pressed="true"]',
       state: 'visible',
       timeoutMs: 10_000,
     });
@@ -214,27 +217,63 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
         return {
           terminal: typeof lx.terminal?.settings?.get,
           fileSystem: typeof lx.fs,
-          systemAppearance: settings.effective.systemAppearance,
+          appearance: settings.effective.appearance,
         };
       `,
     }) as {
       terminal: string;
       fileSystem: string;
-      systemAppearance: 'light' | 'dark';
+      appearance: 'light' | 'dark';
     };
     expect(runtime.terminal).toBe('function');
     expect(runtime.fileSystem).toBe('undefined');
-    initial = await terminal.snapshot({ surface: refs.terminal });
-    const selectedMode = await page.eval({
-      script: `document.querySelector('[data-mode][aria-pressed="true"]')?.dataset.mode`,
-    }) as 'system' | 'light' | 'dark' | undefined;
-    if (!selectedMode) throw new Error('selected terminal mode is unavailable');
-    const effectiveMode = selectedMode === 'system'
-      ? runtime.systemAppearance
-      : selectedMode;
-    const targetMode = effectiveMode === 'light' ? 'dark' : 'light';
 
-    await page.click({ css: `[data-mode="${targetMode}"]` });
+    const themeCards = async (): Promise<Array<{ name: string; pressed: boolean }>> =>
+      page.eval({
+        script: `Array.from(document.querySelectorAll('button[data-theme]')).map((el) => ({
+          name: el.dataset.theme,
+          pressed: el.getAttribute('aria-pressed') === 'true',
+        }))`,
+      }) as Promise<Array<{ name: string; pressed: boolean }>>;
+
+    // The product owns light/dark; this screen only lists schemes for the
+    // active slot. Light ships one built-in, dark ships several, so pin dark
+    // when the current slot cannot offer a second card to click.
+    let cards = await themeCards();
+    if (cards.length < 2) {
+      await app.eval({
+        script: `await lx.app.control.appearance.setPreference('dark'); return true;`,
+      });
+      cards = await waitFor(async () => {
+        const next = await themeCards();
+        return next.length >= 2 ? next : undefined;
+      }, 'dark-slot color schemes');
+    }
+
+    const target = cards.find((card) => !card.pressed)?.name;
+    if (!target) throw new Error('terminal settings did not publish two color schemes');
+    const slot = await settingsApp.eval({
+      script: `return (await lx.terminal.settings.get()).effective.appearance`,
+    }) as 'light' | 'dark';
+
+    initial = await terminal.snapshot({ surface: refs.terminal });
+    // Click through the settings document: an OS pointer click can miss the
+    // aside WebView even when the card is in the page DOM.
+    const clicked = await page.eval({
+      script: `(() => {
+        const el = document.querySelector(${JSON.stringify(`button[data-theme="${target}"]`)});
+        if (!el) return { ok: false, reason: 'missing' };
+        el.scrollIntoView({ block: 'center', inline: 'nearest' });
+        el.click();
+        return {
+          ok: true,
+          saveDisabled: document.getElementById('save')?.disabled === true,
+        };
+      })()`,
+    }) as { ok: boolean; reason?: string; saveDisabled?: boolean };
+    if (!clicked.ok) {
+      throw new Error(`color scheme ${target} was not in the settings document`);
+    }
     await waitForSave(page, true);
 
     const previewed = await waitFor(async () => {
@@ -245,19 +284,29 @@ desktopTerminalTest('applies terminal mode to native chrome before terminal inpu
     }, 'native terminal preview chrome');
     expect(previewed.configGeneration).toBe(initial.configGeneration);
 
-    await page.click({ css: '#save' });
+    await page.eval({
+      script: `(() => {
+        const save = document.getElementById('save');
+        if (!save) throw new Error('Apply is missing');
+        save.click();
+        return true;
+      })()`,
+    });
     await waitForSave(page, false);
     const applied = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
-      const config = snapshot.config as { theme?: { mode?: string } };
+      const theme = snapshot.config.theme as { light?: string; dark?: string } | undefined;
       return snapshot.configGeneration > initial!.configGeneration
-        && config.theme?.mode === targetMode
+        && theme?.[slot] === target
         ? snapshot
         : undefined;
-    }, 'persisted terminal mode');
+    }, 'persisted terminal color scheme');
     expect(applied.chrome.surface).toBe(previewed.chrome.surface);
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
+    await app.eval({
+      script: `await lx.app.control.appearance.setPreference(${JSON.stringify(previousAppearance)}); return true;`,
+    }).catch(() => undefined);
     if (initial) {
       await settingsApp.eval({
         timeoutMs: 20_000,

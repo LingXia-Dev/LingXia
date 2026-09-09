@@ -9,11 +9,12 @@ macro_rules! host_api {
         impl $crate::host::HostHandler for $name {
             fn call<'a>(
                 &'a self,
-                $lxapp: std::sync::Arc<$crate::LxApp>,
+                invocation: $crate::host::HostInvocationContext,
                 input: Option<String>,
                 _cancel: $crate::host::HostCancel,
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
+                    let $lxapp = invocation.lxapp();
                     let $param: $input = $crate::host::parse_input(input.as_deref())?;
                     // Wrap in a closure so `return` inside `$body` returns from the closure,
                     // not from this async block (which must return JSON string).
@@ -32,11 +33,12 @@ macro_rules! host_api {
         impl $crate::host::HostHandler for $name {
             fn call<'a>(
                 &'a self,
-                $lxapp: std::sync::Arc<$crate::LxApp>,
+                invocation: $crate::host::HostInvocationContext,
                 _input: Option<String>,
                 _cancel: $crate::host::HostCancel,
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
+                    let $lxapp = invocation.lxapp();
                     let result: Result<$output, $crate::LxAppError> = (|| $body)();
                     $crate::host::serialize_result(result)
                 })
@@ -56,11 +58,12 @@ macro_rules! host_api_async {
         impl $crate::host::HostHandler for $name {
             fn call<'a>(
                 &'a self,
-                $lxapp: std::sync::Arc<$crate::LxApp>,
+                invocation: $crate::host::HostInvocationContext,
                 input: Option<String>,
                 mut $cancel: $crate::host::HostCancel,
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
+                    let $lxapp = invocation.lxapp();
                     let $param: $input = $crate::host::parse_input(input.as_deref())?;
                     // Wrap in an async block so `return` inside `$body` returns from the inner
                     // block, not from this async block (which must return JSON string).
@@ -78,11 +81,12 @@ macro_rules! host_api_async {
         impl $crate::host::HostHandler for $name {
             fn call<'a>(
                 &'a self,
-                $lxapp: std::sync::Arc<$crate::LxApp>,
+                invocation: $crate::host::HostInvocationContext,
                 _input: Option<String>,
                 mut $cancel: $crate::host::HostCancel,
             ) -> $crate::host::HostFuture<'a> {
                 Box::pin(async move {
+                    let $lxapp = invocation.lxapp();
                     let result: Result<$output, $crate::LxAppError> = (async move { $body }).await;
                     $crate::host::serialize_result(result)
                 })
@@ -92,9 +96,9 @@ macro_rules! host_api_async {
 }
 
 macro_rules! register_host_module {
-    ($namespace:literal, { $($method:literal => $handler:expr),+ $(,)? }) => {{
+    ($namespace:literal, $audience:expr, { $($method:literal => $handler:expr),+ $(,)? }) => {{
         $(
-            $crate::host::register_host_route($namespace, $method, $handler);
+            $crate::host::register_host_route($namespace, $method, $audience, $handler);
         )+
     }};
 }

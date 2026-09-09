@@ -22,9 +22,7 @@ pub mod windows;
 pub use font::{FontConfig, InstalledFont, ResolvedFont, resolve as resolve_font};
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-pub use theme::{
-    SurfaceChrome, ThemeConfig, ThemeDetails, ThemeMode, ThemeSource, ThemeStore, parse_scheme,
-};
+pub use theme::{SurfaceChrome, ThemeConfig, ThemeDetails, ThemeSource, ThemeStore, parse_scheme};
 
 /// Host-bundled control lxapp allowed to manage terminal settings.
 pub const SETTINGS_APP_ID: &str = "app.lingxia.terminal-settings";
@@ -145,6 +143,17 @@ impl TerminalConfig {
         };
 
         let mut merged = serde_json::to_value(&defaults).unwrap_or_else(|_| serde_json::json!({}));
+        // `theme.mode` is retired: the product's light/dark setting decides
+        // which of the two named schemes is in use. A file that still carries
+        // it must load, not fail the strict field check and lose everything
+        // else the user configured.
+        let mut user = user;
+        if let Some(theme) = user
+            .get_mut("theme")
+            .and_then(|value| value.as_object_mut())
+        {
+            theme.remove("mode");
+        }
         merge(&mut merged, &user);
         match serde_json::from_value::<Self>(merged) {
             Ok(config) => match config.validate() {

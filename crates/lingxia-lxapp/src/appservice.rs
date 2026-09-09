@@ -16,7 +16,10 @@ pub(crate) use js_worker_pool::LxAppWorkers;
 #[cfg(not(feature = "js-appservice"))]
 pub(crate) mod event_bus {
     pub const BROWSER_TAB_CLOSED_EVENT: &str = "__lingxiaBrowserTabClosed";
+    pub const APPEARANCE_CHANGE_EVENT: &str = "AppearanceChange";
+    pub const HOST_APPEARANCE_CHANGE_EVENT: &str = "HostAppearanceChange";
     pub const DISPLAY_LANGUAGE_CHANGE_EVENT: &str = "DisplayLanguageChange";
+    pub const DISPLAY_LANGUAGE_STATE_CHANGE_EVENT: &str = "DisplayLanguageStateChange";
 
     #[derive(Clone, Debug)]
     pub(crate) enum Scope {
@@ -175,7 +178,9 @@ mod no_js_runtime {
 
             match message {
                 // Keep bridge handshake/state plumbing alive for native-only pages.
-                crate::bridge::AppServiceCommand::Ready
+                crate::bridge::AppServiceCommand::BeginSessionWork { .. }
+                | crate::bridge::AppServiceCommand::CancelSessionWork { .. }
+                | crate::bridge::AppServiceCommand::Ready { .. }
                 | crate::bridge::AppServiceCommand::StateSnapshot { .. }
                 | crate::bridge::AppServiceCommand::StateAck { .. } => Ok(()),
                 // Real AppService traffic is unavailable in native-only mode.

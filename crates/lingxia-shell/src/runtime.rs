@@ -278,6 +278,39 @@ mod tests {
     }
 
     #[test]
+    fn settings_shaped_runtime_action_stays_on_the_generic_host_channel() {
+        let _guard = test_guard();
+        reset_for_test();
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(TestHost::default());
+        initialize(dir.path(), host.clone()).unwrap();
+        manager()
+            .unwrap()
+            .replace_sidebar_actions(vec![ShellSidebarAction {
+                id: "settings".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
+                label: "Settings".to_string(),
+                icon: "settings".to_string(),
+                disabled: false,
+            }])
+            .unwrap();
+
+        activate_sidebar_action(SidebarActionIntent {
+            id: "settings".to_string(),
+            generation: 1,
+        })
+        .unwrap();
+
+        assert_eq!(
+            host.activated.lock().unwrap().as_slice(),
+            &[SidebarActionIntent {
+                id: "settings".to_string(),
+                generation: 1,
+            }]
+        );
+    }
+
+    #[test]
     fn disabled_items_never_reach_the_host() {
         let _guard = test_guard();
         reset_for_test();

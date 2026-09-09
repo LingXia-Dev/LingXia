@@ -169,6 +169,9 @@ internal object NativeApi {
     @JvmStatic
     external fun onHostAppearanceChanged()
 
+    @JvmStatic
+    external fun onHostLocaleChanged(locale: String)
+
     /**
      * Get LxApp information using typed API
      * @param appId The ID of the app

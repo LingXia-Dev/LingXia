@@ -25,9 +25,16 @@ import { BRIDGE_ERROR } from "./types";
 import { toBridgeError, toNativeError } from "./invocation";
 import { installNativeComponentCoverageMonitor } from "./nativecomponents/coverage-monitor";
 import {
+  consumeV3Bootstrap,
+  type V3DocumentCodec,
+  type V3DocumentToNativeKind,
+} from "./protocol-v3";
+import {
   BRIDGE_CONFIG,
   getCommunicationMethod,
+  getDisplayLanguage,
   getPlatformOS,
+  subscribeDisplayLanguage,
   isAndroid,
   isHarmony,
   isIOS,
@@ -53,9 +60,36 @@ const OUTBOX_LIMIT = 256;
 const APPLE_DOWNSTREAM_URL = BRIDGE_CONFIG.appleDownstreamURL;
 const APPLE_RECONNECT_BASE_MS = 200;
 const APPLE_RECONNECT_MAX_MS = 2000;
+const BOUND_CONSOLE_MESSAGE_CHARS = 12 * 1024;
+// Native drops a larger frame before it reaches the bridge, so a request that
+// exceeds this would otherwise only surface as a timeout. Mirrors
+// MAX_WEB_MESSAGE_BYTES in the webview crate.
+const MAX_NATIVE_MESSAGE_BYTES = 64 * 1024;
+
+// Keep framework diagnostics and console forwarding on the original methods.
+// RequiredV3 installs a page-facing wrapper later; using it here would recurse
+// and could accidentally serialize the bound envelope into another log.
+const nativeConsole = {
+  log: console.log.bind(console),
+  warn: console.warn.bind(console),
+  error: console.error.bind(console),
+  info: (console.info || console.log).bind(console),
+  debug: (console.debug || console.log).bind(console),
+  group: (console.group || console.log).bind(console),
+  groupEnd: (console.groupEnd || (() => {})).bind(console),
+};
 
 const debugFlags = { data: false, proto: false, all: false };
 const earlyNativeMessages: string[] = [];
+
+type ProtocolMode =
+  | { readonly kind: "v2" }
+  | { readonly kind: "required-v3"; readonly codec: V3DocumentCodec }
+  | { readonly kind: "blocked" };
+
+// Fixed once, during init. The V3 secret remains captured only by the codec.
+let protocolMode: ProtocolMode = { kind: "v2" };
+let protocolInitialized = false;
 
 // Plain-object equivalent of `new Proxy(debugFlags, ...)`. Avoids referencing
 // the `Proxy` global so the module loads on older WebViews (Android 5.x stock
@@ -71,7 +105,7 @@ function createDebugObject(flags: typeof debugFlags): typeof debugFlags {
       },
       set(value: boolean): void {
         flags[key] = !!value;
-        console.log(`[LX] ${key}: ${value}`);
+        nativeConsole.log(`[LX] ${key}: ${value}`);
       },
     });
   });
@@ -153,13 +187,13 @@ function log(...args: unknown[]): void {
   ) {
     return;
   }
-  console.log(LOG_PREFIX, ...args);
+  nativeConsole.log(LOG_PREFIX, ...args);
 }
 function warn(...args: unknown[]): void {
-  console.warn(LOG_PREFIX, ...args);
+  nativeConsole.warn(LOG_PREFIX, ...args);
 }
 function error(...args: unknown[]): void {
-  console.error(LOG_PREFIX, ...args);
+  nativeConsole.error(LOG_PREFIX, ...args);
 }
 
 function safeStringify(obj: unknown, space?: number): string {
@@ -303,7 +337,8 @@ function rejectAllPendingForTransport(reason: string): void {
 
 function resetHandshakeState(reason: string, rejectPending: boolean): void {
   clearHandshakeTimer();
-  handshakeSessionId = null;
+  if (protocolMode.kind !== "required-v3") handshakeSessionId = null;
+  helloAcknowledged = false;
   handshakeDone = false;
   helloSent = false;
   handshakeRetryCount = 0;
@@ -566,21 +601,48 @@ function getMessagePort(): Promise<MessagePort> {
   return portInitState.promise;
 }
 
-function postToNative(message: unknown): void {
+function encodeForNative(message: unknown): unknown | null {
+  if (protocolMode.kind === "blocked") return null;
+  if (protocolMode.kind === "v2") return message;
+  if (!message || typeof message !== "object") return null;
+
+  const { v: _v, kind, ...payload } = message as Record<string, unknown>;
+  if (typeof kind !== "string") return null;
+  const encoded = protocolMode.codec.encode(
+    kind as V3DocumentToNativeKind,
+    payload,
+  );
+  return encoded.ok ? encoded.value : null;
+}
+
+function postToNative(message: unknown): LxBridgeError | null {
+  const encodedMessage = encodeForNative(message);
+  if (!encodedMessage) return null;
   const kind = (message as { kind?: string }).kind;
   if (kind === "req" || kind === "notify")
     log(`postToNative: ${kind} ${(message as { method?: string }).method}`);
   if (isDebugEnabled("proto"))
-    console.log("→", JSON.stringify(message, null, 2));
+    // Log the payload before RequiredV3 adds its document secret. The bound
+    // console wrapper posts what it prints, which would re-enter this function.
+    nativeConsole.log("→", JSON.stringify(message, null, 2));
   try {
-    if (communicationMethod === "webkit") {
-      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(message);
-      return;
+    const messageString = stringifyForNative(encodedMessage);
+    const bytes = utf8ByteLength(messageString);
+    if (bytes > MAX_NATIVE_MESSAGE_BYTES) {
+      return {
+        code: BRIDGE_ERROR.MESSAGE_TOO_LARGE,
+        message: `Bridge message of ${bytes} bytes exceeds the ${MAX_NATIVE_MESSAGE_BYTES}-byte native limit`,
+      };
     }
-    const messageString = stringifyForNative(message);
+    if (communicationMethod === "webkit") {
+      window.webkit?.messageHandlers[NATIVE_HANDLER_NAME]?.postMessage(
+        messageString,
+      );
+      return null;
+    }
     if (communicationMethod === MESSAGE_PORT_TYPE && messagePort) {
       messagePort.postMessage(messageString);
-      return;
+      return null;
     }
     if (
       (communicationMethod === JS_INTERFACE_TYPE ||
@@ -588,11 +650,55 @@ function postToNative(message: unknown): void {
       window.LingXiaProxy?.postMessage
     ) {
       window.LingXiaProxy.postMessage(messageString);
-      return;
+      return null;
     }
     warn("Transport not ready");
   } catch (e) {
-    error("Send error:", e);
+    if (protocolMode.kind === "required-v3") error("Send error");
+    else error("Send error:", e);
+  }
+  return null;
+}
+
+function formatBoundConsoleMessage(args: unknown[]): string {
+  const message = args
+    .map((arg) => {
+      if (typeof arg === "string") return arg;
+      try {
+        const encoded = stringifyForNative(arg);
+        return typeof encoded === "string" ? encoded : String(arg);
+      } catch {
+        return "[Unserializable]";
+      }
+    })
+    .join(" ");
+  return message.length <= BOUND_CONSOLE_MESSAGE_CHARS
+    ? message
+    : `${message.slice(0, BOUND_CONSOLE_MESSAGE_CHARS)}…`;
+}
+
+/**
+ * BrowserControl console is an authenticated auxiliary V3 frame. Platform
+ * console hooks are disabled for BrowserRelaxed WebViews, so this is the only
+ * path that can reach the native log delegate for a control document.
+ */
+function installBoundV3Console(): void {
+  if (protocolMode.kind !== "required-v3") return;
+  const methods = ["log", "error", "warn", "info", "debug"] as const;
+  for (const level of methods) {
+    const original = nativeConsole[level];
+    console[level] = (...args: unknown[]): void => {
+      original(...args);
+      // Native repeats Active session, WebMessageContext, generation and rate
+      // checks. Avoid sending pre-handshake output that can never be admitted.
+      if (!handshakeDone) return;
+      postToNative({
+        kind: "console",
+        __lingxia_console__: true,
+        level,
+        message: formatBoundConsoleMessage(args),
+      });
+    };
   }
 }
 
@@ -613,7 +719,13 @@ type HelloAck = {
   protocol: number;
   sessionId: string;
 };
-type Ready = { v: 2; kind: "ready"; sessionId: string; hostMethods?: Record<string, string> };
+type Ready = {
+  v: 2;
+  kind: "ready";
+  sessionId: string;
+  hostMethods?: Record<string, string>;
+  hostChannels?: string[];
+};
 type Req = {
   v: 2;
   kind: "req";
@@ -717,14 +829,11 @@ type Incoming =
 
 // Handshake state
 let handshakeSessionId: string | null = null;
+let helloAcknowledged = false;
 let handshakeDone = false;
 let helloSent = false;
 let handshakeRetryCount = 0;
 let handshakeTimer: ReturnType<typeof setTimeout> | null = null;
-
-// Host method schema — populated from handshake `Ready` message.
-// Maps "namespace.method" → "call" | "stream".
-const hostMethodKinds: Record<string, string> = {};
 
 // Request tracking
 let requestCounter = 0;
@@ -1181,6 +1290,22 @@ function removeOutboxByReqId(reqId: string): boolean {
   return false;
 }
 
+// UTF-8 byte length without allocating a copy of the string.
+function utf8ByteLength(value: string): number {
+  if (typeof TextEncoder === "function") return new TextEncoder().encode(value).length;
+  let bytes = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff) {
+      bytes += 4;
+      i += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
 function send(msg: unknown, reqId?: string): void {
   const kind = (msg as { kind?: string }).kind;
   const isHandshake =
@@ -1201,7 +1326,15 @@ function send(msg: unknown, reqId?: string): void {
     return;
   }
   if (reqId) armPendingOperationTimer(reqId);
-  postToNative(msg);
+  reportPostFailure(postToNative(msg), reqId);
+}
+
+// An oversized frame is dropped by native without a reply, so the caller would
+// otherwise learn about it only when its request timed out.
+function reportPostFailure(failure: LxBridgeError | null, reqId?: string): void {
+  if (!failure) return;
+  error(failure.message);
+  if (reqId) rejectPendingOperation(reqId, failure);
 }
 
 function flushOutbox(): void {
@@ -1210,7 +1343,7 @@ function flushOutbox(): void {
     const item = outbox.shift();
     if (!item) continue;
     if (item.reqId) armPendingOperationTimer(item.reqId);
-    postToNative(item.msg);
+    reportPostFailure(postToNative(item.msg), item.reqId);
   }
 }
 
@@ -1223,6 +1356,8 @@ function clearHandshakeTimer(): void {
 
 function startHandshake(): void {
   if (handshakeDone) return;
+  if (!protocolInitialized) return;
+  if (protocolMode.kind === "blocked") return;
   if (!isTransportReady()) return;
   clearHandshakeTimer();
 
@@ -1231,7 +1366,7 @@ function startHandshake(): void {
     kind: "hello",
     nonce: BRIDGE_CONFIG.nonce || "",
     role: "view",
-    protocolsSupported: [2],
+    protocolsSupported: protocolMode.kind === "required-v3" ? [3] : [2],
   };
 
   helloSent = true;
@@ -1271,6 +1406,25 @@ function startHandshake(): void {
 }
 
 function parseIncoming(msg: unknown): Incoming | null {
+  if (protocolMode.kind === "blocked") return null;
+  if (protocolMode.kind === "required-v3") {
+    const frame = typeof msg === "string" ? msg : stringifyForNative(msg);
+    const parsed = protocolMode.codec.parse(frame);
+    if (!parsed.ok) return null;
+    return {
+      v: 3,
+      kind: parsed.value.kind,
+      ...parsed.value.payload,
+    } as unknown as Incoming;
+  }
+
+  if (typeof msg === "string") {
+    try {
+      msg = JSON.parse(msg);
+    } catch {
+      return null;
+    }
+  }
   if (!msg || typeof msg !== "object") return null;
   const v = (msg as { v?: unknown }).v;
   const kind = (msg as { kind?: unknown }).kind;
@@ -1395,18 +1549,27 @@ function applySnapshotFromResult(result: unknown): boolean {
   pageData = obj.state as Record<string, unknown>;
   stateRev = obj.rev;
   if (isDebugEnabled("data")) {
-    console.group("[LX] snapshot(res)");
-    console.log("rev:", stateRev, "state:", deepCopy(pageData));
-    console.groupEnd();
+    nativeConsole.group("[LX] snapshot(res)");
+    nativeConsole.log("rev:", stateRev, "state:", deepCopy(pageData));
+    nativeConsole.groupEnd();
   }
   notifyStateSubscribers(true);
   return true;
 }
 
 function handleIncomingMessage(msg: unknown): void {
+  let candidate = msg;
+  if (protocolMode.kind === "v2" && typeof candidate === "string") {
+    try {
+      candidate = JSON.parse(candidate);
+    } catch {
+      candidate = null;
+    }
+  }
+
   // Handle native component events (from Android NativeBridge.sendEventToView)
-  if (msg && typeof msg === "object") {
-    const obj = msg as {
+  if (protocolMode.kind === "v2" && candidate && typeof candidate === "object") {
+    const obj = candidate as {
       type?: string;
       name?: string;
       payload?: NativeComponentMessage;
@@ -1430,31 +1593,53 @@ function handleIncomingMessage(msg: unknown): void {
     }
   }
 
-  const message = parseIncoming(msg);
+  const message = parseIncoming(candidate);
   if (!message) {
-    warn("Invalid V2 message:", msg);
+    warn("Invalid bridge message");
     return;
   }
 
   switch (message.kind) {
     case "helloAck":
-      handshakeSessionId = message.sessionId;
+      if (
+        message.protocol !== (protocolMode.kind === "required-v3" ? 3 : 2) ||
+        message.nonce !== (BRIDGE_CONFIG.nonce || "")
+      ) {
+        warn("Invalid helloAck");
+        return;
+      }
+      if (protocolMode.kind === "required-v3") {
+        helloAcknowledged = true;
+        return;
+      }
+      if (handshakeSessionId && message.sessionId !== handshakeSessionId) {
+        warn("sessionId mismatch");
+        return;
+      }
+      if (!handshakeSessionId) handshakeSessionId = message.sessionId;
+      helloAcknowledged = true;
       return;
 
     case "ready":
-      if (handshakeSessionId && message.sessionId !== handshakeSessionId) {
+      if (!helloAcknowledged) return;
+      if (
+        protocolMode.kind === "v2" &&
+        handshakeSessionId &&
+        message.sessionId !== handshakeSessionId
+      ) {
         warn("sessionId mismatch");
         return;
       }
       clearHandshakeTimer();
       handshakeDone = true;
       handshakeRetryCount = 0;
-      if (message.hostMethods) {
-        for (const [k, v] of Object.entries(message.hostMethods)) {
-          hostMethodKinds[k] = v;
-        }
+      if (isDebugEnabled("proto")) {
+        log(
+          "Handshake complete, host routes:",
+          Object.keys(message.hostMethods || {}).length +
+            (message.hostChannels || []).length,
+        );
       }
-      if (isDebugEnabled("proto")) log("Handshake complete, hostMethods:", Object.keys(hostMethodKinds).length);
       flushOutbox();
       return;
 
@@ -1512,9 +1697,9 @@ function handleIncomingMessage(msg: unknown): void {
       pageData = message.state || {};
       stateRev = message.rev;
       if (isDebugEnabled("data")) {
-        console.group("[LX] snapshot");
-        console.log("rev:", stateRev, "state:", deepCopy(pageData));
-        console.groupEnd();
+        nativeConsole.group("[LX] snapshot");
+        nativeConsole.log("rev:", stateRev, "state:", deepCopy(pageData));
+        nativeConsole.groupEnd();
       }
       notifyStateSubscribers(true);
       return;
@@ -1534,9 +1719,9 @@ function handleIncomingMessage(msg: unknown): void {
         return;
       }
       if (isDebugEnabled("data")) {
-        console.group("[LX] patch");
-        console.log("rev:", stateRev, "ops:", message.ops);
-        console.groupEnd();
+        nativeConsole.group("[LX] patch");
+        nativeConsole.log("rev:", stateRev, "ops:", message.ops);
+        nativeConsole.groupEnd();
       }
       notifyStateSubscribers(false);
       if (message.ack)
@@ -1969,15 +2154,7 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
     }
     messagePort = port;
     port.onmessage = (event: MessageEvent) => {
-      let data = event.data;
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
-        }
-      }
-      handleIncomingMessage(data);
+      handleIncomingMessage(event.data);
     };
     // Some WebView MessagePort implementations (notably Android WebMessagePort)
     // require an explicit start() to begin dispatching onmessage events.
@@ -1989,14 +2166,17 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
   },
 
   _receiveEvaluateMessage(messageString: string): void {
-    try {
-      if (messageString) handleIncomingMessage(JSON.parse(messageString));
-    } catch (e) {
-      error("Parse error:", e);
-    }
+    if (messageString) handleIncomingMessage(messageString);
   },
 
   debug: createDebugObject(debugFlags),
+
+  // The host language, for documents that cannot bundle `@lingxia/bridge` —
+  // browser internal pages and plain-HTML lxapps load this runtime as a script.
+  displayLanguage: {
+    get: getDisplayLanguage,
+    subscribe: subscribeDisplayLanguage,
+  },
 
   platform: {
     isHarmony,
@@ -2179,6 +2359,15 @@ export function initBridge(): void {
   window.__LX_BRIDGE_INIT_STATE = "initializing";
 
   try {
+    if (!protocolInitialized) {
+      const activation = consumeV3Bootstrap();
+      protocolMode =
+        activation.kind === "required"
+          ? { kind: "required-v3", codec: activation.codec }
+          : { kind: activation.kind === "absent" ? "v2" : "blocked" };
+      protocolInitialized = true;
+    }
+    installBoundV3Console();
     log(`Method: ${communicationMethod}`);
     activateReceiver(LingXiaBridge._receiveEvaluateMessage);
 

@@ -25,3 +25,8 @@ tokio = { workspace = true }
 http = { workspace = true }
 rong = { workspace = true, default-features = false }
 uuid = { version = "1.20", features = ["v4"] }
+ring = "0.17.14"
+
+[dev-dependencies]
+lingxia-webview = { workspace = true, features = ["test-support"] }
+lxapp = { workspace = true, default-features = false, features = ["test-utils"] }

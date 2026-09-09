@@ -125,6 +125,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `features` | Recommended | Native Rust compile-time feature switches |
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
 | `theme` | Optional | Application-wide semantic colors for host-owned native UI |
+| `settingsDestination` | Optional | Host-owned Settings 入口的静态目标 descriptor |
 | `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
 | `splash` | Optional | Generated launch placeholder and first-frame cover |
 | `assets` | Optional | Raw host files packaged through each platform's asset pipeline |
@@ -150,6 +151,43 @@ three ids must line up or the wrong app launches, and the build enforces it:
   native launch main remains independent from the embedded control lxapp.
 
 `homeAppVersion` is not configured here; the CLI derives it from the matching `resources.bundles` source. The full, current field set is in a freshly scaffolded `lingxia.yaml`.
+
+---
+
+## `settingsDestination` Section
+
+`settingsDestination` 在 `lingxia.yaml` 顶层声明产品的 Settings 入口应指向哪里。它是静态、纯数据的 descriptor；CLI 会原样写入生成的 `app.json`，不要直接修改生成文件。未配置时该字段完全省略，macOS/Windows shell 不显示 Settings 入口；显式调用 native resolver 会返回 `SettingsDestinationResolveError::NotConfigured`，不会回退到 home runtime 或 focus-only route。
+
+三种 `kind` 互斥，只能选择一种：
+
+- `controlAppPage`：打开 control lxapp 的指定页面；必须提供非空的 `appId` 与 `page`。
+- `browserControlPage`：打开 browser control UI 的指定 route；必须提供非空的 `route`。
+- `nativeAction`：调用 Host 注册的 native action；必须提供非空的 `actionId`。
+
+```yaml
+settingsDestination:
+  kind: controlAppPage
+  appId: com.example.control
+  page: settings
+  query:
+    tab: general
+    highlight: true
+```
+
+前两种目标可以携带 `query`。每个 key 必须非空，value 只能是 JSON scalar（string、number、boolean）或 `null`；array 与 object 会在配置校验时被拒绝。Schema 使用严格 tagged union，拼错字段或混用其他 `kind` 的字段同样会报错。
+
+Browser 与纯 native 产品的写法分别是：
+
+```yaml
+settingsDestination:
+  kind: browserControlPage
+  route: /settings/privacy
+
+# 或者
+settingsDestination:
+  kind: nativeAction
+  actionId: openPreferences
+```
 
 ---
 
@@ -308,8 +346,8 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
 - `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
-- `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the home lxapp, which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
-- `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, home lxapp only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
+- `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the [Control app](./control-app.md) — the session created from `app.homeAppId` — which must also declare `security.privileges: [process]`; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
+- `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, [Control app](./control-app.md) only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 - `appUse` — lets a command line or agent skill on the same machine drive this product's own windows (screenshot, window list, mouse, keyboard), and turns the product's executable into its own command line. macOS/Windows. The local socket this needs is derived, not declared — which IPC carries it is plumbing. Declaring it ships the ability, not the decision: the endpoint stays closed until the user turns it on, the same way `autostart` works.
 - `computerUse` — extends that to the machine, and implies `appUse` because it already contains it (an agent that can drive any window can drive this product's): screenshots of any window, synthetic input, the accessibility tree. Named for what the user grants, because they will be asked — macOS prompts for Accessibility and Screen Recording, and the entry in System Settings is this product. Commands run inside the app rather than in the calling process, so that grant stays attached to the product no matter which terminal invoked it.
 - `browserUse` — extends it to the in-app browser. Requires `browser`.
@@ -319,7 +357,13 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 ## `browser` Section
 
-`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected.
+`browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected. Protocol version is declared on the webui `lxapp.json` (`controlProtocolVersion` equal to the current runtime constant — wire `v` for BrowserControl documents), not in `lingxia.yaml`. Missing, older, and unknown future values fail the build. The SDK's built-in catalog is native code already on that protocol, so a host that does not replace the webui has nothing to pin.
+
+```yaml
+browser:
+  webui:
+    path: vendor/browser-shell-webui
+```
 
 Do not use `app.homeAppId` for browser internals. When present, `homeAppId` is
 the trusted product control app; `browser.webui` is the browser UI asset.
@@ -593,7 +637,7 @@ surfaces:
 The tray's dynamic content is updated from page/app logic:
 
 - `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setBadge(value)` — update the status item's icon, its text (macOS), and a badge (e.g. an unread count).
-- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge.
+- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge. This is the product's own icon, so it is Control app only; other lxapps get a permission error.
 
 Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `lingxia.yaml`; these APIs only change its runtime content.
 

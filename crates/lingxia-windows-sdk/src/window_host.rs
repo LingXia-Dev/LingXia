@@ -5264,6 +5264,28 @@ fn stored_primary_host_window() -> Option<HWND> {
     Some(hwnd)
 }
 
+/// Repaint every registered host's chrome after the scheme it draws in moves.
+///
+/// A `WM_SETTINGCHANGE` broadcast may reach a hidden parked parent first and
+/// `refresh_system_theme` reports the change exactly once per process, so the
+/// winner refreshes every host rather than only itself. The forced geometry
+/// resync is not optional: the webview corner wedges carry the scheme-dependent
+/// shell background, and the bounds-dedupe cache would swallow the change.
+#[cfg(feature = "shell-chrome")]
+pub(crate) fn repaint_all_host_chrome() {
+    if windows_chrome_renderer().is_none() {
+        return;
+    }
+    for host in registered_host_windows() {
+        if is_native_framed_window(host) {
+            apply_native_window_dressing(host);
+            continue;
+        }
+        invalidate_window(host);
+        let _ = request_host_layout_sync_inner(host, true);
+    }
+}
+
 fn registered_host_windows() -> Vec<HWND> {
     let Some(handles) = WEBTAG_WINDOWS.get().and_then(|handles| handles.lock().ok()) else {
         return Vec::new();
@@ -9127,6 +9149,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             | WindowsAndMessaging::WM_SYSCOLORCHANGE
             | WindowsAndMessaging::WM_THEMECHANGED
             | WM_DWMCOLORIZATIONCOLORCHANGED => {
+                #[cfg(feature = "components")]
+                {
+                    let locale = lingxia_platform::windows::current_locale();
+                    if let Err(error) = lxapp::refresh_display_language_system(&locale) {
+                        log::warn!("Ignoring invalid Windows host locale '{locale}': {error}");
+                    }
+                }
                 // refresh_system_theme() reports the change exactly once per
                 // process, and the broadcast may reach a hidden parked parent
                 // window first — so the winner refreshes EVERY registered
@@ -9135,15 +9164,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 // theme-dependent shell background and the bounds-dedupe
                 // cache would otherwise swallow the change).
                 #[cfg(feature = "shell-chrome")]
-                if crate::shell::refresh_system_theme() && windows_chrome_renderer().is_some() {
-                    for host in registered_host_windows() {
-                        if is_native_framed_window(host) {
-                            apply_native_window_dressing(host);
-                            continue;
-                        }
-                        invalidate_window(host);
-                        let _ = request_host_layout_sync_inner(host, true);
-                    }
+                if crate::shell::refresh_system_theme() {
+                    repaint_all_host_chrome();
                 }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }

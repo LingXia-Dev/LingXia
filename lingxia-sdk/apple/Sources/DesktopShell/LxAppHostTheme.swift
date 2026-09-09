@@ -108,6 +108,20 @@ enum LxAppHostTheme {
     }
 }
 
+extension NSView {
+    /// `NSColor.cgColor` resolves against the *current drawing* appearance,
+    /// which outside a draw pass is the system's — not this view's. A layer
+    /// colour assigned straight from a dynamic colour therefore ignores the
+    /// product's own light/dark setting and never re-resolves when it changes.
+    func themeCGColor(_ color: NSColor) -> CGColor {
+        var resolved = color.cgColor
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            resolved = color.cgColor
+        }
+        return resolved
+    }
+}
+
 @MainActor
 final class LxAppHostThemeLayerView: NSView {
     private let role: LxAppHostThemeRole

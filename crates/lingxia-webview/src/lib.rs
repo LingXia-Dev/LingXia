@@ -101,6 +101,9 @@ mod apple;
 #[cfg(all(target_os = "linux", target_env = "ohos"))]
 mod harmony;
 
+#[cfg(any(all(target_os = "linux", target_env = "ohos"), test))]
+mod harmony_document;
+
 #[cfg(target_os = "windows")]
 mod windows;
 
@@ -113,18 +116,21 @@ pub use events::{
     WebViewStateChange,
 };
 pub use traits::{
-    ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, DownloadRequest, FileChooserFile,
-    FileChooserRequest, FileChooserResponse, FillOptions, LoadDataRequest, LoadError,
-    LoadErrorKind, NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot,
-    NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome, ScrollOptions, SystemPipeReader,
-    TypeOptions, UserAgentOverride, WebResourceBody, WebResourceResponse, WebViewController,
+    ClearSiteDataOptions, ClearSiteDataResult, ClickOptions, ContextualSchemeRequest,
+    DocumentBinding, DocumentGeneration, DocumentOutboundGate, DownloadRequest, FileChooserFile,
+    FileChooserRequest, FileChooserResponse, FillOptions, IncomingWebMessage, LoadDataRequest,
+    LoadError, LoadErrorKind, NativeWebViewId, NavigationPolicy, NavigationRequest, NetworkBody,
+    NetworkCaptureSnapshot, NetworkEntry, NewWindowPolicy, PressOptions, SchemeOutcome,
+    SchemeRequestFrame, ScrollOptions, SystemPipeReader, TrustedDocumentAdmission,
+    TrustedLoadIntent, TypeOptions, UserAgentOverride, WebMessageContext, WebMessageFrame,
+    WebMessageSource, WebMessageTransport, WebResourceBody, WebResourceResponse, WebViewController,
     WebViewCookie, WebViewCookieSameSite, WebViewCookieSetRequest, WebViewDelegate,
     WebViewInputController,
 };
 pub use webview::{
     BrowserWebViewBuilder, ProxyActivation, ProxyApplyReport, ProxyApplyStatus, ProxyConfig,
-    StrictWebViewBuilder, WebTag, WebView, WebViewBuilder, WebViewCreateStage, WebViewDataMode,
-    WebViewEvent, WebViewEventSubscription, WebViewSession,
+    StrictWebViewBuilder, TrustedDataLoadReservation, WebTag, WebView, WebViewBuilder,
+    WebViewCreateStage, WebViewDataMode, WebViewEvent, WebViewEventSubscription, WebViewSession,
 };
 
 /// Global website-data operations for privacy surfaces: usage counts,
@@ -199,8 +205,13 @@ pub mod runtime {
         webview::list_webviews()
     }
 
-    pub fn destroy_webview(webtag: &WebTag) {
-        webview::destroy_webview(webtag);
+    /// Destroy whichever WebView is currently registered for this logical tag.
+    ///
+    /// Callers which own a concrete [`WebView`] should prefer
+    /// [`destroy_webview_if_matches`] so delayed teardown cannot destroy a
+    /// replacement which reused the tag.
+    pub fn destroy_current_webview(webtag: &WebTag) {
+        webview::destroy_current_webview(webtag);
     }
 
     pub fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
@@ -245,18 +256,34 @@ pub mod platform {
     pub mod harmony {
         pub use crate::harmony::{
             check_navigation_policy, complete_pending_screenshot_request, notify_webview_state,
-            on_file_chooser_requested, schemehandler::register_custom_schemes, tsfn,
+            on_document_commit, on_file_chooser_requested, on_page_begin, on_page_end,
+            on_render_exited, schemehandler::register_custom_schemes, tsfn,
             webview_controller_created, webview_controller_destroyed,
         };
 
         #[doc(hidden)]
-        pub fn on_load_error(webtag: &str, url: &str, error_code: i32, description: &str) {
-            crate::harmony::on_load_error(webtag, url, error_code, description);
+        pub fn on_load_error(
+            webtag: &str,
+            native_generation: &str,
+            page_epoch: u64,
+            url: &str,
+            error_code: i32,
+            description: &str,
+        ) {
+            crate::harmony::on_load_error(
+                webtag,
+                native_generation,
+                page_epoch,
+                url,
+                error_code,
+                description,
+            );
         }
 
         #[doc(hidden)]
         pub fn on_download_start(
             webtag_str: &str,
+            native_view_token: &str,
             url: &str,
             user_agent: &str,
             content_disposition: &str,
@@ -265,6 +292,7 @@ pub mod platform {
         ) -> bool {
             crate::harmony::on_download_start(
                 webtag_str,
+                native_view_token,
                 url,
                 user_agent,
                 content_disposition,

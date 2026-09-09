@@ -145,12 +145,12 @@ class SidebarBrowserItemView: NSView {
         // Only tint the icon when it's the globe SF symbol (contentTintColor nil = favicon, skip tinting)
         let isFavicon = iconView.contentTintColor == nil
         if isSelected {
-            selectionBackground.layer?.backgroundColor = LxAppHostTheme.selectionBackground.cgColor
+            selectionBackground.layer?.backgroundColor = themeCGColor(LxAppHostTheme.selectionBackground)
             titleLabel.textColor = LxAppHostTheme.accent
             if !isFavicon { iconView.contentTintColor = LxAppHostTheme.accent }
             closeButton.contentTintColor = LxAppHostTheme.accent
         } else if isHovered {
-            selectionBackground.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.06).cgColor
+            selectionBackground.layer?.backgroundColor = themeCGColor(NSColor.labelColor.withAlphaComponent(0.06))
             titleLabel.textColor = LxAppHostTheme.foreground
             if !isFavicon { iconView.contentTintColor = LxAppHostTheme.mutedForeground }
             closeButton.contentTintColor = LxAppHostTheme.foreground
@@ -228,7 +228,7 @@ class SidebarBrowserItemView: NSView {
             isHovered = true
             updateAppearance()
         } else if zone == "close" {
-            closeButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.12).cgColor
+            closeButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.12))
         }
     }
 

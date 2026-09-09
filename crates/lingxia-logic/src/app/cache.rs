@@ -1,12 +1,12 @@
-use lxapp::LxApp;
 use rong::{JSContext, JSFunc, JSObject, JSResult};
 
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_lxapp_error;
 
 /// `lx.app.cache` — the product-wide cache a settings screen reports and
 /// clears.
 ///
-/// Restricted to the home lxapp, and app-scoped rather than lxapp-scoped: the
+/// Restricted to the Control app, and app-scoped rather than lxapp-scoped: the
 /// figure a user is shown covers the whole product, so it spans every lxapp the
 /// host has run, not just the one asking. An ordinary lxapp clearing every
 /// other lxapp's cache is not a capability it should have.
@@ -20,8 +20,7 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 
 /// Estimated reclaimable managed bytes, excluding live session storage and WebView cache.
 async fn cache_size(ctx: JSContext) -> JSResult<f64> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_home_lxapp(&lxapp, "lx.app.cache.size")?;
+    authorization::require(&ctx, LogicRoute::AppCacheSize)?;
     let bytes = tokio::task::spawn_blocking(lxapp::product_cache_usage_bytes)
         .await
         .map_err(|err| {
@@ -34,8 +33,7 @@ async fn cache_size(ctx: JSContext) -> JSResult<f64> {
 
 /// Report completed, skipped and failed work without concealing partial cleanup.
 async fn cache_clear(ctx: JSContext) -> JSResult<JSObject> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    super::ensure_home_lxapp(&lxapp, "lx.app.cache.clear")?;
+    authorization::require(&ctx, LogicRoute::AppCacheClear)?;
     let report = lxapp::clear_product_cache()
         .await
         .map_err(|err| js_error_from_lxapp_error(&err))?;

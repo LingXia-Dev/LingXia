@@ -215,9 +215,9 @@ private final class SidebarHeaderActionButton: NSButton {
 
     private func updateAppearance() {
         layer?.backgroundColor = if pressed {
-            SidebarActionChromePalette.pressed.cgColor
+            themeCGColor(SidebarActionChromePalette.pressed)
         } else if hovered {
-            SidebarActionChromePalette.hover.cgColor
+            themeCGColor(SidebarActionChromePalette.hover)
         } else {
             NSColor.clear.cgColor
         }
@@ -299,7 +299,7 @@ private final class SidebarRailFloatWindow: NSPanel {
         backdrop.wantsLayer = true
         backdrop.layer?.cornerRadius = radius
         backdrop.layer?.borderWidth = 1
-        backdrop.layer?.borderColor = LxAppHostTheme.separator.cgColor
+        backdrop.layer?.borderColor = backdrop.themeCGColor(LxAppHostTheme.separator)
         backdrop.layer?.masksToBounds = true
 
         content.translatesAutoresizingMaskIntoConstraints = false
@@ -523,6 +523,11 @@ private final class SidebarRailPagePanel {
 
 /// Minimal display info for a panel icon in the sidebar footer.
 /// SidebarView only needs these — routing details (appId, path) are in Panel.swift.
+enum SidebarActionSource: Equatable {
+    case runtime
+    case staticSettings
+}
+
 struct PanelIconItem {
     var generation: UInt64 = 0
     let id: String
@@ -530,11 +535,14 @@ struct PanelIconItem {
     let label: String
     let active: Bool
     let disabled: Bool
+    var source: SidebarActionSource = .runtime
+    var systemImageName: String? = nil
 }
 
 private struct SidebarActionIdentity {
     let generation: UInt64
     let id: String
+    let source: SidebarActionSource
 }
 
 private struct ShellPinItem: Codable, Equatable {
@@ -595,6 +603,7 @@ extension PanelIconItem: Equatable {
     static func == (lhs: PanelIconItem, rhs: PanelIconItem) -> Bool {
         lhs.id == rhs.id && lhs.iconURL == rhs.iconURL && lhs.label == rhs.label
             && lhs.active == rhs.active && lhs.disabled == rhs.disabled
+            && lhs.source == rhs.source && lhs.systemImageName == rhs.systemImageName
     }
 }
 
@@ -757,7 +766,7 @@ class SidebarView: NSView {
     }
 
     /// Called when a panel icon button is clicked: (panelId)
-    var onPanelItemToggled: ((UInt64, String) -> Void)?
+    var onPanelItemToggled: ((UInt64, String, SidebarActionSource) -> Void)?
 
     /// Called when the update callout is clicked, with its current state
     /// (`.ready` → restart, `.available` → install).
@@ -889,7 +898,7 @@ class SidebarView: NSView {
 
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.divider)
         updateAddButtonAppearance()
         updateHideButtonAppearance()
         applySelection()
@@ -996,7 +1005,7 @@ class SidebarView: NSView {
         // A subtle divider grouping the sidebar action dock. `separatorColor` washes
         // out on the sidebar material, so use a low-alpha label tint that keeps a
         // little contrast in both light and dark without being prominent.
-        footerSeparator.layer?.backgroundColor = SidebarActionChromePalette.divider.cgColor
+        footerSeparator.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.divider)
         footerView.addSubview(footerSeparator)
 
         panelFlow.translatesAutoresizingMaskIntoConstraints = false
@@ -1436,6 +1445,9 @@ class SidebarView: NSView {
         for item in model.panelItems {
             let iconPath = item.iconURL?.path ?? ""
             let image = Self.sidebarActionIcon(item.iconURL, size: Layout.railIconSize)
+                ?? item.systemImageName.flatMap {
+                    NSImage(systemSymbolName: $0, accessibilityDescription: item.label)
+                }
             let key = "sidebar-action:\(item.id)"
             let button = makeRailButton(
                 key: key,
@@ -1520,7 +1532,7 @@ class SidebarView: NSView {
                 || activePinnedLxapp
                 || activePinnedBookmark
             btn.layer?.backgroundColor = selected
-                ? LxAppHostTheme.selectionBackground.cgColor
+                ? btn.themeCGColor(LxAppHostTheme.selectionBackground)
                 : NSColor.clear.cgColor
         }
     }
@@ -1561,7 +1573,7 @@ class SidebarView: NSView {
         guard let key = sender.identifier?.rawValue, key.hasPrefix("sidebar-action:") else { return }
         let id = String(key.dropFirst("sidebar-action:".count))
         guard let item = model.panelItems.first(where: { $0.id == id }) else { return }
-        onPanelItemToggled?(item.generation, id)
+        onPanelItemToggled?(item.generation, id, item.source)
     }
 
     private func browserContextMenu(for id: String) -> NSMenu? {
@@ -1899,7 +1911,8 @@ class SidebarView: NSView {
             button.isEnabled = !item.disabled
             headerActionIdentities[ObjectIdentifier(button)] = SidebarActionIdentity(
                 generation: item.generation,
-                id: item.id
+                id: item.id,
+                source: item.source
             )
             button.target = self
             button.action = #selector(headerActionClicked(_:))
@@ -1981,11 +1994,12 @@ class SidebarView: NSView {
             let row = SidebarActionRowView(
                 label: item.label,
                 iconURL: item.iconURL,
+                systemImageName: item.systemImageName,
                 active: item.active,
                 disabled: item.disabled
             )
             row.onClick = { [weak self] in
-                self?.onPanelItemToggled?(item.generation, item.id)
+                self?.onPanelItemToggled?(item.generation, item.id, item.source)
             }
             entries.append(row)
             panelButtons.append(row)
@@ -2320,7 +2334,7 @@ class SidebarView: NSView {
         }
         browserRootHeader.layer?.backgroundColor = {
             if case .browser = model.selection {
-                return LxAppHostTheme.selectionBackground.cgColor
+                return browserRootHeader.themeCGColor(LxAppHostTheme.selectionBackground)
             }
             return NSColor.clear.cgColor
         }()
@@ -2703,7 +2717,7 @@ class SidebarView: NSView {
         addButton.contentTintColor = LxAppHostTheme.mutedForeground
         addButton.wantsLayer = true
         addButton.layer?.cornerRadius = 6
-        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
+        addButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.06))
         addButton.target = self
         addButton.action = #selector(addButtonClicked)
     }
@@ -2718,7 +2732,7 @@ class SidebarView: NSView {
 
     @objc private func headerActionClicked(_ sender: NSButton) {
         guard let identity = headerActionIdentities[ObjectIdentifier(sender)] else { return }
-        onPanelItemToggled?(identity.generation, identity.id)
+        onPanelItemToggled?(identity.generation, identity.id, identity.source)
     }
 
     @objc private func railExpandClicked() {
@@ -2780,7 +2794,7 @@ class SidebarView: NSView {
 
     private func updateAddButtonAppearance() {
         let alpha: CGFloat = isAddButtonHovered ? 0.12 : 0.06
-        addButton.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(alpha).cgColor
+        addButton.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(alpha))
     }
 
     private func setHideButtonHovered(_ hovered: Bool) {
@@ -2790,7 +2804,7 @@ class SidebarView: NSView {
 
     private func updateHideButtonAppearance() {
         hideButton.layer?.backgroundColor = isHideButtonHovered
-            ? LxAppHostTheme.foreground.withAlphaComponent(0.09).cgColor
+            ? themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.09))
             : NSColor.clear.cgColor
         hideButton.contentTintColor = isHideButtonHovered
             ? LxAppHostTheme.foreground
@@ -2982,7 +2996,13 @@ final class SidebarActionRowView: NSView {
         8 + Self.iconSize + 8 + titleLabel.intrinsicContentSize.width + 8
     }
 
-    init(label: String, iconURL: URL?, active: Bool, disabled: Bool) {
+    init(
+        label: String,
+        iconURL: URL?,
+        systemImageName: String? = nil,
+        active: Bool,
+        disabled: Bool
+    ) {
         titleLabel = NSTextField(labelWithString: label)
         self.active = active && !disabled
         self.disabled = disabled
@@ -3004,11 +3024,14 @@ final class SidebarActionRowView: NSView {
         accentView.translatesAutoresizingMaskIntoConstraints = false
         accentView.wantsLayer = true
         accentView.layer?.cornerRadius = 1
-        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        accentView.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         accentView.isHidden = !self.active
         addSubview(accentView)
 
         let icon = iconURL.flatMap { NSImage(contentsOf: $0) }
+            ?? systemImageName.flatMap {
+                NSImage(systemSymbolName: $0, accessibilityDescription: label)
+            }
         iconView.imageScaling = .scaleProportionallyDown
         iconView.wantsLayer = true
         iconView.alphaValue = disabled ? 0.42 : (self.active ? 1 : 0.82)
@@ -3062,7 +3085,7 @@ final class SidebarActionRowView: NSView {
     }
 
     private func updateAppearance() {
-        accentView.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        accentView.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         titleLabel.textColor = disabled
             ? LxAppHostTheme.mutedForeground
             : (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
@@ -3070,11 +3093,11 @@ final class SidebarActionRowView: NSView {
             ? (active ? LxAppHostTheme.accent : SidebarActionChromePalette.mutedText)
             : nil
         if isPressed && !disabled {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.pressed.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.pressed)
         } else if active {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.activeSurface.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.activeSurface)
         } else if isHovered && !disabled {
-            washView.layer?.backgroundColor = SidebarActionChromePalette.hover.cgColor
+            washView.layer?.backgroundColor = themeCGColor(SidebarActionChromePalette.hover)
         } else {
             washView.layer?.backgroundColor = NSColor.clear.cgColor
         }

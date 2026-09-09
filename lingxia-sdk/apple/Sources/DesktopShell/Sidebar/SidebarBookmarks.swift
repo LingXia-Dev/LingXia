@@ -147,7 +147,7 @@ final class SidebarPinTileView: NSView {
         activeDot.translatesAutoresizingMaskIntoConstraints = false
         activeDot.wantsLayer = true
         activeDot.layer?.cornerRadius = 2
-        activeDot.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        activeDot.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         activeDot.isHidden = true
         addSubview(activeDot)
 
@@ -202,10 +202,10 @@ final class SidebarPinTileView: NSView {
 
     private func refreshChrome() {
         let base: CGFloat = hovered ? 0.14 : 0.07
-        background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(base).cgColor
+        background.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(base))
         background.layer?.borderWidth = isFocused ? 1.5 : 0
-        background.layer?.borderColor = LxAppHostTheme.accent.cgColor
-        activeDot.layer?.backgroundColor = LxAppHostTheme.accent.cgColor
+        background.layer?.borderColor = themeCGColor(LxAppHostTheme.accent)
+        activeDot.layer?.backgroundColor = themeCGColor(LxAppHostTheme.accent)
         activeDot.isHidden = openTabId == nil || isFocused
     }
 
@@ -366,7 +366,7 @@ final class LxappPinTileView: NSView {
         background.translatesAutoresizingMaskIntoConstraints = false
         background.wantsLayer = true
         background.layer?.cornerRadius = SidebarPinTileView.Layout.cornerRadius
-        background.layer?.backgroundColor = LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
+        background.layer?.backgroundColor = themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.06))
         addSubview(background)
 
         iconView.imageScaling = .scaleProportionallyDown
@@ -409,7 +409,7 @@ final class LxappPinTileView: NSView {
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
         background.layer?.backgroundColor =
-            LxAppHostTheme.foreground.withAlphaComponent(0.06).cgColor
+            themeCGColor(LxAppHostTheme.foreground.withAlphaComponent(0.06))
     }
 
     override func mouseDown(with event: NSEvent) {

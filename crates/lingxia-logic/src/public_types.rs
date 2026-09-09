@@ -136,8 +136,8 @@ rong::js_api! {
         /// toggle, default off).
         ///
         /// Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
-        /// are available only to the home lxapp; other lxapps receive a permission
-        /// error.
+        /// are available only to the native-assigned Control app; other lxapps receive
+        /// a permission error.
         ///
         type AutostartApi = r###"{
     /**
@@ -160,14 +160,14 @@ rong::js_api! {
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
         /// has run, which is why — like `checkUpdate` and `screenshot` — it is
-        /// available only to the home lxapp and other lxapps get a permission
+        /// available only to the Control app and other lxapps get a permission
         /// error.
         ///
         type AppCacheApi = r###"{
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
     size(): Promise<number>;
     /**
-     * Clear reclaimable host caches. Home lxapp only. Live session usercache and
+     * Clear reclaimable host caches. Control app only. Live session usercache and
      * temp are preserved, including the caller's. Does not restart any lxapp.
      * Userdata, KV, Downloads, cookies, valid installs and host components survive.
      * Per-category failures are reported; setup/worker failures reject the call.
@@ -181,9 +181,6 @@ rong::js_api! {
         failures: string[];
     }>;
 }"###;
-
-        type TerminalThemeMode = r###"'system' | 'light' | 'dark'"###;
-
         type TerminalFontSettings = r###"{
     /** Ordered candidates; the first installed monospaced family wins. */
     family: string[];
@@ -192,8 +189,9 @@ rong::js_api! {
     ligatures: boolean;
 }"###;
 
+        /// A light scheme and a dark one. Which is in use follows the
+        /// product's light/dark setting; the terminal has no switch of its own.
         type TerminalThemeSettings = r###"{
-    mode: TerminalThemeMode;
     light: string;
     dark: string;
 }"###;
@@ -223,8 +221,7 @@ rong::js_api! {
     /** Resolved configuration after all valid layers. */
     value: TerminalSettingsValue;
     effective: {
-        /** Host appearance before applying terminal.theme.mode. */
-        systemAppearance: 'light' | 'dark';
+        /** The scheme the product is in, and therefore the terminal too. */
         appearance: 'light' | 'dark';
         colorScheme: string | null;
         font: {
@@ -344,9 +341,100 @@ rong::js_api! {
 
         type BinaryFileData = r###"ArrayBuffer | ArrayBufferView"###;
 
+        /// What the product's light/dark scheme is set to. `'auto'` follows
+        /// the system.
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
-        /// Host display-language setting. `"auto"` follows the system locale.
-        type DisplayLanguageSetting = r###"'auto' | 'en-US' | 'zh-CN'"###;
+
+        /// `lx.app.appearance` — the scheme this lxapp renders in.
+        type AppearanceApi = r###"{
+    /**
+     * The scheme this lxapp is rendering in. An lxapp that pinned one in its
+     * `lxapp.json` reports that; every other lxapp reports the product's.
+     */
+    get(): ResolvedAppearance;
+    /**
+     * Follow it, starting with the current value. Returns an unsubscribe.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
+    watch(callback: (resolved: ResolvedAppearance) => void): () => void;
+}"###;
+
+        /// `lx.app.control.appearance` — the product's own light/dark setting.
+        type ControlAppearanceApi = r###"{
+    /** What the user chose for the whole product. */
+    getPreference(): AppearancePreference;
+    /**
+     * Pin the product to `'light'` or `'dark'`, or follow the system with
+     * `'auto'`. An lxapp that pinned a scheme in its manifest keeps it.
+     */
+    setPreference(preference: AppearancePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system flip under `'auto'`
+     * moves `lx.app.appearance.watch` and leaves this quiet. Starts with the
+     * current value; that first callback runs synchronously, before
+     * `watchPreference` returns.
+     */
+    watchPreference(callback: (preference: AppearancePreference) => void): () => void;
+}"###;
+        /// What the product's language is set to: `'auto'` follows the system,
+        /// or any canonical BCP-47 tag. `string & {}` keeps `'auto'` in
+        /// autocomplete while still accepting a tag.
+        type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
+
+        /// `lx.app.displayLanguage` — the language this lxapp renders in.
+        type DisplayLanguageApi = r###"{
+    /**
+     * The language in effect right now, as a canonical BCP-47 tag. Map it to
+     * the catalogs this lxapp actually ships and fall back where it has none;
+     * that narrowing is yours, and is not a language setting of its own.
+     */
+    get(): string;
+    /**
+     * Follow the language, starting with the current value. Returns an
+     * unsubscribe.
+     *
+     * Logic needs this because the strings it hands to native chrome —
+     * navigation bar titles, tab bar labels, modal and action-sheet text — are
+     * the app's own, and nothing re-renders them on its behalf.
+     *
+     * The first callback runs synchronously, before `watch` returns, so the
+     * unsubscribe is not yet bound inside it.
+     */
+    watch(callback: (language: string) => void): () => void;
+}"###;
+
+        /// `lx.app.control.displayLanguage` — the preference behind that
+        /// language, for the one surface that edits it.
+        type ControlDisplayLanguageApi = r###"{
+    /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
+    getPreference(): DisplayLanguagePreference;
+    /** Persist the product's language. Rejects a tag that is not valid BCP-47. */
+    setPreference(preference: DisplayLanguagePreference): Promise<void>;
+    /**
+     * Follow the choice, not what it resolves to: a system locale change under
+     * `'auto'` moves the language without moving the preference. Starts with
+     * the current value and returns an unsubscribe; that first callback runs
+     * synchronously, before `watchPreference` returns.
+     */
+    watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
+}"###;
+
+        /// `lx.app.control` — product-wide settings, and their single writer.
+        ///
+        /// Present only in the Control app. Bind it once rather than repeating
+        /// `lx.app.control!`:
+        ///
+        /// ```js
+        /// const control = lx.app.control;
+        /// if (!control) return; // not the Control app
+        /// await control.appearance.setPreference('dark');
+        /// ```
+        type ControlApi = r###"{
+    readonly displayLanguage: ControlDisplayLanguageApi;
+    readonly appearance: ControlAppearanceApi;
+}"###;
         type ResolvedAppearance = r###"'light' | 'dark'"###;
         type VisibilityPreference = r###"'auto' | 'hidden'"###;
         type TabBarVisibilityPreference = r###"'auto' | 'visible' | 'hidden'"###;
@@ -866,8 +954,8 @@ rong::js_api! {
 }"###;
 
         /// Built-in browser product page. Opening one requires
-        /// `capabilities.browser` and is restricted to the home lxapp.
-        type BuiltinShellPage = r###"'settings' | 'downloads'"###;
+        /// `capabilities.browser` and is restricted to the native-assigned Control app.
+        type BuiltinShellPage = r###"'downloads'"###;
 
         type OverlaySurfaceSize = r###"{
     /** Width hint. */
@@ -1269,7 +1357,7 @@ true
         ///
         type SurfaceErrorCode = r###"/** The placement cannot be realized by this host build. */
 'unsupported_placement'
-/** A privileged operation was called by an lxapp other than the home lxapp. */
+/** A privileged operation was called by an lxapp other than the native-assigned Control app. */
  | 'denied'
 /** No such declared surface, lxapp, or builtin page. */
  | 'not_declared'
@@ -1380,7 +1468,7 @@ true
     readonly realized: 'main' | 'aside';
 }"###;
 
-        /// A host builtin page such as settings or downloads. The shell owns
+        /// A host builtin page such as downloads. The shell owns
         /// its lifetime and its visibility, so this handle reports identity:
         /// there is no `show` / `hide`, and the inherited `close()` rejects
         /// with `unsupported_placement`.
@@ -1463,7 +1551,7 @@ true
     key?: string;
 }"###;
 
-        /// The declared-surface options only the home lxapp may use.
+        /// The declared-surface options only the native-assigned Control app may use.
         ///
         /// Creating an extra instance and overriding a placement both mutate
         /// shared shell composition, so they live here and not on
@@ -1508,7 +1596,7 @@ true
     key?: string;
 }"###;
 
-        /// Role and edge overrides the home lxapp may apply to a live declared
+        /// Role and edge overrides the native-assigned Control app may apply to a live declared
         /// surface. A stable root rejects non-main roles.
         ///
         type ShellSurfacePatch = r###"{
@@ -1626,7 +1714,7 @@ true
 }"###;
 
         /// Callback-based updates for this lxapp's bundle. Available to every
-        /// lxapp. To update the native host app, the home lxapp uses the
+        /// lxapp. To update the native host app, the Control app uses the
         /// task-based `lx.app.checkUpdate()` API instead.
         ///
         type UpdateManager = r###"{
@@ -1866,7 +1954,6 @@ true
 
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
-        type AppearanceApi = "globalThis.AppearanceApi";
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";
@@ -1874,8 +1961,8 @@ true
         type TabBarApi = "globalThis.TabBarApi";
         type TrayApi = "globalThis.TrayApi";
 
-        /// App-owned host-shell chrome. Mutations are available only to the home
-        /// lxapp's Logic context; other lxapps receive a permission error.
+        /// App-owned host-shell chrome. Mutations are available only to the
+        /// Control app's Logic context; other lxapps receive a permission error.
         type ShellApi = r###"{
     /**
      * Declares runtime actions in the desktop shell's sidebar header or footer.
@@ -1885,7 +1972,7 @@ true
     sidebarActions: ShellSidebarActionsApi;
     /** Compose another lxapp into a shell slot. */
     openApp(appId: string, options: ShellOpenAppOptions): Promise<AppSurface>;
-    /** Open a host builtin page such as settings or downloads. */
+    /** Open a host builtin page such as downloads. */
     openBuiltin(page: BuiltinShellPage): Promise<BuiltinSurface>;
     /**
      * Open a declared surface with shell privileges — the same declaration

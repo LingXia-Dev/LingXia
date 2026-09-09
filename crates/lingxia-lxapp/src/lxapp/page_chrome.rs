@@ -4,7 +4,6 @@ use std::str::FromStr;
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
 use crate::{LxApp, LxAppError, PageInstance};
-use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
 
@@ -506,65 +505,38 @@ impl LxApp {
         Ok(())
     }
 
-    pub async fn set_appearance_preference(
-        &self,
-        preference: AppearancePreference,
-    ) -> Result<(), LxAppError> {
+    /// Re-resolve this lxapp's scheme against the product's current one and
+    /// apply it. An lxapp that pinned a scheme in its manifest keeps it; the
+    /// rest follow. There is no lxapp-scoped preference to write.
+    pub(crate) async fn refresh_appearance(&self) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let original = self.appearance_state();
-        let resolved = match preference {
-            AppearancePreference::Light => ResolvedAppearance::Light,
-            AppearancePreference::Dark => ResolvedAppearance::Dark,
-            AppearancePreference::Auto => {
-                if self.runtime.host_appearance_dark() {
-                    ResolvedAppearance::Dark
-                } else {
-                    ResolvedAppearance::Light
-                }
-            }
-        };
-        let page = self.current_page_for_chrome()?;
-        if original.preference == preference && original.resolved == resolved {
-            lingxia_service::settings::set_lxapp_appearance(
-                &self.runtime.app_data_dir(),
-                &self.appid,
-                preference.as_str(),
-            )
-            .map_err(|error| LxAppError::Runtime(error.to_string()))?;
-            self.publish_host_color_mode(preference, resolved);
+        let resolved = resolve_appearance(original.preference);
+        if original.resolved == resolved {
             return Ok(());
         }
+        let page = self.current_page_for_chrome()?;
         let revision = self.next_page_chrome_revision();
         {
             let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
             state.appearance = LxAppAppearanceState {
-                preference,
+                preference: original.preference,
                 resolved,
                 revision,
             };
         }
-        let apply = self
+        let applied = match self
             .runtime
             .apply_lxapp_appearance(&self.appid, resolved.is_dark())
-            .map_err(LxAppError::from);
-        let apply = match apply {
+            .map_err(LxAppError::from)
+        {
             Ok(()) => {
                 self.apply_page_chrome_commit(&page, revision, resolved)
                     .await
             }
             Err(error) => Err(error),
         };
-        let stored = if apply.is_ok() {
-            lingxia_service::settings::set_lxapp_appearance(
-                &self.runtime.app_data_dir(),
-                &self.appid,
-                preference.as_str(),
-            )
-            .map_err(|error| LxAppError::Runtime(error.to_string()))
-        } else {
-            Ok(())
-        };
-        if let Err(error) = apply.and(stored) {
+        if let Err(error) = applied {
             {
                 let mut state = self.state.lock().unwrap_or_else(|error| error.into_inner());
                 restore_appearance_state(&mut state.appearance, original);
@@ -577,37 +549,15 @@ impl LxApp {
             return Err(error);
         }
         self.publish_appearance_to_background_pages(&page, revision, resolved);
-        self.publish_host_color_mode(preference, resolved);
+        crate::appservice::event_bus::publish_app_event(
+            &self.appid,
+            crate::APPEARANCE_CHANGE_EVENT,
+            Some(format!(
+                "{{\"revision\":{revision},\"resolved\":\"{}\"}}",
+                resolved.as_str()
+            )),
+        );
         Ok(())
-    }
-
-    /// Push the app's appearance into the platform's own night mode.
-    ///
-    /// Not for the launch face — that is one picture in every appearance and
-    /// resolves the same either way. It is for everything the platform draws
-    /// from its own night mode: the activity theme, and the canvas the host
-    /// paints behind a page.
-    ///
-    /// Only the home lxapp speaks for the app: it is the one whose appearance
-    /// the user sees at launch.
-    fn publish_host_color_mode(
-        &self,
-        preference: AppearancePreference,
-        resolved: ResolvedAppearance,
-    ) {
-        if lingxia_app_context::home_app_id() != Some(self.appid.as_str()) {
-            return;
-        }
-        // Auto clears the override rather than pinning today's answer: the
-        // next launch must follow the system as it is then, not as it was here.
-        let dark = match preference {
-            AppearancePreference::Auto => None,
-            _ => Some(resolved.is_dark()),
-        };
-        if let Some(platform) = crate::lxapp::runtime_registry::get_platform() {
-            use lingxia_platform::traits::ui::UIUpdate;
-            platform.set_host_color_mode(dark);
-        }
     }
 
     /// Stamp the live scheme onto a page about to be (re)shown: a cached
@@ -664,6 +614,22 @@ fn restore_appearance_state(current: &mut LxAppAppearanceState, original: LxAppA
     *current = original;
 }
 
+/// An lxapp that pinned a scheme in its manifest renders in it; every other
+/// lxapp renders in the product's.
+pub(crate) fn resolve_appearance(preference: AppearancePreference) -> ResolvedAppearance {
+    match preference {
+        AppearancePreference::Light => ResolvedAppearance::Light,
+        AppearancePreference::Dark => ResolvedAppearance::Dark,
+        AppearancePreference::Auto => {
+            if super::host_appearance::host_appearance_dark() {
+                ResolvedAppearance::Dark
+            } else {
+                ResolvedAppearance::Light
+            }
+        }
+    }
+}
+
 const fn immersive_tabbar_inset() -> f64 {
     #[cfg(target_os = "android")]
     {
@@ -694,6 +660,18 @@ const fn capsule_trailing_inset() -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_manifest_pin_ignores_the_product_scheme() {
+        assert_eq!(
+            resolve_appearance(AppearancePreference::Dark),
+            ResolvedAppearance::Dark
+        );
+        assert_eq!(
+            resolve_appearance(AppearancePreference::Light),
+            ResolvedAppearance::Light
+        );
+    }
 
     #[test]
     fn color_parses_css_order_alpha() {

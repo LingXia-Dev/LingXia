@@ -13,7 +13,7 @@ export const BRIDGE_CONFIG: BridgeConfig =
 
 interface DisplayLanguageStore {
   value: string;
-  listeners: Set<() => void>;
+  listeners: Set<(language: string) => void>;
 }
 
 /**
@@ -60,7 +60,7 @@ function applyDisplayLanguage(next: unknown): void {
   if (!normalized || normalized === current.value) return;
   current.value = normalized;
   stampDocumentLanguage();
-  for (const listener of [...current.listeners]) listener();
+  for (const listener of [...current.listeners]) listener(normalized);
 }
 
 if (typeof window !== 'undefined' && !window.__lingxiaApplyDisplayLanguage) {
@@ -75,8 +75,17 @@ export function getDisplayLanguage(): string {
   return store().value;
 }
 
-/** Subscribe to host display-language changes. Returns an unsubscribe. */
-export function subscribeDisplayLanguage(listener: () => void): () => void {
+/**
+ * Subscribe to host display-language changes. Returns an unsubscribe.
+ *
+ * Change-only, so that this composes with `useSyncExternalStore`: the listener
+ * runs when the language changes, never on subscribe. Read the current value
+ * with `getDisplayLanguage()`. Logic's `lx.app.displayLanguage.watch` differs
+ * deliberately — it has no render loop to feed, so it delivers immediately.
+ */
+export function subscribeDisplayLanguage(
+  listener: (language: string) => void,
+): () => void {
   const listeners = store().listeners;
   listeners.add(listener);
   return () => {

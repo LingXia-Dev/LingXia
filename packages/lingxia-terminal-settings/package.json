@@ -16,6 +16,7 @@
     "NOTICES.md"
   ],
   "scripts": {
+    "test": "node --test tests/i18n.test.mjs",
     "check:themes": "node scripts/check-themes.mjs",
     "build": "npm run check:themes && cargo run -p lingxia-cli -- build --release",
     "prepublishOnly": "npm run build"

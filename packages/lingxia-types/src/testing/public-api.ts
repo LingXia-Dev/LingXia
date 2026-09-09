@@ -26,6 +26,10 @@ import type {
   AppCacheApi,
   AutostartApi,
   CompressVideoTask,
+  ControlApi,
+  ControlAppearanceApi,
+  ControlDisplayLanguageApi,
+  DisplayLanguageApi,
   DownloadTask,
   FileSystemApi,
   HostAppApi,
@@ -54,7 +58,6 @@ import type {
 
 export const LX_API_NAMES = [
   'app',
-  'appearance',
   'automation',
   'chooseDirectory',
   'chooseFile',
@@ -122,21 +125,38 @@ export const LX_API_NAMES = [
 ] as const;
 
 const HOST_APP_API = [
+  'appearance',
   'autostart',
   'cache',
   'checkUpdate',
+  'control',
+  'displayLanguage',
   'envVersion',
   'exit',
   'getBaseInfo',
-  'onDisplayLanguageChange',
   'screenshot',
   'setBadge',
-  'setDisplayLanguage',
 ] as const;
-const HOST_APP_RUNTIME_API = HOST_APP_API.filter((name) => name !== 'autostart');
+// `autostart` and `control` are injected only where they apply, so a runtime
+// walk of `lx.app` must not require them.
+const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
+  (name) => name !== 'autostart' && name !== 'control',
+);
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
-const APPEARANCE_API = ['get', 'set'] as const;
+const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
+const CONTROL_API = ['appearance', 'displayLanguage'] as const;
+const CONTROL_DISPLAY_LANGUAGE_API = [
+  'getPreference',
+  'setPreference',
+  'watchPreference',
+] as const;
+const APPEARANCE_API = ['get', 'watch'] as const;
+const CONTROL_APPEARANCE_API = [
+  'getPreference',
+  'setPreference',
+  'watchPreference',
+] as const;
 const NAVIGATION_BAR_API = ['update'] as const;
 const TAB_BAR_API = ['update'] as const;
 const TERMINAL_API = ['colorSchemes', 'fonts', 'settings', 'windows'] as const;
@@ -314,7 +334,6 @@ export const LX_RUNTIME_SURFACES = [
     optionalMembers: ['terminal'],
     properties: [
       'app',
-      'appearance',
       'env',
       'fs',
       'navigationBar',
@@ -330,7 +349,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app',
     members: HOST_APP_RUNTIME_API,
-    properties: ['cache', 'envVersion'],
+    properties: ['appearance', 'cache', 'displayLanguage', 'envVersion'],
   },
   {
     name: 'lx.app.autostart',
@@ -346,10 +365,38 @@ export const LX_RUNTIME_SURFACES = [
     members: APP_CACHE_API,
   },
   {
-    name: 'lx.appearance',
+    name: 'lx.app.displayLanguage',
     layer: 'logic',
-    expression: 'lx.appearance',
+    expression: 'lx.app.displayLanguage',
+    members: DISPLAY_LANGUAGE_API,
+  },
+  {
+    name: 'lx.app.control',
+    layer: 'logic',
+    expression: 'lx.app.control',
+    members: CONTROL_API,
+    properties: CONTROL_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.control.displayLanguage',
+    layer: 'logic',
+    expression: 'lx.app.control?.displayLanguage',
+    members: CONTROL_DISPLAY_LANGUAGE_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.appearance',
+    layer: 'logic',
+    expression: 'lx.app.appearance',
     members: APPEARANCE_API,
+  },
+  {
+    name: 'lx.app.control.appearance',
+    layer: 'logic',
+    expression: 'lx.app.control?.appearance',
+    members: CONTROL_APPEARANCE_API,
+    optional: true,
   },
   {
     name: 'lx.navigationBar',
@@ -369,6 +416,7 @@ export const LX_RUNTIME_SURFACES = [
     expression: 'lx.terminal',
     members: TERMINAL_API,
     properties: TERMINAL_API,
+    optionalMembers: ['windows'],
     optional: true,
   },
   {
@@ -683,6 +731,10 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
+  AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
+  AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
+  AssertTrue<Exact<ControlDisplayLanguageApi, typeof CONTROL_DISPLAY_LANGUAGE_API>>,
+  AssertTrue<Exact<ControlAppearanceApi, typeof CONTROL_APPEARANCE_API>>,
   AssertTrue<Exact<AppearanceApi, typeof APPEARANCE_API>>,
   AssertTrue<Exact<NavigationBarApi, typeof NAVIGATION_BAR_API>>,
   AssertTrue<Exact<TabBarApi, typeof TAB_BAR_API>>,

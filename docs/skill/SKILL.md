@@ -150,6 +150,7 @@ Every published package and what to import from each. Don't guess imports from t
 | **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
+| **Which lxapp is trusted: Control app vs control surface vs guest, and what each may call** | [`./app/control-app.md`](./app/control-app.md) |
 | Let a command line or host-owned agent integration drive a shipped product — `appUse` / `computerUse` / `browserUse`, executable discovery | [`./app/agent-control.md`](./app/agent-control.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
 | Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |

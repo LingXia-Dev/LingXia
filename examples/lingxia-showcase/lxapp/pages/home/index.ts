@@ -3,6 +3,7 @@ const globalData = app.globalData;
 
 Page({
   ipReadyCallback: null as ((ip: string) => void) | null,
+  stopWatchingAppearance: null as (() => void) | null,
 
   data: {
     greeting: globalData.greeting,
@@ -15,13 +16,17 @@ Page({
     appearance: { preference: "auto", resolved: "light" },
   },
 
-  // The lxapp's own light/dark branch, independent of the host shell. The
-  // preference persists per lxapp, so it is re-read on every show rather than
-  // tracked locally. Guarded because this also runs from onLoad on the app's
-  // first screen: a host that predates lx.appearance must not take it down.
+  // The product's light/dark scheme. Showcase is its host's Control app, so it
+  // owns the setting; the scheme it renders in is read separately, because an
+  // lxapp that pinned one in its manifest does not follow the product.
   _syncAppearance: function () {
     try {
-      this.setData({ appearance: lx.appearance.get() });
+      this.setData({
+        appearance: {
+          preference: lx.app.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.app.appearance.get(),
+        },
+      });
     } catch (error) {
       console.warn("[Home] Appearance unavailable:", error);
     }
@@ -30,7 +35,7 @@ Page({
   setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
     const preference = options.preference || "auto";
     try {
-      await lx.appearance.set(preference);
+      await lx.app.control?.appearance.setPreference(preference);
     } catch (error) {
       console.warn("[Home] Failed to set appearance:", error);
       lx.showToast({ title: "Appearance unavailable", icon: "none" });
@@ -63,6 +68,8 @@ Page({
 
   onUnload: function() {
     console.log("[Home] Page unloaded");
+    this.stopWatchingAppearance?.();
+    this.stopWatchingAppearance = null;
     if (app.ipReadyCallback === this.ipReadyCallback) {
       app.ipReadyCallback = undefined;
     }
@@ -72,6 +79,10 @@ Page({
   onLoad: async function() {
     console.log("[Home] Page loaded");
     this._syncAppearance();
+    // The product's scheme can move while this page is open — from the host's
+    // own Settings, or from the system under `auto`. Reading it on show alone
+    // would leave the row claiming the scheme it had when it last appeared.
+    this.stopWatchingAppearance = lx.app.appearance.watch(() => this._syncAppearance());
     try {
       const info = lx.getLxAppInfo();
       const suffix =
