@@ -202,6 +202,13 @@ function Test-BenignWindowsSessionError {
   if ($Message -match 'BRIDGE_CANCELED.*Page unloaded') {
     return $true
   }
+  # Home relaunch remounts the chat aside. In-flight lx:// fetches then hit a
+  # dropped page's scheme handler (None), and WebView2 surfaces that as a
+  # synthetic 404. A navigation that genuinely cannot find a bundled file
+  # still fails the test that opened that page.
+  if ($Message -match '\[network\] Failed to load resource: the server responded with a status of 404 \(Not Found\) \(lx://') {
+    return $true
+  }
   # Showcase video view notifies play/pause/stop while the island player is
   # still being rematerialized (or another page is presenting). The throw is
   # a leftover first-run error; the retry suite can still be green.
