@@ -717,12 +717,12 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
             let _ = webview.exec_js(&script);
         }
     }
-    let appids: Vec<_> = manager
+    let apps: Vec<_> = manager
         .lxapps
         .iter()
-        .map(|entry| entry.key().clone())
+        .map(|entry| (entry.key().clone(), entry.value().clone()))
         .collect();
-    for appid in appids {
+    for (appid, app) in apps {
         crate::appservice::event_bus::publish_app_event(
             &appid,
             crate::DISPLAY_LANGUAGE_CHANGE_EVENT,
@@ -746,11 +746,9 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
 /// Host-owned tab chrome (overflow "More") is painted from display language.
 /// Startup seed may run before native chrome exists; a failed rebuild is ignored.
 ///
-/// The rebuild is spawned, never awaited here. `lx.app.setDisplayLanguage`
-/// runs on a JS worker and this path holds `PREFERENCE_WRITE_LOCK`, while the
-/// synchronous `update_tabbar_ui` hops to the platform main queue and blocks
-/// there — the wait a JS worker must never take, since the main thread can
-/// itself be waiting on that worker (a synchronous open) or on this lock.
+/// The rebuild is spawned, never awaited here. Preference writes can run on a
+/// JS worker, while the synchronous `update_tabbar_ui` hops to the platform
+/// main queue and blocks there — the wait a JS worker must never take.
 fn refresh_host_tabbar(appid: &str, app: &LxApp) {
     if app.get_tabbar().is_none() {
         return;
