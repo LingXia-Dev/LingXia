@@ -365,7 +365,7 @@ mod tests {
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
-            r#"{"framework":"{{FRAMEWORK}}","security":{"network":{"trustedDomains":[]},"privileges":[]},"pages":[{"name":"home","path":"pages/home/index.{{PAGE_EXT}}"}]}"#,
+            r#"{"framework":"{{FRAMEWORK}}","pages":[{"name":"home","path":"pages/home/index.{{PAGE_EXT}}"}]}"#,
         )
         .unwrap();
         fs::write(
@@ -416,7 +416,7 @@ mod tests {
         .unwrap();
         fs::write(
             lxapp_html.join("lxapp.json"),
-            r#"{"framework":"html","security":{"network":{"trustedDomains":[]},"privileges":[]},"pages":[{"name":"home","path":"pages/home/index.html"}]}"#,
+            r#"{"framework":"html","pages":[{"name":"home","path":"pages/home/index.html"}]}"#,
         )
         .unwrap();
         fs::write(lxapp_html.join("lxapp.ts"), "App({ html: true });").unwrap();
@@ -730,16 +730,16 @@ mod tests {
     }
 
     #[test]
-    fn scaffold_lxapp_json_declares_default_security_policy() {
+    fn scaffold_lxapp_json_omits_empty_security() {
         let (_tmpl, out) = scaffold("react");
         let s = fs::read_to_string(out.path().join("myapp/lxapp.json")).unwrap();
         assert!(
-            s.contains("\"trustedDomains\":[]"),
-            "new lxapps must declare an explicit network policy"
+            !s.contains("\"network\""),
+            "new lxapps must not declare network grants"
         );
         assert!(
-            s.contains("\"privileges\":[]"),
-            "new lxapps must declare an explicit privilege policy"
+            !s.contains("\"security\""),
+            "new lxapps omit security until they declare a host capability"
         );
     }
 

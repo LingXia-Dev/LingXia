@@ -324,9 +324,9 @@ fn build_content_security_policy() -> String {
         // origins buys little (worst case a tracking pixel) but breaks any
         // runtime-provided asset — e.g. tenant logos / user avatars from
         // `lx.auth` identities live on arbitrary CDNs an app cannot
-        // predeclare in trustedDomains. All https images are therefore
+        // predeclare in a host network grant. All https images are therefore
         // allowed; network *requests* (fetch) remain gated by
-        // security.network.trustedDomains in the Logic runtime.
+        // the host-granted network policy in the Logic runtime.
         // no media-src: View media is rejected by lingxia build; leftovers use default-src.
         "img-src 'self' lx: lingxia: data: blob: https:".to_string(),
         build_connect_src_policy(),
@@ -488,7 +488,7 @@ mod tests {
         let csp = build_content_security_policy();
 
         // Images are passive content: https: is always allowed. Fetch stays
-        // gated by trustedDomains in the Logic runtime, not by CSP.
+        // gated by the host's network grant in the Logic runtime, not by CSP.
         assert!(csp.contains("img-src 'self' lx: lingxia: data: blob: https:"));
         #[cfg(any(target_os = "ios", target_os = "macos"))]
         assert!(csp.contains("connect-src lx-apple:"));

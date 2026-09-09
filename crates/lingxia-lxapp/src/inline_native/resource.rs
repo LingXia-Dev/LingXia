@@ -15,7 +15,7 @@ pub fn validate_media_urls(
             && !security.is_domain_allowed_in(&host, dev_session)
         {
             return Err(format!(
-                "media URL is not in security.network.trustedDomains: {url}"
+                "media URL is not in host-granted network trustedDomains: {url}"
             ));
         }
     }

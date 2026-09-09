@@ -32,13 +32,16 @@ pub trait HostAddon: Send + Sync {
     fn install_logic_extensions(&self) {}
     /// Registers native host APIs before the runtime starts serving requests.
     fn install_host_apis(&self) {}
-    /// Assign the manifest-requested privileged resources this native product
-    /// approves for a newly created session. The authority is sealed after
-    /// this callback returns and is never reachable from bridge payloads.
+    /// Assign the privileged resources this native product approves for a
+    /// newly created session. The authority is sealed after this callback
+    /// returns and is never reachable from bridge payloads.
     ///
-    /// Runs while that session's creation lock is held: decide from the
-    /// authority alone. Opening, restarting, or closing an lxapp from here
-    /// deadlocks.
+    /// Runs exactly once per session, either while that session's creation lock
+    /// is held or on the task that lands its permission snapshot: decide from
+    /// the authority alone. Opening, restarting, or closing an lxapp from here
+    /// deadlocks, and a slow registry can reach this after the user closed the
+    /// lxapp — so never prompt or block on a person here. Sealing a closed
+    /// session grants nothing; `has_resource_grant` still refuses it.
     fn issue_app_resource_grants(&self, _authority: &mut NativeHostRuntimeAuthority<'_>) {}
     /// Assign devtools-only automation resources to one newly created session.
     #[cfg(feature = "devtool")]
@@ -154,8 +157,8 @@ pub(crate) fn resolve_app_resource_grants(
     authority: &mut NativeHostRuntimeAuthority<'_>,
 ) {
     // `capabilities.process` is native-authored bootstrap policy, but it
-    // applies only to the native-assigned ControlApp and still intersects the
-    // lxapp's manifest request.
+    // applies only to the native-assigned ControlApp and still needs the
+    // permission grant (or the default allow).
     issue_builtin_host_grants(authority, lingxia_app_context::process_enabled());
 
     for addon in snapshot_host_addons() {

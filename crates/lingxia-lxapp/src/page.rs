@@ -1399,7 +1399,10 @@ impl PageInstance {
         }
     }
 
-    /// Load HTML content into this page's WebView
+    /// Load HTML content into this page's WebView.
+    ///
+    /// Does not wait on the permission snapshot: an empty WebView is torn down
+    /// before the grant arrives. Fetches stay denied until it is ready.
     pub(crate) fn load_html(&self) -> Result<(), LxAppError> {
         // A real document is coming: its navigation events drive the render
         // pipeline again.

@@ -2,12 +2,6 @@
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
   "version": "1.0.12",
-  "security": {
-    "network": {
-      "trustedDomains": ["www.deepseek.com"]
-    },
-    "privileges": []
-  },
   "pages": [
     { "name": "chat", "path": "pages/chat/index" },
     { "name": "feedback", "path": "pages/feedback/index" }

@@ -656,13 +656,13 @@ fn ensure_downloads_privilege(lxapp: &LxApp) -> JSResult<()> {
     } else {
         Err(js_error_from_business_code_with_detail(
             3005,
-            "downloadFile destination 'downloads' requires both the 'downloads' manifest request and a native/user-approved Downloads grant",
+            "downloadFile destination 'downloads' requires a host privilege grant and a native Downloads grant",
         ))
     }
 }
 
-fn downloads_access_allowed(manifest_requested: bool, native_granted: bool) -> bool {
-    manifest_requested && native_granted
+fn downloads_access_allowed(privilege_granted: bool, native_granted: bool) -> bool {
+    privilege_granted && native_granted
 }
 
 fn ensure_download_task_grant(config: &DownloadTaskConfig) -> JSResult<()> {

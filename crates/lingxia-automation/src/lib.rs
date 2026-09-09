@@ -45,7 +45,7 @@ fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
         Ok(())
     } else {
         Err(auto_err(format!(
-            "{id}_privilege_required: requires both the \"{id}\" manifest request and a sealed native grant"
+            "{id}_privilege_required: requires a host privilege grant and a sealed native grant"
         )))
     }
 }

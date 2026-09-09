@@ -110,8 +110,9 @@ pub enum RouteAudience {
 
 /// A privileged native resource that may be assigned to one lxapp session.
 ///
-/// Manifest entries are requests, not grants. The native host seals the
-/// granted subset when it creates the session.
+/// The permission provider (or its default allow) is the request. The native
+/// host seals the granted subset once that snapshot is ready, not from the
+/// pending deny.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[non_exhaustive]
 pub enum AppResourceGrant {
@@ -132,8 +133,8 @@ impl AppResourceGrant {
     }
 }
 
-/// One-shot authority for assigning manifest-requested resources to a newly
-/// created app session. Only the lxapp session bootstrap constructs it.
+/// One-shot authority for assigning privileged resources to a newly created
+/// app session. Only the lxapp session bootstrap constructs it.
 pub struct NativeHostRuntimeAuthority<'a> {
     app_id: &'a str,
     session_id: u64,
@@ -289,6 +290,14 @@ pub(crate) fn install_bootstrap_resource_grant_resolvers(
 }
 
 pub(crate) fn seal_app_resource_grants(app: &Arc<LxApp>) {
+    if !app.permissions_ready() {
+        // Pending is deny. Sealing that into the OnceLock would stick even
+        // after the registry answers.
+        return;
+    }
+    if !app.claim_resource_grant_seal() {
+        return;
+    }
     let requested: HashSet<_> = [
         AppResourceGrant::Process,
         AppResourceGrant::Downloads,
@@ -1673,12 +1682,7 @@ mod tests {
             AppSessionClass::StandardApp,
         )
         .expect("standard app");
-        standard.config.security.privileges = vec![
-            "process".to_string(),
-            "downloads".to_string(),
-            "automation".to_string(),
-            "host".to_string(),
-        ];
+        standard.approve_unrestricted_permissions_for_test();
         let standard = Arc::new(standard);
         standard.bind_arc();
         standard.set_status(LxAppSessionStatus::Opened);
@@ -1689,16 +1693,59 @@ mod tests {
             AppSessionClass::ControlApp,
         )
         .expect("control app");
-        control.config.security.privileges = vec![
-            "process".to_string(),
-            "downloads".to_string(),
-            "automation".to_string(),
-            "host".to_string(),
-        ];
+        control.approve_unrestricted_permissions_for_test();
         let control = Arc::new(control);
         control.bind_arc();
         control.set_status(LxAppSessionStatus::Opened);
         (root, standard, control)
+    }
+
+    #[cfg(not(windows))]
+    #[tokio::test]
+    async fn native_resource_grants_wait_for_the_registry_snapshot() {
+        use crate::provider::LxAppPermissions;
+
+        let root = tempfile::tempdir().expect("test app root");
+        let runtime = Arc::new(
+            Platform::new(
+                root.path().join("data").display().to_string(),
+                root.path().join("cache").display().to_string(),
+                "en-US".to_string(),
+            )
+            .expect("test platform"),
+        );
+        let workers = LxAppWorkers::init(1);
+        let app_id = format!("app.lingxia.grant-late.{}", Uuid::new_v4());
+        register_synthetic_lxapp(app_id.clone());
+        let mut app = LxApp::new_with_session_class_for_test(
+            app_id,
+            runtime,
+            workers,
+            AppSessionClass::StandardApp,
+        )
+        .expect("app");
+        let pending_grant = app.defer_permissions_for_test();
+        let app = Arc::new(app);
+        app.bind_arc();
+        app.set_status(LxAppSessionStatus::Opened);
+
+        assert!(!app.permissions_ready());
+        super::seal_app_resource_grants(&app);
+        assert!(
+            !app.resource_grants_sealed_for_test(),
+            "pending deny must not occupy the OnceLock"
+        );
+        assert!(
+            !app.has_security_privilege(&crate::LxAppSecurityPrivilege::new("downloads").unwrap())
+        );
+
+        pending_grant.resolve(Some(LxAppPermissions::privileges(["downloads"])));
+        app.wait_permissions_ready().await;
+        assert!(app.permissions_ready());
+        assert!(app.resource_grants_sealed_for_test());
+        assert!(
+            app.has_security_privilege(&crate::LxAppSecurityPrivilege::new("downloads").unwrap())
+        );
     }
 
     struct TestHostHandler;

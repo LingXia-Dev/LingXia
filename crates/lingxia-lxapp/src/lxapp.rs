@@ -32,7 +32,6 @@ use crate::page::{PageInstance, PageInstanceId, ViewCallOptions};
 use crate::startup::{LxAppStartupOptions, Scene};
 use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
-use security::NetworkSecurity;
 
 pub mod config;
 pub mod host_class;
@@ -44,6 +43,7 @@ pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
 mod page_instance_host;
+mod permissions;
 pub(crate) mod registry;
 mod runtime_bootstrap;
 mod runtime_ops;
@@ -86,6 +86,7 @@ pub use lingxia_update::ReleaseType;
 use lingxia_webview::runtime::destroy_webview_if_matches;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
+pub use runtime_bootstrap::register_runner_host;
 pub use runtime_bootstrap::runner_active as is_runner;
 pub use runtime_ops::{
     close_lxapp, create_page_instance, dispose_page_instance, dispose_page_instance_by_id,
@@ -489,8 +490,7 @@ impl LxApps {
                 self.executor.clone(),
                 ReleaseType::Release,
             )?);
-            app.bind_arc();
-            crate::host::seal_app_resource_grants(&app);
+            app.bind_and_seal_resource_grants();
             self.lxapps.insert(appid.to_string(), app.clone());
             Ok(app)
         })
@@ -512,8 +512,7 @@ impl LxApps {
                 self.runtime.clone(),
                 self.executor.clone(),
             )?);
-            app.bind_arc();
-            crate::host::seal_app_resource_grants(&app);
+            app.bind_and_seal_resource_grants();
             self.lxapps.insert(appid, app.clone());
             Ok(app)
         })
@@ -572,8 +571,7 @@ impl LxApps {
                 release_type,
             )?,
         });
-        new_lxapp.bind_arc();
-        crate::host::seal_app_resource_grants(&new_lxapp);
+        new_lxapp.bind_and_seal_resource_grants();
 
         // Publish with the map entry API. Two concurrent cold opens must both
         // receive the same LxApp instance; otherwise each instance could claim
@@ -779,10 +777,6 @@ pub(crate) struct LxAppState {
     /// Used for LRU (Least Recently Used) eviction when memory is low
     pub(crate) last_active_time: Instant,
 
-    /// Network security configuration for HTTPS domain filtering
-    /// Manages which domains this app is allowed to access
-    network_security: NetworkSecurity,
-
     /// TabBar runtime state
     /// Contains TabBar configuration and dynamic state (badges, red dots, visibility)
     pub tabbar: Option<tabbar::TabBar>,
@@ -820,7 +814,6 @@ impl LxAppState {
             page_reset_timers: Mutex::new(HashMap::new()),
             page_stack: Mutex::new(VecDeque::with_capacity(PAGE_STACK_MAX)),
             last_active_time: Instant::now(),
-            network_security: NetworkSecurity::new(),
             tabbar: None,
             appearance: LxAppAppearanceState::default(),
             page_chrome_revision: 0,
@@ -880,6 +873,7 @@ pub struct LxApp {
     pub(crate) release_type: ReleaseType,
     pub(crate) config: LxAppConfig,
     pub(crate) executor: Arc<LxAppWorkers>,
+    host_permissions: permissions::HostPermissions,
     home_update_check_dispatched: AtomicBool,
     app_launch_dispatched: AtomicBool,
     pending_restart_request: AtomicBool,
@@ -904,6 +898,10 @@ pub struct LxApp {
 
     /// Native-issued privileged resources, sealed once for this exact session.
     resource_grants: OnceLock<HashSet<crate::host::AppResourceGrant>>,
+    /// Claims the seal. Both the creation path and every waiter on the
+    /// permission snapshot reach it, and the resolvers behind it are host
+    /// callbacks — a prompt, an audit entry — that must run once.
+    resource_grants_claimed: std::sync::atomic::AtomicBool,
 
     // Scripts injected as soon as a page document starts loading.
     document_start_scripts: Mutex<Vec<Arc<str>>>,
@@ -942,6 +940,9 @@ impl LxAppSessionStatus {
 pub(crate) struct LxAppSession {
     pub(crate) id: LxAppSessionId,
     status: AtomicU8,
+    // Replaced on reopen: a closed instance stays in the manager for 30 minutes
+    // and is handed back as-is, so the cancellation must not outlive the close.
+    shutdown: Mutex<tokio::sync::watch::Sender<bool>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1053,6 +1054,37 @@ impl LxAppSession {
         Self {
             id,
             status: AtomicU8::new(LxAppSessionStatus::Closed as u8),
+            shutdown: Mutex::new(tokio::sync::watch::channel(false).0),
+        }
+    }
+
+    fn shutdown_sender(&self) -> std::sync::MutexGuard<'_, tokio::sync::watch::Sender<bool>> {
+        self.shutdown.lock().unwrap_or_else(|err| err.into_inner())
+    }
+
+    pub(crate) fn cancel(&self) {
+        self.shutdown_sender().send_replace(true);
+    }
+
+    /// Re-arm a cancelled session for a fresh open. Waiters from the closed run
+    /// keep the old channel and stay cancelled by its sender being dropped.
+    pub(crate) fn revive(&self) {
+        let mut sender = self.shutdown_sender();
+        if *sender.borrow() {
+            *sender = tokio::sync::watch::channel(false).0;
+        }
+    }
+
+    pub(crate) fn is_cancelled(&self) -> bool {
+        *self.shutdown_sender().borrow()
+    }
+
+    pub(crate) async fn while_alive<F: std::future::Future>(&self, future: F) -> Option<F::Output> {
+        let mut shutdown = self.shutdown_sender().subscribe();
+        tokio::select! {
+            biased;
+            _ = shutdown.wait_for(|cancelled| *cancelled) => None,
+            result = future => (!self.is_cancelled()).then_some(result),
         }
     }
 
@@ -1089,6 +1121,24 @@ impl LxApp {
 
     pub(crate) fn bind_arc(self: &Arc<Self>) {
         let _ = self.self_weak.set(Arc::downgrade(self));
+    }
+
+    /// Bind the Arc, then seal native resource grants from the permission
+    /// snapshot. A still-pending lookup is sealed when it lands — sealing the
+    /// pending deny would stick in the OnceLock.
+    pub(crate) fn bind_and_seal_resource_grants(self: &Arc<Self>) {
+        self.bind_arc();
+        crate::host::seal_app_resource_grants(self);
+        // Ask whether the seal happened, not whether the grant is ready: a
+        // lookup that lands between those two reads would leave a logic-free
+        // app — which never sends `CreateAppSvc` — with no waiter and no seal.
+        if self.resource_grants_claimed() {
+            return;
+        }
+        let app = Arc::clone(self);
+        crate::executor::spawn(async move {
+            app.wait_permissions_ready().await;
+        });
     }
 
     pub(crate) fn status(&self) -> LxAppSessionStatus {
@@ -1818,6 +1868,7 @@ impl LxApp {
     /// 5) Clear page stack and surfaces
     /// 6) Send TerminateAppSvc (receiver handles teardown)
     pub fn shutdown_with_options(&self, skip_hide: bool) -> Result<(), LxAppError> {
+        self.session.cancel();
         // Mark closing to suppress TerminatePage from PageInstance drops
         self.set_status(LxAppSessionStatus::Closing);
         self.cancel_all_page_bridge_work();
@@ -1922,6 +1973,7 @@ impl LxApp {
             release_type,
             config: LxAppConfig::default(),
             executor,
+            host_permissions: permissions::HostPermissions::default(),
             home_update_check_dispatched: AtomicBool::new(false),
             app_launch_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
@@ -1932,6 +1984,7 @@ impl LxApp {
             page_chrome_mutation_lock: tokio::sync::Mutex::new(()),
             self_weak: OnceLock::new(),
             resource_grants: OnceLock::new(),
+            resource_grants_claimed: std::sync::atomic::AtomicBool::new(false),
             document_start_scripts: Mutex::new(Vec::new()),
             page_scripts: Mutex::new(Vec::new()),
         }
@@ -2019,6 +2072,28 @@ impl LxApp {
                 Self::new_control_surface(appid, runtime, executor, ReleaseType::Release)
             }
         }
+    }
+
+    /// Approve public network and every privilege class, as home / default would.
+    /// Test apps skip `setup`, so their grant would otherwise deny.
+    #[cfg(test)]
+    pub(crate) fn approve_unrestricted_permissions_for_test(&mut self) {
+        self.host_permissions =
+            permissions::HostPermissions::start(&self.appid, self.release_type.into(), true);
+    }
+
+    /// Leave the grant pending, as a cold registry lookup does, and hand back
+    /// the handle that lands it.
+    #[cfg(test)]
+    pub(crate) fn defer_permissions_for_test(&mut self) -> permissions::DeferredGrant {
+        let (pending, resolver) = permissions::HostPermissions::deferred();
+        self.host_permissions = pending;
+        resolver
+    }
+
+    #[cfg(test)]
+    pub(crate) fn resource_grants_sealed_for_test(&self) -> bool {
+        self.resource_grants.get().is_some()
     }
 
     /// Initialize paths and directories for the lxapp
@@ -2168,11 +2243,14 @@ impl LxApp {
             self.config = LxAppConfig::from_value(app_json)
                 .map_err(|e| LxAppError::InvalidJsonFile(format!("lxapp.json: {}", e)))?;
 
-            {
-                let mut state = self.state.lock().unwrap();
-                state
-                    .network_security
-                    .set_domains(self.config.trusted_domains());
+            // An absent `appId` is not a claim to be another app, and failing
+            // the load would leave an installed package with no way back: the
+            // instance never comes up, so the update that replaces it never runs.
+            if !self.config.appId.is_empty() && self.config.appId != self.appid {
+                return Err(LxAppError::InvalidJsonFile(format!(
+                    "lxapp.json appId '{}' does not match the host-selected application '{}'",
+                    self.config.appId, self.appid
+                )));
             }
 
             // Initialize TabBar state if config has TabBar
@@ -2213,6 +2291,11 @@ impl LxApp {
             self.config.logic = Some(LxAppLogicEntry::Enabled(false));
         } else {
             self.load_config()?;
+            self.host_permissions = permissions::HostPermissions::start(
+                &self.appid,
+                self.release_type.into(),
+                self.is_home_lxapp && !is_runner(),
+            );
         }
         Ok(())
     }
@@ -2589,25 +2672,50 @@ impl LxApp {
 
     /// Hosts apply this list to island media URLs (`src` / `poster` / quality / commands).
     pub fn trusted_network_domains(&self) -> Vec<String> {
-        self.config.trusted_domains().to_vec()
+        self.host_permissions.domains()
+    }
+
+    pub(crate) fn permissions_ready(&self) -> bool {
+        self.host_permissions.is_ready()
+    }
+
+    /// Wait for this instance's permission decision, including a deny on failure.
+    /// Native hosts can await this before invoking network-dependent code.
+    /// Native resource grants are sealed from that snapshot, not from pending deny.
+    pub async fn wait_permissions_ready(&self) {
+        self.host_permissions.wait_ready().await;
+        if let Some(app) = self.self_weak.get().and_then(Weak::upgrade) {
+            crate::host::seal_app_resource_grants(&app);
+        }
     }
 
     /// Check if a domain is allowed for network access
     pub fn is_domain_allowed(&self, domain: &str) -> bool {
-        self.state
-            .lock()
-            .unwrap()
-            .network_security
-            .is_domain_allowed_in(domain, crate::is_dev_session())
+        self.host_permissions
+            .is_domain_allowed(domain, crate::is_dev_session())
     }
 
-    /// Check whether this lxapp declares a high-risk security privilege.
+    /// Whether this instance may use a high-risk capability class.
     ///
-    /// Intended for privileged host APIs such as automation/devtools. Ordinary
-    /// host capabilities such as camera/media/location should continue to rely
-    /// on the host app and platform permission flow.
+    /// Home, and a guest with no provider, allow every class. A registered
+    /// provider's privilege allowlist is the only restriction. Ordinary APIs
+    /// such as camera, media and location stay on host/platform flows.
     pub fn has_security_privilege(&self, privilege: &LxAppSecurityPrivilege) -> bool {
-        self.config.has_security_privilege(privilege)
+        self.host_permissions.allows_privilege(privilege.as_str())
+    }
+
+    /// Take the right to resolve this session's grants. Only the first caller
+    /// gets it.
+    pub(crate) fn claim_resource_grant_seal(&self) -> bool {
+        use std::sync::atomic::Ordering;
+        self.resource_grants_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .is_ok()
+    }
+
+    pub(crate) fn resource_grants_claimed(&self) -> bool {
+        self.resource_grants_claimed
+            .load(std::sync::atomic::Ordering::Acquire)
     }
 
     pub(crate) fn seal_resource_grants(&self, grants: HashSet<crate::host::AppResourceGrant>) {
@@ -3042,6 +3150,13 @@ impl LxApp {
         }
         let began_opening =
             self.cas_status(LxAppSessionStatus::Closed, LxAppSessionStatus::Opening);
+        // Re-arm on cancellation, not on that one transition: a close the
+        // platform has not confirmed yet leaves the status at `Closing`, so the
+        // CAS misses while the session is still cancelled — and the reopened
+        // instance would come up with a live WebView and no Logic.
+        if self.session.is_cancelled() {
+            self.session.revive();
+        }
         let result = self.open_claimed(options);
         if result.is_err() {
             if began_opening {
@@ -3488,6 +3603,95 @@ impl From<lingxia_platform::traits::app_runtime::LxAppOpenMode> for LxAppOpenReg
 pub fn open_region(appid: &str) -> Option<LxAppOpenRegion> {
     let app = runtime_registry::try_get(appid)?;
     app.current_open_region()
+}
+
+#[cfg(test)]
+mod startup_cancellation_tests {
+    use super::LxAppSession;
+
+    #[test]
+    fn shutdown_interrupts_pending_startup_and_drops_its_waiter() {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let session = LxAppSession::new();
+                let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+                let executed = std::cell::Cell::new(false);
+                let startup = session.while_alive(async {
+                    receiver.await.unwrap();
+                    executed.set(true);
+                });
+                tokio::pin!(startup);
+                assert!(futures::poll!(&mut startup).is_pending());
+                session.cancel();
+                assert_eq!(startup.await, None);
+                assert!(!executed.get());
+                assert!(sender.send(()).is_err());
+            });
+    }
+
+    #[test]
+    fn reopening_a_closed_instance_rearms_it_and_leaves_the_closed_run_cancelled() {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let session = LxAppSession::new();
+                let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+                let closing = session.while_alive(receiver);
+                tokio::pin!(closing);
+                assert!(futures::poll!(&mut closing).is_pending());
+                session.cancel();
+                // The manager keeps a closed instance around; the next open reuses it.
+                session.revive();
+                assert!(!session.is_cancelled());
+                assert_eq!(closing.await, None);
+                assert!(sender.send(()).is_err());
+                assert_eq!(session.while_alive(async { 42 }).await, Some(42));
+            });
+    }
+
+    #[test]
+    fn cancellation_wins_over_ready_startup_and_does_not_affect_replacement() {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let old = LxAppSession::new();
+                old.cancel();
+                let executed = std::cell::Cell::new(false);
+                assert_eq!(
+                    old.while_alive(async {
+                        executed.set(true);
+                    })
+                    .await,
+                    None
+                );
+                assert!(!executed.get());
+                let replacement = LxAppSession::new();
+                assert_eq!(replacement.while_alive(async { 42 }).await, Some(42));
+                assert_ne!(old.id, replacement.id);
+            });
+    }
+
+    #[test]
+    fn cancellation_during_source_resolution_discards_the_result() {
+        tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap()
+            .block_on(async {
+                let session = LxAppSession::new();
+                assert_eq!(session.while_alive(async {}).await, Some(()));
+                let source = session
+                    .while_alive(async {
+                        session.cancel();
+                        "must not evaluate"
+                    })
+                    .await;
+                assert_eq!(source, None);
+            });
+    }
 }
 
 #[cfg(test)]

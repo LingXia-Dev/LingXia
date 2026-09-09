@@ -215,9 +215,9 @@ Page({
   },
 
   // Open a new in-app browser tab (self browser with an editable address bar).
-  // The start host must be in lxapp.json security.network.trustedDomains, else
-  // openUrl rejects with `denied` — catch it so a policy denial can never take
-  // down the host/Runner.
+  // The start host must be in the host-granted domain list, else openUrl
+  // rejects with `denied` — catch it so a policy denial can never take down
+  // the host/Runner.
   async onOpenBrowser() {
     try {
       await lx.surface.openUrl('https://www.deepseek.com');

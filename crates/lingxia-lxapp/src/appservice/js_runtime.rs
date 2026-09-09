@@ -648,6 +648,14 @@ pub(crate) async fn lxapp_service_handler(
 ) {
     match message {
         ServiceMessage::CreateAppSvc { lxapp } => {
+            if lxapp
+                .session
+                .while_alive(lxapp.wait_permissions_ready())
+                .await
+                .is_none()
+            {
+                return;
+            }
             let ctx = runtime.context();
 
             // Register LxApp runtime context and bind identity to JSContext
@@ -705,7 +713,7 @@ pub(crate) async fn lxapp_service_handler(
             if lxapp.is_home_lxapp && lingxia_app_context::process_enabled() {
                 if !lxapp.process_access_enabled() {
                     warn!(
-                        "[Worker {}] Process capability requires both security.privileges: [process] and a native ControlApp Process grant",
+                        "[Worker {}] Process capability requires a host privilege grant and a native ControlApp Process grant",
                         worker_id
                     )
                     .with_appid(lxapp.appid.clone());
@@ -760,7 +768,15 @@ pub(crate) async fn lxapp_service_handler(
 
             info!("[Worker {}] Created JS context", worker_id).with_appid(lxapp.appid.clone());
 
-            match lxapp.logic_entry_source(&ctx).await {
+            let Some(source) = lxapp
+                .session
+                .while_alive(lxapp.logic_entry_source(&ctx))
+                .await
+            else {
+                shutdown_app_context(&ctx).await;
+                return;
+            };
+            match source {
                 Ok(Some(js)) => match ctx.eval::<()>(js) {
                     Ok(_) => {
                         info!("[Worker {}] Successfully loaded logic JS", worker_id)

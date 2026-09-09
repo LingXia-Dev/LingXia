@@ -8,6 +8,9 @@
 //! dependency-light crate returning plain data. Each runner maps the result
 //! onto the provider's own option types (the only crate that has them).
 
+mod permissions;
+pub use permissions::RunnerRegistryProvider;
+
 use std::path::{Path, PathBuf};
 
 /// Env var (set by `lingxia dev --env`) selecting the runner config table.

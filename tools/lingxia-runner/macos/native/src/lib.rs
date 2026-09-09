@@ -87,6 +87,16 @@ impl lingxia::dev::DeviceController for MacRunnerDeviceController {
 }
 
 impl lingxia::HostAddon for RunnerDevtoolAddon {
+    fn before_init(&self) {
+        lingxia::register_runner_host();
+        // An injected provider owns the registry when one is linked in — only
+        // one may register.
+        #[cfg(not(feature = "cloud"))]
+        if let Some(provider) = lingxia_runner_config::RunnerRegistryProvider::from_env() {
+            lingxia::provider::register_lxapp_registry_provider(Box::new(provider));
+        }
+    }
+
     fn issue_devtools_app_resource_grants(
         &self,
         authority: &mut lingxia::NativeDevtoolsAuthority<'_>,

@@ -1,6 +1,3 @@
-use super::security::{
-    LxAppSecurityPrivilege, normalize_security_privilege_id, normalize_trusted_domain,
-};
 use crate::lxapp::page_chrome::AppearancePreference;
 use crate::lxapp::tabbar::TabBar;
 use crate::lxapp::version::Version;
@@ -57,30 +54,6 @@ pub struct LxAppPageEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[allow(non_snake_case)]
-pub(crate) struct LxAppNetworkSecurityConfig {
-    /// Remote hosts allowed for network access.
-    ///
-    /// Empty means deny all. Use `"*"` to explicitly allow all domains.
-    /// LingXia Server policy can tighten this in the future.
-    #[serde(default)]
-    pub trustedDomains: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub(crate) struct LxAppSecurityConfig {
-    #[serde(default)]
-    pub network: LxAppNetworkSecurityConfig,
-
-    /// High-risk capability classes requested by this lxapp.
-    ///
-    /// This is intentionally coarse-grained; ordinary host capabilities such
-    /// as camera/media/location remain host/platform mediated.
-    #[serde(default)]
-    pub privileges: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[allow(non_snake_case)]
 pub(crate) struct LxAppConfig {
     /// LingXia App ID
     #[serde(default)]
@@ -118,10 +91,6 @@ pub(crate) struct LxAppConfig {
     /// Plugin definitions.
     #[serde(default)]
     pub(crate) plugins: BTreeMap<String, LxPlugin>,
-
-    /// Security policy declared by the lxapp package.
-    #[serde(default)]
-    pub(crate) security: LxAppSecurityConfig,
 }
 
 impl LxAppConfig {
@@ -133,7 +102,6 @@ impl LxAppConfig {
                     r#""appService" is no longer supported; use "logic" instead"#,
                 ));
             }
-            validate_security_shape(object)?;
             validate_removed_tabbar_fields(object)?;
         }
 
@@ -172,17 +140,6 @@ impl LxAppConfig {
             Some(LxAppLogicEntry::Entry(entry)) => Some(entry.clone()),
             None => Some("logic.js".to_string()),
         }
-    }
-
-    pub(crate) fn trusted_domains(&self) -> &[String] {
-        &self.security.network.trustedDomains
-    }
-
-    pub(crate) fn has_security_privilege(&self, privilege: &LxAppSecurityPrivilege) -> bool {
-        self.security
-            .privileges
-            .iter()
-            .any(|candidate| candidate == privilege.as_str())
     }
 
     /// Get LxApp basic information for FFI
@@ -261,8 +218,6 @@ impl LxAppConfig {
             }
             plugin.version = version.to_string();
         }
-
-        validate_security_config(&mut self.security)?;
 
         let pages: Vec<(&str, &str)> = self
             .pages
@@ -348,76 +303,9 @@ fn is_safe_plugin_component(value: &str) -> bool {
             .all(|component| matches!(component, Component::Normal(_)))
 }
 
-fn validate_security_shape(
-    object: &serde_json::Map<String, Value>,
-) -> Result<(), serde_json::Error> {
-    let security = object
-        .get("security")
-        .ok_or_else(|| serde_json::Error::custom(r#""security" must be declared in lxapp.json"#))?;
-    let security = security
-        .as_object()
-        .ok_or_else(|| serde_json::Error::custom(r#""security" must be an object"#))?;
-    let network = security
-        .get("network")
-        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be declared"#))?;
-    let network = network
-        .as_object()
-        .ok_or_else(|| serde_json::Error::custom(r#""security.network" must be an object"#))?;
-    if !network.contains_key("trustedDomains") {
-        return Err(serde_json::Error::custom(
-            r#""security.network.trustedDomains" must be declared"#,
-        ));
-    }
-    if !security.contains_key("privileges") {
-        return Err(serde_json::Error::custom(
-            r#""security.privileges" must be declared"#,
-        ));
-    }
-    Ok(())
-}
-
-fn validate_security_config(config: &mut LxAppSecurityConfig) -> Result<(), serde_json::Error> {
-    let mut domains = BTreeSet::new();
-    let mut normalized_domains = Vec::new();
-    for domain in &config.network.trustedDomains {
-        let normalized = normalize_trusted_domain(domain).ok_or_else(|| {
-            serde_json::Error::custom(format!(
-                r#""security.network.trustedDomains" entries must be host names without scheme/path: {:?}"#,
-                domain
-            ))
-        })?;
-        if domains.insert(normalized.clone()) {
-            normalized_domains.push(normalized);
-        }
-    }
-    if normalized_domains.len() > 1 && normalized_domains.iter().any(|domain| domain == "*") {
-        return Err(serde_json::Error::custom(
-            r#""security.network.trustedDomains" wildcard "*" cannot be combined with other hosts"#,
-        ));
-    }
-    config.network.trustedDomains = normalized_domains;
-
-    let mut privileges = BTreeSet::new();
-    let mut normalized_privileges = Vec::new();
-    for privilege in &config.privileges {
-        let normalized = normalize_security_privilege_id(privilege).ok_or_else(|| {
-            serde_json::Error::custom(format!(
-                r#""security.privileges" entries must be lowercase identifiers: {:?}"#,
-                privilege
-            ))
-        })?;
-        if privileges.insert(normalized.clone()) {
-            normalized_privileges.push(normalized);
-        }
-    }
-    config.privileges = normalized_privileges;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    use super::{LxAppConfig, LxAppSecurityPrivilege};
+    use super::LxAppConfig;
 
     #[test]
     fn initial_route_is_empty_when_pages_are_empty() {
@@ -426,44 +314,36 @@ mod tests {
     }
 
     #[test]
-    fn parses_security_network_and_privileges() {
+    fn accepts_omitted_security_config() {
         let config = LxAppConfig::from_value(serde_json::json!({
             "appId": "demo",
             "appName": "Demo",
             "version": "1.0.0",
-            "security": {
-                "network": {
-                    "trustedDomains": [" API.Example.COM ", "localhost"]
-                },
-                "privileges": ["automation", "devtools"]
-            },
             "pages": [{"name":"home","path":"pages/home/index"}]
         }))
         .unwrap();
 
-        assert_eq!(
-            config.trusted_domains(),
-            &["api.example.com".to_string(), "localhost".to_string()]
-        );
-        let automation = LxAppSecurityPrivilege::new("automation").unwrap();
-        let devtools = LxAppSecurityPrivilege::new("devtools").unwrap();
-        let camera = LxAppSecurityPrivilege::new("camera").unwrap();
-        assert!(config.has_security_privilege(&automation));
-        assert!(config.has_security_privilege(&devtools));
-        assert!(!config.has_security_privilege(&camera));
+        let value = serde_json::to_value(&config).unwrap();
+        assert!(value.get("security").is_none());
     }
 
     #[test]
-    fn rejects_missing_security_config() {
-        let err = LxAppConfig::from_value(serde_json::json!({
+    fn a_leftover_security_key_is_ignored() {
+        // Permissions live in the registry record. A package that still carries
+        // the old key must keep loading — an unopenable installed app is worse
+        // than a field that no longer does anything.
+        let config = LxAppConfig::from_value(serde_json::json!({
             "appId": "demo",
             "appName": "Demo",
             "version": "1.0.0",
+            "security": { "network": { "trustedDomains": ["api.example.com"] } },
             "pages": [{"name":"home","path":"pages/home/index"}]
         }))
-        .unwrap_err();
+        .unwrap();
 
-        assert!(err.to_string().contains("\"security\" must be declared"));
+        assert_eq!(config.get_initial_route(), "pages/home/index");
+        let value = serde_json::to_value(&config).unwrap();
+        assert!(value.get("security").is_none());
     }
 
     #[test]
@@ -472,7 +352,6 @@ mod tests {
             "appId": "demo",
             "appName": "Demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}
@@ -498,7 +377,6 @@ mod tests {
             "appId": "demo",
             "appName": "Demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
             "pages": pages,
             "tabBar": { "items": items }
         })
@@ -540,66 +418,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_security_domain() {
-        let err = LxAppConfig::from_value(serde_json::json!({
-            "appId": "demo",
-            "appName": "Demo",
-            "version": "1.0.0",
-            "security": {
-                "network": {
-                    "trustedDomains": ["https://api.example.com"]
-                },
-                "privileges": []
-            },
-            "pages": [{"name":"home","path":"pages/home/index"}]
-        }))
-        .unwrap_err();
-
-        assert!(
-            err.to_string()
-                .contains("\"security.network.trustedDomains\"")
-        );
-    }
-
-    #[test]
-    fn parses_trusted_domain_wildcard() {
-        let config = LxAppConfig::from_value(serde_json::json!({
-            "appId": "demo",
-            "appName": "Demo",
-            "version": "1.0.0",
-            "security": {
-                "network": {
-                    "trustedDomains": ["*"]
-                },
-                "privileges": []
-            },
-            "pages": [{"name":"home","path":"pages/home/index"}]
-        }))
-        .unwrap();
-
-        assert_eq!(config.trusted_domains(), &["*".to_string()]);
-    }
-
-    #[test]
-    fn rejects_wildcard_mixed_with_trusted_domains() {
-        let err = LxAppConfig::from_value(serde_json::json!({
-            "appId": "demo",
-            "appName": "Demo",
-            "version": "1.0.0",
-            "security": {
-                "network": {
-                    "trustedDomains": ["api.example.com", "*"]
-                },
-                "privileges": []
-            },
-            "pages": [{"name":"home","path":"pages/home/index"}]
-        }))
-        .unwrap_err();
-
-        assert!(err.to_string().contains("wildcard"));
-    }
-
-    #[test]
     fn rejects_plugin_name_or_version_that_escapes_storage() {
         for plugins in [
             serde_json::json!({ "../evil": { "version": "1.0.0" } }),
@@ -609,10 +427,6 @@ mod tests {
                 "appId": "demo",
                 "appName": "Demo",
                 "version": "1.0.0",
-                "security": {
-                    "network": { "trustedDomains": [] },
-                    "privileges": []
-                },
                 "pages": [{"name":"home","path":"pages/home/index"}],
                 "plugins": plugins
             }))

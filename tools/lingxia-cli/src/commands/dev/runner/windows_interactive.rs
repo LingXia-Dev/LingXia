@@ -23,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::core::BOOL;
 
 const RUNNER_MARKER_ENV: &str = "LINGXIA_RUNNER";
+const RUNNER_LXAPP_PERMISSIONS_ENV: &str = "LINGXIA_RUNNER_LXAPP_PERMISSIONS";
 const INTERACTIVE_START_TIMEOUT: Duration = Duration::from_secs(15);
 const FOCUS_WINDOW_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -253,14 +254,26 @@ pub(super) fn launch_runner(
     launch_args: &[String],
     state_dir: &Path,
 ) -> Result<InteractiveLaunch> {
+    let environment = runner_launch_environment(
+        std::env::var_os(RUNNER_LXAPP_PERMISSIONS_ENV)
+            .map(|value| value.to_string_lossy().into_owned()),
+    );
     launch_interactive(
         exe_path,
         working_dir,
         launch_args,
-        &[(RUNNER_MARKER_ENV.to_string(), "1".to_string())],
+        &environment,
         state_dir,
         "Runner",
     )
+}
+
+fn runner_launch_environment(network_permissions: Option<String>) -> Vec<(String, String)> {
+    let mut environment = vec![(RUNNER_MARKER_ENV.to_string(), "1".to_string())];
+    if let Some(value) = network_permissions {
+        environment.push((RUNNER_LXAPP_PERMISSIONS_ENV.to_string(), value));
+    }
+    environment
 }
 
 pub(in crate::commands::dev) fn launch_app(
@@ -746,6 +759,39 @@ mod tests {
             parse_user_sid("\"desktop\\admin\",\"S-1-5-21-1-2-3-1001\"\r\n"),
             Some("S-1-5-21-1-2-3-1001".to_string())
         );
+    }
+
+    #[test]
+    fn runner_launch_forwards_permission_grants_without_changing_json() {
+        let grant = r#"{"demo":{"domains":["api.example.com"],"privileges":["downloads"]}}"#;
+        let environment = runner_launch_environment(Some(grant.to_string()));
+        assert_eq!(
+            environment[1],
+            (RUNNER_LXAPP_PERMISSIONS_ENV.to_string(), grant.to_string())
+        );
+        let script = render_launch_script(
+            Path::new(r"C:\Runner\runner.exe"),
+            &[],
+            "",
+            Path::new(r"C:\Runner\lingxia.exe"),
+            &environment,
+            Path::new(r"C:\state\interactive.log"),
+        );
+        assert!(script.contains(
+            r#"environment("LINGXIA_RUNNER_LXAPP_PERMISSIONS") = "{""demo"":{""domains"":[""api.example.com""],""privileges"":[""downloads""]}}""#
+        ));
+        assert_eq!(
+            runner_launch_environment(None),
+            vec![(RUNNER_MARKER_ENV.to_string(), "1".to_string())]
+        );
+        // Empty and malformed values must reach the denying provider, not
+        // disappear and accidentally select another permission source.
+        for value in ["", "invalid-json"] {
+            assert_eq!(
+                runner_launch_environment(Some(value.to_string()))[1].1,
+                value
+            );
+        }
     }
 
     #[test]
