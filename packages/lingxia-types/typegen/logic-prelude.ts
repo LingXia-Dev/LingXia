@@ -144,9 +144,11 @@ declare global {
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the Control app; other lxapps get a permission error.
+     * Present only in the Control app; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.cache?.…` and the query are interchangeable.
      */
-    cache: AppCacheApi;
+    cache?: AppCacheApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */

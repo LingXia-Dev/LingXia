@@ -19,6 +19,7 @@ mod update;
 struct AppBaseInfo {
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
     /// `"Harmony"`. Matches the View-side `usePlatform().os` value.
+    #[ts_type = "HostOs"]
     os: String,
     #[js_name = "productName"]
     product_name: String,

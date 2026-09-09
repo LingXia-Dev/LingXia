@@ -219,12 +219,14 @@ error surfaces to the caller and the lxapp should tell the user.
 
 ## Clearing the product's cache
 
-`lx.app.cache` is a host-wide API restricted to the home lxapp. Ordinary
-lxapps receive a permission error for both methods.
+`lx.app.cache` is a host-wide API injected only into the Control app, same
+gate as `lx.app.control`. Guests do not have the member.
 
 ```ts
-const reclaimableBytes = await lx.app.cache.size();
-const result = await lx.app.cache.clear();
+const cache = lx.app.cache;
+if (!cache) return; // not the Control app
+const reclaimableBytes = await cache.size();
+const result = await cache.clear();
 // result: { freedBytes, skippedActivePaths, webview, failures }
 ```
 
@@ -276,5 +278,5 @@ usercache     -> lx://usercache/<path>
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
-- Use `lx.app.cache` from the home lxapp for a product-wide "clear cache"
-  control; it is unavailable to other lxapps.
+- Use `lx.app.cache` from the Control app for a product-wide "clear cache"
+  control; guests do not have the member.

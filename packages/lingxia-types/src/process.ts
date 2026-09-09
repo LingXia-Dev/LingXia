@@ -1,8 +1,8 @@
 /**
- * OS process capability for trusted LingXia home lxapps.
+ * OS process capability for the Control app.
  *
  * Add `@lingxia/types/process` to the Logic tsconfig only when the host sets
- * `capabilities.process: true` and the home lxapp declares the `process`
+ * `capabilities.process: true` and the Control app declares the `process`
  * security privilege. These declarations have no runtime payload.
  */
 

@@ -6,11 +6,15 @@ use crate::i18n::js_error_from_lxapp_error;
 /// `lx.app.cache` — the product-wide cache a settings screen reports and
 /// clears.
 ///
-/// Restricted to the Control app, and app-scoped rather than lxapp-scoped: the
+/// Injected only into the Control app, same gate as `lx.app.control`: the
 /// figure a user is shown covers the whole product, so it spans every lxapp the
-/// host has run, not just the one asking. An ordinary lxapp clearing every
-/// other lxapp's cache is not a capability it should have.
+/// host has run, not just the one asking. Guests do not get the member — an
+/// ordinary lxapp clearing every other lxapp's cache is not a capability it
+/// should have.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
+    if !crate::capability::is_control_app(ctx) {
+        return Ok(());
+    }
     let cache = JSObject::new(ctx);
     cache.set("size", JSFunc::new(ctx, cache_size)?.name("size")?)?;
     cache.set("clear", JSFunc::new(ctx, cache_clear)?.name("clear")?)?;

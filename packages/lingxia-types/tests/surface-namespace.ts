@@ -102,7 +102,7 @@ async function identityReplacesCaching(): Promise<boolean> {
 // `chrome: 'full'` is a window option, and the capability query can be asked
 // about it before the affordance is offered.
 async function edgeToEdgeWindow(): Promise<"window" | "float"> {
-  const win = await lx.surface.openPage("/pages/editor/index", {
+  const win = await lx.surface.openPage("editor", {
     as: "window",
     chrome: "full",
   });

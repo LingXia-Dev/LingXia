@@ -147,9 +147,11 @@ declare global {
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Restricted to the Control app; other lxapps get a permission error.
+     * Present only in the Control app; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.cache?.…` and the query are interchangeable.
      */
-    cache: AppCacheApi;
+    cache?: AppCacheApi;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -229,9 +231,8 @@ export type AnySurface = PageSurface | DeclaredSurface | AppSurface | TabSurface
 /**
  * The product-wide cache a settings screen reports and clears.
  * App-scoped, not lxapp-scoped: the figure covers every lxapp the host
- * has run, which is why — like `checkUpdate` and `screenshot` — it is
- * available only to the Control app and other lxapps get a permission
- * error.
+ * has run. Injected only into the Control app, same gate as
+ * `lx.app.control` — guests do not have the member.
  */
 export type AppCacheApi = {
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -310,12 +311,18 @@ export type AppLaunchOptions = {
     path?: string;
     query?: Record<string, string>;
     /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
-    scene?: number;
+    scene?: AppLaunchScene;
     referrerInfo?: {
         appId?: string;
         extraData?: Record<string, unknown>;
     };
 };
+
+/**
+ * Launch scene. `8003` is AppLink (cold: `onLaunch`; warm: `onShow`).
+ * Other numeric scenes stay valid; completion offers `8003`.
+ */
+export type AppLaunchScene = 8003 | (number & {});
 
 export type AppLifecycleEventArgs = {
     source: 'host' | 'lxapp';
@@ -323,7 +330,7 @@ export type AppLifecycleEventArgs = {
     path?: string;
     query?: Record<string, string>;
     /** `8003` = AppLink. */
-    scene?: number;
+    scene?: AppLaunchScene;
 };
 
 export type AppScreenshotOptions = {
@@ -585,6 +592,14 @@ export type CompressVideoTask = PromiseLike<CompressVideoResult> & AsyncIterable
     cancel(): void;
     wait(): Promise<CompressVideoResult>;
 };
+
+/**
+ * Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript
+ * navigation accepts only this name; full routes such as
+ * `/pages/home/index` are internal runtime details. Discover names
+ * with `lxdev lxapp pages`.
+ */
+export type ConfiguredPageName = string;
 
 export type ConnectWifiOptions = {
     SSID: string;
@@ -898,6 +913,12 @@ export type HostAppUpdateTask = PromiseLike<HostAppUpdateResult> & AsyncIterable
     wait(): Promise<HostAppUpdateResult>;
 };
 
+/**
+ * Canonical platform-family label shared by `lx.app.getBaseInfo().os`
+ * and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
+ */
+export type HostOs = 'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown';
+
 export type InstalledTerminalFont = {
     family: string;
     monospace: boolean;
@@ -1012,7 +1033,7 @@ export type NavigateToAppOptions = {
      * open the target app's initial page. Full routes such as
      * `/pages/home/index` are not supported.
      */
-    page?: string;
+    page?: ConfiguredPageName;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1157,7 +1178,7 @@ export type PageSurface = SurfaceBase & SurfaceShowable & SurfaceMessaging & {
  */
 export type PageTargetOptions = {
     /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
-    page: string;
+    page: ConfiguredPageName;
     query?: PageQuery;
 };
 
@@ -1468,7 +1489,7 @@ export type ShellOpenAppOptions = {
      * Configured page name from the target lxapp's `lxapp.json`. Omit it to
      * open that app's initial page. Full page routes are not supported.
      */
-    page?: string;
+    page?: ConfiguredPageName;
     query?: PageQuery;
     /** Defaults to 'release'. */
     envVersion?: LxAppEnvVersion;
@@ -1652,7 +1673,7 @@ export type StreamSourceOptions = {
  */
 export type SurfaceApi = {
     /** Open one of this lxapp's own pages as a float or a window. */
-    openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
+    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
@@ -2324,7 +2345,7 @@ export interface AppBaseInfo {
    * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
    * `"Harmony"`. Matches the View-side `usePlatform().os` value.
    */
-  os: string;
+  os: HostOs;
   productName: string;
   version: string;
   SDKVersion: string;
@@ -2335,7 +2356,7 @@ export interface DeviceInfo {
   brand: string;
   model: string;
   marketName: string;
-  osName: string;
+  osName: HostOs;
   osVersion: string;
 }
 
@@ -2416,13 +2437,13 @@ export declare class DirEntry {
   readonly isSymlink: boolean;
 }
 
-export declare class JSMessagePort {
+declare class JSMessagePort {
   constructor();
   static postMessage(payload: any): void;
   static onMessage(handler: (...args: any[]) => any): (...args: any[]) => any;
 }
 
-export declare class JSSurface {
+declare class JSSurface {
   constructor();
   close(): Promise<void>;
   postMessage(payload: any): void;
@@ -2430,7 +2451,7 @@ export declare class JSSurface {
   static onClose(handler: (...args: any[]) => any): (...args: any[]) => any;
 }
 
-export declare class JSUpdateManager {
+declare class JSUpdateManager {
   constructor();
   /** Apply update by restarting the app */
   applyUpdate(): void;
@@ -2440,7 +2461,7 @@ export declare class JSUpdateManager {
   onUpdateFailed(cb: (...args: any[]) => any): (...args: any[]) => any;
 }
 
-export declare class JSVideoContext {
+declare class JSVideoContext {
   constructor();
   play(): void;
   pause(): void;
@@ -2882,7 +2903,7 @@ declare global {
      * float or a window. A page can never be an aside: asides carry external
      * content only, which is why that member does not exist on this signature.
      */
-    openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
+    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
     /**
      * `lx.surface.openUrl(url, options?)` — external content in the in-app
      * browser, as a tab or docked as an aside.

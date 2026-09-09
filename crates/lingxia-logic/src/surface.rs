@@ -216,7 +216,7 @@ rong::js_api! {
     fn register_surface_namespace(ctx) {
         namespace SurfaceApi = surface_namespace(ctx)?;
         fn openPage(
-            ts_params = "page: string, options?: OpenPageOptions",
+            ts_params = "page: ConfiguredPageName, options?: OpenPageOptions",
             ts_return = "Promise<PageSurface>"
         ) = open_page;
         fn openUrl(
