@@ -1,20 +1,13 @@
 import React from 'react';
-import { useLxPage } from '@lingxia/react';
+import { useDisplayLanguage, useLxPage } from '@lingxia/react';
+import {
+  resolveDisplayLanguage,
+  type DisplayLanguagePreference,
+} from '../../shared/display-language';
+import { getMessages } from './messages';
 import '../../tailwind.css';
 
 type AppearancePreference = 'auto' | 'light' | 'dark';
-
-type HomeCopy = {
-  tagline: string;
-  namePlaceholder: string;
-  sayHello: string;
-  sending: string;
-  appearance: string;
-  appearanceAuto: string;
-  appearanceLight: string;
-  appearanceDark: string;
-  myIp: string;
-};
 
 type PageData = {
   greeting?: string;
@@ -22,19 +15,23 @@ type PageData = {
   ipAddr?: string;
   appVersion?: string;
   appearance?: { preference: AppearancePreference; resolved: 'light' | 'dark' };
-  copy?: HomeCopy;
+  displayLanguage?: { preference: DisplayLanguagePreference; resolved: string };
 };
 
 type PageActions = {
   greet(payload: { name: string }): void;
   setAppearance(payload: { preference: AppearancePreference }): void;
+  setDisplayLanguage(payload: { preference: DisplayLanguagePreference }): void;
 };
 
 const APPEARANCE_OPTIONS: AppearancePreference[] = ['auto', 'light', 'dark'];
+const LANGUAGE_OPTIONS: DisplayLanguagePreference[] = ['auto', 'en-US', 'zh-CN'];
 
 export default function HomePage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
-  const { greet, setAppearance } = actions;
+  const { greet, setAppearance, setDisplayLanguage } = actions;
+  const hostLanguage = useDisplayLanguage();
+  const { t } = getMessages(resolveDisplayLanguage(hostLanguage));
   const [name, setName] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);
 
@@ -44,16 +41,23 @@ export default function HomePage() {
   const appVersion = typeof data?.appVersion === 'string' ? data.appVersion : '';
   const preference = data?.appearance?.preference ?? 'auto';
   const resolvedAppearance = data?.appearance?.resolved ?? 'light';
-  const copy = data?.copy;
+  const languagePreference = data?.displayLanguage?.preference ?? 'auto';
   const appearanceLabels: Record<AppearancePreference, string> = {
-    auto: copy?.appearanceAuto ?? 'Auto',
-    light: copy?.appearanceLight ?? 'Light',
-    dark: copy?.appearanceDark ?? 'Dark',
+    auto: t('appearanceAuto'),
+    light: t('appearanceLight'),
+    dark: t('appearanceDark'),
   };
-  const resolvedLabel =
-    resolvedAppearance === 'dark'
-      ? (copy?.appearanceDark ?? 'Dark')
-      : (copy?.appearanceLight ?? 'Light');
+  const languageLabels: Record<DisplayLanguagePreference, string> = {
+    auto: t('languageAuto'),
+    'en-US': t('languageEn'),
+    'zh-CN': t('languageZh'),
+  };
+  const resolvedAppearanceLabel =
+    resolvedAppearance === 'dark' ? t('appearanceDark') : t('appearanceLight');
+  const resolvedLanguageLabel =
+    resolveDisplayLanguage(data?.displayLanguage?.resolved ?? hostLanguage) === 'zh-CN'
+      ? t('languageZh')
+      : t('languageEn');
 
   React.useEffect(() => {
     if (isSending && greetingMessage) {
@@ -77,7 +81,6 @@ export default function HomePage() {
 
   return (
     <div className="fixed inset-0 w-screen h-screen overflow-hidden" data-testid="home-page">
-      {/* Background Image - Full Screen */}
       {imageUrl && (
         <img
           src={imageUrl}
@@ -86,18 +89,16 @@ export default function HomePage() {
         />
       )}
 
-      {/* Gradient Overlay */}
       <div className="absolute inset-0 bg-linear-to-b from-black/10 via-transparent to-black/40" />
 
-      {/* Content Container - Centered */}
-      <div className="relative z-10 w-full h-full flex flex-col justify-center items-center px-5 py-16">
-        {/* Main Card - Apple Style Frosted Glass */}
+      <div className="relative z-10 w-full h-full overflow-y-auto">
+        <div className="min-h-full flex flex-col justify-center items-center px-5 py-10">
         <div className="bg-surface/80 backdrop-blur-xl rounded-2xl shadow-lg border border-white/20 p-6">
           <div className="text-center mb-6">
             <img src="/public/AppIcon.png" alt="Logo" className="w-16 h-16 mx-auto mb-3 rounded-[16px]" />
             <div className="text-[17px] font-semibold text-gray-900">LingXia</div>
             <div className="text-[13px] text-gray-500 mt-0.5" data-testid="home-tagline">
-              {copy?.tagline ?? 'Lightweight Application Framework'}
+              {t('tagline')}
             </div>
           </div>
 
@@ -106,7 +107,7 @@ export default function HomePage() {
               data-testid="home-name"
               data-controlled-value={name}
               type="text"
-              placeholder={copy?.namePlaceholder ?? 'Enter your name'}
+              placeholder={t('namePlaceholder')}
               value={name}
               onChange={e => setName(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -120,11 +121,10 @@ export default function HomePage() {
               disabled={!name.trim() || isSending}
               className="w-full h-[50px] bg-primary hover:bg-primary-dark active:bg-primary-dark disabled:bg-primary/50 disabled:cursor-not-allowed rounded-[12px] text-[17px] text-white font-semibold transition-colors"
             >
-              {isSending ? (copy?.sending ?? 'Sending...') : (copy?.sayHello ?? 'Say Hello')}
+              {isSending ? t('sending') : t('sayHello')}
             </button>
           </div>
 
-          {/* Result Message */}
           {greetingMessage && (
             <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-xl">
               <div className="flex items-start gap-3">
@@ -140,14 +140,13 @@ export default function HomePage() {
             </div>
           )}
 
-          {/* lxapp-owned light/dark branch — `auto` follows the host shell. */}
           <div className="mt-4" data-testid="home-appearance">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-medium text-gray-500">
-                {copy?.appearance ?? 'Appearance'}
+                {t('appearance')}
               </span>
               <span className="text-[11px] text-gray-400" data-testid="home-appearance-resolved">
-                {resolvedLabel}
+                {resolvedAppearanceLabel}
               </span>
             </div>
             <div className="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
@@ -170,6 +169,36 @@ export default function HomePage() {
             </div>
           </div>
 
+          {/* Showcase is the Control app, so it may host the product language switch. */}
+          <div className="mt-3" data-testid="home-language">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-medium text-gray-500">
+                {t('language')}
+              </span>
+              <span className="text-[11px] text-gray-400" data-testid="home-language-resolved">
+                {resolvedLanguageLabel}
+              </span>
+            </div>
+            <div className="flex gap-1 p-1 bg-surface-100 rounded-[10px]">
+              {LANGUAGE_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  data-testid={`home-language-${option}`}
+                  data-selected={languagePreference === option}
+                  onClick={() => setDisplayLanguage({ preference: option })}
+                  className={`flex-1 h-8 rounded-[8px] text-[13px] font-medium transition-colors ${
+                    languagePreference === option
+                      ? 'bg-surface text-gray-900 shadow-sm'
+                      : 'text-gray-500'
+                  }`}
+                >
+                  {languageLabels[option]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {appVersion && (
             <div className="mt-1 text-left leading-none">
               <span className="text-[10px] text-gray-500 font-medium">{appVersion}</span>
@@ -177,16 +206,16 @@ export default function HomePage() {
           )}
         </div>
 
-        {/* IP Address Badge - Below Card */}
         {ipAddress && (
           <div className="mt-4 flex justify-center">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-black/20 backdrop-blur-md rounded-full text-white/90">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              <span className="text-xs font-medium tracking-wide">{copy?.myIp ?? 'My IP'} </span>
+              <span className="text-xs font-medium tracking-wide">{t('myIp')} </span>
               <span className="text-xs font-mono">{ipAddress}</span>
             </div>
           </div>
         )}
+      </div>
       </div>
 
     </div>
