@@ -13,6 +13,9 @@ Use this guide when you want to:
 For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
 For host project configuration, see [App Project](../app/project.md).
 
+For host-granted lxapp networking and the registry that answers it, see
+[Permissions](./permissions.md).
+
 ## Host Addon
 
 Every native host library registers a `HostAddon` before runtime initialization.
@@ -40,8 +43,9 @@ impl lingxia::HostAddon for AppHostAddon {
         &self,
         authority: &mut lingxia::NativeHostRuntimeAuthority<'_>,
     ) {
-        // A manifest entry is only a request. Issue the session grant only
-        // after this native product's policy or consent flow approved it.
+        // Issue the session grant only after this native product's policy
+        // or consent flow approved it. `requested()` is the permission
+        // provider's allow (or the default allow).
         if user_approved_downloads_for(authority.app_id()) {
             authority.grant(lingxia::host::AppResourceGrant::Downloads);
         }
@@ -163,15 +167,15 @@ async fn open_granted_document(
 Streams and channels accept the same optional first authority parameter before
 their payload and final `StreamContext` or `ChannelContext`.
 
-High-risk manifest privileges (`process`, `downloads`, `automation`, and
-`host`) are requests rather than authority. Their native grants are sealed to
-the session before its Logic runtime starts. `capabilities.process` grants
-`Process` only to the native-assigned ControlApp when that manifest requested
-it. A product that supports user-approved OS Downloads access must issue
-`AppResourceGrant::Downloads` from `HostAddon::issue_app_resource_grants` after
-its own policy/consent check. Standard and Control sessions otherwise start
-without privileged resource grants, even when their app ids or manifests are
-identical.
+High-risk privilege classes (`process`, `downloads`, `automation`, and
+`host`) are host grants, not `lxapp.json` fields. Their native grants are
+sealed to the session before its Logic runtime starts. `capabilities.process`
+grants `Process` only to the native-assigned ControlApp when the permission
+provider (or the default allow) permitted `process`. A product that supports
+user-approved OS Downloads access must issue `AppResourceGrant::Downloads`
+from `HostAddon::issue_app_resource_grants` after its own policy/consent
+check. Standard and Control sessions otherwise start without privileged
+resource grants, even when their app ids are identical.
 
 Loading the process namespace is not a persistent grant. `spawn`, `spawnSync`,
 shell commands, retained child handles, and child stream I/O recheck the exact

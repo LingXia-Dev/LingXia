@@ -70,9 +70,9 @@ by `@lingxia/types/logic-globals`; this includes APIs such as `fetch`, timers,
 globals. If a global is absent from that profile, application Logic must not
 assume it exists.
 
-`fetch` is still constrained by `security.network.trustedDomains`; see
-[Security Policy](./guide.md#security-policy). The Logic Web profile does
-not include `WebSocket`.
+`fetch` follows the host's network grant — unrestricted unless the app registry
+returns one; see [Security Policy](./guide.md#security-policy). The Logic Web
+profile does not include `WebSocket`.
 
 OS process APIs are a separate host capability with opt-in declarations at
 `@lingxia/types/process`; see

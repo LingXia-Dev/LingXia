@@ -60,15 +60,7 @@ export default function Home() {
 npm install --save-dev @lingxia/types
 ```
 
-Logic 包含 `fetch`、timer、URL、stream、console 等标准 Web API，但没有 DOM。网络 hostname 未列入 `lxapp.json` 时，请求会被拒绝：
-
-```json
-{
-  "security": {
-    "network": { "trustedDomains": ["api.example.com"] }
-  }
-}
-```
+Logic 包含 `fetch`、timer、URL、stream、console 等标准 Web API，但没有 DOM。可访问的域名和特权由宿主 grant，不写在 `lxapp.json` 里——没有 provider 时默认放行公网和全部特权；只有注册了 provider 才按 grant 收紧。`lingxia.yaml` 不配置 permission。现有非公网地址限制继续保留。
 
 ## 原生组件
 

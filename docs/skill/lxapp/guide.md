@@ -42,7 +42,7 @@ my-lxapp/
 └── shared/
 ```
 
-`lxapp.json` holds runtime metadata (`appId`, `appName`, `version`, `pages` — `name` is a legacy alias for `appName`; write `appName` in new projects) and the security policy; `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
+`lxapp.json` holds runtime metadata (`appId`, `appName`, `version`, `pages` — `name` is a legacy alias for `appName`; write `appName` in new projects). It does not declare network hosts or privileges. `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
 
 ### Static assets
 
@@ -64,43 +64,43 @@ Rules:
 
 ### Security Policy
 
-`lxapp.json` must declare the lxapp security policy. New projects include an explicit deny-by-default policy:
+`lxapp.json` does not list network hosts or privilege classes. The host does,
+like WeChat's server-domain list. No provider, and the provider's default
+method, allow public network and every privilege class. Override the provider
+to restrict; `lingxia.yaml` carries no permission settings.
 
-```json
-{
-  "security": {
-    "network": {
-      "trustedDomains": []
-    },
-    "privileges": []
-  }
-}
+- Host grants use lowercase hosts without scheme, path or port.
+  `*.example.com` matches subdomains. `*` allows every public host and cannot
+  be mixed with named hosts. Non-public addresses stay blocked either way.
+- `downloads` is for `lx.downloadFile({ destination: "downloads" })` and still
+  needs a native session grant. App-owned downloads only need the network
+  grant. `process` also needs the home lxapp and `lingxia.yaml`
+  `capabilities.process`. Camera, location and similar APIs stay on OS
+  permission flows.
+- The host's own home lxapp is unrestricted without any registry lookup; the
+  host already vouched for it by loading it.
+- A guest is unrestricted unless the app registry returns a grant for it. No
+  registry provider, an app it does not know, and a registry it cannot reach
+  all leave the default; only an explicit grant restricts, and a half left
+  unconstrained keeps the default for that half.
+- The runtime resolves this once per instance, before Logic and normal page
+  HTML execute, from the same record the pre-open status check fetches.
+  Recreate the instance to pick up a changed grant.
+- The same effective policy feeds Logic networking, file transfers and native
+  media. It does not replace platform permissions or the WebView CSP.
+
+The development Runner does not grant home trust to a project merely because it
+uses the home slot. Unset, guests stay unrestricted. To constrain:
+
+```sh
+LINGXIA_RUNNER_LXAPP_PERMISSIONS='{"lingxia-chat":{"domains":["www.deepseek.com"]}}' lingxia dev
 ```
 
-Rules:
-
-- `security.network.trustedDomains: []` denies all remote hosts.
-- Use exact host names, for example `api.example.com` or `cdn.example.com`.
-- Do not include scheme, path, or port. `https://api.example.com`, `api.example.com/path`, and `api.example.com:443` are invalid.
-- Use `"*"` only when the lxapp intentionally allows all remote hosts, for example during local experiments.
-- Do not combine `"*"` with host names. It is an explicit allow-all policy.
-- Domain matching is host-only and normalized to lowercase.
-- The policy is a host allowlist. It does not distinguish `http` and `https`; prefer HTTPS in production.
-- The policy applies to Logic network requests, `lx.downloadFile`, `lx.uploadFile`, and WebView HTTPS resources resolved by LingXia.
-- `security.privileges` is for host-defined capabilities such as `downloads` (`lx.downloadFile({ destination: "downloads" })`). Ordinary APIs like media, camera, or location remain guarded by host and platform permission flows.
-
-Example:
-
-```json
-{
-  "security": {
-    "network": {
-      "trustedDomains": ["api.example.com", "cdn.example.com"]
-    },
-    "privileges": ["downloads"]
-  }
-}
-```
+The JSON maps app ids to `{"domains": [...], "privileges": [...]}`; omitted
+fields stay unconstrained, and an app it does not list is one this registry has
+no policy for, so it stays unrestricted. This is a Runner process setting, never
+a project manifest. See [host permissions](../native/permissions.md) for how a
+registry is registered and what it answers.
 
 ### Native client
 
@@ -855,7 +855,7 @@ removed configuration fields with the complete field path and its replacement.
 ## Pre-ship checklist
 
 - [ ] `lxapp.json` lists every page; `appId` set; `version` bumped if shipping.
-- [ ] `security.network.trustedDomains` covers every external host (exact host names, no scheme/port/path).
+- [ ] Network hosts and privilege classes the app uses are granted by the host (home is unrestricted; a guest is unrestricted until a provider constrains it).
 - [ ] One view-framework file per page.
 - [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
 - [ ] `lingxia dev` runs cleanly.

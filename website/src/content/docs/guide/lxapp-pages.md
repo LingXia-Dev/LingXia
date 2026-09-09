@@ -60,15 +60,7 @@ Install `@lingxia/types` as a development dependency. Its declarations are globa
 npm install --save-dev @lingxia/types
 ```
 
-Logic includes standard Web APIs such as `fetch`, timers, URL, streams, and console, but it has no DOM. Network access is denied unless the hostname is listed in `lxapp.json`:
-
-```json
-{
-  "security": {
-    "network": { "trustedDomains": ["api.example.com"] }
-  }
-}
-```
+Logic includes standard Web APIs such as `fetch`, timers, URL, streams, and console, but it has no DOM. Network hosts and privilege classes are host grants, not `lxapp.json` fields — the default (no provider) allows public network and every privilege class; a registered provider is the only path that restricts. `lingxia.yaml` carries no permission settings. Existing non-public address restrictions still apply.
 
 ## Native-backed components
 

@@ -152,6 +152,7 @@ Every published package and what to import from each. Don't guess imports from t
 | Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
 | **Which lxapp is trusted: Control app vs control surface vs guest, and what each may call** | [`./app/control-app.md`](./app/control-app.md) |
 | Let a command line or host-owned agent integration drive a shipped product — `appUse` / `computerUse` / `browserUse`, executable discovery | [`./app/agent-control.md`](./app/agent-control.md) |
+| What an lxapp may reach and do, and where that grant comes from | [`./native/permissions.md`](./native/permissions.md) |
 | Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
 | Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |
 | iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
@@ -169,7 +170,7 @@ lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # S
 
 The output is the authoritative layout for the `lingxia` on your `PATH`; it can't drift the way a hand-written sample does. What to look at per shape:
 
-- **A — standalone lxapp** (JS). `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, runs in the JS runtime), `index.tsx` is **View** (React + `useLxPage`, runs in the WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**. A `_`-prefixed method stays private to Logic. `lxapp.json` `security.network.trustedDomains` starts `[]` (all `fetch` denied) — set real hostnames before networking.
+- **A — standalone lxapp** (JS). `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, runs in the JS runtime), `index.tsx` is **View** (React + `useLxPage`, runs in the WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**. A `_`-prefixed method stays private to Logic. Network hosts and privilege classes are host grants, not `lxapp.json` fields; with no provider they default to allow. See [permissions](./native/permissions.md).
 - **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`. The launch `main` surface's `lxapp:` content key is the appId it renders, so point it at that same home app. View talks to Logic via `actions.foo()` from `useLxPage()`.
 - **C — host + Rust control.** With an embedded HTML control lxapp, use `features.appService: false`, `lxapp.json` `"logic": false`, `window.native.*`, and `#[lingxia::native]` routes. A macOS/Windows `native: terminal|browser` main may instead omit the control lxapp, `homeAppId`, and resources entirely: `lingxia new … --main terminal|browser --control native`. Runtime/downloaded lxapps remain guest workspaces, not the trusted control app. Flip `appService` and embedded `logic` together; don't add `@lingxia/react|vue|html` to a logic-disabled view.
 
@@ -184,7 +185,7 @@ Jump straight here when the user reports a concrete failure:
 | Symptom | Where to look |
 |---|---|
 | A configured `homeAppId` doesn't match a bundle / wrong control app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
-| `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (`trustedDomains`) |
+| `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (host grant; default allow) |
 | "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
 | Need to read/write files (not just `lx.downloadFile`) | `lx.fs` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
 | Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
@@ -223,7 +224,7 @@ Jump straight here when the user reports a concrete failure:
 **LxApp** — see [`./lxapp/guide.md` → Common Pitfalls](./lxapp/guide.md#common-pitfalls):
 
 - Generating `.tsx` + `.vue` + `.html` for one page. A project has one view framework — match the existing pages.
-- `fetch()` to a host not in `security.network.trustedDomains` fails silently.
+- Guest `fetch()` is allowed unless the app registry returns a grant that constrains it. Check registry logs; `lxapp.json` does not list domains or privileges.
 
 **Host app** — see [`./app/project.md` → Common Pitfalls](./app/project.md#common-pitfalls):
 
