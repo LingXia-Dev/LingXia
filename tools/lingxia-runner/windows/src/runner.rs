@@ -17,7 +17,7 @@ static CURRENT_DEVICE: AtomicUsize = AtomicUsize::new(0);
 static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 /// Simulated appearance as `lingxia::dev::Appearance` discriminant
 /// (0 system / 1 light / 2 dark), applied through the WebView2 profile's
-/// preferred color scheme and reported through `runner.get`.
+/// preferred color scheme, `lx.appearance` Auto, and `runner.get`.
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
 /// Whether the simulated host capsule is enabled (`lxdev runner set
 /// --capsule`). Default on: the capsule is real host chrome for every
@@ -373,9 +373,10 @@ pub(crate) fn effective_appearance_dark() -> bool {
     }
 }
 
-/// Applies a simulated appearance: pins the WebView2 profile scheme and
-/// refreshes the toolbar glyph. CLI, selector menu, and toolbar flip all
-/// funnel through here so every entry point keeps the glyph honest.
+/// Applies a simulated appearance: pins the WebView2 profile scheme, the
+/// host appearance Auto lxapps resolve against, and the toolbar glyph. CLI,
+/// selector menu, and toolbar flip all funnel through here so every entry
+/// point keeps the glyph honest.
 fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
     let scheme = match appearance {
         lingxia::dev::Appearance::System => lingxia_windows_sdk::WindowsPreferredColorScheme::Auto,
@@ -393,6 +394,13 @@ fn set_appearance(appearance: lingxia::dev::Appearance) -> Result<(), String> {
         },
         Ordering::Release,
     );
+    // macOS pins `NSApp.appearance` so Auto restamps `data-theme`. WebView2
+    // `prefers-color-scheme` alone cannot: showcase CSS keys off `data-theme`.
+    lingxia_windows_sdk::set_windows_simulated_host_appearance(match appearance {
+        lingxia::dev::Appearance::System => None,
+        lingxia::dev::Appearance::Light => Some(false),
+        lingxia::dev::Appearance::Dark => Some(true),
+    });
     lingxia_windows_sdk::set_windows_preferred_color_scheme(scheme)?;
     refresh_device_frame_toolbar();
     Ok(())
