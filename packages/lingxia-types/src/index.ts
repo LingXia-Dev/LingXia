@@ -5,7 +5,7 @@
  */
 
 export * from './generated/logic.js';
-export * from './automation/index.js';
+export type { Automation } from './automation/index.js';
 export * from './error.js';
 export * from './generated/error.js';
 export * from './generated/i18n.js';

@@ -46,6 +46,7 @@ editor applies the correct environment to each file.
 - Type `lx.` in the editor and hover a member to read its generated JSDoc.
 - Import reusable shapes from the package root, for example
   `import type { ScanCodeResult } from '@lingxia/types'`.
+  Automation types come from `@lingxia/types/automation`.
 - For the complete declaration, inspect
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
@@ -65,8 +66,10 @@ by `@lingxia/types/logic-globals`; this includes APIs such as `fetch`, timers,
 globals. If a global is absent from that profile, application Logic must not
 assume it exists.
 
-`fetch` and `WebSocket` are still constrained by
-`security.network.trustedDomains`; see [Security Policy](./guide.md#security-policy).
+`fetch` is still constrained by `security.network.trustedDomains`; see
+[Security Policy](./guide.md#security-policy). The Logic Web profile does
+not include `WebSocket`.
+
 OS process APIs are a separate host capability with opt-in declarations at
 `@lingxia/types/process`; see
 [`capabilities.process`](../app/project.md#capabilities-section).
@@ -125,9 +128,10 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`, `lx.app.control`. Presence and
+`lx.terminal`, `lx.app.autostart`, `lx.app.control`, `lx.app.cache`. Presence and
 `lx.supports()` are answered from one registry, so `('terminal' in lx)` and
-`lx.supports({ capability: 'terminal' })` can never disagree.
+`lx.supports({ capability: 'terminal' })` can never disagree. `lx.app.cache`
+uses the same gate as `lx.app.control`.
 
 `lx.app.control` holds the product-wide settings and their single writer. It is
 injected only into the app the host sealed as its Control app at build time, so

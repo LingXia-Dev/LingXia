@@ -137,10 +137,10 @@ const HOST_APP_API = [
   'screenshot',
   'setBadge',
 ] as const;
-// `autostart` and `control` are injected only where they apply, so a runtime
-// walk of `lx.app` must not require them.
+// `autostart`, `control`, and `cache` are injected only where they apply, so a
+// runtime walk of `lx.app` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
-  (name) => name !== 'autostart' && name !== 'control',
+  (name) => name !== 'autostart' && name !== 'control' && name !== 'cache',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
@@ -349,7 +349,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'cache', 'displayLanguage', 'envVersion'],
+    properties: ['appearance', 'displayLanguage', 'envVersion'],
   },
   {
     name: 'lx.app.autostart',
@@ -363,6 +363,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app.cache',
     members: APP_CACHE_API,
+    optional: true,
   },
   {
     name: 'lx.app.displayLanguage',

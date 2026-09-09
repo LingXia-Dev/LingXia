@@ -15,9 +15,15 @@ directory on first use, then writes `src/generated/logic.ts` and the DOM-free
 package consumers never need Rust.
 
 The generated module replaces all previous handwritten domain declaration
-files. Runtime-backed structs/classes come directly from their Rust bindings;
+files. Those files used to have matching package subpaths (`./app`, `./surface`,
+and so on); the subpaths were aliases of the same generated file and are gone.
+Import reusable shapes from `@lingxia/types`, and automation types from
+`@lingxia/types/automation`.
+
+Runtime-backed structs/classes come directly from their Rust bindings;
 semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
-`js_api!` metadata in `crates/lingxia-logic/src/public_types.rs`.
+`js_api!` metadata in `crates/lingxia-logic/src/public_types.rs`. Binding-layer
+`JS*` class names stay unexported so they do not leak into the public contract.
 
 Rong typegen cannot yet express generic TS-only declaration names or correlated
 overloads. The minimal generation prelude therefore contains only nine generic

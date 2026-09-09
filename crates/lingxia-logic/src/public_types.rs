@@ -80,11 +80,25 @@ rong::js_api! {
     globalData: Record<string, unknown>;
 }"###;
 
+        /// Canonical platform-family label shared by `lx.app.getBaseInfo().os`
+        /// and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
+        type HostOs = r###"'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'"###;
+
+        /// Configured page name from `lxapp.json` / `lingxia.yaml`. JavaScript
+        /// navigation accepts only this name; full routes such as
+        /// `/pages/home/index` are internal runtime details. Discover names
+        /// with `lxdev lxapp pages`.
+        type ConfiguredPageName = r###"string"###;
+
+        /// Launch scene. `8003` is AppLink (cold: `onLaunch`; warm: `onShow`).
+        /// Other numeric scenes stay valid; completion offers `8003`.
+        type AppLaunchScene = r###"8003 | (number & {})"###;
+
         type AppLaunchOptions = r###"{
     path?: string;
     query?: Record<string, string>;
     /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
-    scene?: number;
+    scene?: AppLaunchScene;
     referrerInfo?: {
         appId?: string;
         extraData?: Record<string, unknown>;
@@ -97,7 +111,7 @@ rong::js_api! {
     path?: string;
     query?: Record<string, string>;
     /** `8003` = AppLink. */
-    scene?: number;
+    scene?: AppLaunchScene;
 }"###;
 
         type AppScreenshotOptions = r###"{
@@ -159,9 +173,8 @@ rong::js_api! {
         /// The product-wide cache a settings screen reports and clears.
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
-        /// has run, which is why — like `checkUpdate` and `screenshot` — it is
-        /// available only to the Control app and other lxapps get a permission
-        /// error.
+        /// has run. Injected only into the Control app, same gate as
+        /// `lx.app.control` — guests do not have the member.
         ///
         type AppCacheApi = r###"{
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -907,7 +920,7 @@ rong::js_api! {
      * open the target app's initial page. Full routes such as
      * `/pages/home/index` are not supported.
      */
-    page?: string;
+    page?: ConfiguredPageName;
     query?: PageQuery;
     envVersion?: LxAppEnvVersion;
     targetVersion?: string;
@@ -1587,7 +1600,7 @@ true
      * Configured page name from the target lxapp's `lxapp.json`. Omit it to
      * open that app's initial page. Full page routes are not supported.
      */
-    page?: string;
+    page?: ConfiguredPageName;
     query?: PageQuery;
     /** Defaults to 'release'. */
     envVersion?: LxAppEnvVersion;
@@ -1609,7 +1622,7 @@ true
         ///
         type SurfaceApi = r###"{
     /** Open one of this lxapp's own pages as a float or a window. */
-    openPage(page: string, options?: OpenPageOptions): Promise<PageSurface>;
+    openPage(page: ConfiguredPageName, options?: OpenPageOptions): Promise<PageSurface>;
     /** Open external content in the in-app browser. */
     openUrl(url: string, options?: OpenUrlOptions): Promise<TabSurface>;
     /**
@@ -1946,7 +1959,7 @@ true
         /// are internal runtime details. Discover names with `lxdev lxapp pages`.
         type PageTargetOptions = r###"{
     /** Configured page name from `lingxia.yaml` / `lxapp.json`. */
-    page: string;
+    page: ConfiguredPageName;
     query?: PageQuery;
 }"###;
 

@@ -2,6 +2,8 @@ import type {
   AppDownloadFilePath,
   AppDownloadOptions,
   AppDownloadResult,
+  AppLaunchOptions,
+  AppLaunchScene,
   AppScreenshotResult,
   AppearancePreference,
   ResolvedAppearance,
@@ -10,6 +12,7 @@ import type {
   DownloadsDownloadResult,
   FileSystemApi,
   HostAppApi,
+  HostOs,
   Lx,
   LxFile,
   PreviewMediaHandle,
@@ -64,6 +67,15 @@ const bytesResult: Promise<Uint8Array> = managedFile.bytes();
 const binaryResult: Promise<ArrayBuffer> = managedFile.arrayBuffer();
 const jsonResult: Promise<unknown> = managedFile.json();
 const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
+const cacheSize: Promise<number> | undefined = lx.app.cache?.size();
+// @ts-expect-error cache is Control-only; guests do not have the member
+lx.app.cache.size();
+const hostOs: HostOs = lx.app.getBaseInfo().os;
+const deviceOs: HostOs = lx.getDeviceInfo().osName;
+const applinkScene: AppLaunchScene = 8003;
+const launchOptions: AppLaunchOptions = { scene: applinkScene };
+// @ts-expect-error binding-layer class names are not part of the public contract
+type _NoJsVideoContext = import("../src/index.js").JSVideoContext;
 const videoSize: number = videoInfo.size;
 const videoPath: string = videoInfo.path;
 const videoCodec: string | undefined = videoInfo.videoCodec;
@@ -91,6 +103,11 @@ export type GeneratedQualityGate = [
   typeof textResult,
   typeof binaryResult,
   typeof screenshotResult,
+  typeof cacheSize,
+  typeof hostOs,
+  typeof deviceOs,
+  typeof launchOptions,
+  _NoJsVideoContext,
   typeof videoSize,
   typeof videoPath,
   typeof videoCodec,

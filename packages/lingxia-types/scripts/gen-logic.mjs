@@ -17,6 +17,18 @@ const outputs = [
 // workspace does not have; rewrite it to the real command.
 const UPSTREAM_HINT = "// Do not edit by hand — run `cargo run -p rong_typegen` to regenerate.";
 const REGEN_HINT = "// Do not edit by hand — run `npm run gen:logic` in packages/lingxia-types to regenerate.";
+const BINDING_CLASS_EXPORT =
+  /^export declare class (JSMessagePort|JSSurface|JSUpdateManager|JSVideoContext)\b/gm;
+
+function hideBindingClasses(source) {
+  const next = source.replace(BINDING_CLASS_EXPORT, "declare class $1");
+  if (next === source) {
+    throw new Error(
+      "expected JSMessagePort/JSSurface/JSUpdateManager/JSVideoContext class exports in generated logic.ts",
+    );
+  }
+  return next;
+}
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: workspaceDir, stdio: "inherit" });
@@ -37,7 +49,11 @@ const before = outputs.map((path) => (existsSync(path) ? readFileSync(path, "utf
 try {
   run(binary, ["--config", join(packageDir, "typegen.json")]);
   for (const path of outputs) {
-    writeFileSync(path, readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT));
+    let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
+    if (path.endsWith("logic.ts")) {
+      source = hideBindingClasses(source);
+    }
+    writeFileSync(path, source);
   }
 } catch (error) {
   outputs.forEach((path, i) => {

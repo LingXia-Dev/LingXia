@@ -48,7 +48,8 @@ guest cannot reach them:
 
 - `lx.app.exit()` — quits the product.
 - `lx.app.setBadge(value)` — the product's own dock / taskbar / launcher icon.
-- `lx.app.cache.size()` / `.clear()` — every lxapp the host has ever run.
+- `lx.app.cache` — every lxapp the host has ever run. Injected only into the
+  Control app, same presence as `lx.app.control`; guests do not have the member.
 - `lx.app.checkUpdate()` and `lx.app.screenshot()` — the native host app,
   not your bundle. (Your own bundle's updates are `lx.getUpdateManager()`,
   which every lxapp has.)

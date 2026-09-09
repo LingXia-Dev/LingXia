@@ -11,6 +11,7 @@ pub struct DeviceInfo {
     #[js_name = "marketName"]
     market_name: String,
     #[js_name = "osName"]
+    #[ts_type = "HostOs"]
     os_name: String,
     #[js_name = "osVersion"]
     os_version: String,

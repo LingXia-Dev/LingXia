@@ -83,11 +83,14 @@ Page({
   },
 
   // `lx.app.cache` is the whole product's cache, not this lxapp's, which is why
-  // the runtime restricts it to the home lxapp. The showcase *is* the home
-  // lxapp, so the call succeeds here; another lxapp would get a permission
-  // error, and that is the intended answer rather than a bug to work around.
+  // it is injected only into the Control app. The showcase *is* the Control
+  // app, so the member is present here; a guest does not have it.
   refreshCacheSize: async function () {
     const cache = lx.app.cache;
+    if (!cache) {
+      this.setData({ cacheBytes: null, cacheError: 'Cache APIs are Control-app only' });
+      return;
+    }
     try {
       const bytes = await cache.size();
       console.log('Product cache size (bytes):', bytes);
@@ -104,6 +107,10 @@ Page({
     }
     this.setData({ cacheBusy: true, cacheError: '', cacheNotice: '' });
     const cache = lx.app.cache;
+    if (!cache) {
+      this.setData({ cacheBusy: false, cacheError: 'Cache APIs are Control-app only' });
+      return;
+    }
     try {
       const result = await cache.clear();
       const webview = result.webview === 'cleared'
