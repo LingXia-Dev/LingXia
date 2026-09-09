@@ -1,10 +1,11 @@
 import type { SurfaceErrorCode } from './generated/logic.js';
-import { ERR_CODE_INFO_BY_CODE, type LxErrorCodeInfo } from "./generated/error.js";
+import { ERR_CODE_INFO_BY_CODE, type LxErrorCode, type LxErrorCodeInfo } from "./generated/error.js";
 
 const ERR_CODE_INDEX = ERR_CODE_INFO_BY_CODE as Record<number, LxErrorCodeInfo>;
 
 export interface LxApiError {
-  readonly code: number;
+  /** Closed union, so a mistyped literal in `error.code === …` is a type error. */
+  readonly code: LxErrorCode;
   readonly key: LxErrorCodeInfo["key"];
   readonly message: string;
   readonly raw: unknown;
@@ -135,7 +136,7 @@ export const SURFACE_ERROR_CODES = [
   'failed',
 ] as const satisfies readonly SurfaceErrorCode[];
 
-export function isKnownLxErrorCode(code: number): boolean {
+export function isKnownLxErrorCode(code: number): code is LxErrorCode {
   return Number.isInteger(code) && Object.prototype.hasOwnProperty.call(ERR_CODE_INDEX, code);
 }
 

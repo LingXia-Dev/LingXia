@@ -1518,7 +1518,7 @@ true
      */
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
-    query?: Record<string, unknown>;
+    query?: PageQuery;
     /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 }"###;

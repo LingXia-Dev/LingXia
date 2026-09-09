@@ -105,6 +105,8 @@ async function edgeToEdgeWindow(): Promise<"window" | "float"> {
   const win = await lx.surface.openPage("editor", {
     as: "window",
     chrome: "full",
+    // `query` carries the same values every other navigation query carries.
+    query: { draft: "42", pinned: true },
   });
   return win.realized;
 }
@@ -161,3 +163,12 @@ lx.surface.openPage("settings", { as: "window", position: "center" });
 lx.surface.openPage("settings", { as: "float", chrome: "full" });
 // An ordered preference cannot know which it will be, so both stay open.
 lx.surface.openPage("settings", { as: ["window", "float"], chrome: "full", position: "center" });
+
+// A query value is serialized into the page's URL, so a structured value is a
+// compile error here exactly as it is on `lx.navigateTo`.
+async function queryRejectsStructuredValues(): Promise<void> {
+  // @ts-expect-error query values are strings, numbers, booleans or nullish
+  await lx.surface.openPage("editor", { as: "float", query: { filter: { open: true } } });
+}
+
+export type SurfaceQueryGate = [typeof queryRejectsStructuredValues];

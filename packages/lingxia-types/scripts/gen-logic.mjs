@@ -17,11 +17,15 @@ const outputs = [
 // workspace does not have; rewrite it to the real command.
 const UPSTREAM_HINT = "// Do not edit by hand — run `cargo run -p rong_typegen` to regenerate.";
 const REGEN_HINT = "// Do not edit by hand — run `npm run gen:logic` in packages/lingxia-types to regenerate.";
-const BINDING_CLASS_EXPORT =
-  /^export declare class (JSMessagePort|JSSurface|JSUpdateManager|JSVideoContext)\b/gm;
+// The `JS*` binding classes are how Rong names the native handles internally.
+// Nothing in the public surface refers to them — `lx.getUpdateManager()` and
+// friends return the TS-only shapes — so they are dropped rather than kept as
+// unreferenced declarations.
+const BINDING_CLASS_BLOCK =
+  /^export declare class (?:JSMessagePort|JSSurface|JSUpdateManager|JSVideoContext)\b[^]*?^}\n\n?/gm;
 
-function hideBindingClasses(source) {
-  const next = source.replace(BINDING_CLASS_EXPORT, "declare class $1");
+function dropBindingClasses(source) {
+  const next = source.replace(BINDING_CLASS_BLOCK, "");
   if (next === source) {
     throw new Error(
       "expected JSMessagePort/JSSurface/JSUpdateManager/JSVideoContext class exports in generated logic.ts",
@@ -51,7 +55,7 @@ try {
   for (const path of outputs) {
     let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
     if (path.endsWith("logic.ts")) {
-      source = hideBindingClasses(source);
+      source = dropBindingClasses(source);
     }
     writeFileSync(path, source);
   }

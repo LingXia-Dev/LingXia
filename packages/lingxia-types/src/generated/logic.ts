@@ -1159,7 +1159,7 @@ export type OpenPageShared = {
      */
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
-    query?: Record<string, unknown>;
+    query?: PageQuery;
     /** Caller-owned identity, for `lx.surface.get(key)` later. */
     key?: string;
 };
@@ -2474,41 +2474,6 @@ export declare class DirEntry {
   readonly isFile: boolean;
   readonly isDirectory: boolean;
   readonly isSymlink: boolean;
-}
-
-declare class JSMessagePort {
-  constructor();
-  static postMessage(payload: any): void;
-  static onMessage(handler: (...args: any[]) => any): (...args: any[]) => any;
-}
-
-declare class JSSurface {
-  constructor();
-  close(): Promise<void>;
-  postMessage(payload: any): void;
-  onMessage(handler: (...args: any[]) => any): (...args: any[]) => any;
-  static onClose(handler: (...args: any[]) => any): (...args: any[]) => any;
-}
-
-declare class JSUpdateManager {
-  constructor();
-  /** Apply update by restarting the app */
-  applyUpdate(): void;
-  /** Subscribes to a ready update and returns the unsubscribe fn. */
-  onUpdateReady(cb: (...args: any[]) => any): (...args: any[]) => any;
-  /** Subscribes to a failed update and returns the unsubscribe fn. */
-  onUpdateFailed(cb: (...args: any[]) => any): (...args: any[]) => any;
-}
-
-declare class JSVideoContext {
-  constructor();
-  play(): void;
-  pause(): void;
-  stop(): void;
-  seek(position: number): void;
-  requestFullScreen(): void;
-  exitFullScreen(): void;
-  setStreamSource(options: StreamSourceOptions): void;
 }
 
 export declare class LxFile {
