@@ -101,6 +101,7 @@ export default {
     { "api": "Storage.get", "mode": "automated", "owner": "TODO-001" },
     { "api": "Storage.set", "mode": "automated", "owner": "TODO-001" },
     { "api": "Storage.delete", "mode": "automated", "owner": "LOGIC-003" },
+    { "api": "Storage.has", "mode": "automated", "owner": "LOGIC-003" },
     { "api": "Storage.info", "mode": "automated", "owner": "LOGIC-003" },
     { "api": "PageSurface.close", "mode": "automated", "owner": "DESKTOP-SURFACE-DECLARED-001", "targets": ["windows", "macos"] },
     { "api": "PageSurface.kind", "mode": "automated", "owner": "DESKTOP-SURFACE-WINDOW-001", "targets": ["windows", "macos"] },
