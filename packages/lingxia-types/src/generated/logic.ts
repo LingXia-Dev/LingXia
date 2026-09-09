@@ -52,10 +52,22 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
 /**
+ * A field initialized to `null` or `[]` states nothing about what will fill it
+ * later, so it stays open. Annotate it (`null as Profile | null`) to have the
+ * fill checked.
+ */
+export type LazyInitField<T> = [T] extends [null | undefined]
+  ? unknown
+  : [T] extends [never[]]
+    ? unknown[]
+    : T;
+
+/**
  * Top-level keys are checked against `data`; only path-shaped keys stay open.
  * A misspelled or wrongly typed top-level key is a compile error.
  */
-export type SetDataPatch<TData> = Partial<TData> & Partial<Record<PageDataPath, unknown>>;
+export type SetDataPatch<TData> = { [K in keyof TData]?: LazyInitField<TData[K]> } &
+  Partial<Record<PageDataPath, unknown>>;
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
   data: TData;

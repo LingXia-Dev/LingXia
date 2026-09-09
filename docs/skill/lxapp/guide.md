@@ -276,18 +276,18 @@ Page({
 });
 ```
 
-TypeScript types the page config with an index signature, so a method you add
-yourself is `unknown` on `this` — calling `this._calculateTotal(...)` compiles
-in JavaScript but not under `strict` TypeScript. Give shared behavior a
-module-level function that takes the instance instead:
+TypeScript infers the config's own members, so `this._calculateTotal(...)`
+resolves under `strict` just as it runs in JavaScript.
+
+Name the `data` shape by annotating `data`, not with a type argument on `Page`:
+a type argument leaves the rest of the config uninferred, and `this` loses your
+own methods again.
 
 ```ts
-function calculateTotal(items: Item[]): number { … }
-
-Page<PageData>({
-  data: { total: 0 },
+Page({
+  data: { total: 0 } as PageData,
   checkout(params) {
-    this.setData({ total: calculateTotal(params?.items ?? []) });
+    this.setData({ total: this._calculateTotal(params?.items ?? []) });
   },
 });
 ```

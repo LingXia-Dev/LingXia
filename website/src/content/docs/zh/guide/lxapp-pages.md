@@ -25,8 +25,8 @@ Vue 使用 `index.vue`，HTML 项目使用 `index.html`。一个项目只选择�
 ```ts
 type PageData = { count: number }
 
-Page<PageData>({
-  data: { count: 0 },
+Page({
+  data: { count: 0 } as PageData,
 
   increment() {
     this.setData({ count: this.data.count + 1 })

@@ -67,14 +67,14 @@ type PageData = {
 
 const subscriptions = new WeakMap<object, () => void>();
 
-Page<PageData>({
+Page({
   data: {
     surfaceContext: {
       sizeClass: 'compact',
       width: 0,
       height: 0,
     },
-  },
+  } as PageData,
 
   onLoad() {
     const unsubscribe = lx.surface.onContext((surfaceContext) => {
