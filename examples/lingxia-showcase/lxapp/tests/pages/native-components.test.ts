@@ -1,3 +1,4 @@
+// Host e2e for inline native islands. JS protocol stays in @lingxia/elements Node tests.
 import { expect, spec, type Fixture } from '@lingxia/test';
 import {
   currentPageOrNull,
