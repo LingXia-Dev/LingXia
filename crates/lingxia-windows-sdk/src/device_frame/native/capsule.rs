@@ -26,7 +26,16 @@ const CAPSULE_RADIUS: f32 = 15.0;
 /// Pill fill: white at ~95% (straight alpha, premultiplied below).
 const CAPSULE_FILL_ALPHA: f32 = 0.95;
 /// Icon + divider tint (iOS secondary-label gray).
-const CAPSULE_ICON_TINT: u32 = 0x3C3C43;
+const CAPSULE_ICON_TINT_LIGHT: u32 = 0x3C3C43;
+const CAPSULE_ICON_TINT_DARK: u32 = 0xE5E5EA;
+
+fn capsule_icon_tint() -> u32 {
+    if super::overlay_is_dark() {
+        CAPSULE_ICON_TINT_DARK
+    } else {
+        CAPSULE_ICON_TINT_LIGHT
+    }
+}
 
 /// Pixel geometry of the capsule window (origin at the window's top-left,
 /// which sits `CAPSULE_SHADOW` outside the pill on every side).
@@ -214,14 +223,14 @@ pub(super) fn create_capsule_window(content: HWND, spec: &WindowsDeviceFrame) ->
     Some(hwnd_handle(capsule))
 }
 
-/// Renders the pill (white rounded rect + soft shadow + divider) and composites
+/// Renders the pill (rounded rect + soft shadow + divider) and composites
 /// the two design icons, then uploads via `UpdateLayeredWindow`.
 fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
     let mut pixels = capsule_pixels(geometry);
     if let Some(menu) = design_icon_argb_premultiplied(
         WindowsDesignIcon::CapsuleMenu,
         CAPSULE_ICON as u32,
-        Some(CAPSULE_ICON_TINT),
+        Some(capsule_icon_tint()),
     ) {
         blit_premultiplied(
             &mut pixels,
@@ -234,7 +243,7 @@ fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
     if let Some(close) = design_icon_argb_premultiplied(
         WindowsDesignIcon::CapsuleClose,
         CAPSULE_ICON as u32,
-        Some(CAPSULE_ICON_TINT),
+        Some(capsule_icon_tint()),
     ) {
         blit_premultiplied(
             &mut pixels,
@@ -303,8 +312,8 @@ fn paint_capsule(capsule: HWND, geometry: &CapsuleGeometry) {
     }
 }
 
-/// Premultiplied ARGB for the pill: white rounded rect, soft shadow, and a
-/// 1px divider between the two halves.
+/// Premultiplied ARGB for the pill: rounded rect, soft shadow, and a
+/// 1px divider between the two halves. Fill follows the simulated host scheme.
 fn capsule_pixels(geometry: &CapsuleGeometry) -> Vec<u32> {
     let pill = geometry.pill;
     let cx = (pill.left + pill.right) as f32 / 2.0;
@@ -329,17 +338,23 @@ fn capsule_pixels(geometry: &CapsuleGeometry) -> Vec<u32> {
             let shadow = (1.0 - shadow_d / CAPSULE_SHADOW as f32).clamp(0.0, 1.0);
             let shadow_a = 0.18 * shadow * shadow;
             let mut alpha = fill + (1.0 - fill) * shadow_a;
-            let mut r = 255.0 * fill;
-            let mut g = 255.0 * fill;
-            let mut b = 255.0 * fill;
+            let (fr, fg, fb) = if super::overlay_is_dark() {
+                (28.0, 28.0, 30.0)
+            } else {
+                (255.0, 255.0, 255.0)
+            };
+            let mut r = fr * fill;
+            let mut g = fg * fill;
+            let mut b = fb * fill;
             // Divider line inside the pill.
             if x == geometry.divider_x
                 && py > pill.top as f32 + 7.0
                 && py < pill.bottom as f32 - 7.0
             {
-                let dr = ((CAPSULE_ICON_TINT >> 16) & 0xff) as f32;
-                let dg = ((CAPSULE_ICON_TINT >> 8) & 0xff) as f32;
-                let db = (CAPSULE_ICON_TINT & 0xff) as f32;
+                let tint = capsule_icon_tint();
+                let dr = ((tint >> 16) & 0xff) as f32;
+                let dg = ((tint >> 8) & 0xff) as f32;
+                let db = (tint & 0xff) as f32;
                 let da = 0.25;
                 r = r * (1.0 - da) + dr * da;
                 g = g * (1.0 - da) + dg * da;
@@ -438,6 +453,7 @@ pub(super) fn reposition_capsule(content: HWND) {
                 | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
+    paint_capsule(capsule, &geometry);
 }
 
 pub(super) fn hide_capsule(content: HWND) {

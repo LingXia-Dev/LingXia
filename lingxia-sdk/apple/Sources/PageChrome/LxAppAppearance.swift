@@ -12,12 +12,18 @@ enum LxAppAppearanceRegistry {
     private static var schemes: [String: Bool] = [:]
     private static var webViews: [String: NSHashTable<WKWebView>] = [:]
     private static var hostLocaleObserver: NSObjectProtocol?
+    /// Product pin (`light`/`dark`); `nil` follows the system. Overlay chrome
+    /// and `hostIsDark()` read this so iOS matches Android's night-mode pin.
+    private static var hostPin: Bool?
     #if os(macOS)
     private static var hostAppearanceObserver: NSKeyValueObservation?
     #endif
 
     static func hostIsDark() -> Bool {
         observeHostLocale()
+        if let hostPin {
+            return hostPin
+        }
         #if os(iOS)
         return UIScreen.main.traitCollection.userInterfaceStyle == .dark
         #else
@@ -31,9 +37,9 @@ enum LxAppAppearanceRegistry {
     }
 
     /// Pin the host's own chrome to a scheme, or hand it back to the system.
-    /// Every lxapp still resolving `auto` follows through the runtime, which
-    /// re-resolves them when this changes `NSApp.effectiveAppearance`.
+    /// Every lxapp still resolving `auto` follows through the runtime.
     static func setHostColorMode(dark: Bool?) {
+        hostPin = dark
         #if os(macOS)
         // Read once so the effectiveAppearance observer is installed before the
         // assignment that will fire it.
@@ -44,10 +50,26 @@ enum LxAppAppearanceRegistry {
         }
         NSApp.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
         #else
-        // iOS hosts a single lxapp window; its scheme is applied per lxapp.
-        _ = dark
+        applyHostPinToWindows()
         #endif
     }
+
+    #if os(iOS)
+    private static func applyHostPinToWindows() {
+        let style: UIUserInterfaceStyle
+        switch hostPin {
+        case true: style = .dark
+        case false: style = .light
+        case nil: style = .unspecified
+        }
+        for scene in UIApplication.shared.connectedScenes {
+            guard let windowScene = scene as? UIWindowScene else { continue }
+            for window in windowScene.windows {
+                window.overrideUserInterfaceStyle = style
+            }
+        }
+    }
+    #endif
 
     static func observeHostLocale() {
         guard hostLocaleObserver == nil else { return }
@@ -74,6 +96,40 @@ enum LxAppAppearanceRegistry {
         }
         return hostIsDark()
     }
+
+    #if os(iOS)
+    /// Colors for host overlays (capsule sheet, action sheet) in the current
+    /// lxapp's scheme.
+    struct OverlayColors {
+        let scrim: UIColor
+        let surface: UIColor
+        let title: UIColor
+        let secondary: UIColor
+        let separator: UIColor
+        let icon: UIColor
+    }
+
+    static func overlayColors() -> OverlayColors {
+        if overlayIsDark() {
+            return OverlayColors(
+                scrim: UIColor.black.withAlphaComponent(0.55),
+                surface: UIColor(red: 0.11, green: 0.11, blue: 0.12, alpha: 1),
+                title: .white,
+                secondary: UIColor(white: 0.63, alpha: 1),
+                separator: UIColor(white: 1, alpha: 0.12),
+                icon: UIColor(white: 0.90, alpha: 1)
+            )
+        }
+        return OverlayColors(
+            scrim: UIColor.black.withAlphaComponent(0.4),
+            surface: .white,
+            title: .black,
+            secondary: UIColor(white: 0.60, alpha: 1),
+            separator: UIColor(red: 0.93, green: 0.93, blue: 0.93, alpha: 1),
+            icon: UIColor(red: 0.20, green: 0.20, blue: 0.20, alpha: 1)
+        )
+    }
+    #endif
 
     static func register(_ webView: WKWebView, appId: String) {
         let table = webViews[appId] ?? NSHashTable<WKWebView>.weakObjects()

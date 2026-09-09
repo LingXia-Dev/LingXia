@@ -53,6 +53,12 @@ mod info_sheet;
 mod paint;
 mod status_bar;
 
+/// Scheme overlays (capsule pill, info sheet) follow: the simulated host
+/// appearance the runner pins, not the OS.
+pub(super) fn overlay_is_dark() -> bool {
+    lxapp::host_appearance_dark()
+}
+
 use capsule::{create_capsule_window, destroy_capsule, hide_capsule, reposition_capsule};
 use corner_mask::{
     create_corner_mask, destroy_corner_mask, hide_corner_mask, reposition_corner_mask,
@@ -788,6 +794,7 @@ fn apply_device_frame_inner(content: HWND, mut spec: WindowsDeviceFrame, sync_ho
         if capsule != 0 {
             reposition_capsule(content);
         }
+        info_sheet::restyle_info_sheets();
         return;
     }
     // A different device: rebuild the shell window, but keep the originally

@@ -1597,7 +1597,7 @@ export struct LxAppContainer {
 
   private handleCapsuleMore(): void {
     hilog.info(DOMAIN, TAG, 'Capsule more button pressed');
-    const shown: boolean = CapsuleMenuManager.show(this.appId);
+    const shown: boolean = CapsuleMenuManager.show(this.appId, this.appearanceDark);
     if (!shown) {
       LxLog.e(TAG, `Failed to show capsule menu for app: ${this.appId}`);
     }

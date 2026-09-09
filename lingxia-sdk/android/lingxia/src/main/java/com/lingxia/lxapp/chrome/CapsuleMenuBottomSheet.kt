@@ -46,23 +46,27 @@ internal object CapsuleMenuBottomSheet {
             return
         }
 
+        val palette = OverlayPalette.of(activity)
         val items = listOf(
             MenuItem(
                 iconResId = R.drawable.icon_clean_cache,
                 title = Lingxia.localizedString(activity, R.string.lx_capsule_clean_cache),
-                action = NativeApi.CAPSULE_ACTION_CLEAN_CACHE_RESTART
+                action = NativeApi.CAPSULE_ACTION_CLEAN_CACHE_RESTART,
+                color = palette.secondaryText
             ),
             MenuItem(
                 iconResId = R.drawable.icon_restart,
                 title = Lingxia.localizedString(activity, R.string.lx_capsule_restart),
-                action = NativeApi.CAPSULE_ACTION_RESTART
+                action = NativeApi.CAPSULE_ACTION_RESTART,
+                color = palette.secondaryText
             ),
             MenuItem(
                 iconResId = R.drawable.icon_uninstall,
                 title = Lingxia.localizedString(activity, R.string.lx_capsule_uninstall),
-                action = NativeApi.CAPSULE_ACTION_UNINSTALL
+                action = NativeApi.CAPSULE_ACTION_UNINSTALL,
+                color = palette.secondaryText
             )
-        ) + parseMoreActions(NativeApi.getLxAppMoreActions(appId))
+        ) + parseMoreActions(NativeApi.getLxAppMoreActions(appId), palette.secondaryText)
 
         val rootView = activity.window.decorView as ViewGroup
         val container = FrameLayout(activity).apply {
@@ -73,14 +77,14 @@ internal object CapsuleMenuBottomSheet {
         }
 
         // Create mask (semi-transparent overlay)
-        val mask = createMaskView(activity) {
+        val mask = createMaskView(activity, palette) {
             // Dismiss on mask click
             rootView.removeView(container)
         }
         container.addView(mask)
 
         // Create menu content
-        val menuView = createMenuView(activity, lxappInfo, items) { action ->
+        val menuView = createMenuView(activity, lxappInfo, items, palette) { action ->
             rootView.removeView(container)
             NativeApi.onLxappEvent(appId, NativeApi.UI_EVENT_CAPSULE_CLICK, action)
         }
@@ -89,7 +93,7 @@ internal object CapsuleMenuBottomSheet {
         rootView.addView(container)
     }
 
-    private fun parseMoreActions(json: String): List<MenuItem> {
+    private fun parseMoreActions(json: String, color: Int): List<MenuItem> {
         return try {
             val root = JSONObject(json)
             val generation = root.optLong("generation", 0)
@@ -104,7 +108,8 @@ internal object CapsuleMenuBottomSheet {
                             MenuItem(
                                 iconPath = iconPath,
                                 title = label,
-                                action = "more:$generation:$index"
+                                action = "more:$generation:$index",
+                                color = color
                             )
                         )
                     }
@@ -115,13 +120,13 @@ internal object CapsuleMenuBottomSheet {
         }
     }
 
-    private fun createMaskView(context: Context, onClick: () -> Unit): FrameLayout {
+    private fun createMaskView(context: Context, palette: OverlayPalette, onClick: () -> Unit): FrameLayout {
         return FrameLayout(context).apply {
             layoutParams = FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
-            setBackgroundColor(Color.parseColor("#80000000")) // 50% black
+            setBackgroundColor(palette.scrim)
             setOnClickListener { onClick() }
         }
     }
@@ -130,23 +135,24 @@ internal object CapsuleMenuBottomSheet {
         context: Context,
         lxappInfo: LxAppInfo,
         items: List<MenuItem>,
+        palette: OverlayPalette,
         onItemClick: (String) -> Unit
     ): FrameLayout {
         val density = context.resources.displayMetrics.density
 
         val menuContainer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = createMenuBackground(context)
+            background = createMenuBackground(context, palette)
             clipChildren = false
             clipToPadding = false
         }
 
         // Add header with app info
-        val headerView = createHeaderView(context, lxappInfo)
+        val headerView = createHeaderView(context, lxappInfo, palette)
         menuContainer.addView(headerView)
 
         // Add separator
-        menuContainer.addView(createSeparatorView(context))
+        menuContainer.addView(createSeparatorView(context, palette))
 
         // Add the five-column action grid.
         val buttonsGrid = createButtonsGrid(context, items, onItemClick)
@@ -174,7 +180,11 @@ internal object CapsuleMenuBottomSheet {
         }
     }
 
-    private fun createHeaderView(context: Context, lxappInfo: LxAppInfo): LinearLayout {
+    private fun createHeaderView(
+        context: Context,
+        lxappInfo: LxAppInfo,
+        palette: OverlayPalette
+    ): LinearLayout {
         val density = context.resources.displayMetrics.density
 
         return LinearLayout(context).apply {
@@ -193,7 +203,7 @@ internal object CapsuleMenuBottomSheet {
             addView(TextView(context).apply {
                 text = lxappInfo.appName
                 textSize = 16f
-                setTextColor(Color.parseColor("#000000"))
+                setTextColor(palette.title)
                 typeface = android.graphics.Typeface.DEFAULT_BOLD
             })
 
@@ -201,7 +211,7 @@ internal object CapsuleMenuBottomSheet {
             addView(TextView(context).apply {
                 text = " · "
                 textSize = 16f
-                setTextColor(Color.parseColor("#CCCCCC"))
+                setTextColor(palette.secondaryText)
                 setPadding((4 * density).toInt(), 0, (4 * density).toInt(), 0)
             })
 
@@ -215,7 +225,7 @@ internal object CapsuleMenuBottomSheet {
             val versionLabel = TextView(context).apply {
                 text = lxappInfo.version
                 textSize = 14f
-                setTextColor(Color.parseColor("#999999"))
+                setTextColor(palette.body)
                 // Reserve space on right for badge
                 setPadding(0, 0, if (releaseBadgeFor(lxappInfo.releaseType) != null) (38 * density).toInt() else 0, 0)
             }
@@ -358,7 +368,8 @@ internal object CapsuleMenuBottomSheet {
                     ?.absolutePath
                     ?.let { android.graphics.drawable.Drawable.createFromPath(it) }
                 if (customDrawable != null) {
-                    setImageDrawable(customDrawable)
+                    setImageDrawable(customDrawable.mutate())
+                    setColorFilter(item.color)
                 } else if (item.iconResId != null) {
                     setImageResource(item.iconResId)
                     setColorFilter(item.color)
@@ -377,23 +388,23 @@ internal object CapsuleMenuBottomSheet {
         }
     }
 
-    private fun createSeparatorView(context: Context): android.view.View {
+    private fun createSeparatorView(context: Context, palette: OverlayPalette): android.view.View {
         val density = context.resources.displayMetrics.density
         return android.view.View(context).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 maxOf(1, density.toInt())
             )
-            setBackgroundColor(Color.parseColor("#EEEEEE"))
+            setBackgroundColor(palette.separator)
         }
     }
 
-    private fun createMenuBackground(context: Context): GradientDrawable {
+    private fun createMenuBackground(context: Context, palette: OverlayPalette): GradientDrawable {
         val density = context.resources.displayMetrics.density
         val radius = 16f * density
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.WHITE)
+            setColor(palette.surface)
             // Round only top corners
             cornerRadii = floatArrayOf(
                 radius, radius, // top-left
