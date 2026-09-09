@@ -558,6 +558,13 @@ impl ProcessSessionAuthority {
     }
 }
 
+#[cfg(feature = "process")]
+impl rong_command::ProcessAuthority for ProcessSessionAuthority {
+    fn authorize(&self) -> Result<(), String> {
+        ProcessSessionAuthority::authorize(self)
+    }
+}
+
 /// Authenticated source for a native route invocation.
 ///
 /// Browser construction is reserved for the browser document lifecycle TCB:

@@ -30,19 +30,19 @@ function verify(packages, releaseNames) {
 
 test("accepts every crates.io package regardless of workspace directory", () => {
   const result = verify(
-    [pkg("lingxia"), pkg("lingxia-rong-command", null, "third_party")],
-    ["lingxia", "lingxia-rong-command"],
+    [pkg("lingxia"), pkg("lingxia-vendor-example", null, "third_party")],
+    ["lingxia", "lingxia-vendor-example"],
   );
   assert.equal(result.status, 0, result.stderr);
 });
 
 test("fails when a publishable workspace package is omitted", () => {
   const result = verify(
-    [pkg("lingxia"), pkg("lingxia-rong-command", null, "third_party")],
+    [pkg("lingxia"), pkg("lingxia-vendor-example", null, "third_party")],
     ["lingxia"],
   );
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /missing.*lingxia-rong-command/i);
+  assert.match(result.stderr, /missing.*lingxia-vendor-example/i);
 });
 
 test("rejects packages explicitly excluded from crates.io", () => {

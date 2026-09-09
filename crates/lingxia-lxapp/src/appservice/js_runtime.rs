@@ -9,6 +9,8 @@ use crate::warn;
 use crate::{debug, error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
+#[cfg(feature = "process")]
+use rong_command::ProcessAuthority;
 use rong_console as console;
 use rong_http as http;
 
@@ -17,20 +19,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 use tokio::sync::oneshot;
-
-// Keep the archive linked: the sealed installer is reached only through the
-// private Rust ABI below, so there is intentionally no safe item reference.
-#[cfg(feature = "process")]
-extern crate rong_command as _;
-
-#[cfg(feature = "process")]
-unsafe extern "Rust" {
-    #[link_name = "lingxia_rong_command_init_with_authority_v1"]
-    fn init_process_module_with_authority(
-        ctx: &JSContext,
-        authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static>,
-    ) -> JSResult<()>;
-}
 
 #[path = "app.rs"]
 mod app;
@@ -722,14 +710,9 @@ pub(crate) async fn lxapp_service_handler(
                     )
                     .with_appid(lxapp.appid.clone());
                 } else {
-                    let authority = Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
-                    let authorize: Arc<dyn Fn() -> Result<(), String> + Send + Sync + 'static> =
-                        Arc::new(move || authority.authorize());
-                    // SAFETY: this binds lingxia-rong-command's private Rust
-                    // ABI. No safe extension API can install or replace the
-                    // per-context authority.
-                    let result = unsafe { init_process_module_with_authority(&ctx, authorize) };
-                    if let Err(e) = result {
+                    let authority: Arc<dyn ProcessAuthority> =
+                        Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
+                    if let Err(e) = rong_command::init_with_authority(&ctx, authority) {
                         error!(
                             "[Worker {}] Failed to initialize process capability: {}",
                             worker_id, e

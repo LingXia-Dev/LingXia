@@ -6,7 +6,6 @@ FIXTURE_MANIFEST="$ROOT_DIR/crates/lingxia/tests/fixtures/authority-escape/Cargo
 FIXTURE_LOCK="${FIXTURE_MANIFEST%/*}/Cargo.lock"
 
 BASE_EXPECTATIONS=(
-  'E0603|impl rong_command::ProcessAuthority'
   'E0425|let _ = lxapp::__init_with_native_authority;'
   'E0603|let _ = lxapp::terminal_automation::NativeHostRuntimeToken::for_test;'
   'E0599|let _ = lxapp::NativeControlPlaneAuthority::for_test;'
@@ -19,8 +18,6 @@ BASE_EXPECTATIONS=(
   'E0599|let _ = lxapp::LxApp::add_page_script;'
   'E0425|let _ = lingxia::__init_with_native_authority;'
   'E0425|let _ = lingxia::resolve_settings_destination;'
-  'E0603|let _ = rong_command::init;'
-  'E0603|let _ = rong_command::init_with_authority;'
 )
 APPLE_EXPECTATION='E0603|let _ = lingxia::apple::resolve_settings_destination_for_host;'
 

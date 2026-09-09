@@ -6,17 +6,6 @@ GATE="$ROOT_DIR/scripts/ci/control-security-gates.sh"
 AUTHORITY_GATE="$ROOT_DIR/scripts/ci/authority-escape-gate.sh"
 WORKFLOW="$ROOT_DIR/.github/workflows/ci.yml"
 
-filter_has_path() {
-  local filter="$1"
-  local path="$2"
-  awk -v header="            ${filter}:" -v entry="              - '${path}'" '
-    $0 == header { in_filter = 1; next }
-    in_filter && /^            [[:alnum:]_]+:/ { exit(found ? 0 : 1) }
-    in_filter && $0 == entry { found = 1 }
-    END { exit(found ? 0 : 1) }
-  ' "$WORKFLOW"
-}
-
 job_has_text() {
   local job="$1"
   local needle="$2"
@@ -47,13 +36,6 @@ grep -Fq "cargo rustc -p lingxia --target \"\$host_target\" --lib --crate-type s
   echo "Apple security gate does not build the static library required by SwiftPM" >&2
   exit 1
 }
-
-for filter in core control_security; do
-  filter_has_path "$filter" 'third_party/**' || {
-    echo "CI filter $filter does not cover publishable third_party crates" >&2
-    exit 1
-  }
-done
 
 job_has_text release-tooling 'scripts/release/verify-crate-inventory.test.mjs' || {
   echo "Release tooling CI does not run the crate inventory self-test" >&2

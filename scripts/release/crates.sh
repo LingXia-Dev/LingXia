@@ -30,7 +30,6 @@ CRATES=(
   "lingxia-platform"
   "lingxia-provider"
   "lingxia-proxy"
-  "lingxia-rong-command"
   "lingxia-service"
   "lingxia-settings"
   "lingxia-shell"
