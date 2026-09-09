@@ -165,10 +165,9 @@ declare global {
   /**
    * The lxapp's configured page names, one key per page.
    *
-   * Empty here on purpose. `lingxia dev` / `lingxia build` writes the project's
-   * own names into `.lingxia/types/pages.d.ts`, which merges into this
-   * interface; until then `ConfiguredPageName` stays `string` and every
-   * navigation call compiles exactly as before.
+   * Empty here on purpose. `lingxia dev` / `lingxia build` generates the
+   * project's own names into this interface; until then `ConfiguredPageName`
+   * stays `string` and every navigation call compiles exactly as before.
    */
   interface LxAppPages {}
 

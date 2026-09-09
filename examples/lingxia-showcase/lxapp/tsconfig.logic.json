@@ -12,6 +12,7 @@
     "pages/**/*.ts",
     "shared/lib/app.ts",
     "shared/lib/errors.ts",
+    "shared/lib/provider.ts",
     "shared/lib/native-events.ts",
     "shared/lib/todo-utils.ts",
     "provider.d.ts",

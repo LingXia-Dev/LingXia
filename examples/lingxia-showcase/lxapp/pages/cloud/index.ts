@@ -1,3 +1,4 @@
+import { authApi, cloudApi } from "../../shared/lib/provider";
 const CLOUD_PAGE_TYPES = {
   AUTH: "auth",
   MQTT: "mqtt",
@@ -241,7 +242,7 @@ Page({
       return;
     }
     try {
-      this.mqttStatusUnsubscribe = lx.cloud.mqtt.onStatusChange((nextStatus) => {
+      this.mqttStatusUnsubscribe = cloudApi().mqtt.onStatusChange((nextStatus) => {
         console.log("[cloud][mqtt] onStatusChange", nextStatus);
         this._applyMqttStatus(nextStatus);
       });
@@ -252,7 +253,7 @@ Page({
 
   _refreshMqttStatusSnapshot: function () {
     try {
-      const status = lx.cloud.mqtt.getStatus();
+      const status = cloudApi().mqtt.getStatus();
       console.log("[cloud][mqtt] getStatus", status);
       this._applyMqttStatus(status);
     } catch (_error) {
@@ -290,7 +291,7 @@ Page({
 
   _refreshSnapshot: async function () {
     try {
-      const identities = await lx.auth.list();
+      const identities = await authApi().list();
       if (!this._canUpdatePage()) return;
       const identity = identities.find((item: LxIdentityLike) => item.active) || null;
       this.setData({
@@ -311,7 +312,7 @@ Page({
   _refreshFunctionsDemo: async function () {
     let identity: LxIdentityLike | null | undefined = null;
     try {
-      const identities = await lx.auth.list();
+      const identities = await authApi().list();
       identity = identities.find((item: LxIdentityLike) => item.active);
     } catch (_error) {
       identity = null;
@@ -329,7 +330,7 @@ Page({
   loginInteractive: async function () {
     this.setData({ status: "Starting login..." });
     try {
-      await lx.auth.login();
+      await authApi().login();
       this.setData({ status: "Login succeeded" });
       await this._refreshSnapshot();
       await this._refreshFunctionsDemo();
@@ -341,7 +342,7 @@ Page({
   addTenant: async function () {
     this.setData({ status: "Adding identity..." });
     try {
-      await lx.auth.add();
+      await authApi().add();
       this.setData({ status: "Identity added" });
       await this._refreshSnapshot();
       await this._refreshFunctionsDemo();
@@ -354,7 +355,7 @@ Page({
     this.setData({ status: "Logging out..." });
     try {
       await this.stopMqttDemo();
-      const identities = await lx.auth.list();
+      const identities = await authApi().list();
       const activeIdentity = identities.find((identity: LxIdentityLike) => identity.active);
       if (!activeIdentity || typeof activeIdentity.logout !== "function") {
         throw new Error("No active identity to logout");
@@ -374,7 +375,7 @@ Page({
     if (!tenantId) return;
     this.setData({ status: `Activating ${tenantId}...` });
     try {
-      const identities = await lx.auth.list();
+      const identities = await authApi().list();
       const identity = identities.find((item: LxIdentityLike) => item.tenant?.id === tenantId);
       if (!identity || typeof identity.activate !== "function") {
         throw new Error(`Identity ${tenantId} not found`);
@@ -400,7 +401,7 @@ Page({
       functionsLastCall: functionName,
     });
     try {
-      const result = await lx.cloud.invoke(functionName, payload);
+      const result = await cloudApi().invoke(functionName, payload);
       this.setData({
         functionsStatus: `${functionName} succeeded`,
         functionsLastCall: functionName,
@@ -437,7 +438,7 @@ Page({
       mqttStatus: `Subscribing to ${MQTT_SHORT_TOPIC}...`,
     });
     try {
-      const subscription = await lx.cloud.mqtt.subscribe(MQTT_SHORT_TOPIC, {
+      const subscription = await cloudApi().mqtt.subscribe(MQTT_SHORT_TOPIC, {
         parse: "auto",
       });
       this.mqttSubscription = subscription;

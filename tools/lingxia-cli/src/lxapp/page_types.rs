@@ -1,4 +1,4 @@
-//! `.lingxia/types/pages.d.ts` — the project's configured page names as types.
+//! `.lingxia/types/pages.generated.d.ts` — configured page names as types.
 //!
 //! `@lingxia/types` ships an empty `LxAppPages`, so `ConfiguredPageName` is
 //! plain `string` until this file exists. Writing it merges the project's own
@@ -15,7 +15,9 @@ pub fn generate(project: &Project) -> Result<()> {
     let dir = project.root.join(".lingxia").join("types");
     fs::create_dir_all(&dir)
         .with_context(|| format!("create page types directory {}", dir.display()))?;
-    let path = dir.join("pages.d.ts");
+    // `@lingxia/page-types/*` maps to this directory and `pages` is a valid
+    // page name, so the filename carries a dot the alias can never resolve.
+    let path = dir.join("pages.generated.d.ts");
     let next = render(&project.page_names);
     // Rewriting an identical file would churn the watcher for no reason.
     if fs::read_to_string(&path).is_ok_and(|current| current == next) {

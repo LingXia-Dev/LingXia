@@ -9,7 +9,7 @@
 // step with the provider, or the page compiles against a shape that no longer
 // exists.
 
-interface CloudIdentity {
+export interface CloudIdentity {
   user?: { id?: string; name?: string; avatar?: string };
   tenant?: { id?: string; name?: string; shortName?: string; logoUrl?: string };
   active?: boolean;
@@ -17,23 +17,23 @@ interface CloudIdentity {
   logout?: () => Promise<void>;
 }
 
-interface CloudMqttStatus {
+export interface CloudMqttStatus {
   state?: string;
   [key: string]: unknown;
 }
 
-interface CloudMqttMessage {
+export interface CloudMqttMessage {
   topic: string;
   payload: unknown;
   qos?: number;
   receivedAt: number;
 }
 
-interface CloudMqttSubscription extends AsyncIterable<CloudMqttMessage> {
+export interface CloudMqttSubscription extends AsyncIterable<CloudMqttMessage> {
   close(): Promise<void>;
 }
 
-interface CloudMqttApi {
+export interface CloudMqttApi {
   getStatus(): CloudMqttStatus;
   onStatusChange(handler: (status: CloudMqttStatus) => void): () => void;
   subscribe(
@@ -42,12 +42,12 @@ interface CloudMqttApi {
   ): Promise<CloudMqttSubscription>;
 }
 
-interface CloudApi {
+export interface CloudApi {
   invoke(name: string, payload?: unknown): Promise<unknown>;
   readonly mqtt: CloudMqttApi;
 }
 
-interface CloudAuthApi {
+export interface CloudAuthApi {
   list(): Promise<CloudIdentity[]>;
   login(): Promise<unknown>;
   add(): Promise<unknown>;
@@ -56,9 +56,9 @@ interface CloudAuthApi {
 declare global {
   interface Lx {
     /** Provider-supplied; absent unless the build injected the cloud provider. */
-    readonly cloud: CloudApi;
+    readonly cloud?: CloudApi;
     /** Provider-supplied; absent unless the build injected the cloud provider. */
-    readonly auth: CloudAuthApi;
+    readonly auth?: CloudAuthApi;
   }
 }
 

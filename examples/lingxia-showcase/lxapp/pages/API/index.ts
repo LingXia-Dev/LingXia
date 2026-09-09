@@ -1,3 +1,4 @@
+import { cloudProviderAvailable } from "../../shared/lib/provider";
 import { errorMessage } from "../../shared/lib/errors";
 import { showcaseApp } from "../../shared/lib/app";
 const app = showcaseApp();
@@ -13,7 +14,7 @@ Page({
   onLoad: function(options) {
     console.log("Options in onLoad: ", options);
     this.setData({
-      cloudAvailable: typeof lx.cloud !== "undefined" || typeof lx.auth !== "undefined",
+      cloudAvailable: cloudProviderAvailable(),
       loadCount: (this.data.loadCount || 0) + 1,
     });
   },

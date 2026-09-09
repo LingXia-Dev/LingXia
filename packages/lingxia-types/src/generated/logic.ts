@@ -168,10 +168,9 @@ declare global {
   /**
    * The lxapp's configured page names, one key per page.
    *
-   * Empty here on purpose. `lingxia dev` / `lingxia build` writes the project's
-   * own names into `.lingxia/types/pages.d.ts`, which merges into this
-   * interface; until then `ConfiguredPageName` stays `string` and every
-   * navigation call compiles exactly as before.
+   * Empty here on purpose. `lingxia dev` / `lingxia build` generates the
+   * project's own names into this interface; until then `ConfiguredPageName`
+   * stays `string` and every navigation call compiles exactly as before.
    */
   interface LxAppPages {}
 
@@ -660,9 +659,9 @@ export type CompressVideoTask = PromiseLike<CompressVideoResult> & AsyncIterable
  * navigation accepts only this name; full routes such as
  * `/pages/home/index` are internal runtime details. Discover names
  * with `lxdev lxapp pages`.
- * Narrows to the project's own names once the CLI has written
- * `.lingxia/types/pages.d.ts`; plain `string` before that, so a
- * project that never ran a build still compiles.
+ * Narrows to the project's own names once `lingxia dev` or
+ * `lingxia build` has generated them; plain `string` before that, so
+ * a project that never ran a build still compiles.
  */
 export type ConfiguredPageName = keyof LxAppPages extends never ? string : keyof LxAppPages;
 
