@@ -4115,6 +4115,32 @@ mod manifest_reload_tests {
         assert_eq!(tabbar.items.len(), 2);
         assert_eq!(tabbar.items[0].page, "home");
         assert_eq!(tabbar.items[1].page, "settings");
+        assert_eq!(tabbar.items[1].text.as_deref(), Some("Settings"));
+
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Reload",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "list", "path": "pages/list/index"},
+                {"name": "settings", "path": "pages/settings/index"}
+              ],
+              "tabBar": {
+                "items": [
+                  {"page": "home", "text": "Home"},
+                  {"page": "settings", "text": "Settings2"}
+                ]
+              }
+            }"#,
+        );
+        app.reload_manifest().expect("reload tabBar text");
+        let tabbar = app.get_tabbar().expect("tabbar after text reload");
+        assert_eq!(tabbar.items[1].text.as_deref(), Some("Settings2"));
     }
 
     #[test]

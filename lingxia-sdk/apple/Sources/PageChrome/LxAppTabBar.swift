@@ -222,7 +222,7 @@ struct MacOSLxAppTabBar: View {
     }
 
     var body: some View {
-        let items = config.getItems(appId: appId)
+        let items = getTabBar(appId)?.getItems(appId: appId) ?? config.getItems(appId: appId)
 
         Group {
             switch config.positionEnum {
@@ -1346,7 +1346,10 @@ class macOSTabBarWrapper: NSView, TabBarProtocol, ObservableObject {
         // Update selected index from fresh config
         self.selectedIndex = Int(freshConfig.selected_index)
 
-        // Always recreate layout to ensure fresh badge/red dot data
+        // Item labels live in `config`, which is not @Published. A reload
+        // that keeps the same selected tab would otherwise leave the SwiftUI
+        // strip on the previous items.
+        objectWillChange.send()
         updateSwiftUIView()
 
         // Apply visibility state
