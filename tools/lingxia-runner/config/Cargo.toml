@@ -10,3 +10,6 @@ publish = false
 # runner crates (injected at build time), which map this onto them.
 [dependencies]
 toml = "1.1.2"
+lingxia-provider = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -277,6 +277,20 @@ pub(super) fn execute_runner_dev(
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());
+        if matches!(target, RunnerDevTarget::LxApp(_))
+            && std::env::var_os("LINGXIA_RUNNER_LXAPP_PERMISSIONS").is_none()
+        {
+            println!(
+                "{}",
+                "No LINGXIA_RUNNER_LXAPP_PERMISSIONS; guests are unrestricted unless this env or a registry provider sets a policy."
+                    .yellow()
+            );
+            println!(
+                "{}",
+                r#"  e.g. LINGXIA_RUNNER_LXAPP_PERMISSIONS='{"<appId>":{"domains":["api.example.com"]}}' lingxia dev"#
+                    .dimmed()
+            );
+        }
         let mut runner = match (&runner_host, &target) {
             (LxAppRunnerHost::MacOs, RunnerDevTarget::LxApp(path)) => launch_runner_for_lxapp(
                 path,

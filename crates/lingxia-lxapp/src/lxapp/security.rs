@@ -66,6 +66,12 @@ impl NetworkSecurity {
             })
     }
 
+    pub(crate) fn domains(&self) -> Vec<String> {
+        let mut domains: Vec<_> = self.trusted_domains.iter().cloned().collect();
+        domains.sort();
+        domains
+    }
+
     /// Set trusted domains from a list, replacing the current policy.
     pub(crate) fn set_domains(&mut self, domains: &[String]) {
         self.trusted_domains.clear();

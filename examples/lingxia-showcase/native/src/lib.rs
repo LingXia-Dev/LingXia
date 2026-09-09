@@ -9,6 +9,35 @@ mod extension;
 
 struct ExampleHostAddon;
 
+/// Stands in for the server: constrains network for the showcase's bundled
+/// guest lxapps. Privileges stay unconstrained, and so does any app this
+/// registry has no entry for.
+#[cfg(not(feature = "cloud"))]
+struct ShowcaseGuestRegistry;
+
+#[cfg(not(feature = "cloud"))]
+impl lingxia::provider::LxAppRegistryProvider for ShowcaseGuestRegistry {
+    fn fetch_registry_info<'a>(
+        &'a self,
+        app: lingxia::provider::LxAppRegistryRequest<'a>,
+    ) -> lingxia::provider::BoxFuture<
+        'a,
+        Result<Option<lingxia::provider::LxAppRegistryInfo>, lingxia::provider::ProviderError>,
+    > {
+        Box::pin(async move {
+            let domains = match app.appid {
+                "lingxia-chat" => "www.deepseek.com",
+                "app.lingxia.terminal-settings" => "api.nuget.org",
+                _ => return Ok(None),
+            };
+            Ok(Some(lingxia::provider::LxAppRegistryInfo {
+                permissions: Some(lingxia::provider::LxAppPermissions::network([domains])),
+                ..Default::default()
+            }))
+        })
+    }
+}
+
 impl lingxia::HostAddon for ExampleHostAddon {
     #[cfg(feature = "devtools")]
     fn issue_devtools_app_resource_grants(
@@ -29,6 +58,11 @@ impl lingxia::HostAddon for ExampleHostAddon {
         {
             log::error!("[cloud] provider init failed: {err}");
         }
+        // Stands in for the server so the bundled guests run under a real
+        // grant. An injected provider owns the registry when one is linked in —
+        // only one may register.
+        #[cfg(not(feature = "cloud"))]
+        lingxia::provider::register_lxapp_registry_provider(Box::new(ShowcaseGuestRegistry));
     }
 
     fn start_services(&self) {

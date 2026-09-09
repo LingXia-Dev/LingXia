@@ -153,7 +153,6 @@ fn validate_lxapp_manifest(manifest: &Value) -> Result<()> {
     }
     validate_lxapp_pages(manifest.get("pages"))?;
     validate_page_chrome_manifest(manifest)?;
-    validate_lxapp_security(manifest.get("security"))?;
     Ok(())
 }
 
@@ -497,107 +496,6 @@ fn validate_page_path(path: &str, field: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_lxapp_security(security: Option<&Value>) -> Result<()> {
-    let security = security.ok_or_else(|| anyhow!("lxapp.json security must be declared"))?;
-    let security = security
-        .as_object()
-        .ok_or_else(|| anyhow!("lxapp.json security must be an object"))?;
-
-    let network = security
-        .get("network")
-        .ok_or_else(|| anyhow!("lxapp.json security.network must be declared"))?
-        .as_object()
-        .ok_or_else(|| anyhow!("lxapp.json security.network must be an object"))?;
-    let domains = network
-        .get("trustedDomains")
-        .ok_or_else(|| anyhow!("lxapp.json security.network.trustedDomains must be declared"))?
-        .as_array()
-        .ok_or_else(|| anyhow!("lxapp.json security.network.trustedDomains must be an array"))?;
-    let mut normalized_domains = BTreeSet::new();
-    for domain in domains {
-        let domain = domain.as_str().ok_or_else(|| {
-            anyhow!("lxapp.json security.network.trustedDomains entries must be strings")
-        })?;
-        validate_trusted_domain(domain)?;
-        normalized_domains.insert(domain.trim().trim_end_matches('.').to_ascii_lowercase());
-    }
-    if normalized_domains.len() > 1 && normalized_domains.contains("*") {
-        return Err(anyhow!(
-            "lxapp.json security.network.trustedDomains wildcard \"*\" cannot be combined with other hosts"
-        ));
-    }
-
-    let privileges = security
-        .get("privileges")
-        .ok_or_else(|| anyhow!("lxapp.json security.privileges must be declared"))?
-        .as_array()
-        .ok_or_else(|| anyhow!("lxapp.json security.privileges must be an array"))?;
-    for privilege in privileges {
-        let privilege = privilege
-            .as_str()
-            .ok_or_else(|| anyhow!("lxapp.json security.privileges entries must be strings"))?;
-        validate_security_privilege_id(privilege)?;
-    }
-
-    Ok(())
-}
-
-fn validate_security_privilege_id(privilege: &str) -> Result<()> {
-    let trimmed = privilege.trim();
-    if trimmed.is_empty()
-        || trimmed.contains('/')
-        || trimmed.contains('\\')
-        || trimmed.contains(':')
-        || trimmed.chars().any(char::is_whitespace)
-        || !trimmed.bytes().all(|b| {
-            b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'_')
-        })
-    {
-        return Err(anyhow!(
-            "lxapp.json security.privileges entries must be lowercase identifiers: {privilege:?}"
-        ));
-    }
-    Ok(())
-}
-
-fn validate_trusted_domain(domain: &str) -> Result<()> {
-    let trimmed = domain.trim().trim_end_matches('.');
-    if trimmed == "*" {
-        return Ok(());
-    }
-    if !is_valid_trusted_host(trimmed)
-        || trimmed.contains("://")
-        || trimmed.contains('/')
-        || trimmed.contains('\\')
-        || trimmed.contains(':')
-        || trimmed.chars().any(char::is_whitespace)
-    {
-        return Err(anyhow!(
-            "lxapp.json security.network.trustedDomains entries must be host names without scheme/path: {domain:?}"
-        ));
-    }
-    Ok(())
-}
-
-fn is_valid_trusted_host(host: &str) -> bool {
-    if host.is_empty() || host.len() > 253 {
-        return false;
-    }
-    if host.parse::<std::net::Ipv4Addr>().is_ok() {
-        return true;
-    }
-
-    host.split('.').all(|label| {
-        !label.is_empty()
-            && label.len() <= 63
-            && !label.starts_with('-')
-            && !label.ends_with('-')
-            && label
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-    })
-}
-
 fn read_json(path: &Path) -> Result<Value> {
     let content =
         fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
@@ -751,7 +649,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -784,7 +682,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [
                 { "name": "newtab", "path": "pages/newtab/index.html" },
                 { "name": "settings", "path": "pages/settings/index.html" }
@@ -825,7 +723,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [
                 { "name": "newtab", "path": "pages/newtab/index.html" },
                 { "name": "settings", "path": "pages/settings/index.html" }
@@ -891,7 +789,7 @@ mod tests {
             r#"{
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -913,7 +811,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": []
             }"#,
         );
@@ -934,7 +832,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [
                 { "name": "home page", "path": "pages/home/index" }
               ]
@@ -958,7 +856,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [
                 { "name": "home", "path": "pages/home/index" },
                 { "name": "home", "path": "pages/other/index" }
@@ -982,7 +880,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"../outside"}]
             }"#,
         );
@@ -994,7 +892,7 @@ mod tests {
     }
 
     #[test]
-    fn accepts_lxapp_security_config() {
+    fn accepts_omitted_lxapp_security_config() {
         let temp = tempdir().unwrap();
         write_file(
             temp.path(),
@@ -1003,12 +901,6 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {
-                "network": {
-                  "trustedDomains": ["api.example.com", "LOCALHOST"]
-                },
-                "privileges": ["downloads", "vendor_devtools"]
-              },
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1016,104 +908,6 @@ mod tests {
 
         let project = Project::discover(temp.path(), Some(ProjectFramework::Html)).unwrap();
         assert_eq!(project.kind, ProjectKind::LxApp);
-    }
-
-    #[test]
-    fn rejects_missing_lxapp_security_config() {
-        let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "lxapp.json",
-            r#"{
-              "appId": "demo",
-              "version": "1.0.0",
-              "logic": false,
-              "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        );
-
-        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("lxapp.json security must be declared"));
-    }
-
-    #[test]
-    fn rejects_invalid_lxapp_security_privilege_id() {
-        let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "lxapp.json",
-            r#"{
-              "appId": "demo",
-              "version": "1.0.0",
-              "logic": false,
-              "security": {
-                "network": {
-                  "trustedDomains": []
-                },
-                "privileges": ["Agent Automation"]
-              },
-              "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        );
-
-        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("security.privileges entries must be lowercase identifiers"));
-    }
-
-    #[test]
-    fn rejects_lxapp_security_domain_with_scheme() {
-        let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "lxapp.json",
-            r#"{
-              "appId": "demo",
-              "version": "1.0.0",
-              "logic": false,
-              "security": {
-                "network": {
-                  "trustedDomains": ["https://api.example.com"]
-                },
-                "privileges": []
-              },
-              "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        );
-
-        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("trustedDomains entries must be host names"));
-    }
-
-    #[test]
-    fn rejects_lxapp_security_wildcard_mixed_with_domains() {
-        let temp = tempdir().unwrap();
-        write_file(
-            temp.path(),
-            "lxapp.json",
-            r#"{
-              "appId": "demo",
-              "version": "1.0.0",
-              "logic": false,
-              "security": {
-                "network": {
-                  "trustedDomains": ["api.example.com", "*"]
-                },
-                "privileges": []
-              },
-              "pages": [{"name":"home","path":"pages/home/index"}]
-            }"#,
-        );
-
-        let error = Project::discover(temp.path(), Some(ProjectFramework::Html))
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("wildcard"));
     }
 
     #[test]
@@ -1153,7 +947,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": "../logic.js",
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1175,7 +969,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1205,7 +999,7 @@ mod tests {
               "appId": "demo",
               "version": "1.0.0",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1233,7 +1027,7 @@ mod tests {
               "version": "1.0.0",
               "framework": "react",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1261,7 +1055,7 @@ mod tests {
               "version": "1.0.0",
               "framework": "html",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index.html"}]
             }"#,
         );
@@ -1284,7 +1078,7 @@ mod tests {
               "version": "1.0.0",
               "framework": "html",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1308,7 +1102,7 @@ mod tests {
               "version": "1.0.0",
               "framework": "html",
               "logic": false,
-              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
               "pages": [{"name":"home","path":"pages/home/index"}]
             }"#,
         );
@@ -1323,7 +1117,7 @@ mod tests {
         let manifest = serde_json::json!({
             "appId": "demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}
@@ -1356,7 +1150,7 @@ mod tests {
         let manifest = serde_json::json!({
             "appId": "demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}
@@ -1379,7 +1173,7 @@ mod tests {
             "appId": "demo",
             "version": "1.0.0",
             "appearance": "dark",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}
@@ -1402,7 +1196,7 @@ mod tests {
         let manifest = serde_json::json!({
             "appId": "demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}
@@ -1427,7 +1221,7 @@ mod tests {
         let manifest = serde_json::json!({
             "appId": "demo",
             "version": "1.0.0",
-            "security": {"network":{"trustedDomains":[]},"privileges":[]},
+
             "pages": [
                 {"name":"home","path":"pages/home/index"},
                 {"name":"profile","path":"pages/profile/index"}

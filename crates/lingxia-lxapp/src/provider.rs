@@ -10,8 +10,9 @@ pub use lingxia_log::LogProvider;
 use std::sync::OnceLock;
 
 pub use lingxia_provider::{
-    BoxFuture, FingerprintError, FingerprintProvider, LxAppRegistryInfo, LxAppRegistryProvider,
-    LxAppStatus, ProviderError, ProviderErrorCode, PushNotificationProvider,
+    BoxFuture, FingerprintError, FingerprintProvider, LxAppChannel, LxAppNetworkPermission,
+    LxAppPermissions, LxAppRegistryInfo, LxAppRegistryProvider, LxAppRegistryRequest, LxAppStatus,
+    ProviderError, ProviderErrorCode, PushNotificationProvider,
 };
 pub use lingxia_update::{LxAppUpdateQuery, UpdatePackageInfo, UpdateProvider, UpdateTarget};
 
@@ -97,7 +98,7 @@ pub async fn bind_push_token(token: String) -> Result<(), ProviderError> {
 static REGISTRY_PROVIDER: OnceLock<Box<dyn LxAppRegistryProvider>> = OnceLock::new();
 
 /// Register the lxapp registry provider. Optional: without it every lookup
-/// resolves from the package and the runtime behaves as it did before.
+/// resolves from the package, and every app keeps the unrestricted default.
 pub fn register_lxapp_registry_provider(provider: Box<dyn LxAppRegistryProvider>) {
     if REGISTRY_PROVIDER.set(provider).is_err() {
         panic!("register_lxapp_registry_provider called more than once");

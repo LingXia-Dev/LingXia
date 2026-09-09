@@ -1,5 +1,9 @@
 //! Cache and resolution for lxapp registry records — the app's name, icon,
-//! description, and status as the server owns them.
+//! description, status, and permissions as the server owns them.
+//!
+//! Permissions ride the same record because they are the same kind of fact,
+//! keyed the same way and wanted at the same moment: the pre-open status gate
+//! already fetches this record, so a guest's grant costs no request of its own.
 //!
 //! Separate from the update path on purpose. A name or icon changes without any
 //! package changing, and the sidebar has to draw apps that were never
@@ -11,13 +15,17 @@
 //! Names are not: a string that short is cheaper to re-fetch than to reconcile.
 
 use super::metadata::{self, RegistryRecord};
+use super::metadata::{StoredGrant, StoredPermissions};
 use super::runtime_registry;
 use crate::archive;
 use crate::error::LxAppError;
-use crate::provider::{LxAppRegistryInfo, LxAppStatus, lxapp_registry_provider};
+use crate::provider::{
+    LxAppChannel, LxAppPermissions, LxAppRegistryInfo, LxAppRegistryRequest, LxAppStatus,
+    lxapp_registry_provider,
+};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong_rt::download as service_executor;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -232,8 +240,12 @@ fn record(appid: &str) -> Option<RegistryRecord> {
 /// seconds". Treat it as expired rather than as eternally fresh — otherwise one
 /// bad clock pins a stale `Published` past every later suspension.
 fn is_expired(record: &RegistryRecord, ttl: Duration) -> bool {
+    stamp_is_expired(record.fetched_at, ttl)
+}
+
+fn stamp_is_expired(fetched_at: i64, ttl: Duration) -> bool {
     let now = now_secs();
-    now < record.fetched_at || now - record.fetched_at > ttl.as_secs() as i64
+    now < fetched_at || now - fetched_at > ttl.as_secs() as i64
 }
 
 /// A record naming artwork that is no longer on disk. Records live in the data
@@ -299,8 +311,8 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
             let Some(_guard) = RefreshGuard::acquire(appid.clone()) else {
                 return;
             };
-            match fetch_records(&appid).await {
-                Ok(Some(info)) => fetch_icons(std::slice::from_ref(&info)).await,
+            match fetch_records(&appid, crate::host_channel().into()).await {
+                Ok(Some(info)) => fetch_icons(&appid, &info).await,
                 Ok(None) => {}
                 Err(err) => {
                     crate::warn!("lxapp registry refresh failed: {}", err);
@@ -327,14 +339,16 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
     let status = match fresh {
         Some(status) => status,
         None => {
-            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(appid)).await {
+            let channel = crate::host_channel().into();
+            match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(appid, channel)).await {
                 Ok(Ok(info)) => {
                     // Artwork is fetched outside the deadline: it is not what
                     // the gate is waiting for, and awaiting it here would let a
                     // slow image expire a check that already had its answer.
                     if let Some(info) = info.clone() {
+                        let appid = appid.to_string();
                         std::mem::drop(crate::executor::spawn(Box::pin(async move {
-                            fetch_icons(std::slice::from_ref(&info)).await;
+                            fetch_icons(&appid, &info).await;
                         })));
                     }
                     info.map(|info| info.status).unwrap_or_default()
@@ -378,14 +392,18 @@ fn unavailable_error(appid: &str, status: LxAppStatus) -> LxAppError {
     }
 }
 
-/// Fetch the registry's answer and store it. Artwork is *not* fetched here.
+/// Fetch the registry's answer for one channel and store it. Artwork is *not*
+/// fetched here.
 ///
 /// The status is the gating fact, and [`ensure_open_allowed`] bounds this call
 /// with a deadline it fails open on. If an icon body were awaited inside that
 /// deadline, a slow image would expire a check that had already been told the
 /// app is suspended — and the drop would cancel the download too, so the next
 /// attempt would be no faster.
-pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInfo>, LxAppError> {
+pub(crate) async fn fetch_records(
+    appid: &str,
+    channel: LxAppChannel,
+) -> Result<Option<LxAppRegistryInfo>, LxAppError> {
     let Some(provider) = lxapp_registry_provider() else {
         return Ok(None);
     };
@@ -394,7 +412,7 @@ pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInf
     }
 
     let info = provider
-        .fetch_registry_info(appid)
+        .fetch_registry_info(LxAppRegistryRequest::new(appid, channel))
         .await
         .map_err(|err| crate::provider::provider_error_to_lxapp_error(&err))?;
     mark_attempted(appid);
@@ -422,6 +440,10 @@ pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInf
             .unwrap_or_default()
             .as_str()
             .to_string(),
+        // Only this channel's answer is replaced. A 404 is a registry that has
+        // no policy for this app, not a lost grant: it stores as "no
+        // constraint" like any other absent grant.
+        grants: carry_grants(info.as_ref(), previous.as_ref(), channel),
         fetched_at: now_secs(),
     };
     if let Err(err) = metadata::registry_upsert(&stored) {
@@ -430,6 +452,98 @@ pub(crate) async fn fetch_records(appid: &str) -> Result<Option<LxAppRegistryInf
     let changed = [appid.to_string()];
     notify_changed(&changed);
     Ok(info)
+}
+
+/// This app's grant when the cache holds a current answer for its channel.
+///
+/// `Some(None)` is a fresh "no constraint"; `None` means nothing usable is
+/// cached and the caller has to ask. A grant gates as hard as a status does, so
+/// it ages on the status TTL rather than the listing TTL.
+pub(crate) fn cached_grant(appid: &str, channel: LxAppChannel) -> Option<Option<LxAppPermissions>> {
+    grant_of(&record(appid)?, channel, Some(STATUS_TTL))
+}
+
+/// The last grant we were given for this channel, however old.
+pub(crate) fn standing_grant(appid: &str, channel: LxAppChannel) -> Option<LxAppPermissions> {
+    grant_of(&record(appid)?, channel, None).flatten()
+}
+
+/// The grant this record holds for one channel, if it holds one at all.
+///
+/// Channels never borrow each other's answers, and each ages on its own stamp:
+/// a listing refresh on the host channel must not make a developer build's
+/// grant look current, nor erase it.
+fn grant_of(
+    record: &RegistryRecord,
+    channel: LxAppChannel,
+    ttl: Option<Duration>,
+) -> Option<Option<LxAppPermissions>> {
+    let grant = record.grants.get(channel.as_str())?;
+    if ttl.is_some_and(|ttl| stamp_is_expired(grant.fetched_at, ttl)) {
+        return None;
+    }
+    Some(grant.permissions.as_ref().map(load_permissions))
+}
+
+/// Ask the registry for this app's grant. `None` is "unconstrained".
+///
+/// A registry that answers nothing, or cannot be reached, does not restrict
+/// anything: only an explicit grant does. A transport failure keeps the
+/// standing grant so a network blip cannot widen an app that was constrained.
+pub(crate) async fn resolve_grant(appid: &str, channel: LxAppChannel) -> Option<LxAppPermissions> {
+    match fetch_records(appid, channel).await {
+        Ok(info) => info.and_then(|info| info.permissions),
+        Err(err) => {
+            crate::warn!("Registry grant lookup failed for {}: {}", appid, err).with_appid(appid);
+            standing_grant(appid, channel)
+        }
+    }
+}
+
+fn store_permissions(permissions: &LxAppPermissions) -> StoredPermissions {
+    StoredPermissions {
+        domains: permissions
+            .network
+            .as_ref()
+            .map(|network| network.trusted_domains.clone()),
+        privileges: permissions
+            .privileges
+            .as_ref()
+            .map(|privileges| privileges.granted.clone()),
+    }
+}
+
+fn load_permissions(stored: &StoredPermissions) -> LxAppPermissions {
+    let mut permissions = LxAppPermissions::all();
+    if let Some(domains) = stored.domains.clone() {
+        permissions = permissions.with_network(domains);
+    }
+    if let Some(privileges) = stored.privileges.clone() {
+        permissions = permissions.with_privileges(privileges);
+    }
+    permissions
+}
+
+/// Grants to keep on the record [`fetch_records`] is about to store: every
+/// other channel's answer, plus this channel's fresh one.
+fn carry_grants(
+    info: Option<&LxAppRegistryInfo>,
+    previous: Option<&RegistryRecord>,
+    channel: LxAppChannel,
+) -> BTreeMap<String, StoredGrant> {
+    let mut grants = previous
+        .map(|previous| previous.grants.clone())
+        .unwrap_or_default();
+    grants.insert(
+        channel.as_str().to_string(),
+        StoredGrant {
+            permissions: info
+                .and_then(|info| info.permissions.as_ref())
+                .map(store_permissions),
+            fetched_at: now_secs(),
+        },
+    );
+    grants
 }
 
 /// File name to keep on the record [`fetch_records`] is about to store.
@@ -459,30 +573,27 @@ fn carry_icon_file(
 }
 
 /// Bring cached artwork in line with records already stored by [`fetch_records`].
-async fn fetch_icons(infos: &[LxAppRegistryInfo]) {
+///
+/// A record does not name its app: the request did, and echoing it back would
+/// be a second answer to a question the caller already knows.
+async fn fetch_icons(appid: &str, info: &LxAppRegistryInfo) {
     sweep_staging_files();
-    let mut changed = Vec::new();
-    for info in infos {
-        let cached = record(&info.appid);
-        let Some(icon_file) = resolve_icon_file(info, cached.as_ref()).await else {
-            continue;
-        };
-        let Some(mut record) = cached else {
-            continue;
-        };
-        if record.icon_file.as_deref() == Some(icon_file.as_str()) {
-            continue;
-        }
-        record.icon_file = Some(icon_file);
-        if let Err(err) = metadata::registry_upsert(&record) {
-            crate::warn!("Failed to cache registry icon for {}: {}", info.appid, err);
-            continue;
-        }
-        changed.push(info.appid.clone());
+    let cached = record(appid);
+    let Some(icon_file) = resolve_icon_file(appid, info, cached.as_ref()).await else {
+        return;
+    };
+    let Some(mut record) = cached else {
+        return;
+    };
+    if record.icon_file.as_deref() == Some(icon_file.as_str()) {
+        return;
     }
-    if !changed.is_empty() {
-        notify_changed(&changed);
+    record.icon_file = Some(icon_file);
+    if let Err(err) = metadata::registry_upsert(&record) {
+        crate::warn!("Failed to cache registry icon for {}: {}", appid, err);
+        return;
     }
+    notify_changed(&[appid.to_string()]);
 }
 
 /// Returns the cached file name for this info's icon, downloading only when the
@@ -493,6 +604,7 @@ async fn fetch_icons(infos: &[LxAppRegistryInfo]) {
 /// image. The file is still named by the bytes' own hash, so the same artwork
 /// reached through two URLs, or by two lxapps, is one file on disk.
 async fn resolve_icon_file(
+    appid: &str,
     info: &LxAppRegistryInfo,
     cached: Option<&RegistryRecord>,
 ) -> Option<String> {
@@ -522,7 +634,7 @@ async fn resolve_icon_file(
     match receiver.await {
         Ok(Ok(())) => {}
         Ok(Err(err)) => {
-            crate::warn!("Icon download failed for {}: {}", info.appid, err);
+            crate::warn!("Icon download failed for {}: {}", appid, err);
             let _ = fs::remove_file(&staging);
             return None;
         }
@@ -546,7 +658,7 @@ async fn resolve_icon_file(
     if let Err(err) = fs::rename(&staging, &destination) {
         let _ = fs::remove_file(&staging);
         if !destination.exists() {
-            crate::warn!("Failed to store cached icon for {}: {}", info.appid, err);
+            crate::warn!("Failed to store cached icon for {}: {}", appid, err);
             return None;
         }
     }
@@ -667,6 +779,97 @@ mod tests {
         assert_eq!(icon_extension("https://cdn.example.com/a/logo.bin"), "png");
     }
 
+    fn constrained(domain: &str) -> LxAppRegistryInfo {
+        LxAppRegistryInfo {
+            permissions: Some(LxAppPermissions::network([domain])),
+            ..LxAppRegistryInfo::default()
+        }
+    }
+
+    #[test]
+    fn a_grant_belongs_to_the_channel_it_was_answered_for() {
+        let mut record = record_for("demo", None);
+        record.grants = carry_grants(
+            Some(&constrained("api.example.com")),
+            None,
+            LxAppChannel::Release,
+        );
+
+        let release = grant_of(&record, LxAppChannel::Release, Some(STATUS_TTL))
+            .expect("a current answer")
+            .expect("an explicit grant");
+        assert_eq!(
+            release.network.map(|network| network.trusted_domains),
+            Some(vec!["api.example.com".to_string()])
+        );
+        // The half the server said nothing about is not stored as a denial.
+        assert!(release.privileges.is_none());
+
+        // Another channel is not this grant, at any age.
+        assert!(grant_of(&record, LxAppChannel::Developer, Some(STATUS_TTL)).is_none());
+        assert!(grant_of(&record, LxAppChannel::Developer, None).is_none());
+
+        // A grant that aged out is no longer a current answer, but it is still
+        // the standing one — an unreachable registry must not widen the app.
+        record
+            .grants
+            .get_mut("release")
+            .expect("the release grant")
+            .fetched_at -= STATUS_TTL.as_secs() as i64 + 1;
+        assert!(grant_of(&record, LxAppChannel::Release, Some(STATUS_TTL)).is_none());
+        assert!(
+            grant_of(&record, LxAppChannel::Release, None)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn a_refresh_on_one_channel_leaves_the_others_alone() {
+        // The sidebar refreshes on the host channel while a developer build of
+        // the same app id holds its own grant. Neither may erase the other.
+        let developer = carry_grants(
+            Some(&constrained("dev.example.com")),
+            None,
+            LxAppChannel::Developer,
+        );
+        let mut record = record_for("demo", None);
+        record.grants = developer;
+        record.grants = carry_grants(
+            Some(&constrained("api.example.com")),
+            Some(&record),
+            LxAppChannel::Release,
+        );
+
+        for (channel, host) in [
+            (LxAppChannel::Developer, "dev.example.com"),
+            (LxAppChannel::Release, "api.example.com"),
+        ] {
+            let grant = grant_of(&record, channel, Some(STATUS_TTL))
+                .expect("a current answer")
+                .expect("an explicit grant");
+            assert_eq!(
+                grant.network.map(|network| network.trusted_domains),
+                Some(vec![host.to_string()]),
+                "{channel}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_channel_with_no_grant_is_a_current_answer_of_no_constraint() {
+        let mut record = record_for("demo", None);
+        record.grants = carry_grants(None, None, LxAppChannel::Release);
+        assert!(
+            grant_of(&record, LxAppChannel::Release, Some(STATUS_TTL))
+                .expect("a current answer")
+                .is_none()
+        );
+
+        // Never asked on this channel: no answer at all, so the caller fetches.
+        assert!(grant_of(&record, LxAppChannel::Developer, Some(STATUS_TTL)).is_none());
+    }
+
     fn record_for(appid: &str, icon_file: Option<&str>) -> RegistryRecord {
         RegistryRecord {
             appid: appid.to_string(),
@@ -675,6 +878,7 @@ mod tests {
             icon_url: None,
             icon_file: icon_file.map(str::to_string),
             status: LxAppStatus::Published.as_str().to_string(),
+            grants: BTreeMap::new(),
             fetched_at: now_secs(),
         }
     }
@@ -817,10 +1021,10 @@ mod tests {
             icon_url: Some("https://cdn.example.com/a.png".to_string()),
             icon_file: Some("old.png".to_string()),
             status: LxAppStatus::Published.as_str().to_string(),
+            grants: BTreeMap::new(),
             fetched_at: now_secs(),
         };
         let same = LxAppRegistryInfo {
-            appid: "demo".to_string(),
             icon_url: Some("https://cdn.example.com/a.png".to_string()),
             ..Default::default()
         };

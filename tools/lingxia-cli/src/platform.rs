@@ -407,7 +407,6 @@ mod tests {
         "appId": "showcase",
         "version": "1.0.0",
         "logic": false,
-        "security": {"network":{"trustedDomains":[]},"privileges":[]},
         "pages": [{"name":"home","path":"pages/home/index"}]
     }"#;
 

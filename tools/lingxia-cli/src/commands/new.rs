@@ -425,10 +425,6 @@ mod native_main_scaffold_tests {
                 "name": "Settings",
                 "version": "0.0.0",
                 "logic": false,
-                "security": {
-                    "network": { "trustedDomains": [] },
-                    "privileges": []
-                },
                 "pages": [{
                     "name": "settings",
                     "path": "pages/settings/index.html"

@@ -114,10 +114,38 @@ pub fn dev_session_active() -> bool {
 /// simulator), which sets `LINGXIA_RUNNER` on its child process. Unlike a real
 /// host app in dev mode, the Runner lacks host-declared surfaces such as the
 /// terminal; the bridge exposes this so apps can hide those affordances.
+static RUNNER_HOST: AtomicBool = AtomicBool::new(false);
+
+/// Identify a Runner host before SDK initialization, including direct launches.
+/// This designation is process-wide and cannot be revoked by the environment.
+pub fn register_runner_host() {
+    RUNNER_HOST.store(true, Ordering::Release);
+}
+
 pub fn runner_active() -> bool {
-    std::env::var("LINGXIA_RUNNER")
-        .map(|value| !value.trim().is_empty())
-        .unwrap_or(false)
+    runner_identity(
+        RUNNER_HOST.load(Ordering::Acquire),
+        std::env::var("LINGXIA_RUNNER").ok().as_deref(),
+    )
+}
+
+fn runner_identity(registered: bool, marker: Option<&str>) -> bool {
+    registered || marker.is_some_and(|value| !value.trim().is_empty())
+}
+
+#[cfg(test)]
+mod runner_identity_tests {
+    use super::runner_identity;
+
+    #[test]
+    fn native_runner_identity_survives_missing_or_empty_environment() {
+        assert!(runner_identity(true, None));
+        assert!(runner_identity(true, Some("")));
+        assert!(runner_identity(true, Some("  ")));
+        assert!(runner_identity(false, Some("1")));
+        assert!(!runner_identity(false, None));
+        assert!(!runner_identity(false, Some("")));
+    }
 }
 
 /// Initialize the LxApps singleton using the host app configuration from app-context.

@@ -1,7 +1,7 @@
 use lingxia_update::{ReleaseType, SemanticVersion};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::PathBuf;
@@ -337,7 +337,35 @@ pub(crate) struct RegistryRecord {
     /// `LxAppStatus::as_str`; stored as text so the contract crate stays free of
     /// serde and an unknown value from a newer server degrades instead of failing.
     pub status: String,
+    /// Grants by release channel. A grant written for `release` says nothing
+    /// about a developer build of the same app id, and the listing refresh and
+    /// an instance's own lookup can run on different channels — one slot would
+    /// let either erase the other's answer.
+    #[serde(default)]
+    pub grants: BTreeMap<String, StoredGrant>,
     pub fetched_at: i64,
+}
+
+/// One channel's answer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct StoredGrant {
+    /// `None` is "no constraint" — what the registry says about an app it has
+    /// no policy for.
+    #[serde(default)]
+    pub permissions: Option<StoredPermissions>,
+    /// When this channel's answer arrived. Separate from the record's
+    /// `fetched_at`, which a refresh on any channel advances.
+    pub fetched_at: i64,
+}
+
+/// A grant as stored. Each half is independent: `None` does not constrain it,
+/// an empty list denies it.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub(crate) struct StoredPermissions {
+    #[serde(default)]
+    pub domains: Option<Vec<String>>,
+    #[serde(default)]
+    pub privileges: Option<Vec<String>>,
 }
 
 pub(crate) fn registry_get(appid: &str) -> Result<Option<RegistryRecord>, LxAppError> {

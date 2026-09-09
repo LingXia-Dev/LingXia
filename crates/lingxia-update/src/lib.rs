@@ -33,6 +33,16 @@ pub enum ReleaseType {
     Developer,
 }
 
+impl From<ReleaseType> for lingxia_provider::LxAppChannel {
+    fn from(release_type: ReleaseType) -> Self {
+        match release_type {
+            ReleaseType::Release => Self::Release,
+            ReleaseType::Preview => Self::Preview,
+            ReleaseType::Developer => Self::Developer,
+        }
+    }
+}
+
 /// The release channel this host build belongs to, derived from `app.json`'s
 /// `envVersion`. The host app's own update check already uses it; lxapps the
 /// host installs and updates must agree, or a developer build pulls release

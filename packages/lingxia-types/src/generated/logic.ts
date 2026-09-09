@@ -121,8 +121,8 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
  *
  * - `app`: app-owned temporary output, or durable `lx://userdata` output when
  *   `filePath` is set
- * - `downloads`: user-visible system Downloads output, requiring
- *   `security.privileges: ["downloads"]` in `lxapp.json`
+ * - `downloads`: user-visible system Downloads output, requiring a host
+ *   privilege grant and a native Downloads grant
  *
  * Default: `app`.
  */
