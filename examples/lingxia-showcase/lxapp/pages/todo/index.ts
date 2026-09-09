@@ -56,8 +56,13 @@ Page({
   _loadFromStorage: async function () {
     try {
       const storage = this._ensureStorage();
+      const todosKey = this.STORAGE_KEYS.TODOS;
+      if (!(await storage.has(todosKey))) {
+        console.log("[Todo] No stored todos found");
+        return;
+      }
       const [storedTodos, storedFilter, storedLastUpdated] = await Promise.all([
-        storage.get(this.STORAGE_KEYS.TODOS),
+        storage.get(todosKey),
         storage.get(this.STORAGE_KEYS.FILTER),
         storage.get(this.STORAGE_KEYS.LAST_UPDATED),
       ]);
