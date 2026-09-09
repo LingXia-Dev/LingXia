@@ -15,7 +15,7 @@ Page({
 
   onLoad: function () {},
 
-  setActiveTab: function (params = {}) {
+  setActiveTab: function (params: { tab?: string } = {}) {
     const next = params?.tab;
     if (typeof next !== "string" || !tabs.includes(next)) {
       return;

@@ -1,4 +1,6 @@
-const app = getApp();
+import { errorMessage } from "../../shared/lib/errors";
+import { showcaseApp } from "../../shared/lib/app";
+const app = showcaseApp();
 
 Page({
   data: {
@@ -16,7 +18,7 @@ Page({
     });
   },
 
-  onShow: function(options) {
+  onShow: function() {
     console.log("API page onShow");
     console.log("App data:", app.globalData);
   },
@@ -38,7 +40,7 @@ Page({
   },
 
   // Navigate to UI API page with specific type parameter
-  navigateToUIPage: async function(params) {
+  navigateToUIPage: async function(params: { type?: string } | undefined) {
     const { type = "navigation" } = params || {};
     await lx.navigateTo({
       page: "ui",
@@ -47,7 +49,7 @@ Page({
   },
 
   // Navigate to Device API page with specific type parameter
-  navigateToDevicePage: async function(params) {
+  navigateToDevicePage: async function(params: { type?: string } | undefined) {
     const { type = "device" } = params || {};
     await lx.navigateTo({
       page: "device",
@@ -63,7 +65,7 @@ Page({
   },
 
   // Navigate to System API page with specific type parameter
-  navigateToSystemPage: async function(params) {
+  navigateToSystemPage: async function(params: { type?: string } | undefined) {
     const { type = "appBaseInfo" } = params || {};
     await lx.navigateTo({
       page: "system",
@@ -79,7 +81,7 @@ Page({
   },
 
   // Navigate to Media API page with specific type parameter
-  navigateToMediaPage: async function(params) {
+  navigateToMediaPage: async function(params: { type?: string } | undefined) {
     const { type = "Pictures" } = params || {};
     await lx.navigateTo({
       page: "media",
@@ -109,11 +111,11 @@ Page({
       });
     } catch (err) {
       console.error("navigateToApp failed", err);
-      lx.showToast({ title: err.message, icon: "none" });
+      lx.showToast({ title: errorMessage(err, "navigateToApp failed"), icon: "none" });
     }
   },
 
-  navigateToCloudPage: async function(params) {
+  navigateToCloudPage: async function(params: { type?: string } | undefined) {
     const { type = "auth" } = params || {};
     await lx.navigateTo({
       page: "cloud",
@@ -142,7 +144,7 @@ Page({
         await lx.surface.openUrl(url);
       }
     } catch (error) {
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 

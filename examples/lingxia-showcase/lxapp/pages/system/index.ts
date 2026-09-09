@@ -2,6 +2,7 @@ Page({
   data: {
     currentType: 'appBaseInfo',
     appBaseInfo: null,
+    displayLanguage: '',
     systemSetting: null,
     autostartSupported: false,
     autostartEnabled: null,

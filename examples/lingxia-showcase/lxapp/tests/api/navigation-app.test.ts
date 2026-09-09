@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { LxAppRuntimeInfo } from 'lingxia-types/automation';
+import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';

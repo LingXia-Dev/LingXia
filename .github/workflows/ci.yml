@@ -138,7 +138,8 @@ jobs:
             automation_types:
               - 'packages/lingxia-types/**'
               - 'packages/lingxia-test/**'
-              - 'examples/lingxia-showcase/lxapp/tests/**'
+              - 'examples/lingxia-showcase/lxapp/**'
+              - 'examples/lingxia-chat/**'
             # Runtime paths exercised by the Showcase end-to-end contracts on
             # both desktop JS engines. Platform-only implementations are
             # filtered separately so they do not fan out to the other OS.
@@ -948,6 +949,15 @@ jobs:
       - name: Check showcase automation types
         working-directory: examples/lingxia-showcase/lxapp
         run: npm run test:automation:types
+
+      # The lxapps' own Logic is what the `lx.*` declarations are actually for.
+      # Nothing type-checked it until now, so a change to the public types could
+      # break every page and still ship green.
+      - name: Type-check example lxapp Logic
+        run: |
+          npm --prefix examples/lingxia-showcase/lxapp run typecheck
+          npm --prefix examples/lingxia-chat ci
+          npm --prefix examples/lingxia-chat run typecheck
 
       # No spec can reach the HTTP fixture yet, so its own specs are the only
       # thing standing between it and a silent regression.

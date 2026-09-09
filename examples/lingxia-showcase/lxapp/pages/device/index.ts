@@ -1,3 +1,4 @@
+import { errorMessage } from "../../shared/lib/errors";
 Page({
   data: {
     currentType: "device",
@@ -11,6 +12,11 @@ Page({
     orientationEvents: [],
     orientationLock: "",
   },
+
+  // Unsubscribe handles live on the instance, not in `data`: they are not
+  // serializable and the View never sees them.
+  _offNetworkChange: null as (() => void) | null,
+  _offDeviceOrientationChange: null as (() => void) | null,
 
   onLoad: async function (options = {}) {
     console.log("Device page onLoad options:", options);
@@ -71,7 +77,7 @@ Page({
       console.log("Triggered short vibration");
     } catch (error) {
       console.error("Failed to trigger short vibration:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 
@@ -82,12 +88,12 @@ Page({
       console.log("Triggered long vibration");
     } catch (error) {
       console.error("Failed to trigger long vibration:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 
   // Make a phone call
-  makePhoneCall: async function (options) {
+  makePhoneCall: async function (options?: { phoneNumber?: string }) {
     const rawPhoneNumber = typeof options?.phoneNumber === "string" ? options.phoneNumber : "";
     const normalizedPhoneNumber = rawPhoneNumber.replace(/^tel:/i, "").trim();
     if (!normalizedPhoneNumber) {
@@ -99,7 +105,7 @@ Page({
       console.log("Making phone call to:", normalizedPhoneNumber);
     } catch (error) {
       console.error("Failed to make phone call:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 
@@ -135,7 +141,7 @@ Page({
     this.setData({ networkListening: false });
   },
 
-  _appendOrientationEvent: function (value) {
+  _appendOrientationEvent: function (value: string) {
     const orientationValue = value === "portrait" || value === "landscape" ? value : "unknown";
     const timestamp = new Date().toISOString();
     const eventText = `${timestamp}  ${orientationValue}`;
@@ -154,7 +160,7 @@ Page({
       this.setData({ orientationLock: "portrait" });
     } catch (error) {
       console.error("Failed to set portrait orientation:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 
@@ -164,7 +170,7 @@ Page({
       this.setData({ orientationLock: "landscape" });
     } catch (error) {
       console.error("Failed to set landscape orientation:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 
@@ -181,7 +187,7 @@ Page({
       this.setData({ orientationListening: true });
     } catch (error) {
       console.error("Failed to start device orientation listener:", error);
-      lx.showToast({ title: error.message, icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Request failed"), icon: "none" });
     }
   },
 

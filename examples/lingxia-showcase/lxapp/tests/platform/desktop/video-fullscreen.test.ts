@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { DesktopWindowInfo } from 'lingxia-types/automation';
+import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';

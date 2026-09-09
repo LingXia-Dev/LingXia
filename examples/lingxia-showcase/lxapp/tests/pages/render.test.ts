@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
 import { attachShot, eventually } from '../helpers/poll.js';

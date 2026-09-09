@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { DesktopWindowInfo } from 'lingxia-types/automation';
+import type { DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';

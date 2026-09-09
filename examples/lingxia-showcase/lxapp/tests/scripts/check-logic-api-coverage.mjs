@@ -6,14 +6,16 @@ import * as ts from 'typescript/unstable/ast';
 import {
   LX_RETURNED_OBJECT_SURFACES,
   LX_RUNTIME_SURFACES,
-} from 'lingxia-types/testing';
+} from '@lingxia/types/testing';
 import manifest from '../logic-api-coverage.mjs';
 
 const root = path.resolve(import.meta.dirname, '../..');
 const compilerApi = new TypeScriptAPI({ cwd: root });
 const compilerSnapshot = compilerApi.updateSnapshot({
   openProjects: [
-    path.join(root, 'tsconfig.json'),
+    // The root config only references the two real projects, so open the
+    // Logic one directly — that is where the page sources live.
+    path.join(root, 'tsconfig.logic.json'),
     path.join(root, 'tests/tsconfig.json'),
   ],
 });

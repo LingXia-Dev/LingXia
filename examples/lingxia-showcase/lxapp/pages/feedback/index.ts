@@ -1,7 +1,7 @@
 Page({
   data: {},
 
-  submitFeedback: async function (params) {
+  submitFeedback: async function (params: { category?: string; message?: string; email?: string }) {
     const category = typeof params?.category === "string" ? params.category.trim() : "Other";
     const message = typeof params?.message === "string" ? params.message.trim() : "";
     const email = typeof params?.email === "string" ? params.email.trim() : "";

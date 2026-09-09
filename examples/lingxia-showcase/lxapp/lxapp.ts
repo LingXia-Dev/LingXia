@@ -1,3 +1,4 @@
+import type { ShowcaseAppInstance } from "./shared/lib/app";
 async function testManagedFileAccess() {
   try {
     const filePath = "debug/app-launch.txt";
@@ -12,13 +13,6 @@ async function testManagedFileAccess() {
   }
 }
 
-interface MyAppInstance {
-  globalData: {
-    greeting: string;
-    ipAddr: string;
-  };
-  ipReadyCallback?: (ip: string) => void;
-}
 
 function routeFromAppLink(options?: { scene?: number; query?: Record<string, string> }) {
   if (options?.scene !== 8003) return;
@@ -31,7 +25,7 @@ function routeFromAppLink(options?: { scene?: number; query?: Record<string, str
 
 App({
   onLaunch: async function (
-    this: MyAppInstance,
+    this: ShowcaseAppInstance,
     options?: { scene?: number; query?: Record<string, string> },
   ) {
     routeFromAppLink(options);

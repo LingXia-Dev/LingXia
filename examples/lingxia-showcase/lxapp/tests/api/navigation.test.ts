@@ -1,4 +1,4 @@
-import type { LxAppDriver, PageInfo } from 'lingxia-types/automation';
+import type { LxAppDriver, PageInfo } from '@lingxia/types/automation';
 import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught, eventually, relaunchFromLogic, specNamespace } from '../helpers/poll.js';

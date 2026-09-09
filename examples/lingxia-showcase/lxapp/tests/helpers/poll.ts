@@ -1,5 +1,5 @@
 import { expect, type Fixture } from '@lingxia/test';
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 
 export interface EventuallyOptions<T> {
   timeoutMs?: number;

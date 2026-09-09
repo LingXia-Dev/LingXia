@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver, LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
+import type { LxAppDriver, LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { bindFixture, evalCaught, eventually, relaunchFromLogic } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';

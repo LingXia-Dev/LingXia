@@ -1,3 +1,36 @@
+import { errorMessage } from "../../shared/lib/errors";
+import type {
+  ChooseMediaOptions,
+  CompressVideoTask,
+  CompressImageOptions,
+  CompressVideoOptions,
+  ExtractVideoThumbnailOptions,
+  ImageInfo,
+  PreviewMediaOptions,
+  ScanCodeOptions,
+  VideoInfo,
+} from "@lingxia/types";
+import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
+
+/** A labelled choice the page offers through an action sheet. */
+interface MediaOption {
+  key: string;
+  label: string;
+  value?: unknown;
+  request?: string[];
+}
+
+/** One picked item, plus the video metadata the page enriches it with. */
+interface ChosenMedia {
+  path: string;
+  type: string;
+  displayWidth?: number;
+  displayHeight?: number;
+  displayAspectRatio?: string;
+}
+
+type MediaTypeToken = "image" | "video";
+
 const DEFAULT_MODE = "Pictures";
 
 const SOURCE_OPTIONS = [
@@ -48,16 +81,16 @@ const PREVIEW_BEHAVIOR_OPTIONS = [
   { key: "loop", label: "Loop" },
 ];
 
-function extractInputValue(event) {
-  return String(event?.detail?.value ?? "");
+function extractInputValue(event: NativeEvent<{ value: string }>) {
+  return String(eventDetail(event).value ?? "");
 }
 
-function parseQualityInput(value) {
+function parseQualityInput(value: unknown) {
   const parsed = parseInt(String(value ?? ""), 10);
   return Number.isNaN(parsed) ? 80 : parsed;
 }
 
-function parsePositiveInt(value) {
+function parsePositiveInt(value: unknown) {
   const parsed = parseInt(String(value ?? ""), 10);
   if (Number.isNaN(parsed) || parsed <= 0) {
     return undefined;
@@ -65,7 +98,7 @@ function parsePositiveInt(value) {
   return parsed;
 }
 
-function parseNonNegativeInt(value) {
+function parseNonNegativeInt(value: unknown) {
   const parsed = parseInt(String(value ?? ""), 10);
   if (Number.isNaN(parsed) || parsed < 0) {
     return undefined;
@@ -73,7 +106,7 @@ function parseNonNegativeInt(value) {
   return parsed;
 }
 
-function parseResolutionRatio(value) {
+function parseResolutionRatio(value: unknown) {
   const parsed = parseFloat(String(value ?? ""));
   if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 1) {
     return undefined;
@@ -81,13 +114,13 @@ function parseResolutionRatio(value) {
   return parsed;
 }
 
-function resolveRotateValue(key) {
+function resolveRotateValue(key: string) {
   const matched = ROTATE_OPTIONS.find((option) => option.key === key);
   if (!matched) return undefined;
   return typeof matched.value === "number" ? matched.value : undefined;
 }
 
-function resolveObjectFitValue(key, fallback = "contain") {
+function resolveObjectFitValue(key: string, fallback = "contain") {
   const matched = OBJECT_FIT_OPTIONS.find((option) => option.key === key);
   if (!matched) return fallback;
   return typeof matched.value === "string" ? matched.value : undefined;
@@ -136,7 +169,7 @@ const MODE_SETTINGS = {
   },
 };
 
-function getModeCopy(mediaType) {
+function getModeCopy(mediaType: string) {
   if (mediaType === "video") {
     return {
       headerSubtitle: "lx.chooseMedia / lx.previewMedia",
@@ -191,7 +224,7 @@ function getModeCopy(mediaType) {
   };
 }
 
-function getModeTitle(mediaType) {
+function getModeTitle(mediaType: string) {
   switch (mediaType) {
     case "video":
       return "Record / Pick Video";
@@ -208,10 +241,10 @@ function getModeTitle(mediaType) {
   }
 }
 
-function resolveModeKey(input) {
+function resolveModeKey(input: unknown): string {
   if (typeof input === "string" && input.trim()) {
     const normalized = input.trim().toLowerCase();
-    const aliases = {
+    const aliases: Record<string, string> = {
       videoinfo: "VideoTools",
       videothumbnail: "VideoTools",
       videotools: "VideoTools",
@@ -227,35 +260,36 @@ function resolveModeKey(input) {
 
   if (input && typeof input === "object") {
     // Support both type/mode fields
-    return resolveModeKey(input.type || input.mode);
+    const source = input as { type?: unknown; mode?: unknown };
+    return resolveModeKey(source.type || source.mode);
   }
 
   return DEFAULT_MODE;
 }
 
-function findOption(options, key, fallback) {
+function findOption(options: MediaOption[], key: string | undefined, fallback?: MediaOption) {
   return options.find((option) => option.key === key) || fallback || options[0];
 }
 
-function resolveMediaTypeTokens(input) {
+function resolveMediaTypeTokens(input: unknown): MediaTypeToken[] {
   if (input === "video") return ["video"];
   if (input === "image") return ["image"];
   return ["image", "video"];
 }
 
-function isCameraOnlySource(sourceOption) {
+function isCameraOnlySource(sourceOption: MediaOption | undefined) {
   const sources = sourceOption?.request || ["album"];
   return sources.includes("camera") && !sources.includes("album");
 }
 
-function mapChosenMedia(results) {
+function mapChosenMedia(results: { tempFilePath: string; fileType: string }[]): ChosenMedia[] {
   return results.map((item) => ({
     path: item.tempFilePath,
     type: item.fileType,
   }));
 }
 
-function resolveVideoDisplaySize(info) {
+function resolveVideoDisplaySize(info: VideoInfo | undefined) {
   if (!info || !info.width || !info.height) return null;
   return {
     displayWidth: info.width,
@@ -264,7 +298,7 @@ function resolveVideoDisplaySize(info) {
   };
 }
 
-async function enrichVideoItemsWithMetadata(items) {
+async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<ChosenMedia[]> {
   return Promise.all(
     items.map(async (item) => {
       if (item.type !== "video") return item;
@@ -275,36 +309,40 @@ async function enrichVideoItemsWithMetadata(items) {
   );
 }
 
-async function pickOption(options, currentKey) {
+async function pickOption(options: MediaOption[], currentKey?: string) {
   const result = await lx.showActionSheet({
     itemList: options.map((option) => option.label),
   });
   return result.canceled ? null : options[result.index] || null;
 }
 
-function createState(modeKey) {
+function createState(modeKey: unknown) {
   const key = resolveModeKey(modeKey);
-  const config = MODE_SETTINGS[key] || MODE_SETTINGS[DEFAULT_MODE];
+  const settings = MODE_SETTINGS as unknown as Record<
+    string,
+    { mediaType: string; defaults?: Record<string, string | boolean> }
+  >;
+  const config = settings[key] || settings[DEFAULT_MODE];
   const defaults = config.defaults || {};
 
   const sourceOption = findOption(
     SOURCE_OPTIONS,
-    defaults.sourceKey,
+    defaults.sourceKey as string | undefined,
     SOURCE_OPTIONS[0],
   );
   const countOption = findOption(
     COUNT_OPTIONS,
-    defaults.countKey,
+    defaults.countKey as string | undefined,
     COUNT_OPTIONS[COUNT_OPTIONS.length - 1],
   );
   const cameraOption = findOption(
     CAMERA_OPTIONS,
-    defaults.cameraKey,
+    defaults.cameraKey as string | undefined,
     CAMERA_OPTIONS[0],
   );
   const durationOption = findOption(
     DURATION_OPTIONS,
-    defaults.durationKey,
+    defaults.durationKey as string | undefined,
     DURATION_OPTIONS[DURATION_OPTIONS.length - 1],
   );
 
@@ -314,7 +352,7 @@ function createState(modeKey) {
     modeKey: key,
     mediaType: config.mediaType,
     isRunning: false,
-    selectedMedia: [],
+    selectedMedia: [] as ChosenMedia[],
     sourceKey: sourceOption ? sourceOption.key : "",
     countKey: countOption ? countOption.key : "",
     countLimit: countOption ? countOption.value : 0,
@@ -333,14 +371,16 @@ function createState(modeKey) {
     scanResult: "",
     scanType: "",
     scanBusy: false,
-    imageInfoResult: null,
+    imageInfoResult: null as (ImageInfo & { path?: string; size?: number }) | null,
     imageInfoError: "",
     imageInfoBusy: false,
     compressQuality: defaults.compressQuality || "80",
     compressedWidth: "",
     compressedHeight: "",
     compressing: false,
-    compressResult: null,
+    compressResult: null as
+      | { path?: string; width?: number; height?: number; type?: string; size?: number }
+      | null,
     compressError: "",
     videoInfoResult: null,
     videoInfoError: "",
@@ -352,15 +392,16 @@ function createState(modeKey) {
     thumbnailMaxHeight: "",
     thumbnailTimeMs: defaults.thumbnailTimeMs || "0",
     thumbnailBusy: false,
-    thumbnailResult: null,
+    thumbnailResult: null as { tempFilePath?: string } | null,
     thumbnailError: "",
+    saveToAlbumBusy: false,
     videoCompressQuality: "medium",
     videoCompressBitrate: "1200",
     videoCompressFps: "30",
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
     videoCompressProgress: null,
-    videoCompressResult: null,
+    videoCompressResult: null as { tempFilePath?: string } | null,
     videoCompressError: "",
     previewRotateKey: "meta",
     previewObjectFitKey: "default",
@@ -377,7 +418,10 @@ function createState(modeKey) {
 
 Page({
   data: createState(DEFAULT_MODE),
-  _previewAbortController: null,
+  _previewAbortController: null as AbortController | null,
+
+  // The live compression task, kept off `data`: it is a handle, not state.
+  _compressVideoTask: null as CompressVideoTask | null,
 
   onLoad: function (options) {
     this._switchMode(options?.type);
@@ -391,7 +435,7 @@ Page({
     });
   },
 
-  _switchMode: function (params) {
+  _switchMode: function (params: unknown) {
     const modeKey = resolveModeKey(params);
     const state = createState(modeKey);
     this.setData(state);
@@ -407,7 +451,12 @@ Page({
     }
     const sourceChanged = choice.key !== this.data.sourceKey;
     const cameraOnly = isCameraOnlySource(choice);
-    const updates = {
+    const updates: {
+      sourceKey: string;
+      selectedMedia?: ChosenMedia[];
+      countKey?: string;
+      countLimit?: number;
+    } = {
       sourceKey: choice.key,
     };
 
@@ -497,7 +546,7 @@ Page({
     });
   },
 
-  onPreviewImageDurationInput: function (event) {
+  onPreviewImageDurationInput: function (event: NativeEvent<{ value: string }>) {
     this.setData({
       previewImageDurationMs: extractInputValue(event),
     });
@@ -542,9 +591,9 @@ Page({
     const cameraOnly = isCameraOnlySource(sourceOption);
     const countLimit = parsePositiveInt(this.data.countLimit || this.data.countKey);
 
-    const request = {
+    const request: ChooseMediaOptions = {
       mediaType: resolveMediaTypeTokens(this.data.mediaType),
-      sourceType: sourceOption?.request || ["album"],
+      sourceType: (sourceOption?.request as ChooseMediaOptions["sourceType"]) || ["album"],
     };
     if (cameraOnly) {
       request.count = 1;
@@ -552,9 +601,9 @@ Page({
       request.count = countLimit;
     }
     if (this.data.mediaType === "video") {
-      if (this.data.durationValue > 0)
-        request.maxDuration = this.data.durationValue;
-      if (this.data.cameraKey) request.camera = this.data.cameraKey;
+      const maxDuration = parsePositiveInt(this.data.durationValue);
+      if (maxDuration) request.maxDuration = maxDuration;
+      if (this.data.cameraKey) request.camera = this.data.cameraKey as ChooseMediaOptions["camera"];
     }
 
     this.setData({ isRunning: true, selectedMedia: [] });
@@ -573,7 +622,7 @@ Page({
     } catch (error) {
       console.error("[media-demo] chooseMedia failed:", error);
       lx.showToast({
-        title: error?.message || "Operation failed",
+        title: errorMessage(error, "Operation failed"),
         icon: "none",
       });
     } finally {
@@ -589,9 +638,9 @@ Page({
     try {
       const onlyFromCamera = !!this.data.scanOnlyCamera;
       const scanTypeKey = this.data.scanTypeKey || "all";
-      const payload = { onlyFromCamera };
+      const payload: ScanCodeOptions = { onlyFromCamera };
       if (scanTypeKey && scanTypeKey !== "all") {
-        payload.scanType = [scanTypeKey];
+        payload.scanType = [scanTypeKey as NonNullable<ScanCodeOptions["scanType"]>[number]];
       }
       const result = await lx.scanCode(payload);
       if (result.canceled) {
@@ -603,7 +652,7 @@ Page({
       console.error("scanCode failed:", error);
       this.setData({ scanBusy: false });
       lx.showToast({
-        title: error?.message || "scanCode failed",
+        title: errorMessage(error, "scanCode failed"),
         icon: "none",
       });
     }
@@ -628,7 +677,7 @@ Page({
       { key: "datamatrix", label: "datamatrix" },
       { key: "pdf417", label: "pdf417" },
     ];
-    const choice = await pickOption(OPTIONS, this.data.scanTypeKey || "all");
+    const choice = await pickOption(OPTIONS, String(this.data.scanTypeKey || "all"));
     if (!choice) return;
     this.setData({ scanTypeKey: choice.key });
   },
@@ -648,10 +697,16 @@ Page({
     const advance = this.data.previewBehaviorKey || "manual";
     const imageDurationMs = parsePositiveInt(this.data.previewImageDurationMs);
     const sources = selected.map((item) => {
-      const source = { path: item.path, type: item.type };
+      const source: {
+        path: string;
+        type: string;
+        rotate?: number;
+        objectFit?: string;
+        durationMs?: number;
+      } = { path: item.path, type: item.type };
       if (typeof previewRotate === "number") source.rotate = previewRotate;
       if (previewObjectFit) source.objectFit = previewObjectFit;
-      if (item.type !== "video" && imageDurationMs > 0) source.durationMs = imageDurationMs;
+      if (item.type !== "video" && (imageDurationMs ?? 0) > 0) source.durationMs = imageDurationMs;
       return source;
     });
     await this._runPreviewSession({
@@ -665,6 +720,10 @@ Page({
     sources,
     startIndex,
     advance,
+  }: {
+    sources: (string | { path: string; type?: string })[];
+    startIndex?: number;
+    advance?: string;
   }) {
     this.cancelPreviewSession();
     const controller = new AbortController();
@@ -676,9 +735,9 @@ Page({
     const normalizedSources = sources.map((source) =>
       typeof source === "string" ? { path: source } : source
     );
-    const request = normalizedSources.length === 1
+    const request = (normalizedSources.length === 1
       ? { ...normalizedSources[0], advance, signal: controller.signal }
-      : { sources: normalizedSources, startIndex, advance, signal: controller.signal };
+      : { sources: normalizedSources, startIndex, advance, signal: controller.signal }) as PreviewMediaOptions & Record<string, unknown>;
     if (this.data.previewHideIndexIndicator) {
       request.showIndexIndicator = false;
     }
@@ -704,14 +763,14 @@ Page({
       this.setData({ previewSessionBusy: false, previewSessionResult: result, previewSessionError: "" });
       return result;
     } catch (error) {
-      const isAbort = error?.name === "AbortError";
+      const isAbort = error instanceof Error && error.name === "AbortError";
       this.setData({
         previewSessionBusy: false,
-        previewSessionError: isAbort ? "" : (error?.message || "Preview failed"),
+        previewSessionError: isAbort ? "" : (errorMessage(error, "Preview failed")),
       });
       if (!isAbort) {
         console.error("[media-demo] previewMedia failed:", error);
-        lx.showToast({ title: error?.message || "Preview failed", icon: "none" });
+        lx.showToast({ title: errorMessage(error, "Preview failed"), icon: "none" });
       }
       return null;
     } finally {
@@ -739,7 +798,7 @@ Page({
       const size = await this._getFileSize(picked);
       this.setData({ imageInfoResult: { ...info, size }, imageInfoBusy: false });
     } catch (error) {
-      const message = error?.message || "getImageInfo failed";
+      const message = errorMessage(error, "getImageInfo failed");
       this.setData({
         imageInfoError: message,
         imageInfoResult: null,
@@ -775,7 +834,7 @@ Page({
       const info = await lx.getVideoInfo({ path: picked });
       this.setData({ videoInfoResult: info, videoInfoBusy: false, thumbnailSourceInfo: info });
     } catch (error) {
-      const message = error?.message || "getVideoInfo failed";
+      const message = errorMessage(error, "getVideoInfo failed");
       this.setData({
         videoInfoBusy: false,
         videoInfoError: message,
@@ -787,22 +846,22 @@ Page({
     }
   },
 
-  onThumbnailQualityInput: function (event) {
+  onThumbnailQualityInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ thumbnailQuality: value });
   },
 
-  onThumbnailMaxWidthInput: function (event) {
+  onThumbnailMaxWidthInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ thumbnailMaxWidth: value });
   },
 
-  onThumbnailMaxHeightInput: function (event) {
+  onThumbnailMaxHeightInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ thumbnailMaxHeight: value });
   },
 
-  onThumbnailTimeInput: function (event) {
+  onThumbnailTimeInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ thumbnailTimeMs: value });
   },
@@ -825,7 +884,7 @@ Page({
     const maxHeight = parsePositiveInt(this.data.thumbnailMaxHeight);
     const timeMs = parseNonNegativeInt(this.data.thumbnailTimeMs);
 
-    const payload = {
+    const payload: ExtractVideoThumbnailOptions = {
       path: sourcePath,
       quality,
     };
@@ -848,7 +907,7 @@ Page({
       const thumbnail = await lx.extractVideoThumbnail(payload);
       this.setData({ thumbnailResult: thumbnail, thumbnailBusy: false });
     } catch (error) {
-      const message = error?.message || "extractVideoThumbnail failed";
+      const message = errorMessage(error, "extractVideoThumbnail failed");
       this.setData({
         thumbnailError: message,
         thumbnailResult: null,
@@ -878,22 +937,22 @@ Page({
     });
   },
 
-  onVideoCompressQualityInput: function (event) {
+  onVideoCompressQualityInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event).trim().toLowerCase();
     this.setData({ videoCompressQuality: value });
   },
 
-  onVideoCompressBitrateInput: function (event) {
+  onVideoCompressBitrateInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ videoCompressBitrate: value });
   },
 
-  onVideoCompressFpsInput: function (event) {
+  onVideoCompressFpsInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ videoCompressFps: value });
   },
 
-  onVideoCompressResolutionInput: function (event) {
+  onVideoCompressResolutionInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ videoCompressResolution: value });
   },
@@ -912,9 +971,9 @@ Page({
     }
 
     const quality = (this.data.videoCompressQuality || "").trim().toLowerCase();
-    const payload = { path: sourcePath };
+    const payload: CompressVideoOptions = { path: sourcePath };
     if (quality) {
-      payload.quality = quality;
+      payload.quality = quality as CompressVideoOptions["quality"];
     } else {
       const bitrate = parsePositiveInt(this.data.videoCompressBitrate);
       const fps = parsePositiveInt(this.data.videoCompressFps);
@@ -950,8 +1009,9 @@ Page({
         videoCompressProgress: null,
       });
     } catch (error) {
-      const isAbort = error?.name === "AbortError" || error?.code === "E_ABORT";
-      const message = error?.message || "compressVideo failed";
+      const abortLike = error as { name?: string; code?: string } | null;
+      const isAbort = abortLike?.name === "AbortError" || abortLike?.code === "E_ABORT";
+      const message = errorMessage(error, "compressVideo failed");
       this.setData({
         videoCompressError: isAbort ? "" : message,
         videoCompressResult: null,
@@ -977,7 +1037,10 @@ Page({
       lx.showToast({ title: "No compressed video to preview", icon: "none" });
       return;
     }
-    const source = { path, type: "video" };
+    const source: { path: string; type: string; rotate?: number; objectFit?: string } = {
+      path,
+      type: "video",
+    };
     const rotate = resolveRotateValue(this.data.previewRotateKey || "meta");
     const objectFit = resolveObjectFitValue(this.data.previewObjectFitKey || "default", "contain");
     if (typeof rotate === "number") source.rotate = rotate;
@@ -989,17 +1052,17 @@ Page({
     });
   },
 
-  onCompressQualityInput: function (event) {
+  onCompressQualityInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ compressQuality: value });
   },
 
-  onCompressedWidthInput: function (event) {
+  onCompressedWidthInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ compressedWidth: value });
   },
 
-  onCompressedHeightInput: function (event) {
+  onCompressedHeightInput: function (event: NativeEvent<{ value: string }>) {
     const value = extractInputValue(event);
     this.setData({ compressedHeight: value });
   },
@@ -1021,7 +1084,7 @@ Page({
     const compressedWidth = parsePositiveInt(this.data.compressedWidth);
     const compressedHeight = parsePositiveInt(this.data.compressedHeight);
 
-    const payload = { path, quality };
+    const payload: CompressImageOptions = { path, quality };
     if (typeof compressedWidth === "number") {
       payload.compressedWidth = compressedWidth;
     }
@@ -1044,7 +1107,7 @@ Page({
         compressResult: { path: resultPath, width: info.width, height: info.height, type: info.type, size },
       });
     } catch (error) {
-      const message = error?.message || "compressImage failed";
+      const message = errorMessage(error, "compressImage failed");
       this.setData({
         compressError: message,
         compressResult: null,
@@ -1075,7 +1138,7 @@ Page({
     });
   },
 
-  _getFileSize: async function (path) {
+  _getFileSize: async function (path: string) {
     try {
       const stat = await lx.fs.file(path).stat();
       return stat.size || 0;
@@ -1085,7 +1148,7 @@ Page({
     }
   },
 
-  _pickSingleMedia: async function (type) {
+  _pickSingleMedia: async function (type: string) {
     try {
       const result = await lx.chooseMedia({
         count: 1,
@@ -1096,7 +1159,7 @@ Page({
       return result.canceled ? null : result.entries[0].tempFilePath;
     } catch (error) {
       console.error("[media-demo] pickSingleMedia failed:", error);
-      lx.showToast({ title: error?.message || "chooseMedia failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
       return null;
     }
   },
@@ -1112,7 +1175,7 @@ Page({
       await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
       lx.showToast({ title: "Image saved to album", icon: "success" });
     } catch (error) {
-      lx.showToast({ title: error?.message || "Failed to save image", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
     } finally {
       this.setData({ saveToAlbumBusy: false });
     }
@@ -1129,7 +1192,7 @@ Page({
       await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
       lx.showToast({ title: "Video saved to album", icon: "success" });
     } catch (error) {
-      lx.showToast({ title: error?.message || "Failed to save video", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Failed to save video"), icon: "none" });
     } finally {
       this.setData({ saveToAlbumBusy: false });
     }

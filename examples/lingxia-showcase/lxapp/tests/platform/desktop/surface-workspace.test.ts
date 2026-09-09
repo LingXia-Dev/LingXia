@@ -9,7 +9,7 @@ import type {
   LxAppDriver,
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
-} from 'lingxia-types/automation';
+} from '@lingxia/types/automation';
 import { showcaseApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { attachShot } from '../../helpers/poll.js';

@@ -1,14 +1,38 @@
+import type { VideoContext } from "@lingxia/types";
+import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
+
+// What the native video component reports back.
+type VideoEventDetail = {
+  currentTime: number;
+  duration: number;
+  fullScreen: boolean;
+  fullscreen: boolean;
+  quality: string;
+  id: string;
+  rate: number;
+};
+
+interface VideoItem {
+  id: string;
+  src?: string;
+  poster?: string;
+  title?: string;
+  autoplay?: boolean;
+  qualities?: unknown[];
+  playbackRates?: number[];
+}
+
 const ONLINE_DEMO_VIDEO =
   "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4";
 
 Page({
   data: {
-    videos: [],
+    videos: [] as VideoItem[],
     eventLog: "Ready",
     currentTime: 0,
     duration: 0,
   },
-  videoContext: null,
+  videoContext: null as VideoContext | null,
 
   onLoad: function (options = {}) {
     if (options.automationFixture === "video-context-shape") {
@@ -91,7 +115,7 @@ Page({
     }
   },
 
-  seek: function (position) {
+  seek: function (position: number) {
     const time = typeof position === "number" ? position : Number(position) || 0;
     try {
       this._getContext()?.seek(time);
@@ -132,9 +156,9 @@ Page({
     this.setData({ eventLog: "Buffering..." });
   },
 
-  onTimeUpdate: function (payload = {}) {
-    const detail = payload?.detail || payload;
-    const nextData = {};
+  onTimeUpdate: function (payload: NativeEvent<VideoEventDetail> = {}) {
+    const detail = eventDetail(payload);
+    const nextData: { currentTime?: number; duration?: number } = {};
     if (typeof detail.currentTime === "number") {
       nextData.currentTime = detail.currentTime;
     }
@@ -146,19 +170,19 @@ Page({
     }
   },
 
-  onFullscreenChange: function (payload = {}) {
-    const detail = payload?.detail || payload;
+  onFullscreenChange: function (payload: NativeEvent<VideoEventDetail> = {}) {
+    const detail = eventDetail(payload);
     const fullScreen = detail.fullScreen === true || detail.fullscreen === true;
     this.setData({ eventLog: `Fullscreen: ${fullScreen ? "on" : "off"}` });
   },
 
-  onQualityChange: function (payload = {}) {
-    const detail = payload?.detail || payload;
+  onQualityChange: function (payload: NativeEvent<VideoEventDetail> = {}) {
+    const detail = eventDetail(payload);
     this.setData({ eventLog: `Quality: ${detail.quality ?? detail.id ?? ""}` });
   },
 
-  onRateChange: function (payload = {}) {
-    const detail = payload?.detail || payload;
+  onRateChange: function (payload: NativeEvent<VideoEventDetail> = {}) {
+    const detail = eventDetail(payload);
     this.setData({ eventLog: `Rate: ${detail.rate ?? ""}` });
   },
 });

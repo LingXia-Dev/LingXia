@@ -1,12 +1,22 @@
+import type { TypedStorage } from "@lingxia/types";
 import {
   generateTodoId,
   validateTodoText,
   getCurrentTimestamp,
+  type Todo,
 } from "../../shared/lib/todo-utils";
+
+// Pinning the schema means `get` returns the stored shape instead of `unknown`,
+// and a key typo is a compile error.
+interface TodoStorage {
+  "todo:todos": Todo[];
+  "todo:filter": string;
+  "todo:lastUpdated": string;
+}
 
 function getInitialData() {
   return {
-    todos: [],
+    todos: [] as Todo[],
     currentFilter: "all",
     lastUpdated: getCurrentTimestamp(),
   };
@@ -20,9 +30,11 @@ Page({
     TODOS: "todo:todos",
     FILTER: "todo:filter",
     LAST_UPDATED: "todo:lastUpdated",
-  },
+  } as const,
 
   // Page lifecycle
+  _storage: null as TypedStorage<TodoStorage> | null,
+
   onLoad: async function () {
     console.log("[Todo] Page loaded, initial todos:", this.data.todos.length);
     await this._loadFromStorage();
@@ -48,7 +60,7 @@ Page({
 
   _ensureStorage: function () {
     if (!this._storage) {
-      this._storage = lx.getStorage();
+      this._storage = lx.getStorage<TodoStorage>();
     }
     return this._storage;
   },
@@ -82,7 +94,7 @@ Page({
     }
   },
 
-  _saveToStorage: async function (overrides = {}) {
+  _saveToStorage: async function (overrides: { todos?: Todo[]; filter?: string; lastUpdated?: string } = {}) {
     try {
       const storage = this._ensureStorage();
       const todos = overrides.todos ?? this.data.todos;
@@ -114,7 +126,7 @@ Page({
   },
 
   // Todo core functionality
-  addTodo: async function (params = {}) {
+  addTodo: async function (params: { text?: string } = {}) {
     const { text } = params;
     if (!validateTodoText(text)) {
       console.log("[Todo] addTodo: Invalid text, skipping");
@@ -131,7 +143,7 @@ Page({
     const lastUpdated = getCurrentTimestamp();
     console.log("[Todo] addTodo: Adding new todo:", newTodo);
 
-    await new Promise((resolve) =>
+    await new Promise<void>((resolve) =>
       this.setData({ todos: newTodos, lastUpdated }, resolve),
     );
     await this._saveToStorage({ todos: newTodos, lastUpdated });
@@ -142,7 +154,7 @@ Page({
     );
   },
 
-  toggleTodo: async function (params = {}) {
+  toggleTodo: async function (params: { id?: string } = {}) {
     const { id } = params;
     if (!id) {
       console.log("[Todo] toggleTodo: No ID provided, skipping");
@@ -157,7 +169,7 @@ Page({
     );
     const lastUpdated = new Date().toISOString();
 
-    await new Promise((resolve) =>
+    await new Promise<void>((resolve) =>
       this.setData({ todos: updatedTodos, lastUpdated }, resolve),
     );
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
@@ -165,7 +177,7 @@ Page({
     console.log("[Todo] toggleTodo: Todo toggled successfully");
   },
 
-  deleteTodo: async function (params = {}) {
+  deleteTodo: async function (params: { id?: string } = {}) {
     const { id } = params;
     if (!id) {
       console.log("[Todo] deleteTodo: No ID provided, skipping");
@@ -178,7 +190,7 @@ Page({
     const updatedTodos = this.data.todos.filter((todo) => todo.id !== id);
     const lastUpdated = new Date().toISOString();
 
-    await new Promise((resolve) =>
+    await new Promise<void>((resolve) =>
       this.setData({ todos: updatedTodos, lastUpdated }, resolve),
     );
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
@@ -202,7 +214,7 @@ Page({
     const updatedTodos = this.data.todos.filter((todo) => !todo.completed);
     const lastUpdated = new Date().toISOString();
 
-    await new Promise((resolve) =>
+    await new Promise<void>((resolve) =>
       this.setData({ todos: updatedTodos, lastUpdated }, resolve),
     );
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
@@ -213,7 +225,7 @@ Page({
     );
   },
 
-  setFilter: async function (params = {}) {
+  setFilter: async function (params: { filter?: string } = {}) {
     console.log("[Todo] setFilter called with params:", params);
     const { filter } = params;
     if (!filter || !["all", "active", "completed"].includes(filter)) {
@@ -223,7 +235,7 @@ Page({
 
     console.log("[Todo] setFilter: Setting filter to:", filter);
     const lastUpdated = new Date().toISOString();
-    await new Promise((resolve) =>
+    await new Promise<void>((resolve) =>
       this.setData({ currentFilter: filter, lastUpdated }, resolve),
     );
     await this._saveToStorage({ filter, lastUpdated });

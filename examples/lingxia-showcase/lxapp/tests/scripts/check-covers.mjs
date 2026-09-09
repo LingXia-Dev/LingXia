@@ -3,7 +3,7 @@ import path from 'node:path';
 import process from 'node:process';
 import {
   LX_REQUIRED_RUNTIME_SHAPE_NAMES,
-} from 'lingxia-types/testing';
+} from '@lingxia/types/testing';
 import manifest from '../logic-api-coverage.mjs';
 
 const reportPath = process.argv[2] ?? process.env.LXDEV_TEST_REPORT;

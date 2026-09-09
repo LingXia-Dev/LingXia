@@ -1,4 +1,4 @@
-import type { LxAppDriver } from 'lingxia-types/automation';
+import type { LxAppDriver } from '@lingxia/types/automation';
 import { waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';

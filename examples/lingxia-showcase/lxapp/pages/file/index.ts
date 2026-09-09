@@ -1,4 +1,15 @@
-function detectFileType(url) {
+import type { DownloadTask, DownloadResult } from "@lingxia/types";
+import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
+import { errorMessage } from "../../shared/lib/errors";
+
+/** The slice of the page the module-level download helpers write back to. */
+interface PdfPage {
+  data: Record<string, unknown>;
+  setData(patch: Record<string, unknown>): void;
+}
+
+type InputEventDetail = { value: string };
+function detectFileType(url: string | undefined) {
   if (!url) return "";
   const lowerUrl = url.toLowerCase();
   if (lowerUrl.endsWith(".pdf")) return "pdf";
@@ -11,7 +22,7 @@ function detectFileType(url) {
   return "";
 }
 
-function detectFileTypeFromPath(filePath) {
+function detectFileTypeFromPath(filePath: string | undefined) {
   if (!filePath) return "";
   const trimmed = String(filePath).split("?")[0].split("#")[0];
   const fileName = trimmed.split("/").pop() || "";
@@ -20,7 +31,7 @@ function detectFileTypeFromPath(filePath) {
   return ext;
 }
 
-function formatBytes(bytes) {
+function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
   const units = ["B", "KB", "MB", "GB"];
   let value = bytes;
@@ -33,7 +44,11 @@ function formatBytes(bytes) {
   return `${value.toFixed(digits)} ${units[unitIndex]}`;
 }
 
-function formatProgressText(progress, downloadedBytes, totalBytes) {
+function formatProgressText(
+  progress: number | undefined,
+  downloadedBytes: number | undefined,
+  totalBytes: number | undefined,
+) {
   const downloaded = formatBytes(downloadedBytes || 0);
   if (typeof progress === "number" && Number.isFinite(progress) && totalBytes && totalBytes > 0) {
     const percent = `${Math.round(progress * 100)}%`;
@@ -45,40 +60,43 @@ function formatProgressText(progress, downloadedBytes, totalBytes) {
   return `Streaming · ${downloaded} downloaded`;
 }
 
-function isCancelError(error) {
-  const message = String(error?.message || error || "");
+function isCancelError(error: unknown) {
+  const message = errorMessage(error, String(error ?? ""));
   return /cancel|abort/i.test(message);
 }
 
-function downloadResultPath(result) {
-  return result?.filePath || result?.tempFilePath || "";
+function downloadResultPath(result: DownloadResult | undefined) {
+  const paths = result as { filePath?: string; tempFilePath?: string } | undefined;
+  return paths?.filePath || paths?.tempFilePath || "";
 }
 
-function supportsDownloadProgress(task) {
+function supportsDownloadProgress(task: unknown): task is DownloadTask {
+  const candidate = task as Partial<DownloadTask> | null;
   return !!(
-    task &&
-    typeof task === "object" &&
-    typeof task.next === "function" &&
-    typeof task[Symbol.asyncIterator] === "function"
+    candidate &&
+    typeof candidate === "object" &&
+    typeof candidate.next === "function" &&
+    typeof candidate[Symbol.asyncIterator] === "function"
   );
 }
 
-function supportsTransferControl(task) {
+function supportsTransferControl(task: unknown) {
+  const candidate = task as Partial<DownloadTask> | null;
   return !!(
-    task &&
-    typeof task === "object" &&
-    typeof task.pause === "function" &&
-    typeof task.resume === "function"
+    candidate &&
+    typeof candidate === "object" &&
+    typeof candidate.pause === "function" &&
+    typeof candidate.resume === "function"
   );
 }
 
-let pdfDownloadTask = null;
-let pdfDownloadObserver = null;
+let pdfDownloadTask: DownloadTask | null = null;
+let pdfDownloadObserver: Promise<void> | null = null;
 let pdfDownloadUrl = "";
-let pdfDownloadPage = null;
+let pdfDownloadPage: PdfPage | null = null;
 let pdfOpenRunId = 0;
 
-function guessFileNameFromUrl(url, fallbackExt = "") {
+function guessFileNameFromUrl(url: string, fallbackExt = "") {
   const clean = String(url || "").split("#")[0].split("?")[0];
   const fileName = clean.split("/").pop() || "";
   if (fileName && fileName.includes(".")) {
@@ -88,7 +106,7 @@ function guessFileNameFromUrl(url, fallbackExt = "") {
   return `fetched-file-${Date.now()}${ext}`;
 }
 
-function sanitizeFileName(name) {
+function sanitizeFileName(name: unknown) {
   const sanitized = String(name || "")
     .replace(/[<>:"/\\|?*\x00-\x1F]/g, "-")
     .replace(/\s+/g, " ")
@@ -96,18 +114,18 @@ function sanitizeFileName(name) {
   return sanitized || `file-${Date.now()}`;
 }
 
-function userDataFilePath(fileName) {
+function userDataFilePath(fileName: string) {
   const base = (lx.env.USER_DATA_PATH || "lx://userdata").replace(/\/+$/, "");
   return `${base}/${sanitizeFileName(fileName)}`;
 }
 
-function updatePdfPage(data) {
+function updatePdfPage(data: Record<string, unknown>) {
   if (pdfDownloadPage) {
     pdfDownloadPage.setData(data);
   }
 }
 
-async function observePdfTask(task) {
+async function observePdfTask(task: DownloadTask) {
   try {
     for await (const event of task) {
       if (event.kind === "progress") {
@@ -121,7 +139,7 @@ async function observePdfTask(task) {
           pdfTransferButtonText: "Pause Download",
           pdfProgressKnown: hasPreciseProgress,
           pdfDownloadProgress: hasPreciseProgress
-            ? Number((event.progress * 100).toFixed(1))
+            ? Number(((event.progress ?? 0) * 100).toFixed(1))
             : 0,
           pdfProgressText: formatProgressText(
             event.progress,
@@ -144,7 +162,7 @@ async function observePdfTask(task) {
         updatePdfPage({
           pdfDownloadState: "running",
           pdfTransferButtonText: "Pause Download",
-          pdfProgressText: pdfDownloadPage?.data?.pdfProgressText || "Resuming transfer...",
+          pdfProgressText: pdfDownloadPage?.data.pdfProgressText || "Resuming transfer...",
         });
         continue;
       }
@@ -175,7 +193,7 @@ async function observePdfTask(task) {
     updatePdfPage({
       pdfDownloadState: "idle",
       pdfTransferButtonText: "Pause Download",
-      pdfProgressText: error?.message || "Download failed",
+      pdfProgressText: errorMessage(error, "Download failed"),
     });
   } finally {
     pdfDownloadObserver = null;
@@ -233,12 +251,12 @@ Page({
     }
   },
 
-  onPdfUrlInput: function (event) {
-    this.setData({ pdfUrl: event?.detail?.value || "" });
+  onPdfUrlInput: function (event: NativeEvent<InputEventDetail>) {
+    this.setData({ pdfUrl: eventDetail(event).value || "" });
   },
 
-  onOfficeUrlInput: function (event) {
-    const value = event?.detail?.value || "";
+  onOfficeUrlInput: function (event: NativeEvent<InputEventDetail>) {
+    const value = eventDetail(event).value || "";
     const detectedType = detectFileType(value);
     this.setData({
       officeUrl: value,
@@ -246,8 +264,8 @@ Page({
     });
   },
 
-  onOfficeFileTypeInput: function (event) {
-    this.setData({ officeFileType: event?.detail?.value || "" });
+  onOfficeFileTypeInput: function (event: NativeEvent<InputEventDetail>) {
+    this.setData({ officeFileType: eventDetail(event).value || "" });
   },
 
   toggleShowMenu: function () {
@@ -294,6 +312,9 @@ Page({
           ? "Starting transfer..."
           : "Downloading with promise-style result only...",
       });
+      if (!task) {
+        throw new Error("downloadFile did not return a task");
+      }
       if (canObserveProgress && !pdfDownloadObserver) {
         pdfDownloadObserver = observePdfTask(task);
       }
@@ -339,9 +360,9 @@ Page({
         pdfTransferButtonText: "Pause Download",
         pdfProgressText: isCancelError(error)
           ? "Download canceled"
-          : error?.message || "Open PDF failed",
+          : errorMessage(error, "Open PDF failed"),
       });
-      lx.showToast({ title: error?.message || "Open PDF failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Open PDF failed"), icon: "none" });
     } finally {
       if (pdfDownloadPage === this) {
         if (pdfDownloadTask === task && this.data.pdfDownloadState !== "paused") {
@@ -380,7 +401,7 @@ Page({
         await task.pause();
       }
     } catch (error) {
-      lx.showToast({ title: error?.message || "Transfer action failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Transfer action failed"), icon: "none" });
     }
   },
 
@@ -406,9 +427,9 @@ Page({
         chooseFileSelectedType: fileType || "unknown",
       });
     } catch (error) {
-      lx.showToast({ title: error?.message || "chooseFile failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "chooseFile failed"), icon: "none" });
       this.setData({
-        chooseFileStatusText: error?.message || "chooseFile failed",
+        chooseFileStatusText: errorMessage(error, "chooseFile failed"),
       });
     }
   },
@@ -428,7 +449,7 @@ Page({
         showMenu: this.data.showMenu,
       });
     } catch (error) {
-      lx.showToast({ title: error?.message || "openFile failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "openFile failed"), icon: "none" });
     }
   },
 
@@ -476,9 +497,9 @@ Page({
       });
     } catch (error) {
       this.setData({
-        officeStatusText: error?.message || "Fetch failed",
+        officeStatusText: errorMessage(error, "Fetch failed"),
       });
-      lx.showToast({ title: error?.message || "Fetch failed", icon: "none" });
+      lx.showToast({ title: errorMessage(error, "Fetch failed"), icon: "none" });
     } finally {
       this.setData({ isOfficeFetching: false });
     }

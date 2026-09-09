@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import type { LxAppRuntimeTabBarInfo } from 'lingxia-types/automation';
+import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
 import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';

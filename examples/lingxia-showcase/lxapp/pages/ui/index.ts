@@ -1,7 +1,34 @@
-const app = getApp();
+import { showcaseApp } from "../../shared/lib/app";
+import { errorMessage } from "../../shared/lib/errors";
+import type {
+  PageSurface,
+  ShowToastOptions,
+  SurfaceEdge,
+  SurfaceErrorCode,
+  NavigationBarPatch,
+  SurfaceFloatPosition,
+  TabBarItemPatch,
+} from "@lingxia/types";
 
-// `lingxia-types` supplies declarations to Logic; importing its runtime helper
-// here would leave an external module in the concatenated Logic bundle.
+type DemoSurfaceVerb = "float" | "window" | "lxapp" | "aside";
+
+/** What the View sends when it asks for a demo surface. */
+interface DemoSurfaceConfig {
+  verb?: string;
+  width?: number;
+  height?: number;
+  url?: string;
+  appId?: string;
+  page?: string;
+  edge?: SurfaceEdge;
+  position?: SurfaceFloatPosition;
+}
+
+const app = showcaseApp();
+
+// The type is erased at compile time. `SURFACE_ERROR_CODES` is a runtime export
+// of the same package, and importing that would leave an external module in the
+// concatenated Logic bundle — so the list is restated here.
 const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
   "unsupported_placement",
   "denied",
@@ -18,7 +45,7 @@ const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
 const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
 const DEMO_APP_SURFACE_KEY = "surface-demo-app";
 
-const NAV_TITLE_MAP = {
+const NAV_TITLE_MAP: Record<string, string> = {
   navigation: "Navigation Demo",
   toast: "Toast Demo",
   actionsheet: "Action Sheet Demo",
@@ -73,21 +100,21 @@ Page({
     moduleCounter: 0,
     events: [] as string[],
     modalResult: null,
-    toastIcon: "success",
+    toastIcon: "success" as NonNullable<ShowToastOptions["icon"]>,
     toastIconLabel: "Success",
     toastIconOptions: [
       { label: "Success", value: "success" },
       { label: "Error", value: "error" },
       { label: "Loading", value: "loading" },
       { label: "None", value: "none" },
-    ],
-    toastPosition: "center",
+    ] as { label: string; value: NonNullable<ShowToastOptions["icon"]> }[],
+    toastPosition: "center" as NonNullable<ShowToastOptions["position"]>,
     toastPositionLabel: "Center",
     toastPositionOptions: [
       { label: "Top", value: "top" },
       { label: "Center", value: "center" },
       { label: "Bottom", value: "bottom" },
-    ],
+    ] as { label: string; value: NonNullable<ShowToastOptions["position"]> }[],
     surfaceDemo: {
       message: "",
       // True when a surface is currently open (visible or hidden). The hide/show
@@ -99,6 +126,8 @@ Page({
     chromeError: "",
     appearance: { preference: "auto", resolved: "light" },
   },
+
+  _asideTabIndex: 0,
 
   onLoad: function (options = {}) {
     console.log("UI page onLoad options:", options);
@@ -248,7 +277,7 @@ Page({
   },
 
   // Show toast with custom parameters
-  showToastWithParams: function (params) {
+  showToastWithParams: function (params: Partial<ShowToastOptions>) {
     const icon = params.icon || this.data.toastIcon || "success";
     const position = params.position || this.data.toastPosition || "center";
     lx.showToast({
@@ -304,7 +333,7 @@ Page({
     lx.showToast({ title: `Selected: ${items[result.index]}`, icon: "success" });
   },
 
-  openSurfaceDemo: async function (config) {
+  openSurfaceDemo: async function (config?: DemoSurfaceConfig) {
     this.setData({ "surfaceDemo.message": "" });
 
     const cfg = config || {};
@@ -327,7 +356,7 @@ Page({
       return;
     }
 
-    const size = {};
+    const size: { width?: number; height?: number } = {};
     if (cfg.width) size.width = cfg.width;
     if (cfg.height) size.height = cfg.height;
 
@@ -361,7 +390,7 @@ Page({
   // A key is an identity, not a slot: every open mints a fresh surface, so
   // reusing a key without closing first leaves the old one on screen with
   // nothing pointing at it.
-  _releaseDemoSurfaceKey: async function (key) {
+  _releaseDemoSurfaceKey: async function (key: string) {
     const existing = lx.surface.get(key);
     if (!existing) return;
     try {
@@ -371,7 +400,11 @@ Page({
     }
   },
 
-  _openDemoSurface: async function (verb, cfg, size) {
+  _openDemoSurface: async function (
+    verb: DemoSurfaceVerb,
+    cfg: DemoSurfaceConfig,
+    size: { width?: number; height?: number },
+  ) {
     if (verb === "lxapp") {
       // Compose another lxapp into the aside slot — home-lxapp privilege, so
       // it lives on lx.shell rather than lx.surface.
@@ -421,13 +454,13 @@ Page({
     });
   },
 
-  _observeDemoPageSurface: function (surface) {
+  _observeDemoPageSurface: function (surface: PageSurface) {
     surface.onMessage((payload) => {
       // Messages from the surface page no longer auto-close it — that would
       // defeat the show/hide demo.
       const message =
         payload && typeof payload === "object"
-          ? payload.message || JSON.stringify(payload)
+          ? (payload as { message?: unknown }).message || JSON.stringify(payload)
           : payload;
       const text = typeof message === "string" ? message : JSON.stringify(message);
       this.setData({ "surfaceDemo.message": `Message: ${text}` });
@@ -462,7 +495,8 @@ Page({
   showActiveSurface: async function () {
     // `lx.surface.get(key)` replaces caching the handle by hand.
     const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
-    if (!surface || surface.kind === "tab") {
+    // The demo only ever opens its own page as a surface.
+    if (surface?.kind !== "page") {
       return;
     }
     try {
@@ -473,13 +507,13 @@ Page({
       });
     } catch (error) {
       console.warn("surface.show failed:", error);
-      this.setData({ "surfaceDemo.message": `Show failed: ${error.message}` });
+      this.setData({ "surfaceDemo.message": `Show failed: ${errorMessage(error, "unknown error")}` });
     }
   },
 
   hideActiveSurface: async function () {
     const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
-    if (!surface || surface.kind === "tab") {
+    if (surface?.kind !== "page") {
       return;
     }
     try {
@@ -490,7 +524,7 @@ Page({
       });
     } catch (error) {
       console.warn("surface.hide failed:", error);
-      this.setData({ "surfaceDemo.message": `Hide failed: ${error.message}` });
+      this.setData({ "surfaceDemo.message": `Hide failed: ${errorMessage(error, "unknown error")}` });
     }
   },
 
@@ -507,7 +541,7 @@ Page({
   },
 
   // Show modal with custom parameters
-  showModalWithParams: async function (params) {
+  showModalWithParams: async function (params: { title?: string; content?: string; showCancel?: boolean; cancelText?: string; confirmText?: string }) {
     const result = await lx.showModal({
       title: params.title ?? "Alert",
       content: params.content || "This is a modal dialog",
@@ -527,7 +561,7 @@ Page({
   },
 
   // NavigationBar API functions
-  _runChromeUpdate: async function (label, update) {
+  _runChromeUpdate: async function (label: string, update: () => Promise<boolean | void>) {
     try {
       const result = await update();
       this.setData({ chromeError: "" });
@@ -540,13 +574,17 @@ Page({
     }
   },
 
-  updateNavigationBarTitle: function (options) {
+  updateNavigationBarTitle: function (options: { title: string }) {
     return this._runChromeUpdate("Navigation bar update", () =>
       lx.navigationBar.update({ title: options.title }),
     );
   },
 
-  updateNavigationBarColors: function (options) {
+  updateNavigationBarColors: function (options: {
+    backgroundColor?: string;
+    frontColor?: string;
+    dividerColor?: string;
+  }) {
     return this._runChromeUpdate("Navigation bar update", () =>
       lx.navigationBar.update({
         style: {
@@ -558,7 +596,7 @@ Page({
     );
   },
 
-  updateNavigationBarHomeButton: function (options) {
+  updateNavigationBarHomeButton: function (options: { homeButton: NavigationBarPatch["homeButton"] }) {
     return this._runChromeUpdate("Navigation bar update", () =>
       lx.navigationBar.update({ homeButton: options.homeButton }),
     );
@@ -571,25 +609,25 @@ Page({
   },
 
   // TabBar API functions
-  enableTabBarRedDot: function (options) {
+  enableTabBarRedDot: function (options: { index: number }) {
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({ items: [{ index: options.index, redDot: true }] }),
     );
   },
 
-  disableTabBarRedDot: function (options) {
+  disableTabBarRedDot: function (options: { index: number }) {
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({ items: [{ index: options.index, redDot: false }] }),
     );
   },
 
-  updateTabBarBadge: function (options) {
+  updateTabBarBadge: function (options: { index: number; text: string }) {
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({ items: [{ index: options.index, badge: options.text }] }),
     );
   },
 
-  clearTabBarBadge: function (options) {
+  clearTabBarBadge: function (options: { index: number }) {
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({ items: [{ index: options.index, badge: null }] }),
     );
@@ -607,7 +645,7 @@ Page({
     );
   },
 
-  updateTabBarForegrounds: function (options) {
+  updateTabBarForegrounds: function (options: { color?: string; selectedColor?: string }) {
     console.log("updateTabBarForegrounds called with:", options);
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({
@@ -619,7 +657,7 @@ Page({
     );
   },
 
-  updateTabBarItem: function (options) {
+  updateTabBarItem: function (options: TabBarItemPatch) {
     console.log("updateTabBarItem called with:", options);
     return this._runChromeUpdate("Tab bar update", () =>
       lx.tabBar.update({ items: [options] }),
