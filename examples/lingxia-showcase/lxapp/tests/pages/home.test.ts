@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import { showcaseApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, showcaseApp } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
 import {
   currentPageOrNull,
@@ -52,7 +52,17 @@ spec('greets through real page input and the Logic bridge', async () => {
   )).toContain(name);
 });
 
-spec('switches display language from the home control', async () => {
+spec('switches display language from the home control', {
+  id: 'UI-LANGUAGE-001',
+  covers: [
+    'lx.app.displayLanguage.watch',
+    'lx.app.control.displayLanguage.getPreference',
+    'lx.app.control.displayLanguage.setPreference',
+    'lx.app.control.displayLanguage.watchPreference',
+  ],
+  app: SHOWCASE_APP_ID,
+  timeout: 60_000,
+}, async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
