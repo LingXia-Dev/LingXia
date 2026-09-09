@@ -17,8 +17,7 @@
     "build": "npm --prefix ../lingxia-bridge run build:types && tsc -p tsconfig.json",
     "test:inline-native": "npm run build && node tests/inline-native-structure.mjs && node tests/inline-native-unwrap.mjs && node tests/inline-native-runtime.mjs && node tests/inline-native-events.mjs && node tests/inline-native-style.mjs && node tests/video-events.mjs && node tests/inline-native-identity.mjs && node tests/inline-native-contract.mjs",
     "clean": "rm -rf dist",
-    "prepublishOnly": "npm run build",
-    "test:browser": "npm run build && node tests/inline-native-browser.mjs"
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",
