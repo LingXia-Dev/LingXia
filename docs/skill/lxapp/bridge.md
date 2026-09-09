@@ -56,6 +56,10 @@ Page({
 Rules:
 - `this.data` is read-only. Never mutate it directly — use `setData`.
 - `setData` accepts a partial object. Only the listed keys are updated; the rest are unchanged.
+- A top-level key must exist in `data` and match its type, so a misspelling is a
+  compile error rather than a silently ignored write.
+- A key that addresses inside `data` — `'profile.name'`, `'rows[0].label'` — is
+  resolved at runtime, so its value is unchecked.
 - The call is synchronous on the Logic side. Replication to View is asynchronous.
 
 ### View side

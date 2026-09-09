@@ -15,10 +15,13 @@ import './generated/logic.js';
 import type {
   AppConfig,
   AppInstance,
+  AppLifecycleName,
   BinaryFileData,
   FsWriteOptions,
+  NoLifecycleTypos,
   PageConfig,
   PageInstance,
+  PageLifecycleName,
 } from './generated/logic.js';
 import type { Automation } from './automation/index.js';
 
@@ -52,10 +55,28 @@ declare global {
 
   const lx: Lx;
 
-  function App(config: AppConfig): AppInstance;
+  /**
+   * `TCustom` is inferred from the members you write beside the lifecycle
+   * hooks, so `this.myMethod()` resolves inside the config and a key that is
+   * only a case away from a hook is rejected.
+   */
+  function App<TCustom>(
+    config: AppConfig &
+      TCustom &
+      NoLifecycleTypos<TCustom, AppLifecycleName> &
+      ThisType<AppInstance & TCustom>
+  ): AppInstance & TCustom;
   function getApp<T extends AppInstance = AppInstance>(): T | null;
-  function Page<TData extends Record<string, unknown> = Record<string, unknown>>(
-    config: PageConfig<TData> & ThisType<PageInstance<TData> & PageConfig<TData>>
+  /**
+   * `TData` comes from `data`, `TCustom` from everything else you declare, so
+   * `this.data` is typed, `this.myMethod()` resolves, and `setData` checks
+   * top-level keys against `data`.
+   */
+  function Page<TData extends Record<string, unknown>, TCustom>(
+    config: PageConfig<TData> &
+      TCustom &
+      NoLifecycleTypos<TCustom, PageLifecycleName> &
+      ThisType<PageInstance<TData> & TCustom>
   ): void;
   function getCurrentPages<T extends PageInstance = PageInstance>(): T[];
 }

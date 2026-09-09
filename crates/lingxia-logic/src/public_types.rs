@@ -32,7 +32,6 @@ rong::js_api! {
     onShow?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onHide?: (args?: AppLifecycleEventArgs) => void | Promise<void>;
     onUserCaptureScreen?: () => void | Promise<void>;
-    [key: string]: unknown;
 }"###;
 
         /// Runtime-managed app download path, usually under `lx://userdata`.
