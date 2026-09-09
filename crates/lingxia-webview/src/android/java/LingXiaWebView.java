@@ -776,7 +776,13 @@ public class LingXiaWebView extends WebView {
     }
 
     AndroidDocumentBridgeState.Navigation beginTopLevelNavigation() {
-        messagePortRequested = false;
+        // Chromium can run page JS (and therefore getPort()) before
+        // onPageStarted. Clearing the request here drops that handshake for
+        // the document that is still loading. Only drop it when replacing an
+        // already-committed document.
+        if (documentBridgeState.hasCommittedDocument()) {
+            messagePortRequested = false;
+        }
         cleanupDocumentMessagePort();
         return documentBridgeState.onPageStarted(AndroidDocumentBridgeState.nextLoadToken());
     }
@@ -799,6 +805,16 @@ public class LingXiaWebView extends WebView {
         );
         if (generation <= 0L
                 || !documentBridgeState.bindCommit(pending.loadToken, generation)) {
+            Log.w(
+                    TAG,
+                    "Document commit did not bind generation="
+                            + generation
+                            + " loadToken="
+                            + pending.loadToken
+                            + " nativeViewId="
+                            + getNativeViewId()
+                            + " path="
+                            + getCurrentPath());
             revokeDocumentTransport();
             return;
         }
@@ -807,6 +823,18 @@ public class LingXiaWebView extends WebView {
                         pending.loadToken, generation, isBrowserProfile())) {
             installDocumentMessagePort(pending.loadToken, generation);
         }
+    }
+
+    /**
+     * lxapp (non-browser) fallback when Chromium never delivers
+     * {@code onPageCommitVisible} — splash-covered, 0-size, or hidden tab
+     * WebViews. BrowserControl keeps requiring visible-commit proof.
+     */
+    void commitTopLevelDocumentFromLoadFinished() {
+        if (isBrowserProfile()) {
+            return;
+        }
+        commitTopLevelDocument();
     }
 
     boolean acceptsDocumentPort(long loadToken, long documentGeneration) {

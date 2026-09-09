@@ -62,7 +62,10 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.pushWebViewState();
             // API 21/22 have no visible-commit callback. Finishing a load
             // remains useful navigation state, but must not mint a document
-            // binding from weaker evidence.
+            // binding from weaker evidence on the browser profile.
+            // Strict lxapp pages still need a MessagePort when Chromium skips
+            // onPageCommitVisible (splash, zero-size, off-screen tabs).
+            webView.commitTopLevelDocumentFromLoadFinished();
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",

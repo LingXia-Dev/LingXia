@@ -9,6 +9,18 @@ import org.junit.Test;
 
 public final class AndroidDocumentBridgeStateTest {
     @Test
+    public void firstStartHasNoCommittedDocumentUntilBind() {
+        AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
+        assertFalse(state.hasCommittedDocument());
+        state.prepareHostLoad(11L, false);
+        assertFalse(state.hasCommittedDocument());
+        AndroidDocumentBridgeState.Navigation started = state.onPageStarted(100L);
+        assertFalse(state.hasCommittedDocument());
+        assertTrue(state.bindCommit(started.loadToken, 1L));
+        assertTrue(state.hasCommittedDocument());
+    }
+
+    @Test
     public void staleNavigationCannotCommitOrReuseSuccessorPort() {
         AndroidDocumentBridgeState state = new AndroidDocumentBridgeState();
         state.prepareHostLoad(11L, true);
