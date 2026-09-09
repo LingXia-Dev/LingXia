@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
-use crate::{LxApp, LxAppError, PageInstance};
+use crate::{LxApp, LxAppError, PageInstance, warn};
 use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
 
@@ -407,6 +407,22 @@ impl LxApp {
             .await
     }
 
+    /// Persist chrome in rust, then ask native to paint. Paint may run before
+    /// a presenter exists; keep the patch and let the first presenter read it.
+    async fn apply_page_chrome_keep(
+        &self,
+        page: &PageInstance,
+        revision: u64,
+        appearance: ResolvedAppearance,
+    ) {
+        if let Err(error) = self
+            .apply_page_chrome_commit(page, revision, appearance)
+            .await
+        {
+            warn!("page chrome apply deferred: {error}").with_appid(self.appid.clone());
+        }
+    }
+
     fn current_page_for_chrome(&self) -> Result<PageInstance, LxAppError> {
         self.current_page().map_err(|error| match error {
             LxAppError::WebView(_) => LxAppError::ResourceNotFound("active page".to_string()),
@@ -432,9 +448,6 @@ impl LxApp {
         patch: NavigationBarPatch,
     ) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
-        let original = page
-            .get_navbar_state()
-            .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?;
         let changed = page
             .get_navbar_state_mut(|state| patch.apply_transactionally(state))
             .ok_or_else(|| LxAppError::ResourceNotFound("active page".to_string()))?
@@ -444,24 +457,14 @@ impl LxApp {
         }
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
-        if let Err(error) = self
-            .apply_page_chrome_commit(&page, revision, appearance)
-            .await
-        {
-            let _ = page.get_navbar_state_mut(|state| state.restore_patchable_from(&original));
-            self.compensate_page_chrome_rollback(&page, revision, appearance)
-                .await;
-            return Err(error);
-        }
+        self.apply_page_chrome_keep(&page, revision, appearance)
+            .await;
         Ok(())
     }
 
     pub async fn commit_tabbar(&self, patch: TabBarPatch) -> Result<(), LxAppError> {
         let _guard = self.page_chrome_mutation_lock.lock().await;
         let page = self.current_page_for_chrome()?;
-        let original = self
-            .get_tabbar()
-            .ok_or_else(|| LxAppError::ResourceNotFound("declared tabbar".to_string()))?;
         let changed = self
             .with_tabbar_mut(|tabbar| {
                 tabbar.apply_patch_transactionally(&patch, |value, path| {
@@ -493,15 +496,8 @@ impl LxApp {
         }
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
-        if let Err(error) = self
-            .apply_page_chrome_commit(&page, revision, appearance)
-            .await
-        {
-            let _ = self.with_tabbar_mut(|tabbar| tabbar.restore_patchable_from(&original));
-            self.compensate_page_chrome_rollback(&page, revision, appearance)
-                .await;
-            return Err(error);
-        }
+        self.apply_page_chrome_keep(&page, revision, appearance)
+            .await;
         Ok(())
     }
 

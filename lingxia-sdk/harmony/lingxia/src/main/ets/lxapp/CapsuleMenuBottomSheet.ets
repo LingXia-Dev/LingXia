@@ -215,7 +215,7 @@ export struct CapsuleMenuBottomSheetComponent {
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
                 } else if (item.titleKey) {
-                  Text(this.hostActionTitle(item.titleKey))
+                  Text(localizedString(getContext(this).resourceManager, item.titleKey))
                     .fontSize(13)
                     .fontColor(item.isDestructive ? '#FF3B30' : '#555555')
                     .textAlign(TextAlign.Center)
@@ -289,11 +289,6 @@ export struct CapsuleMenuBottomSheetComponent {
 
   private menuActions(): MenuAction[] {
     return this.actions.concat(this.customActions).slice(0, 10);
-  }
-
-  /** Host-owned capsule labels follow the product display language. */
-  private hostActionTitle(key: string): string {
-    return localizedString(getContext(this).resourceManager, key);
   }
 
   private releaseBadge(): ReleaseBadge | null {

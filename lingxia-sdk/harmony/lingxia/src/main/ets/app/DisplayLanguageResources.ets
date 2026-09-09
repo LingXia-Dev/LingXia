@@ -1,5 +1,8 @@
 import { resourceManager } from '@kit.LocalizationKit';
 import { getDisplayLanguage } from 'liblingxia.so';
+import { LxLog } from './LxLog';
+
+const TAG = 'DisplayLanguageResources';
 
 /**
  * SDK string in the product display language, not the process locale.
@@ -10,7 +13,8 @@ export function localizedString(resMgr: resourceManager.ResourceManager, name: s
     const overrideConfig = resMgr.getOverrideConfiguration();
     overrideConfig.locale = localeForDisplayLanguage(getDisplayLanguage());
     return resMgr.getOverrideResourceManager(overrideConfig).getStringByNameSync(name);
-  } catch (_) {
+  } catch (error) {
+    LxLog.w(TAG, `localizedString(${name}) failed: ${String(error)}`);
     return name;
   }
 }

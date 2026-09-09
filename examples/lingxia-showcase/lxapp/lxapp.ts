@@ -181,10 +181,6 @@ App({
   onShow(options?: { scene?: number; query?: Record<string, string> }) {
     routeFromAppLink(options);
     console.log("App.onShow");
-    // Native tab chrome may not exist yet at onLaunch; retry now that it does.
-    void applyShowcaseTabBar().catch((error) =>
-      console.warn("tab bar language update failed", error),
-    );
   },
 
   onUserCaptureScreen() {
