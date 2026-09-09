@@ -210,9 +210,8 @@ object LxApp {
         return if (activity != null) {
             LxAppActivity.updateTabBarUI(appId)
         } else {
-            // Rust already holds the patch. Chrome will read it when presented.
             Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUI")
-            true
+            false
         }
     }
 
@@ -226,7 +225,7 @@ object LxApp {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }
         if (activity == null) {
             Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
-            NativeApi.onCallback(callbackId, true, "{}")
+            NativeApi.onCallback(callbackId, false, "1000")
             return
         }
         activity.runOnUiThread {
@@ -247,7 +246,7 @@ object LxApp {
             true
         } else {
             Log.w(TAG, "No matching activity for appId: $appId in updateNavBarUI")
-            true
+            false
         }
     }
 

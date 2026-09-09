@@ -462,10 +462,10 @@ export struct LxAppContainer {
     if (container) {
       container.refreshTabBarData();
       return true;
+    } else {
+      hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
+      return false;
     }
-    // Rust already holds the patch. Chrome will read it when presented.
-    hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
-    return true;
   }
 
   /**
@@ -478,7 +478,7 @@ export struct LxAppContainer {
     const container = LxAppContainer.activeContainers.get(appId);
     if (!container) {
       hilog.warn(DOMAIN, TAG, `No active container found for appId: ${appId}`);
-      done(true);
+      done(false);
       return;
     }
     container.refreshTabBarData();
