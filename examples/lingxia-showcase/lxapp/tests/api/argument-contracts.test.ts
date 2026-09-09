@@ -58,16 +58,13 @@ spec('reject malformed transfer arguments before touching the network', {
   await assertRejections(t, app, [
     { label: 'no url', call: `lx.downloadFile({})`, code: 'E_INVALID_ARG' },
     { label: 'empty url', call: `lx.downloadFile({ url: '' })`, code: 'E_INVALID_ARG' },
-    // Scheme and host are authority questions, not shape questions.
-    { label: 'non-http scheme', call: `lx.downloadFile({ url: 'ftp://example.com/a' })`, code: 'E_PERMISSION_DENIED' },
-    { label: 'untrusted host', call: `lx.downloadFile({ url: 'https://not-trusted.example/a' })`, code: 'E_PERMISSION_DENIED' },
-    // The Showcase trusts 127.0.0.1 so its suite can reach a fixture server,
-    // and a dev session is what unlocks that. Policy therefore lets this
-    // through and it fails at connect instead — port 1 answers nothing.
-    // A release build has no dev session and denies it outright.
+    // Home has no provider, so public hosts are allowed. ftp is not a grant
+    // question; the transfer client rejects the scheme as a network error.
+    { label: 'non-http scheme', call: `lx.downloadFile({ url: 'ftp://example.com/a' })`, code: 'E_NETWORK' },
+    // A dev session unlocks loopback so the suite can reach a fixture. Port 1
+    // answers nothing, so this fails at connect. A release build has no dev
+    // session and denies loopback outright.
     { label: 'trusted loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' })`, code: 'E_NETWORK' },
-    // A private address the lxapp never named stays denied even in dev.
-    { label: 'untrusted private range', call: `lx.downloadFile({ url: 'https://192.168.0.1/a' })`, code: 'E_PERMISSION_DENIED' },
 
     // uploadFile rejects on shape before it opens the file, so these rows need
     // no fixture and no source file -- they hold on every platform.

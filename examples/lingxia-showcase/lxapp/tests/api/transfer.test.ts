@@ -629,8 +629,8 @@ transferSpec('deny an upload to a host the lxapp never trusted', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-AUTH-001');
 
-  // trustedDomains governs uploads exactly as it governs downloads, and the
-  // file resolving first must not be mistaken for permission to send it.
+  // The host network grant governs uploads exactly as it governs downloads,
+  // and the file resolving first must not be mistaken for permission to send it.
   const outcome = await evalCaught(app, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} });
     return await lx.uploadFile({
