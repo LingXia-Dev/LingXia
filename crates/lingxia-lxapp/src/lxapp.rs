@@ -2273,10 +2273,29 @@ impl LxApp {
             )));
         }
 
-        let tabbar = config
+        let mut tabbar = config
             .tabBar
             .as_ref()
             .map(|tabbar| tabbar.with_absolute_paths(&self.lxapp_dir));
+        if !first_load && let Some(tabbar) = tabbar.as_mut() {
+            // `with_absolute_paths` always starts at Home. In-place reload
+            // keeps the current page, so re-select that tab (or clear if the
+            // page is no longer in the bar).
+            let previous = self.get_tabbar();
+            if let Some(path) = self.peek_current_page_path() {
+                if let Some(index) = tabbar.find_index_by_path(&path) {
+                    tabbar.set_selected_index(index);
+                } else {
+                    tabbar.clear_selected_index();
+                }
+            } else if let Some(previous) = previous.as_ref() {
+                if previous.selected_index < 0 {
+                    tabbar.clear_selected_index();
+                } else {
+                    tabbar.set_selected_index(previous.selected_index);
+                }
+            }
+        }
         let preference = config.appearance;
         let resolved = page_chrome::resolve_appearance(preference);
         *self
@@ -4138,9 +4157,15 @@ mod manifest_reload_tests {
               }
             }"#,
         );
+        app.with_tabbar_mut(|tabbar| {
+            tabbar.set_selected_index(1);
+        });
+        assert_eq!(app.get_tabbar().expect("tabbar").selected_index, 1);
+
         app.reload_manifest().expect("reload tabBar text");
         let tabbar = app.get_tabbar().expect("tabbar after text reload");
         assert_eq!(tabbar.items[1].text.as_deref(), Some("Settings2"));
+        assert_eq!(tabbar.selected_index, 1);
     }
 
     #[test]
