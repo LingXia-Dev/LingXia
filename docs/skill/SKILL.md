@@ -67,19 +67,18 @@ that matters:
 
 | You changed | Do |
 |---|---|
-| **lxapp code** (View / Logic / `lxapp.json`) — an embedded resource or a standalone lxapp project | `lxdev lxapp reload` — rebuilds the current bundle and reloads it. Use `--app <appid>` for a non-home resource. No new session. |
+| **lxapp code** (View / Logic / `lxapp.json`) — an embedded resource or a standalone lxapp project | save — `lingxia dev` rebuilds and reloads in place (host sessions include embedded lxapps). No new session. |
 | **host/app code** (`lingxia.yaml`, native Rust, platform projects) | re-run `lingxia dev` — it automatically stops the project's previous same-platform session and takes over. |
 
 ```bash
 lingxia dev --background     # start (or take over) this project's session; returns when live
 lingxia dev <http(s)://url> --headless --background
-lxdev lxapp reload           # lxapp inner loop: rebuild + reload in place
 ```
 
 **A successful edit (or build) is not "done."** Done means you drove the change
 in the running app and watched it behave. Close the loop with `lxdev`:
 
-1. Apply the change with the loop above (reload / dev takeover).
+1. Apply the change with the loop above (save / dev takeover).
 2. Exercise the change itself: navigate to the page (`lxdev lxapp nav to ...`)
    and interact with it (`lxdev lxapp page click/type ...`). A new control gets
    clicked, not just rendered.

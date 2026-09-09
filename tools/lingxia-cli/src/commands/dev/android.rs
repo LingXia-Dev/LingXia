@@ -16,7 +16,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
     ctx.device = Some(device_id);
     let build_targets = vec![build_target];
     let stop_requested = ctx.stop_requested.clone();
-    let server = server::start_server_fixed_with_stop(
+    let mut server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "127.0.0.1",
         platform_name,
@@ -107,6 +107,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
         platform.run(&run_config)?;
 
         print_mobile_dev_started("Android", &[]);
+        ctx.watch_embedded_lxapps(&mut server);
         wait_for_interrupt(stop_requested)?;
         Ok(())
     })();

@@ -24,13 +24,14 @@ const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
 
-#[derive(Debug)]
 pub struct DevServerHandle {
     session: DevLogSession,
     ws_addr: SocketAddr,
     stop_flag: Arc<AtomicBool>,
     server_thread: Option<JoinHandle<()>>,
     companion: Option<super::companion::DevCompanion>,
+    state: Arc<DevServerState>,
+    watch: Option<super::lxapp_watch::LxAppWatch>,
 }
 
 impl DevServerHandle {
@@ -53,8 +54,31 @@ impl DevServerHandle {
         &self.session
     }
 
+    /// Watch local lxapp sources and rebuild + reload them on save.
+    /// No-op when the project has no watchable lxapp (web Runner, package-only
+    /// bundles, prebuilt dist). A watcher failure is reported and ignored so
+    /// the session still runs.
+    pub fn watch_lxapps(&mut self, framework: Option<&str>, release: bool) {
+        if self.watch.is_some() {
+            return;
+        }
+        match super::lxapp_watch::LxAppWatch::spawn(
+            self.state.clone(),
+            super::lxapp_watch::LxAppWatchOptions {
+                framework: framework.map(ToOwned::to_owned),
+                release,
+            },
+        ) {
+            Ok(watch) => self.watch = watch,
+            Err(err) => eprintln!("⚠ lxapp auto-reload not started ({err:#})"),
+        }
+    }
+
     pub fn stop(mut self) -> Result<()> {
         self.stop_flag.store(true, Ordering::Release);
+        if let Some(watch) = self.watch.take() {
+            watch.join();
+        }
         let result = if let Some(thread) = self.server_thread.take() {
             thread
                 .join()
@@ -97,9 +121,9 @@ impl SessionLogWriter {
     }
 }
 
-struct DevServerState {
-    project_root: PathBuf,
-    stop_flag: Arc<AtomicBool>,
+pub(crate) struct DevServerState {
+    pub(crate) project_root: PathBuf,
+    pub(crate) stop_flag: Arc<AtomicBool>,
     runtime_sender: Mutex<Option<(u64, Sender<DevSessionMessage>)>>,
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevSessionMessage>>>,
@@ -199,6 +223,60 @@ impl DevServerState {
     fn request_shutdown(&self) {
         self.stop_flag.store(true, Ordering::Release);
     }
+
+    pub(crate) fn rebuild_lxapp(
+        &self,
+        appid: &str,
+        framework: Option<&str>,
+        release: bool,
+    ) -> Result<()> {
+        let mut args = serde_json::json!({
+            "release": release,
+            "appid": appid,
+        });
+        if let Some(framework) = framework {
+            args["framework"] = serde_json::json!(framework);
+        }
+        run_lxapp_build(&self.project_root, Some(&args))
+    }
+
+    /// Restart a running lxapp. `Ok(false)` means no runtime is attached yet.
+    pub(crate) fn restart_lxapp(&self, appid: &str) -> Result<bool> {
+        let Some(sender) = self.runtime_sender() else {
+            return Ok(false);
+        };
+        let id = uuid::Uuid::new_v4().to_string();
+        let _guard = self.lock_command_forwarding();
+        let (tx, rx) = mpsc::channel();
+        self.register_pending_result(id.clone(), tx);
+        let request = DevSessionMessage::Request(ControlRequest {
+            id: id.clone(),
+            method: lingxia_control_protocol::methods::lxapp::RESTART.to_string(),
+            params: Some(serde_json::json!({ "appid": appid })),
+        });
+        if sender.send(request).is_err() {
+            let _ = self.take_pending_result(&id);
+            return Err(anyhow!("Failed to forward restart to runtime"));
+        }
+        match rx.recv_timeout(DEFAULT_COMMAND_TIMEOUT) {
+            Ok(DevSessionMessage::Response(response)) => {
+                if let Some(error) = response.error {
+                    Err(anyhow!("{}", error.message))
+                } else {
+                    Ok(true)
+                }
+            }
+            Ok(_) => Err(anyhow!("unexpected restart response")),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _ = self.take_pending_result(&id);
+                Err(anyhow!("lxapp restart timed out"))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = self.take_pending_result(&id);
+                Err(anyhow!("runtime disconnected during restart"))
+            }
+        }
+    }
 }
 
 pub fn start_server_on_with_stop(
@@ -242,9 +320,10 @@ fn start_server_on_with_roots(
         stop_flag.clone(),
         auth_token,
     ));
+    let thread_state = state.clone();
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
-        thread::spawn(move || run_server(listener, writer, state, thread_stop_flag));
+        thread::spawn(move || run_server(listener, writer, thread_state, thread_stop_flag));
 
     Ok(DevServerHandle {
         session,
@@ -252,6 +331,8 @@ fn start_server_on_with_roots(
         stop_flag,
         server_thread: Some(server_thread),
         companion,
+        state,
+        watch: None,
     })
 }
 
@@ -871,7 +952,7 @@ fn run_lxapp_build(project_root: &Path, args: Option<&serde_json::Value>) -> Res
 
     // Host dev sessions serve bundles through the generated manifest. Without
     // refreshing it here, the runtime sees the previous dist hash and a
-    // successful `lxdev lxapp reload` silently restarts stale assets.
+    // successful in-place reload silently restarts stale assets.
     refresh_lxapp_manifests(project_root)?;
     Ok(())
 }
@@ -902,9 +983,7 @@ fn resolve_lxapp_dir(project_root: &Path, requested_appid: Option<&str>) -> Resu
             .home_app_id
             .as_deref()
             .ok_or_else(|| {
-                anyhow!(
-                    "this host has no local control lxapp; `lxdev lxapp reload` requires app.homeAppId"
-                )
+                anyhow!("this host has no local control lxapp; rebuilding requires app.homeAppId")
             })?,
     };
     let path = config

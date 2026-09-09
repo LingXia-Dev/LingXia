@@ -87,17 +87,17 @@ lingxia dev
 
 ## 4. 用 lxdev 驱动运行中的会话
 
-`lingxia dev` 负责实时会话，**`lxdev`** 负责驱动与检查。它可以在不重启原生会话的情况下重建并重载 lxapp，自动化浏览器标签与 lxapp 页面，控制宿主窗口，运行测试，并检查汇总日志。
+`lingxia dev` 负责实时会话，**`lxdev`** 负责驱动与检查。保存 lxapp 源码会就地重建并重载；`lxdev` 自动化浏览器标签与 lxapp 页面，控制宿主窗口，运行测试，并检查汇总日志。
 
 ```bash
 lxdev --help          # browser、app、lxapp、test、logs、session
 lxdev logs -f         # 跟随原生 + webview + 逻辑日志
-lxdev lxapp reload    # 原地重建并重载当前 lxapp
+lxdev lxapp nav to home
 ```
 
 `lxdev` 随 CLI 一起分发，通过每用户的本地 broker 发现实时会话。只有一个会话时可从任意目录自动连接；存在多个会话时，用 `lxdev --session <id-or-target> ...` 指定。
 
-完整的“编辑 → 重载 → 交互 → 断言 → 查日志”闭环见[开发工作流](../development-workflow/)。
+完整的“编辑 → 保存 → 交互 → 断言 → 查日志”闭环见[开发工作流](../development-workflow/)。
 
 ## 5. 与 AI 助手协作
 

@@ -4,7 +4,6 @@ use clap::{Args, Parser, Subcommand};
 mod client;
 mod logs;
 mod lxapp;
-mod lxapp_build;
 mod project;
 mod runner;
 mod screenshot;

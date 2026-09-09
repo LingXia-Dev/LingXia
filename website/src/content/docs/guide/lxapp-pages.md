@@ -74,4 +74,4 @@ Use CSS or container queries for spacing and column changes. When the interactio
 
 ## Develop and verify
 
-After editing View, Logic, or `lxapp.json`, run `lxdev lxapp reload` against the live `lingxia dev` session. Navigate and interact with the changed page, assert the result in the page DOM or Logic state, and check logs. The complete loop is in [Development workflow](../development-workflow/).
+After editing View, Logic, or `lxapp.json`, wait for the live `lingxia dev` session to rebuild and reload. Navigate and interact with the changed page, assert the result in the page DOM or Logic state, and check logs. The complete loop is in [Development workflow](../development-workflow/).

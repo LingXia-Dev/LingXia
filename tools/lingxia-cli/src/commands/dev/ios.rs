@@ -9,7 +9,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
     // 0.0.0.0 — it now carries the persistent session token so the open bind
     // is no longer unauthenticated.
     let auth_token = persistent_device_token()?;
-    let server = server::start_server_fixed_with_stop(
+    let mut server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "0.0.0.0",
         platform_name,
@@ -86,6 +86,7 @@ pub(super) fn execute_ios(ctx: DevContext) -> Result<()> {
         platform.run(&run_config)?;
 
         print_mobile_dev_started("iOS", &[("Bundle ID", bundle_id.as_str())]);
+        ctx.watch_embedded_lxapps(&mut server);
         wait_for_interrupt(stop_requested)?;
         Ok(())
     })();

@@ -112,6 +112,7 @@ oxc_syntax = "0.145"
 oxc_semantic = "0.145"
 oxc_sourcemap = "8.1.2"
 sysinfo = "0.39"
+notify = "8.2"
 
 [target.'cfg(not(target_os = "windows"))'.dependencies]
 openssl = { version = "0.10", features = ["vendored"] }

@@ -176,6 +176,11 @@ project's existing same-platform session automatically and starts fresh.
 Different platforms don't conflict — `-p android` and `-p ios` run side by
 side.
 
+While the session is live, `lingxia dev` watches standalone lxapp sources and
+each host `resources.bundles[].path` that is a local lxapp. A save rebuilds
+that bundle and reloads it in place (`pages` / `tabBar` / `navigationStyle`
+included). Host/app code still needs a new `lingxia dev`.
+
 `lingxia dev` owns the session lifecycle — start, `status`, `stop`. For
 automation, start it detached with `--background` (it returns once the session
 and its runtime websocket are ready); a foreground run blocks the terminal and
@@ -205,9 +210,8 @@ commands should also run on that machine through SSH.
 See `lingxia dev --help` for the flags.
 
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
-> automates the running app (browser tabs, lxapp pages, screenshots, logs) and
-> can rebuild + reload lxapps, without starting a new session. The split:
-> `lingxia dev` owns process lifetime, `lxdev` drives.
+> automates the running app (browser tabs, lxapp pages, screenshots, logs).
+> The split: `lingxia dev` owns process lifetime, `lxdev` drives.
 
 ### `lingxia devices`
 

@@ -1,5 +1,4 @@
 use crate::client;
-use crate::lxapp_build;
 use crate::project::SessionInfo;
 use crate::screenshot;
 use anyhow::{Context, Result};
@@ -80,8 +79,6 @@ pub enum LxAppCommand {
         #[arg(long)]
         pretty: bool,
     },
-    /// Rebuild the lxapp front-end bundle and reload the running lxapp
-    Reload(lxapp_build::ReloadOptions),
     /// Open an lxapp
     Open {
         appid: String,
@@ -103,7 +100,7 @@ pub enum LxAppCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Restart an lxapp (without rebuilding; use `reload` for build + restart)
+    /// Restart an lxapp without rebuilding
     Restart {
         #[arg(default_value = "current")]
         app: String,
@@ -525,7 +522,6 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
             }
         }
         LxAppCommand::Close { app, json } => action(ws_url, methods::lxapp::CLOSE, app, json)?,
-        LxAppCommand::Reload(options) => lxapp_build::execute(project_root, ws_url, &options)?,
         LxAppCommand::Restart { app, json } => action(ws_url, methods::lxapp::RESTART, app, json)?,
         LxAppCommand::Uninstall { app, json } => {
             action(ws_url, methods::lxapp::UNINSTALL, app, json)?
@@ -951,9 +947,7 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &[
-            "doctor", "info", "pages", "page", "nav", "device", "eval", "reload",
-        ]
+        &["doctor", "info", "pages", "page", "nav", "device", "eval"]
     } else {
         &[
             "list",
@@ -965,7 +959,6 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "nav",
             "device",
             "eval",
-            "reload",
             "open",
             "close",
             "restart",
@@ -1000,7 +993,6 @@ fn command_description(command: &str) -> &'static str {
         "nav" => "Navigate the lxapp runtime by page name",
         "device" => "Inspect or switch the simulated device",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
-        "reload" => "Rebuild the lxapp front-end bundle and reload the running lxapp",
         "open" => "Open an lxapp",
         "close" => "Close an lxapp",
         "restart" => "Restart an lxapp (without rebuilding)",
@@ -1159,41 +1151,6 @@ mod tests {
         assert!(parse_lxapp_cli(args(&["device"])).is_err());
         assert!(parse_lxapp_cli(args(&["page", "pointer"])).is_err());
         assert!(parse_lxapp_cli(args(&["page", "key"])).is_err());
-    }
-
-    #[test]
-    fn parses_lxapp_reload_options() {
-        let cli = parse_lxapp_cli(args(&[
-            "reload",
-            "--release",
-            "--framework",
-            "vue",
-            "--json",
-        ]))
-        .unwrap();
-
-        let LxAppCommand::Reload(options) = cli.command else {
-            panic!("expected reload command");
-        };
-
-        assert!(options.release);
-        assert_eq!(options.framework.as_deref(), Some("vue"));
-        assert!(options.json);
-        // The one-stop default: build then reload the current lxapp.
-        assert!(!options.build_only);
-        assert_eq!(options.app, "current");
-    }
-
-    #[test]
-    fn parses_lxapp_reload_build_only() {
-        let cli = parse_lxapp_cli(args(&["reload", "--build-only", "--app", "demo"])).unwrap();
-
-        let LxAppCommand::Reload(options) = cli.command else {
-            panic!("expected reload command");
-        };
-
-        assert!(options.build_only);
-        assert_eq!(options.app, "demo");
     }
 
     #[test]

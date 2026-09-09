@@ -8,7 +8,7 @@ sidebar:
 LingXia separates session lifetime from live automation:
 
 - `lingxia dev` builds, installs or launches, and owns the dev session.
-- `lxdev` connects to that session to inspect, reload, automate, test, and read logs.
+- `lxdev` connects to that session to inspect, automate, test, and read logs.
 
 ## Start a session
 
@@ -31,10 +31,10 @@ Re-running `lingxia dev` takes over the same project's same-platform session. Di
 
 | You changed | Run |
 |---|---|
-| View, Logic, or `lxapp.json` | `lxdev lxapp reload` |
+| View, Logic, or `lxapp.json` | save — `lingxia dev` rebuilds and reloads in place |
 | `lingxia.yaml`, native Rust, or platform project | re-run `lingxia dev` |
 
-`lxdev lxapp reload` rebuilds the lxapp bundle and reloads the running lxapp without creating a new native session.
+A live `lingxia dev` session watches standalone lxapp sources and each host `resources.bundles` lxapp. Saving rebuilds that bundle and reloads it without a new native session.
 
 ## Close the verification loop
 

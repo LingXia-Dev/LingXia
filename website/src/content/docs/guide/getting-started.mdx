@@ -87,17 +87,17 @@ lingxia dev
 
 ## 4. Drive the running session with lxdev
 
-While `lingxia dev` owns the live session, **`lxdev`** drives and inspects it. It can rebuild and reload lxapp code without starting a new native session, automate browser tabs and lxapp pages, control host windows, run tests, and inspect the combined log stream.
+While `lingxia dev` owns the live session, **`lxdev`** drives and inspects it. Saving lxapp sources rebuilds and reloads in place; `lxdev` automates browser tabs and lxapp pages, controls host windows, runs tests, and inspects the combined log stream.
 
 ```bash
 lxdev --help          # browser, app, lxapp, test, logs, session
 lxdev logs -f         # follow native + webview + logic logs
-lxdev lxapp reload    # rebuild and reload the current lxapp in place
+lxdev lxapp nav to home
 ```
 
 `lxdev` ships with the CLI and discovers live sessions through a per-user local broker. With one session it connects automatically from any directory; with several sessions, select one using `lxdev --session <id-or-target> ...`.
 
-See [Development workflow](../development-workflow/) for the edit → reload → interact → assert → logs loop.
+See [Development workflow](../development-workflow/) for the edit → save → interact → assert → logs loop.
 
 ## 5. Work with an AI assistant
 

@@ -23,6 +23,7 @@ use sysinfo::{ProcessesToUpdate, Signal, System};
 mod companion;
 pub(crate) mod log_store;
 mod lxapp_manifest;
+mod lxapp_watch;
 mod server;
 
 mod android;
@@ -103,6 +104,15 @@ struct DevContext {
     resolved_env: crate::config::ResolvedEnv,
     extra_native_features: Vec<String>,
     stop_requested: Arc<AtomicBool>,
+}
+
+impl DevContext {
+    fn watch_embedded_lxapps(&self, server: &mut server::DevServerHandle) {
+        server.watch_lxapps(
+            self.framework.map(ProjectFramework::as_str),
+            matches!(self.build_profile, BuildProfile::Release),
+        );
+    }
 }
 
 /// Per-user token authenticating a physical iOS device's connection to the

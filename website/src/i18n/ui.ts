@@ -157,12 +157,12 @@ export const ui = {
       driver: {
         label: 'Session driver',
         title: 'lxdev',
-        desc: 'Connects to the running session to reload lxapps, automate the UI, inspect both JavaScript contexts, run tests, capture screenshots, and stream every layer of logs.',
-        command: 'lxdev lxapp reload',
+        desc: 'Connects to the running session to automate the UI, inspect both JavaScript contexts, run tests, capture screenshots, and stream every layer of logs.',
+        command: 'lxdev lxapp nav to home',
         bullets: ['Browser, host window, and lxapp page automation', 'Logic eval and page DOM eval', 'Repeatable tests, screenshots, and filtered logs'],
       },
       loopLabel: 'The closed loop',
-      loop: ['Edit', 'Reload or take over', 'Navigate & interact', 'Assert DOM or Logic', 'Check logs'],
+      loop: ['Edit', 'Save or take over', 'Navigate & interact', 'Assert DOM or Logic', 'Check logs'],
       familiesLabel: 'Eight focused command families',
       families: [
         { name: 'lxapp', desc: 'lifecycle · navigation · pages · eval' },
@@ -385,12 +385,12 @@ export const ui = {
       driver: {
         label: '会话驱动器',
         title: 'lxdev',
-        desc: '连接运行中的会话，重载 lxapp、自动化 UI、检查两个 JavaScript context、运行测试、截图，并汇总每一层日志。',
-        command: 'lxdev lxapp reload',
+        desc: '连接运行中的会话，自动化 UI、检查两个 JavaScript context、运行测试、截图，并汇总每一层日志。',
+        command: 'lxdev lxapp nav to home',
         bullets: ['浏览器、宿主窗口与 lxapp 页面自动化', 'Logic eval 与页面 DOM eval', '可重复测试、截图与日志过滤'],
       },
       loopLabel: '完整闭环',
-      loop: ['编辑', '重载或接管', '导航并交互', '断言 DOM 或 Logic', '检查日志'],
+      loop: ['编辑', '保存或接管', '导航并交互', '断言 DOM 或 Logic', '检查日志'],
       familiesLabel: '八个聚焦的命令家族',
       families: [
         { name: 'lxapp', desc: '生命周期 · 导航 · 页面 · eval' },
