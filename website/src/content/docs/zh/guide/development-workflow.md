@@ -8,7 +8,7 @@ sidebar:
 LingXia 把 session 生命周期与实时自动化分开：
 
 - `lingxia dev` 负责构建、安装或启动，并拥有 dev session。
-- `lxdev` 连接该 session，负责检查、重载、自动化、测试和读取日志。
+- `lxdev` 连接该 session，负责检查、自动化、测试和读取日志。
 
 ## 启动 session
 
@@ -31,10 +31,10 @@ lingxia dev status
 
 | 修改内容 | 执行命令 |
 |---|---|
-| View、Logic 或 `lxapp.json` | `lxdev lxapp reload` |
+| View、Logic 或 `lxapp.json` | 保存 — `lingxia dev` 会就地重建并重载 |
 | `lingxia.yaml`、native Rust 或平台工程 | 重新运行 `lingxia dev` |
 
-`lxdev lxapp reload` 会重建 lxapp bundle 并重载正在运行的 lxapp，不创建新的 native session。
+正在运行的 `lingxia dev` 会监视独立 lxapp 源码以及 host `resources.bundles` 里的本地 lxapp。保存后重建该 bundle 并就地重载，不创建新的 native session。
 
 ## 完成验证闭环
 

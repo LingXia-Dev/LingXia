@@ -7,7 +7,7 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
 
     let platform = platform::macos::MacosPlatform::new();
     let stop_requested = ctx.stop_requested.clone();
-    let server = server::start_server_fixed_with_stop(
+    let mut server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "127.0.0.1",
         platform_name,
@@ -62,6 +62,7 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
             .with_context(|| format!("Failed to run {}", exe.display()))?;
 
         print_dev_banner("macOS", "Ctrl+C or close app", &[]);
+        ctx.watch_embedded_lxapps(&mut server);
 
         wait_for_child_or_interrupt(&mut child, stop_requested, "macOS app")?;
         Ok(())

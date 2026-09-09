@@ -10,7 +10,7 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
     take_over_target_session(&ctx.project_root, platform_name)?;
     let platform = platform::windows::WindowsPlatform::new();
     let stop_requested = ctx.stop_requested.clone();
-    let server = server::start_server_fixed_with_stop(
+    let mut server = server::start_server_fixed_with_stop(
         &ctx.project_root,
         "127.0.0.1",
         platform_name,
@@ -73,6 +73,7 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
 
+        ctx.watch_embedded_lxapps(&mut server);
         launch_and_wait_windows_app(
             &exe_path,
             &ctx.project_root,

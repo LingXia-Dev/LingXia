@@ -33,7 +33,6 @@ websocket is not a remote machine-management API.
 **`lxapp`** — the lxapps and runtime pages in the session. Every command targets the **current** lxapp by default (`--app` to pick another); page commands likewise default to the **current page** (`--page` accepts a configured page name or the stable `instance_id` returned by `page current|list|info`):
 - `list` / `current` / `info` / `pages` — what's running, and the configured pages
 - `open` / `close` / `restart` / `uninstall` — lifecycle (`restart` relaunches the runtime without rebuilding)
-- `reload` — rebuild + reload in place (`pages` / `tabBar` / `navigationStyle` included). `--app <appid>` for a non-home resource; `--build-only` skips runtime reload
 - `nav to|redirect|switch-tab|relaunch|back` — navigate the runtime by page name (from `pages`)
 - `eval` — run JS in the **Logic runtime**; `page eval` — run JS in the **page WebView** (the two see different things — JS-contexts table below)
 - `page current|list|info` — page-instance status. `page list` includes every live instance (including surface-owned pages), plus every `lxapp.json` route that is not currently open. External URL and URL-callback surfaces are browser tabs, so they appear only under `browser tabs`.

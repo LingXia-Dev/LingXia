@@ -74,4 +74,4 @@ React 与 Vue 会重新导出 `LxPicker`、`LxVideo`、`LxMediaSwiper` 与 `LxNa
 
 ## 开发与验证
 
-修改 View、Logic 或 `lxapp.json` 后，对实时 `lingxia dev` 会话运行 `lxdev lxapp reload`。导航到变更页面并真实交互，在页面 DOM 或 Logic state 中断言结果，最后检查日志。完整闭环见[开发工作流](../development-workflow/)。
+修改 View、Logic 或 `lxapp.json` 后，等正在运行的 `lingxia dev` 重建并重载。导航到变更页面并真实交互，在页面 DOM 或 Logic state 中断言结果，最后检查日志。完整闭环见[开发工作流](../development-workflow/)。

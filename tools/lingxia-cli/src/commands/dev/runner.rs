@@ -225,7 +225,7 @@ pub(super) fn execute_runner_dev(
         RunnerDevTarget::LxApp(path) => path.as_path(),
         RunnerDevTarget::Web(_) => session_root.as_path(),
     };
-    let server = server::start_server_fixed_with_roots(
+    let mut server = server::start_server_fixed_with_roots(
         &session_root,
         content_root,
         "127.0.0.1",
@@ -331,6 +331,9 @@ pub(super) fn execute_runner_dev(
         };
 
         print_dev_banner("LxApp Runner", "Ctrl+C or `lingxia dev stop`", &[]);
+        if matches!(&target, RunnerDevTarget::LxApp(_)) {
+            server.watch_lxapps(options.framework.as_deref(), options.release);
+        }
 
         wait_for_runner_or_interrupt(&mut runner, stop_requested)?;
         Ok(())
