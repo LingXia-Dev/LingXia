@@ -156,7 +156,7 @@ spec("answer capability questions consistently with the optional members", { id:
   expect(result.allBooleans).toBeTruthy();
 });
 
-spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
   const result = await app.eval({
@@ -164,12 +164,15 @@ spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
       const storage = lx.getStorage();
       const key = ${JSON.stringify(namespace)};
       const before = await storage.info();
+      const absentBefore = await storage.has(key);
       let value;
       let present = false;
+      let hasWhilePresent = false;
       try {
         await storage.set(key, { ok: true, count: 2 });
         value = await storage.get(key);
         present = (await storage.list()).includes(key);
+        hasWhilePresent = await storage.has(key);
       } finally {
         await storage.delete(key);
       }
@@ -177,6 +180,9 @@ spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
       return {
         value,
         present,
+        hasWhilePresent,
+        absentBefore,
+        hasAfterDelete: await storage.has(key),
         removed: !(await storage.list()).includes(key),
         sizeRestored: after.keyCount === before.keyCount,
       };
@@ -184,12 +190,20 @@ spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.ge
   }) as {
     value: unknown;
     present: boolean;
+    hasWhilePresent: boolean;
+    absentBefore: boolean;
+    hasAfterDelete: boolean;
     removed: boolean;
     sizeRestored: boolean;
   };
 
   expect(result.value).toEqual({ ok: true, count: 2 });
   expect(result.present).toBeTruthy();
+  // `has` must agree with `list` while the key is stored, and must report a
+  // boolean rather than a value on both sides of the key's lifetime.
+  expect(result.hasWhilePresent).toBeTruthy();
+  expect(result.absentBefore).toBeFalsy();
+  expect(result.hasAfterDelete).toBeFalsy();
   expect(result.removed).toBeTruthy();
   expect(result.sizeRestored).toBeTruthy();
 });

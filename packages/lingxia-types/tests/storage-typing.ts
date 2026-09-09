@@ -20,6 +20,10 @@ async function unannotatedValueStaysUnknown(): Promise<void> {
   draft.title;
 }
 
+async function presenceIsABooleanAndNeedsNoValue(): Promise<boolean> {
+  return store.has("draft");
+}
+
 async function listResolvesAnArray(): Promise<number> {
   const keys = await store.list("draft:");
   return keys.filter((key) => key.length > 0).length;
@@ -39,6 +43,10 @@ async function schemaPinsKeysAndValues(): Promise<Draft[] | undefined> {
   await typed.get("draft");
   // @ts-expect-error value must match the schema
   await typed.set("todo:filter", 1);
+  const present: boolean = await typed.has("todo:filter");
+  // @ts-expect-error schema keys are closed for presence too
+  await typed.has("draft");
+  void present;
   return todos;
 }
 

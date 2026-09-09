@@ -1306,6 +1306,12 @@ true
      */
     get<T = unknown>(key: string): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
+    /**
+     * Resolves whether an exact key exists, without reading its value. Prefer
+     * it over comparing `get` against `undefined`: presence is a key lookup,
+     * while `get` also reads and deserializes the stored value.
+     */
+    has(key: string): Promise<boolean>;
     delete(key: string): Promise<void>;
     clear(): Promise<void>;
     /** Resolves every key, optionally filtered by prefix. */
