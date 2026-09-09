@@ -233,6 +233,10 @@ async function apiNavbarProbePoints(
   return undefined;
 }
 
+// macOS AX reports the Chat placeholder a couple of pixels past the
+// device-frame host. Capture already allows 2px; AX rounding is noisier.
+const CHAT_INPUT_AX_SLOP_PX = 8;
+
 async function visibleChatInputAxNode(
   desktop: DesktopDriver,
   host: DesktopWindowInfo,
@@ -242,17 +246,21 @@ async function visibleChatInputAxNode(
     match: 'Message',
     all: true,
   });
+  const minX = host.bounds.x - CHAT_INPUT_AX_SLOP_PX;
+  const minY = host.bounds.y - CHAT_INPUT_AX_SLOP_PX;
+  const maxX = host.bounds.x + host.bounds.w + CHAT_INPUT_AX_SLOP_PX;
+  const maxY = host.bounds.y + host.bounds.h + CHAT_INPUT_AX_SLOP_PX;
   return nodes
     .filter((node) => (
       node.enabled
       && node.rect.w > 0
       && node.rect.h > 0
-      && node.rect.x >= host.bounds.x
-      && node.rect.y >= host.bounds.y
-      && node.rect.x + node.rect.w <= host.bounds.x + host.bounds.w
-      && node.rect.y + node.rect.h <= host.bounds.y + host.bounds.h
+      && node.rect.x >= minX
+      && node.rect.y >= minY
+      && node.rect.x + node.rect.w <= maxX
+      && node.rect.y + node.rect.h <= maxY
     ))
-    .sort((left, right) => right.rect.w * right.rect.h - left.rect.w * left.rect.h)[0];
+    .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)[0];
 }
 
 // Cold-opened Chat surfaces render their input asynchronously, and the shared
