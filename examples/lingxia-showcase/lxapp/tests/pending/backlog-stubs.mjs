@@ -185,7 +185,7 @@ export default [
     id: "PEND-STREAM-CANCEL-001",
     title: "stream cancel mid-flight runs generator finally",
     mode: "planned",
-    covers: ["lx.cloud"],
+    covers: ["lx.navigateTo"],
     reason: "current stream.test.ts is happy-path only",
   },
   {
@@ -220,7 +220,7 @@ export default [
     id: "PEND-CHANNEL-ERR-001",
     title: "channel close, send-while-disconnected, and BRIDGE_NOT_READY",
     mode: "planned",
-    covers: ["lx.cloud"],
+    covers: ["lx.navigateTo"],
     reason: "channel.test.ts covers happy reconnect only",
   },
   {
@@ -304,7 +304,7 @@ export default [
     id: "PEND-CLOUD-TESTID-001",
     title: "cloud page testids on both frameworks",
     mode: "planned",
-    covers: ["lx.cloud"],
+    covers: ["lx.navigateTo"],
     reason: "pages/cloud still has no data-testid on either view",
   },
 ];
