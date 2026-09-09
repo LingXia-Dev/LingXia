@@ -11,8 +11,48 @@ export interface PageConfig<TData extends Record<string, unknown> = Record<strin
   onHide?: () => void | Promise<void>;
   onUnload?: () => void | Promise<void>;
   onPullDownRefresh?: () => void | Promise<void>;
-  [key: string]: unknown;
 }
+
+/** Lifecycle hook names a `Page({...})` config may declare. */
+export type PageLifecycleName = Exclude<keyof PageConfig, 'data'>;
+
+/** Lifecycle hook names an `App({...})` config may declare. */
+export type AppLifecycleName = Exclude<keyof AppConfig, 'globalData'>;
+
+/**
+ * What a key that differs from a lifecycle hook only in case resolves to, so
+ * the compiler names the mistake instead of silently accepting a new method.
+ */
+export type MisspelledLifecycle<K extends string> = {
+  'LingXia type error': `'${K}' differs only in case from a lifecycle hook`;
+};
+
+/**
+ * Applied to the custom half of a `Page`/`App` config. `onload` and `onShow`
+ * are one keystroke apart from real hooks and the runtime would simply never
+ * call the misspelling, so the closest case-insensitive match is rejected.
+ * Genuinely different names stay ordinary methods.
+ */
+export type NoLifecycleTypos<TCustom, TNames extends string> = {
+  [K in keyof TCustom]: K extends TNames
+    ? TCustom[K]
+    : Lowercase<K & string> extends Lowercase<TNames>
+      ? MisspelledLifecycle<K & string>
+      : TCustom[K];
+};
+
+/**
+ * A `setData` key that addresses inside `data` — `'a.b'` or `'rows[0].name'`.
+ * Values behind a path stay `unknown`: the runtime resolves the path, so the
+ * type cannot.
+ */
+export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
+
+/**
+ * Top-level keys are checked against `data`; only path-shaped keys stay open.
+ * A misspelled or wrongly typed top-level key is a compile error.
+ */
+export type SetDataPatch<TData> = Partial<TData> & Partial<Record<PageDataPath, unknown>>;
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
   data: TData;
@@ -26,7 +66,7 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
-  setData(data: Partial<TData> | Record<string, unknown>, callback?: () => void): void;
+  setData(data: SetDataPatch<TData>, callback?: () => void): void;
 }
 
 /**
