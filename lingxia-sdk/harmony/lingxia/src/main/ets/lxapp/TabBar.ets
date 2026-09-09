@@ -312,7 +312,7 @@ export struct TabBar {
   buildCenteredVerticalLayout() {
     ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
       this.buildTabItem(item, index)
-    })
+    }, (item: TabBarItem) => `${item.pagePath}|${item.text}|${this.refreshKey}`)
   }
 
   /**

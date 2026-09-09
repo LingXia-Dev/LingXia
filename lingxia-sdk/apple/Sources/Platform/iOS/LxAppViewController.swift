@@ -580,19 +580,22 @@ final class LxAppViewController: UIViewController, ObservableObject {
             pinOverflowHost(to: nil)
         }
 
-        // If TabBar doesn't exist, create it with fresh config.
-        if currentTabBar == nil {
-            guard let tabConfig = lingxia.getTabBar(appId) else {
-                updateWebViewBottomInset(for: appId)
-                return
+        guard let tabConfig = lingxia.getTabBar(appId) else {
+            if let tabBar = currentTabBar {
+                tabBar.removeFromSuperview()
+                currentTabBar = nil
+                (rootContainer as? LxAppRootContainer)?.tabBarHitTarget = nil
+                pinOverflowHost(to: nil)
             }
-            currentTabBar = createTabBar(config: tabConfig, appId: appId)
             updateWebViewBottomInset(for: appId)
             return
         }
 
-        // Existing tab bar already matches the current mini app; refresh its state from Rust.
-        currentTabBar?.refreshLayout()
+        if currentTabBar == nil {
+            currentTabBar = createTabBar(config: tabConfig, appId: appId)
+        } else {
+            currentTabBar?.refreshLayout()
+        }
         updateWebViewBottomInset(for: appId)
     }
 
@@ -1039,8 +1042,9 @@ final class LxAppViewController: UIViewController, ObservableObject {
             // reopen overflow, then this dismiss-on-refresh closed it.
             MainActor.assumeIsolated {
                 if let appId, appId == LxAppCore.currentAppId {
-                    self.currentTabBar?.refreshLayout()
-                    self.updateWebViewBottomInset(for: appId)
+                    let path = self.getCurrentPath()
+                    self.updateTabBar(for: appId, path: path)
+                    self.updateNavigationBar(appId: appId, path: path)
                     self.bringUIElementsToFront()
                     // Appearance changes arrive through this notification too;
                     // restyle so every canvas follows the resolved scheme.
