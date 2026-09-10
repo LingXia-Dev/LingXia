@@ -238,6 +238,7 @@ mod tests {
             resources: None,
             splash: None,
             assets: None,
+            update: None,
         }
     }
 

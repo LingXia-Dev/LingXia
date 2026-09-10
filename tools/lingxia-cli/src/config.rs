@@ -67,6 +67,30 @@ pub struct LingXiaConfig {
     /// cannot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
+    /// In-app update trust. Omit the whole table to skip preview/release
+    /// check-update (developer still checks, unsigned). If present, must list
+    /// 1 or 2 `trustedPublicKeys`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub update: Option<UpdateSigningConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateSigningConfig {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_public_keys: Vec<String>,
+}
+
+impl UpdateSigningConfig {
+    pub fn validate(&self) -> Result<()> {
+        match self.trusted_public_keys.len() {
+            1 | 2 => Ok(()),
+            0 => Err(anyhow!(
+                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip preview/release check-update"
+            )),
+            _ => Err(anyhow!("update.trustedPublicKeys allows at most two keys")),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1856,6 +1880,7 @@ impl LingXiaConfig {
             }),
             splash: None,
             assets: None,
+            update: None,
         }
     }
 
@@ -1913,6 +1938,9 @@ impl LingXiaConfig {
     }
 
     fn validate(&self) -> Result<()> {
+        if let Some(update) = self.update.as_ref() {
+            update.validate()?;
+        }
         validate_capability_dependencies(self.capabilities.as_ref())?;
         if let Some(destination) = self.settings_destination.as_ref() {
             destination.validate().map_err(|message| anyhow!(message))?;
