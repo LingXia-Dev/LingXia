@@ -133,6 +133,7 @@ extension LxAppMedia {
         if !urls.contains(where: isRemoteHTTPURL) {
             return showQuickLook(
                 urls: urls,
+                sourceIndexes: Array(urls.indices),
                 startIndex: startIndex,
                 callbackId: callbackId,
                 presentedCallbackId: presentedCallbackId,
@@ -163,6 +164,7 @@ extension LxAppMedia {
                 }
                 let shown = showQuickLook(
                     urls: localURLs,
+                    sourceIndexes: materialized.sourceIndexes,
                     startIndex: startIndex,
                     callbackId: callbackId,
                     presentedCallbackId: presentedCallbackId,
@@ -191,15 +193,21 @@ extension LxAppMedia {
     @MainActor
     private static func showQuickLook(
         urls: [URL],
+        sourceIndexes: [Int],
         startIndex: Int,
         callbackId: UInt64,
         presentedCallbackId: UInt64,
         changeCallbackId: UInt64,
         cacheDirectory: URL?
     ) -> Bool {
+        // A requested start that could not be fetched opens on the next item
+        // that could, or the last one before it.
+        let shownStart = sourceIndexes.firstIndex { $0 >= startIndex }
+            ?? max(sourceIndexes.count - 1, 0)
         let controller = MacQuickLookController(
             urls: urls,
-            startIndex: startIndex,
+            sourceIndexes: sourceIndexes,
+            startIndex: shownStart,
             callbackId: callbackId,
             changeCallbackId: changeCallbackId,
             cacheDirectory: cacheDirectory
@@ -257,6 +265,8 @@ private func isRemoteHTTPURL(_ url: URL) -> Bool {
 
 private struct MaterializedPreviewURLs: Sendable {
     let urls: [URL]?
+    /// Request index of each entry in `urls`; failed items leave gaps.
+    let sourceIndexes: [Int]
     let cacheDirectory: URL?
 }
 
@@ -297,11 +307,12 @@ private func previewExtensionForMimeType(_ mimeType: String?) -> String? {
 /// Fetches every remote item into `cacheDirectory`. One unreachable item does
 /// not discard the sequence — the other hosts skip a failed item and keep the
 /// session, so a 404 in the middle of a gallery must not blank the whole panel.
+/// A failed item is left out entirely (QuickLook cannot show an http URL);
+/// `sourceIndexes` keeps what JS sees tied to the request's own indexes.
 /// Only a sequence where nothing could be fetched fails outright.
 private func materializeRemotePreviewURLs(_ urls: [URL]) async -> MaterializedPreviewURLs {
-    let remoteIndexes = urls.indices.filter { isRemoteHTTPURL(urls[$0]) }
-    if remoteIndexes.isEmpty {
-        return MaterializedPreviewURLs(urls: urls, cacheDirectory: nil)
+    if !urls.contains(where: isRemoteHTTPURL) {
+        return MaterializedPreviewURLs(urls: urls, sourceIndexes: Array(urls.indices), cacheDirectory: nil)
     }
 
     let cacheDirectory = FileManager.default.temporaryDirectory
@@ -310,12 +321,18 @@ private func materializeRemotePreviewURLs(_ urls: [URL]) async -> MaterializedPr
         at: cacheDirectory,
         withIntermediateDirectories: true
     )) != nil else {
-        return MaterializedPreviewURLs(urls: nil, cacheDirectory: nil)
+        return MaterializedPreviewURLs(urls: nil, sourceIndexes: [], cacheDirectory: nil)
     }
 
-    var result = urls
+    var shown: [URL] = []
+    var sourceIndexes: [Int] = []
     var fetched = 0
-    for index in remoteIndexes {
+    for index in urls.indices {
+        guard isRemoteHTTPURL(urls[index]) else {
+            shown.append(urls[index])
+            sourceIndexes.append(index)
+            continue
+        }
         if Task.isCancelled {
             break
         }
@@ -324,20 +341,23 @@ private func materializeRemotePreviewURLs(_ urls: [URL]) async -> MaterializedPr
             LXLog.error("previewMedia could not fetch remote item \(index)", category: "MediaPreview")
             continue
         }
-        result[index] = local
+        shown.append(local)
+        sourceIndexes.append(index)
         fetched += 1
     }
     guard fetched > 0 else {
         try? FileManager.default.removeItem(at: cacheDirectory)
-        return MaterializedPreviewURLs(urls: nil, cacheDirectory: nil)
+        return MaterializedPreviewURLs(urls: nil, sourceIndexes: [], cacheDirectory: nil)
     }
-    return MaterializedPreviewURLs(urls: result, cacheDirectory: cacheDirectory)
+    return MaterializedPreviewURLs(urls: shown, sourceIndexes: sourceIndexes, cacheDirectory: cacheDirectory)
 }
 
 private func downloadPreviewItem(_ source: URL, into cacheDirectory: URL, index: Int) async -> URL? {
     do {
         let (tempURL, response) = try await URLSession.shared.download(from: source)
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            // The async download API leaves the body for the caller to remove.
+            try? FileManager.default.removeItem(at: tempURL)
             return nil
         }
         let destination = cacheDirectory.appendingPathComponent(
@@ -359,6 +379,8 @@ private func downloadPreviewItem(_ source: URL, into cacheDirectory: URL, index:
 @MainActor
 final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelDataSource, @preconcurrency QLPreviewPanelDelegate {
     private let items: [QLPreviewURL]
+    /// Request index of each item, reported to JS in place of the panel's own.
+    private let sourceIndexes: [Int]
     private let startIndex: Int
     let callbackId: UInt64
     /// JS-side change-stream callback id; fired with `{"index": N}` whenever
@@ -372,12 +394,14 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
 
     init(
         urls: [URL],
+        sourceIndexes: [Int],
         startIndex: Int,
         callbackId: UInt64,
         changeCallbackId: UInt64,
         cacheDirectory: URL?
     ) {
         self.items = urls.map { QLPreviewURL(url: $0) }
+        self.sourceIndexes = sourceIndexes
         self.startIndex = startIndex
         self.callbackId = callbackId
         self.changeCallbackId = changeCallbackId
@@ -408,7 +432,7 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
         indexObservation = panel.observe(\.currentPreviewItemIndex, options: [.initial, .new]) { [weak self] panel, _ in
             DispatchQueue.main.async {
                 guard let self, !self.didFinish else { return }
-                let index = self.normalizedIndex(panel.currentPreviewItemIndex)
+                let index = self.sourceIndex(self.normalizedIndex(panel.currentPreviewItemIndex))
                 guard index != self.lastNotifiedIndex else { return }
                 self.lastNotifiedIndex = index
                 let _ = onCallback(self.changeCallbackId, true, "{\"index\":\(index)}")
@@ -423,7 +447,7 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
         didFinish = true
 
         let panel = QLPreviewPanel.shared()
-        let lastIndex = currentIndex(from: panel)
+        let lastIndex = sourceIndex(currentIndex(from: panel))
         removeCloseObserver()
         indexObservation?.invalidate()
         indexObservation = nil
@@ -466,6 +490,10 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
             return 0
         }
         return min(max(index, 0), items.count - 1)
+    }
+
+    private func sourceIndex(_ shownIndex: Int) -> Int {
+        sourceIndexes.indices.contains(shownIndex) ? sourceIndexes[shownIndex] : shownIndex
     }
 
     private func currentIndex(from panel: QLPreviewPanel?) -> Int {
