@@ -158,6 +158,32 @@ final class LxMediaPlayer: NSObject {
     // host-log pipeline (that carries errors/warns only).
     private static let log = OSLog(subsystem: "LingXia", category: "Media")
 
+    /// Route through the playback session so video is audible in silent mode.
+    /// `.allowAirPlay` is only valid with `.playAndRecord`; pairing it with
+    /// `.playback` is OSStatus -50 on some devices. `.moviePlayback` can also
+    /// be rejected — fall back to `.default` rather than log an error and
+    /// leave the session untouched.
+    private static func activatePlaybackAudioSession() {
+        let session = AVAudioSession.sharedInstance()
+        let attempts: [(AVAudioSession.Mode, AVAudioSession.CategoryOptions)] = [
+            (.moviePlayback, []),
+            (.default, []),
+        ]
+        var lastError: Error?
+        for (mode, options) in attempts {
+            do {
+                try session.setCategory(.playback, mode: mode, options: options)
+                try session.setActive(true)
+                return
+            } catch {
+                lastError = error
+            }
+        }
+        if let lastError {
+            LXLog.warn("MediaPlayer failed to set audio session", category: "Media", error: lastError)
+        }
+    }
+
     let view: UIView
     var onScrubStateChanged: ((Bool) -> Void)?
     private let container: PlayerContainerView
@@ -297,15 +323,7 @@ final class LxMediaPlayer: NSObject {
         self.typedEventSink = typedEventSink
         super.init()
 
-        // Ensure audio plays even in silent mode
-        do {
-            // `.allowBluetooth` is only valid for some categories (e.g. `.playAndRecord`); using it
-            // with `.playback` can fail on some iOS versions/devices (OSStatus -50).
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.allowAirPlay])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            LXLog.error("MediaPlayer failed to set audio session: \(error.localizedDescription)", category: "Media")
-        }
+        Self.activatePlaybackAudioSession()
 
         view.backgroundColor = .black
         view.clipsToBounds = true
