@@ -38,7 +38,7 @@ public class LingXiaWebViewClient extends WebViewClient {
         if (webView != null) {
             webView.setPageLoaded(false);
             AndroidDocumentBridgeState.Navigation navigation =
-                    webView.beginTopLevelNavigation();
+                    webView.beginTopLevelNavigation(url);
             webView.onPageStarted(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
@@ -60,12 +60,15 @@ public class LingXiaWebViewClient extends WebViewClient {
             webView.setPageLoaded(true);
             webView.resetViewport();
             webView.pushWebViewState();
-            // API 21/22 have no visible-commit callback. Finishing a load
-            // remains useful navigation state, but must not mint a document
-            // binding from weaker evidence on the browser profile.
-            // Strict lxapp pages still need a MessagePort when Chromium skips
-            // onPageCommitVisible (splash, zero-size, off-screen tabs).
-            webView.commitTopLevelDocumentFromLoadFinished();
+            // Chromium skips onPageCommitVisible for a covered, zero-size or
+            // off-screen WebView (splash, preloaded tab). A strict document
+            // then binds from the finished load of the URL it started; the
+            // browser profile keeps requiring visible-commit proof, and API
+            // 21/22 have no commit evidence at all. This must precede the
+            // finish below: Rust retires the pending commit on finish.
+            if (DocumentCommitCallbackPolicy.canBindDocument(Build.VERSION.SDK_INT)) {
+                webView.commitTopLevelDocumentOnFinish(url);
+            }
             webView.onPageFinished(
                 webView.getAppId() != null ? webView.getAppId() : "",
                 webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
@@ -125,6 +128,7 @@ public class LingXiaWebViewClient extends WebViewClient {
             return;
         }
         webView.setPageLoaded(false);
+        webView.recordMainFrameLoadFailure();
         webView.onLoadError(
             webView.getAppId() != null ? webView.getAppId() : "",
             webView.getCurrentPath() != null ? webView.getCurrentPath() : "",
