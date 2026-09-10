@@ -15,6 +15,9 @@ const HTTPS_IMAGE =
   'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg';
 const HTTPS_VIDEO =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+/** Answers 404 with an XML body, so no host can mistake it for an image. */
+const HTTPS_MISSING_IMAGE =
+  'https://interactive-examples.mdn.mozilla.net/media/cc0-images/lingxia-missing-404.png';
 
 interface HandleState {
   presented: boolean;
@@ -246,4 +249,72 @@ httpsPreviewSpec('present an https video without downloading first', {
   timeout: 60_000,
 }, async (t) => {
   await presentHttpsPreview(t, 'DESKTOP-PREVIEW-HTTPS-VIDEO-001', HTTPS_VIDEO, 'video');
+});
+
+httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
+  id: 'DESKTOP-PREVIEW-HTTPS-SKIP-001',
+  covers: [
+    'lx.previewMedia',
+    'PreviewMediaHandle.current',
+    'PreviewMediaHandle.onChange',
+  ],
+  app: SHOWCASE_APP_ID,
+  timeout: 60_000,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-PREVIEW-HTTPS-SKIP-001');
+  // Windows reports no change stream at all, so `current` cannot move there.
+  if (await runtimePlatform(app) !== 'macos') return;
+  const stateKey = `__lingxiaPreviewSkip_${namespace.replace(/-/g, '_')}`;
+  defer(async () => {
+    await app.eval({
+      script: `
+        const s = globalThis[${JSON.stringify(stateKey)}];
+        if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
+        delete globalThis[${JSON.stringify(stateKey)}];
+      `,
+    }).catch(() => undefined);
+  });
+
+  await app.eval({
+    script: `
+      const controller = new AbortController();
+      const handle = lx.previewMedia({
+        sources: [
+          { path: ${JSON.stringify(HTTPS_MISSING_IMAGE)}, type: 'image' },
+          { path: ${JSON.stringify(HTTPS_IMAGE)}, type: 'image', durationMs: 60000 },
+        ],
+        startIndex: 0,
+        advance: 'next',
+        signal: controller.signal,
+      });
+      const state = { handle, controller, presented: false, completed: null };
+      globalThis[${JSON.stringify(stateKey)}] = state;
+      handle.presented.then(() => { state.presented = true; });
+      handle.completed.then(
+        (result) => { state.completed = result.reason; },
+        () => { state.completed = 'rejected'; },
+      );
+      return true;
+    `,
+  });
+
+  // The 404 is left out of what the panel shows, yet the item on screen must
+  // still be reported by its index in the request, not the panel's own.
+  const state = await eventually(
+    () => app.eval({
+      script: `
+        const s = globalThis[${JSON.stringify(stateKey)}];
+        return {
+          presented: !!s?.presented,
+          index: s?.handle.current.index ?? -1,
+          path: s?.handle.current.source.path ?? '',
+          completed: s?.completed ?? null,
+        };
+      `,
+    }) as Promise<{ presented: boolean; index: number; path: string; completed: string | null }>,
+    (value) => value.presented && value.index === 1,
+    { describe: 'the preview to open on the reachable item as index 1', timeoutMs: 30_000 },
+  );
+  expect(state.path).toBe(HTTPS_IMAGE);
+  expect(state.completed).toBe(null);
 });
