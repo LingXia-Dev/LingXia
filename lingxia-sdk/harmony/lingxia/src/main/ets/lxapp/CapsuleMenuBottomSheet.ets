@@ -47,6 +47,42 @@ interface ReleaseBadge {
   backgroundColor: string;
 }
 
+interface OverlayPalette {
+  scrim: string;
+  surface: string;
+  title: string;
+  body: string;
+  secondaryFill: string;
+  secondaryText: string;
+  separator: string;
+  icon: string;
+}
+
+function overlayPalette(dark: boolean): OverlayPalette {
+  if (dark) {
+    return {
+      scrim: 'rgba(0,0,0,0.65)',
+      surface: '#1C1C1E',
+      title: '#FFFFFF',
+      body: '#A1A1AA',
+      secondaryFill: '#2C2C2E',
+      secondaryText: '#E5E5E7',
+      separator: 'rgba(255,255,255,0.12)',
+      icon: '#E5E5E7'
+    };
+  }
+  return {
+    scrim: 'rgba(0,0,0,0.45)',
+    surface: '#FFFFFF',
+    title: '#000000',
+    body: '#666666',
+    secondaryFill: '#F5F5F5',
+    secondaryText: '#555555',
+    separator: '#EEEEEE',
+    icon: '#333333'
+  };
+}
+
 /**
  * Manager class to control the bottom sheet visibility from anywhere
  */
@@ -122,38 +158,35 @@ export struct CapsuleMenuBottomSheetComponent {
   build() {
     if (this.isVisible && this.appInfo) {
       Stack({ alignContent: Alignment.Bottom }) {
-        // Semi-transparent overlay mask
         Column()
           .width('100%')
           .height('100%')
-          .backgroundColor(this.appearanceDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(0, 0, 0, 0.5)')
+          .backgroundColor(this.palette().scrim)
           .onClick(() => this.hide())
 
-        // Bottom sheet container
         Column() {
-          // Header: App name and version in one line
           Row() {
             Text(this.appInfo.appName)
               .fontSize(16)
               .fontWeight(FontWeight.Bold)
-              .fontColor(this.appearanceDark ? '#FFFFFF' : '#000000')
+              .fontColor(this.palette().title)
 
             Text(' · ')
               .fontSize(16)
-              .fontColor(this.appearanceDark ? '#A1A1AA' : '#CCCCCC')
+              .fontColor(this.palette().body)
               .margin({ left: 4, right: 4 })
 
             Row() {
               Text(this.appInfo.version)
                 .fontSize(14)
-                .fontColor(this.appearanceDark ? '#A1A1AA' : '#999999')
+                .fontColor(this.palette().body)
 
               if (this.releaseBadge()) {
                 Text(this.releaseBadge()?.text ?? '')
                   .fontSize(10)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor(this.releaseBadge()?.textColor ?? '#000000')
-                  .backgroundColor(this.releaseBadge()?.backgroundColor ?? '#FFFFFF')
+                  .fontColor(this.releaseBadge()?.textColor ?? this.palette().title)
+                  .backgroundColor(this.releaseBadge()?.backgroundColor ?? this.palette().secondaryFill)
                   .borderRadius(8)
                   .padding({ left: 6, right: 6, top: 2, bottom: 2 })
                   .margin({ left: 4, top: -8 })
@@ -165,10 +198,9 @@ export struct CapsuleMenuBottomSheetComponent {
           .padding({ left: 20, right: 20, top: 16, bottom: 12 })
           .alignItems(VerticalAlign.Center)
 
-          // Separator
           Divider()
             .height(1)
-            .color(this.appearanceDark ? '#3A3A3C' : '#EEEEEE')
+            .color(this.palette().separator)
 
           Column() {
             this.actionRow(this.menuActions().slice(0, 5))
@@ -177,10 +209,10 @@ export struct CapsuleMenuBottomSheetComponent {
             }
           }
           .width('100%')
-          .padding({ top: 12, bottom: 12 })
+          .padding({ top: 12, bottom: 28 })
         }
         .width('100%')
-        .backgroundColor(this.appearanceDark ? '#1C1C1E' : '#FFFFFF')
+        .backgroundColor(this.palette().surface)
         .borderRadius({ topLeft: 16, topRight: 16 })
         .padding({ left: 20, right: 20, bottom: 16 })
       }
@@ -190,43 +222,76 @@ export struct CapsuleMenuBottomSheetComponent {
     }
   }
 
+  private palette(): OverlayPalette {
+    return overlayPalette(this.appearanceDark);
+  }
+
+  private actionIconTint(item: MenuAction): string {
+    return item.isDestructive ? '#FF3B30' : this.palette().icon;
+  }
+
+  // Image.fillColor blobs stroke SVGs; Path commands are px so they render as
+  // specks. System symbols scale with fontSize and tint with fontColor.
+  @Builder
+  private actionIcon(item: MenuAction): void {
+    Column() {
+      if (item.iconPath === 'icons/icon_clean_cache.svg') {
+        SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
+          .fontSize(32)
+          .fontWeight(FontWeight.Medium)
+          .fontColor([this.actionIconTint(item)])
+          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+      } else if (item.iconPath === 'icons/icon_restart.svg') {
+        SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+          .fontSize(32)
+          .fontWeight(FontWeight.Medium)
+          .fontColor([this.actionIconTint(item)])
+          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+      } else if (item.iconPath === 'icons/icon_uninstall.svg') {
+        SymbolGlyph($r('sys.symbol.ohos_trash'))
+          .fontSize(32)
+          .fontWeight(FontWeight.Medium)
+          .fontColor([this.actionIconTint(item)])
+          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+      } else {
+        Image(item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath)
+          .width(32)
+          .height(32)
+          .objectFit(ImageFit.Contain)
+      }
+    }
+    .width(56)
+    .height(56)
+    .borderRadius(28)
+    .backgroundColor(this.palette().secondaryFill)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
   @Builder
   private actionRow(actions: MenuAction[]) {
     Row() {
       ForEach(actions, (item: MenuAction) => {
               Column() {
-                if (item.bundled) {
-                  Image($rawfile(item.iconPath))
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#333333'))
-                    .margin({ bottom: 6 })
-                } else {
-                  Image(item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath)
-                    .width(24)
-                    .height(24)
-                    .objectFit(ImageFit.Contain)
-                    .fillColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#333333'))
-                    .margin({ bottom: 6 })
-                }
-
+                this.actionIcon(item)
                 if (item.title) {
                   Text(item.title)
                     .fontSize(13)
-                    .fontColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#555555'))
+                    .fontColor(item.isDestructive ? '#FF3B30' : this.palette().secondaryText)
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
+                    .margin({ top: 8 })
                 } else if (item.titleKey) {
                   Text(localizedString(getContext(this).resourceManager, item.titleKey))
                     .fontSize(13)
-                    .fontColor(item.isDestructive ? '#FF3B30' : (this.appearanceDark ? '#E5E5E7' : '#555555'))
+                    .fontColor(item.isDestructive ? '#FF3B30' : this.palette().secondaryText)
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
+                    .margin({ top: 8 })
                 }
               }
               .width(`${100 / actions.length}%`)
-              .height(88)
+              .height(112)
               .padding({ left: 4, right: 4, top: 12, bottom: 12 })
               .onClick(() => this.handleAction(item.action))
       })
@@ -301,19 +366,20 @@ export struct CapsuleMenuBottomSheetComponent {
     }
 
     const releaseType: 'release' | 'preview' | 'developer' = this.appInfo.releaseType;
-    if (releaseType === 'release') {
+    const dark: boolean = this.appearanceDark;
+    if (releaseType === 'developer') {
       return {
         text: 'DEV',
-        textColor: '#1D4ED8',
-        backgroundColor: '#DBEAFE'
+        textColor: dark ? '#93C5FD' : '#1D4ED8',
+        backgroundColor: dark ? '#1E3A5F' : '#DBEAFE'
       };
     }
 
     if (releaseType === 'preview') {
       return {
         text: 'PRE',
-        textColor: '#B45309',
-        backgroundColor: '#FFEDD5'
+        textColor: dark ? '#FBBF24' : '#B45309',
+        backgroundColor: dark ? '#3D2E00' : '#FFEDD5'
       };
     }
 

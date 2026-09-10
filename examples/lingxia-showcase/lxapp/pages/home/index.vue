@@ -187,7 +187,7 @@ const resolvedAppearanceLabel = computed(() =>
   resolvedAppearance.value === 'dark' ? t.value('appearanceDark') : t.value('appearanceLight'),
 );
 const resolvedLanguageLabel = computed(() =>
-  resolveDisplayLanguage(data?.displayLanguage?.resolved ?? hostLanguage.value) === 'zh-CN'
+  resolveDisplayLanguage(hostLanguage.value) === 'zh-CN'
     ? t.value('languageZh')
     : t.value('languageEn'),
 );

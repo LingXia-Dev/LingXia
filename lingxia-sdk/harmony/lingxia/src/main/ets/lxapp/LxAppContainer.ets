@@ -212,6 +212,25 @@ export struct LxAppContainer {
     }
   }
 
+  /**
+   * Re-enter the current page after a guest lxapp closes. First-show
+   * dedupe must not swallow this — home Logic needs onShow to resync
+   * display language from rust.
+   */
+  public static notifyForeground(appId: string): void {
+    const container = LxAppContainer.activeContainers.get(appId);
+    if (!container) {
+      return;
+    }
+    const path: string = container.path;
+    if (!path) {
+      return;
+    }
+    hilog.info(DOMAIN, TAG, `notifyForeground onPageShow ${appId}:${path}`);
+    onPageShow(appId, path);
+    Lingxia.updateOrientationUI(appId, path);
+  }
+
   // Listen for external path changes from LxApp.navigate API
   @Watch('onExternalPathChange') @Prop externalPath: string = ''
 

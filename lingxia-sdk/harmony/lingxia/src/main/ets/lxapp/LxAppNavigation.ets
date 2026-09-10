@@ -450,6 +450,9 @@ export struct LxAppNavigation {
         // WebView destruction is driven by Rust via destroyWebViewController.
         hilog.info(DOMAIN, TAG, `Closing modal LxApp and hiding container: ${appId}`);
         this.modalAppVisible = false;
+        if (this.homeAppId) {
+          LxAppContainer.notifyForeground(this.homeAppId);
+        }
       }
 
       // Get next LxApp from Rust stack and open it
@@ -460,6 +463,9 @@ export struct LxAppNavigation {
         hilog.info(DOMAIN, TAG, `No more LxApps in Rust stack - showing empty state`);
         // No apps left in stack - hide modal but keep home visible
         this.modalAppVisible = false;
+        if (this.homeAppId) {
+          LxAppContainer.notifyForeground(this.homeAppId);
+        }
       }
     } catch (error) {
       LxLog.e(TAG, `Failed to close LxApp ${appId}: ${error}`);
