@@ -781,10 +781,15 @@ public class LingXiaWebView extends WebView {
 
     AndroidDocumentBridgeState.Navigation beginTopLevelNavigation(String url) {
         // Chromium can run page JS (and therefore getPort()) before
-        // onPageStarted. Clearing the request here drops that handshake for
-        // the document that is still loading. Only drop it when replacing an
-        // already-committed document.
-        if (documentBridgeState.hasCommittedDocument()) {
+        // onPageStarted, so a request pending here may belong to the document
+        // that is still loading. A strict page keeps it: when the committed
+        // document being replaced is one without a bridge (the parked
+        // placeholder a re-entered page reloads over), the request can only be
+        // the new document's, and dropping it stalls that page until its 5 s
+        // port timeout. If the old document asked instead, the new one merely
+        // receives a port it adopts or ignores. The browser profile still drops
+        // it: a port minted for a trusted document must not outlive it.
+        if (isBrowserProfile() && documentBridgeState.hasCommittedDocument()) {
             messagePortRequested = false;
         }
         cleanupDocumentMessagePort();

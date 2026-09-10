@@ -241,3 +241,39 @@ spec('bring the bridge back up after the app restarts', {
   await expectBootstrap(app);
   await expectEcho(app, 1);
 });
+
+spec('re-enter a route the moment it bootstraps without stalling its port', {
+  id: 'BRIDGE-007',
+  covers: ['lx.navigateTo', 'lx.navigateBack'],
+  app: SHOWCASE_APP_ID,
+  timeout: 150_000,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, 'BRIDGE-007');
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await startAtHome(app);
+  // Leaving parks the document and re-entering at once reloads over it. A port
+  // request lost in that swap recovers only through the page's 5 s port
+  // timeout, which lands in the probe latency measured from View mount. The
+  // race is timing dependent, so it gets several rounds.
+  for (let round = 0; round < 4; round += 1) {
+    await enterRepro(app);
+    await expectBootstrap(app);
+    await markDocument(app, REPRO);
+    await app.nav.back();
+    await enterRepro(app);
+    await eventually(
+      () => isMarkedDocument(app, REPRO),
+      (marked) => !marked,
+      { timeoutMs: 15_000, describe: `round ${round}: re-entered bridge-repro to be a new document`, retryIf: anyTransition },
+    );
+    await expectBootstrap(app);
+    const probe = await waitForElementText(app, REPRO, '#bootstrap-probe', (text) => /\(\d+ ms\)/.test(text), 20_000);
+    const latency = Number.parseInt(probe.replace(/^[\s\S]*\((\d+) ms\)[\s\S]*$/, '$1'), 10);
+    expect(latency <= 5_000 ? 'no port stall' : `round ${round}: port stalled ${latency} ms`).toBe('no port stall');
+    await app.nav.back();
+    await waitForCurrentPage(app, 'home', 20_000);
+  }
+});
