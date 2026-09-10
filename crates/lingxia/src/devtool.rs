@@ -207,6 +207,7 @@ fn build_default_host_app_config(
         settings_destination: None,
         capabilities: None,
         panels: None,
+        update_trusted_public_keys: Vec::new(),
     }
 }
 

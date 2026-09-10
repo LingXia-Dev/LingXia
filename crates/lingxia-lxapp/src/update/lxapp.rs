@@ -334,11 +334,35 @@ impl UpdateManager {
         query: LxAppUpdateQuery,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
+        let keys = lingxia_update::embedded_update_public_keys();
+        if !lingxia_update::check_update_enabled(&keys) {
+            return Ok(None);
+        }
+        let exact_version = match &query {
+            LxAppUpdateQuery::TargetVersion(version) => Some(version.clone()),
+            LxAppUpdateQuery::Latest { .. } => None,
+        };
         let target = UpdateTarget::lxapp(lxappid, release_type, query);
-        provider.check_update(target).await.map_err(|e| {
+        let package = provider.check_update(target).await.map_err(|e| {
             crate::error!("check_update failed: {}", e).with_appid(lxappid);
             provider_error_to_lxapp_error(&e)
-        })
+        })?;
+        let Some(package) = package else {
+            return Ok(None);
+        };
+        lingxia_update::verify_checked_update(
+            package,
+            &lingxia_update::UpdateVerifyTarget {
+                kind: "lxapp".into(),
+                target_id: lxappid.to_string(),
+                channel: release_type.as_str().to_string(),
+                platform: "any".into(),
+                exact_version,
+            },
+            &keys,
+        )
+        .map(Some)
+        .map_err(|e| LxAppError::InvalidParameter(e.to_string()))
     }
 
     async fn check_latest_update(

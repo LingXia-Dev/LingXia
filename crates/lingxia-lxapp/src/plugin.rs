@@ -406,9 +406,18 @@ async fn download_and_install_internal(
     let required_version = &config.version;
 
     let provider = crate::get_provider();
+    let channel = lingxia_update::host_channel();
+    let keys = lingxia_update::embedded_update_public_keys();
+    if !lingxia_update::check_update_enabled(&keys) {
+        return Err(LxAppError::InvalidParameter(format!(
+            "{} plugin updates require update.trustedPublicKeys",
+            channel.as_str()
+        )));
+    }
     let target = UpdateTarget::Plugin {
         id: plugin_id.to_string(),
         version: required_version.to_string(),
+        channel,
     };
     let package = provider
         .check_update(target)
@@ -420,6 +429,18 @@ async fn download_and_install_internal(
                 plugin_name, plugin_id
             ))
         })?;
+    let package = lingxia_update::verify_checked_update(
+        package,
+        &lingxia_update::UpdateVerifyTarget {
+            kind: "lxplugin".into(),
+            target_id: plugin_id.clone(),
+            channel: channel.as_str().to_string(),
+            platform: "any".into(),
+            exact_version: Some(required_version.clone()),
+        },
+        &keys,
+    )
+    .map_err(|e| LxAppError::InvalidParameter(e.to_string()))?;
 
     let plugins_dir = get_plugins_dir(&runtime);
     let download_dir = plugins_dir.join("download");
