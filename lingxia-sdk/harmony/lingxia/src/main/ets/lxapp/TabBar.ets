@@ -135,6 +135,8 @@ export struct TabBar {
     // when visually transparent), and the area outside has no node to intercept.
     // A full-screen root with HitTestMode.Transparent would leak item taps to the
     // WebView behind — Transparent ancestors pass touches through unconditionally.
+    // refreshKey is part of the identity so a rust text patch remounts the
+    // strip. ForEach keyed only by index keeps the previous labels.
     Stack() {
       if (this.isVertical()) {
         this.buildVerticalTabBar();
@@ -142,6 +144,7 @@ export struct TabBar {
         this.buildHorizontalTabBar();
       }
     }
+    .key(`tabbar-${this.refreshKey}`)
     .width(this.isVertical() ? this.getTabBarSize() : '100%')
     .height(this.isVertical() ? '100%' : this.getTabBarSize() + this.extraBottomHeight())
   }
@@ -312,7 +315,7 @@ export struct TabBar {
   buildCenteredVerticalLayout() {
     ForEach(this.tabbar.items, (item: TabBarItem, index: number) => {
       this.buildTabItem(item, index)
-    }, (item: TabBarItem) => `${item.pagePath}|${item.text}|${this.refreshKey}`)
+    }, (item: TabBarItem) => this.tabItemKey(item))
   }
 
   /**
@@ -323,10 +326,14 @@ export struct TabBar {
   buildCenteredHorizontalLayout() {
     ForEach(this.stripIndices(), (index: number) => {
       this.buildTabItem(this.tabbar.items[index], index)
-    })
+    }, (index: number) => this.tabItemKey(this.tabbar.items[index]))
     if (this.overflowStart() >= 0) {
       this.buildMoreItem()
     }
+  }
+
+  private tabItemKey(item: TabBarItem): string {
+    return `${item.pagePath}|${item.text}|${this.refreshKey}`;
   }
 
   /** First folded item index, or -1 when every item has its own slot. */
@@ -534,7 +541,7 @@ export struct TabBar {
         GridItem() {
           this.buildOverflowCell(this.tabbar.items[index], index)
         }
-      }, (index: number) => `overflow-${index}`)
+      }, (index: number) => `overflow-${this.tabItemKey(this.tabbar.items[index])}`)
     }
     .columnsTemplate('1fr 1fr 1fr 1fr 1fr')
     .width(`calc(100% - ${TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN * 2}vp)`)
