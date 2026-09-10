@@ -1,5 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_lxapp_error;
+use crate::url::{is_http_url, split_url_scheme_host};
 use futures::{
     StreamExt,
     channel::{mpsc, oneshot},
@@ -3293,36 +3294,6 @@ fn file_url_path(url: &str) -> JSResult<String> {
         return Err(invalid_surface_target("file URL path must be absolute"));
     }
     Ok(decoded)
-}
-
-fn split_url_scheme_host(url: &str) -> Option<(String, &str)> {
-    let (scheme, rest) = url.split_once("://")?;
-    let host_port = rest.split(['/', '?', '#']).next()?.trim();
-    if host_port.is_empty() || host_port.contains('@') {
-        return None;
-    }
-    let host = if let Some(host) = host_port
-        .strip_prefix('[')
-        .and_then(|rest| rest.split_once(']').map(|(host, _)| host))
-    {
-        host
-    } else {
-        host_port.split(':').next().unwrap_or(host_port)
-    };
-    if host.is_empty() {
-        None
-    } else {
-        Some((scheme.to_ascii_lowercase(), host.trim_end_matches('.')))
-    }
-}
-
-fn is_http_url(value: &str) -> bool {
-    value
-        .get(..7)
-        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("http://"))
-        || value
-            .get(..8)
-            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
 }
 
 fn get_property(obj: &JSObject, field: &str) -> Option<JSValue> {
