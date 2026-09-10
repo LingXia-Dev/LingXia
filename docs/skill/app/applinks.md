@@ -1,31 +1,77 @@
 # LingXia AppLinks
 
-LingXia AppLinks are verified HTTPS URLs that open the host app and route to a
-specific lxapp page. The host app declares which domains it accepts; the URL
-path and query define the action to run.
+LingXia AppLinks are verified HTTPS URLs that open the host app. The host app
+declares which **domains** it accepts — that is the only gate. Every path on a
+configured host is delivered to the home lxapp's Logic as `scene: 8003`, with
+the original URL attached, and Logic decides what it means.
 
-The same URL rule is used everywhere the SDK receives a link:
+Your own product URLs work as-is. A password reset link, a console deep link, a
+marketing landing page: if its host is configured, it reaches Logic unchanged —
+no `/lxapp/` prefix, no native rewriting.
+
+Inbound links reach Logic from:
 
 - OS App Links or Universal Links
 - browser handoff into the app
 - push notification links
-- QR code and barcode scan results
 
-## URL Structure
+QR and barcode scans are the exception: `scanCode` auto-opens **only** the
+`/lxapp/` namespace. A product URL that merely shares a configured host is
+returned to the caller as the scan result and nothing else, so pointing the
+scanner at a poster cannot take over the app.
 
-A LingXia AppLink is an HTTPS URL split into `scheme`, `host`, `path`, and
-`query`:
+## Product URLs
+
+Any HTTPS URL on a configured host:
+
+```text
+https://app.example.com/app/auth/reset-password?code=…&email=…
+```
+
+reaches the home lxapp as:
+
+```json
+{
+  "url": "https://app.example.com/app/auth/reset-password?code=…&email=…",
+  "query": { "code": "…", "email": "…" },
+  "scene": 8003
+}
+```
+
+`url` is the link exactly as the OS delivered it, fragment included. `query` is
+the same query as an object, for convenience. Nothing is consumed or rewritten:
+a `path` or `appId` parameter of your own stays in `query`, an odd percent
+escape is passed through rather than rejected, and the link always opens the
+**home** lxapp.
+
+```ts
+App({
+  onLaunch: routeFromAppLink, // cold
+  onShow: routeFromAppLink,   // warm; cold onShow has no 8003
+});
+
+function routeFromAppLink(options?: { scene?: number; url?: string }) {
+  if (options?.scene !== 8003 || !options.url) return;
+  const { pathname, searchParams } = new URL(options.url);
+  // Route from an allowlist. `url` is attacker-reachable: it can come from a
+  // scanned code, a push payload, or any email.
+  if (pathname === '/app/auth/reset-password') {
+    void lx.navigateTo({ page: 'reset', query: { code: searchParams.get('code') ?? '' } });
+  }
+}
+```
+
+`scene === 8003` is delivered once per tap: cold → `onLaunch`, warm → `onShow`.
+Put the same handler on both.
+
+## The `/lxapp/` namespace
+
+Product URLs always open home. To target a **specific** lxapp, page, or release
+channel from a link, use the reserved `/lxapp/` namespace:
 
 ```text
 https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&envVersion=<release|preview|developer>&<pageQuery>
 ```
-
-| Field | Value | Description |
-|---|---|---|
-| `scheme` | `https` | Required. Platform verified links are HTTPS URLs. |
-| `host` | A host from `lingxia.yaml` `appLinks.hosts` for this build's env | The OS uses this host to verify and deliver the link to the app. |
-| `path` | `/lxapp/open` | `lxapp` is the LingXia namespace. `open` is the action that opens a target lxapp. |
-| `query` | `appId`, `path`, `envVersion`, plus page params | Routing params select the target. Other params are forwarded to the page. |
 
 Examples:
 
@@ -35,10 +81,10 @@ https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&i
 https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42
 ```
 
-The explicit `open` action keeps the `/lxapp` namespace extensible for future
-actions.
+Only in this namespace are routing parameters consumed, and only here is a
+malformed URL rejected. Do not mint product links under `/lxapp/`.
 
-## Routing Parameters
+### Routing Parameters
 
 | Parameter | Required | Description |
 |---|---:|---|
@@ -76,27 +122,6 @@ path: pages/detail/index.html
 page query: id=42
 scene: 8003
 ```
-
-Home routes from query. Omit `appId`/`path`; put the page name in query:
-
-```text
-https://app.example.com/lxapp/open?page=order&id=42
-```
-
-```ts
-function routeFromAppLink(options?: { scene?: number; query?: Record<string, string> }) {
-  if (options?.scene !== 8003) return;
-  const page = options.query?.page;
-  if (page) void lx.navigateTo({ page, query: { id: options.query?.id } });
-}
-
-App({
-  onLaunch: routeFromAppLink, // cold
-  onShow: routeFromAppLink,   // warm; cold onShow has no 8003
-});
-```
-
-`scene === 8003` is delivered once per tap: cold → `onLaunch`, warm → `onShow`.
 
 ## Host Configuration
 
@@ -159,12 +184,17 @@ Example response:
     "details": [
       {
         "appID": "TEAM_ID.com.example.app",
-        "paths": ["/lxapp/*"]
+        "paths": ["*"]
       }
     ]
   }
 }
 ```
+
+`paths` is an OS-level filter and Apple applies it before the app is ever
+started: a path outside `paths` never reaches the SDK. Narrow it only to paths
+you genuinely want to open the app — `["/lxapp/*", "/app/*"]`, say. Android
+intent filters and Harmony skills match on host alone and need no equivalent.
 
 Requirements:
 
@@ -250,40 +280,57 @@ Example response:
 
 ## Runtime Behavior
 
-When the SDK receives a link, it routes the URL through the shared AppLink
-handler.
-
-The handler:
+When the SDK receives a link:
 
 1. Accepts only `https://`.
-2. Checks the host against the hosts baked into this build's `app.json`.
-3. Parses `/lxapp/open` and its query parameters.
-4. Resolves `envVersion`.
-5. Ensures the requested lxapp release is installed and compatible.
-6. Opens the target (`scene: 8003`). No `appId` → home. No `path` → current/initial page.
-7. `scene === 8003` once per tap: cold `onLaunch`, warm `onShow`. Put the same `scene === 8003` handler on both.
+2. Checks the host against the hosts baked into this build's `app.json`. This is
+   the only gate — a non-matching host is ignored, everything else is delivered.
+3. `/lxapp/*` only: parses the routing query, resolves `envVersion`, and ensures
+   the requested lxapp release is installed and compatible. A malformed
+   `/lxapp/*` URL is rejected here.
+4. Opens the target with `scene: 8003` and the original `url`. Any other path
+   opens home at its initial page.
+5. `scene === 8003` once per tap: cold `onLaunch`, warm `onShow`. Put the same
+   handler on both.
 
-Unknown paths are ignored. Bad encoding is rejected. Missing `appId` opens home.
+`url` and `query` are untrusted input — they can originate from a scanned code,
+a push payload, or any email. Route from an allowlist of paths you recognize;
+never feed a query value straight into `navigateTo` as a page name.
 
-When `scanCode` sees a supported AppLink, the SDK forwards it to the shared
-handler and closes the scanner. The scan result is still returned to the caller,
-so existing `scanCode` callers do not hang.
+### Taking links over natively
+
+The host app can handle inbound links itself instead — for a link that must land
+on a native screen outside every lxapp. There is no API for this: simply do not
+hand the link to the SDK.
+
+| Platform | How |
+|---|---|
+| iOS | Drop `Lingxia.handleAppLink(url:)` from `.onOpenURL` |
+| macOS | Drop it from `application(_:continue:)` |
+| Android | `Lingxia.quickStart(this, deliverAppLinks = false)` |
+| HarmonyOS | Override `deliverAppLinks()` in your ability to return `false` |
+
+Handling part of the URL natively and delivering the rest is the same move: do
+your work, then call the SDK entry point for the links you want in Logic.
 
 ## Testing
 
 Warm path (`lingxia dev` / Runner):
 
 ```bash
-lxdev app applink "https://app.example.com/lxapp/open?page=order&id=42"
+lxdev app applink "https://app.example.com/app/auth/reset-password?code=abc"
 ```
 
-Product host must match `appLinks.hosts`. Runner has no hosts (no `lingxia.yaml`); any AppLink URL is accepted. Does not simulate cold start.
+Use the real product URL — the SDK sees exactly what the OS would deliver.
+Product host must match `appLinks.hosts`. Runner has no hosts (no
+`lingxia.yaml`); any URL is accepted, so host rejection can only be verified in
+a product build. Does not simulate cold start.
 
 Android:
 
 ```bash
 adb shell am start -a android.intent.action.VIEW \
-  -d "https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42" \
+  -d "https://app.example.com/app/auth/reset-password?code=abc" \
   com.example.app
 
 adb shell pm get-app-links com.example.app
@@ -310,5 +357,6 @@ hdc shell aa start -A ohos.want.action.viewData \
 - Apple entitlements use `applinks:<host>`.
 - Android manifest has verified HTTPS intent filters for each host.
 - Harmony module skill has HTTPS URI entries for each host.
-- AppLink URLs use `/lxapp/open`; `appId` optional (defaults to home).
-- Page parameters are URL encoded and do not rely on `envVersion` being forwarded.
+- Apple `paths` in the AASA covers every product path that should open the app.
+- Logic handles `scene === 8003` in both `onLaunch` and `onShow`, routing from an allowlist.
+- `/lxapp/open` is reserved for links that target a specific lxapp, page, or channel.

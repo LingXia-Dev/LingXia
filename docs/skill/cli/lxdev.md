@@ -55,7 +55,7 @@ websocket is not a remote machine-management API.
 - `screenshot` — capture the full host surface, including native controls, overlays, and composited WebViews
 - `mouse move|down|up|click|drag|scroll` — raw input in platform window-content units
 - `key type|press` — keyboard input to the host window's focused control
-- `applink <url>` — inject an App Link (same handler as OS/scan/push). Warm `onShow`, `scene === 8003`. Product host must match `appLinks.hosts`; Runner has none, so any AppLink URL is accepted. Returns when accepted, not when navigation finishes.
+- `applink <url>` — inject an inbound link (same entry as OS and push; scans are narrower). Warm `onShow`, `scene === 8003`. Any path works — pass the real product URL. Product host must match `appLinks.hosts`; Runner has none, so any URL is accepted. Returns when accepted, not when navigation finishes.
 
 Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `app mouse`.
 
