@@ -26,6 +26,26 @@ class LingXiaAppDelegate: NSObject, NSApplicationDelegate {
         return false
     }
 
+    // Universal Links arrive as a browsing user activity, not as an open-URL
+    // event. Drop the handleAppLink call to take inbound links over natively.
+    func application(
+        _ application: NSApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void
+    ) -> Bool {
+        guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
+            let url = userActivity.webpageURL
+        else { return false }
+        Lingxia.handleAppLink(url: url)
+        return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            Lingxia.handleAppLink(url: url)
+        }
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         return !Lingxia.handleAppActivation()
     }
