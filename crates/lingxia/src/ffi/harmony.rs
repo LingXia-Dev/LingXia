@@ -165,6 +165,13 @@ pub fn on_host_locale_changed(locale: String) {
     }
 }
 
+/// Widen the compact tab strip to the declaration cap. Tablets stay mobile
+/// for `showOn`; this only changes how many strip slots fit.
+#[napi]
+pub fn set_pad(pad: bool) {
+    lxapp::host_class::set_pad(pad);
+}
+
 /// Return the effective display language selected by the runtime.
 #[napi]
 pub fn get_display_language() -> String {

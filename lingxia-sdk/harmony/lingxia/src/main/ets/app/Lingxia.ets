@@ -3,6 +3,7 @@ import { webview } from '@kit.ArkWeb';
 import { i18n } from '@kit.LocalizationKit';
 import { Want, Configuration, ConfigurationConstant, EnvironmentCallback } from '@kit.AbilityKit';
 import common from '@ohos.app.ability.common';
+import deviceInfo from '@ohos.deviceInfo';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxApp } from '../lxapp/LxApp';
 import { LxAppPush } from '../lxapp/APIs/LxAppPush';
@@ -11,6 +12,7 @@ import { initNativeBridge, getNativeCallbackFunction } from './NativeBridge';
 import { LxLog } from './LxLog';
 import {
   lingxiaInit,
+  setPad,
   registerCustomSchemes,
   getCurrentLxapp,
   getPageOrientation,
@@ -137,6 +139,9 @@ export class Lingxia {
     webview.WebviewController.initializeWebEngine();
 
     hilog.info(DOMAIN, TAG, `Calling lingxiaInit with callback and file system paths (FIRST AND ONLY TIME)`);
+
+    // Tablets stay mobile for showOn; this only widens the compact tab strip.
+    setPad(deviceInfo.deviceType === 'tablet');
 
     const locale = Lingxia.getSystemLocale();
 

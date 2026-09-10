@@ -235,8 +235,9 @@ enum RunnerBridge {
         (view as? LingXiaTabBar)?.setDisplayScale(scale)
     }
 
-    static func setSimulatedHostClass(mobile: Bool) {
+    static func setSimulatedHostClass(mobile: Bool, pad: Bool = false) {
         set_simulated_host_class(mobile)
+        set_pad(pad)
     }
 
     static func setTabBarSelectedIndex(

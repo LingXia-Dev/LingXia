@@ -136,6 +136,10 @@ object Lingxia {
             com.lingxia.webview.LingXiaWebView.setApplicationContext(ctx)
             ScanCodeFragment.warmUpCameraProvider(ctx)
 
+            // Same tablet breakpoint as NavigationBar. Set before init so the
+            // first tab-bar snapshot already uses the pad strip capacity.
+            NativeApi.setPad(ctx.resources.configuration.smallestScreenWidthDp >= 600)
+
             val initResultString = NativeApi.lingxiaInit(
                 ctx.filesDir.absolutePath,
                 ctx.cacheDir.absolutePath,

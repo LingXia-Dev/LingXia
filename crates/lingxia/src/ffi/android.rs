@@ -215,6 +215,17 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_getDisplayLanguage<'a>(
         .resolve::<LogErrorAndDefault>()
 }
 
+/// Widen the compact tab strip to the declaration cap. Tablets stay mobile
+/// for `showOn`; this only changes how many strip slots fit.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_setPad(
+    _env: EnvUnowned,
+    _class: JClass,
+    pad: jboolean,
+) {
+    lxapp::host_class::set_pad(pad != 0);
+}
+
 /// The launch face is on screen, in this appearance — the one the system
 /// splash resolved. Runs before runtime initialization; the launch face must
 /// never wait on the runtime.

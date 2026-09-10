@@ -88,6 +88,13 @@ internal object NativeApi {
         locale: String
     ): String?
 
+    /**
+     * Widen the compact tab strip to the declaration cap (ten). Tablets stay
+     * mobile for `showOn`; this only changes how many strip slots fit.
+     */
+    @JvmStatic
+    external fun setPad(pad: Boolean)
+
     /** Effective display language selected by the initialized runtime. */
     @JvmStatic
     external fun getDisplayLanguage(): String

@@ -1,12 +1,12 @@
 //! Which kind of machine the lxapp is running on.
 //!
 //! This is deliberately not a size class. Window width answers "how much room
-//! is there", which is what a tab strip uses to decide whether to fold; it does
-//! not answer whether a camera-first destination is worth showing at all. A
+//! is there"; [`is_pad`] answers how many compact-strip slots fit. Neither
+//! answers whether a camera-first destination is worth showing at all. A
 //! narrowed desktop window is still a desktop.
 
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::{AtomicU8, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -44,6 +44,7 @@ const MOBILE: u8 = 1;
 const DESKTOP: u8 = 2;
 
 static OVERRIDE: AtomicU8 = AtomicU8::new(UNSET);
+static PAD: AtomicBool = AtomicBool::new(false);
 
 /// The host this lxapp is running on. Defaults to the build target, which is
 /// right for every shipped host; only the runner simulates a different one.
@@ -80,6 +81,25 @@ pub fn set_host_class(class: HostClass) {
     }
 }
 
+/// Whether this host is a tablet / pad.
+///
+/// Orthogonal to [`HostClass`]: an iPad build is still `mobile` for `showOn`,
+/// but its compact tab strip has room for the declaration cap instead of the
+/// phone's five slots. Desktop skins ignore the compact-strip fold.
+pub fn is_pad() -> bool {
+    PAD.load(Ordering::Relaxed)
+}
+
+/// Shipped hosts that know they are a tablet set this before the first tab-bar
+/// snapshot is read. The runner sets it when the simulated frame is a tablet.
+///
+/// Changing it does not reload pages: the overflow fold is chrome-only, and a
+/// real device does not flip pad at runtime. The runner rebuilds chrome when
+/// it switches frames.
+pub fn set_pad(pad: bool) {
+    PAD.store(pad, Ordering::Relaxed);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,6 +114,20 @@ mod tests {
         assert_eq!(HostClass::Desktop.as_str(), "desktop");
         // Restore so a shared-process test run does not inherit a simulated host.
         OVERRIDE.store(UNSET, Ordering::Relaxed);
+        PAD.store(false, Ordering::Relaxed);
         assert_eq!(host_class(), HostClass::built_for());
+        assert!(!is_pad());
+    }
+
+    #[test]
+    fn pad_is_orthogonal_to_host_class() {
+        set_host_class(HostClass::Mobile);
+        set_pad(true);
+        assert_eq!(host_class(), HostClass::Mobile);
+        assert!(is_pad());
+        set_pad(false);
+        assert_eq!(host_class(), HostClass::Mobile);
+        assert!(!is_pad());
+        OVERRIDE.store(UNSET, Ordering::Relaxed);
     }
 }

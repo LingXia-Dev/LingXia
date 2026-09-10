@@ -181,9 +181,11 @@ public class RunnerApp {
         // runner happens to be. A tablet counts as mobile: an iPad build is
         // `target_os = "ios"`, so a real one reports mobile, and the simulator
         // has to agree with the device. Its desktop-like sidebar comes from the
-        // width, which `usesSurfaceShell` decides separately.
+        // width, which `usesSurfaceShell` decides separately. `pad` widens the
+        // compact strip to the declaration cap when a product uses a bottom bar.
         LingxiaRunnerSPI.Tabs.setSimulatedHostClass(
-            mobile: selectedDeviceSize.shape != .desktop
+            mobile: selectedDeviceSize.shape != .desktop,
+            pad: selectedDeviceSize.shape == .pad
         )
         let effectiveDevice = selectedDeviceSize.oriented(deviceOrientation)
         deviceSize = effectiveDevice
