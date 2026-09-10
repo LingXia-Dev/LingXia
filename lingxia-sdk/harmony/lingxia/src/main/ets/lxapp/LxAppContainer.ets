@@ -869,15 +869,25 @@ export struct LxAppContainer {
   @Builder
   buildTabBar(): void {
     if (this.shouldShowTabBar()) {
-      TabBar({
-        tabbar: this.tabBarState,
-        appId: this.appId,
-        refreshKey: this.tabBarRefreshKey,
-        pageCanvasColor: resolveCanvasColor(this.appearanceDark),
-        bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
-        onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
-      })
+      // Recreate the custom component when rust patches item text.
+      // TabBar's @Prop is a napi object: nested item.text is not observed,
+      // and a .key() inside TabBar remounts children against that stale
+      // prop. Android rebuilds the view tree with removeAllViews().
+      ForEach(this.tabBarRemountKeys(), (key: number) => {
+        TabBar({
+          tabbar: this.tabBarState,
+          appId: this.appId,
+          refreshKey: key,
+          pageCanvasColor: resolveCanvasColor(this.appearanceDark),
+          bottomInset: this.isTabBarVertical() ? 0 : this.bottomIndicatorInset,
+          onTabSelected: (appId: string, index: number, item: TabBarItem): void => this.handleTabSelected(index)
+        })
+      }, (key: number) => `lx-tabbar-${this.appId}-${key}`)
     }
+  }
+
+  private tabBarRemountKeys(): number[] {
+    return [this.tabBarRefreshKey];
   }
 
   /**
