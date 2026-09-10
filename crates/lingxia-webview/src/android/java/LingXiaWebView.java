@@ -65,10 +65,12 @@ public class LingXiaWebView extends WebView {
     private Object messagePortBridge;
     private java.lang.reflect.Method createPortMethod;
     private java.lang.reflect.Method sendPortMethod;
+    private java.lang.reflect.Method renewPortMethod;
     private java.lang.reflect.Method postMessageMethod;
     private java.lang.reflect.Method cleanupMethod;
     private boolean messagePortCapable;
-    private boolean messagePortRequested;
+    // Written on the JavaBridge thread by getPort, read on the UI thread.
+    private volatile boolean messagePortRequested;
     private final AndroidDocumentBridgeState documentBridgeState =
             new AndroidDocumentBridgeState();
 
@@ -593,6 +595,7 @@ public class LingXiaWebView extends WebView {
             createPortMethod = bridgeClz.getMethod(
                     "create", LingXiaWebView.class, long.class, long.class);
             sendPortMethod = bridgeClz.getMethod("sendMessagePortToWebView");
+            renewPortMethod = bridgeClz.getMethod("renewWebViewPort");
             postMessageMethod = bridgeClz.getMethod("postMessageToWebView", String.class);
             cleanupMethod = bridgeClz.getMethod("cleanup");
             messagePortCapable = true;
@@ -609,6 +612,7 @@ public class LingXiaWebView extends WebView {
         cleanupDocumentMessagePort();
         createPortMethod = null;
         sendPortMethod = null;
+        renewPortMethod = null;
         postMessageMethod = null;
         cleanupMethod = null;
         messagePortCapable = false;
@@ -775,7 +779,7 @@ public class LingXiaWebView extends WebView {
         documentBridgeState.prepareHostLoad(loadToken, trustedHostLoad);
     }
 
-    AndroidDocumentBridgeState.Navigation beginTopLevelNavigation() {
+    AndroidDocumentBridgeState.Navigation beginTopLevelNavigation(String url) {
         // Chromium can run page JS (and therefore getPort()) before
         // onPageStarted. Clearing the request here drops that handshake for
         // the document that is still loading. Only drop it when replacing an
@@ -784,7 +788,7 @@ public class LingXiaWebView extends WebView {
             messagePortRequested = false;
         }
         cleanupDocumentMessagePort();
-        return documentBridgeState.onPageStarted(AndroidDocumentBridgeState.nextLoadToken());
+        return documentBridgeState.onPageStarted(AndroidDocumentBridgeState.nextLoadToken(), url);
     }
 
     long currentNavigationLoadToken() {
@@ -792,7 +796,26 @@ public class LingXiaWebView extends WebView {
     }
 
     void commitTopLevelDocument() {
-        AndroidDocumentBridgeState.Navigation pending = documentBridgeState.pendingCommit();
+        commitNavigation(documentBridgeState.pendingCommit());
+    }
+
+    /**
+     * Fallback commit from a finished main-frame load. Chromium skips
+     * onPageCommitVisible for a covered, zero-size or off-screen WebView (a
+     * splash, a preloaded tab); a strict document would then never bind, so
+     * getPort stays deferred and the View handshake never completes. The
+     * browser profile keeps requiring visible-commit proof. Must run before the
+     * finish reaches Rust, which retires the pending commit on finish.
+     */
+    void commitTopLevelDocumentOnFinish(String url) {
+        commitNavigation(documentBridgeState.pendingFinishCommit(url, isBrowserProfile()));
+    }
+
+    void recordMainFrameLoadFailure() {
+        documentBridgeState.recordMainFrameFailure(documentBridgeState.currentLoadToken());
+    }
+
+    private void commitNavigation(AndroidDocumentBridgeState.Navigation pending) {
         if (pending == null) {
             return;
         }
@@ -823,18 +846,6 @@ public class LingXiaWebView extends WebView {
                         pending.loadToken, generation, isBrowserProfile())) {
             installDocumentMessagePort(pending.loadToken, generation);
         }
-    }
-
-    /**
-     * lxapp (non-browser) fallback when Chromium never delivers
-     * {@code onPageCommitVisible} — splash-covered, 0-size, or hidden tab
-     * WebViews. BrowserControl keeps requiring visible-commit proof.
-     */
-    void commitTopLevelDocumentFromLoadFinished() {
-        if (isBrowserProfile()) {
-            return;
-        }
-        commitTopLevelDocument();
     }
 
     boolean acceptsDocumentPort(long loadToken, long documentGeneration) {
@@ -894,6 +905,24 @@ public class LingXiaWebView extends WebView {
     }
 
     /**
+     * A getPort from the page, on the main thread. Before the document binds,
+     * the request is remembered and served at binding. Once bound, a strict
+     * document that asks again is re-minted a fresh channel for the same
+     * document; the browser profile keeps its one-shot port.
+     */
+    private void handlePortRequest() {
+        if (messagePortBridge != null && renewPortMethod != null && !isBrowserProfile()) {
+            try {
+                renewPortMethod.invoke(messagePortBridge);
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to renew message port", t);
+            }
+            return;
+        }
+        sendMessagePortToWebView();
+    }
+
+    /**
      * Send MessagePort to WebView for bidirectional communication.
      * Called from NativeBridge or LingXiaProxy. Must be called on main thread.
      */
@@ -950,7 +979,7 @@ public class LingXiaWebView extends WebView {
                 return "MessagePort unsupported";
             }
             messagePortRequested = true;
-            ensureMainThread(LingXiaWebView.this::sendMessagePortToWebView);
+            ensureMainThread(LingXiaWebView.this::handlePortRequest);
             return "Message port sent";
         }
 
@@ -1427,6 +1456,7 @@ public class LingXiaWebView extends WebView {
                     revokeDocumentTransport();
                     createPortMethod = null;
                     sendPortMethod = null;
+                    renewPortMethod = null;
                     postMessageMethod = null;
                     cleanupMethod = null;
                     messagePortCapable = false;

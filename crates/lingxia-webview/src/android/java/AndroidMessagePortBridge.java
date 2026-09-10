@@ -102,6 +102,27 @@ public final class AndroidMessagePortBridge {
         }
     }
 
+    /**
+     * Serve a repeated getPort for this same document. A page that asks again
+     * never received a working port: the one-shot transfer can be posted before
+     * the page's listener exists, and a transferred port cannot be sent twice.
+     * Re-mint a fresh pair bound to the same load token and generation, so the
+     * document gate and the Rust session are unchanged; the page's bridge closes
+     * the port it replaces.
+     */
+    public void renewWebViewPort() {
+        if (!webView.acceptsDocumentPort(loadToken, documentGeneration)) return;
+        if (transferred) {
+            try {
+                setupMessagePorts();
+            } catch (Throwable t) {
+                Log.e(TAG, "Failed to renew message port", t);
+                return;
+            }
+        }
+        sendMessagePortToWebView();
+    }
+
     public boolean postMessageToWebView(String message) {
         if (nativePort == null
                 || !webView.acceptsDocumentPort(loadToken, documentGeneration)) return false;
