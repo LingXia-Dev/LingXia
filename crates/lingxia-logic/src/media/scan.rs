@@ -68,7 +68,9 @@ async fn scan(ctx: JSContext, options: Optional<JSScanOptions>) -> JSResult<JSOb
         .ok_or_else(|| js_internal_error("scanCode payload missing string `scanType`"))?
         .to_string();
 
-    let _ = lingxia_service::applink::handle(&scan_result);
+    // Only the `/lxapp/*` namespace auto-opens. A product URL that merely
+    // shares a configured host is returned to the caller, not acted on.
+    let _ = lingxia_service::applink::deliver_lxapp_only(&scan_result);
 
     let result = completed(&ctx)?;
     result.set("scanResult", scan_result)?;

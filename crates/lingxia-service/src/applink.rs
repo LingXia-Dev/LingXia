@@ -4,13 +4,22 @@ use std::sync::OnceLock;
 const LXAPP_PREFIX: &str = "/lxapp/";
 const OPEN_ACTION: &str = "open";
 
-/// Parsed LingXia AppLink target.
+/// Parsed inbound AppLink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AppLinkTarget {
+    /// The URL exactly as the OS delivered it, fragment included. Logic routes
+    /// from this; every other field is a convenience for `/lxapp/*` links.
+    pub url: String,
+    /// Target lxapp. Empty resolves to the host's home lxapp.
     pub appid: String,
+    /// Target page inside the lxapp. Empty means the initial page.
     pub path: String,
+    /// Page query. Routing params are stripped only for `/lxapp/open`.
     pub query: String,
     pub release_type: ReleaseType,
+    /// The URL is in the `/lxapp/*` namespace, so `appid` / `path` / `query`
+    /// were parsed rather than passed through.
+    pub lxapp_route: bool,
 }
 
 /// Host callback used to open an accepted AppLink.
@@ -23,21 +32,36 @@ pub fn register_handler(handler: AppLinkHandler) {
     let _ = APP_LINK_HANDLER.set(handler);
 }
 
-/// Handle a LingXia AppLink.
+/// Deliver an inbound URL to the home lxapp. Used by the OS entry points, push
+/// links and devtool injection.
 ///
-/// Returns:
+/// The host is the only gate: any path on a configured host is handed to Logic
+/// as `scene: 8003`. Returns:
 ///
-/// - `1` when the link was accepted and the registered handler was called.
-/// - `0` when the URL is not a configured LingXia AppLink.
-/// - `-1` when the URL looks like a LingXia AppLink but is invalid, or when no
-///   handler has been registered.
-pub fn handle(url: &str) -> i32 {
+/// - `1` when the link was delivered to the registered handler.
+/// - `0` when the URL is not `https://`, or its host is not configured.
+/// - `-1` when no handler is registered, or the URL is in the `/lxapp/*`
+///   namespace but malformed. A product path never yields `-1`.
+pub fn deliver(url: &str) -> i32 {
+    dispatch(url, false)
+}
+
+/// Deliver only `/lxapp/*` URLs. Used by `scanCode`: a scan is something the
+/// user aimed at a code inside an lxapp, so an arbitrary product URL that
+/// happens to be on a configured host must not take over the home lxapp.
+pub fn deliver_lxapp_only(url: &str) -> i32 {
+    dispatch(url, true)
+}
+
+fn dispatch(url: &str, lxapp_only: bool) -> i32 {
     match parse(url) {
         Ok(Some(target)) => {
-            if let Some(handler) = APP_LINK_HANDLER.get() {
-                handler(target)
-            } else {
-                -1
+            if lxapp_only && !target.lxapp_route {
+                return 0;
+            }
+            match APP_LINK_HANDLER.get() {
+                Some(handler) => handler(target),
+                None => -1,
             }
         }
         Ok(None) => 0,
@@ -45,7 +69,7 @@ pub fn handle(url: &str) -> i32 {
     }
 }
 
-/// Parse a LingXia AppLink without opening it.
+/// Parse an inbound AppLink without opening it.
 pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
     let url = url.trim();
     let Some(rest) = url.strip_prefix("https://") else {
@@ -60,11 +84,23 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
         return Ok(None);
     }
 
-    let (url_path, raw_query) = split_path_query(path_and_query);
-    let route = match parse_route(url_path)? {
-        Some(route) => route,
-        None => return Ok(None),
+    // The fragment survives only in `url`: it is not part of the page query.
+    let (url_path, raw_query) = split_path_query(strip_fragment(path_and_query));
+
+    let Some(route) = parse_route(url_path)? else {
+        // Product path: nothing here is ours to interpret. Query goes to the
+        // page verbatim — no percent validation, no routing params consumed —
+        // so a real link is never rejected over its own encoding.
+        return Ok(Some(AppLinkTarget {
+            url: url.to_string(),
+            appid: String::new(),
+            path: String::new(),
+            query: raw_query.unwrap_or_default().to_string(),
+            release_type: host_channel(),
+            lxapp_route: false,
+        }));
     };
+
     let uses_query_routing = route.appid.is_none();
     let query_parts = parse_query(raw_query, uses_query_routing)?;
     let appid = match route.appid {
@@ -78,10 +114,12 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
     // Empty appId is resolved to the host's home lxapp when the link is opened.
 
     Ok(Some(AppLinkTarget {
+        url: url.to_string(),
         appid,
         path,
         query: query_parts.page_query,
         release_type: query_parts.release_type,
+        lxapp_route: true,
     }))
 }
 
@@ -102,7 +140,8 @@ fn parse_route(path: &str) -> Result<Option<AppLinkRoute>, String> {
         }));
     }
     if rest.starts_with("open/") {
-        return Ok(None);
+        // Still our namespace: a malformed link must fail, not open home.
+        return Err("unsupported /lxapp/open subpath".to_string());
     }
 
     let (raw_appid, raw_path) = rest.split_once('/').unwrap_or((rest, ""));
@@ -118,7 +157,8 @@ fn parse_route(path: &str) -> Result<Option<AppLinkRoute>, String> {
 }
 
 fn split_authority(rest: &str) -> (&str, &str) {
-    match rest.find('/') {
+    // A root link may carry a query or fragment with no `/` before it.
+    match rest.find(['/', '?', '#']) {
         Some(index) => (&rest[..index], &rest[index..]),
         None => (rest, "/"),
     }
@@ -133,6 +173,13 @@ fn host_without_port(authority: &str) -> &str {
         .next()
         .unwrap_or("")
         .trim()
+}
+
+fn strip_fragment(value: &str) -> &str {
+    match value.find('#') {
+        Some(index) => &value[..index],
+        None => value,
+    }
 }
 
 fn split_path_query(value: &str) -> (&str, Option<&str>) {
@@ -286,6 +333,7 @@ mod tests {
         assert_eq!(target.path, "");
         assert_eq!(target.query, "");
         assert_eq!(target.release_type, ReleaseType::Release);
+        assert!(target.lxapp_route);
     }
 
     #[test]
@@ -365,16 +413,71 @@ mod tests {
     }
 
     #[test]
-    fn ignores_non_lxapp_paths() {
-        assert!(
-            parse("https://www.lingxia.app/oauth/callback")
-                .unwrap()
-                .is_none()
+    fn product_path_is_delivered_untouched() {
+        let target = parse("https://www.lingxia.app/app/auth/reset-password?code=abc&email=a%40b")
+            .unwrap()
+            .unwrap();
+        assert!(!target.lxapp_route);
+        assert_eq!(target.appid, "");
+        assert_eq!(target.path, "");
+        assert_eq!(target.query, "code=abc&email=a%40b");
+        assert_eq!(
+            target.url,
+            "https://www.lingxia.app/app/auth/reset-password?code=abc&email=a%40b"
         );
     }
 
     #[test]
-    fn rejects_invalid_percent_encoding() {
+    fn product_query_keeps_routing_names_and_bad_encoding() {
+        // `path` and `envVersion` are the product's own params here, and a lone
+        // `%` must not turn a real link into a rejection.
+        let target =
+            parse("https://www.lingxia.app/app/auth?path=/home&envVersion=trial&code=100%")
+                .unwrap()
+                .unwrap();
+        assert_eq!(target.path, "");
+        assert_eq!(target.release_type, host_channel());
+        assert_eq!(target.query, "path=/home&envVersion=trial&code=100%");
+    }
+
+    #[test]
+    fn fragment_stays_in_url_only() {
+        let target = parse("https://www.lingxia.app/app/auth?code=1#token=x")
+            .unwrap()
+            .unwrap();
+        assert_eq!(target.query, "code=1");
+        assert_eq!(
+            target.url,
+            "https://www.lingxia.app/app/auth?code=1#token=x"
+        );
+    }
+
+    #[test]
+    fn root_url_is_a_product_path() {
+        let target = parse("https://www.lingxia.app").unwrap().unwrap();
+        assert!(!target.lxapp_route);
+        assert_eq!(target.query, "");
+    }
+
+    #[test]
+    fn root_url_with_query_or_fragment_keeps_its_host() {
+        let target = parse("https://www.lingxia.app?ref=mail").unwrap().unwrap();
+        assert!(!target.lxapp_route);
+        assert_eq!(target.query, "ref=mail");
+
+        let target = parse("https://www.lingxia.app#hero").unwrap().unwrap();
+        assert_eq!(target.query, "");
+        assert_eq!(target.url, "https://www.lingxia.app#hero");
+    }
+
+    #[test]
+    fn rejects_open_subpath_instead_of_opening_home() {
+        assert!(parse("https://www.lingxia.app/lxapp/open/?appId=shop").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open/extra").is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_percent_encoding_in_lxapp_namespace() {
         assert!(parse("https://www.lingxia.app/lxapp/open?appId=%GG").is_err());
     }
 

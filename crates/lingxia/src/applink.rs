@@ -7,12 +7,12 @@ pub(crate) fn install_handler() {
 
 /// Deliver `url` as if the OS posted an App Link.
 ///
-/// Same codes as the platform FFI: `1` accepted, `0` not a configured
-/// AppLink, `-1` invalid or no handler. Acceptance is not navigation
-/// complete — `open_lxapp` is spawned after this returns.
+/// Same codes as the platform FFI: `1` delivered, `0` not https or host not
+/// configured, `-1` malformed `/lxapp/*` or no handler. Delivery is not
+/// navigation complete — `open_lxapp` is spawned after this returns.
 #[cfg(feature = "devtool")]
 pub fn inject(url: &str) -> i32 {
-    lingxia_service::applink::handle(url)
+    lingxia_service::applink::deliver(url)
 }
 
 fn open_target(target: AppLinkTarget) -> i32 {
@@ -30,7 +30,8 @@ fn open_target(target: AppLinkTarget) -> i32 {
     let options = LxAppStartupOptions::new(&target.path)
         .set_query(target.query)
         .set_release_type(target.release_type)
-        .set_scene(Scene::AppLink);
+        .set_scene(Scene::AppLink)
+        .set_link_url(target.url);
     let release_type = target.release_type;
 
     std::mem::drop(rong_rt::RongExecutor::global().spawn(async move {

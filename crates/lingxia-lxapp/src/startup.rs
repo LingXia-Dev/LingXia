@@ -36,6 +36,10 @@ pub struct LxAppStartupOptions {
     pub page: Option<String>,
     pub release_type: ReleaseType,
     pub scene: Scene,
+    /// Original inbound URL for `Scene::AppLink`. Cleared with the scene once
+    /// Logic has seen it, so a later plain `onShow` carries no stale link.
+    #[serde(skip)]
+    pub link_url: String,
     #[serde(skip)]
     pub open_mode: LxAppOpenMode,
     #[serde(skip)]
@@ -217,8 +221,16 @@ impl LxAppStartupOptions {
         self
     }
 
-    /// JS `AppLaunchOptions`: `{ path, query, scene }`. Query is a nested
-    /// object so home lxapp Logic can route with `lx.navigateTo`.
+    /// Sets the original inbound AppLink URL.
+    pub fn set_link_url(mut self, link_url: String) -> Self {
+        self.link_url = link_url;
+        self
+    }
+
+    /// JS `AppLaunchOptions`: `{ path, query, scene, url }`. Query is a nested
+    /// object so home lxapp Logic can route with `lx.navigateTo`. `url` is the
+    /// original inbound link and is present only for `scene: 8003`; `path` is
+    /// the lxapp page, which for a product link is the initial page.
     pub fn launch_options_value(&self) -> Value {
         let query =
             parse_query_string(&self.query).unwrap_or_else(|_| Value::Object(Default::default()));
@@ -227,6 +239,9 @@ impl LxAppStartupOptions {
             map.insert("path".to_string(), Value::String(self.path.clone()));
         }
         map.insert("query".to_string(), query);
+        if !self.link_url.is_empty() {
+            map.insert("url".to_string(), Value::String(self.link_url.clone()));
+        }
         map.insert(
             "scene".to_string(),
             Value::Number(serde_json::Number::from(self.scene as u32)),
@@ -285,6 +300,18 @@ mod tests {
                 "query": { "page": "order", "id": "42" },
                 "scene": 8003,
             })
+        );
+    }
+
+    #[test]
+    fn launch_options_carry_the_inbound_link_url() {
+        let options = LxAppStartupOptions::new("pages/home/index")
+            .set_query("code=1".to_string())
+            .set_scene(super::Scene::AppLink)
+            .set_link_url("https://app.example.com/app/auth/reset?code=1#t".to_string());
+        assert_eq!(
+            options.launch_options_value()["url"],
+            serde_json::json!("https://app.example.com/app/auth/reset?code=1#t")
         );
     }
 }

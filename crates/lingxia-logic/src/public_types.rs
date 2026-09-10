@@ -107,6 +107,11 @@ rong::js_api! {
     query?: Record<string, string>;
     /** `8003` = AppLink (cold: onLaunch; warm: onShow). */
     scene?: AppLaunchScene;
+    /**
+     * Inbound link exactly as the OS delivered it, fragment included. Present
+     * only with `scene: 8003`. Untrusted: route from an allowlist of paths.
+     */
+    url?: string;
     referrerInfo?: {
         appId?: string;
         extraData?: Record<string, unknown>;
@@ -120,6 +125,8 @@ rong::js_api! {
     query?: Record<string, string>;
     /** `8003` = AppLink. */
     scene?: AppLaunchScene;
+    /** Inbound link, present only with `scene: 8003`. */
+    url?: string;
 }"###;
 
         type AppScreenshotOptions = r###"{
