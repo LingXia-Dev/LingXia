@@ -2377,7 +2377,15 @@ export function initBridge(): void {
       installAppleForegroundReconnect();
     } else if (communicationMethod === MESSAGE_PORT_TYPE) {
       installMessagePortInitListener();
-      getMessagePort().catch((e) => warn("Port init failed:", e));
+      const tryPort = (attempt: number): void => {
+        getMessagePort().catch((e) => {
+          warn("Port init failed:", e);
+          if (attempt < 3) {
+            window.setTimeout(() => tryPort(attempt + 1), 500 * attempt);
+          }
+        });
+      };
+      tryPort(1);
     } else if (
       communicationMethod === "webkit" ||
       communicationMethod === JS_INTERFACE_TYPE ||
