@@ -357,6 +357,16 @@ pub struct AppConfig {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
+
+    /// Ed25519 public keys that may verify in-app update envelopes.
+    /// Embedded from host `lingxia.yaml` at build time; never from check-update.
+    /// Empty: developer still checks without verifying; preview/release skip.
+    #[serde(
+        rename = "updateTrustedPublicKeys",
+        default,
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub update_trusted_public_keys: Vec<String>,
 }
 
 /// The `capabilities:` section, shared verbatim between the CLI (parsing
@@ -1117,6 +1127,7 @@ mod tests {
             settings_destination: None,
             capabilities: None,
             panels: None,
+            update_trusted_public_keys: Vec::new(),
         }
     }
 
@@ -1127,6 +1138,22 @@ mod tests {
         assert!(set_app_config(cfg).is_ok());
         let err = set_app_config(test_config("Other")).unwrap_err();
         assert!(matches!(err, AppContextError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn parse_and_validate_reads_update_trusted_public_keys() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Demo",
+                "productVersion": "1.0.0",
+                "updateTrustedPublicKeys": ["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"]
+            }"#,
+        )
+        .expect("app.json with update keys");
+        assert_eq!(
+            config.update_trusted_public_keys,
+            vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
+        );
     }
 
     #[test]

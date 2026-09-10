@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod error;
 mod lxapp;
+mod signing;
 
 use lingxia_provider::{BoxFuture, ProviderError};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,13 @@ pub use lxapp::{
     ensure_force_update_for_installed as ensure_lxapp_force_update_for_installed,
     ensure_target_version_ready as ensure_lxapp_target_version_ready, lxapp_update_scope_key,
     spawn_background_update_check as spawn_lxapp_background_update_check,
+};
+pub use signing::{
+    SignRequest, UpdateAuthentication, UpdateVerifyTarget, archive_sha256_hex,
+    channel_requires_signature, check_update_enabled, compact_manifest, decode_base64url,
+    embedded_update_public_keys, encode_base64url, host_requires_signature, host_update_platform,
+    load_signing_seed_file, public_key_base64url, sign_package, sign_package_from_key_file,
+    verify_archive_bytes, verify_checked_update,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -209,6 +217,7 @@ pub enum UpdateTarget {
     Plugin {
         id: String,
         version: String,
+        channel: ReleaseType,
     },
 }
 
@@ -227,10 +236,11 @@ impl UpdateTarget {
         }
     }
 
-    pub fn plugin(id: impl Into<String>, version: impl Into<String>) -> Self {
+    pub fn plugin(id: impl Into<String>, version: impl Into<String>, channel: ReleaseType) -> Self {
         Self::Plugin {
             id: id.into(),
             version: version.into(),
+            channel,
         }
     }
 
@@ -239,7 +249,13 @@ impl UpdateTarget {
         match self {
             Self::App { .. } => "app".to_string(),
             Self::LxApp { id, channel, .. } => format!("lxapp:{id}@{}", channel.as_str()),
-            Self::Plugin { id, version } => format!("plugin:{id}@{version}"),
+            Self::Plugin {
+                id,
+                version,
+                channel,
+            } => {
+                format!("plugin:{id}@{version}@{}", channel.as_str())
+            }
         }
     }
 }
@@ -253,6 +269,7 @@ pub struct UpdatePackageInfo {
     pub release_notes: Option<Vec<String>>,
     pub is_force_update: bool,
     pub required_runtime_version: Option<String>,
+    pub authentication: Option<UpdateAuthentication>,
 }
 
 impl UpdatePackageInfo {
@@ -377,7 +394,7 @@ pub trait UpdateProvider: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReleaseType, UpdatePackageInfo, Version};
+    use super::{ReleaseType, UpdatePackageInfo, UpdateTarget, Version};
 
     fn package(version: &str, checksum: &str) -> UpdatePackageInfo {
         UpdatePackageInfo {
@@ -388,6 +405,7 @@ mod tests {
             release_notes: None,
             is_force_update: false,
             required_runtime_version: None,
+            authentication: None,
         }
     }
 
@@ -414,5 +432,11 @@ mod tests {
         assert!(!pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), Some("BBB")));
         assert!(pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), None));
         assert!(pkg.should_replace(ReleaseType::Developer, Some("0.9.0"), Some("bbb")));
+    }
+
+    #[test]
+    fn plugin_target_carries_the_requested_channel() {
+        let target = UpdateTarget::plugin("plug", "1.0.0", ReleaseType::Developer);
+        assert_eq!(target.scope_key(), "plugin:plug@1.0.0@developer");
     }
 }

@@ -10,5 +10,9 @@ repository.workspace = true
 lingxia-app-context = { workspace = true }
 lingxia-provider = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+base64 = { workspace = true }
+ed25519-dalek = "2"
+sha2 = "0.11"
