@@ -1,4 +1,5 @@
 import { expect, spec } from '@lingxia/test';
+import type { LxAppDriver, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID, showcaseApp } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
 import {
@@ -9,6 +10,22 @@ import {
   waitForElementEnabled,
   waitForElementText,
 } from '../helpers/page.js';
+
+async function waitForTabBar(
+  app: LxAppDriver,
+  accept: (state: LxAppRuntimeTabBarInfo) => boolean,
+  describe: string,
+): Promise<LxAppRuntimeTabBarInfo> {
+  return eventually(
+    async () => {
+      const state = (await app.info()).tab_bar;
+      if (state === null) throw new Error('showcase TabBar is not declared');
+      return state;
+    },
+    accept,
+    { describe, timeoutMs: 15_000, retryIf: () => true },
+  );
+}
 
 spec('home View MessagePort is up without relaunch', async () => {
   const app = showcaseApp();
@@ -107,6 +124,15 @@ spec('switches display language from the home control', {
       'data-selected',
       'true',
     );
+    await waitForTabBar(
+      app,
+      (state) =>
+        state.items[0]?.text === '首页' &&
+        state.items[1]?.text === '接口' &&
+        state.items[2]?.text === '组件' &&
+        state.items[3]?.text === '待办',
+      'tab bar labels after zh-CN',
+    );
 
     await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-en-US"]' });
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-en-US"]');
@@ -137,6 +163,15 @@ spec('switches display language from the home control', {
       '[data-testid="home-language-en-US"]',
       'data-selected',
       'true',
+    );
+    await waitForTabBar(
+      app,
+      (state) =>
+        state.items[0]?.text === 'Home' &&
+        state.items[1]?.text === 'API' &&
+        state.items[2]?.text === 'Components' &&
+        state.items[3]?.text === 'ToDo',
+      'tab bar labels after en-US',
     );
   } finally {
     await app.eval({
