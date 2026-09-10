@@ -16,6 +16,10 @@ app:
     developer: http://192.168.37.211:8080
     release: http://192.168.37.211:8080
 
+update:
+  trustedPublicKeys:
+    - 6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw
+
 android:
   packageId: com.lingxia.example.lxapp
   minSdk: 29
