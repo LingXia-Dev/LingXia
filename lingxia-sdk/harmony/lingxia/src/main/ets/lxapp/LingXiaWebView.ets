@@ -84,6 +84,12 @@ export struct LingXiaWebView {
   // which is the Harmony analogue of Android skipping onPageCommitVisible.
   // Strict lxapp pages still need a MessagePort from onPageEnd in that case.
   private documentCommitted: boolean = false
+  // URL this begin reported. native matches a commit against it exactly, so the
+  // onPageEnd fallback commits with it rather than with the end callback's URL.
+  private pageBeginUrl: string = ''
+  // ArkWeb ends error pages too: a load whose main frame failed never commits
+  // from its end.
+  private mainFrameFailed: boolean = false
 
   aboutToDisappear() {
     this.cleanupEmbedManager();
@@ -114,6 +120,20 @@ export struct LingXiaWebView {
 
   private isBrowserRelaxed(): boolean {
     return isWebViewBrowserRelaxed(this.webTag);
+  }
+
+  /** The same document: equal URLs once any fragment is dropped, never about:blank. */
+  private isSameDocumentUrl(started: string, finished: string): boolean {
+    if (!started || !finished) {
+      return false;
+    }
+    const finishedDocument = this.withoutFragment(finished);
+    return finishedDocument !== 'about:blank' && this.withoutFragment(started) === finishedDocument;
+  }
+
+  private withoutFragment(url: string): string {
+    const hash = url.indexOf('#');
+    return hash < 0 ? url : url.substring(0, hash);
   }
 
   private commitDocument(url: string): void {
@@ -179,6 +199,7 @@ export struct LingXiaWebView {
         if (!event || !event.request || !event.error || !event.request.isMainFrame()) {
           return;
         }
+        this.mainFrameFailed = true;
         handleWebViewLoadError(
           this.webTag,
           WebViewManager.getGenerationForController(this.webTag, this.controller),
@@ -190,6 +211,8 @@ export struct LingXiaWebView {
       })
       .onPageBegin((event) => {
         this.documentCommitted = false;
+        this.pageBeginUrl = event?.url ?? '';
+        this.mainFrameFailed = false;
         this.pageEpoch = WebViewManager.pageBegin(
           this.webTag,
           this.controller,
@@ -200,10 +223,17 @@ export struct LingXiaWebView {
         this.commitDocument(this.controller.getUrl() ?? '');
       })
       .onPageEnd((event) => {
-        // lxapp fallback when ArkWeb never delivers onPageVisible.
+        // lxapp fallback when ArkWeb never delivers onPageVisible, for the
+        // document this begin started only: not after a main-frame error, not
+        // about:blank, and not an end that names another URL (a late end for a
+        // replaced document). Commit with the begin URL: native matches it
+        // exactly, and a fragment-only difference must not revoke the load.
         // BrowserControl keeps requiring visible-commit proof.
-        if (!this.documentCommitted && !this.isBrowserRelaxed()) {
-          this.commitDocument(event?.url ?? '');
+        if (!this.documentCommitted
+          && !this.isBrowserRelaxed()
+          && !this.mainFrameFailed
+          && this.isSameDocumentUrl(this.pageBeginUrl, event?.url ?? '')) {
+          this.commitDocument(this.pageBeginUrl);
         }
         WebViewManager.pageEnd(
           this.webTag,
@@ -215,6 +245,8 @@ export struct LingXiaWebView {
       .onRenderExited(() => {
         this.pageEpoch = '';
         this.documentCommitted = false;
+        this.pageBeginUrl = '';
+        this.mainFrameFailed = false;
         WebViewManager.renderExited(this.webTag, this.controller);
       })
       .onShowFileSelector((event) => {

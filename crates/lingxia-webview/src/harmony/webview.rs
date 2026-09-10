@@ -914,12 +914,20 @@ unsafe extern "C" fn get_port_callback(
             if let Err(error) =
                 setup_and_send_port_for_document(&webview, document_generation, port_type, callback)
             {
-                log::error!(
-                    "On-demand {} setup failed for {}: {}",
+                // The commit path binds the normalizer generation a moment
+                // before the Harmony document authority, and a request landing
+                // in between fails here. Dropping it left the View without a
+                // port once its own retries gave up. Defer it: the commit path
+                // serves pending requests after the authority binds, and one
+                // more attempt now covers the case where it already has.
+                log::warn!(
+                    "Deferring {} for {} after on-demand setup failed: {}",
                     port_type,
                     webtag.as_str(),
                     error
                 );
+                webview.inner.defer_port_request(port_type);
+                fulfill_pending_port_requests_if_current(&webview, document_generation);
             }
         } else {
             log::warn!(
@@ -946,6 +954,31 @@ fn extract_string_from_bridge_data(data: &ArkWeb_JavaScriptBridgeData) -> Option
             None
         }
     }
+}
+
+/// Serve deferred port requests now if `document_generation` is still current
+/// for both the normalizer and the Harmony document authority. Pending requests
+/// are taken under their lock, so this and the commit path never double-send.
+fn fulfill_pending_port_requests_if_current(
+    webview: &WebView,
+    document_generation: DocumentGeneration,
+) {
+    let mut fulfill = || {
+        webview
+            .inner
+            .fulfill_pending_port_requests(document_generation);
+    };
+    let mut fulfill_if_harmony_document_current = || {
+        webview
+            .inner
+            .document_authority
+            .with_current_generation(document_generation, &mut fulfill);
+    };
+    normalizer::with_current_document_binding(
+        webview.native_view_id(),
+        document_generation,
+        &mut fulfill_if_harmony_document_current,
+    );
 }
 
 fn setup_and_send_port_for_document(
