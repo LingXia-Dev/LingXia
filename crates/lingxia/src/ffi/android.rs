@@ -1114,7 +1114,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onAppLinkReceived(
 ) -> jint {
     env.with_env(|env| -> Result<jint, jni::errors::Error> {
         let url: String = applink_url.try_to_string(env)?;
-        Ok(lingxia_service::applink::handle(&url) as jint)
+        Ok(lingxia_service::applink::deliver(&url) as jint)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }

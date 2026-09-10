@@ -2374,7 +2374,7 @@ pub fn get_tab_bar_item(appid: &str, slot: i32) -> Option<self::bridge::TabBarIt
 
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
-    lingxia_service::applink::handle(url)
+    lingxia_service::applink::deliver(url)
 }
 
 /// Handle Push Notification Link with trigger context
@@ -2391,7 +2391,7 @@ pub fn on_pushlink_received(url: &str, trigger: self::bridge::PushTrigger) -> i3
         trigger_name
     );
 
-    lingxia_service::applink::handle(url)
+    lingxia_service::applink::deliver(url)
 }
 
 /// Handle push notification device token

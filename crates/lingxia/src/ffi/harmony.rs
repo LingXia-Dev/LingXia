@@ -764,7 +764,7 @@ pub fn on_native_component_event(
 /// Handle AppLink URL by processing the path without host
 #[napi]
 pub fn on_applink_received(applink_url: String) -> i32 {
-    lingxia_service::applink::handle(&applink_url)
+    lingxia_service::applink::deliver(&applink_url)
 }
 
 /// Push: device token from ArkTS
@@ -787,7 +787,7 @@ pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
         url,
         trigger_name
     );
-    lingxia_service::applink::handle(&url)
+    lingxia_service::applink::deliver(&url)
 }
 
 /// Get current active LxApp ID and path from Rust stack

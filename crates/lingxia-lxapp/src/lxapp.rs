@@ -3245,6 +3245,7 @@ impl LxApp {
             let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
             state.startup_options.query = options.query;
             state.startup_options.scene = options.scene;
+            state.startup_options.link_url = options.link_url;
             if state.startup_options.path.is_empty() {
                 state.startup_options.path = current_path.clone();
             }
@@ -3308,6 +3309,7 @@ impl LxApp {
         let mut state = self.state.lock().unwrap_or_else(|err| err.into_inner());
         if state.startup_options.scene == Scene::AppLink {
             state.startup_options.scene = Scene::System;
+            state.startup_options.link_url.clear();
         }
     }
 

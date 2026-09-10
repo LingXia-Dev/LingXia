@@ -127,15 +127,17 @@ impl JSLxAppManager {
         if url.is_empty() {
             return Err(auto_err("url must not be empty"));
         }
-        match lingxia_service::applink::handle(url) {
+        match lingxia_service::applink::deliver(url) {
             1 => Ok(JSApplinkResult {
                 accepted: true,
                 code: 1,
             }),
             0 => Err(auto_err(
-                "not a configured AppLink; check appLinks.hosts and /lxapp/open",
+                "not an https URL, or host is not in appLinks.hosts",
             )),
-            _ => Err(auto_err("invalid AppLink (or no handler registered)")),
+            _ => Err(auto_err(
+                "malformed /lxapp/* URL (or no handler registered)",
+            )),
         }
     }
 

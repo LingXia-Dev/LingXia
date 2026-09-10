@@ -91,8 +91,8 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
             }
             match lingxia::dev::inject_applink(url) {
                 1 => Ok(Some(json!({ "accepted": true, "code": 1 }))),
-                0 => Err("not a configured AppLink; check appLinks.hosts and /lxapp/open".into()),
-                _ => Err("invalid AppLink (or no handler registered)".into()),
+                0 => Err("not an https URL, or host is not in appLinks.hosts".into()),
+                _ => Err("malformed /lxapp/* URL (or no handler registered)".into()),
             }
         }
         other => Err(format!("unknown app handler: {}", other)),
