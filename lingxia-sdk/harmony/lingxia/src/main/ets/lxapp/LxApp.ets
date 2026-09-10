@@ -349,6 +349,9 @@ struct LxAppManager {
 
     // Show home app when modal is closed
     this.hideHomeApp = false;
+    if (this.homeAppId) {
+      LxAppContainer.notifyForeground(this.homeAppId);
+    }
   }
 
   /**
