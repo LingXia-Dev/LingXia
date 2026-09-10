@@ -1,5 +1,3 @@
-#[cfg(test)]
-use super::host_class::set_pad;
 use super::host_class::{HostClass, host_class, is_pad};
 use super::page_chrome::{
     PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
@@ -284,22 +282,29 @@ impl TabBar {
         self.visible_items_for(host_class())
     }
 
-    /// First item a compact host must move into its overflow menu, as a
-    /// declaration index, or `None` when every visible item fits the strip.
-    /// Phone strips have [`Self::COMPACT_SLOTS`]; pad strips have
-    /// [`Self::PAD_SLOTS`]. With overflow, the last strip slot is the "more"
-    /// affordance, so one visible item gives up its slot too.
+    /// First item a compact (phone) strip must move into its overflow menu, as
+    /// a declaration index, or `None` when every visible item fits
+    /// [`Self::COMPACT_SLOTS`]. With overflow, the last strip slot is the
+    /// "more" affordance, so one visible item gives up its slot too.
+    ///
+    /// The live snapshot is [`Self::compact_overflow_start`]: that one also
+    /// widens to [`Self::PAD_SLOTS`] on a pad. `_for` stays on the phone
+    /// capacity so a test can name a host class without racing the pad flag.
     pub fn compact_overflow_start_for(&self, class: HostClass) -> Option<usize> {
-        let slots = Self::compact_strip_slots();
+        self.compact_overflow_start_with(class, Self::COMPACT_SLOTS)
+    }
+
+    /// [`Self::compact_overflow_start_for`] on the host actually running,
+    /// using this process's phone-or-pad strip capacity.
+    pub fn compact_overflow_start(&self) -> Option<usize> {
+        self.compact_overflow_start_with(host_class(), Self::compact_strip_slots())
+    }
+
+    fn compact_overflow_start_with(&self, class: HostClass, slots: usize) -> Option<usize> {
         let visible: Vec<usize> = self.visible_items_for(class).map(|(i, _)| i).collect();
         (visible.len() > slots)
             .then(|| visible.get(slots - 1).copied())
             .flatten()
-    }
-
-    /// [`Self::compact_overflow_start_for`] on the host actually running.
-    pub fn compact_overflow_start(&self) -> Option<usize> {
-        self.compact_overflow_start_for(host_class())
     }
 
     /// How many cells a compact strip fills with tabs before the "more" slot,
@@ -307,11 +312,14 @@ impl TabBar {
     /// ones: a host receives only what it shows, so this is a position in that
     /// list and needs no translation on the far side.
     pub fn compact_overflow_slot_index(&self) -> i32 {
-        self.compact_overflow_slot_index_for(host_class())
+        self.compact_overflow_slot_index_with(host_class(), Self::compact_strip_slots())
     }
 
     pub fn compact_overflow_slot_index_for(&self, class: HostClass) -> i32 {
-        let slots = Self::compact_strip_slots();
+        self.compact_overflow_slot_index_with(class, Self::COMPACT_SLOTS)
+    }
+
+    fn compact_overflow_slot_index_with(&self, class: HostClass, slots: usize) -> i32 {
         if self.visible_items_for(class).count() > slots {
             slots as i32 - 1
         } else {
@@ -324,16 +332,21 @@ impl TabBar {
     /// pays off for a destination that is one tap away; anything the strip
     /// folds behind "more" is a tap further out and can load on first pick.
     pub fn preload_page_paths_for(&self, class: HostClass) -> Vec<String> {
-        let fold = self.compact_overflow_start_for(class);
+        self.preload_page_paths_with(class, Self::COMPACT_SLOTS)
+    }
+
+    /// [`Self::preload_page_paths_for`] on the host actually running, using
+    /// this process's phone-or-pad strip capacity.
+    pub fn preload_page_paths(&self) -> Vec<String> {
+        self.preload_page_paths_with(host_class(), Self::compact_strip_slots())
+    }
+
+    fn preload_page_paths_with(&self, class: HostClass, slots: usize) -> Vec<String> {
+        let fold = self.compact_overflow_start_with(class, slots);
         self.visible_items_for(class)
             .take_while(|(index, _)| fold.is_none_or(|start| *index < start))
             .map(|(_, item)| item.page_path.clone())
             .collect()
-    }
-
-    /// [`Self::preload_page_paths_for`] on the host actually running.
-    pub fn preload_page_paths(&self) -> Vec<String> {
-        self.preload_page_paths_for(host_class())
     }
 
     pub fn get_item(&self, index: i32) -> Option<&TabBarItem> {
@@ -891,13 +904,6 @@ mod tests {
         tabbar.validate(&pages)
     }
 
-    struct RestorePad;
-    impl Drop for RestorePad {
-        fn drop(&mut self) {
-            set_pad(false);
-        }
-    }
-
     #[test]
     fn immersive_rejects_surface_colors_with_exact_path() {
         let mut tabbar = manifest(serde_json::json!({
@@ -945,19 +951,28 @@ mod tests {
                     .collect::<Vec<_>>()
             }))
         };
-        set_pad(false);
-        assert_eq!(items(2).compact_overflow_start(), None);
-        assert_eq!(items(5).compact_overflow_start(), None);
-        assert_eq!(items(6).compact_overflow_start(), Some(4));
-        assert_eq!(items(10).compact_overflow_start(), Some(4));
-        assert_eq!(items(5).compact_overflow_slot_index(), -1);
-        assert_eq!(items(10).compact_overflow_slot_index(), 4);
+        assert_eq!(items(2).compact_overflow_start_for(HostClass::Mobile), None);
+        assert_eq!(items(5).compact_overflow_start_for(HostClass::Mobile), None);
+        assert_eq!(
+            items(6).compact_overflow_start_for(HostClass::Mobile),
+            Some(4)
+        );
+        assert_eq!(
+            items(10).compact_overflow_start_for(HostClass::Mobile),
+            Some(4)
+        );
+        assert_eq!(
+            items(5).compact_overflow_slot_index_for(HostClass::Mobile),
+            -1
+        );
+        assert_eq!(
+            items(10).compact_overflow_slot_index_for(HostClass::Mobile),
+            4
+        );
     }
 
     #[test]
     fn pad_strip_fits_the_declaration_cap() {
-        let _restore = RestorePad;
-        set_pad(true);
         let items = |count: usize| {
             let mut tabbar = manifest(serde_json::json!({
                 "items": (0..count)
@@ -967,10 +982,24 @@ mod tests {
             validate_self(&mut tabbar).unwrap();
             tabbar
         };
-        assert_eq!(items(6).compact_overflow_start(), None);
-        assert_eq!(items(10).compact_overflow_start(), None);
-        assert_eq!(items(10).compact_overflow_slot_index(), -1);
-        assert_eq!(items(10).preload_page_paths().len(), 10);
+        assert_eq!(
+            items(6).compact_overflow_start_with(HostClass::Mobile, TabBar::PAD_SLOTS),
+            None
+        );
+        assert_eq!(
+            items(10).compact_overflow_start_with(HostClass::Mobile, TabBar::PAD_SLOTS),
+            None
+        );
+        assert_eq!(
+            items(10).compact_overflow_slot_index_with(HostClass::Mobile, TabBar::PAD_SLOTS),
+            -1
+        );
+        assert_eq!(
+            items(10)
+                .preload_page_paths_with(HostClass::Mobile, TabBar::PAD_SLOTS)
+                .len(),
+            10
+        );
     }
 
     #[test]
@@ -1080,15 +1109,17 @@ mod tests {
             validate_self(&mut tabbar).unwrap();
             tabbar
         };
-        set_pad(false);
-        assert_eq!(items(2).preload_page_paths().len(), 2);
-        assert_eq!(items(5).preload_page_paths().len(), 5);
+        assert_eq!(items(2).preload_page_paths_for(HostClass::Mobile).len(), 2);
+        assert_eq!(items(5).preload_page_paths_for(HostClass::Mobile).len(), 5);
         // Past the strip capacity the folded items stop being warmed, so a
         // 10-tab lxapp costs no more at launch than a 4-tab one.
-        assert_eq!(items(6).preload_page_paths().len(), 4);
-        assert_eq!(items(10).preload_page_paths().len(), 4);
+        assert_eq!(items(6).preload_page_paths_for(HostClass::Mobile).len(), 4);
+        assert_eq!(items(10).preload_page_paths_for(HostClass::Mobile).len(), 4);
         assert_eq!(
-            items(10).preload_page_paths().last().map(String::as_str),
+            items(10)
+                .preload_page_paths_for(HostClass::Mobile)
+                .last()
+                .map(String::as_str),
             Some("pages/p3/index")
         );
     }

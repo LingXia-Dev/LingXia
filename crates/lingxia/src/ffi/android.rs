@@ -223,7 +223,7 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_setPad(
     _class: JClass,
     pad: jboolean,
 ) {
-    lxapp::host_class::set_pad(pad != 0);
+    lxapp::host_class::set_pad(pad);
 }
 
 /// The launch face is on screen, in this appearance — the one the system
