@@ -53,180 +53,42 @@ impl AppScreenshot for Platform {
 }
 
 #[cfg(target_os = "ios")]
+unsafe extern "C" {
+    fn lingxia_ios_capture_app_png(out_len: *mut usize) -> *mut u8;
+    fn lingxia_ios_capture_app_png_free(ptr: *mut u8, len: usize);
+}
+
+/// Capture every window in the foreground scene, including `AVPlayerLayer`
+/// frames. The Swift helper (`lingxia_ios_capture_app_png`) does the work:
+/// `CALayer.render(in:)` skips hardware video layers, which is why a playing
+/// preview used to come back as a black PNG.
+#[cfg(target_os = "ios")]
 async fn take_app_screenshot_ios() -> Result<Vec<u8>, PlatformError> {
     use dispatch2::DispatchQueue;
-    use objc2::runtime::AnyObject;
-    use objc2::{class, msg_send};
-    use objc2_core_foundation::{CGRect, CGSize};
 
-    // Free function declared instead of the (Swift-only) `-[UIImage pngData]`
-    // selector; sending that selector via msg_send crashes the app.
-    #[link(name = "UIKit", kind = "framework")]
-    unsafe extern "C" {
-        fn UIImagePNGRepresentation(image: *mut AnyObject) -> *mut AnyObject;
-        fn UIGraphicsBeginImageContextWithOptions(size: CGSize, opaque: bool, scale: f64);
-        fn UIGraphicsGetImageFromCurrentImageContext() -> *mut AnyObject;
-        fn UIGraphicsEndImageContext();
-        fn UIGraphicsGetCurrentContext() -> *mut core::ffi::c_void;
-    }
-
-    const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(5);
+    const SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(8);
     let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
     let tx_state = Arc::new(Mutex::new(Some(tx)));
     let tx_state_for_block = Arc::clone(&tx_state);
 
-    DispatchQueue::main().exec_async(move || unsafe {
+    DispatchQueue::main().exec_async(move || {
         let sender = tx_state_for_block
             .lock()
             .ok()
             .and_then(|mut guard| guard.take());
         let Some(sender) = sender else { return };
 
-        // Window resolution chain (iOS 13+ aware):
-        //   * iOS 15+: scan UIApplication.connectedScenes, pick a
-        //     foreground-active UIWindowScene, send `keyWindow`.
-        //   * iOS 13/14: `-[UIScene keyWindow]` does not exist and would
-        //     crash with "unrecognized selector". Skip the scene path and
-        //     fall through to `UIApplication.windows` (deprecated since
-        //     iOS 15 but still functional) and pick the `isKeyWindow` one.
-        //   * Last resort: `windows[0]`.
-        let app_class = class!(UIApplication);
-        let app: *mut AnyObject = msg_send![app_class, sharedApplication];
-        if app.is_null() {
-            let _ = sender.send(Err("UIApplication.sharedApplication is null".to_string()));
-            return;
-        }
-
-        let key_window_sel = objc2::sel!(keyWindow);
-        let mut window: *mut AnyObject = std::ptr::null_mut();
-
-        // Step 1: iterate connectedScenes, pick foreground-active
-        // UIWindowScene and send keyWindow only if responds_to_selector.
-        let scenes: *mut AnyObject = msg_send![app, connectedScenes];
-        if !scenes.is_null() {
-            // NSSet → NSArray via allObjects so we can index.
-            let scene_array: *mut AnyObject = msg_send![scenes, allObjects];
-            if !scene_array.is_null() {
-                let count: usize = msg_send![scene_array, count];
-                for index in 0..count {
-                    let scene: *mut AnyObject = msg_send![scene_array, objectAtIndex: index];
-                    if scene.is_null() {
-                        continue;
-                    }
-                    // UISceneActivationState raw values from UISceneDefinitions.h:
-                    //   .unattached         = -1
-                    //   .foregroundActive   =  0   ← what we want
-                    //   .foregroundInactive =  1
-                    //   .background         =  2
-                    const UI_SCENE_ACTIVATION_FOREGROUND_ACTIVE: i64 = 0;
-                    let activation_state: i64 = msg_send![scene, activationState];
-                    if activation_state != UI_SCENE_ACTIVATION_FOREGROUND_ACTIVE {
-                        continue;
-                    }
-                    let responds: bool = msg_send![scene, respondsToSelector: key_window_sel];
-                    if !responds {
-                        continue;
-                    }
-                    let candidate: *mut AnyObject = msg_send![scene, keyWindow];
-                    if !candidate.is_null() {
-                        window = candidate;
-                        break;
-                    }
-                }
+        let mut len: usize = 0;
+        let ptr = unsafe { lingxia_ios_capture_app_png(&mut len) };
+        if ptr.is_null() || len == 0 {
+            if !ptr.is_null() {
+                unsafe { lingxia_ios_capture_app_png_free(ptr, len) };
             }
-        }
-
-        // Step 2: fall back to deprecated -[UIApplication windows] and pick
-        // the isKeyWindow one (works on iOS 13/14 and as a backstop on 15+).
-        if window.is_null() {
-            let windows: *mut AnyObject = msg_send![app, windows];
-            if !windows.is_null() {
-                let count: usize = msg_send![windows, count];
-                for index in 0..count {
-                    let candidate: *mut AnyObject = msg_send![windows, objectAtIndex: index];
-                    if candidate.is_null() {
-                        continue;
-                    }
-                    let is_key: bool = msg_send![candidate, isKeyWindow];
-                    if is_key {
-                        window = candidate;
-                        break;
-                    }
-                }
-                // Step 3: still nothing, take the first window.
-                if window.is_null() && count > 0 {
-                    window = msg_send![windows, objectAtIndex: 0usize];
-                }
-            }
-        }
-
-        if window.is_null() {
-            let _ = sender.send(Err("no key window for current scene".to_string()));
+            let _ = sender.send(Err("iOS app screenshot returned no pixels".to_string()));
             return;
         }
-
-        // Read window.bounds.size to size the renderer.
-        let bounds: CGRect = msg_send![window, bounds];
-        if bounds.size.width <= 0.0 || bounds.size.height <= 0.0 {
-            let _ = sender.send(Err(format!(
-                "window has empty bounds {}x{}",
-                bounds.size.width, bounds.size.height
-            )));
-            return;
-        }
-
-        // Render layer through a fresh image context. `scale: 0.0` defers to
-        // the device's native scale (Retina-aware).
-        UIGraphicsBeginImageContextWithOptions(bounds.size, false, 0.0);
-        let ctx = UIGraphicsGetCurrentContext();
-        if ctx.is_null() {
-            UIGraphicsEndImageContext();
-            let _ = sender.send(Err("UIGraphicsGetCurrentContext returned null".to_string()));
-            return;
-        }
-        let layer: *mut AnyObject = msg_send![window, layer];
-        // Bypass msg_send! type encoding check: `ctx` here is *mut c_void (since we
-        // don't depend on objc2-core-graphics for a typed CGContextRef), but
-        // -[CALayer renderInContext:] declares `^{CGContext=}`. msg_send! verifies the
-        // encoding and panics on mismatch, so call objc_msgSend directly.
-        {
-            let sel = objc2::sel!(renderInContext:);
-            let func: unsafe extern "C" fn(
-                *mut AnyObject,
-                objc2::runtime::Sel,
-                *mut core::ffi::c_void,
-            ) = core::mem::transmute(objc2::ffi::objc_msgSend as *const ());
-            func(layer, sel, ctx);
-        }
-        let image: *mut AnyObject = UIGraphicsGetImageFromCurrentImageContext();
-        UIGraphicsEndImageContext();
-        if image.is_null() {
-            let _ = sender.send(Err(
-                "UIGraphicsGetImageFromCurrentImageContext returned null".to_string(),
-            ));
-            return;
-        }
-
-        let png_data = UIImagePNGRepresentation(image);
-        if png_data.is_null() {
-            let _ = sender.send(Err("UIImagePNGRepresentation returned null".to_string()));
-            return;
-        }
-        let length: usize = msg_send![png_data, length];
-        let bytes_ptr: *const u8 = {
-            let sel = objc2::sel!(bytes);
-            let func: unsafe extern "C" fn(
-                *mut AnyObject,
-                objc2::runtime::Sel,
-            ) -> *const core::ffi::c_void =
-                core::mem::transmute(objc2::ffi::objc_msgSend as *const ());
-            func(png_data, sel).cast()
-        };
-        if bytes_ptr.is_null() || length == 0 {
-            let _ = sender.send(Err("PNG data was empty".to_string()));
-            return;
-        }
-        let bytes = std::slice::from_raw_parts(bytes_ptr, length).to_vec();
+        let bytes = unsafe { std::slice::from_raw_parts(ptr, len).to_vec() };
+        unsafe { lingxia_ios_capture_app_png_free(ptr, len) };
         let _ = sender.send(Ok(bytes));
     });
 
