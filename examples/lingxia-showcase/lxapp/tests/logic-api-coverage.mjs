@@ -51,7 +51,7 @@ export default {
     { "api": "lx.getVideoInfo", "mode": "automated", "owner": "MEDIA-PROCESS-001" },
     { "api": "lx.chooseMedia", "mode": "external-ui", "owner": "PEND-MEDIA-PICK-001" },
     { "api": "lx.scanCode", "mode": "external-ui", "owner": "PEND-MEDIA-PICK-001" },
-    { "api": "lx.previewMedia", "mode": "automated", "owner": "DESKTOP-PREVIEW-HTTPS-IMAGE-001", "targets": ["macos", "windows", "ios"] },
+    { "api": "lx.previewMedia", "mode": "automated", "owner": "DESKTOP-PREVIEW-HTTPS-IMAGE-001", "targets": ["macos", "windows", "ios", "android", "harmony"] },
     { "api": "lx.getImageInfo", "mode": "automated", "owner": "MEDIA-INFO-001" },
     { "api": "lx.extractVideoThumbnail", "mode": "automated", "owner": "MEDIA-PROCESS-001" },
     { "api": "lx.compressVideo", "mode": "automated", "owner": "MEDIA-PROCESS-001" },
