@@ -307,10 +307,11 @@ export class Lingxia {
   }
 
   /**
-   * Internal applink handler - called by SDK infrastructure.
-   * @param url The full applink URL (e.g., "https://www.lingxia.app/lxapp/shop/pages/detail?id=42")
+   * Hands an inbound https URL to the runtime. Drop the call to take inbound
+   * links over natively.
+   * @param url The full URL as the system delivered it
    */
-  private static handleAppLink(url: string): void {
+  public static handleAppLink(url: string): void {
     try {
       // Call native layer to handle the applink
       const result: number = onApplinkReceived(url);
@@ -328,9 +329,8 @@ export class Lingxia {
   public static handleWant(want: Want): void {
     try {
       if (!want) { return; }
-      // Treat HTTPS Want.uri as push click (trigger=1), do not call AppLink
       if (want.uri && typeof want.uri === 'string' && want.uri.startsWith('https://')) {
-        LxAppPush.handlePushLink(want.uri, 1);
+        Lingxia.handleAppLink(want.uri);
         return;
       }
     } catch (e) {

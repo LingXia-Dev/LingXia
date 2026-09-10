@@ -415,14 +415,26 @@ export class LingxiaBaseAbility extends UIAbility {
     super.onWindowStageDestroy();
   }
 
+  /**
+   * Override to return false and take inbound https links over natively: the
+   * Want then reaches this ability and stops there.
+   */
+  protected deliverAppLinks(): boolean {
+    return true;
+  }
+
   onCreate(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onCreate(want, launchParam);
-    Lingxia.handleWant(want);
+    if (this.deliverAppLinks()) {
+      Lingxia.handleWant(want);
+    }
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
     super.onNewWant(want, launchParam);
-    Lingxia.handleWant(want);
+    if (this.deliverAppLinks()) {
+      Lingxia.handleWant(want);
+    }
   }
 
   onDestroy(): void {
