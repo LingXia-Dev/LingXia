@@ -43,26 +43,38 @@ object Lingxia {
 
     @JvmField var capabilities: Int = 0
 
+    // Marks an Intent the runtime accepted, so the cold-start dispatch and the
+    // lifecycle callback cannot deliver the same tap twice.
+    private const val APPLINK_CONSUMED_EXTRA = "com.lingxia.app.APPLINK_CONSUMED"
+
+    @Volatile
+    private var appLinkDeliveryEnabled: Boolean = true
+
     private val hostAddonInstalled = AtomicBoolean(false)
     private var appContext: Context? = null
     private var lastResumedActivity: Activity? = null
     @Volatile
     private var lifecycleCallbacksRegistered: Boolean = false
 
-    /** Product-app entry point. Initializes the runtime and opens the home LxApp. */
-    @JvmStatic
-    fun quickStart(activity: AppCompatActivity) {
-        quickStart(activity, null)
-    }
-
     /**
-     * Product-app entry point with an app-owned native addon registrar.
+     * Product-app entry point. Initializes the runtime and opens the home LxApp.
      *
      * The SDK loads liblingxia before invoking [registerHostAddon], so host apps do not need to
      * call System.loadLibrary themselves.
+     *
+     * Pass `deliverAppLinks = false` to take inbound links over natively: the SDK then hands no
+     * https Intent to the runtime and leaves the Intent untouched for the host to read.
+     *
+     * [registerHostAddon] stays last so it can be passed as a trailing lambda.
      */
     @JvmStatic
-    fun quickStart(activity: AppCompatActivity, registerHostAddon: (() -> Unit)?) {
+    @JvmOverloads
+    fun quickStart(
+        activity: AppCompatActivity,
+        deliverAppLinks: Boolean = true,
+        registerHostAddon: (() -> Unit)? = null,
+    ) {
+        appLinkDeliveryEnabled = deliverAppLinks
         if (LxApp.homeAppId != null) {
             // Warm relaunch: the runtime is up, go straight home.
             openHomeFrom(activity)
@@ -128,10 +140,6 @@ object Lingxia {
                 appContext = ctx
             }
 
-            if (context is Activity) {
-                handleAppLink(context.intent)
-            }
-
             if (!lifecycleCallbacksRegistered) {
                 lifecycleCallbacksRegistered = registerActivityLifecycleCallbacks(ctx)
             }
@@ -156,6 +164,11 @@ object Lingxia {
                 capabilities = NativeApi.getAppCapabilities()
                 if (NativeApi.shouldEnableWebViewDebugging()) {
                     enableWebViewDebugging()
+                }
+                // The link handler is registered by init: delivering before it
+                // fails, and this activity's creation callback has already passed.
+                if (context is Activity) {
+                    handleAppLink(context.intent)
                 }
             } else {
                 LxLog.e(TAG, "Failed to get home app details from native init.")
@@ -415,11 +428,21 @@ object Lingxia {
         }
     }
 
+    /**
+     * Hands an inbound https Intent to the runtime.
+     *
+     * The SDK calls this for every activity it sees created. An Intent the runtime accepted is
+     * not delivered again; one it could not take yet (`-1`) stays deliverable. Nothing is
+     * delivered when the host started with `deliverAppLinks = false`.
+     */
     @JvmStatic
-    internal fun handleAppLink(intent: Intent) {
-        val data = intent.data
-        if (intent.action == Intent.ACTION_VIEW && data?.scheme == "https") {
-            NativeApi.onAppLinkReceived(data.toString())
+    fun handleAppLink(intent: Intent?) {
+        if (!appLinkDeliveryEnabled) return
+        val data = intent?.data ?: return
+        if (intent.action != Intent.ACTION_VIEW || data.scheme != "https") return
+        if (intent.getBooleanExtra(APPLINK_CONSUMED_EXTRA, false)) return
+        if (NativeApi.onAppLinkReceived(data.toString()) != -1) {
+            intent.putExtra(APPLINK_CONSUMED_EXTRA, true)
         }
     }
 
