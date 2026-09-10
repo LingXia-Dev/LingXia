@@ -1140,7 +1140,11 @@ rong::js_api! {
         type PreviewMediaSource = r###"{
     /**
      * Media source path.
-     * Recommended: `lx://` path (for example `lx://usercache/...`) or a sandbox-local path
+     *
+     * Accepts an `https://` (or `http://`) URL for a remote image or video —
+     * the host loads it directly, so no prior `lx.downloadFile` is required,
+     * and its domain must be permitted by the app's network policy — an
+     * `lx://` path (for example `lx://usercache/...`), or a sandbox-local path
      * that can be resolved by runtime access rules.
     */
     path: string;

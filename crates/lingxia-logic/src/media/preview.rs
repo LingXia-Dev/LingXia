@@ -1,7 +1,9 @@
 use crate::i18n::{
-    js_error_from_business_code, js_error_from_lxapp_error, js_error_from_platform_error,
-    js_internal_error, js_invalid_parameter_error,
+    js_error_from_business_code, js_error_from_business_code_with_detail,
+    js_error_from_lxapp_error, js_error_from_platform_error, js_internal_error,
+    js_invalid_parameter_error,
 };
+use crate::url::{is_http_url, split_url_scheme_host};
 use futures::channel::oneshot;
 use futures::future::{Either, select};
 use lingxia_messaging::{CallbackResult, get_callback, get_stream_callback, remove_callback};
@@ -759,23 +761,59 @@ fn parse_object_fit(value: Option<String>) -> JSResult<Option<MediaObjectFit>> {
     }
 }
 
-fn resolve_preview_path(lxapp: &LxApp, raw: &str) -> JSResult<String> {
+/// How a preview `path` is handed to the host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum PreviewPath {
+    /// Remote `http://` / `https://` URL, passed through verbatim.
+    Remote(String),
+    /// Local / `lx://` path that still needs `resolve_accessible_path`.
+    Local(String),
+}
+
+fn classify_preview_path(raw: &str) -> Result<PreviewPath, String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
-        return Err(js_invalid_parameter_error(
-            "previewMedia item path cannot be empty",
-        ));
+        return Err("previewMedia item path cannot be empty".to_string());
     }
     if trimmed.contains("[object Object]") {
+        return Err(
+            "previewMedia item path must be a string path, got [object Object]".to_string(),
+        );
+    }
+    if is_http_url(trimmed) {
+        Ok(PreviewPath::Remote(trimmed.to_string()))
+    } else {
+        Ok(PreviewPath::Local(trimmed.to_string()))
+    }
+}
+
+/// A remote item makes the *host* fetch a caller-supplied URL, so it answers
+/// to the same domain policy as `downloadFile` and `openUrl`. Without this the
+/// one media API that skips `resolve_accessible_path` would also be the one
+/// that skips the network grant.
+fn authorize_remote_preview_url(lxapp: &LxApp, url: String) -> JSResult<String> {
+    let Some((_, host)) = split_url_scheme_host(&url) else {
         return Err(js_invalid_parameter_error(
-            "previewMedia item path must be a string path, got [object Object]",
+            "previewMedia item path must be an http(s) URL with a host",
+        ));
+    };
+    if !lxapp.is_domain_allowed(host) {
+        return Err(js_error_from_business_code_with_detail(
+            3000,
+            format!("domain '{host}' is not allowed by lxapp security policy"),
         ));
     }
+    Ok(url)
+}
 
-    let resolved = lxapp
-        .resolve_accessible_path(trimmed)
-        .map_err(|err| js_error_from_lxapp_error(&err))?;
-    Ok(resolved.to_string_lossy().into_owned())
+fn resolve_preview_path(lxapp: &LxApp, raw: &str) -> JSResult<String> {
+    match classify_preview_path(raw).map_err(js_invalid_parameter_error)? {
+        PreviewPath::Remote(url) => authorize_remote_preview_url(lxapp, url),
+        PreviewPath::Local(path) => lxapp
+            .resolve_accessible_path(&path)
+            .map(|resolved| resolved.to_string_lossy().into_owned())
+            .map_err(|err| js_error_from_lxapp_error(&err)),
+    }
 }
 
 fn js_abort_error(detail: impl AsRef<str>) -> RongJSError {
@@ -784,4 +822,52 @@ fn js_abort_error(detail: impl AsRef<str>) -> RongJSError {
     HostError::new(rong::error::E_ABORT, detail.as_ref())
         .with_name("AbortError")
         .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{PreviewPath, classify_preview_path};
+
+    #[test]
+    fn https_image_and_video_pass_through_as_remote_urls() {
+        assert_eq!(
+            classify_preview_path("https://cdn.example.com/photo.jpg").unwrap(),
+            PreviewPath::Remote("https://cdn.example.com/photo.jpg".into())
+        );
+        assert_eq!(
+            classify_preview_path("https://cdn.example.com/clip.mp4").unwrap(),
+            PreviewPath::Remote("https://cdn.example.com/clip.mp4".into())
+        );
+        assert_eq!(
+            classify_preview_path("  HTTPS://cdn.example.com/photo.jpg  ").unwrap(),
+            PreviewPath::Remote("HTTPS://cdn.example.com/photo.jpg".into())
+        );
+        assert_eq!(
+            classify_preview_path("http://cdn.example.com/photo.jpg").unwrap(),
+            PreviewPath::Remote("http://cdn.example.com/photo.jpg".into())
+        );
+    }
+
+    #[test]
+    fn local_and_lx_paths_still_resolve_as_files() {
+        assert_eq!(
+            classify_preview_path("lx://usercache/a.png").unwrap(),
+            PreviewPath::Local("lx://usercache/a.png".into())
+        );
+        assert_eq!(
+            classify_preview_path("/sandbox/photo.jpg").unwrap(),
+            PreviewPath::Local("/sandbox/photo.jpg".into())
+        );
+        assert_eq!(
+            classify_preview_path("C:\\Users\\me\\photo.jpg").unwrap(),
+            PreviewPath::Local("C:\\Users\\me\\photo.jpg".into())
+        );
+    }
+
+    #[test]
+    fn empty_preview_path_is_rejected() {
+        assert!(classify_preview_path("").is_err());
+        assert!(classify_preview_path("   ").is_err());
+        assert!(classify_preview_path("[object Object]").is_err());
+    }
 }
