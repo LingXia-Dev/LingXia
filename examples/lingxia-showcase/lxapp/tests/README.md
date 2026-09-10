@@ -12,8 +12,9 @@ behind.
 | `shared.test.ts` | All cross-platform API, Logic, Bridge, page, component, and render contracts | every platform and framework |
 | `windows.test.ts` | Shared suite plus physical desktop and Windows-only behavior | Windows |
 | `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS |
-| `android.test.ts` | Shared suite; external Android system UI remains device-lab work | Android, local |
+| `android.test.ts` | Shared suite, https `previewMedia`, and Android device capabilities | Android, local |
 | `ios.test.ts` | Shared suite plus https `previewMedia` handle contracts | iOS, local |
+| `harmony.test.ts` | Shared suite plus https `previewMedia` handle contracts | Harmony, local |
 
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility
