@@ -40,6 +40,9 @@ App({
     lx.app.displayLanguage.watch((tag) => {
       applyMoreActions(tag);
     });
+    lx.app.control?.displayLanguage.watchPreference(() => {
+      applyMoreActions();
+    });
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async (info) => {
@@ -63,5 +66,9 @@ App({
     um.onUpdateFailed((info) => {
       console.warn('Update failed', info);
     });
+  },
+
+  onShow() {
+    applyMoreActions();
   },
 });

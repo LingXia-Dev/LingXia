@@ -5,6 +5,7 @@ import {
   type DisplayLanguagePreference,
 } from "../../shared/display-language";
 import { formatHomeGreeting, getMessages } from "./messages";
+import { applyShowcaseTabBar } from "../../logic/app-messages";
 
 
 const app = showcaseApp();
@@ -100,6 +101,9 @@ Page({
       lx.showToast({ title: t("languageUnavailable"), icon: "none" });
     }
     this._syncLanguage();
+    void applyShowcaseTabBar().catch((error) =>
+      console.warn("[Home] tab bar language update failed", error),
+    );
   },
 
   onReady: function () {

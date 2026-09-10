@@ -30,7 +30,7 @@ function routeFromAppLink(options?: { scene?: number; query?: Record<string, str
   void lx.navigateTo({ page: page as ConfiguredPageName, query });
 }
 
-function applyHostChrome(os: string, tag: string) {
+async function applyHostChrome(os: string, tag: string) {
   const { t } = getAppMessages(resolveDisplayLanguage(tag));
   type SidebarAction = Parameters<typeof lx.shell.sidebarActions.replace>[0][number];
   const sidebarActions: SidebarAction[] = [
@@ -115,9 +115,7 @@ function applyHostChrome(os: string, tag: string) {
       },
     },
   ]);
-  void applyShowcaseTabBar(tag).catch((error) =>
-    console.warn("tab bar language update failed", error),
-  );
+  return applyShowcaseTabBar(tag);
 }
 
 App({
@@ -127,8 +125,19 @@ App({
   ) {
     routeFromAppLink(options);
     const { os } = lx.app.getBaseInfo();
+    const applyChrome = (tag = lx.app.displayLanguage.get()) => {
+      void applyHostChrome(os, tag).catch((error) =>
+        console.warn("host chrome language update failed", error),
+      );
+    };
+    // Preference clicks always move this event. Effective-tag `watch` can
+    // miss a Harmony dispatch, which left tab labels on the previous language
+    // while page copy and host "More" followed.
     lx.app.displayLanguage.watch((tag) => {
-      applyHostChrome(os, tag);
+      applyChrome(tag);
+    });
+    lx.app.control?.displayLanguage.watchPreference(() => {
+      applyChrome();
     });
 
     const um = lx.getUpdateManager();
@@ -181,6 +190,9 @@ App({
   onShow(options?: { scene?: number; query?: Record<string, string> }) {
     routeFromAppLink(options);
     console.log("App.onShow");
+    void applyShowcaseTabBar().catch((error) =>
+      console.warn("tab bar language update failed", error),
+    );
   },
 
   onUserCaptureScreen() {
