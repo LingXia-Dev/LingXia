@@ -21,3 +21,9 @@ internal fun isLocalUri(uri: Uri): Boolean {
         scheme.equals("file", ignoreCase = true) ||
         scheme.equals("content", ignoreCase = true)
 }
+
+/** `http://` / `https://` preview and player sources, case-insensitive. */
+internal fun isRemoteHttpUrl(raw: String): Boolean {
+    val lower = raw.trim().lowercase()
+    return lower.startsWith("https://") || lower.startsWith("http://")
+}
