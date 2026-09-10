@@ -3,7 +3,8 @@ use std::str::FromStr;
 
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
-use crate::{LxApp, LxAppError, PageInstance, warn};
+use crate::{LxApp, LxAppError, PageInstance, debug, warn};
+use lingxia_platform::PlatformError;
 use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
 
@@ -388,33 +389,34 @@ impl LxApp {
         self.publish_page_chrome(page, revision, appearance)
     }
 
+    /// Persist chrome in rust, then ask native to paint.
+    ///
+    /// Paint may run before a presenter exists. That is not a failure: the
+    /// patch stands in rust and the first presenter reads it, so the caller is
+    /// told it succeeded. Every other native error means a mounted presenter
+    /// refused the revision — surface it, or `lx.tabBar.update()` resolves
+    /// while native still paints the old chrome.
     async fn apply_page_chrome_commit(
         &self,
         page: &PageInstance,
         revision: u64,
         appearance: ResolvedAppearance,
     ) -> Result<(), LxAppError> {
-        self.runtime
+        match self
+            .runtime
             .apply_page_chrome_revision(self.appid.clone(), revision)
-            .await?;
-        self.publish_realized_page_chrome(page, revision, appearance)
-            .await
-    }
-
-    /// Persist chrome in rust, then ask native to paint. Paint may run before
-    /// a presenter exists; keep the patch and let the first presenter read it.
-    async fn apply_page_chrome_keep(
-        &self,
-        page: &PageInstance,
-        revision: u64,
-        appearance: ResolvedAppearance,
-    ) {
-        if let Err(error) = self
-            .apply_page_chrome_commit(page, revision, appearance)
             .await
         {
-            warn!("page chrome apply deferred: {error}").with_appid(self.appid.clone());
+            Ok(()) => {}
+            Err(PlatformError::PresenterUnavailable) => {
+                debug!("page chrome paint deferred until a presenter mounts")
+                    .with_appid(self.appid.clone());
+                return Ok(());
+            }
+            Err(error) => return Err(error.into()),
         }
+        self.publish_realized_page_chrome(page, revision, appearance)
+            .await
     }
 
     fn current_page_for_chrome(&self) -> Result<PageInstance, LxAppError> {
@@ -439,9 +441,8 @@ impl LxApp {
         }
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
-        self.apply_page_chrome_keep(&page, revision, appearance)
-            .await;
-        Ok(())
+        self.apply_page_chrome_commit(&page, revision, appearance)
+            .await
     }
 
     pub async fn commit_tabbar(&self, patch: TabBarPatch) -> Result<(), LxAppError> {
@@ -478,9 +479,8 @@ impl LxApp {
         }
         let revision = self.next_page_chrome_revision();
         let appearance = self.appearance_state().resolved;
-        self.apply_page_chrome_keep(&page, revision, appearance)
-            .await;
-        Ok(())
+        self.apply_page_chrome_commit(&page, revision, appearance)
+            .await
     }
 
     /// Re-resolve Auto against the product's current scheme and apply it to
@@ -538,7 +538,13 @@ impl LxApp {
             return Ok(());
         };
         if let Ok(page) = self.current_page_for_chrome() {
-            self.apply_page_chrome_keep(&page, revision, resolved).await;
+            if let Err(error) = self
+                .apply_page_chrome_commit(&page, revision, resolved)
+                .await
+            {
+                warn!("Failed to repaint chrome for appearance: {error}")
+                    .with_appid(self.appid.clone());
+            }
             self.publish_appearance_to_background_pages(&page, revision, resolved);
         }
         Ok(())

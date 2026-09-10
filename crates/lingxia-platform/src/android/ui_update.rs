@@ -1,5 +1,5 @@
 use super::app::Platform;
-use crate::error::PlatformError;
+use crate::error::{PlatformError, unmounted_presenter_or};
 use crate::traits::ui::UIUpdate;
 use jni::objects::{JClass, JValue};
 use jni::sys::jlong;
@@ -129,19 +129,20 @@ impl UIUpdate for Platform {
                 jni_sig!("(Ljava/lang/String;)Z"),
                 &[JValue::Object(&appid_jstring)],
             )?;
+            // The Kotlin side answers false only when no activity is hosting
+            // this appid; every other outcome is posted to the UI thread.
             if result.z()? {
                 Ok(())
             } else {
-                Err(PlatformError::Platform(
-                    "updateNavBarUI returned false".to_string(),
-                ))
+                Err(PlatformError::PresenterUnavailable)
             }
         })
-        .map_err(|e| {
-            PlatformError::Platform(format!(
+        .map_err(|e| match e {
+            PlatformError::PresenterUnavailable => e,
+            e => PlatformError::Platform(format!(
                 "Failed to update NavigationBar UI for appId: {}: {}",
                 appid, e
-            ))
+            )),
         })
     }
 
@@ -199,6 +200,7 @@ impl UIUpdate for Platform {
             })
         })
         .await
+        .map_err(unmounted_presenter_or)
     }
 
     fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {

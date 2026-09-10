@@ -23,6 +23,13 @@ import java.util.concurrent.atomic.AtomicReference
 object LxApp {
     private const val TAG = "LingXia.LxApp"
 
+    /**
+     * Chrome update arrived before an activity was hosting the lxapp. Rust keeps
+     * the patch and the first presenter reads it, so this must stay separable
+     * from the generic failure code (mirrors PRESENTER_UNAVAILABLE_CODE in rust).
+     */
+    private const val PRESENTER_UNAVAILABLE = "1001"
+
     /** App id of the home LxApp, populated by the native layer during [Lingxia.initializeRuntime]. */
     @JvmStatic
     var homeAppId: String? = null
@@ -225,7 +232,7 @@ object LxApp {
         val activity = currentActivity?.takeIf { it.getAppId() == appId }
         if (activity == null) {
             Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
-            NativeApi.onCallback(callbackId, false, "1000")
+            NativeApi.onCallback(callbackId, false, PRESENTER_UNAVAILABLE)
             return
         }
         activity.runOnUiThread {

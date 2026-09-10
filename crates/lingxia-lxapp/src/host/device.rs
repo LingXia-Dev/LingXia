@@ -26,6 +26,10 @@ fn map_platform_error(api: &str, error: PlatformError) -> LxAppError {
             };
         }
         PlatformError::CallbackDropped => ("E_CALLBACK_DROPPED", "Callback dropped".to_string()),
+        PlatformError::PresenterUnavailable => (
+            "E_PLATFORM",
+            "Page chrome presenter not mounted".to_string(),
+        ),
     };
 
     LxAppError::RongJSHost {
