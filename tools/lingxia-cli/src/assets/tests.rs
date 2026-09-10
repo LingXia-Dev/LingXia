@@ -5,11 +5,11 @@ use super::{
 };
 use crate::config::{
     AppLinkHosts, AppLinksConfig, EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer,
-    PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig,
+    PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig, UpdateSigningConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tempfile::TempDir;
 
 fn test_resolved_env() -> ResolvedEnv {
@@ -52,6 +52,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
     // An active package-id suffix must not leak into lingxiaId.
     let dev_env = ResolvedEnv {
@@ -65,6 +66,60 @@ fn lingxia_id_is_not_suffixed_by_env() {
     assert_eq!(
         value.get("lingxiaId").and_then(|v| v.as_str()),
         Some("app.lingxia.demo")
+    );
+}
+
+#[test]
+fn showcase_yaml_declares_update_public_key() {
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("examples/lingxia-showcase");
+    let config = LingXiaConfig::load(&repo).unwrap();
+    assert_eq!(
+        config.update.unwrap().trusted_public_keys,
+        vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
+    );
+}
+
+#[test]
+fn omitted_update_table_does_not_embed_keys() {
+    let config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    assert!(config.update.is_none());
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert!(value.get("updateTrustedPublicKeys").is_none());
+}
+
+#[test]
+fn update_table_requires_one_or_two_keys() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    config.update = Some(UpdateSigningConfig {
+        trusted_public_keys: vec![],
+    });
+    let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
+    assert!(err.to_string().contains("omit the update: table"), "{err}");
+}
+
+#[test]
+fn generated_app_json_embeds_update_trusted_public_keys() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    config.update = Some(UpdateSigningConfig {
+        trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
+    });
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert_eq!(
+        value["updateTrustedPublicKeys"][0],
+        "6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"
+    );
+    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+        .expect("runtime app.json parse");
+    assert_eq!(
+        parsed.update_trusted_public_keys,
+        vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
     );
 }
 
@@ -103,6 +158,7 @@ fn generated_app_json_excludes_ui_fields() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -199,6 +255,7 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let app_json = build_app_json_from_config(
@@ -250,6 +307,7 @@ fn generated_app_json_includes_app_link_hosts() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let mut env = test_resolved_env();
@@ -297,6 +355,7 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let dev = config.resolve_env(EnvVersion::Developer).unwrap();
@@ -361,6 +420,7 @@ fn generated_app_json_includes_capabilities() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -424,6 +484,7 @@ fn generated_ui_json_preserves_generated_ui_config() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let temp = TempDir::new().unwrap();
@@ -471,6 +532,7 @@ fn generated_ui_json_rewrites_app_ui_icons() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
     let icons = vec![super::PreparedAppUiIcon {
         relative_path: "icons/browser-deadbeef.pdf".to_string(),
@@ -524,6 +586,7 @@ fn generated_windows_ui_json_rewrites_app_ui_icons_to_png() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
     let icons = vec![super::PreparedAppUiIcon {
         relative_path: "icons/browser-deadbeef.pdf".to_string(),
@@ -679,6 +742,7 @@ fn generated_ui_json_rejects_terminal_when_capability_disabled() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let err = build_ui_json_from_config(&config, &[], "macos")
@@ -729,6 +793,7 @@ fn generated_ui_json_prunes_surfaces_for_target_platform() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let temp = TempDir::new().unwrap();
@@ -789,6 +854,7 @@ fn app_ui_icon_preparation_requires_svg() {
         resources: None,
         splash: None,
         assets: None,
+        update: None,
     };
 
     let err = prepare_app_ui_icons(temp.path(), &config)

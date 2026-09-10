@@ -564,6 +564,11 @@ struct PublishArgs {
     /// LxApp progress output mode
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
+
+    /// Seed file for preview/release update signatures (POSIX 0600 or 0400).
+    /// Also reads `LINGXIA_UPDATE_SIGNING_KEY_FILE`.
+    #[arg(long, env = "LINGXIA_UPDATE_SIGNING_KEY_FILE")]
+    update_signing_key_file: Option<String>,
 }
 
 #[derive(Subcommand)]
@@ -1219,6 +1224,7 @@ fn main() -> Result<()> {
                 channel: args.channel,
                 framework: args.framework,
                 progress: args.progress,
+                update_signing_key_file: args.update_signing_key_file,
             })?;
         }
     }
@@ -1267,6 +1273,24 @@ mod cli_tests {
         assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "lingxia"]).is_ok());
         assert!(Cli::try_parse_from(["lingxia", "auth", "login", "publish"]).is_err());
         assert!(Cli::try_parse_from(["lingxia", "auth", "logout", "publish"]).is_err());
+    }
+
+    #[test]
+    fn publish_accepts_update_signing_key_file() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "publish",
+            "--update-signing-key-file",
+            "/tmp/update.key",
+        ])
+        .unwrap();
+        let Commands::Publish { args } = cli.command else {
+            panic!("expected publish");
+        };
+        assert_eq!(
+            args.update_signing_key_file.as_deref(),
+            Some("/tmp/update.key")
+        );
     }
 
     #[test]

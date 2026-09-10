@@ -25,6 +25,7 @@ CLI_FINGERPRINT_PATHS=(
   crates/lingxia-log
   crates/lingxia-provider
   crates/lingxia-settings
+  crates/lingxia-update
   packages/lingxia-bridge
   packages/lingxia-polyfills
   Cargo.lock

@@ -117,6 +117,14 @@ pub(super) fn build_app_json_from_config(
         );
     }
 
+    if let Some(update) = config.update.as_ref() {
+        update.validate()?;
+        obj.insert(
+            "updateTrustedPublicKeys".to_string(),
+            serde_json::json!(update.trusted_public_keys),
+        );
+    }
+
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)

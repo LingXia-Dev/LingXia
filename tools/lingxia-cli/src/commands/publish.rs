@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, bail};
 use colored::Colorize;
-use sha2::{Digest, Sha256};
 use std::env;
 use std::fs;
 use std::io::Read;
@@ -22,6 +21,7 @@ pub struct PublishOptions {
     pub channel: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
+    pub update_signing_key_file: Option<String>,
 }
 
 #[derive(Debug)]
@@ -103,24 +103,55 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
 
     let file_data = fs::read(package_path)
         .with_context(|| format!("Failed to read package: {}", package_path.display()))?;
-    let sha256 = sha256_hex(&file_data);
+    let sha256 = lingxia_update::archive_sha256_hex(&file_data);
     println!("   SHA256:  {sha256}");
 
     let upload_url = format!("{lingxia_server}/api/v1/package/upload");
     println!("   Upload → {upload_url}");
+
+    let channel = meta
+        .channel
+        .clone()
+        .unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string());
+    let platform = match meta.target.as_str() {
+        "app" => package
+            .platform
+            .clone()
+            .context("host app publish requires --platform")?,
+        _ => "any".to_string(),
+    };
+    let update_signing_key_file =
+        clean_arg(opts.update_signing_key_file, "--update-signing-key-file")?;
+    let extra = signed_multipart_fields(
+        &channel,
+        update_signing_key_file.as_deref().map(Path::new),
+        &lingxia_update::SignRequest {
+            kind: &meta.target,
+            target_id: &meta.target_id,
+            channel: &channel,
+            platform: &platform,
+            version: &meta.version,
+            sha256: &sha256,
+            size: file_data.len() as u64,
+            required_runtime_version: "",
+        },
+    )?;
 
     let mut fields: Vec<(&str, String)> = vec![
         ("kind", meta.target.clone()),
         ("id", meta.target_id.clone()),
         ("version", meta.version.clone()),
         ("sha256", sha256.clone()),
+        ("channel", channel),
     ];
-    if let Some(ch) = &meta.channel {
-        fields.push(("channel", ch.clone()));
+    if meta.target == "app" {
+        fields.push(("platform", platform));
     }
-    if let Some(platform) = package.platform.as_deref() {
-        fields.push(("platform", platform.to_string()));
-    }
+    fields.extend(
+        extra
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.clone())),
+    );
     let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
     let boundary = format!("----LingXiaBoundary{}", rand_hex());
     let body = build_multipart(&boundary, &field_refs, &file_name, &file_data);
@@ -889,11 +920,6 @@ fn package_platform(file_name: &str, path: &Path, dist_dir: &Path) -> Option<&'s
     None
 }
 
-fn sha256_hex(data: &[u8]) -> String {
-    let hash = Sha256::digest(data);
-    hash.iter().map(|b| format!("{b:02x}")).collect()
-}
-
 fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> anyhow::Error {
     let message = err.to_string();
     let lower = message.to_ascii_lowercase();
@@ -912,6 +938,25 @@ fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> 
     }
 
     anyhow::anyhow!("HTTP request failed: {url}\nTransport error: {message}")
+}
+
+fn signed_multipart_fields(
+    channel: &str,
+    key_file: Option<&Path>,
+    req: &lingxia_update::SignRequest<'_>,
+) -> Result<Vec<(String, String)>> {
+    match lingxia_update::sign_package_from_key_file(channel, key_file, req)
+        .map_err(|e| anyhow::anyhow!("{e}"))?
+    {
+        None => Ok(Vec::new()),
+        Some(auth) => Ok(vec![
+            ("signed".to_string(), auth.signed),
+            (
+                "signatures".to_string(),
+                serde_json::to_string(&auth.signatures).context("encode update signatures")?,
+            ),
+        ]),
+    }
 }
 
 fn rand_hex() -> String {
@@ -952,7 +997,7 @@ mod tests {
     use super::{
         build_multipart, find_or_resolve_package, normalize_channel, normalize_platform,
         package_matches, publish_build_args, read_app_package_metadata, resolve_meta,
-        resolve_publish_platform,
+        resolve_publish_platform, signed_multipart_fields,
     };
     use std::fs;
     use std::io::Write;
@@ -1141,6 +1186,77 @@ harmony:
         );
         let body = String::from_utf8(body).unwrap();
         assert!(body.contains("name=\"platform\"\r\n\r\nandroid"));
+    }
+
+    fn sign_request<'a>(sha256: &'a str, size: u64) -> lingxia_update::SignRequest<'a> {
+        lingxia_update::SignRequest {
+            kind: "lxapp",
+            target_id: "shop",
+            channel: "release",
+            platform: "any",
+            version: "1.0.1",
+            sha256,
+            size,
+            required_runtime_version: "",
+        }
+    }
+
+    #[test]
+    fn signed_multipart_fields_omits_envelope_for_developer_without_key() {
+        let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
+        let extra = signed_multipart_fields("developer", None, &sign_request(&sha256, 3)).unwrap();
+        assert!(extra.is_empty());
+    }
+
+    #[test]
+    fn signed_multipart_fields_requires_key_for_release() {
+        let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
+        let err = signed_multipart_fields("release", None, &sign_request(&sha256, 3)).unwrap_err();
+        assert!(
+            err.to_string().contains("--update-signing-key-file"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn signed_multipart_fields_requires_key_for_preview() {
+        let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
+        let err = signed_multipart_fields("preview", None, &sign_request(&sha256, 3)).unwrap_err();
+        assert!(err.to_string().contains("preview publish"), "{err}");
+    }
+
+    #[test]
+    fn signed_multipart_fields_are_uploaded_verbatim() {
+        let package = b"pkg";
+        let sha256 = lingxia_update::archive_sha256_hex(package);
+        let temp = TempDir::new().unwrap();
+        let key_path = temp.path().join("update.key");
+        fs::write(&key_path, "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        let extra = signed_multipart_fields(
+            "release",
+            Some(key_path.as_path()),
+            &sign_request(&sha256, package.len() as u64),
+        )
+        .unwrap();
+        // No scheme field: the envelope does not name its own algorithm.
+        assert_eq!(extra[0].0, "signed");
+        assert_eq!(extra[1].0, "signatures");
+        assert_eq!(extra.len(), 2);
+        let refs: Vec<(&str, &str)> = extra
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect();
+        let body =
+            String::from_utf8(build_multipart("boundary", &refs, "shop.tar.zst", package)).unwrap();
+        assert!(!body.contains("name=\"scheme\""));
+        assert!(body.contains("name=\"signed\""));
+        assert!(body.contains("name=\"signatures\""));
+        assert!(body.contains(&extra[0].1));
     }
 
     #[test]
