@@ -2,6 +2,7 @@ import { USER_DISMISSED_CODE } from '../LxAppDismissal';
 import { hilog } from '@kit.PerformanceAnalysisKit';
 import { LxLog } from '../../app/LxLog';
 import { MediaPreviewOverlayManager, MediaPreviewItem, MediaPreviewPageParams } from './media/MediaPreviewOverlay';
+import { isRemoteHttpUri } from './media/LxUri';
 import { photoAccessHelper } from '@kit.MediaLibraryKit';
 import { CameraCaptureOverlayManager, CameraCaptureOptions } from './media/CameraCaptureOverlay';
 import { media } from '@kit.MediaKit';
@@ -1052,7 +1053,7 @@ export class LxAppMedia {
     if (!path) {
       return '';
     }
-    if (path.startsWith('file://') || path.startsWith('content://') || path.startsWith('data:') || path.startsWith('http://') || path.startsWith('https://')) {
+    if (path.startsWith('file://') || path.startsWith('content://') || path.startsWith('data:') || isRemoteHttpUri(path)) {
       return path;
     }
     return `file://${path}`;

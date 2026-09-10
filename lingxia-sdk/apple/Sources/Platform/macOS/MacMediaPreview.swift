@@ -9,6 +9,9 @@ import os.log
 extension LxAppMedia {
     /// Shared controller that manages the Quick Look preview panel.
     @MainActor static var qlController: MacQuickLookController?
+    /// In-flight http(s) fetch that has not yet presented QuickLook.
+    /// Either this or `qlController` is set, never both.
+    @MainActor fileprivate static var pendingRemoteFetch: PendingRemoteFetch?
 
     @MainActor
     static func clearQLController(_ controller: MacQuickLookController? = nil) {
@@ -21,6 +24,18 @@ extension LxAppMedia {
     @MainActor
     static func closeQLController() {
         qlController?.finish(reason: .interrupted)
+        endPendingRemoteFetch()
+    }
+
+    /// Completes an in-flight fetch as `interrupted` and stops its download.
+    @MainActor
+    fileprivate static func endPendingRemoteFetch() {
+        guard let pending = pendingRemoteFetch else {
+            return
+        }
+        pendingRemoteFetch = nil
+        pending.task?.cancel()
+        emitPreviewResult(callbackId: pending.callbackId, reason: .interrupted, lastIndex: 0)
     }
 
     @MainActor
@@ -98,40 +113,113 @@ extension LxAppMedia {
     @MainActor
     private static func previewMediaOnMain(request: PreviewMediaRequestPayload, callbackId: UInt64, presentedCallbackId: UInt64, changeCallbackId: UInt64) -> Bool {
         let urls = request.sources.map { payload -> URL in
-            if let parsed = URL(string: payload.path), parsed.scheme != nil {
+            let raw = payload.path.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let parsed = URL(string: raw), isRemoteHTTPURL(parsed) {
                 return parsed
             }
-            return URL(fileURLWithPath: payload.path)
+            if let parsed = URL(string: raw), parsed.scheme != nil {
+                return parsed
+            }
+            return URL(fileURLWithPath: raw)
         }
         guard !urls.isEmpty else {
             LXLog.error("previewMedia called with no valid URLs", category: "MediaPreview")
             return false
         }
-        // macOS uses QuickLook which is presented synchronously; fire the
-        // `presented` signal immediately when we hand off to showQuickLook
-        // so the JS-side Promise resolves promptly. The Promise carries no
-        // value, just timing.
-        if presentedCallbackId != 0 {
-            let _ = onCallback(presentedCallbackId, true, "{}")
+
+        supersedeCurrentPreview()
+
+        let startIndex = request.startIndex ?? 0
+        if !urls.contains(where: isRemoteHTTPURL) {
+            return showQuickLook(
+                urls: urls,
+                startIndex: startIndex,
+                callbackId: callbackId,
+                presentedCallbackId: presentedCallbackId,
+                changeCallbackId: changeCallbackId,
+                cacheDirectory: nil
+            )
         }
-        return showQuickLook(urls: urls, startIndex: request.startIndex ?? 0, callbackId: callbackId, changeCallbackId: changeCallbackId)
+
+        // QuickLook only previews file URLs. Fetch http(s) items to a temp
+        // directory, then hand the local copies to the panel.
+        let fetch = PendingRemoteFetch(callbackId: callbackId)
+        pendingRemoteFetch = fetch
+        let fetchId = fetch.id
+        fetch.task = Task.detached(priority: .userInitiated) {
+            let materialized = await materializeRemotePreviewURLs(urls)
+            await MainActor.run {
+                guard pendingRemoteFetch?.id == fetchId else {
+                    if let cacheDirectory = materialized.cacheDirectory {
+                        try? FileManager.default.removeItem(at: cacheDirectory)
+                    }
+                    return
+                }
+                pendingRemoteFetch = nil
+                guard let localURLs = materialized.urls else {
+                    LXLog.error("previewMedia failed to download remote items", category: "MediaPreview")
+                    emitPreviewResult(callbackId: callbackId, reason: .error, lastIndex: 0)
+                    return
+                }
+                let shown = showQuickLook(
+                    urls: localURLs,
+                    startIndex: startIndex,
+                    callbackId: callbackId,
+                    presentedCallbackId: presentedCallbackId,
+                    changeCallbackId: changeCallbackId,
+                    cacheDirectory: materialized.cacheDirectory
+                )
+                if !shown {
+                    if let cacheDirectory = materialized.cacheDirectory {
+                        try? FileManager.default.removeItem(at: cacheDirectory)
+                    }
+                    emitPreviewResult(callbackId: callbackId, reason: .error, lastIndex: 0)
+                }
+            }
+        }
+        return true
+    }
+
+    /// Close an on-screen panel and complete any in-flight remote fetch.
+    @MainActor
+    private static func supersedeCurrentPreview() {
+        LxAppFile.closeQLController()
+        qlController?.finish(reason: .interrupted)
+        endPendingRemoteFetch()
     }
 
     @MainActor
-    private static func showQuickLook(urls: [URL], startIndex: Int, callbackId: UInt64, changeCallbackId: UInt64) -> Bool {
-        LxAppFile.closeQLController()
-        qlController?.finish(reason: .interrupted)
-
-        let controller = MacQuickLookController(urls: urls, startIndex: startIndex, callbackId: callbackId, changeCallbackId: changeCallbackId)
+    private static func showQuickLook(
+        urls: [URL],
+        startIndex: Int,
+        callbackId: UInt64,
+        presentedCallbackId: UInt64,
+        changeCallbackId: UInt64,
+        cacheDirectory: URL?
+    ) -> Bool {
+        let controller = MacQuickLookController(
+            urls: urls,
+            startIndex: startIndex,
+            callbackId: callbackId,
+            changeCallbackId: changeCallbackId,
+            cacheDirectory: cacheDirectory
+        )
         guard controller.show() else {
             return false
         }
         qlController = controller
+        if presentedCallbackId != 0 {
+            let _ = onCallback(presentedCallbackId, true, "{}")
+        }
         return true
     }
 
     @MainActor
     private static func cancelPreviewOnMain(callbackId: UInt64) -> Bool {
+        if pendingRemoteFetch?.callbackId == callbackId {
+            endPendingRemoteFetch()
+            return true
+        }
         guard let controller = qlController, controller.callbackId == callbackId else {
             return false
         }
@@ -147,6 +235,124 @@ fileprivate enum PreviewMediaCloseReason: String {
     case error
 }
 
+/// One in-flight remote fetch. Identity is `id`, so a superseded fetch's
+/// completion cannot present QuickLook or emit a second result. `task` is the
+/// download itself: without cancelling it, an aborted preview keeps pulling
+/// the whole file down.
+@MainActor
+fileprivate final class PendingRemoteFetch {
+    let id = UUID()
+    let callbackId: UInt64
+    var task: Task<Void, Never>?
+
+    init(callbackId: UInt64) {
+        self.callbackId = callbackId
+    }
+}
+
+private func isRemoteHTTPURL(_ url: URL) -> Bool {
+    guard let scheme = url.scheme?.lowercased() else { return false }
+    return scheme == "http" || scheme == "https"
+}
+
+private struct MaterializedPreviewURLs: Sendable {
+    let urls: [URL]?
+    let cacheDirectory: URL?
+}
+
+/// QuickLook picks its renderer from the file extension, so the served type
+/// wins over the URL's own: a CDN path like `/image.php?id=1` would otherwise
+/// be saved as `.php` and refuse to preview even though the response said JPEG.
+private func previewFileExtension(for url: URL, response: URLResponse?) -> String {
+    if let fromMimeType = previewExtensionForMimeType(response?.mimeType) {
+        return fromMimeType
+    }
+    let fromPath = url.pathExtension
+    return fromPath.isEmpty ? "dat" : fromPath
+}
+
+private func previewExtensionForMimeType(_ mimeType: String?) -> String? {
+    switch mimeType?.lowercased() {
+    case "image/jpeg", "image/jpg":
+        return "jpg"
+    case "image/png":
+        return "png"
+    case "image/gif":
+        return "gif"
+    case "image/webp":
+        return "webp"
+    case "image/heic", "image/heif":
+        return "heic"
+    case "video/mp4":
+        return "mp4"
+    case "video/quicktime":
+        return "mov"
+    case "video/webm":
+        return "webm"
+    default:
+        return nil
+    }
+}
+
+/// Fetches every remote item into `cacheDirectory`. One unreachable item does
+/// not discard the sequence — the other hosts skip a failed item and keep the
+/// session, so a 404 in the middle of a gallery must not blank the whole panel.
+/// Only a sequence where nothing could be fetched fails outright.
+private func materializeRemotePreviewURLs(_ urls: [URL]) async -> MaterializedPreviewURLs {
+    let remoteIndexes = urls.indices.filter { isRemoteHTTPURL(urls[$0]) }
+    if remoteIndexes.isEmpty {
+        return MaterializedPreviewURLs(urls: urls, cacheDirectory: nil)
+    }
+
+    let cacheDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("lingxia-preview-\(UUID().uuidString)", isDirectory: true)
+    guard (try? FileManager.default.createDirectory(
+        at: cacheDirectory,
+        withIntermediateDirectories: true
+    )) != nil else {
+        return MaterializedPreviewURLs(urls: nil, cacheDirectory: nil)
+    }
+
+    var result = urls
+    var fetched = 0
+    for index in remoteIndexes {
+        if Task.isCancelled {
+            break
+        }
+        guard let local = await downloadPreviewItem(urls[index], into: cacheDirectory, index: index)
+        else {
+            LXLog.error("previewMedia could not fetch remote item \(index)", category: "MediaPreview")
+            continue
+        }
+        result[index] = local
+        fetched += 1
+    }
+    guard fetched > 0 else {
+        try? FileManager.default.removeItem(at: cacheDirectory)
+        return MaterializedPreviewURLs(urls: nil, cacheDirectory: nil)
+    }
+    return MaterializedPreviewURLs(urls: result, cacheDirectory: cacheDirectory)
+}
+
+private func downloadPreviewItem(_ source: URL, into cacheDirectory: URL, index: Int) async -> URL? {
+    do {
+        let (tempURL, response) = try await URLSession.shared.download(from: source)
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            return nil
+        }
+        let destination = cacheDirectory.appendingPathComponent(
+            "item-\(index).\(previewFileExtension(for: source, response: response))"
+        )
+        if FileManager.default.fileExists(atPath: destination.path) {
+            try FileManager.default.removeItem(at: destination)
+        }
+        try FileManager.default.moveItem(at: tempURL, to: destination)
+        return destination
+    } catch {
+        return nil
+    }
+}
+
 // MARK: - Quick Look controller
 
 /// Bridges QLPreviewPanel data source/delegate to show native Quick Look previews.
@@ -158,16 +364,24 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
     /// JS-side change-stream callback id; fired with `{"index": N}` whenever
     /// the displayed item changes (including the initial item). Zero disables.
     private let changeCallbackId: UInt64
+    private let cacheDirectory: URL?
     private var lastNotifiedIndex: Int = -1
     private var closeObserver: NSObjectProtocol?
     private var indexObservation: NSKeyValueObservation?
     private var didFinish = false
 
-    init(urls: [URL], startIndex: Int, callbackId: UInt64, changeCallbackId: UInt64) {
+    init(
+        urls: [URL],
+        startIndex: Int,
+        callbackId: UInt64,
+        changeCallbackId: UInt64,
+        cacheDirectory: URL?
+    ) {
         self.items = urls.map { QLPreviewURL(url: $0) }
         self.startIndex = startIndex
         self.callbackId = callbackId
         self.changeCallbackId = changeCallbackId
+        self.cacheDirectory = cacheDirectory
         super.init()
     }
 
@@ -219,6 +433,9 @@ final class MacQuickLookController: NSObject, @preconcurrency QLPreviewPanelData
         LxAppMedia.clearQLController(self)
         if shouldClosePanel {
             panel?.orderOut(nil)
+        }
+        if let cacheDirectory {
+            try? FileManager.default.removeItem(at: cacheDirectory)
         }
         LxAppMedia.emitPreviewResult(callbackId: callbackId, reason: reason, lastIndex: lastIndex)
     }

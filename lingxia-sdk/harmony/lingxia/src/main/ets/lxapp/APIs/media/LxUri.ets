@@ -1,9 +1,14 @@
 import { getCurrentLxapp, resolveLxUri, type CurrentLxApp } from 'liblingxia.so';
 
+export function isRemoteHttpUri(input: string): boolean {
+  const raw = (input ?? '').trim().toLowerCase();
+  return raw.startsWith('https://') || raw.startsWith('http://');
+}
+
 export function resolveLxUriForFileAccess(input: string): string {
   const raw = (input ?? '').trim();
   if (!raw) return input;
-  if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
+  if (isRemoteHttpUri(raw)) return raw;
 
   try {
     const current: CurrentLxApp = getCurrentLxapp();

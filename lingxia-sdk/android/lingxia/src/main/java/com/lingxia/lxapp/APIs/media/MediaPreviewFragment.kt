@@ -1914,6 +1914,9 @@ private fun statusBarHeight(context: Context): Int {
 private fun normalizeUri(raw: String?): Uri {
     if (raw.isNullOrBlank()) return Uri.EMPTY
     val trimmed = raw.trim()
+    if (isRemoteHttpUrl(trimmed)) {
+        return Uri.parse(trimmed)
+    }
     val resolved = resolveLxUriIfNeeded(trimmed) ?: trimmed
     return try {
         val parsed = Uri.parse(resolved)

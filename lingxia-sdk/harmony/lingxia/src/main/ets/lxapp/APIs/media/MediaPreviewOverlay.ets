@@ -10,7 +10,7 @@ import {
 } from './player/LxNativeVideoPlayer';
 import { VideoControlsView, VideoControlSize } from './player/VideoControls';
 import { LxMediaFrameCache } from './player/LxMediaFrameCache';
-import { resolveLxUriForFileAccess } from './LxUri';
+import { isRemoteHttpUri, resolveLxUriForFileAccess } from './LxUri';
 import { LxLog } from '../../../app/LxLog';
 import { onCallback, videoPlayerSetVolume } from 'liblingxia.so';
 
@@ -560,7 +560,7 @@ struct MediaPreviewContent {
         continue;
       }
       const item = items[idx];
-      if (!item || item.mediaType !== 1) {
+      if (!item || item.mediaType !== 1 || isRemoteHttpUri(item.uri)) {
         continue;
       }
       const localPath = resolveLxUriForFileAccess(item.uri);
@@ -608,7 +608,7 @@ struct MediaPreviewContent {
 
   private async ensureFrameReadyForIndex(index: number): Promise<void> {
     const item = this.params.items[index];
-    if (!item || item.mediaType !== 1) {
+    if (!item || item.mediaType !== 1 || isRemoteHttpUri(item.uri)) {
       return;
     }
     const localPath = resolveLxUriForFileAccess(item.uri);
@@ -1031,6 +1031,12 @@ struct MediaViewer {
 
   private loadFramePreviewForCurrentItem(): void {
     if (this.item.mediaType !== 1) {
+      this.frameGeneration += 1;
+      this.framePath = '';
+      this.framePixelMap = undefined;
+      return;
+    }
+    if (isRemoteHttpUri(this.item.uri)) {
       this.frameGeneration += 1;
       this.framePath = '';
       this.framePixelMap = undefined;

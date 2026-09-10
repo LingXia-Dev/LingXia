@@ -239,8 +239,11 @@ private struct PreviewMediaItem {
     // ActorIsolatedCall error on every call site.
     private static func resolveURL(_ pathString: String) -> URL {
         let raw = pathString.trimmingCharacters(in: .whitespacesAndNewlines)
-        if raw.hasPrefix("http://") || raw.hasPrefix("https://") {
-            return URL(string: raw) ?? URL(fileURLWithPath: raw)
+        // Remote image/video sources are kept as network URLs (AVPlayer /
+        // UIImage data load). Do not wrap them as file://.
+        if let parsed = URL(string: raw), let scheme = parsed.scheme?.lowercased(),
+           scheme == "http" || scheme == "https" {
+            return parsed
         }
 
         let current = getCurrentLxApp()

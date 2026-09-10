@@ -285,10 +285,18 @@ fn complete_request(request: &PreviewMediaRequest, reason: &str) {
     lingxia_messaging::invoke_callback(request.callback_id, Ok(payload));
 }
 
+fn is_remote_http_url(path: &str) -> bool {
+    path.get(..8)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("https://"))
+        || path
+            .get(..7)
+            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("http://"))
+}
+
 /// Resolves an item path: remote URLs go through the URL cache, file URIs
 /// strip their scheme, everything else is a local path already.
 pub(crate) fn resolve_media_path(path: &str) -> Option<String> {
-    if path.starts_with("http://") || path.starts_with("https://") {
+    if is_remote_http_url(path) {
         let wide_url: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
         let mut buffer = vec![0u16; 1024];
         let downloaded = unsafe {
@@ -398,6 +406,9 @@ fn try_show_item(window: HWND) -> bool {
 /// Videos: MFPlay streams remote URLs natively; only file URIs need the
 /// scheme stripped.
 fn resolve_local_or_remote_video(path: &str) -> Option<String> {
+    if is_remote_http_url(path) {
+        return Some(path.to_string());
+    }
     if let Some(stripped) = path.strip_prefix("file://") {
         Some(stripped.to_string())
     } else {
@@ -950,7 +961,10 @@ fn paint_preview(hwnd: HWND) {
 
 #[cfg(test)]
 mod tests {
-    use super::{FailedItemAction, failed_item_action, video_generation_matches};
+    use super::{
+        FailedItemAction, failed_item_action, is_remote_http_url, resolve_local_or_remote_video,
+        video_generation_matches,
+    };
     use lingxia_platform::traits::media_interaction::PreviewMediaAdvance;
 
     #[test]
@@ -985,5 +999,18 @@ mod tests {
     fn stale_video_event_does_not_match_current_attempt() {
         assert!(video_generation_matches(7, 7));
         assert!(!video_generation_matches(7, 6));
+    }
+
+    #[test]
+    fn https_image_and_video_stay_remote_urls() {
+        assert!(is_remote_http_url("https://cdn.example.com/photo.jpg"));
+        assert!(is_remote_http_url("https://cdn.example.com/clip.mp4"));
+        assert!(is_remote_http_url("HTTP://cdn.example.com/photo.jpg"));
+        assert!(!is_remote_http_url("lx://usercache/a.png"));
+        assert!(!is_remote_http_url(r"C:\temp\a.png"));
+        assert_eq!(
+            resolve_local_or_remote_video("https://cdn.example.com/clip.mp4").as_deref(),
+            Some("https://cdn.example.com/clip.mp4")
+        );
     }
 }
