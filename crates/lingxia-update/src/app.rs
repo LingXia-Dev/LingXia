@@ -1,4 +1,7 @@
-use crate::{BoxFuture, UpdatePackageInfo, UpdateTarget, Version};
+use crate::{
+    BoxFuture, ReleaseType, UpdatePackageInfo, UpdateTarget, UpdateVerifyTarget, Version,
+    check_update_enabled, embedded_update_public_keys, host_update_platform, verify_checked_update,
+};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use tokio::sync::broadcast;
@@ -181,19 +184,53 @@ fn emit_app_update_event(event: AppUpdateEvent) {
 pub async fn check_app_update<H: AppUpdateHost>(
     host: &H,
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
+    let target_id = lingxia_app_context::app_config()
+        .and_then(|config| config.lingxia_id.clone())
+        .filter(|id| !id.is_empty())
+        .unwrap_or_default();
+    check_app_update_for(
+        host,
+        crate::host_channel(),
+        &embedded_update_public_keys(),
+        target_id,
+    )
+    .await
+}
+
+async fn check_app_update_for<H: AppUpdateHost>(
+    host: &H,
+    channel: ReleaseType,
+    trusted_public_keys: &[String],
+    target_id: String,
+) -> Result<Option<UpdatePackageInfo>, UpdateError> {
+    if !check_update_enabled(trusted_public_keys) {
+        return Ok(None);
+    }
     let current_version = host.current_app_version()?;
     let candidate = host.check_app_update(&current_version).await?;
+    let Some(package) = candidate else {
+        return Ok(None);
+    };
+    let package = verify_checked_update(
+        package,
+        &UpdateVerifyTarget {
+            kind: "app".into(),
+            target_id,
+            channel: channel.as_str().to_string(),
+            platform: host_update_platform().into(),
+            exact_version: None,
+        },
+        trusted_public_keys,
+    )?;
     // Only surface a strictly-newer candidate. A provider that re-offers the
     // installed version (or the same version after a successful update) would
     // otherwise make the app re-download and re-prompt on every check — an
     // endless "update available" loop. Unparseable versions fall through to the
     // apply-time downgrade guard.
-    if let Some(package) = &candidate
-        && !app_update_candidate_is_newer(&package.version, &current_version)
-    {
+    if !app_update_candidate_is_newer(&package.version, &current_version) {
         return Ok(None);
     }
-    Ok(candidate)
+    Ok(Some(package))
 }
 
 fn app_update_candidate_is_newer(candidate: &str, current: &str) -> bool {
@@ -244,4 +281,192 @@ pub fn ensure_app_update_candidate_version(
 
 pub fn app_update_scope_key() -> String {
     UpdateTarget::app(None::<String>).scope_key()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::signing::{SignRequest, archive_sha256_hex, public_key_base64url, sign_package};
+    use crate::{UpdateAuthentication, UpdatePackageInfo};
+    use lingxia_app_context::{AppConfig, EnvVersion};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    const SEED: [u8; 32] = [7u8; 32];
+    const ARCHIVE: &[u8] = b"host-update-golden-archive";
+    const TARGET_ID: &str = "demo-host";
+
+    #[derive(Clone)]
+    struct FakeHost {
+        current_version: String,
+        response: Option<UpdatePackageInfo>,
+        provider_calls: Arc<AtomicUsize>,
+    }
+
+    impl FakeHost {
+        fn new(current_version: &str, response: Option<UpdatePackageInfo>) -> Self {
+            Self {
+                current_version: current_version.into(),
+                response,
+                provider_calls: Arc::new(AtomicUsize::new(0)),
+            }
+        }
+    }
+
+    impl AppUpdateHost for FakeHost {
+        fn spawn_detached(&self, _task: BoxFuture<'static, ()>) {}
+
+        fn current_app_version(&self) -> Result<String, UpdateError> {
+            Ok(self.current_version.clone())
+        }
+
+        fn check_app_update<'a>(
+            &'a self,
+            _current_version: &'a str,
+        ) -> BoxFuture<'a, Result<Option<UpdatePackageInfo>, UpdateError>> {
+            self.provider_calls.fetch_add(1, Ordering::SeqCst);
+            let response = self.response.clone();
+            Box::pin(async move { Ok(response) })
+        }
+
+        fn download_app_update<'a>(
+            &'a self,
+            _update: &'a UpdatePackageInfo,
+            _progress: AppUpdateProgressReporter,
+        ) -> BoxFuture<'a, Result<PathBuf, UpdateError>> {
+            Box::pin(async { Err(UpdateError::runtime("download not used")) })
+        }
+
+        fn install_app_update(
+            &self,
+            _package_path: &Path,
+            _info_json: &str,
+        ) -> Result<(), UpdateError> {
+            Err(UpdateError::runtime("install not used"))
+        }
+
+        fn log_app_update_warning(&self, _detail: &str) {}
+    }
+
+    fn install_release_keys() {
+        let config = AppConfig {
+            product_name: "Host Verify".to_string(),
+            product_version: "1.0.0".to_string(),
+            lingxia_id: Some(TARGET_ID.to_string()),
+            lingxia_server: None,
+            env_version: EnvVersion::Release,
+            home_app_id: String::new(),
+            home_app_version: String::new(),
+            cache_max_size_mb: 1024,
+            storage: None,
+            splash: None,
+            dev_ws_url: None,
+            dev_bundle_base_url: None,
+            app_links: None,
+            theme: None,
+            settings_destination: None,
+            capabilities: None,
+            panels: None,
+            update_trusted_public_keys: vec![public_key_base64url(&SEED)],
+        };
+        lingxia_app_context::set_app_config(config).expect("install host verify config");
+    }
+
+    fn signed_package(version: &str, auth: Option<UpdateAuthentication>) -> UpdatePackageInfo {
+        let sha256 = archive_sha256_hex(ARCHIVE);
+        UpdatePackageInfo {
+            version: version.into(),
+            url: "https://cdn.example.com/app".into(),
+            checksum_sha256: sha256,
+            size: Some(ARCHIVE.len() as u64),
+            release_notes: None,
+            is_force_update: true,
+            required_runtime_version: None,
+            authentication: auth,
+        }
+    }
+
+    fn sign(version: &str) -> UpdateAuthentication {
+        let sha256 = archive_sha256_hex(ARCHIVE);
+        sign_package(
+            &SEED,
+            &SignRequest {
+                kind: "app",
+                target_id: TARGET_ID,
+                channel: "release",
+                platform: host_update_platform(),
+                version,
+                sha256: &sha256,
+                size: ARCHIVE.len() as u64,
+                required_runtime_version: "",
+            },
+        )
+        .expect("sign host package")
+    }
+
+    fn block_on<T>(future: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime")
+            .block_on(future)
+    }
+
+    #[test]
+    fn check_app_update_verifies_before_version_or_force_decisions() {
+        install_release_keys();
+
+        let unsigned = FakeHost::new("1.0.0", Some(signed_package("1.0.1", None)));
+        let err = block_on(check_app_update(&unsigned)).expect_err("unsigned release");
+        assert!(err.to_string().contains("require signed updates"), "{err}");
+
+        let mut bad = sign("1.0.1");
+        let mut sig = crate::decode_base64url(&bad.signatures[0]).unwrap();
+        sig[0] ^= 0xff;
+        bad.signatures[0] = crate::encode_base64url(&sig);
+        let tampered = FakeHost::new("1.0.0", Some(signed_package("1.0.1", Some(bad))));
+        assert!(block_on(check_app_update(&tampered)).is_err());
+
+        let same_version =
+            FakeHost::new("1.0.1", Some(signed_package("1.0.1", Some(sign("1.0.1")))));
+        let none = block_on(check_app_update(&same_version)).expect("verified same version");
+        assert!(none.is_none(), "version filter runs only after verify");
+
+        let newer = FakeHost::new("1.0.0", Some(signed_package("1.0.1", Some(sign("1.0.1")))));
+        let accepted = block_on(check_app_update(&newer))
+            .expect("verified newer")
+            .expect("update available");
+        assert_eq!(accepted.version, "1.0.1");
+        assert_eq!(accepted.checksum_sha256, archive_sha256_hex(ARCHIVE));
+    }
+
+    #[test]
+    fn preview_and_release_without_keys_skip_check() {
+        let host = FakeHost::new("1.0.0", Some(signed_package("1.0.1", None)));
+        for channel in [ReleaseType::Preview, ReleaseType::Release] {
+            let result = block_on(check_app_update_for(&host, channel, &[], TARGET_ID.into()))
+                .expect("skip is not an error");
+            assert!(result.is_none(), "{channel:?}");
+        }
+        assert_eq!(host.provider_calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_developer_channel_request_does_not_waive_this_release_build() {
+        // The channel still selects which packages to fetch, but no longer
+        // decides whether they must be signed — that follows the build. Unit
+        // tests have no `app.json`, so this build is release.
+        let host = FakeHost::new("1.0.0", Some(signed_package("1.0.1", None)));
+        let keys = [public_key_base64url(&SEED)];
+        let err = block_on(check_app_update_for(
+            &host,
+            ReleaseType::Developer,
+            &keys,
+            TARGET_ID.into(),
+        ))
+        .expect_err("an unsigned package on a release build");
+        assert!(err.to_string().contains("require signed updates"), "{err}");
+        assert_eq!(host.provider_calls.load(Ordering::SeqCst), 1);
+    }
 }
