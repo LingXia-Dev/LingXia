@@ -252,6 +252,11 @@ const APPLE_DOWNSTREAM_STALE_MS = 35000;
 const APPLE_DOWNSTREAM_CONNECT_TIMEOUT_MS = 10000;
 let appleLastFrameAt = 0;
 let appleDownstreamAttemptAt = 0;
+// Names this page load to the host transport, so a reloaded document never
+// resumes the sequence of the one it replaced.
+const APPLE_DOWNSTREAM_DOCUMENT = `${Date.now().toString(36)}${Math.random()
+  .toString(36)
+  .slice(2, 10)}`;
 let appleWatchdogTimer: ReturnType<typeof setInterval> | null = null;
 const portInitState = {
   listenerInstalled: false,
@@ -411,7 +416,7 @@ async function runAppleDownstream(): Promise<void> {
   appleDownstreamAbortController = controller;
   // Resume from the last frame we saw so the host replays the gap on reconnect.
   const separator = APPLE_DOWNSTREAM_URL.includes("?") ? "&" : "?";
-  const url = `${APPLE_DOWNSTREAM_URL}${separator}from=${appleLastFrameSeq}`;
+  const url = `${APPLE_DOWNSTREAM_URL}${separator}from=${appleLastFrameSeq}&doc=${APPLE_DOWNSTREAM_DOCUMENT}`;
   appleDownstreamAttemptAt = Date.now();
   const response = await fetch(url, {
     method: "GET",
