@@ -573,6 +573,7 @@ mod tests {
                 ..CapabilitiesConfig::default()
             }),
             panels: None,
+            update_trusted_public_keys: Vec::new(),
         }
     }
 

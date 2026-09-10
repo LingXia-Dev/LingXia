@@ -14,7 +14,9 @@ pub use lingxia_provider::{
     LxAppPermissions, LxAppRegistryInfo, LxAppRegistryProvider, LxAppRegistryRequest, LxAppStatus,
     ProviderError, ProviderErrorCode, PushNotificationProvider,
 };
-pub use lingxia_update::{LxAppUpdateQuery, UpdatePackageInfo, UpdateProvider, UpdateTarget};
+pub use lingxia_update::{
+    LxAppUpdateQuery, UpdateAuthentication, UpdatePackageInfo, UpdateProvider, UpdateTarget,
+};
 
 pub trait ProviderErrorExt {
     fn to_lxapp_error(&self) -> LxAppError;

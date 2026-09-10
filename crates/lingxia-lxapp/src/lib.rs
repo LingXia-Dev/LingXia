@@ -137,8 +137,8 @@ pub use provider::{
     BoxFuture, FingerprintProvider, LxAppChannel, LxAppNetworkPermission, LxAppPermissions,
     LxAppRegistryInfo, LxAppRegistryProvider, LxAppRegistryRequest, LxAppStatus, LxAppUpdateQuery,
     NoOpProvider, Provider, ProviderError, ProviderErrorCode, ProviderErrorExt,
-    PushNotificationProvider, UpdatePackageInfo, UpdateProvider, UpdateTarget,
-    register_lxapp_registry_provider, register_provider,
+    PushNotificationProvider, UpdateAuthentication, UpdatePackageInfo, UpdateProvider,
+    UpdateTarget, register_lxapp_registry_provider, register_provider,
 };
 pub use startup::{
     LxAppStartupOptions, Scene, append_page_query, parse_env_release_type,
