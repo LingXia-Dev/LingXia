@@ -2,6 +2,7 @@ import { hilog } from '@kit.PerformanceAnalysisKit';
 import { common } from '@kit.AbilityKit';
 import { display, window } from '@kit.ArkUI';
 import { image } from '@kit.ImageKit';
+import { http } from '@kit.NetworkKit';
 import {
   LxNativeVideoPlayer,
   LxNativeVideoConfig,
@@ -48,6 +49,18 @@ export type MediaPreviewAdvance = 'manual' | 'next' | 'loop';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.MediaPreviewOverlay';
+
+function decodePixelMapFromBuffer(buffer: ArrayBuffer): Promise<image.PixelMap | undefined> {
+  try {
+    const source = image.createImageSource(buffer);
+    if (!source) {
+      return Promise.resolve(undefined);
+    }
+    return source.createPixelMap().catch((): image.PixelMap | undefined => undefined);
+  } catch (_error) {
+    return Promise.resolve(undefined);
+  }
+}
 
 /**
  * Media preview overlay manager
@@ -684,6 +697,8 @@ struct MediaViewer {
   onVisualReady: () => void = () => {};
 
   @State private imageScale: number = 1;
+  @State private imageLoadFailed: boolean = false;
+  @State private imagePixelMap: image.PixelMap | undefined = undefined;
   // Video player state
   @State private videoState: LxNativeVideoState = new LxNativeVideoState();
   @State private showControls: boolean = false;  // Hide controls initially, show on tap
@@ -719,6 +734,8 @@ struct MediaViewer {
   private progressTimer: number = -1;
   private frameGeneration: number = 0;
   private framePath: string = '';
+  private imageLoadGeneration: number = 0;
+  private remoteImageRequest: http.HttpRequest | undefined = undefined;
 
   aboutToAppear() {
     this.initScreenDimensions();
@@ -815,6 +832,7 @@ struct MediaViewer {
     this.clearControlsTimer();
     this.stopProgressTimer();
     this.teardownVideoPlayer(true);
+    this.cancelRemoteImageLoad();
     this.resetZoomState();
   }
 
@@ -984,6 +1002,9 @@ struct MediaViewer {
     // frame. Pause + mute happen synchronously inside teardownVideoPlayer so
     // there's no audible bleed during the 80ms grace window.
     this.teardownVideoPlayer(true);
+    this.cancelRemoteImageLoad();
+    this.imageLoadFailed = false;
+    this.imagePixelMap = undefined;
 
     // hasPlayedOnce MUST be reset BEFORE videoState. The videoState assignment
     // is a @State object reassignment that triggers an ArkUI re-render; if
@@ -999,6 +1020,7 @@ struct MediaViewer {
     this.effectiveRotation = 0;
     this.orientationDetected = false;
     this.loadFramePreviewForCurrentItem();
+    this.loadPreviewImage();
 
     if (!this.isActive) {
       return;
@@ -1071,6 +1093,101 @@ struct MediaViewer {
       }
       this.framePixelMap = pixelMap;
     });
+  }
+
+  private cancelRemoteImageLoad(): void {
+    this.imageLoadGeneration += 1;
+    const pending = this.remoteImageRequest;
+    this.remoteImageRequest = undefined;
+    if (!pending) {
+      return;
+    }
+    try {
+      pending.destroy();
+    } catch (_error) {
+    }
+  }
+
+  private settleImageVisualReady(): void {
+    if (this.isActive) {
+      this.onVisualReady();
+    }
+  }
+
+  private markImageLoadFailed(): void {
+    if (this.imageLoadFailed) {
+      return;
+    }
+    this.imageLoadFailed = true;
+    hilog.warn(DOMAIN, TAG, `preview image failed to load: ${this.item.uri}`);
+    this.settleImageVisualReady();
+  }
+
+  // ArkUI Image(http) never fires onComplete/onError for some 404s, so
+  // `presented` would hang. Fetch ourselves and treat a non-2xx like iOS.
+  private loadPreviewImage(): void {
+    if (this.item.mediaType === 1) {
+      return;
+    }
+    const uri = this.item.uri;
+    if (!isRemoteHttpUri(uri)) {
+      return;
+    }
+    const generation = this.imageLoadGeneration;
+    const request = http.createHttp();
+    this.remoteImageRequest = request;
+    request.request(uri, {
+      method: http.RequestMethod.GET,
+      expectDataType: http.HttpDataType.ARRAY_BUFFER,
+      connectTimeout: 15000,
+      readTimeout: 20000,
+      usingCache: false
+    }).then((response: http.HttpResponse) => {
+      this.finishRemoteImageRequest(request);
+      if (generation !== this.imageLoadGeneration) {
+        return;
+      }
+      if (response.responseCode < 200 || response.responseCode >= 300) {
+        this.markImageLoadFailed();
+        return;
+      }
+      if (response.resultType !== http.HttpDataType.ARRAY_BUFFER) {
+        this.markImageLoadFailed();
+        return;
+      }
+      const body = response.result as ArrayBuffer;
+      if (!body || body.byteLength === 0) {
+        this.markImageLoadFailed();
+        return;
+      }
+      decodePixelMapFromBuffer(body).then((pixelMap: image.PixelMap | undefined) => {
+        if (generation !== this.imageLoadGeneration) {
+          return;
+        }
+        if (!pixelMap) {
+          this.markImageLoadFailed();
+          return;
+        }
+        this.imagePixelMap = pixelMap;
+        this.settleImageVisualReady();
+      });
+    }).catch(() => {
+      this.finishRemoteImageRequest(request);
+      if (generation !== this.imageLoadGeneration) {
+        return;
+      }
+      this.markImageLoadFailed();
+    });
+  }
+
+  private finishRemoteImageRequest(request: http.HttpRequest): void {
+    if (this.remoteImageRequest === request) {
+      this.remoteImageRequest = undefined;
+    }
+    try {
+      request.destroy();
+    } catch (_error) {
+    }
   }
 
   private teardownVideoPlayer(deferDestroy: boolean = false): void {
@@ -1292,6 +1409,27 @@ struct MediaViewer {
   }
 
   @Builder
+  buildImageLoadFailed(): void {
+    Column() {
+      Image($r('sys.media.ohos_ic_public_fail'))
+        .width(72)
+        .height(72)
+        .fillColor(Color.White)
+        .objectFit(ImageFit.Contain)
+        .onComplete(() => {
+          if (this.isActive) {
+            this.onVisualReady();
+          }
+        })
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .backgroundColor(Color.Black)
+  }
+
+  @Builder
   buildCenterPlayButton(): void {
     Row() {
       Image($r('sys.media.ohos_ic_public_play'))
@@ -1398,30 +1536,67 @@ struct MediaViewer {
         })
       } else {
         Stack() {
-          Image(this.item.uri)
-            .width('100%')
-            .height('100%')
-            .objectFit(this.resolveImageFit(this.item.objectFit))
-            .scale({ x: this.imageScale, y: this.imageScale })
-            .onComplete(() => {
-              if (this.isActive) {
-                this.onVisualReady();
-              }
-            })
-            .gesture(
-              PinchGesture({ fingers: 2, distance: 1 })
-                .onActionUpdate((event: GestureEvent) => {
-                  if (event.scale) {
-                    this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
-                    this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
-                  }
-                })
-                .onActionEnd(() => {
-                  if (this.imageScale <= this.minScale + 0.1) {
-                    this.resetZoom();
-                  }
-                })
-            )
+          if (this.imageLoadFailed) {
+            this.buildImageLoadFailed()
+          } else if (this.imagePixelMap !== undefined) {
+            Image(this.imagePixelMap)
+              .width('100%')
+              .height('100%')
+              .objectFit(this.resolveImageFit(this.item.objectFit))
+              .scale({ x: this.imageScale, y: this.imageScale })
+              .onComplete(() => {
+                if (this.isActive) {
+                  this.onVisualReady();
+                }
+              })
+              .gesture(
+                PinchGesture({ fingers: 2, distance: 1 })
+                  .onActionUpdate((event: GestureEvent) => {
+                    if (event.scale) {
+                      this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                      this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
+                    }
+                  })
+                  .onActionEnd(() => {
+                    if (this.imageScale <= this.minScale + 0.1) {
+                      this.resetZoom();
+                    }
+                  })
+              )
+          } else if (isRemoteHttpUri(this.item.uri)) {
+            Column()
+              .width('100%')
+              .height('100%')
+              .backgroundColor(Color.Black)
+          } else {
+            Image(this.item.uri)
+              .width('100%')
+              .height('100%')
+              .objectFit(this.resolveImageFit(this.item.objectFit))
+              .scale({ x: this.imageScale, y: this.imageScale })
+              .onComplete(() => {
+                if (this.isActive) {
+                  this.onVisualReady();
+                }
+              })
+              .onError(() => {
+                this.markImageLoadFailed();
+              })
+              .gesture(
+                PinchGesture({ fingers: 2, distance: 1 })
+                  .onActionUpdate((event: GestureEvent) => {
+                    if (event.scale) {
+                      this.imageScale = Math.min(this.maxScale, Math.max(this.minScale, event.scale));
+                      this.onZoomStateChanged(this.imageScale > this.minScale + 0.1);
+                    }
+                  })
+                  .onActionEnd(() => {
+                    if (this.imageScale <= this.minScale + 0.1) {
+                      this.resetZoom();
+                    }
+                  })
+              )
+          }
         }
         .width(this.isQuarterTurn(this.resolveImageRotation()) ? this.screenHeightVp : '100%')
         .height(this.isQuarterTurn(this.resolveImageRotation()) ? this.screenWidthVp : '100%')
