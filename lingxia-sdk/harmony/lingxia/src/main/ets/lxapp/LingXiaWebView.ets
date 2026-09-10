@@ -80,6 +80,10 @@ export struct LingXiaWebView {
   private embedSyncTimerId: number | null = null
   private lastFullscreenId: string = ''
   private pageEpoch: string = ''
+  // ArkWeb can skip onPageVisible (splash, zero-size, off-screen tabs),
+  // which is the Harmony analogue of Android skipping onPageCommitVisible.
+  // Strict lxapp pages still need a MessagePort from onPageEnd in that case.
+  private documentCommitted: boolean = false
 
   aboutToDisappear() {
     this.cleanupEmbedManager();
@@ -110,6 +114,18 @@ export struct LingXiaWebView {
 
   private isBrowserRelaxed(): boolean {
     return isWebViewBrowserRelaxed(this.webTag);
+  }
+
+  private commitDocument(url: string): void {
+    if (this.documentCommitted || !this.pageEpoch || !url) {
+      return;
+    }
+    this.documentCommitted = WebViewManager.documentCommit(
+      this.webTag,
+      this.controller,
+      this.pageEpoch,
+      url
+    );
   }
 
   @Builder
@@ -173,6 +189,7 @@ export struct LingXiaWebView {
         );
       })
       .onPageBegin((event) => {
+        this.documentCommitted = false;
         this.pageEpoch = WebViewManager.pageBegin(
           this.webTag,
           this.controller,
@@ -180,14 +197,14 @@ export struct LingXiaWebView {
         );
       })
       .onPageVisible(() => {
-        WebViewManager.documentCommit(
-          this.webTag,
-          this.controller,
-          this.pageEpoch,
-          this.controller.getUrl() ?? ''
-        );
+        this.commitDocument(this.controller.getUrl() ?? '');
       })
       .onPageEnd((event) => {
+        // lxapp fallback when ArkWeb never delivers onPageVisible.
+        // BrowserControl keeps requiring visible-commit proof.
+        if (!this.documentCommitted && !this.isBrowserRelaxed()) {
+          this.commitDocument(event?.url ?? '');
+        }
         WebViewManager.pageEnd(
           this.webTag,
           this.controller,
@@ -197,6 +214,7 @@ export struct LingXiaWebView {
       })
       .onRenderExited(() => {
         this.pageEpoch = '';
+        this.documentCommitted = false;
         WebViewManager.renderExited(this.webTag, this.controller);
       })
       .onShowFileSelector((event) => {
