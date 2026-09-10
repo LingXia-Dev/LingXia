@@ -19,6 +19,10 @@ const APPLE_BRIDGE_DOWNSTREAM_PATH: &str = "/downstream";
 const APPLE_BRIDGE_REPLAY_LIMIT: usize = 4096;
 // Query key carrying the client's last-seen transport seq on (re)connect.
 const APPLE_BRIDGE_FROM_QUERY: &str = "from";
+// Names the page load a downstream belongs to (`doc=`), so a replacing document
+// never resumes the sequence of the one it replaced.
+const APPLE_BRIDGE_DOCUMENT_QUERY: &str = "doc";
+const APPLE_BRIDGE_DOCUMENT_MAX_LEN: usize = 64;
 // Complete each WKURLSchemeTask response after a frame burst. WebKit can
 // otherwise buffer later `didReceiveData` chunks indefinitely; EOF flushes
 // them, and the client resumes by sequence.
@@ -56,6 +60,28 @@ pub(super) fn downstream_from_seq(request: &http::Request<Vec<u8>>) -> u64 {
         })
         .and_then(|value| value.parse::<u64>().ok())
         .unwrap_or(0)
+}
+
+/// The page-load identity a downstream request names, when the client sends a
+/// well-formed one. Older clients send none and keep the sequence-only rules.
+pub(super) fn downstream_document(request: &http::Request<Vec<u8>>) -> Option<String> {
+    request
+        .uri()
+        .query()
+        .into_iter()
+        .flat_map(|query| query.split('&'))
+        .find_map(|pair| {
+            pair.strip_prefix(APPLE_BRIDGE_DOCUMENT_QUERY)?
+                .strip_prefix('=')
+        })
+        .filter(|value| {
+            !value.is_empty()
+                && value.len() <= APPLE_BRIDGE_DOCUMENT_MAX_LEN
+                && value
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+        })
+        .map(str::to_owned)
 }
 
 pub(super) fn bridge_downstream_cors_origin(request: &http::Request<Vec<u8>>) -> String {
@@ -231,6 +257,8 @@ struct AppleBridgeConnection {
 struct AppleBridgeTransportState {
     log: FrameLog,
     connection: Option<AppleBridgeConnection>,
+    // The page load the retained sequence belongs to, once a client named one.
+    document: Option<String>,
     next_connection_id: u64,
     shutdown: bool,
 }
@@ -248,6 +276,7 @@ impl AppleBridgeTransport {
             state: Mutex::new(AppleBridgeTransportState {
                 log: FrameLog::new(APPLE_BRIDGE_REPLAY_LIMIT),
                 connection: None,
+                document: None,
                 next_connection_id: 0,
                 shutdown: false,
             }),
@@ -262,7 +291,21 @@ impl AppleBridgeTransport {
     /// not discard queued frames: the client's `from` acks everything it has
     /// received, and the writer loop replays the rest — so a WebKit-initiated
     /// reconnect loses nothing and the bridge session survives it.
+    #[cfg(test)]
     pub(super) fn connect_downstream(&self, from: u64) -> Result<SystemPipeReader, WebViewError> {
+        self.connect_downstream_for_document(from, None)
+    }
+
+    /// [`Self::connect_downstream`] for a client that names its page load. A
+    /// different document than the one the retained sequence belongs to always
+    /// starts fresh: frames still retained for the replaced document (its
+    /// `helloAck`/`ready` when it was replaced before resuming past them) must
+    /// not be replayed into the new one.
+    pub(super) fn connect_downstream_for_document(
+        &self,
+        from: u64,
+        document: Option<&str>,
+    ) -> Result<SystemPipeReader, WebViewError> {
         if self
             .state
             .lock()
@@ -324,8 +367,17 @@ impl AppleBridgeTransport {
                 )));
             }
             let replaced = guard.connection.is_some();
+            // Frames queued before the first named connection belong to that
+            // document; only a change of document discards the sequence.
+            let new_document = matches!(
+                (guard.document.as_deref(), document),
+                (Some(previous), Some(current)) if previous != current
+            );
+            if let Some(document) = document {
+                guard.document = Some(document.to_owned());
+            }
             guard.log.evict_through(from);
-            let resumable = guard.log.resumable(from);
+            let resumable = !new_document && guard.log.resumable(from);
             // A new document starts at zero even when the retained transport
             // belonged to the document it replaced. Reset that old sequence
             // silently: sending lxreset after the response headers lets the
@@ -656,6 +708,58 @@ mod tests {
     }
 
     #[test]
+    fn a_replacing_document_never_replays_the_previous_documents_frames() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        let _old_reader = transport
+            .connect_downstream_for_document(0, Some("first"))
+            .unwrap();
+        transport.enqueue_message(r#"{"kind":"oldAck"}"#).unwrap();
+
+        // Replaced before it resumed past seq 1, so that frame is still retained.
+        let reader = transport
+            .connect_downstream_for_document(0, Some("second"))
+            .unwrap();
+        transport.enqueue_message(r#"{"kind":"helloAck"}"#).unwrap();
+
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(!text.contains("oldAck"));
+        assert!(!text.contains(r#"{"lxreset":true}"#));
+        assert!(text.contains(r#"{"lxff":1,"m":{"kind":"helloAck"}}"#));
+    }
+
+    #[test]
+    fn the_same_document_reconnecting_from_zero_still_replays() {
+        let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
+        transport.enqueue_message(r#"{"n":1}"#).unwrap();
+        // Its first response went away before delivering anything.
+        let _first = transport
+            .connect_downstream_for_document(0, Some("page-load"))
+            .unwrap();
+
+        let reader = transport
+            .connect_downstream_for_document(0, Some("page-load"))
+            .unwrap();
+        let mut downstream = unsafe { UnixStream::from_raw_fd(reader.into_raw_fd()) };
+        downstream
+            .set_read_timeout(Some(Duration::from_secs(1)))
+            .unwrap();
+        let mut bytes = Vec::new();
+        downstream.read_to_end(&mut bytes).unwrap();
+        transport.shutdown();
+
+        let text = String::from_utf8(bytes).unwrap();
+        assert!(text.contains(r#"{"lxff":1,"m":{"n":1}}"#));
+    }
+
+    #[test]
     fn resumed_downstream_finishes_after_replaying_backlog() {
         let transport = AppleBridgeTransport::new(WebTag::new("test", "page", None));
         transport.enqueue_message(r#"{"n":1}"#).unwrap();
@@ -845,6 +949,32 @@ mod tests {
         assert_eq!(
             downstream_from_seq(&req("lx-apple://bridge/downstream?from=bogus")),
             0
+        );
+    }
+
+    #[test]
+    fn document_parses_only_a_well_formed_identity() {
+        let req = |uri: &str| http::Request::builder().uri(uri).body(Vec::new()).unwrap();
+        assert_eq!(
+            downstream_document(&req("lx-apple://bridge/downstream?from=3&doc=m1x9-a_b")),
+            Some("m1x9-a_b".to_string())
+        );
+        assert_eq!(
+            downstream_document(&req("lx-apple://bridge/downstream?from=3")),
+            None
+        );
+        assert_eq!(
+            downstream_document(&req("lx-apple://bridge/downstream?doc=")),
+            None
+        );
+        assert_eq!(
+            downstream_document(&req("lx-apple://bridge/downstream?doc=a%20b")),
+            None
+        );
+        let long = "a".repeat(APPLE_BRIDGE_DOCUMENT_MAX_LEN + 1);
+        assert_eq!(
+            downstream_document(&req(&format!("lx-apple://bridge/downstream?doc={long}"))),
+            None
         );
     }
 
