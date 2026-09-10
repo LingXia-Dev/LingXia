@@ -4,10 +4,9 @@ import UIKit
 
 /// Host-surface PNG for `lxdev app screenshot`.
 ///
-/// `CALayer.render(in:)` skips `AVPlayerLayer` (hardware compositor). Draw
-/// every window in the scene with `drawHierarchy(afterScreenUpdates:)`, then
-/// stamp the current video frame from `AVAssetImageGenerator` over each
-/// player layer so a playing preview is visible in the capture.
+/// `CALayer.render(in:)` captures WKWebView and UIImageView but skips
+/// `AVPlayerLayer`. Stamp the current `AVPlayerItem` frame over each player
+/// layer so a playing preview is visible without losing the rest of the UI.
 enum LxAppScreenshot {
     static func pngData() -> Data? {
         let windows = captureWindows()
@@ -24,7 +23,10 @@ enum LxAppScreenshot {
             ctx.fill(bounds)
             for window in windows {
                 let frame = window.convert(window.bounds, to: nil)
-                _ = window.drawHierarchy(in: frame, afterScreenUpdates: true)
+                ctx.cgContext.saveGState()
+                ctx.cgContext.translateBy(x: frame.minX, y: frame.minY)
+                window.layer.render(in: ctx.cgContext)
+                ctx.cgContext.restoreGState()
                 overlayPlayerFrames(
                     from: window.layer,
                     into: ctx.cgContext,
