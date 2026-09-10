@@ -54,7 +54,11 @@ case "$profile" in
       -p lingxia-logic \
       -p lingxia-app-context \
       -p lingxia-settings \
+      -p lingxia-update \
       --lib
+    # Update signing decides what code a device will execute, so its publish
+    # side belongs on this gate too.
+    cargo test -p lingxia-cli --bins -- signed_multipart update_public_key
     # Keep the external-navigation/OAuth policy on Linux: the same lib-test
     # binary cannot link on macOS without the Swift host bridge implementation.
     cargo test -p lingxia-browser --lib

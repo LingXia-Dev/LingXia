@@ -17,6 +17,21 @@ prebuilt package path. Authenticates with a bearer token: the `--token` flag,
 
 See `lingxia publish --help` for the flags.
 
+**Update signatures:**
+
+Follows `lingxia publish --env`: `developer` may be unsigned; `preview` /
+`release` require `--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`).
+
+Host `update:` is the switch. Omit the table: a developer *build*'s
+`checkUpdate` still runs (unverified); preview/release builds skip. If present,
+list 1 or 2 `trustedPublicKeys`.
+
+Whether a signature may be waived follows the **host build's** `envVersion`,
+never the channel a caller asks for. A preview/release build requires a trusted
+signature on every package it installs, including one it fetches on the
+developer channel — an App Link query or `lx.navigateToApp({ envVersion })`
+picks the channel, so it must not pick the trust rule.
+
 **Publish tokens (wallet):**
 
 Store the token once with `lingxia auth login lingxia --env release --token …`;
