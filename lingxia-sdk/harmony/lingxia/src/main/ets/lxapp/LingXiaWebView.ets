@@ -220,7 +220,12 @@ export struct LingXiaWebView {
         );
       })
       .onPageVisible(() => {
-        this.commitDocument(this.controller.getUrl() ?? '');
+        // Commit with the URL this begin reported: native matches a commit
+        // against it exactly. After loadData ArkWeb can report the begin under
+        // the document's own data: URL while getUrl() already returns the
+        // history URL, and that mismatch revoked the load, leaving the page
+        // without a bridge.
+        this.commitDocument(this.pageBeginUrl || (this.controller.getUrl() ?? ''));
       })
       .onPageEnd((event) => {
         // lxapp fallback when ArkWeb never delivers onPageVisible, for the
