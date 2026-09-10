@@ -126,6 +126,9 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         // icon, standing in for the selected artwork it does not have.
         private const val ACTIVE_INDICATOR_SIZE_DP = 36
         private const val ACTIVE_INDICATOR_ALPHA = 0x33
+
+        // Surface compact is < 600dp; ignore Rust's 5-slot fold above that.
+        private const val COMPACT_STRIP_MAX_DP = 600
     }
 
     /** One rendered strip slot: a declared tab, or the overflow affordance. */
@@ -313,10 +316,6 @@ internal class TabBar(context: Context) : LinearLayout(context) {
         }
     }
 
-    /**
-     * Rust decides how many items a compact strip may show; past that the last
-     * slot is the overflow affordance and stands in for every folded item.
-     */
     private fun buildSlots(): List<Slot> {
         val start = overflowStart()
         if (start < 0) {
@@ -326,8 +325,23 @@ internal class TabBar(context: Context) : LinearLayout(context) {
     }
 
     /** First folded item index, or -1 when every item has its own slot. */
-    private fun overflowStart(): Int =
-        config.overflowStartIndex.takeIf { it in 0 until items.size } ?: -1
+    private fun overflowStart(): Int {
+        if (!foldsOverflow()) return -1
+        return config.overflowStartIndex.takeIf { it in 0 until items.size } ?: -1
+    }
+
+    private fun foldsOverflow(configuration: Configuration = resources.configuration): Boolean =
+        configuration.screenWidthDp < COMPACT_STRIP_MAX_DP
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        val wasFolding = Slot.More in slots
+        val nowFolding = foldsOverflow(newConfig) &&
+            config.overflowStartIndex in 0 until items.size
+        if (wasFolding == nowFolding) return
+        setItems(items)
+        TabBarOverflowSheet.refresh(this, config, overflowItemIndices())
+    }
 
     /** Indices of the items that only the overflow menu can reach. */
     /** Positions in [items] that only the overflow menu can reach. */

@@ -598,10 +598,13 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     public override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        guard previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle else {
-            return
+        if previousTraitCollection?.userInterfaceStyle != traitCollection.userInterfaceStyle {
+            onHostAppearanceChanged()
         }
-        onHostAppearanceChanged()
+        if previousTraitCollection?.horizontalSizeClass != traitCollection.horizontalSizeClass,
+           let appId = LxAppCore.currentAppId {
+            updateWebViewBottomInset(for: appId)
+        }
     }
 
     private func standardTabBarInset(for appId: String) -> CGFloat {
@@ -1207,7 +1210,6 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
     private func createTabBar(config: TabBar, appId: String) -> LingXiaTabBar {
         let tabBar = LingXiaTabBar()
-        tabBar.initialize(config: config, appId: appId)
         tabBar.translatesAutoresizingMaskIntoConstraints = false
         tabBar.alpha = 1.0
 
@@ -1220,6 +1222,8 @@ final class LxAppViewController: UIViewController, ObservableObject {
 
         rootContainer.addSubview(tabBar)
         applyTabBarLayoutParams(tabBar: tabBar, config: config, for: appId)
+        // Inherit size class before the first strip layout so unspecified ≠ 10 tabs.
+        tabBar.initialize(config: config, appId: appId)
         (rootContainer as? LxAppRootContainer)?.tabBarHitTarget = tabBar
         pinOverflowHost(to: tabBar)
 

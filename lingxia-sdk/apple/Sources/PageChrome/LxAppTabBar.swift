@@ -929,10 +929,24 @@ class iOSTabBarWrapper: UIView, TabBarProtocol {
         setSelectedIndex(sender.tag, notifyListener: true)
     }
 
+    /// Unspecified/compact keep Rust's 5-slot fold; only regular width lays out all 10.
+    private var foldsOverflow: Bool {
+        traitCollection.horizontalSizeClass != .regular
+    }
+
     /// First folded item index, or -1 when every item has its own slot.
     private func overflowStart(itemCount: Int, config: TabBar) -> Int {
+        guard foldsOverflow else { return -1 }
         let start = Int(config.overflow_start_index)
         return (start >= 0 && start < itemCount) ? start : -1
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        guard previousTraitCollection?.horizontalSizeClass != traitCollection.horizontalSizeClass else {
+            return
+        }
+        refreshLayout()
     }
 
     /// The overflow slot stands in for the folded items, selection included.

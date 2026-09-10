@@ -53,6 +53,8 @@ const TAB_BAR_OVERFLOW_PANEL_PADDING = 8;
 const TAB_BAR_OVERFLOW_RADIUS = 16;
 const TAB_BAR_OVERFLOW_HORIZONTAL_MARGIN = 12;
 const TAB_BAR_OVERFLOW_BOTTOM_GAP = 8;
+// Surface compact is < 600vp; ignore Rust's 5-slot fold above that.
+const COMPACT_STRIP_MAX_VP = 600;
 
 // Text max lines
 const TAB_BAR_ITEM_TEXT_MAX_LINES_VERTICAL = 2;
@@ -121,6 +123,8 @@ export struct TabBar {
   @Prop bottomInset: number = 0;
   // Whether the overflow panel is open above the "more" slot.
   @State private moreVisible: boolean = false;
+  // 0 until onAreaChange: treat as compact so a pad split cannot flash 10 tabs.
+  @State private stripWidthVp: number = 0;
 
   // Callback functions
   onTabSelected?: (appId: string, index: number, item: TabBarItem) => void;
@@ -179,6 +183,13 @@ export struct TabBar {
     .padding(this.getHorizontalPadding())
       .border(this.getHorizontalBorder())
       .linearGradient(this.getHorizontalGradient())
+      .onAreaChange((_, newValue) => {
+        try {
+          this.noteStripWidth(Number(newValue.width) || 0);
+        } catch (error) {
+          hilog.warn(DOMAIN, TAG, `TabBar onAreaChange failed: ${error}`);
+        }
+      })
   }
 
   @Builder
@@ -316,8 +327,7 @@ export struct TabBar {
   }
 
   /**
-   * Build centered horizontal layout. Rust caps how many items a compact strip
-   * shows; past that the last slot becomes the overflow affordance.
+   * Phone-width strips fold extra items behind More; ≥600vp lays out every tab.
    */
   @Builder
   buildCenteredHorizontalLayout() {
@@ -331,8 +341,28 @@ export struct TabBar {
 
   /** First folded item index, or -1 when every item has its own slot. */
   private overflowStart(): number {
+    if (!this.foldsOverflow()) {
+      return -1;
+    }
     const start: number = this.tabbar.overflowStartIndex ?? -1;
     return start >= 0 && start < this.tabbar.items.length ? start : -1;
+  }
+
+  private foldsOverflow(): boolean {
+    return this.stripWidthVp < COMPACT_STRIP_MAX_VP;
+  }
+
+  private noteStripWidth(widthVp: number): void {
+    const next: number = Math.round(widthVp);
+    if (!Number.isFinite(next) || next <= 0 || next === this.stripWidthVp) {
+      return;
+    }
+    const willFold = next < COMPACT_STRIP_MAX_VP;
+    // Close the sheet before unmounting More (bindSheet host is buildMoreItem).
+    if (this.moreVisible && !willFold) {
+      this.moreVisible = false;
+    }
+    this.stripWidthVp = next;
   }
 
   /** Item indices that keep a slot of their own in the strip. */
