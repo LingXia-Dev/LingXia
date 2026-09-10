@@ -79,6 +79,7 @@ export class MediaPreviewOverlayManager {
   private static pendingPresentedCallbackId: string = '';
 
   private static listeners: Set<() => void> = new Set();
+  private static playerDestroyTimer: number = -1;
 
   /**
    * Show media preview overlay
@@ -87,6 +88,9 @@ export class MediaPreviewOverlayManager {
     if (MediaPreviewOverlayManager.isShowing) {
       MediaPreviewOverlayManager.closeOverlay('interrupted');
     }
+    // A closeOverlay 80ms ago may still have a pending destroy. Cancel it
+    // before creating the new session's players, otherwise it kills them.
+    MediaPreviewOverlayManager.cancelScheduledPlayerDestroy();
     // Defensive cleanup in case previous overlay exited abnormally.
     MediaPreviewOverlayManager.destroyActivePlayers();
     const clampedIndex = MediaPreviewOverlayManager.clampIndex(params.initialIndex ?? 0, params.items.length);
@@ -128,9 +132,19 @@ export class MediaPreviewOverlayManager {
     // teardown (e.g. component leaked from a prior session). Delay this one
     // frame so ArkUI can remove the overlay tree before native XComponents are
     // force-destroyed; immediate destroy can still produce a close-time flash.
-    setTimeout(() => {
+    MediaPreviewOverlayManager.cancelScheduledPlayerDestroy();
+    MediaPreviewOverlayManager.playerDestroyTimer = setTimeout(() => {
+      MediaPreviewOverlayManager.playerDestroyTimer = -1;
       MediaPreviewOverlayManager.destroyActivePlayers();
     }, 80);
+  }
+
+  private static cancelScheduledPlayerDestroy(): void {
+    if (MediaPreviewOverlayManager.playerDestroyTimer === -1) {
+      return;
+    }
+    clearTimeout(MediaPreviewOverlayManager.playerDestroyTimer);
+    MediaPreviewOverlayManager.playerDestroyTimer = -1;
   }
 
   /**
