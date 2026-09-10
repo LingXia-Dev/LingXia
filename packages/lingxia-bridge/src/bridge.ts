@@ -248,7 +248,10 @@ let appleLastFrameSeq = 0;
 // than a couple of heartbeats means the connection is silently dead and we
 // reconnect proactively instead of waiting for a read error that may never come.
 const APPLE_DOWNSTREAM_STALE_MS = 35000;
+// A downstream that has never delivered a frame gets this long to connect.
+const APPLE_DOWNSTREAM_CONNECT_TIMEOUT_MS = 10000;
 let appleLastFrameAt = 0;
+let appleDownstreamAttemptAt = 0;
 let appleWatchdogTimer: ReturnType<typeof setInterval> | null = null;
 const portInitState = {
   listenerInstalled: false,
@@ -409,6 +412,7 @@ async function runAppleDownstream(): Promise<void> {
   // Resume from the last frame we saw so the host replays the gap on reconnect.
   const separator = APPLE_DOWNSTREAM_URL.includes("?") ? "&" : "?";
   const url = `${APPLE_DOWNSTREAM_URL}${separator}from=${appleLastFrameSeq}`;
+  appleDownstreamAttemptAt = Date.now();
   const response = await fetch(url, {
     method: "GET",
     cache: "no-store",
@@ -550,7 +554,20 @@ function startAppleWatchdog(): void {
   appleWatchdogTimer = setInterval(() => {
     // No `connected` guard: a reconnect that hung before delivering a frame
     // also goes stale, and forcing a reconnect aborts and retries it.
-    if (appleLastFrameAt === 0) return;
+    if (appleLastFrameAt === 0) {
+      // The first downstream has produced nothing yet. A fetch whose response
+      // never arrives raises no error, and a page that stays in-window (under
+      // a splash, say) never sees the visibility handler either.
+      if (
+        appleDownstreamTask &&
+        appleDownstreamAttemptAt !== 0 &&
+        Date.now() - appleDownstreamAttemptAt > APPLE_DOWNSTREAM_CONNECT_TIMEOUT_MS
+      ) {
+        warn("Apple downstream did not connect, forcing reconnect");
+        forceDownstreamReconnect();
+      }
+      return;
+    }
     if (Date.now() - appleLastFrameAt > APPLE_DOWNSTREAM_STALE_MS) {
       warn("Apple downstream stale (no heartbeat), forcing reconnect");
       forceDownstreamReconnect();
