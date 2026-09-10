@@ -663,8 +663,9 @@ them fewer than two items.
 ### More than five tabs
 
 A phone strip fits five slots. Past that the host shows the first four, then a
-**More** slot; tapping it opens the rest in a panel above the bar. Desktop and
-tablet hosts have the room and list every item in their sidebar instead.
+**More** slot; tapping it opens the rest in a panel above the bar. A pad strip
+fits the declaration cap (ten), so it does not fold. Desktop hosts list every
+item in their sidebar instead.
 
 The split is host-owned — nothing to configure, no API to open the panel. What
 follows:

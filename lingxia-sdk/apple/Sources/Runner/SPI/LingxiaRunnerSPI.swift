@@ -247,9 +247,11 @@ import WebKit
 
         /// Tell the runtime which machine it is standing in for, so a tab item
         /// declared `showOn: ["mobile"]` appears in a phone shape and not in a
-        /// desktop one. Only the runner simulates a host it was not built for.
-        public static func setSimulatedHostClass(mobile: Bool) {
-            RunnerBridge.setSimulatedHostClass(mobile: mobile)
+        /// desktop one. A tablet stays mobile for `showOn` and sets `pad` so
+        /// the compact strip uses the ten-item declaration cap. Only the
+        /// runner simulates a host it was not built for.
+        public static func setSimulatedHostClass(mobile: Bool, pad: Bool = false) {
+            RunnerBridge.setSimulatedHostClass(mobile: mobile, pad: pad)
         }
 
         public static func setSelectedIndex(

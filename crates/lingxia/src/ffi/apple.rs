@@ -265,6 +265,7 @@ mod bridge {
         #[swift_bridge(swift_name = "getTabBar")]
         fn get_tab_bar(appid: &str) -> Option<TabBar>;
         fn set_simulated_host_class(mobile: bool);
+        fn set_pad(pad: bool);
 
         #[swift_bridge(swift_name = "getTabBarItem")]
         fn get_tab_bar_item(appid: &str, index: i32) -> Option<TabBarItem>;
@@ -2299,6 +2300,14 @@ pub fn set_simulated_host_class(mobile: bool) {
     } else {
         lxapp::host_class::HostClass::Desktop
     });
+}
+
+/// Widen the compact tab strip to the declaration cap. Tablets stay
+/// [`lxapp::host_class::HostClass::Mobile`] for `showOn`; this only changes
+/// how many strip slots fit. Shipped iOS hosts set it from the pad idiom;
+/// the runner sets it from the simulated tablet frame.
+pub fn set_pad(pad: bool) {
+    lxapp::host_class::set_pad(pad);
 }
 
 pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {

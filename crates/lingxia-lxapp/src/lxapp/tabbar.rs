@@ -1,4 +1,6 @@
-use super::host_class::{HostClass, host_class};
+#[cfg(test)]
+use super::host_class::set_pad;
+use super::host_class::{HostClass, host_class, is_pad};
 use super::page_chrome::{
     PageChromeColor, PatchField, TabBarPresentation, TabBarVisibilityPreference, ValuePatchField,
 };
@@ -187,6 +189,17 @@ impl TabBar {
     /// Slots a compact (phone) tab strip renders. Beyond this the last slot
     /// becomes an overflow affordance instead of a tab.
     pub const COMPACT_SLOTS: usize = 5;
+    /// Slots a pad tab strip renders. Equal to the declaration cap, so a pad
+    /// never folds under the current maximum.
+    pub const PAD_SLOTS: usize = Self::MAX_ITEMS;
+
+    fn compact_strip_slots() -> usize {
+        if is_pad() {
+            Self::PAD_SLOTS
+        } else {
+            Self::COMPACT_SLOTS
+        }
+    }
 
     pub fn validate(&mut self, pages: &[(&str, &str)]) -> Result<(), String> {
         if !(Self::MIN_ITEMS..=Self::MAX_ITEMS).contains(&self.items.len()) {
@@ -273,12 +286,14 @@ impl TabBar {
 
     /// First item a compact host must move into its overflow menu, as a
     /// declaration index, or `None` when every visible item fits the strip.
-    /// With overflow, the last strip slot is the "more" affordance, so one
-    /// visible item gives up its slot too.
+    /// Phone strips have [`Self::COMPACT_SLOTS`]; pad strips have
+    /// [`Self::PAD_SLOTS`]. With overflow, the last strip slot is the "more"
+    /// affordance, so one visible item gives up its slot too.
     pub fn compact_overflow_start_for(&self, class: HostClass) -> Option<usize> {
+        let slots = Self::compact_strip_slots();
         let visible: Vec<usize> = self.visible_items_for(class).map(|(i, _)| i).collect();
-        (visible.len() > Self::COMPACT_SLOTS)
-            .then(|| visible.get(Self::COMPACT_SLOTS - 1).copied())
+        (visible.len() > slots)
+            .then(|| visible.get(slots - 1).copied())
             .flatten()
     }
 
@@ -296,8 +311,9 @@ impl TabBar {
     }
 
     pub fn compact_overflow_slot_index_for(&self, class: HostClass) -> i32 {
-        if self.visible_items_for(class).count() > Self::COMPACT_SLOTS {
-            Self::COMPACT_SLOTS as i32 - 1
+        let slots = Self::compact_strip_slots();
+        if self.visible_items_for(class).count() > slots {
+            slots as i32 - 1
         } else {
             -1
         }
@@ -875,6 +891,13 @@ mod tests {
         tabbar.validate(&pages)
     }
 
+    struct RestorePad;
+    impl Drop for RestorePad {
+        fn drop(&mut self) {
+            set_pad(false);
+        }
+    }
+
     #[test]
     fn immersive_rejects_surface_colors_with_exact_path() {
         let mut tabbar = manifest(serde_json::json!({
@@ -922,12 +945,32 @@ mod tests {
                     .collect::<Vec<_>>()
             }))
         };
+        set_pad(false);
         assert_eq!(items(2).compact_overflow_start(), None);
         assert_eq!(items(5).compact_overflow_start(), None);
         assert_eq!(items(6).compact_overflow_start(), Some(4));
         assert_eq!(items(10).compact_overflow_start(), Some(4));
         assert_eq!(items(5).compact_overflow_slot_index(), -1);
         assert_eq!(items(10).compact_overflow_slot_index(), 4);
+    }
+
+    #[test]
+    fn pad_strip_fits_the_declaration_cap() {
+        let _restore = RestorePad;
+        set_pad(true);
+        let items = |count: usize| {
+            let mut tabbar = manifest(serde_json::json!({
+                "items": (0..count)
+                    .map(|index| serde_json::json!({ "page": format!("p{index}") }))
+                    .collect::<Vec<_>>()
+            }));
+            validate_self(&mut tabbar).unwrap();
+            tabbar
+        };
+        assert_eq!(items(6).compact_overflow_start(), None);
+        assert_eq!(items(10).compact_overflow_start(), None);
+        assert_eq!(items(10).compact_overflow_slot_index(), -1);
+        assert_eq!(items(10).preload_page_paths().len(), 10);
     }
 
     #[test]
@@ -1037,6 +1080,7 @@ mod tests {
             validate_self(&mut tabbar).unwrap();
             tabbar
         };
+        set_pad(false);
         assert_eq!(items(2).preload_page_paths().len(), 2);
         assert_eq!(items(5).preload_page_paths().len(), 5);
         // Past the strip capacity the folded items stop being warmed, so a

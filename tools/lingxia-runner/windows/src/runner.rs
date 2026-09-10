@@ -514,7 +514,9 @@ fn apply_device_to_app(appid: &str, index: usize, landscape: bool) -> Result<(),
 ///
 /// Tablets count as mobile, as they do there: an iPad build targets iOS, so a
 /// real one reports mobile. A tablet's wide, desktop-like layout follows from
-/// its width, which the frame spec decides separately.
+/// its width, which the frame spec decides separately. `set_pad` is the other
+/// half: it widens the compact tab strip to the declaration cap without
+/// changing `showOn`.
 fn apply_simulated_host_class(index: usize) {
     let mobile = is_phone(index) || is_tablet(index);
     lxapp::host_class::set_host_class(if mobile {
@@ -522,6 +524,7 @@ fn apply_simulated_host_class(index: usize) {
     } else {
         lxapp::host_class::HostClass::Desktop
     });
+    lxapp::host_class::set_pad(is_tablet(index));
 }
 
 fn tabbar_position_for_device(index: usize) -> WindowsShellTabBarPosition {

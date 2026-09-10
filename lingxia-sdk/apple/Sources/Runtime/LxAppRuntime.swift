@@ -73,6 +73,7 @@ public final class LxAppRuntime {
                 message: initResult.error.toString()
             )
         }
+        LxAppHostFormFactor.applyPadFlag()
         LxAppAppearanceRegistry.observeHostLocale()
 
         let rawLxAppId = initResult.home_app_id.toString()
