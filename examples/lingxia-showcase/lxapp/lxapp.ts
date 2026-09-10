@@ -1,4 +1,4 @@
-import type { ConfiguredPageName } from "@lingxia/types";
+import type { AppLaunchOptions, ConfiguredPageName } from "@lingxia/types";
 import type { ShowcaseAppInstance } from "./shared/lib/app";
 import { applyShowcaseTabBar, getAppMessages } from "./logic/app-messages";
 import { resolveDisplayLanguage } from "./shared/display-language";
@@ -19,13 +19,19 @@ async function testManagedFileAccess() {
 }
 
 
-function routeFromAppLink(options?: { scene?: number; query?: Record<string, string> }) {
+const PRODUCT_LINK_PREFIX = "/showcase/";
+
+function routeFromAppLink(options?: AppLaunchOptions) {
   if (options?.scene !== 8003) return;
-  const page = options.query?.page;
+  const pathname = options.url ? new URL(options.url).pathname : "";
+  // Two shapes: a product path this app recognises, and `/lxapp/open?page=`.
+  const page = pathname.startsWith(PRODUCT_LINK_PREFIX)
+    ? pathname.slice(PRODUCT_LINK_PREFIX.length)
+    : options.query?.page;
   if (!page) return;
   const query = { ...options.query };
   delete query.page;
-  // An AppLink carries whatever the caller wrote, so the name cannot be checked
+  // A link carries whatever the sender wrote, so the name cannot be checked
   // here — navigateTo rejects one this lxapp does not have.
   void lx.navigateTo({ page: page as ConfiguredPageName, query });
 }
@@ -119,10 +125,7 @@ async function applyHostChrome(os: string, tag: string) {
 }
 
 App({
-  onLaunch: async function (
-    this: ShowcaseAppInstance,
-    options?: { scene?: number; query?: Record<string, string> },
-  ) {
+  onLaunch: async function (this: ShowcaseAppInstance, options?: AppLaunchOptions) {
     routeFromAppLink(options);
     const { os } = lx.app.getBaseInfo();
     const applyChrome = (tag = lx.app.displayLanguage.get()) => {
@@ -187,7 +190,7 @@ App({
     console.log("App.onHide");
   },
 
-  onShow(options?: { scene?: number; query?: Record<string, string> }) {
+  onShow(options?: AppLaunchOptions) {
     routeFromAppLink(options);
     console.log("App.onShow");
     void applyShowcaseTabBar().catch((error) =>
