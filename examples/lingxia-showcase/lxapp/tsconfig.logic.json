@@ -9,7 +9,9 @@
   "include": [
     "lxapp.ts",
     "lxapp.config.ts",
+    "logic/app-messages.ts",
     "pages/**/*.ts",
+    "shared/display-language.ts",
     "shared/lib/app.ts",
     "shared/lib/errors.ts",
     "shared/lib/provider.ts",
