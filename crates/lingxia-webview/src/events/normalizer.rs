@@ -122,12 +122,18 @@ impl NavigationTracker {
     /// this is present for every valid commit.
     fn active_for_commit(&self, key: Option<NativeKey>) -> Option<NavigationId> {
         match key {
-            Some(key) => self.by_key.get(&key).copied(),
+            // A success that finished before its commit has left `by_key`;
+            // DocumentTracker decides whether that late commit may still bind.
+            Some(key) => self.navigation_for_key(key),
             None => self.keyless_active,
         }
     }
 
     fn navigation_for_trusted_attestation(&self, key: NativeKey) -> Option<NavigationId> {
+        self.navigation_for_key(key)
+    }
+
+    fn navigation_for_key(&self, key: NativeKey) -> Option<NavigationId> {
         self.by_key.get(&key).copied().or_else(|| {
             self.recent_succeeded
                 .iter()
@@ -398,14 +404,14 @@ enum PendingDocumentCommit {
     Keyed {
         key: NativeKey,
         committed: bool,
+        /// The attempt already finished successfully without a commit. It
+        /// keeps its claim only for that late commit.
+        finished: bool,
     },
     /// An ID-less platform cannot associate a second start or terminal signal
     /// with one of two overlapping attempts. Once that happens, fail closed:
     /// neither commit can prove which document it belongs to.
-    Keyless {
-        committed: bool,
-        ambiguous: bool,
-    },
+    Keyless { committed: bool, ambiguous: bool },
 }
 
 impl Default for DocumentTracker {
@@ -432,7 +438,11 @@ impl DocumentTracker {
             Some(key)
                 if matches!(
                     self.pending,
-                    Some(PendingDocumentCommit::Keyed { key: pending, .. }) if pending == key
+                    Some(PendingDocumentCommit::Keyed {
+                        key: pending,
+                        finished: false,
+                        ..
+                    }) if pending == key
                 ) =>
             {
                 // Redirect/repeated platform start for the same native attempt.
@@ -443,6 +453,7 @@ impl DocumentTracker {
                 self.pending = Some(PendingDocumentCommit::Keyed {
                     key,
                     committed: false,
+                    finished: false,
                 });
             }
             None => {
@@ -467,11 +478,13 @@ impl DocumentTracker {
                 Some(PendingDocumentCommit::Keyed {
                     key: pending,
                     committed,
+                    finished,
                 }),
                 Some(key),
             ) if pending == key && !committed => PendingDocumentCommit::Keyed {
                 key,
                 committed: true,
+                finished,
             },
             (
                 Some(PendingDocumentCommit::Keyless {
@@ -495,17 +508,35 @@ impl DocumentTracker {
         true
     }
 
-    fn finished(&mut self, key: Option<NativeKey>) {
-        let clears_pending = match (self.pending, key) {
-            (Some(PendingDocumentCommit::Keyed { key: pending, .. }), Some(key)) => pending == key,
+    fn finished(&mut self, key: Option<NativeKey>, succeeded: bool) {
+        match (self.pending, key) {
+            (
+                Some(PendingDocumentCommit::Keyed {
+                    key: pending,
+                    committed,
+                    ..
+                }),
+                Some(key),
+            ) if pending == key => {
+                // A successful load can finish before its commit signal: a
+                // backend that reports commit on first paint (Android
+                // onPageCommitVisible) finishes a fast page first. That attempt
+                // keeps its claim so the late commit still binds, until a newer
+                // start replaces it. A failed or already committed attempt has
+                // nothing left to claim.
+                self.pending = (succeeded && !committed).then_some(PendingDocumentCommit::Keyed {
+                    key,
+                    committed: false,
+                    finished: true,
+                });
+            }
             // An ID-less terminal cannot identify one of overlapping starts.
             // Clearing the pending claim is deliberately all it may do: a
             // later commit has no pending proof from which to mint a binding.
-            (Some(PendingDocumentCommit::Keyless { .. }), None) => true,
-            _ => false,
-        };
-        if clears_pending {
-            self.pending = None;
+            (Some(PendingDocumentCommit::Keyless { .. }), None) => {
+                self.pending = None;
+            }
+            _ => {}
         }
     }
 
@@ -516,7 +547,12 @@ impl DocumentTracker {
     /// is permanently ineligible rather than being retained for a future
     /// callback.
     fn trusted_attestation_state(&self, key: NativeKey) -> TrustedAttestationState {
-        match (self.current_key, self.binding, self.pending) {
+        // An attempt kept only for its late commit has already finished: to
+        // trusted attestation it is retired, exactly as before it was kept.
+        let pending = self.pending.filter(|pending| {
+            !matches!(pending, PendingDocumentCommit::Keyed { finished: true, .. })
+        });
+        match (self.current_key, self.binding, pending) {
             (Some(current), DocumentBinding::Bound(generation), _) if current == key => {
                 TrustedAttestationState::CommittedCurrent(generation)
             }
@@ -526,6 +562,7 @@ impl DocumentTracker {
                 Some(PendingDocumentCommit::Keyed {
                     key: pending,
                     committed: false,
+                    ..
                 }),
             ) if pending == key => TrustedAttestationState::AwaitingCommit,
             (
@@ -534,6 +571,7 @@ impl DocumentTracker {
                 Some(PendingDocumentCommit::Keyed {
                     key: pending,
                     committed: true,
+                    ..
                 }),
             ) if pending == key => TrustedAttestationState::Rejected,
             (_, _, None) => TrustedAttestationState::BeforeStart,
@@ -1007,7 +1045,10 @@ impl EventNormalizer {
                 document_committed_outputs(&self.webtag, self.native_view_id, &mut state, key)
             }
             NativeSignal::NavigationFinished { key, result } => {
-                state.documents.finished(key);
+                state.documents.finished(
+                    key,
+                    matches!(result, NativeNavigationResult::Succeeded { .. }),
+                );
                 state.trusted_load.navigation_finished(key);
                 state.tracker.finish(&self.webtag, key, result)
             }
@@ -1529,7 +1570,7 @@ mod tests {
         state
             .trusted_load
             .navigation_started(Some(111), navigation_id);
-        state.documents.finished(Some(111));
+        state.documents.finished(Some(111), false);
         state.tracker.finish(
             &webtag,
             Some(111),
@@ -1933,6 +1974,165 @@ mod tests {
         assert_eq!(
             current_document_binding(native_view_id),
             DocumentBinding::Bound(DocumentGeneration::new(2))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn a_success_that_finishes_before_its_commit_still_binds() {
+        let webtag = tag("document-finish-before-commit");
+        let native_view_id = NativeWebViewId::new(8111);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(61),
+                url: "https://fast/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: Some(61),
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://fast/".into(),
+                },
+            },
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        // Commit evidence that arrives with the first paint, after the finish.
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 61),
+            Some(DocumentGeneration::new(1))
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Bound(DocumentGeneration::new(1))
+        );
+        // Still one document per attempt.
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 61),
+            None
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn a_failed_or_superseded_attempt_cannot_bind_after_it_finishes() {
+        let webtag = tag("document-finish-then-stale-commit");
+        let native_view_id = NativeWebViewId::new(8112);
+        super::begin(&webtag, native_view_id);
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(71),
+                url: "https://broken/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: Some(71),
+                result: NativeNavigationResult::Failed(LoadError {
+                    failing_url: Some("https://broken/".into()),
+                    kind: LoadErrorKind::Network,
+                    description: "test failure".into(),
+                }),
+            },
+        );
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 71),
+            None
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(72),
+                url: "https://first/".into(),
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationFinished {
+                key: Some(72),
+                result: NativeNavigationResult::Succeeded {
+                    final_url: "https://first/".into(),
+                },
+            },
+        );
+        super::submit(
+            &webtag,
+            native_view_id,
+            NativeSignal::NavigationStarted {
+                key: Some(73),
+                url: "https://second/".into(),
+            },
+        );
+        // The finished first attempt's commit arrives after the next start.
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 72),
+            None
+        );
+        assert_eq!(
+            current_document_binding(native_view_id),
+            DocumentBinding::Unbound
+        );
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 73),
+            Some(DocumentGeneration::new(1))
+        );
+        destroy(&webtag);
+    }
+
+    #[test]
+    fn a_native_key_reused_after_a_finished_attempt_starts_a_new_document() {
+        let webtag = tag("document-finish-key-reuse");
+        let native_view_id = NativeWebViewId::new(8113);
+        super::begin(&webtag, native_view_id);
+        for url in ["https://first/", "https://second/"] {
+            super::submit(
+                &webtag,
+                native_view_id,
+                NativeSignal::NavigationStarted {
+                    key: Some(81),
+                    url: url.into(),
+                },
+            );
+            super::submit(
+                &webtag,
+                native_view_id,
+                NativeSignal::NavigationFinished {
+                    key: Some(81),
+                    result: NativeNavigationResult::Succeeded {
+                        final_url: url.into(),
+                    },
+                },
+            );
+        }
+        // Only the second attempt may claim the commit, and it is the first
+        // document this WebView has had.
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 81),
+            Some(DocumentGeneration::new(1))
+        );
+        assert_eq!(
+            super::submit_document_commit(&webtag, native_view_id, 81),
+            None
         );
         destroy(&webtag);
     }
