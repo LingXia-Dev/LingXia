@@ -13,7 +13,7 @@ behind.
 | `windows.test.ts` | Shared suite plus physical desktop and Windows-only behavior | Windows |
 | `macos.test.ts` | Shared suite plus physical desktop and macOS-only behavior | macOS |
 | `android.test.ts` | Shared suite; external Android system UI remains device-lab work | Android, local |
-| `ios.test.ts` | Shared suite, including https `previewMedia` handle contracts | iOS, local |
+| `ios.test.ts` | Shared suite plus https `previewMedia` handle contracts | iOS, local |
 
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility
