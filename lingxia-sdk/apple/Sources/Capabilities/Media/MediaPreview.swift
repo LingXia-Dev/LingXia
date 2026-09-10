@@ -1367,13 +1367,14 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
     private func loadImage() {
         activityIndicator.startAnimating()
         Task {
-            let image: UIImage? = {
-                if imageURL.isFileURL {
-                    return UIImage(contentsOfFile: imageURL.path)
-                }
-                guard let data = try? Data(contentsOf: imageURL) else { return nil }
-                return UIImage(data: data)
-            }()
+            let image: UIImage?
+            if imageURL.isFileURL {
+                image = UIImage(contentsOfFile: imageURL.path)
+            } else {
+                // This task runs on the main actor: a synchronous fetch here
+                // would freeze gestures and dismissal for the whole download.
+                image = await Self.fetchRemoteImage(imageURL)
+            }
 
             await MainActor.run {
                 activityIndicator.stopAnimating()
@@ -1389,6 +1390,16 @@ private final class ZoomableImageView: UIView, UIScrollViewDelegate {
                 self.notifyVisualReadyOnce()
             }
         }
+    }
+
+    private static func fetchRemoteImage(_ url: URL) async -> UIImage? {
+        guard let (data, response) = try? await URLSession.shared.data(from: url) else {
+            return nil
+        }
+        if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            return nil
+        }
+        return UIImage(data: data)
     }
 
     private func notifyVisualReadyOnce() {
