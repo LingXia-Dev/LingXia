@@ -336,14 +336,11 @@ private func materializeRemotePreviewURLs(_ urls: [URL]) async -> MaterializedPr
         if Task.isCancelled {
             break
         }
-        guard let local = await downloadPreviewItem(urls[index], into: cacheDirectory, index: index)
-        else {
-            LXLog.error("previewMedia could not fetch remote item \(index)", category: "MediaPreview")
-            continue
+        if let local = await downloadPreviewItem(urls[index], into: cacheDirectory, index: index) {
+            shown.append(local)
+            sourceIndexes.append(index)
+            fetched += 1
         }
-        shown.append(local)
-        sourceIndexes.append(index)
-        fetched += 1
     }
     guard fetched > 0 else {
         try? FileManager.default.removeItem(at: cacheDirectory)
@@ -358,6 +355,12 @@ private func downloadPreviewItem(_ source: URL, into cacheDirectory: URL, index:
         if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             // The async download API leaves the body for the caller to remove.
             try? FileManager.default.removeItem(at: tempURL)
+            // A 404 in a gallery is skipped, not a session failure. Error-level
+            // logs fail macOS Showcase automation even when the rest presents.
+            LXLog.warn(
+                "previewMedia skipped remote item \(index) (HTTP \(http.statusCode))",
+                category: "MediaPreview"
+            )
             return nil
         }
         let destination = cacheDirectory.appendingPathComponent(
@@ -369,6 +372,7 @@ private func downloadPreviewItem(_ source: URL, into cacheDirectory: URL, index:
         try FileManager.default.moveItem(at: tempURL, to: destination)
         return destination
     } catch {
+        LXLog.warn("previewMedia skipped remote item \(index)", category: "MediaPreview", error: error)
         return nil
     }
 }
