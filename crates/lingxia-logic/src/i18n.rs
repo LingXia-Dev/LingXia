@@ -1,5 +1,5 @@
 use crate::I18nKey;
-use lingxia_platform::error::PlatformError;
+use lingxia_platform::error::{PRESENTER_UNAVAILABLE_CODE, PlatformError};
 use lxapp::LxAppError;
 use rong::{HostError, RongJSError, error::ErrorData};
 use serde_json::Value;
@@ -285,6 +285,7 @@ fn business_code_from_platform_error(error: &PlatformError) -> u32 {
         PlatformError::Platform(_) => 1005,
         PlatformError::BusinessError(code) => *code,
         PlatformError::CallbackDropped => 1006,
+        PlatformError::PresenterUnavailable => PRESENTER_UNAVAILABLE_CODE,
     }
 }
 
@@ -296,6 +297,7 @@ fn detail_from_platform_error(error: &PlatformError) -> &str {
         | PlatformError::InvalidParameter(detail) => detail,
         PlatformError::BusinessError(_) => "business error",
         PlatformError::CallbackDropped => "callback dropped",
+        PlatformError::PresenterUnavailable => "page chrome presenter not mounted",
     }
 }
 

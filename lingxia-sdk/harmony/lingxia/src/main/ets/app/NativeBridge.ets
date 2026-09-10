@@ -38,6 +38,13 @@ import { getCurrentLxapp, getLxappSessionId, onCallback, openAsideBrowserTab, op
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.NativeBridge';
 
+/**
+ * Chrome update arrived before a container was hosting the lxapp. Rust keeps the
+ * patch and the first presenter reads it, so this must stay separable from the
+ * generic failure code (mirrors PRESENTER_UNAVAILABLE_CODE in rust).
+ */
+const PRESENTER_UNAVAILABLE = '1001';
+
 // UI Event Constants
 export const UI_EVENT_TABBAR_CLICK = 0;
 export const UI_EVENT_CAPSULE_CLICK = 1;
@@ -416,8 +423,8 @@ class NativeBridge {
             hilog.info(DOMAIN, TAG, `TabBar UI updated for ${appId}`);
             onCallback(callbackId, true, '{}');
           } else {
-            hilog.warn(DOMAIN, TAG, `Failed to find active container for TabBar update: ${appId}`);
-            onCallback(callbackId, false, '1000');
+            hilog.warn(DOMAIN, TAG, `No active container for TabBar update: ${appId}`);
+            onCallback(callbackId, false, PRESENTER_UNAVAILABLE);
           }
         });
       } catch (error) {

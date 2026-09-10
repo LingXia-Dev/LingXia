@@ -1,5 +1,5 @@
 use super::app::Platform;
-use crate::error::PlatformError;
+use crate::error::{PlatformError, unmounted_presenter_or};
 use crate::traits::ui::UIUpdate;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -96,6 +96,7 @@ impl UIUpdate for Platform {
             })
         })
         .await
+        .map_err(unmounted_presenter_or)
     }
 
     fn update_orientation_ui(&self, appid: String) -> Result<(), PlatformError> {

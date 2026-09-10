@@ -106,6 +106,9 @@ impl From<lingxia_platform::PlatformError> for Error {
             lingxia_platform::PlatformError::CallbackDropped => {
                 Self::Internal("platform callback dropped".to_string())
             }
+            lingxia_platform::PlatformError::PresenterUnavailable => {
+                Self::Platform("page chrome presenter not mounted".to_string())
+            }
         }
     }
 }
