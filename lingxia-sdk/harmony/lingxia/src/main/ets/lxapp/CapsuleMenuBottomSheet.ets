@@ -230,42 +230,35 @@ export struct CapsuleMenuBottomSheetComponent {
     return item.isDestructive ? '#FF3B30' : this.palette().icon;
   }
 
-  // Image.fillColor blobs stroke SVGs; Path commands are px so they render as
-  // specks. System symbols scale with fontSize and tint with fontColor.
+  // SRC_IN: keep source alpha, replace RGB. Image.fillColor blobs stroke-only
+  // SVGs (the same assets Android color-filters and iOS templates).
+  private iconColorFilter(hex: string): ColorFilter {
+    const n: string = hex.replace('#', '');
+    const r: number = parseInt(n.substring(0, 2), 16) / 255;
+    const g: number = parseInt(n.substring(2, 4), 16) / 255;
+    const b: number = parseInt(n.substring(4, 6), 16) / 255;
+    return new ColorFilter([
+      0, 0, 0, r, 0,
+      0, 0, 0, g, 0,
+      0, 0, 0, b, 0,
+      0, 0, 0, 1, 0
+    ]);
+  }
+
+  private actionIconSrc(item: MenuAction): string | Resource {
+    if (item.bundled) {
+      return $rawfile(item.iconPath);
+    }
+    return item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath;
+  }
+
   @Builder
   private actionIcon(item: MenuAction): void {
-    Column() {
-      if (item.iconPath === 'icons/icon_clean_cache.svg') {
-        SymbolGlyph($r('sys.symbol.arrow_counterclockwise'))
-          .fontSize(32)
-          .fontWeight(FontWeight.Medium)
-          .fontColor([this.actionIconTint(item)])
-          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
-      } else if (item.iconPath === 'icons/icon_restart.svg') {
-        SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-          .fontSize(32)
-          .fontWeight(FontWeight.Medium)
-          .fontColor([this.actionIconTint(item)])
-          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
-      } else if (item.iconPath === 'icons/icon_uninstall.svg') {
-        SymbolGlyph($r('sys.symbol.ohos_trash'))
-          .fontSize(32)
-          .fontWeight(FontWeight.Medium)
-          .fontColor([this.actionIconTint(item)])
-          .renderingStrategy(SymbolRenderingStrategy.SINGLE)
-      } else {
-        Image(item.iconPath.startsWith('/') ? `file://${item.iconPath}` : item.iconPath)
-          .width(32)
-          .height(32)
-          .objectFit(ImageFit.Contain)
-      }
-    }
-    .width(56)
-    .height(56)
-    .borderRadius(28)
-    .backgroundColor(this.palette().secondaryFill)
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
+    Image(this.actionIconSrc(item))
+      .width(24)
+      .height(24)
+      .objectFit(ImageFit.Contain)
+      .colorFilter(this.iconColorFilter(this.actionIconTint(item)))
   }
 
   @Builder
@@ -280,18 +273,18 @@ export struct CapsuleMenuBottomSheetComponent {
                     .fontColor(item.isDestructive ? '#FF3B30' : this.palette().secondaryText)
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
-                    .margin({ top: 8 })
+                    .margin({ top: 6 })
                 } else if (item.titleKey) {
                   Text(localizedString(getContext(this).resourceManager, item.titleKey))
                     .fontSize(13)
                     .fontColor(item.isDestructive ? '#FF3B30' : this.palette().secondaryText)
                     .textAlign(TextAlign.Center)
                     .maxLines(2)
-                    .margin({ top: 8 })
+                    .margin({ top: 6 })
                 }
               }
               .width(`${100 / actions.length}%`)
-              .height(112)
+              .height(88)
               .padding({ left: 4, right: 4, top: 12, bottom: 12 })
               .onClick(() => this.handleAction(item.action))
       })
