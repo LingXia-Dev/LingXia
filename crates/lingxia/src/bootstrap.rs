@@ -322,7 +322,16 @@ pub(crate) fn init_with_platform(
     // Before any lxapp exists: the home app resolves `auto` once while loading
     // its config and bakes the answer into its document-start script, so a
     // pinned preference read afterwards would miss the product's first paint.
-    lxapp::initialize_host_appearance(runtime.as_ref());
+    // The global app config is not installed yet, so the product's default
+    // comes from the validated one in hand.
+    lxapp::initialize_host_appearance(
+        runtime.as_ref(),
+        app_config
+            .theme
+            .as_ref()
+            .and_then(|theme| theme.default_appearance)
+            .unwrap_or_default(),
+    );
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
     if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {

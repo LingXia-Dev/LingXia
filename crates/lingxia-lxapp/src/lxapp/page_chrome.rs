@@ -1,5 +1,4 @@
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use std::str::FromStr;
 
 use super::navbar::NavigationBarPatch;
 use super::tabbar::TabBarPatch;
@@ -8,39 +7,8 @@ use lingxia_platform::PlatformError;
 use lingxia_platform::traits::ui::UIUpdate;
 use lingxia_webview::WebViewController;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum AppearancePreference {
-    #[default]
-    Auto,
-    Light,
-    Dark,
-}
-
-impl AppearancePreference {
-    pub const fn as_str(self) -> &'static str {
-        match self {
-            Self::Auto => "auto",
-            Self::Light => "light",
-            Self::Dark => "dark",
-        }
-    }
-}
-
-impl FromStr for AppearancePreference {
-    type Err = String;
-
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
-        match value {
-            "auto" => Ok(Self::Auto),
-            "light" => Ok(Self::Light),
-            "dark" => Ok(Self::Dark),
-            other => Err(format!(
-                "appearance: expected auto, light, or dark; received '{other}'"
-            )),
-        }
-    }
-}
+/// Defined with the app config, where `theme.defaultAppearance` also uses it.
+pub use lingxia_app_context::AppearancePreference;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]

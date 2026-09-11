@@ -134,6 +134,43 @@ impl ThemeStyle {
     }
 }
 
+/// Light/dark as a choice: `auto` follows the system, `light` and `dark` pin
+/// it. The product's setting, an lxapp manifest's pin, and `theme`'s default
+/// all speak it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum AppearancePreference {
+    #[default]
+    Auto,
+    Light,
+    Dark,
+}
+
+impl AppearancePreference {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Light => "light",
+            Self::Dark => "dark",
+        }
+    }
+}
+
+impl std::str::FromStr for AppearancePreference {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        match value {
+            "auto" => Ok(Self::Auto),
+            "light" => Ok(Self::Light),
+            "dark" => Ok(Self::Dark),
+            other => Err(format!(
+                "appearance: expected auto, light, or dark; received '{other}'"
+            )),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ThemeConfig {
@@ -141,13 +178,27 @@ pub struct ThemeConfig {
     pub light: Option<ThemeStyle>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dark: Option<ThemeStyle>,
+    /// The product's appearance until the user picks one. A saved choice always
+    /// wins, and an lxapp that pins a scheme in its manifest keeps it. Absent
+    /// means `auto`: follow the system.
+    #[serde(
+        rename = "defaultAppearance",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub default_appearance: Option<AppearancePreference>,
 }
 
 impl ThemeConfig {
     pub fn normalized(mut self) -> Option<Self> {
         self.light = self.light.filter(|style| !style.is_empty());
         self.dark = self.dark.filter(|style| !style.is_empty());
-        (self.light.is_some() || self.dark.is_some()).then_some(self)
+        // `auto` is what an absent default already means.
+        self.default_appearance = self
+            .default_appearance
+            .filter(|appearance| *appearance != AppearancePreference::Auto);
+        (self.light.is_some() || self.dark.is_some() || self.default_appearance.is_some())
+            .then_some(self)
     }
 
     pub fn style(&self, dark: bool) -> Option<&ThemeStyle> {
@@ -1143,6 +1194,53 @@ mod tests {
         let theme: ThemeConfig =
             serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
         assert!(theme.normalized().is_none());
+    }
+
+    #[test]
+    fn default_appearance_parses_and_round_trips() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Theme Test",
+                "productVersion": "1.0.0",
+                "theme": { "defaultAppearance": "dark" }
+            }"#,
+        )
+        .expect("valid default appearance");
+        let theme = config
+            .theme
+            .as_ref()
+            .expect("a theme with only a default is kept");
+        assert_eq!(
+            theme.default_appearance,
+            Some(super::AppearancePreference::Dark)
+        );
+
+        let json = serde_json::to_value(&config).expect("serialize app config");
+        assert_eq!(json["theme"]["defaultAppearance"], "dark");
+    }
+
+    #[test]
+    fn default_appearance_rejects_values_outside_auto_light_dark() {
+        let json = r#"{
+            "productName": "Theme Test",
+            "productVersion": "1.0.0",
+            "theme": { "defaultAppearance": "black" }
+        }"#;
+        assert!(AppConfig::parse_and_validate(json).is_err());
+    }
+
+    #[test]
+    fn an_explicit_auto_default_normalizes_like_no_default() {
+        let theme: ThemeConfig =
+            serde_json::from_str(r#"{ "defaultAppearance": "auto" }"#).expect("parse theme");
+        assert!(theme.normalized().is_none());
+
+        let theme: ThemeConfig = serde_json::from_str(
+            r##"{ "defaultAppearance": "auto", "light": { "accentColor": "#A1B2C3" } }"##,
+        )
+        .expect("parse theme");
+        let theme = theme.normalized().expect("colors keep the theme");
+        assert_eq!(theme.default_appearance, None);
     }
 
     #[test]

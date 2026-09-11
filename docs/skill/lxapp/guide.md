@@ -755,7 +755,8 @@ whose UI only works in one scheme declares it once in `lxapp.json`:
 
 That is a static declaration, like a page's `color-scheme` — not a preference,
 and not something the user picks per app. Editing the product's setting belongs
-to the Settings surface through `lx.app.control?.appearance`.
+to the Settings surface through `lx.app.control?.appearance`; the starting
+scheme is the host's `theme.defaultAppearance`.
 
 The runtime projects the resolved scheme into every page as `color-scheme` plus
 a `data-theme="light|dark"` attribute on `<html>` — key theme CSS off
