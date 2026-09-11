@@ -155,6 +155,10 @@ internal class FeedEngine(
         // Not supported by decoder pipeline today.
     }
 
+    override fun setLoopEnabled(loopEnabled: Boolean) {
+        // Feed pipeline does not loop inside the decoder.
+    }
+
     override fun getCurrentTimeMs(): Long = lastTimeMs
 
     override fun getDurationMs(): Long? = durationMs

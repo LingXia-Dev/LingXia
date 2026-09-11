@@ -1,9 +1,14 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
 }
+
+val mpvAarUrl = "https://repo1.maven.org/maven2/dev/jdtech/mpv/libmpv/1.0.0/libmpv-1.0.0.aar"
+val mpvDir = layout.buildDirectory.dir("mpv")
+val mpvJniDir = layout.buildDirectory.dir("mpv/jni")
 
 val requestedMinSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
 val lingxiaApplicationIdSuffix = providers
@@ -107,6 +112,9 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -151,7 +159,44 @@ android {
     kotlinOptions {
         jvmTarget = "11"
     }
+    packaging {
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+        }
+    }
+    sourceSets.getByName("main") {
+        jniLibs.srcDir(mpvJniDir)
+    }
 }
+
+// libmpv's published AAR requires compileSdk 36. Extract only the JNI libs and
+// keep MPVLib.kt in this module so the host can stay on compileSdk 35.
+val extractMpvJni by tasks.registering {
+    outputs.dir(mpvJniDir)
+    doLast {
+        val cache = mpvDir.get().asFile.apply { mkdirs() }
+        val dest = mpvJniDir.get().asFile.apply { mkdirs() }
+        val aar = cache.resolve("libmpv-1.0.0.aar")
+        if (!aar.exists()) {
+            URI(mpvAarUrl).toURL().openStream().use { input ->
+                aar.outputStream().use { output -> input.copyTo(output) }
+            }
+        }
+        copy {
+            from(zipTree(aar))
+            include("jni/arm64-v8a/*.so")
+            eachFile {
+                path = relativePath.pathString.removePrefix("jni/")
+            }
+            includeEmptyDirs = false
+            into(dest)
+        }
+    }
+}
+
+tasks.matching { it.name.startsWith("merge") && it.name.contains("JniLibFolders") }
+    .configureEach { dependsOn(extractMpvJni) }
+tasks.named("preBuild").configure { dependsOn(extractMpvJni) }
 
 dependencies {
     implementation(project(":lingxia"))

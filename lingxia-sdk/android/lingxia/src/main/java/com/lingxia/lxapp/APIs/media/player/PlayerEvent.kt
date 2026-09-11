@@ -34,6 +34,7 @@ internal sealed class PlayerEvent(val name: String) {
         val width: Int,
         val height: Int,
         val rotation: Int = 0,
+        val pixelWidthHeightRatio: Float = 1f,
     ) : PlayerEvent("loadedmetadata")
 
     data class Ended(val currentTimeMs: Long? = null) : PlayerEvent("ended")

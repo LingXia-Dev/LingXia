@@ -18,6 +18,7 @@ import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppBrowser
 import com.lingxia.lxapp.SplashOverlay
+import com.lingxia.app.media.UrlPlayerEngineFactory
 import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
 import java.util.Locale
@@ -42,6 +43,29 @@ object Lingxia {
     const val CAP_PROXY: Int = 0x8
 
     @JvmField var capabilities: Int = 0
+
+    @Volatile
+    private var urlPlayerEngineFactoryRef: UrlPlayerEngineFactory? = null
+
+    /**
+     * 注册 URL 播放引擎工厂。传 `null` 恢复默认 ExoPlayer。
+     *
+     * 必须在主线程调用。Last-write-wins，可重复调用（幂等覆盖）。
+     * 这是字段写入，允许紧挨 [quickStart] 之前，或放在其 trailing lambda 里。
+     * 不要在这一行 `loadLibrary`。
+     * 每个 LxMediaPlayer 在构造时 snapshot 当前值；已构造实例不会热切换。
+     */
+    @JvmStatic
+    fun setUrlPlayerEngineFactory(factory: UrlPlayerEngineFactory?) {
+        check(Looper.myLooper() == Looper.getMainLooper()) {
+            "setUrlPlayerEngineFactory must be called on the main thread"
+        }
+        urlPlayerEngineFactoryRef = factory
+        Log.i(TAG, "urlPlayerEngineFactory=${factory?.javaClass?.name ?: "null (ExoPlayer)"}")
+    }
+
+    @JvmStatic
+    internal fun urlPlayerEngineFactory(): UrlPlayerEngineFactory? = urlPlayerEngineFactoryRef
 
     // Marks an Intent the runtime accepted, so the cold-start dispatch and the
     // lifecycle callback cannot deliver the same tap twice.

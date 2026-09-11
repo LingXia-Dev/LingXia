@@ -40,6 +40,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
+import com.lingxia.app.media.UrlPlayerSurfaceKind
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.R
@@ -652,7 +653,8 @@ internal class MediaPreviewFragment : Fragment() {
                     }
                     else -> Unit
                 }
-            }
+            },
+            urlSurfaceKind = UrlPlayerSurfaceKind.PREVIEW,
         )
         // Use the preview-level close button (createTopBar) instead of the
         // player's built-in one so the visual treatment matches iOS: top-right
@@ -787,13 +789,10 @@ internal class MediaPreviewFragment : Fragment() {
                         currentPagerPosition,
                     )
                 ) {
-                    host.animate().cancel()
-                    host.alpha = 0f
-                    // Keep the TextureView in the visible hierarchy so vendor
-                    // renderers can latch a frame and emit first-frame events.
-                    // Alpha and the transition overlay still prevent a black
-                    // player surface from flashing on screen.
-                    host.visibility = View.VISIBLE
+                    // Keep the output in the composition so TextureView can
+                    // latch a frame. TextureView uses alpha=0; SurfaceView
+                    // ignores alpha and is covered by the fragment overlay.
+                    hideSharedPlayerSurface(host, keepInComposition = true)
                 }
                 player.playlistGoToIndex(playlistIdx)
                 logPlaybackState("video_apply", "playlistIdx=$playlistIdx")
@@ -842,10 +841,34 @@ internal class MediaPreviewFragment : Fragment() {
                 // INVISIBLE (not GONE) so the player's TextureView keeps its
                 // SurfaceTexture alive — switching back to a video page later
                 // can resume rendering immediately without a surface rebind.
-                host.animate().cancel()
-                host.alpha = 0f
-                host.visibility = View.INVISIBLE
+                hideSharedPlayerSurface(host, keepInComposition = false)
             }
+        }
+    }
+
+    private fun hideSharedPlayerSurface(host: FrameLayout, keepInComposition: Boolean) {
+        host.animate().cancel()
+        val honorsAlpha = sharedPlayer?.urlOutputHonorsAlpha() != false
+        if (honorsAlpha) {
+            host.alpha = 0f
+        } else if (keepInComposition && transitionOverlay?.visibility != View.VISIBLE) {
+            showTransitionOverlayFromCurrentVisual()
+        }
+        host.visibility = if (keepInComposition) View.VISIBLE else View.INVISIBLE
+    }
+
+    private fun revealSharedPlayerSurface(host: FrameLayout) {
+        host.animate().cancel()
+        host.visibility = View.VISIBLE
+        host.alpha = 1f
+    }
+
+    private fun isSharedPlayerVisuallyRevealed(host: FrameLayout): Boolean {
+        if (host.visibility != View.VISIBLE) return false
+        return if (sharedPlayer?.urlOutputHonorsAlpha() != false) {
+            host.alpha > 0f
+        } else {
+            transitionOverlay?.visibility != View.VISIBLE
         }
     }
 
@@ -856,7 +879,7 @@ internal class MediaPreviewFragment : Fragment() {
         if (currentItem?.mediaType != MediaPreviewType.VIDEO) return
         if (expectedPagerPosition != currentPagerPosition) return
         val host = sharedPlayerHost ?: return
-        val currentlyVisible = host.visibility == View.VISIBLE && host.alpha > 0f
+        val currentlyVisible = isSharedPlayerVisuallyRevealed(host)
         if (!sharedPlayerFrameReveal.beginReveal(
                 generation = gen,
                 pagerPosition = expectedPagerPosition,
@@ -874,9 +897,7 @@ internal class MediaPreviewFragment : Fragment() {
             // the pending reveal lets the IDLE re-entry retry using the frame
             // already remembered for this activation.
             val item = previewItems.getOrNull(currentIndex)
-            host.animate().cancel()
-            host.alpha = 0f
-            host.visibility = View.VISIBLE
+            hideSharedPlayerSurface(host, keepInComposition = true)
             val revealFrames = if (normalizePreviewRotation(item?.rotate) == 0) 1 else 3
             postAfterAnimationFrames(host, revealFrames) {
                 if (!sharedPlayerFrameReveal.isPending(gen, expectedPagerPosition)) {
@@ -887,8 +908,7 @@ internal class MediaPreviewFragment : Fragment() {
                     if (gen == sharedPlayerActivationGen &&
                         expectedPagerPosition == currentPagerPosition
                     ) {
-                        host.alpha = 0f
-                        host.visibility = View.INVISIBLE
+                        hideSharedPlayerSurface(host, keepInComposition = false)
                     }
                     return@postAfterAnimationFrames
                 }
@@ -903,8 +923,7 @@ internal class MediaPreviewFragment : Fragment() {
                     "position=$expectedPagerPosition gen=$gen",
                 )
                 revealPreviewRoot()
-                host.visibility = View.VISIBLE
-                host.alpha = 1f
+                revealSharedPlayerSurface(host)
                 hideInitialVideoWaitingState()
                 if (firstReveal) {
                     signalPresentedOnce()
@@ -912,8 +931,8 @@ internal class MediaPreviewFragment : Fragment() {
                 previewAdapter?.notifyVideoRenderedAt(expectedPagerPosition)
                 host.postDelayed({
                     if (canRevealSharedPlayerFrame(gen, expectedPagerPosition) &&
-                        host.visibility == View.VISIBLE &&
-                        host.alpha > 0f
+                        sharedPlayerFrameReveal.wasRevealed(gen) &&
+                        host.visibility == View.VISIBLE && host.alpha > 0f
                     ) {
                         hideTransitionOverlay()
                     }
@@ -985,9 +1004,7 @@ internal class MediaPreviewFragment : Fragment() {
         revealPreviewRoot()
         hideTransitionOverlay()
         sharedPlayerHost?.let { host ->
-            host.animate().cancel()
-            host.visibility = View.VISIBLE
-            host.alpha = 1f
+            revealSharedPlayerSurface(host)
         }
         initialVideoWaitingVisible = true
         initialVideoWaitingIndicator?.visibility = View.VISIBLE
@@ -1480,9 +1497,7 @@ internal class MediaPreviewFragment : Fragment() {
                 currentlyVisible = false,
             )
             suppressScrollHostHideForPrewarmGen = prewarmGen
-            host.animate().cancel()
-            host.alpha = 0f
-            host.visibility = View.VISIBLE
+            hideSharedPlayerSurface(host, keepInComposition = true)
             // Swap pages atomically. Player is already covering with the
             // target's first frame; the new page underneath is invisible.
             viewPager?.setCurrentItem(targetPagerPosition, false)
@@ -1500,8 +1515,7 @@ internal class MediaPreviewFragment : Fragment() {
                     if (prewarmGen == sharedPlayerActivationGen &&
                         targetPagerPosition == currentPagerPosition
                     ) {
-                        host.alpha = 0f
-                        host.visibility = View.INVISIBLE
+                        hideSharedPlayerSurface(host, keepInComposition = false)
                     }
                     return@postAfterAnimationFrames
                 }
@@ -1509,14 +1523,13 @@ internal class MediaPreviewFragment : Fragment() {
                 if (!sharedPlayerFrameReveal.commitReveal(prewarmGen, targetPagerPosition)) {
                     return@postAfterAnimationFrames
                 }
-                host.visibility = View.VISIBLE
-                host.alpha = 1f
+                revealSharedPlayerSurface(host)
                 suppressScrollHostHideForPrewarmGen = -1L
                 previewAdapter?.notifyVideoRenderedAt(targetPagerPosition)
                 host.postDelayed({
                     if (canRevealSharedPlayerFrame(prewarmGen, targetPagerPosition) &&
-                        host.visibility == View.VISIBLE &&
-                        host.alpha > 0f
+                        sharedPlayerFrameReveal.wasRevealed(prewarmGen) &&
+                        host.visibility == View.VISIBLE && host.alpha > 0f
                     ) {
                         hideTransitionOverlay()
                     }
@@ -1526,12 +1539,10 @@ internal class MediaPreviewFragment : Fragment() {
         pendingPrewarmGen = prewarmGen
         mainHandler.postDelayed(timeoutRunnable, PREWARM_TIMEOUT_MS)
 
-        // Keep the player view attached and in the composition during prewarm,
-        // but transparent while the image page remains on screen. This gives
-        // TextureView a chance to latch the decoded frame before the swap.
-        host.animate().cancel()
-        host.alpha = 0f
-        host.visibility = View.VISIBLE
+        // Keep the player view attached and in the composition during prewarm.
+        // TextureView stays VISIBLE at alpha=0; SurfaceView is covered by the
+        // fragment overlay until FirstFrameRendered.
+        hideSharedPlayerSurface(host, keepInComposition = true)
 
         val player = ensureSharedPlayer()
         if (!sharedPlaylistApplied) {
