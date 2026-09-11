@@ -3,7 +3,9 @@
 //!
 //! The platform reports what the operating system is set to. This layer adds
 //! the user's own choice on top: `auto` follows the system, `light` and `dark`
-//! pin it for the whole product. An lxapp that pinned its own scheme keeps it.
+//! pin it for the whole product. Until the user chooses, the product starts
+//! from `theme.defaultAppearance` (itself `auto` when unset). An lxapp that
+//! pinned its own scheme keeps it.
 
 use super::page_chrome::{AppearancePreference, ResolvedAppearance};
 use super::runtime_registry::{get_lxapps_manager, get_platform};
@@ -19,7 +21,8 @@ use tokio::sync::mpsc;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostAppearanceState {
-    /// The user's choice: `auto` follows the system.
+    /// The user's choice, or the product default until there is one: `auto`
+    /// follows the system.
     pub preference: AppearancePreference,
     /// What that choice resolves to at this moment.
     pub resolved: ResolvedAppearance,
@@ -125,18 +128,31 @@ fn subscribe_with_snapshot(
     (snapshot(), receiver)
 }
 
-/// Load the persisted preference during bootstrap. The host chrome is told
-/// about a pinned scheme here; `auto` leaves the platform's own value alone.
-pub fn initialize_host_appearance(platform: &lingxia_platform::Platform) {
+/// The choice this launch starts from: the user's, once they made one, and
+/// until then the product's default.
+fn starting_preference(
+    stored: Option<AppearancePreference>,
+    product_default: AppearancePreference,
+) -> AppearancePreference {
+    stored.unwrap_or(product_default)
+}
+
+/// Load the persisted preference during bootstrap, falling back to the
+/// product's `theme.defaultAppearance`. The host chrome is told about a pinned
+/// scheme here; `auto` leaves the platform's own value alone.
+pub fn initialize_host_appearance(
+    platform: &lingxia_platform::Platform,
+    product_default: AppearancePreference,
+) {
     let stored = lingxia_service::settings::host_appearance(&platform.app_data_dir())
         .ok()
         .flatten()
-        .and_then(|value| value.parse::<AppearancePreference>().ok())
-        .unwrap_or(AppearancePreference::Auto);
+        .and_then(|value| value.parse::<AppearancePreference>().ok());
+    let preference = starting_preference(stored, product_default);
     *preference_slot()
         .write()
-        .unwrap_or_else(|error| error.into_inner()) = stored;
-    publish_host_color_mode(platform, stored);
+        .unwrap_or_else(|error| error.into_inner()) = preference;
+    publish_host_color_mode(platform, preference);
 }
 
 /// Pin the whole host to `light`/`dark`, or follow the system with `auto`.
@@ -148,14 +164,14 @@ pub fn set_host_appearance_preference(
 ) -> Result<HostAppearanceState, LxAppError> {
     let platform = get_platform()
         .ok_or_else(|| LxAppError::Runtime("platform runtime is not initialized".to_string()))?;
-    // `auto` clears the stored override rather than pinning today's answer:
-    // the next launch must follow the system as it is then.
-    let stored = match preference {
-        AppearancePreference::Auto => None,
-        other => Some(other.as_str()),
-    };
-    lingxia_service::settings::set_host_appearance(&platform.app_data_dir(), stored)
-        .map_err(|error| LxAppError::Runtime(error.to_string()))?;
+    // The choice is stored as made, `auto` included. A product that defaults to
+    // `dark` must not put a user who picked `auto` back in dark on the next
+    // launch; `auto` itself still follows the system as it is then.
+    lingxia_service::settings::set_host_appearance(
+        &platform.app_data_dir(),
+        Some(preference.as_str()),
+    )
+    .map_err(|error| LxAppError::Runtime(error.to_string()))?;
     let changed = {
         let mut slot = preference_slot()
             .write()
@@ -309,5 +325,30 @@ mod tests {
             .write()
             .unwrap_or_else(|error| error.into_inner()) = AppearancePreference::Auto;
         assert_eq!(host_appearance_dark(), system_dark());
+    }
+
+    #[test]
+    fn a_saved_choice_wins_over_the_product_default() {
+        // Nothing chosen yet: the product's default is where a launch starts.
+        assert_eq!(
+            starting_preference(None, AppearancePreference::Dark),
+            AppearancePreference::Dark
+        );
+        assert_eq!(
+            starting_preference(None, AppearancePreference::Auto),
+            AppearancePreference::Auto
+        );
+        // A user who picked `auto` or `light` keeps it over a `dark` default.
+        assert_eq!(
+            starting_preference(Some(AppearancePreference::Auto), AppearancePreference::Dark),
+            AppearancePreference::Auto
+        );
+        assert_eq!(
+            starting_preference(
+                Some(AppearancePreference::Light),
+                AppearancePreference::Dark
+            ),
+            AppearancePreference::Light
+        );
     }
 }

@@ -209,9 +209,13 @@ object LxApp {
      */
     @JvmStatic
     fun setHostColorMode(mode: Int) {
-        val activity = currentActivity ?: return
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) return
-        val manager = activity.getSystemService(android.app.UiModeManager::class.java) ?: return
+        // The first call comes from bootstrap, before any activity exists, and it
+        // carries the preference the launch starts from — the product's default
+        // when the user never chose. The night mode is the application's, so the
+        // application context serves when there is no activity yet.
+        val context = currentActivity ?: Lingxia.applicationContext() ?: return
+        val manager = context.getSystemService(android.app.UiModeManager::class.java) ?: return
         val nightMode = when (mode) {
             0 -> android.app.UiModeManager.MODE_NIGHT_NO
             1 -> android.app.UiModeManager.MODE_NIGHT_YES

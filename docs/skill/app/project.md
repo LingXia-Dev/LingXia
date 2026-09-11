@@ -196,12 +196,13 @@ settingsDestination:
 
 ## `theme` Section
 
-`theme` defines application-wide semantic colors for host-owned native UI. It
-is host configuration, not an lxapp content theme. Both `light` and `dark` are
-optional, and every role inside them is optional:
+`theme` defines application-wide semantic colors for host-owned native UI and
+the scheme the product starts in. It is host configuration, not an lxapp
+content theme. Every key and role is optional:
 
 ```yaml
 theme:
+  defaultAppearance: dark   # auto (default) | light | dark
   light:
     pageBackgroundColor: "#E9EAEE"
     windowBackgroundColor: "#F4F5F7"
@@ -228,6 +229,11 @@ semantic default for that scheme; values never fall back from light to dark or
 from dark to light. On macOS those defaults are dynamic AppKit semantic colors;
 on Windows they are Fluent theme tokens, with system colors taking precedence
 in a contrast theme.
+
+`defaultAppearance` applies until the user picks a scheme through
+`lx.app.control?.appearance`; the saved choice, `auto` included, wins after
+that. An lxapp's own `appearance` in `lxapp.json` overrides both. The launch
+screen follows the system.
 
 The Windows and macOS desktop shells consume `windowBackgroundColor` for the
 window backdrop and sidebar, and `surfaceBackgroundColor` for native cards and

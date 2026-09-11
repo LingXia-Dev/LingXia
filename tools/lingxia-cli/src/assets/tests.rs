@@ -383,6 +383,7 @@ fn generated_app_json_includes_normalized_theme() {
             separator_color: Some(ThemeColor::parse("#343840").unwrap()),
             ..ThemeStyle::default()
         }),
+        default_appearance: Some(lingxia_app_context::AppearancePreference::Dark),
     });
 
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
@@ -390,6 +391,7 @@ fn generated_app_json_includes_normalized_theme() {
 
     assert_eq!(value["theme"]["light"]["accentColor"], "#A1B2C3");
     assert_eq!(value["theme"]["dark"]["separatorColor"], "#343840");
+    assert_eq!(value["theme"]["defaultAppearance"], "dark");
 }
 
 #[test]

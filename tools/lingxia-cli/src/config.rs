@@ -3272,6 +3272,7 @@ appLinks:
                 ..ThemeStyle::default()
             }),
             dark: None,
+            default_appearance: None,
         });
 
         config.save(temp.path()).unwrap();
