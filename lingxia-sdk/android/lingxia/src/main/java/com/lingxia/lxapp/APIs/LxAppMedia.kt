@@ -37,7 +37,6 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
-import androidx.media3.transformer.TransformationRequest
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.lingxia.lxapp.APIs.media.ImageOps
@@ -893,9 +892,6 @@ internal object LxAppMedia {
         )
 
         val mediaItem = MediaItem.fromUri(Uri.fromFile(sourceFile))
-        val requestBuilder = TransformationRequest.Builder()
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
-            .setAudioMimeType(MimeTypes.AUDIO_AAC)
         val videoEffects = buildVideoEffects(sourceInfo, targetResolutionRatio)
         val editedMediaItemBuilder = EditedMediaItem.Builder(mediaItem)
         if (targetFps != null) {
@@ -905,12 +901,12 @@ internal object LxAppMedia {
             editedMediaItemBuilder.setEffects(Effects(emptyList(), videoEffects))
         }
         val editedMediaItem = editedMediaItemBuilder.build()
-        val request = requestBuilder.build()
 
         mainHandler.post {
             try {
                 val transformerBuilder = Transformer.Builder(context)
-                    .setTransformationRequest(request)
+                    .setVideoMimeType(MimeTypes.VIDEO_H264)
+                    .setAudioMimeType(MimeTypes.AUDIO_AAC)
                 if (targetBitrate != null) {
                     val videoEncoderSettings = VideoEncoderSettings.Builder()
                         .setBitrate(targetBitrate)

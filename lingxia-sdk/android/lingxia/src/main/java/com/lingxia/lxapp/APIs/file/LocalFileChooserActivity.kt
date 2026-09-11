@@ -197,7 +197,7 @@ internal class LocalFileChooserActivity : AppCompatActivity() {
         val onSurface = colorAttr(com.google.android.material.R.attr.colorOnSurface, Color.BLACK)
         val onSurfaceVariant = colorAttr(com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF6B7280.toInt())
         val outline = colorAttr(com.google.android.material.R.attr.colorOutline, 0x1F000000)
-        val primary = colorAttr(com.google.android.material.R.attr.colorPrimary, 0xFF1F6BFF.toInt())
+        val primary = colorAttr(androidx.appcompat.R.attr.colorPrimary, 0xFF1F6BFF.toInt())
         val pageBackground = ColorUtils.blendARGB(surface, primary, 0.035f)
 
         rootLayout = LinearLayout(this).apply {
