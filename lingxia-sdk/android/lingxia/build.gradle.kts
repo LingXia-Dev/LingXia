@@ -73,9 +73,9 @@ dependencies {
     implementation(libs.androidx.exifinterface)
     implementation(libs.mlkit.barcode.scanning)
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.test.runner)
-    androidTestImplementation(libs.androidx.test.core)
-    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidxTestRunner)
+    androidTestImplementation(libs.androidxTestCore)
+    androidTestImplementation(libs.androidxTestExtJunit)
 }
 
 val sdkGroupId = "io.github.lingxia-dev"
