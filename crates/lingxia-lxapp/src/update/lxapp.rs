@@ -1,4 +1,5 @@
 use super::*;
+use crate::archive;
 use crate::update::error_bridge::lxapp_error_to_update_error;
 use lingxia_provider::BoxFuture;
 use lingxia_update::{LxAppUpdateHost, UpdateError};
@@ -96,6 +97,14 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         })
     }
 
+    fn installed_checksum<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>> {
+        Box::pin(async move {
+            self.manager()
+                .installed_checksum(&self.target_appid, self.release_type)
+                .map_err(lxapp_error_to_update_error)
+        })
+    }
+
     fn is_installed<'a>(&'a self) -> BoxFuture<'a, Result<bool, UpdateError>> {
         Box::pin(async move {
             self.manager()
@@ -131,12 +140,17 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
     fn has_downloaded_update<'a>(
         &'a self,
         version: &'a str,
+        checksum_sha256: &'a str,
     ) -> BoxFuture<'a, Result<bool, UpdateError>> {
         Box::pin(async move {
-            Ok(matches!(
-                self.manager().has_downloaded_update(&self.target_appid, self.release_type),
-                Ok(Some(info)) if info.version == version && info.archive_path.exists()
-            ))
+            self.manager()
+                .downloaded_update_matches(
+                    &self.target_appid,
+                    self.release_type,
+                    version,
+                    checksum_sha256,
+                )
+                .map_err(lxapp_error_to_update_error)
         })
     }
 
@@ -206,7 +220,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                                     break;
                                 }
                             }
-                            state::ForceUpdateDownloadState::Completed => return Ok(()),
+                            state::ForceUpdateDownloadState::Completed => break,
                             state::ForceUpdateDownloadState::Failed(error) => {
                                 return Err(UpdateError::io(format!(
                                     "forced update package download failed: {}",
@@ -226,7 +240,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                                     break;
                                 }
                             }
-                            state::ForceUpdateDownloadState::Completed => return Ok(()),
+                            state::ForceUpdateDownloadState::Completed => break,
                             state::ForceUpdateDownloadState::Failed(error) => {
                                 return Err(UpdateError::io(format!(
                                     "forced update package download failed: {}",
@@ -237,10 +251,16 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
                     }
                 }
 
-                let prepared = matches!(
-                    manager.has_downloaded_update(&self.target_appid, self.release_type),
-                    Ok(Some(info)) if info.version == update.version && info.archive_path.exists()
-                );
+                // Another caller may have downloaded a different republish
+                // while we waited on this app/channel's shared tracker.
+                let prepared = manager
+                    .downloaded_update_matches(
+                        &self.target_appid,
+                        self.release_type,
+                        &update.version,
+                        &update.checksum_sha256,
+                    )
+                    .unwrap_or(false);
                 if prepared {
                     return Ok(());
                 }
@@ -443,9 +463,17 @@ impl UpdateManager {
             return Err(e);
         }
 
-        if let Err(e) =
-            Self::record_install_metadata(lxappid, release_type, &version, &install_path)
-        {
+        let checksum = downloaded
+            .checksum_sha256
+            .clone()
+            .or_else(|| archive::sha256_hex(&archive_path).ok());
+        if let Err(e) = Self::record_install_metadata(
+            lxappid,
+            release_type,
+            &version,
+            &install_path,
+            checksum.as_deref(),
+        ) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
                 crate::error!(
                     "Failed to rollback downloaded update at {}: {}",
@@ -499,7 +527,8 @@ fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_app
 /// Ensure a specific target version package is prepared before opening.
 ///
 /// Policy:
-/// - Already installed with the same version: no-op.
+/// - Already installed with the same version: no-op outside the developer channel.
+/// - Developer packages also compare the installed checksum.
 /// - Otherwise: resolve exact version metadata and ensure archive is downloaded.
 /// - Downloaded archive is applied when app instance is (re)opened.
 pub async fn ensure_target_version_ready(

@@ -267,6 +267,34 @@ impl UpdatePackageInfo {
         Self::should_replace_version(&self.version, installed_version)
     }
 
+    /// Whether this package should replace what is already installed.
+    ///
+    /// `release` / `preview` compare versions only. `developer` also treats a
+    /// same-version package as an update when `checksum_sha256` differs, so a
+    /// republish does not need a version bump. A developer install with no
+    /// stored checksum is treated as different so the first OTA after a
+    /// bundled/sideload install still picks up a same-version republish.
+    pub fn should_replace(
+        &self,
+        channel: ReleaseType,
+        installed_version: Option<&str>,
+        installed_checksum: Option<&str>,
+    ) -> bool {
+        if channel != ReleaseType::Developer {
+            return Self::should_replace_version(&self.version, installed_version);
+        }
+        if Self::should_replace_version(&self.version, installed_version) {
+            return true;
+        }
+        let Some(server) = normalize_checksum(&self.checksum_sha256) else {
+            return false;
+        };
+        match installed_checksum.and_then(normalize_checksum) {
+            Some(local) => !local.eq_ignore_ascii_case(server),
+            None => true,
+        }
+    }
+
     pub fn required_runtime_version_trimmed(&self) -> Option<&str> {
         self.required_runtime_version
             .as_deref()
@@ -309,6 +337,11 @@ impl UpdatePackageInfo {
     }
 }
 
+fn normalize_checksum(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty() { None } else { Some(value) }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum RuntimeCompatibilityError {
     #[error("invalid SDK runtime version '{runtime_version}'")]
@@ -344,7 +377,19 @@ pub trait UpdateProvider: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use super::Version;
+    use super::{ReleaseType, UpdatePackageInfo, Version};
+
+    fn package(version: &str, checksum: &str) -> UpdatePackageInfo {
+        UpdatePackageInfo {
+            version: version.to_string(),
+            url: "https://example.test/pkg".to_string(),
+            checksum_sha256: checksum.to_string(),
+            size: None,
+            release_notes: None,
+            is_force_update: false,
+            required_runtime_version: None,
+        }
+    }
 
     #[test]
     fn version_parse_accepts_full_semver_only() {
@@ -352,5 +397,22 @@ mod tests {
         assert!(Version::parse("1").is_err());
         assert!(Version::parse("1.2").is_err());
         assert!(Version::parse("1.2.3.4").is_err());
+    }
+
+    #[test]
+    fn release_and_preview_ignore_checksum_when_version_matches() {
+        let pkg = package("1.0.0", "aaa");
+        assert!(!pkg.should_replace(ReleaseType::Release, Some("1.0.0"), Some("bbb")));
+        assert!(!pkg.should_replace(ReleaseType::Preview, Some("1.0.0"), Some("bbb")));
+        assert!(pkg.should_replace(ReleaseType::Release, Some("0.9.0"), Some("aaa")));
+    }
+
+    #[test]
+    fn developer_replaces_same_version_when_checksum_differs() {
+        let pkg = package("1.0.0", "bbb");
+        assert!(pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), Some("aaa")));
+        assert!(!pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), Some("BBB")));
+        assert!(pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), None));
+        assert!(pkg.should_replace(ReleaseType::Developer, Some("0.9.0"), Some("bbb")));
     }
 }
