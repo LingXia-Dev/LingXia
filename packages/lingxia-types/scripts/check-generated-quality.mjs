@@ -92,6 +92,8 @@ const webStandards = [
   ["DecompressionStream", "compression"],
   ["setTimeout", "timer"],
   ["console", "console"],
+  ["crypto", "crypto"],
+  ["SubtleCrypto", "crypto"],
 ];
 const missingStandards = webStandards.filter(
   ([name, module]) =>
