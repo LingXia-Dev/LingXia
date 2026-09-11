@@ -58,7 +58,7 @@ pub(crate) async fn shutdown_app_context(ctx: &JSContext) {
 /// by an enabled `rong_modules` Cargo feature: resolution fail-fasts on an
 /// uncompiled module and the worker aborts before `lx` exists (see the
 /// `requested_rong_modules_resolve` test).
-const RONG_MODULES: [&str; 13] = [
+const RONG_MODULES: [&str; 14] = [
     "timer",
     "cron",
     "event",
@@ -72,6 +72,7 @@ const RONG_MODULES: [&str; 13] = [
     "http",
     "compression",
     "storage",
+    "crypto",
 ];
 
 #[cfg(test)]

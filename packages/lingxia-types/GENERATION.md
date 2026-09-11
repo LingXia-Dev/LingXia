@@ -1,7 +1,7 @@
 # Type generation
 
 `@lingxia/types` generates its Logic runtime declarations from the Rust bindings
-in `crates/lingxia-logic` with `rong-typegen` 0.6.0.
+in `crates/lingxia-logic` with `rong-typegen` 0.6.1.
 
 ```sh
 npm run gen:logic

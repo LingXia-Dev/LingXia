@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.6.0";
+const VERSION = "0.6.1";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceDir = resolve(packageDir, "../..");
 const installRoot = join(workspaceDir, "target", "rong-typegen", VERSION);
