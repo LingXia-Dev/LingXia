@@ -206,11 +206,14 @@ impl<'a> LogicBundler<'a> {
         let transpiled = transpile_module(&path, &rewritten)?;
 
         let module_var = format!("__lx_mod_{}", self.modules.len());
+        // The module body goes in as transpiled, not re-indented: a line-based
+        // indent also shifts every continuation line of a multi-line template
+        // literal, which changes the string the program sees.
         let rendered = format!(
             "//#region {}\nconst {} = (() => {{\n{}\n  return __lx_module_exports;\n}})();\n//#endregion",
             relative_to(&path, self.project.root.as_path()),
             module_var,
-            indent_block(&transpiled, "  ")
+            transpiled.trim_end_matches('\n')
         );
         self.module_vars.insert(path.clone(), module_var.clone());
         self.modules.push(ModuleArtifact { rendered });
@@ -1123,20 +1126,6 @@ fn json_string_literal(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-fn indent_block(source: &str, indent: &str) -> String {
-    source
-        .lines()
-        .map(|line| {
-            if line.is_empty() {
-                String::new()
-            } else {
-                format!("{indent}{line}")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
 fn relative_to(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
@@ -1334,6 +1323,26 @@ mod tests {
         );
         assert!(
             bundle.contains("__lx_module_exports[\"gamma\"] = __lx_mod_0[\"default\"];"),
+            "{bundle}"
+        );
+    }
+
+    #[test]
+    fn keeps_multi_line_template_literals_verbatim() {
+        // Regression: every module body was re-indented line by line, and the
+        // continuation lines of a multi-line template literal took the indent
+        // too — a Markdown string's `## Section` reached the program as
+        // `  ## Section`.
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("entry.ts"),
+            "export const text = `# Title\n\n## Section\nbody\n`;\n",
+        )
+        .unwrap();
+
+        let bundle = build_test_bundle(temp.path(), "entry.ts");
+        assert!(
+            bundle.contains("`# Title\n\n## Section\nbody\n`"),
             "{bundle}"
         );
     }
