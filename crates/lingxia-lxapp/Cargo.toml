@@ -40,14 +40,14 @@ futures = { workspace = true }
 urlencoding = { workspace = true }
 base64 = { workspace = true }
 language-tags = { workspace = true }
-bytes = "1.11"
-http-body-util = "0.1"
+bytes = { workspace = true }
+http-body-util = { workspace = true }
 redb = { workspace = true }
-tar = "0.4.44"
-zstd = "0.13.3"
+tar = "0.4.46"
+zstd = "0.14"
 ring = "0.17.14"
 filetime = "0.2"
-uuid = { version = "1.20", features = ["v4"] }
+uuid = { version = "1.26", features = ["v4"] }
 
 # Local dependencies
 rong_modules = { workspace = true, default-features = false, features = ["timer", "cron", "http", "encoding", "event", "exception", "abort", "console", "url", "buffer", "stream", "compression", "storage"], optional = true }

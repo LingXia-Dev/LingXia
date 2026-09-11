@@ -65,7 +65,7 @@ thiserror = { workspace = true }
 log = { workspace = true, optional = true }
 lingxia-app-context = { workspace = true, optional = true }
 lingxia-platform = { workspace = true, optional = true }
-image = { version = "0.25", optional = true, default-features = false, features = ["png"] }
+image = { version = "0.25.10", optional = true, default-features = false, features = ["png"] }
 
 [dev-dependencies]
 serde_json = { workspace = true }
@@ -106,7 +106,7 @@ windows = { workspace = true, optional = true, features = [
 
 [target.'cfg(target_os = "macos")'.dependencies]
 dispatch2 = { version = "0.3", optional = true }
-libc = { version = "0.2.186", optional = true }
+libc = { version = "0.2.189", optional = true }
 objc2 = { version = "0.6.4", optional = true }
 objc2-app-kit = { version = "0.3.2", optional = true, default-features = false, features = ["std", "objc2-core-foundation", "objc2-core-graphics", "NSApplication", "NSGraphics", "NSPasteboard", "NSScreen", "NSWorkspace", "NSRunningApplication", "NSPanel", "NSWindow", "NSView", "NSResponder", "NSImage", "NSImageRep", "NSBitmapImageRep", "NSImageView", "NSControl", "NSCell", "NSColor", "NSFont", "NSParagraphStyle", "NSTextField", "libc"] }
 objc2-core-foundation = { version = "0.3.2", optional = true, default-features = false, features = ["std", "CFBase", "CFArray", "CFDictionary", "CFString", "CFNumber", "CFCGTypes"] }

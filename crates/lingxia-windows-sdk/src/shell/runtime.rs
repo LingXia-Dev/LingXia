@@ -7256,8 +7256,8 @@ mod tests {
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
-        browser_tab_discard_candidates, is_browser_root_group_entry,
-        live_browser_tab_limit_for_memory, touch_browser_tab_recency,
+        NativeControlTabTarget, browser_tab_discard_candidates, is_browser_root_group_entry,
+        live_browser_tab_limit_for_memory, native_control_tab_target, touch_browser_tab_recency,
     };
     use crate::shell::WindowsShellTabBarPosition;
     use lingxia_surface::{Role, SizeClass, Surface, SurfaceManager};

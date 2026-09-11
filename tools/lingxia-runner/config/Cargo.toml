@@ -9,7 +9,7 @@ publish = false
 # Dependency-light on purpose: the provider's option types live only in the
 # runner crates (injected at build time), which map this onto them.
 [dependencies]
-toml = "1.1.2"
+toml = "1.1.6"
 lingxia-provider = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

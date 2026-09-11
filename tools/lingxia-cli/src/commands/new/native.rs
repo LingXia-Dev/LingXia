@@ -247,7 +247,7 @@ pub(super) fn create_rust_library(
     vars.insert(
         "ANDROID_DEPS_BLOCK".to_string(),
         if config.platforms.contains(&Platform::Android) {
-            "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22.1\"".to_string()
+            "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22.4\"".to_string()
         } else {
             String::new()
         },
@@ -255,7 +255,7 @@ pub(super) fn create_rust_library(
     vars.insert(
         "HARMONY_DEPS_BLOCK".to_string(),
         if config.platforms.contains(&Platform::Harmony) {
-            "[target.'cfg(target_env = \"ohos\")'.dependencies]\nnapi-ohos = \"1.1\"\nnapi-derive-ohos = \"1.1\"".to_string()
+            "[target.'cfg(target_env = \"ohos\")'.dependencies]\nnapi-ohos = \"1.2\"\nnapi-derive-ohos = \"1.2\"".to_string()
         } else {
             String::new()
         },

@@ -12,28 +12,28 @@ path = "src/main.rs"
 [dependencies]
 libc = "0.2"
 anyhow = "1.0"
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 lingxia-control-protocol = { workspace = true, features = ["broker"] }
 lingxia-control-commands = { workspace = true, features = ["desktop-local"] }
 tungstenite = { version = "0.30", features = ["native-tls"] }
-owo-colors = "4.3"
+owo-colors = "4.4"
 base64 = { workspace = true }
 ctrlc = "3.5"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
 # bundler, but a dedicated entry mode (no Page()/App() rewrites).
-oxc_parser = "0.145"
-oxc_resolver = "11.24.2"
-oxc_transformer = "0.145"
-oxc_codegen = "0.145"
-oxc_allocator = "0.145"
-oxc_span = "0.145"
-oxc_ast = "0.145"
-oxc_ast_visit = "0.145"
-oxc_semantic = "0.145"
+oxc_parser = "0.149"
+oxc_resolver = "11.24.3"
+oxc_transformer = "0.149"
+oxc_codegen = "0.149"
+oxc_allocator = "0.149"
+oxc_span = "0.149"
+oxc_ast = "0.149"
+oxc_ast_visit = "0.149"
+oxc_semantic = "0.149"
 oxc_sourcemap = "8.1.2"
 
 [dev-dependencies]

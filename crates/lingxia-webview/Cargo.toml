@@ -29,8 +29,8 @@ tokio = { workspace = true, features = ["sync", "time"] }
 # Android-specific dependencies
 [target.'cfg(target_os = "android")'.dependencies]
 base64 = { workspace = true }
-jni = "0.22.1"
-android_logger = "0.15.0"
+jni = "0.22.4"
+android_logger = "0.15.1"
 
 # iOS/macOS-specific dependencies for proper os_log integration
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
@@ -54,9 +54,9 @@ objc2-core-graphics = { version = "0.3", default-features = false, features = ["
 
 [target.'cfg(all(target_os = "linux", target_env = "ohos"))'.dependencies]
 base64 = { workspace = true }
-ohos_hilog = "0.1"
-napi-ohos = "1.1.4"
-napi-derive-ohos = "1.1.4"
+ohos_hilog = "0.1.3"
+napi-ohos = { workspace = true }
+napi-derive-ohos = { workspace = true }
 ohos-raw-sys="0.1.0"
 ohos-web-sys="0.0.1"
 

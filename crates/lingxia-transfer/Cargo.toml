@@ -18,7 +18,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 ring = "0.17.14"
-bytes = "1.11"
+bytes = { workspace = true }
 http-body-util = { workspace = true, features = ["channel"] }
 redb = { workspace = true }
 rong_rt = { workspace = true, default-features = false }
