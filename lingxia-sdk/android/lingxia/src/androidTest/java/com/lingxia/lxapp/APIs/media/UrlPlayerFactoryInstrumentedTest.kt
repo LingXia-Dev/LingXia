@@ -63,6 +63,49 @@ class UrlPlayerFactoryInstrumentedTest {
     }
 
     @Test
+    fun previewHostInlineNullKeepsInlineOnDefaultEngine() {
+        assumeTrue(Build.VERSION.SDK_INT >= 24)
+        val previewEngine = RecordingUrlPlayerEngine()
+        val factory = object : UrlPlayerEngineFactory {
+            override fun preferredOutput(kind: UrlPlayerSurfaceKind) =
+                if (kind == UrlPlayerSurfaceKind.PREVIEW) {
+                    UrlPlayerOutputKind.SURFACE_VIEW
+                } else {
+                    UrlPlayerOutputKind.TEXTURE_VIEW
+                }
+
+            override fun create(request: UrlPlayerEngineRequest): UrlPlayerEngine? =
+                if (request.surfaceKind == UrlPlayerSurfaceKind.PREVIEW) previewEngine else null
+        }
+        runOnMain { Lingxia.setUrlPlayerEngineFactory(factory) }
+        lateinit var inline: LxMediaPlayer
+        lateinit var preview: LxMediaPlayer
+        runOnMain {
+            inline = LxMediaPlayer(
+                context,
+                eventSink = {},
+                urlSurfaceKind = UrlPlayerSurfaceKind.INLINE,
+            )
+            inline.update(LxMediaPlayerConfig(src = "https://example.com/a.mp4"))
+            preview = LxMediaPlayer(
+                context,
+                eventSink = {},
+                urlSurfaceKind = UrlPlayerSurfaceKind.PREVIEW,
+            )
+        }
+        try {
+            assertTrue(inline.urlOutputViewForTest() is TextureView)
+            assertTrue(preview.urlOutputViewForTest() is SurfaceView)
+            assertTrue(preview.pendingUrlEngineForTest() === previewEngine)
+        } finally {
+            runOnMain {
+                inline.detach()
+                preview.detach()
+            }
+        }
+    }
+
+    @Test
     fun previewSurfaceViewNullCreateFallsBackToTextureView() {
         val factory = object : UrlPlayerEngineFactory {
             override fun preferredOutput(kind: UrlPlayerSurfaceKind) =

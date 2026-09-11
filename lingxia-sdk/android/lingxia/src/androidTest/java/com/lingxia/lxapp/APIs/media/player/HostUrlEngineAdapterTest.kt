@@ -3,6 +3,7 @@ package com.lingxia.lxapp.APIs.media.player
 import android.view.TextureView
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.lingxia.app.media.UrlPlayerEngineEvent
 import com.lingxia.app.media.UrlPlayerOutput
 import org.junit.Assert.assertEquals
@@ -67,11 +68,17 @@ class HostUrlEngineAdapterTest {
                 throw IllegalStateException("boom")
             }
         }
-        val adapter = adapter(host)
         val events = mutableListOf<EngineEvent>()
-        adapter.setListener { events += it }
-        adapter.play()
+        runOnMain {
+            val adapter = adapter(host)
+            adapter.setListener { events += it }
+            adapter.play()
+        }
         val error = events.filterIsInstance<EngineEvent.Error>().single()
         assertEquals(ErrorCode.INTERNAL, error.error.code)
+    }
+
+    private fun runOnMain(block: () -> Unit) {
+        InstrumentationRegistry.getInstrumentation().runOnMainSync(block)
     }
 }
