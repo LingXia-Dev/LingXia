@@ -10,6 +10,8 @@ The repo ships agent-oriented docs as a skill rooted at [docs/skill/SKILL.md](do
 - `docs/skill/native/` — Rust native routes and host addons
 - `docs/skill/reference/` — file lifecycle
 
+Skill docs are loaded into an agent's context, so keep them concise: state what to do and the one non-obvious consequence. Leave rationale, history, and edge-case reasoning to the PR and code comments.
+
 ## Internal docs
 
 `docs/internal/` is the other half, and it is not part of the skill: it is for
