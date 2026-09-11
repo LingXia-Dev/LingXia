@@ -4,11 +4,40 @@ kotlin = "2.1.21"
 coreKtx = "1.19.0"
 appcompat = "1.8.0"
 material = "1.14.0"
+webkit = "1.17.0"
+androidsvg = "1.4"
+viewpager2 = "1.1.0"
+media3 = "1.11.0"
+camera = "1.6.2"
+exifinterface = "1.4.2"
+barcodeScanning = "17.3.0"
+junit = "4.13.2"
+androidxTestRunner = "1.7.0"
+androidxTestCore = "1.7.0"
+androidxTestExtJunit = "1.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }
+androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "webkit" }
+androidsvg = { group = "com.caverock", name = "androidsvg-aar", version.ref = "androidsvg" }
+androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "viewpager2" }
+media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
+media3-exoplayer-hls = { group = "androidx.media3", name = "media3-exoplayer-hls", version.ref = "media3" }
+media3-ui = { group = "androidx.media3", name = "media3-ui", version.ref = "media3" }
+media3-transformer = { group = "androidx.media3", name = "media3-transformer", version.ref = "media3" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camera" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camera" }
+androidx-camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "camera" }
+androidx-camera-video = { group = "androidx.camera", name = "camera-video", version.ref = "camera" }
+androidx-exifinterface = { group = "androidx.exifinterface", name = "exifinterface", version.ref = "exifinterface" }
+mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "barcodeScanning" }
+junit = { group = "junit", name = "junit", version.ref = "junit" }
+androidxTestRunner = { group = "androidx.test", name = "runner", version.ref = "androidxTestRunner" }
+androidxTestCore = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+androidxTestExtJunit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
