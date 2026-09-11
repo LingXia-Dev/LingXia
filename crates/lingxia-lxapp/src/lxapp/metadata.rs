@@ -24,6 +24,10 @@ pub(crate) struct LxAppRecord {
     pub fingermark: String,
     pub install_path: String,
     pub last_open_at: i64,
+    /// SHA-256 of the package that produced this install. Absent on older
+    /// records and on bundled first-installs that never went through OTA.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_sha256: Option<String>,
 }
 
 impl LxAppRecord {
@@ -42,6 +46,7 @@ impl LxAppRecord {
             fingermark,
             install_path,
             last_open_at,
+            checksum_sha256: None,
         }
     }
 
@@ -221,6 +226,8 @@ pub(crate) struct PendingUpdateRecord {
     pub release_type: ReleaseType,
     pub version: SemanticVersion,
     pub zip_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum_sha256: Option<String>,
 }
 
 pub(crate) fn downloaded_get(
@@ -291,6 +298,7 @@ pub(crate) fn downloaded_upsert(
     release_type: ReleaseType,
     version: &str,
     zip_path: &std::path::Path,
+    checksum_sha256: Option<&str>,
 ) -> Result<(), LxAppError> {
     let parsed_version = Version::parse(version).map_err(|_| {
         LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
@@ -300,6 +308,10 @@ pub(crate) fn downloaded_upsert(
         release_type,
         version: SemanticVersion::from_version(&parsed_version),
         zip_path: zip_path.to_string_lossy().to_string(),
+        checksum_sha256: checksum_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase()),
     };
 
     let key = key_for(lxappid, release_type);

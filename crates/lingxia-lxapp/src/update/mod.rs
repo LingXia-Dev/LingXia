@@ -41,6 +41,7 @@ pub struct UpdateManager {
 pub struct DownloadedUpdateInfo {
     pub version: String,
     pub archive_path: PathBuf,
+    pub checksum_sha256: Option<String>,
 }
 
 /// OTA update target.
@@ -107,19 +108,27 @@ impl UpdateManager {
         }
     }
 
-    /// Decide whether we should download/apply the server version for this app variant.
-    /// Policy: allow upgrade or downgrade; skip only when server_version equals installed.
+    /// Decide whether we should download/apply the server package for this app variant.
+    ///
+    /// `release` / `preview` skip only when the version matches. `developer`
+    /// also updates when the version matches but the checksum differs.
     pub fn should_update(
         &self,
         lxappid: &str,
         release_type: ReleaseType,
-        server_version: &str,
+        package: &UpdatePackageInfo,
     ) -> bool {
         let installed = crate::lxapp::metadata::get(lxappid, release_type)
             .ok()
-            .flatten()
-            .map(|rec| rec.version_string());
-        UpdatePackageInfo::should_replace_version(server_version, installed.as_deref())
+            .flatten();
+        let installed_version = installed.as_ref().map(|rec| rec.version_string());
+        package.should_replace(
+            release_type,
+            installed_version.as_deref(),
+            installed
+                .as_ref()
+                .and_then(|rec| rec.checksum_sha256.as_deref()),
+        )
     }
 
     /// Return path to a downloaded package if present for (lxappid, release_type).
@@ -132,6 +141,7 @@ impl UpdateManager {
             metadata::downloaded_get(lxappid, release_type)?.map(|rec| DownloadedUpdateInfo {
                 version: rec.version.to_version_string(),
                 archive_path: PathBuf::from(rec.zip_path),
+                checksum_sha256: rec.checksum_sha256,
             }),
         )
     }
@@ -143,6 +153,43 @@ impl UpdateManager {
         release_type: ReleaseType,
     ) -> Result<Option<String>, LxAppError> {
         Ok(metadata::get(lxappid, release_type)?.map(|rec| rec.version_string()))
+    }
+
+    /// SHA-256 of the package that produced the current install, when known.
+    pub fn installed_checksum(
+        &self,
+        lxappid: &str,
+        release_type: ReleaseType,
+    ) -> Result<Option<String>, LxAppError> {
+        Ok(metadata::get(lxappid, release_type)?.and_then(|rec| rec.checksum_sha256))
+    }
+
+    fn downloaded_update_matches(
+        &self,
+        lxappid: &str,
+        release_type: ReleaseType,
+        version: &str,
+        checksum_sha256: &str,
+    ) -> Result<bool, LxAppError> {
+        let Some(info) = self.has_downloaded_update(lxappid, release_type)? else {
+            return Ok(false);
+        };
+        if info.version != version || !info.archive_path.exists() {
+            return Ok(false);
+        }
+        let expected = checksum_sha256.trim();
+        if expected.is_empty() {
+            return Ok(true);
+        }
+        if let Some(stored) = info
+            .checksum_sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Ok(stored.eq_ignore_ascii_case(expected));
+        }
+        Ok(archive::verify_sha256(&info.archive_path, expected).is_ok())
     }
 
     /// Returns whether the given lxappid+release_type is already installed.
@@ -218,7 +265,7 @@ impl UpdateManager {
             return Err(e);
         }
 
-        Self::record_install_metadata(lxappid, crate::host_channel(), version, &destination)?;
+        Self::record_install_metadata(lxappid, crate::host_channel(), version, &destination, None)?;
         Ok(destination)
     }
 
@@ -253,8 +300,14 @@ impl UpdateManager {
             return Err(e);
         }
 
-        if let Err(e) = Self::record_install_metadata(lxappid, release_type, version, &install_path)
-        {
+        let checksum = archive::sha256_hex(archive_path).ok();
+        if let Err(e) = Self::record_install_metadata(
+            lxappid,
+            release_type,
+            version,
+            &install_path,
+            checksum.as_deref(),
+        ) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
                 crate::error!(
                     "Failed to rollback new installation at {}: {}",
@@ -469,7 +522,13 @@ impl UpdateManager {
                     return Err(e);
                 }
 
-                if let Err(e) = metadata::downloaded_upsert(lxappid, release_type, version, &dest) {
+                if let Err(e) = metadata::downloaded_upsert(
+                    lxappid,
+                    release_type,
+                    version,
+                    &dest,
+                    Some(checksum_sha256),
+                ) {
                     let _ = fs::remove_file(&dest);
                     return Err(LxAppError::IoError(format!(
                         "failed to record downloaded update: {}",
@@ -516,6 +575,7 @@ impl UpdateManager {
         release_type: ReleaseType,
         version: &str,
         install_path: &Path,
+        checksum_sha256: Option<&str>,
     ) -> Result<(), LxAppError> {
         let installed_at = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -526,7 +586,7 @@ impl UpdateManager {
         let parsed_version = Version::parse(version).map_err(|_| {
             LxAppError::InvalidParameter(format!("Invalid semantic version: {}", version))
         })?;
-        let record = LxAppRecord::new(
+        let mut record = LxAppRecord::new(
             lxappid,
             release_type,
             SemanticVersion::from_version(&parsed_version),
@@ -534,6 +594,10 @@ impl UpdateManager {
             install_path.to_string_lossy().to_string(),
             installed_at,
         );
+        record.checksum_sha256 = checksum_sha256
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(|value| value.to_ascii_lowercase());
 
         metadata::upsert(&record)
     }

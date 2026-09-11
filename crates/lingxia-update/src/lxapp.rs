@@ -10,6 +10,9 @@ use tokio::time::timeout;
 
 use super::error::UpdateError;
 
+#[cfg(test)]
+mod tests;
+
 // Outer ceiling. The actual HTTP timeouts are owned by the registered
 // `UpdateProvider`; this wrapper exists only as a fail-safe when a
 // misbehaving provider forgets to set its own deadline. Keep it strictly
@@ -27,6 +30,7 @@ pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn runtime_version(&self) -> &str;
     fn current_version_hint(&self) -> Option<String>;
     fn installed_version<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>>;
+    fn installed_checksum<'a>(&'a self) -> BoxFuture<'a, Result<Option<String>, UpdateError>>;
     fn is_installed<'a>(&'a self) -> BoxFuture<'a, Result<bool, UpdateError>>;
     fn check_latest_update<'a>(
         &'a self,
@@ -39,6 +43,7 @@ pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn has_downloaded_update<'a>(
         &'a self,
         version: &'a str,
+        checksum_sha256: &'a str,
     ) -> BoxFuture<'a, Result<bool, UpdateError>>;
     fn download_update<'a>(
         &'a self,
@@ -172,9 +177,21 @@ pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_versio
             return;
         };
 
-        if !UpdatePackageInfo::should_replace_version(
-            &pkg.version,
+        let installed_checksum = match runner.installed_checksum().await {
+            Ok(checksum) => checksum,
+            Err(error) => {
+                runner.log_warning(&format!(
+                    "Failed to resolve installed checksum for {}: {}",
+                    runner.target_appid(),
+                    error
+                ));
+                None
+            }
+        };
+        if !pkg.should_replace(
+            runner.channel(),
             resolved_current_version.as_deref(),
+            installed_checksum.as_deref(),
         ) {
             return;
         }
@@ -184,7 +201,10 @@ pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_versio
             return;
         }
 
-        match runner.has_downloaded_update(&pkg.version).await {
+        match runner
+            .has_downloaded_update(&pkg.version, &pkg.checksum_sha256)
+            .await
+        {
             Ok(true) => {
                 let _ = runner.emit_update_ready(&pkg.version, pkg.is_force_update);
             }
@@ -302,7 +322,9 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         }
     }
 
-    if current_version.as_deref() == Some(target_version) {
+    if current_version.as_deref() == Some(target_version)
+        && (host.channel() != ReleaseType::Developer || !host.is_ota_managed())
+    {
         return Ok(());
     }
 
@@ -326,7 +348,21 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
 
     ensure_runtime_version_compatible(host, &pkg)?;
 
-    if host.has_downloaded_update(&pkg.version).await? {
+    if host.channel() == ReleaseType::Developer {
+        let installed_checksum = host.installed_checksum().await?;
+        if !pkg.should_replace(
+            host.channel(),
+            current_version.as_deref(),
+            installed_checksum.as_deref(),
+        ) {
+            return Ok(());
+        }
+    }
+
+    if host
+        .has_downloaded_update(&pkg.version, &pkg.checksum_sha256)
+        .await?
+    {
         return Ok(());
     }
 
@@ -395,11 +431,27 @@ pub async fn ensure_force_update_for_installed<H: LxAppUpdateHost>(
         return Ok(());
     }
 
-    if !pkg.is_force_update || pkg.version == current_version {
+    if !pkg.is_force_update {
         return Ok(());
     }
 
-    if host.has_downloaded_update(&pkg.version).await? {
+    let installed_checksum = if host.channel() == ReleaseType::Developer {
+        host.installed_checksum().await?
+    } else {
+        None
+    };
+    if !pkg.should_replace(
+        host.channel(),
+        Some(current_version.as_str()),
+        installed_checksum.as_deref(),
+    ) {
+        return Ok(());
+    }
+
+    if host
+        .has_downloaded_update(&pkg.version, &pkg.checksum_sha256)
+        .await?
+    {
         return Ok(());
     }
 
