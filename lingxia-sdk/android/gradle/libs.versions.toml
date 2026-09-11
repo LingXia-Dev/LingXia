@@ -1,14 +1,17 @@
 [versions]
 agp = "8.9.3"
 kotlin = "2.1.21"
-coreKtx = "1.19.0"
+# 1.17+ needs compileSdk 36 and AGP 9.1. Hosts stay on compileSdk 35 / AGP 8.9.
+coreKtx = "1.16.0"
 appcompat = "1.8.0"
 material = "1.14.0"
 webkit = "1.17.0"
 androidsvg = "1.4"
 viewpager2 = "1.1.0"
-media3 = "1.11.0"
-camera = "1.6.2"
+# 1.8+ needs compileSdk 36; AGP 8.9's max API is 35.
+media3 = "1.7.1"
+# 1.6+ needs compileSdk 36.
+camera = "1.5.3"
 exifinterface = "1.4.2"
 barcodeScanning = "17.3.0"
 junit = "4.13.2"
