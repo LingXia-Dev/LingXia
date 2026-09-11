@@ -3,6 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Opt-in libmpv: set android:name=".ShowcaseApp" and uncomment the factory in MainActivity. -->
     <application
         android:allowBackup="true"
         android:icon="${lxAppIcon}"
