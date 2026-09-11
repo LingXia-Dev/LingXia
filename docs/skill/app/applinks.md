@@ -216,6 +216,26 @@ Intent filter:
 </intent-filter>
 ```
 
+Launcher activity — `singleTop`, forwarding `onNewIntent`:
+
+```xml
+<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop">
+```
+
+```kotlin
+override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    Lingxia.handleAppLink(intent)
+}
+```
+
+Never `singleTask`. The launcher activity is the bootstrap: it stays at the root
+of the task under `LxAppActivity`, and `singleTask` clears the task down to it on
+every launcher tap — `LxAppActivity` is destroyed and the app sits on the launch
+cover. With `singleTop`, a link that arrives while the app runs creates another
+bootstrap above the app; the SDK delivers the link from it and finishes it.
+
 Verification URL:
 
 ```text
@@ -356,6 +376,7 @@ hdc shell aa start -A ohos.want.action.viewData \
 - Each host serves the required `.well-known` verification files.
 - Apple entitlements use `applinks:<host>`.
 - Android manifest has verified HTTPS intent filters for each host.
+- Android launcher activity is `singleTop` (never `singleTask`) and forwards `onNewIntent` to `Lingxia.handleAppLink`.
 - Harmony module skill has HTTPS URI entries for each host.
 - Apple `paths` in the AASA covers every product path that should open the app.
 - Logic handles `scene === 8003` in both `onLaunch` and `onShow`, routing from an allowlist.
