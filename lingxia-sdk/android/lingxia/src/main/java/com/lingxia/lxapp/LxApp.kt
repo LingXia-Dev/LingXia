@@ -37,11 +37,20 @@ object LxApp {
 
     private var currentActivity: LxAppActivity? = null
     private val appearanceByApp = ConcurrentHashMap<String, Boolean>()
+    private val activityStart = LxAppActivityStartGate()
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
         currentActivity = activity
         UpdateManager.init(activity)
+        if (activity == null) return
+        val waiting = activityStart.activityReady()
+        if (waiting.isEmpty()) return
+        // The activity registers itself early in onCreate, before its views exist;
+        // openLxApp works on those views, so the held opens run after onCreate.
+        Handler(Looper.getMainLooper()).post {
+            for (open in waiting) activity.openLxApp(open.appId, open.path, open.sessionId)
+        }
     }
 
     /**
@@ -312,6 +321,15 @@ object LxApp {
                     if (ctx == null) {
                         LxLog.e(TAG, "Lingxia not initialized; cannot start LxAppActivity")
                         return@Runnable
+                    }
+                    val open = LxAppActivityStartGate.Open(appId, resolvedPath, sessionId)
+                    when (activityStart.request(open)) {
+                        LxAppActivityStartGate.Decision.START -> Unit
+                        LxAppActivityStartGate.Decision.COVERED -> return@Runnable
+                        LxAppActivityStartGate.Decision.QUEUED -> {
+                            Log.d(TAG, "LxAppActivity is starting; holding open of appId=$appId")
+                            return@Runnable
+                        }
                     }
                     val intent = Intent(ctx, LxAppActivity::class.java).apply {
                         putExtra(LxAppActivity.EXTRA_APP_ID, appId)

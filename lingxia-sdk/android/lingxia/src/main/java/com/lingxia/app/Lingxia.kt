@@ -115,17 +115,32 @@ object Lingxia {
             // animation between them would read as the cover flickering.
             activity.overridePendingTransition(0, 0)
         }
-        val relaunchedInExistingTask =
-            activity.intent?.action == Intent.ACTION_MAIN &&
-                activity.intent?.hasCategory(Intent.CATEGORY_LAUNCHER) == true &&
-                !activity.isTaskRoot &&
-                existingLxAppActivity?.taskId == activity.taskId
-        if (relaunchedInExistingTask) {
-            // Relaunching from the launcher can create another bootstrap Activity above the
-            // existing LxAppActivity. It has no content of its own, so discard it and reveal
-            // the live LxApp surface instead of leaving a blank screen on top of the task.
-            activity.finish()
+        // A launcher tap or a link that arrives while the app is running can create another
+        // bootstrap Activity above the live LxAppActivity — whatever its intent, it has no
+        // content of its own. Discard it and reveal the live LxApp surface instead of leaving
+        // the launch colour on top of the app.
+        when (bootstrapHandoff(activity.isTaskRoot, activity.taskId, existingLxAppActivity?.taskId)) {
+            BootstrapHandoff.STAY -> Unit
+            BootstrapHandoff.FINISH -> activity.finish()
+            BootstrapHandoff.RAISE_APP_TASK_AND_FINISH -> {
+                existingLxAppActivity?.let { raiseTask(activity, it.taskId) }
+                activity.finish()
+            }
         }
+    }
+
+    private fun raiseTask(context: Context, taskId: Int) {
+        val manager = context.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager ?: return
+        manager.appTasks.firstOrNull { task ->
+            val info = task.taskInfo
+            val id = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                info.taskId
+            } else {
+                @Suppress("DEPRECATION")
+                info.id
+            }
+            id == taskId
+        }?.moveToFront()
     }
 
     @JvmStatic
