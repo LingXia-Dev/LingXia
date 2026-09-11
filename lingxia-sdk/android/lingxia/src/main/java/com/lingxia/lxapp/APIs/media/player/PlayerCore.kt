@@ -42,8 +42,11 @@ internal class PlayerCore(
 
     fun getLastKnownDurationMs(): Long? = lastKnownDurationMs
 
+    fun getSurfaceToken(): SurfaceToken? = surfaceToken
+
     fun setSurfaceToken(token: SurfaceToken?) {
         val old = surfaceToken
+        if (old === token) return
         surfaceToken = token
         val currentEngine = engine ?: return
         if (old != null) {
@@ -234,6 +237,7 @@ internal class PlayerCore(
                         width = size?.width ?: 0,
                         height = size?.height ?: 0,
                         rotation = size?.rotationDegrees ?: 0,
+                        pixelWidthHeightRatio = size?.pixelWidthHeightRatio ?: 1f,
                     )
                 )
             }
@@ -370,8 +374,10 @@ internal class PlayerCore(
     }
 
     private fun teardownEngine() {
-        engine?.setListener(null)
-        engine?.release()
+        val current = engine ?: return
+        surfaceToken?.let { current.detachSurface(it) }
+        current.setListener(null)
+        current.release()
         engine = null
     }
 }

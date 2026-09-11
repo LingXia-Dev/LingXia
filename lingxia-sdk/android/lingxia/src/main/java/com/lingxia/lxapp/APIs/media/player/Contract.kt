@@ -9,6 +9,7 @@ internal data class VideoSize(
     val width: Int,
     val height: Int,
     val rotationDegrees: Int = 0,
+    val pixelWidthHeightRatio: Float = 1f,
 )
 
 internal enum class StopReason(val value: String) {
@@ -55,7 +56,7 @@ internal data class PlayerCapabilities(
     val supportsQualities: Boolean = false
 )
 
-sealed class PlayerSource {
+internal sealed class PlayerSource {
     data class Url(
         val url: String,
         val headers: Map<String, String> = emptyMap()

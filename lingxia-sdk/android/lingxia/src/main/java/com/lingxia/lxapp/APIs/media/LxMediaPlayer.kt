@@ -11,7 +11,7 @@ import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.Gravity
-import android.view.LayoutInflater
+import android.os.Build
 import android.view.View
 import android.view.ViewGroup
 import android.view.SurfaceView
@@ -24,34 +24,37 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.annotation.OptIn
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
+import com.lingxia.app.media.UrlPlayerEngine
+import com.lingxia.app.media.UrlPlayerEngineFactory
+import com.lingxia.app.media.UrlPlayerEngineRequest
+import com.lingxia.app.media.UrlPlayerOutput
+import com.lingxia.app.media.UrlPlayerOutputKind
+import com.lingxia.app.media.UrlPlayerSurfaceKind
 import com.lingxia.lxapp.APIs.media.player.BackendKind
+import com.lingxia.lxapp.APIs.media.player.DisplayTransform
 import com.lingxia.lxapp.APIs.media.player.FeedEngine
+import com.lingxia.lxapp.APIs.media.player.HostUrlEngineAdapter
 import com.lingxia.lxapp.APIs.media.player.JsEventMapper
 import com.lingxia.lxapp.APIs.media.player.PlayerCore
+import com.lingxia.lxapp.APIs.media.player.PlayerEngine
 import com.lingxia.lxapp.APIs.media.player.PlayerEvent as CorePlayerEvent
 import com.lingxia.lxapp.APIs.media.player.PlayerSource as CorePlayerSource
 import com.lingxia.lxapp.APIs.media.player.StopReason
 import com.lingxia.lxapp.APIs.media.player.SurfaceHost
 import com.lingxia.lxapp.APIs.media.player.UrlEngine
+import com.lingxia.lxapp.APIs.media.player.UrlOutputPlanner
 import com.lingxia.app.Lingxia
 import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.chrome.NavigationBar
-import com.lingxia.lxapp.R
 import com.lingxia.lxapp.NativeComponents.ComponentRouter
 import com.lingxia.lxapp.chrome.TabBar
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
-import kotlin.math.max
 import kotlin.math.min
 
 private const val TAG = "LxMediaPlayer"
@@ -74,16 +77,8 @@ internal data class LxMediaQuality(
 )
 
 // Object fit modes
-@OptIn(UnstableApi::class)
 internal enum class LxMediaObjectFit {
     COVER, CONTAIN, FILL, FIT;
-
-    fun toResizeMode(): Int = when (this) {
-        COVER -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-        CONTAIN -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-        FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
-        FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
-    }
 
     companion object {
         fun fromString(value: String?): LxMediaObjectFit = when (value?.lowercase()) {
@@ -201,15 +196,16 @@ sealed class LxMediaEvent {
  * LxMediaPlayer - A native video player with built-in controls.
  * Designed to be reused by native components and MediaPreview.
  */
-@OptIn(UnstableApi::class)
 internal class LxMediaPlayer(
     private val context: Context,
     private val eventSink: (Map<String, Any>) -> Unit,
     private val typedEventSink: ((LxMediaEvent) -> Unit)? = null,
-    private val componentId: String? = null
+    private val componentId: String? = null,
+    private val urlSurfaceKind: UrlPlayerSurfaceKind = UrlPlayerSurfaceKind.INLINE,
 ) {
     private companion object {
         private const val MAX_POSTER_DOWNLOAD_BYTES = 8 * 1024 * 1024
+        private const val URL_PLAYER_LOG_TAG = "LingXia.UrlPlayer"
         private val posterExecutor = Executors.newFixedThreadPool(2) { runnable ->
             Thread(runnable, "LingXiaPosterLoader").apply { isDaemon = true }
         }
@@ -223,14 +219,18 @@ internal class LxMediaPlayer(
     private val ownerKey: String =
         if (componentId != null) "p-unknown/$componentId" else "preview/${System.identityHashCode(this).toString(16)}"
 
+    private val urlFactory: UrlPlayerEngineFactory? = Lingxia.urlPlayerEngineFactory()
+
     private var surfaceHost: SurfaceHost? = null
     private var playerCore: PlayerCore? = null
-    private var activeUrlEngine: UrlEngine? = null
+    private var activeUrlEngine: PlayerEngine? = null
     private var activeFeedEngine: FeedEngine? = null
+    private var pendingUrlEngine: UrlPlayerEngine? = null
 
-    private var player: ExoPlayer? = null
-    private var playerView: PlayerView? = null
+    private var urlOutputContainer: FrameLayout? = null
+    private var urlOutputView: View? = null
     private var streamTextureView: TextureView? = null
+    private var lastHostCreateThrew = false
     private var posterImageView: ImageView? = null
     private var loadingIndicator: ProgressBar? = null
     private var controlsOverlay: LxMediaControlsOverlay? = null
@@ -347,36 +347,20 @@ internal class LxMediaPlayer(
             applyInlineDisplayRotationTransform()
         }
 
-        // Ensure video output is ready when view is attached
-        view.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) {
-                activeUrlEngine?.let { engine ->
-                    playerView?.player = engine.exoPlayer
-                }
-            }
-            override fun onViewDetachedFromWindow(v: View) = Unit
-        })
     }
 
     private fun setupCore() {
-        val pv = playerView ?: return
+        val container = urlOutputContainer ?: return
+        val output = urlOutputView ?: return
         val tv = streamTextureView ?: return
         surfaceHost = SurfaceHost(
             ownerKey = ownerKey,
-            urlPlayerView = pv,
+            urlOutputContainer = container,
             feedTextureView = tv,
+            urlOutputView = output,
         )
         playerCore = PlayerCore(
-            createUrlEngine = {
-                UrlEngine(
-                    context = context.applicationContext,
-                    playerView = pv
-                ).also { engine ->
-                    activeUrlEngine = engine
-                    player = engine.exoPlayer
-                    engine.setLoopEnabled(loopEnabled && !playlistController.isActive)
-                }
-            },
+            createUrlEngine = { createUrlEngine() },
             createFeedEngine = {
                 val id = componentId ?: error("FeedEngine requires componentId")
                 FeedEngine(id).also { engine ->
@@ -388,15 +372,39 @@ internal class LxMediaPlayer(
     }
 
     private fun setupUI() {
-        // PlayerView
-        // Inflate PlayerView configured to use TextureView (see res/layout/lx_media_player_view.xml)
-        playerView = LayoutInflater.from(context)
-            .inflate(R.layout.lx_media_player_view, view, false) as PlayerView
-        playerView?.apply {
-            useController = false // We use custom controls
-            resizeMode = objectFit.toResizeMode()
+        val container = FrameLayout(context).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setBackgroundColor(Color.BLACK)
         }
-        view.addView(playerView)
+        urlOutputContainer = container
+
+        val preferred = preferredUrlOutputKind()
+        val resolved = UrlOutputPlanner.resolve(
+            surfaceKind = urlSurfaceKind,
+            preferred = preferred,
+            sdkInt = Build.VERSION.SDK_INT,
+        )
+        if (resolved.forceReason != null) {
+            LxLog.w(
+                URL_PLAYER_LOG_TAG,
+                "Forcing TextureView surfaceKind=$urlSurfaceKind reason=${resolved.forceReason}",
+            )
+        }
+        installUrlOutputView(resolved.kind)
+
+        if (UrlOutputPlanner.shouldEagerCreate(resolved.kind)) {
+            val created = createHostEngineOrNull()
+            if (created == null) {
+                replaceUrlOutputWithTextureView()
+            } else {
+                pendingUrlEngine = created
+            }
+        }
+
+        view.addView(container)
 
         // Dedicated TextureView for stream decoding.
         // Using PlayerView's internal surface view is fragile (shutter/background overlays can cover it
@@ -438,6 +446,177 @@ internal class LxMediaPlayer(
 
         controlsOverlay = LxMediaControlsOverlay(context, this).also {
             view.addView(it.view)
+        }
+    }
+
+    internal fun urlOutputHonorsAlpha(): Boolean = urlOutputView is TextureView
+
+    internal fun urlOutputViewForTest(): View? = urlOutputView
+
+    internal fun pendingUrlEngineForTest(): UrlPlayerEngine? = pendingUrlEngine
+
+    internal fun urlFactorySnapshotForTest(): UrlPlayerEngineFactory? = urlFactory
+
+    private fun preferredUrlOutputKind(): UrlPlayerOutputKind {
+        val factory = urlFactory ?: return UrlPlayerOutputKind.TEXTURE_VIEW
+        return try {
+            factory.preferredOutput(urlSurfaceKind)
+        } catch (t: Throwable) {
+            LxLog.e(URL_PLAYER_LOG_TAG, "preferredOutput threw; using TextureView", t)
+            UrlPlayerOutputKind.TEXTURE_VIEW
+        }
+    }
+
+    private fun installUrlOutputView(kind: UrlPlayerOutputKind) {
+        val container = urlOutputContainer ?: return
+        val output = when (kind) {
+            UrlPlayerOutputKind.TEXTURE_VIEW -> TextureView(context)
+            UrlPlayerOutputKind.SURFACE_VIEW -> SurfaceView(context).apply {
+                setZOrderOnTop(false)
+                setZOrderMediaOverlay(false)
+            }
+        }
+        output.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            Gravity.CENTER,
+        )
+        container.removeAllViews()
+        container.addView(output)
+        urlOutputView = output
+        surfaceHost?.replaceUrlTokenFor(output)
+    }
+
+    private fun replaceUrlOutputWithTextureView() {
+        if (urlOutputView is TextureView) return
+        installUrlOutputView(UrlPlayerOutputKind.TEXTURE_VIEW)
+    }
+
+    private fun currentUrlOutput(): UrlPlayerOutput? {
+        return when (val output = urlOutputView) {
+            is TextureView -> UrlPlayerOutput.Texture(output)
+            is SurfaceView -> UrlPlayerOutput.Surface(output)
+            else -> null
+        }
+    }
+
+    private fun engineRequest(): UrlPlayerEngineRequest? {
+        val output = currentUrlOutput() ?: return null
+        return UrlPlayerEngineRequest(
+            context = context.applicationContext,
+            ownerKey = ownerKey,
+            surfaceKind = urlSurfaceKind,
+            output = output,
+        )
+    }
+
+    private fun createHostEngineOrNull(): UrlPlayerEngine? {
+        val factory = urlFactory ?: return null
+        val request = engineRequest() ?: return null
+        lastHostCreateThrew = false
+        return try {
+            factory.create(request)
+        } catch (t: Throwable) {
+            lastHostCreateThrew = true
+            LxLog.e(URL_PLAYER_LOG_TAG, "create() threw; falling back to ExoPlayer", t)
+            null
+        }
+    }
+
+    private fun logUrlEngineResolve(engineClass: String, reason: String) {
+        LxLog.i(
+            URL_PLAYER_LOG_TAG,
+            "surfaceKind=$urlSurfaceKind engineClass=$engineClass reason=$reason",
+        )
+    }
+
+    private fun createUrlEngine(): PlayerEngine {
+        val pending = pendingUrlEngine
+        if (pending != null) {
+            pendingUrlEngine = null
+            logUrlEngineResolve(pending.javaClass.name, "host")
+            return wrapHostEngine(pending)
+        }
+
+        val factory = urlFactory
+        if (factory == null) {
+            logUrlEngineResolve(UrlEngine::class.java.name, "null-factory")
+            return createDefaultUrlEngine()
+        }
+
+        val created = createHostEngineOrNull()
+        if (created != null) {
+            logUrlEngineResolve(created.javaClass.name, "host")
+            return wrapHostEngine(created)
+        }
+
+        val reason = when {
+            lastHostCreateThrew -> "throw-fallback"
+            else -> "null-create"
+        }
+        logUrlEngineResolve(UrlEngine::class.java.name, reason)
+        return createDefaultUrlEngine()
+    }
+
+    private fun wrapHostEngine(engine: UrlPlayerEngine): PlayerEngine {
+        val output = currentUrlOutput() ?: error("URL output view missing")
+        val token = surfaceHost?.stableUrlToken() ?: error("URL surface token missing")
+        return HostUrlEngineAdapter(
+            host = engine,
+            output = output,
+            expectedToken = token,
+        ).also { adapter ->
+            activeUrlEngine = adapter
+            adapter.setLoopEnabled(loopEnabled && !playlistController.isActive)
+        }
+    }
+
+    private fun createDefaultUrlEngine(): PlayerEngine {
+        if (urlOutputView is SurfaceView) {
+            replaceUrlOutputWithTextureView()
+            surfaceHost?.stableUrlToken()?.let { token ->
+                playerCore?.setSurfaceToken(token)
+            }
+        }
+        val texture = urlOutputView as? TextureView
+            ?: TextureView(context).also { installed ->
+                urlOutputView = installed
+                urlOutputContainer?.removeAllViews()
+                urlOutputContainer?.addView(installed)
+                surfaceHost?.replaceUrlTokenFor(installed)
+            }
+        return UrlEngine(
+            context = context.applicationContext,
+            textureView = texture,
+        ).also { engine ->
+            activeUrlEngine = engine
+            engine.setLoopEnabled(loopEnabled && !playlistController.isActive)
+        }
+    }
+
+    private fun releasePendingUrlEngine() {
+        val pending = pendingUrlEngine ?: return
+        pendingUrlEngine = null
+        try {
+            pending.setListener(null)
+            pending.release()
+        } catch (_: Throwable) {
+        }
+    }
+
+    private fun applyInnerObjectFitLayout() {
+        val inner = urlOutputView ?: return
+        val container = urlOutputContainer ?: return
+        val cW = container.width
+        val cH = container.height
+        val (srcW, srcH) = getDisplayVideoSize()
+        val layout = DisplayTransform.innerLayout(objectFit, cW, cH, srcW, srcH) ?: return
+        val lp = FrameLayout.LayoutParams(layout.width, layout.height, layout.gravity)
+        if (inner.layoutParams?.width != lp.width ||
+            inner.layoutParams?.height != lp.height ||
+            (inner.layoutParams as? FrameLayout.LayoutParams)?.gravity != lp.gravity
+        ) {
+            inner.layoutParams = lp
         }
     }
 
@@ -540,7 +719,7 @@ internal class LxMediaPlayer(
 
     private fun applySurfaceVisibility(endedFullscreen: Boolean) {
         if (endedFullscreen) {
-            playerView?.visibility = View.INVISIBLE
+            urlOutputContainer?.visibility = View.INVISIBLE
             streamTextureView?.visibility = View.INVISIBLE
             return
         }
@@ -548,10 +727,10 @@ internal class LxMediaPlayer(
         when (playerCore?.getBackend()) {
             BackendKind.FEED -> {
                 streamTextureView?.visibility = View.VISIBLE
-                playerView?.visibility = View.GONE
+                urlOutputContainer?.visibility = View.GONE
             }
             BackendKind.URL -> {
-                playerView?.visibility = View.VISIBLE
+                urlOutputContainer?.visibility = View.VISIBLE
                 streamTextureView?.visibility = View.GONE
             }
             null -> Unit
@@ -664,7 +843,7 @@ internal class LxMediaPlayer(
     }
 
     fun snapshotCurrentPlaybackFrame(): Bitmap? {
-        val textureView = findFirstTextureView(playerView) ?: return null
+        val textureView = urlOutputView as? TextureView ?: return null
         if (!textureView.isAvailable || textureView.width <= 0 || textureView.height <= 0) {
             return null
         }
@@ -700,7 +879,7 @@ internal class LxMediaPlayer(
         playerCore = null
         activeUrlEngine = null
         activeFeedEngine = null
-        player = null
+        releasePendingUrlEngine()
         (view.parent as? ViewGroup)?.removeView(view)
     }
 
@@ -877,16 +1056,6 @@ internal class LxMediaPlayer(
         // Remove from original parent
         originalParent?.removeView(view)
 
-        // Try to get video dimensions from player if not already set
-        if (videoWidth <= 0 || videoHeight <= 0) {
-            player?.videoFormat?.let { format ->
-                if (format.width > 0 && format.height > 0) {
-                    videoWidth = format.width.toDouble()
-                    videoHeight = format.height.toDouble()
-                }
-            }
-        }
-
         // Determine if video is landscape
         val isLandscapeVideo = isLandscapeVideo()
         val direction = if (isLandscapeVideo) "horizontal" else "vertical"
@@ -979,11 +1148,7 @@ internal class LxMediaPlayer(
                 }
             }
 
-            // Handle dialog lifecycle to ensure player surface is maintained
             setOnShowListener {
-                activeUrlEngine?.let { engine ->
-                    playerView?.player = engine.exoPlayer
-                }
                 if (isStreamDecoderMode() && componentId != null) {
                     com.lingxia.lxapp.NativeComponents.ComponentRouter.dispatchVideoCommand(
                         componentId,
@@ -1113,15 +1278,6 @@ internal class LxMediaPlayer(
         originalIndex = originalParent?.indexOfChild(view) ?: 0
         originalLayoutParams = view.layoutParams
 
-        if (videoWidth <= 0 || videoHeight <= 0) {
-            player?.videoFormat?.let { format ->
-                if (format.width > 0 && format.height > 0) {
-                    videoWidth = format.width.toDouble()
-                    videoHeight = format.height.toDouble()
-                }
-            }
-        }
-
         val isLandscapeVideo = isLandscapeVideo()
         val direction = if (isLandscapeVideo) "horizontal" else "vertical"
 
@@ -1247,17 +1403,11 @@ internal class LxMediaPlayer(
                 ViewGroup.LayoutParams.MATCH_PARENT
             )
         }
-        resetView(playerView)
-        // PlayerView owns its internal TextureView; don't touch its LayoutParams, only clear transforms.
-        findFirstTextureView(playerView)?.let { tv ->
-            tv.rotation = 0f
-            tv.scaleX = 1f
-            tv.scaleY = 1f
-        }
-        findFirstSurfaceView(playerView)?.let { sv ->
-            sv.rotation = 0f
-            sv.scaleX = 1f
-            sv.scaleY = 1f
+        resetView(urlOutputContainer)
+        urlOutputView?.let { inner ->
+            inner.rotation = 0f
+            inner.scaleX = 1f
+            inner.scaleY = 1f
         }
         resetView(streamTextureView)
         resetView(posterImageView)
@@ -1306,16 +1456,6 @@ internal class LxMediaPlayer(
     }
 
     private fun applyFullscreenTransformFor(screenW: Float, screenH: Float) {
-
-        if (videoWidth <= 0 || videoHeight <= 0) {
-            player?.videoFormat?.let { format ->
-                if (format.width > 0 && format.height > 0) {
-                    videoWidth = format.width.toDouble()
-                    videoHeight = format.height.toDouble()
-                }
-            }
-        }
-
         val videoIsLandscape = isLandscapeVideo()
         val deviceLandscape = screenW >= screenH
         val autoAngle = when {
@@ -1357,20 +1497,13 @@ internal class LxMediaPlayer(
             v.scaleY = 1f
         }
 
-        setMatchParent(playerView)
-        setMatchParent(streamTextureView)  // CRITICAL: Stream mode uses this, not playerView
-        // PlayerView internal TextureView may still carry inline transforms.
-        findFirstTextureView(playerView)?.let { tv ->
-            tv.rotation = 0f
-            tv.scaleX = 1f
-            tv.scaleY = 1f
+        setMatchParent(urlOutputContainer)
+        urlOutputView?.let { inner ->
+            inner.rotation = 0f
+            inner.scaleX = 1f
+            inner.scaleY = 1f
         }
-        // Some device/decoder paths render URL video on SurfaceView.
-        findFirstSurfaceView(playerView)?.let { sv ->
-            sv.rotation = 0f
-            sv.scaleX = 1f
-            sv.scaleY = 1f
-        }
+        setMatchParent(streamTextureView)
         setMatchParent(posterImageView)
         controlsOverlay?.view?.let { setMatchParent(it) }
         loadingIndicator?.let { loader ->
@@ -1384,8 +1517,8 @@ internal class LxMediaPlayer(
             loader.scaleY = 1f
         }
 
-        // Force layout update
         view.requestLayout()
+        view.post { applyInnerObjectFitLayout() }
     }
 
     private fun hideOverlayViewsFallback(root: View?) {
@@ -1543,9 +1676,14 @@ internal class LxMediaPlayer(
         updatePosterVisibility()
         showLoadingIndicator()
 
-        surfaceHost?.setActiveBackend(BackendKind.URL)
-        playerCore?.setSurfaceToken(null)
-        playerCore?.setSource(CorePlayerSource.Url(url = uri.toString()))
+        val host = surfaceHost
+        val core = playerCore
+        host?.setActiveBackend(BackendKind.URL)
+        val urlToken = host?.stableUrlToken()
+        if (core != null && urlToken != null && core.getSurfaceToken() !== urlToken) {
+            core.setSurfaceToken(urlToken)
+        }
+        core?.setSource(CorePlayerSource.Url(url = uri.toString()))
     }
 
     private fun loadPoster(url: String, show: Boolean) {
@@ -1727,7 +1865,7 @@ internal class LxMediaPlayer(
 
     private fun setObjectFit(fit: LxMediaObjectFit) {
         objectFit = fit
-        playerView?.resizeMode = fit.toResizeMode()
+        applyInnerObjectFitLayout()
         posterImageView?.scaleType = posterScaleTypeForObjectFit(fit)
         transitionOverlay.setObjectFit(fit)
     }
@@ -1759,30 +1897,6 @@ internal class LxMediaPlayer(
         }
     }
 
-    private fun findFirstTextureView(root: View?): TextureView? {
-        root ?: return null
-        if (root is TextureView) return root
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) {
-                val found = findFirstTextureView(root.getChildAt(i))
-                if (found != null) return found
-            }
-        }
-        return null
-    }
-
-    private fun findFirstSurfaceView(root: View?): SurfaceView? {
-        root ?: return null
-        if (root is SurfaceView) return root
-        if (root is ViewGroup) {
-            for (i in 0 until root.childCount) {
-                val found = findFirstSurfaceView(root.getChildAt(i))
-                if (found != null) return found
-            }
-        }
-        return null
-    }
-
     private fun applyInlineDisplayRotationTransform() {
         if (isFullscreen) return
 
@@ -1791,13 +1905,18 @@ internal class LxMediaPlayer(
         val containerH = view.height.toFloat()
         if (containerW <= 0f || containerH <= 0f) return
 
-        val (scaleX, scaleY) = computeInlineRotationScales(degrees, containerW, containerH)
+        val (sourceW, sourceH) = getDisplayVideoSize()
+        val (scaleX, scaleY) = DisplayTransform.wrapperRotationScales(
+            degrees = degrees,
+            objectFit = objectFit,
+            containerW = containerW,
+            containerH = containerH,
+            sourceW = sourceW,
+            sourceH = sourceH,
+        )
         if (scaleX.isNaN() || scaleY.isNaN()) {
             // Video size not in yet — defer the whole apply until LoadedMetadata
-            // re-triggers us via updatePreferredOrientation. Without this we'd
-            // pollute playerView's transform with stale fallback numbers; with
-            // it the playerView remains at its laid-out identity until we have
-            // the real fit, and the fragment doesn't reveal the host yet.
+            // re-triggers us via updatePreferredOrientation.
             return
         }
 
@@ -1817,72 +1936,12 @@ internal class LxMediaPlayer(
             v.scaleY = 1f
         }
 
-        // Rotate URL playback at PlayerView level for stability across decoders.
-        // Some device pipelines override internal surface transforms every frame.
-        apply(playerView)
-        // Keep the transition overlay's bitmap aligned with the rotated player.
+        apply(urlOutputContainer)
+        reset(urlOutputView)
+        applyInnerObjectFitLayout()
         transitionOverlay.applyInlineTransform(degrees, scaleX, scaleY)
-        reset(findFirstTextureView(playerView))
-        reset(findFirstSurfaceView(playerView))
         apply(streamTextureView)
         apply(posterImageView)
-    }
-
-    private fun computeInlineRotationScales(
-        degrees: Int,
-        containerW: Float,
-        containerH: Float,
-    ): Pair<Float, Float> {
-        val rotate90 = degrees == 90 || degrees == 270
-        if (!rotate90) {
-            return 1f to 1f
-        }
-
-        if (objectFit == LxMediaObjectFit.FILL) {
-            val ratioX = containerW / containerH
-            val ratioY = containerH / containerW
-            return ratioX to ratioY
-        }
-
-        val (sourceW, sourceH) = getDisplayVideoSize()
-        if (sourceW <= 0.0 || sourceH <= 0.0) {
-            // Metadata not in yet — caller must skip the apply rather than
-            // settle for a container-ratio fallback (that produced a visible
-            // 0.45x shrunken first frame until the metadata-triggered
-            // re-apply corrected it). The fragment-level reveal is gated on
-            // firstframerendered, which by ExoPlayer's event order fires
-            // after LoadedMetadata, so the surface stays hidden during the
-            // brief unmeasured window.
-            return Float.NaN to Float.NaN
-        }
-
-        val baseScale = fitScale(sourceW, sourceH, containerW.toDouble(), containerH.toDouble())
-        val rotatedScale = fitScale(sourceH, sourceW, containerW.toDouble(), containerH.toDouble())
-        if (baseScale <= 0.0 || rotatedScale <= 0.0) {
-            return 1f to 1f
-        }
-
-        val uniform = (rotatedScale / baseScale).toFloat()
-        return uniform to uniform
-    }
-
-    private fun fitScale(
-        sourceW: Double,
-        sourceH: Double,
-        containerW: Double,
-        containerH: Double,
-    ): Double {
-        if (sourceW <= 0.0 || sourceH <= 0.0 || containerW <= 0.0 || containerH <= 0.0) {
-            return 0.0
-        }
-
-        val scaleX = containerW / sourceW
-        val scaleY = containerH / sourceH
-        return when (objectFit) {
-            LxMediaObjectFit.COVER -> max(scaleX, scaleY)
-            LxMediaObjectFit.CONTAIN, LxMediaObjectFit.FIT -> min(scaleX, scaleY)
-            LxMediaObjectFit.FILL -> min(scaleX, scaleY)
-        }
     }
 
     private fun setCornerRadius(radius: Double) {
@@ -1939,10 +1998,6 @@ internal class LxMediaPlayer(
                 applyFullscreenTransform()
             }
         } else if (widthChanged || heightChanged || rotChanged) {
-            // Inline rotation scale depends on these (via computeInlineRotationScales),
-            // so re-apply once metadata lands. Without this, the first apply uses the
-            // fallback "video size unknown" path and the scale stays wrong until some
-            // unrelated layout change happens to fire the layout listener.
             applyInlineDisplayRotationTransform()
         }
     }
@@ -2026,7 +2081,9 @@ internal class LxMediaPlayer(
                 }
             }
             is CorePlayerEvent.LoadedMetadata -> {
-                val width = event.width.toDouble()
+                val pixelRatio = event.pixelWidthHeightRatio.takeIf { it.isFinite() && it > 0f } ?: 1f
+                // Apply pixel shape before the display rotation swaps the axes.
+                val width = event.width.toDouble() * pixelRatio
                 val height = event.height.toDouble()
                 updatePreferredOrientation(width, height, event.rotation)
                 applyInlineDisplayRotationTransform()
@@ -2141,10 +2198,10 @@ internal class LxMediaPlayer(
     }
 
     internal fun getCurrentPosition(): Long =
-        playerCore?.getLastKnownTimeMs() ?: player?.currentPosition ?: 0L
+        playerCore?.getLastKnownTimeMs() ?: 0L
 
     internal fun getDuration(): Long =
-        playerCore?.getLastKnownDurationMs() ?: (player?.duration?.takeIf { it > 0 } ?: 0L)
+        playerCore?.getLastKnownDurationMs() ?: 0L
     internal fun getAvailableQualities(): List<LxMediaQuality> = availableQualities
     internal fun getCurrentQuality(): String? = currentQuality
     internal fun getAvailableSpeeds(): List<Double> = availablePlaybackRates

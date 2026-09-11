@@ -83,6 +83,42 @@ API today. Advanced embedding into an existing native app should stay internal
 until the host-view/session API is designed for those platforms. Do not add
 compatibility wrappers such as `Lingxia.initialize(...)`.
 
+### Android URL player engine (optional)
+
+Android hosts may replace the default ExoPlayer URL backend used by
+`lx.previewMedia` (and, opt-in, `<LxVideo>`) with their own engine — typically
+libmpv shipped in the **host** APK. The SDK does not vendor mpv.
+
+Register a process-level factory on the main thread. This is a field write: it
+is safe immediately before `quickStart`, or in the `quickStart` trailing lambda
+(still before any `LxMediaPlayer` is constructed). Load native `.so` files in
+`Application.onCreate` or **before** the setter; do not `loadLibrary` on the
+same line as the setter.
+
+```kotlin
+Lingxia.setUrlPlayerEngineFactory(object : UrlPlayerEngineFactory {
+    override fun preferredOutput(kind: UrlPlayerSurfaceKind) =
+        UrlPlayerOutputKind.TEXTURE_VIEW // PREVIEW may opt into SURFACE_VIEW on API 24+
+
+    override fun create(request: UrlPlayerEngineRequest): UrlPlayerEngine? {
+        if (request.surfaceKind != UrlPlayerSurfaceKind.PREVIEW) return null
+        return MpvPlayerEngine(request)
+    }
+})
+Lingxia.quickStart(this) { registerHostAddon() }
+```
+
+`create() == null` means “use the SDK ExoPlayer for this surface.” The
+recommended default is PREVIEW-only; INLINE (`<LxVideo>` / MediaSwiper) stays
+ExoPlayer unless the factory returns an engine for `INLINE` too. INLINE output
+is always `TextureView`. Each `LxMediaPlayer` snapshots the factory at
+construction; later setter calls do not hot-swap existing players.
+
+The engine must emit `FirstFrameRendered` only after a video frame has been
+submitted to the output surface (`file-loaded` is not enough). Loop-on `Ended`
+is dropped by the SDK adapter so preview does not treat a loop point as
+terminal. v1 does not pass HTTP headers into the engine.
+
 ---
 
 ## Minimal macOS Example

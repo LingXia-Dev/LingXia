@@ -13,16 +13,19 @@ import androidx.media3.common.Player
 import androidx.media3.common.Timeline
 import androidx.media3.common.VideoSize as M3VideoSize
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.analytics.AnalyticsListener
-import androidx.media3.ui.PlayerView
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import android.view.TextureView
 
 @OptIn(UnstableApi::class)
 internal class UrlEngine(
-    context: Context,
-    private val playerView: PlayerView,
+    private val context: Context,
+    private val textureView: TextureView,
 ) : PlayerEngine {
     private val tag = "LingXia.UrlEngine"
     private val memoryProfile = buildMemoryProfile(context)
@@ -35,7 +38,11 @@ internal class UrlEngine(
     private var volume = 1.0f
     private var timePoll: Runnable? = null
     private var currentSourceUri: Uri? = null
+    private var currentHeaders: Map<String, String> = emptyMap()
+    private var boundTextureView: TextureView? = null
     private val playbackGeneration = UrlPlaybackGeneration()
+    internal var setVideoTextureViewCalls: Int = 0
+        private set
 
     @Volatile
     override var capabilities: PlayerCapabilities = PlayerCapabilities(
@@ -45,7 +52,6 @@ internal class UrlEngine(
         private set
 
     init {
-        playerView.player = exoPlayer
         exoPlayer.addAnalyticsListener(
             object : AnalyticsListener {
                 override fun onRenderedFirstFrame(
@@ -157,8 +163,9 @@ internal class UrlEngine(
     }
 
     override fun setSource(source: PlayerSource) {
-        val url = (source as? PlayerSource.Url)?.url ?: return
-        currentSourceUri = Uri.parse(url)
+        val urlSource = source as? PlayerSource.Url ?: return
+        currentSourceUri = Uri.parse(urlSource.url)
+        currentHeaders = urlSource.headers
         playbackGeneration.invalidate()
         // Drop previous queue/buffered samples early before binding the new source.
         exoPlayer.stop()
@@ -168,11 +175,16 @@ internal class UrlEngine(
     }
 
     override fun attachSurface(token: SurfaceToken) {
-        // PlayerView owns the surface lifecycle for URL playback.
+        if (boundTextureView === textureView) return
+        boundTextureView = textureView
+        setVideoTextureViewCalls += 1
+        exoPlayer.setVideoTextureView(textureView)
     }
 
     override fun detachSurface(token: SurfaceToken) {
-        // PlayerView owns the surface lifecycle for URL playback.
+        if (boundTextureView == null) return
+        boundTextureView = null
+        exoPlayer.clearVideoTextureView(textureView)
     }
 
     override fun play() {
@@ -226,13 +238,14 @@ internal class UrlEngine(
         listener = null
         stopPolling()
         playbackGeneration.invalidate()
-        playerView.player = null
+        boundTextureView = null
+        exoPlayer.clearVideoTextureView(textureView)
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
         exoPlayer.release()
     }
 
-    fun setLoopEnabled(loopEnabled: Boolean) {
+    override fun setLoopEnabled(loopEnabled: Boolean) {
         exoPlayer.repeatMode = if (loopEnabled) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
@@ -251,7 +264,8 @@ internal class UrlEngine(
             VideoSize(
                 width = s.width,
                 height = s.height,
-                rotationDegrees = s.unappliedRotationDegrees
+                rotationDegrees = s.unappliedRotationDegrees,
+                pixelWidthHeightRatio = s.pixelWidthHeightRatio,
             )
         } else {
             null
@@ -328,7 +342,17 @@ internal class UrlEngine(
             .setUri(source)
             .setMediaId(playbackGeneration.begin())
             .build()
-        exoPlayer.setMediaItem(mediaItem)
+        val scheme = source.scheme?.lowercase()
+        if (scheme == "http" || scheme == "https") {
+            val httpFactory = DefaultHttpDataSource.Factory()
+                .setDefaultRequestProperties(currentHeaders)
+            val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+            val mediaSource = DefaultMediaSourceFactory(dataSourceFactory)
+                .createMediaSource(mediaItem)
+            exoPlayer.setMediaSource(mediaSource)
+        } else {
+            exoPlayer.setMediaItem(mediaItem)
+        }
         exoPlayer.prepare()
     }
 

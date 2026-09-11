@@ -19,6 +19,7 @@ android {
         lint.targetSdk = targetSdkProp
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
 
     buildTypes {
@@ -36,6 +37,7 @@ android {
     }
     kotlinOptions {
         jvmTarget = "11"
+        freeCompilerArgs += listOf("-Xjvm-default=all")
     }
 
     sourceSets {
@@ -71,6 +73,9 @@ dependencies {
     implementation("androidx.exifinterface:exifinterface:1.3.6")
     implementation("com.google.mlkit:barcode-scanning:17.2.0")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:core:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 }
 
 val sdkGroupId = "io.github.lingxia-dev"

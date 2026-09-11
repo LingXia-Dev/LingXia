@@ -60,6 +60,7 @@ internal interface PlayerEngine {
     fun setVolume(volume: Float)
     fun setMuted(muted: Boolean)
     fun setRate(rate: Float)
+    fun setLoopEnabled(loopEnabled: Boolean)
 
     fun getCurrentTimeMs(): Long
     fun getDurationMs(): Long?
