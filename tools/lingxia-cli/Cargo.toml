@@ -30,7 +30,7 @@ name = "lingxia"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4.5", features = ["derive", "env"] }
+clap = { version = "4.6", features = ["derive", "env"] }
 anyhow = "1.0"
 lingxia-app-context = { workspace = true }
 
@@ -44,24 +44,24 @@ language-tags = { workspace = true }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml_ng = "0.10"
-toml = "1.1.2"
+toml = "1.1.6"
 semver = "1.0"
 json5 = "1.3"
-ureq = { version = "3.2", features = ["json"] }
+ureq = { version = "3.4", features = ["json"] }
 rustls-native-certs = "0.8"
-zip = "8.1"
+zip = "8.6"
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "6.0"
-tempfile = "3.24"
+dirs = "7.0"
+tempfile = "3.27"
 flate2 = "1.1"
 tar = "0.4"
-zstd = "0.13"
-ctrlc = "3.4"
+zstd = "0.14"
+ctrlc = "3.5"
 libc = "0.2"
 
 # Apple signing and API
 p256 = { version = "0.14", features = ["ecdsa", "pkcs8", "pem"] }
-base64 = "0.22"
+base64 = { workspace = true }
 rcgen = { workspace = true }
 rsa = { version = "0.9", features = ["pem"] }
 
@@ -74,7 +74,7 @@ aes-gcm = "0.11"
 cbc = "0.2"
 num-bigint = "0.5"
 rand = "0.10"
-uuid = { version = "1.20", features = ["v4"] }
+uuid = { version = "1.26", features = ["v4"] }
 plist = "1"
 tungstenite = { version = "0.30", features = ["native-tls"] }
 x509-parser = "0.18"
@@ -94,22 +94,22 @@ resvg = { workspace = true }
 tiny-skia = { workspace = true }
 usvg = { workspace = true }
 roxmltree = "0.21"
-jsonschema = "0.49"
+jsonschema = "0.56"
 lingxia-control-protocol = { workspace = true, features = ["broker"] }
 lingxia-log = { workspace = true }
 
 # LxApp build — oxc-based JS/TS compilation
-oxc_parser = "0.145"
-oxc_resolver = "11.24.2"
-oxc_transformer = "0.145"
-oxc_codegen = "0.145"
-oxc_minifier = "0.145"
-oxc_allocator = "0.145"
-oxc_span = "0.145"
-oxc_ast = "0.145"
-oxc_ast_visit = "0.145"
-oxc_syntax = "0.145"
-oxc_semantic = "0.145"
+oxc_parser = "0.149"
+oxc_resolver = "11.24.3"
+oxc_transformer = "0.149"
+oxc_codegen = "0.149"
+oxc_minifier = "0.149"
+oxc_allocator = "0.149"
+oxc_span = "0.149"
+oxc_ast = "0.149"
+oxc_ast_visit = "0.149"
+oxc_syntax = "0.149"
+oxc_semantic = "0.149"
 oxc_sourcemap = "8.1.2"
 sysinfo = "0.39"
 notify = "8.2"
@@ -129,7 +129,7 @@ windows = { workspace = true, features = [
 
 [build-dependencies]
 serde_json = "1.0"
-toml = "1.1.2"
+toml = "1.1.6"
 resvg = { workspace = true }
 tiny-skia = { workspace = true }
 usvg = { workspace = true }

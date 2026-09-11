@@ -31,7 +31,7 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 rong = { workspace = true, default-features = false }
-rusqlite = { version = "0.40.1", features = ["bundled"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 html5ever = "0.39.0"
 http = { workspace = true }
 

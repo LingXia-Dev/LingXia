@@ -24,7 +24,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 http = { workspace = true }
 rong = { workspace = true, default-features = false }
-uuid = { version = "1.20", features = ["v4"] }
+uuid = { version = "1.26", features = ["v4"] }
 ring = "0.17.14"
 
 [dev-dependencies]

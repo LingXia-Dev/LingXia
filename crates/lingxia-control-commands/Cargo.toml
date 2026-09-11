@@ -37,7 +37,7 @@ lingxia-device-io = { workspace = true, optional = true }
 lingxia-control-protocol = { workspace = true }
 anyhow = "1.0"
 log = { workspace = true }
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 serde = { workspace = true }
 # `preserve_order` keeps machine JSON in the order a handler reported it.
 # lxdev has always printed it that way through feature unification; declaring
