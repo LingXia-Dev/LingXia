@@ -106,5 +106,8 @@ rong_modules = { workspace = true, default-features = false, features = ["tls-aw
 rong_http = { workspace = true, default-features = false, features = ["tls-aws-lc"], optional = true }
 rong_rt = { workspace = true, default-features = false, features = ["tls-aws-lc"] }
 
+[target.'cfg(target_vendor = "apple")'.dev-dependencies]
+swift-bridge = "0.1.59"
+
 [dev-dependencies]
 tempfile = "3"

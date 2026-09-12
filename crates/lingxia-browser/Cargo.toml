@@ -30,3 +30,6 @@ ring = "0.17.14"
 [dev-dependencies]
 lingxia-webview = { workspace = true, features = ["test-support"] }
 lxapp = { workspace = true, default-features = false, features = ["test-utils"] }
+
+[target.'cfg(target_vendor = "apple")'.dev-dependencies]
+swift-bridge = "0.1.59"
