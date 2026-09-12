@@ -6,6 +6,10 @@
 
 extern crate self as lingxia;
 
+#[cfg(all(test, target_vendor = "apple"))]
+#[path = "../../../testing/rust/apple_host_stubs.rs"]
+mod apple_host_stubs;
+
 mod address_bar;
 mod bookmarks;
 mod bookmarks_html;
