@@ -1,6 +1,6 @@
 {
   "name": "@lingxia/html",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": false,
   "description": "LingXia HTML runtime for lxapp pages",
   "type": "module",
@@ -21,9 +21,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@lingxia/bridge": "~0.15.0",
-    "@lingxia/elements": "~0.15.0",
-    "@lingxia/page-runtime": "~0.15.0"
+    "@lingxia/bridge": "~0.16.0",
+    "@lingxia/elements": "~0.16.0",
+    "@lingxia/page-runtime": "~0.16.0"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",
