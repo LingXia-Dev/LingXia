@@ -113,6 +113,7 @@ final class LxAppMacAppUIRuntime: NSObject {
     }()
     nonisolated(unsafe) private var independentPanelOutsideClickGlobalMonitor: Any?
     nonisolated(unsafe) private var independentPanelOutsideClickLocalMonitor: Any?
+    nonisolated(unsafe) private var independentPanelEscapeMonitor: Any?
     nonisolated(unsafe) private var appActivationObserver: NSObjectProtocol?
     private var handlingAppActivation = false
 
@@ -209,6 +210,10 @@ final class LxAppMacAppUIRuntime: NSObject {
             _ = LingXiaTerminalSettings.load()
         }
         trayController.installMenuBarActivators(menuBarActivators)
+        trayController.includeDefaultQuit = uiConfig.launch.hideDockIcon == true
+        trayController.onWillShowMenu = { [weak self] in
+            self?.dismissVisibleIndependentPanels()
+        }
         installAppActivationActivators()
         guard let ownerAppId = graphOwnerAppId,
               SurfaceSwitcherBridge.replaceDeclaredMains(
@@ -250,6 +255,9 @@ final class LxAppMacAppUIRuntime: NSObject {
             NSEvent.removeMonitor(monitor)
         }
         if let monitor = independentPanelOutsideClickLocalMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
+        if let monitor = independentPanelEscapeMonitor {
             NSEvent.removeMonitor(monitor)
         }
         if let appActivationObserver {
@@ -1695,13 +1703,26 @@ final class LxAppMacAppUIRuntime: NSObject {
               let statusWindow = button.window else { return }
 
         let buttonFrameInScreen = statusWindow.convertToScreen(button.frame)
+        let work = statusWindow.screen?.visibleFrame ?? NSScreen.main?.visibleFrame
+        if let work {
+            let maxWidth = max(work.width - 16, 1)
+            let maxHeight = max(work.height - 16, 1)
+            let content = window.contentRect(forFrameRect: window.frame).size
+            if content.width > maxWidth || content.height > maxHeight {
+                window.setContentSize(NSSize(
+                    width: min(content.width, maxWidth),
+                    height: min(content.height, maxHeight)
+                ))
+            }
+        }
+
         var frame = window.frame
         frame.origin.x = round(buttonFrameInScreen.midX - frame.width / 2)
         frame.origin.y = round(buttonFrameInScreen.minY - frame.height - 6)
 
-        if let screenFrame = statusWindow.screen?.visibleFrame {
-            frame.origin.x = min(max(frame.origin.x, screenFrame.minX + 8), screenFrame.maxX - frame.width - 8)
-            frame.origin.y = max(frame.origin.y, screenFrame.minY + 8)
+        if let work {
+            frame.origin.x = min(max(frame.origin.x, work.minX + 8), work.maxX - frame.width - 8)
+            frame.origin.y = max(min(frame.origin.y, buttonFrameInScreen.minY - 6 - frame.height), work.minY + 8)
         }
 
         window.setFrame(frame, display: false)
@@ -1772,6 +1793,18 @@ final class LxAppMacAppUIRuntime: NSObject {
                 return event
             }
         }
+
+        if independentPanelEscapeMonitor == nil {
+            independentPanelEscapeMonitor = NSEvent.addLocalMonitorForEvents(
+                matching: .keyDown
+            ) { [weak self] event in
+                // kVK_Escape. Local only — do not steal Esc from other apps.
+                guard event.keyCode == 53 else { return event }
+                guard self?.visibleIndependentPanelIDs().isEmpty == false else { return event }
+                self?.dismissVisibleIndependentPanels()
+                return nil
+            }
+        }
     }
 
     private func removeIndependentPanelOutsideClickMonitors() {
@@ -1782,6 +1815,10 @@ final class LxAppMacAppUIRuntime: NSObject {
         if let monitor = independentPanelOutsideClickLocalMonitor {
             NSEvent.removeMonitor(monitor)
             independentPanelOutsideClickLocalMonitor = nil
+        }
+        if let monitor = independentPanelEscapeMonitor {
+            NSEvent.removeMonitor(monitor)
+            independentPanelEscapeMonitor = nil
         }
     }
 

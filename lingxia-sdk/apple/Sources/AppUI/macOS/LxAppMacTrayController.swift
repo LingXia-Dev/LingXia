@@ -84,6 +84,10 @@ final class LxAppMacTrayController: NSObject {
     /// When true (a JS `lx.tray.onClick` handler is registered), a left-click is
     /// delivered to JS instead of running the tray's configured surface action.
     var clickIntercepted = false
+    /// Exclusive menu-bar agents get Quit when JS did not register a menu.
+    var includeDefaultQuit = false
+    /// Hide the flyout before a context menu appears, matching Windows.
+    var onWillShowMenu: (() -> Void)?
 
     /// lx.tray.show()/hide() — toggle the status item's visibility.
     func setVisible(_ visible: Bool) {
@@ -133,6 +137,27 @@ final class LxAppMacTrayController: NSObject {
     @objc private func jsMenuItemClicked(_ sender: NSMenuItem) {
         let appId = activatorSurface[defaultActivatorID ?? ""] ?? ""
         _ = onAppEvent(AppEvent.trayMenuClick, "\(appId):\(sender.tag)")
+    }
+
+    private func contextMenu() -> NSMenu? {
+        if let jsMenu {
+            return jsMenu
+        }
+        guard includeDefaultQuit else { return nil }
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        let item = NSMenuItem(
+            title: "Quit \(appConfig.productName)",
+            action: #selector(quitFromMenu),
+            keyEquivalent: "q"
+        )
+        item.target = self
+        menu.addItem(item)
+        return menu
+    }
+
+    @objc private func quitFromMenu() {
+        NSApp.terminate(nil)
     }
 
     func setBadge(_ text: String?) {
@@ -191,8 +216,10 @@ final class LxAppMacTrayController: NSObject {
         let isSecondaryClick =
             event?.type == .rightMouseUp
             || (event?.type == .leftMouseUp && event?.modifierFlags.contains(.control) == true)
-        // Right- / control-click shows the JS-provided menu (if any).
-        if isSecondaryClick, let menu = jsMenu, let statusItem = statusItems[actionID] {
+        // Right- / control-click shows the JS-provided menu, or Quit on an
+        // exclusive tray that never registered one.
+        if isSecondaryClick, let menu = contextMenu(), let statusItem = statusItems[actionID] {
+            onWillShowMenu?()
             statusItem.menu = menu
             statusItem.button?.performClick(nil)
             statusItem.menu = nil

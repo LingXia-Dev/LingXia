@@ -142,6 +142,53 @@ function newSurfaceWindow(
 
 const windowTest = selectedGate ? spec.skip : spec;
 
+windowTest('native close disposes a secondary window in the dock and tray host', {
+  id: 'DESKTOP-SURFACE-NATIVE-CLOSE-001',
+  covers: ['PageSurface.onClose', 'PageSurface.alive', 'PageSurface.visible'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-NATIVE-CLOSE-001');
+  await desktopPlatform();
+  const desktop = lx.automation().desktop;
+  const key = `${namespace}-native-close`;
+  const stateKey = `__surfaceNativeClose_${namespace.replace(/-/g, '_')}`;
+  defer(() => closeKeyedSurface(app, key));
+  defer(async () => {
+    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}];` });
+  });
+  const before = await desktop.windows();
+  await openWindow(app, 'system', key);
+  await waitForSurfacePage(app, key, 0);
+  const window = await eventually(
+    async () => newSurfaceWindow(before, await desktop.windows()),
+    (window) => !!window,
+    { describe: 'secondary native window to appear', timeoutMs: 10_000 },
+  );
+  if (!window) throw new Error('secondary native window was not found');
+  await app.eval({
+    script: `
+      const handle = lx.surface.get(${JSON.stringify(key)});
+      const state = { handle, closed: 0 };
+      handle.onClose(() => state.closed++);
+      globalThis[${JSON.stringify(stateKey)}] = state;
+    `,
+  });
+  // Showcase declares a nonexclusive tray. Native close must reach the surface
+  // close handler, rather than merely hiding its HWND because a tray exists.
+  await desktop.window.close({ window: window.id });
+  const state = await eventually(
+    () => app.eval({
+      script: `
+        const state = globalThis[${JSON.stringify(stateKey)}];
+        return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
+      `,
+    }) as Promise<{ alive: boolean; visible: boolean; closed: number }>,
+    (state) => !state.alive && !state.visible && state.closed > 0,
+    { describe: 'native close to dispose the surface and notify its owner', timeoutMs: 10_000 },
+  );
+  expect(state.closed).toBe(1);
+});
+
 windowTest('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
   covers: [

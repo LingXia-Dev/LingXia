@@ -153,7 +153,8 @@ fn taskbar_is_dark() -> bool {
         HKEY_CURRENT_USER, KEY_READ, REG_DWORD, RegOpenKeyExW, RegQueryValueExW,
     };
     let mut key = windows::Win32::System::Registry::HKEY::default();
-    let path = windows::core::w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let path =
+        windows::core::w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
     let opened = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, path, Some(0), KEY_READ, &mut key) };
     if opened.is_err() {
         return true;
