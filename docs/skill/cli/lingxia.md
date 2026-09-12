@@ -183,9 +183,9 @@ that bundle and reloads it in place (`pages` / `tabBar` / `navigationStyle`
 included). Host/app code still needs a new `lingxia dev`.
 
 `lingxia dev` owns the session lifecycle — start, `status`, `stop`. Closing the
-Runner or desktop host window **is** stop: the runtime disconnects, the session
-unregisters, and `lingxia dev` exits. Do not ask the user to run `stop` after
-they already closed the UI.
+Runner, or quitting a desktop host, ends the session and unregisters it; no
+follow-up `stop` is needed. A host window hidden to the tray keeps its runtime
+and session alive. Mobile sessions also survive closing the device app.
 
 `stop` is the CLI equivalent when there is no window to close: `--background`,
 another terminal, or a mobile session whose device app is still running (swiping
