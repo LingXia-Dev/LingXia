@@ -27,6 +27,7 @@ impl TestHost {
                 release_notes: None,
                 is_force_update: true,
                 required_runtime_version: None,
+                authentication: None,
             },
             checksum: Some("old".into()),
             checksum_error: false,
