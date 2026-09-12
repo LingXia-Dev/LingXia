@@ -197,7 +197,7 @@ Jump straight here when the user reports a concrete failure:
 | `Lingxia.initialize(...)` not found | [`./app/apple-sdk.md`](./app/apple-sdk.md) → use `Lingxia.quickStart()` (legacy removed) |
 | TS doesn't know about `lx.foo()` / `Page({})` in Logic | install `@lingxia/types` as a devDependency; see [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
 | `<LxVideo>` / `<LxPicker>` attribute not recognized by TS or runtime | [`./lxapp/components.md`](./lxapp/components.md) → component attribute table |
-| `lingxia build` rejects `<video>` / `<audio>` / `new Audio()` | [`./lxapp/components.md`](./lxapp/components.md) → `LxVideo` — use `<lx-video>` / `setStreamSource`; audio is not available yet |
+| Choosing HTML `<video>` / `<audio>` or native `LxVideo` | [`./lxapp/components.md`](./lxapp/components.md) → `LxVideo` — Web media sources, lifecycle, and native capabilities |
 | Event handler on `LxVideo` / island nodes should be payload-first in React/Vue | [`./lxapp/components.md`](./lxapp/components.md) → "Callback shapes by component" |
 | Bare `<LxVideo>` without `LxNativeRoot` is `NATIVE_ROOT_INVALID_STRUCTURE` | [`./lxapp/components.md`](./lxapp/components.md) → inline native island |
 

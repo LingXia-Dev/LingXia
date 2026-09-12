@@ -327,8 +327,10 @@ fn build_content_security_policy() -> String {
         // predeclare in a host network grant. All https images are therefore
         // allowed; network *requests* (fetch) remain gated by
         // the host-granted network policy in the Logic runtime.
-        // no media-src: View media is rejected by lingxia build; leftovers use default-src.
         "img-src 'self' lx: lingxia: data: blob: https:".to_string(),
+        // Standard Web media follows the image source policy; this does not
+        // grant View fetch/XHR access or native player network permissions.
+        "media-src 'self' lx: lingxia: data: blob: https:".to_string(),
         build_connect_src_policy(),
         "script-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
         "style-src 'self' lx: lingxia: 'unsafe-inline'".to_string(),
@@ -504,9 +506,13 @@ mod tests {
     }
 
     #[test]
-    fn csp_does_not_set_media_src() {
+    fn csp_allows_web_media_sources() {
         let csp = build_content_security_policy();
-        assert!(!csp.contains("media-src"));
+        let media = csp
+            .split("; ")
+            .find(|directive| directive.starts_with("media-src "))
+            .unwrap();
+        assert_eq!(media, "media-src 'self' lx: lingxia: data: blob: https:");
         assert!(csp.contains("default-src 'self' lx: lingxia:"));
     }
 
