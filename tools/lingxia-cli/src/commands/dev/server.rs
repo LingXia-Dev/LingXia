@@ -23,6 +23,12 @@ const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
+/// Desktop/Runner: after the runtime has connected once, a disconnect that is
+/// not replaced within this window ends the session. Closing the window is
+/// the stop signal — the user should not need `lingxia dev stop`.
+/// Mobile keeps waiting: swiping the app away is not the end of a device session.
+#[cfg_attr(test, allow(dead_code))]
+const RUNTIME_GONE_GRACE: Duration = Duration::from_secs(1);
 
 pub struct DevServerHandle {
     session: DevLogSession,
@@ -136,10 +142,21 @@ pub(crate) struct DevServerState {
     /// session tokens. Folded into the "runtime is not connected" client error so
     /// the operator sees the cause on their side of the wire.
     runtime_rejected: AtomicBool,
+    /// True for Runner / macOS / Windows: the launched UI *is* the session.
+    end_on_runtime_gone: bool,
+    had_runtime: AtomicBool,
+    /// Bumped on connect and on disconnect so an in-flight gone-timer is cancelled
+    /// when a replacement runtime attaches during the grace window.
+    runtime_epoch: AtomicU64,
 }
 
 impl DevServerState {
-    fn new(project_root: PathBuf, stop_flag: Arc<AtomicBool>, auth_token: Option<String>) -> Self {
+    fn new(
+        project_root: PathBuf,
+        stop_flag: Arc<AtomicBool>,
+        auth_token: Option<String>,
+        end_on_runtime_gone: bool,
+    ) -> Self {
         Self {
             project_root,
             stop_flag,
@@ -149,6 +166,9 @@ impl DevServerState {
             command_lock: Mutex::new(()),
             auth_token,
             runtime_rejected: AtomicBool::new(false),
+            end_on_runtime_gone,
+            had_runtime: AtomicBool::new(false),
+            runtime_epoch: AtomicU64::new(0),
         }
     }
 
@@ -167,6 +187,9 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let replaced = guard.is_some();
         *guard = Some((runtime_id, sender));
+        self.had_runtime.store(true, Ordering::Release);
+        // Cancel any in-flight "runtime gone" teardown from a previous disconnect.
+        self.runtime_epoch.fetch_add(1, Ordering::AcqRel);
         if replaced {
             self.clear_pending_results();
         }
@@ -224,6 +247,31 @@ impl DevServerState {
         self.stop_flag.store(true, Ordering::Release);
     }
 
+    /// After a live runtime drops, wait [RUNTIME_GONE_GRACE] for a replacement.
+    /// No replacement → this *is* the user closing the window; end the session.
+    fn drop_runtime(state: &Arc<Self>, runtime_id: u64) {
+        if !state.clear_runtime_sender(runtime_id) {
+            return;
+        }
+        state.clear_pending_results();
+        if !state.end_on_runtime_gone || !state.had_runtime.load(Ordering::Acquire) {
+            return;
+        }
+        let epoch = state.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1;
+        let state = Arc::clone(state);
+        thread::spawn(move || {
+            thread::sleep(runtime_gone_grace());
+            if state.runtime_epoch.load(Ordering::Acquire) != epoch {
+                return;
+            }
+            if state.runtime_sender().is_some() {
+                return;
+            }
+            eprintln!("[lingxia dev] runtime disconnected; ending session.");
+            state.request_shutdown();
+        });
+    }
+
     pub(crate) fn rebuild_lxapp(
         &self,
         appid: &str,
@@ -279,6 +327,21 @@ impl DevServerState {
     }
 }
 
+fn runtime_gone_grace() -> Duration {
+    #[cfg(test)]
+    {
+        Duration::from_millis(50)
+    }
+    #[cfg(not(test))]
+    {
+        RUNTIME_GONE_GRACE
+    }
+}
+
+fn session_ends_on_runtime_gone(platform: &str) -> bool {
+    matches!(platform, "runner" | "windows" | "macos")
+}
+
 pub fn start_server_on_with_stop(
     project_root: &Path,
     bind_addr: &str,
@@ -300,7 +363,7 @@ fn start_server_on_with_roots(
     session_root: &Path,
     content_root: &Path,
     bind_addr: &str,
-    _platform: &str,
+    platform: &str,
     stop_flag: Arc<AtomicBool>,
     auth_token: Option<String>,
 ) -> Result<DevServerHandle> {
@@ -319,6 +382,7 @@ fn start_server_on_with_roots(
         content_root.to_path_buf(),
         stop_flag.clone(),
         auth_token,
+        session_ends_on_runtime_gone(platform),
     ));
     let thread_state = state.clone();
     let thread_stop_flag = stop_flag.clone();
@@ -456,10 +520,10 @@ fn run_server(
 fn handle_connection(
     stream: TcpStream,
     writer: &SessionLogWriter,
-    state: &DevServerState,
+    state: &Arc<DevServerState>,
 ) -> Result<()> {
     if !is_websocket_request(&stream)? {
-        return handle_http_connection(stream, state);
+        return handle_http_connection(stream, state.as_ref());
     }
     let (mut websocket, handshake_token) = accept_websocket(stream)?;
     let hello = read_wire_message(&mut websocket)?;
@@ -496,7 +560,7 @@ fn handle_connection(
             state.runtime_rejected.store(false, Ordering::Release);
             handle_devtool_connection(websocket, writer, state)
         }
-        DevSessionRole::Controller => handle_client_connection(websocket, state),
+        DevSessionRole::Controller => handle_client_connection(websocket, state.as_ref()),
         DevSessionRole::Companion => Err(anyhow!(
             "Companion participants use the supervised session transport"
         )),
@@ -685,7 +749,7 @@ fn write_http_error(stream: &mut TcpStream, status: u16, message: &str) -> Resul
 fn handle_devtool_connection(
     mut websocket: WebSocket<TcpStream>,
     writer: &SessionLogWriter,
-    state: &DevServerState,
+    state: &Arc<DevServerState>,
 ) -> Result<()> {
     websocket
         .get_mut()
@@ -716,7 +780,7 @@ fn handle_devtool_connection(
                     ParsedWireMessage::Wire(message) => {
                         route_runtime_message(
                             *message,
-                            state,
+                            state.as_ref(),
                             &event_tx,
                             &mut dropped_event_batch_warning,
                         )?;
@@ -739,9 +803,7 @@ fn handle_devtool_connection(
         connection_result.and(persistence_result)
     });
 
-    if state.clear_runtime_sender(runtime_id) {
-        state.clear_pending_results();
-    }
+    DevServerState::drop_runtime(state, runtime_id);
     result
 }
 
@@ -1076,7 +1138,75 @@ mod tests {
             PathBuf::from("project"),
             Arc::new(AtomicBool::new(false)),
             Some("secret".to_string()),
+            false,
         )
+    }
+
+    fn desktop_state(stop: Arc<AtomicBool>) -> Arc<DevServerState> {
+        Arc::new(DevServerState::new(
+            PathBuf::from("project"),
+            stop,
+            None,
+            true,
+        ))
+    }
+
+    #[test]
+    fn desktop_runtime_gone_ends_session_after_grace() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        DevServerState::drop_runtime(&state, id);
+        thread::sleep(Duration::from_millis(120));
+        assert!(
+            stop.load(std::sync::atomic::Ordering::Acquire),
+            "closing the runtime should end a desktop/Runner session"
+        );
+    }
+
+    #[test]
+    fn desktop_runtime_reconnect_cancels_gone_teardown() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        DevServerState::drop_runtime(&state, id);
+        let (tx2, _rx2) = mpsc::channel();
+        let _ = state.claim_runtime_sender(tx2);
+        thread::sleep(Duration::from_millis(120));
+        assert!(
+            !stop.load(std::sync::atomic::Ordering::Acquire),
+            "a replacement runtime during the grace window must keep the session"
+        );
+    }
+
+    #[test]
+    fn mobile_runtime_gone_does_not_end_session() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = Arc::new(DevServerState::new(
+            PathBuf::from("project"),
+            stop.clone(),
+            None,
+            false,
+        ));
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        DevServerState::drop_runtime(&state, id);
+        thread::sleep(Duration::from_millis(120));
+        assert!(
+            !stop.load(std::sync::atomic::Ordering::Acquire),
+            "swiping a device app away must not kill lingxia dev"
+        );
+    }
+
+    #[test]
+    fn never_connected_runtime_does_not_end_session() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        DevServerState::drop_runtime(&state, 1);
+        thread::sleep(Duration::from_millis(80));
+        assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
     }
 
     #[test]

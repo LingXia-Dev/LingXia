@@ -21,7 +21,7 @@ lxdev --session a1b2 ...         # session-id prefix
 lxdev --session ios ...          # target name, when unique
 ```
 
-Crashed sessions disappear from the broker automatically — there is nothing to prune. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
+Crashed sessions disappear from the broker automatically — there is nothing to prune. Closing the Runner or desktop host window ends that session the same way. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
 
 `lxdev` intentionally controls sessions registered by `lingxia dev` for the
 same user on the same machine. For a remote development machine, run both
@@ -82,7 +82,9 @@ filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
 `--app <id>`. `lxdev logs --origins` lists the origins present in the selected
 session. Text output omits the selected origin and other context fixed by the
 session; host sessions include an app id when logs from multiple apps may be
-mixed. `--json` keeps the complete event.
+mixed. `--json` keeps the complete event. `-f` exits when the `lingxia dev`
+owner process is gone (closing the Runner/app window is enough); it does not
+follow a later session's new log file — start `lxdev logs -f` again.
 
 **`session`** — list live sessions (id, target, project path). Lifecycle stays
 with the owner CLI: use `lingxia dev stop` from that session's project rather

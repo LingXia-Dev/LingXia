@@ -106,7 +106,7 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
         if render.pretty {
             println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
         }
-        tail_loop(log_file, end_offset, &filters, render)?;
+        tail_loop(session, log_file, end_offset, &filters, render)?;
     }
     Ok(())
 }
@@ -177,16 +177,22 @@ fn drain_backlog(
 }
 
 fn tail_loop(
+    session: &SessionInfo,
     log_file: &Path,
     mut offset: u64,
     filters: &Filters,
     render: RenderOpts,
 ) -> Result<()> {
     let mut pending = String::new();
+    let mut polls: u8 = 0;
     loop {
         let mut file = match File::open(log_file) {
             Ok(f) => f,
             Err(_) => {
+                if !session_owner_alive(session) {
+                    eprintln!("Dev session ended.");
+                    return Ok(());
+                }
                 thread::sleep(MISSING_FILE_BACKOFF);
                 continue;
             }
@@ -221,7 +227,63 @@ fn tail_loop(
             }
         }
 
+        polls = polls.wrapping_add(1);
+        if polls % 10 == 0 && !session_owner_alive(session) {
+            eprintln!("Dev session ended.");
+            return Ok(());
+        }
+
         thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// `lingxia dev` owns the session. When that process is gone, `-f` must exit
+/// instead of polling a dead jsonl while a later session writes a new file.
+fn session_owner_alive(session: &SessionInfo) -> bool {
+    pid_alive(session.pid)
+}
+
+fn pid_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
+    #[cfg(unix)]
+    {
+        let result = unsafe { libc::kill(pid as i32, 0) };
+        if result == 0 {
+            return true;
+        }
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+    #[cfg(windows)]
+    {
+        windows_pid_alive(pid)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = pid;
+        true
+    }
+}
+
+#[cfg(windows)]
+fn windows_pid_alive(pid: u32) -> bool {
+    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
+    const STILL_ACTIVE: u32 = 259;
+    unsafe extern "system" {
+        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
+        fn GetExitCodeProcess(handle: *mut std::ffi::c_void, code: *mut u32) -> i32;
+        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
+    }
+    unsafe {
+        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        if handle.is_null() {
+            return false;
+        }
+        let mut code = 0u32;
+        let ok = GetExitCodeProcess(handle, &mut code) != 0;
+        CloseHandle(handle);
+        ok && code == STILL_ACTIVE
     }
 }
 
@@ -461,6 +523,12 @@ mod tests {
             &entry("lxview", "com.demo.app", "x"),
             &filters
         ));
+    }
+
+    #[test]
+    fn pid_alive_matches_this_process() {
+        assert!(pid_alive(std::process::id()));
+        assert!(!pid_alive(0));
     }
 
     #[test]
