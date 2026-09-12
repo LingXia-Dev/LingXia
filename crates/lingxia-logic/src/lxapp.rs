@@ -8,12 +8,12 @@ struct LxAppInfo {
     #[js_name = "appName"]
     app_name: String,
     version: String,
-    #[js_name = "releaseType"]
+    #[js_name = "channel"]
     #[ts_type = "LxAppReleaseType"]
     release_type: String,
 }
 
-/// Identify the running lxapp: its id, display name, version, and release type.
+/// Identify the running lxapp: its id, display name, version, and channel.
 fn get_lxapp_info(ctx: JSContext) -> JSResult<LxAppInfo> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let info = lxapp.get_lxapp_info();

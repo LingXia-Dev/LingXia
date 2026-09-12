@@ -1,4 +1,4 @@
-//! Windows env-version launcher-icon overlay.
+//! Windows host-env launcher-icon overlay.
 //!
 //! Windows hosts load a root `assets/AppIcon.png` when present, falling back to
 //! the home lxapp public icon. Dev/preview badging must follow that same
@@ -8,7 +8,7 @@ use anyhow::{Context, Result};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::EnvVersion;
+use crate::config::AppEnv;
 use crate::platform::env_badge::{badge_png_file, env_badge};
 
 /// Resolve the launcher icon `lingxia-windows-sdk` loads at runtime from a
@@ -34,7 +34,7 @@ pub fn resolve_windows_app_icon(assets_dir: &Path, home_app_id: Option<&str>) ->
 pub fn stage_dist_host_icon(
     assets_dir: &Path,
     home_app_id: Option<&str>,
-    version: EnvVersion,
+    version: AppEnv,
 ) -> Result<bool> {
     if env_badge(version).is_none() {
         return Ok(false);
@@ -61,7 +61,7 @@ pub fn stage_dev_badged_icon(
     assets_dir: &Path,
     home_app_id: Option<&str>,
     overlay_dir: &Path,
-    version: EnvVersion,
+    version: AppEnv,
 ) -> Result<Option<PathBuf>> {
     if env_badge(version).is_none() {
         return Ok(None);
@@ -81,7 +81,7 @@ pub fn stage_dev_badged_icon(
 #[cfg(test)]
 mod tests {
     use super::{resolve_windows_app_icon, stage_dev_badged_icon, stage_dist_host_icon};
-    use crate::config::EnvVersion;
+    use crate::config::AppEnv;
     use image::{ImageFormat, Rgba, RgbaImage};
     use std::fs;
     use std::path::Path;
@@ -125,15 +125,11 @@ mod tests {
         let content_before = fs::read(&content).unwrap();
         let host_icon = assets.join("AppIcon.png");
 
-        assert!(
-            !stage_dist_host_icon(assets, Some("lingxia-showcase"), EnvVersion::Release).unwrap()
-        );
+        assert!(!stage_dist_host_icon(assets, Some("lingxia-showcase"), AppEnv::Prod).unwrap());
         assert!(!host_icon.exists());
         assert_eq!(fs::read(&content).unwrap(), content_before);
 
-        assert!(
-            stage_dist_host_icon(assets, Some("lingxia-showcase"), EnvVersion::Developer).unwrap()
-        );
+        assert!(stage_dist_host_icon(assets, Some("lingxia-showcase"), AppEnv::Dev).unwrap());
         assert!(host_icon.is_file());
         assert_eq!(fs::read(&content).unwrap(), content_before);
         assert_ne!(fs::read(&host_icon).unwrap(), content_before);
@@ -150,7 +146,7 @@ mod tests {
 
         let content_before = fs::read(&content).unwrap();
         let host_before = fs::read(&host_icon).unwrap();
-        assert!(stage_dist_host_icon(assets, Some("home"), EnvVersion::Developer).unwrap());
+        assert!(stage_dist_host_icon(assets, Some("home"), AppEnv::Dev).unwrap());
 
         assert_eq!(fs::read(&content).unwrap(), content_before);
         let host_after = fs::read(&host_icon).unwrap();
@@ -168,17 +164,17 @@ mod tests {
         let src = assets.join("home").join("public").join("AppIcon.png");
         write_png(&src, 256);
         let src_before = fs::read(&src).unwrap();
-        let overlay = tmp.path().join("overlay").join("developer");
+        let overlay = tmp.path().join("overlay").join("dev");
 
         assert!(
-            stage_dev_badged_icon(&assets, Some("home"), &overlay, EnvVersion::Release)
+            stage_dev_badged_icon(&assets, Some("home"), &overlay, AppEnv::Prod)
                 .unwrap()
                 .is_none()
         );
 
-        let staged = stage_dev_badged_icon(&assets, Some("home"), &overlay, EnvVersion::Developer)
+        let staged = stage_dev_badged_icon(&assets, Some("home"), &overlay, AppEnv::Dev)
             .unwrap()
-            .expect("developer env stages a badged icon");
+            .expect("dev env stages a badged icon");
         assert!(staged.is_file());
         assert_eq!(fs::read(&src).unwrap(), src_before);
         assert_ne!(fs::read(&staged).unwrap(), src_before);

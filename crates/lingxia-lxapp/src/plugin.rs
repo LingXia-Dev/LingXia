@@ -406,7 +406,7 @@ async fn download_and_install_internal(
     let required_version = &config.version;
 
     let provider = crate::get_provider();
-    let channel = lingxia_update::host_channel();
+    let channel = lingxia_update::default_channel();
     let keys = lingxia_update::embedded_update_public_keys();
     if !lingxia_update::check_update_enabled(&keys) {
         return Err(LxAppError::InvalidParameter(format!(

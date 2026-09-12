@@ -71,8 +71,8 @@ fn get_resource_bundles() -> &'static [Retained<NSBundle>] {
 fn detect_app_bundle(main_bundle: &NSBundle, bundle_type: &NSString) -> Option<Retained<NSBundle>> {
     unsafe {
         // Try 1: Bundle identifier based (e.g., app.lingxia.example.lxapp → lxapp_lxapp).
-        // Developer/preview builds append `.dev` / `.preview`, so the last
-        // component is the env suffix — skip those and keep looking.
+        // Dev builds append `.dev`, so the last component is the env suffix
+        // — skip those and keep looking.
         let bundle_identifier: Option<Retained<NSString>> =
             msg_send![main_bundle, bundleIdentifier];
         if let Some(identifier) = bundle_identifier {
@@ -117,7 +117,7 @@ fn identifier_spm_stem(identifier: &str) -> Option<&str> {
     identifier
         .split('.')
         .rev()
-        .find(|part| !part.is_empty() && !matches!(*part, "dev" | "preview" | "debug"))
+        .find(|part| !part.is_empty() && !matches!(*part, "dev" | "debug"))
 }
 
 /// Try to find SPM bundle with format Name_Name.bundle
@@ -270,7 +270,7 @@ mod tests {
     use super::identifier_spm_stem;
 
     #[test]
-    fn identifier_stems_skip_developer_suffix() {
+    fn identifier_stems_skip_dev_suffix() {
         assert_eq!(
             identifier_spm_stem("app.lingxia.example.lxapp.dev"),
             Some("lxapp")
@@ -281,7 +281,7 @@ mod tests {
         );
         assert_eq!(
             identifier_spm_stem("app.lingxia.example.lxapp.preview"),
-            Some("lxapp")
+            Some("preview")
         );
         assert_eq!(identifier_spm_stem("app.lingxia.runner"), Some("runner"));
     }

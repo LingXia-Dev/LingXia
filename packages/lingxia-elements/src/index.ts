@@ -40,7 +40,7 @@ export {
   LxNavigatorElement,
   type LxNavigatorAttributes,
   type LxNavigatorEvent,
-  type NavigatorEnvVersion,
+  type NavigatorChannel,
   type NavigatorOpenType,
   type NavigatorQuery,
   type NavigatorQueryValue,

@@ -6,18 +6,17 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use crate::cli_config::CliConfig;
-use crate::config::{EnvVersion, HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
+use crate::config::{AppEnv, HOST_CONFIG_FILE, LingXiaConfig, has_host_config};
 use crate::http_client;
 use crate::lxapp;
 use crate::platform::detector::PlatformType;
-
-const DEFAULT_PUBLISH_CHANNEL: &str = "developer";
 
 pub struct PublishOptions {
     pub token: Option<String>,
     pub lingxia_server: Option<String>,
     pub package: Option<String>,
     pub platform: Option<String>,
+    pub env: Option<String>,
     pub channel: Option<String>,
     pub framework: Option<String>,
     pub progress: Option<String>,
@@ -29,6 +28,7 @@ struct PackageMeta {
     target: String,
     target_id: String,
     version: String,
+    env: AppEnv,
     channel: Option<String>,
 }
 
@@ -49,7 +49,7 @@ impl Drop for ResolvedPackage {
 pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
-    let mut meta = resolve_meta(&cwd, opts.channel.as_deref())?;
+    let mut meta = resolve_meta(&cwd, opts.env.as_deref(), opts.channel.as_deref())?;
     let package = resolve_package_for_publish(
         &cwd,
         &meta,
@@ -66,21 +66,19 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
                 package_path.display()
             )
         })?;
-        meta.channel = Some(metadata.env_version);
-        // Match the lingxiaId baked into the package; env is carried by channel.
+        meta.env = metadata.env;
+        // Match the lingxiaId baked into the package; host updates are
+        // env-scoped and do not carry a channel.
         if let Some(id) = metadata.lingxia_id {
             meta.target_id = id;
         }
-    } else if meta.channel.is_none() {
-        meta.channel = Some(DEFAULT_PUBLISH_CHANNEL.to_string());
+        meta.channel = None;
     }
-    // Resolve server and token *after* channel is known so per-env config
-    // routes to the package's envVersion. The server resolves first: the
-    // token is keyed by (canonical server URL, env) in the wallet.
-    let lingxia_server =
-        resolve_lingxia_server(&cwd, meta.channel.as_deref(), opts.lingxia_server)?;
+    // Resolve server and token after env is known. The token is keyed by
+    // (canonical server URL, env) in the wallet.
+    let lingxia_server = resolve_lingxia_server(&cwd, meta.env, opts.lingxia_server)?;
     let lingxia_server = lingxia_server.trim_end_matches('/').to_string();
-    let token = resolve_token(meta.channel.as_deref(), &lingxia_server, opts.token)?;
+    let token = resolve_token(meta.env, &lingxia_server, opts.token)?;
     let file_name = package_path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -109,10 +107,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let upload_url = format!("{lingxia_server}/api/v1/package/upload");
     println!("   Upload → {upload_url}");
 
-    let channel = meta
-        .channel
-        .clone()
-        .unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string());
+    let channel = meta.channel.as_deref().unwrap_or("");
     let platform = match meta.target.as_str() {
         "app" => package
             .platform
@@ -123,12 +118,12 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let update_signing_key_file =
         clean_arg(opts.update_signing_key_file, "--update-signing-key-file")?;
     let extra = signed_multipart_fields(
-        &channel,
+        meta.env,
         update_signing_key_file.as_deref().map(Path::new),
         &lingxia_update::SignRequest {
             kind: &meta.target,
             target_id: &meta.target_id,
-            channel: &channel,
+            channel,
             platform: &platform,
             version: &meta.version,
             sha256: &sha256,
@@ -142,8 +137,10 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         ("id", meta.target_id.clone()),
         ("version", meta.version.clone()),
         ("sha256", sha256.clone()),
-        ("channel", channel),
     ];
+    if let Some(channel) = &meta.channel {
+        fields.push(("channel", channel.clone()));
+    }
     if meta.target == "app" {
         fields.push(("platform", platform));
     }
@@ -194,14 +191,14 @@ pub fn publish_login(
     }
     let env = env
         .as_deref()
-        .map(EnvVersion::parse_cli)
+        .map(AppEnv::parse_cli)
         .transpose()?
-        .unwrap_or(EnvVersion::Developer);
+        .unwrap_or(AppEnv::Dev);
 
     // The token is keyed by the server: an explicit --server wins, otherwise
     // the project / machine default for this env names it.
     let cwd = env::current_dir()?;
-    let server_url = resolve_lingxia_server(&cwd, Some(env.as_str()), server.clone())
+    let server_url = resolve_lingxia_server(&cwd, env, server.clone())
         .context("cannot determine which server this token is for; pass --server")?;
     let canonical = crate::wallet::canonical_publish_server(&server_url)?;
 
@@ -244,11 +241,11 @@ pub fn publish_login(
 pub fn publish_logout(server: Option<String>, env: Option<String>) -> Result<()> {
     let env = env
         .as_deref()
-        .map(EnvVersion::parse_cli)
+        .map(AppEnv::parse_cli)
         .transpose()?
-        .unwrap_or(EnvVersion::Developer);
+        .unwrap_or(AppEnv::Dev);
     let cwd = env::current_dir()?;
-    let server_url = resolve_lingxia_server(&cwd, Some(env.as_str()), server)
+    let server_url = resolve_lingxia_server(&cwd, env, server)
         .context("cannot determine which server to log out from; pass --server")?;
     let canonical = crate::wallet::canonical_publish_server(&server_url)?;
     let wallet = crate::wallet::Wallet::open()?;
@@ -321,8 +318,7 @@ fn resolve_package_for_publish(
                     meta.target
                 );
             }
-            let channel = meta.channel.as_deref().unwrap_or(DEFAULT_PUBLISH_CHANNEL);
-            package_current_project(cwd, framework, progress, channel)
+            package_current_project(cwd, framework, progress)
         }
         _ => {
             let platform = resolve_publish_platform(cwd, &meta.target, platform.as_deref())?;
@@ -339,9 +335,8 @@ fn package_current_project(
     cwd: &Path,
     framework: Option<String>,
     progress: Option<String>,
-    channel: &str,
 ) -> Result<ResolvedPackage> {
-    let args = publish_build_args(framework.as_deref(), progress.as_deref(), channel);
+    let args = publish_build_args(framework.as_deref(), progress.as_deref());
     lxapp::run_in_dir(&args, cwd)?;
     Ok(ResolvedPackage {
         path: lxapp::package_in_dir(cwd, framework.as_deref())?,
@@ -350,17 +345,8 @@ fn package_current_project(
     })
 }
 
-fn publish_build_args(
-    framework: Option<&str>,
-    progress: Option<&str>,
-    channel: &str,
-) -> Vec<String> {
-    let mut args = vec![
-        "build".to_string(),
-        "--release".to_string(),
-        "--env".to_string(),
-        channel.to_string(),
-    ];
+fn publish_build_args(framework: Option<&str>, progress: Option<&str>) -> Vec<String> {
+    let mut args = vec!["build".to_string(), "--release".to_string()];
     if let Some(framework) = framework {
         args.push("--framework".to_string());
         args.push(framework.to_string());
@@ -372,34 +358,51 @@ fn publish_build_args(
     args
 }
 
-fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
+fn resolve_meta(
+    cwd: &Path,
+    env_arg: Option<&str>,
+    channel_arg: Option<&str>,
+) -> Result<PackageMeta> {
     let target = detect_target(cwd)?;
+    let env = env_arg
+        .map(AppEnv::parse_cli)
+        .transpose()?
+        .unwrap_or(AppEnv::Dev);
 
     match target.as_str() {
         "lxapp" => {
             let (id, version) = read_lxapp_json(cwd)?;
-            let channel = channel_arg.map(normalize_channel).transpose()?;
+            let channel = match channel_arg {
+                Some(value) => normalize_channel(value)?,
+                None => env.default_channel().to_string(),
+            };
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel.unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string())),
+                env,
+                channel: Some(channel),
             })
         }
         "lxplugin" => {
             let (id, version) = read_lxplugin_json(cwd)?;
-            let channel = channel_arg.map(normalize_channel).transpose()?;
+            let channel = match channel_arg {
+                Some(value) => normalize_channel(value)?,
+                None => env.default_channel().to_string(),
+            };
             Ok(PackageMeta {
                 target,
                 target_id: id,
                 version,
-                channel: Some(channel.unwrap_or_else(|| DEFAULT_PUBLISH_CHANNEL.to_string())),
+                env,
+                channel: Some(channel),
             })
         }
         "app" => {
             if channel_arg.is_some() {
                 bail!(
-                    "--env/--channel is not supported when publishing target=app; app channel is read from the packaged app.json envVersion"
+                    "--channel is not supported when publishing target=app; \
+                     host updates are env-scoped and do not carry a channel"
                 );
             }
             let (id, version) = read_app_config(cwd)?;
@@ -407,6 +410,7 @@ fn resolve_meta(cwd: &Path, channel_arg: Option<&str>) -> Result<PackageMeta> {
                 target,
                 target_id: id,
                 version,
+                env,
                 channel: None,
             })
         }
@@ -431,16 +435,17 @@ fn detect_target(cwd: &Path) -> Result<String> {
 }
 
 fn normalize_channel(s: &str) -> Result<String> {
-    match s.to_lowercase().as_str() {
-        "release" => Ok("release".to_string()),
-        "preview" | "trial" => Ok("preview".to_string()),
-        "developer" | "develop" | "dev" => Ok("developer".to_string()),
-        _ => bail!("Invalid envVersion '{s}'. Must be one of: release, preview, developer"),
+    match s {
+        "release" | "preview" | "draft" => Ok(s.to_string()),
+        "dev" => bail!("'dev' is a host env, not an lxapp channel; use --channel draft"),
+        "prod" => bail!("'prod' is a host env, not an lxapp channel; use --channel release"),
+        "developer" | "develop" => bail!("invalid channel '{s}'; use draft"),
+        other => bail!("invalid channel '{other}'; must be one of: release, preview, draft"),
     }
 }
 
 struct AppPackageMetadata {
-    env_version: String,
+    env: AppEnv,
     /// Suffixed lingxiaId baked into the package, if any. Authoritative for
     /// publish because the runtime resolves updates against this exact id.
     lingxia_id: Option<String>,
@@ -472,20 +477,18 @@ fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
     };
     let value: serde_json::Value =
         serde_json::from_slice(&app_json).context("Failed to parse app.json in package")?;
-    let env_version = value
-        .get("envVersion")
+    let env = value
+        .get("env")
         .and_then(|value| value.as_str())
-        .context("app.json in package is missing envVersion; rebuild the app with a newer CLI")?;
-    let env_version = normalize_channel(env_version)?;
+        .map(AppEnv::parse_cli)
+        .transpose()?
+        .unwrap_or(AppEnv::Prod);
     let lingxia_id = value
         .get("lingxiaId")
         .and_then(|value| value.as_str())
         .filter(|s| !s.is_empty())
         .map(str::to_string);
-    Ok(AppPackageMetadata {
-        env_version,
-        lingxia_id,
-    })
+    Ok(AppPackageMetadata { env, lingxia_id })
 }
 
 fn read_zip_entry(path: &Path, names: &[&str]) -> Result<Vec<u8>> {
@@ -614,7 +617,7 @@ fn non_empty_str(val: &serde_json::Value, label: &str) -> Result<String> {
 
 /// Resolve the bearer token: `--token` flag → `LINGXIA_PUBLISH_TOKEN` →
 /// wallet slot keyed by (canonical server URL, env) → error.
-fn resolve_token(channel: Option<&str>, server: &str, token_arg: Option<String>) -> Result<String> {
+fn resolve_token(env: AppEnv, server: &str, token_arg: Option<String>) -> Result<String> {
     if let Some(t) = token_arg {
         let trimmed = t.trim();
         if trimmed.is_empty() {
@@ -627,25 +630,22 @@ fn resolve_token(channel: Option<&str>, server: &str, token_arg: Option<String>)
     {
         return Ok(token.trim().to_string());
     }
-    let env_version = channel
-        .and_then(|c| EnvVersion::parse_cli(c).ok())
-        .unwrap_or(EnvVersion::Developer);
     let canonical = crate::wallet::canonical_publish_server(server)?;
     if let Some(token) =
-        crate::wallet::Wallet::open()?.load_publish_token(&canonical, env_version.as_str())?
+        crate::wallet::Wallet::open()?.load_publish_token(&canonical, env.as_str())?
     {
         return Ok(token);
     }
     bail!(
         "No LingXia publish token for {canonical} ({}). Fix: lingxia auth login lingxia --env {} --token <token>",
-        env_version.as_str(),
-        env_version.as_str()
+        env.as_str(),
+        env.as_str()
     );
 }
 
 fn resolve_lingxia_server(
     cwd: &Path,
-    channel: Option<&str>,
+    env: AppEnv,
     lingxia_server_arg: Option<String>,
 ) -> Result<String> {
     if let Some(s) = lingxia_server_arg {
@@ -656,14 +656,11 @@ fn resolve_lingxia_server(
         return Ok(trimmed.to_string());
     }
     // Project config wins next: route to the env-specific server when a
-    // host config exists and configures one. Channel comes from the
-    // package's envVersion.
+    // host config exists and configures one.
     let config_path = cwd.join(HOST_CONFIG_FILE);
     if config_path.exists()
         && let Ok(cfg) = LingXiaConfig::load(cwd)
-        && let Some(channel) = channel
-        && let Ok(env_version) = EnvVersion::parse_cli(channel)
-        && let Ok(resolved) = cfg.resolve_env(env_version)
+        && let Ok(resolved) = cfg.resolve_env(env)
         && !resolved.lingxia_server.is_empty()
     {
         return Ok(resolved.lingxia_server);
@@ -671,22 +668,19 @@ fn resolve_lingxia_server(
 
     // Lowest precedence: the machine-wide default in ~/.lingxia/cli/config.toml,
     // so lxapp projects (no lingxia.yaml) needn't repeat --lingxia-server.
-    if let Some(url) = global_lingxia_server(channel) {
+    if let Some(url) = global_lingxia_server(env) {
         return Ok(url);
     }
 
     bail!("Use --lingxia-server to specify the package upload server URL.");
 }
 
-/// `[publish]` server from `~/.lingxia/cli/config.toml`, routed by `channel`
-/// (defaults to developer when absent). Lowest precedence: flag and project
+/// `[publish]` server from `~/.lingxia/cli/config.toml`, routed by env
+/// (defaults to `dev` when absent). Lowest precedence: flag and project
 /// config win first.
-fn global_lingxia_server(channel: Option<&str>) -> Option<String> {
+fn global_lingxia_server(env: AppEnv) -> Option<String> {
     let publish = CliConfig::load().ok()?.publish?;
-    let env_version = channel
-        .and_then(|c| EnvVersion::parse_cli(c).ok())
-        .unwrap_or(EnvVersion::Developer);
-    publish.lingxia_server_for(env_version).map(str::to_string)
+    publish.lingxia_server_for(env).map(str::to_string)
 }
 
 fn find_or_resolve_package(
@@ -941,11 +935,15 @@ fn upload_transport_error(url: &str, package_bytes: usize, err: ureq::Error) -> 
 }
 
 fn signed_multipart_fields(
-    channel: &str,
+    env: AppEnv,
     key_file: Option<&Path>,
     req: &lingxia_update::SignRequest<'_>,
 ) -> Result<Vec<(String, String)>> {
-    match lingxia_update::sign_package_from_key_file(channel, key_file, req)
+    let env = match env {
+        AppEnv::Dev => lingxia_app_context::AppEnv::Dev,
+        AppEnv::Prod => lingxia_app_context::AppEnv::Prod,
+    };
+    match lingxia_update::sign_package_from_key_file(env, key_file, req)
         .map_err(|e| anyhow::anyhow!("{e}"))?
     {
         None => Ok(Vec::new()),
@@ -999,6 +997,7 @@ mod tests {
         package_matches, publish_build_args, read_app_package_metadata, resolve_meta,
         resolve_publish_platform, signed_multipart_fields,
     };
+    use crate::config::AppEnv;
     use std::fs;
     use std::io::Write;
     use tempfile::TempDir;
@@ -1202,16 +1201,17 @@ harmony:
     }
 
     #[test]
-    fn signed_multipart_fields_omits_envelope_for_developer_without_key() {
+    fn signed_multipart_fields_omits_envelope_for_dev_without_key() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        let extra = signed_multipart_fields("developer", None, &sign_request(&sha256, 3)).unwrap();
+        let extra = signed_multipart_fields(AppEnv::Dev, None, &sign_request(&sha256, 3)).unwrap();
         assert!(extra.is_empty());
     }
 
     #[test]
-    fn signed_multipart_fields_requires_key_for_release() {
+    fn signed_multipart_fields_requires_key_for_prod() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        let err = signed_multipart_fields("release", None, &sign_request(&sha256, 3)).unwrap_err();
+        let err =
+            signed_multipart_fields(AppEnv::Prod, None, &sign_request(&sha256, 3)).unwrap_err();
         assert!(
             err.to_string().contains("--update-signing-key-file"),
             "{err}"
@@ -1219,10 +1219,23 @@ harmony:
     }
 
     #[test]
-    fn signed_multipart_fields_requires_key_for_preview() {
+    fn signed_multipart_policy_follows_env_for_every_channel() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        let err = signed_multipart_fields("preview", None, &sign_request(&sha256, 3)).unwrap_err();
-        assert!(err.to_string().contains("preview publish"), "{err}");
+        for channel in ["release", "preview", "draft", ""] {
+            let mut req = sign_request(&sha256, 3);
+            req.channel = channel;
+            if channel.is_empty() {
+                req.kind = "app";
+                req.platform = "windows";
+            }
+            assert!(
+                signed_multipart_fields(AppEnv::Dev, None, &req)
+                    .unwrap()
+                    .is_empty()
+            );
+            let err = signed_multipart_fields(AppEnv::Prod, None, &req).unwrap_err();
+            assert!(err.to_string().contains("prod publish"), "{channel}: {err}");
+        }
     }
 
     #[test]
@@ -1238,7 +1251,7 @@ harmony:
             fs::set_permissions(&key_path, fs::Permissions::from_mode(0o600)).unwrap();
         }
         let extra = signed_multipart_fields(
-            "release",
+            AppEnv::Prod,
             Some(key_path.as_path()),
             &sign_request(&sha256, package.len() as u64),
         )
@@ -1268,14 +1281,15 @@ harmony:
         )
         .unwrap();
 
-        let meta = resolve_meta(temp.path(), Some("preview")).unwrap();
+        let meta = resolve_meta(temp.path(), None, Some("preview")).unwrap();
 
         assert_eq!(meta.target, "lxapp");
+        assert_eq!(meta.env, AppEnv::Dev);
         assert_eq!(meta.channel.as_deref(), Some("preview"));
     }
 
     #[test]
-    fn lxapp_publish_defaults_to_developer_channel() {
+    fn lxapp_publish_defaults_channel_from_env() {
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("lxapp.json"),
@@ -1283,28 +1297,33 @@ harmony:
         )
         .unwrap();
 
-        let meta = resolve_meta(temp.path(), None).unwrap();
+        let meta = resolve_meta(temp.path(), None, None).unwrap();
 
         assert_eq!(meta.target, "lxapp");
-        assert_eq!(meta.channel.as_deref(), Some("developer"));
+        assert_eq!(meta.env, AppEnv::Dev);
+        assert_eq!(meta.channel.as_deref(), Some("draft"));
+
+        let prod = resolve_meta(temp.path(), Some("prod"), None).unwrap();
+        assert_eq!(prod.env, AppEnv::Prod);
+        assert_eq!(prod.channel.as_deref(), Some("release"));
     }
 
     #[test]
-    fn publish_channel_accepts_dev_alias() {
-        assert_eq!(normalize_channel("dev").unwrap(), "developer");
+    fn publish_channel_rejects_env_names() {
+        assert!(normalize_channel("dev").is_err());
+        assert!(normalize_channel("developer").is_err());
+        assert!(normalize_channel("develop").is_err());
     }
 
     #[test]
-    fn publish_build_uses_selected_env() {
-        let args = publish_build_args(Some("react"), Some("plain"), "preview");
+    fn publish_build_does_not_pass_env_or_channel() {
+        let args = publish_build_args(Some("react"), Some("plain"));
 
         assert_eq!(
             args,
             vec![
                 "build",
                 "--release",
-                "--env",
-                "preview",
                 "--framework",
                 "react",
                 "--progress",
@@ -1333,7 +1352,7 @@ android:
         )
         .unwrap();
 
-        let err = resolve_meta(temp.path(), Some("developer"))
+        let err = resolve_meta(temp.path(), None, Some("draft"))
             .unwrap_err()
             .to_string();
 
@@ -1341,57 +1360,71 @@ android:
     }
 
     #[test]
-    fn publish_reads_channel_from_android_app_json_env_version() {
-        let temp = TempDir::new().unwrap();
-        let apk = temp.path().join("app-preview.apk");
-        write_zip(
-            &apk,
-            &[(
-                "assets/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"preview"}"#,
-            )],
-        );
-
-        let metadata = read_app_package_metadata(&apk).unwrap();
-
-        assert_eq!(metadata.env_version, "preview");
-        assert!(metadata.lingxia_id.is_none());
-    }
-
-    #[test]
-    fn publish_reads_channel_from_macos_app_json_env_version() {
-        let temp = TempDir::new().unwrap();
-        let zip = temp.path().join("Demo-1.0.0-macos.zip");
-        write_zip(
-            &zip,
-            &[(
-                "Demo.app/Contents/Resources/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"developer"}"#,
-            )],
-        );
-
-        let metadata = read_app_package_metadata(&zip).unwrap();
-
-        assert_eq!(metadata.env_version, "developer");
-    }
-
-    #[test]
-    fn publish_picks_up_suffixed_lingxia_id_from_app_package() {
-        // dev/preview builds bake a suffixed id into app.json. publish must
-        // upload that exact id so update checks line up.
+    fn publish_reads_env_from_android_app_json() {
         let temp = TempDir::new().unwrap();
         let apk = temp.path().join("app-dev.apk");
         write_zip(
             &apk,
             &[(
                 "assets/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","envVersion":"developer","lingxiaId":"demo.dev"}"#,
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev"}"#,
             )],
         );
 
         let metadata = read_app_package_metadata(&apk).unwrap();
 
-        assert_eq!(metadata.env_version, "developer");
+        assert_eq!(metadata.env, AppEnv::Dev);
+        assert!(metadata.lingxia_id.is_none());
+    }
+
+    #[test]
+    fn publish_reads_env_from_macos_app_json() {
+        let temp = TempDir::new().unwrap();
+        let zip = temp.path().join("Demo-1.0.0-macos.zip");
+        write_zip(
+            &zip,
+            &[(
+                "Demo.app/Contents/Resources/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"prod"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&zip).unwrap();
+
+        assert_eq!(metadata.env, AppEnv::Prod);
+    }
+
+    #[test]
+    fn missing_app_json_env_defaults_to_prod() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app.apk");
+        write_zip(
+            &apk,
+            &[(
+                "assets/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&apk).unwrap();
+        assert_eq!(metadata.env, AppEnv::Prod);
+    }
+
+    #[test]
+    fn publish_picks_up_suffixed_lingxia_id_from_app_package() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app-dev.apk");
+        write_zip(
+            &apk,
+            &[(
+                "assets/app.json",
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev","lingxiaId":"demo.dev"}"#,
+            )],
+        );
+
+        let metadata = read_app_package_metadata(&apk).unwrap();
+
+        assert_eq!(metadata.env, AppEnv::Dev);
         assert_eq!(metadata.lingxia_id.as_deref(), Some("demo.dev"));
     }
 

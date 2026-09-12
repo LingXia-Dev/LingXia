@@ -1,7 +1,7 @@
-use crate::lxapp::ReleaseType;
+use crate::lxapp::Channel;
 use crate::{LxApp, LxAppError};
 use lingxia_platform::traits::app_runtime::LxAppOpenMode;
-use lingxia_update::host_channel;
+use lingxia_update::default_channel;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
@@ -34,7 +34,7 @@ pub struct LxAppStartupOptions {
     /// opens; native renderers continue to receive the resolved internal path.
     #[serde(skip)]
     pub page: Option<String>,
-    pub release_type: ReleaseType,
+    pub release_type: Channel,
     pub scene: Scene,
     /// Original inbound URL for `Scene::AppLink`. Cleared with the scene once
     /// Logic has seen it, so a later plain `onShow` carries no stale link.
@@ -90,21 +90,14 @@ pub fn split_path_query(url: &str) -> (String, Option<String>) {
     }
 }
 
-pub fn parse_env_release_type(tag: &str) -> Result<ReleaseType, String> {
-    match tag.trim() {
-        "release" => Ok(ReleaseType::Release),
-        "preview" => Ok(ReleaseType::Preview),
-        // `developer` is the channel name on the wire and in app.json; `develop`
-        // is the pre-0.13 spelling of this parameter, still accepted.
-        "developer" | "develop" => Ok(ReleaseType::Developer),
-        value => Err(format!("invalid envVersion: {value}")),
-    }
+pub fn parse_channel(tag: &str) -> Result<Channel, String> {
+    Channel::parse(tag)
 }
 
-pub fn parse_optional_env_release_type(env_version: Option<&str>) -> Result<ReleaseType, String> {
+pub fn parse_optional_channel(env_version: Option<&str>) -> Result<Channel, String> {
     match env_version.map(str::trim).filter(|value| !value.is_empty()) {
-        Some(value) => parse_env_release_type(value),
-        None => Ok(host_channel()),
+        Some(value) => parse_channel(value),
+        None => Ok(default_channel()),
     }
 }
 
@@ -151,7 +144,7 @@ impl LxAppStartupOptions {
         Self {
             path: path.to_string(),
             query: query_str.to_string(),
-            release_type: host_channel(),
+            release_type: default_channel(),
             open_mode: LxAppOpenMode::Normal,
             panel_id: String::new(),
             ..Default::default()
@@ -204,7 +197,7 @@ impl LxAppStartupOptions {
     }
 
     /// Sets the release type for the startup options.
-    pub fn set_release_type(mut self, release_type: ReleaseType) -> Self {
+    pub fn set_release_type(mut self, release_type: Channel) -> Self {
         self.release_type = release_type;
         self
     }

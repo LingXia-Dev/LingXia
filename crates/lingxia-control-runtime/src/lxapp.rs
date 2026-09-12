@@ -168,13 +168,13 @@ fn handle_lxapp_command_impl(handler: &str, args: Option<Value>) -> Result<Optio
         }
         methods::lxapp::OPEN => {
             let args: OpenArgs = parse_args(handler, args)?;
-            let release_type = release_type(args.release_type.as_deref())?;
+            let channel = parse_open_channel(args.channel.as_deref())?;
             let appid = args.appid.clone();
-            run_async(async move { lxapp::prepare_lxapp_open(&appid, release_type).await })?;
+            run_async(async move { lxapp::prepare_lxapp_open(&appid, channel).await })?;
             let app = lxapp::open_lxapp(
                 &args.appid,
                 lxapp::LxAppStartupOptions::new(args.path.as_deref().unwrap_or(""))
-                    .set_release_type(release_type),
+                    .set_release_type(channel),
             )
             .map_err(|err| err.to_string())?;
             let page = run_async(async {
@@ -270,12 +270,12 @@ fn resolve_app(raw: &str) -> Result<Arc<lxapp::LxApp>, String> {
     if let Some(app) = lxapp::try_get(&appid) {
         return Ok(app);
     }
-    ensure_lxapp_available(&appid, lxapp::host_channel())
+    ensure_lxapp_available(&appid, lxapp::default_channel())
 }
 
 fn ensure_lxapp_available(
     appid: &str,
-    release_type: lxapp::ReleaseType,
+    release_type: lxapp::Channel,
 ) -> Result<Arc<lxapp::LxApp>, String> {
     if let Some(app) = lxapp::try_get(appid) {
         return Ok(app);
@@ -309,20 +309,8 @@ fn resolve_appid(raw: &str) -> Result<String, String> {
     }
 }
 
-fn release_type(value: Option<&str>) -> Result<lxapp::ReleaseType, String> {
-    match value
-        .unwrap_or("release")
-        .trim()
-        .to_ascii_lowercase()
-        .as_str()
-    {
-        "release" => Ok(lxapp::ReleaseType::Release),
-        "preview" | "trial" => Ok(lxapp::ReleaseType::Preview),
-        "developer" | "develop" | "dev" => Ok(lxapp::ReleaseType::Developer),
-        other => Err(format!(
-            "unsupported release_type {other:?}; expected release, preview, or developer"
-        )),
-    }
+fn parse_open_channel(value: Option<&str>) -> Result<lxapp::Channel, String> {
+    lxapp::parse_optional_channel(value)
 }
 
 fn parse_args<T>(handler: &str, args: Option<Value>) -> Result<T, String>
@@ -358,13 +346,38 @@ struct OpenArgs {
     #[serde(default)]
     path: Option<String>,
     #[serde(default)]
-    release_type: Option<String>,
+    channel: Option<String>,
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{page_paths_match, wait_for_open_page};
+    use super::{OpenArgs, page_paths_match, parse_open_channel, wait_for_open_page};
+    use serde_json::json;
     use std::time::Duration;
+
+    #[test]
+    fn omitted_open_channel_follows_host_env_default() {
+        // AppConfig is unset in this crate's tests, so env defaults to prod
+        // and the derived channel is release.
+        assert_eq!(parse_open_channel(None).unwrap(), lxapp::Channel::Release);
+        assert_eq!(
+            parse_open_channel(Some("draft")).unwrap(),
+            lxapp::Channel::Draft
+        );
+        assert!(parse_open_channel(Some("develop")).is_err());
+    }
+
+    #[test]
+    fn open_args_read_channel_not_release_type() {
+        let args: OpenArgs = serde_json::from_value(json!({ "appid": "shop" })).unwrap();
+        assert!(args.channel.is_none());
+        let args: OpenArgs =
+            serde_json::from_value(json!({ "appid": "shop", "channel": "preview" })).unwrap();
+        assert_eq!(args.channel.as_deref(), Some("preview"));
+        let args: OpenArgs =
+            serde_json::from_value(json!({ "appid": "shop", "release_type": "draft" })).unwrap();
+        assert!(args.channel.is_none());
+    }
 
     #[tokio::test]
     async fn open_waits_for_asynchronously_created_page() {

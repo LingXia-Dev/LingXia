@@ -28,8 +28,8 @@ pub struct PackageOptions {
     #[arg(long, value_parser = ["task", "plain"])]
     pub progress: Option<String>,
 
-    /// Environment (developer | preview | release; alias `dev`).
-    #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
+    /// Host environment (`dev` | `prod`). Defaults to `prod` for package.
+    #[arg(long = "env", value_parser = ["dev", "prod"])]
     pub env_version: Option<String>,
 
     /// Extra Cargo feature(s) for the native Rust library. Can be repeated or
@@ -87,10 +87,10 @@ pub struct PackageExecuteOptions {
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
-    // `package` produces shippable artifacts; default to the release env when
-    // --env is omitted. `build`/`dev` keep their developer default for
-    // day-to-day work. Explicit --env on `package` always wins.
-    let env_version = options.env_version.or_else(|| Some("release".to_string()));
+    // `package` produces shippable artifacts; default to prod when --env is
+    // omitted. `build`/`dev` keep their `dev` default for day-to-day work.
+    // Explicit --env on `package` always wins.
+    let env_version = options.env_version.or_else(|| Some("prod".to_string()));
     build::execute(BuildExecuteOptions {
         release: true,
         build_native: options.build_native,

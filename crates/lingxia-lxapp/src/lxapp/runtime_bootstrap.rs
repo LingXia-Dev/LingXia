@@ -58,7 +58,7 @@ fn cleanup_cache_base_dir(cache_base_dir: &Path, max_bytes: u64) {
 
 fn installed_home_version(
     appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<Option<Version>, LxAppError> {
     let Some(record) = metadata::get(appid, release_type)? else {
         return Ok(None);
@@ -281,7 +281,7 @@ fn init_with_native_authority(
             )));
         }
     };
-    let home_channel = crate::host_channel();
+    let home_channel = crate::default_channel();
     let installed_home_version = match installed_home_version(&home_app_id, home_channel) {
         Ok(version) => version,
         Err(e) => {

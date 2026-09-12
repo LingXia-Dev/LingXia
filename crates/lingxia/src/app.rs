@@ -17,7 +17,7 @@ use std::sync::OnceLock;
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
-pub use lingxia_app_context::EnvVersion;
+pub use lingxia_app_context::AppEnv;
 pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
@@ -38,9 +38,9 @@ pub fn product_version() -> Option<&'static str> {
     lingxia_app_context::product_version()
 }
 
-/// Returns the build environment baked into the running product.
-pub fn env_version() -> EnvVersion {
-    lingxia_app_context::env_version()
+/// Returns the host deployment environment baked into the running product.
+pub fn env() -> AppEnv {
+    lingxia_app_context::env()
 }
 
 /// Returns the configured home LxApp id from the initialized app config.

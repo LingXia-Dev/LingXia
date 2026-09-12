@@ -47,10 +47,10 @@ Define host routes with `#[lingxia::native]`, register them through `HostAddon`,
 
 ## Environments and release builds
 
-`--env developer|preview|release` chooses the environment slot, including package-id suffix and server config. `--release` chooses the compiler profile. They are independent; a shippable build typically uses both:
+`--env dev|prod` chooses the host environment, including package-id suffix and server config. `--release` chooses the compiler profile. They are independent; a shippable build typically uses both:
 
 ```bash
-lingxia build --env release --release
+lingxia build --env prod --release
 ```
 
 Use `lingxia package` when you need staged distributable outputs. Consult `lingxia build --help` and `lingxia package --help` for the version-matched platform and signing flags.

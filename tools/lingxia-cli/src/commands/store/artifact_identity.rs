@@ -2,7 +2,7 @@
 //!
 //! Extracts the real bundle/package identity from the built artifact and
 //! compares it with the platform identity in `lingxia.yaml` BEFORE any
-//! credential resolution or network request, so a `.dev`/`.preview` or
+//! credential resolution or network request, so a `.dev` or
 //! wrong-app artifact fails immediately with a rebuild hint. Formats whose
 //! identity cannot be read offline are skipped with an explicit note, never
 //! silently.
@@ -26,7 +26,7 @@ pub fn verify(artifact: &Path, expected: &str) -> Result<()> {
         Extracted::Identity(found) => bail!(
             "{STORE_ARTIFACT_IDENTITY_MISMATCH}: {} contains `{found}`, but lingxia.yaml \
              expects `{expected}`. Rebuild the release artifact first: \
-             `lingxia build --release --env release`.",
+             `lingxia build --release --env prod`.",
             artifact.display()
         ),
         Extracted::Unsupported(why) => {

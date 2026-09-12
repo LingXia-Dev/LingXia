@@ -26,60 +26,65 @@ pub use lxapp::{
 };
 pub use signing::{
     SignRequest, UpdateAuthentication, UpdateVerifyTarget, archive_sha256_hex,
-    channel_requires_signature, check_update_enabled, compact_manifest, decode_base64url,
-    embedded_update_public_keys, encode_base64url, host_requires_signature, host_update_platform,
+    check_update_enabled, compact_manifest, decode_base64url, embedded_update_public_keys,
+    encode_base64url, env_requires_signature, host_requires_signature, host_update_platform,
     load_signing_seed_file, public_key_base64url, sign_package, sign_package_from_key_file,
     verify_archive_bytes, verify_checked_update,
 };
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum ReleaseType {
+pub enum Channel {
     #[default]
     Release,
     Preview,
-    Developer,
+    Draft,
 }
 
-impl From<ReleaseType> for lingxia_provider::LxAppChannel {
-    fn from(release_type: ReleaseType) -> Self {
-        match release_type {
-            ReleaseType::Release => Self::Release,
-            ReleaseType::Preview => Self::Preview,
-            ReleaseType::Developer => Self::Developer,
+impl From<Channel> for lingxia_provider::LxAppChannel {
+    fn from(channel: Channel) -> Self {
+        match channel {
+            Channel::Release => Self::Release,
+            Channel::Preview => Self::Preview,
+            Channel::Draft => Self::Draft,
         }
     }
 }
 
-/// The release channel this host build belongs to, derived from `app.json`'s
-/// `envVersion`. The host app's own update check already uses it; lxapps the
-/// host installs and updates must agree, or a developer build pulls release
-/// packages over the ones it shipped with.
-pub fn host_channel() -> ReleaseType {
-    lingxia_app_context::env_version().into()
-}
-
-impl From<lingxia_app_context::EnvVersion> for ReleaseType {
-    fn from(env: lingxia_app_context::EnvVersion) -> Self {
-        match env {
-            lingxia_app_context::EnvVersion::Release => Self::Release,
-            lingxia_app_context::EnvVersion::Preview => Self::Preview,
-            lingxia_app_context::EnvVersion::Developer => Self::Developer,
-        }
+/// Default lxapp channel for this host, derived from the host env:
+/// `dev` → `draft`, `prod` → `release`. An open can pass an explicit
+/// channel to override; the client does not forbid `draft` on a prod
+/// host — the registry decides per-channel access.
+///
+/// Host self-update does **not** carry a channel: the host talks to the
+/// server for its env.
+pub fn default_channel() -> Channel {
+    match lingxia_app_context::env() {
+        lingxia_app_context::AppEnv::Dev => Channel::Draft,
+        lingxia_app_context::AppEnv::Prod => Channel::Release,
     }
 }
 
-impl ReleaseType {
+impl Channel {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Release => "release",
             Self::Preview => "preview",
-            Self::Developer => "developer",
+            Self::Draft => "draft",
+        }
+    }
+
+    pub fn parse(tag: &str) -> Result<Self, String> {
+        match tag.trim() {
+            "release" => Ok(Self::Release),
+            "preview" => Ok(Self::Preview),
+            "draft" => Ok(Self::Draft),
+            value => Err(format!("invalid channel: {value}")),
         }
     }
 }
 
-impl fmt::Display for ReleaseType {
+impl fmt::Display for Channel {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
     }
@@ -211,13 +216,13 @@ pub enum UpdateTarget {
     },
     LxApp {
         id: String,
-        channel: ReleaseType,
+        channel: Channel,
         query: LxAppUpdateQuery,
     },
     Plugin {
         id: String,
         version: String,
-        channel: ReleaseType,
+        channel: Channel,
     },
 }
 
@@ -228,7 +233,7 @@ impl UpdateTarget {
         }
     }
 
-    pub fn lxapp(id: impl Into<String>, channel: ReleaseType, query: LxAppUpdateQuery) -> Self {
+    pub fn lxapp(id: impl Into<String>, channel: Channel, query: LxAppUpdateQuery) -> Self {
         Self::LxApp {
             id: id.into(),
             channel,
@@ -236,7 +241,7 @@ impl UpdateTarget {
         }
     }
 
-    pub fn plugin(id: impl Into<String>, version: impl Into<String>, channel: ReleaseType) -> Self {
+    pub fn plugin(id: impl Into<String>, version: impl Into<String>, channel: Channel) -> Self {
         Self::Plugin {
             id: id.into(),
             version: version.into(),
@@ -286,18 +291,18 @@ impl UpdatePackageInfo {
 
     /// Whether this package should replace what is already installed.
     ///
-    /// `release` / `preview` compare versions only. `developer` also treats a
+    /// `release` / `preview` compare versions only. `draft` also treats a
     /// same-version package as an update when `checksum_sha256` differs, so a
-    /// republish does not need a version bump. A developer install with no
+    /// republish does not need a version bump. A draft install with no
     /// stored checksum is treated as different so the first OTA after a
     /// bundled/sideload install still picks up a same-version republish.
     pub fn should_replace(
         &self,
-        channel: ReleaseType,
+        channel: Channel,
         installed_version: Option<&str>,
         installed_checksum: Option<&str>,
     ) -> bool {
-        if channel != ReleaseType::Developer {
+        if channel != Channel::Draft {
             return Self::should_replace_version(&self.version, installed_version);
         }
         if Self::should_replace_version(&self.version, installed_version) {
@@ -394,7 +399,7 @@ pub trait UpdateProvider: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use super::{ReleaseType, UpdatePackageInfo, UpdateTarget, Version};
+    use super::{Channel, UpdatePackageInfo, UpdateTarget, Version};
 
     fn package(version: &str, checksum: &str) -> UpdatePackageInfo {
         UpdatePackageInfo {
@@ -420,23 +425,23 @@ mod tests {
     #[test]
     fn release_and_preview_ignore_checksum_when_version_matches() {
         let pkg = package("1.0.0", "aaa");
-        assert!(!pkg.should_replace(ReleaseType::Release, Some("1.0.0"), Some("bbb")));
-        assert!(!pkg.should_replace(ReleaseType::Preview, Some("1.0.0"), Some("bbb")));
-        assert!(pkg.should_replace(ReleaseType::Release, Some("0.9.0"), Some("aaa")));
+        assert!(!pkg.should_replace(Channel::Release, Some("1.0.0"), Some("bbb")));
+        assert!(!pkg.should_replace(Channel::Preview, Some("1.0.0"), Some("bbb")));
+        assert!(pkg.should_replace(Channel::Release, Some("0.9.0"), Some("aaa")));
     }
 
     #[test]
-    fn developer_replaces_same_version_when_checksum_differs() {
+    fn draft_replaces_same_version_when_checksum_differs() {
         let pkg = package("1.0.0", "bbb");
-        assert!(pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), Some("aaa")));
-        assert!(!pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), Some("BBB")));
-        assert!(pkg.should_replace(ReleaseType::Developer, Some("1.0.0"), None));
-        assert!(pkg.should_replace(ReleaseType::Developer, Some("0.9.0"), Some("bbb")));
+        assert!(pkg.should_replace(Channel::Draft, Some("1.0.0"), Some("aaa")));
+        assert!(!pkg.should_replace(Channel::Draft, Some("1.0.0"), Some("BBB")));
+        assert!(pkg.should_replace(Channel::Draft, Some("1.0.0"), None));
+        assert!(pkg.should_replace(Channel::Draft, Some("0.9.0"), Some("bbb")));
     }
 
     #[test]
     fn plugin_target_carries_the_requested_channel() {
-        let target = UpdateTarget::plugin("plug", "1.0.0", ReleaseType::Developer);
-        assert_eq!(target.scope_key(), "plugin:plug@1.0.0@developer");
+        let target = UpdateTarget::plugin("plug", "1.0.0", Channel::Draft);
+        assert_eq!(target.scope_key(), "plugin:plug@1.0.0@draft");
     }
 }

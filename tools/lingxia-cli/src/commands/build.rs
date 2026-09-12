@@ -605,7 +605,7 @@ fn validate_manifest_features(
 fn assemble_windows_dist(
     project_root: &Path,
     config: &LingXiaConfig,
-    env: crate::config::EnvVersion,
+    env: crate::config::AppEnv,
     artifacts: BuildArtifacts,
 ) -> Result<BuildArtifacts> {
     let BuildArtifacts::Windows { exe_path } = artifacts else {
@@ -636,8 +636,8 @@ fn assemble_windows_dist(
     if assets_src.is_dir() {
         let dist_assets = dist_dir.join("assets");
         crate::platform::apple::copy_dir_recursive(&assets_src, &dist_assets)?;
-        // dev/preview builds get the D/P badge — the Windows counterpart of the
-        // macOS/iOS env-icon overlay — so a dev build sits beside a release
+        // Dev builds get the D badge — the Windows counterpart of the
+        // macOS/iOS env-icon overlay — so a dev build sits beside a prod
         // build distinguishably. The badge goes on a host-owned icon at the
         // asset root, NOT the lxapp's served `<home>/public/AppIcon.png` (that
         // is app content the home page renders).
@@ -778,17 +778,17 @@ fn add_zip_dir<W: std::io::Write + std::io::Seek>(
 
 /// Resolve the active environment for a build/dev/package invocation.
 ///
-/// `--env <name>` chooses the env; omitted defaults to `Developer` (callers
-/// like `package` override the default before getting here). env-version is
-/// a build-time property with built-in defaults — no yaml block is required.
+/// `--env <name>` chooses the env; omitted defaults to `dev` (callers
+/// like `package` override the default before getting here). Env is a
+/// build-time property with built-in defaults — no yaml block is required.
 pub(crate) fn resolve_build_env(
     config: &LingXiaConfig,
     requested: Option<&str>,
 ) -> Result<crate::config::ResolvedEnv> {
     let version = requested
-        .map(crate::config::EnvVersion::parse_cli)
+        .map(crate::config::AppEnv::parse_cli)
         .transpose()?
-        .unwrap_or(crate::config::EnvVersion::Developer);
+        .unwrap_or(crate::config::AppEnv::Dev);
     config.resolve_env(version)
 }
 
@@ -920,7 +920,7 @@ fn build_standalone_apple_swift_package(
             // Standalone Apple SwiftPM builds have no `lingxia.yaml` to draw
             // env config from; they always run as the default release env.
             resolved_env: crate::config::ResolvedEnv {
-                version: crate::config::EnvVersion::Release,
+                version: crate::config::AppEnv::Prod,
                 lingxia_server: String::new(),
                 package_id_suffix: None,
                 app_link_hosts: Vec::new(),
@@ -949,7 +949,7 @@ fn build_standalone_apple_swift_package(
 #[cfg(test)]
 mod tests {
     use super::{resolve_build_env, stage_package_artifact, validate_platform_target_options};
-    use crate::config::{EnvVersion, LingXiaConfig};
+    use crate::config::{AppEnv, LingXiaConfig};
     use crate::platform::BuildArtifacts;
     use crate::platform::detector::PlatformType;
     use std::fs;
@@ -1000,26 +1000,24 @@ mod tests {
     }
 
     #[test]
-    fn omitted_env_defaults_to_developer_with_builtin_suffix() {
+    fn omitted_env_defaults_to_dev_with_builtin_suffix() {
         let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
 
         let resolved = resolve_build_env(&config, None).unwrap();
 
-        assert_eq!(resolved.version, EnvVersion::Developer);
+        assert_eq!(resolved.version, AppEnv::Dev);
         assert_eq!(resolved.effective_package_id_suffix(), Some(".dev"));
     }
 
     #[test]
-    fn explicit_env_release_clears_suffix() {
+    fn explicit_env_prod_clears_suffix() {
         let config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
 
-        let release = resolve_build_env(&config, Some("release")).unwrap();
-        let preview = resolve_build_env(&config, Some("preview")).unwrap();
-
-        assert_eq!(release.version, EnvVersion::Release);
-        assert_eq!(release.effective_package_id_suffix(), None);
-        assert_eq!(preview.version, EnvVersion::Preview);
-        assert_eq!(preview.effective_package_id_suffix(), Some(".preview"));
+        let prod = resolve_build_env(&config, Some("prod")).unwrap();
+        assert_eq!(prod.version, AppEnv::Prod);
+        assert_eq!(prod.effective_package_id_suffix(), None);
+        assert!(resolve_build_env(&config, Some("release")).is_err());
+        assert!(resolve_build_env(&config, Some("preview")).is_err());
     }
 
     #[test]

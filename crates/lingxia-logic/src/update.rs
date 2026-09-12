@@ -1,5 +1,5 @@
 use crate::i18n::{err_code_message, js_error_from_lxapp_error};
-use lxapp::{LxApp, ReleaseType, register_app_handler, try_get, warn};
+use lxapp::{Channel, LxApp, register_app_handler, try_get, warn};
 use rong::{
     Class, HostError, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue, js_class,
     js_method,
@@ -318,7 +318,7 @@ rong::js_api! {
 pub async fn ensure_first_install(
     current_lxapp: &Arc<LxApp>,
     target_appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> JSResult<()> {
     lxapp::ensure_first_install(current_lxapp, target_appid, release_type)
         .await

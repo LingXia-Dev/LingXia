@@ -1,6 +1,6 @@
 use crate::{
-    BoxFuture, ReleaseType, UpdatePackageInfo, UpdateTarget, UpdateVerifyTarget, Version,
-    check_update_enabled, embedded_update_public_keys, host_update_platform, verify_checked_update,
+    BoxFuture, UpdatePackageInfo, UpdateTarget, UpdateVerifyTarget, Version, check_update_enabled,
+    embedded_update_public_keys, host_update_platform, verify_checked_update,
 };
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -188,18 +188,11 @@ pub async fn check_app_update<H: AppUpdateHost>(
         .and_then(|config| config.lingxia_id.clone())
         .filter(|id| !id.is_empty())
         .unwrap_or_default();
-    check_app_update_for(
-        host,
-        crate::host_channel(),
-        &embedded_update_public_keys(),
-        target_id,
-    )
-    .await
+    check_app_update_for(host, &embedded_update_public_keys(), target_id).await
 }
 
 async fn check_app_update_for<H: AppUpdateHost>(
     host: &H,
-    channel: ReleaseType,
     trusted_public_keys: &[String],
     target_id: String,
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
@@ -216,7 +209,7 @@ async fn check_app_update_for<H: AppUpdateHost>(
         &UpdateVerifyTarget {
             kind: "app".into(),
             target_id,
-            channel: channel.as_str().to_string(),
+            channel: String::new(),
             platform: host_update_platform().into(),
             exact_version: None,
         },
@@ -288,7 +281,7 @@ mod tests {
     use super::*;
     use crate::signing::{SignRequest, archive_sha256_hex, public_key_base64url, sign_package};
     use crate::{UpdateAuthentication, UpdatePackageInfo};
-    use lingxia_app_context::{AppConfig, EnvVersion};
+    use lingxia_app_context::{AppConfig, AppEnv};
     use std::path::PathBuf;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -355,7 +348,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: Some(TARGET_ID.to_string()),
             lingxia_server: None,
-            env_version: EnvVersion::Release,
+            env: AppEnv::Prod,
             home_app_id: String::new(),
             home_app_version: String::new(),
             cache_max_size_mb: 1024,
@@ -394,7 +387,7 @@ mod tests {
             &SignRequest {
                 kind: "app",
                 target_id: TARGET_ID,
-                channel: "release",
+                channel: "",
                 platform: host_update_platform(),
                 version,
                 sha256: &sha256,
@@ -442,30 +435,21 @@ mod tests {
     }
 
     #[test]
-    fn preview_and_release_without_keys_skip_check() {
+    fn prod_without_keys_skips_check() {
         let host = FakeHost::new("1.0.0", Some(signed_package("1.0.1", None)));
-        for channel in [ReleaseType::Preview, ReleaseType::Release] {
-            let result = block_on(check_app_update_for(&host, channel, &[], TARGET_ID.into()))
-                .expect("skip is not an error");
-            assert!(result.is_none(), "{channel:?}");
-        }
+        let result = block_on(check_app_update_for(&host, &[], TARGET_ID.into()))
+            .expect("skip is not an error");
+        assert!(result.is_none());
         assert_eq!(host.provider_calls.load(Ordering::SeqCst), 0);
     }
 
     #[test]
-    fn a_developer_channel_request_does_not_waive_this_release_build() {
-        // The channel still selects which packages to fetch, but no longer
-        // decides whether they must be signed — that follows the build. Unit
-        // tests have no `app.json`, so this build is release.
+    fn prod_rejects_unsigned_host_update() {
+        // Host updates have no channel; the prod host still requires a signature.
         let host = FakeHost::new("1.0.0", Some(signed_package("1.0.1", None)));
         let keys = [public_key_base64url(&SEED)];
-        let err = block_on(check_app_update_for(
-            &host,
-            ReleaseType::Developer,
-            &keys,
-            TARGET_ID.into(),
-        ))
-        .expect_err("an unsigned package on a release build");
+        let err = block_on(check_app_update_for(&host, &keys, TARGET_ID.into()))
+            .expect_err("an unsigned package on a prod build");
         assert!(err.to_string().contains("require signed updates"), "{err}");
         assert_eq!(host.provider_calls.load(Ordering::SeqCst), 1);
     }

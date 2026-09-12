@@ -375,7 +375,7 @@ mod native_main_scaffold_tests {
     use super::types::{LxAppInfo, MainSurface, Platform, ProjectConfig};
     use super::*;
     use crate::config::{
-        EnvVersion, LingXiaConfig, ResolvedEnv, ResourceBundleConfig, ResourceBundleType,
+        AppEnv, LingXiaConfig, ResolvedEnv, ResourceBundleConfig, ResourceBundleType,
         ResourcesConfig,
     };
     use crate::platform::BuildProfile;
@@ -461,7 +461,7 @@ mod native_main_scaffold_tests {
             true,
             None,
             &ResolvedEnv {
-                version: EnvVersion::Developer,
+                version: AppEnv::Dev,
                 lingxia_server: "https://api.example.com".to_string(),
                 package_id_suffix: Some(".dev".to_string()),
                 app_link_hosts: Vec::new(),

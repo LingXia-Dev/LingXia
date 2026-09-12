@@ -534,7 +534,7 @@ async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JS
             "edge",
             "page",
             "query",
-            "envVersion",
+            "channel",
             "targetVersion",
             "key",
         ],
@@ -545,7 +545,7 @@ async fn shell_open_app(ctx: JSContext, app_id: JSValue, options: JSValue) -> JS
     copy_options(
         &options,
         &spec,
-        &["as", "edge", "page", "query", "envVersion", "targetVersion"],
+        &["as", "edge", "page", "query", "channel", "targetVersion"],
     )?;
     let key = read_surface_key(&options)?;
     let handle = open_app_spec(ctx.clone(), &spec, &invocation).await?;
@@ -1142,7 +1142,7 @@ async fn open_app_spec(
         path: read_optional_string(spec, "path")?,
         page: read_optional_string(spec, "page")?,
         query,
-        env_version: read_optional_string(spec, "envVersion")?,
+        channel: read_optional_string(spec, "channel")?,
         target_version: read_optional_string(spec, "targetVersion")?,
     };
     let requested_region = match as_role {
@@ -1325,7 +1325,7 @@ async fn open_declared_surface_spec(
         ));
     }
     if let Some(app_id) = declared_app_id {
-        lxapp::prepare_lxapp_open(&app_id, lxapp::host_channel())
+        lxapp::prepare_lxapp_open(&app_id, lxapp::default_channel())
             .await
             .map_err(|err| {
                 if lxapp::registry_unavailable_status(&err).is_some() {

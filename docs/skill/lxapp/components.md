@@ -330,7 +330,7 @@ user reaches the last item; `onError` carries an error `code`.
 
 Declarative navigation — wraps content that, when tapped, navigates inside or
 outside the lxapp. The full attribute list (`url`, `page`, `query`,
-`delta`, `app-id`, `env-version`, `target-version`, `phone-number`, …) is the
+`delta`, `app-id`, `channel`, `target-version`, `phone-number`, …) is the
 exported `LxNavigatorAttributes` from `@lingxia/elements`. The doc-only behavior
 is the routing it selects via `open-type` / `target`. `page` is the configured
 page name from `lxapp.json`; full routes are not accepted through a `path`

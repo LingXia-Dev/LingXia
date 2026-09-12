@@ -783,15 +783,15 @@ semantics every language surface MUST share.
   'aside' }` opens/reuses a distinct workspace in the native aside slot. The
   same keyed workspace may later migrate to main without losing PTYs, cwd, or
   running processes.
-- `lx.shell.openApp(appId, { as, page?, query?, envVersion?, targetVersion?,
+- `lx.shell.openApp(appId, { as, page?, query?, channel?, targetVersion?,
   edge? })` creates or focuses a dynamic business-app Surface and
   does not require a YAML declaration. `as` is required because the caller is
   creating shell composition rather than using declaration defaults; it is
   `main` or `aside`. A float lxapp must be host-declared and opened with
   `{ surface }` so its tray anchor, dismissal policy, and presentation contract
   exist. `page` is the configured page name; full routes are not JS API input.
-  `query`, `envVersion`, and `targetVersion` are optional startup inputs, and
-  `envVersion` defaults to `release`. `edge` is valid only with `as: 'aside'`:
+  `query`, `channel`, and `targetVersion` are optional startup inputs, and
+  `channel` defaults from the host env. `edge` is valid only with `as: 'aside'`:
   `aside` chooses the companion region, while `edge` is its preferred docking
   side on layouts with room. Omit it for the default; compact hosts may
   reproject the same aside.
@@ -840,8 +840,8 @@ The active app at the top of a navigation stack may change, but the owning
 Surface identity and role do not.
 
 App navigation accepts the same optional startup selectors as a dynamic App
-Surface: `page`, `query`, `envVersion`, and `targetVersion`; `page` is the
-configured page name, full routes are rejected, and `envVersion` defaults to `release`. If the
+Surface: `page`, `query`, `channel`, and `targetVersion`; `page` is the
+configured page name, full routes are rejected, and `channel` defaults from the host env. If the
 target appId is already owned by another live Surface, navigation fails with
 `E_SURFACE_CONFLICT` rather than stealing or cloning that instance.
 

@@ -751,8 +751,8 @@ fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
 /// runner so the SDK device frame stays free of lxapp/runner semantics.
 fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDeviceFrameBadge> {
     match release_type.to_ascii_lowercase().as_str() {
-        "developer" => Some(lingxia_windows_sdk::WindowsDeviceFrameBadge {
-            text: "DEV".to_string(),
+        "draft" => Some(lingxia_windows_sdk::WindowsDeviceFrameBadge {
+            text: "DFT".to_string(),
             foreground: 0x1D4ED8,
             background: 0xDBEAFE,
         }),

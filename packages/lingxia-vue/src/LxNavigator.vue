@@ -62,7 +62,7 @@ const render = () => h(
       delta: props.delta,
       query: props.query,
       appId: props.appId,
-      envVersion: props.envVersion,
+      channel: props.channel,
       targetVersion: props.targetVersion,
       phoneNumber: props.phoneNumber,
       hoverClass: props.hoverClass,

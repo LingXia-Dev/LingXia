@@ -181,9 +181,9 @@ pub(super) fn execute_runner_dev(
     let runner_env = options
         .env_version
         .as_deref()
-        .map(crate::config::EnvVersion::parse_cli)
+        .map(crate::config::AppEnv::parse_cli)
         .transpose()?
-        .unwrap_or(crate::config::EnvVersion::Developer);
+        .unwrap_or(crate::config::AppEnv::Dev);
 
     if let Some(platform) = options.platform_arg.as_deref() {
         let parsed = platform.parse::<PlatformType>()?;
@@ -341,7 +341,7 @@ fn lxapp_runner_build_args(
     release: bool,
     framework: Option<&str>,
     progress: Option<&str>,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Vec<String> {
     let mut args = vec![
         "build".to_string(),
@@ -418,7 +418,7 @@ fn launch_runner_for_lxapp(
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
@@ -484,7 +484,7 @@ fn launch_runner_for_web(
     runner_device: Option<&str>,
     display_language: Option<&str>,
     headless: bool,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
@@ -594,7 +594,7 @@ fn prepare_windows_runner_assets(
     session_root: &Path,
     identity: &WindowsRunnerLxAppIdentity,
     ws_url: &str,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<PathBuf> {
     let assets_dir = log_store::dev_dir(session_root)
         .join("runner")
@@ -613,7 +613,7 @@ fn prepare_windows_runner_assets(
     let app_json = serde_json::json!({
         "productName": format!("{} - {RUNNER_WINDOWS_PRODUCT_NAME}", identity.app_id),
         "productVersion": REQUIRED_RUNNER_VERSION,
-        "envVersion": runner_env.as_str(),
+        "env": runner_env.as_str(),
         "windowsAppId": format!("{RUNNER_WINDOWS_APP_ID}.{}", identity.app_id),
         "homeAppId": identity.app_id,
         "homeAppVersion": identity.version,
@@ -668,7 +668,7 @@ fn stage_windows_runner_common_assets(assets_dir: &Path) -> Result<()> {
 fn prepare_windows_runner_web_assets(
     session_root: &Path,
     ws_url: &str,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<PathBuf> {
     let assets_dir = log_store::dev_dir(session_root)
         .join("runner")
@@ -682,7 +682,7 @@ fn prepare_windows_runner_web_assets(
     let app_json = serde_json::json!({
         "productName": RUNNER_WINDOWS_PRODUCT_NAME,
         "productVersion": REQUIRED_RUNNER_VERSION,
-        "envVersion": runner_env.as_str(),
+        "env": runner_env.as_str(),
         "windowsAppId": format!("{RUNNER_WINDOWS_APP_ID}.{}", runner_instance_id(session_root)),
         "devWsUrl": ws_url,
     });
@@ -740,7 +740,7 @@ fn launch_windows_runner_for_lxapp(
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
     ensure_valid_lxapp_dir(lxapp_path)?;
@@ -809,7 +809,7 @@ fn launch_windows_runner_for_web(
     runner_device: Option<&str>,
     display_language: Option<&str>,
     headless: bool,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
     crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
@@ -873,7 +873,7 @@ fn windows_web_runner_launch_args(
     runner_device: Option<&str>,
     display_language: Option<&str>,
     headless: bool,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
 ) -> Vec<String> {
     let mut launch_args = vec![
         "--web-url".to_string(),
@@ -912,7 +912,7 @@ fn windows_runner_launch_args(
     ws_url: &str,
     runner_device: Option<&str>,
     display_language: Option<&str>,
-    runner_env: crate::config::EnvVersion,
+    runner_env: crate::config::AppEnv,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
 ) -> Result<Vec<String>> {
     let mut args = vec![
@@ -1534,7 +1534,7 @@ mod tests {
             true,
             Some("react"),
             Some("plain"),
-            crate::config::EnvVersion::Preview,
+            crate::config::AppEnv::Prod,
         );
 
         assert_eq!(
@@ -1542,7 +1542,7 @@ mod tests {
             vec![
                 "build",
                 "--env",
-                "preview",
+                "prod",
                 "--release",
                 "--framework",
                 "react",
@@ -1582,13 +1582,13 @@ mod tests {
             temp.path(),
             &identity,
             "ws://127.0.0.1:3000",
-            crate::config::EnvVersion::Preview,
+            crate::config::AppEnv::Prod,
         )
         .unwrap();
         let app_json: serde_json::Value =
             serde_json::from_slice(&fs::read(assets.join("app.json")).unwrap()).unwrap();
 
-        assert_eq!(app_json["envVersion"], "preview");
+        assert_eq!(app_json["env"], "prod");
         assert!(app_json.get("appLinks").is_none());
     }
 
@@ -1598,7 +1598,7 @@ mod tests {
         let assets = prepare_windows_runner_web_assets(
             temp.path(),
             "ws://127.0.0.1:3000",
-            crate::config::EnvVersion::Developer,
+            crate::config::AppEnv::Dev,
         )
         .unwrap();
         let app_json: serde_json::Value =
@@ -1623,7 +1623,7 @@ mod tests {
             "ws://127.0.0.1:39000/?token=abc",
             Some("desktop-1440"),
             Some("zh-CN"),
-            crate::config::EnvVersion::Developer,
+            crate::config::AppEnv::Dev,
             &resources,
         )
         .unwrap();
@@ -1661,7 +1661,7 @@ mod tests {
             Some("desktop-1440"),
             None,
             true,
-            crate::config::EnvVersion::Developer,
+            crate::config::AppEnv::Dev,
         );
 
         assert!(args.windows(2).any(|pair| pair == ["--headless", "1"]));

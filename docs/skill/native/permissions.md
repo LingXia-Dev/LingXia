@@ -80,7 +80,7 @@ impl lingxia::HostAddon for AppHostAddon {
 }
 ```
 
-Answer per app **and per channel**: a developer build of an app id is not the
+Answer per app **and per channel**: a draft of an app id is not the
 app the release grant was written for. The record does not name the app — the
 request already did.
 

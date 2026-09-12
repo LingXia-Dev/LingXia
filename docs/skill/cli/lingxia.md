@@ -77,11 +77,12 @@ See `lingxia new --help` for the flags.
 ### `lingxia build`
 
 Build the project. The key distinction to internalize: `--env`
-(developer / preview / release) picks the **environment slot** — its package-id
-suffixing and per-env server config — while `--release` picks the **compiler
-profile**. They are independent; `lingxia build --env release --release` is the
-shippable combination. Defaults and the per-env behavior are documented in
-[App Project → Environment versions](../app/project.md#environment-versions).
+(`dev` / `prod`) picks the **host environment** — its package-id suffixing and
+per-env server config — while `--release` picks the **compiler profile**. They
+are independent; `lingxia build --env prod --release` is the shippable
+combination. `--env` is not an lxapp channel. Defaults and the per-env
+behavior are documented in
+[App Project → Environment](../app/project.md#environment).
 
 Beyond plain compilation, `build` also drives the per-platform **packaging and
 signing** steps when asked: a signed iOS IPA, a macOS DMG, a Windows MSIX

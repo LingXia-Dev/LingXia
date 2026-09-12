@@ -1293,8 +1293,8 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     private static func makeReleaseBadge(_ releaseType: String) -> NSView? {
         let style: (text: String, fg: NSColor, bg: NSColor)?
         switch releaseType {
-        case "developer":
-            style = ("DEV", NSColor(srgbRed: 0.11, green: 0.31, blue: 0.85, alpha: 1),
+        case "draft":
+            style = ("DFT", NSColor(srgbRed: 0.11, green: 0.31, blue: 0.85, alpha: 1),
                      NSColor(srgbRed: 0.86, green: 0.92, blue: 0.99, alpha: 1))
         case "preview":
             style = ("PRE", NSColor(srgbRed: 0.71, green: 0.33, blue: 0.03, alpha: 1),

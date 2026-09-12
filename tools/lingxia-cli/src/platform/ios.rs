@@ -8,7 +8,7 @@ use super::{
     BuildArtifacts, BuildConfig, BuildProfile, Device, InstallConfig, Platform, RunConfig,
     native_client_out_for_host_project, resolve_cargo_target_dir, resolve_lingxia_target_dir,
 };
-use crate::config::{EnvVersion, IosConfig, LingXiaConfig};
+use crate::config::{AppEnv, IosConfig, LingXiaConfig};
 use crate::permission_cache::{DEFAULT_MAX_AGE_SECONDS, PermissionCache, PermissionPlatform};
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -149,7 +149,7 @@ impl IosPlatform {
     ) -> Result<PathBuf> {
         use apple::app_bundle::{AppBundleConfig, AppBundler};
 
-        // Get bundle ID and other config. Apply env-version package suffixes
+        // Get bundle ID and other config. Apply env package suffixes
         // here without touching the source Info.plist on disk.
         let base_bundle_id = ios_config
             .map(|c| c.bundle_id.clone())
@@ -324,9 +324,9 @@ impl Platform for IosPlatform {
             .and_then(|c| c.app.as_ref())
             .map(|a| a.project_name.as_str());
         let resources_dir = get_resources_dir(&ios_dir, ios_config, app_project_name)?;
-        // For developer/preview env, point actool at a staging copy of
+        // For the `dev` env, point actool at a staging copy of
         // Assets.xcassets whose AppIcon.appiconset has each PNG composited
-        // with a circular D/P badge — same visual language as the Android
+        // with a circular D badge — same visual language as the Android
         // launcher overlay. Source xcassets is never mutated.
         let staging_base = resolve_lingxia_target_dir(&config.project_root).join("ios");
         let env_staged = match apple::env_icon::prepare_overlay_resources_dir(
@@ -370,12 +370,9 @@ impl Platform for IosPlatform {
                     &deployment_target,
                 )?;
                 if face == crate::splash::AppleLaunchFace::Ground {
-                    if matches!(
-                        config.resolved_env.version,
-                        crate::config::EnvVersion::Release
-                    ) {
+                    if matches!(config.resolved_env.version, crate::config::AppEnv::Prod) {
                         anyhow::bail!(
-                            "Release iOS build requires a compiled launch storyboard; \
+                            "prod iOS build requires a compiled launch storyboard; \
                              `ibtool` needs the iOS platform installed — run \
                              `xcodebuild -downloadPlatform iOS`"
                         );
@@ -402,12 +399,9 @@ impl Platform for IosPlatform {
             &deployment_target,
             apple::assets::AssetPlatform::Ios,
         ) {
-            if matches!(
-                config.resolved_env.version,
-                crate::config::EnvVersion::Release
-            ) {
+            if matches!(config.resolved_env.version, crate::config::AppEnv::Prod) {
                 return Err(err).context(
-                    "Release iOS build requires a compiled asset catalog; without it the app icon and OS launch face are missing",
+                    "prod iOS build requires a compiled asset catalog; without it the app icon and OS launch face are missing",
                 );
             } else {
                 eprintln!(
@@ -735,7 +729,7 @@ fn app_link_hosts_for_install(config: Option<&LingXiaConfig>, app_path: &Path) -
     }
     config
         .and_then(|config| config.app_links.as_ref())
-        .map(|links| links.hosts.for_env(EnvVersion::Release).to_vec())
+        .map(|links| links.hosts.for_env(AppEnv::Prod).to_vec())
         .unwrap_or_default()
 }
 
@@ -789,7 +783,7 @@ mod tests {
         fs::create_dir_all(&app).unwrap();
         fs::write(
             app.join("app.json"),
-            r#"{"envVersion":"developer","appLinks":{"hosts":["app-dev.example.com"]}}"#,
+            r#"{"env":"dev","appLinks":{"hosts":["app-dev.example.com"]}}"#,
         )
         .unwrap();
 

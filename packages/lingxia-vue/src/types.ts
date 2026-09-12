@@ -7,7 +7,7 @@ import type {
   LxVideoEventPayloads,
   NativeActionIcon,
   NativeStyleProperty,
-  NavigatorEnvVersion,
+  NavigatorChannel,
   NavigatorOpenType,
   NavigatorQuery,
   NavigatorTarget,
@@ -190,7 +190,7 @@ export interface LxNavigatorProps {
   delta?: number;
   query?: NavigatorQuery;
   appId?: string;
-  envVersion?: NavigatorEnvVersion;
+  channel?: NavigatorChannel;
   targetVersion?: string;
   phoneNumber?: string;
   hoverClass?: string;

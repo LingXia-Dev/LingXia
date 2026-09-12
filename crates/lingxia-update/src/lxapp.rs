@@ -1,6 +1,6 @@
 use crate::config::update_config;
 use crate::{
-    BoxFuture, LxAppUpdateQuery, ReleaseType, RuntimeCompatibilityError, UpdatePackageInfo,
+    BoxFuture, Channel, LxAppUpdateQuery, RuntimeCompatibilityError, UpdatePackageInfo,
     UpdateTarget, Version,
 };
 use std::collections::HashSet;
@@ -23,7 +23,7 @@ const FOREGROUND_UPDATE_CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>);
     fn target_appid(&self) -> &str;
-    fn channel(&self) -> ReleaseType;
+    fn channel(&self) -> Channel;
     /// Whether the target's bundle is managed by the update system. False for a
     /// bundle served live from a local path, which has no installed package.
     fn is_ota_managed(&self) -> bool;
@@ -65,7 +65,7 @@ pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
     fn log_warning(&self, detail: &str);
 }
 
-pub fn lxapp_update_scope_key(target_appid: &str, release_type: ReleaseType) -> String {
+pub fn lxapp_update_scope_key(target_appid: &str, release_type: Channel) -> String {
     UpdateTarget::lxapp(
         target_appid,
         release_type,
@@ -323,7 +323,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
     }
 
     if current_version.as_deref() == Some(target_version)
-        && (host.channel() != ReleaseType::Developer || !host.is_ota_managed())
+        && (host.channel() != Channel::Draft || !host.is_ota_managed())
     {
         return Ok(());
     }
@@ -348,7 +348,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
 
     ensure_runtime_version_compatible(host, &pkg)?;
 
-    if host.channel() == ReleaseType::Developer {
+    if host.channel() == Channel::Draft {
         let installed_checksum = host.installed_checksum().await?;
         if !pkg.should_replace(
             host.channel(),
@@ -435,7 +435,7 @@ pub async fn ensure_force_update_for_installed<H: LxAppUpdateHost>(
         return Ok(());
     }
 
-    let installed_checksum = if host.channel() == ReleaseType::Developer {
+    let installed_checksum = if host.channel() == Channel::Draft {
         host.installed_checksum().await?
     } else {
         None

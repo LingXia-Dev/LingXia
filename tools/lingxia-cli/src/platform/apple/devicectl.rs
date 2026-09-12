@@ -344,7 +344,7 @@ pub fn uninstall_app(bundle_id: &str, device_id: Option<&str>) -> Result<()> {
 /// Launch an app on a connected iOS device.
 ///
 /// `bundle_id` is the canonical bundle id from lingxia.yaml. Xcode builds
-/// can apply an env suffix (`.dev` / `.preview`) — auto-detect which
+/// can apply an env suffix (`.dev`) — auto-detect which
 /// variant is installed and target that, so callers don't have to track
 /// env state.
 ///

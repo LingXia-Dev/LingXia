@@ -17,32 +17,44 @@ pub enum AppContextError {
     InvalidConfig(String),
 }
 
-/// Build-time environment version baked into `app.json`.
+/// Host-app deployment environment baked into `app.json`.
 ///
-/// Wire-compatible with `lingxia_update::ReleaseType` — both serialize as
-/// lowercase `"developer" | "preview" | "release"`. Defined locally here
-/// (rather than imported) to keep `lingxia-app-context` free of additional
-/// crate dependencies; the JSON contract is what callers rely on.
+/// This is the build-time axis (`dev` | `prod`): which server, package-id
+/// suffix, publish token, and self-update endpoint the host uses. It is
+/// **not** the lxapp publish channel (`release` | `preview` | `draft`).
+/// Defined locally here (rather than imported) to keep `lingxia-app-context`
+/// free of additional crate dependencies; the JSON contract is what callers
+/// rely on.
+///
+/// Missing `env` is [`AppEnv::Prod`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, Serialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum EnvVersion {
+pub enum AppEnv {
+    Dev,
     #[default]
-    Release,
-    Preview,
-    Developer,
+    Prod,
 }
 
-impl EnvVersion {
+impl AppEnv {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Release => "release",
-            Self::Preview => "preview",
-            Self::Developer => "developer",
+            Self::Dev => "dev",
+            Self::Prod => "prod",
+        }
+    }
+
+    /// Default lxapp channel for this host env: `dev` → `draft`,
+    /// `prod` → `release`. An open can pass an explicit channel to override;
+    /// the client does not forbid `draft` on a prod host.
+    pub fn default_channel(self) -> &'static str {
+        match self {
+            Self::Dev => "draft",
+            Self::Prod => "release",
         }
     }
 }
 
-impl std::fmt::Display for EnvVersion {
+impl std::fmt::Display for AppEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -301,10 +313,10 @@ pub struct AppConfig {
     #[serde(rename = "lingxiaServer", default)]
     pub lingxia_server: Option<String>,
 
-    /// The environment this build was produced for. Defaults to [`EnvVersion::Release`]
-    /// when missing, matching pre-envVersion app.json artifacts.
-    #[serde(rename = "envVersion", default)]
-    pub env_version: EnvVersion,
+    /// The environment this build was produced for. Defaults to [`AppEnv::Prod`]
+    /// when the field is missing.
+    #[serde(rename = "env", default)]
+    pub env: AppEnv,
 
     #[serde(
         rename = "homeAppId",
@@ -819,11 +831,10 @@ pub fn lingxia_id() -> Option<&'static str> {
         .filter(|s| !s.is_empty())
 }
 
-/// Active environment version baked into the running build. Defaults to
-/// [`EnvVersion::Release`] before [`set_app_config`] is called and for any
-/// `app.json` produced before the envVersion field existed.
-pub fn env_version() -> EnvVersion {
-    APP_CONFIG.get().map(|c| c.env_version).unwrap_or_default()
+/// Active host env baked into the running build. Defaults to [`AppEnv::Prod`]
+/// before [`set_app_config`] is called and when `app.json` omits `env`.
+pub fn env() -> AppEnv {
+    APP_CONFIG.get().map(|c| c.env).unwrap_or_default()
 }
 
 pub fn notifications_enabled() -> bool {
@@ -1114,7 +1125,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
             lingxia_server: None,
-            env_version: super::EnvVersion::Release,
+            env: super::AppEnv::Prod,
             home_app_id: "home".to_string(),
             home_app_version: "1.0.0".to_string(),
             cache_max_size_mb: 1024,
@@ -1221,6 +1232,44 @@ mod tests {
         let theme: ThemeConfig =
             serde_json::from_str(r#"{ "light": {}, "dark": {} }"#).expect("parse empty theme");
         assert!(theme.normalized().is_none());
+    }
+
+    #[test]
+    fn missing_env_defaults_to_prod() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Env Test",
+                "productVersion": "1.0.0"
+            }"#,
+        )
+        .expect("valid app.json");
+        assert_eq!(config.env, super::AppEnv::Prod);
+    }
+
+    #[test]
+    fn env_version_is_not_an_alias_for_env() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Env Test",
+                "productVersion": "1.0.0",
+                "envVersion": "developer"
+            }"#,
+        )
+        .expect("unknown fields are ignored; missing env is prod");
+        assert_eq!(config.env, super::AppEnv::Prod);
+    }
+
+    #[test]
+    fn env_rejects_channel_names() {
+        for env in ["developer", "preview", "release"] {
+            let json = format!(
+                r#"{{ "productName": "Env Test", "productVersion": "1.0.0", "env": "{env}" }}"#
+            );
+            assert!(
+                AppConfig::parse_and_validate(&json).is_err(),
+                "env={env} must not parse"
+            );
+        }
     }
 
     #[test]

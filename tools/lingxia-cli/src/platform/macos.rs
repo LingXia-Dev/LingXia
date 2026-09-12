@@ -501,8 +501,8 @@ impl Platform for MacosPlatform {
             hide_dock_icon,
         )?;
 
-        // Mirror the iOS env-icon overlay so dev/preview macOS builds also
-        // get the D/P badge on the dock icon. macOS icon artwork sits inside
+        // Mirror the iOS env-icon overlay so a `dev` macOS build also
+        // gets the D badge on the dock icon. macOS icon artwork sits inside
         // a ~10% transparent canvas margin — anchor the badge to the artwork.
         let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
             &resolve_lingxia_target_dir(&config.project_root).join("macos"),

@@ -176,14 +176,15 @@ declare global {
 
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). envVersion re-declares
+  // and doc comments (js_api consts cannot carry docs). env re-declares
   // the generated member doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
-     * The build environment from `app.json::envVersion`. It is fixed at boot
-     * and defaults to `release` for older artifacts.
+     * The host deployment environment from `app.json::env` (`dev` | `prod`).
+     * It is fixed at boot and defaults to `prod` for older artifacts.
+     * Not the lxapp publish channel (`release` | `preview` | `draft`).
      */
-    readonly envVersion: HostAppEnvVersion;
+    readonly env: HostAppEnv;
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
@@ -921,15 +922,17 @@ export type GetVideoInfoOptions = {
 export type HostAppApi = globalThis.HostAppApi;
 
 /**
- * Build-time environment version of the host app.
- * Surfaced via {@link HostAppApi.envVersion}. Mirrors the
- * `crates/lingxia-update::ReleaseType` enum and the `envVersion` field in the
- * generated `app.json`. Pre-envVersion app artifacts are treated as `'release'`.
- * Note: this is *separate* from `LxAppEnvVersion` in the navigator module,
- * which encodes lxapp release channels for cross-app navigation URLs —
- * same three names, different axis.
+ * Build-time deployment environment of the host app (`dev` | `prod`).
+ * Surfaced via {@link HostAppApi.env}. Taken from the `env` field in
+ * the generated `app.json`. Missing `env` is treated as `'prod'`.
+ * This is the host build axis: which server, package-id suffix, publish
+ * token, and self-update endpoint the host uses. It is **not** the
+ * lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
+ * `'release' | 'preview' | 'draft'`). Default channel is derived
+ * from env (`dev` → `draft`, `prod` → `release`) and can be
+ * overridden when opening an lxapp.
  */
-export type HostAppEnvVersion = 'developer' | 'preview' | 'release';
+export type HostAppEnv = 'dev' | 'prod';
 
 export type HostAppUpdateApplyStage = 'download' | 'install';
 
@@ -1022,10 +1025,10 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
-export type LxAppEnvVersion = 'release' | 'preview' | 'developer';
+export type LxAppEnvVersion = 'release' | 'preview' | 'draft';
 
 /** LxApp metadata APIs. */
-export type LxAppReleaseType = 'release' | 'preview' | 'developer';
+export type LxAppReleaseType = 'release' | 'preview' | 'draft';
 
 /** Boolean capability names accepted by `lx.supports`. */
 export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
@@ -1113,7 +1116,11 @@ export type NavigateToAppOptions = {
      */
     page?: ExternalPageName;
     query?: PageQuery;
-    envVersion?: LxAppEnvVersion;
+    /**
+     * Lxapp publish channel. Defaults from the host env
+     * (`dev` → `draft`, `prod` → `release`).
+     */
+    channel?: LxAppEnvVersion;
     targetVersion?: string;
 };
 
@@ -1573,8 +1580,11 @@ export type ShellOpenAppOptions = {
      */
     page?: ExternalPageName;
     query?: PageQuery;
-    /** Defaults to 'release'. */
-    envVersion?: LxAppEnvVersion;
+    /**
+     * Lxapp publish channel. Defaults from the host env
+     * (`dev` → `draft`, `prod` → `release`).
+     */
+    channel?: LxAppEnvVersion;
     targetVersion?: string;
     /** Stable identity for `lx.surface.get(key)`. */
     key?: string;
@@ -2190,7 +2200,7 @@ export type UpdateManager = {
 export type UpdateReadyInfo = {
     version?: string;
     isForceUpdate?: boolean;
-    channel?: "release" | "preview" | "developer" | string;
+    channel?: "release" | "preview" | "draft" | string;
 };
 
 export type UploadIteratorResult = {
@@ -2487,7 +2497,7 @@ export interface LxAppInfo {
   appId: string;
   appName: string;
   version: string;
-  releaseType: LxAppReleaseType;
+  channel: LxAppReleaseType;
 }
 
 export interface ScreenInfo {
@@ -2596,7 +2606,7 @@ declare global {
      * metadata and reject when `update.apply()` is invoked.
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
-    readonly envVersion: HostAppEnvVersion;
+    readonly env: HostAppEnv;
     /**
      * Read the host app's identity: OS, product name, product version, and SDK
      * runtime version.
@@ -2712,7 +2722,7 @@ declare global {
     onKeyUp(callback: KeyEventCallback): () => void;
     /** Get location function */
     getLocation(options?: GetLocationOptions): Promise<LocationInfo>;
-    /** Identify the running lxapp: its id, display name, version, and release type. */
+    /** Identify the running lxapp: its id, display name, version, and channel. */
     getLxAppInfo(): LxAppInfo;
     /** Read an image's dimensions, type, and orientation without decoding it into a view. */
     getImageInfo(options: GetImageInfoOptions): Promise<ImageInfo>;

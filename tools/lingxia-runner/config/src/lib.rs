@@ -41,27 +41,24 @@ pub fn from_env() -> RunnerConfig {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RunnerEnv {
-    Developer,
-    Preview,
-    Release,
+    Dev,
+    Prod,
 }
 
 impl RunnerEnv {
     fn table_name(self) -> &'static str {
         match self {
-            Self::Developer => "developer",
-            Self::Preview => "preview",
-            Self::Release => "release",
+            Self::Dev => "dev",
+            Self::Prod => "prod",
         }
     }
 }
 
 fn runner_env_from_env() -> RunnerEnv {
     match std::env::var(ENV_RUNNER_ENV).as_deref().map(str::trim) {
-        Ok("preview") => RunnerEnv::Preview,
-        Ok("release") => RunnerEnv::Release,
-        // "developer"/"dev", unset, or anything unrecognized
-        _ => RunnerEnv::Developer,
+        Ok("prod") => RunnerEnv::Prod,
+        // "dev", unset, or anything unrecognized
+        _ => RunnerEnv::Dev,
     }
 }
 
@@ -116,13 +113,13 @@ mod tests {
             "lingxiaServer = \"https://staging.example.com\"\nlingxiaId = \"app-123\"\n",
         )
         .unwrap();
-        let (server, id) = parse_runner_config(&path, RunnerEnv::Developer);
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Dev);
         assert_eq!(server.as_deref(), Some("https://staging.example.com"));
         assert_eq!(id.as_deref(), Some("app-123"));
         std::fs::remove_dir_all(&dir).ok();
         // Missing file -> no overrides.
         assert_eq!(
-            parse_runner_config(Path::new("/no/such/config.toml"), RunnerEnv::Developer),
+            parse_runner_config(Path::new("/no/such/config.toml"), RunnerEnv::Dev),
             (None, None)
         );
     }
@@ -138,20 +135,20 @@ mod tests {
 lingxiaId = "app-id"
 
 [lingxiaServer]
-preview = "https://preview.example.com"
-release = "https://api.example.com"
+dev = "https://dev.example.com"
+prod = "https://api.example.com"
 "#,
         )
         .unwrap();
 
         // Scalar lingxiaId applies to every env; the lingxiaServer map is
         // looked up per env with no fallback for envs it does not list.
-        let (server, id) = parse_runner_config(&path, RunnerEnv::Preview);
-        assert_eq!(server.as_deref(), Some("https://preview.example.com"));
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Prod);
+        assert_eq!(server.as_deref(), Some("https://api.example.com"));
         assert_eq!(id.as_deref(), Some("app-id"));
 
-        let (server, id) = parse_runner_config(&path, RunnerEnv::Developer);
-        assert_eq!(server, None);
+        let (server, id) = parse_runner_config(&path, RunnerEnv::Dev);
+        assert_eq!(server.as_deref(), Some("https://dev.example.com"));
         assert_eq!(id.as_deref(), Some("app-id"));
         std::fs::remove_dir_all(&dir).ok();
     }

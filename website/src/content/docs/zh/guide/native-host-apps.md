@@ -47,10 +47,10 @@ lingxia new my-app -t native-app -p macos,windows \
 
 ## 环境与发布构建
 
-`--env developer|preview|release` 选择环境 slot，包括 package-id suffix 与 server config；`--release` 选择 compiler profile。两者相互独立，可交付构建通常同时使用：
+`--env dev|prod` 选择宿主环境，包括 package-id suffix 与 server config；`--release` 选择 compiler profile。两者相互独立，可交付构建通常同时使用：
 
 ```bash
-lingxia build --env release --release
+lingxia build --env prod --release
 ```
 
 需要 staging 好的分发产物时使用 `lingxia package`。平台与签名 flags 以 `lingxia build --help` 和 `lingxia package --help` 的当前版本输出为准。

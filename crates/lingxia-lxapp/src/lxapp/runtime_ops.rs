@@ -2,7 +2,7 @@
 
 use super::*;
 
-pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>, LxAppError> {
+pub fn ensure_lxapp(appid: &str, release_type: Channel) -> Result<Arc<LxApp>, LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".to_string()))?;
     manager.ensure_lxapp(appid.to_string(), release_type)
@@ -14,7 +14,7 @@ pub fn ensure_lxapp(appid: &str, release_type: ReleaseType) -> Result<Arc<LxApp>
 pub fn ensure_control_lxapp(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<Arc<LxApp>, LxAppError> {
     if !authority.validate() {
         return Err(LxAppError::UnsupportedOperation(
@@ -32,7 +32,7 @@ pub fn ensure_control_lxapp(
 pub fn ensure_control_surface_lxapp(
     authority: &crate::NativeControlPlaneAuthority,
     appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<Arc<LxApp>, LxAppError> {
     if !authority.validate() {
         return Err(LxAppError::UnsupportedOperation(
@@ -190,7 +190,7 @@ pub fn uninstall_lxapp(appid: &str) -> Result<(), LxAppError> {
     updater.uninstall_all(appid)
 }
 
-pub fn installed_lxapp_path(appid: &str, release_type: ReleaseType) -> Option<String> {
+pub fn installed_lxapp_path(appid: &str, release_type: Channel) -> Option<String> {
     metadata::get(appid, release_type)
         .ok()
         .flatten()

@@ -114,8 +114,8 @@ fn build_page_share_url(lxapp: &LxApp, page: JSSharePage) -> JSResult<String> {
         format!("appId={}", urlencoding::encode(&lxapp.appid)),
         format!("path={}", urlencoding::encode(path.trim_start_matches('/'))),
     ];
-    if let Some(env_version) = app_link_env_version(lxapp) {
-        pairs.push(format!("envVersion={env_version}"));
+    if let Some(channel) = app_link_channel(lxapp) {
+        pairs.push(format!("channel={channel}"));
     }
     if let Some(raw_query) = raw_query.filter(|value| !value.is_empty()) {
         pairs.push(raw_query);
@@ -226,7 +226,7 @@ fn validate_share_page_query(raw_query: Option<&str>) -> JSResult<()> {
         let key = urlencoding::decode(raw_key)
             .map(|value| value.to_string())
             .map_err(|_| js_invalid_parameter_error("share page query has invalid encoding"))?;
-        if matches!(key.as_str(), "appId" | "appid" | "path" | "envVersion") {
+        if matches!(key.as_str(), "appId" | "appid" | "path" | "channel") {
             return Err(js_invalid_parameter_error(format!(
                 "share page query key is reserved: {key}"
             )));
@@ -235,11 +235,11 @@ fn validate_share_page_query(raw_query: Option<&str>) -> JSResult<()> {
     Ok(())
 }
 
-fn app_link_env_version(lxapp: &LxApp) -> Option<&'static str> {
+fn app_link_channel(lxapp: &LxApp) -> Option<&'static str> {
     match lxapp.release_type() {
-        lxapp::ReleaseType::Release => None,
-        lxapp::ReleaseType::Preview => Some("preview"),
-        lxapp::ReleaseType::Developer => Some("developer"),
+        lxapp::Channel::Release => None,
+        lxapp::Channel::Preview => Some("preview"),
+        lxapp::Channel::Draft => Some("draft"),
     }
 }
 

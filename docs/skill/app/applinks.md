@@ -70,7 +70,7 @@ Product URLs always open home. To target a **specific** lxapp, page, or release
 channel from a link, use the reserved `/lxapp/` namespace:
 
 ```text
-https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&envVersion=<release|preview|developer>&<pageQuery>
+https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&channel=<release|preview|draft>&<pageQuery>
 ```
 
 Examples:
@@ -78,7 +78,7 @@ Examples:
 ```text
 https://app.example.com/lxapp/open?appId=shop
 https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&id=42
-https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42
+https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42
 ```
 
 Only in this namespace are routing parameters consumed, and only here is a
@@ -90,27 +90,24 @@ malformed URL rejected. Do not mint product links under `/lxapp/`.
 |---|---:|---|
 | `appId` | No | Target lxapp. Omitted → home. |
 | `path` | No | Target page path. Omitted → current/initial page; Logic routes from `query`. |
-| `envVersion` | No | Target release channel. Matches `navigateToApp`. Omitted, the host build's own channel (its `envVersion`) is used — a developer build opens the target from the developer channel, not release. |
+| `channel` | No | Target lxapp channel. Matches `navigateToApp`. Omitted, the host env's default channel is used (`dev` → `draft`, `prod` → `release`). |
 
 All query keys and values should be URL encoded. Routing parameters are consumed
 by the SDK and are not forwarded to the page. Other query parameters are
 forwarded to the target page.
 
-Release channel mapping:
-
-| Link value | Runtime release type |
+| Link value | Channel |
 |---|---|
-| `envVersion=release` | `release` |
-| `envVersion=preview` | `preview` |
-| `envVersion=developer` | `developer` |
+| `channel=release` | `release` |
+| `channel=preview` | `preview` |
+| `channel=draft` | `draft` |
 
-`develop` is accepted as the pre-0.13 spelling of `developer`. No other aliases;
-invalid `envVersion` values are rejected.
+No aliases. Invalid `channel` values are rejected.
 
 Example:
 
 ```text
-https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42
+https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42
 ```
 
 opens:
@@ -134,16 +131,16 @@ appLinks:
   hosts:
     - app.example.com
 # hosts:
-#   developer: [app-dev.example.com]
-#   preview: [app-preview.example.com]
-#   release: [app.example.com]
+#   dev: [app-dev.example.com]
+#   prod: [app.example.com]
 ```
 
 `lingxia build --env` writes that env's hosts into `app.json` and platform
 association files. Share URLs use the first host of the running build.
 `lingxia new -t native-app` leaves this off. Envs use different package ids
-(`.dev` / `.preview`); each host's `.well-known` file should list the matching
-id.
+(`.dev` on `dev`, none on `prod`); each host's `.well-known` file should list
+the matching id. Open URLs carry `channel=` (`release` | `preview` |
+`draft`) when they target a non-default lxapp line.
 
 ## Well-Known Verification Files
 
@@ -305,8 +302,8 @@ When the SDK receives a link:
 1. Accepts only `https://`.
 2. Checks the host against the hosts baked into this build's `app.json`. This is
    the only gate — a non-matching host is ignored, everything else is delivered.
-3. `/lxapp/*` only: parses the routing query, resolves `envVersion`, and ensures
-   the requested lxapp release is installed and compatible. A malformed
+3. `/lxapp/*` only: parses the routing query, resolves `channel`, and ensures
+   the requested lxapp package is installed and compatible. A malformed
    `/lxapp/*` URL is rejected here.
 4. Opens the target with `scene: 8003` and the original `url`. Any other path
    opens home at its initial page.
@@ -367,7 +364,7 @@ HarmonyOS:
 
 ```bash
 hdc shell aa start -A ohos.want.action.viewData \
-  -U "https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=developer&id=42"
+  -U "https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42"
 ```
 
 ## Checklist

@@ -4,8 +4,8 @@ use super::{
     validate_app_ui_svg_icon,
 };
 use crate::config::{
-    AppLinkHosts, AppLinksConfig, EnvVersion, HostAppConfig, LingXiaConfig, LingxiaServer,
-    PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig, UpdateSigningConfig,
+    AppEnv, AppLinkHosts, AppLinksConfig, HostAppConfig, LingXiaConfig, LingxiaServer, PerEnvHosts,
+    ResolvedEnv, SettingsDestination, ThemeConfig, UpdateSigningConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -14,7 +14,7 @@ use tempfile::TempDir;
 
 fn test_resolved_env() -> ResolvedEnv {
     ResolvedEnv {
-        version: EnvVersion::Release,
+        version: AppEnv::Prod,
         lingxia_server: "https://api.example.com".to_string(),
         package_id_suffix: None,
         app_link_hosts: Vec::new(),
@@ -56,7 +56,7 @@ fn lingxia_id_is_not_suffixed_by_env() {
     };
     // An active package-id suffix must not leak into lingxiaId.
     let dev_env = ResolvedEnv {
-        version: EnvVersion::Developer,
+        version: AppEnv::Dev,
         lingxia_server: String::new(),
         package_id_suffix: Some(".dev".to_string()),
         app_link_hosts: Vec::new(),
@@ -346,9 +346,8 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         surfaces: None,
         app_links: Some(AppLinksConfig {
             hosts: AppLinkHosts::PerEnv(PerEnvHosts {
-                developer: Some(vec!["app-dev.example.com".into()]),
-                preview: None,
-                release: Some(vec!["app.example.com".into()]),
+                dev: Some(vec!["app-dev.example.com".into()]),
+                prod: Some(vec!["app.example.com".into()]),
             }),
         }),
         storage: None,
@@ -358,22 +357,16 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         update: None,
     };
 
-    let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+    let dev = config.resolve_env(AppEnv::Dev).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&build_app_json_from_config(&config, None, None, &dev).unwrap())
             .unwrap();
     assert_eq!(value["appLinks"]["hosts"][0], "app-dev.example.com");
     assert_eq!(value["appLinks"]["hosts"].as_array().unwrap().len(), 1);
 
-    let preview = config.resolve_env(EnvVersion::Preview).unwrap();
+    let prod = config.resolve_env(AppEnv::Prod).unwrap();
     let value: serde_json::Value =
-        serde_json::from_str(&build_app_json_from_config(&config, None, None, &preview).unwrap())
-            .unwrap();
-    assert!(value.get("appLinks").is_none());
-
-    let release = config.resolve_env(EnvVersion::Release).unwrap();
-    let value: serde_json::Value =
-        serde_json::from_str(&build_app_json_from_config(&config, None, None, &release).unwrap())
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &prod).unwrap())
             .unwrap();
     assert_eq!(value["appLinks"]["hosts"][0], "app.example.com");
 }

@@ -7,7 +7,7 @@ use crate::page::png_dimensions;
 use crate::resolve::{json_to_js, resolve_lxapp_by_id};
 use crate::{auto_err, require_host_context};
 use base64::{Engine as _, engine::general_purpose};
-use lxapp::{LxApp, LxAppStartupOptions, ReleaseType};
+use lxapp::{LxApp, LxAppStartupOptions};
 use rong::{
     Class, FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, JSValue,
     function::Optional, js_class, js_method,
@@ -24,15 +24,8 @@ fn to_js<T: serde::Serialize>(ctx: &JSContext, value: &T) -> JSResult<JSValue> {
     json_to_js(ctx, &json)
 }
 
-fn release_type(raw: Option<&str>) -> JSResult<ReleaseType> {
-    match raw.map(str::trim) {
-        None | Some("") | Some("release") => Ok(ReleaseType::Release),
-        Some("preview") => Ok(ReleaseType::Preview),
-        Some("developer") => Ok(ReleaseType::Developer),
-        Some(other) => Err(auto_err(format!(
-            "unknown releaseType '{other}' (expected release | preview | developer)"
-        ))),
-    }
+fn parse_open_channel(raw: Option<&str>) -> JSResult<lxapp::Channel> {
+    lxapp::parse_optional_channel(raw).map_err(auto_err)
 }
 
 /// Self-targeted lifecycle ops run teardown from inside the calling app's own
@@ -74,8 +67,7 @@ struct AppOpt {
 struct OpenOpt {
     appid: String,
     path: Option<String>,
-    #[js_name = "releaseType"]
-    release_type: Option<String>,
+    channel: Option<String>,
 }
 
 #[derive(Debug, Clone, IntoJSObject)]
@@ -144,10 +136,11 @@ impl JSLxAppManager {
     #[js_method]
     async fn open(&self, ctx: JSContext, options: OpenOpt) -> JSResult<JSOpenResult> {
         require_host_context(&ctx)?;
-        let rt = release_type(options.release_type.as_deref())?;
+        let channel = parse_open_channel(options.channel.as_deref())?;
         let app = lxapp::open_lxapp(
             &options.appid,
-            LxAppStartupOptions::new(options.path.as_deref().unwrap_or("")).set_release_type(rt),
+            LxAppStartupOptions::new(options.path.as_deref().unwrap_or(""))
+                .set_release_type(channel),
         )
         .map_err(|err| auto_err(err.to_string()))?;
         Ok(JSOpenResult {

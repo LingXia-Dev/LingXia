@@ -745,52 +745,36 @@ mod tests {
         let wallet = Wallet::at(tmp.path());
         let server = "https://lx.example.com/base";
 
-        assert!(
-            wallet
-                .load_publish_token(server, "release")
-                .unwrap()
-                .is_none()
-        );
-        let path = wallet
-            .save_publish_token(server, "release", "tok1")
-            .unwrap();
+        assert!(wallet.load_publish_token(server, "prod").unwrap().is_none());
+        let path = wallet.save_publish_token(server, "prod", "tok1").unwrap();
         assert!(path.starts_with(tmp.path().join("credentials").join("lingxia")));
         assert_eq!(
             wallet
-                .load_publish_token(server, "release")
+                .load_publish_token(server, "prod")
                 .unwrap()
                 .as_deref(),
             Some("tok1")
         );
 
         // Same key again is a rotation.
-        wallet
-            .save_publish_token(server, "release", "tok2")
-            .unwrap();
+        wallet.save_publish_token(server, "prod", "tok2").unwrap();
         assert_eq!(
             wallet
-                .load_publish_token(server, "release")
+                .load_publish_token(server, "prod")
                 .unwrap()
                 .as_deref(),
             Some("tok2")
         );
 
         // Envs and servers are independent keys.
+        wallet.save_publish_token(server, "dev", "dev").unwrap();
         wallet
-            .save_publish_token(server, "developer", "dev")
-            .unwrap();
-        wallet
-            .save_publish_token("https://other.example.com", "release", "o")
+            .save_publish_token("https://other.example.com", "prod", "o")
             .unwrap();
         assert_eq!(wallet.publish_entries().unwrap().len(), 3);
 
-        assert!(wallet.delete_publish_token(server, "release").unwrap());
-        assert!(
-            wallet
-                .load_publish_token(server, "release")
-                .unwrap()
-                .is_none()
-        );
+        assert!(wallet.delete_publish_token(server, "prod").unwrap());
+        assert!(wallet.load_publish_token(server, "prod").unwrap().is_none());
     }
 
     #[test]

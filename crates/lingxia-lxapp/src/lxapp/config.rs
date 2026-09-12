@@ -14,7 +14,7 @@ pub struct LxAppInfo {
     pub app_name: String,
     /// LxApp version
     pub version: String,
-    /// LxApp release type (release|preview|developer)
+    /// LxApp channel (release|preview|draft)
     pub release_type: String,
 }
 

@@ -34,7 +34,7 @@ pub fn open_panel_lxapp(panel_id: &str, appid: &str, path: &str) {
 }
 
 async fn do_open_panel_lxapp(panel_id: &str, appid: &str, path: &str) -> Result<(), LxAppError> {
-    let channel = lxapp::host_channel();
+    let channel = lxapp::default_channel();
     lxapp::prepare_lxapp_open(appid, channel).await?;
 
     let _ = lxapp::open_lxapp(

@@ -7,7 +7,7 @@ use tokio::task::yield_now;
 
 fn emit_update_ready_event(
     target_appid: &str,
-    channel: ReleaseType,
+    channel: Channel,
     version: &str,
     is_force_update: bool,
 ) {
@@ -21,7 +21,7 @@ fn emit_update_ready_event(
 
 fn emit_update_failed_event(
     target_appid: &str,
-    channel: ReleaseType,
+    channel: Channel,
     pkg: &UpdatePackageInfo,
     error: &str,
 ) {
@@ -40,7 +40,7 @@ fn emit_update_failed_event(
 struct BoundLxAppUpdateHost {
     context_lxapp: Arc<lxapp_runtime::LxApp>,
     target_appid: String,
-    release_type: ReleaseType,
+    release_type: Channel,
     current_version_hint: Option<String>,
 }
 
@@ -48,7 +48,7 @@ impl BoundLxAppUpdateHost {
     fn new(
         context_lxapp: Arc<lxapp_runtime::LxApp>,
         target_appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
         current_version_hint: Option<String>,
     ) -> Self {
         Self {
@@ -73,7 +73,7 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         &self.target_appid
     }
 
-    fn channel(&self) -> ReleaseType {
+    fn channel(&self) -> Channel {
         self.release_type
     }
 
@@ -311,7 +311,7 @@ impl UpdateManager {
     pub(super) fn spawn_background_update_check_internal(
         context_lxapp: Arc<lxapp_runtime::LxApp>,
         target_appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
         current_version: Option<String>,
     ) {
         lingxia_update::spawn_lxapp_background_update_check(
@@ -330,7 +330,7 @@ impl UpdateManager {
     pub async fn check_update(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         query: LxAppUpdateQuery,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         let provider = crate::get_provider();
@@ -368,7 +368,7 @@ impl UpdateManager {
     async fn check_latest_update(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         current_version: Option<&str>,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         self.check_update(
@@ -382,7 +382,7 @@ impl UpdateManager {
     async fn check_exact_update(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         target_version: &str,
     ) -> Result<Option<UpdatePackageInfo>, LxAppError> {
         self.check_update(
@@ -394,7 +394,7 @@ impl UpdateManager {
     }
 
     /// Spawn a background update check for a known lxapp on `release_type`.
-    pub fn spawn_lxapp_update_check(target_appid: String, release_type: ReleaseType) {
+    pub fn spawn_lxapp_update_check(target_appid: String, release_type: Channel) {
         let Some(lxapp) = lxapp_runtime::try_get(&target_appid) else {
             crate::warn!(
                 "LxApp '{}' not found for background update check",
@@ -440,7 +440,7 @@ impl UpdateManager {
     pub(crate) fn apply_downloaded_update(
         runtime: Arc<Platform>,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<(), LxAppError> {
         let downloaded = match metadata::downloaded_get(lxappid, release_type)? {
             Some(rec) => rec,
@@ -531,7 +531,7 @@ impl UpdateManager {
 pub async fn ensure_first_install(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<(), LxAppError> {
     lingxia_update::ensure_lxapp_first_install(&BoundLxAppUpdateHost::new(
         current_lxapp.clone(),
@@ -558,7 +558,7 @@ fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_app
 pub async fn ensure_target_version_ready(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
     target_version: &str,
 ) -> Result<(), LxAppError> {
     lingxia_update::ensure_lxapp_target_version_ready(
@@ -578,7 +578,7 @@ pub async fn ensure_target_version_ready(
 pub async fn ensure_force_update_for_installed(
     current_lxapp: &Arc<lxapp_runtime::LxApp>,
     target_appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<(), LxAppError> {
     lingxia_update::ensure_lxapp_force_update_for_installed(&BoundLxAppUpdateHost::new(
         current_lxapp.clone(),
@@ -593,7 +593,7 @@ pub async fn ensure_force_update_for_installed(
 /// Prepare an lxapp package so shell surfaces can open it immediately.
 pub async fn prepare_lxapp_open(
     target_appid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<(), LxAppError> {
     let home_appid = lingxia_app_context::home_app_id()
         .map(str::to_string)
@@ -613,6 +613,6 @@ pub async fn prepare_lxapp_open(
     Ok(())
 }
 
-pub fn schedule_lxapp_update_check(target_appid: &str, release_type: ReleaseType) {
+pub fn schedule_lxapp_update_check(target_appid: &str, release_type: Channel) {
     UpdateManager::spawn_lxapp_update_check(target_appid.to_string(), release_type);
 }

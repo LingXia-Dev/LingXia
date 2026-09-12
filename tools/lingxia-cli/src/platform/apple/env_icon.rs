@@ -1,11 +1,11 @@
-//! Apple env-version launcher-icon overlay.
+//! Apple host-env launcher-icon overlay.
 //!
 //! Mirrors the Android `prepare_res_overlay` flow: when the active
-//! env is developer/preview, build a parallel `Assets.xcassets` under
+//! env is `dev`, build a parallel `Assets.xcassets` under
 //! `<target>/lingxia/<platform>/overlay/<env>/Resources/` whose `AppIcon.appiconset`
 //! has each PNG composited with a small accent badge (filled circle + bitmap
-//! "D" / "P"). The build then points `actool` at the staging resources dir so
-//! the source asset catalog is never mutated and dev/release can be installed
+//! "D"). The build then points `actool` at the staging resources dir so
+//! the source asset catalog is never mutated and dev/prod can be installed
 //! side by side and visually distinguished on the home screen.
 
 use anyhow::{Context, Result};
@@ -13,7 +13,7 @@ use image::ImageFormat;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::EnvVersion;
+use crate::config::AppEnv;
 use crate::platform::env_badge::{composite_badge_inset, env_badge};
 
 /// If the active env needs a badge, stage a copy of `Assets.xcassets` with a
@@ -30,7 +30,7 @@ use crate::platform::env_badge::{composite_badge_inset, env_badge};
 pub fn prepare_overlay_resources_dir(
     staging_base: &Path,
     resources_dir: &Path,
-    env: EnvVersion,
+    env: AppEnv,
     icon_margin_frac: f32,
     opaque: bool,
 ) -> Result<Option<PathBuf>> {
