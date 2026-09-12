@@ -234,6 +234,16 @@ pub trait WindowsHostBackend: Send + Sync {
         unsupported_operation("hide_host_panel")
     }
 
+    /// Hide the exclusive-tray flyout if it is showing.
+    fn hide_exclusive_tray_popover(&self) -> bool {
+        false
+    }
+
+    /// Show the exclusive-tray flyout next to the notify icon.
+    fn show_exclusive_tray_popover(&self) -> bool {
+        false
+    }
+
     fn update_host_panel_body(&self, _panel_id: &str, _body: &str) -> StdResult<()> {
         unsupported_operation("update_host_panel_body")
     }
@@ -948,6 +958,18 @@ pub fn show_interactive_host_panel(
 
 pub fn hide_host_panel(panel_id: &str) -> StdResult<()> {
     backend()?.hide_host_panel(panel_id)
+}
+
+pub fn hide_exclusive_tray_popover() -> bool {
+    backend()
+        .map(|backend| backend.hide_exclusive_tray_popover())
+        .unwrap_or(false)
+}
+
+pub fn show_exclusive_tray_popover() -> bool {
+    backend()
+        .map(|backend| backend.show_exclusive_tray_popover())
+        .unwrap_or(false)
 }
 
 pub fn update_host_panel_body(panel_id: &str, body: &str) -> StdResult<()> {

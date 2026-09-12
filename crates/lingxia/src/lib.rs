@@ -42,7 +42,7 @@ pub use lingxia_app_context::SettingsDestination;
 pub use lxapp::{AppSessionClass, LxApp};
 pub use lxapp::{
     FloatDismiss, LxAppSecurityPrivilege, PageQueryInput, PageSurface, PageSurfaceRequest,
-    PageSurfaceTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
+    PageSurfaceTarget, PageTarget, SurfaceInteraction, SurfaceKind, SurfacePosition, SurfaceRole,
     UrlCallbackSurface, UrlCallbackWaitError, WindowChrome,
 };
 
