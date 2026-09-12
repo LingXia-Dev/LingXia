@@ -73,6 +73,14 @@ pub(crate) fn create_icon_handle_from_path(path: &Path, size: u32) -> Option<isi
     create_icon_from_image(&image, size, path).ok()
 }
 
+/// Tray glyphs are often black-on-transparent (macOS template style). Windows
+/// does not invert those, so a dark notification area would hide the icon.
+pub(crate) fn create_tray_icon_handle_from_path(path: &Path, size: u32) -> Option<isize> {
+    let mut image = prepare_app_icon_image(path).ok()?;
+    invert_dark_tray_glyph(&mut image);
+    create_icon_from_image(&image, size, path).ok()
+}
+
 /// The process's current large (32px) app-icon handle, if one has been
 /// applied. A shared, caller-must-not-destroy handle usable as a fallback
 /// when no app-specific icon path is available.
@@ -103,10 +111,102 @@ fn current_app_icon_handles() -> Option<AppIconHandles> {
 /// padding is cropped to a square around the visible content; flat backgrounds
 /// retain a small margin. Icons without a uniform border are returned unchanged.
 fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
-    let image = image::open(path)
-        .map_err(|err| format!("Failed to load Windows app icon {}: {err}", path.display()))?
-        .into_rgba8();
+    let image = if path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("svg"))
+    {
+        rasterize_svg_icon(path)?
+    } else {
+        image::open(path)
+            .map_err(|err| format!("Failed to load Windows app icon {}: {err}", path.display()))?
+            .into_rgba8()
+    };
     Ok(tighten_icon(image))
+}
+
+fn rasterize_svg_icon(path: &Path) -> Result<image::RgbaImage, String> {
+    let svg = std::fs::read_to_string(path)
+        .map_err(|err| format!("Failed to read Windows SVG icon {}: {err}", path.display()))?;
+    let tree = usvg::Tree::from_str(&svg, &usvg::Options::default())
+        .map_err(|err| format!("Failed to parse Windows SVG icon {}: {err}", path.display()))?;
+    let size = tree.size();
+    let width = size.width().max(1.0).round() as u32;
+    let height = size.height().max(1.0).round() as u32;
+    let mut pixmap = tiny_skia::Pixmap::new(width, height).ok_or_else(|| {
+        format!(
+            "Failed to allocate pixmap for Windows SVG icon {}",
+            path.display()
+        )
+    })?;
+    resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    image::RgbaImage::from_raw(width, height, pixmap.take()).ok_or_else(|| {
+        format!(
+            "Failed to decode rasterized Windows SVG icon {}",
+            path.display()
+        )
+    })
+}
+
+fn taskbar_is_dark() -> bool {
+    use windows::Win32::System::Registry::{
+        HKEY_CURRENT_USER, KEY_READ, REG_DWORD, RegOpenKeyExW, RegQueryValueExW,
+    };
+    let mut key = windows::Win32::System::Registry::HKEY::default();
+    let path = windows::core::w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let opened = unsafe { RegOpenKeyExW(HKEY_CURRENT_USER, path, Some(0), KEY_READ, &mut key) };
+    if opened.is_err() {
+        return true;
+    }
+    let mut value = 1u32;
+    let mut size = std::mem::size_of::<u32>() as u32;
+    let mut kind = REG_DWORD;
+    let status = unsafe {
+        RegQueryValueExW(
+            key,
+            windows::core::w!("SystemUsesLightTheme"),
+            None,
+            Some(&mut kind),
+            Some((&mut value as *mut u32).cast()),
+            Some(&mut size),
+        )
+    };
+    let _ = unsafe { windows::Win32::System::Registry::RegCloseKey(key) };
+    status.is_err() || value == 0
+}
+
+fn invert_dark_tray_glyph(image: &mut image::RgbaImage) {
+    // macOS treats the glyph as a template and inverts for the menu bar.
+    // Windows has no template icons: a light taskbar needs the original
+    // black strokes, a dark one needs the invert. Always-white was the
+    // white blob on Windows 11's default light notification area.
+    if !taskbar_is_dark() {
+        return;
+    }
+    invert_dark_pixels(image);
+}
+
+fn invert_dark_pixels(image: &mut image::RgbaImage) {
+    let mut lum_sum = 0u64;
+    let mut count = 0u64;
+    for pixel in image.pixels() {
+        let [r, g, b, a] = pixel.0;
+        if a < 32 {
+            continue;
+        }
+        lum_sum += (u64::from(r) * 3 + u64::from(g) * 6 + u64::from(b)) / 10;
+        count += 1;
+    }
+    if count == 0 || lum_sum / count > 140 {
+        return;
+    }
+    for pixel in image.pixels_mut() {
+        let [r, g, b, a] = pixel.0;
+        if a < 16 {
+            continue;
+        }
+        pixel.0 = [255 - r, 255 - g, 255 - b, a];
+    }
 }
 
 fn tighten_icon(image: image::RgbaImage) -> image::RgbaImage {
@@ -277,5 +377,13 @@ mod tests {
 
         let tightened = tighten_icon(source);
         assert_eq!(tightened.dimensions(), (12, 12));
+    }
+
+    #[test]
+    fn dark_tray_glyph_is_inverted_for_the_notification_area() {
+        let mut source = image::RgbaImage::new(8, 8);
+        source.put_pixel(3, 3, image::Rgba([0, 0, 0, 255]));
+        invert_dark_pixels(&mut source);
+        assert_eq!(source.get_pixel(3, 3).0, [255, 255, 255, 255]);
     }
 }

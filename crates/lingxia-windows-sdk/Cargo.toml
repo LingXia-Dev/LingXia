@@ -42,7 +42,10 @@ runtime = [
     "components",
     "dep:lingxia",
     "dep:lingxia-surface",
+    "dep:resvg",
+    "dep:tiny-skia",
     "dep:thiserror",
+    "dep:usvg",
 ]
 
 # Tier 3 (quick-start default) — runtime opened in plain webview windows.
