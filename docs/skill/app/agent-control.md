@@ -47,10 +47,10 @@ the destructive effect.
 Invoke the exact product executable as `<executable> --cli ...`; LingXia has no
 launcher and does not rely on shell `PATH`.
 
-The product owns its agent skill and locator. A release build may atomically
-write `current_exe()` to `~/.<product>/path`. Developer builds must not replace
+The product owns its agent skill and locator. A prod build may atomically
+write `current_exe()` to `~/.<product>/path`. Dev builds must not replace
 that locator; the skill resolves one product-owned environment override first,
-then the release locator. Use `lingxia::app::{env_version, EnvVersion}` to
+then the prod locator. Use `lingxia::app::{env, AppEnv}` to
 distinguish builds. Their app-data paths already isolate their IPC endpoints.
 
 Register a command and its matching request namespace before services start:
@@ -69,7 +69,7 @@ impl lingxia::HostAddon for AppHostAddon {
 
 The CLI handler receives `product_cli::Transport` and arguments after its
 command name. `start_services` is too late for registration; use it to start
-local control and publish the release locator.
+local control and publish the prod locator.
 
 ## Agent behavior
 

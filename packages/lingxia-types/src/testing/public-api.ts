@@ -131,7 +131,7 @@ const HOST_APP_API = [
   'checkUpdate',
   'control',
   'displayLanguage',
-  'envVersion',
+  'env',
   'exit',
   'getBaseInfo',
   'screenshot',
@@ -349,7 +349,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app',
     members: HOST_APP_RUNTIME_API,
-    properties: ['appearance', 'displayLanguage', 'envVersion'],
+    properties: ['appearance', 'displayLanguage', 'env'],
   },
   {
     name: 'lx.app.autostart',

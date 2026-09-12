@@ -206,7 +206,7 @@ impl ProvisioningManager {
                 anyhow!(
                     "No AGC App for bundle `{bundle_name}`. AGC has no create-app API; add it manually at \
                      https://developer.huawei.com/consumer/cn/service/josp/agc/index.html (HarmonyOS, \
-                     package `{bundle_name}`), then re-run. Or pass `--env release` to skip the env-version suffix."
+                     package `{bundle_name}`), then re-run. Or pass `--env prod` to skip the env suffix."
                 )
             })
     }

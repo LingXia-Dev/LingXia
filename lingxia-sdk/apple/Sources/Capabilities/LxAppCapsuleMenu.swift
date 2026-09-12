@@ -206,8 +206,8 @@ class LxAppCapsuleMenu {
 
     private static func releaseBadge(for releaseType: String) -> (text: String, textColor: UIColor, backgroundColor: UIColor)? {
         switch releaseType.lowercased() {
-        case "developer":
-            return ("DEV", UIColor(red: 0.11, green: 0.31, blue: 0.85, alpha: 1.0), UIColor(red: 0.86, green: 0.92, blue: 0.99, alpha: 1.0))
+        case "draft":
+            return ("DFT", UIColor(red: 0.11, green: 0.31, blue: 0.85, alpha: 1.0), UIColor(red: 0.86, green: 0.92, blue: 0.99, alpha: 1.0))
         case "preview":
             return ("PRE", UIColor(red: 0.71, green: 0.33, blue: 0.03, alpha: 1.0), UIColor(red: 1.0, green: 0.93, blue: 0.84, alpha: 1.0))
         default:
@@ -449,7 +449,7 @@ class LxAppCapsuleMenu {
 
         var headerTitle = "\(appName) · v\(version)"
         switch releaseType.lowercased() {
-        case "developer": headerTitle += "  [DEV]"
+        case "draft": headerTitle += "  [DRAFT]"
         case "preview": headerTitle += "  [PRE]"
         default: break
         }

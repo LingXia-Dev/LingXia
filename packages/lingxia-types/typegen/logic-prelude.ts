@@ -173,14 +173,15 @@ declare global {
 
   // HostAppApi/LxEnv members are emitted from the Rust js_api metadata; these
   // merges only add what Rong cannot express — the cfg-gated autostart member
-  // and doc comments (js_api consts cannot carry docs). envVersion re-declares
+  // and doc comments (js_api consts cannot carry docs). env re-declares
   // the generated member doc-only; tsc rejects the merge if the types drift.
   interface HostAppApi {
     /**
-     * The build environment from `app.json::envVersion`. It is fixed at boot
-     * and defaults to `release` for older artifacts.
+     * The host deployment environment from `app.json::env` (`dev` | `prod`).
+     * It is fixed at boot and defaults to `prod` for older artifacts.
+     * Not the lxapp publish channel (`release` | `preview` | `draft`).
      */
-    readonly envVersion: HostAppEnvVersion;
+    readonly env: HostAppEnv;
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a

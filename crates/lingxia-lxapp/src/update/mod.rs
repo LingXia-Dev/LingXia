@@ -7,7 +7,7 @@ use crate::error::LxAppError;
 use crate::lxapp::config::LxAppConfig;
 use crate::lxapp::metadata::LxAppRecord;
 use crate::lxapp::{
-    self as lxapp_runtime, LINGXIA_DIR, LXAPPS_DIR, ReleaseType, STORAGE_DIR, USER_CACHE_DIR,
+    self as lxapp_runtime, Channel, LINGXIA_DIR, LXAPPS_DIR, STORAGE_DIR, USER_CACHE_DIR,
     USER_DATA_DIR, lxapp_fingermark, metadata, version::Version,
 };
 use crate::provider::provider_error_to_lxapp_error;
@@ -110,12 +110,12 @@ impl UpdateManager {
 
     /// Decide whether we should download/apply the server package for this app variant.
     ///
-    /// `release` / `preview` skip only when the version matches. `developer`
+    /// `release` / `preview` skip only when the version matches. `draft`
     /// also updates when the version matches but the checksum differs.
     pub fn should_update(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         package: &UpdatePackageInfo,
     ) -> bool {
         let installed = crate::lxapp::metadata::get(lxappid, release_type)
@@ -135,7 +135,7 @@ impl UpdateManager {
     pub fn has_downloaded_update(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Option<DownloadedUpdateInfo>, LxAppError> {
         Ok(
             metadata::downloaded_get(lxappid, release_type)?.map(|rec| DownloadedUpdateInfo {
@@ -150,7 +150,7 @@ impl UpdateManager {
     pub fn installed_version(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Option<String>, LxAppError> {
         Ok(metadata::get(lxappid, release_type)?.map(|rec| rec.version_string()))
     }
@@ -159,7 +159,7 @@ impl UpdateManager {
     pub fn installed_checksum(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Option<String>, LxAppError> {
         Ok(metadata::get(lxappid, release_type)?.and_then(|rec| rec.checksum_sha256))
     }
@@ -167,7 +167,7 @@ impl UpdateManager {
     fn downloaded_update_matches(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: &str,
         checksum_sha256: &str,
     ) -> Result<bool, LxAppError> {
@@ -193,11 +193,7 @@ impl UpdateManager {
     }
 
     /// Returns whether the given lxappid+release_type is already installed.
-    pub fn is_installed(
-        &self,
-        lxappid: &str,
-        release_type: ReleaseType,
-    ) -> Result<bool, LxAppError> {
+    pub fn is_installed(&self, lxappid: &str, release_type: Channel) -> Result<bool, LxAppError> {
         let Some(record) = metadata::get(lxappid, release_type)? else {
             return Ok(false);
         };
@@ -228,7 +224,7 @@ impl UpdateManager {
         lxappid: &str,
         version: &str,
     ) -> Result<PathBuf, LxAppError> {
-        let dir_name = lxapp_fingermark(lxappid, crate::host_channel());
+        let dir_name = lxapp_fingermark(lxappid, crate::default_channel());
         let destination = runtime
             .app_data_dir()
             .join(LINGXIA_DIR)
@@ -265,7 +261,13 @@ impl UpdateManager {
             return Err(e);
         }
 
-        Self::record_install_metadata(lxappid, crate::host_channel(), version, &destination, None)?;
+        Self::record_install_metadata(
+            lxappid,
+            crate::default_channel(),
+            version,
+            &destination,
+            None,
+        )?;
         Ok(destination)
     }
 
@@ -273,7 +275,7 @@ impl UpdateManager {
     pub fn apply_update_archive(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: &str,
         archive_path: &Path,
     ) -> Result<(), LxAppError> {
@@ -349,7 +351,7 @@ impl UpdateManager {
     fn install_archive_to_dir(
         runtime: &Arc<Platform>,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: &str,
         archive_path: &Path,
     ) -> Result<(PathBuf, crate::cache::CleanupProtection), LxAppError> {
@@ -370,7 +372,7 @@ impl UpdateManager {
 
     fn versioned_install_dir_name(
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: &str,
     ) -> Result<String, LxAppError> {
         let parsed_version = Version::parse(version).map_err(|_| {
@@ -403,11 +405,7 @@ impl UpdateManager {
     }
 
     /// Uninstall on-disk contents for a specific (lxappid, release_type) and clear metadata.
-    fn uninstall_installed(
-        &self,
-        lxappid: &str,
-        release_type: ReleaseType,
-    ) -> Result<(), LxAppError> {
+    fn uninstall_installed(&self, lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
         if crate::lxapp::is_lxapp_open(lxappid) {
             return Err(LxAppError::UnsupportedOperation(
                 "cannot uninstall an opened app".to_string(),
@@ -479,9 +477,9 @@ impl UpdateManager {
             ));
         }
 
-        let _ = self.uninstall_installed(lxappid, ReleaseType::Release);
-        let _ = self.uninstall_installed(lxappid, ReleaseType::Preview);
-        let _ = self.uninstall_installed(lxappid, ReleaseType::Developer);
+        let _ = self.uninstall_installed(lxappid, Channel::Release);
+        let _ = self.uninstall_installed(lxappid, Channel::Preview);
+        let _ = self.uninstall_installed(lxappid, Channel::Draft);
         let _ = metadata::remove_all(lxappid);
         lxapp_runtime::registry::clear(lxappid);
         Ok(())
@@ -490,7 +488,7 @@ impl UpdateManager {
     pub async fn download_archive_with_checksum(
         &self,
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         url: &str,
         checksum_sha256: &str,
         version: &str,
@@ -572,7 +570,7 @@ impl UpdateManager {
     /// Persist the installation metadata in redb (current installed version only).
     fn record_install_metadata(
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: &str,
         install_path: &Path,
         checksum_sha256: Option<&str>,

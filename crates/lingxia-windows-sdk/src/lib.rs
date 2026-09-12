@@ -722,7 +722,7 @@ pub fn quick_start() -> Result<i32> {
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 fn resolve_app_icon_path(asset_dir: &Path, home_app_id: Option<&str>) -> Option<PathBuf> {
     // `lingxia dev` stages a badged copy of the launcher icon and points this
-    // env var at it, so dev/preview builds show the env badge without the CLI
+    // env var at it, so a `dev` build shows the env badge without the CLI
     // mutating the prepared assets dir. Takes priority over the asset lookup.
     if let Some(path) = std::env::var_os("LINGXIA_APP_ICON_PATH").map(PathBuf::from)
         && path.is_file()

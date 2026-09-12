@@ -6,7 +6,7 @@ use std::sync::{
 
 #[derive(Clone)]
 struct TestHost {
-    channel: ReleaseType,
+    channel: Channel,
     package: UpdatePackageInfo,
     checksum: Option<String>,
     checksum_error: bool,
@@ -16,7 +16,7 @@ struct TestHost {
 }
 
 impl TestHost {
-    fn new(channel: ReleaseType) -> Self {
+    fn new(channel: Channel) -> Self {
         Self {
             channel,
             package: UpdatePackageInfo {
@@ -45,7 +45,7 @@ impl LxAppUpdateHost for TestHost {
     fn target_appid(&self) -> &str {
         "test-app"
     }
-    fn channel(&self) -> ReleaseType {
+    fn channel(&self) -> Channel {
         self.channel
     }
     fn is_ota_managed(&self) -> bool {
@@ -127,16 +127,16 @@ impl LxAppUpdateHost for TestHost {
 }
 
 #[tokio::test]
-async fn exact_developer_version_downloads_republished_package() {
-    let mut host = TestHost::new(ReleaseType::Developer);
+async fn exact_draft_version_downloads_republished_package() {
+    let mut host = TestHost::new(Channel::Draft);
     host.pending_checksum = Some("old".into());
     ensure_target_version_ready(&host, "1.0.0").await.unwrap();
     assert_eq!(host.downloads.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
-async fn exact_developer_version_skips_installed_or_pending_checksum() {
-    let mut host = TestHost::new(ReleaseType::Developer);
+async fn exact_draft_version_skips_installed_or_pending_checksum() {
+    let mut host = TestHost::new(Channel::Draft);
     host.checksum = Some("new".into());
     ensure_target_version_ready(&host, "1.0.0").await.unwrap();
     assert_eq!(host.exact_checks.load(Ordering::SeqCst), 1);
@@ -150,7 +150,7 @@ async fn exact_developer_version_skips_installed_or_pending_checksum() {
 
 #[tokio::test]
 async fn exact_release_and_preview_keep_version_only_shortcut() {
-    for channel in [ReleaseType::Release, ReleaseType::Preview] {
+    for channel in [Channel::Release, Channel::Preview] {
         let host = TestHost::new(channel);
         ensure_target_version_ready(&host, "1.0.0").await.unwrap();
         assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
@@ -159,8 +159,8 @@ async fn exact_release_and_preview_keep_version_only_shortcut() {
 }
 
 #[tokio::test]
-async fn force_gate_requires_republished_developer_checksum() {
-    let mut host = TestHost::new(ReleaseType::Developer);
+async fn force_gate_requires_republished_draft_checksum() {
+    let mut host = TestHost::new(Channel::Draft);
     host.pending_checksum = Some("old".into());
     ensure_force_update_for_installed(&host).await.unwrap();
     assert_eq!(host.downloads.load(Ordering::SeqCst), 1);
@@ -171,11 +171,11 @@ async fn force_gate_requires_republished_developer_checksum() {
 
 #[tokio::test]
 async fn force_gate_does_not_read_checksum_for_optional_or_release_packages() {
-    let mut host = TestHost::new(ReleaseType::Developer);
+    let mut host = TestHost::new(Channel::Draft);
     host.checksum_error = true;
     host.package.is_force_update = false;
     ensure_force_update_for_installed(&host).await.unwrap();
-    for channel in [ReleaseType::Release, ReleaseType::Preview] {
+    for channel in [Channel::Release, Channel::Preview] {
         host.channel = channel;
         host.package.is_force_update = true;
         ensure_force_update_for_installed(&host).await.unwrap();

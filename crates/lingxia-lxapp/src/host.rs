@@ -1924,7 +1924,7 @@ mod tests {
                 .resource_grants()
                 .resolve_transient_file(&granted)
                 .expect("owner resolves grant"),
-            file
+            file.canonicalize().expect("canonical grant fixture")
         );
         assert!(
             control_scope

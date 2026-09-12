@@ -50,7 +50,7 @@ impl HarmonyPlatform {
         harmony_dir: &Path,
     ) -> Result<BuildArtifacts> {
         // Mirror the Harmony project into a per-env staging directory so the
-        // user's source tree is never mutated. ohpm install, the env-version
+        // user's source tree is never mutated. ohpm install, the env
         // bundleName rewrite, and hvigor all run inside the staging copy; a
         // SIGKILL or hard exit during build can no longer leave the source in
         // a partially-modified state.
@@ -291,7 +291,7 @@ impl HarmonyPlatform {
 }
 
 /// Mirror the Harmony source project into a per-env staging directory and
-/// rewrite `AppScope/app.json5`'s `bundleName` with the env-version suffix.
+/// rewrite `AppScope/app.json5`'s `bundleName` with the env suffix.
 ///
 /// Harmony's hvigor toolchain has no build-time injection point for
 /// `bundleName` — it reads `app.json5` directly. Earlier versions wrote the

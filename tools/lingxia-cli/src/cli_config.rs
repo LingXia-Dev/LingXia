@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::config::EnvVersion;
+use crate::config::AppEnv;
 
 const CLI_DIR: &str = "cli";
 const CONFIG_FILE: &str = "config.toml";
@@ -29,13 +29,12 @@ pub struct CliConfig {
     pub publish: Option<PublishConfig>,
 }
 
-/// `[publish]` — defaults for `lingxia publish`, selected by the package's
-/// `--env`/`--channel`:
+/// `[publish]` — defaults for `lingxia publish`, selected by `--env`:
 ///
 /// ```toml
 /// [publish.lingxiaServer]                   # per env
-/// developer = "http://localhost:8080"
-/// release = "https://prod.example.com"
+/// dev = "http://localhost:8080"
+/// prod = "https://prod.example.com"
 /// ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -59,48 +58,43 @@ pub enum EnvValue {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PerEnv {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub developer: Option<String>,
+    pub dev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub release: Option<String>,
+    pub prod: Option<String>,
 }
 
 impl EnvValue {
-    /// The value that applies to `version`, or `None` when the map form does
+    /// The value that applies to `env`, or `None` when the map form does
     /// not list that env. `Single` applies to every env.
-    fn for_env(&self, version: EnvVersion) -> Option<&str> {
+    fn for_env(&self, env: AppEnv) -> Option<&str> {
         match self {
             EnvValue::Single(value) => Some(value.as_str()),
-            EnvValue::PerEnv(per) => match version {
-                EnvVersion::Developer => per.developer.as_deref(),
-                EnvVersion::Preview => per.preview.as_deref(),
-                EnvVersion::Release => per.release.as_deref(),
+            EnvValue::PerEnv(per) => match env {
+                AppEnv::Dev => per.dev.as_deref(),
+                AppEnv::Prod => per.prod.as_deref(),
             },
         }
     }
 
-    /// Set the value for `version`, converting a `Single` into an explicit
-    /// map that keeps the old scalar for the other envs (so scoping one env
+    /// Set the value for `env`, converting a `Single` into an explicit
+    /// map that keeps the old scalar for the other env (so scoping one env
     /// never silently changes the rest).
-    fn set_env(&mut self, version: EnvVersion, value: String) {
+    fn set_env(&mut self, env: AppEnv, value: String) {
         let mut per = match self {
             EnvValue::Single(old) => PerEnv {
-                developer: Some(old.clone()),
-                preview: Some(old.clone()),
-                release: Some(old.clone()),
+                dev: Some(old.clone()),
+                prod: Some(old.clone()),
             },
             EnvValue::PerEnv(per) => per.clone(),
         };
-        match version {
-            EnvVersion::Developer => per.developer = Some(value),
-            EnvVersion::Preview => per.preview = Some(value),
-            EnvVersion::Release => per.release = Some(value),
+        match env {
+            AppEnv::Dev => per.dev = Some(value),
+            AppEnv::Prod => per.prod = Some(value),
         }
         *self = EnvValue::PerEnv(per);
     }
 
-    fn set_env_or_new(slot: &mut Option<EnvValue>, version: EnvVersion, value: String) {
+    fn set_env_or_new(slot: &mut Option<EnvValue>, version: AppEnv, value: String) {
         match slot {
             Some(existing) => existing.set_env(version, value),
             None => {
@@ -114,7 +108,7 @@ impl EnvValue {
 
 impl PublishConfig {
     /// The upload server for `version`. Empty strings are unset.
-    pub fn lingxia_server_for(&self, version: EnvVersion) -> Option<&str> {
+    pub fn lingxia_server_for(&self, version: AppEnv) -> Option<&str> {
         clean(
             self.lingxia_server
                 .as_ref()
@@ -172,7 +166,7 @@ impl CliConfig {
     /// Set the publish server default. A `None` env writes a scalar (every
     /// env); an env scopes to that env's map entry, materializing a previous
     /// scalar so the other envs keep their value.
-    pub fn set_publish_server(&mut self, env: Option<EnvVersion>, server: String) {
+    pub fn set_publish_server(&mut self, env: Option<AppEnv>, server: String) {
         let publish = self.publish.get_or_insert_with(PublishConfig::default);
         match env {
             None => publish.lingxia_server = Some(EnvValue::Single(server)),
@@ -206,7 +200,7 @@ mod tests {
         cfg.set_publish_server(None, "https://api.example.com".to_string());
         let publish = cfg.publish.unwrap();
         assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Release),
+            publish.lingxia_server_for(AppEnv::Prod),
             Some("https://api.example.com")
         );
     }
@@ -215,22 +209,15 @@ mod tests {
     fn scoping_an_env_materializes_a_scalar_for_the_others() {
         let mut cfg = CliConfig::default();
         cfg.set_publish_server(None, "https://api.example.com".to_string());
-        cfg.set_publish_server(
-            Some(EnvVersion::Developer),
-            "http://localhost:8080".to_string(),
-        );
+        cfg.set_publish_server(Some(AppEnv::Dev), "http://localhost:8080".to_string());
         let publish = cfg.publish.unwrap();
         assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Developer),
+            publish.lingxia_server_for(AppEnv::Dev),
             Some("http://localhost:8080")
         );
-        // The other envs keep the previous scalar explicitly.
+        // The other env keeps the previous scalar explicitly.
         assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Release),
-            Some("https://api.example.com")
-        );
-        assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Preview),
+            publish.lingxia_server_for(AppEnv::Prod),
             Some("https://api.example.com")
         );
     }
@@ -241,7 +228,7 @@ mod tests {
         let path = dir.path().join("cli").join("config.toml");
         let mut cfg = CliConfig::default();
         cfg.set_publish_server(
-            Some(EnvVersion::Preview),
+            Some(AppEnv::Prod),
             "https://preview.example.com".to_string(),
         );
         cfg.save_to(&path).unwrap();
@@ -249,7 +236,7 @@ mod tests {
         let loaded = CliConfig::load_from(&path).unwrap();
         let publish = loaded.publish.unwrap();
         assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Preview),
+            publish.lingxia_server_for(AppEnv::Prod),
             Some("https://preview.example.com")
         );
     }
@@ -259,18 +246,20 @@ mod tests {
         let cfg: CliConfig = toml::from_str(
             r#"
             [publish.lingxiaServer]
-            developer = "http://localhost:8080"
-            release = "https://prod.example.com"
+            dev = "http://localhost:8080"
+            prod = "https://prod.example.com"
         "#,
         )
         .unwrap();
         let publish = cfg.publish.unwrap();
         assert_eq!(
-            publish.lingxia_server_for(EnvVersion::Release),
+            publish.lingxia_server_for(AppEnv::Prod),
             Some("https://prod.example.com")
         );
-        // An env the map does not list is unconfigured — no fallback.
-        assert_eq!(publish.lingxia_server_for(EnvVersion::Preview), None);
+        assert_eq!(
+            publish.lingxia_server_for(AppEnv::Dev),
+            Some("http://localhost:8080")
+        );
     }
 
     #[test]
@@ -282,9 +271,6 @@ mod tests {
         "#,
         )
         .unwrap();
-        assert_eq!(
-            cfg.publish.unwrap().lingxia_server_for(EnvVersion::Release),
-            None
-        );
+        assert_eq!(cfg.publish.unwrap().lingxia_server_for(AppEnv::Prod), None);
     }
 }

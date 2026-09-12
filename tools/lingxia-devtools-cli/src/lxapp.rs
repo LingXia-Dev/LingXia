@@ -85,9 +85,10 @@ pub enum LxAppCommand {
         /// Initial page/path
         #[arg(long)]
         path: Option<String>,
-        /// release, preview, or developer
-        #[arg(long, default_value = "release")]
-        release_type: String,
+        /// Lxapp channel: release, preview, or draft.
+        /// Omitted: the host env default (`dev` → draft, `prod` → release).
+        #[arg(long)]
+        channel: Option<String>,
         /// Print JSON output
         #[arg(long)]
         json: bool,
@@ -498,18 +499,17 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
         LxAppCommand::Open {
             appid,
             path,
-            release_type,
+            channel,
             json,
         } => {
-            let data = client::execute_command(
-                ws_url,
-                methods::lxapp::OPEN,
-                Some(json!({
-                    "appid": appid,
-                    "path": path,
-                    "release_type": release_type,
-                })),
-            )?;
+            let mut payload = json!({
+                "appid": appid,
+                "path": path,
+            });
+            if let Some(channel) = channel {
+                payload["channel"] = json!(channel);
+            }
+            let data = client::execute_command(ws_url, methods::lxapp::OPEN, Some(payload))?;
             if json {
                 print_json(data.as_ref().unwrap_or(&json!({})), false)?;
             } else {

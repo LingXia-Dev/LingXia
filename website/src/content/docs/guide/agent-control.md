@@ -54,12 +54,12 @@ Claude, or other agent integration. Agent tooling invokes the exact product
 executable with the private `--cli` marker; there is no framework launcher and
 no assumption that an agent can see the user's shell `PATH`.
 
-A release build may atomically publish `current_exe()` as one line in a
-product-owned locator such as `~/.<product>/path`. Developer builds should not
-replace that release locator; the product's skill can resolve one explicit
-environment override such as `<PRODUCT>_PATH` first, then the release locator.
-Release, preview, and developer endpoints are already isolated by their
-environment-specific app-data directories.
+A prod build may atomically publish `current_exe()` as one line in a
+product-owned locator such as `~/.<product>/path`. Dev builds should not
+replace that prod locator; the product's skill can resolve one explicit
+environment override such as `<PRODUCT>_PATH` first, then the prod locator.
+Dev and prod endpoints are already isolated by their environment-specific
+app-data directories.
 
 LingXia does not choose the locator or generate a skill whose business rules
 would drift from the product. The host owns and distributes both, and its agent

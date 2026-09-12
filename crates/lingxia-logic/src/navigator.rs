@@ -8,7 +8,7 @@ use crate::update;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::host::HostInvocationContext;
-use lxapp::{self, LxApp, LxAppError, LxAppStartupOptions, ReleaseType};
+use lxapp::{self, Channel, LxApp, LxAppError, LxAppStartupOptions};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
 use serde_json::Value;
 use std::sync::Arc;
@@ -23,8 +23,7 @@ pub(crate) struct NavigateToAppOptions {
     pub(crate) path: Option<String>,
     pub(crate) page: Option<String>,
     pub(crate) query: Option<JSObject>,
-    #[js_name = "envVersion"]
-    pub(crate) env_version: Option<String>,
+    pub(crate) channel: Option<String>,
     #[js_name = "targetVersion"]
     pub(crate) target_version: Option<String>,
 }
@@ -32,21 +31,21 @@ pub(crate) struct NavigateToAppOptions {
 fn build_startup_options(
     target: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<(LxAppStartupOptions, ReleaseType), LxAppError> {
+) -> Result<(LxAppStartupOptions, Channel), LxAppError> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
 
-    let release_type = parse_env_version(options.env_version.as_deref())?;
+    let channel = parse_channel(options.channel.as_deref())?;
 
-    if options.env_version.is_some() {
-        startup_options = startup_options.set_release_type(release_type);
+    if options.channel.is_some() {
+        startup_options = startup_options.set_release_type(channel);
     }
 
-    Ok((startup_options, release_type))
+    Ok((startup_options, channel))
 }
 
-fn parse_env_version(env_version: Option<&str>) -> Result<ReleaseType, LxAppError> {
-    lxapp::parse_optional_env_release_type(env_version).map_err(LxAppError::InvalidParameter)
+fn parse_channel(channel: Option<&str>) -> Result<Channel, LxAppError> {
+    lxapp::parse_optional_channel(channel).map_err(LxAppError::InvalidParameter)
 }
 
 fn resolve_page_target<'a>(
@@ -129,13 +128,13 @@ pub(crate) async fn prepare_app_open(
     lxapp: &Arc<LxApp>,
     options: &NavigateToAppOptions,
     control_invocation: Option<&HostInvocationContext>,
-) -> JSResult<(LxAppStartupOptions, ReleaseType)> {
+) -> JSResult<(LxAppStartupOptions, Channel)> {
     let target_appid = options.appid.clone();
     let host_terminal_settings =
         register_host_terminal_settings_bundle(lxapp, &target_appid, control_invocation)?;
     validate_page_selector(options).map_err(|e| js_error_from_lxapp_error(&e))?;
-    let release_type = parse_env_version(options.env_version.as_deref())
-        .map_err(|e| js_error_from_lxapp_error(&e))?;
+    let release_type =
+        parse_channel(options.channel.as_deref()).map_err(|e| js_error_from_lxapp_error(&e))?;
     let target_version = options
         .target_version
         .as_deref()
@@ -325,7 +324,7 @@ mod tests {
             path: path.map(str::to_string),
             page: page.map(str::to_string),
             query: None,
-            env_version: None,
+            channel: None,
             target_version: None,
         }
     }

@@ -398,7 +398,7 @@ gradle.settingsEvaluated {{ settings ->
             (super::BuildProfile::Release, true) => "bundleRelease",
         };
 
-        // Inject env-version overrides via Gradle project properties. Android
+        // Inject env overrides via Gradle project properties. Android
         // projects are expected to consume these in app/build.gradle(.kts).
         // Empty suffix props are still passed so the build is deterministic.
         let app_id_suffix = config
@@ -666,7 +666,7 @@ impl Platform for AndroidPlatform {
         let device_id = resolve_adb_device_id(config.device_id.as_deref())?;
         let base_id = config.package_id.as_str();
 
-        // Gradle's `applicationIdSuffix` (env=developer/preview) only changes
+        // Gradle's `applicationIdSuffix` (env=dev) only changes
         // the *application* id on device — Kotlin/Java class FQCNs stay
         // canonical. Auto-detect which variant is installed so callers don't
         // have to track env state.
@@ -795,7 +795,7 @@ fn launch_orientation(
     )
 }
 
-/// Stage the build-time res overlay (env-version launcher icons and/or splash
+/// Stage the build-time res overlay (env launcher icons and/or splash
 /// resources) to a directory outside the source tree. Returns `None` when
 /// nothing applies (release env with no splash configured, etc.).
 ///
@@ -846,7 +846,7 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<Opti
     }))
 }
 
-/// Write the badged env-version launcher icons into the staging res dir.
+/// Write the badged env launcher icons into the staging res dir.
 /// Returns `None` when the project has no badgeable adaptive icon.
 fn stage_env_icon_overlay(
     android_root: &Path,
@@ -929,13 +929,10 @@ fn mipmap_resource_exists(res_dir: &Path, drawable_ref: &str) -> bool {
     })
 }
 
-fn android_env_icon_badge(
-    version: crate::config::EnvVersion,
-) -> Option<(&'static str, &'static str)> {
+fn android_env_icon_badge(version: crate::config::AppEnv) -> Option<(&'static str, &'static str)> {
     match version {
-        crate::config::EnvVersion::Developer => Some(("D", "#D32F2F")),
-        crate::config::EnvVersion::Preview => Some(("P", "#D32F2F")),
-        crate::config::EnvVersion::Release => None,
+        crate::config::AppEnv::Dev => Some(("D", "#D32F2F")),
+        crate::config::AppEnv::Prod => None,
     }
 }
 

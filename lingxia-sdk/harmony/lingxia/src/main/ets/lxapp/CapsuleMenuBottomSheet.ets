@@ -358,11 +358,11 @@ export struct CapsuleMenuBottomSheetComponent {
       return null;
     }
 
-    const releaseType: 'release' | 'preview' | 'developer' = this.appInfo.releaseType;
+    const releaseType: 'release' | 'preview' | 'draft' = this.appInfo.releaseType;
     const dark: boolean = this.appearanceDark;
-    if (releaseType === 'developer') {
+    if (releaseType === 'draft') {
       return {
-        text: 'DEV',
+        text: 'DFT',
         textColor: dark ? '#93C5FD' : '#1D4ED8',
         backgroundColor: dark ? '#1E3A5F' : '#DBEAFE'
       };

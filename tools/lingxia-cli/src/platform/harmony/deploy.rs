@@ -120,7 +120,7 @@ impl HarmonyPlatform {
         if let Some(ref device_id) = config.device_id {
             cmd.arg("-t").arg(device_id);
         }
-        // TODO: when Harmony enables env suffix (.dev / .preview) on bundleName,
+        // TODO: when Harmony enables env suffix (.dev) on bundleName,
         // auto-detect the installed variant via `hdc shell bm dump -a` — mirror
         // android.rs::resolve_installed_app_id / devicectl::resolve_installed_bundle_id.
         // Today harmony deploys are release-only so the canonical id always

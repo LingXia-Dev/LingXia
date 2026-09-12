@@ -20,17 +20,13 @@ pub enum RunnerAction {
         #[arg(value_name = "LINGXIA_ID")]
         lingxia_id: String,
 
-        /// Developer environment server URL
+        /// Dev environment server URL
         #[arg(long, value_name = "URL")]
-        developer: Option<String>,
+        dev: Option<String>,
 
-        /// Preview environment server URL
+        /// Prod environment server URL
         #[arg(long, value_name = "URL")]
-        preview: Option<String>,
-
-        /// Release environment server URL
-        #[arg(long, value_name = "URL")]
-        release: Option<String>,
+        prod: Option<String>,
     },
 
     /// Remove the persisted Runner cloud configuration
@@ -41,11 +37,9 @@ pub enum RunnerAction {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct EnvironmentServers {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    developer: Option<String>,
+    dev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    preview: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    release: Option<String>,
+    prod: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
@@ -75,11 +69,10 @@ pub fn execute(action: Option<RunnerAction>) -> Result<()> {
         None => println!("{}", render_config(&path)?),
         Some(RunnerAction::Set {
             lingxia_id,
-            developer,
-            preview,
-            release,
+            dev,
+            prod,
         }) => {
-            let config = prepare_config(lingxia_id, developer, preview, release)?;
+            let config = prepare_config(lingxia_id, dev, prod)?;
             save_config(&path, &config)?;
             println!("✓ Saved Runner config to {}", path.display());
             println!("{}", render_config(&path)?);
@@ -103,9 +96,8 @@ fn config_path() -> Result<PathBuf> {
 
 fn prepare_config(
     lingxia_id: String,
-    developer: Option<String>,
-    preview: Option<String>,
-    release: Option<String>,
+    dev: Option<String>,
+    prod: Option<String>,
 ) -> Result<WriteRunnerConfig> {
     let lingxia_id = lingxia_id.trim();
     if lingxia_id.is_empty() {
@@ -113,12 +105,11 @@ fn prepare_config(
     }
 
     let servers = EnvironmentServers {
-        developer: clean_server(developer, "--developer")?,
-        preview: clean_server(preview, "--preview")?,
-        release: clean_server(release, "--release")?,
+        dev: clean_server(dev, "--dev")?,
+        prod: clean_server(prod, "--prod")?,
     };
     if servers == EnvironmentServers::default() {
-        bail!("Provide at least one of --developer, --preview, or --release");
+        bail!("Provide at least one of --dev or --prod");
     }
 
     Ok(WriteRunnerConfig {
@@ -173,7 +164,7 @@ fn render_config(path: &Path) -> Result<String> {
     if !path.exists() {
         return Ok(format!(
             "LingXia Runner is not configured.\n\
-             Configure it with:\n  lingxia runner set <LINGXIA_ID> --developer <URL>\n\
+             Configure it with:\n  lingxia runner set <LINGXIA_ID> --dev <URL>\n\
              Config: {}",
             path.display()
         ));
@@ -188,21 +179,18 @@ fn render_config(path: &Path) -> Result<String> {
     }
     let servers = match config.lingxia_server {
         ServerConfig::Shared(server) => EnvironmentServers {
-            developer: Some(server.clone()),
-            preview: Some(server.clone()),
-            release: Some(server),
+            dev: Some(server.clone()),
+            prod: Some(server),
         },
         ServerConfig::PerEnvironment(servers) => servers,
     };
     Ok(format!(
         "LingXia ID: {id}\n\
-         developer:  {}\n\
-         preview:    {}\n\
-         release:    {}\n\
+         dev:   {}\n\
+         prod:  {}\n\
          Config: {}",
-        display_server(servers.developer.as_deref()),
-        display_server(servers.preview.as_deref()),
-        display_server(servers.release.as_deref()),
+        display_server(servers.dev.as_deref()),
+        display_server(servers.prod.as_deref()),
         path.display()
     ))
 }
@@ -239,7 +227,6 @@ mod tests {
         prepare_config(
             "com.example.app".into(),
             Some("http://127.0.0.1:8787".into()),
-            None,
             Some("https://api.example.com".into()),
         )
         .unwrap()
@@ -253,9 +240,8 @@ mod tests {
         let text = fs::read_to_string(&path).unwrap();
         assert!(text.contains("lingxiaId = \"com.example.app\""));
         assert!(text.contains("[lingxiaServer]"));
-        assert!(text.contains("developer = \"http://127.0.0.1:8787\""));
-        assert!(text.contains("release = \"https://api.example.com\""));
-        assert!(!text.contains("preview ="));
+        assert!(text.contains("dev = \"http://127.0.0.1:8787\""));
+        assert!(text.contains("prod = \"https://api.example.com\""));
     }
 
     #[test]
@@ -266,23 +252,21 @@ mod tests {
         let replacement = prepare_config(
             "com.example.next".into(),
             None,
-            Some("https://preview.example.com".into()),
-            None,
+            Some("https://api.example.com".into()),
         )
         .unwrap();
         save_config(&path, &replacement).unwrap();
         let text = fs::read_to_string(path).unwrap();
         assert!(text.contains("lingxiaId = \"com.example.next\""));
-        assert!(text.contains("preview = \"https://preview.example.com\""));
-        assert!(!text.contains("developer ="));
-        assert!(!text.contains("release ="));
+        assert!(text.contains("prod = \"https://api.example.com\""));
+        assert!(!text.contains("dev ="));
     }
 
     #[test]
     fn validates_identity_and_urls() {
-        assert!(prepare_config(" ".into(), Some("https://x".into()), None, None).is_err());
-        assert!(prepare_config("app".into(), None, None, None).is_err());
-        assert!(prepare_config("app".into(), Some("api.example.com".into()), None, None).is_err());
+        assert!(prepare_config(" ".into(), Some("https://x".into()), None).is_err());
+        assert!(prepare_config("app".into(), None, None).is_err());
+        assert!(prepare_config("app".into(), Some("api.example.com".into()), None).is_err());
     }
 
     #[test]
@@ -294,7 +278,8 @@ mod tests {
         save_config(&path, &sample_config()).unwrap();
         let rendered = render_config(&path).unwrap();
         assert!(rendered.contains("LingXia ID: com.example.app"));
-        assert!(rendered.contains("preview:    —"));
+        assert!(rendered.contains("dev:   http://127.0.0.1:8787"));
+        assert!(rendered.contains("prod:  https://api.example.com"));
     }
 
     #[test]

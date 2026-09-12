@@ -1,7 +1,7 @@
 import React from 'react';
 import type {
   LxNavigatorAttributes,
-  NavigatorEnvVersion,
+  NavigatorChannel,
   LxNavigatorEvent,
   NavigatorQuery,
   NavigatorOpenType,
@@ -23,7 +23,7 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
 
   // Open external lxapp
   appId?: string;
-  envVersion?: NavigatorEnvVersion;
+  channel?: NavigatorChannel;
   targetVersion?: string;
 
   // Phone call
@@ -58,7 +58,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       delta = 1,
       query,
       appId,
-      envVersion,
+      channel,
       targetVersion,
       phoneNumber,
       hoverClass = 'navigator-hover',
@@ -122,7 +122,7 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       delta,
       query,
       appId,
-      envVersion,
+      channel,
       targetVersion,
       phoneNumber,
       hoverClass,

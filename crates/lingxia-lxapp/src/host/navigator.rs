@@ -1,7 +1,7 @@
 use super::await_or_cancel;
 use crate::LxApp;
 use crate::LxAppError;
-use crate::lxapp::ReleaseType;
+use crate::lxapp::Channel;
 use crate::startup::LxAppStartupOptions;
 use serde::Deserialize;
 use serde_json::Value;
@@ -16,8 +16,7 @@ struct NavigateToAppOptions {
     path: Option<String>,
     page: Option<String>,
     query: Option<Value>,
-    #[serde(rename = "envVersion")]
-    env_version: Option<String>,
+    channel: Option<String>,
     #[serde(rename = "targetVersion")]
     target_version: Option<String>,
 }
@@ -25,21 +24,21 @@ struct NavigateToAppOptions {
 fn build_startup_options(
     target: &LxApp,
     options: &NavigateToAppOptions,
-) -> Result<(LxAppStartupOptions, ReleaseType), LxAppError> {
+) -> Result<(LxAppStartupOptions, Channel), LxAppError> {
     let path = resolve_page_target(target, options)?;
     let mut startup_options = LxAppStartupOptions::new(&path);
 
-    let release_type = parse_env_version(options.env_version.as_deref())?;
+    let channel = parse_channel(options.channel.as_deref())?;
 
-    if options.env_version.is_some() {
-        startup_options = startup_options.set_release_type(release_type);
+    if options.channel.is_some() {
+        startup_options = startup_options.set_release_type(channel);
     }
 
-    Ok((startup_options, release_type))
+    Ok((startup_options, channel))
 }
 
-fn parse_env_version(env_version: Option<&str>) -> Result<ReleaseType, LxAppError> {
-    crate::parse_optional_env_release_type(env_version).map_err(LxAppError::InvalidParameter)
+fn parse_channel(channel: Option<&str>) -> Result<Channel, LxAppError> {
+    crate::parse_optional_channel(channel).map_err(LxAppError::InvalidParameter)
 }
 
 fn resolve_page_target(
@@ -107,7 +106,7 @@ async fn do_navigate_to_app(
 ) -> Result<(), LxAppError> {
     validate_page_selector(&options)?;
     let target_appid = options.appid.clone();
-    let release_type = parse_env_version(options.env_version.as_deref())?;
+    let release_type = parse_channel(options.channel.as_deref())?;
     let target_version = options
         .target_version
         .as_deref()
@@ -186,7 +185,7 @@ mod tests {
             path: Some("/pages/home/index".to_string()),
             page: None,
             query: None,
-            env_version: None,
+            channel: None,
             target_version: None,
         };
 

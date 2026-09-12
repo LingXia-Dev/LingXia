@@ -837,7 +837,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             headerTitle += " · \(version)"
         }
         switch releaseType.lowercased() {
-        case "developer": headerTitle += " [DEV]"
+        case "draft": headerTitle += " [DRAFT]"
         case "preview": headerTitle += " [PRE]"
         default: break
         }

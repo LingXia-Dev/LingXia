@@ -509,7 +509,7 @@ pub fn static_settings_destination() -> Option<&'static SettingsDestination> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lingxia_app_context::{CapabilitiesConfig, EnvVersion};
+    use lingxia_app_context::{AppEnv, CapabilitiesConfig};
     use std::cell::Cell;
     use std::sync::Arc;
 
@@ -557,7 +557,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: None,
             lingxia_server: None,
-            env_version: EnvVersion::Release,
+            env: AppEnv::Prod,
             home_app_id: "control".to_string(),
             home_app_version: "1.0.0".to_string(),
             cache_max_size_mb: 1024,

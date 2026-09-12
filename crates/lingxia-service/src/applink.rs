@@ -1,4 +1,4 @@
-use lingxia_update::{ReleaseType, host_channel};
+use lingxia_update::{Channel, default_channel};
 use std::sync::OnceLock;
 
 const LXAPP_PREFIX: &str = "/lxapp/";
@@ -16,7 +16,7 @@ pub struct AppLinkTarget {
     pub path: String,
     /// Page query. Routing params are stripped only for `/lxapp/open`.
     pub query: String,
-    pub release_type: ReleaseType,
+    pub release_type: Channel,
     /// The URL is in the `/lxapp/*` namespace, so `appid` / `path` / `query`
     /// were parsed rather than passed through.
     pub lxapp_route: bool,
@@ -96,7 +96,7 @@ pub fn parse(url: &str) -> Result<Option<AppLinkTarget>, String> {
             appid: String::new(),
             path: String::new(),
             query: raw_query.unwrap_or_default().to_string(),
-            release_type: host_channel(),
+            release_type: default_channel(),
             lxapp_route: false,
         }));
     };
@@ -225,7 +225,7 @@ fn host_allowed_for(host: &str, hosts: &[String], is_runner: bool) -> bool {
 }
 
 struct QueryParts {
-    release_type: ReleaseType,
+    release_type: Channel,
     appid: Option<String>,
     path: Option<String>,
     page_query: String,
@@ -234,13 +234,13 @@ struct QueryParts {
 fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryParts, String> {
     let Some(raw_query) = raw_query else {
         return Ok(QueryParts {
-            release_type: host_channel(),
+            release_type: default_channel(),
             appid: None,
             path: None,
             page_query: String::new(),
         });
     };
-    let mut release_type = host_channel();
+    let mut release_type = default_channel();
     let mut appid = None;
     let mut path = None;
     let mut page_params = Vec::new();
@@ -250,8 +250,8 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
             None => (pair, ""),
         };
         let key = decode_component(raw_key)?;
-        if key == "envVersion" {
-            release_type = parse_release_type(&decode_component(raw_value)?)?;
+        if key == "channel" {
+            release_type = parse_channel(&decode_component(raw_value)?)?;
             continue;
         }
         if include_routing && (key == "appId" || key == "appid") {
@@ -272,15 +272,8 @@ fn parse_query(raw_query: Option<&str>, include_routing: bool) -> Result<QueryPa
     })
 }
 
-fn parse_release_type(tag: &str) -> Result<ReleaseType, String> {
-    match tag {
-        "release" => Ok(ReleaseType::Release),
-        "preview" => Ok(ReleaseType::Preview),
-        // `developer` is the channel name on the wire and in app.json; `develop`
-        // is the pre-0.13 spelling of this parameter, still accepted.
-        "developer" | "develop" => Ok(ReleaseType::Developer),
-        other => Err(format!("invalid envVersion: {other}")),
-    }
+fn parse_channel(tag: &str) -> Result<Channel, String> {
+    Channel::parse(tag)
 }
 
 fn decode_component(value: &str) -> Result<String, String> {
@@ -332,7 +325,7 @@ mod tests {
         assert_eq!(target.appid, "com.example.shop");
         assert_eq!(target.path, "");
         assert_eq!(target.query, "");
-        assert_eq!(target.release_type, ReleaseType::Release);
+        assert_eq!(target.release_type, Channel::Release);
         assert!(target.lxapp_route);
     }
 
@@ -349,39 +342,38 @@ mod tests {
     #[test]
     fn parses_open_page_and_strips_routing_query() {
         let target = parse(
-            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&envVersion=preview&id=42",
+            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42",
         )
         .unwrap()
         .unwrap();
         assert_eq!(target.appid, "com.example.shop");
         assert_eq!(target.path, "pages/detail/index.html");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, ReleaseType::Preview);
+        assert_eq!(target.release_type, Channel::Preview);
     }
 
     #[test]
     fn parses_open_query_form() {
         let target = parse(
-            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&envVersion=develop&id=42",
+            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42",
         )
         .unwrap()
         .unwrap();
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail/index.html");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, ReleaseType::Developer);
+        assert_eq!(target.release_type, Channel::Draft);
     }
 
     #[test]
     fn parses_path_form() {
-        let target =
-            parse("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&envVersion=preview")
-                .unwrap()
-                .unwrap();
+        let target = parse("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&channel=preview")
+            .unwrap()
+            .unwrap();
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, ReleaseType::Preview);
+        assert_eq!(target.release_type, Channel::Preview);
     }
 
     #[test]
@@ -399,17 +391,19 @@ mod tests {
     #[test]
     fn release_type_query_is_forwarded_to_page() {
         let target = parse(
-            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&envVersion=preview&releaseType=developer",
+            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&channel=preview&releaseType=developer",
         )
         .unwrap()
         .unwrap();
-        assert_eq!(target.release_type, ReleaseType::Preview);
+        assert_eq!(target.release_type, Channel::Preview);
         assert_eq!(target.query, "releaseType=developer");
     }
 
     #[test]
     fn rejects_invalid_env_version() {
-        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&envVersion=trial").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=trial").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=develop").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=developer").is_err());
     }
 
     #[test]
@@ -436,7 +430,7 @@ mod tests {
                 .unwrap()
                 .unwrap();
         assert_eq!(target.path, "");
-        assert_eq!(target.release_type, host_channel());
+        assert_eq!(target.release_type, default_channel());
         assert_eq!(target.query, "path=/home&envVersion=trial&code=100%");
     }
 

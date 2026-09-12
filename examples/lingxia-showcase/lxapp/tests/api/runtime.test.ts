@@ -10,7 +10,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
     'lx.getNetworkInfo',
     'lx.getSystemSetting',
     'lx.app.getBaseInfo',
-    'lx.app.envVersion',
+    'lx.app.env',
   ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
@@ -29,7 +29,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
         network: typeof network.isConnected === 'boolean' && !!network.networkType,
         system: typeof system.wifiEnabled === 'boolean',
         host: !!host.os && !!host.productName,
-        envVersion: lx.app.envVersion,
+        env: lx.app.env,
       };
     `,
   }) as {
@@ -39,7 +39,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
     network: boolean;
     system: boolean;
     host: boolean;
-    envVersion: string;
+    env: string;
   };
 
   expect(result.appId).toBe('lingxia-showcase');
@@ -48,7 +48,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
   expect(result.network).toBeTruthy();
   expect(result.system).toBeTruthy();
   expect(result.host).toBeTruthy();
-  expect(['developer', 'preview', 'release']).toContain(result.envVersion);
+  expect(['dev', 'prod']).toContain(result.env);
 });
 
 spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers: [

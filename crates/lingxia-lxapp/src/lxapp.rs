@@ -82,7 +82,7 @@ pub use host_appearance::{
 };
 pub use lingxia_platform::traits::ui::{SurfaceKind, SurfacePosition};
 pub use lingxia_surface::Role as SurfaceRole;
-pub use lingxia_update::ReleaseType;
+pub use lingxia_update::Channel;
 use lingxia_webview::runtime::destroy_webview_if_matches;
 pub use runtime_bootstrap::dev_session_active as is_dev_session;
 pub use runtime_bootstrap::init;
@@ -379,7 +379,7 @@ impl LxApps {
     pub(crate) fn ensure_lxapp(
         &self,
         appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -415,7 +415,7 @@ impl LxApps {
     pub(crate) fn ensure_lxapp_for_native_control(
         &self,
         appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -441,7 +441,7 @@ impl LxApps {
     pub(crate) fn ensure_lxapp_for_control_surface(
         &self,
         appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -488,7 +488,7 @@ impl LxApps {
                 appid.to_string(),
                 self.runtime.clone(),
                 self.executor.clone(),
-                ReleaseType::Release,
+                Channel::Release,
             )?);
             app.bind_and_seal_resource_grants();
             self.lxapps.insert(appid.to_string(), app.clone());
@@ -521,7 +521,7 @@ impl LxApps {
     fn ensure_lxapp_with_session_class(
         &self,
         appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
         session_class: AppSessionClass,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let has_pending_update = metadata::downloaded_get(&appid, release_type)
@@ -604,7 +604,7 @@ impl LxApps {
     fn recreate_lxapp(
         &self,
         appid: String,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
@@ -870,7 +870,7 @@ pub struct LxApp {
     pub fingermark: String,
     pub is_home_lxapp: bool,
     app_session_class: AppSessionClass,
-    pub(crate) release_type: ReleaseType,
+    pub(crate) release_type: Channel,
     /// Manifest. Dev reload re-reads `lxapp.json` so `pages` / `tabBar` apply
     /// without a new `lingxia dev` session.
     pub(crate) config: Mutex<LxAppConfig>,
@@ -1303,7 +1303,7 @@ impl LxApp {
         self.status().as_str()
     }
 
-    pub fn release_type(&self) -> ReleaseType {
+    pub fn release_type(&self) -> Channel {
         self.release_type
     }
 
@@ -1951,17 +1951,16 @@ impl LxApp {
         appid: String,
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
-        release_type: ReleaseType,
+        release_type: Channel,
         app_session_class: AppSessionClass,
     ) -> Self {
         let session = LxAppSession::new();
         let bundle_source = lxapp_bundle_source_for(&appid).unwrap_or(LxAppBundleSource::Installed);
-        // A dev-sourced bundle is, by definition, a developer build: it's served
-        // live from a local `dist` and is never installed or OTA-updated. Derive
-        // the channel from the source so update gating (release-only) and scope
-        // keys stay consistent, whatever channel the caller requested.
+        // A dev-sourced bundle is a draft: served live from a local `dist`
+        // and never installed or OTA-updated. Derive the channel from the
+        // source so update gating and scope keys stay consistent.
         let release_type = match bundle_source {
-            LxAppBundleSource::DevPath { .. } => ReleaseType::Developer,
+            LxAppBundleSource::DevPath { .. } => Channel::Draft,
             _ => release_type,
         };
         Self {
@@ -2003,7 +2002,7 @@ impl LxApp {
         appid: String,
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Self, LxAppError> {
         let mut app = Self::_new(
             appid,
@@ -2028,7 +2027,7 @@ impl LxApp {
             appid,
             runtime,
             executor,
-            crate::host_channel(),
+            crate::default_channel(),
             AppSessionClass::ControlApp,
         );
 
@@ -2049,7 +2048,7 @@ impl LxApp {
         appid: String,
         runtime: Arc<Platform>,
         executor: Arc<LxAppWorkers>,
-        release_type: ReleaseType,
+        release_type: Channel,
     ) -> Result<Self, LxAppError> {
         let mut app = Self::_new(
             appid,
@@ -2072,12 +2071,10 @@ impl LxApp {
         class: AppSessionClass,
     ) -> Result<Self, LxAppError> {
         match class {
-            AppSessionClass::StandardApp => {
-                Self::new(appid, runtime, executor, ReleaseType::Release)
-            }
+            AppSessionClass::StandardApp => Self::new(appid, runtime, executor, Channel::Release),
             AppSessionClass::ControlApp => Self::new_as_home(appid, runtime, executor),
             AppSessionClass::ControlSurface => {
-                Self::new_control_surface(appid, runtime, executor, ReleaseType::Release)
+                Self::new_control_surface(appid, runtime, executor, Channel::Release)
             }
         }
     }
@@ -3606,7 +3603,7 @@ impl LxApp {
 
 /// Compute a stable hash id for lxapp-scoped data separation.
 /// Includes lxappid + release_type + device_fingerprint to ensure isolation across variants and devices.
-pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: ReleaseType) -> String {
+pub(crate) fn lxapp_fingermark(lxappid: &str, release_type: Channel) -> String {
     // Fingermark uses appid + release_type + device fingerprint (version excluded)
     let device_fp = match crate::provider::get_provider().get_fingerprint() {
         Ok(fp) => fp,
@@ -3785,7 +3782,7 @@ mod delayed_destroy_tests {
         let workers = LxAppWorkers::init(1);
         let manager = LxApps::new((*runtime).clone(), workers, 1);
         let standard = manager
-            .ensure_lxapp(appid.clone(), ReleaseType::Release)
+            .ensure_lxapp(appid.clone(), Channel::Release)
             .expect("standard app");
         assert!(!manager.session_transition_locks.contains_key(&appid));
         let control = manager
@@ -3805,14 +3802,14 @@ mod delayed_destroy_tests {
         );
 
         let rebuilt = manager
-            .recreate_lxapp(appid.clone(), ReleaseType::Release)
+            .recreate_lxapp(appid.clone(), Channel::Release)
             .expect("rebuilt control app");
         assert!(!manager.session_transition_locks.contains_key(&appid));
         assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlApp);
         assert!(rebuilt.is_control_app());
 
         let ensured = manager
-            .ensure_lxapp(appid, ReleaseType::Release)
+            .ensure_lxapp(appid, Channel::Release)
             .expect("ordinary ensure after rebuild");
         assert_eq!(ensured.app_session_class(), AppSessionClass::ControlApp);
     }
@@ -3881,11 +3878,11 @@ mod delayed_destroy_tests {
 
         manager.lxapps.insert(appid.clone(), surface.clone());
         let ensured = manager
-            .ensure_lxapp(appid.clone(), ReleaseType::Release)
+            .ensure_lxapp(appid.clone(), Channel::Release)
             .expect("ordinary ensure keeps the live surface");
         assert!(Arc::ptr_eq(&ensured, &surface));
         let rebuilt = manager
-            .recreate_lxapp(appid, ReleaseType::Release)
+            .recreate_lxapp(appid, Channel::Release)
             .expect("rebuilt surface");
         assert_eq!(rebuilt.app_session_class(), AppSessionClass::ControlSurface);
         assert!(!rebuilt.is_home_lxapp);
@@ -3901,14 +3898,14 @@ mod delayed_destroy_tests {
         // Not the native-sealed home id: never a ControlApp.
         assert!(
             manager
-                .ensure_lxapp_for_native_control(appid.clone(), ReleaseType::Release)
+                .ensure_lxapp_for_native_control(appid.clone(), Channel::Release)
                 .is_err()
         );
         // Synthetic (and installed/downloaded) bundles are not host-shipped
         // control surfaces either.
         assert!(
             manager
-                .ensure_lxapp_for_control_surface(appid.clone(), ReleaseType::Release)
+                .ensure_lxapp_for_control_surface(appid.clone(), Channel::Release)
                 .is_err()
         );
         assert!(!manager.lxapps.contains_key(&appid));
@@ -4067,8 +4064,8 @@ mod manifest_reload_tests {
         register_dev_bundle_source(appid, root);
         let runtime = test_runtime();
         let workers = LxAppWorkers::init(1);
-        let app = LxApp::new(appid.to_string(), runtime, workers, ReleaseType::Developer)
-            .expect("dev lxapp");
+        let app =
+            LxApp::new(appid.to_string(), runtime, workers, Channel::Draft).expect("dev lxapp");
         let app = Arc::new(app);
         app.bind_arc();
         app

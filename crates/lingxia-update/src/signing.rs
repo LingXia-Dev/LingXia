@@ -3,11 +3,12 @@
 //! The manifest carries its own authenticated `v`; the transport carries its
 //! version in the endpoint path. Neither belongs in an unsigned envelope field.
 
+use crate::UpdatePackageInfo;
 use crate::error::UpdateError;
-use crate::{ReleaseType, UpdatePackageInfo, host_channel};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use ed25519_dalek::{Signature, Signer, SigningKey, VerifyingKey};
+use lingxia_app_context::{AppEnv, env};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::fs;
@@ -34,6 +35,7 @@ pub struct UpdateAuthentication {
 pub struct SignRequest<'a> {
     pub kind: &'a str,
     pub target_id: &'a str,
+    /// Empty for host packages; the publish channel for lxapps/plugins.
     pub channel: &'a str,
     pub platform: &'a str,
     pub version: &'a str,
@@ -143,32 +145,32 @@ pub fn sign_package(
     })
 }
 
-pub fn channel_requires_signature(channel: &str) -> bool {
-    channel == ReleaseType::Preview.as_str() || channel == ReleaseType::Release.as_str()
+pub fn env_requires_signature(env: AppEnv) -> bool {
+    env == AppEnv::Prod
 }
 
 /// Whether *this build* accepts an unsigned update, whatever channel is asked
 /// for. Callers cannot pass a channel: that is the whole point — see
 /// [`verify_checked_update`].
 pub fn host_requires_signature() -> bool {
-    channel_requires_signature(host_channel().as_str())
+    env_requires_signature(env())
 }
 
-/// Preview/release only query check-update when the host embedded public keys.
-/// Developer always queries; without keys it does not verify.
+/// Prod only queries check-update with embedded public keys.
+/// Dev always queries; without keys it does not verify.
 pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
 }
 
 pub fn sign_package_from_key_file(
-    channel: &str,
+    env: AppEnv,
     key_file: Option<&Path>,
     req: &SignRequest<'_>,
 ) -> Result<Option<UpdateAuthentication>, UpdateError> {
     let key_file = key_file.filter(|path| !path.as_os_str().is_empty());
-    match (channel_requires_signature(channel), key_file) {
+    match (env_requires_signature(env), key_file) {
         (true, None) => Err(UpdateError::invalid_parameter(format!(
-            "{channel} publish requires --update-signing-key-file"
+            "{env} publish requires --update-signing-key-file"
         ))),
         (false, None) => Ok(None),
         (_, Some(path)) => {
@@ -184,13 +186,13 @@ pub fn verify_checked_update(
     trusted_public_keys: &[String],
 ) -> Result<UpdatePackageInfo, UpdateError> {
     // Whether a signature may be waived is a property of *this build*, never of
-    // the request. An App Link query or `lx.navigateToApp({envVersion})` picks
+    // the request. An App Link query or `lx.navigateToApp({channel})` picks
     // the channel an lxapp is fetched on, so keying the waiver on
-    // `target.channel` let anyone who can hand a release device a link ask for
-    // the developer channel and be served an unsigned package.
+    // `target.channel` let anyone who can hand a prod device a link ask for
+    // the draft channel and be served an unsigned package.
     //
-    // `target.channel` still binds the manifest below: a release host may open
-    // a developer-channel lxapp, but only one a trusted key signed for that
+    // `target.channel` still binds the manifest below: a prod host may open
+    // a draft-channel lxapp, but only one a trusted key signed for that
     // channel.
     let signature_required = host_requires_signature();
     if trusted_public_keys.is_empty() && !signature_required {
@@ -201,7 +203,7 @@ pub fn verify_checked_update(
         if signature_required {
             return Err(UpdateError::invalid_parameter(format!(
                 "{} builds require signed updates ({} channel package is unsigned)",
-                host_channel(),
+                env(),
                 target.channel
             )));
         }
@@ -503,18 +505,15 @@ mod tests {
     }
 
     #[test]
-    fn publishing_requires_a_signature_on_preview_and_release() {
-        // The publish-time predicate does take a channel: it answers "which
-        // channel am I signing for", not "may this build skip verifying".
-        assert!(!channel_requires_signature("developer"));
-        assert!(channel_requires_signature("preview"));
-        assert!(channel_requires_signature("release"));
+    fn publishing_requires_a_signature_in_prod() {
+        assert!(!env_requires_signature(AppEnv::Dev));
+        assert!(env_requires_signature(AppEnv::Prod));
     }
 
     #[test]
     fn check_update_enabled_follows_this_build_and_its_keys() {
-        // Tests run with no `app.json`, so the host channel defaults to
-        // release — the safe default, and the one that makes the assertions
+        // Tests run with no `app.json`, so the host env defaults to
+        // prod — the safe default, and the one that makes the assertions
         // below meaningful.
         assert!(host_requires_signature());
         assert!(!check_update_enabled(&[]));
@@ -522,15 +521,15 @@ mod tests {
     }
 
     #[test]
-    fn asking_for_the_developer_channel_does_not_waive_a_release_build() {
+    fn asking_for_the_draft_channel_does_not_waive_a_prod_build() {
         // The attack this closes: an App Link query or
-        // `lx.navigateToApp({envVersion:'developer'})` picks the channel an
+        // `lx.navigateToApp({channel:'draft'})` picks the channel an
         // lxapp is fetched on. Keying the waiver on that let anyone who could
-        // hand a release device a link be served an unsigned package.
+        // hand a prod device a link be served an unsigned package.
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
         let mut dev = target();
-        dev.channel = "developer".into();
+        dev.channel = "draft".into();
 
         let err = verify_checked_update(package(None, &sha256, size), &dev, &[]).unwrap_err();
         assert!(err.to_string().contains("require signed updates"), "{err}");
@@ -541,21 +540,21 @@ mod tests {
     }
 
     #[test]
-    fn a_release_build_opens_a_developer_lxapp_only_when_it_is_signed_for_it() {
-        // The channel still binds the manifest, so a developer-channel package
-        // is openable on a release host — but only one a trusted key signed
-        // for the developer channel.
+    fn a_prod_build_opens_a_draft_lxapp_only_when_it_is_signed_for_it() {
+        // The channel still binds the manifest, so a draft-channel package
+        // is openable on a prod host — but only one a trusted key signed
+        // for the draft channel.
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
         let mut dev = target();
-        dev.channel = "developer".into();
+        dev.channel = "draft".into();
         let mut req = request(&sha256, size);
-        req.channel = "developer";
+        req.channel = "draft";
         let auth = sign_package(&SEED, &req).unwrap();
         let keys = [public_key_base64url(&SEED)];
         verify_checked_update(package(Some(auth), &sha256, size), &dev, &keys).unwrap();
 
-        // A package signed for release does not satisfy a developer request.
+        // A package signed for release does not satisfy a draft request.
         let release_auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
         assert!(
             verify_checked_update(package(Some(release_auth), &sha256, size), &dev, &keys).is_err()
@@ -563,48 +562,45 @@ mod tests {
     }
 
     #[test]
-    fn an_unsigned_developer_build_still_skips_verification() {
-        // The waiver did not go away; it moved to where it cannot be asked for.
-        assert!(!channel_requires_signature(
-            crate::ReleaseType::Developer.as_str()
-        ));
+    fn dev_env_allows_unsigned_updates() {
+        assert!(!env_requires_signature(AppEnv::Dev));
     }
 
     #[test]
-    fn developer_invalid_envelope_rejects() {
+    fn draft_invalid_envelope_rejects() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
         let mut auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
         auth.signatures[0] = encode_base64url(&[0u8; 64]);
         let mut dev = target();
-        dev.channel = "developer".into();
+        dev.channel = "draft".into();
         let keys = [public_key_base64url(&SEED)];
         assert!(verify_checked_update(package(Some(auth), &sha256, size), &dev, &keys).is_err());
     }
 
     #[test]
-    fn release_publish_without_key_file_fails() {
+    fn prod_publish_without_key_file_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let err =
-            sign_package_from_key_file("release", None, &request(&sha256, ARCHIVE.len() as u64))
+            sign_package_from_key_file(AppEnv::Prod, None, &request(&sha256, ARCHIVE.len() as u64))
                 .unwrap_err();
         assert!(err.to_string().contains("--update-signing-key-file"));
     }
 
     #[test]
-    fn preview_publish_without_key_file_fails() {
+    fn prod_draft_publish_without_key_file_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
-        let err =
-            sign_package_from_key_file("preview", None, &request(&sha256, ARCHIVE.len() as u64))
-                .unwrap_err();
-        assert!(err.to_string().contains("preview publish"));
+        let mut req = request(&sha256, ARCHIVE.len() as u64);
+        req.channel = "draft";
+        let err = sign_package_from_key_file(AppEnv::Prod, None, &req).unwrap_err();
+        assert!(err.to_string().contains("prod publish"));
     }
 
     #[test]
-    fn developer_publish_without_key_file_is_unsigned() {
+    fn dev_publish_without_key_file_is_unsigned() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         assert!(
-            sign_package_from_key_file("developer", None, &request(&sha256, ARCHIVE.len() as u64),)
+            sign_package_from_key_file(AppEnv::Dev, None, &request(&sha256, ARCHIVE.len() as u64),)
                 .unwrap()
                 .is_none()
         );

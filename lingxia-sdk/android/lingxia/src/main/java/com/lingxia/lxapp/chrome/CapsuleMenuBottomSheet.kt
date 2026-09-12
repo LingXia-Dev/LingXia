@@ -269,8 +269,8 @@ internal object CapsuleMenuBottomSheet {
 
     private fun releaseBadgeFor(releaseType: String): ReleaseBadge? {
         return when (releaseType.lowercase()) {
-            "developer" -> ReleaseBadge(
-                text = "DEV",
+            "draft" -> ReleaseBadge(
+                text = "DFT",
                 textColor = Color.parseColor("#1D4ED8"),
                 backgroundColor = Color.parseColor("#DBEAFE")
             )

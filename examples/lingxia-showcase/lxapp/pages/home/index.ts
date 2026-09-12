@@ -150,8 +150,8 @@ Page({
     try {
       const info = lx.getLxAppInfo();
       const suffix =
-        info.releaseType && info.releaseType !== "release"
-          ? ` (${info.releaseType})`
+        info.channel && info.channel !== "release"
+          ? ` (${info.channel})`
           : "";
       this.setData({
         appVersion: `v${info.version}${suffix}`,

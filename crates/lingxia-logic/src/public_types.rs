@@ -801,17 +801,19 @@ rong::js_api! {
     path: string;
 }"###;
 
-        /// Build-time environment version of the host app.
+        /// Build-time deployment environment of the host app (`dev` | `prod`).
         ///
-        /// Surfaced via {@link HostAppApi.envVersion}. Mirrors the
-        /// `crates/lingxia-update::ReleaseType` enum and the `envVersion` field in the
-        /// generated `app.json`. Pre-envVersion app artifacts are treated as `'release'`.
+        /// Surfaced via {@link HostAppApi.env}. Taken from the `env` field in
+        /// the generated `app.json`. Missing `env` is treated as `'prod'`.
         ///
-        /// Note: this is *separate* from `LxAppEnvVersion` in the navigator module,
-        /// which encodes lxapp release channels for cross-app navigation URLs —
-        /// same three names, different axis.
+        /// This is the host build axis: which server, package-id suffix, publish
+        /// token, and self-update endpoint the host uses. It is **not** the
+        /// lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
+        /// `'release' | 'preview' | 'draft'`). Default channel is derived
+        /// from env (`dev` → `draft`, `prod` → `release`) and can be
+        /// overridden when opening an lxapp.
         ///
-        type HostAppEnvVersion = r###"'developer' | 'preview' | 'release'"###;
+        type HostAppEnv = r###"'dev' | 'prod'"###;
 
         type HostAppUpdateApplyStage = r###"'download' | 'install'"###;
 
@@ -891,11 +893,11 @@ rong::js_api! {
 
         type KeyEventCallback = r###"(event: KeyEvent) => void"###;
 
-        type LxAppEnvVersion = r###"'release' | 'preview' | 'developer'"###;
+        type LxAppEnvVersion = r###"'release' | 'preview' | 'draft'"###;
 
         /// LxApp metadata APIs.
         ///
-        type LxAppReleaseType = r###"'release' | 'preview' | 'developer'"###;
+        type LxAppReleaseType = r###"'release' | 'preview' | 'draft'"###;
 
         /// Device action APIs.
         ///
@@ -937,7 +939,11 @@ rong::js_api! {
      */
     page?: ExternalPageName;
     query?: PageQuery;
-    envVersion?: LxAppEnvVersion;
+    /**
+     * Lxapp publish channel. Defaults from the host env
+     * (`dev` → `draft`, `prod` → `release`).
+     */
+    channel?: LxAppEnvVersion;
     targetVersion?: string;
 }"###;
 
@@ -1627,8 +1633,11 @@ true
      */
     page?: ExternalPageName;
     query?: PageQuery;
-    /** Defaults to 'release'. */
-    envVersion?: LxAppEnvVersion;
+    /**
+     * Lxapp publish channel. Defaults from the host env
+     * (`dev` → `draft`, `prod` → `release`).
+     */
+    channel?: LxAppEnvVersion;
     targetVersion?: string;
     /** Stable identity for `lx.surface.get(key)`. */
     key?: string;
@@ -1766,7 +1775,7 @@ true
         type UpdateReadyInfo = r###"{
     version?: string;
     isForceUpdate?: boolean;
-    channel?: "release" | "preview" | "developer" | string;
+    channel?: "release" | "preview" | "draft" | string;
 }"###;
 
         type UploadIteratorResult = r###"{

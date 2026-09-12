@@ -181,8 +181,7 @@ fn default_true() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct AppLinksConfig {
     /// DNS hosts accepted as App Links. A list applies to every env; a
-    /// `{developer?, preview?, release?}` map selects per env, matching
-    /// `app.lingxiaServer`.
+    /// `{dev?, prod?}` map selects per env, matching `app.lingxiaServer`.
     #[serde(default, skip_serializing_if = "AppLinkHosts::is_empty")]
     pub hosts: AppLinkHosts,
 }
@@ -200,11 +199,9 @@ pub enum AppLinkHosts {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PerEnvHosts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub developer: Option<Vec<String>>,
+    pub dev: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<Vec<String>>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub release: Option<Vec<String>>,
+    pub prod: Option<Vec<String>>,
 }
 
 impl Default for AppLinkHosts {
@@ -216,13 +213,12 @@ impl Default for AppLinkHosts {
 impl AppLinkHosts {
     /// Hosts that apply to `version`. `Single` always returns the same list;
     /// `PerEnv` returns that env's list, or empty if it was omitted.
-    pub fn for_env(&self, version: EnvVersion) -> &[String] {
+    pub fn for_env(&self, version: AppEnv) -> &[String] {
         match self {
             AppLinkHosts::Single(hosts) => hosts.as_slice(),
             AppLinkHosts::PerEnv(per) => match version {
-                EnvVersion::Developer => per.developer.as_deref().unwrap_or(&[]),
-                EnvVersion::Preview => per.preview.as_deref().unwrap_or(&[]),
-                EnvVersion::Release => per.release.as_deref().unwrap_or(&[]),
+                AppEnv::Dev => per.dev.as_deref().unwrap_or(&[]),
+                AppEnv::Prod => per.prod.as_deref().unwrap_or(&[]),
             },
         }
     }
@@ -231,9 +227,8 @@ impl AppLinkHosts {
         match self {
             AppLinkHosts::Single(hosts) => hosts.is_empty(),
             AppLinkHosts::PerEnv(per) => {
-                per.developer.as_ref().is_none_or(Vec::is_empty)
-                    && per.preview.as_ref().is_none_or(Vec::is_empty)
-                    && per.release.as_ref().is_none_or(Vec::is_empty)
+                per.dev.as_ref().is_none_or(Vec::is_empty)
+                    && per.prod.as_ref().is_none_or(Vec::is_empty)
             }
         }
     }
@@ -1235,7 +1230,7 @@ pub struct HostAppConfig {
     pub product_version: String,
 
     /// Optional cloud server. Single string applies to all envs; per-env map
-    /// lets you point dev/preview/release at different backends. Apps with
+    /// lets you point `dev` / `prod` at different backends. Apps with
     /// no cloud component simply omit this field.
     #[serde(default)]
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1246,9 +1241,9 @@ pub struct HostAppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lingxia_id: Option<String>,
 
-    /// Optional overrides for the built-in env-version package-id suffixes
-    /// (`.dev` / `.preview` / none). Specify `""` to opt out of a default,
-    /// e.g. `developer: ""` keeps the developer build using the base id.
+    /// Optional overrides for the built-in env package-id suffixes
+    /// (`.dev` / none). Specify `""` to opt out of a default,
+    /// e.g. `dev: ""` keeps the dev build using the base id.
     /// Almost no projects need this — the defaults match the common case.
     #[serde(default)]
     #[serde(rename = "packageIdSuffix")]
@@ -1279,23 +1274,20 @@ pub enum LingxiaServer {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PerEnvServer {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub developer: Option<String>,
+    pub dev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub release: Option<String>,
+    pub prod: Option<String>,
 }
 
 impl LingxiaServer {
     /// Return the URL that applies to `version`, or `None` if not configured
     /// for that env. `Single` always returns the same value.
-    pub fn for_env(&self, version: EnvVersion) -> Option<&str> {
+    pub fn for_env(&self, version: AppEnv) -> Option<&str> {
         match self {
             LingxiaServer::Single(url) => Some(url.as_str()),
             LingxiaServer::PerEnv(per) => match version {
-                EnvVersion::Developer => per.developer.as_deref(),
-                EnvVersion::Preview => per.preview.as_deref(),
-                EnvVersion::Release => per.release.as_deref(),
+                AppEnv::Dev => per.dev.as_deref(),
+                AppEnv::Prod => per.prod.as_deref(),
             },
         }
     }
@@ -1305,54 +1297,70 @@ impl LingxiaServer {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageIdSuffixOverrides {
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub developer: Option<String>,
+    pub dev: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub preview: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub release: Option<String>,
+    pub prod: Option<String>,
 }
 
 impl PackageIdSuffixOverrides {
-    pub fn for_env(&self, version: EnvVersion) -> Option<&str> {
+    pub fn for_env(&self, version: AppEnv) -> Option<&str> {
         match version {
-            EnvVersion::Developer => self.developer.as_deref(),
-            EnvVersion::Preview => self.preview.as_deref(),
-            EnvVersion::Release => self.release.as_deref(),
+            AppEnv::Dev => self.dev.as_deref(),
+            AppEnv::Prod => self.prod.as_deref(),
         }
     }
 }
 
-/// Canonical env-version enum. Wire-compatible with `lingxia_update::ReleaseType`
-/// — both serialize as lowercase `"developer" | "preview" | "release"`.
+/// Host-app deployment environment: `dev` | `prod`.
+///
+/// This is the build-time axis (server, package-id suffix, publish token,
+/// self-update). It is not the lxapp publish channel
+/// (`release` | `preview` | `draft`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
-pub enum EnvVersion {
-    Developer,
-    Preview,
+pub enum AppEnv {
+    Dev,
     #[default]
-    Release,
+    Prod,
 }
 
-impl EnvVersion {
+impl AppEnv {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Developer => "developer",
-            Self::Preview => "preview",
-            Self::Release => "release",
+            Self::Dev => "dev",
+            Self::Prod => "prod",
         }
     }
 
-    /// Parse the user-facing CLI value. Case-sensitive on purpose — clap's
-    /// `value_parser` already restricts inputs to the lowercase forms below,
-    /// so accepting other cases here would silently widen the contract.
+    /// Parse the user-facing CLI `--env` value. Case-sensitive on purpose —
+    /// clap's `value_parser` already restricts inputs to `dev` | `prod`.
+    /// `release`, `preview`, and `draft` are lxapp channels, not host envs.
     pub fn parse_cli(value: &str) -> Result<Self> {
         match value.trim() {
-            "developer" | "dev" => Ok(Self::Developer),
-            "preview" => Ok(Self::Preview),
-            "release" => Ok(Self::Release),
-            other => Err(anyhow!(
-                "unknown env version '{other}'; valid: developer (or dev), preview, release"
+            "dev" => Ok(Self::Dev),
+            "prod" => Ok(Self::Prod),
+            "release" => Err(anyhow!(
+                "'release' is an lxapp channel, not a host env; use --env prod"
             )),
+            "preview" => Err(anyhow!(
+                "'preview' is an lxapp channel, not a host env; \
+                 test on prod with --channel preview (like TestFlight). \
+                 Use --env prod, or --env dev for a staging server"
+            )),
+            "developer" | "draft" => Err(anyhow!(
+                "'{value}' is not a host env; use --env dev. \
+                 lxapp channels are release, preview, draft"
+            )),
+            other => Err(anyhow!("unknown env '{other}'; valid: dev, prod")),
+        }
+    }
+
+    /// Default lxapp channel for this host env: `dev` → `draft`,
+    /// `prod` → `release`.
+    pub fn default_channel(self) -> &'static str {
+        match self {
+            Self::Dev => "draft",
+            Self::Prod => "release",
         }
     }
 
@@ -1361,14 +1369,13 @@ impl EnvVersion {
     /// explicit `packageIdSuffix: ""` in YAML opts out (no suffix at all).
     pub fn default_package_id_suffix(self) -> Option<&'static str> {
         match self {
-            Self::Developer => Some(".dev"),
-            Self::Preview => Some(".preview"),
-            Self::Release => None,
+            Self::Dev => Some(".dev"),
+            Self::Prod => None,
         }
     }
 }
 
-impl std::fmt::Display for EnvVersion {
+impl std::fmt::Display for AppEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.as_str())
     }
@@ -1378,7 +1385,7 @@ impl std::fmt::Display for EnvVersion {
 /// through the build pipeline (asset generation + each platform builder).
 #[derive(Debug, Clone)]
 pub struct ResolvedEnv {
-    pub version: EnvVersion,
+    pub version: AppEnv,
     pub lingxia_server: String,
     /// `None` means "do not append a suffix". `Some` always means "append
     /// this exact string" — `effective_package_id_suffix()` already filters
@@ -2197,14 +2204,10 @@ fn validate_app_links(app_links: &AppLinksConfig) -> Result<()> {
             }
         }
         AppLinkHosts::PerEnv(per) => {
-            let entries = [
-                ("developer", per.developer.as_deref()),
-                ("preview", per.preview.as_deref()),
-                ("release", per.release.as_deref()),
-            ];
+            let entries = [("dev", per.dev.as_deref()), ("prod", per.prod.as_deref())];
             if entries.iter().all(|(_, hosts)| hosts.is_none()) {
                 return Err(anyhow!(
-                    "appLinks.hosts must configure at least one of developer, preview, or release"
+                    "appLinks.hosts must configure at least one of dev or prod"
                 ));
             }
             for (name, hosts) in entries {
@@ -2634,14 +2637,10 @@ fn validate_lingxia_server(cfg: &LingxiaServer) -> Result<()> {
             }
         }
         LingxiaServer::PerEnv(per) => {
-            let entries = [
-                ("developer", per.developer.as_deref()),
-                ("preview", per.preview.as_deref()),
-                ("release", per.release.as_deref()),
-            ];
+            let entries = [("dev", per.dev.as_deref()), ("prod", per.prod.as_deref())];
             if entries.iter().all(|(_, url)| url.is_none()) {
                 return Err(anyhow!(
-                    "app.lingxiaServer must configure at least one of developer, preview, or release"
+                    "app.lingxiaServer must configure at least one of dev or prod"
                 ));
             }
             for (name, url) in entries {
@@ -2657,11 +2656,7 @@ fn validate_lingxia_server(cfg: &LingxiaServer) -> Result<()> {
 }
 
 fn validate_package_id_suffix_overrides(over: &PackageIdSuffixOverrides) -> Result<()> {
-    for (name, suffix) in [
-        ("developer", over.developer.as_deref()),
-        ("preview", over.preview.as_deref()),
-        ("release", over.release.as_deref()),
-    ] {
+    for (name, suffix) in [("dev", over.dev.as_deref()), ("prod", over.prod.as_deref())] {
         let Some(suffix) = suffix else {
             continue;
         };
@@ -2694,9 +2689,8 @@ fn is_valid_package_id_suffix(suffix: &str) -> bool {
 impl LingXiaConfig {
     /// Resolve the active environment for this build.
     ///
-    /// Model: env-version is a build-time property with built-in defaults
-    /// (developer=".dev", preview=".preview", release=no suffix). Yaml only
-    /// supplies optional overrides.
+    /// Model: env is a build-time property with built-in defaults
+    /// (`dev`=".dev", `prod`=no suffix). Yaml only supplies optional overrides.
     ///
     /// - `lingxia_server`: `app.lingxiaServer` is queried; `Single` applies
     ///   everywhere, `PerEnv` selects by env. Empty string if not configured.
@@ -2706,7 +2700,7 @@ impl LingXiaConfig {
     /// - `app_link_hosts`: `appLinks.hosts` is queried the same way; `Single`
     ///   applies everywhere, `PerEnv` selects by env. Empty if AppLinks are
     ///   off for this env.
-    pub fn resolve_env(&self, version: EnvVersion) -> Result<ResolvedEnv> {
+    pub fn resolve_env(&self, version: AppEnv) -> Result<ResolvedEnv> {
         let app = self
             .app
             .as_ref()
@@ -3110,14 +3104,27 @@ android:
         // still resolves to its built-in suffix.
         let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
 
-        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
-        assert_eq!(dev.version, EnvVersion::Developer);
+        let dev = config.resolve_env(AppEnv::Dev).unwrap();
+        assert_eq!(dev.version, AppEnv::Dev);
         assert_eq!(dev.lingxia_server, "https://api.example.com");
         assert_eq!(dev.effective_package_id_suffix(), Some(".dev"));
 
-        let release = config.resolve_env(EnvVersion::Release).unwrap();
+        let release = config.resolve_env(AppEnv::Prod).unwrap();
         assert_eq!(release.lingxia_server, "https://api.example.com");
         assert_eq!(release.effective_package_id_suffix(), None);
+    }
+
+    #[test]
+    fn parse_cli_accepts_only_dev_and_prod() {
+        assert_eq!(AppEnv::parse_cli("dev").unwrap(), AppEnv::Dev);
+        assert_eq!(AppEnv::parse_cli("prod").unwrap(), AppEnv::Prod);
+        for rejected in ["developer", "preview", "release", "develop"] {
+            let err = AppEnv::parse_cli(rejected).unwrap_err().to_string();
+            assert!(
+                err.contains("channel") || err.contains("unknown env"),
+                "{rejected}: {err}"
+            );
+        }
     }
 
     #[test]
@@ -3125,19 +3132,15 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.lingxia_server = Some(LingxiaServer::PerEnv(PerEnvServer {
-            developer: Some("http://localhost:8080".to_string()),
-            preview: None,
-            release: Some("https://prod.example.com".to_string()),
+            dev: Some("http://localhost:8080".to_string()),
+            prod: Some("https://prod.example.com".to_string()),
         }));
 
-        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        let dev = config.resolve_env(AppEnv::Dev).unwrap();
         assert_eq!(dev.lingxia_server, "http://localhost:8080");
 
-        let preview = config.resolve_env(EnvVersion::Preview).unwrap();
-        assert_eq!(preview.lingxia_server, ""); // not configured for preview
-
-        let release = config.resolve_env(EnvVersion::Release).unwrap();
-        assert_eq!(release.lingxia_server, "https://prod.example.com");
+        let prod = config.resolve_env(AppEnv::Prod).unwrap();
+        assert_eq!(prod.lingxia_server, "https://prod.example.com");
     }
 
     #[test]
@@ -3145,11 +3148,11 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         let app = config.app.as_mut().unwrap();
         app.package_id_suffix = Some(PackageIdSuffixOverrides {
-            developer: Some(String::new()),
+            dev: Some(String::new()),
             ..Default::default()
         });
 
-        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        let dev = config.resolve_env(AppEnv::Dev).unwrap();
         assert_eq!(dev.effective_package_id_suffix(), None);
     }
 
@@ -3158,7 +3161,7 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.app.as_mut().unwrap().lingxia_server = None;
 
-        let env = config.resolve_env(EnvVersion::Release).unwrap();
+        let env = config.resolve_env(AppEnv::Prod).unwrap();
         assert_eq!(env.lingxia_server, "");
         assert!(env.app_link_hosts.is_empty());
     }
@@ -3170,9 +3173,9 @@ android:
             hosts: AppLinkHosts::Single(vec!["app.example.com".to_string()]),
         });
 
-        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        let dev = config.resolve_env(AppEnv::Dev).unwrap();
         assert_eq!(dev.app_link_hosts, ["app.example.com"]);
-        let release = config.resolve_env(EnvVersion::Release).unwrap();
+        let release = config.resolve_env(AppEnv::Prod).unwrap();
         assert_eq!(release.app_link_hosts, ["app.example.com"]);
     }
 
@@ -3181,20 +3184,16 @@ android:
         let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
         config.app_links = Some(AppLinksConfig {
             hosts: AppLinkHosts::PerEnv(PerEnvHosts {
-                developer: Some(vec!["app-dev.example.com".to_string()]),
-                preview: None,
-                release: Some(vec!["app.example.com".to_string()]),
+                dev: Some(vec!["app-dev.example.com".to_string()]),
+                prod: Some(vec!["app.example.com".to_string()]),
             }),
         });
 
-        let dev = config.resolve_env(EnvVersion::Developer).unwrap();
+        let dev = config.resolve_env(AppEnv::Dev).unwrap();
         assert_eq!(dev.app_link_hosts, ["app-dev.example.com"]);
 
-        let preview = config.resolve_env(EnvVersion::Preview).unwrap();
-        assert!(preview.app_link_hosts.is_empty());
-
-        let release = config.resolve_env(EnvVersion::Release).unwrap();
-        assert_eq!(release.app_link_hosts, ["app.example.com"]);
+        let prod = config.resolve_env(AppEnv::Prod).unwrap();
+        assert_eq!(prod.app_link_hosts, ["app.example.com"]);
     }
 
     #[test]
@@ -3242,9 +3241,9 @@ resources:
       path: my-app
 appLinks:
   hosts:
-    developer:
+    dev:
       - app-dev.example.com
-    release:
+    prod:
       - app.example.com
 "#,
         )
@@ -3252,9 +3251,8 @@ appLinks:
         assert_eq!(
             per_env.app_links.unwrap().hosts,
             AppLinkHosts::PerEnv(PerEnvHosts {
-                developer: Some(vec!["app-dev.example.com".to_string()]),
-                preview: None,
-                release: Some(vec!["app.example.com".to_string()]),
+                dev: Some(vec!["app-dev.example.com".to_string()]),
+                prod: Some(vec!["app.example.com".to_string()]),
             })
         );
     }
@@ -3283,9 +3281,7 @@ appLinks:
         .unwrap_err()
         .to_string();
         assert!(
-            err.contains(
-                "appLinks.hosts must configure at least one of developer, preview, or release"
-            ),
+            err.contains("appLinks.hosts must configure at least one of dev or prod"),
             "{err}"
         );
     }

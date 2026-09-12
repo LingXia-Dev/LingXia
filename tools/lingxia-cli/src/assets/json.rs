@@ -13,7 +13,7 @@ use super::ui::effective_ui_config;
 /// `resolved_env` is the single source of truth for the active environment:
 /// - `lingxiaServer` is taken from the resolved environment.
 /// - `lingxiaId` is emitted verbatim (env-independent).
-/// - `envVersion` is always emitted (defaults to `release`).
+/// - `env` is always emitted (defaults to `prod`).
 /// - `appLinks.hosts` is the resolved list for this env (omitted when empty).
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
@@ -61,7 +61,7 @@ pub(super) fn build_app_json_from_config(
         obj.insert("windowsAppId".to_string(), serde_json::json!(resolved_id));
     }
     obj.insert(
-        "envVersion".to_string(),
+        "env".to_string(),
         serde_json::json!(resolved_env.version.as_str()),
     );
 

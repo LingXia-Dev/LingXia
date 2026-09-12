@@ -2708,7 +2708,7 @@ fn lxapp_surface_menu_header(
         header.push_str(version.trim());
     }
     match release_type.trim().to_ascii_lowercase().as_str() {
-        "developer" => header.push_str(" [DEV]"),
+        "draft" => header.push_str(" [DRAFT]"),
         "preview" => header.push_str(" [PRE]"),
         _ => {}
     }
@@ -3055,8 +3055,8 @@ mod tests {
     #[test]
     fn lxapp_surface_menu_header_includes_channel_badge() {
         assert_eq!(
-            lxapp_surface_menu_header("demo", "Showcase", "1.2.3", "developer"),
-            "Showcase · 1.2.3 [DEV]"
+            lxapp_surface_menu_header("demo", "Showcase", "1.2.3", "draft"),
+            "Showcase · 1.2.3 [DRAFT]"
         );
         assert_eq!(lxapp_surface_menu_header("demo", "", "", "release"), "demo");
     }

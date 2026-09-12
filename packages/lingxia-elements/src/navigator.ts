@@ -18,7 +18,7 @@ export type NavigatorTarget =
 
 export type NavigatorQueryValue = string | number | boolean | null | undefined;
 export type NavigatorQuery = Record<string, NavigatorQueryValue>;
-export type NavigatorEnvVersion = 'release' | 'preview' | 'developer';
+export type NavigatorChannel = 'release' | 'preview' | 'draft';
 
 export interface LxNavigatorEventDetail {
   success?: boolean;
@@ -44,7 +44,7 @@ export type LxNavigatorAttributes = {
 
   // Open external lxapp
   'app-id'?: string;              // Target lxapp ID
-  'env-version'?: NavigatorEnvVersion; // Target lxapp envVersion
+  channel?: NavigatorChannel; // Target lxapp channel
   'target-version'?: string;      // Exact target lxapp version
 
   // Phone call
@@ -89,7 +89,7 @@ export class LxNavigatorElement extends HTMLElement {
       "target",
       "delta",
       "app-id",
-      "env-version",
+      "channel",
       "target-version",
       "phone-number",
       "hover-class",
@@ -263,7 +263,7 @@ export class LxNavigatorElement extends HTMLElement {
     const explicitTarget = this.getAttribute('target') as NavigatorTarget | null;
     const delta = parseInt(this.getAttribute('delta') || '1', 10);
     const appId = this.getAttribute('app-id');
-    const envVersion = this.getAttribute('env-version') as NavigatorEnvVersion | null;
+    const channel = this.getAttribute('channel') as NavigatorChannel | null;
     const targetVersion = this.getAttribute('target-version');
     const phoneNumber = this.getAttribute('phone-number');
 
@@ -279,7 +279,7 @@ export class LxNavigatorElement extends HTMLElement {
       target,
       delta,
       appId,
-      envVersion,
+      channel,
       targetVersion,
       phoneNumber
     });
@@ -322,7 +322,7 @@ export class LxNavigatorElement extends HTMLElement {
     target: NavigatorTarget;
     delta: number;
     appId?: string | null;
-    envVersion?: NavigatorEnvVersion | null;
+    channel?: NavigatorChannel | null;
     targetVersion?: string | null;
     phoneNumber?: string | null;
   }) {
@@ -415,7 +415,7 @@ export class LxNavigatorElement extends HTMLElement {
     target: NavigatorTarget;
     delta: number;
     appId?: string | null;
-    envVersion?: NavigatorEnvVersion | null;
+    channel?: NavigatorChannel | null;
     targetVersion?: string | null;
     phoneNumber?: string | null;
   }) {
@@ -530,13 +530,13 @@ export class LxNavigatorElement extends HTMLElement {
     appId?: string | null;
     page?: string | null;
     query?: string | null;
-    envVersion?: NavigatorEnvVersion | null;
+    channel?: NavigatorChannel | null;
     targetVersion?: string | null;
   }): Record<string, unknown> {
     const target: Record<string, unknown> = { appId: options.appId };
     const pageTarget = this.buildPageTarget(options);
     if (pageTarget) Object.assign(target, pageTarget);
-    if (options.envVersion) target.envVersion = options.envVersion;
+    if (options.channel) target.channel = options.channel;
     if (options.targetVersion) target.targetVersion = options.targetVersion;
     return target;
   }

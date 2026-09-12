@@ -1,31 +1,29 @@
-//! Cross-platform env-version icon badge drawing.
+//! Cross-platform host-env icon badge drawing.
 //!
-//! Developer/preview builds get a small accent badge composited onto the
-//! launcher icon so they can be visually distinguished from release builds.
-//! This module only owns the shared badge appearance; platform modules decide
-//! which icon copy to badge and where to stage it.
+//! Dev builds get a small `D` badge composited onto the launcher icon so they
+//! can be distinguished from prod. This module only owns the shared badge
+//! appearance; platform modules decide which icon copy to badge and where to
+//! stage it.
 
 use anyhow::{Context, Result};
 use image::{ImageFormat, Rgba, RgbaImage};
 use std::path::Path;
 
-use crate::config::EnvVersion;
+use crate::config::AppEnv;
 
-/// Letter + accent color for the env's badge, or `None` for release.
-pub fn env_badge(version: EnvVersion) -> Option<(char, [u8; 4])> {
+/// Letter + accent color for the env's badge, or `None` for prod.
+pub fn env_badge(version: AppEnv) -> Option<(char, [u8; 4])> {
     match version {
-        // Match the Android accent (#D32F2F) so dev/preview look the same
-        // across platforms.
-        EnvVersion::Developer => Some(('D', [0xD3, 0x2F, 0x2F, 0xFF])),
-        EnvVersion::Preview => Some(('P', [0xD3, 0x2F, 0x2F, 0xFF])),
-        EnvVersion::Release => None,
+        // Match the Android accent (#D32F2F) so a dev build is obvious.
+        AppEnv::Dev => Some(('D', [0xD3, 0x2F, 0x2F, 0xFF])),
+        AppEnv::Prod => None,
     }
 }
 
 /// Badge a single PNG file in place. No-op (returns `false`) when the env
 /// needs no badge, the file is missing, or the icon is too small to carry the
 /// badge legibly (< 60 px wide, e.g. a tiny notification glyph).
-pub fn badge_png_file(path: &Path, version: EnvVersion) -> Result<bool> {
+pub fn badge_png_file(path: &Path, version: AppEnv) -> Result<bool> {
     let Some((letter, accent)) = env_badge(version) else {
         return Ok(false);
     };
@@ -162,14 +160,13 @@ fn letter_glyph(letter: char) -> &'static [u8] {
 #[cfg(test)]
 mod tests {
     use super::{composite_badge, env_badge, letter_glyph};
-    use crate::config::EnvVersion;
+    use crate::config::AppEnv;
     use image::{Rgba, RgbaImage};
 
     #[test]
-    fn release_has_no_badge() {
-        assert!(env_badge(EnvVersion::Release).is_none());
-        assert!(env_badge(EnvVersion::Developer).is_some());
-        assert!(env_badge(EnvVersion::Preview).is_some());
+    fn prod_has_no_badge() {
+        assert!(env_badge(AppEnv::Prod).is_none());
+        assert!(env_badge(AppEnv::Dev).is_some());
     }
 
     #[test]

@@ -177,7 +177,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 
 ## `app` Section
 
-`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment versions](#environment-versions)).
+`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment](#environment)).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
@@ -292,80 +292,67 @@ Lxapp page content does not inherit these colors; it responds to the standard
 
 ---
 
-## Environment versions
+## Environment
 
-A LingXia host build is always one of three envs — `developer`, `preview`, or `release` — selected via `lingxia {build,dev,package} --env <env>`. The default is `developer` for `build`/`dev` and `release` for `package`.
+A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env <env>`. Default: `dev` for `build`/`dev`, `prod` for `package`. This is **not** the lxapp channel (`release` | `preview` | `draft`) and not the `--release` compiler profile.
 
 **What each env produces:**
 
 | Env | Default `packageIdSuffix` | Launcher icon | Default `lingxia dev/build` | Default `lingxia package` |
 |---|---|---|---|---|
-| `developer` | `.dev` | red `D` badge | ✓ | |
-| `preview` | `.preview` | red `P` badge | | |
-| `release` | `(none)` | unmodified | | ✓ |
+| `dev` | `.dev` | red `D` badge | ✓ | |
+| `prod` | `(none)` | unmodified | | ✓ |
 
-Different envs of the same app install **side by side** because their bundle/package ids differ. No git-tracked file changes when you switch envs — every effect lands in a build-output directory or is passed at build time.
+There is no host `preview` env. Testers use the **prod** env's **preview** lxapp channel (like TestFlight). A staging server is a `dev` env.
+
+Different envs install **side by side** because their package ids differ. No git-tracked file changes when you switch envs.
+
+Default lxapp channel is derived from env (`dev` → `draft`, `prod` → `release`) and can be overridden when opening an app with `channel`. Prod hosts are allowed to open the `draft` channel; the registry decides.
 
 ### Per-env `lingxiaServer`
-
-Single URL (same for every env):
 
 ```yaml
 app:
   lingxiaServer: https://api.myapp.com
-```
-
-Per-env map (omit envs you don't have a server for — typical for `developer`):
-
-```yaml
-app:
-  lingxiaServer:
-    developer: http://192.168.1.10:8080
-    preview: https://preview.api.myapp.com
-    release: https://api.myapp.com
+# lingxiaServer:
+#   dev: http://192.168.1.10:8080
+#   prod: https://api.myapp.com
 ```
 
 ### Per-env `appLinks.hosts`
 
-Same list-or-map shape as `lingxiaServer`. `lingxia build --env` writes that env's hosts into `app.json` and platform association files (Android intent filters, Apple associated domains, Harmony skills).
+Same list-or-map shape. `lingxia build --env` writes that env's hosts into `app.json` and platform association files.
 
 ```yaml
 appLinks:
   hosts: [app.example.com]
 # hosts:
-#   developer: [app-dev.example.com]
-#   preview: [app-preview.example.com]
-#   release: [app.example.com]
+#   dev: [app-dev.example.com]
+#   prod: [app.example.com]
 ```
 
-Omit an env → no App Links for that build. Each host needs `.well-known` files; see [App Links](./applinks.md).
+Omit an env → no App Links for that build. See [App Links](./applinks.md).
 
 ### Per-env `packageIdSuffix`
 
-Built-in defaults (`.dev` / `.preview` / `(none)`) cover most apps. Override only when you need custom suffixes:
+Built-in defaults (`.dev` / none) cover most apps:
 
 ```yaml
 app:
   packageIdSuffix:
-    developer: .internal   # → com.example.myapp.internal
-    preview: ".preview"    # quote when starting with .
-    release: ""            # "" = opt out of any suffix
+    dev: .internal
+    prod: ""            # "" = opt out of any suffix
 ```
 
-Validation rules:
-
-- Each suffix must match `^\.[a-z0-9]+(\.[a-z0-9]+)*$` (start with `.`, lowercase a-z 0-9 segments) — or be `""` to opt out.
-- Empty `lingxiaServer` string is rejected. Per-env map must have at least one entry set.
-- Empty `appLinks.hosts` per-env map (`hosts: {}`) is rejected. Per-env map must have at least one of developer, preview, or release set.
-- Unknown keys (e.g. `enviroments:` typo) surface as YAML parse errors, not silent ignores.
+Validation: each suffix matches `^\.[a-z0-9]+(\.[a-z0-9]+)*$` or is `""`. Empty `lingxiaServer` is rejected. Per-env maps must set at least one of `dev` or `prod`. Unknown keys are YAML parse errors.
 
 ### Reading the env at runtime
 
-JS Logic (`pages/*/index.ts`): `lx.app.envVersion` — `'developer' | 'preview' | 'release'`, fixed at app boot. See [Logic runtime and typings](../lxapp/lx-api.md).
+JS: `lx.app.env` — `'dev' | 'prod'`, fixed at boot.
 
-Rust host: `lingxia::env_version()` returns the same enum.
+Rust: `lingxia::app::env()` returns `AppEnv`.
 
-The build-time plumbing per platform (Android Gradle properties, iOS bundle id rewrite, Harmony staging mirror, publish-flow id matching) is internal — app authors don't touch it.
+The build-time plumbing per platform is internal — app authors don't touch it.
 
 ---
 

@@ -1,6 +1,6 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
-use lingxia_app_context::{app_config, env_version};
+use lingxia_app_context::{app_config, env};
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue};
 
@@ -159,7 +159,7 @@ rong::js_api! {
 rong::js_api! {
     fn register_app_base_api(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
-        const envVersion: "HostAppEnvVersion" = env_version().as_str();
+        const env: "HostAppEnv" = env().as_str();
         fn getBaseInfo = get_app_base_info;
     }
 }

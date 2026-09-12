@@ -77,11 +77,10 @@ struct BuildOptions {
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
 
-    /// Environment (developer | preview | release; alias `dev` for developer).
-    /// All commands default to developer when --env is omitted; release and
-    /// preview must be requested explicitly. Independent from --release/debug
-    /// profile.
-    #[arg(long = "env", value_parser = ["developer", "dev", "preview", "release"])]
+    /// Host deployment environment (`dev` | `prod`). Independent from
+    /// `--release` (compiler profile) and from `--channel` (lxapp publish line).
+    /// `build`/`dev` default to `dev`; `package` defaults to `prod`.
+    #[arg(long = "env", value_parser = ["dev", "prod"])]
     env_version: Option<String>,
 
     /// Extra Cargo feature(s) for the native Rust library. Can be repeated or
@@ -551,9 +550,15 @@ struct PublishArgs {
     #[arg(long, value_parser = ["android", "macos", "windows"])]
     platform: Option<String>,
 
-    /// Environment/channel for lxapp/lxplugin publishing: developer, preview,
-    /// release. Defaults to developer; alias `dev` for developer.
-    #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+    /// Host env for server and publish token: `dev` | `prod`.
+    /// Defaults to `dev` for lxapp/lxplugin; host-app publish reads `env`
+    /// from the packaged `app.json`.
+    #[arg(long = "env", value_parser = ["dev", "prod"])]
+    env: Option<String>,
+
+    /// Lxapp publish channel: `release` | `preview` | `draft`.
+    /// Defaults from `--env` (`dev` → `draft`, `prod` → `release`).
+    #[arg(long = "channel", value_parser = ["release", "preview", "draft"])]
     channel: Option<String>,
 
     /// Override lxapp view framework detection (multi-framework demo projects
@@ -565,7 +570,7 @@ struct PublishArgs {
     #[arg(long, value_parser = ["task", "plain"])]
     progress: Option<String>,
 
-    /// Seed file for preview/release update signatures (POSIX 0600 or 0400).
+    /// Seed file required for prod update signatures (POSIX 0600 or 0400).
     /// Also reads `LINGXIA_UPDATE_SIGNING_KEY_FILE`.
     #[arg(long, env = "LINGXIA_UPDATE_SIGNING_KEY_FILE")]
     update_signing_key_file: Option<String>,
@@ -735,8 +740,8 @@ enum AuthLoginProvider {
         #[arg(long)]
         token: Option<String>,
 
-        /// Channel this token is for: developer, preview, release.
-        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        /// Host env this token is for: `dev` | `prod`.
+        #[arg(long = "env", value_parser = ["dev", "prod"])]
         env: Option<String>,
     },
 }
@@ -787,8 +792,8 @@ enum AuthLogoutProvider {
         #[arg(long)]
         server: Option<String>,
 
-        /// Channel: developer, preview, release.
-        #[arg(long = "env", alias = "channel", value_parser = ["developer", "dev", "preview", "release"])]
+        /// Host env: `dev` | `prod`.
+        #[arg(long = "env", value_parser = ["dev", "prod"])]
         env: Option<String>,
     },
 }
@@ -1221,6 +1226,7 @@ fn main() -> Result<()> {
                 lingxia_server: args.lingxia_server,
                 package: args.package_path,
                 platform: args.platform,
+                env: args.env,
                 channel: args.channel,
                 framework: args.framework,
                 progress: args.progress,
@@ -1257,7 +1263,7 @@ mod cli_tests {
             "--token",
             "token",
             "--env",
-            "release",
+            "prod",
         ])
         .unwrap();
         let Commands::Auth {
@@ -1393,9 +1399,9 @@ mod cli_tests {
             "runner",
             "set",
             "com.example.app",
-            "--developer",
+            "--dev",
             "http://127.0.0.1:8787",
-            "--release",
+            "--prod",
             "https://api.example.com",
         ])
         .unwrap();
@@ -1403,18 +1409,16 @@ mod cli_tests {
             action:
                 Some(commands::runner::RunnerAction::Set {
                     lingxia_id,
-                    developer,
-                    preview,
-                    release,
+                    dev,
+                    prod,
                 }),
         } = cli.command
         else {
             panic!("expected runner set command");
         };
         assert_eq!(lingxia_id, "com.example.app");
-        assert_eq!(developer.as_deref(), Some("http://127.0.0.1:8787"));
-        assert!(preview.is_none());
-        assert_eq!(release.as_deref(), Some("https://api.example.com"));
+        assert_eq!(dev.as_deref(), Some("http://127.0.0.1:8787"));
+        assert_eq!(prod.as_deref(), Some("https://api.example.com"));
     }
 
     #[test]

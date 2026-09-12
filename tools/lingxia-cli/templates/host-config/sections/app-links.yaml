@@ -4,8 +4,7 @@ appLinks:
   # DNS hosts accepted as app links, without scheme or path.
   # A list applies to every env. To vary by env (same shape as app.lingxiaServer):
   #   hosts:
-  #     developer: [app-dev.example.com]
-  #     preview: [app-preview.example.com]
-  #     release: [app.example.com]
+  #     dev: [app-dev.example.com]
+  #     prod: [app.example.com]
   hosts:
 {{APP_LINK_HOSTS}}

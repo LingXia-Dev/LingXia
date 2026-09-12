@@ -47,10 +47,10 @@ LingXia 提供本地命令传输，但 Codex、Claude 或其他 Agent 集成由�
 Agent 工具用私有的 `--cli` 参数执行产品本身的准确 executable；框架不再生成 launcher，
 也不假设 agent 能读取用户 shell 的 `PATH`。
 
-release 构建可以把 `current_exe()` 原子写成产品 locator 中唯一一行，例如
-`~/.<product>/path`。developer 构建不应覆盖 release locator；产品 skill 可以先解析一个
-明确的开发覆盖变量（例如 `<PRODUCT>_PATH`），再读取 release locator。release、preview
-与 developer 的 app-data 目录不同，因此 endpoint 已自然隔离。
+prod 构建可以把 `current_exe()` 原子写成产品 locator 中唯一一行，例如
+`~/.<product>/path`。dev 构建不应覆盖 prod locator；产品 skill 可以先解析一个
+明确的开发覆盖变量（例如 `<PRODUCT>_PATH`），再读取 prod locator。dev 与 prod
+的 app-data 目录不同，因此 endpoint 已自然隔离。
 
 LingXia 不选择 locator，也不生成会与产品业务规则发生漂移的 skill；二者都由宿主拥有
 并分发。Agent 工具应在描述能力前查询运行中的产品。

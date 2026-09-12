@@ -51,8 +51,8 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
         let artifacts = platform.build(&build_config)?;
         let exe_path = artifacts.path().to_path_buf();
 
-        // dev/preview: stage a badged copy of the launcher icon and point the
-        // SDK at it via env, so the running window/taskbar shows the D/P badge
+        // Dev: stage a badged copy of the launcher icon and point the
+        // SDK at it via env, so the running window/taskbar shows the D badge
         // without mutating the prepared assets icon (which a later
         // `lingxia build` copies into its dist).
         let windows_build_dir = platform::windows::resolve_windows_build_dir(&ctx.project_root)?;

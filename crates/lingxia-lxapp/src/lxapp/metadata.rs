@@ -1,4 +1,4 @@
-use lingxia_update::{ReleaseType, SemanticVersion};
+use lingxia_update::{Channel, SemanticVersion};
 use redb::{Database, ReadableDatabase, ReadableTable, TableDefinition};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
@@ -19,7 +19,7 @@ static DATABASE: OnceLock<Arc<Database>> = OnceLock::new();
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct LxAppRecord {
     pub lxappid: String,
-    pub release_type: ReleaseType,
+    pub release_type: Channel,
     pub version: SemanticVersion,
     pub fingermark: String,
     pub install_path: String,
@@ -33,7 +33,7 @@ pub(crate) struct LxAppRecord {
 impl LxAppRecord {
     pub fn new(
         lxappid: &str,
-        release_type: ReleaseType,
+        release_type: Channel,
         version: SemanticVersion,
         fingermark: String,
         install_path: String,
@@ -92,10 +92,7 @@ pub(crate) fn init(db_path: PathBuf) -> Result<(), LxAppError> {
     Ok(())
 }
 
-pub(crate) fn get(
-    lxappid: &str,
-    release_type: ReleaseType,
-) -> Result<Option<LxAppRecord>, LxAppError> {
+pub(crate) fn get(lxappid: &str, release_type: Channel) -> Result<Option<LxAppRecord>, LxAppError> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
@@ -171,7 +168,7 @@ pub(crate) fn remove_all(lxappid: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
-pub(crate) fn remove(lxappid: &str, release_type: ReleaseType) -> Result<(), LxAppError> {
+pub(crate) fn remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
     let txn = db
@@ -190,7 +187,7 @@ pub(crate) fn remove(lxappid: &str, release_type: ReleaseType) -> Result<(), LxA
     Ok(())
 }
 
-fn key_for(lxappid: &str, release_type: ReleaseType) -> String {
+fn key_for(lxappid: &str, release_type: Channel) -> String {
     format!("{}::{}", lxappid, release_type.as_str())
 }
 
@@ -208,7 +205,7 @@ pub(crate) fn metadata_error(action: &str, err: impl fmt::Display) -> LxAppError
 // Update last open time for an installed app
 pub(crate) fn touch_last_open(
     lxappid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
     ts: i64,
 ) -> Result<(), LxAppError> {
     if let Some(mut record) = get(lxappid, release_type)? {
@@ -223,7 +220,7 @@ pub(crate) fn touch_last_open(
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct PendingUpdateRecord {
     pub lxappid: String,
-    pub release_type: ReleaseType,
+    pub release_type: Channel,
     pub version: SemanticVersion,
     pub zip_path: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -232,7 +229,7 @@ pub(crate) struct PendingUpdateRecord {
 
 pub(crate) fn downloaded_get(
     lxappid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
 ) -> Result<Option<PendingUpdateRecord>, LxAppError> {
     let key = key_for(lxappid, release_type);
     let db = database()?;
@@ -253,10 +250,7 @@ pub(crate) fn downloaded_get(
     }
 }
 
-pub(crate) fn downloaded_remove(
-    lxappid: &str,
-    release_type: ReleaseType,
-) -> Result<(), LxAppError> {
+pub(crate) fn downloaded_remove(lxappid: &str, release_type: Channel) -> Result<(), LxAppError> {
     // Fetch record for archive path
     let record = downloaded_get(lxappid, release_type)?;
 
@@ -295,7 +289,7 @@ pub(crate) fn downloaded_remove(
 
 pub(crate) fn downloaded_upsert(
     lxappid: &str,
-    release_type: ReleaseType,
+    release_type: Channel,
     version: &str,
     zip_path: &std::path::Path,
     checksum_sha256: Option<&str>,
@@ -349,8 +343,8 @@ pub(crate) struct RegistryRecord {
     /// `LxAppStatus::as_str`; stored as text so the contract crate stays free of
     /// serde and an unknown value from a newer server degrades instead of failing.
     pub status: String,
-    /// Grants by release channel. A grant written for `release` says nothing
-    /// about a developer build of the same app id, and the listing refresh and
+    /// Grants by publish channel. A grant written for `release` says nothing
+    /// about a draft of the same app id, and the listing refresh and
     /// an instance's own lookup can run on different channels — one slot would
     /// let either erase the other's answer.
     #[serde(default)]

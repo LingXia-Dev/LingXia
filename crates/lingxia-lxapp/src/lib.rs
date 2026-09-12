@@ -74,9 +74,9 @@ pub use lifecycle::{
 pub use lingxia_platform::traits::ui::WindowChrome;
 pub use lingxia_surface;
 pub use lingxia_surface::{FloatDismiss, SurfaceInteraction};
-pub use lingxia_update::host_channel;
+pub use lingxia_update::default_channel;
 pub use lingxia_update::{
-    ReleaseType, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
+    Channel, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
 pub use lingxia_webview::url_callback;
 pub use lxapp::set_num_workers;
@@ -141,8 +141,7 @@ pub use provider::{
     UpdateTarget, register_lxapp_registry_provider, register_provider,
 };
 pub use startup::{
-    LxAppStartupOptions, Scene, append_page_query, parse_env_release_type,
-    parse_optional_env_release_type,
+    LxAppStartupOptions, Scene, append_page_query, parse_channel, parse_optional_channel,
 };
 pub use update::{
     DownloadedUpdateInfo, OtaUpdateTarget, UpdateManager, ensure_first_install,

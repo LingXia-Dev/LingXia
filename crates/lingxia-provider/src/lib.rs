@@ -344,7 +344,7 @@ pub trait LxAppRegistryProvider: Send + Sync + 'static {
 #[non_exhaustive]
 pub struct LxAppRegistryRequest<'a> {
     pub appid: &'a str,
-    /// Answer per channel: a developer build of an app id is not the app the
+    /// Answer per channel: a draft of an app id is not the app the
     /// release grant was written for.
     pub channel: LxAppChannel,
 }
@@ -365,7 +365,7 @@ pub enum LxAppChannel {
     #[default]
     Release,
     Preview,
-    Developer,
+    Draft,
 }
 
 impl LxAppChannel {
@@ -373,7 +373,7 @@ impl LxAppChannel {
         match self {
             Self::Release => "release",
             Self::Preview => "preview",
-            Self::Developer => "developer",
+            Self::Draft => "draft",
         }
     }
 }

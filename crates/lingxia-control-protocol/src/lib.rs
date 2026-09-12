@@ -31,7 +31,7 @@ pub mod local_control {
     }
 
     /// Windows named pipes do not live on disk. Hashing the environment-specific
-    /// app-data path gives release, preview, and developer builds stable,
+    /// app-data path gives dev and prod builds stable,
     /// distinct names without needing initialized app config.
     #[cfg(windows)]
     pub fn endpoint(control_dir: &Path, epoch: u64) -> String {

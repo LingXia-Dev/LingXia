@@ -1,4 +1,4 @@
-import type { NavigatorEnvVersion, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
+import type { NavigatorChannel, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
 import type { LxVideoQuality, LxVideoEventPayloads } from "./video.js";
@@ -39,7 +39,7 @@ export interface NavigatorNativeAttrOptions {
   delta?: number;
   appId?: string;
   query?: NavigatorQuery;
-  envVersion?: NavigatorEnvVersion;
+  channel?: NavigatorChannel;
   targetVersion?: string;
   phoneNumber?: string;
   hoverClass?: string;
@@ -66,7 +66,7 @@ export function buildNavigatorNativeAttrs(
   if (options.target) result.target = options.target;
   if (options.appId) result["app-id"] = options.appId;
   if (options.query) result.query = JSON.stringify(options.query);
-  if (options.envVersion) result["env-version"] = options.envVersion;
+  if (options.channel) result.channel = options.channel;
   if (options.targetVersion) result["target-version"] = options.targetVersion;
   if (options.phoneNumber) result["phone-number"] = options.phoneNumber;
 

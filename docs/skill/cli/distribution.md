@@ -10,35 +10,38 @@ install, …) live in [`lingxia.md`](./lingxia.md).
 Publish a package to the **LingXia server** (not an OS app store — that's
 `store`). Auto-detects what it's publishing from the project marker file
 (`lxapp.json` → lxapp, `lingxia.yaml` → host app) and reads the id/version from
-it. An lxapp publish packages the current project first and defaults to the
-`developer` env when `--env` is omitted; only host-app publish accepts a
-prebuilt package path. Authenticates with a bearer token: the `--token` flag,
-`LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
+it. An lxapp publish packages the current project first. `--env` (`dev` |
+`prod`) selects the upload server and token; `--channel`
+(`release` | `preview` | `draft`) selects the lxapp line. Omitting
+`--env` defaults to `dev`, which implies channel `draft`. `--env prod`
+implies channel `release` unless `--channel` overrides it. Only host-app
+publish accepts a prebuilt package path; it does not take `--channel` (env
+is read from the packaged `app.json`). Authenticates with a bearer token:
+the `--token` flag, `LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
 
 See `lingxia publish --help` for the flags.
 
 **Update signatures:**
 
-Follows `lingxia publish --env`: `developer` may be unsigned; `preview` /
-`release` require `--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`).
+Follows `lingxia publish --env`: `dev` may be unsigned; `prod` requires
+`--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`), including
+when publishing the `draft` channel.
 
-Host `update:` is the switch. Omit the table: a developer *build*'s
-`checkUpdate` still runs (unverified); preview/release builds skip. If present,
-list 1 or 2 `trustedPublicKeys`.
+Host `update:` is the switch. Omit the table: a `dev` build's `checkUpdate`
+still runs (unverified); `prod` builds skip. If present, list 1 or 2
+`trustedPublicKeys`.
 
-Whether a signature may be waived follows the **host build's** `envVersion`,
-never the channel a caller asks for. A preview/release build requires a trusted
-signature on every package it installs, including one it fetches on the
-developer channel — an App Link query or `lx.navigateToApp({ envVersion })`
-picks the channel, so it must not pick the trust rule.
+Verification follows the **host build's** `env`, never the requested channel.
+A `prod` build requires a trusted signature even for a `draft` lxapp opened
+with `lx.navigateToApp({ channel: 'draft' })`. Host updates carry no channel;
+the signed manifest uses an empty channel for host packages.
 
 **Publish tokens (wallet):**
 
-Store the token once with `lingxia auth login lingxia --env release --token …`;
-it is keyed by the canonical server URL + env, so the project's server and the
-package's `--env`/`--channel` pick the right token automatically (`developer`
-when omitted for lxapp publish; host-app publish reads the package's
-`app.json envVersion`). CI sets `LINGXIA_PUBLISH_TOKEN` instead.
+Store the token once with `lingxia auth login lingxia --env prod --token …`;
+it is keyed by the canonical server URL + env, so the project's server and
+`--env` pick the right token automatically. CI sets `LINGXIA_PUBLISH_TOKEN`
+instead.
 
 **Machine-wide server default (`~/.lingxia/cli/config.toml`):**
 
@@ -52,8 +55,8 @@ comments are lost.
 
 ```toml
 [publish.lingxiaServer]
-developer = "http://localhost:8080"
-release = "https://prod.example.com"
+dev = "http://localhost:8080"
+prod = "https://prod.example.com"
 ```
 
 ## App signing

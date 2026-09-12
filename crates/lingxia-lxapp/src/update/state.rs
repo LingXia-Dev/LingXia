@@ -73,7 +73,7 @@ pub(super) fn force_update_tracker() -> &'static ForceUpdateDownloadTracker {
     FORCE_UPDATE_DOWNLOAD_TRACKER.get_or_init(ForceUpdateDownloadTracker::new)
 }
 
-pub(super) fn force_update_download_key(lxappid: &str, release_type: ReleaseType) -> String {
+pub(super) fn force_update_download_key(lxappid: &str, release_type: Channel) -> String {
     UpdateTarget::lxapp(
         lxappid,
         release_type,
@@ -82,7 +82,7 @@ pub(super) fn force_update_download_key(lxappid: &str, release_type: ReleaseType
     .scope_key()
 }
 
-pub fn is_force_update_downloading(lxappid: &str, release_type: ReleaseType) -> bool {
+pub fn is_force_update_downloading(lxappid: &str, release_type: Channel) -> bool {
     matches!(
         force_update_tracker().state(&force_update_download_key(lxappid, release_type)),
         Some(ForceUpdateDownloadState::Downloading { .. })

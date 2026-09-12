@@ -311,7 +311,7 @@ pub(crate) fn ensure_fresh(appids: &[String]) {
             let Some(_guard) = RefreshGuard::acquire(appid.clone()) else {
                 return;
             };
-            match fetch_records(&appid, crate::host_channel().into()).await {
+            match fetch_records(&appid, crate::default_channel().into()).await {
                 Ok(Some(info)) => fetch_icons(&appid, &info).await,
                 Ok(None) => {}
                 Err(err) => {
@@ -339,7 +339,7 @@ pub async fn ensure_open_allowed(appid: &str) -> Result<(), LxAppError> {
     let status = match fresh {
         Some(status) => status,
         None => {
-            let channel = crate::host_channel().into();
+            let channel = crate::default_channel().into();
             match tokio::time::timeout(OPEN_GATE_TIMEOUT, fetch_records(appid, channel)).await {
                 Ok(Ok(info)) => {
                     // Artwork is fetched outside the deadline: it is not what
@@ -471,7 +471,7 @@ pub(crate) fn standing_grant(appid: &str, channel: LxAppChannel) -> Option<LxApp
 /// The grant this record holds for one channel, if it holds one at all.
 ///
 /// Channels never borrow each other's answers, and each ages on its own stamp:
-/// a listing refresh on the host channel must not make a developer build's
+/// a listing refresh on the host channel must not make a draft's
 /// grant look current, nor erase it.
 fn grant_of(
     record: &RegistryRecord,
@@ -806,8 +806,8 @@ mod tests {
         assert!(release.privileges.is_none());
 
         // Another channel is not this grant, at any age.
-        assert!(grant_of(&record, LxAppChannel::Developer, Some(STATUS_TTL)).is_none());
-        assert!(grant_of(&record, LxAppChannel::Developer, None).is_none());
+        assert!(grant_of(&record, LxAppChannel::Draft, Some(STATUS_TTL)).is_none());
+        assert!(grant_of(&record, LxAppChannel::Draft, None).is_none());
 
         // A grant that aged out is no longer a current answer, but it is still
         // the standing one — an unreachable registry must not widen the app.
@@ -826,15 +826,15 @@ mod tests {
 
     #[test]
     fn a_refresh_on_one_channel_leaves_the_others_alone() {
-        // The sidebar refreshes on the host channel while a developer build of
+        // The sidebar refreshes on the host channel while a draft of
         // the same app id holds its own grant. Neither may erase the other.
-        let developer = carry_grants(
+        let draft = carry_grants(
             Some(&constrained("dev.example.com")),
             None,
-            LxAppChannel::Developer,
+            LxAppChannel::Draft,
         );
         let mut record = record_for("demo", None);
-        record.grants = developer;
+        record.grants = draft;
         record.grants = carry_grants(
             Some(&constrained("api.example.com")),
             Some(&record),
@@ -842,7 +842,7 @@ mod tests {
         );
 
         for (channel, host) in [
-            (LxAppChannel::Developer, "dev.example.com"),
+            (LxAppChannel::Draft, "dev.example.com"),
             (LxAppChannel::Release, "api.example.com"),
         ] {
             let grant = grant_of(&record, channel, Some(STATUS_TTL))
@@ -867,7 +867,7 @@ mod tests {
         );
 
         // Never asked on this channel: no answer at all, so the caller fetches.
-        assert!(grant_of(&record, LxAppChannel::Developer, Some(STATUS_TTL)).is_none());
+        assert!(grant_of(&record, LxAppChannel::Draft, Some(STATUS_TTL)).is_none());
     }
 
     fn record_for(appid: &str, icon_file: Option<&str>) -> RegistryRecord {

@@ -20,7 +20,8 @@ inputs:
   ref:
     description: Branch or SHA to check out.
     required: false
-    default: main
+    # This provider revision supports host env separately from lxapp channels.
+    default: 6d58527f55bc0c513c97f2cee14afea43e3be9d9
 runs:
   using: composite
   steps:
