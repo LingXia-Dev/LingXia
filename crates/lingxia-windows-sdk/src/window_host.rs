@@ -12,7 +12,7 @@ use std::ffi::c_void;
 use std::sync::MutexGuard;
 #[cfg(feature = "terminal-runtime")]
 use std::sync::atomic::AtomicU8;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 #[cfg(feature = "components")]
 use std::time::Instant;
@@ -60,11 +60,9 @@ use windows::Win32::UI::Input::Ime::{
     CANDIDATEFORM, CFS_EXCLUDE, CFS_POINT, COMPOSITIONFORM, ImmGetContext, ImmReleaseContext,
     ImmSetCandidateWindow, ImmSetCompositionWindow,
 };
-#[cfg(feature = "shell-chrome")]
-use windows::Win32::UI::Input::KeyboardAndMouse::VK_ESCAPE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     EnableWindow, GetKeyState, IsWindowEnabled, ReleaseCapture, SetCapture, SetFocus, TME_LEAVE,
-    TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_MENU, VK_SHIFT,
+    TME_NONCLIENT, TRACKMOUSEEVENT, TrackMouseEvent, VK_CONTROL, VK_ESCAPE, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, WINDOW_EX_STYLE, WINDOW_STYLE, WNDCLASSW, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
@@ -536,6 +534,19 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
 
     fn hide_host_panel(&self, panel_id: &str) -> StdResult<()> {
         hide_host_panel(panel_id)
+    }
+
+    fn hide_exclusive_tray_popover(&self) -> bool {
+        let handle = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
+        if handle == 0 {
+            return false;
+        }
+        hide_exclusive_tray_popover_hwnd(hwnd_from_handle(handle));
+        true
+    }
+
+    fn show_exclusive_tray_popover(&self) -> bool {
+        crate::tray_icon::show_tray_popover()
     }
 
     fn update_host_panel_body(&self, panel_id: &str, body: &str) -> StdResult<()> {
@@ -1470,6 +1481,53 @@ fn release_modal_surface_owner(owner: isize) {
             let _ = EnableWindow(hwnd_from_handle(owner), true);
         }
     }
+}
+
+/// Exclusive-tray flyout: hide when the user clicks away, like Steam / Discord /
+/// Clash. Skip the hide when the cursor is on the notify icon so the following
+/// `NIN_SELECT` can toggle instead of hiding-then-showing (flicker).
+fn dismiss_tray_popover_on_deactivate(hwnd: HWND, wparam: WPARAM) {
+    if (wparam.0 & 0xffff) as u32 != WindowsAndMessaging::WA_INACTIVE {
+        return;
+    }
+    if !is_tray_popover(hwnd) || !host_window_is_visible(hwnd_handle(hwnd)) {
+        return;
+    }
+    if crate::tray_icon::cursor_over_icon() {
+        return;
+    }
+    hide_exclusive_tray_popover_hwnd(hwnd);
+}
+
+fn hide_exclusive_tray_popover_hwnd(hwnd: HWND) {
+    if !is_tray_popover(hwnd) {
+        return;
+    }
+    unsafe {
+        let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
+    }
+}
+
+/// Hide the exclusive-tray flyout if it is up. Used when a workspace window
+/// opens or the notify-icon context menu appears.
+pub(crate) fn hide_exclusive_tray_popover() {
+    let handle = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
+    if handle == 0 {
+        return;
+    }
+    hide_exclusive_tray_popover_hwnd(hwnd_from_handle(handle));
+}
+
+pub(crate) fn tray_popover_window_handle() -> Option<isize> {
+    let handle = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
+    if handle == 0 {
+        return None;
+    }
+    let hwnd = hwnd_from_handle(handle);
+    if !is_valid_host_window(hwnd) {
+        return None;
+    }
+    Some(handle)
 }
 
 fn dismiss_surface_on_deactivate(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) {
@@ -6028,9 +6086,33 @@ fn full_chrome_drag_strip_pixels(hwnd: HWND) -> i32 {
 }
 
 fn apply_native_window_frame(hwnd: HWND) -> StdResult<()> {
+    if is_tray_popover(hwnd) {
+        apply_tray_popover_frame(hwnd);
+        return Ok(());
+    }
     apply_window_style(hwnd, WS_OVERLAPPEDWINDOW)?;
     apply_native_window_dressing(hwnd);
     Ok(())
+}
+
+fn apply_tray_popover_frame(hwnd: HWND) {
+    let style = WINDOW_STYLE(WS_POPUP.0);
+    let _ = apply_window_style(hwnd, style);
+    #[cfg(feature = "runtime")]
+    {
+        use windows::Win32::Graphics::Dwm::{
+            DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND, DwmSetWindowAttribute,
+        };
+        let preference = DWMWCP_ROUND;
+        unsafe {
+            let _ = DwmSetWindowAttribute(
+                hwnd,
+                DWMWA_WINDOW_CORNER_PREFERENCE,
+                &preference as *const _ as *const c_void,
+                std::mem::size_of_val(&preference) as u32,
+            );
+        }
+    }
 }
 
 /// `chrome: 'full'` — the page runs to the window edge while the system keeps
@@ -6056,6 +6138,10 @@ fn full_chrome_window_style(device_framed: bool) -> WINDOW_STYLE {
 }
 
 fn apply_full_chrome_window_frame(hwnd: HWND) -> StdResult<()> {
+    if is_tray_popover(hwnd) {
+        apply_tray_popover_frame(hwnd);
+        return Ok(());
+    }
     apply_window_style(
         hwnd,
         full_chrome_window_style(window_is_device_framed(hwnd)),
@@ -6234,7 +6320,6 @@ pub(crate) fn reveal_initial_home_window() {
 /// Last main shell host selected by a presentation. Unlike a page-derived
 /// lookup this remains valid after WM_CLOSE hides the window, so tray activate
 /// can restore the exact HWND the user closed.
-#[cfg(feature = "shell-chrome")]
 pub(crate) fn primary_host_window_handle() -> Option<isize> {
     primary_host_window_except(None).map(hwnd_handle)
 }
@@ -7074,11 +7159,105 @@ fn handle_frame_button(hwnd: HWND, button: WindowsFrameButton) {
 /// WS_EX_TOOLWINDOW so they have no taskbar button and are skipped in Alt-Tab —
 /// the app lives only in the system tray. Mirrors macOS LSUIElement / accessory.
 static HIDE_FROM_TASKBAR: AtomicBool = AtomicBool::new(false);
+/// The exclusive-tray popover HWND. Later windows (More / workspace) must not
+/// inherit its TOOLWINDOW / borderless style or they cannot be dragged.
+static TRAY_POPOVER_HWND: AtomicIsize = AtomicIsize::new(0);
 
 /// Set whether host windows should be hidden from the taskbar (tray-only app).
 /// Read from `ui.json` `launch.hideDockIcon` at init.
 pub fn set_hide_from_taskbar(hide: bool) {
     HIDE_FROM_TASKBAR.store(hide, Ordering::Relaxed);
+}
+
+fn is_tray_popover(hwnd: HWND) -> bool {
+    let marked = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
+    marked != 0 && marked == hwnd_handle(hwnd)
+}
+
+/// Anchor a host window next to `anchor` (tray icon), clamped to that monitor.
+pub fn place_host_window_near_rect(window: isize, anchor: RECT) {
+    post_to_window_thread(
+        window,
+        Box::new(move || unsafe {
+            let hwnd = hwnd_from_handle(window);
+            let mut current = RECT::default();
+            if WindowsAndMessaging::GetWindowRect(hwnd, &mut current).is_err() {
+                return;
+            }
+            let width = (current.right - current.left).max(1);
+            let height = (current.bottom - current.top).max(1);
+            let work = crate::tray_icon::work_area_for_rect(anchor).unwrap_or_else(|| {
+                let mut area = RECT::default();
+                let _ = WindowsAndMessaging::SystemParametersInfoW(
+                    WindowsAndMessaging::SPI_GETWORKAREA,
+                    0,
+                    Some(&mut area as *mut _ as *mut c_void),
+                    WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+                );
+                area
+            });
+            let (width, height) = crate::tray_icon::fit_popover_size(work, width, height);
+            let (x, y) = crate::tray_icon::popover_origin(anchor, work, width, height, 8);
+            let sized = width != current.right - current.left || height != current.bottom - current.top;
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                Some(WindowsAndMessaging::HWND_TOPMOST),
+                x,
+                y,
+                width,
+                height,
+                if sized {
+                    WindowsAndMessaging::SWP_NOACTIVATE
+                } else {
+                    WindowsAndMessaging::SWP_NOSIZE | WindowsAndMessaging::SWP_NOACTIVATE
+                },
+            );
+            if sized {
+                sync_window_layout(hwnd);
+            }
+        }),
+    );
+}
+
+/// Center a workspace window on its monitor and keep it inside the work area.
+pub fn center_host_window_on_work_area(window: isize) {
+    post_to_window_thread(
+        window,
+        Box::new(move || unsafe {
+            let hwnd = hwnd_from_handle(window);
+            if is_tray_popover(hwnd) {
+                return;
+            }
+            let mut current = RECT::default();
+            if WindowsAndMessaging::GetWindowRect(hwnd, &mut current).is_err() {
+                return;
+            }
+            let width = (current.right - current.left).max(1);
+            let height = (current.bottom - current.top).max(1);
+            let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+                return;
+            }
+            let work = info.rcWork;
+            let width = width.min((work.right - work.left).max(1));
+            let height = height.min((work.bottom - work.top).max(1));
+            let x = work.left + (((work.right - work.left) - width) / 2).max(0);
+            let y = work.top + (((work.bottom - work.top) - height) / 2).max(0);
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                None,
+                x,
+                y,
+                width,
+                height,
+                WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+            );
+        }),
+    );
 }
 
 /// for the resize cursor.
@@ -7864,6 +8043,9 @@ pub fn show_webview_window_with_chrome(
         let target_height = height.unwrap_or(snapshot.content_height as i32);
         resize_host_window_content(webtag, target_width, target_height)?;
         sync_window_layout(hwnd);
+        if !is_tray_popover(hwnd) {
+            center_host_window_on_work_area(hwnd_handle(hwnd));
+        }
     }
     Ok(())
 }
@@ -9051,15 +9233,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_CLOSE => {
                 persist_primary_window_frame(hwnd);
-                if is_native_framed_window(hwnd) && invoke_window_close_handler(hwnd) {
-                    return LRESULT(0);
-                }
-                #[cfg(feature = "browser-shell")]
+                // Exclusive tray: X never quits. The popover and More/workspace
+                // windows hide; Quit in the tray is what ends the process.
+                #[cfg(feature = "runtime")]
                 if should_hide_window_on_close(hwnd) {
-                    set_primary_host_window(hwnd);
                     unsafe {
                         let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_HIDE);
                     }
+                    return LRESULT(0);
+                }
+                if is_native_framed_window(hwnd) && invoke_window_close_handler(hwnd) {
                     return LRESULT(0);
                 }
                 // A browser tab can install a page-level close handler on the
@@ -9100,10 +9283,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATE => {
+                dismiss_tray_popover_on_deactivate(hwnd, wparam);
                 dismiss_surface_on_deactivate(hwnd, wparam, lparam);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
+                if wparam.0 == 0 {
+                    dismiss_tray_popover_on_deactivate(hwnd, WPARAM(WindowsAndMessaging::WA_INACTIVE as usize));
+                }
                 if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
                     // Activation is an app lifecycle signal, not controller or
                     // HWND visibility. Mutating WEBTAG_VISIBILITY here made a
@@ -9439,6 +9626,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_KEYDOWN => {
+                if is_tray_popover(hwnd) && wparam.0 == usize::from(VK_ESCAPE.0) {
+                    hide_exclusive_tray_popover_hwnd(hwnd);
+                    return LRESULT(0);
+                }
                 #[cfg(feature = "shell-chrome")]
                 if wparam.0 == usize::from(VK_ESCAPE.0)
                     && tabbar_overflow::dismiss_tabbar_overflow(hwnd)
@@ -9496,7 +9687,13 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         ));
         let user_data = Box::new(webtag.key().to_string());
         let user_data_ptr = Box::into_raw(user_data);
-        let style = if windows_chrome_renderer().is_some() {
+        let assign_tray_popover = HIDE_FROM_TASKBAR.load(Ordering::Relaxed)
+            && TRAY_POPOVER_HWND.load(Ordering::Relaxed) == 0;
+        let style = if assign_tray_popover {
+            // Exclusive tray popover: no caption, no close box. Dismiss is
+            // click-outside, tray-toggle, Esc, or Quit — like Steam / Discord / Clash.
+            WINDOW_STYLE(WS_POPUP.0)
+        } else if windows_chrome_renderer().is_some() {
             WINDOW_STYLE(
                 WS_POPUP.0 | WS_SIZEBOX.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0,
             )
@@ -9506,8 +9703,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         // First launches are centered instead of accepting the WS_POPUP
         // default of (0, 0). A saved frame is applied if this window becomes
         // the primary host.
-        let ex_style = if HIDE_FROM_TASKBAR.load(Ordering::Relaxed) {
-            WindowsAndMessaging::WS_EX_TOOLWINDOW
+        // Only the tray popover is TOOLWINDOW. More/workspace must stay on
+        // the taskbar and keep a real caption so the user can drag them.
+        let ex_style = if assign_tray_popover {
+            WindowsAndMessaging::WS_EX_TOOLWINDOW | WindowsAndMessaging::WS_EX_TOPMOST
         } else {
             WINDOW_EX_STYLE::default()
         };
@@ -9534,10 +9733,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         );
         match result {
             Ok(hwnd) => {
+                if assign_tray_popover {
+                    TRAY_POPOVER_HWND.store(hwnd_handle(hwnd), Ordering::Relaxed);
+                    apply_tray_popover_frame(hwnd);
+                } else {
+                    hide_exclusive_tray_popover();
+                }
                 // Give DWM the final non-client shape while the HWND is still
                 // hidden. WebView2 may attach its composition target before
                 // the presentation path gets a chance to apply this frame.
-                if windows_chrome_renderer().is_some() {
+                if windows_chrome_renderer().is_some() && !assign_tray_popover {
                     prepare_shell_window_for_presentation(hwnd)?;
                 }
                 register_window_handle(webtag.key(), hwnd);
@@ -9697,15 +9902,13 @@ fn invoke_button_close_handler(webtag_key: &str) -> bool {
     }
 }
 
-#[cfg(feature = "browser-shell")]
-fn should_hide_window_on_close(hwnd: HWND) -> bool {
-    // Runner is a session UI, not a tray product: the red dot / last window
-    // close must quit so `lingxia dev` can drop the session. Host apps with a
-    // tray still hide.
+#[cfg(feature = "runtime")]
+fn should_hide_window_on_close(_hwnd: HWND) -> bool {
+    // Runner windows end their dev session even when a tray is installed.
     if std::env::var_os("LINGXIA_RUNNER").is_some() {
         return false;
     }
-    crate::tray_icon::is_installed() && primary_host_window_except(None) == Some(hwnd)
+    crate::tray_icon::is_installed()
 }
 
 fn invoke_window_close_handler(hwnd: HWND) -> bool {

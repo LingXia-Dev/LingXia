@@ -43,6 +43,17 @@ pub fn open_home_app(appid: &str) -> Result<(), String> {
         .map_err(|err| err.to_string())
 }
 
+/// Hide the exclusive-tray flyout if it is showing. No-op when it is already
+/// hidden or this host is not a tray-only app.
+pub fn hide_exclusive_tray_popover() -> bool {
+    lingxia_windows_contract::hide_exclusive_tray_popover()
+}
+
+/// Show the exclusive-tray flyout next to the notify icon.
+pub fn show_exclusive_tray_popover() -> bool {
+    lingxia_windows_contract::show_exclusive_tray_popover()
+}
+
 /// Overrides the initial outer size, in pixels, of Windows host windows
 /// created after this call, in particular the main window of the host app.
 ///

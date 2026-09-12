@@ -8,11 +8,15 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect,
+};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
     NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_SETVERSION, NIN_SELECT, NINF_KEY,
-    NOTIFYICON_VERSION_4, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NOTIFYICON_VERSION_4, NOTIFYICONDATAW, NOTIFYICONIDENTIFIER, Shell_NotifyIconGetRect,
+    Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
@@ -55,6 +59,7 @@ struct TrayItem {
     action_kind: String,
     tooltip: String,
     icon_path: Option<PathBuf>,
+    window_size: Option<(i32, i32)>,
 }
 
 #[derive(Debug)]
@@ -242,13 +247,10 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
             .and_then(serde_json::Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .or_else(|| {
-                lingxia_app_context::product_name()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-            })
+            .or_else(|| product_name_tooltip())
             .unwrap_or(surface_id)
             .to_string();
+        let window_size = surface_window_size(&ui, surface_id);
 
         return Ok(Some(TrayItem {
             surface_id: surface_id.to_string(),
@@ -258,6 +260,7 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
             action_kind: action_kind.to_string(),
             tooltip,
             icon_path,
+            window_size,
         }));
     }
 
@@ -301,6 +304,35 @@ fn resolve_surface_lxapp_target(
         page,
         query,
     })
+}
+
+fn product_name_tooltip() -> Option<&'static str> {
+    #[cfg(feature = "shell-chrome")]
+    {
+        lingxia_app_context::product_name()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+    }
+    #[cfg(not(feature = "shell-chrome"))]
+    {
+        None
+    }
+}
+
+fn surface_window_size(ui: &serde_json::Value, surface_id: &str) -> Option<(i32, i32)> {
+    let size = ui
+        .get("surfaces")
+        .and_then(serde_json::Value::as_array)?
+        .iter()
+        .find(|surface| surface.get("id").and_then(serde_json::Value::as_str) == Some(surface_id))?
+        .get("size")?;
+    let width = size.get("width").and_then(serde_json::Value::as_i64)? as i32;
+    let height = size.get("height").and_then(serde_json::Value::as_i64)? as i32;
+    if width > 0 && height > 0 {
+        Some((width, height))
+    } else {
+        None
+    }
 }
 
 fn resolve_asset_path(asset_dir: &Path, value: &str) -> PathBuf {
@@ -358,13 +390,13 @@ fn tray_window_class() -> PCWSTR {
 fn load_tray_icon(item: &TrayItem) -> Result<(isize, bool), String> {
     if let Some(path) = item.icon_path.as_ref()
         && path.is_file()
-        && let Some(icon) = crate::app_icon::create_icon_handle_from_path(path, 32)
+        && let Some(icon) = crate::app_icon::create_tray_icon_handle_from_path(path, 32)
     {
         return Ok((icon, true));
     }
     if let Some(path) = crate::app_icon::current_app_icon_path()
         && path.is_file()
-        && let Some(icon) = crate::app_icon::create_icon_handle_from_path(&path, 32)
+        && let Some(icon) = crate::app_icon::create_tray_icon_handle_from_path(&path, 32)
     {
         return Ok((icon, true));
     }
@@ -428,12 +460,7 @@ fn activate_tray_item() {
         lxapp::publish_app_event(&item.app_id, "lx.tray.click", None);
         return;
     }
-    if !crate::shell::handle_menu_bar_surface_action(
-        &item.surface_id,
-        &item.action_kind,
-        item.page.as_deref(),
-        item.query.as_ref(),
-    ) {
+    if !activate_tray_surface(&item) {
         log::warn!(
             "Windows tray activator could not handle {} for surface {}",
             item.action_kind,
@@ -442,16 +469,80 @@ fn activate_tray_item() {
     }
 }
 
+fn activate_tray_surface(item: &TrayItem) -> bool {
+    #[cfg(feature = "browser-shell")]
+    {
+        crate::shell::handle_menu_bar_surface_action(
+            &item.surface_id,
+            &item.action_kind,
+            item.page.as_deref(),
+            item.query.as_ref(),
+        )
+    }
+    #[cfg(not(feature = "browser-shell"))]
+    {
+        toggle_runtime_tray_window(item)
+    }
+}
+
+#[cfg(not(feature = "browser-shell"))]
+fn toggle_runtime_tray_window(item: &TrayItem) -> bool {
+    let window = crate::window_host::tray_popover_window_handle()
+        .or_else(crate::window_host::primary_host_window_handle);
+    if let Some(window) = window {
+        if item.action_kind == "closeSurface" {
+            crate::window_host::hide_exclusive_tray_popover();
+            return crate::window_host::hide_host_window(window);
+        }
+        if item.action_kind == "toggleSurface"
+            && crate::window_host::host_window_is_visible(window)
+        {
+            crate::window_host::hide_exclusive_tray_popover();
+            return true;
+        }
+        position_window_near_icon(window);
+        return crate::window_host::restore_and_focus_host_window(window);
+    }
+    if let Some((width, height)) = item.window_size {
+        lingxia::windows::set_default_window_size(width, height);
+    }
+    let options = match lxapp::LxAppStartupOptions::for_page(item.page.as_deref(), item.query.as_ref())
+    {
+        Ok(options) => options,
+        Err(error) => {
+            log::warn!("Windows tray could not build startup options: {error}");
+            return false;
+        }
+    };
+    match lxapp::open_lxapp(&item.app_id, options) {
+        Ok(_) => {
+            if let Some(window) = crate::window_host::tray_popover_window_handle()
+                .or_else(crate::window_host::primary_host_window_handle)
+            {
+                position_window_near_icon(window);
+                crate::window_host::restore_and_focus_host_window(window);
+            }
+            true
+        }
+        Err(error) => {
+            log::warn!("Windows tray could not open {}: {error}", item.app_id);
+            false
+        }
+    }
+}
+
+const DEFAULT_QUIT_COMMAND: usize = 0x7001;
+
 fn show_tray_menu(hwnd: HWND) {
-    // The menu is entirely developer-defined via `lx.tray.setMenu`. With no
-    // registered items there is no menu to show (no default Open/Quit).
+    // A context menu replaces the flyout; leave only one surface up.
+    crate::window_host::hide_exclusive_tray_popover();
+    // JS `lx.tray.setMenu` owns the dropdown when the app registered one.
+    // Exclusive tray hosts still need a way out: an empty menu gets Quit.
     let items = TRAY_MENU
         .lock()
         .map(|menu| menu.clone())
         .unwrap_or_default();
-    if items.is_empty() {
-        return;
-    }
+    let default_quit = items.is_empty();
     let Some(item) = current_item() else {
         return;
     };
@@ -478,6 +569,10 @@ fn show_tray_menu(hwnd: HWND) {
             let label = to_wide(&entry.label);
             let _ = AppendMenuW(menu, flags, index + 1, PCWSTR(label.as_ptr()));
         }
+        if default_quit {
+            let label = to_wide("Quit");
+            let _ = AppendMenuW(menu, MF_STRING, DEFAULT_QUIT_COMMAND, PCWSTR(label.as_ptr()));
+        }
 
         let mut point = POINT::default();
         if GetCursorPos(&mut point).is_err() {
@@ -498,12 +593,124 @@ fn show_tray_menu(hwnd: HWND) {
         let _ = PostMessageW(Some(hwnd), WM_NULL, WPARAM(0), LPARAM(0));
 
         let command = selected.0 as usize;
-        if command >= 1 {
+        if default_quit && command == DEFAULT_QUIT_COMMAND {
+            #[cfg(feature = "runtime")]
+            {
+                let _ = lingxia::app::exit();
+            }
+            return;
+        }
+        if command >= 1 && command != DEFAULT_QUIT_COMMAND {
             // Deliver to the owning app's handler for that menu index.
             let event = format!("lx.tray.menu:{}", command - 1);
             lxapp::publish_app_event(&item.app_id, &event, None);
         }
     }
+}
+
+fn position_window_near_icon(window: isize) {
+    let Some(icon) = icon_screen_rect().or_else(cursor_anchor_rect) else {
+        return;
+    };
+    crate::window_host::place_host_window_near_rect(window, icon);
+}
+
+/// Place and show the exclusive-tray flyout next to the notify icon.
+pub(crate) fn show_tray_popover() -> bool {
+    let Some(window) = crate::window_host::tray_popover_window_handle() else {
+        return false;
+    };
+    position_window_near_icon(window);
+    crate::window_host::restore_and_focus_host_window(window)
+}
+
+/// True when the cursor is on (or a few pixels around) the notify icon.
+/// The pad covers DPI rounding so a tray click is not treated as click-outside.
+pub(crate) fn cursor_over_icon() -> bool {
+    let Some(rect) = icon_screen_rect() else {
+        return false;
+    };
+    let mut point = POINT::default();
+    if unsafe { GetCursorPos(&mut point) }.is_err() {
+        return false;
+    }
+    point_in_padded_rect(point, rect, 4)
+}
+
+fn point_in_padded_rect(point: POINT, rect: RECT, pad: i32) -> bool {
+    point.x >= rect.left - pad
+        && point.x < rect.right + pad
+        && point.y >= rect.top - pad
+        && point.y < rect.bottom + pad
+}
+
+fn icon_screen_rect() -> Option<RECT> {
+    let hwnd = current_tray_hwnd()?;
+    let ident = NOTIFYICONIDENTIFIER {
+        cbSize: std::mem::size_of::<NOTIFYICONIDENTIFIER>() as u32,
+        hWnd: HWND(hwnd as *mut c_void),
+        uID: TRAY_ICON_ID,
+        guidItem: windows::core::GUID::default(),
+    };
+    let rect = unsafe { Shell_NotifyIconGetRect(&ident).ok()? };
+    if rect.right <= rect.left || rect.bottom <= rect.top {
+        return None;
+    }
+    Some(rect)
+}
+
+fn cursor_anchor_rect() -> Option<RECT> {
+    let mut point = POINT::default();
+    unsafe { GetCursorPos(&mut point).ok()? };
+    Some(RECT {
+        left: point.x - 8,
+        top: point.y - 8,
+        right: point.x + 8,
+        bottom: point.y + 8,
+    })
+}
+
+fn current_tray_hwnd() -> Option<isize> {
+    TRAY_STATE
+        .get()
+        .and_then(|state| state.lock().ok())
+        .and_then(|state| state.as_ref().map(|state| state.hwnd))
+}
+
+pub(crate) fn fit_popover_size(work: RECT, width: i32, height: i32) -> (i32, i32) {
+    (
+        width.min((work.right - work.left).max(1)).max(1),
+        height.min((work.bottom - work.top).max(1)).max(1),
+    )
+}
+
+/// Place a popover next to `anchor` (the tray icon), clamped to that
+/// monitor's work area — the same rule Steam / Discord / Clash use.
+pub(crate) fn popover_origin(anchor: RECT, work: RECT, width: i32, height: i32, gap: i32) -> (i32, i32) {
+    let space_above = anchor.top - work.top;
+    let space_below = work.bottom - anchor.bottom;
+    let y = if space_above >= height + gap || space_above >= space_below {
+        anchor.top - height - gap
+    } else {
+        anchor.bottom + gap
+    };
+    let icon_width = (anchor.right - anchor.left).max(1);
+    let x = anchor.left + (icon_width - width) / 2;
+    let max_x = (work.right - width).max(work.left);
+    let max_y = (work.bottom - height).max(work.top);
+    (x.clamp(work.left, max_x), y.clamp(work.top, max_y))
+}
+
+pub(crate) fn work_area_for_rect(rect: RECT) -> Option<RECT> {
+    let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    if !unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
+        return None;
+    }
+    Some(info.rcWork)
 }
 
 fn current_item() -> Option<TrayItem> {
@@ -530,6 +737,74 @@ fn destroy_icon(handle: isize) {
 mod tests {
     use super::{SurfaceLxappTarget, resolve_surface_lxapp_target};
     use serde_json::json;
+    use windows::Win32::Foundation::{POINT, RECT};
+
+    #[test]
+    fn tray_surface_reads_declared_popover_size() {
+        let ui = json!({
+            "surfaces": [{
+                "id": "home",
+                "size": { "width": 320, "height": 420 }
+            }]
+        });
+        assert_eq!(super::surface_window_size(&ui, "home"), Some((320, 420)));
+    }
+
+    #[test]
+    fn padded_icon_rect_counts_as_over_icon() {
+        let icon = RECT {
+            left: 100,
+            top: 100,
+            right: 140,
+            bottom: 140,
+        };
+        assert!(super::point_in_padded_rect(
+            POINT { x: 138, y: 102 },
+            icon,
+            4
+        ));
+        assert!(super::point_in_padded_rect(
+            POINT { x: 97, y: 138 },
+            icon,
+            4
+        ));
+        assert!(!super::point_in_padded_rect(
+            POINT { x: 90, y: 90 },
+            icon,
+            4
+        ));
+    }
+
+    #[test]
+    fn popover_shrinks_to_a_short_work_area() {
+        let work = RECT {
+            left: 0,
+            top: 0,
+            right: 800,
+            bottom: 400,
+        };
+        assert_eq!(super::fit_popover_size(work, 320, 520), (320, 400));
+    }
+
+    #[test]
+    fn popover_sits_above_a_bottom_taskbar_icon() {
+        let work = RECT {
+            left: 0,
+            top: 0,
+            right: 1920,
+            bottom: 1040,
+        };
+        let icon = RECT {
+            left: 1860,
+            top: 1048,
+            right: 1900,
+            bottom: 1080,
+        };
+        let (x, y) = super::popover_origin(icon, work, 320, 420, 8);
+        assert_eq!(y, 1048 - 420 - 8);
+        assert!(x + 320 <= work.right);
+        assert!(x >= work.left);
+    }
 
     #[test]
     fn tray_target_keeps_page_name_and_structured_query() {

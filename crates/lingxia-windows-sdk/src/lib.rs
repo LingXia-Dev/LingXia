@@ -74,7 +74,7 @@ mod shell;
 mod static_settings;
 #[cfg(all(target_os = "windows", feature = "terminal-runtime"))]
 mod terminal_fonts;
-#[cfg(all(target_os = "windows", feature = "browser-shell"))]
+#[cfg(all(target_os = "windows", feature = "runtime"))]
 mod tray_icon;
 #[cfg(all(target_os = "windows", feature = "components"))]
 mod video_controls;
@@ -401,7 +401,7 @@ pub fn install_default_windows_host() {
 }
 
 /// Default-host post-boot wiring: design-icon directory, window icon, taskbar
-/// policy, shell ownership, and — under `browser-shell` — the tray.
+/// policy, shell ownership, and the system-tray icon from `ui.json`.
 #[cfg(all(target_os = "windows", feature = "runtime"))]
 fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> {
     #[cfg(feature = "shell-chrome")]
@@ -426,19 +426,14 @@ fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> 
     // Tray-exclusive apps live only in the system tray, so their windows
     // must be created without a taskbar button. Apply before any window opens.
     window_host::set_hide_from_taskbar(should_hide_taskbar(asset_dir));
-    #[cfg(feature = "browser-shell")]
-    {
-        // Wire the cross-platform tray JS APIs to the native system-tray icon:
-        // `lx.tray.setMenu` builds the right-click menu (no default items) and
-        // `lx.tray.onClick` claims the left-click. The runtime layer cannot see
-        // this SDK, so it invokes these registered handlers.
-        lingxia_platform::set_windows_tray_menu_handler(std::sync::Arc::new(tray_icon::set_menu));
-        lingxia_platform::set_windows_tray_click_intercept_handler(std::sync::Arc::new(
-            tray_icon::set_click_intercept,
-        ));
-        if let Err(message) = tray_icon::install_from_ui(asset_dir) {
-            log::warn!("failed to install Windows tray icon: {message}");
-        }
+    // Tray lives on the host runtime, not the browser shell. Exclusive tray
+    // hosts declare `surfaces[].tray` without `capabilities.browser`.
+    lingxia_platform::set_windows_tray_menu_handler(std::sync::Arc::new(tray_icon::set_menu));
+    lingxia_platform::set_windows_tray_click_intercept_handler(std::sync::Arc::new(
+        tray_icon::set_click_intercept,
+    ));
+    if let Err(message) = tray_icon::install_from_ui(asset_dir) {
+        log::warn!("failed to install Windows tray icon: {message}");
     }
     Ok(())
 }
@@ -534,10 +529,16 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
                     Some(mounted)
                 }
                 None => {
-                    if configured_lxapp.is_some() {
-                        lingxia::windows::launch_home_control_logic()?;
+                    match open_exclusive_tray_float(&asset_dir, configured_lxapp) {
+                        Ok(Some(app_id)) => Some(MountedContent::LxApp(app_id)),
+                        Ok(None) => {
+                            if configured_lxapp.is_some() {
+                                lingxia::windows::launch_home_control_logic()?;
+                            }
+                            None
+                        }
+                        Err(error) => return Err(WindowsHostError::OpenLxApp(error)),
                     }
-                    None
                 }
             }
         }
@@ -547,6 +548,67 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
         }
     };
     Ok(WindowsHost { runtime, content })
+}
+
+/// Exclusive tray apps have no `role: main`. Still mount the float so the
+/// host has a page (devtools / native routes) and then hide the window.
+#[cfg(all(target_os = "windows", feature = "runtime"))]
+fn open_exclusive_tray_float(
+    asset_dir: &Path,
+    configured_lxapp: Option<&str>,
+) -> std::result::Result<Option<String>, String> {
+    let ui_path = asset_dir.join("ui.json");
+    let Ok(text) = std::fs::read_to_string(&ui_path) else {
+        return Ok(None);
+    };
+    let ui: serde_json::Value =
+        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let Some(surface) = ui
+        .get("surfaces")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|surfaces| {
+            surfaces.iter().find(|surface| {
+                surface.get("role").and_then(serde_json::Value::as_str) == Some("float")
+                    && surface.get("anchor").and_then(serde_json::Value::as_str)
+                        == Some("activator")
+            })
+        })
+    else {
+        return Ok(None);
+    };
+    let content = surface
+        .get("content")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "tray float has no content".to_string())?;
+    let app_id = content
+        .get("appId")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or(configured_lxapp)
+        .ok_or_else(|| "tray float has no lxapp".to_string())?
+        .to_string();
+    let page = content
+        .get("page")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let query = content.get("query");
+    if let Some(size) = surface.get("size") {
+        if let (Some(width), Some(height)) = (
+            size.get("width").and_then(serde_json::Value::as_i64),
+            size.get("height").and_then(serde_json::Value::as_i64),
+        ) {
+            if width > 0 && height > 0 {
+                lingxia::windows::set_default_window_size(width as i32, height as i32);
+            }
+        }
+    }
+    open_home_app_target(&app_id, page, query)?;
+    if let Some(window) = window_host::primary_host_window_handle() {
+        let _ = window_host::hide_host_window(window);
+    }
+    Ok(Some(app_id))
 }
 
 #[cfg(all(target_os = "windows", feature = "shell-chrome"))]
@@ -665,12 +727,10 @@ pub fn run_message_loop() -> i32 {
         let result = unsafe { GetMessageW(&mut msg, None, 0, 0) };
         match result.0 {
             -1 => {
-                #[cfg(feature = "browser-shell")]
                 tray_icon::uninstall();
                 return 1;
             }
             0 => {
-                #[cfg(feature = "browser-shell")]
                 tray_icon::uninstall();
                 return msg.wParam.0 as i32;
             }
@@ -835,18 +895,21 @@ fn generated_main_surfaces_from_ui(ui: &serde_json::Value) -> Result<GeneratedMa
         .map(generated_main_surface_from_value)
         .collect::<Result<Vec<_>>>()?;
     if let Some(initial_surface_id) = initial_surface_id.as_deref() {
-        let Some(initial_index) = items
+        if let Some(initial_index) = items
             .iter()
             .position(|surface| surface.id == initial_surface_id)
-        else {
+        {
+            if initial_index != 0 {
+                let initial = items.remove(initial_index);
+                items.insert(0, initial);
+            }
+        } else if open_on_launch {
             return Err(WindowsHostError::InvalidUi(format!(
                 "launch.initialSurface references unknown main surface '{initial_surface_id}'"
             )));
-        };
-        if initial_index != 0 {
-            let initial = items.remove(initial_index);
-            items.insert(0, initial);
         }
+        // Exclusive tray apps launch into a float, not a main. Keep the
+        // declared id for the activator; do not treat it as a missing main.
     }
     Ok(GeneratedMainSurfaces {
         initial_surface_id: open_on_launch.then_some(initial_surface_id).flatten(),
@@ -1119,6 +1182,34 @@ mod tests {
                     page: None,
                     query: None,
                 }],
+            }
+        );
+    }
+
+    #[test]
+    fn tray_float_root_is_not_required_to_be_a_main() {
+        let ui = json!({
+            "launch": {
+                "initialSurface": "lingxia.lxapp.farshore",
+                "openOnLaunch": false,
+                "hideDockIcon": true
+            },
+            "surfaces": [{
+                "id": "lingxia.lxapp.farshore",
+                "role": "float",
+                "anchor": "activator",
+                "content": {
+                    "kind": "lxapp",
+                    "appId": "lingxia.lxapp.farshore",
+                    "page": "tray"
+                }
+            }]
+        });
+        assert_eq!(
+            generated_main_surfaces_from_ui(&ui).unwrap(),
+            GeneratedMainSurfaces {
+                initial_surface_id: None,
+                items: vec![],
             }
         );
     }
