@@ -42,8 +42,7 @@ struct TrayMenuItem {
     checked: bool,
 }
 
-/// The current JS-registered menu spec. Empty => a right-click shows nothing
-/// (no default Open/Quit). Replaced wholesale on each `lx.tray.setMenu`.
+/// Empty menus get a fallback Quit only for exclusive tray hosts.
 static TRAY_MENU: Mutex<Vec<TrayMenuItem>> = Mutex::new(Vec::new());
 
 /// While set, a tray left-click is delivered to JS (`lx.tray.onClick`) instead
@@ -59,6 +58,7 @@ struct TrayItem {
     action_kind: String,
     tooltip: String,
     icon_path: Option<PathBuf>,
+    #[cfg(not(feature = "browser-shell"))]
     window_size: Option<(i32, i32)>,
 }
 
@@ -247,9 +247,10 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
             .and_then(serde_json::Value::as_str)
             .map(str::trim)
             .filter(|value| !value.is_empty())
-            .or_else(|| product_name_tooltip())
+            .or(product_name_tooltip())
             .unwrap_or(surface_id)
             .to_string();
+        #[cfg(not(feature = "browser-shell"))]
         let window_size = surface_window_size(&ui, surface_id);
 
         return Ok(Some(TrayItem {
@@ -260,6 +261,7 @@ fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
             action_kind: action_kind.to_string(),
             tooltip,
             icon_path,
+            #[cfg(not(feature = "browser-shell"))]
             window_size,
         }));
     }
@@ -319,6 +321,7 @@ fn product_name_tooltip() -> Option<&'static str> {
     }
 }
 
+#[cfg(any(not(feature = "browser-shell"), test))]
 fn surface_window_size(ui: &serde_json::Value, surface_id: &str) -> Option<(i32, i32)> {
     let size = ui
         .get("surfaces")
@@ -494,32 +497,34 @@ fn toggle_runtime_tray_window(item: &TrayItem) -> bool {
             crate::window_host::hide_exclusive_tray_popover();
             return crate::window_host::hide_host_window(window);
         }
-        if item.action_kind == "toggleSurface"
-            && crate::window_host::host_window_is_visible(window)
+        if item.action_kind == "toggleSurface" && crate::window_host::host_window_is_visible(window)
         {
-            crate::window_host::hide_exclusive_tray_popover();
-            return true;
+            return crate::window_host::hide_host_window(window);
         }
-        position_window_near_icon(window);
+        if crate::window_host::tray_popover_window_handle() == Some(window) {
+            position_window_near_icon(window);
+        }
         return crate::window_host::restore_and_focus_host_window(window);
     }
     if let Some((width, height)) = item.window_size {
         lingxia::windows::set_default_window_size(width, height);
     }
-    let options = match lxapp::LxAppStartupOptions::for_page(item.page.as_deref(), item.query.as_ref())
-    {
-        Ok(options) => options,
-        Err(error) => {
-            log::warn!("Windows tray could not build startup options: {error}");
-            return false;
-        }
-    };
+    let options =
+        match lxapp::LxAppStartupOptions::for_page(item.page.as_deref(), item.query.as_ref()) {
+            Ok(options) => options,
+            Err(error) => {
+                log::warn!("Windows tray could not build startup options: {error}");
+                return false;
+            }
+        };
     match lxapp::open_lxapp(&item.app_id, options) {
         Ok(_) => {
             if let Some(window) = crate::window_host::tray_popover_window_handle()
                 .or_else(crate::window_host::primary_host_window_handle)
             {
-                position_window_near_icon(window);
+                if crate::window_host::tray_popover_window_handle() == Some(window) {
+                    position_window_near_icon(window);
+                }
                 crate::window_host::restore_and_focus_host_window(window);
             }
             true
@@ -543,6 +548,9 @@ fn show_tray_menu(hwnd: HWND) {
         .map(|menu| menu.clone())
         .unwrap_or_default();
     let default_quit = items.is_empty();
+    if default_quit && !crate::window_host::is_exclusive_tray_host() {
+        return;
+    }
     let Some(item) = current_item() else {
         return;
     };
@@ -571,7 +579,12 @@ fn show_tray_menu(hwnd: HWND) {
         }
         if default_quit {
             let label = to_wide("Quit");
-            let _ = AppendMenuW(menu, MF_STRING, DEFAULT_QUIT_COMMAND, PCWSTR(label.as_ptr()));
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                DEFAULT_QUIT_COMMAND,
+                PCWSTR(label.as_ptr()),
+            );
         }
 
         let mut point = POINT::default();
@@ -686,7 +699,13 @@ pub(crate) fn fit_popover_size(work: RECT, width: i32, height: i32) -> (i32, i32
 
 /// Place a popover next to `anchor` (the tray icon), clamped to that
 /// monitor's work area — the same rule Steam / Discord / Clash use.
-pub(crate) fn popover_origin(anchor: RECT, work: RECT, width: i32, height: i32, gap: i32) -> (i32, i32) {
+pub(crate) fn popover_origin(
+    anchor: RECT,
+    work: RECT,
+    width: i32,
+    height: i32,
+    gap: i32,
+) -> (i32, i32) {
     let space_above = anchor.top - work.top;
     let space_below = work.bottom - anchor.bottom;
     let y = if space_above >= height + gap || space_above >= space_below {

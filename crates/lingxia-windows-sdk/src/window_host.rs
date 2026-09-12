@@ -545,6 +545,7 @@ impl WindowsHostBackend for WindowsHostBackendImpl {
         true
     }
 
+    #[cfg(feature = "runtime")]
     fn show_exclusive_tray_popover(&self) -> bool {
         crate::tray_icon::show_tray_popover()
     }
@@ -1486,6 +1487,7 @@ fn release_modal_surface_owner(owner: isize) {
 /// Exclusive-tray flyout: hide when the user clicks away, like Steam / Discord /
 /// Clash. Skip the hide when the cursor is on the notify icon so the following
 /// `NIN_SELECT` can toggle instead of hiding-then-showing (flicker).
+#[cfg(feature = "runtime")]
 fn dismiss_tray_popover_on_deactivate(hwnd: HWND, wparam: WPARAM) {
     if (wparam.0 & 0xffff) as u32 != WindowsAndMessaging::WA_INACTIVE {
         return;
@@ -1518,6 +1520,7 @@ pub(crate) fn hide_exclusive_tray_popover() {
     hide_exclusive_tray_popover_hwnd(hwnd_from_handle(handle));
 }
 
+#[cfg(feature = "runtime")]
 pub(crate) fn tray_popover_window_handle() -> Option<isize> {
     let handle = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
     if handle == 0 {
@@ -7169,12 +7172,18 @@ pub fn set_hide_from_taskbar(hide: bool) {
     HIDE_FROM_TASKBAR.store(hide, Ordering::Relaxed);
 }
 
+#[cfg(feature = "runtime")]
+pub(crate) fn is_exclusive_tray_host() -> bool {
+    HIDE_FROM_TASKBAR.load(Ordering::Relaxed)
+}
+
 fn is_tray_popover(hwnd: HWND) -> bool {
     let marked = TRAY_POPOVER_HWND.load(Ordering::Relaxed);
     marked != 0 && marked == hwnd_handle(hwnd)
 }
 
 /// Anchor a host window next to `anchor` (tray icon), clamped to that monitor.
+#[cfg(feature = "runtime")]
 pub fn place_host_window_near_rect(window: isize, anchor: RECT) {
     post_to_window_thread(
         window,
@@ -7198,7 +7207,8 @@ pub fn place_host_window_near_rect(window: isize, anchor: RECT) {
             });
             let (width, height) = crate::tray_icon::fit_popover_size(work, width, height);
             let (x, y) = crate::tray_icon::popover_origin(anchor, work, width, height, 8);
-            let sized = width != current.right - current.left || height != current.bottom - current.top;
+            let sized =
+                width != current.right - current.left || height != current.bottom - current.top;
             let _ = WindowsAndMessaging::SetWindowPos(
                 hwnd,
                 Some(WindowsAndMessaging::HWND_TOPMOST),
@@ -9283,13 +9293,18 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATE => {
+                #[cfg(feature = "runtime")]
                 dismiss_tray_popover_on_deactivate(hwnd, wparam);
                 dismiss_surface_on_deactivate(hwnd, wparam, lparam);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATEAPP => {
+                #[cfg(feature = "runtime")]
                 if wparam.0 == 0 {
-                    dismiss_tray_popover_on_deactivate(hwnd, WPARAM(WindowsAndMessaging::WA_INACTIVE as usize));
+                    dismiss_tray_popover_on_deactivate(
+                        hwnd,
+                        WPARAM(WindowsAndMessaging::WA_INACTIVE as usize),
+                    );
                 }
                 if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
                     // Activation is an app lifecycle signal, not controller or
@@ -9903,12 +9918,13 @@ fn invoke_button_close_handler(webtag_key: &str) -> bool {
 }
 
 #[cfg(feature = "runtime")]
-fn should_hide_window_on_close(_hwnd: HWND) -> bool {
+fn should_hide_window_on_close(hwnd: HWND) -> bool {
     // Runner windows end their dev session even when a tray is installed.
     if std::env::var_os("LINGXIA_RUNNER").is_some() {
         return false;
     }
     crate::tray_icon::is_installed()
+        && (is_exclusive_tray_host() || primary_host_window_except(None) == Some(hwnd))
 }
 
 fn invoke_window_close_handler(hwnd: HWND) -> bool {

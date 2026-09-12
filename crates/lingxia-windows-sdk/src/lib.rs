@@ -528,18 +528,16 @@ pub fn start_default_host(app: WindowsApp) -> Result<WindowsHost> {
                     };
                     Some(mounted)
                 }
-                None => {
-                    match open_exclusive_tray_float(&asset_dir, configured_lxapp) {
-                        Ok(Some(app_id)) => Some(MountedContent::LxApp(app_id)),
-                        Ok(None) => {
-                            if configured_lxapp.is_some() {
-                                lingxia::windows::launch_home_control_logic()?;
-                            }
-                            None
+                None => match open_exclusive_tray_float(&asset_dir, configured_lxapp) {
+                    Ok(Some(app_id)) => Some(MountedContent::LxApp(app_id)),
+                    Ok(None) => {
+                        if configured_lxapp.is_some() {
+                            lingxia::windows::launch_home_control_logic()?;
                         }
-                        Err(error) => return Err(WindowsHostError::OpenLxApp(error)),
+                        None
                     }
-                }
+                    Err(error) => return Err(WindowsHostError::OpenLxApp(error)),
+                },
             }
         }
         WindowsContent::Browser(url) => {
@@ -561,8 +559,7 @@ fn open_exclusive_tray_float(
     let Ok(text) = std::fs::read_to_string(&ui_path) else {
         return Ok(None);
     };
-    let ui: serde_json::Value =
-        serde_json::from_str(&text).map_err(|error| error.to_string())?;
+    let ui: serde_json::Value = serde_json::from_str(&text).map_err(|error| error.to_string())?;
     let Some(surface) = ui
         .get("surfaces")
         .and_then(serde_json::Value::as_array)
@@ -594,15 +591,15 @@ fn open_exclusive_tray_float(
         .map(str::trim)
         .filter(|value| !value.is_empty());
     let query = content.get("query");
-    if let Some(size) = surface.get("size") {
-        if let (Some(width), Some(height)) = (
+    if let Some(size) = surface.get("size")
+        && let (Some(width), Some(height)) = (
             size.get("width").and_then(serde_json::Value::as_i64),
             size.get("height").and_then(serde_json::Value::as_i64),
-        ) {
-            if width > 0 && height > 0 {
-                lingxia::windows::set_default_window_size(width as i32, height as i32);
-            }
-        }
+        )
+        && width > 0
+        && height > 0
+    {
+        lingxia::windows::set_default_window_size(width as i32, height as i32);
     }
     open_home_app_target(&app_id, page, query)?;
     if let Some(window) = window_host::primary_host_window_handle() {
