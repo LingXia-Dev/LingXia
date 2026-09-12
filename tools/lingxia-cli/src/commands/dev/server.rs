@@ -144,7 +144,6 @@ pub(crate) struct DevServerState {
     runtime_rejected: AtomicBool,
     /// True for Runner / macOS / Windows: the launched UI *is* the session.
     end_on_runtime_gone: bool,
-    had_runtime: AtomicBool,
     /// Bumped on connect and on disconnect so an in-flight gone-timer is cancelled
     /// when a replacement runtime attaches during the grace window.
     runtime_epoch: AtomicU64,
@@ -167,7 +166,6 @@ impl DevServerState {
             auth_token,
             runtime_rejected: AtomicBool::new(false),
             end_on_runtime_gone,
-            had_runtime: AtomicBool::new(false),
             runtime_epoch: AtomicU64::new(0),
         }
     }
@@ -187,7 +185,6 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         let replaced = guard.is_some();
         *guard = Some((runtime_id, sender));
-        self.had_runtime.store(true, Ordering::Release);
         // Cancel any in-flight "runtime gone" teardown from a previous disconnect.
         self.runtime_epoch.fetch_add(1, Ordering::AcqRel);
         if replaced {
@@ -196,16 +193,18 @@ impl DevServerState {
         (runtime_id, replaced)
     }
 
-    fn clear_runtime_sender(&self, runtime_id: u64) -> bool {
+    fn clear_runtime_sender(&self, runtime_id: u64) -> Option<u64> {
         let mut guard = self
             .runtime_sender
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if guard.as_ref().is_some_and(|(id, _)| *id == runtime_id) {
             *guard = None;
-            return true;
+            // Serialize cleanup and the disconnect epoch with replacement claims.
+            self.clear_pending_results();
+            return Some(self.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1);
         }
-        false
+        None
     }
 
     fn runtime_sender(&self) -> Option<Sender<DevSessionMessage>> {
@@ -247,28 +246,33 @@ impl DevServerState {
         self.stop_flag.store(true, Ordering::Release);
     }
 
-    /// After a live runtime drops, wait [RUNTIME_GONE_GRACE] for a replacement.
-    /// No replacement → this *is* the user closing the window; end the session.
+    /// Disconnect expiry and replacement claims share the runtime lock, so a
+    /// timer cannot end a session after a replacement has already attached.
+    fn finish_runtime_disconnect(&self, epoch: u64) {
+        let guard = self
+            .runtime_sender
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        if self.end_on_runtime_gone
+            && self.runtime_epoch.load(Ordering::Acquire) == epoch
+            && guard.is_none()
+        {
+            eprintln!("[lingxia dev] runtime disconnected; ending session.");
+            self.request_shutdown();
+        }
+    }
+
     fn drop_runtime(state: &Arc<Self>, runtime_id: u64) {
-        if !state.clear_runtime_sender(runtime_id) {
+        let Some(epoch) = state.clear_runtime_sender(runtime_id) else {
+            return;
+        };
+        if !state.end_on_runtime_gone {
             return;
         }
-        state.clear_pending_results();
-        if !state.end_on_runtime_gone || !state.had_runtime.load(Ordering::Acquire) {
-            return;
-        }
-        let epoch = state.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1;
         let state = Arc::clone(state);
         thread::spawn(move || {
             thread::sleep(runtime_gone_grace());
-            if state.runtime_epoch.load(Ordering::Acquire) != epoch {
-                return;
-            }
-            if state.runtime_sender().is_some() {
-                return;
-            }
-            eprintln!("[lingxia dev] runtime disconnected; ending session.");
-            state.request_shutdown();
+            state.finish_runtime_disconnect(epoch);
         });
     }
 
@@ -1207,6 +1211,38 @@ mod tests {
         DevServerState::drop_runtime(&state, 1);
         thread::sleep(Duration::from_millis(80));
         assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    #[test]
+    fn stale_disconnect_preserves_replacement_pending_commands() {
+        let state = desktop_state(Arc::new(AtomicBool::new(false)));
+        let (tx, _rx) = mpsc::channel();
+        let (old, _) = state.claim_runtime_sender(tx);
+        let (tx, _rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        let (tx, _rx) = mpsc::channel();
+        state.register_pending_result("replacement".into(), tx);
+        DevServerState::drop_runtime(&state, old);
+        assert!(state.take_pending_result("replacement").is_some());
+        assert!(state.runtime_sender().is_some());
+    }
+
+    #[test]
+    fn older_disconnect_cannot_expire_a_new_disconnect_grace() {
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        let (tx, _rx) = mpsc::channel();
+        let (old, _) = state.claim_runtime_sender(tx);
+        let old_epoch = state.clear_runtime_sender(old).unwrap();
+        let (tx, _rx) = mpsc::channel();
+        let (new, _) = state.claim_runtime_sender(tx);
+        state.finish_runtime_disconnect(old_epoch);
+        assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
+        let new_epoch = state.clear_runtime_sender(new).unwrap();
+        state.finish_runtime_disconnect(old_epoch);
+        assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
+        state.finish_runtime_disconnect(new_epoch);
+        assert!(stop.load(std::sync::atomic::Ordering::Acquire));
     }
 
     #[test]

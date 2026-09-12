@@ -3573,6 +3573,7 @@ dependencies = [
  "oxc_transformer",
  "serde",
  "serde_json",
+ "sysinfo 0.39.6",
  "tempfile",
  "tungstenite",
 ]

@@ -228,7 +228,7 @@ fn tail_loop(
         }
 
         polls = polls.wrapping_add(1);
-        if polls % 10 == 0 && !session_owner_alive(session) {
+        if polls.is_multiple_of(10) && !session_owner_alive(session) {
             eprintln!("Dev session ended.");
             return Ok(());
         }
@@ -237,54 +237,23 @@ fn tail_loop(
     }
 }
 
-/// `lingxia dev` owns the session. When that process is gone, `-f` must exit
-/// instead of polling a dead jsonl while a later session writes a new file.
+/// Match the original owner, not just a PID that may have been reused. A
+/// zombie has exited even if its parent has not reaped it yet.
 fn session_owner_alive(session: &SessionInfo) -> bool {
-    pid_alive(session.pid)
-}
-
-fn pid_alive(pid: u32) -> bool {
-    if pid == 0 {
+    use sysinfo::{Pid, ProcessRefreshKind, ProcessStatus, ProcessesToUpdate, System, UpdateKind};
+    let pid = Pid::from_u32(session.pid);
+    let mut system = System::new();
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::Some(&[pid]),
+        true,
+        ProcessRefreshKind::nothing().with_exe(UpdateKind::Always),
+    );
+    let Some(process) = system.process(pid) else {
         return false;
-    }
-    #[cfg(unix)]
-    {
-        let result = unsafe { libc::kill(pid as i32, 0) };
-        if result == 0 {
-            return true;
-        }
-        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-    }
-    #[cfg(windows)]
-    {
-        windows_pid_alive(pid)
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = pid;
-        true
-    }
-}
-
-#[cfg(windows)]
-fn windows_pid_alive(pid: u32) -> bool {
-    const PROCESS_QUERY_LIMITED_INFORMATION: u32 = 0x1000;
-    const STILL_ACTIVE: u32 = 259;
-    unsafe extern "system" {
-        fn OpenProcess(access: u32, inherit: i32, pid: u32) -> *mut std::ffi::c_void;
-        fn GetExitCodeProcess(handle: *mut std::ffi::c_void, code: *mut u32) -> i32;
-        fn CloseHandle(handle: *mut std::ffi::c_void) -> i32;
-    }
-    unsafe {
-        let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
-        if handle.is_null() {
-            return false;
-        }
-        let mut code = 0u32;
-        let ok = GetExitCodeProcess(handle, &mut code) != 0;
-        CloseHandle(handle);
-        ok && code == STILL_ACTIVE
-    }
+    };
+    process.status() != ProcessStatus::Zombie
+        && (session.executable.is_empty() || process.exe() == Some(Path::new(&session.executable)))
+        && (session.started_at == 0 || process.start_time() <= session.started_at / 1000 + 2)
 }
 
 fn parse_and_filter(line: &str, filters: &Filters) -> Result<Option<LogEntry>> {
@@ -525,10 +494,53 @@ mod tests {
         ));
     }
 
+    fn current_session() -> SessionInfo {
+        SessionInfo {
+            session_id: "test".into(),
+            project_root: String::new(),
+            content: None,
+            target: "runner".into(),
+            pid: std::process::id(),
+            started_at: 0,
+            executable: std::env::current_exe().unwrap().display().to_string(),
+            ws_url: String::new(),
+            log_file: String::new(),
+        }
+    }
+
     #[test]
-    fn pid_alive_matches_this_process() {
-        assert!(pid_alive(std::process::id()));
-        assert!(!pid_alive(0));
+    fn session_owner_matches_process_identity() {
+        let mut session = current_session();
+        assert!(session_owner_alive(&session));
+        session.started_at = 1;
+        assert!(!session_owner_alive(&session), "reject a reused PID");
+        session.started_at = 0;
+        session.executable = "/not/the/session/owner".into();
+        assert!(!session_owner_alive(&session));
+        session.pid = u32::MAX;
+        assert!(!session_owner_alive(&session));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exited_unreaped_owner_does_not_keep_logs_alive() {
+        let mut child = std::process::Command::new("sh")
+            .args(["-c", "exit 0"])
+            .spawn()
+            .unwrap();
+        let mut session = current_session();
+        session.pid = child.id();
+        session.executable.clear();
+        let deadline = std::time::Instant::now() + Duration::from_secs(3);
+        while session_owner_alive(&session) && std::time::Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let alive = session_owner_alive(&session);
+        child.wait().unwrap();
+        assert!(
+            !alive,
+            "an unreaped exited process must not keep logs -f polling"
+        );
     }
 
     #[test]

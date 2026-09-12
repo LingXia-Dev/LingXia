@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 libc = "0.2"
+sysinfo = "0.39"
 anyhow = "1.0"
 clap = { version = "4.6", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
