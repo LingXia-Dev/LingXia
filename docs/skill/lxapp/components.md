@@ -244,12 +244,18 @@ const onProgress = ({ currentTime }: LxVideoEventPayloads['onTimeUpdate']) => {
 
 Native video player with quality/rate switching, fullscreen, and live mode. Always wrap it in `LxNativeRoot`.
 
-Video is native-owned: a page `<video>` opens a second decode-and-surface stack
-that shares no z-order, clip, fullscreen, or lifecycle with this one. `<video>`,
-`<audio>`, and `new Audio()` are rejected by `lingxia build`; `video.srcObject`
-is outside the contract as well. Live or pushed streams stay native-side through
-`lx.createVideoContext(id).setStreamSource(...)`. Audio playback is not
-available yet.
+Standard HTML `<video>`, `<audio>`, and `new Audio()` are also supported in
+View. Use them for ordinary playback and DOM/CSS composition; use `LxVideo`
+for native controls and `lx.createVideoContext(id).setStreamSource(...)`.
+Web media allows HTTPS, same-origin, `lx:`, `lingxia:`, `data:`, and `blob:`
+sources, like images. This does not grant View fetch/XHR access: players that
+fetch segments themselves need separate network support. Native `LxVideo`
+continues to use the host-granted network policy below.
+
+Web playback follows the platform WebView's codec, autoplay, and fullscreen
+support. Handle rejected `play()` promises, and pause/release media when the
+page is hidden or unmounted; background playback is not guaranteed. Keep
+references to `new Audio()` instances so they can be stopped too.
 
 The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
 `playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
