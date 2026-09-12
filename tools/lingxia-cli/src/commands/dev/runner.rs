@@ -316,7 +316,7 @@ pub(super) fn execute_runner_dev(
             )?,
         };
 
-        print_dev_banner("LxApp Runner", "Ctrl+C or `lingxia dev stop`", &[]);
+        print_dev_banner("LxApp Runner", "Ctrl+C or close Runner", &[]);
         if matches!(&target, RunnerDevTarget::LxApp(_)) {
             server.watch_lxapps(options.framework.as_deref(), options.release);
         }

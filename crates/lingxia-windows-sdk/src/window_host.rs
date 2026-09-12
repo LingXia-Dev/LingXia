@@ -9699,6 +9699,12 @@ fn invoke_button_close_handler(webtag_key: &str) -> bool {
 
 #[cfg(feature = "browser-shell")]
 fn should_hide_window_on_close(hwnd: HWND) -> bool {
+    // Runner is a session UI, not a tray product: the red dot / last window
+    // close must quit so `lingxia dev` can drop the session. Host apps with a
+    // tray still hide.
+    if std::env::var_os("LINGXIA_RUNNER").is_some() {
+        return false;
+    }
     crate::tray_icon::is_installed() && primary_host_window_except(None) == Some(hwnd)
 }
 
