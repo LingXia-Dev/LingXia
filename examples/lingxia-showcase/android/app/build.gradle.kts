@@ -45,6 +45,17 @@ val lingxiaLaunchOrientation = providers
     .gradleProperty("lingxia.launchOrientation")
     .orElse("portrait")
     .get()
+// Overridden by `lingxia build` from `app.productVersion`. Fallbacks are
+// only for opening the project in Android Studio without the CLI.
+val lingxiaVersionName = providers
+    .gradleProperty("lingxia.versionName")
+    .orElse("0.0.1")
+    .get()
+val lingxiaVersionCode = providers
+    .gradleProperty("lingxia.versionCode")
+    .orElse("1")
+    .get()
+    .toInt()
 
 // Release signing — values come from keystore.properties (local) or matching
 // env vars (CI). When none are set the build falls back to the debug keystore
@@ -110,8 +121,8 @@ android {
         manifestPlaceholders["lxLaunchOrientation"] = lingxiaLaunchOrientation
         minSdk = requestedMinSdk
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = lingxiaVersionCode
+        versionName = lingxiaVersionName
         ndk {
             abiFilters += "arm64-v8a"
         }

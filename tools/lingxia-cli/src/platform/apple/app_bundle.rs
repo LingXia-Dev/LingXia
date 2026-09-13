@@ -31,6 +31,9 @@ pub struct AppBundleConfig {
     /// has the ground. The OS launch face itself is installed into the built
     /// bundle by `splash::install_apple_launch_screen`.
     pub splash_background: Option<String>,
+    /// `app.productVersion` — written as CFBundleShortVersionString plus a
+    /// derived CFBundleVersion after any custom Info.plist is merged.
+    pub product_version: String,
 }
 
 /// App bundle packager
@@ -394,10 +397,21 @@ let package = Package(
         // Info.plist commonly contains the base release identifier, but must
         // not erase the active environment suffix (for example `.dev`) or
         // point at a different executable after the custom fields are merged.
+        // Version keys in the source plist are scaffold placeholders — yaml
+        // `app.productVersion` wins the same way the resolved bundle id does.
+        let os_version = crate::platform::app_version::os_package_version(&config.product_version)?;
         info.insert("CFBundleIdentifier".into(), config.bundle_id.clone().into());
         info.insert(
             "CFBundleExecutable".into(),
             config.executable_name.clone().into(),
+        );
+        info.insert(
+            "CFBundleShortVersionString".into(),
+            os_version.marketing.into(),
+        );
+        info.insert(
+            "CFBundleVersion".into(),
+            os_version.build.to_string().into(),
         );
 
         // Write Info.plist
@@ -471,6 +485,14 @@ mod tests {
             "NSCameraUsageDescription".to_string(),
             Value::String("Camera".to_string()),
         );
+        custom.insert(
+            "CFBundleShortVersionString".to_string(),
+            Value::String("9.9.9".to_string()),
+        );
+        custom.insert(
+            "CFBundleVersion".to_string(),
+            Value::String("1".to_string()),
+        );
         Value::Dictionary(custom)
             .to_file_xml(&custom_path)
             .expect("custom plist");
@@ -484,6 +506,7 @@ mod tests {
             deployment_target: "17.0".to_string(),
             info_plist_path: Some(custom_path),
             splash_background: None,
+            product_version: "1.2.3".to_string(),
         };
         AppBundler::generate_info_plist(&package, &app, &config).expect("generate plist");
 
@@ -506,6 +529,16 @@ mod tests {
                 .get("NSCameraUsageDescription")
                 .and_then(Value::as_string),
             Some("Camera")
+        );
+        assert_eq!(
+            generated
+                .get("CFBundleShortVersionString")
+                .and_then(Value::as_string),
+            Some("1.2.3")
+        );
+        assert_eq!(
+            generated.get("CFBundleVersion").and_then(Value::as_string),
+            Some("1002003")
         );
     }
 }

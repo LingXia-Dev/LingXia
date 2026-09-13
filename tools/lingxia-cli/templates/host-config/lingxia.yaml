@@ -13,6 +13,11 @@ app:
   # User-facing display name for the host app.
   productName: {{PRODUCT_NAME}}
   # Host app version. Must be semantic version major.minor.patch.
+  # `lingxia build` writes this into every platform package (Android /
+  # Harmony versionName, Apple CFBundleShortVersionString, Windows MSIX
+  # Identity) plus a derived integer versionCode / CFBundleVersion
+  # (`major*1000000 + minor*1000 + patch`). Do not set those fields in
+  # the platform project — they are overwritten.
   productVersion: 0.0.1
   # Logical publishing ID used by `lingxia publish` (distinct from the OS package
   # id). Identifies this host app to the LingXia server.

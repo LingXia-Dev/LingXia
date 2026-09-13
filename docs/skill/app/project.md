@@ -177,7 +177,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 
 ## `app` Section
 
-`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment](#environment)).
+`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `productName` (user-facing), `productVersion` (a semver string — the build rejects non-semver, and `lingxia build` writes it into every OS package: Android / Harmony `versionName`, Apple `CFBundleShortVersionString`, Windows MSIX Identity, plus a derived integer `versionCode` / `CFBundleVersion` of `major*1000000 + minor*1000 + patch`), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment](#environment)).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
@@ -759,6 +759,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
 ## Common Pitfalls
 
 - Hand-writing `ui.json` or editing generated `app.json` / `ui.json` — author `surfaces:` in `lingxia.yaml`; they are regenerated every build.
+- Editing Android `versionName` / Harmony `versionName` / Apple `CFBundleShortVersionString` in the platform project — those are scaffold placeholders; `app.productVersion` is written at build time.
 - A present `homeAppId` not matching any `resources.bundles[].appId` — build
   fails or the wrong control app launches.
 - Omitting `homeAppId` while targeting mobile, enabling AppService, or declaring

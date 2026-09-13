@@ -1136,10 +1136,14 @@ fn generate_macos_info_plist(
 
     info.insert("CFBundleInfoDictionaryVersion".into(), "6.0".into());
     info.insert("CFBundleDevelopmentRegion".into(), "en".into());
-    info.insert("CFBundleVersion".into(), "1".into());
+    let os_version = crate::platform::app_version::os_package_version(product_version)?;
+    info.insert(
+        "CFBundleVersion".into(),
+        os_version.build.to_string().into(),
+    );
     info.insert(
         "CFBundleShortVersionString".into(),
-        product_version.to_string().into(),
+        os_version.marketing.clone().into(),
     );
     info.insert("CFBundleIdentifier".into(), bundle_id.to_string().into());
     info.insert("CFBundleName".into(), product_name.to_string().into());
@@ -1177,10 +1181,13 @@ fn generate_macos_info_plist(
         }
     }
 
-    info.insert("CFBundleVersion".into(), "1".into());
+    info.insert(
+        "CFBundleVersion".into(),
+        os_version.build.to_string().into(),
+    );
     info.insert(
         "CFBundleShortVersionString".into(),
-        product_version.to_string().into(),
+        os_version.marketing.into(),
     );
     info.insert("CFBundleIdentifier".into(), bundle_id.to_string().into());
     info.insert("CFBundleName".into(), product_name.to_string().into());

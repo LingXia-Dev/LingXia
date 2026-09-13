@@ -69,6 +69,18 @@ Supported Rust target triples:\n\
         const ABI_FILTER_BLOCK: &str = r#"
 gradle.allprojects { proj ->
     proj.plugins.withId("com.android.application") {
+        proj.afterEvaluate {
+            def name = proj.findProperty("lingxia.versionName")
+            def code = proj.findProperty("lingxia.versionCode")
+            if (name != null && !name.toString().isEmpty()) {
+                proj.android.defaultConfig.versionName = name.toString()
+                proj.logger.lifecycle("[lingxia] versionName set to ${name}")
+            }
+            if (code != null && !code.toString().isEmpty()) {
+                proj.android.defaultConfig.versionCode = code.toString().toInteger()
+                proj.logger.lifecycle("[lingxia] versionCode set to ${code}")
+            }
+        }
         def raw = proj.findProperty("lingxia.abis")
         if (raw == null) return
         def abis = raw.toString().split(',').collect { it.trim() }.findAll { it }
@@ -414,6 +426,12 @@ gradle.settingsEvaluated {{ settings ->
             .unwrap_or_default();
         let app_id_arg = format!("-Plingxia.applicationIdSuffix={app_id_suffix}");
         let app_name_arg = format!("-Plingxia.appName={app_name}");
+        let os_version = config
+            .lingxia_config
+            .as_ref()
+            .and_then(|c| c.app.as_ref())
+            .map(|app| crate::platform::app_version::os_package_version(&app.product_version))
+            .transpose()?;
 
         // Translate Rust targets back to Android ABI names so we can pass them
         // to Gradle. The init script below uses this to constrain the merged
@@ -433,7 +451,12 @@ gradle.settingsEvaluated {{ settings ->
             .arg(task)
             .arg(app_id_arg)
             .arg(app_name_arg)
-            .arg(abis_arg)
+            .arg(abis_arg);
+        if let Some(os_version) = &os_version {
+            command.arg(format!("-Plingxia.versionName={}", os_version.marketing));
+            command.arg(format!("-Plingxia.versionCode={}", os_version.build));
+        }
+        command
             .arg("-I")
             .arg(&init_script_arg_value)
             .current_dir(project_root);
