@@ -1,5 +1,5 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
-use crate::commands::rust::run_cargo_build_for_target;
+use crate::commands::rust::run_cargo_rustc_for_target;
 use crate::platform::{
     BuildArtifacts, BuildConfig, BuildProfile, lingxia_workspace_root,
     native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
@@ -166,11 +166,12 @@ impl HarmonyPlatform {
         let target_dir = resolve_cargo_target_dir(project_root);
         let native_client_out =
             native_client_out_for_host_project(project_root, lingxia_config, config.framework)?;
-        run_cargo_build_for_target(
+        run_cargo_rustc_for_target(
             &rust_manifest,
             &rust_lib_dir,
             &target_dir,
             OHOS_TARGET,
+            "cdylib",
             Some(&crate_name),
             config.profile,
             |cmd| {

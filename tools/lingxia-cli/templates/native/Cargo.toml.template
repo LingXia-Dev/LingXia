@@ -7,7 +7,10 @@ build = "build.rs"
 
 [lib]
 name = "lingxia"
-# cdylib for Android/Harmony (.so), staticlib for iOS/macOS (.a), rlib for Windows host deps.
+# One lib, three crate-types so the same crate can be a Windows rlib dep and
+# still produce Android/Harmony .so / Apple .a. `lingxia build` rustc's only
+# the type the current platform links; `cargo build` of this crate as root
+# would rustc it once per crate-type.
 crate-type = ["cdylib", "staticlib", "rlib"]
 
 [features]

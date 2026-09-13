@@ -3,7 +3,7 @@ use super::{
     native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
     resolve_lingxia_target_dir, set_native_client_codegen_env,
 };
-use crate::commands::rust::run_cargo_build_for_target;
+use crate::commands::rust::run_cargo_rustc_for_target;
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -278,11 +278,12 @@ gradle.settingsEvaluated {{ settings ->
             }
             _ => bindgen_include_args,
         };
-        run_cargo_build_for_target(
+        run_cargo_rustc_for_target(
             &rust_manifest,
             &rust_lib_dir,
             &target_dir,
             target,
+            "cdylib",
             None,
             config.profile,
             |cmd| {
