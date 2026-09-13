@@ -249,6 +249,8 @@ written out in full in that release's notes on GitHub.
 
 ### CLI and CI
 
+- **cli**: align starter tests with the automation runtime (cd0d0e71c)
+
 - **cli**: sign publishes from --env (d69b100a2)
 - **cli**: keep multi-line template literals intact in the logic bundle (763cecff8)
 - **cli**: add the Universal Link entry to the macOS host template (a942be3c6)
