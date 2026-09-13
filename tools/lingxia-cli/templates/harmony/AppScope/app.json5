@@ -4,6 +4,8 @@
     "vendor": "example",
     "versionCode": 1000000,
     "versionName": "1.0.0",
+    // versionName / versionCode are overwritten at `lingxia build`
+    // from app.productVersion. These values are scaffold placeholders.
     "icon": "$media:layered_image",
     "label": "$string:app_name"
   }

@@ -6,6 +6,7 @@ use std::process::Command;
 
 pub mod android;
 pub mod android_abis;
+pub mod app_version;
 pub mod apple;
 pub mod detector;
 pub mod doctor;

@@ -292,7 +292,8 @@ impl HarmonyPlatform {
 }
 
 /// Mirror the Harmony source project into a per-env staging directory and
-/// rewrite `AppScope/app.json5`'s `bundleName` with the env suffix.
+/// rewrite `AppScope/app.json5`'s `bundleName` with the env suffix plus
+/// `versionName` / `versionCode` from `app.productVersion`.
 ///
 /// Harmony's hvigor toolchain has no build-time injection point for
 /// `bundleName` — it reads `app.json5` directly. Earlier versions wrote the
@@ -318,6 +319,7 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     mirror_harmony_project(source, &staging, !config.build_native)?;
     rewrite_staged_source_paths(&staging, source)?;
     rewrite_app_bundle_name(&staging, config)?;
+    rewrite_app_version(&staging, config)?;
     Ok(staging)
 }
 
@@ -664,6 +666,25 @@ fn rewrite_app_bundle_name(staging: &Path, config: &BuildConfig) -> Result<()> {
     Ok(())
 }
 
+fn rewrite_app_version(staging: &Path, config: &BuildConfig) -> Result<()> {
+    let product_version = config
+        .lingxia_config
+        .as_ref()
+        .and_then(|c| c.app.as_ref())
+        .map(|app| app.product_version.as_str())
+        .ok_or_else(|| anyhow!("lingxia.yaml is missing `app.productVersion`"))?;
+    let os_version = crate::platform::app_version::os_package_version(product_version)?;
+
+    let app_json_path = staging.join("AppScope/app.json5");
+    let content = std::fs::read_to_string(&app_json_path)
+        .with_context(|| format!("Failed to read {}", app_json_path.display()))?;
+    let updated = replace_json5_string_field_value(&content, "versionName", &os_version.marketing)?;
+    let updated = replace_json5_number_field_value(&updated, "versionCode", os_version.build)?;
+    std::fs::write(&app_json_path, updated)
+        .with_context(|| format!("Failed to write {}", app_json_path.display()))?;
+    Ok(())
+}
+
 /// Replace the string value of a single `"<field>"` (or `'<field>'`) key in a
 /// JSON5 document while preserving the surrounding text — comments, quoting
 /// style, indentation, and trailing punctuation are all left untouched.
@@ -772,6 +793,117 @@ fn replace_json5_string_field_value(content: &str, field: &str, value: &str) -> 
         return Err(anyhow!("field '{field}' not found"));
     }
     Ok(out)
+}
+
+/// Same token-aware scan as [`replace_json5_string_field_value`], but the
+/// value must be a JSON5 integer (`1000000`). Underscores in the existing
+/// token are accepted and discarded; the replacement is a plain decimal.
+fn replace_json5_number_field_value(content: &str, field: &str, value: u32) -> Result<String> {
+    let bytes = content.as_bytes();
+    let mut out = String::with_capacity(content.len() + 12);
+    let mut i = 0;
+    let mut replaced = false;
+
+    while i < bytes.len() {
+        let rest = &content[i..];
+
+        if rest.starts_with("//") {
+            let end = rest.find('\n').map(|p| i + p).unwrap_or(bytes.len());
+            out.push_str(&content[i..end]);
+            i = end;
+            continue;
+        }
+
+        if rest.starts_with("/*") {
+            let after = &content[i + 2..];
+            let end = after
+                .find("*/")
+                .map(|p| i + 2 + p + 2)
+                .unwrap_or(bytes.len());
+            out.push_str(&content[i..end]);
+            i = end;
+            continue;
+        }
+
+        let c = bytes[i];
+        if c == b'"' || c == b'\'' {
+            let quote = c;
+            let key_end = scan_json5_string(bytes, i, quote)
+                .ok_or_else(|| anyhow!("unterminated string literal near byte {i}"))?;
+            let literal = &content[i..key_end];
+            let inner = &literal[1..literal.len() - 1];
+            if inner == field
+                && let Some((colon_end, value_start)) = find_value_after_colon(bytes, key_end)
+            {
+                if replaced {
+                    return Err(anyhow!(
+                        "field '{field}' appears more than once; refusing to overwrite"
+                    ));
+                }
+                let value_end = scan_json5_integer(bytes, value_start).ok_or_else(|| {
+                    anyhow!("field '{field}' has a non-integer value; refusing to overwrite")
+                })?;
+
+                out.push_str(literal);
+                out.push_str(&content[key_end..colon_end]);
+                out.push_str(&content[colon_end..value_start]);
+                out.push_str(&value.to_string());
+                i = value_end;
+                replaced = true;
+                continue;
+            }
+
+            out.push_str(literal);
+            i = key_end;
+            continue;
+        }
+
+        let ch = rest
+            .chars()
+            .next()
+            .ok_or_else(|| anyhow!("invalid UTF-8 boundary near byte {i}"))?;
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+
+    if !replaced {
+        return Err(anyhow!("field '{field}' not found"));
+    }
+    Ok(out)
+}
+
+/// Scan a JSON5 decimal integer starting at `start`. Accepts an optional
+/// leading `+`/`-` and digit separators (`1_000_000`). Returns `None` when
+/// the next token is not an integer (string, object, float, hex).
+fn scan_json5_integer(bytes: &[u8], start: usize) -> Option<usize> {
+    if start >= bytes.len() {
+        return None;
+    }
+    let mut j = start;
+    if bytes[j] == b'+' || bytes[j] == b'-' {
+        j += 1;
+    }
+    if j >= bytes.len() || !bytes[j].is_ascii_digit() {
+        return None;
+    }
+    let mut saw_digit = false;
+    while j < bytes.len() {
+        let b = bytes[j];
+        if b.is_ascii_digit() {
+            saw_digit = true;
+            j += 1;
+            continue;
+        }
+        if b == b'_' {
+            j += 1;
+            continue;
+        }
+        if b == b'.' || b == b'e' || b == b'E' || b == b'x' || b == b'X' {
+            return None;
+        }
+        break;
+    }
+    saw_digit.then_some(j)
 }
 
 /// Return the byte index just past the closing quote of a JSON5 string literal
@@ -892,9 +1024,9 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::{
-        copy_dir_recursive_excluding, replace_json5_string_field_value,
-        rewrite_build_profile_src_paths, rewrite_file_dependencies, source_path_string,
-        upsert_lingxia_har_dep,
+        copy_dir_recursive_excluding, replace_json5_number_field_value,
+        replace_json5_string_field_value, rewrite_build_profile_src_paths,
+        rewrite_file_dependencies, source_path_string, upsert_lingxia_har_dep,
     };
     use std::{fs, path::Path};
     use tempfile::TempDir;
@@ -1202,5 +1334,36 @@ mod tests {
         let content = r#"{"app":{"vendor":"example"}}"#;
         let err = replace_json5_string_field_value(content, "bundleName", "x").unwrap_err();
         assert!(err.to_string().contains("bundleName"));
+    }
+
+    #[test]
+    fn version_overlay_rewrites_name_and_code() {
+        let content = r#"{
+  "app": {
+    "bundleName": "com.example.demo",
+    "versionCode": 1000000,
+    "versionName": "1.0.0"
+  }
+}"#;
+        let named = replace_json5_string_field_value(content, "versionName", "0.2.7").unwrap();
+        let updated = replace_json5_number_field_value(&named, "versionCode", 2007).unwrap();
+        assert!(updated.contains(r#""versionName": "0.2.7""#));
+        assert!(updated.contains(r#""versionCode": 2007"#));
+        assert!(updated.contains(r#""bundleName": "com.example.demo""#));
+    }
+
+    #[test]
+    fn version_overlay_accepts_underscored_integers() {
+        let content = r#"{"app":{"versionCode": 1_000_000}}"#;
+        let updated = replace_json5_number_field_value(content, "versionCode", 2007).unwrap();
+        assert!(updated.contains(r#""versionCode": 2007"#));
+        assert!(!updated.contains("1_000_000"));
+    }
+
+    #[test]
+    fn version_overlay_refuses_a_string_version_code() {
+        let content = r#"{"app":{"versionCode": "1000000"}}"#;
+        let err = replace_json5_number_field_value(content, "versionCode", 2007).unwrap_err();
+        assert!(err.to_string().contains("non-integer"));
     }
 }

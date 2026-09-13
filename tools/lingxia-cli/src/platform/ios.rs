@@ -206,6 +206,7 @@ impl IosPlatform {
             deployment_target,
             info_plist_path: info_plist,
             splash_background: splash.as_ref().map(|s| s.background().to_string()),
+            product_version: app_config.product_version.clone(),
         };
 
         AppBundler::create_app_bundle(
