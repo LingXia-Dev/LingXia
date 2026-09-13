@@ -25,7 +25,7 @@ An installable Android / iOS / macOS / Windows / Harmony app embedding one or mo
 lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
 ```
 
-`-p` accepts a comma-separated list: `-p android,ios,macos,harmony` or `-p all`.
+`-p` accepts a comma-separated list: `-p android,ios,macos,windows,harmony` or `-p all`.
 
 ### Terminal- or browser-main products
 
@@ -35,7 +35,7 @@ On macOS and Windows the launch screen can be a built-in native surface instead 
 lingxia new my-terminal -t native-app --main terminal --control native -y
 ```
 
-`--main terminal` (or `--main browser`) makes that surface the main screen, and `--control native` leaves out the embedded control lxapp. It is still a native host app — it can open bundled or runtime lxapps later, and an lxapp reaches the same terminal engine through `lx.terminal` where the host enables it.
+`--main terminal` (or `--main browser`) makes that surface the main screen. `--control native` leaves out the embedded control lxapp (`homeAppId`, resources, and `lxapp/`). `--control lxapp` keeps an embedded lxapp as the trusted Control app even when the visible main is the browser. It is still a native host app — it can open bundled or runtime lxapps later, and an lxapp reaches the same terminal engine through `lx.terminal` where the host enables it.
 
 ## Extend a host with Rust
 

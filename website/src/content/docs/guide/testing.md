@@ -2,12 +2,12 @@
 title: Testing
 description: Write repeatable lxapp cases with @lingxia/test and run them against a live dev session with lxdev test.
 sidebar:
-  order: 9
+  order: 10
 ---
 
 LingXia tests run **against a running app**, not against a simulated one. `lingxia dev` owns the session; `lxdev test` loads your cases into it and drives the real Logic runtime and the real page webviews. A passing case therefore means the behavior works on that platform, not that a mock agreed with itself.
 
-Cases are written with `@lingxia/test`, the authoring SDK.
+Cases are written with `@lingxia/test`, the authoring SDK. Spec bodies run in a JavaScript worker **on the target** (phone or desktop Runner), not on the development machine. `fetch('http://127.0.0.1:...')` therefore hits the device loopback.
 
 ## Install
 
@@ -19,36 +19,39 @@ Keep it on the same version as your CLI. `lxdev` warns when the two drift apart,
 
 ## Write a case
 
-A case is a `spec` with a title and an async body. Inside it you drive the app through a handle and assert with `expect`:
+A case is a `spec` whose async body receives a test handle `t`. Drive the app through locators and retrying assertions:
 
 ```ts
-import { expect, spec } from '@lingxia/test';
+import { spec } from '@lingxia/test';
 
-spec('greets through real page input and the Logic bridge', async () => {
-  const app = myApp();
+spec('greets through real page input and the Logic bridge', async (t) => {
+  await t.app.nav.relaunch({ page: 'home' });
+  await t.expect(t.app.page.testId('home-page')).toBeVisible();
 
-  await app.nav.relaunch({ page: 'home' });
-  await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
+  await t.app.page.testId('name').fill('Ada');
+  await t.app.page.testId('greet').click();
 
-  await app.page.fill({ page: 'home', css: '[data-testid="name"]', text: 'Ada' });
-  await app.page.click({ page: 'home', css: '[data-testid="greet"]' });
-
-  expect(await app.page.text({ page: 'home', css: '[data-testid="greeting"]' }))
-    .toContain('Ada');
+  await t.expect(t.app.page.testId('greeting')).toContain('Ada');
 });
 ```
 
-Two things are worth noticing. The selectors are ordinary CSS against your own markup — give elements a stable `data-testid` rather than matching on styling. And every interaction is awaited: the case is talking to another process, so nothing is synchronous.
+Give elements a stable `data-testid` rather than matching on styling. `t.app.page.testId(id)` and `t.app.page.css(selector)` return locators; `t.expect(locator)` retries until the condition holds or the spec budget expires. Imported `expect(value)` from `@lingxia/test` checks once and does not retry.
+
+Every interaction is awaited: the case is talking to another process.
 
 ## Wait, never sleep
 
 The app is live, so state arrives when it arrives. Wait for the condition you actually care about:
 
 ```ts
-await app.page.waitFor({ page: 'cart', css: '[data-testid="total"]', state: 'visible' });
+await t.expect(t.app.page.testId('total')).toBeVisible();
+await t.expect.poll(async () => {
+  const response = await fetch(statusUrl);
+  return (await response.json()).status;
+}).toBe('submitted');
 ```
 
-A fixed delay is the most common source of a test that passes on your machine and fails in CI — a slower device simply needs longer. Waiting on the condition costs nothing when the app is fast and still succeeds when it is slow.
+A fixed delay is the most common source of a test that passes on your machine and fails in CI. Waiting on the condition costs nothing when the app is fast and still succeeds when it is slow. Register cleanup with `t.defer` so it runs on success or failure.
 
 ## Organize by what breaks
 
@@ -65,16 +68,17 @@ An entry file imports the cases you want in one run, which lets one project keep
 ## Run
 
 ```bash
-lxdev test tests/entries/all.test.ts
+lxdev test tests/pages/home.test.ts
+lxdev test tests/ --grep checkout
 ```
 
-Pass values into a run with `--arg`, so one suite can cover several platforms:
+Pass values into a run with `--arg` (`t.args`), so one suite can cover several platforms or fixture URLs:
 
 ```bash
-lxdev test tests/entries/desktop.test.ts --arg platform=macos
+lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-Results print as they finish and are also written as a report, so CI can keep them as an artifact.
+Results print as they finish and are written under `test-results/<run-id>/` (`report.html`, `report.json`, `junit.xml`) so CI can keep them as an artifact.
 
 ## Park work without deleting it
 

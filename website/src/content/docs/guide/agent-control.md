@@ -2,7 +2,7 @@
 title: Agent control
 description: Let a local command line or agent drive the product you ship, with the user owning the switch.
 sidebar:
-  order: 10
+  order: 11
 ---
 
 `lxdev` drives a **development** session. A shipped product can expose its own
@@ -41,6 +41,21 @@ and `local_control::is_enabled` reports the live state.
 
 LingXia keeps the endpoint under `<app_data>/lingxia/control`; it never writes
 an executable, locator, or socket into the host-owned `app_state`.
+
+`lxdev` is not this interface. Host-owned `AutomationRuntime` programs carry a
+native runtime authority and do not impersonate an lxapp. An lxapp manifest's
+`automation` or `host` entry is only a request; cross-lxapp, browser, shell,
+device, terminal, and desktop process operations also need a native grant
+sealed to that exact session. Retained drivers are revalidated on each call
+and expire when their owner session begins teardown.
+
+Native terminal snapshots and commands use an owner-bound surface handle, not
+a globally authoritative surface-id string. Restart or session takeover cannot
+reuse a stale handle.
+
+`--allow-control` acknowledges an authorized mutation; it does not grant
+access. Use `--allow-destructive` only when the request explicitly authorizes
+the destructive effect.
 
 Leaf commands document their own syntax through `--help`, and prefer `--json`
 where a leaf offers it. Failures use stable exit codes — 2 usage, 3 not found,

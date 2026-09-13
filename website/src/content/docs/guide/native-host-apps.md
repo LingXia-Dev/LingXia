@@ -5,7 +5,7 @@ sidebar:
   order: 6
 ---
 
-A native host app is the installable product shell for Android, iOS, macOS, Windows, and HarmonyOS. It owns `lingxia.yaml`, native platform projects, a Rust host crate, and one embedded home lxapp.
+A native host app is the installable product shell for Android, iOS, macOS, Windows, and HarmonyOS. It owns `lingxia.yaml`, native platform projects, and a Rust host crate. Most products also embed a home lxapp; a desktop terminal- or browser-main host may omit that bundle.
 
 ## Scaffold the source of truth
 
@@ -14,17 +14,26 @@ lingxia new my-app -t native-app -p macos,windows \
   --package-id com.example.myapp -y
 ```
 
+A desktop product whose main screen is the built-in terminal or browser can skip the embedded control lxapp:
+
+```bash
+lingxia new my-terminal -t native-app --main terminal --control native -y
+lingxia new my-browser -t native-app -p windows --main browser --control lxapp -y
+```
+
+`--main terminal|browser` is currently macOS/Windows. `--control native` leaves out `homeAppId`, `resources.bundles`, and the `lxapp/` tree. `--control lxapp` keeps an embedded lxapp as the trusted [Control app](../control-app/) even when the visible main is the browser.
+
 Read the generated `lingxia.yaml` for the exact fields supported by your installed CLI. `lingxia build` compiles it into runtime `app.json` and `ui.json`; those generated files are never authoring surfaces.
 
 ## Keep the home ids aligned
 
-Three values must agree:
+When the host **does** embed a home lxapp, three values must agree:
 
 - `app.homeAppId`
 - one `resources.bundles[].appId`
 - that bundle's `lxapp.json.appId`
 
-The launch main surface's `lxapp:` value must point at the same home app. Misalignment either fails the build or launches the wrong content.
+The launch main surface's `lxapp:` value must point at the same home app. Misalignment either fails the build or launches the wrong content. That home session is the Control app; other lxapps are guests even if they share an app id.
 
 ## Capabilities and surfaces
 
@@ -37,9 +46,9 @@ Use the top-level `surfaces:` list to describe main, aside, and tray content. Se
 Most hosts keep `features.appService: true` and embed a normal lxapp with JS Logic. A native-only host flips both sides together:
 
 - `features.appService: false` in `lingxia.yaml`
-- `"logic": false` in the home `lxapp.json`
+- `"logic": false` in the home `lxapp.json` — or omit the control lxapp entirely for a desktop `native: terminal|browser` main
 
-That shape uses an HTML-only View and Rust for Logic. A logic-enabled lxapp under an appService-disabled host is rejected at startup.
+That shape uses an HTML-only View (when a control lxapp remains) and Rust for Logic. A logic-enabled lxapp under an appService-disabled host is rejected at startup.
 
 ## Add host-specific Rust APIs
 

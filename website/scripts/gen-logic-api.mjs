@@ -12,7 +12,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { Project } from 'ts-morph';
 
@@ -20,11 +20,25 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 const require = createRequire(import.meta.url);
 
-const typesEntry = require.resolve('@lingxia/types');
-const typesDts = typesEntry.replace(/\.js$/, '.d.ts');
-const typesVersion = JSON.parse(
-  readFileSync(join(dirname(typesEntry), '../package.json'), 'utf8'),
-).version;
+function resolveTypesPackage() {
+  const sibling = join(projectRoot, '../packages/lingxia-types');
+  const siblingLogic = join(sibling, 'src/generated/logic.ts');
+  const siblingPkg = join(sibling, 'package.json');
+  if (existsSync(siblingLogic) && existsSync(siblingPkg)) {
+    return {
+      entry: siblingLogic,
+      version: JSON.parse(readFileSync(siblingPkg, 'utf8')).version,
+    };
+  }
+  const typesEntry = require.resolve('@lingxia/types');
+  return {
+    entry: typesEntry.replace(/\.js$/, '.d.ts'),
+    version: JSON.parse(readFileSync(join(dirname(typesEntry), '../package.json'), 'utf8'))
+      .version,
+  };
+}
+
+const { entry: typesDts, version: typesVersion } = resolveTypesPackage();
 
 const outDir = join(projectRoot, 'src/content/docs/reference/api');
 
@@ -47,7 +61,7 @@ const GROUPS = [
     summary:
       'Open host surfaces and drive the chrome around the page — navigation bar, tab bar, tray, shell, and pull-to-refresh.',
     members: [
-      'surface', 'navigationBar', 'tabBar', 'setMoreActions', 'appearance',
+      'surface', 'navigationBar', 'tabBar', 'setMoreActions',
       'startPullDownRefresh', 'stopPullDownRefresh',
       'tray', 'shell',
     ],
@@ -105,7 +119,7 @@ const GROUPS = [
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
       'app', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
-      'automation', 'supports', 'terminal',
+      'supports', 'terminal',
     ],
   },
 ];
@@ -134,28 +148,34 @@ function signature(node) {
     .trim();
 }
 
+function collectLxMembers(iface) {
+  for (const member of iface.getMembers()) {
+    const symbol = member.getSymbol?.();
+    const name = symbol?.getName();
+    if (!name) continue;
+    const entry = members.get(name) ?? {
+      name,
+      kind: member.getKindName() === 'PropertySignature' ? 'namespace' : 'method',
+      declarations: [],
+      summary: '',
+      node: member,
+    };
+    entry.declarations.push(member);
+    entry.summary ||= summarize(symbol);
+    members.set(name, entry);
+  }
+}
+
 // Collect the merged `Lx` interface. It is declared across several module
-// blocks, so members are gathered by name in first-seen order.
+// and `declare global` blocks, so members are gathered by name in first-seen order.
 const members = new Map();
 for (const sourceFile of project.getSourceFiles()) {
+  for (const iface of sourceFile.getInterfaces()) {
+    if (iface.getName() === 'Lx') collectLxMembers(iface);
+  }
   for (const mod of sourceFile.getModules()) {
     for (const iface of mod.getInterfaces()) {
-      if (iface.getName() !== 'Lx') continue;
-      for (const member of iface.getMembers()) {
-        const symbol = member.getSymbol?.();
-        const name = symbol?.getName();
-        if (!name) continue;
-        const entry = members.get(name) ?? {
-          name,
-          kind: member.getKindName() === 'PropertySignature' ? 'namespace' : 'method',
-          declarations: [],
-          summary: '',
-          node: member,
-        };
-        entry.declarations.push(member);
-        entry.summary ||= summarize(symbol);
-        members.set(name, entry);
-      }
+      if (iface.getName() === 'Lx') collectLxMembers(iface);
     }
   }
 }

@@ -5,7 +5,8 @@ import starlight from '@astrojs/starlight';
 
 // The Logic JS API reference is generated into src/content/docs/reference/api/
 // by scripts/gen-logic-api.mjs before astro runs (see package.json), one page
-// per capability group. The sidebar picks it up as an ordinary directory.
+// per capability group. Generators prefer sibling packages in this repo.
+// The sidebar picks the output up as an ordinary directory.
 
 // GitHub Pages project-site config.
 // The repo is served at https://lingxia-dev.github.io/LingXia/, so `base` is the repo name.

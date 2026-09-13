@@ -62,15 +62,39 @@ npm install --save-dev @lingxia/types
 
 Logic 包含 `fetch`、timer、URL、stream、console 等标准 Web API，但没有 DOM。可访问的域名和特权由宿主 grant，不写在 `lxapp.json` 里——没有 provider 时默认放行公网和全部特权；只有注册了 provider 才按 grant 收紧。`lingxia.yaml` 不配置 permission。现有非公网地址限制继续保留。
 
+作用于**产品**本身的 API（退出、Dock 角标、shell 侧栏、宿主更新）只属于 [Control app](../control-app/)。同一个 `appId` 以 guest 打开时不能调用它们。
+
 ## 原生组件
 
-React 与 Vue 会重新导出 `LxPicker`、`LxVideo`、`LxMediaSwiper` 与 `LxNavigator`；HTML View 使用对应 custom-element tag。文本输入直接使用普通 `<input>` / `<textarea>`，不存在 `LxInput`。
+LingXia 提供两类原生组件：
 
-组件 callback 并非刻意统一：picker wrapper 直接传解析后的 value，而 video、media-swiper、navigator handler 接收 DOM `CustomEvent`。属性见生成的[组件参考](../../reference/components/)；行为约定见 LingXia skill 的 `lxapp/components.md`。
+- **Inline native island** — `LxNativeRoot` 包裹 `LxVideo`，以及 `LxNativeCover` / `LxNativeView` / `LxNativeText` / `LxNativeButton`。`LxVideo` 必须是显式 `LxNativeRoot` 的**直接子节点**。裸写 `<LxVideo>` 会得到 `NATIVE_ROOT_INVALID_STRUCTURE`。
+- **Presenters** — `LxPicker`、`LxMediaSwiper`、`LxNavigator`（不在 island 上）。
+
+React 与 Vue 会重新导出这两类。HTML View 注册对应 custom element（`<lx-native-root>`、`<lx-video>` 等）。文本输入直接使用普通 `<input>` / `<textarea>`，不存在 `LxInput`。
+
+```tsx
+import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
+
+<LxNativeRoot className="player">
+  <LxVideo src={data.src} aria-label={data.title} controls />
+</LxNativeRoot>
+```
+
+组件 callback 并不统一：
+
+| 组件 | React/Vue handler 收到的值 |
+|---|---|
+| Island 节点（`LxNativeButton`、`LxVideo`、Root） | **先给 payload** — `onPress(({ source }) => …)`、`onTimeUpdate(({ currentTime }) => …)`。HTML 仍读 `CustomEvent.detail`。 |
+| `LxPicker` | **解析后的 value** — `string \| string[]` |
+| `LxMediaSwiper` | 原始 DOM `CustomEvent` — `event.detail.index` |
+| `LxNavigator` | 原始 DOM `CustomEvent` |
+
+属性见生成的[组件参考](../../reference/components/)。Island 结构与 seek/controls 约定见 LingXia skill 的 `lxapp/components.md`。
 
 ## 适配 surface
 
-间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.onSurfaceContext`，通过 `setData` 复制可序列化 context，再选择 compact 或 workspace View。详见[自适应 surfaces](../adaptive-surfaces/)。
+间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.surface.onContext`，通过 `setData` 复制可序列化 context，再选择 compact 或 workspace View。详见[自适应 surfaces](../adaptive-surfaces/)。
 
 ## 开发与验证
 

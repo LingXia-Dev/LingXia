@@ -8,7 +8,7 @@
 
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { Project } from 'ts-morph';
 
@@ -16,10 +16,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 const require = createRequire(import.meta.url);
 
-// Resolve the package entry d.ts from node_modules so we document exactly the
-// pinned, published version.
-const elementsEntry = require.resolve('@lingxia/elements');
-const elementsDts = elementsEntry.replace(/\.js$/, '.d.ts');
+function resolveElementsEntry() {
+  const sibling = join(projectRoot, '../packages/lingxia-elements/src/index.ts');
+  if (existsSync(sibling)) return sibling;
+  const elementsEntry = require.resolve('@lingxia/elements');
+  return elementsEntry.replace(/\.js$/, '.d.ts');
+}
+
+const elementsDts = resolveElementsEntry();
 
 const outDir = join(projectRoot, 'src/content/docs/reference/components');
 
@@ -57,11 +61,63 @@ function describe(prop) {
 
 // Friendly title + ordering per known component; unknown ones sort last.
 const META = {
-  LxVideoAttributes: { title: 'Video', tag: 'lx-video', order: 1, summary: 'Native video player surface.' },
-  LxMediaSwiperAttributes: { title: 'Media Swiper', tag: 'lx-media-swiper', order: 2, summary: 'Paged image/video carousel.' },
-  LxPickerAttributes: { title: 'Picker', tag: 'lx-picker', order: 3, summary: 'Native selector / date / time picker.' },
-  LxNavigatorAttributes: { title: 'Navigator', tag: 'lx-navigator', order: 4, summary: 'Declarative navigation element.' },
+  LxVideoAttributes: { title: 'Video', tag: 'lx-video', order: 1, summary: 'Native video player. Must be a direct child of LxNativeRoot.' },
+  LxMediaSwiperAttributes: { title: 'Media Swiper', tag: 'lx-media-swiper', order: 6, summary: 'Paged image/video carousel.' },
+  LxPickerAttributes: { title: 'Picker', tag: 'lx-picker', order: 7, summary: 'Native selector / date / time picker.' },
+  LxNavigatorAttributes: { title: 'Navigator', tag: 'lx-navigator', order: 8, summary: 'Declarative navigation element.' },
 };
+
+// Island nodes have no `Lx*Attributes` export. Keep a curated page so the
+// generated reference cannot silently omit the tree that LxVideo lives in.
+const ISLAND = [
+  {
+    slug: 'native-root',
+    title: 'Native Root',
+    tag: 'lx-native-root',
+    order: 2,
+    summary: 'Island root. Every LxVideo must be a direct child of an explicit Root.',
+    body: `There is no implicit root. Nested Root, DOM inside Root, a bare \`<lx-video>\`, or Video inside View/Cover is \`NATIVE_ROOT_INVALID_STRUCTURE\`.
+
+React/Vue: import \`LxNativeRoot\` from \`@lingxia/react\` or \`@lingxia/vue\`. HTML: \`<lx-native-root>\` after \`registerInlineNativeComponents()\`.
+`,
+  },
+  {
+    slug: 'native-cover',
+    title: 'Native Cover',
+    tag: 'lx-native-cover',
+    order: 3,
+    summary: 'Absolutely positioned overlay inside an island (scrim, chrome).',
+    body: `Sits inside \`LxNativeRoot\`. Cannot wrap \`LxVideo\`. Use \`scrim\` / \`scrim-opacity\` for a dimmed overlay. Wrap copy in \`LxNativeText\`.
+`,
+  },
+  {
+    slug: 'native-view',
+    title: 'Native View',
+    tag: 'lx-native-view',
+    order: 4,
+    summary: 'Layout box inside an island.',
+    body: `Sits inside \`LxNativeRoot\`. Cannot wrap \`LxVideo\`. Wrap copy in \`LxNativeText\`; do not put bare text or DOM children in the island.
+`,
+  },
+  {
+    slug: 'native-text',
+    title: 'Native Text',
+    tag: 'lx-native-text',
+    order: 5,
+    summary: 'Native label inside an island.',
+    body: `The only way to put copy on the island. Attributes include \`max-lines\`, \`font-size\`, \`font-weight\`, \`line-height\`, \`text-align\`, and \`color\`.
+`,
+  },
+  {
+    slug: 'native-button',
+    title: 'Native Button',
+    tag: 'lx-native-button',
+    order: 5.5,
+    summary: 'Native tappable on the island. React/Vue \`onPress\` is payload-first.',
+    body: `Cannot wrap interactive or native children. Use \`label\` / \`icon\`; an icon-only button needs a non-empty \`aria-label\`. Seek stays on \`LxVideo\` controls — do not invent an island slider.
+`,
+  },
+];
 
 function frontmatter(title, order, description) {
   const lines = ['---', `title: ${title}`];
@@ -152,18 +208,37 @@ for (const { name, alias } of found) {
 
   const slug = name.replace(/^Lx/, '').replace(/Attributes$/, '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase();
   writeFileSync(join(outDir, `${slug}.md`), body, 'utf8');
-  overviewRows.push({ title: meta.title, tag: meta.tag, slug, summary: meta.summary });
+  overviewRows.push({ title: meta.title, tag: meta.tag, slug, summary: meta.summary, order: meta.order });
 }
+
+for (const island of ISLAND) {
+  let body = frontmatter(island.title, island.order, island.summary);
+  body += `${island.summary}\n\n`;
+  body += `Custom element: \`<${island.tag}>\`\n\n`;
+  body += island.body;
+  body += `\nSee [LxApp pages](../../../guide/lxapp-pages/) for the island tree and callback shapes.\n`;
+  writeFileSync(join(outDir, `${island.slug}.md`), body, 'utf8');
+  overviewRows.push({
+    title: island.title,
+    tag: island.tag,
+    slug: island.slug,
+    summary: island.summary,
+    order: island.order,
+  });
+}
+
+overviewRows.sort((a, b) => (a.order ?? 99) - (b.order ?? 99) || a.title.localeCompare(b.title));
 
 // Overview index page.
 let index = frontmatter('Components', 0, 'Native-backed custom elements provided by @lingxia/elements.');
-index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React and Vue apps normally import their wrappers from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use these custom elements directly. Text entry stays on the web platform with \`<input>\` and \`<textarea>\`—there is no \`LxInput\`.\n\n`;
+index += `Native-backed custom elements provided by the \`@lingxia/elements\` package. React and Vue apps normally import their wrappers from \`@lingxia/react\` or \`@lingxia/vue\`; HTML views use these custom elements directly.\n\n`;
+index += `Two families: the **inline native island** (\`LxNativeRoot\` wraps \`LxVideo\`, plus Cover / View / Text / Button) and **presenters** (\`LxPicker\`, \`LxMediaSwiper\`, \`LxNavigator\`). Text entry stays on the web platform with \`<input>\` and \`<textarea>\`—there is no \`LxInput\`.\n\n`;
 index += `| Component | Element | Description |\n`;
 index += `| --- | --- | --- |\n`;
 for (const r of overviewRows) {
   index += `| [${r.title}](./${r.slug}/) | \`<${r.tag}>\` | ${escapeCell(r.summary)} |\n`;
 }
-index += `\n:::note\nThis reference is generated at build time from the pinned \`@lingxia/elements\` declarations. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [LxApp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
+index += `\n:::note\nThis reference is generated at build time from \`@lingxia/elements\` in this repository when present, otherwise the pinned install. It lists the low-level attribute surface; wrapper callbacks can reshape events. Read [LxApp pages](../../guide/lxapp-pages/) before wiring handlers.\n:::\n`;
 writeFileSync(join(outDir, 'index.md'), index, 'utf8');
 
 // Keep existing generated pages in place so Astro's incremental content loader

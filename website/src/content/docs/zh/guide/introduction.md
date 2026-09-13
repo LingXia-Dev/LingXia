@@ -28,3 +28,4 @@ LingXia（灵匣，意为"承光之器"）是一个**由 Rust 驱动的跨平台
 - [架构](../architecture/) —— 视图 / 桥 / 逻辑 分离详解。
 - [构建形态](../what-you-build/) —— 独立 lxapp、原生宿主应用，以及 Rust 扩展所在的位置。
 - [开发工作流](../development-workflow/) —— 运行、重载、自动化并验证实时会话。
+- [CLI](../cli/) —— `lingxia` 与 `lxdev` 各自负责什么。

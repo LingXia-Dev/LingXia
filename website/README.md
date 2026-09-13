@@ -1,7 +1,7 @@
 # LingXia website
 
 The marketing site for [LingXia](../Readme.md) — a polished, bilingual (EN / 中文)
-landing page built with **Astro 5** and **Tailwind CSS v4**, ready for static hosting.
+landing page built with **Astro 7** and **Tailwind CSS v4**, ready for static hosting.
 
 ## Develop
 
@@ -16,6 +16,8 @@ npm run dev      # http://localhost:4321/LingXia/
 | `npm run dev`     | Start the dev server with HMR               |
 | `npm run build`   | Build the static site to `dist/`            |
 | `npm run preview` | Serve the production build locally          |
+
+`dev` / `build` run `scripts/gen-components.mjs` and `scripts/gen-logic-api.mjs` first. Those generators prefer the sibling packages in this repository (`packages/lingxia-types`, `packages/lingxia-elements`) so the reference tracks HEAD. If those trees are missing, they fall back to the pinned npm installs in `package.json`.
 
 ## Structure
 
@@ -42,8 +44,8 @@ Landing-page copy lives in [`src/i18n/ui.ts`](src/i18n/ui.ts), keyed by language
 Edit the `en` and `zh` objects together — components read from `t = ui[lang]`.
 
 Human guides live in `src/content/docs/guide/` and
-`src/content/docs/zh/guide/`; keep those trees in parity. API pages are generated
-from the pinned `@lingxia/types` package by `starlight-typedoc`. Component pages
+`src/content/docs/zh/guide/`; keep those trees in parity. The Logic JS API is
+generated from `@lingxia/types` by `scripts/gen-logic-api.mjs`. Component pages
 are generated from `@lingxia/elements` by `scripts/gen-components.mjs`; edit the
 generator or package JSDoc, not the generated Markdown.
 
