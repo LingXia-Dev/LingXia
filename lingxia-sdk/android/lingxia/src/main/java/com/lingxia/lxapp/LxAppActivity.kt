@@ -6,6 +6,7 @@ import com.lingxia.lxapp.chrome.NavigationBarState
 import com.lingxia.lxapp.chrome.NavigationBar
 import com.lingxia.lxapp.chrome.TabBarState
 import com.lingxia.lxapp.chrome.TabBar
+import com.lingxia.lxapp.chrome.TabBarInsets
 import com.lingxia.lxapp.chrome.TabBarOverflowSheet
 import com.lingxia.lxapp.chrome.CapsuleButton
 import com.lingxia.lxapp.chrome.CapsuleMenuBottomSheet
@@ -40,7 +41,6 @@ import org.json.JSONObject
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
-import android.provider.Settings
 import android.content.pm.ActivityInfo
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -279,9 +279,13 @@ class LxAppActivity : AppCompatActivity() {
         @JvmStatic
         fun updateNavigationBarTransparency(activity: AppCompatActivity, isTabBarTransparent: Boolean, tabBarBackgroundColor: Int? = null) {
             activity.window.apply {
+                // Never set FLAG_LAYOUT_NO_LIMITS. It extends the window past
+                // the display on several OEMs (Huawei gesture nav especially);
+                // a Gravity.BOTTOM TabBar then sits in the clipped region and
+                // only the top of the strip remains visible. Edge-to-edge is
+                // already enabled via setDecorFitsSystemWindows(false).
+                clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
                 if (isTabBarTransparent) {
-                    // TabBar is transparent, make navigation bar transparent for overlay effect
-                    addFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
                     navigationBarColor = Color.TRANSPARENT
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                         isNavigationBarContrastEnforced = false
@@ -290,9 +294,6 @@ class LxAppActivity : AppCompatActivity() {
                         navigationBarDividerColor = Color.TRANSPARENT
                     }
                 } else {
-                    // TabBar is not transparent, use TabBar's background color for navigation bar
-                    clearFlags(android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
-
                     // Use TabBar's background color, fallback to white if not provided
                     val navBarColor = tabBarBackgroundColor ?: Color.WHITE
                     navigationBarColor = navBarColor
@@ -309,6 +310,7 @@ class LxAppActivity : AppCompatActivity() {
                     }
                 }
             }
+            ViewCompat.requestApplyInsets(activity.window.decorView)
         }
     }
 
@@ -326,6 +328,8 @@ class LxAppActivity : AppCompatActivity() {
     private var currentWebView: com.lingxia.lxapp.WebView? = null
     private var systemBottomInset: Int = 0
     private var imeContentBottomInset: Int = 0
+    /** A visible bottom navigation strip; only opaque TabBars reserve it in root padding. */
+    private var navBarHasBottomInset: Boolean = false
     private var isMediaFullscreen = false
     private var isPageFullscreen = false  // For page-level fullscreen (landscape + custom navbar)
     private var forceHostImmersive = false
@@ -522,6 +526,9 @@ class LxAppActivity : AppCompatActivity() {
             val sysBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
             val imeBottom = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
             val keyboardVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+            val navVisible = insets.isVisible(WindowInsetsCompat.Type.navigationBars())
+            val navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            navBarHasBottomInset = navVisible && maxOf(navBottom, sysBars.bottom) > 0
             systemBottomInset = resolveContentBottomInset(insets)
 
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
@@ -784,38 +791,17 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     private fun resolveContentBottomInset(insets: WindowInsetsCompat): Int {
-        val navVisible = insets.isVisible(WindowInsetsCompat.Type.navigationBars())
-        val gestureInset = insets.getInsets(WindowInsetsCompat.Type.systemGestures()).bottom
-        val visible = maxOf(
-            insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom,
-            insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+        return TabBarInsets.contentBottomPx(
+            navVisible = insets.isVisible(WindowInsetsCompat.Type.navigationBars()),
+            navBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom,
+            systemBarsBottom = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom,
+            mandatoryGesturesBottom = insets.getInsets(
+                WindowInsetsCompat.Type.mandatorySystemGestures()
+            ).bottom,
+            systemGesturesBottom = insets.getInsets(
+                WindowInsetsCompat.Type.systemGestures()
+            ).bottom,
         )
-        val stable = maxOf(
-            insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.navigationBars()).bottom,
-            insets.getInsetsIgnoringVisibility(WindowInsetsCompat.Type.systemBars()).bottom
-        )
-
-        val clearGesture = !navVisible && visible == 0 && gestureInset > 0
-        val navMode = resolveNavigationMode()
-        when (navMode) {
-            2 -> return 0 // gesture navigation: keep content flush
-            0, 1 -> return if (clearGesture) 0 else visible // legacy 3-button/2-button
-        }
-
-        if (clearGesture) return 0
-        if (navVisible && visible > 0) return visible
-        // Some OEMs report stable>0 for gesture; do not use stable for content inset
-        if (!navVisible && visible == 0 && stable > 0 && gestureInset == 0) return 0
-        return 0
-    }
-
-    private fun resolveNavigationMode(): Int? {
-        return try {
-            Settings.Secure.getInt(contentResolver, "navigation_mode")
-        } catch (_: Throwable) {
-            val resId = resources.getIdentifier("config_navBarInteractionMode", "integer", "android")
-            if (resId > 0) resources.getInteger(resId) else null
-        }
     }
 
     private fun setupContainers() {
@@ -935,8 +921,7 @@ class LxAppActivity : AppCompatActivity() {
                 width = ViewGroup.LayoutParams.MATCH_PARENT
                 height = tabBarSizePx
                 gravity = Gravity.BOTTOM
-                // For a transparent TabBar, lift it above the system navigation bar
-                bottomMargin = if (isTabBarTransparent) systemBottomInset else 0
+                applyHorizontalTabBarInsets(tabBar, this, tabBarSizePx, isTabBarTransparent)
             }
             tabBar.layoutParams = this
         } ?: run {
@@ -955,11 +940,36 @@ class LxAppActivity : AppCompatActivity() {
             } else {
                 FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, tabBarSizePx).apply {
                     gravity = Gravity.BOTTOM
-                    // For a transparent TabBar, lift it above the system navigation bar
-                    bottomMargin = if (isTabBarTransparent) systemBottomInset else 0
+                    applyHorizontalTabBarInsets(tabBar, this, tabBarSizePx, isTabBarTransparent)
                 }
             }
             tabBar.layoutParams = newLayoutParams
+        }
+    }
+
+    private fun applyHorizontalTabBarInsets(
+        tabBar: TabBar,
+        params: FrameLayout.LayoutParams,
+        tabBarSizePx: Int,
+        transparent: Boolean,
+    ) {
+        val extra = TabBarInsets.extraBottomPx(
+            systemBottomInset,
+            navBarHasBottomInset,
+            resources.displayMetrics.density,
+            transparent = transparent,
+        )
+        if (transparent) {
+            // Lift above the navigation bar or gesture zone; the page paints underneath.
+            params.height = tabBarSizePx
+            params.bottomMargin = extra
+            tabBar.setPadding(tabBar.paddingLeft, tabBar.paddingTop, tabBar.paddingRight, 0)
+        } else {
+            // Grow the opaque strip so its background fills the gesture zone
+            // and the icons stay in the original 64dp.
+            params.height = tabBarSizePx + extra
+            params.bottomMargin = 0
+            tabBar.setPadding(tabBar.paddingLeft, tabBar.paddingTop, tabBar.paddingRight, extra)
         }
     }
 
@@ -2538,6 +2548,7 @@ class LxAppActivity : AppCompatActivity() {
         // margins above were computed while the previous app's strip was still
         // the one on screen.
         updateLayoutMargins()
+        rootContainer.requestApplyInsets()
     }
 
     /**

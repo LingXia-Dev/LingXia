@@ -10,8 +10,8 @@ import com.lingxia.lxapp.LxApp
  * Helper object for querying activity-provided insets and applying them to transient UI.
  *
  * All overlays (pickers, sheets, media controls) should rely on the activity's notion of
- * "content inset" so they remain flush with gesture navigation while staying above the
- * legacy navigation bar when necessary.
+ * "content inset" so they sit above a 3-button navigation bar and above the
+ * gesture home-indicator zone. Do not treat gesture navigation as a zero inset.
  */
 internal object ActivityInsets {
 
