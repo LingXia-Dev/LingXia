@@ -69,15 +69,18 @@ Supported Rust target triples:\n\
         const ABI_FILTER_BLOCK: &str = r#"
 gradle.allprojects { proj ->
     proj.plugins.withId("com.android.application") {
-        proj.afterEvaluate {
+        // finalizeDsl runs after the project's android {} block and before
+        // variants lock. afterEvaluate is too late on AGP 8.9 ("It is too
+        // late to set versionName").
+        proj.androidComponents.finalizeDsl { ext ->
             def name = proj.findProperty("lingxia.versionName")
             def code = proj.findProperty("lingxia.versionCode")
             if (name != null && !name.toString().isEmpty()) {
-                proj.android.defaultConfig.versionName = name.toString()
+                ext.defaultConfig.versionName = name.toString()
                 proj.logger.lifecycle("[lingxia] versionName set to ${name}")
             }
             if (code != null && !code.toString().isEmpty()) {
-                proj.android.defaultConfig.versionCode = code.toString().toInteger()
+                ext.defaultConfig.versionCode = code.toString().toInteger()
                 proj.logger.lifecycle("[lingxia] versionCode set to ${code}")
             }
         }
