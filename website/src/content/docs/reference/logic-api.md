@@ -17,13 +17,13 @@ The public declarations are not maintained as a second handwritten API tree:
 2. TypeScript-only contracts—such as semantic unions, callbacks, handles, and lifecycle metadata—are declared alongside those bindings.
 3. `rong-typegen` generates `packages/lingxia-types/src/generated/logic.ts` and the DOM-free Logic Web declarations.
 4. The generated outputs are committed and published as `@lingxia/types`, so consumers do not need Rust or the generator.
-5. This website reads the pinned installed `@lingxia/types` declarations at build time and emits one **Logic JS API** page per capability group.
+5. This website reads `@lingxia/types` at build time — the sibling package in this repository when present, otherwise the pinned install — and emits one **Logic JS API** page per capability group.
 
 :::note
 The generated pages keep identifiers and type signatures in their source language. When browsing them in Chinese, the information notice means “shared generated reference,” not “this content is unsupported.”
 :::
 
-The reference documents the **published** package, not an unreleased branch: it names its version, and a member added or removed upstream fails the site build until the grouping is updated. Exact option and result types are the types in that package — in an editor, type `lx.` and hover a member to read them against the version your project installs.
+The generated index names the types package version it built against. A member added or removed upstream fails the site build until `GROUPS` in `scripts/gen-logic-api.mjs` is updated. Exact option and result types are the types in that package — in an editor, type `lx.` and hover a member to read them against the version your project installs. The published npm line may lag this repository.
 
 ## What it does not cover
 

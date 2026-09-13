@@ -41,4 +41,5 @@ React、Vue 或纯 HTML。它渲染复制而来的数据，掌管临时交互状
 
 - [构建形态](../what-you-build/) —— 选择独立 lxapp 或原生宿主应用，再按需扩展宿主。
 - [LxApp 页面](../lxapp-pages/) —— 实现 View / Logic 边界。
+- [Control app](../control-app/) —— 哪个 session 能调用产品级 API。
 - [快速开始](../getting-started/) —— 生成并运行项目。

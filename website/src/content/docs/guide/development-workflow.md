@@ -2,7 +2,7 @@
 title: Development workflow
 description: Start a LingXia dev session, reload the changed layer, automate behavior, and verify the result.
 sidebar:
-  order: 8
+  order: 9
 ---
 
 LingXia separates session lifetime from live automation:
@@ -78,4 +78,4 @@ The global selector must appear before the command family.
 
 ## Keep repeatable behavior as tests
 
-Use `lxdev test` with `@lingxia/test`. Keep API contracts in `tests/api/`, page behavior in `tests/pages/`, and user journeys in `tests/flows/`. One-off visual polish still deserves live interaction and screenshots, but not necessarily a permanent test.
+Use `lxdev test` with `@lingxia/test`. Keep API contracts in `tests/api/`, page behavior in `tests/pages/`, and user journeys in `tests/flows/`. One-off visual polish still deserves live interaction and screenshots, but not necessarily a permanent test. See [Testing](../testing/) for the `spec(async (t) => …)` authoring shape and [CLI](../cli/) for the `lingxia` / `lxdev` split.

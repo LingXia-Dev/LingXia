@@ -6,9 +6,9 @@ Drop one screenshot per platform here, named by its id:
 macos.png  ios.png  android.png  windows.png  harmony.png
 ```
 
-`Showcase.astro` picks them up automatically (via `import.meta.glob`) and
-optimizes them with `astro:assets` (responsive, modern formats, lazy-loaded).
-Until a file exists for a platform, its panel shows a branded placeholder frame.
+Getting started currently uses `macos.png` via `astro:assets`. Until a file
+exists for a platform, do not invent a glob-driven gallery — add the image and
+wire it from the page that needs it.
 
 `.png`, `.jpg`, `.webp`, and `.avif` are all accepted.
 

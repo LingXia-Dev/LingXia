@@ -2,7 +2,7 @@
 title: Agent 控制
 description: 让本地命令行或 agent 驱动你交付的产品，开关始终握在用户手里。
 sidebar:
-  order: 10
+  order: 11
 ---
 
 `lxdev` 驱动的是**开发**会话。交付出去的产品则可以开放自己的本地接口，让命令行或
@@ -36,6 +36,17 @@ Safari 进程：那些是普通的机器窗口，需要 `computerUse`。被拒�
 
 LingXia 把 endpoint 放在 `<app_data>/lingxia/control`，绝不会把 executable、locator 或
 socket 写进宿主拥有的 `app_state`。
+
+这不是 `lxdev`。宿主拥有的 `AutomationRuntime` 带原生 runtime 权限，不会冒充某个
+lxapp。lxapp 清单里的 `automation` 或 `host` 只是请求；跨 lxapp、浏览器、shell、
+设备、终端和桌面进程操作还需要封存在该 session 上的原生 grant。已保留的 driver
+每次调用都会再校验，owner session 开始拆除时即失效。
+
+原生终端快照与命令通过绑定到 owner 的 surface handle 寻址，而不是全局有效的
+surface-id 字符串。重启或会话接管不能复用失效句柄。
+
+`--allow-control` 只表示这次变更已被授权，并不授予访问权。只有请求明确授权破坏性
+效果时才使用 `--allow-destructive`。
 
 叶子命令用 `--help` 说明自己的语法，能给 `--json` 的优先用 `--json`。失败使用稳定
 退出码——2 用法错误、3 未找到、4 有歧义、5 超时、6 权限或拒绝、7 不支持、8 不可用、

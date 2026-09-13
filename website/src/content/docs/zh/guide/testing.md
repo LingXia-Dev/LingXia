@@ -2,12 +2,12 @@
 title: 测试
 description: 用 @lingxia/test 编写可重复的 lxapp 用例，通过 lxdev test 在真实开发会话中运行。
 sidebar:
-  order: 9
+  order: 10
 ---
 
 LingXia 的测试跑在**真正运行的应用上**，而不是模拟环境里。`lingxia dev` 持有会话，`lxdev test` 把用例装载进去，驱动真实的 Logic 运行时和真实的页面 webview。所以用例通过意味着该行为在那个平台上确实可用，而不是一个 mock 和自己达成了一致。
 
-用例用 `@lingxia/test` 编写，它是配套的编写 SDK。
+用例用 `@lingxia/test` 编写。spec body 跑在**目标设备**上的 JavaScript worker 里（真机或桌面 Runner），不在开发机上。因此 `fetch('http://127.0.0.1:...')` 打到的是设备回环，不是开发机。
 
 ## 安装
 
@@ -19,38 +19,41 @@ npm install --save-dev @lingxia/test
 
 ## 写一个用例
 
-一个用例是带标题和异步函数体的 `spec`。在其中通过 app 句柄驱动应用，用 `expect` 断言：
+一个用例是带标题的 `spec`，异步函数体收到测试句柄 `t`。用 locator 驱动应用，用可重试断言检查结果：
 
 ```ts
-import { expect, spec } from '@lingxia/test';
+import { spec } from '@lingxia/test';
 
-spec('通过真实页面输入和 Logic 桥接完成问候', async () => {
-  const app = myApp();
+spec('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
+  await t.app.nav.relaunch({ page: 'home' });
+  await t.expect(t.app.page.testId('home-page')).toBeVisible();
 
-  await app.nav.relaunch({ page: 'home' });
-  await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
+  await t.app.page.testId('name').fill('Ada');
+  await t.app.page.testId('greet').click();
 
-  await app.page.fill({ page: 'home', css: '[data-testid="name"]', text: 'Ada' });
-  await app.page.click({ page: 'home', css: '[data-testid="greet"]' });
-
-  expect(await app.page.text({ page: 'home', css: '[data-testid="greeting"]' }))
-    .toContain('Ada');
+  await t.expect(t.app.page.testId('greeting')).toContain('Ada');
 });
 ```
 
-两点值得注意。选择器就是针对你自己标记的普通 CSS —— 给元素加稳定的 `data-testid`，不要靠样式类去匹配。另外每次交互都要 await：用例是在和另一个进程对话，没有任何操作是同步的。
+给元素加稳定的 `data-testid`，不要靠样式类去匹配。`t.app.page.testId(id)` 与 `t.app.page.css(selector)` 返回 locator；`t.expect(locator)` 会重试直到条件成立或超时。从 `@lingxia/test` 导入的 `expect(value)` 只检查一次，不会重试。
+
+每次交互都要 await：用例是在和另一个进程对话。
 
 ## 等条件，不要等时间
 
 应用是活的，状态什么时候到就是什么时候到。等你真正关心的那个条件：
 
 ```ts
-await app.page.waitFor({ page: 'cart', css: '[data-testid="total"]', state: 'visible' });
+await t.expect(t.app.page.testId('total')).toBeVisible();
+await t.expect.poll(async () => {
+  const response = await fetch(statusUrl);
+  return (await response.json()).status;
+}).toBe('submitted');
 ```
 
-固定延时是"本机通过、CI 失败"最常见的根源 —— 设备慢一点就需要更久。等条件在应用快时不花时间，在应用慢时依然能通过。
+固定延时是“本机通过、CI 失败”最常见的根源。等条件在应用快时不花时间，在应用慢时依然能通过。用 `t.defer` 注册清理，成功或失败都会跑。
 
-## 按"会坏在哪"来组织
+## 按“会坏在哪”来组织
 
 按用例保护的层次分开，这样失败本身就指明了层次：
 
@@ -65,16 +68,17 @@ await app.page.waitFor({ page: 'cart', css: '[data-testid="total"]', state: 'vis
 ## 运行
 
 ```bash
-lxdev test tests/entries/all.test.ts
+lxdev test tests/pages/home.test.ts
+lxdev test tests/ --grep checkout
 ```
 
-用 `--arg` 向运行传值，让一套用例覆盖多个平台：
+用 `--arg` 向运行传值（`t.args`），让一套用例覆盖多个平台或 fixture URL：
 
 ```bash
-lxdev test tests/entries/desktop.test.ts --arg platform=macos
+lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-结果边跑边输出，同时写成报告文件，CI 可以作为产物留存。
+结果边跑边输出，并写到 `test-results/<run-id>/`（`report.html`、`report.json`、`junit.xml`），CI 可以作为产物留存。
 
 ## 搁置但不删除
 

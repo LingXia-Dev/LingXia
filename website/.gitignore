@@ -2,7 +2,7 @@
 dist/
 # generated types
 .astro/
-# generated reference docs (TypeDoc API + components generator) — rebuilt each build
+# generated reference docs (gen-logic-api + gen-components) — rebuilt each build
 src/content/docs/reference/api/
 src/content/docs/reference/components/
 # deps

@@ -28,3 +28,4 @@ UI work never tangles with business work, and the same project targets every pla
 - [Architecture](../architecture/) — the View / Bridge / Logic split in detail.
 - [What you build](../what-you-build/) — standalone lxapp vs. native host app, and where Rust extensions fit.
 - [Development workflow](../development-workflow/) — run, reload, automate, and verify a live session.
+- [CLI](../cli/) — what `lingxia` and `lxdev` each own.
