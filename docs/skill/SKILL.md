@@ -95,6 +95,8 @@ Keep regressions and repeatable business flows as `lxdev test` cases:
 `tests/api/` for `lx.*` contracts, `tests/pages/` for page behavior, and
 `tests/flows/` for cross-page journeys.
 One-off visual polish needs live verification, not necessarily a permanent test.
+Read [Product testing](./lxapp/testing.md) for the test execution model,
+assertions, external integrations, and evidence.
 
 Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
@@ -141,6 +143,7 @@ Every published package and what to import from each. Don't guess imports from t
 |---|---|
 | The `lingxia` CLI — daily commands (build, dev, package, install) | [`./cli/lingxia.md`](./cli/lingxia.md) |
 | iOS Packet Tunnel / Network Extension packaging | [`./cli/lingxia.md`](./cli/lingxia.md#ios-packet-tunnel-extensions) |
+| Product E2E tests, test runtime boundaries, external service/browser journeys | [`./lxapp/testing.md`](./lxapp/testing.md) |
 | Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |

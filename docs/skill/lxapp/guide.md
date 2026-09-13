@@ -303,12 +303,17 @@ The View file can be a standard React component, a Vue component, or an HTML mod
 
 ### Typing `PageData` and `PageActions`
 
-The runtime guarantees that **(a)** `data` reflects Logic's initial `data: { … }` literal by first paint, and **(b)** every public method on `Page({})` is wired into `actions` during page setup. So in your typed shapes:
+Keep the Logic contract distinct from bridge readiness. The View snapshot
+starts empty while the initial Logic data arrives asynchronously; public
+methods are exposed through the actions bridge. In your product contracts:
 
-- **Required by default.** Fields you declare in `data: { … }` are always present; public methods are always callable. Mark them required.
+- **Required by default.** Fields declared in Logic `data: { … }` and public methods are required.
 - **Mark `?:` only when the field is genuinely populated lazily** — for example, a field that starts unset and is filled by `this.setData(…)` after an async fetch in `onLoad`.
 
-Using all-`?` fields is a footgun: it propagates `actions.foo?.()` and `data?.x ?? default` through every component for no reason. Don't do that.
+At the View entry, use `Partial<PageData>` and gate the fields rendering needs
+until the first snapshot arrives. Keep hooks above the gate. Do not make the
+product contract itself all-optional or use `actions.foo?.()` to hide a missing
+action. See [adaptive Views](adaptive-ui.md#choose-css-or-separate-views).
 
 ### React
 
@@ -327,7 +332,9 @@ type PageActions = {
 };
 
 export default function HomePage() {
-  const { data, actions } = useLxPage<PageData, PageActions>();
+  const { data, actions } = useLxPage<Partial<PageData>, PageActions>();
+
+  if (data.count === undefined || data.message === undefined) return null;
 
   return (
     <div>
@@ -344,7 +351,7 @@ export default function HomePage() {
 
 ### Vue
 
-Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<PageData, PageActions>()` in `<script setup lang="ts">`, then bind `{{ data.count }}` / `@click="actions.increment()"` in the template. `lingxia new … ` scaffolds the full file.
+Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<Partial<PageData>, PageActions>()` in `<script setup lang="ts">`, gate the template until required data arrives, then bind `{{ data.count }}` / `@click="actions.increment()"` in the template. `lingxia new … ` scaffolds the full file.
 
 ### HTML
 
@@ -384,7 +391,7 @@ subscribe((data: PageData) => {
 ### What `useLxPage()` returns
 
 ```ts
-const { data, actions } = useLxPage<PageData, PageActions>();
+const { data, actions } = useLxPage<Partial<PageData>, PageActions>();
 ```
 
 - **`data`** — Reactive page state, updated whenever Logic calls `setData()`. In React this triggers a re-render; in Vue it's a `reactive()` object.

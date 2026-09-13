@@ -52,6 +52,14 @@ header {
 `lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })`
 before offering it.
 
+## Runner safe areas and page chrome
+
+Use the host's page-chrome snapshot/CSS insets for native chrome, including
+custom-header pages in Runner; see [page chrome](guide.md#laying-out-under-immersive-chrome).
+Browser `env(safe-area-inset-*)` alone does not describe simulated Runner
+chrome. Do not compensate with a fixed phone/notch height. Capsule geometry
+belongs to the View, through the framework's page-chrome helper.
+
 ## Subscribe in Logic
 
 Keep the authoritative value in Page Logic and replicate it to the View. Store

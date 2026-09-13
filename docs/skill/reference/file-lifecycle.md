@@ -151,6 +151,42 @@ Keep larger media and archive files as `lx://`
 paths and pass those paths to streaming, upload, preview, or native file APIs
 instead of reading the whole file into JavaScript memory.
 
+### Upload from a managed path
+
+Call `lx.uploadFile` from Logic; it streams the file without materializing it
+in JavaScript. The endpoint owns the size ceiling. Generated `UploadOptions`
+and `UploadTask` in `@lingxia/types` are authoritative.
+
+- Ordinary form endpoint: default `bodyMode: 'multipart'`, default method
+  `POST`; use `name`, `fileName`, and `formData` for the form envelope. The
+  runtime sets the multipart Content-Type and boundary.
+- Raw endpoint or presigned object-storage URL: `bodyMode: 'raw'`, matching the
+  signed method, headers, and MIME type. Do not send multipart fields; a
+  multipart envelope would become part of the stored object.
+
+```ts
+const task = lx.uploadFile({
+  url: presignedUrl,
+  filePath,
+  method: 'PUT',
+  bodyMode: 'raw',
+  mimeType: contentType,
+});
+for await (const event of task) {
+  if (event.kind === 'progress') updateProgress(event.progress ?? 0);
+}
+const { statusCode, data } = await task.wait();
+```
+
+The task is awaitable and async-iterable. `cancel()` cancels the transfer;
+`return()` or breaking iteration stops progress consumption without canceling
+the upload. The result contains HTTP `statusCode` and response text `data`;
+validate both against the endpoint contract before claiming business success.
+`signal` and `timeout` are available. Keep the managed source file alive until
+the transfer finishes. Network grants follow [permissions](../native/permissions.md).
+Cloud/provider upload wrappers define their own protocol; consult their owning
+skill rather than treating them as interchangeable with `lx.uploadFile`.
+
 ### Media APIs
 
 `chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs
