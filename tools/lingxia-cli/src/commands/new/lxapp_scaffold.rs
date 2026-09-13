@@ -330,6 +330,56 @@ mod tests {
     }
 
     #[test]
+    fn built_in_scaffolds_keep_tests_in_their_own_project() {
+        for framework in ["react", "vue", "html"] {
+            for mode in [AppServiceMode::Enabled, AppServiceMode::Disabled] {
+                let output = tempdir().unwrap();
+                let app = output.path().join("myapp");
+                create_lxapp_from_template(
+                    &app,
+                    "myapp",
+                    "myapp",
+                    "My App",
+                    framework,
+                    mode,
+                    &dummy_versions(),
+                    "0.16.0",
+                    None,
+                )
+                .unwrap();
+                assert!(!app.join("tests/home.test.ts").exists());
+                let spec = fs::read_to_string(app.join("tests/pages/home.test.ts")).unwrap();
+                assert!(spec.contains(if mode.enabled() {
+                    "home greets by name"
+                } else {
+                    "home shows the native shell title"
+                }));
+                let config: serde_json::Value =
+                    serde_json::from_str(&fs::read_to_string(app.join("tsconfig.json")).unwrap())
+                        .unwrap();
+                assert!(
+                    config["references"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|reference| reference["path"] == "./tsconfig.tests.json")
+                );
+                assert!(app.join("tsconfig.tests.json").is_file());
+                let package: serde_json::Value =
+                    serde_json::from_str(&fs::read_to_string(app.join("package.json")).unwrap())
+                        .unwrap();
+                assert!(
+                    package["scripts"]["test"]
+                        .as_str()
+                        .unwrap()
+                        .contains("tests/pages/")
+                );
+                assert_eq!(package["devDependencies"]["@lingxia/test"], "~0.16.0");
+            }
+        }
+    }
+
+    #[test]
     fn rejects_target_inside_custom_template() {
         let template = tempdir().unwrap();
 
