@@ -1,0 +1,124 @@
+# Product testing with `lxdev test`
+
+`lxdev test` runs product E2E specs inside the target App/Runner process, on
+an independent Rong JavaScript worker, separate from lxapp Logic and WebViews.
+
+## Execution model
+
+```text
+Development machine: lxdev collects/bundles specs → sends them over dev websocket
+Target App/Runner:   test JS worker → automation → Logic / WebViews / host / HTTP
+Development machine: lxdev receives progress, results, and artifacts
+```
+
+On a physical phone, specs and their `fetch` execute on the phone. With a
+local desktop Runner, they execute in that Runner on the PC. The CLI does not
+execute spec bodies. Consequently, test `fetch('http://127.0.0.1:...')` reaches
+the target device's loopback, not necessarily the development machine.
+
+The host reuses one automation worker and creates a fresh JS context per run.
+A session accepts one active run; specs within it execute sequentially and
+await async hooks/bodies. A fresh test context does not reset app or service
+state: prepare and clean up fixtures explicitly.
+
+```bash
+lingxia dev --background
+lxdev test tests/pages/home.test.ts
+lxdev test tests/ --grep checkout
+```
+
+Install `@lingxia/test` matching the project's LingXia line. Directory input
+collects `*.test.ts` recursively, includes static import dependencies, and
+removes TypeScript types to produce one executable JS script with a source map.
+Reports and attachments return to the development machine under `test-results/<run-id>/`
+(or `--output-dir`): `report.html`, `report.json`, and `junit.xml`. Failed
+assertions or runtime errors make the command fail. See `lxdev test --help`
+for flags and the [development loop](../SKILL.md#the-development-loop) for reloads.
+
+## What a spec can reach
+
+| Target | Use |
+|---|---|
+| Current app UI and navigation | `t.app.page.testId(...)`, `t.app.nav` |
+| App Logic state or `lx.*` calls | `t.app.eval({ script: '...' })` |
+| Page DOM inspection | `t.app.page.eval({ script: '...' })` |
+| Another running lxapp | `t.apps.lxapp(appId)` |
+| App lifecycle and inbound links | `lx.automation().lxapps` |
+| External web pages, auth/payment callback tabs | `lx.automation().browser` |
+| Runner presets/appearance | `lx.automation().device`; [adaptive testing](adaptive-ui.md#test-runtime-switching) |
+| Host shell, terminal, or local OS integration | `lx.automation().shell`, `.terminal`, `.desktop` where supported |
+| External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
+
+The automation root is typed by `@lingxia/types/automation`; platform support
+and selectors follow [lxdev](../cli/lxdev.md). Browser automation targets host
+browser tabs; desktop automation requires a supported macOS/Windows dev/test
+host. `t.app.surfaceLayout()` reads the host render plan. Restore any existing
+shell pins or device settings changed by a test.
+
+## Context and assertions
+
+The test context exposes `lx.automation()`, `console`, timers, `fetch`, and its
+supporting Web APIs. It has no app-scoped `lx.*`, DOM, filesystem, environment,
+Node built-ins, or dynamic `import()`. Use the target's eval driver to inspect
+Logic or DOM; importing product source does not run it in the target context.
+
+Keep a separate test tsconfig with `lib: ["ES2020"]` and
+`types: ["@lingxia/types/automation-test-globals"]`. Do not add Logic, DOM, or
+Node globals to make unavailable APIs compile. Start fixture servers from
+shell/CI and pass reachable URLs through `--arg key=value` (`t.args`). App
+requests retain their own [network grants](../native/permissions.md).
+
+`t.expect(locator)` retries UI assertions; `t.expect.poll(read)` retries an
+observable result; imported `expect(value)` checks once. Await actions and
+retrying assertions. Poll reads, not mutations. `t.step` groups the trace,
+`t.attach` adds evidence, and `t.defer` registers cleanup on success or failure.
+Trigger the behavior under test through UI actions; setup/eval/backend calls
+do not replace that product path.
+
+## External integration journeys
+
+A spec can prepare external fixtures, operate the app, complete a browser
+callback, then verify persisted business results. Correlate external reads
+with this run's entity ID and register cleanup.
+
+This example assumes a seeded order is open. `statusUrl` and `cleanupUrl` are
+product-owned fixture endpoints scoped to that order, supplied with `--arg`:
+
+```ts
+import { spec } from '@lingxia/test';
+
+spec('submission reaches the external service', async (t) => {
+  const { statusUrl, cleanupUrl } = t.args;
+  if (!statusUrl || !cleanupUrl) throw new Error('Missing fixture URLs');
+  t.defer(async () => {
+    const response = await fetch(cleanupUrl, { method: 'DELETE' });
+    if (!response.ok) throw new Error(`Cleanup failed: ${response.status}`);
+  });
+  await t.app.page.testId('submit-order').click();
+  await t.expect(t.app.page.testId('order-confirmation')).toBeVisible();
+  await t.expect.poll(async () => {
+    const response = await fetch(statusUrl);
+    if (!response.ok) throw new Error(`Status read failed: ${response.status}`);
+    const result = await response.json();
+    return result.status;
+  }).toBe('submitted');
+});
+```
+
+For redirects, drive `lx.automation().browser` and assert the resulting app
+state. For inbound links, call `lx.automation().lxapps.applink({ url })`, then
+wait for the page outcome; acceptance does not mean navigation completed.
+Fixture services and backend mock selection belong to the product/backend,
+which can reuse the same UI journey across mock and real implementations.
+
+## Layout, coverage, and evidence
+
+- `tests/pages/`: a page's behavior and states.
+- `tests/flows/`: cross-page, cross-app, and external business journeys.
+- `tests/api/`: deliberate `lx.*` runtime contract checks, when the project
+  needs them. Ordinary product tests need not duplicate the framework suite.
+
+Keep shared helpers alongside tests. Extend scaffold smoke checks with product
+states, required Views/languages, and business outcomes. Run focused specs while
+iterating and the applicable suite at handoff. Report exercised scenarios and
+integrations with logs/artifacts; review screenshots and interactions for UX.

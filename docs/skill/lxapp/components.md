@@ -95,32 +95,33 @@ visualViewport?.addEventListener('resize', onResize);
 
 ## `LxPicker`
 
-Native picker — modal column/date/time selection the web platform can't render natively. Full attribute list is the exported `LxPickerAttributes` (+ `LxPickerColumn`, `LxPickerCascadingColumns`) from `@lingxia/elements`; the doc-only behavior is the `mode` → value-type mapping and the callback reshaping below.
+Use the framework wrapper's exported props as the authoring contract
+(`LxPickerProps` in React). React/Vue infer column selection from `columns`;
+set `mode` only for date/time. The raw element's `LxPickerAttributes` is a
+lower-level contract and is not the React prop list.
 
-**Modes (`mode` attribute)** — the mode determines the confirm value type:
-
-| Mode | Confirm value type |
+| Wrapper configuration | Confirm value |
 |---|---|
-| `selector` (default) | `string` |
-| `multiSelector` | `string[]` |
-| `cascading` | `string[]` |
-| `date` | `string` (`YYYY-MM-DD`) |
-| `time` | `string` (`HH:mm`) |
+| `columns={[['A', 'B']]}` | `string` |
+| Multiple independent arrays in `columns` | `string[]` |
+| Cascading `columns`: `[parents, childrenByParent]` | `string[]` |
+| `mode="date"` | Date string; `fields="range"` returns a pair of strings |
+| `mode="time"` | Time string (`HH:mm`) |
 
 **Callback reshaping** — the wrappers unwrap the raw event, so `onConfirm` /
 `onColumnChange` receive the resolved **value** directly (a `string` for
-`selector` / `date` / `time`, a `string[]` for `multiSelector` / `cascading`).
+single-column / date / time, a `string[]` for multi-column / cascading
+and date-range selection).
 `onConfirm` fires on the confirm button, `onColumnChange` on each column scroll,
 `onCancel()` on cancel/dismiss (no argument).
 
 ```tsx
 <LxPicker
-  mode="multiSelector"
   columns={[
     ['China', 'USA'],
     ['Beijing', 'Shanghai'],
   ]}
-  defaultIndex={[0, 0]}
+  value={['China', 'Beijing']}
   onConfirm={(value) => actions.setCity({ value })}
   onColumnChange={(value) => console.log('scrolling', value)}
 />

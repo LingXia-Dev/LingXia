@@ -68,14 +68,10 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `cookies list|set|delete|clear`
 - `screenshot` — PNG of the tab's web content only
 
-**`test`** — run bundled JavaScript/TypeScript cases in the session (`lxdev test tests/flows/checkout.test.ts`). Install `@lingxia/test`, import its `spec` and `expect`, and keep contracts in `tests/api/`, page behavior in `tests/pages/`, and journeys in `tests/flows/`.
-
-- `const auto = lx.automation()` — select the current app with `auto.lxapp()` or a specific running app with `auto.lxapp(appid)`; the returned driver's `page`, `nav`, `eval`, and read-only `surfaceLayout()` surfaces all target that app. `surfaceLayout()` is the authoritative render plan for end-to-end host assertions, not an app-behavior API. Cross-app lifecycle operations live on `auto.lxapps`. `auto.lxapps.applink({ url })` is `lxdev app applink`.
-- `auto.shell.pins()` reads the host sidebar's ordered persisted shortcuts. `auto.shell.setPin({ kind: 'lxapp' | 'bookmark', key, pinned })` idempotently mutates one shortcut and returns the resulting full order; new Pins append, while a host-limit error leaves the old order intact. This host-privileged surface exists for deterministic test setup and cleanup; production lxapp behavior still uses `lx.shell`, and tests must restore any pre-existing Pin state in `finally`.
-- `test.args` — strings from repeatable `--arg key=value`; `test.attach(name, { mimeType, base64 })` — save an artifact, downloaded into `--output-dir` (default `test-results/<run-id>`).
-- `console`, timers, and host-device `fetch`
-
-There is no appid-scoped `lx.*`, filesystem, environment, or dynamic `import()`. Cases run sequentially; async hooks/cases are awaited. `--timeout-secs` bounds the run, Ctrl-C cancels it, `--json` emits one final report, and failures map back to source files. `lingxia dev` and the Runner include the required runtime.
+**`test`** — bundle and run `@lingxia/test` specs in the session's isolated
+host automation runtime. See [Product testing](../lxapp/testing.md) for the
+execution model, fixtures, assertions, cross-app/browser/external HTTP journeys,
+test layout, and reports. Use `lxdev test --help` for arguments and flags.
 
 **`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
 filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
