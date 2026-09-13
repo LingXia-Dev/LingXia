@@ -1,7 +1,10 @@
 import { spec } from '@lingxia/test'
 
+// Specs run in the target App/Runner, separate from Logic and WebViews.
+// Drive the UI with t.app; use t.app.eval for Logic-only checks.
+//
 // lingxia dev --background
-// lxdev test tests/
+// lxdev test tests/pages/home.test.ts
 // open test-results/<run>/report.html
 
 spec('home greets by name', async (t) => {

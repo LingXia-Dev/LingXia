@@ -11,7 +11,7 @@
   "author": "",
   "license": "MIT",
   "scripts": {
-    "test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/'); process.exit(2)\""
+    "test": "node -e \"console.error('Start a session first: lingxia dev --background\\nThen run: lxdev test tests/pages/'); process.exit(2)\""
   },
   "dependencies": {
     "@lingxia/html": "{{LINGXIA_FRAMEWORK_RANGE}}"
