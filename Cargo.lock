@@ -3397,7 +3397,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-cli"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "Inflector",
  "aes",
@@ -3776,7 +3776,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-config"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "lingxia-provider",
  "serde",
@@ -3786,7 +3786,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-lib"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "libc",
  "lingxia",
@@ -3798,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "lingxia-runner-windows"
-version = "0.16.0"
+version = "0.16.1"
 dependencies = [
  "lingxia",
  "lingxia-control-runtime",
