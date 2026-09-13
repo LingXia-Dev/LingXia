@@ -2,7 +2,10 @@
 
 Native library for your LingXia app.
 
-This crate builds a platform-native library (`.so` for Android/Harmony, `.a` for iOS) that re-exports LingXia SDK symbols.
+This crate is one Cargo lib with three crate-types (`cdylib` / `staticlib` /
+`rlib`) so the same sources cover every host. `lingxia build` rustc's only the
+type the current platform links (`.so` on Android/Harmony, `.a` on Apple);
+Windows consumes it as an rlib from `windows/`.
 
 ## Build
 
