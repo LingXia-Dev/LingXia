@@ -1120,13 +1120,56 @@ impl LxApp {
             .await
     }
 
+    pub(crate) fn recover_terminated_renderers(&self) {
+        if !self.host_foreground.load(Ordering::SeqCst)
+            || !matches!(
+                self.status(),
+                LxAppSessionStatus::Opened | LxAppSessionStatus::Opening
+            )
+        {
+            return;
+        }
+        let pages: Vec<_> = self
+            .live_page_instances()
+            .into_iter()
+            .filter(|page| page.needs_renderer_recovery())
+            .collect();
+        if pages.is_empty() {
+            return;
+        }
+        #[cfg(target_vendor = "apple")]
+        for page in pages {
+            if let Err(error) = page.recover_renderer() {
+                warn!("Failed to recover page renderer: {error}")
+                    .with_appid(self.appid.clone())
+                    .with_path(page.path());
+            }
+        }
+        // Android explicitly forbids reusing a terminated WebView. Reopening
+        // the session also replaces cached tabs and surface-owned WebViews that
+        // shared its renderer; restart() coalesces their termination callbacks.
+        #[cfg(not(target_vendor = "apple"))]
+        if let Err(error) = self.restart() {
+            warn!("Failed to restart after renderer termination: {error}")
+                .with_appid(self.appid.clone());
+        }
+    }
+
     /// Notify the AppService (logic.js layer) with a built-in event and optional JSON payload.
     pub fn appservice_notify(
         &self,
         event: AppServiceEvent,
         payload_json: Option<String>,
     ) -> Result<(), LxAppError> {
-        if !self.logic_enabled() {
+        match event {
+            AppServiceEvent::OnHide => self.host_foreground.store(false, Ordering::SeqCst),
+            AppServiceEvent::OnShow => {
+                self.host_foreground.store(true, Ordering::SeqCst);
+                self.recover_terminated_renderers();
+            }
+            _ => {}
+        }
+        if !self.logic_enabled() || self.status() == LxAppSessionStatus::Restarting {
             return Ok(());
         }
         self.executor

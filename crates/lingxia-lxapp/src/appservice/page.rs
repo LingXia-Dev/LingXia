@@ -57,7 +57,7 @@ struct PageSvcState {
     callback: HashMap<String, JSFunc>,
     state_callback: HashMap<u64, StateCallback>,
     state_rev: u64,
-    /// True until the first bridge-ready snapshot of live page data is sent.
+    /// True until this document receives its bridge-ready snapshot of live data.
     initial_snapshot_pending: bool,
     channels: HashMap<ChannelKey, ChannelState>,
     next_channel_token: u64,
@@ -830,6 +830,8 @@ impl PageSvc {
         }
         state.max_seen_session_work = Some(work_id);
         state.active_session_work = Some(work_id);
+        // A replacement document has no state, even though PageSvc survives.
+        state.initial_snapshot_pending = true;
         state
             .work_cancellations
             .insert(work_id, watch::channel(false).0);

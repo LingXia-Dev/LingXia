@@ -879,6 +879,7 @@ pub struct LxApp {
     home_update_check_dispatched: AtomicBool,
     app_launch_dispatched: AtomicBool,
     pending_restart_request: AtomicBool,
+    host_foreground: AtomicBool,
     /// Session being torn down for a restart, or 0. Page instances must not be
     /// (re)created on it; the recreated instance starts fresh at 0.
     restart_closing_session: AtomicU64,
@@ -1984,6 +1985,7 @@ impl LxApp {
             home_update_check_dispatched: AtomicBool::new(false),
             app_launch_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
+            host_foreground: AtomicBool::new(true),
             restart_closing_session: AtomicU64::new(0),
             session,
             state: Mutex::new(LxAppState::new()),
