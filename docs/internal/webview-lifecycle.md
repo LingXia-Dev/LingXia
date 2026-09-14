@@ -761,8 +761,10 @@ is a presentation state, not proof that Logic exited. `terminate_lxapp` retires 
 instance permanently, cancels session API access, tears down pages, and waits for
 all queued Logic contexts to drain. A later open creates a fresh session id.
 
-`shutdown_lxapps_except(preserved_app_ids)` additionally blocks creation, opening,
-and recall outside the caller's explicit preserved set. In-progress admissions
+`block_lxapp_admission(preserved_app_ids)` synchronously blocks creation, opening,
+and recall outside the caller's explicit preserved set. Await `drain_lxapps()`
+to retire and drain those instances under the barrier.
+`shutdown_lxapps_except(preserved_app_ids)` combines these two operations. In-progress admissions
 finish before the shutdown snapshot is taken. Removed instances remain tracked
 until Logic acknowledges termination; timeout or cancellation leaves the barrier
 closed and retries wait for the same instances. Call `resume_lxapp_admission`
