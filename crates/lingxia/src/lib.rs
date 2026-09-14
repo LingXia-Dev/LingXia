@@ -20,7 +20,7 @@
 extern crate self as lingxia;
 
 #[cfg(all(test, target_vendor = "apple"))]
-#[path = "../../../testing/rust/apple_host_stubs.rs"]
+#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
 
 pub use host_addon::{HostAddon, register_host_addon};

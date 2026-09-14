@@ -1,5 +1,5 @@
 #[cfg(all(test, target_vendor = "apple"))]
-#[path = "../../../testing/rust/apple_host_stubs.rs"]
+#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
 mod apple_host_stubs;
 
 mod automation;
