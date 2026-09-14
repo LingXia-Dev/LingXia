@@ -141,11 +141,25 @@ pub fn shutdown_lxapps_except(
     preserved_app_ids: Vec<String>,
 ) -> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError>
 {
+    block_lxapp_admission(preserved_app_ids)?;
+    drain_lxapps()
+}
+
+/// Synchronously close admission without creating or dropping an async operation.
+pub fn block_lxapp_admission(preserved_app_ids: Vec<String>) -> Result<(), LxAppError> {
     let manager = super::runtime_registry::get_lxapps_manager()
         .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
     manager
         .admission
-        .block(preserved_app_ids.into_iter().collect())?;
+        .block(preserved_app_ids.into_iter().collect())
+}
+
+/// Drain the instances covered by an existing admission barrier. Dropping this
+/// future keeps the barrier closed; the next drain resumes tracked shutdowns.
+pub fn drain_lxapps()
+-> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError> {
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::Runtime("LxApps manager not initialized".into()))?;
     Ok(async move {
         manager
             .wait_shutdown(std::time::Duration::from_secs(5))
@@ -177,6 +191,27 @@ mod tests {
         )
         .unwrap();
         LxApps::new(platform, LxAppWorkers::init(1), 2)
+    }
+
+    #[tokio::test]
+    async fn admission_is_closed_without_polling_a_drain() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let manager = manager();
+        let id = format!("app.block-only.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&id);
+        let app = manager.ensure_lxapp(id.clone(), Channel::Release).unwrap();
+        manager.admission.block(HashSet::new()).unwrap();
+        let unpolled = manager.drain_apps();
+        assert!(manager.ensure_lxapp(id.clone(), Channel::Release).is_err());
+        assert!(app.open(LxAppStartupOptions::default()).is_err());
+        assert!(!app.session.is_cancelled());
+        assert!(manager.admission.resume().is_err());
+        drop(unpolled);
+        assert!(manager.ensure_lxapp(id, Channel::Release).is_err());
+        manager.wait_shutdown(Duration::from_secs(1)).await.unwrap();
+        assert!(app.session.is_retired());
+        manager.admission.resume().unwrap();
     }
 
     #[tokio::test]

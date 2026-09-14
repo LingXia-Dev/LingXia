@@ -50,7 +50,9 @@ mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
 mod shutdown;
-pub use shutdown::{resume_lxapp_admission, shutdown_lxapps_except};
+pub use shutdown::{
+    block_lxapp_admission, drain_lxapps, resume_lxapp_admission, shutdown_lxapps_except,
+};
 pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
