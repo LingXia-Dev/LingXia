@@ -231,11 +231,13 @@ jobs:
           chmod 600 "$dir/asc.json" "$dir/developer-id.json"
           echo "✅ Apple wallet restored (team $team) — lingxia build will Developer-ID sign + notarize."
 
-      # Inject the private GitHub cloud client when its token is present
+      # Inject the private GitHub cloud client when its secrets are present
       # (same-repo only); a no-op on forks, so the runner still builds without it.
       - uses: ./.github/actions/cloud-provider-env
         with:
           github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
+          repository: ${{ secrets.LINGXIA_CLOUD_CLIENT_REPOSITORY }}
+          ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
 
       - name: Build macOS Runner (${{ matrix.arch }})
         run: bash scripts/release/runner.sh --out dist/runner-release --macos-arch ${{ matrix.arch }}
@@ -272,12 +274,14 @@ jobs:
       # lingxia / lingxia-platform build.rs embed the bridge/polyfills JS runtime.
       - uses: ./.github/actions/build-web-runtime
 
-      # Inject the private GitHub cloud client when its token is present.
+      # Inject the private GitHub cloud client when its secrets are present.
       # The Windows runner build uses install-local-runner.ps1 below so the same
       # provider injection path is exercised as local runner installs.
       - uses: ./.github/actions/cloud-provider-env
         with:
           github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
+          repository: ${{ secrets.LINGXIA_CLOUD_CLIENT_REPOSITORY }}
+          ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
 
       - name: Verify tag matches CLI package version
         shell: bash

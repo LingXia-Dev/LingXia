@@ -843,11 +843,13 @@ jobs:
           chmod 600 "$dir/asc.json" "$dir/developer-id.json"
           echo "✅ Apple wallet restored (team $team) — lingxia build will Developer-ID sign + notarize."
 
-      # Inject the private GitHub cloud client when its token is present
+      # Inject the private GitHub cloud client when its secrets are present
       # (same-repo only); a no-op on forks, so the runner still builds without it.
       - uses: ./.github/actions/cloud-provider-env
         with:
           github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
+          repository: ${{ secrets.LINGXIA_CLOUD_CLIENT_REPOSITORY }}
+          ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
 
       - name: Build macOS Runner (arm64)
         # Notarization is a main-branch build check, not a PR gate or a release:
@@ -889,11 +891,13 @@ jobs:
       - uses: ./.github/actions/bootstrap-apple-sdk
       - name: Test Apple bridge transport
         run: cargo test -p lingxia-webview apple::bridge_transport --lib
-      # Inject the private GitHub cloud client when its token is present
+      # Inject the private GitHub cloud client when its secrets are present
       # (same-repo only); a no-op on forks, so the showcase still builds without it.
       - uses: ./.github/actions/cloud-provider-env
         with:
           github-token: ${{ secrets.LINGXIA_CLOUD_CLIENT_TOKEN }}
+          repository: ${{ secrets.LINGXIA_CLOUD_CLIENT_REPOSITORY }}
+          ref: ${{ secrets.LINGXIA_CLOUD_CLIENT_REF }}
       - uses: ./.github/actions/resolve-cli
         with:
           fingerprint: ${{ needs.changes.outputs.cli_fingerprint }}
