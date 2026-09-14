@@ -750,13 +750,14 @@ fn show_lxapp_info_sheet(appid: &str) -> Result<(), String> {
 /// Maps the lxapp release channel to the info-sheet header badge. Owned by the
 /// runner so the SDK device frame stays free of lxapp/runner semantics.
 fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDeviceFrameBadge> {
-    match release_type.to_ascii_lowercase().as_str() {
-        "draft" => Some(lingxia_windows_sdk::WindowsDeviceFrameBadge {
+    if release_type.eq_ignore_ascii_case("draft") {
+        Some(lingxia_windows_sdk::WindowsDeviceFrameBadge {
             text: "DFT".to_string(),
             foreground: 0x1D4ED8,
             background: 0xDBEAFE,
-        }),
-        _ => None,
+        })
+    } else {
+        None
     }
 }
 

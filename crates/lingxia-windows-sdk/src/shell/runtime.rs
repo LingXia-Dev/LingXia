@@ -5325,14 +5325,12 @@ fn lxapp_context_menu_header(
         header.push_str(" · ");
         header.push_str(version);
     }
-    match release_type
+    if release_type
         .unwrap_or_default()
         .trim()
-        .to_ascii_lowercase()
-        .as_str()
+        .eq_ignore_ascii_case("draft")
     {
-        "draft" => header.push_str(" [DRAFT]"),
-        _ => {}
+        header.push_str(" [DRAFT]");
     }
     header
 }
