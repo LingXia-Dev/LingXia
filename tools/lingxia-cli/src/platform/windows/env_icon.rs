@@ -1,7 +1,7 @@
 //! Windows host-env launcher-icon overlay.
 //!
 //! Windows hosts load a root `assets/AppIcon.png` when present, falling back to
-//! the home lxapp public icon. Dev/preview badging must follow that same
+//! the home lxapp public icon. Dev badging must follow that same
 //! runtime lookup while avoiding mutations to live prepared assets.
 
 use anyhow::{Context, Result};

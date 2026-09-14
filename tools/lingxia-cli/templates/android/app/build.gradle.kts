@@ -14,7 +14,7 @@ val lingxiaAppName = providers
     .orElse("{{PRODUCT_NAME}}")
     .get()
 // Optional res overlay dir injected by `lingxia build` for env-specific
-// resources (e.g. dev/preview launcher-icon badges). The CLI generates files
+// resources (e.g. the `dev` launcher-icon badge). The CLI generates files
 // outside the source tree and points us at them so AGP merges them with the
 // project's own resources. No source-tree mutation.
 val lingxiaResOverlayDir = providers
