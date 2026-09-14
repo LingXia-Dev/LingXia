@@ -228,6 +228,7 @@ jobs:
               - 'crates/lingxia/src/ffi/apple.rs'
               - 'crates/lingxia-platform/src/apple/**'
               - 'crates/lingxia-webview/src/apple/**'
+              - '.github/actions/cloud-provider-env/**'
             # Only the files this workflow actually reads: itself, the
             # composite actions it calls, and the scripts it runs. The rest of
             # .github/ is release plumbing and the site deploy, which CI never
