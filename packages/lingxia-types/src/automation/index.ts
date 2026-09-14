@@ -604,7 +604,7 @@ export interface LxAppOpenOptions {
   appid: string;
   /** Initial page/path. */
   path?: string;
-  channel?: 'release' | 'preview' | 'draft';
+  channel?: 'release' | 'draft';
 }
 
 export interface LxAppOpenResult {

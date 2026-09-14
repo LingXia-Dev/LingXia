@@ -85,7 +85,7 @@ pub enum LxAppCommand {
         /// Initial page/path
         #[arg(long)]
         path: Option<String>,
-        /// Lxapp channel: release, preview, or draft.
+        /// Lxapp channel: release or draft.
         /// Omitted: the host env default (`dev` → draft, `prod` → release).
         #[arg(long)]
         channel: Option<String>,

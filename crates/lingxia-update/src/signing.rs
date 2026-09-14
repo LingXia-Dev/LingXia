@@ -494,17 +494,6 @@ mod tests {
     }
 
     #[test]
-    fn preview_unsigned_rejects() {
-        let sha256 = archive_sha256_hex(ARCHIVE);
-        let size = ARCHIVE.len() as u64;
-        let mut preview = target();
-        preview.channel = "preview".into();
-        let err = verify_checked_update(package(None, &sha256, size), &preview, &[]).unwrap_err();
-        assert!(err.to_string().contains("preview"));
-        assert!(err.to_string().contains("require signed updates"), "{err}");
-    }
-
-    #[test]
     fn publishing_requires_a_signature_in_prod() {
         assert!(!env_requires_signature(AppEnv::Dev));
         assert!(env_requires_signature(AppEnv::Prod));

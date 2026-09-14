@@ -838,7 +838,6 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
         switch releaseType.lowercased() {
         case "draft": headerTitle += " [DRAFT]"
-        case "preview": headerTitle += " [PRE]"
         default: break
         }
         let headerItem = NSMenuItem(title: headerTitle, action: nil, keyEquivalent: "")

@@ -2709,7 +2709,6 @@ fn lxapp_surface_menu_header(
     }
     match release_type.trim().to_ascii_lowercase().as_str() {
         "draft" => header.push_str(" [DRAFT]"),
-        "preview" => header.push_str(" [PRE]"),
         _ => {}
     }
     header

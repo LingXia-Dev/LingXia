@@ -14,17 +14,18 @@ These used to share the same three names. They do not.
 | Axis | Values | Meaning |
 | --- | --- | --- |
 | Host **env** | `dev` \| `prod` | Build-time property of the host: `lingxiaServer`, `appLinks.hosts`, `packageIdSuffix` + badge, publish token, and which server the host self-updates from. **No channel.** |
-| Lxapp **channel** | `release` \| `preview` \| `draft` | Publish line of an lxapp package inside an env, plus that line's rules. Fingermark directories include this value. |
+| Lxapp **channel** | `release` \| `draft` | Publish line of an lxapp package inside an env, plus that line's rules. Fingermark directories include this value. |
 
 `prod` is the host env. `release` is an lxapp channel. `--release` is a
 compiler profile. Those three must stay distinct.
 
-There is no host `preview` env. Testing uses the **prod** env's **preview**
-channel, the way TestFlight talks to the production backend. A staging
-server is a `dev` env.
+There is no host `preview` env. Testers publish the **draft** channel
+(same-version overwrite via checksum) or use a `dev` env for a staging
+server.
 
 No compatibility aliases: `developer`/`preview`/`release` are not env names,
-`envVersion` is not a field, `developer`/`develop` are not channel spellings.
+`envVersion` is not a field, `developer`/`develop`/`preview` are not channel
+spellings.
 
 ## Mental model
 
@@ -51,7 +52,7 @@ authorization is per channel.
 
 Channel rules (already true of the registry / update path):
 
-- `release` and `preview`: version only goes up.
+- `release`: version only goes up.
 - `draft`: same version may be overwritten; the client uses sha256 to
   decide whether to update.
 
@@ -108,7 +109,7 @@ build is `lingxia build --env prod --release` or `lingxia package`.
 | Flag | Selects |
 | --- | --- |
 | `--env dev\|prod` | Upload server and publish token |
-| `--channel release\|preview\|draft` | Lxapp/lxplugin package line |
+| `--channel release\|draft` | Lxapp/lxplugin package line |
 
 Defaults: `--env` omitted → `dev`; `--channel` omitted → derived from env
 (`dev` → `draft`, `prod` → `release`). Host-app publish does not take
@@ -118,7 +119,7 @@ Wallet tokens are keyed by `(canonical server URL, env)`.
 
 ```
 lingxia auth login lingxia --env prod --token …
-lingxia publish --env prod --channel preview   # TestFlight-like
+lingxia publish --env prod --channel draft     # testers, same-version overwrite
 ```
 
 ## Resolution

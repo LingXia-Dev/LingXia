@@ -67,8 +67,8 @@ pub struct LingXiaConfig {
     /// cannot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
-    /// In-app update trust. Omit the whole table to skip preview/release
-    /// check-update (developer still checks, unsigned). If present, must list
+    /// In-app update trust. Omit the whole table to skip prod
+    /// check-update (dev still checks, unsigned). If present, must list
     /// 1 or 2 `trustedPublicKeys`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateSigningConfig>,
@@ -86,7 +86,7 @@ impl UpdateSigningConfig {
         match self.trusted_public_keys.len() {
             1 | 2 => Ok(()),
             0 => Err(anyhow!(
-                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip preview/release check-update"
+                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip prod check-update"
             )),
             _ => Err(anyhow!("update.trustedPublicKeys allows at most two keys")),
         }
@@ -1315,7 +1315,7 @@ impl PackageIdSuffixOverrides {
 ///
 /// This is the build-time axis (server, package-id suffix, publish token,
 /// self-update). It is not the lxapp publish channel
-/// (`release` | `preview` | `draft`).
+/// (`release` | `draft`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum AppEnv {
@@ -1334,7 +1334,7 @@ impl AppEnv {
 
     /// Parse the user-facing CLI `--env` value. Case-sensitive on purpose —
     /// clap's `value_parser` already restricts inputs to `dev` | `prod`.
-    /// `release`, `preview`, and `draft` are lxapp channels, not host envs.
+    /// `release` and `draft` are lxapp channels, not host envs.
     pub fn parse_cli(value: &str) -> Result<Self> {
         match value.trim() {
             "dev" => Ok(Self::Dev),
@@ -1343,13 +1343,12 @@ impl AppEnv {
                 "'release' is an lxapp channel, not a host env; use --env prod"
             )),
             "preview" => Err(anyhow!(
-                "'preview' is an lxapp channel, not a host env; \
-                 test on prod with --channel preview (like TestFlight). \
-                 Use --env prod, or --env dev for a staging server"
+                "'preview' is not a host env; use --env prod, \
+                 or --env dev for a staging server"
             )),
             "developer" | "draft" => Err(anyhow!(
                 "'{value}' is not a host env; use --env dev. \
-                 lxapp channels are release, preview, draft"
+                 lxapp channels are release and draft"
             )),
             other => Err(anyhow!("unknown env '{other}'; valid: dev, prod")),
         }
@@ -3121,7 +3120,9 @@ android:
         for rejected in ["developer", "preview", "release", "develop"] {
             let err = AppEnv::parse_cli(rejected).unwrap_err().to_string();
             assert!(
-                err.contains("channel") || err.contains("unknown env"),
+                err.contains("channel")
+                    || err.contains("unknown env")
+                    || err.contains("not a host env"),
                 "{rejected}: {err}"
             );
         }

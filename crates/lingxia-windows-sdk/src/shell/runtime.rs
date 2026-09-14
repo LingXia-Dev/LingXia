@@ -5332,7 +5332,6 @@ fn lxapp_context_menu_header(
         .as_str()
     {
         "draft" => header.push_str(" [DRAFT]"),
-        "preview" => header.push_str(" [PRE]"),
         _ => {}
     }
     header

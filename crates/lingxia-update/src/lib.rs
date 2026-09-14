@@ -37,7 +37,6 @@ pub use signing::{
 pub enum Channel {
     #[default]
     Release,
-    Preview,
     Draft,
 }
 
@@ -45,7 +44,6 @@ impl From<Channel> for lingxia_provider::LxAppChannel {
     fn from(channel: Channel) -> Self {
         match channel {
             Channel::Release => Self::Release,
-            Channel::Preview => Self::Preview,
             Channel::Draft => Self::Draft,
         }
     }
@@ -69,7 +67,6 @@ impl Channel {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Release => "release",
-            Self::Preview => "preview",
             Self::Draft => "draft",
         }
     }
@@ -77,7 +74,6 @@ impl Channel {
     pub fn parse(tag: &str) -> Result<Self, String> {
         match tag.trim() {
             "release" => Ok(Self::Release),
-            "preview" => Ok(Self::Preview),
             "draft" => Ok(Self::Draft),
             value => Err(format!("invalid channel: {value}")),
         }
@@ -291,7 +287,7 @@ impl UpdatePackageInfo {
 
     /// Whether this package should replace what is already installed.
     ///
-    /// `release` / `preview` compare versions only. `draft` also treats a
+    /// `release` compares versions only. `draft` also treats a
     /// same-version package as an update when `checksum_sha256` differs, so a
     /// republish does not need a version bump. A draft install with no
     /// stored checksum is treated as different so the first OTA after a
@@ -415,6 +411,14 @@ mod tests {
     }
 
     #[test]
+    fn channel_parse_accepts_release_and_draft_only() {
+        assert_eq!(Channel::parse("release").unwrap(), Channel::Release);
+        assert_eq!(Channel::parse("draft").unwrap(), Channel::Draft);
+        assert!(Channel::parse("preview").is_err());
+        assert!(Channel::parse("developer").is_err());
+    }
+
+    #[test]
     fn version_parse_accepts_full_semver_only() {
         assert!(Version::parse("1.2.3").is_ok());
         assert!(Version::parse("1").is_err());
@@ -423,10 +427,9 @@ mod tests {
     }
 
     #[test]
-    fn release_and_preview_ignore_checksum_when_version_matches() {
+    fn release_ignores_checksum_when_version_matches() {
         let pkg = package("1.0.0", "aaa");
         assert!(!pkg.should_replace(Channel::Release, Some("1.0.0"), Some("bbb")));
-        assert!(!pkg.should_replace(Channel::Preview, Some("1.0.0"), Some("bbb")));
         assert!(pkg.should_replace(Channel::Release, Some("0.9.0"), Some("aaa")));
     }
 

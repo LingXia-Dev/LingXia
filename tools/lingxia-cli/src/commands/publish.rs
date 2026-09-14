@@ -436,11 +436,14 @@ fn detect_target(cwd: &Path) -> Result<String> {
 
 fn normalize_channel(s: &str) -> Result<String> {
     match s {
-        "release" | "preview" | "draft" => Ok(s.to_string()),
+        "release" | "draft" => Ok(s.to_string()),
         "dev" => bail!("'dev' is a host env, not an lxapp channel; use --channel draft"),
         "prod" => bail!("'prod' is a host env, not an lxapp channel; use --channel release"),
+        "preview" => {
+            bail!("'preview' is not an lxapp channel; use --channel draft or --channel release")
+        }
         "developer" | "develop" => bail!("invalid channel '{s}'; use draft"),
-        other => bail!("invalid channel '{other}'; must be one of: release, preview, draft"),
+        other => bail!("invalid channel '{other}'; must be one of: release, draft"),
     }
 }
 
@@ -1221,7 +1224,7 @@ harmony:
     #[test]
     fn signed_multipart_policy_follows_env_for_every_channel() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        for channel in ["release", "preview", "draft", ""] {
+        for channel in ["release", "draft", ""] {
             let mut req = sign_request(&sha256, 3);
             req.channel = channel;
             if channel.is_empty() {
@@ -1281,11 +1284,11 @@ harmony:
         )
         .unwrap();
 
-        let meta = resolve_meta(temp.path(), None, Some("preview")).unwrap();
+        let meta = resolve_meta(temp.path(), None, Some("draft")).unwrap();
 
         assert_eq!(meta.target, "lxapp");
         assert_eq!(meta.env, AppEnv::Dev);
-        assert_eq!(meta.channel.as_deref(), Some("preview"));
+        assert_eq!(meta.channel.as_deref(), Some("draft"));
     }
 
     #[test]
@@ -1313,6 +1316,7 @@ harmony:
         assert!(normalize_channel("dev").is_err());
         assert!(normalize_channel("developer").is_err());
         assert!(normalize_channel("develop").is_err());
+        assert!(normalize_channel("preview").is_err());
     }
 
     #[test]
