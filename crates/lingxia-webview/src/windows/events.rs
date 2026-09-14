@@ -21,6 +21,14 @@ fn windows_message_source(source: String) -> WebMessageSource {
     WebMessageSource::diagnostic_url(Some(source))
 }
 
+fn process_failure_terminates_document(kind: COREWEBVIEW2_PROCESS_FAILED_KIND) -> bool {
+    matches!(
+        kind,
+        COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED
+            | COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED
+    )
+}
+
 /// Length gate on the native buffer, before any Rust `String` exists.
 fn web_message_within_native_limit(message: &CoTaskMemPWSTR<'_>) -> bool {
     let wide = message.as_ref();
@@ -649,7 +657,15 @@ pub(crate) fn register_event_handlers(
         let mut token = 0;
         webview
             .add_ProcessFailed(
-                &ProcessFailedEventHandler::create(Box::new(move |_sender, _args| {
+                &ProcessFailedEventHandler::create(Box::new(move |_sender, args| {
+                    let Some(args) = args else { return Ok(()) };
+                    let mut kind = COREWEBVIEW2_PROCESS_FAILED_KIND::default();
+                    args.ProcessFailedKind(&mut kind)?;
+                    // GPU/utility exits recover independently; a renderer hang
+                    // or subframe exit does not terminate the main document.
+                    if !process_failure_terminates_document(kind) {
+                        return Ok(());
+                    }
                     if let Some(intent) = failed_document_authority.revoke_pending() {
                         normalizer::revoke_trusted_load(&failed_tag, native_view_id, intent);
                     }
@@ -819,6 +835,25 @@ pub(crate) fn take_request_string(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_main_process_exits_terminate_the_document() {
+        for kind in [
+            COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED,
+        ] {
+            assert!(process_failure_terminates_document(kind));
+        }
+        for kind in [
+            COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_UNRESPONSIVE,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_FRAME_RENDER_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_UTILITY_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND_GPU_PROCESS_EXITED,
+            COREWEBVIEW2_PROCESS_FAILED_KIND(999),
+        ] {
+            assert!(!process_failure_terminates_document(kind));
+        }
+    }
 
     #[test]
     fn native_callback_identity_rejects_a_reused_tag() {

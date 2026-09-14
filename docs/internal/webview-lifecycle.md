@@ -555,12 +555,19 @@ On Apple, reload through `load_html()` (never `reload()` against the logical
 base URL). Keep PageSvc, its live data, entry/query and visibility; the fresh
 bridge work gets a new full snapshot, and only the document's `onReady` repeats.
 A parked/departed page keeps its normal rebuild-on-entry obligation.
+Before recovery, the Apple backend synchronously posts
+`LingXiaWebContentProcessDidTerminate` with the exact WKWebView as its object.
+SDK native-component bridges tear down that document's mounts while retaining
+their manager, so replacement components can reuse IDs without stale views.
 
 On other platforms, use the coalesced session restart path: Android's terminated
 WebViews cannot be reused, including cached tabs and surfaces sharing the
 renderer. This returns to the initial route and recreates Logic; persistent
 storage survives, but unsaved page state does not. Do not restart a closed or
 background app in response to a late termination callback.
+Windows only treats `BrowserProcessExited` and `RenderProcessExited` as document
+termination; GPU/utility exits, subframe exits and renderer hangs must not
+invalidate the main document or restart its session.
 
 ## Platform-Specific Creation and Ready Semantics
 

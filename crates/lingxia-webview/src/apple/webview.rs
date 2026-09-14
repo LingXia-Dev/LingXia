@@ -1037,13 +1037,21 @@ define_class!(
         }
 
         #[unsafe(method(webViewWebContentProcessDidTerminate:))]
-        fn web_content_process_did_terminate(&self, _webview: *mut AnyObject) {
+        fn web_content_process_did_terminate(&self, webview: *mut AnyObject) {
             let webtag = &self.ivars().webtag;
             let native_view_id = self.ivars().native_view_id;
             invalidate_terminated_content_process(webtag, native_view_id);
             if let Some(delegate) = current_native_callback_webview(webtag, native_view_id)
                 .and_then(|webview| webview.get_delegate())
             {
+                // SDK document-owned views must be released synchronously,
+                // before the delegate can reload the surviving WKWebView.
+                unsafe {
+                    let center: *mut AnyObject =
+                        msg_send![class!(NSNotificationCenter), defaultCenter];
+                    let name = NSString::from_str("LingXiaWebContentProcessDidTerminate");
+                    let _: () = msg_send![center, postNotificationName: &*name, object: webview];
+                }
                 delegate.on_web_content_process_terminated(native_view_id);
             }
         }
