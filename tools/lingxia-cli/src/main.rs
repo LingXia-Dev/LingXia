@@ -556,9 +556,9 @@ struct PublishArgs {
     #[arg(long = "env", value_parser = ["dev", "prod"])]
     env: Option<String>,
 
-    /// Lxapp publish channel: `release` | `preview` | `draft`.
+    /// Lxapp publish channel: `release` | `draft`.
     /// Defaults from `--env` (`dev` → `draft`, `prod` → `release`).
-    #[arg(long = "channel", value_parser = ["release", "preview", "draft"])]
+    #[arg(long = "channel", value_parser = ["release", "draft"])]
     channel: Option<String>,
 
     /// Override lxapp view framework detection (multi-framework demo projects

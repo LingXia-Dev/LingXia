@@ -238,7 +238,6 @@ fn validate_share_page_query(raw_query: Option<&str>) -> JSResult<()> {
 fn app_link_channel(lxapp: &LxApp) -> Option<&'static str> {
     match lxapp.release_type() {
         lxapp::Channel::Release => None,
-        lxapp::Channel::Preview => Some("preview"),
         lxapp::Channel::Draft => Some("draft"),
     }
 }

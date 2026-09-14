@@ -275,12 +275,6 @@ internal object CapsuleMenuBottomSheet {
                 backgroundColor = Color.parseColor("#DBEAFE")
             )
 
-            "preview" -> ReleaseBadge(
-                text = "PRE",
-                textColor = Color.parseColor("#B45309"),
-                backgroundColor = Color.parseColor("#FFEDD5")
-            )
-
             else -> null
         }
     }

@@ -12,7 +12,7 @@ Publish a package to the **LingXia server** (not an OS app store — that's
 (`lxapp.json` → lxapp, `lingxia.yaml` → host app) and reads the id/version from
 it. An lxapp publish packages the current project first. `--env` (`dev` |
 `prod`) selects the upload server and token; `--channel`
-(`release` | `preview` | `draft`) selects the lxapp line. Omitting
+(`release` | `draft`) selects the lxapp line. Omitting
 `--env` defaults to `dev`, which implies channel `draft`. `--env prod`
 implies channel `release` unless `--channel` overrides it. Only host-app
 publish accepts a prebuilt package path; it does not take `--channel` (env

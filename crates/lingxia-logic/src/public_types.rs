@@ -809,7 +809,7 @@ rong::js_api! {
         /// This is the host build axis: which server, package-id suffix, publish
         /// token, and self-update endpoint the host uses. It is **not** the
         /// lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
-        /// `'release' | 'preview' | 'draft'`). Default channel is derived
+        /// `'release' | 'draft'`). Default channel is derived
         /// from env (`dev` → `draft`, `prod` → `release`) and can be
         /// overridden when opening an lxapp.
         ///
@@ -893,11 +893,11 @@ rong::js_api! {
 
         type KeyEventCallback = r###"(event: KeyEvent) => void"###;
 
-        type LxAppEnvVersion = r###"'release' | 'preview' | 'draft'"###;
+        type LxAppEnvVersion = r###"'release' | 'draft'"###;
 
         /// LxApp metadata APIs.
         ///
-        type LxAppReleaseType = r###"'release' | 'preview' | 'draft'"###;
+        type LxAppReleaseType = r###"'release' | 'draft'"###;
 
         /// Device action APIs.
         ///
@@ -1775,7 +1775,7 @@ true
         type UpdateReadyInfo = r###"{
     version?: string;
     isForceUpdate?: boolean;
-    channel?: "release" | "preview" | "draft" | string;
+    channel?: "release" | "draft" | string;
 }"###;
 
         type UploadIteratorResult = r###"{

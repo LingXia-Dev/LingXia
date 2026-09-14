@@ -756,11 +756,6 @@ fn release_badge(release_type: &str) -> Option<lingxia_windows_sdk::WindowsDevic
             foreground: 0x1D4ED8,
             background: 0xDBEAFE,
         }),
-        "preview" => Some(lingxia_windows_sdk::WindowsDeviceFrameBadge {
-            text: "PRE".to_string(),
-            foreground: 0xB45309,
-            background: 0xFFEDD5,
-        }),
         _ => None,
     }
 }

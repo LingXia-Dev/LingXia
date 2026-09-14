@@ -110,7 +110,7 @@ impl UpdateManager {
 
     /// Decide whether we should download/apply the server package for this app variant.
     ///
-    /// `release` / `preview` skip only when the version matches. `draft`
+    /// `release` skips only when the version matches. `draft`
     /// also updates when the version matches but the checksum differs.
     pub fn should_update(
         &self,
@@ -478,7 +478,6 @@ impl UpdateManager {
         }
 
         let _ = self.uninstall_installed(lxappid, Channel::Release);
-        let _ = self.uninstall_installed(lxappid, Channel::Preview);
         let _ = self.uninstall_installed(lxappid, Channel::Draft);
         let _ = metadata::remove_all(lxappid);
         lxapp_runtime::registry::clear(lxappid);

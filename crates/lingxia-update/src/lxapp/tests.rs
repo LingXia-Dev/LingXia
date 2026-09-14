@@ -149,13 +149,11 @@ async fn exact_draft_version_skips_installed_or_pending_checksum() {
 }
 
 #[tokio::test]
-async fn exact_release_and_preview_keep_version_only_shortcut() {
-    for channel in [Channel::Release, Channel::Preview] {
-        let host = TestHost::new(channel);
-        ensure_target_version_ready(&host, "1.0.0").await.unwrap();
-        assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
-        assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
-    }
+async fn exact_release_keeps_version_only_shortcut() {
+    let host = TestHost::new(Channel::Release);
+    ensure_target_version_ready(&host, "1.0.0").await.unwrap();
+    assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
+    assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -175,10 +173,8 @@ async fn force_gate_does_not_read_checksum_for_optional_or_release_packages() {
     host.checksum_error = true;
     host.package.is_force_update = false;
     ensure_force_update_for_installed(&host).await.unwrap();
-    for channel in [Channel::Release, Channel::Preview] {
-        host.channel = channel;
-        host.package.is_force_update = true;
-        ensure_force_update_for_installed(&host).await.unwrap();
-    }
+    host.channel = Channel::Release;
+    host.package.is_force_update = true;
+    ensure_force_update_for_installed(&host).await.unwrap();
     assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
 }

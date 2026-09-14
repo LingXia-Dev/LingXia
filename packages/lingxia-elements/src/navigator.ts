@@ -18,7 +18,7 @@ export type NavigatorTarget =
 
 export type NavigatorQueryValue = string | number | boolean | null | undefined;
 export type NavigatorQuery = Record<string, NavigatorQueryValue>;
-export type NavigatorChannel = 'release' | 'preview' | 'draft';
+export type NavigatorChannel = 'release' | 'draft';
 
 export interface LxNavigatorEventDetail {
   success?: boolean;

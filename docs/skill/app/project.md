@@ -294,7 +294,7 @@ Lxapp page content does not inherit these colors; it responds to the standard
 
 ## Environment
 
-A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env <env>`. Default: `dev` for `build`/`dev`, `prod` for `package`. This is **not** the lxapp channel (`release` | `preview` | `draft`) and not the `--release` compiler profile.
+A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env <env>`. Default: `dev` for `build`/`dev`, `prod` for `package`. This is **not** the lxapp channel (`release` | `draft`) and not the `--release` compiler profile.
 
 **What each env produces:**
 
@@ -303,7 +303,7 @@ A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env
 | `dev` | `.dev` | red `D` badge | ✓ | |
 | `prod` | `(none)` | unmodified | | ✓ |
 
-There is no host `preview` env. Testers use the **prod** env's **preview** lxapp channel (like TestFlight). A staging server is a `dev` env.
+There is no host `preview` env. Testers publish the **draft** channel (same-version overwrite via checksum) or use a `dev` env for a staging server.
 
 Different envs install **side by side** because their package ids differ. No git-tracked file changes when you switch envs.
 

@@ -364,7 +364,6 @@ impl<'a> LxAppRegistryRequest<'a> {
 pub enum LxAppChannel {
     #[default]
     Release,
-    Preview,
     Draft,
 }
 
@@ -372,7 +371,6 @@ impl LxAppChannel {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Release => "release",
-            Self::Preview => "preview",
             Self::Draft => "draft",
         }
     }

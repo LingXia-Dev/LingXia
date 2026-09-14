@@ -342,14 +342,14 @@ mod tests {
     #[test]
     fn parses_open_page_and_strips_routing_query() {
         let target = parse(
-            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42",
+            "https://www.lingxia.app/lxapp/open?appId=com.example.shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42",
         )
         .unwrap()
         .unwrap();
         assert_eq!(target.appid, "com.example.shop");
         assert_eq!(target.path, "pages/detail/index.html");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, Channel::Preview);
+        assert_eq!(target.release_type, Channel::Draft);
     }
 
     #[test]
@@ -367,13 +367,13 @@ mod tests {
 
     #[test]
     fn parses_path_form() {
-        let target = parse("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&channel=preview")
+        let target = parse("https://www.lingxia.app/lxapp/shop/pages/detail?id=42&channel=draft")
             .unwrap()
             .unwrap();
         assert_eq!(target.appid, "shop");
         assert_eq!(target.path, "pages/detail");
         assert_eq!(target.query, "id=42");
-        assert_eq!(target.release_type, Channel::Preview);
+        assert_eq!(target.release_type, Channel::Draft);
     }
 
     #[test]
@@ -391,11 +391,11 @@ mod tests {
     #[test]
     fn release_type_query_is_forwarded_to_page() {
         let target = parse(
-            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&channel=preview&releaseType=developer",
+            "https://www.lingxia.app/lxapp/open?appId=shop&path=pages%2Fhome%2Findex.html&channel=draft&releaseType=developer",
         )
         .unwrap()
         .unwrap();
-        assert_eq!(target.release_type, Channel::Preview);
+        assert_eq!(target.release_type, Channel::Draft);
         assert_eq!(target.query, "releaseType=developer");
     }
 
@@ -404,6 +404,7 @@ mod tests {
         assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=trial").is_err());
         assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=develop").is_err());
         assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=developer").is_err());
+        assert!(parse("https://www.lingxia.app/lxapp/open?appId=shop&channel=preview").is_err());
     }
 
     #[test]

@@ -179,7 +179,7 @@ declare global {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
      * It is fixed at boot and defaults to `prod` for older artifacts.
-     * Not the lxapp publish channel (`release` | `preview` | `draft`).
+     * Not the lxapp publish channel (`release` | `draft`).
      */
     readonly env: HostAppEnv;
 

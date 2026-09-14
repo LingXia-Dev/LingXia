@@ -208,8 +208,6 @@ class LxAppCapsuleMenu {
         switch releaseType.lowercased() {
         case "draft":
             return ("DFT", UIColor(red: 0.11, green: 0.31, blue: 0.85, alpha: 1.0), UIColor(red: 0.86, green: 0.92, blue: 0.99, alpha: 1.0))
-        case "preview":
-            return ("PRE", UIColor(red: 0.71, green: 0.33, blue: 0.03, alpha: 1.0), UIColor(red: 1.0, green: 0.93, blue: 0.84, alpha: 1.0))
         default:
             return nil
         }
@@ -450,7 +448,6 @@ class LxAppCapsuleMenu {
         var headerTitle = "\(appName) · v\(version)"
         switch releaseType.lowercased() {
         case "draft": headerTitle += "  [DRAFT]"
-        case "preview": headerTitle += "  [PRE]"
         default: break
         }
 

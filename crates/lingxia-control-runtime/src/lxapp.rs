@@ -365,6 +365,7 @@ mod tests {
             lxapp::Channel::Draft
         );
         assert!(parse_open_channel(Some("develop")).is_err());
+        assert!(parse_open_channel(Some("preview")).is_err());
     }
 
     #[test]
@@ -372,8 +373,8 @@ mod tests {
         let args: OpenArgs = serde_json::from_value(json!({ "appid": "shop" })).unwrap();
         assert!(args.channel.is_none());
         let args: OpenArgs =
-            serde_json::from_value(json!({ "appid": "shop", "channel": "preview" })).unwrap();
-        assert_eq!(args.channel.as_deref(), Some("preview"));
+            serde_json::from_value(json!({ "appid": "shop", "channel": "draft" })).unwrap();
+        assert_eq!(args.channel.as_deref(), Some("draft"));
         let args: OpenArgs =
             serde_json::from_value(json!({ "appid": "shop", "release_type": "draft" })).unwrap();
         assert!(args.channel.is_none());

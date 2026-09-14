@@ -182,7 +182,7 @@ declare global {
     /**
      * The host deployment environment from `app.json::env` (`dev` | `prod`).
      * It is fixed at boot and defaults to `prod` for older artifacts.
-     * Not the lxapp publish channel (`release` | `preview` | `draft`).
+     * Not the lxapp publish channel (`release` | `draft`).
      */
     readonly env: HostAppEnv;
 
@@ -928,7 +928,7 @@ export type HostAppApi = globalThis.HostAppApi;
  * This is the host build axis: which server, package-id suffix, publish
  * token, and self-update endpoint the host uses. It is **not** the
  * lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
- * `'release' | 'preview' | 'draft'`). Default channel is derived
+ * `'release' | 'draft'`). Default channel is derived
  * from env (`dev` → `draft`, `prod` → `release`) and can be
  * overridden when opening an lxapp.
  */
@@ -1025,10 +1025,10 @@ export type KeyEvent = {
 
 export type KeyEventCallback = (event: KeyEvent) => void;
 
-export type LxAppEnvVersion = 'release' | 'preview' | 'draft';
+export type LxAppEnvVersion = 'release' | 'draft';
 
 /** LxApp metadata APIs. */
-export type LxAppReleaseType = 'release' | 'preview' | 'draft';
+export type LxAppReleaseType = 'release' | 'draft';
 
 /** Boolean capability names accepted by `lx.supports`. */
 export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
@@ -2200,7 +2200,7 @@ export type UpdateManager = {
 export type UpdateReadyInfo = {
     version?: string;
     isForceUpdate?: boolean;
-    channel?: "release" | "preview" | "draft" | string;
+    channel?: "release" | "draft" | string;
 };
 
 export type UploadIteratorResult = {

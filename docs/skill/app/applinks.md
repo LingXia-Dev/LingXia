@@ -70,7 +70,7 @@ Product URLs always open home. To target a **specific** lxapp, page, or release
 channel from a link, use the reserved `/lxapp/` namespace:
 
 ```text
-https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&channel=<release|preview|draft>&<pageQuery>
+https://<host>/lxapp/open?appId=<appId>&path=<pagePath>&channel=<release|draft>&<pageQuery>
 ```
 
 Examples:
@@ -78,7 +78,7 @@ Examples:
 ```text
 https://app.example.com/lxapp/open?appId=shop
 https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&id=42
-https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42
+https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42
 ```
 
 Only in this namespace are routing parameters consumed, and only here is a
@@ -99,7 +99,6 @@ forwarded to the target page.
 | Link value | Channel |
 |---|---|
 | `channel=release` | `release` |
-| `channel=preview` | `preview` |
 | `channel=draft` | `draft` |
 
 No aliases. Invalid `channel` values are rejected.
@@ -107,14 +106,14 @@ No aliases. Invalid `channel` values are rejected.
 Example:
 
 ```text
-https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=preview&id=42
+https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42
 ```
 
 opens:
 
 ```text
 appId: shop
-release: preview
+release: draft
 path: pages/detail/index.html
 page query: id=42
 scene: 8003
@@ -139,8 +138,8 @@ appLinks:
 association files. Share URLs use the first host of the running build.
 `lingxia new -t native-app` leaves this off. Envs use different package ids
 (`.dev` on `dev`, none on `prod`); each host's `.well-known` file should list
-the matching id. Open URLs carry `channel=` (`release` | `preview` |
-`draft`) when they target a non-default lxapp line.
+the matching id. Open URLs carry `channel=` (`release` | `draft`)
+when they target a non-default lxapp line.
 
 ## Well-Known Verification Files
 

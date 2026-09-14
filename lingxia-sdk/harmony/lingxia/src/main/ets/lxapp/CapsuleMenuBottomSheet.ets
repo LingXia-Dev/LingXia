@@ -358,21 +358,13 @@ export struct CapsuleMenuBottomSheetComponent {
       return null;
     }
 
-    const releaseType: 'release' | 'preview' | 'draft' = this.appInfo.releaseType;
+    const releaseType: 'release' | 'draft' = this.appInfo.releaseType;
     const dark: boolean = this.appearanceDark;
     if (releaseType === 'draft') {
       return {
         text: 'DFT',
         textColor: dark ? '#93C5FD' : '#1D4ED8',
         backgroundColor: dark ? '#1E3A5F' : '#DBEAFE'
-      };
-    }
-
-    if (releaseType === 'preview') {
-      return {
-        text: 'PRE',
-        textColor: dark ? '#FBBF24' : '#B45309',
-        backgroundColor: dark ? '#3D2E00' : '#FFEDD5'
       };
     }
 
