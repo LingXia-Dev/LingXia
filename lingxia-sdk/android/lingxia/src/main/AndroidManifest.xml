@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
-    <!-- Keep API 21/22 build compatibility; proxy usage is runtime-gated to API 23+. -->
-    <uses-sdk tools:overrideLibrary="androidx.webkit" />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
         <package android:name="cn.wps.moffice_eng" />
         <package android:name="cn.wps.moffice_i18n" />

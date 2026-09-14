@@ -2,8 +2,9 @@
 agp = "8.9.3"
 kotlin = "2.1.21"
 coreKtx = "1.16.0"
-appcompat = "1.8.0"
-material = "1.14.0"
+# Keep the SDK and generated hosts compatible with minSdk 21.
+appcompat = "1.7.1"
+material = "1.13.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

@@ -1,4 +1,5 @@
 import com.vanniktech.maven.publish.AndroidSingleVariantLibrary
+import java.util.zip.ZipFile
 
 plugins {
     id("com.android.library")
@@ -77,6 +78,35 @@ dependencies {
     androidTestImplementation(libs.androidxTestCore)
     androidTestImplementation(libs.androidxTestExtJunit)
 }
+
+// Library manifest merging does not reject dependencies above our minSdk;
+// catch them here before publishing an SDK that API 21 hosts cannot consume.
+val verifyDependencyMinSdk by tasks.registering {
+    group = "verification"
+    doLast {
+        val minSdk = requireNotNull(android.defaultConfig.minSdk)
+        val sdkAttribute = Regex("android:minSdkVersion\\s*=\\s*\"([^\"]+)\"")
+        val incompatible = configurations.getByName("releaseRuntimeClasspath")
+            .resolvedConfiguration.resolvedArtifacts
+            .filter { it.extension == "aar" }
+            .mapNotNull { artifact ->
+                val manifest = ZipFile(artifact.file).use { archive ->
+                    archive.getInputStream(archive.getEntry("AndroidManifest.xml"))
+                        .bufferedReader().use { it.readText() }
+                }
+                val required = sdkAttribute.find(manifest)?.groupValues?.get(1)
+                    ?: return@mapNotNull null
+                if ((required.toIntOrNull() ?: Int.MAX_VALUE) > minSdk) {
+                    "${artifact.moduleVersion.id} requires minSdk $required"
+                } else null
+            }
+        check(incompatible.isEmpty()) {
+            "Dependencies exceed SDK minSdk $minSdk:\n${incompatible.joinToString("\n")}"
+        }
+    }
+}
+
+tasks.named("preBuild") { dependsOn(verifyDependencyMinSdk) }
 
 val sdkGroupId = "io.github.lingxia-dev"
 val sdkArtifactId = "lingxia"
