@@ -171,7 +171,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
-| `update` | Optional | In-app update keys. Omit the table, or list 1–2 `trustedPublicKeys` ([Distribution](../cli/distribution.md)) |
+| `update` | Optional | In-app update keys. Omit the table, or list 1–2 `trustedPublicKeys` (two = key rotation). How to mint the seed/public pair: [Distribution](../cli/distribution.md#lingxia-publish) |
 
 ---
 

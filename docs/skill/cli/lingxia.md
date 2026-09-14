@@ -345,8 +345,8 @@ present in your shell every time you build.
 If a platform build complains about missing tools, run
 `lingxia doctor --platform <p>` to see exactly what's missing. Credential and
 signing env overrides (e.g. `LINGXIA_APPLE_*`, `LINGXIA_AUTH_TOKEN`,
-`LINGXIA_NATIVE_FEATURES`) are documented with their commands and in
-[Distribution → App signing](./distribution.md#app-signing).
+`LINGXIA_UPDATE_SIGNING_KEY_FILE`, `LINGXIA_NATIVE_FEATURES`) are documented
+with their commands and in [Distribution](./distribution.md).
 
 ---
 
