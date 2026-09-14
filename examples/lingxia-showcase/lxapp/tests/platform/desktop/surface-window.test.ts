@@ -203,6 +203,7 @@ windowTest('open a page window with system chrome and with full chrome', {
     'PageSurface.visible',
   ],
   app: SHOWCASE_APP_ID,
+  timeout: 90_000,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-001');
   const platform = await desktopPlatform();
@@ -274,6 +275,168 @@ windowTest('open a page window with system chrome and with full chrome', {
     // Full chrome has no system title bar, so the same requested content
     // size yields a shorter outer frame than system chrome.
     expect(full.window.bounds.h).toBeLessThan(system.window.bounds.h);
+  }
+});
+
+function captionDragFrom(window: DesktopWindowInfo, platform: string): [number, number] {
+  const { x, y, w } = window.bounds;
+  // Stay off the traffic lights (macOS, left) and the close cluster (Windows, right).
+  const dragX = platform === 'macos' ? x + w / 2 : x + 80;
+  return [dragX, y + 12];
+}
+
+function captionCloseAt(window: DesktopWindowInfo, platform: string): [number, number] {
+  const { x, y, w } = window.bounds;
+  if (platform === 'macos') {
+    return [x + 12, y + 14];
+  }
+  // Native and full-chrome close boxes both occupy the far-right caption cell.
+  return [x + w - 20, y + 16];
+}
+
+windowTest('caption buttons stay on top and can drag or close both chrome modes', {
+  id: 'DESKTOP-SURFACE-WINDOW-CHROME-001',
+  covers: [
+    'lx.surface.openPage',
+    'PageSurface.alive',
+    'PageSurface.visible',
+    'PageSurface.onClose',
+  ],
+  app: SHOWCASE_APP_ID,
+  timeout: 120_000,
+}, async (t) => {
+  const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-CHROME-001');
+  const platform = await desktopPlatform();
+  const desktop = lx.automation().desktop;
+  const chromes: Array<'system' | 'full'> = ['system', 'full'];
+
+  for (const chrome of chromes) {
+    const key = `${namespace}-${chrome}`;
+    defer(() => closeKeyedSurface(app, key));
+    defer(async () => {
+      await app.eval({
+        script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
+      });
+    });
+    const before = await desktop.windows();
+    await openWindow(app, chrome, key);
+    await waitForSurfacePage(app, key, chrome === 'full' ? FULL_DRAG_STRIP_HEIGHT : 0);
+    const opened = await eventually(
+      () => desktop.windows(),
+      (windows) => newSurfaceWindow(before, windows) !== undefined,
+      { timeoutMs: 10_000, describe: `${chrome} chrome window for caption checks` },
+    ).then((windows) => newSurfaceWindow(before, windows));
+    if (!opened) throw new Error(`${chrome} chrome window was not found`);
+
+    await desktop.window.activate({ window: opened.id });
+    const origin = await desktop.window.status({ window: opened.id });
+    const from = captionDragFrom(origin, platform);
+    const to: [number, number] = [from[0] + 48, from[1] + 36];
+    // Windows SendInput is foreground-only; a `window` target becomes a pid
+    // and the backend rejects it. Activate first, then click the screen point.
+    await desktop.pointer.down({ at: from });
+    try {
+      // Let the native caption enter its move loop before advancing the cursor.
+      // The Windows drag helper coalesces all moves without yielding.
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+      for (let step = 1; step <= 4; step++) {
+        await desktop.pointer.move({ at: [
+          from[0] + (to[0] - from[0]) * step / 4,
+          from[1] + (to[1] - from[1]) * step / 4,
+        ] });
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+    } finally {
+      await desktop.pointer.up({ at: to });
+    }
+    const moved = await eventually(
+      () => desktop.window.status({ window: opened.id }),
+      (status) => (
+        Math.abs(status.bounds.x - origin.bounds.x) >= 8
+        || Math.abs(status.bounds.y - origin.bounds.y) >= 8
+      ),
+      { timeoutMs: 8_000, describe: `${chrome} chrome window to move by caption drag` },
+    );
+    expect(moved.id).toBe(opened.id);
+
+    if (platform === 'windows') {
+      // Exercise the real overlay buttons: OS window commands bypass capture
+      // handling and would miss a broken click dispatcher.
+      const captionButton = (window: DesktopWindowInfo, offset: number): [number, number] => (
+        [window.bounds.x + window.bounds.w - offset, window.bounds.y + 16]
+      );
+      await desktop.pointer.click({ at: captionButton(moved, 69) });
+      await eventually(
+        () => desktop.window.status({ window: opened.id }),
+        (status) => status.maximized,
+        { timeoutMs: 8_000, describe: `${chrome} caption maximize` },
+      );
+      // IsZoomed changes before the Windows maximize animation finishes.
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      await desktop.pointer.click({
+        at: captionButton(await desktop.window.status({ window: opened.id }), 69),
+      });
+      await eventually(
+        () => desktop.window.status({ window: opened.id }),
+        (status) => !status.maximized,
+        { timeoutMs: 8_000, describe: `${chrome} caption restore` },
+      );
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      await desktop.pointer.click({
+        at: captionButton(await desktop.window.status({ window: opened.id }), 115),
+      });
+      await eventually(
+        () => desktop.window.status({ window: opened.id }),
+        (status) => status.minimized,
+        { timeoutMs: 8_000, describe: `${chrome} caption minimize` },
+      );
+      await desktop.window.activate({ window: opened.id });
+      await eventually(
+        () => desktop.window.status({ window: opened.id }),
+        (status) => !status.minimized && status.visible,
+        { timeoutMs: 8_000, describe: `${chrome} window restored after minimize` },
+      );
+    }
+
+    await app.eval({
+      script: `
+        const handle = lx.surface.get(${JSON.stringify(key)});
+        const state = { handle, closed: 0 };
+        handle.onClose(() => state.closed++);
+        globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}] = state;
+      `,
+    });
+    const afterDrag = await desktop.window.status({ window: opened.id });
+    await desktop.window.activate({ window: opened.id });
+    const closeAt = captionCloseAt(afterDrag, platform);
+    if (platform === 'windows' && chrome === 'full') {
+      // Capture must retain the pressed button when the cursor leaves the
+      // overlay and returns before release.
+      await desktop.pointer.down({ at: closeAt });
+      try {
+        await desktop.pointer.move({ at: [closeAt[0], closeAt[1] + 80] });
+        await new Promise<void>((resolve) => setTimeout(resolve, 100));
+        await desktop.pointer.move({ at: closeAt });
+      } finally {
+        await desktop.pointer.up({ at: closeAt });
+      }
+    } else {
+      await desktop.pointer.click({ at: closeAt });
+    }
+    const state = await eventually(
+      () => app.eval({
+        script: `
+          const state = globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];
+          return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
+        `,
+      }) as Promise<{ alive: boolean; visible: boolean; closed: number }>,
+      (state) => !state.alive && !state.visible && state.closed > 0,
+      { timeoutMs: 10_000, describe: `${chrome} chrome caption close to dispose the surface` },
+    );
+    expect(state.closed).toBe(1);
+    await app.eval({
+      script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
+    }).catch(() => undefined);
   }
 });
 

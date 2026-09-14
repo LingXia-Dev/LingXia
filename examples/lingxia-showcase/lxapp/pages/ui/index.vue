@@ -229,6 +229,20 @@
                     </button>
                   </div>
                 </div>
+                <div v-if="surfaceKind === 'window'">
+                  <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Chrome</div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <button v-for="chrome in surfaceChromes" :key="chrome.id" type="button"
+                      :data-testid="`surface-chrome-${chrome.id}`"
+                      :class="['py-2 text-sm rounded-lg transition-colors border', surfaceChrome === chrome.id ? 'bg-surface-800 border-line-800 text-white' : 'bg-surface border-line-200 text-gray-600 hover:bg-surface-50']"
+                      @click="surfaceChrome = chrome.id">
+                      {{ chrome.label }}
+                    </button>
+                  </div>
+                  <div class="mt-2 text-xs text-gray-500 leading-5 bg-surface-50 rounded-lg px-3 py-2">
+                    {{ surfaceChromes.find((chrome) => chrome.id === surfaceChrome)?.hint }}
+                  </div>
+                </div>
                 <div v-if="surfaceKind === 'float'">
                   <div class="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
                   <!-- Where the float popup sits above the main. -->
@@ -683,6 +697,11 @@ const surfaceEdge = ref<'left' | 'right' | 'top' | 'bottom'>('right');
 const surfaceEdges = ['left', 'right', 'top', 'bottom'] as const;
 const surfaceFloatPosition = ref<'center' | 'top' | 'bottom' | 'left' | 'right'>('center');
 const surfaceFloatPositions = ['center', 'top', 'bottom', 'left', 'right'] as const;
+const surfaceChrome = ref<'system' | 'full'>('full');
+const surfaceChromes = [
+  { id: 'system' as const, label: 'System', hint: 'Standard title bar with system close, minimize, and drag.' },
+  { id: 'full' as const, label: 'Full', hint: 'Page runs to the window edge; system close/min/max and drag stay on top.' },
+];
 const surfaceWidth = ref('');
 const surfaceHeight = ref('');
 // Shown when an entered width/height can't be parsed (so a typo like a
@@ -727,6 +746,7 @@ function handleOpenSurface() {
     verb: surfaceKind.value,
     edge: surfaceEdge.value,
     position: surfaceFloatPosition.value,
+    chrome: surfaceKind.value === 'window' ? surfaceChrome.value : undefined,
     width,
     height,
   });
