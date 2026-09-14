@@ -2707,9 +2707,8 @@ fn lxapp_surface_menu_header(
         header.push_str(" · ");
         header.push_str(version.trim());
     }
-    match release_type.trim().to_ascii_lowercase().as_str() {
-        "draft" => header.push_str(" [DRAFT]"),
-        _ => {}
+    if release_type.trim().eq_ignore_ascii_case("draft") {
+        header.push_str(" [DRAFT]");
     }
     header
 }
