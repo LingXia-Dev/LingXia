@@ -321,7 +321,7 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     rewrite_app_bundle_name(&staging, config)?;
     rewrite_app_version(&staging, config)?;
     if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
-        crate::product_i18n::write_harmony_product_name_strings(&staging, &app.product_name)?;
+        crate::product_i18n::write_harmony_product_name_strings(&staging, app.display_name())?;
     }
     Ok(staging)
 }

@@ -15,11 +15,14 @@ app:
   # (`android.packageId`, `ios.bundleId`, `macos.bundleId`, `windows.appId`,
   # `harmony.bundleName`).
   packageId: {{PACKAGE_ID}}
-  # User-facing display name. A string is the default name; a map localizes it:
-  #   productName:
-  #     default: My App
-  #     zh-CN: 我的应用
+  # Default display name. Fallback when the active locale is missing from
+  # productNames (and for MSIX DisplayName).
   productName: {{PRODUCT_NAME}}
+  # Optional locale → name map. Do not repeat productName here.
+  # Launcher follows the system language; window titles follow
+  # lx.app.displayLanguage (`auto` = system).
+  # productNames:
+  #   zh-CN: 我的应用
   # Host app version. Must be semantic version major.minor.patch.
   # `lingxia build` writes this into every platform package (Android /
   # Harmony versionName, Apple CFBundleShortVersionString, Windows MSIX

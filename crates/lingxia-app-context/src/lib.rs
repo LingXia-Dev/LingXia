@@ -304,7 +304,7 @@ fn validate_settings_destination_query(
 pub struct AppConfig {
     #[serde(rename = "productName")]
     pub product_name: String,
-    /// Locale-specific display names from `app.productName` (excluding default).
+    /// Locale-specific display names from `app.productNames`.
     #[serde(
         rename = "productNames",
         default,
@@ -651,21 +651,19 @@ impl AppConfig {
         validate_panels(self.panels.as_ref())
     }
 
-    /// Resolve the display name for a system locale: exact tag, then language,
+    /// Resolve the display name for a locale: exact tag, then language,
     /// then `productName`.
     pub fn localized_product_name(&self, locale: &str) -> &str {
         resolve_localized_product_name(&self.product_name, &self.product_names, locale)
     }
 }
 
-/// Install host config, resolving `productName` against the OS locale once.
-pub fn set_app_config_for_locale(
-    mut config: AppConfig,
-    locale: &str,
-) -> Result<(), AppContextError> {
-    let resolved = config.localized_product_name(locale).to_string();
-    config.product_name = resolved;
-    set_app_config(config)
+static PRODUCT_NAME_LOCALE: OnceLock<fn() -> String> = OnceLock::new();
+
+/// Locale used to pick `productNames` translations. Typically the effective
+/// display language (`auto` → system, otherwise the in-app preference).
+pub fn set_product_name_locale(source: fn() -> String) {
+    let _ = PRODUCT_NAME_LOCALE.set(source);
 }
 
 pub fn set_app_config(config: AppConfig) -> Result<(), AppContextError> {
@@ -826,7 +824,12 @@ pub fn page_background_color(dark: bool) -> Option<String> {
 }
 
 pub fn product_name() -> Option<&'static str> {
-    APP_CONFIG.get().map(|c| c.product_name.as_str())
+    let config = APP_CONFIG.get()?;
+    let locale = PRODUCT_NAME_LOCALE
+        .get()
+        .map(|source| source())
+        .unwrap_or_default();
+    Some(config.localized_product_name(&locale))
 }
 
 pub fn resolve_localized_product_name<'a>(
@@ -872,16 +875,15 @@ fn canonical_system_locale(locale: &str) -> Option<String> {
 fn locale_lookup_candidates(canonical: &str) -> Vec<String> {
     let mut out = vec![canonical.to_string()];
     let parts: Vec<&str> = canonical.split('-').collect();
-    if let Some(lang) = parts.first() {
-        if let Some(region) = parts
+    if let Some(lang) = parts.first()
+        && let Some(region) = parts
             .iter()
             .rev()
             .find(|part| part.len() == 2 && part.bytes().all(|b| b.is_ascii_alphabetic()))
-        {
-            let language_region = format!("{lang}-{region}");
-            if !out.iter().any(|candidate| candidate == &language_region) {
-                out.push(language_region);
-            }
+    {
+        let language_region = format!("{lang}-{region}");
+        if !out.iter().any(|candidate| candidate == &language_region) {
+            out.push(language_region);
         }
     }
     let mut rest = canonical;
@@ -1501,7 +1503,7 @@ mod tests {
     fn localized_product_name_matches_exact_then_language_then_default() {
         let mut names = std::collections::BTreeMap::new();
         names.insert("zh-CN".to_string(), "我的应用".to_string());
-        names.insert("ja".to_string(), "マイアプリ".to_string());
+        names.insert("en-US".to_string(), "My App".to_string());
         assert_eq!(
             super::resolve_localized_product_name("My App", &names, "zh-CN"),
             "我的应用"
@@ -1515,11 +1517,11 @@ mod tests {
             "我的应用"
         );
         assert_eq!(
-            super::resolve_localized_product_name("My App", &names, "ja-JP"),
-            "マイアプリ"
+            super::resolve_localized_product_name("My App", &names, "en-US"),
+            "My App"
         );
         assert_eq!(
-            super::resolve_localized_product_name("My App", &names, "en-US"),
+            super::resolve_localized_product_name("My App", &names, "fr-FR"),
             "My App"
         );
     }

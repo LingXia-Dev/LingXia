@@ -1,6 +1,6 @@
 //! Map `app.productName` locales onto each platform's resource directory layout.
 
-use crate::config::ProductName;
+use crate::host_identity::ProductName;
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 use std::fs;
@@ -96,7 +96,7 @@ fn escape_strings_value(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
-pub fn write_android_overlay(res_dir: &Path, product_name: &ProductName) -> Result<()> {
+pub fn write_android_overlay(res_dir: &Path, product_name: ProductName<'_>) -> Result<()> {
     for (tag, name) in product_name.locale_entries() {
         let dir = res_dir.join(android_values_dir(tag));
         fs::create_dir_all(&dir).with_context(|| format!("Failed to create {}", dir.display()))?;
@@ -109,7 +109,7 @@ pub fn write_android_overlay(res_dir: &Path, product_name: &ProductName) -> Resu
 
 pub fn write_apple_product_name_strings(
     resources_dir: &Path,
-    product_name: &ProductName,
+    product_name: ProductName<'_>,
 ) -> Result<()> {
     for (tag, name) in product_name.locale_entries() {
         let Some(lproj) = apple_lproj_dir(tag) else {
@@ -132,7 +132,7 @@ pub fn write_apple_product_name_strings(
 
 pub fn write_harmony_product_name_strings(
     staging: &Path,
-    product_name: &ProductName,
+    product_name: ProductName<'_>,
 ) -> Result<()> {
     for (tag, name) in product_name.locale_entries() {
         let locale = harmony_locale_dir(tag);
@@ -204,23 +204,23 @@ fn replace_strings_assignment(content: &str, key: &str, assignment: &str) -> Opt
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::ProductName;
+    use crate::host_identity::ProductName;
 
     #[test]
     fn android_dirs_keep_default_separate_from_en_us() {
         assert_eq!(android_values_dir("default"), "values");
         assert_eq!(android_values_dir("en-US"), "values-en-rUS");
         assert_eq!(android_values_dir("zh-CN"), "values-zh-rCN");
-        assert_eq!(android_values_dir("ja"), "values-ja");
+        assert_eq!(android_values_dir("fr"), "values-fr");
         assert_eq!(android_values_dir("zh-Hans"), "values-b+zh+Hans");
     }
 
     #[test]
-    fn apple_dirs_map_common_cjk_and_english() {
+    fn apple_dirs_map_english_and_chinese() {
         assert_eq!(apple_lproj_dir("default"), None);
         assert_eq!(apple_lproj_dir("en-US").as_deref(), Some("en.lproj"));
         assert_eq!(apple_lproj_dir("zh-CN").as_deref(), Some("zh-Hans.lproj"));
-        assert_eq!(apple_lproj_dir("ja").as_deref(), Some("ja.lproj"));
+        assert_eq!(apple_lproj_dir("fr").as_deref(), Some("fr.lproj"));
     }
 
     #[test]
@@ -243,10 +243,12 @@ mod tests {
 
     #[test]
     fn locale_entries_include_default_then_translations() {
-        let name = ProductName::with_translations(
-            "My App",
-            std::collections::BTreeMap::from([("zh-CN".to_string(), "我的应用".to_string())]),
-        );
+        let translations =
+            std::collections::BTreeMap::from([("zh-CN".to_string(), "我的应用".to_string())]);
+        let name = ProductName {
+            default: "My App",
+            translations: &translations,
+        };
         let entries: Vec<_> = name.locale_entries().collect();
         assert_eq!(entries[0], ("default", "My App"));
         assert!(entries.contains(&("zh-CN", "我的应用")));

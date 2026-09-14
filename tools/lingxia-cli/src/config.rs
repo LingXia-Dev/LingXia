@@ -1,4 +1,3 @@
-pub use crate::host_identity::ProductName;
 use anyhow::{Context, Result, anyhow};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -1234,8 +1233,12 @@ pub struct HostAppConfig {
     #[serde(rename = "packageId")]
     pub package_id: String,
 
-    /// Product name (user-facing display name). String or `{ default, <locale>: … }`.
-    pub product_name: ProductName,
+    /// User-facing display name. Localized variants live in `productNames`.
+    pub product_name: String,
+    /// Locale → name map. `productName` is the default; do not repeat it here.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub product_names: BTreeMap<String, String>,
     pub product_version: String,
 
     /// Optional cloud server. Single string applies to all envs; per-env map
@@ -1268,6 +1271,15 @@ pub struct HostAppConfig {
     #[serde(rename = "homeAppId")]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub home_app_id: Option<String>,
+}
+
+impl HostAppConfig {
+    pub fn display_name(&self) -> crate::host_identity::ProductName<'_> {
+        crate::host_identity::ProductName {
+            default: &self.product_name,
+            translations: &self.product_names,
+        }
+    }
 }
 
 /// Cloud server config. `Single("...")` applies the same URL to every env;
@@ -1941,7 +1953,8 @@ impl LingXiaConfig {
                 project_name: project_name.to_string(),
                 rust_lib_dir: None,
                 package_id: package_id.to_string(),
-                product_name: ProductName::new(project_name),
+                product_name: project_name.to_string(),
+                product_names: BTreeMap::new(),
                 product_version: "0.0.1".to_string(),
                 lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),
                 lingxia_id: None,
@@ -2054,7 +2067,8 @@ impl LingXiaConfig {
             if app.project_name.trim().is_empty() {
                 return Err(anyhow!("app.projectName must not be empty"));
             }
-            app.product_name.validate()?;
+            crate::host_identity::validate_product_name(&app.product_name)?;
+            crate::host_identity::validate_product_names(&app.product_names)?;
             if crate::host_identity::non_empty_opt(Some(app.package_id.as_str())).is_none() {
                 return Err(crate::host_identity::missing_app_package_id_error());
             }
@@ -2935,7 +2949,7 @@ mod tests {
 
         let parsed: LingXiaConfig = yaml::from_str(&yaml).unwrap();
         let app = parsed.app.unwrap();
-        assert_eq!(app.product_name.default_name(), "my-app");
+        assert_eq!(app.product_name, "my-app");
         assert_eq!(app.home_app_id.as_deref(), Some("my-app"));
         assert_eq!(app.package_id, "com.example.myapp");
         assert_eq!(parsed.android.unwrap().package_id, None);
@@ -3061,16 +3075,15 @@ resources:
     }
 
     #[test]
-    fn product_name_map_requires_default_and_valid_locales() {
+    fn product_names_map_is_optional_and_validates_locales() {
         let parsed = load_config_yaml(
             r#"
 app:
   projectName: my-app
   packageId: com.example.myapp
-  productName:
-    default: My App
+  productName: My App
+  productNames:
     zh-CN: 我的应用
-    ja: マイアプリ
   productVersion: 0.0.1
   platforms: [android]
   homeAppId: my-app
@@ -3083,40 +3096,21 @@ resources:
 "#,
         )
         .unwrap();
-        let name = &parsed.app.as_ref().unwrap().product_name;
-        assert_eq!(name.default_name(), "My App");
+        let app = parsed.app.as_ref().unwrap();
+        assert_eq!(app.product_name, "My App");
         assert_eq!(
-            name.translations().get("zh-CN").map(String::as_str),
+            app.product_names.get("zh-CN").map(String::as_str),
             Some("我的应用")
         );
-        assert_eq!(
-            name.translations().get("ja").map(String::as_str),
-            Some("マイアプリ")
-        );
-
-        let missing_default = load_config_yaml(
-            r#"
-app:
-  projectName: my-app
-  packageId: com.example.myapp
-  productName:
-    zh-CN: 我的应用
-  productVersion: 0.0.1
-  platforms: [android]
-android: {}
-"#,
-        )
-        .unwrap_err()
-        .to_string();
-        assert!(missing_default.contains("default"), "{missing_default}");
+        assert_eq!(app.product_names.len(), 1);
 
         let bad_locale = load_config_yaml(
             r#"
 app:
   projectName: my-app
   packageId: com.example.myapp
-  productName:
-    default: My App
+  productName: My App
+  productNames:
     zh_CN: 我的应用
   productVersion: 0.0.1
   platforms: [android]

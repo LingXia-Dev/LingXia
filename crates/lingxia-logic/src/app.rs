@@ -36,7 +36,9 @@ fn get_app_base_info(_ctx: JSContext) -> JSResult<AppBaseInfo> {
         app_config().ok_or_else(|| js_service_unavailable_error("app config not available"))?;
     Ok(AppBaseInfo {
         os: lingxia_platform::os_label().to_string(),
-        product_name: app_cfg.product_name.clone(),
+        product_name: lingxia_app_context::product_name()
+            .unwrap_or(app_cfg.product_name.as_str())
+            .to_string(),
         version: app_cfg.product_version.clone(),
         sdk_version: lxapp::SDK_RUNTIME_VERSION.to_string(),
     })

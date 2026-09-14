@@ -171,7 +171,7 @@ impl IosPlatform {
                      iOS bundle build requires app.projectName and app.productName."
                 )
             })?;
-        let app_name = app_config.product_name.default_name().to_string();
+        let app_name = app_config.product_name.clone();
         let bundle_name = app_config.project_name.clone();
         let swift_product_name = apple::resolve_swiftpm_target_name(
             ios_dir,
@@ -219,7 +219,7 @@ impl IosPlatform {
         )?;
         crate::product_i18n::write_apple_product_name_strings(
             &app_bundle,
-            &app_config.product_name,
+            app_config.display_name(),
         )?;
         Ok(app_bundle)
     }

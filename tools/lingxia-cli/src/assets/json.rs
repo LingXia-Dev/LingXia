@@ -30,12 +30,12 @@ pub(super) fn build_app_json_from_config(
     let mut obj = serde_json::Map::new();
     obj.insert(
         "productName".to_string(),
-        serde_json::json!(app.product_name.default_name()),
+        serde_json::json!(app.product_name),
     );
-    if !app.product_name.translations().is_empty() {
+    if !app.product_names.is_empty() {
         obj.insert(
             "productNames".to_string(),
-            serde_json::to_value(app.product_name.translations())?,
+            serde_json::to_value(&app.product_names)?,
         );
     }
     obj.insert(
