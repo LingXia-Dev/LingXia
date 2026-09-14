@@ -165,17 +165,15 @@ spec("round-trip appearance preference through the ui controls", {
   for (const preference of ['light', 'dark', 'auto'] as const) {
     await t.step(`set ${preference}`, async () => {
       await app.page.click({ page: 'ui', css: `[data-testid="ui-appearance-${preference}"]` });
-      await eventually(
+      const state = await eventually(
         () => appearanceOf(app),
-        (state) => state.preference === preference,
+        (state) => state.preference === preference && (
+          preference === 'auto'
+            ? ['light', 'dark'].includes(state.resolved)
+            : state.resolved === preference
+        ),
         { describe: `appearance preference ${preference}` },
       );
-      const state = await appearanceOf(app);
-      if (preference === 'auto') {
-        expect(['light', 'dark']).toContain(state.resolved);
-      } else {
-        expect(state.resolved).toBe(preference);
-      }
       await eventually(
         () => app.page.eval({
           page: 'ui',

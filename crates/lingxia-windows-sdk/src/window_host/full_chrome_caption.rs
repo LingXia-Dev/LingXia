@@ -9,6 +9,7 @@
 
 use super::*;
 use lingxia_windows_contract::WindowsFrameButton;
+use std::sync::atomic::{AtomicIsize, Ordering};
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
     AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint,
@@ -19,13 +20,53 @@ use windows::Win32::System::LibraryLoader;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     ReleaseCapture, SetCapture, TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent,
 };
-use windows::Win32::UI::WindowsAndMessaging::{self, GW_OWNER, WNDCLASSW, WS_POPUP};
+use windows::Win32::UI::WindowsAndMessaging::{
+    self, GW_OWNER, WNDCLASSW, WS_CHILD, WS_POPUP, WS_VISIBLE,
+};
 use windows::core::{PCWSTR, w};
 
 #[derive(Clone, Copy)]
 struct CaptionOverlay {
     window: isize,
+    ax_minimize: isize,
+    ax_maximize: isize,
+    ax_close: isize,
 }
+
+/// UIA Name for each caption control. Tests match these keywords instead of
+/// clicking live preview coordinates.
+fn ax_caption_name(button: WindowsFrameButton, maximized: bool) -> &'static str {
+    match button {
+        WindowsFrameButton::Minimize => "Minimize",
+        WindowsFrameButton::Maximize if maximized => "Restore",
+        WindowsFrameButton::Maximize => "Maximize",
+        WindowsFrameButton::Close => "Close",
+    }
+}
+
+fn ax_button_id(button: WindowsFrameButton) -> isize {
+    match button {
+        WindowsFrameButton::Minimize => 1,
+        WindowsFrameButton::Maximize => 2,
+        WindowsFrameButton::Close => 3,
+    }
+}
+
+fn ax_button_kind(id: isize) -> Option<WindowsFrameButton> {
+    match id {
+        1 => Some(WindowsFrameButton::Minimize),
+        2 => Some(WindowsFrameButton::Maximize),
+        3 => Some(WindowsFrameButton::Close),
+        _ => None,
+    }
+}
+
+fn wide(text: &str) -> Vec<u16> {
+    text.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+static AX_BUTTON_PREV: AtomicIsize = AtomicIsize::new(0);
+const BM_CLICK: u32 = 0x00F5;
 
 #[derive(Clone, Copy, Default)]
 struct OverlayInteraction {
@@ -58,9 +99,18 @@ pub(super) fn sync_full_chrome_caption_overlay(hwnd: HWND) {
     if overlay == 0 {
         return;
     }
+    let ax = sync_ax_buttons(hwnd, rect);
     // Positioning can synchronously reenter the owner's layout handler.
     if let Ok(mut overlays) = OVERLAYS.get_or_init(|| Mutex::new(HashMap::new())).lock() {
-        overlays.insert(hwnd_handle(hwnd), CaptionOverlay { window: overlay });
+        overlays.insert(
+            hwnd_handle(hwnd),
+            CaptionOverlay {
+                window: overlay,
+                ax_minimize: ax[0],
+                ax_maximize: ax[1],
+                ax_close: ax[2],
+            },
+        );
     }
     let mut origin = POINT {
         x: rect.left,
@@ -86,11 +136,18 @@ pub(super) fn destroy_full_chrome_caption_overlay(hwnd: HWND) {
         .get()
         .and_then(|overlays| overlays.lock().ok())
         .and_then(|mut overlays| overlays.remove(&hwnd_handle(hwnd)));
-    if let Some(overlay) = overlay
-        && is_window_handle_valid(overlay.window)
-    {
-        unsafe {
-            let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(overlay.window));
+    if let Some(overlay) = overlay {
+        for handle in [
+            overlay.window,
+            overlay.ax_minimize,
+            overlay.ax_maximize,
+            overlay.ax_close,
+        ] {
+            if is_window_handle_valid(handle) {
+                unsafe {
+                    let _ = WindowsAndMessaging::DestroyWindow(hwnd_from_handle(handle));
+                }
+            }
         }
     }
     if let Some(interactions) = INTERACTIONS.get()
@@ -176,6 +233,122 @@ fn ensure_overlay(host: HWND, rect: RECT) -> isize {
         Ok(hwnd) => hwnd_handle(hwnd),
         Err(_) => 0,
     }
+}
+
+fn sync_ax_buttons(host: HWND, strip: RECT) -> [isize; 3] {
+    let maximized = unsafe { WindowsAndMessaging::IsZoomed(host).as_bool() };
+    let existing = OVERLAYS
+        .get()
+        .and_then(|overlays| overlays.lock().ok())
+        .and_then(|overlays| overlays.get(&hwnd_handle(host)).copied());
+    let buttons = [
+        WindowsFrameButton::Minimize,
+        WindowsFrameButton::Maximize,
+        WindowsFrameButton::Close,
+    ];
+    let rects = caption_button_rects(strip);
+    let mut handles = [0isize; 3];
+    for (index, button) in buttons.into_iter().enumerate() {
+        let existing_handle = existing
+            .map(|overlay| match button {
+                WindowsFrameButton::Minimize => overlay.ax_minimize,
+                WindowsFrameButton::Maximize => overlay.ax_maximize,
+                WindowsFrameButton::Close => overlay.ax_close,
+            })
+            .unwrap_or(0);
+        let hwnd = if existing_handle != 0 && is_window_handle_valid(existing_handle) {
+            hwnd_from_handle(existing_handle)
+        } else {
+            create_ax_button(host, button)
+        };
+        handles[index] = hwnd_handle(hwnd);
+        if hwnd.0.is_null() {
+            continue;
+        }
+        let (_, rect) = rects[index];
+        let name = wide(ax_caption_name(button, maximized));
+        unsafe {
+            let _ = WindowsAndMessaging::SetWindowTextW(hwnd, PCWSTR(name.as_ptr()));
+            let _ = WindowsAndMessaging::SetWindowPos(
+                hwnd,
+                Some(WindowsAndMessaging::HWND_BOTTOM),
+                rect.left,
+                rect.top,
+                (rect.right - rect.left).max(1),
+                (rect.bottom - rect.top).max(1),
+                WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
+            );
+        }
+    }
+    handles
+}
+
+fn create_ax_button(host: HWND, button: WindowsFrameButton) -> HWND {
+    let instance = unsafe { LibraryLoader::GetModuleHandleW(None) }
+        .ok()
+        .map(|module| HINSTANCE(module.0));
+    let name = wide(ax_caption_name(button, false));
+    let created = unsafe {
+        WindowsAndMessaging::CreateWindowExW(
+            WindowsAndMessaging::WS_EX_NOACTIVATE | WindowsAndMessaging::WS_EX_TRANSPARENT,
+            w!("BUTTON"),
+            PCWSTR(name.as_ptr()),
+            WINDOW_STYLE(WS_CHILD.0 | WS_VISIBLE.0),
+            0,
+            0,
+            1,
+            1,
+            Some(host),
+            None,
+            instance,
+            None,
+        )
+    };
+    let Ok(hwnd) = created else {
+        return HWND::default();
+    };
+    unsafe {
+        WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            WindowsAndMessaging::GWLP_USERDATA,
+            ax_button_id(button),
+        );
+        let prev = WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            WindowsAndMessaging::GWLP_WNDPROC,
+            ax_button_proc as *const () as usize as isize,
+        );
+        let _ = AX_BUTTON_PREV.compare_exchange(0, prev, Ordering::Relaxed, Ordering::Relaxed);
+    }
+    hwnd
+}
+
+unsafe extern "system" fn ax_button_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if msg == BM_CLICK {
+        let kind = unsafe {
+            WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWLP_USERDATA)
+        };
+        if let Some(button) = ax_button_kind(kind) {
+            let host = unsafe { WindowsAndMessaging::GetParent(hwnd) }.ok();
+            if let Some(host) = host.filter(|host| !host.0.is_null()) {
+                handle_frame_button(host, button);
+            }
+        }
+        return LRESULT(0);
+    }
+    let prev = AX_BUTTON_PREV.load(Ordering::Relaxed);
+    if prev != 0 {
+        let previous: WindowsAndMessaging::WNDPROC = unsafe { std::mem::transmute(prev) };
+        return unsafe {
+            WindowsAndMessaging::CallWindowProcW(previous, hwnd, msg, wparam, lparam)
+        };
+    }
+    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
 fn overlay_host(hwnd: HWND) -> Option<HWND> {
@@ -564,5 +737,22 @@ mod tests {
         );
         assert_eq!(button_at(client, (460, 28)), None);
         assert_eq!(button_at(client, (80, 12)), None);
+    }
+
+    #[test]
+    fn caption_ax_names_match_system_caption_keywords() {
+        assert_eq!(
+            ax_caption_name(WindowsFrameButton::Minimize, false),
+            "Minimize"
+        );
+        assert_eq!(
+            ax_caption_name(WindowsFrameButton::Maximize, false),
+            "Maximize"
+        );
+        assert_eq!(
+            ax_caption_name(WindowsFrameButton::Maximize, true),
+            "Restore"
+        );
+        assert_eq!(ax_caption_name(WindowsFrameButton::Close, false), "Close");
     }
 }
