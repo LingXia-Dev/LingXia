@@ -173,7 +173,7 @@ mod tests {
         let platform = Platform::new(
             root.join("data").display().to_string(),
             root.join("cache").display().to_string(),
-            "en-US".into(),
+            "en-US".to_string(),
         )
         .unwrap();
         LxApps::new(platform, LxAppWorkers::init(1), 2)
