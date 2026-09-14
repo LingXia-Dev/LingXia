@@ -1,99 +1,22 @@
-//! Host package id and product display name.
+//! Host package / bundle id and product display-name helpers.
 
 use anyhow::{Result, anyhow};
-use serde::de::Error as _;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::BTreeMap;
 
-/// User-facing product display name.
-///
-/// YAML may be a bare string or a map with `default` plus BCP-47 keys
-/// (`zh-CN`, `ja`, …). The map form is stored as a default plus translations;
-/// `default` never appears in [`Self::translations`].
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ProductName {
-    default: String,
-    translations: BTreeMap<String, String>,
+/// Default launcher name plus optional BCP-47 translations from `productNames:`.
+#[derive(Debug, Clone, Copy)]
+pub struct ProductName<'a> {
+    pub default: &'a str,
+    pub translations: &'a BTreeMap<String, String>,
 }
 
-impl ProductName {
-    pub fn new(default: impl Into<String>) -> Self {
-        Self {
-            default: default.into(),
-            translations: BTreeMap::new(),
-        }
-    }
-
-    pub fn with_translations(
-        default: impl Into<String>,
-        translations: BTreeMap<String, String>,
-    ) -> Self {
-        Self {
-            default: default.into(),
-            translations,
-        }
-    }
-
-    pub fn default_name(&self) -> &str {
-        &self.default
-    }
-
-    pub fn translations(&self) -> &BTreeMap<String, String> {
-        &self.translations
-    }
-
-    pub fn locale_entries(&self) -> impl Iterator<Item = (&str, &str)> {
-        std::iter::once(("default", self.default.as_str())).chain(
+impl<'a> ProductName<'a> {
+    pub fn locale_entries(self) -> impl Iterator<Item = (&'a str, &'a str)> {
+        std::iter::once(("default", self.default)).chain(
             self.translations
                 .iter()
                 .map(|(tag, name)| (tag.as_str(), name.as_str())),
         )
-    }
-
-    pub fn validate(&self) -> Result<()> {
-        validate_product_name_value("app.productName", &self.default)?;
-        for (locale, value) in &self.translations {
-            validate_product_name_locale(locale)?;
-            validate_product_name_value(&format!("app.productName.{locale}"), value)?;
-        }
-        Ok(())
-    }
-}
-
-impl Serialize for ProductName {
-    fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
-        if self.translations.is_empty() {
-            return self.default.serialize(serializer);
-        }
-        let mut map = BTreeMap::new();
-        map.insert("default", self.default.as_str());
-        for (tag, name) in &self.translations {
-            map.insert(tag, name.as_str());
-        }
-        map.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for ProductName {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> std::result::Result<Self, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Raw {
-            Single(String),
-            Map(BTreeMap<String, String>),
-        }
-        match Raw::deserialize(deserializer)? {
-            Raw::Single(default) => Ok(Self::new(default)),
-            Raw::Map(mut map) => {
-                let default = map.remove("default").ok_or_else(|| {
-                    D::Error::custom("app.productName map must include a `default` name")
-                })?;
-                Ok(Self {
-                    default,
-                    translations: map,
-                })
-            }
-        }
     }
 }
 
@@ -127,6 +50,23 @@ pub fn validate_package_id_field(field: &str, package_id: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn validate_product_name(name: &str) -> Result<()> {
+    validate_display_name("app.productName", name)
+}
+
+pub fn validate_product_names(names: &BTreeMap<String, String>) -> Result<()> {
+    for (locale, value) in names {
+        if locale == "default" {
+            return Err(anyhow!(
+                "app.productNames must not include `default`; that name is `app.productName`"
+            ));
+        }
+        validate_product_name_locale(locale)?;
+        validate_display_name(&format!("app.productNames.{locale}"), value)?;
+    }
+    Ok(())
+}
+
 pub fn missing_app_package_id_error() -> anyhow::Error {
     anyhow!(
         "app.packageId is required. Package ids no longer live on each \
@@ -152,7 +92,7 @@ pub fn non_empty_opt(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
-fn validate_product_name_value(field: &str, value: &str) -> Result<()> {
+fn validate_display_name(field: &str, value: &str) -> Result<()> {
     let trimmed = value.trim();
     if trimmed.is_empty() {
         return Err(anyhow!("{field} must not be empty"));
@@ -166,14 +106,14 @@ fn validate_product_name_value(field: &str, value: &str) -> Result<()> {
 fn validate_product_name_locale(tag: &str) -> Result<()> {
     if tag.eq_ignore_ascii_case("auto") {
         return Err(anyhow!(
-            "app.productName locale 'auto' is reserved; use a BCP-47 tag such as zh-CN"
+            "app.productNames locale 'auto' is reserved; use a BCP-47 tag such as zh-CN"
         ));
     }
     let parsed = language_tags::LanguageTag::parse(tag).map_err(|error| {
-        anyhow!("app.productName locale '{tag}' is not a valid BCP-47 tag: {error}")
+        anyhow!("app.productNames locale '{tag}' is not a valid BCP-47 tag: {error}")
     })?;
     parsed.validate().map_err(|error| {
-        anyhow!("app.productName locale '{tag}' is not a valid BCP-47 tag: {error}")
+        anyhow!("app.productNames locale '{tag}' is not a valid BCP-47 tag: {error}")
     })?;
     Ok(())
 }
@@ -183,36 +123,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn string_form_round_trips() {
-        let name: ProductName = serde_yaml_ng::from_str("My App").unwrap();
-        assert_eq!(name.default_name(), "My App");
-        assert!(name.translations().is_empty());
-        assert_eq!(serde_yaml_ng::to_string(&name).unwrap().trim(), "My App");
+    fn product_names_reject_default_key() {
+        let mut names = BTreeMap::new();
+        names.insert("default".to_string(), "Nope".to_string());
+        let err = validate_product_names(&names).unwrap_err().to_string();
+        assert!(err.contains("productName"), "{err}");
     }
 
     #[test]
-    fn map_form_keeps_default_out_of_translations() {
-        let name: ProductName = serde_yaml_ng::from_str(
-            r#"
-default: My App
-zh-CN: 我的应用
-"#,
-        )
-        .unwrap();
-        assert_eq!(name.default_name(), "My App");
-        assert_eq!(
-            name.translations().get("zh-CN").map(String::as_str),
-            Some("我的应用")
-        );
-        assert!(!name.translations().contains_key("default"));
-        name.validate().unwrap();
-    }
-
-    #[test]
-    fn map_form_requires_default() {
-        let err = serde_yaml_ng::from_str::<ProductName>("zh-CN: 我的应用")
-            .unwrap_err()
-            .to_string();
-        assert!(err.contains("default"), "{err}");
+    fn product_names_reject_invalid_locale() {
+        let mut names = BTreeMap::new();
+        names.insert("zh_CN".to_string(), "我的应用".to_string());
+        let err = validate_product_names(&names).unwrap_err().to_string();
+        assert!(err.contains("BCP-47"), "{err}");
     }
 }

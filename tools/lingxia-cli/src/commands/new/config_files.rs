@@ -226,7 +226,7 @@ mod tests {
         );
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
         let app = lingxia.app.as_ref().expect("app config should exist");
-        assert_eq!(app.product_name.default_name(), "Demo: App");
+        assert_eq!(app.product_name, "Demo: App");
         assert_eq!(app.package_id, "com.example.demo");
         assert_eq!(
             lingxia
@@ -246,6 +246,46 @@ mod tests {
         assert_eq!(storage.cache_max_size_mb, Some(2048));
         assert_eq!(storage.data_max_size_mb, Some(4096));
         assert_eq!(storage.app_storage_max_size_mb, Some(16384));
+
+        let all_platforms = render_host_config(
+            &ProjectConfig {
+                name: config.name.clone(),
+                product_name: config.product_name.clone(),
+                project_type: config.project_type,
+                platforms: vec![
+                    Platform::Android,
+                    Platform::Ios,
+                    Platform::Macos,
+                    Platform::Harmony,
+                    Platform::Windows,
+                ],
+                package_id: config.package_id.clone(),
+                app_link_hosts: config.app_link_hosts.clone(),
+                target_dir: config.target_dir.clone(),
+            },
+            Some(&lxapp),
+            MainSurface::LxApp,
+            AppServiceMode::Enabled,
+        );
+        let all: LingXiaConfig = serde_yaml_ng::from_str(&all_platforms).unwrap();
+        let app = all.app.as_ref().unwrap();
+        assert_eq!(app.package_id, "com.example.demo");
+        assert!(all.android.is_some() && all.ios.is_some() && all.macos.is_some());
+        assert!(all.harmony.is_some() && all.windows.is_some());
+        assert_eq!(
+            all.android.as_ref().and_then(|c| c.package_id.as_deref()),
+            None
+        );
+        assert_eq!(all.ios.as_ref().and_then(|c| c.bundle_id.as_deref()), None);
+        assert_eq!(
+            all.macos.as_ref().and_then(|c| c.bundle_id.as_deref()),
+            None
+        );
+        assert_eq!(
+            all.harmony.as_ref().and_then(|c| c.bundle_name.as_deref()),
+            None
+        );
+        assert_eq!(all.windows.as_ref().and_then(|c| c.app_id.as_deref()), None);
         assert_eq!(
             lingxia.app_links.as_ref().unwrap().hosts,
             crate::config::AppLinkHosts::Single(vec!["demo.example.com".to_string()])

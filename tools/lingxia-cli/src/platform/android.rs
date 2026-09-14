@@ -834,12 +834,11 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<ResO
         .as_ref()
         .and_then(|c| c.splash.as_ref());
     let badge = android_env_icon_badge(config.resolved_env.version);
-    let product_name = &config
+    let app = config
         .lingxia_config
         .as_ref()
         .and_then(|c| c.app.as_ref())
-        .ok_or_else(|| anyhow!("lingxia.yaml is required to build Android"))?
-        .product_name;
+        .ok_or_else(|| anyhow!("lingxia.yaml is required to build Android"))?;
 
     // Stage under target/lingxia/android/overlay/<env>/res. Gradle's `clean`
     // won't touch this, but we wipe per-env on every build so stale resources
@@ -866,7 +865,7 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<ResO
         has_splash = true;
     }
 
-    crate::product_i18n::write_android_overlay(&staging_res, product_name)?;
+    crate::product_i18n::write_android_overlay(&staging_res, app.display_name())?;
     Ok(ResOverlay {
         res_overlay_dir: staging_res,
         icons,

@@ -42,7 +42,7 @@ pub fn package(
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing [app] config for MSIX packaging"))?;
-    let product_name = app.product_name.default_name().trim();
+    let product_name = app.product_name.trim();
     let project_name = app.project_name.trim();
     let windows_cfg = config.windows.as_ref();
 

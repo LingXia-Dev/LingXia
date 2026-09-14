@@ -128,9 +128,6 @@ app:
   projectName: myapp
   packageId: com.example.myapp
   productName: My App
-  # productName:
-  #   default: My App
-  #   zh-CN: 我的应用
   productVersion: 1.0.0
   platforms:
     - macos
@@ -180,18 +177,16 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 
 ## `app` Section
 
-`app` carries host metadata that generates the runtime `app.json`: `projectName` (technical identifier behind native build paths, the Rust host library name, and platform artifact filenames), `packageId` (default OS package / bundle id for every platform), `productName` (user-facing; a string, or a `{ default, <locale>: … }` map so the launcher name follows the system language), `productVersion` (a semver string — the build rejects non-semver, and `lingxia build` writes it into every OS package: Android / Harmony `versionName`, Apple `CFBundleShortVersionString`, Windows MSIX Identity, plus a derived integer `versionCode` / `CFBundleVersion` of `major*1000000 + minor*1000 + patch`), and `platforms` (the enabled set, drawn from `macos`, `windows`, `ios`, `android`, `harmony`). Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix` drive publishing and per-env builds (see [Environment](#environment)).
+`app` is the host identity written into `app.json`:
 
-**Breaking:** `app.packageId` is required. Per-platform ids
-(`android.packageId`, `ios.bundleId`, `macos.bundleId`, `windows.appId`,
-`harmony.bundleName`) are no longer enough on their own. `lingxia new` writes
-the common reverse-DNS id once on `app.packageId`. Keep it there; do not copy
-it into every platform block. Override a platform field only when that store
-listing already owns a different id. The build resolves
-`platform override ?? app.packageId` and still applies `packageIdSuffix` per
-env.
+- `projectName` — technical id (paths, crate, artifacts)
+- `packageId` — required OS id for every platform. **Breaking:** a platform-only id is no longer enough; copy the reverse-DNS onto `app.packageId` yourself. Keep `android.packageId` / `ios.bundleId` / `macos.bundleId` / `windows.appId` / `harmony.bundleName` only when that store listing differs. Env suffix still applies.
+- `productName` — default display name (required). Fallback for any locale not in `productNames`.
+- `productNames` — optional locale → name map (`zh-CN: 我的应用`). Do not repeat `productName`. Launcher follows the **system** language; window title / tray / `lx.getAppBaseInfo().productName` follow `lx.app.displayLanguage` (`auto` = system).
+- `productVersion` — semver, stamped into every OS package
+- `platforms` — enabled set (`macos`, `windows`, `ios`, `android`, `harmony`)
 
-`productName` locales are BCP-47 tags (`zh-CN`, `ja`). The OS launcher reads the matching platform resource (Android `values-*`, Apple `*.lproj/InfoPlist.strings`, Harmony `string.json`). Window titles follow the system locale at process start, not `lx.app.displayLanguage`. A bare string is the default name with no translations.
+Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix`: [Environment](#environment).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
@@ -495,13 +490,13 @@ and served by the runtime, none of which applies to these raw files.
 
 ## `macos` Section
 
-`macos` sets the deployment target and the SwiftPM `targetName` (resource lookup) / `executableName` (product binary). `bundleId` is optional and overrides `app.packageId` when the Mac App Store listing is a different id. An optional `store:` block holds the App Store Connect identity (`appId`) used by `lingxia store`. The scaffold writes a starting `macos:` for you; read it for the exact keys.
+`macos` sets the deployment target and the SwiftPM `targetName` / `executableName`. `bundleId` is an optional override of `app.packageId`. Optional `store:` is the App Store Connect identity for `lingxia store`. The scaffold writes a starting `macos:`; read it for the keys.
 
 ## `windows` Section
 
 `windows` is the desktop host for Windows, on the same adaptive `surfaces:` model as macOS (no per-platform UI block). You don't hand-wire the Windows SDK: scaffold with `lingxia new -t native-app -p windows` (combine with other platforms, e.g. `-p macos,windows`) and the generated project drops in the `windows/` Rust host crate and its packaging wired to crates.io `lingxia-windows-sdk` — read the generated project rather than pasting dependency tables here.
 
-The `windows:` section carries packaging extras — `executableName` (the `windows/Cargo.toml` binary) and `publisher` (the MSIX `Publisher` distinguished name, defaulting to `CN=<productName>`). `appId` is optional and overrides `app.packageId`. An optional `store:` block holds the Microsoft Store (Partner Center) `appId` for `lingxia store`. Build with `lingxia build --platform windows`; submit to the MS Store with `lingxia store --platform windows`. As always, the scaffolded `lingxia.yaml` is the authoritative field list.
+`windows:` packaging: `executableName` (`windows/Cargo.toml` binary), `publisher` (MSIX `Publisher`, default `CN=<productName>`), optional `appId` override of `app.packageId`, optional `store:` Partner Center id for `lingxia store`.
 
 ---
 

@@ -430,7 +430,7 @@ impl Platform for MacosPlatform {
             .lingxia_config
             .as_ref()
             .and_then(|c| c.app.as_ref())
-            .map(|a| a.product_name.default_name().to_string())
+            .map(|a| a.product_name.clone())
             .or_else(|| {
                 standalone_defaults
                     .as_ref()
@@ -496,7 +496,7 @@ impl Platform for MacosPlatform {
         if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
             crate::product_i18n::write_apple_product_name_strings(
                 &app_path.join("Contents/Resources"),
-                &app.product_name,
+                app.display_name(),
             )?;
         }
 
