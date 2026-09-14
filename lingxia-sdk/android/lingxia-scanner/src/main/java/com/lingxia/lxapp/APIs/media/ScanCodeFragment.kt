@@ -35,8 +35,8 @@ import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
-import com.lingxia.app.LxLog
-import com.lingxia.app.NativeApi
+import com.lingxia.app.media.modules.MediaModuleHost as LxLog
+import com.lingxia.app.media.modules.MediaModuleHost as NativeApi
 import com.lingxia.lxapp.R
 import org.json.JSONObject
 import java.util.concurrent.ExecutorService
@@ -435,7 +435,7 @@ internal class ScanCodeFragment : Fragment() {
             deliverFailure(1000, "Host not AppCompatActivity")
             return
         }
-        MediaPickerFragment.pick(
+        NativeApi.pick(
             host,
             maxCount = 1,
             mode = "images",

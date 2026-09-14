@@ -1,0 +1,1 @@
+-keep class com.lingxia.lxapp.APIs.media.CameraModuleImpl { public <init>(); }

@@ -19,7 +19,15 @@ androidxTestRunner = "1.7.0"
 androidxTestCore = "1.7.0"
 androidxTestExtJunit = "1.3.0"
 
+# API 21 base runtime; optional/full modules may select newer dependencies.
+appcompatCompat = "1.7.1"
+materialCompat = "1.13.0"
+webkitCompat = "1.14.0"
+
 [libraries]
+androidx-appcompat-compat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompatCompat" }
+androidx-webkit-compat = { group = "androidx.webkit", name = "webkit", version.ref = "webkitCompat" }
+material-compat = { group = "com.google.android.material", name = "material", version.ref = "materialCompat" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
 material = { group = "com.google.android.material", name = "material", version.ref = "material" }

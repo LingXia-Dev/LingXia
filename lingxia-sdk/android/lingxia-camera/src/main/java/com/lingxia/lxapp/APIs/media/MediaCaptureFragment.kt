@@ -51,10 +51,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.core.content.ContextCompat
-import com.lingxia.lxapp.ActivityInsets
+import com.lingxia.app.media.modules.MediaModuleHost as ActivityInsets
 import androidx.fragment.app.Fragment
-import com.lingxia.app.LxLog
-import com.lingxia.app.NativeApi
+import com.lingxia.app.media.modules.MediaModuleHost as LxLog
+import com.lingxia.app.media.modules.MediaModuleHost as NativeApi
 import com.lingxia.lxapp.R
 import android.text.SpannableString
 import android.text.style.ForegroundColorSpan
@@ -1116,8 +1116,7 @@ internal class MediaCaptureFragment : Fragment() {
     private fun createOutputFile(suffix: String): File? {
         val host = activity as? com.lingxia.lxapp.LxAppActivity ?: return null
         val appId = host.getAppId().trim().takeIf { it.isNotEmpty() } ?: return null
-        val info = NativeApi.getLxAppInfo(appId) ?: return null
-        val cacheDir = info.cacheDir.trim().takeIf { it.isNotEmpty() } ?: return null
+        val cacheDir = NativeApi.cacheDirectory(appId) ?: return null
         val dir = File(cacheDir)
         if ((!dir.exists() && !dir.mkdirs()) || !dir.isDirectory) {
             LxLog.e(TAG, "createOutputFile: cache directory unavailable for appId=$appId")

@@ -178,7 +178,9 @@ dependencies {
     // the fallback for direct Gradle invocations, and `lingxia upgrade`
     // rewrites it.
     val lingxiaSdkVersion = (findProperty("lingxia.sdkVersion") as String?) ?: "{{SDK_VERSION}}"
-    implementation("io.github.lingxia-dev:lingxia:$lingxiaSdkVersion")
+    // Add lingxia-camera / lingxia-scanner explicitly when the host needs them.
+    val lingxiaSdkArtifact = providers.gradleProperty("lingxia.sdkArtifact").orElse("lingxia-core").get()
+    implementation("io.github.lingxia-dev:$lingxiaSdkArtifact:$lingxiaSdkVersion")
 
     // Android dependencies
     implementation(libs.androidx.core.ktx)

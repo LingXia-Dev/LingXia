@@ -1273,6 +1273,10 @@ jobs:
       - name: Build Android SDK release artifact
         run: bash scripts/release/sdk.sh --platform android --out dist/sdk-ci --no-shasums
 
+      - name: Verify API 21 core and complete Android module packaging
+        working-directory: lingxia-sdk/android
+        run: ./gradlew :compatibility:assembleCoreDebug :compatibility:assembleFullDebug :lingxia-core:testDebugUnitTest
+
   sdk-apple:
     needs: changes
     if: ${{ needs.changes.outputs.sdk_apple == 'true' }}

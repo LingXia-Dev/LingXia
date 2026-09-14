@@ -19,7 +19,6 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppBrowser
 import com.lingxia.lxapp.SplashOverlay
 import com.lingxia.app.media.UrlPlayerEngineFactory
-import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import java.net.URISyntaxException
 import java.util.Locale
 import java.util.concurrent.CountDownLatch
@@ -184,7 +183,6 @@ object Lingxia {
             }
 
             com.lingxia.webview.LingXiaWebView.setApplicationContext(ctx)
-            ScanCodeFragment.warmUpCameraProvider(ctx)
 
             // Same tablet breakpoint as NavigationBar. Set before init so the
             // first tab-bar snapshot already uses the pad strip capacity.

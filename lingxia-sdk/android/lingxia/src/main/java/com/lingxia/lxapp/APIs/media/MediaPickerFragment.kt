@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs.media
 
+import com.lingxia.app.media.modules.MediaModules
+
 import com.lingxia.lxapp.LxAppDismissal
 
 import android.Manifest
@@ -163,7 +165,7 @@ internal class MediaPickerFragment : Fragment() {
         get() = arguments?.getString(ARG_MODE) ?: "mix"
 
     private val allowCamera: Boolean
-        get() = arguments?.getBoolean(ARG_ALLOW_CAMERA) ?: false
+        get() = MediaModules.hasCamera && (arguments?.getBoolean(ARG_ALLOW_CAMERA) ?: false)
 
     private val maxCaptureDuration: Int
         get() = arguments?.getInt(ARG_MAX_DURATION) ?: -1
@@ -883,7 +885,7 @@ internal class MediaPickerFragment : Fragment() {
             "videos" -> "video"
             else -> "image"
         }
-        MediaCaptureFragment.start(
+        MediaModules.capture(
             host,
             captureMode,
             maxCaptureDuration,
