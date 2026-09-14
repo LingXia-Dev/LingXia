@@ -1164,7 +1164,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // sheet — name + version header, then a clean/restart action row.
         guard let phoneContent = phoneContentView, capsuleSheetOverlay == nil else { return }
         // Mirror iOS: show the lxapp's own name, version, and channel badge from
-        // release_type (a `lingxia dev` bundle pins itself to the Developer
+        // release_type (a `lingxia dev` bundle pins itself to the draft
         // channel) — not the Runner's own Bundle.main version.
         let info = getLxAppInfo(appId)
         let appName = info.app_name.toString()
@@ -1288,18 +1288,14 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    /// A DEV/PRE channel pill for the capsule sheet, mirroring iOS's release
+    /// A DFT channel pill for the capsule sheet, mirroring iOS's release
     /// badge (colors match LxAppCapsuleMenu.releaseBadge). Nil for Release.
     private static func makeReleaseBadge(_ releaseType: String) -> NSView? {
         let style: (text: String, fg: NSColor, bg: NSColor)?
-        switch releaseType {
-        case "draft":
+        if releaseType == "draft" {
             style = ("DFT", NSColor(srgbRed: 0.11, green: 0.31, blue: 0.85, alpha: 1),
                      NSColor(srgbRed: 0.86, green: 0.92, blue: 0.99, alpha: 1))
-        case "preview":
-            style = ("PRE", NSColor(srgbRed: 0.71, green: 0.33, blue: 0.03, alpha: 1),
-                     NSColor(srgbRed: 1.0, green: 0.93, blue: 0.84, alpha: 1))
-        default:
+        } else {
             style = nil
         }
         guard let style else { return nil }

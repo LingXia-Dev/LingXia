@@ -551,8 +551,8 @@ fn bundled_lxapp_available(current_lxapp: &Arc<lxapp_runtime::LxApp>, target_app
 /// Ensure a specific target version package is prepared before opening.
 ///
 /// Policy:
-/// - Already installed with the same version: no-op outside the developer channel.
-/// - Developer packages also compare the installed checksum.
+/// - Already installed with the same version: no-op outside the draft channel.
+/// - Draft packages also compare the installed checksum.
 /// - Otherwise: resolve exact version metadata and ensure archive is downloaded.
 /// - Downloaded archive is applied when app instance is (re)opened.
 pub async fn ensure_target_version_ready(

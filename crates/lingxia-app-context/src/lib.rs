@@ -372,7 +372,7 @@ pub struct AppConfig {
 
     /// Ed25519 public keys that may verify in-app update envelopes.
     /// Embedded from host `lingxia.yaml` at build time; never from check-update.
-    /// Empty: developer still checks without verifying; preview/release skip.
+    /// Empty: `dev` still checks without verifying; `prod` skips.
     #[serde(
         rename = "updateTrustedPublicKeys",
         default,
