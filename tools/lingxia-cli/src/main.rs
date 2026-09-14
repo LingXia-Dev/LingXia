@@ -32,6 +32,7 @@ mod r#gen;
 mod github;
 #[path = "assets.rs"]
 mod host_assets;
+mod host_identity;
 mod http_client;
 mod i18n;
 mod lxapp;
@@ -39,6 +40,7 @@ mod npm;
 mod path_completion;
 mod permission_cache;
 mod platform;
+mod product_i18n;
 mod resolver;
 mod runner_cache;
 mod runtime;

@@ -27,7 +27,8 @@ fn lingxia_id_is_not_suffixed_by_env() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: Some("app.lingxia.demo".into()),
@@ -66,6 +67,24 @@ fn lingxia_id_is_not_suffixed_by_env() {
     assert_eq!(
         value.get("lingxiaId").and_then(|v| v.as_str()),
         Some("app.lingxia.demo")
+    );
+    assert!(value.get("windowsAppId").is_none());
+}
+
+#[test]
+fn windows_app_id_is_only_emitted_for_windows_hosts() {
+    let android = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    let json = build_app_json_from_config(&android, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert!(value.get("windowsAppId").is_none());
+
+    let mut windows = android;
+    windows.app.as_mut().unwrap().platforms = vec!["windows".into()];
+    let json = build_app_json_from_config(&windows, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(
+        value.get("windowsAppId").and_then(|v| v.as_str()),
+        Some("com.example.demo")
     );
 }
 
@@ -129,7 +148,8 @@ fn generated_app_json_excludes_ui_fields() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: Some(LingxiaServer::Single("http://127.0.0.1:8080".into())),
             lingxia_id: Some("demo".into()),
@@ -230,7 +250,8 @@ fn generated_app_json_includes_dev_ws_url_when_configured() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -280,7 +301,8 @@ fn generated_app_json_includes_app_link_hosts() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -324,7 +346,8 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -377,7 +400,8 @@ fn generated_app_json_includes_capabilities() {
         app: Some(HostAppConfig {
             project_name: "demo".into(),
             rust_lib_dir: None,
-            product_name: "Demo".into(),
+            package_id: "com.example.demo".into(),
+            product_name: crate::config::ProductName::new("Demo"),
             product_version: "1.2.3".into(),
             lingxia_server: None,
             lingxia_id: None,
@@ -609,12 +633,12 @@ fn surfaces_end_to_end_maps_terminal_when_explicitly_declared() {
         r#"
 app:
   projectName: demo
+  packageId: app.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
   homeAppId: home
-macos:
-  bundleId: app.demo
+macos: {}
 capabilities:
   terminal: true
 surfaces:
@@ -862,7 +886,7 @@ mod view_target_warnings {
 
     fn android_config_with(min_sdk: Option<u32>) -> AndroidConfig {
         AndroidConfig {
-            package_id: "com.example.demo".to_string(),
+            package_id: Some("com.example.demo".to_string()),
             min_sdk,
             target_sdk: Some(35),
             compile_sdk: Some(35),

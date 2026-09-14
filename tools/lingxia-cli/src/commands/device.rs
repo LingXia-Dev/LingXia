@@ -161,13 +161,14 @@ fn infer_package_id_from_config(
     config: &LingXiaConfig,
     platform_type: &PlatformType,
 ) -> Option<String> {
-    match platform_type {
-        PlatformType::Android => config.android.as_ref().map(|cfg| cfg.package_id.clone()),
-        PlatformType::Ios => config.ios.as_ref().map(|cfg| cfg.bundle_id.clone()),
-        PlatformType::Harmony => config.harmony.as_ref().map(|cfg| cfg.bundle_name.clone()),
-        PlatformType::MacOs => None,
-        PlatformType::Windows => config.windows.as_ref().and_then(|cfg| cfg.app_id.clone()),
-    }
+    let platform = match platform_type {
+        PlatformType::Android => "android",
+        PlatformType::Ios => "ios",
+        PlatformType::Harmony => "harmony",
+        PlatformType::MacOs => "macos",
+        PlatformType::Windows => "windows",
+    };
+    config.resolved_package_id(platform).ok()
 }
 
 #[cfg(test)]
@@ -180,7 +181,8 @@ mod tests {
             app: Some(HostAppConfig {
                 project_name: "demo".into(),
                 rust_lib_dir: None,
-                product_name: "Demo".into(),
+                package_id: "com.example.demo".into(),
+                product_name: crate::config::ProductName::new("Demo"),
                 product_version: "0.1.0".into(),
                 lingxia_server: None,
                 lingxia_id: None,
@@ -194,7 +196,7 @@ mod tests {
                 home_app_id: Some("demo-home".into()),
             }),
             android: Some(AndroidConfig {
-                package_id: "com.example.demo".into(),
+                package_id: Some("com.example.demo".into()),
                 min_sdk: None,
                 target_sdk: None,
                 compile_sdk: None,
@@ -206,7 +208,7 @@ mod tests {
                 honor_store: None,
             }),
             ios: Some(IosConfig {
-                bundle_id: "app.example.demo".into(),
+                bundle_id: Some("app.example.demo".into()),
                 team_id: None,
                 deployment_target: None,
                 swift_version: None,
@@ -215,7 +217,7 @@ mod tests {
             }),
             macos: None,
             harmony: Some(HarmonyConfig {
-                bundle_name: "com.example.demo.hm".into(),
+                bundle_name: Some("com.example.demo.hm".into()),
                 compatible_sdk_version: None,
                 target_sdk_version: None,
                 store: None,

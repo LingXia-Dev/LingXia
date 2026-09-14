@@ -1,3 +1,4 @@
+pub use crate::host_identity::ProductName;
 use anyhow::{Context, Result, anyhow};
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -1225,8 +1226,16 @@ pub struct HostAppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rust_lib_dir: Option<String>,
 
-    /// Product name (user-facing display name)
-    pub product_name: String,
+    /// Required OS package / bundle id for every platform. Platform blocks may
+    /// override with `android.packageId`, `ios.bundleId`, `macos.bundleId`,
+    /// `windows.appId`, or `harmony.bundleName` only when that store listing
+    /// already owns a different id.
+    #[serde(default)]
+    #[serde(rename = "packageId")]
+    pub package_id: String,
+
+    /// Product name (user-facing display name). String or `{ default, <locale>: … }`.
+    pub product_name: ProductName,
     pub product_version: String,
 
     /// Optional cloud server. Single string applies to all envs; per-env map
@@ -1408,7 +1417,10 @@ impl ResolvedEnv {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AndroidConfig {
-    pub package_id: String,
+    /// Override for `app.packageId`. Omit to inherit the host default.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub package_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub min_sdk: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1499,7 +1511,10 @@ impl AndroidConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct IosConfig {
-    pub bundle_id: String,
+    /// Override for `app.packageId`. Omit to inherit the host default.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_id: Option<String>,
     /// Optional Apple Team constraint. When present it is hard: only
     /// credentials proven to belong to this team may be used.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1562,7 +1577,10 @@ pub struct MacosConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HarmonyConfig {
-    pub bundle_name: String,
+    /// Override for `app.packageId`. Omit to inherit the host default.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundle_name: Option<String>,
     /// Minimum supported SDK version (e.g., "5.0.0(12)")
     /// Equivalent to iOS deploymentTarget / Android minSdk
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1637,6 +1655,86 @@ impl LingXiaConfig {
             Some(dir) => Some(dir.to_string()),
             None => self.get_project_name().map(|name| format!("{}-lib", name)),
         }
+    }
+
+    /// Package / bundle id for `platform`: `app.packageId`, unless that
+    /// platform block overrides it.
+    pub fn resolved_package_id(&self, platform: &str) -> Result<String> {
+        let base = crate::host_identity::non_empty_opt(
+            self.app.as_ref().map(|app| app.package_id.as_str()),
+        )
+        .ok_or_else(crate::host_identity::missing_app_package_id_error)?;
+        crate::host_identity::validate_package_id_field("app.packageId", base)?;
+        let override_id = match platform {
+            "android" => crate::host_identity::non_empty_opt(
+                self.android
+                    .as_ref()
+                    .and_then(|config| config.package_id.as_deref()),
+            ),
+            "ios" => crate::host_identity::non_empty_opt(
+                self.ios
+                    .as_ref()
+                    .and_then(|config| config.bundle_id.as_deref()),
+            ),
+            "macos" => crate::host_identity::non_empty_opt(
+                self.macos
+                    .as_ref()
+                    .and_then(|config| config.bundle_id.as_deref()),
+            ),
+            "windows" => crate::host_identity::non_empty_opt(
+                self.windows
+                    .as_ref()
+                    .and_then(|config| config.app_id.as_deref()),
+            ),
+            "harmony" => crate::host_identity::non_empty_opt(
+                self.harmony
+                    .as_ref()
+                    .and_then(|config| config.bundle_name.as_deref()),
+            ),
+            other => {
+                return Err(anyhow!(
+                    "unknown platform '{other}' when resolving package id"
+                ));
+            }
+        };
+        if let Some(id) = override_id {
+            crate::host_identity::validate_package_id_field(
+                crate::host_identity::platform_package_id_field(platform),
+                id,
+            )?;
+            return Ok(id.to_string());
+        }
+        Ok(base.to_string())
+    }
+
+    fn platform_enabled(&self, platform: &str) -> bool {
+        self.app.as_ref().is_some_and(|app| {
+            app.platforms
+                .iter()
+                .any(|enabled| enabled.as_str() == platform)
+        })
+    }
+
+    /// `windowsAppId` for `app.json` when Windows is an enabled platform.
+    pub fn resolved_windows_app_id(&self, resolved_env: &ResolvedEnv) -> Result<Option<String>> {
+        if !self.platform_enabled("windows") {
+            return Ok(None);
+        }
+        self.resolved_package_id_with_suffix("windows", resolved_env)
+            .map(Some)
+    }
+
+    /// `resolved_package_id` plus the active env suffix (`.dev` or none).
+    pub fn resolved_package_id_with_suffix(
+        &self,
+        platform: &str,
+        resolved_env: &ResolvedEnv,
+    ) -> Result<String> {
+        let base = self.resolved_package_id(platform)?;
+        Ok(match resolved_env.effective_package_id_suffix() {
+            Some(suffix) => format!("{base}{suffix}"),
+            None => base,
+        })
     }
 
     pub fn app_service_enabled(&self) -> bool {
@@ -1842,7 +1940,8 @@ impl LingXiaConfig {
             app: Some(HostAppConfig {
                 project_name: project_name.to_string(),
                 rust_lib_dir: None,
-                product_name: project_name.to_string(),
+                package_id: package_id.to_string(),
+                product_name: ProductName::new(project_name),
                 product_version: "0.0.1".to_string(),
                 lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),
                 lingxia_id: None,
@@ -1851,7 +1950,7 @@ impl LingXiaConfig {
                 home_app_id: Some(home_app_id.to_string()),
             }),
             android: Some(AndroidConfig {
-                package_id: package_id.to_string(),
+                package_id: None,
                 min_sdk: Some(28),
                 target_sdk: Some(35),
                 compile_sdk: Some(35),
@@ -1955,13 +2054,18 @@ impl LingXiaConfig {
             if app.project_name.trim().is_empty() {
                 return Err(anyhow!("app.projectName must not be empty"));
             }
-            if app.product_name.trim().is_empty() {
-                return Err(anyhow!("app.productName must not be empty"));
+            app.product_name.validate()?;
+            if crate::host_identity::non_empty_opt(Some(app.package_id.as_str())).is_none() {
+                return Err(crate::host_identity::missing_app_package_id_error());
+            }
+            crate::host_identity::validate_package_id_field("app.packageId", &app.package_id)?;
+            let app_platforms = validate_app_platforms(app)?;
+            for platform in &app_platforms {
+                self.resolved_package_id(platform)?;
             }
             Version::parse(app.product_version.trim()).map_err(|_| {
                 anyhow!("app.productVersion must be a semantic version (major.minor.patch)")
             })?;
-            let app_platforms = validate_app_platforms(app)?;
             let process_requested = self
                 .capabilities
                 .as_ref()
@@ -2018,6 +2122,38 @@ impl LingXiaConfig {
                     )?;
                 }
             }
+        }
+        if let Some(android) = &self.android
+            && android
+                .package_id
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(anyhow!("android.packageId must not be empty"));
+        }
+        if let Some(ios) = &self.ios
+            && ios
+                .bundle_id
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(anyhow!("ios.bundleId must not be empty"));
+        }
+        if let Some(macos) = &self.macos
+            && macos
+                .bundle_id
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(anyhow!("macos.bundleId must not be empty"));
+        }
+        if let Some(harmony) = &self.harmony
+            && harmony
+                .bundle_name
+                .as_deref()
+                .is_some_and(|value| value.trim().is_empty())
+        {
+            return Err(anyhow!("harmony.bundleName must not be empty"));
         }
         if let Some(windows) = &self.windows {
             if windows
@@ -2763,7 +2899,7 @@ mod tests {
     #[test]
     fn test_android_api_level_derivation() {
         let config = AndroidConfig {
-            package_id: "com.example.app".to_string(),
+            package_id: Some("com.example.app".to_string()),
             min_sdk: Some(28),
             target_sdk: Some(35),
             compile_sdk: Some(35),
@@ -2777,7 +2913,7 @@ mod tests {
         assert_eq!(config.get_api_level(), 28);
 
         let config_explicit = AndroidConfig {
-            package_id: "com.example.app".to_string(),
+            package_id: Some("com.example.app".to_string()),
             min_sdk: Some(28),
             target_sdk: Some(35),
             compile_sdk: Some(35),
@@ -2799,12 +2935,197 @@ mod tests {
 
         let parsed: LingXiaConfig = yaml::from_str(&yaml).unwrap();
         let app = parsed.app.unwrap();
-        assert_eq!(app.product_name, "my-app");
+        assert_eq!(app.product_name.default_name(), "my-app");
         assert_eq!(app.home_app_id.as_deref(), Some("my-app"));
-        assert_eq!(parsed.android.unwrap().package_id, "com.example.myapp");
+        assert_eq!(app.package_id, "com.example.myapp");
+        assert_eq!(parsed.android.unwrap().package_id, None);
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn package_id_inherits_from_app_and_accepts_platform_override() {
+        let inherited = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android, ios]
+  homeAppId: my-app
+android: {}
+ios: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            inherited.resolved_package_id("android").unwrap(),
+            "com.example.myapp"
+        );
+        assert_eq!(
+            inherited.resolved_package_id("ios").unwrap(),
+            "com.example.myapp"
+        );
+        let env = inherited.resolve_env(AppEnv::Dev).unwrap();
+        assert_eq!(
+            inherited
+                .resolved_package_id_with_suffix("android", &env)
+                .unwrap(),
+            "com.example.myapp.dev"
+        );
+
+        let overridden = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android, ios]
+  homeAppId: my-app
+android:
+  packageId: com.example.android
+ios:
+  bundleId: app.example.ios
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"#,
+        )
+        .unwrap();
+        assert_eq!(
+            overridden.resolved_package_id("android").unwrap(),
+            "com.example.android"
+        );
+        assert_eq!(
+            overridden.resolved_package_id("ios").unwrap(),
+            "app.example.ios"
+        );
+    }
+
+    #[test]
+    fn package_id_missing_on_enabled_platform_fails() {
+        let err = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("app.packageId is required"), "{err}");
+    }
+
+    #[test]
+    fn platform_only_package_id_is_not_enough() {
+        let err = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android:
+  packageId: com.example.android
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("app.packageId is required"), "{err}");
+        assert!(err.contains("android.packageId"), "{err}");
+    }
+
+    #[test]
+    fn product_name_map_requires_default_and_valid_locales() {
+        let parsed = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName:
+    default: My App
+    zh-CN: 我的应用
+    ja: マイアプリ
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+"#,
+        )
+        .unwrap();
+        let name = &parsed.app.as_ref().unwrap().product_name;
+        assert_eq!(name.default_name(), "My App");
+        assert_eq!(
+            name.translations().get("zh-CN").map(String::as_str),
+            Some("我的应用")
+        );
+        assert_eq!(
+            name.translations().get("ja").map(String::as_str),
+            Some("マイアプリ")
+        );
+
+        let missing_default = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName:
+    zh-CN: 我的应用
+  productVersion: 0.0.1
+  platforms: [android]
+android: {}
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(missing_default.contains("default"), "{missing_default}");
+
+        let bad_locale = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName:
+    default: My App
+    zh_CN: 我的应用
+  productVersion: 0.0.1
+  platforms: [android]
+android: {}
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(bad_locale.contains("BCP-47"), "{bad_locale}");
     }
 
     #[test]
@@ -2938,6 +3259,7 @@ route: /wrong
         let yaml = r#"
 app:
   projectName: my-app
+  packageId: com.example.myapp
   productName: My App
   productVersion: 0.0.1
   platforms:
@@ -3203,6 +3525,7 @@ android:
             r#"
 app:
   projectName: my-app
+  packageId: com.example.myapp
   productName: My App
   productVersion: 1.0.0
   platforms: [android]
@@ -3229,6 +3552,7 @@ appLinks:
             r#"
 app:
   projectName: my-app
+  packageId: com.example.myapp
   productName: My App
   productVersion: 1.0.0
   platforms: [android]
@@ -3264,6 +3588,7 @@ appLinks:
             r#"
 app:
   projectName: my-app
+  packageId: com.example.myapp
   productName: My App
   productVersion: 1.0.0
   platforms: [android]
@@ -3335,7 +3660,7 @@ appLinks:
             "  light:\n    sidebarBackgroundColor: '#A1B2C3'",
         ] {
             let yaml = format!(
-                "app:\n  projectName: demo\n  productName: Demo\n  productVersion: 0.1.0\n  platforms: [android]\n  homeAppId: home\ntheme:\n{theme}\n"
+                "app:\n  projectName: demo\n  packageId: com.example.demo\n  productName: Demo\n  productVersion: 0.1.0\n  platforms: [android]\n  homeAppId: home\ntheme:\n{theme}\n"
             );
             assert!(yaml::from_str::<LingXiaConfig>(&yaml).is_err(), "{theme}");
         }
@@ -3356,6 +3681,7 @@ appLinks:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
@@ -3378,6 +3704,7 @@ ui:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
@@ -3398,6 +3725,7 @@ capabilities:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [mac]
@@ -3418,6 +3746,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, android]
@@ -3439,6 +3768,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
@@ -3459,6 +3789,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [ios]
@@ -3480,6 +3811,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [ios, macos]
@@ -3509,6 +3841,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [ios, macos]
@@ -4222,6 +4555,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4246,6 +4580,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4360,6 +4695,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, windows]
@@ -4396,6 +4732,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4420,6 +4757,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, windows]
@@ -4442,6 +4780,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows, android]
@@ -4468,6 +4807,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4491,6 +4831,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4513,6 +4854,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4542,6 +4884,7 @@ surfaces:
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4557,6 +4900,7 @@ surfaces: [{ lxapp: home, role: main, launch: true }]
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4572,6 +4916,7 @@ surfaces: [{ lxapp: home, role: main, launch: true }]
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4587,6 +4932,7 @@ surfaces: [{ native: browser, role: main, launch: true }]
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4602,6 +4948,7 @@ surfaces: [{ native: terminal, role: main, launch: true }]
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4617,6 +4964,7 @@ surfaces: [{ url: https://example.com, role: main, launch: true }]
                 r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [windows]
@@ -4649,6 +4997,7 @@ surfaces: [{ native: terminal, role: main, launch: true }]
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, android]
@@ -4680,6 +5029,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, windows, ios, android, harmony]
@@ -4721,6 +5071,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
@@ -4746,6 +5097,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos]
@@ -4770,6 +5122,7 @@ surfaces:
         let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [macos, windows]

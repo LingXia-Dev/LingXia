@@ -319,21 +319,14 @@ impl Platform for MacosPlatform {
             macos_dir.display()
         );
 
-        let base_bundle_id = macos_config
-            .and_then(|c| c.bundle_id.clone())
-            .or_else(|| {
-                config
-                    .lingxia_config
-                    .as_ref()
-                    .and_then(|c| c.ios.as_ref())
-                    .map(|c| c.bundle_id.clone())
-            })
-            .or_else(|| {
-                standalone_defaults
-                    .as_ref()
-                    .and_then(|d| d.bundle_id.clone())
-            })
-            .unwrap_or_else(|| "com.example.app".to_string());
+        let base_bundle_id = if let Some(host) = config.lingxia_config.as_ref() {
+            host.resolved_package_id("macos")?
+        } else {
+            standalone_defaults
+                .as_ref()
+                .and_then(|d| d.bundle_id.clone())
+                .unwrap_or_else(|| "com.example.app".to_string())
+        };
         let bundle_id = match config.resolved_env.effective_package_id_suffix() {
             Some(suffix) => format!("{base_bundle_id}{suffix}"),
             None => base_bundle_id,
@@ -437,7 +430,7 @@ impl Platform for MacosPlatform {
             .lingxia_config
             .as_ref()
             .and_then(|c| c.app.as_ref())
-            .map(|a| a.product_name.clone())
+            .map(|a| a.product_name.default_name().to_string())
             .or_else(|| {
                 standalone_defaults
                     .as_ref()
@@ -500,6 +493,12 @@ impl Platform for MacosPlatform {
             info_plist.as_ref(),
             hide_dock_icon,
         )?;
+        if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
+            crate::product_i18n::write_apple_product_name_strings(
+                &app_path.join("Contents/Resources"),
+                &app.product_name,
+            )?;
+        }
 
         // Mirror the iOS env-icon overlay so a `dev` macOS build also
         // gets the D badge on the dock icon. macOS icon artwork sits inside

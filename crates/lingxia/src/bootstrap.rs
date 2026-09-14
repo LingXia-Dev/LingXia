@@ -334,7 +334,10 @@ pub(crate) fn init_with_platform(
     );
     install_global_executor();
     lingxia_app_context::set_host_build(crate::capabilities::host_build());
-    if let Err(err) = lingxia_app_context::set_app_config(app_config.clone()) {
+    if let Err(err) = lingxia_app_context::set_app_config_for_locale(
+        app_config.clone(),
+        runtime.get_system_locale(),
+    ) {
         return Err(crate::Error::internal(format!(
             "failed to initialize app configuration: {err}"
         )));

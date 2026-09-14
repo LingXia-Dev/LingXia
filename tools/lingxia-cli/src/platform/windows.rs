@@ -403,7 +403,7 @@ fn latest_runnable_windows_exe(project_root: &Path) -> Result<PathBuf> {
     if let Some(product_name) = config
         .as_ref()
         .and_then(|config| config.app.as_ref())
-        .map(|app| app.product_name.as_str())
+        .map(|app| app.product_name.default_name())
         .filter(|value| !value.trim().is_empty())
     {
         candidates.push((

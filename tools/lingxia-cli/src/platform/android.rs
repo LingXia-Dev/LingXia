@@ -388,7 +388,7 @@ gradle.settingsEvaluated {{ settings ->
         &self,
         project_root: &Path,
         config: &BuildConfig,
-        res_overlay: Option<&ResOverlay>,
+        res_overlay: &ResOverlay,
         sdk_maven_repo: Option<&Path>,
     ) -> Result<PathBuf> {
         let artifact_kind = if config.android_aab { "AAB" } else { "APK" };
@@ -421,14 +421,14 @@ gradle.settingsEvaluated {{ settings ->
             .resolved_env
             .effective_package_id_suffix()
             .unwrap_or("");
-        let app_name = config
+        let application_id = config
             .lingxia_config
             .as_ref()
-            .and_then(|c| c.app.as_ref())
-            .map(|app| app.product_name.clone())
-            .unwrap_or_default();
+            .ok_or_else(|| anyhow!("lingxia.yaml is required to build Android"))?
+            .resolved_package_id("android")?;
         let app_id_arg = format!("-Plingxia.applicationIdSuffix={app_id_suffix}");
-        let app_name_arg = format!("-Plingxia.appName={app_name}");
+        let application_id_arg = format!("-Plingxia.applicationId={application_id}");
+        let app_name_arg = "-Plingxia.appName=@string/lx_app_name".to_string();
         let os_version = config
             .lingxia_config
             .as_ref()
@@ -453,6 +453,7 @@ gradle.settingsEvaluated {{ settings ->
         command
             .arg(task)
             .arg(app_id_arg)
+            .arg(application_id_arg)
             .arg(app_name_arg)
             .arg(abis_arg);
         if let Some(os_version) = &os_version {
@@ -473,32 +474,30 @@ gradle.settingsEvaluated {{ settings ->
                 crate::sdk_cache::sdk_version()
             ));
         }
-        if let Some(overlay) = res_overlay {
+        command.arg(format!(
+            "-Plingxia.resOverlayDir={}",
+            res_overlay.res_overlay_dir.to_string_lossy()
+        ));
+        if let Some(icons) = &res_overlay.icons {
+            // Manifest placeholders need both icon and roundIcon resolved.
+            // For projects without a round icon, fall back to the standard
+            // icon so the placeholder still resolves to something valid.
+            let round_resource = if icons.has_round_icon {
+                format!("{}_round", icons.icon_resource_name)
+            } else {
+                icons.icon_resource_name.clone()
+            };
             command.arg(format!(
-                "-Plingxia.resOverlayDir={}",
-                overlay.res_overlay_dir.to_string_lossy()
+                "-Plingxia.appIcon=@mipmap/{}",
+                icons.icon_resource_name
             ));
-            if let Some(icons) = &overlay.icons {
-                // Manifest placeholders need both icon and roundIcon resolved.
-                // For projects without a round icon, fall back to the standard
-                // icon so the placeholder still resolves to something valid.
-                let round_resource = if icons.has_round_icon {
-                    format!("{}_round", icons.icon_resource_name)
-                } else {
-                    icons.icon_resource_name.clone()
-                };
-                command.arg(format!(
-                    "-Plingxia.appIcon=@mipmap/{}",
-                    icons.icon_resource_name
-                ));
-                command.arg(format!("-Plingxia.appRoundIcon=@mipmap/{round_resource}"));
-            }
-            if overlay.has_splash {
-                command.arg(format!(
-                    "-Plingxia.splashTheme=@style/{}",
-                    crate::splash::ANDROID_SPLASH_THEME
-                ));
-            }
+            command.arg(format!("-Plingxia.appRoundIcon=@mipmap/{round_resource}"));
+        }
+        if res_overlay.has_splash {
+            command.arg(format!(
+                "-Plingxia.splashTheme=@style/{}",
+                crate::splash::ANDROID_SPLASH_THEME
+            ));
         }
         command.arg(format!(
             "-Plingxia.launchOrientation={}",
@@ -578,9 +577,9 @@ impl Platform for AndroidPlatform {
             self.do_build_rust_library(&config.project_root, config)?;
         }
 
-        // Stage build-time overlay resources (env icons, splash) outside the
-        // source tree and let Gradle merge them via sourceSets.main.res.srcDirs.
-        // No source-tree mutation, no Drop-based rollback to fail on SIGKILL.
+        // Stage build-time overlay resources (product name, env icons, splash)
+        // outside the source tree and let Gradle merge them via
+        // sourceSets.main.res.srcDirs. No source-tree mutation.
         let res_overlay = prepare_res_overlay(&android_root, config)?;
 
         // External user projects don't have the SDK in their source tree, so
@@ -601,7 +600,7 @@ impl Platform for AndroidPlatform {
         let gradle_artifact = self.build_gradle(
             &android_root,
             config,
-            res_overlay.as_ref(),
+            &res_overlay,
             sdk_maven_repo.as_deref(),
         )?;
         let apk_path = project_named_artifact(&gradle_artifact, config.lingxia_config.as_ref())?;
@@ -822,21 +821,25 @@ fn launch_orientation(
     )
 }
 
-/// Stage the build-time res overlay (env launcher icons and/or splash
-/// resources) to a directory outside the source tree. Returns `None` when
-/// nothing applies (release env with no splash configured, etc.).
+/// Stage the build-time res overlay (product-name strings, env launcher
+/// icons, splash) outside the source tree. Always produced: the launcher
+/// label is `@string/lx_app_name` from this overlay, so yaml stays the
+/// source of truth without mutating `values/strings.xml`.
 ///
 /// Nothing under the user's git tree is modified, so SIGKILL/abort can never
 /// leave the project dirty.
-fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<Option<ResOverlay>> {
+fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<ResOverlay> {
     let splash_config = config
         .lingxia_config
         .as_ref()
         .and_then(|c| c.splash.as_ref());
     let badge = android_env_icon_badge(config.resolved_env.version);
-    if splash_config.is_none() && badge.is_none() {
-        return Ok(None);
-    }
+    let product_name = &config
+        .lingxia_config
+        .as_ref()
+        .and_then(|c| c.app.as_ref())
+        .ok_or_else(|| anyhow!("lingxia.yaml is required to build Android"))?
+        .product_name;
 
     // Stage under target/lingxia/android/overlay/<env>/res. Gradle's `clean`
     // won't touch this, but we wipe per-env on every build so stale resources
@@ -863,14 +866,12 @@ fn prepare_res_overlay(android_root: &Path, config: &BuildConfig) -> Result<Opti
         has_splash = true;
     }
 
-    if icons.is_none() && !has_splash {
-        return Ok(None);
-    }
-    Ok(Some(ResOverlay {
+    crate::product_i18n::write_android_overlay(&staging_res, product_name)?;
+    Ok(ResOverlay {
         res_overlay_dir: staging_res,
         icons,
         has_splash,
-    }))
+    })
 }
 
 /// Write the badged env launcher icons into the staging res dir.
@@ -1481,7 +1482,7 @@ fn find_launcher_activity_end(content: &str) -> Option<usize> {
 fn infer_android_package_id_for_uninstall(project_root: &Path) -> Option<String> {
     crate::config::LingXiaConfig::load(project_root)
         .ok()
-        .and_then(|c| c.android.map(|a| a.package_id))
+        .and_then(|c| c.resolved_package_id("android").ok())
 }
 
 /// Generate Android app icons
@@ -1595,12 +1596,12 @@ mod tests {
             let yaml = r#"
 app:
   projectName: demo
+  packageId: com.example.demo
   productName: Demo
   productVersion: 0.1.0
   platforms: [android]
   homeAppId: demo.home
-android:
-  packageId: com.example.demo
+android: {}
 resources:
   bundles:
     - type: lxapp

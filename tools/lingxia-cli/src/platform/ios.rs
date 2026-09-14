@@ -151,9 +151,11 @@ impl IosPlatform {
 
         // Get bundle ID and other config. Apply env package suffixes
         // here without touching the source Info.plist on disk.
-        let base_bundle_id = ios_config
-            .map(|c| c.bundle_id.clone())
-            .unwrap_or_else(|| "com.example.app".to_string());
+        let base_bundle_id = if let Some(host) = config.lingxia_config.as_ref() {
+            host.resolved_package_id("ios")?
+        } else {
+            "com.example.app".to_string()
+        };
         let bundle_id = match config.resolved_env.effective_package_id_suffix() {
             Some(suffix) => format!("{base_bundle_id}{suffix}"),
             None => base_bundle_id,
@@ -169,7 +171,7 @@ impl IosPlatform {
                      iOS bundle build requires app.projectName and app.productName."
                 )
             })?;
-        let app_name = app_config.product_name.clone();
+        let app_name = app_config.product_name.default_name().to_string();
         let bundle_name = app_config.project_name.clone();
         let swift_product_name = apple::resolve_swiftpm_target_name(
             ios_dir,
@@ -209,12 +211,17 @@ impl IosPlatform {
             product_version: app_config.product_version.clone(),
         };
 
-        AppBundler::create_app_bundle(
+        let app_bundle = AppBundler::create_app_bundle(
             ios_dir,
             project_root,
             &bundle_config,
             matches!(config.profile, BuildProfile::Release),
-        )
+        )?;
+        crate::product_i18n::write_apple_product_name_strings(
+            &app_bundle,
+            &app_config.product_name,
+        )?;
+        Ok(app_bundle)
     }
 
     /// Find the .app bundle in build output.
@@ -261,9 +268,11 @@ impl Platform for IosPlatform {
             ios_dir.display()
         );
 
-        let bundle_id = ios_config
-            .map(|c| c.bundle_id.clone())
-            .unwrap_or_else(|| "com.example.app".to_string());
+        let bundle_id = if let Some(host) = config.lingxia_config.as_ref() {
+            host.resolved_package_id("ios")?
+        } else {
+            "com.example.app".to_string()
+        };
         let granted_entitlements =
             load_cached_apple_entitlements(PermissionPlatform::Ios, &bundle_id);
 

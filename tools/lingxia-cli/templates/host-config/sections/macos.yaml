@@ -1,8 +1,6 @@
 
 # macOS host settings.
 macos:
-  # macOS bundle identifier.
-  bundleId: {{PACKAGE_ID}}
   # Optional macOS deployment target, for example "12.0".
   # deploymentTarget: "12.0"
   # SwiftPM target name for resource lookup. Explicit values are preferred.

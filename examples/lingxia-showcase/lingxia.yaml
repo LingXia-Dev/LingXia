@@ -2,6 +2,7 @@ app:
   projectName: lingxia
   rustLibDir: native
   lingxiaId: lingxia-showcase
+  packageId: app.lingxia.example.lxapp
   productName: LingXia
   productVersion: 0.2.7
   platforms:
@@ -27,12 +28,10 @@ android:
   compileSdk: 35
 
 ios:
-  bundleId: app.lingxia.example.lxapp
   deploymentTarget: "17.0"
   targetName: lxapp
 
 macos:
-  bundleId: app.lingxia.example.lxapp
   deploymentTarget: "12.0"
   targetName: LingXiaDemo
   executableName: LingXiaDemo
@@ -41,7 +40,6 @@ harmony:
   bundleName: app.lingxia.lxapp.example
 
 windows:
-  appId: app.lingxia.example.lxapp
   executableName: LingXiaDemo
 
 features:

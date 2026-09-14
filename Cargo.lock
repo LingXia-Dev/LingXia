@@ -3315,6 +3315,7 @@ dependencies = [
 name = "lingxia-app-context"
 version = "0.16.0"
 dependencies = [
+ "language-tags",
  "semver",
  "serde",
  "serde_json",

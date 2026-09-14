@@ -1249,13 +1249,8 @@ fn generate_android(base_res_dir: &Path, i18n_map: &I18nMap) -> Result<()> {
 
 fn generate_ios(base_dir: &Path, i18n_map: &I18nMap) -> Result<()> {
     for (lang, translations) in i18n_map {
-        let lproj_name = if lang == "en-US" {
-            "en.lproj".to_string()
-        } else if lang == "zh-CN" {
-            "zh-Hans.lproj".to_string()
-        } else {
-            format!("{}.lproj", lang)
-        };
+        let lproj_name =
+            crate::product_i18n::apple_lproj_dir(lang).unwrap_or_else(|| format!("{lang}.lproj"));
 
         let dir_path = base_dir.join(lproj_name);
         fs::create_dir_all(&dir_path)?;

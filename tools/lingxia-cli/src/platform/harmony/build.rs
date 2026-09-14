@@ -320,6 +320,9 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     rewrite_staged_source_paths(&staging, source)?;
     rewrite_app_bundle_name(&staging, config)?;
     rewrite_app_version(&staging, config)?;
+    if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
+        crate::product_i18n::write_harmony_product_name_strings(&staging, &app.product_name)?;
+    }
     Ok(staging)
 }
 
@@ -647,11 +650,8 @@ fn rewrite_app_bundle_name(staging: &Path, config: &BuildConfig) -> Result<()> {
     let base_bundle_name = config
         .lingxia_config
         .as_ref()
-        .and_then(|c| c.harmony.as_ref())
-        .map(|h| h.bundle_name.as_str())
-        .ok_or_else(|| {
-            anyhow!("lingxia.yaml is missing `harmony.bundleName`; required to build a HAP")
-        })?;
+        .ok_or_else(|| anyhow!("lingxia.yaml is required to build a HAP"))?
+        .resolved_package_id("harmony")?;
     let suffix = config
         .resolved_env
         .effective_package_id_suffix()

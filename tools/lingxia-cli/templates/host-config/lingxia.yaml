@@ -10,7 +10,15 @@ app:
   projectName: {{PROJECT_NAME}}
   # Directory of the native Rust library crate (relative to this file).
   rustLibDir: {{RUST_LIB_DIR}}
-  # User-facing display name for the host app.
+  # Default OS package / bundle id for every platform. Override per platform
+  # only when a store listing already owns a different id
+  # (`android.packageId`, `ios.bundleId`, `macos.bundleId`, `windows.appId`,
+  # `harmony.bundleName`).
+  packageId: {{PACKAGE_ID}}
+  # User-facing display name. A string is the default name; a map localizes it:
+  #   productName:
+  #     default: My App
+  #     zh-CN: 我的应用
   productName: {{PRODUCT_NAME}}
   # Host app version. Must be semantic version major.minor.patch.
   # `lingxia build` writes this into every platform package (Android /

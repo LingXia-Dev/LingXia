@@ -226,7 +226,15 @@ mod tests {
         );
         let lingxia: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
         let app = lingxia.app.as_ref().expect("app config should exist");
-        assert_eq!(app.product_name, "Demo: App");
+        assert_eq!(app.product_name.default_name(), "Demo: App");
+        assert_eq!(app.package_id, "com.example.demo");
+        assert_eq!(
+            lingxia
+                .android
+                .as_ref()
+                .and_then(|a| a.package_id.as_deref()),
+            None
+        );
         assert_eq!(app.home_app_id.as_deref(), Some("lingxia.lxapp.demo"));
         // lingxiaId defaults to the namespaced host publish id.
         assert_eq!(app.lingxia_id.as_deref(), Some("lingxia.app.demo"));
