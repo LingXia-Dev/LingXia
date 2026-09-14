@@ -49,6 +49,14 @@ If a feature is needed by every Windows host regardless of product shell, it is
 a candidate for this crate. If it is a visual/product policy decision, keep it
 in the runner or shell layer.
 
+## Crate-local icons
+
+`include_bytes!` paths must stay inside this crate. Repo-root `design/icons/svg`
+is the source of truth; `icons/svg` holds only the SVGs this crate embeds, so a
+crates.io consumer can compile (a `../../../design/...` path is gone after
+`cargo package`). `build.rs` fails the build if those copies drift from
+`design/` in a git checkout.
+
 ## Modes
 
 Two usage modes, selected by Cargo features:

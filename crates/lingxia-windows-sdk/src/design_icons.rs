@@ -1,8 +1,11 @@
 //! Shared Windows rendering for LingXia design icons.
 //!
-//! The source of truth is `design/icons/svg`. The CLI renders
-//! Windows PNGs into each app's generated assets, and runtime code draws those
-//! assets instead of hand-maintaining a Windows-only icon set.
+//! The source of truth is repo-root `design/icons/svg`. The SVGs this crate
+//! embeds are copied into `crates/lingxia-windows-sdk/icons/svg` so
+//! `cargo package` ships them —
+//! `include_bytes!("../../../design/...")` does not exist on crates.io
+//! (fusheng CI: os error 3 compiling `lingxia-windows-sdk` 0.16.0). The CLI
+//! still renders Windows PNGs into each app's generated assets.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -120,36 +123,26 @@ impl WindowsDesignIcon {
     #[cfg(feature = "shell-chrome")]
     fn embedded_svg(self) -> Option<&'static [u8]> {
         Some(match self {
-            Self::Back => include_bytes!("../../../design/icons/svg/icon_back.svg"),
-            Self::Forward => include_bytes!("../../../design/icons/svg/icon_forward.svg"),
-            Self::BrowserRefresh => {
-                include_bytes!("../../../design/icons/svg/icon_browser_refresh.svg")
-            }
-            Self::BrowserSettings => {
-                include_bytes!("../../../design/icons/svg/icon_browser_settings.svg")
-            }
-            Self::BrowserTabs => include_bytes!("../../../design/icons/svg/icon_browser_tabs.svg"),
-            Self::Bookmark => include_bytes!("../../../design/icons/svg/icon_bookmark.svg"),
-            Self::BookmarkFilled => {
-                include_bytes!("../../../design/icons/svg/icon_bookmark_filled.svg")
-            }
-            Self::Bookmarks => include_bytes!("../../../design/icons/svg/icon_bookmarks.svg"),
-            Self::Pin => include_bytes!("../../../design/icons/svg/icon_pin.svg"),
-            Self::PinFilled => include_bytes!("../../../design/icons/svg/icon_pin_filled.svg"),
-            Self::Unpin => include_bytes!("../../../design/icons/svg/icon_unpin.svg"),
-            Self::Link => include_bytes!("../../../design/icons/svg/icon_link.svg"),
-            Self::External => include_bytes!("../../../design/icons/svg/icon_external.svg"),
-            Self::Globe => include_bytes!("../../../design/icons/svg/icon_globe.svg"),
-            Self::CloseOtherTabs => {
-                include_bytes!("../../../design/icons/svg/icon_close_other_tabs.svg")
-            }
-            Self::CloseTabsBelow => {
-                include_bytes!("../../../design/icons/svg/icon_close_tabs_below.svg")
-            }
-            Self::History => include_bytes!("../../../design/icons/svg/icon_history.svg"),
-            Self::ClearData => include_bytes!("../../../design/icons/svg/icon_clear_data.svg"),
-            Self::PageMenu => include_bytes!("../../../design/icons/svg/icon_page_menu.svg"),
-            Self::CloseX => include_bytes!("../../../design/icons/svg/icon_close_x.svg"),
+            Self::Back => include_bytes!("../icons/svg/icon_back.svg"),
+            Self::Forward => include_bytes!("../icons/svg/icon_forward.svg"),
+            Self::BrowserRefresh => include_bytes!("../icons/svg/icon_browser_refresh.svg"),
+            Self::BrowserSettings => include_bytes!("../icons/svg/icon_browser_settings.svg"),
+            Self::BrowserTabs => include_bytes!("../icons/svg/icon_browser_tabs.svg"),
+            Self::Bookmark => include_bytes!("../icons/svg/icon_bookmark.svg"),
+            Self::BookmarkFilled => include_bytes!("../icons/svg/icon_bookmark_filled.svg"),
+            Self::Bookmarks => include_bytes!("../icons/svg/icon_bookmarks.svg"),
+            Self::Pin => include_bytes!("../icons/svg/icon_pin.svg"),
+            Self::PinFilled => include_bytes!("../icons/svg/icon_pin_filled.svg"),
+            Self::Unpin => include_bytes!("../icons/svg/icon_unpin.svg"),
+            Self::Link => include_bytes!("../icons/svg/icon_link.svg"),
+            Self::External => include_bytes!("../icons/svg/icon_external.svg"),
+            Self::Globe => include_bytes!("../icons/svg/icon_globe.svg"),
+            Self::CloseOtherTabs => include_bytes!("../icons/svg/icon_close_other_tabs.svg"),
+            Self::CloseTabsBelow => include_bytes!("../icons/svg/icon_close_tabs_below.svg"),
+            Self::History => include_bytes!("../icons/svg/icon_history.svg"),
+            Self::ClearData => include_bytes!("../icons/svg/icon_clear_data.svg"),
+            Self::PageMenu => include_bytes!("../icons/svg/icon_page_menu.svg"),
+            Self::CloseX => include_bytes!("../icons/svg/icon_close_x.svg"),
             _ => return None,
         })
     }
