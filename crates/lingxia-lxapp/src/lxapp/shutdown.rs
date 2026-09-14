@@ -237,6 +237,37 @@ mod tests {
         assert_ne!(replacement.session_id(), app.session_id());
     }
 
+    #[test]
+    fn recreate_prunes_the_replaced_instance_once_its_logic_acknowledges() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let manager = manager();
+        let id = format!("app.recreated.{}", uuid::Uuid::new_v4());
+        let other = format!("app.other.{}", uuid::Uuid::new_v4());
+        register_synthetic_lxapp(&id);
+        register_synthetic_lxapp(&other);
+        let tracked = |app: &Arc<crate::LxApp>| {
+            manager
+                .instances
+                .lock()
+                .unwrap()
+                .get(&app.session_id())
+                .is_some_and(|tracked| Arc::ptr_eq(tracked, app))
+        };
+        let old = manager.ensure_lxapp(id.clone(), Channel::Release).unwrap();
+        // The old Logic ACK is still pending when the replacement is created.
+        old.logic_contexts.send_replace(1);
+        let replacement = manager.recreate_lxapp(id, Channel::Release).unwrap();
+        assert!(tracked(&old));
+        old.logic_contexts.send_replace(0);
+        manager.ensure_lxapp(other, Channel::Release).unwrap();
+        assert!(
+            !tracked(&old),
+            "a replaced instance must not outlive its ACK"
+        );
+        assert!(tracked(&replacement));
+    }
+
     #[tokio::test]
     async fn shutdown_waits_for_admitted_creation_before_taking_its_snapshot() {
         #[cfg(target_vendor = "apple")]

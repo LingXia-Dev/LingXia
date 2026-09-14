@@ -1148,7 +1148,10 @@ pub(crate) fn create_app_svc(
             return Ok(());
         }
         lxapp.logic_contexts.send_modify(|count| *count += 1);
-        if let Err(e) = sender.send(ServiceMessage::CreateAppSvc { lxapp }) {
+        if let Err(e) = sender.send(ServiceMessage::CreateAppSvc {
+            lxapp: lxapp.clone(),
+        }) {
+            release_logic_context(&lxapp);
             free_workers.lock().unwrap().push_front(worker_id);
             return Err(e.into());
         }
@@ -1189,9 +1192,12 @@ fn reactivate_or_reuse_locked(
         // queue. Marking the assignment active also prevents its old ACK task
         // from releasing the worker after the new context has been requested.
         lxapp.logic_contexts.send_modify(|count| *count += 1);
-        sender.send(ServiceMessage::CreateAppSvc {
+        if let Err(e) = sender.send(ServiceMessage::CreateAppSvc {
             lxapp: lxapp.clone(),
-        })?;
+        }) {
+            release_logic_context(lxapp);
+            return Err(e.into());
+        }
         assignments.insert(key, WorkerAssignment::Active(assignment.worker_id()));
         info!("Reactivating worker for app {}", lxapp.appid);
     } else {
@@ -1345,22 +1351,39 @@ pub(crate) fn restart_app_svc(
     }
     // Reserve the replacement before the old termination can acknowledge.
     lxapp.logic_contexts.send_modify(|count| *count += 1);
-    if matches!(assignment, WorkerAssignment::Terminating { .. }) {
-        sender.send(ServiceMessage::CreateAppSvc {
+    let queued = if matches!(assignment, WorkerAssignment::Terminating { .. }) {
+        sender
+            .send(ServiceMessage::CreateAppSvc {
+                lxapp: lxapp.clone(),
+            })
+            .map(|()| {
+                assignments.insert(key, WorkerAssignment::Active(assignment.worker_id()));
+            })
+    } else {
+        let (ack_tx, _ack_rx) = oneshot::channel();
+        match sender.send(ServiceMessage::TerminateAppSvc {
             lxapp: lxapp.clone(),
-        })?;
-        assignments.insert(key, WorkerAssignment::Active(assignment.worker_id()));
-        return Ok(());
+            worker_id: assignment.worker_id(),
+            ack_tx,
+        }) {
+            Ok(()) => sender.send(ServiceMessage::CreateAppSvc {
+                lxapp: lxapp.clone(),
+            }),
+            Err(e) => Err(e),
+        }
+    };
+    if let Err(e) = queued {
+        release_logic_context(&lxapp);
+        return Err(e.into());
     }
-
-    let (ack_tx, _ack_rx) = oneshot::channel();
-    sender.send(ServiceMessage::TerminateAppSvc {
-        lxapp: lxapp.clone(),
-        worker_id: assignment.worker_id(),
-        ack_tx,
-    })?;
-    sender.send(ServiceMessage::CreateAppSvc { lxapp })?;
     Ok(())
+}
+
+/// Give back a Logic context reserved for a message that never reached the worker.
+fn release_logic_context(lxapp: &LxApp) {
+    lxapp
+        .logic_contexts
+        .send_modify(|count| *count = count.saturating_sub(1));
 }
 
 #[cfg(test)]

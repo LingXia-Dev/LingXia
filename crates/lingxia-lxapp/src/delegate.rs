@@ -61,7 +61,10 @@ fn finalize_lxapp_close(app: &Arc<LxApp>, session_id: u64) -> bool {
 
     if let Some(manager) = lxapp::get_lxapps_manager() {
         manager.remove_from_stack(&app.appid);
-        manager.schedule_delayed_destroy(app.appid.clone());
+        // A retired instance is never recalled, so no timer may outlive it.
+        if !app.session.is_retired() {
+            manager.schedule_delayed_destroy(app.appid.clone());
+        }
     }
     true
 }
