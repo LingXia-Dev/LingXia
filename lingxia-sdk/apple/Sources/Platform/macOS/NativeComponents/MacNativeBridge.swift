@@ -108,9 +108,22 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
         self.pageKey = Self.makePageKey(for: webView)
         self.surfaceBinding = surfaceBinding
         super.init()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(rendererDidTerminate(_:)),
+            name: Notification.Name("LingXiaWebContentProcessDidTerminate"),
+            object: webView
+        )
+    }
+
+    @objc private func rendererDidTerminate(_ notification: Notification) {
+        // Rust posts on the WebKit callback thread before starting recovery.
+        // The manager survives, but none of its old document's mounts do.
+        componentManager?.teardownAll()
     }
 
     deinit {
+        NotificationCenter.default.removeObserver(self)
         if let manager = componentManager {
             Task { @MainActor in
                 manager.teardownAll()
@@ -120,6 +133,7 @@ final class MacNativeBridge: NSObject, WKScriptMessageHandler {
 
     private func invalidate() {
         active = false
+        NotificationCenter.default.removeObserver(self)
         webView?.configuration.userContentController.removeScriptMessageHandler(forName: "NativeComponent")
         componentManager?.teardownAll()
         componentManager = nil
