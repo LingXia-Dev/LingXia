@@ -23,18 +23,50 @@ See `lingxia publish --help` for the flags.
 
 **Update signatures:**
 
-Follows `lingxia publish --env`: `dev` may be unsigned; `prod` requires
-`--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`), including
-when publishing the `draft` channel.
+The CLI signs the update envelope. Do not hand-build `signed` / `signatures`
+when publishing an app — pass a key file and let `lingxia publish` do it.
 
-Host `update:` is the switch. Omit the table: a `dev` build's `checkUpdate`
-still runs (unverified); `prod` builds skip. If present, list 1 or 2
-`trustedPublicKeys`.
+Follows `--env`: `dev` may be unsigned; `prod` requires
+`--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`), including
+`--channel draft`.
+
+The key file is one line: base64url (no `=`) of a 32-byte Ed25519 seed, mode
+`0600` or `0400`. The matching public key is that seed's 32-byte verify key
+in the same encoding. Put 1 or 2 of those under host `update.trustedPublicKeys`.
+Omit the `update:` table: a `dev` build still runs `checkUpdate` (unverified);
+`prod` builds skip check-update entirely.
+
+```bash
+umask 077
+node --input-type=module -e '
+import { generateKeyPairSync } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+const { privateKey } = generateKeyPairSync("ed25519");
+const { d: seed, x: pub } = privateKey.export({ format: "jwk" });
+const path = join(homedir(), ".lingxia", "update.key");
+mkdirSync(join(homedir(), ".lingxia"), { recursive: true });
+writeFileSync(path, seed + "\n", { mode: 0o600 });
+console.log("public:", pub);
+'
+```
+
+Paste the printed `public:` value into `update.trustedPublicKeys`, then:
+
+```bash
+lingxia publish --env prod --update-signing-key-file ~/.lingxia/update.key
+```
+
+The envelope is one compact JSON manifest plus 1–2 Ed25519 signatures **over
+those JSON bytes** (not over the base64). `signatures` is an array so a key
+rotation can carry old and new; verify is OR against the embedded public keys.
+The CLI emits one signature today — do not add a second unless you are
+rotating. Host packages sign `channel: ""`.
 
 Verification follows the **host build's** `env`, never the requested channel.
 A `prod` build requires a trusted signature even for a `draft` lxapp opened
-with `lx.navigateToApp({ channel: 'draft' })`. Host updates carry no channel;
-the signed manifest uses an empty channel for host packages.
+with `lx.navigateToApp({ channel: 'draft' })`.
 
 **Publish tokens (wallet):**
 

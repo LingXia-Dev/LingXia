@@ -158,6 +158,9 @@ host-update manifest uses an empty channel; lxapp/plugin manifests bind their
 requested channel. Publishing requires a key in `prod`, including `draft`.
 Runtime verification follows the host env: `prod` requires signatures and skips
 checks without trusted keys; `dev` can query and accept unsigned updates.
+`signatures` is 1–2 Ed25519 sigs (OR against 1–2 embedded public keys) so a
+rotation can overlap; the CLI emits one. Wire bytes live with the cloud
+contract, not here.
 
 ## File map
 
