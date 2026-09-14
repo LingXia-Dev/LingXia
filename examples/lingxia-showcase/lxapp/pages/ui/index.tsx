@@ -112,6 +112,11 @@ export default function UIPage() {
   const surfaceFloatPositions: Array<'center' | 'top' | 'bottom' | 'left' | 'right'> = ['center', 'top', 'bottom', 'left', 'right'];
   const [surfaceWidth, setSurfaceWidth] = React.useState('');
   const [surfaceHeight, setSurfaceHeight] = React.useState('');
+  const [surfaceChrome, setSurfaceChrome] = React.useState<'system' | 'full'>('full');
+  const surfaceChromes: Array<{ id: 'system' | 'full'; label: string; hint: string }> = [
+    { id: 'system', label: 'System', hint: 'Standard title bar with system close, minimize, and drag.' },
+    { id: 'full', label: 'Full', hint: 'Page runs to the window edge; system close/min/max and drag stay on top.' },
+  ];
   // Shown when an entered width/height can't be parsed (so a typo like a
   // full-width "％" surfaces instead of silently opening at the wrong size).
   const [sizeError, setSizeError] = React.useState('');
@@ -262,6 +267,35 @@ export default function UIPage() {
                     </div>
                   )}
 
+                  {surfaceKind === 'window' && (
+                    <div>
+                      <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Chrome</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        {surfaceChromes.map((chrome) => {
+                          const active = surfaceChrome === chrome.id;
+                          const baseClass = 'py-2 text-sm rounded-lg transition-colors border';
+                          const className = active
+                            ? `${baseClass} bg-surface-800 border-line-800 text-white`
+                            : `${baseClass} bg-surface border-line-200 text-gray-600 hover:bg-surface-50`;
+                          return (
+                            <button
+                              key={chrome.id}
+                              type="button"
+                              data-testid={`surface-chrome-${chrome.id}`}
+                              className={className}
+                              onClick={() => setSurfaceChrome(chrome.id)}
+                            >
+                              {chrome.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mt-2 text-xs text-gray-500 leading-5 bg-surface-50 rounded-lg px-3 py-2">
+                        {surfaceChromes.find((chrome) => chrome.id === surfaceChrome)?.hint}
+                      </div>
+                    </div>
+                  )}
+
                   {surfaceKind === 'float' && (
                     <div>
                       <div className="text-xs uppercase text-gray-500 tracking-wide mb-2">Position</div>
@@ -345,6 +379,7 @@ export default function UIPage() {
                       verb: surfaceKind,
                       edge: surfaceEdge,
                       position: surfaceFloatPosition,
+                      chrome: surfaceKind === 'window' ? surfaceChrome : undefined,
                       width,
                       height,
                     });

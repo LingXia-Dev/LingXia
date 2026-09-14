@@ -1,6 +1,8 @@
 //! Windows host-window implementation owned by the Windows SDK layer.
 
 #[cfg(feature = "shell-chrome")]
+mod full_chrome_caption;
+#[cfg(feature = "shell-chrome")]
 mod tabbar_overflow;
 #[cfg(feature = "shell-chrome")]
 pub(crate) use tabbar_overflow::{dismiss_tabbar_overflow_on_owner, toggle_tabbar_overflow};
@@ -3012,6 +3014,7 @@ fn sync_window_layout(hwnd: HWND) {
 #[cfg(feature = "shell-chrome")]
 fn sync_chrome_overlays(hwnd: HWND, webtag_key: Option<&str>) {
     sync_transparent_tabbar_overlay(hwnd, webtag_key);
+    full_chrome_caption::sync_full_chrome_caption_overlay(hwnd);
     tabbar_overflow::reposition_tabbar_overflow(hwnd);
 }
 
@@ -8057,6 +8060,8 @@ pub fn show_webview_window_with_chrome(
             center_host_window_on_work_area(hwnd_handle(hwnd));
         }
     }
+    #[cfg(feature = "shell-chrome")]
+    sync_chrome_overlays(hwnd, Some(webtag.key()));
     Ok(())
 }
 
@@ -9252,7 +9257,9 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                     }
                     return LRESULT(0);
                 }
-                if is_native_framed_window(hwnd) && invoke_window_close_handler(hwnd) {
+                if (is_native_framed_window(hwnd) || is_full_chrome_window(hwnd))
+                    && invoke_window_close_handler(hwnd)
+                {
                     return LRESULT(0);
                 }
                 // A browser tab can install a page-level close handler on the
@@ -9575,6 +9582,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
+                full_chrome_caption::destroy_full_chrome_caption_overlay(hwnd);
+                #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_phone_tab_switcher(hwnd);
@@ -9586,6 +9595,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 let _ = end_window_resize_drag(hwnd, false);
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
+                #[cfg(feature = "shell-chrome")]
+                full_chrome_caption::destroy_full_chrome_caption_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_sidebar_tabbar_popup(hwnd);
                 #[cfg(feature = "shell-chrome")]

@@ -22,6 +22,8 @@ interface DemoSurfaceConfig {
   page?: string;
   edge?: SurfaceEdge;
   position?: SurfaceFloatPosition;
+  /** Window decoration. Ignored unless `verb` is `window`. */
+  chrome?: "system" | "full";
 }
 
 const app = showcaseApp();
@@ -433,12 +435,12 @@ Page({
     }
     await this._releaseDemoSurfaceKey(DEMO_PAGE_SURFACE_KEY);
     if (verb === "window") {
-      // Edge-to-edge when the host build can keep the system controls; the
-      // page lays out under the runtime's drag strip via the page-chrome
-      // top inset, so it never has to opt in to stay movable.
-      const chrome = lx.supports({ capability: "surface", value: "window", chrome: "full" })
-        ? ("full" as const)
-        : ("system" as const);
+      // `full` runs the page to the window edge and keeps system min/max/close
+      // plus a runtime drag strip. `system` is the standard title bar. The
+      // demo lets the caller pick; default to full when the host offers it.
+      const wantsFull = cfg.chrome !== "system"
+        && lx.supports({ capability: "surface", value: "window", chrome: "full" });
+      const chrome = wantsFull ? ("full" as const) : ("system" as const);
       return lx.surface.openPage("surface", {
         as: "window",
         chrome,
