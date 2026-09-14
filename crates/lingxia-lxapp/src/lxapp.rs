@@ -49,6 +49,8 @@ mod runtime_bootstrap;
 mod runtime_ops;
 pub(crate) mod runtime_registry;
 mod scheme;
+mod shutdown;
+pub use shutdown::{resume_lxapp_admission, shutdown_lxapps_except};
 pub(crate) mod security;
 mod surface;
 pub use security::{LxAppSecurityPrivilege, is_public_network_address};
@@ -95,7 +97,8 @@ pub use runtime_ops::{
     is_lxapp_open, is_pull_down_refresh_enabled, list_lxapps, mark_lxapp_active,
     notify_lxapp_host_visibility, notify_page_host_visibility, notify_page_instance,
     notify_page_instance_by_id, on_low_memory, open_control_lxapp_page, open_lxapp,
-    refresh_auto_appearances, restart_lxapp, touch_page_instance_by_id, uninstall_lxapp,
+    refresh_auto_appearances, restart_lxapp, terminate_lxapp, touch_page_instance_by_id,
+    uninstall_lxapp,
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
@@ -271,6 +274,9 @@ pub struct LxApps {
     /// Collection of lxapps, keyed by app ID
     /// Uses DashMap for thread-safe concurrent access
     lxapps: DashMap<String, Arc<LxApp>>,
+    // Includes removed instances until their Logic has acknowledged shutdown.
+    instances: Mutex<HashMap<LxAppSessionId, Arc<LxApp>>>,
+    admission: Arc<shutdown::Admission>,
 
     /// LxApp navigation stack for tracking app navigation history
     /// Uses VecDeque for efficient push/pop operations
@@ -338,6 +344,8 @@ impl LxApps {
 
         Self {
             lxapps: DashMap::new(),
+            instances: Mutex::new(HashMap::new()),
+            admission: Arc::new(shutdown::Admission::default()),
             runtime,
             executor,
             lxapp_stack: Mutex::new(VecDeque::with_capacity(capacity)),
@@ -381,6 +389,7 @@ impl LxApps {
         appid: String,
         release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             let session_class = self.session_class_for(&appid);
@@ -417,6 +426,7 @@ impl LxApps {
         appid: String,
         release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             if lingxia_app_context::home_app_id() != Some(appid.as_str()) {
@@ -443,6 +453,7 @@ impl LxApps {
         appid: String,
         release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             if lingxia_app_context::home_app_id() == Some(appid.as_str()) {
@@ -471,6 +482,7 @@ impl LxApps {
     }
 
     fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         self.with_session_transition(appid, || {
             if let Some(app) = self.lxapps.get(appid) {
                 return Ok(app.clone());
@@ -490,6 +502,7 @@ impl LxApps {
                 self.executor.clone(),
                 Channel::Release,
             )?);
+            self.track_instance(&app);
             app.bind_and_seal_resource_grants();
             self.lxapps.insert(appid.to_string(), app.clone());
             Ok(app)
@@ -497,6 +510,7 @@ impl LxApps {
     }
 
     fn initialize_home_lxapp(&self, appid: String) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             if let Some(app) = self.lxapps.get(&appid) {
@@ -512,6 +526,7 @@ impl LxApps {
                 self.runtime.clone(),
                 self.executor.clone(),
             )?);
+            self.track_instance(&app);
             app.bind_and_seal_resource_grants();
             self.lxapps.insert(appid, app.clone());
             Ok(app)
@@ -571,6 +586,7 @@ impl LxApps {
                 release_type,
             )?,
         });
+        self.track_instance(&new_lxapp);
         new_lxapp.bind_and_seal_resource_grants();
 
         // Publish with the map entry API. Two concurrent cold opens must both
@@ -583,6 +599,57 @@ impl LxApps {
                 Ok(new_lxapp)
             }
         }
+    }
+
+    fn track_instance(&self, app: &Arc<LxApp>) {
+        let _ = app.admission.set(self.admission.clone());
+        let mut instances = self.instances.lock().unwrap();
+        instances.retain(|_, old| {
+            self.lxapps.contains_key(&old.appid)
+                || !old.session.is_cancelled()
+                || *old.logic_contexts.borrow() != 0
+        });
+        instances.insert(app.session_id(), app.clone());
+    }
+
+    /// Full shutdown must also retire capsule-closed and previously removed instances.
+    pub(crate) fn retire_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
+        let app = self
+            .lxapps
+            .get(appid)
+            .map(|entry| entry.value().clone())
+            .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+        self.retire_instance(&app)?;
+        Ok(app)
+    }
+
+    fn retire_instance(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
+        self.with_session_transition(&app.appid, || {
+            let _open = app
+                .presentation_open_lock
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            // Retain before removing from the live map, including on timeout/cancellation.
+            self.instances
+                .lock()
+                .unwrap()
+                .insert(app.session_id(), app.clone());
+            app.session.retired.store(true, Ordering::SeqCst);
+            let is_current = self
+                .lxapps
+                .get(&app.appid)
+                .is_some_and(|current| Arc::ptr_eq(current.value(), app));
+            if is_current {
+                self.remove_from_stack(&app.appid);
+                self.cancel_delayed_destroy(&app.appid);
+            }
+            app.shutdown()?;
+            app.complete_programmatic_close(app.session_id());
+            if is_current {
+                self.lxapps.remove(&app.appid);
+            }
+            Ok(())
+        })
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -606,6 +673,7 @@ impl LxApps {
         appid: String,
         release_type: Channel,
     ) -> Result<Arc<LxApp>, LxAppError> {
+        let _admission = self.admission.enter(&appid)?;
         let transition_appid = appid.clone();
         self.with_session_transition(&transition_appid, move || {
             let session_class = self.session_class_for(&appid);
@@ -888,6 +956,8 @@ pub struct LxApp {
 
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
+    pub(crate) logic_contexts: tokio::sync::watch::Sender<usize>,
+    admission: OnceLock<Arc<shutdown::Admission>>,
 
     // Mutable state - protected by mutex for fine-grained locking
     pub(crate) state: Mutex<LxAppState>,
@@ -945,6 +1015,7 @@ impl LxAppSessionStatus {
 pub(crate) struct LxAppSession {
     pub(crate) id: LxAppSessionId,
     status: AtomicU8,
+    retired: AtomicBool,
     // Replaced on reopen: a closed instance stays in the manager for 30 minutes
     // and is handed back as-is, so the cancellation must not outlive the close.
     shutdown: Mutex<tokio::sync::watch::Sender<bool>>,
@@ -1059,6 +1130,7 @@ impl LxAppSession {
         Self {
             id,
             status: AtomicU8::new(LxAppSessionStatus::Closed as u8),
+            retired: AtomicBool::new(false),
             shutdown: Mutex::new(tokio::sync::watch::channel(false).0),
         }
     }
@@ -1074,6 +1146,9 @@ impl LxAppSession {
     /// Re-arm a cancelled session for a fresh open. Waiters from the closed run
     /// keep the old channel and stay cancelled by its sender being dropped.
     pub(crate) fn revive(&self) {
+        if self.retired.load(Ordering::SeqCst) {
+            return;
+        }
         let mut sender = self.shutdown_sender();
         if *sender.borrow() {
             *sender = tokio::sync::watch::channel(false).0;
@@ -1990,6 +2065,8 @@ impl LxApp {
             shown: AtomicBool::new(true),
             restart_closing_session: AtomicU64::new(0),
             session,
+            logic_contexts: tokio::sync::watch::channel(0).0,
+            admission: OnceLock::new(),
             state: Mutex::new(LxAppState::new()),
             presentation_open_lock: Mutex::new(()),
             page_chrome_mutation_lock: tokio::sync::Mutex::new(()),
@@ -3197,10 +3274,20 @@ impl LxApp {
     }
 
     pub(crate) fn open(&self, options: LxAppStartupOptions) -> Result<(), LxAppError> {
+        let _admission = self
+            .admission
+            .get()
+            .map(|gate| gate.enter(&self.appid))
+            .transpose()?;
         let _open_guard = self
             .presentation_open_lock
             .lock()
             .unwrap_or_else(|err| err.into_inner());
+        if self.session.retired.load(Ordering::SeqCst) {
+            return Err(LxAppError::Runtime(
+                "LxApp instance has been terminated".into(),
+            ));
+        }
         // A reused session (close then navigateToApp before delayed destroy)
         // still carries the scheme from last show. Re-resolve Auto now so the
         // capsule and overlays paint in the product's current scheme.
@@ -3496,6 +3583,11 @@ impl LxApp {
     /// Restarts the current LxApp with cleanup + reopen.
     /// This offloads the sequence to the service executor to avoid blocking JS worker.
     pub fn restart(&self) -> Result<(), LxAppError> {
+        let _admission = self
+            .admission
+            .get()
+            .map(|gate| gate.enter(&self.appid))
+            .transpose()?;
         let from_session = self.session.id;
         let current_status = self.status();
 
@@ -3775,6 +3867,54 @@ mod delayed_destroy_tests {
             )
             .expect("test platform"),
         )
+    }
+
+    #[test]
+    fn capsule_closed_app_is_recallable_but_retired_app_gets_a_new_session() {
+        #[cfg(target_vendor = "apple")]
+        let _host = crate::apple_host_stubs::headless_lifecycle();
+        let appid = format!("app.lingxia.retirement.{}", Uuid::new_v4());
+        register_synthetic_lxapp(appid.clone());
+        let runtime = class_test_runtime();
+        let manager = LxApps::new((*runtime).clone(), LxAppWorkers::init(1), 2);
+        let app = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        app.set_status(LxAppSessionStatus::Opened);
+        crate::delegate::LxAppDelegate::on_lxapp_closed(&app, app.session_id());
+        assert_eq!(app.status(), LxAppSessionStatus::Closed);
+        assert!(!app.session.is_cancelled(), "capsule close preserves Logic");
+        let recalled = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        assert!(Arc::ptr_eq(&app, &recalled));
+
+        let retired = manager.retire_lxapp(&appid).unwrap();
+        assert!(Arc::ptr_eq(&app, &retired));
+        assert!(
+            app.session.is_cancelled(),
+            "Closed must not skip force shutdown"
+        );
+        assert!(!manager.lxapps.contains_key(&appid));
+        app.session.revive();
+        assert!(
+            app.session.is_cancelled(),
+            "retirement is permanent even through a retained Arc"
+        );
+        assert!(app.open(LxAppStartupOptions::default()).is_err());
+
+        let replacement = manager
+            .ensure_lxapp(appid.clone(), Channel::Release)
+            .unwrap();
+        assert_ne!(replacement.session_id(), app.session_id());
+        replacement.set_status(LxAppSessionStatus::Opened);
+        crate::delegate::LxAppDelegate::on_lxapp_closed(&replacement, app.session_id());
+        assert_eq!(
+            replacement.status(),
+            LxAppSessionStatus::Opened,
+            "old native close must not affect replacement"
+        );
+        manager.retire_lxapp(&appid).unwrap();
     }
 
     #[test]

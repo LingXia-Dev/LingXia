@@ -166,6 +166,34 @@ pub fn close_lxapp(appid: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Permanently retire an instance, including a capsule-closed app. Starts teardown
+/// synchronously; await the returned future to confirm Logic shutdown.
+/// Unlike capsule close, the next open creates a fresh instance and session id.
+pub fn terminate_lxapp(
+    appid: &str,
+) -> Result<impl std::future::Future<Output = Result<(), LxAppError>> + Send + 'static, LxAppError>
+{
+    let manager = super::runtime_registry::get_lxapps_manager()
+        .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+    let app = manager.retire_lxapp(appid)?;
+    Ok(async move {
+        let mut stopped = app.logic_contexts.subscribe();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stopped.wait_for(|count| *count == 0),
+        )
+        .await
+        .map_err(|_| LxAppError::Runtime(format!("Timed out terminating Logic for {}", app.appid)))?
+        .map_err(|_| {
+            LxAppError::Runtime(format!(
+                "Logic termination channel closed for {}",
+                app.appid
+            ))
+        })?;
+        Ok(())
+    })
+}
+
 pub fn restart_lxapp(appid: &str) -> Result<(), LxAppError> {
     let app = super::runtime_registry::try_get(appid)
         .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;

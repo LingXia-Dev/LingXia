@@ -103,7 +103,7 @@ impl LxApp {
 impl LxAppDelegate for LxApp {
     fn on_lxapp_opened(self: Arc<Self>, path: String, session_id: u64) -> String {
         let current_session = self.session_id();
-        if session_id != current_session {
+        if session_id != current_session || self.session.is_cancelled() {
             return String::new();
         }
 
