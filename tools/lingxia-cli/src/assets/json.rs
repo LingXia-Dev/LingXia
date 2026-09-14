@@ -30,8 +30,14 @@ pub(super) fn build_app_json_from_config(
     let mut obj = serde_json::Map::new();
     obj.insert(
         "productName".to_string(),
-        serde_json::json!(app.product_name),
+        serde_json::json!(app.product_name.default_name()),
     );
+    if !app.product_name.translations().is_empty() {
+        obj.insert(
+            "productNames".to_string(),
+            serde_json::to_value(app.product_name.translations())?,
+        );
+    }
     obj.insert(
         "productVersion".to_string(),
         serde_json::json!(app.product_version),
@@ -47,18 +53,11 @@ pub(super) fn build_app_json_from_config(
         // Verbatim: the env suffix is package-id only, never lingxiaId.
         obj.insert("lingxiaId".to_string(), serde_json::json!(lingxia_id));
     }
-    if let Some(windows_app_id) = config
-        .windows
-        .as_ref()
-        .and_then(|windows| windows.app_id.as_deref())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let resolved_id = match resolved_env.effective_package_id_suffix() {
-            Some(suffix) => format!("{windows_app_id}{suffix}"),
-            None => windows_app_id.to_string(),
-        };
-        obj.insert("windowsAppId".to_string(), serde_json::json!(resolved_id));
+    if let Some(windows_app_id) = config.resolved_windows_app_id(resolved_env)? {
+        obj.insert(
+            "windowsAppId".to_string(),
+            serde_json::json!(windows_app_id),
+        );
     }
     obj.insert(
         "env".to_string(),

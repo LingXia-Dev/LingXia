@@ -304,6 +304,13 @@ fn validate_settings_destination_query(
 pub struct AppConfig {
     #[serde(rename = "productName")]
     pub product_name: String,
+    /// Locale-specific display names from `app.productName` (excluding default).
+    #[serde(
+        rename = "productNames",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub product_names: BTreeMap<String, String>,
     #[serde(rename = "productVersion")]
     pub product_version: String,
 
@@ -643,6 +650,22 @@ impl AppConfig {
         }
         validate_panels(self.panels.as_ref())
     }
+
+    /// Resolve the display name for a system locale: exact tag, then language,
+    /// then `productName`.
+    pub fn localized_product_name(&self, locale: &str) -> &str {
+        resolve_localized_product_name(&self.product_name, &self.product_names, locale)
+    }
+}
+
+/// Install host config, resolving `productName` against the OS locale once.
+pub fn set_app_config_for_locale(
+    mut config: AppConfig,
+    locale: &str,
+) -> Result<(), AppContextError> {
+    let resolved = config.localized_product_name(locale).to_string();
+    config.product_name = resolved;
+    set_app_config(config)
 }
 
 pub fn set_app_config(config: AppConfig) -> Result<(), AppContextError> {
@@ -804,6 +827,71 @@ pub fn page_background_color(dark: bool) -> Option<String> {
 
 pub fn product_name() -> Option<&'static str> {
     APP_CONFIG.get().map(|c| c.product_name.as_str())
+}
+
+pub fn resolve_localized_product_name<'a>(
+    default: &'a str,
+    names: &'a BTreeMap<String, String>,
+    locale: &str,
+) -> &'a str {
+    if names.is_empty() {
+        return default;
+    }
+    let Some(canonical) = canonical_system_locale(locale) else {
+        return default;
+    };
+    for candidate in locale_lookup_candidates(&canonical) {
+        if let Some(name) = names.get(&candidate) {
+            return name;
+        }
+        if let Some((_, name)) = names
+            .iter()
+            .find(|(key, _)| key.eq_ignore_ascii_case(&candidate))
+        {
+            return name;
+        }
+    }
+    default
+}
+
+fn canonical_system_locale(locale: &str) -> Option<String> {
+    let base = locale
+        .split(['@', '.'])
+        .next()
+        .unwrap_or_default()
+        .replace('_', "-");
+    let trimmed = base.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let parsed = language_tags::LanguageTag::parse(trimmed).ok()?;
+    parsed.validate().ok()?;
+    parsed.canonicalize().ok().map(|tag| tag.into_string())
+}
+
+fn locale_lookup_candidates(canonical: &str) -> Vec<String> {
+    let mut out = vec![canonical.to_string()];
+    let parts: Vec<&str> = canonical.split('-').collect();
+    if let Some(lang) = parts.first() {
+        if let Some(region) = parts
+            .iter()
+            .rev()
+            .find(|part| part.len() == 2 && part.bytes().all(|b| b.is_ascii_alphabetic()))
+        {
+            let language_region = format!("{lang}-{region}");
+            if !out.iter().any(|candidate| candidate == &language_region) {
+                out.push(language_region);
+            }
+        }
+    }
+    let mut rest = canonical;
+    while let Some((head, _)) = rest.rsplit_once('-') {
+        if !out.iter().any(|candidate| candidate == head) {
+            out.push(head.to_string());
+        }
+        rest = head;
+    }
+    out
 }
 
 pub fn home_app_id() -> Option<&'static str> {
@@ -1122,6 +1210,7 @@ mod tests {
     fn test_config(product_name: &str) -> AppConfig {
         AppConfig {
             product_name: product_name.to_string(),
+            product_names: Default::default(),
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
             lingxia_server: None,
@@ -1406,5 +1495,32 @@ mod tests {
         );
         assert!(!handoff.offer("late.png".to_string(), 3_000));
         assert_eq!(handoff.take_and_close(), None);
+    }
+
+    #[test]
+    fn localized_product_name_matches_exact_then_language_then_default() {
+        let mut names = std::collections::BTreeMap::new();
+        names.insert("zh-CN".to_string(), "我的应用".to_string());
+        names.insert("ja".to_string(), "マイアプリ".to_string());
+        assert_eq!(
+            super::resolve_localized_product_name("My App", &names, "zh-CN"),
+            "我的应用"
+        );
+        assert_eq!(
+            super::resolve_localized_product_name("My App", &names, "zh_CN.UTF-8"),
+            "我的应用"
+        );
+        assert_eq!(
+            super::resolve_localized_product_name("My App", &names, "zh-Hans-CN"),
+            "我的应用"
+        );
+        assert_eq!(
+            super::resolve_localized_product_name("My App", &names, "ja-JP"),
+            "マイアプリ"
+        );
+        assert_eq!(
+            super::resolve_localized_product_name("My App", &names, "en-US"),
+            "My App"
+        );
     }
 }

@@ -68,12 +68,7 @@ pub(super) fn execute_android(mut ctx: DevContext) -> Result<()> {
 
         // Step 2: Install
         println!("{}", "Step 2/4: Installing...".bold());
-        let package_id = ctx
-            .config
-            .android
-            .as_ref()
-            .map(|android| android.package_id.clone())
-            .ok_or_else(|| anyhow!("Missing android.packageId in lingxia.yaml"))?;
+        let package_id = ctx.config.resolved_package_id("android")?;
         let install_config = InstallConfig {
             project_root: ctx.project_root.clone(),
             artifact_path: Some(artifact_path.to_path_buf()),

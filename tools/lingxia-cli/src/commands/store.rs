@@ -2,8 +2,8 @@
 //! App Store, AppGallery, Google Play, Xiaomi, OPPO, Honor). Talks to OS stores
 //! only; never the LingXia server (that's `publish`) and never builds (that's
 //! `build`). Credentials come from the wallet (`lingxia auth login <provider>`)
-//! or the per-provider env groups; package identity comes from the platform
-//! blocks in `lingxia.yaml`.
+//! or the per-provider env groups; package identity comes from `app.packageId`
+//! in `lingxia.yaml` (platform blocks may override).
 
 mod appgallery;
 mod appstore;
@@ -81,50 +81,21 @@ fn expected_identity(config: &LingXiaConfig, platform: StorePlatform) -> Result<
         | StorePlatform::Xiaomi
         | StorePlatform::Oppo
         | StorePlatform::Honor => android_package(config)?.to_string(),
-        StorePlatform::Harmony => config
-            .harmony
-            .as_ref()
-            .map(|h| h.bundle_name.clone())
-            .context("missing `harmony.bundleName` in lingxia.yaml")?,
-        StorePlatform::Windows => {
-            let fallback = config
-                .app
-                .as_ref()
-                .map(|a| a.product_name.trim())
-                .unwrap_or_default();
-            crate::platform::windows::msix::sanitize_identity(
-                config
-                    .windows
-                    .as_ref()
-                    .and_then(|w| w.app_id.as_deref())
-                    .map(str::trim)
-                    .filter(|v| !v.is_empty())
-                    .unwrap_or(fallback),
-            )
-        }
+        StorePlatform::Harmony => config.resolved_package_id("harmony")?,
+        StorePlatform::Windows => crate::platform::windows::msix::sanitize_identity(
+            &config.resolved_package_id("windows")?,
+        ),
     })
 }
 
-fn android_package(config: &LingXiaConfig) -> Result<&str> {
-    config
-        .android
-        .as_ref()
-        .map(|a| a.package_id.as_str())
-        .context("missing `android.packageId` in lingxia.yaml")
+fn android_package(config: &LingXiaConfig) -> Result<String> {
+    config.resolved_package_id("android")
 }
 
 fn apple_bundle_id(config: &LingXiaConfig, platform: StorePlatform) -> Result<String> {
     match platform {
-        StorePlatform::Ios => config
-            .ios
-            .as_ref()
-            .map(|c| c.bundle_id.clone())
-            .context("missing `ios.bundleId` in lingxia.yaml"),
-        StorePlatform::Macos => config
-            .macos
-            .as_ref()
-            .and_then(|c| c.bundle_id.clone())
-            .context("missing `macos.bundleId` in lingxia.yaml"),
+        StorePlatform::Ios => config.resolved_package_id("ios"),
+        StorePlatform::Macos => config.resolved_package_id("macos"),
         _ => bail!("not an Apple platform"),
     }
 }
@@ -195,7 +166,7 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
                 .and_then(|s| s.default_track.as_deref());
             googleplay::submit(
                 &resolve_googleplay()?,
-                android_package(&config)?,
+                &android_package(&config)?,
                 default_track,
                 &artifact,
                 &opts,
@@ -204,7 +175,7 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
         StorePlatform::Xiaomi => {
             xiaomi::submit(
                 &resolve_xiaomi()?,
-                android_package(&config)?,
+                &android_package(&config)?,
                 &artifact,
                 &opts,
             )?;
@@ -217,7 +188,7 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
                 .and_then(|s| s.app_id.as_deref());
             oppo::submit(
                 &resolve_oppo()?,
-                android_package(&config)?,
+                &android_package(&config)?,
                 app_id,
                 &artifact,
                 &opts,
@@ -261,13 +232,13 @@ fn status(platform: StorePlatform) -> Result<()> {
             appgallery::status(&agc, cfg)?;
         }
         StorePlatform::GooglePlay => {
-            googleplay::status(&resolve_googleplay()?, android_package(&config)?)?;
+            googleplay::status(&resolve_googleplay()?, &android_package(&config)?)?;
         }
         StorePlatform::Xiaomi => {
-            xiaomi::status(&resolve_xiaomi()?, android_package(&config)?)?;
+            xiaomi::status(&resolve_xiaomi()?, &android_package(&config)?)?;
         }
         StorePlatform::Oppo => {
-            oppo::status(&resolve_oppo()?, android_package(&config)?)?;
+            oppo::status(&resolve_oppo()?, &android_package(&config)?)?;
         }
         StorePlatform::Honor => {
             let cfg = config

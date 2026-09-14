@@ -112,7 +112,10 @@ android {
     compileSdk = {{COMPILE_SDK}}
 
     defaultConfig {
-        applicationId = "{{PACKAGE_ID}}"
+        applicationId = providers
+            .gradleProperty("lingxia.applicationId")
+            .orElse("{{PACKAGE_ID}}")
+            .get()
         if (lingxiaApplicationIdSuffix.isNotEmpty()) {
             applicationIdSuffix = lingxiaApplicationIdSuffix
         }

@@ -42,18 +42,12 @@ pub fn package(
         .app
         .as_ref()
         .ok_or_else(|| anyhow!("Missing [app] config for MSIX packaging"))?;
-    let product_name = app.product_name.trim();
+    let product_name = app.product_name.default_name().trim();
     let project_name = app.project_name.trim();
     let windows_cfg = config.windows.as_ref();
 
     let exe_name = dist_exe_name(dist_dir)?;
-    let identity = sanitize_identity(
-        windows_cfg
-            .and_then(|w| w.app_id.as_deref())
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .unwrap_or(product_name),
-    );
+    let identity = sanitize_identity(&config.resolved_package_id("windows")?);
     // The Identity Publisher must match the eventual signing cert's subject.
     // Default to a readable `CN=<product>`; override with `windows.publisher`.
     let publisher = windows_cfg

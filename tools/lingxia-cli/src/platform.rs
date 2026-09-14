@@ -482,7 +482,8 @@ mod tests {
         let source = temp.path().join("app-release.apk");
         fs::write(&source, b"apk").unwrap();
         let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
-        config.app.as_mut().unwrap().product_name = "Branded Display Name".to_string();
+        config.app.as_mut().unwrap().product_name =
+            crate::config::ProductName::new("Branded Display Name");
         let artifact = project_named_artifact(&source, Some(&config)).unwrap();
 
         assert_eq!(artifact, temp.path().join("demo.apk"));

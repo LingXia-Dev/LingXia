@@ -15,6 +15,10 @@ val lingxiaApplicationIdSuffix = providers
     .gradleProperty("lingxia.applicationIdSuffix")
     .orElse("")
     .get()
+val lingxiaApplicationId = providers
+    .gradleProperty("lingxia.applicationId")
+    .orElse("com.lingxia.example.lxapp")
+    .get()
 val lingxiaAppName = providers
     .gradleProperty("lingxia.appName")
     .orElse("LingXia App Demo")
@@ -110,7 +114,7 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.lingxia.example.lxapp"
+        applicationId = lingxiaApplicationId
         if (lingxiaApplicationIdSuffix.isNotEmpty()) {
             applicationIdSuffix = lingxiaApplicationIdSuffix
         }
