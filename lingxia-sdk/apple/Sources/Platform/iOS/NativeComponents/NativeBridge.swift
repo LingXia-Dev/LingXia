@@ -103,8 +103,10 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
     }
 
     deinit {
+        // Capture isolated state before passing self to NotificationCenter.
+        let manager = componentManager
         NotificationCenter.default.removeObserver(self)
-        if let manager = componentManager {
+        if let manager {
             Task { @MainActor in
                 manager.teardownAll()
             }
