@@ -482,7 +482,7 @@ impl LxApps {
     }
 
     fn ensure_builtin_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
-        let _admission = self.admission.enter(&appid)?;
+        let _admission = self.admission.enter(appid)?;
         self.with_session_transition(appid, || {
             if let Some(app) = self.lxapps.get(appid) {
                 return Ok(app.clone());
