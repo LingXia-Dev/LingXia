@@ -125,10 +125,22 @@ test('release notes carry only what an author wrote a note for', () => {
   assert.doesNotMatch(out, /stop the crash/);
 });
 
-test('release notes explain the trailer when nobody used one', () => {
+test('release notes stay empty when nobody wrote a trailer', () => {
   const out = renderNotes([commit('fix(cli): tidy')], { version: '0.12.0' });
-  assert.match(out, /No commit in this range carried a `Release-Note:` trailer/);
-  assert.match(out, /Release-Note: lxapps can now open/);
+  assert.match(out, /_No user-facing notes\._/);
+  assert.doesNotMatch(out, /openUrl/);
+  assert.doesNotMatch(out, /Release-Note:/);
+  assert.doesNotMatch(out, /trustedDomains/);
+});
+
+test('a CLI patch with no trailer says so without a how-to', () => {
+  const out = renderNotes([commit('chore(release): bump cli')], {
+    version: '0.16.1',
+    component: 'cli',
+  });
+  assert.match(out, /_CLI patch only — no user-facing notes\._/);
+  assert.doesNotMatch(out, /openUrl/);
+  assert.doesNotMatch(out, /Release-Note:/);
 });
 
 test('finds the last release tag reachable from HEAD', () => {

@@ -155,7 +155,7 @@ export function renderChangelog(commits, { version, date }) {
   return parts.join('\n');
 }
 
-export function renderNotes(commits, { version }) {
+export function renderNotes(commits, { version, component } = {}) {
   const noted = commits.filter((commit) => commit.note);
   const { sections, other } = bySection(noted, () => true);
   const parts = [`# LingXia ${version}`, ''];
@@ -177,17 +177,12 @@ export function renderNotes(commits, { version }) {
   }
 
   if (noted.length === 0) {
+    // This file is the GitHub Release body. A how-to for writing trailers
+    // used to live here and shipped as if it were the release.
     parts.push(
-      '_No commit in this range carried a `Release-Note:` trailer._',
-      '',
-      'Add one to any change a reader should know about:',
-      '',
-      '```',
-      'feat(lxapp): add lx.surface.openUrl',
-      '',
-      'Release-Note: lxapps can now open an external URL in its own tab,',
-      'subject to trustedDomains.',
-      '```',
+      component === 'cli'
+        ? '_CLI patch only — no user-facing notes._'
+        : '_No user-facing notes._',
       '',
     );
   }
@@ -261,8 +256,9 @@ function main(argv) {
   const version = at('--version', 'Unreleased');
   const date = at('--date', new Date().toISOString().slice(0, 10));
   const commits = readCommits(range);
+  const component = at('--component', null);
   const rendered = mode === 'notes'
-    ? renderNotes(commits, { version })
+    ? renderNotes(commits, { version, component })
     : renderChangelog(commits, { version, date });
   const writeTo = at('--write', null);
   if (writeTo) {

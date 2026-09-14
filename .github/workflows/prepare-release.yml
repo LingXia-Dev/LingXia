@@ -97,7 +97,8 @@ jobs:
             mkdir -p "$(dirname "$notes_file")"
             bash scripts/release/main.sh notes \
               --from "$previous_cli_tag" \
-              --version "$VERSION" > "$notes_file"
+              --version "$VERSION" \
+              --component cli > "$notes_file"
           fi
           echo "RELEASE_NOTES_FILE=$notes_file" >> "$GITHUB_ENV"
 
