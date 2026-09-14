@@ -56,22 +56,16 @@ android {
 
 dependencies {
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.webkit)
-    implementation(libs.material)
+    implementation(libs.androidx.appcompat.compat)
+    implementation(libs.androidx.webkit.compat)
+    implementation(libs.material.compat)
     implementation(libs.androidsvg)
     implementation(libs.androidx.viewpager2)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)
     implementation(libs.media3.transformer)
-    implementation(libs.androidx.camera.core)
-    implementation(libs.androidx.camera.camera2)
-    implementation(libs.androidx.camera.lifecycle)
-    implementation(libs.androidx.camera.view)
-    implementation(libs.androidx.camera.video)
     implementation(libs.androidx.exifinterface)
-    implementation(libs.mlkit.barcode.scanning)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidxTestRunner)
     androidTestImplementation(libs.androidxTestCore)
@@ -79,7 +73,7 @@ dependencies {
 }
 
 val sdkGroupId = "io.github.lingxia-dev"
-val sdkArtifactId = "lingxia"
+val sdkArtifactId = "lingxia-core"
 val sdkVersion = (project.findProperty("version") as String?) ?: "0.0.1"
 
 // Publishing only applies when building the SDK standalone for release; the

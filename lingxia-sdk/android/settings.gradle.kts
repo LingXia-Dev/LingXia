@@ -20,4 +20,8 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "lingxia-sdk"
-include(":lingxia")
+include(":lingxia", ":lingxia-core", ":lingxia-camera", ":lingxia-scanner")
+
+project(":lingxia-core").projectDir = file("lingxia")
+project(":lingxia").projectDir = file("lingxia-full")
+include(":compatibility")

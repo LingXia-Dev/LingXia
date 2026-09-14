@@ -1,5 +1,7 @@
 package com.lingxia.lxapp.APIs
 
+import com.lingxia.app.media.modules.MediaModules
+
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.graphics.Color
@@ -40,11 +42,9 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.lingxia.lxapp.APIs.media.ImageOps
-import com.lingxia.lxapp.APIs.media.MediaCaptureFragment
 import com.lingxia.lxapp.APIs.media.MediaPickerFragment
 import com.lingxia.lxapp.APIs.media.MediaPreviewFragment
 import com.lingxia.lxapp.APIs.media.PreviewMediaPayload
-import com.lingxia.lxapp.APIs.media.ScanCodeFragment
 import com.lingxia.app.Lingxia
 import com.lingxia.lxapp.LxApp
 import com.lingxia.app.LxLog
@@ -1387,7 +1387,7 @@ internal object LxAppMedia {
                     1 -> "video"
                     else -> "image" // 0: images, 2: mix -> image
                 }
-                MediaCaptureFragment.start(
+                MediaModules.capture(
                     appCompat,
                     captureMode,
                     maxDurationSeconds,
@@ -1426,7 +1426,7 @@ internal object LxAppMedia {
         appCompat.runOnUiThread {
             try {
                 val normalizedTypes = if (scanTypes.isNotEmpty()) scanTypes else intArrayOf()
-                ScanCodeFragment.start(appCompat, normalizedTypes, onlyFromCamera, callbackId)
+                MediaModules.scan(appCompat, normalizedTypes, onlyFromCamera, callbackId)
             } catch (e: Exception) {
                 LxLog.e(TAG, "scanCode failed", e)
                 NativeApi.onCallback(callbackId, false, "1001")

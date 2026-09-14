@@ -77,7 +77,7 @@ case "$profile" in
     cd "$ROOT_DIR"
     ./lingxia-sdk/android/gradlew \
       -p lingxia-sdk/android \
-      :lingxia:testDebugUnitTest \
+      :lingxia-core:testDebugUnitTest \
       --tests 'com.lingxia.webview.*' \
       --no-daemon
     ;;
