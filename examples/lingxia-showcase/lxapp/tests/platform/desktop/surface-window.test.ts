@@ -284,26 +284,32 @@ function captionButtonNames(
   maximized = false,
 ): string[] {
   if (platform === 'macos') {
-    if (kind === 'close') return ['close', 'Close'];
-    if (kind === 'minimize') return ['minimize', 'Minimize'];
-    return ['zoom', 'full screen', 'maximize', 'Maximize'];
+    if (kind === 'close') return ['close'];
+    if (kind === 'minimize') return ['minimize'];
+    return ['zoom', 'full screen'];
   }
   if (kind === 'close') return ['Close'];
   if (kind === 'minimize') return ['Minimize'];
   return maximized ? ['Restore'] : ['Maximize'];
 }
 
+function nameMatchesKeyword(name: string, keyword: string): boolean {
+  return name.toLocaleLowerCase().includes(keyword.toLocaleLowerCase());
+}
+
 function inWindowCaption(window: DesktopWindowInfo, node: DesktopAxNode): boolean {
-  const top = window.bounds.y;
-  const bottom = window.bounds.y + Math.min(48, Math.max(28, Math.round(window.bounds.h * 0.12)));
+  // macOS traffic lights sit a few points past the reported frame.
+  const slop = 12;
+  const top = window.bounds.y - slop;
+  const bottom = window.bounds.y + Math.min(48, Math.max(28, Math.round(window.bounds.h * 0.12))) + slop;
   return node.role === 'button'
     && node.enabled
     && node.rect.w > 0
     && node.rect.h > 0
     && node.rect.y + node.rect.h > top
     && node.rect.y < bottom
-    && node.rect.x >= window.bounds.x - 2
-    && node.rect.x + node.rect.w <= window.bounds.x + window.bounds.w + 2;
+    && node.rect.x >= window.bounds.x - slop
+    && node.rect.x + node.rect.w <= window.bounds.x + window.bounds.w + slop;
 }
 
 async function captionButton(
@@ -322,7 +328,7 @@ async function captionButton(
           all: true,
         }).catch(() => [] as DesktopAxNode[]);
         const match = nodes.find((candidate) => (
-          candidate.name.trim() === name && inWindowCaption(current, candidate)
+          nameMatchesKeyword(candidate.name, name) && inWindowCaption(current, candidate)
         ));
         if (match) return match;
         observation = `${name}: ${nodes.map((node) => `${node.role}/${node.name}`).join(', ') || 'none'}`;
