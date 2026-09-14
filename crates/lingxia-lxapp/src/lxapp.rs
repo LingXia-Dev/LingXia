@@ -605,7 +605,9 @@ impl LxApps {
         let _ = app.admission.set(self.admission.clone());
         let mut instances = self.instances.lock().unwrap();
         instances.retain(|_, old| {
-            self.lxapps.contains_key(&old.appid)
+            self.lxapps
+                .get(&old.appid)
+                .is_some_and(|live| Arc::ptr_eq(live.value(), old))
                 || !old.session.is_cancelled()
                 || *old.logic_contexts.borrow() != 0
         });
@@ -614,42 +616,48 @@ impl LxApps {
 
     /// Full shutdown must also retire capsule-closed and previously removed instances.
     pub(crate) fn retire_lxapp(&self, appid: &str) -> Result<Arc<LxApp>, LxAppError> {
-        let app = self
-            .lxapps
-            .get(appid)
-            .map(|entry| entry.value().clone())
-            .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
-        self.retire_instance(&app)?;
-        Ok(app)
+        // Resolve under the transition lock so a concurrent recreate cannot swap
+        // in a replacement that outlives this termination.
+        self.with_session_transition(appid, || {
+            let app = self
+                .lxapps
+                .get(appid)
+                .map(|entry| entry.value().clone())
+                .ok_or_else(|| LxAppError::ResourceNotFound(appid.to_string()))?;
+            self.retire_locked(&app)?;
+            Ok(app)
+        })
     }
 
     fn retire_instance(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
-        self.with_session_transition(&app.appid, || {
-            let _open = app
-                .presentation_open_lock
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            // Retain before removing from the live map, including on timeout/cancellation.
-            self.instances
-                .lock()
-                .unwrap()
-                .insert(app.session_id(), app.clone());
-            app.session.retired.store(true, Ordering::SeqCst);
-            let is_current = self
-                .lxapps
-                .get(&app.appid)
-                .is_some_and(|current| Arc::ptr_eq(current.value(), app));
-            if is_current {
-                self.remove_from_stack(&app.appid);
-                self.cancel_delayed_destroy(&app.appid);
-            }
-            app.shutdown()?;
-            app.complete_programmatic_close(app.session_id());
-            if is_current {
-                self.lxapps.remove(&app.appid);
-            }
-            Ok(())
-        })
+        self.with_session_transition(&app.appid, || self.retire_locked(app))
+    }
+
+    fn retire_locked(&self, app: &Arc<LxApp>) -> Result<(), LxAppError> {
+        let _open = app
+            .presentation_open_lock
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // Retain before removing from the live map, including on timeout/cancellation.
+        self.instances
+            .lock()
+            .unwrap()
+            .insert(app.session_id(), app.clone());
+        app.session.retired.store(true, Ordering::SeqCst);
+        let is_current = self
+            .lxapps
+            .get(&app.appid)
+            .is_some_and(|current| Arc::ptr_eq(current.value(), app));
+        if is_current {
+            self.remove_from_stack(&app.appid);
+            self.cancel_delayed_destroy(&app.appid);
+        }
+        app.shutdown()?;
+        app.complete_programmatic_close(app.session_id());
+        if is_current {
+            self.lxapps.remove(&app.appid);
+        }
+        Ok(())
     }
 
     /// Completely destroy an LxApp (shutdown + removal from manager and stack).
@@ -1143,7 +1151,7 @@ impl LxAppSession {
     /// Re-arm a cancelled session for a fresh open. Waiters from the closed run
     /// keep the old channel and stay cancelled by its sender being dropped.
     pub(crate) fn revive(&self) {
-        if self.retired.load(Ordering::SeqCst) {
+        if self.is_retired() {
             return;
         }
         let mut sender = self.shutdown_sender();
@@ -1154,6 +1162,10 @@ impl LxAppSession {
 
     pub(crate) fn is_cancelled(&self) -> bool {
         *self.shutdown_sender().borrow()
+    }
+
+    pub(crate) fn is_retired(&self) -> bool {
+        self.retired.load(Ordering::SeqCst)
     }
 
     pub(crate) async fn while_alive<F: std::future::Future>(&self, future: F) -> Option<F::Output> {
@@ -3279,7 +3291,7 @@ impl LxApp {
             .presentation_open_lock
             .lock()
             .unwrap_or_else(|err| err.into_inner());
-        if self.session.retired.load(Ordering::SeqCst) {
+        if self.session.is_retired() {
             return Err(LxAppError::Runtime(
                 "LxApp instance has been terminated".into(),
             ));
