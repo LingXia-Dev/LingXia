@@ -262,19 +262,38 @@ impl AxEl {
         Some(AxEl(raw))
     }
 
-    /// Child AX elements (`AXChildren`).
+    fn raw(&self) -> *mut c_void {
+        self.0
+    }
+
+    /// Child AX elements (`AXChildren`), plus the window chrome buttons that
+    /// macOS exposes only as attributes (`AXCloseButton` and friends) so
+    /// keyword queries like `name:close` can find them.
     pub(super) fn children(&self) -> Vec<AxEl> {
-        let Some(v) = self.copy("AXChildren") else {
-            return Vec::new();
-        };
         let mut out = Vec::new();
-        unsafe {
-            let count = CFArrayGetCount(v.0).max(0);
-            for i in 0..count {
-                let el = CFArrayGetValueAtIndex(v.0, i);
-                if !el.is_null() {
-                    CFRetain(el);
-                    out.push(AxEl(el as *mut c_void));
+        if let Some(v) = self.copy("AXChildren") {
+            unsafe {
+                let count = CFArrayGetCount(v.0).max(0);
+                for i in 0..count {
+                    let el = CFArrayGetValueAtIndex(v.0, i);
+                    if !el.is_null() {
+                        CFRetain(el);
+                        out.push(AxEl(el as *mut c_void));
+                    }
+                }
+            }
+        }
+        if self.attr_string("AXRole").as_deref() == Some("AXWindow") {
+            for attr in [
+                "AXCloseButton",
+                "AXMinimizeButton",
+                "AXZoomButton",
+                "AXFullScreenButton",
+            ] {
+                if let Some(button) = self.attr_element(attr)
+                    && !out.iter().any(|child| child.raw() == button.raw())
+                {
+                    out.push(button);
                 }
             }
         }
