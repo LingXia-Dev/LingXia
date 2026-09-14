@@ -1,27 +1,28 @@
 name: Enable cloud provider (if configured)
 description: >
-  If a GitHub token that can read the private cloud client is present, check
-  that repo out and export LINGXIA_WITH_PROVIDERS=cloud plus
-  LINGXIA_PROVIDER_CLOUD_PATH so a following `lingxia build`/`package` injects
-  it. A no-op (build without the provider) when the token is absent — i.e. on
-  forks or an unconfigured repo. The clone URL is not a secret (github.com);
-  only the token is. GITHUB_TOKEN cannot be used: it is scoped to this public
-  repository and cannot clone LingXia-Dev/lingxia-device-cloud.
+  If secrets for the private cloud client are present, check that repo out and
+  export LINGXIA_WITH_PROVIDERS=cloud plus LINGXIA_PROVIDER_CLOUD_PATH so a
+  following `lingxia build`/`package` injects it. A no-op (build without the
+  provider) when the token or repository secret is absent — i.e. on forks or
+  an unconfigured repo. GITHUB_TOKEN cannot be used: it is scoped to this
+  public repository and cannot clone a private cloud-client repo.
+  Empty/HEAD ref checks out that repo's default-branch HEAD.
 inputs:
   github-token:
     description: >
-      Fine-grained PAT (resource owner LingXia-Dev, Contents: Read, repository
-      LingXia-Dev/lingxia-device-cloud only).
+      Fine-grained PAT (Contents: Read on the private cloud-client repository
+      named by the repository input).
     required: false
   repository:
-    description: GitHub owner/name of the private cloud client.
+    description: >
+      GitHub owner/name of the private cloud client. Empty skips the provider.
     required: false
-    default: LingXia-Dev/lingxia-device-cloud
   ref:
-    description: Branch or SHA to check out.
+    description: >
+      Branch or SHA to check out. Empty or HEAD uses the repository default
+      branch (latest HEAD).
     required: false
-    # This provider revision supports host env separately from lxapp channels.
-    default: 6d58527f55bc0c513c97f2cee14afea43e3be9d9
+    default: HEAD
 runs:
   using: composite
   steps:
@@ -29,27 +30,57 @@ runs:
       shell: bash
       env:
         TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ inputs.repository }}
       run: |
         set -euo pipefail
-        if [ -z "${TOKEN:-}" ]; then
-          echo "ℹ️ cloud provider token absent — building without the provider."
+        if [ -z "${TOKEN:-}" ] || [ -z "${REPOSITORY:-}" ]; then
+          echo "ℹ️ cloud provider secrets absent — building without the provider."
           echo "enabled=false" >> "$GITHUB_OUTPUT"
           exit 0
         fi
         echo "enabled=true" >> "$GITHUB_OUTPUT"
 
-    - if: steps.gate.outputs.enabled == 'true'
+    - id: resolve
+      if: steps.gate.outputs.enabled == 'true'
+      shell: bash
+      env:
+        INPUT_REPOSITORY: ${{ inputs.repository }}
+        INPUT_REF: ${{ inputs.ref }}
+      run: |
+        set -euo pipefail
+        repo="${INPUT_REPOSITORY}"
+        ref="${INPUT_REF:-HEAD}"
+        echo "repository=$repo" >> "$GITHUB_OUTPUT"
+        echo "ref=$ref" >> "$GITHUB_OUTPUT"
+        if [ "$ref" = "HEAD" ]; then
+          echo "pin=false" >> "$GITHUB_OUTPUT"
+        else
+          echo "pin=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    # Omit `ref` so actions/checkout uses the cloud client's default branch HEAD.
+    - if: steps.gate.outputs.enabled == 'true' && steps.resolve.outputs.pin != 'true'
       uses: actions/checkout@v4
       with:
-        repository: ${{ inputs.repository }}
-        ref: ${{ inputs.ref }}
+        repository: ${{ steps.resolve.outputs.repository }}
         token: ${{ inputs.github-token }}
         # actions/checkout requires repositories to stay under GITHUB_WORKSPACE.
         path: .ci/lingxia-cloud-client
         persist-credentials: false
 
+    - if: steps.gate.outputs.enabled == 'true' && steps.resolve.outputs.pin == 'true'
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ steps.resolve.outputs.repository }}
+        ref: ${{ steps.resolve.outputs.ref }}
+        token: ${{ inputs.github-token }}
+        path: .ci/lingxia-cloud-client
+        persist-credentials: false
+
     - if: steps.gate.outputs.enabled == 'true'
       shell: bash
+      env:
+        CLOUD_REF: ${{ steps.resolve.outputs.ref }}
       run: |
         set -euo pipefail
         dest="${GITHUB_WORKSPACE}/.ci/lingxia-cloud-client"
@@ -61,4 +92,4 @@ runs:
           echo "LINGXIA_WITH_PROVIDERS=cloud"
           echo "LINGXIA_PROVIDER_CLOUD_PATH=$dest"
         } >> "$GITHUB_ENV"
-        echo "✅ cloud provider enabled from ${{ inputs.repository }}@${{ inputs.ref }}."
+        echo "✅ cloud provider enabled (${CLOUD_REF})."
