@@ -88,6 +88,11 @@ where
             .app
             .upgrade()
             .ok_or_else(|| HostError::new(rong::error::E_INTERNAL, "LxApp has been dropped"))?;
+        if app.session.is_cancelled() {
+            return Err(
+                HostError::new(rong::error::E_ABORT, "LxApp session has been terminated").into(),
+            );
+        }
         f(&app)
     })
 }

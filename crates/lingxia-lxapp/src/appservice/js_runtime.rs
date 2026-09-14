@@ -812,6 +812,9 @@ pub(crate) async fn lxapp_service_handler(
             }
             // Clear guards on app terminate so the previous LxAppCtx is dropped immediately.
             http::set_network_access_guard(Box::new(DenyAllNetworkAccessGuard));
+            lxapp
+                .logic_contexts
+                .send_modify(|count| *count = count.saturating_sub(1));
             // ACK back to the caller that cleanup is complete
             let _ = ack_tx.send(());
         }
@@ -1144,6 +1147,7 @@ pub(crate) fn create_app_svc(
             free_workers.lock().unwrap().push_front(worker_id);
             return Ok(());
         }
+        lxapp.logic_contexts.send_modify(|count| *count += 1);
         if let Err(e) = sender.send(ServiceMessage::CreateAppSvc { lxapp }) {
             free_workers.lock().unwrap().push_front(worker_id);
             return Err(e.into());
@@ -1171,6 +1175,11 @@ fn reactivate_or_reuse_locked(
     assignments: &mut HashMap<usize, WorkerAssignment>,
     key: usize,
 ) -> Result<bool, LxAppError> {
+    if lxapp.session.is_cancelled() {
+        return Err(LxAppError::Runtime(
+            "Cannot start a terminated LxApp session".into(),
+        ));
+    }
     let Some(assignment) = assignments.get(&key).copied() else {
         return Ok(false);
     };
@@ -1179,6 +1188,7 @@ fn reactivate_or_reuse_locked(
         // The terminate message is already ahead of this create in the same
         // queue. Marking the assignment active also prevents its old ACK task
         // from releasing the worker after the new context has been requested.
+        lxapp.logic_contexts.send_modify(|count| *count += 1);
         sender.send(ServiceMessage::CreateAppSvc {
             lxapp: lxapp.clone(),
         })?;
@@ -1328,6 +1338,13 @@ pub(crate) fn restart_app_svc(
         )));
     };
 
+    if lxapp.session.is_cancelled() {
+        return Err(LxAppError::Runtime(
+            "Cannot restart a terminated LxApp session".into(),
+        ));
+    }
+    // Reserve the replacement before the old termination can acknowledge.
+    lxapp.logic_contexts.send_modify(|count| *count += 1);
     if matches!(assignment, WorkerAssignment::Terminating { .. }) {
         sender.send(ServiceMessage::CreateAppSvc {
             lxapp: lxapp.clone(),
@@ -1352,6 +1369,77 @@ mod worker_assignment_tests {
     use std::collections::{HashMap, VecDeque};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn termination_ack_follows_context_task_cancellation() {
+        use rong::{JSEngine, RongJS};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let platform = Arc::new(
+                    lingxia_platform::Platform::new(
+                        root.path().join("data").display().to_string(),
+                        root.path().join("cache").display().to_string(),
+                        "en-US".into(),
+                    )
+                    .unwrap(),
+                );
+                let appid = format!("app.lingxia.logic-termination.{}", uuid::Uuid::new_v4());
+                crate::lxapp::register_synthetic_lxapp(appid.clone());
+                let app = Arc::new(
+                    crate::LxApp::new_with_session_class_for_test(
+                        appid,
+                        platform,
+                        crate::appservice::LxAppWorkers::init(1),
+                        crate::lxapp::AppSessionClass::StandardApp,
+                    )
+                    .unwrap(),
+                );
+                app.bind_arc();
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                super::register_app_ctx(&ctx, &app);
+                assert!(crate::LxApp::from_ctx(&ctx).is_ok());
+                let dropped = Arc::new(AtomicBool::new(false));
+                struct Pending(Arc<AtomicBool>);
+                impl Drop for Pending {
+                    fn drop(&mut self) {
+                        self.0.store(true, Ordering::SeqCst);
+                    }
+                }
+                let pending = Pending(dropped.clone());
+                ctx.spawn_task(async move {
+                    let _pending = pending;
+                    std::future::pending::<()>().await;
+                });
+                tokio::task::yield_now().await;
+                app.logic_contexts.send_replace(1);
+                app.session.cancel();
+                assert!(
+                    crate::LxApp::from_ctx(&ctx).is_err(),
+                    "native access must stop before worker teardown"
+                );
+                let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+                let mut current = Some(ctx);
+                super::lxapp_service_handler(
+                    0,
+                    runtime,
+                    super::ServiceMessage::TerminateAppSvc {
+                        lxapp: app.clone(),
+                        worker_id: 0,
+                        ack_tx,
+                    },
+                    &mut current,
+                )
+                .await;
+                ack_rx.await.unwrap();
+                assert!(current.is_none());
+                assert!(dropped.load(Ordering::SeqCst));
+                assert_eq!(*app.logic_contexts.borrow(), 0);
+            })
+            .await;
+    }
 
     #[test]
     fn reactivated_assignment_is_not_released_by_old_termination() {
@@ -1512,7 +1600,7 @@ impl http::NetworkAccessGuard for LxAppCtx {
     /// Check if the mini app has access to the specified domain
     /// Returns Ok(()) if access is granted, Err with error message if denied
     fn check_access(&self, domain: &str) -> JSResult<()> {
-        if self.lxapp.is_domain_allowed(domain) {
+        if !self.lxapp.session.is_cancelled() && self.lxapp.is_domain_allowed(domain) {
             Ok(())
         } else {
             Err(network_access_denied_error(format!(

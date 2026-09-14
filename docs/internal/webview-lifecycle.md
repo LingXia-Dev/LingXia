@@ -754,6 +754,27 @@ timer, cancels view calls, removes the instance from `pages`/`pages_by_id`/
 `destroy_webview_if_matches` — but it does **not** dispatch `onHide`/`onUnload`
 or run the surface cascades.
 
+### Capsule close versus full shutdown
+
+Capsule/native close may keep the Logic context and instance for recall; `Closed`
+is a presentation state, not proof that Logic exited. `terminate_lxapp` retires an
+instance permanently, cancels session API access, tears down pages, and waits for
+all queued Logic contexts to drain. A later open creates a fresh session id.
+
+`shutdown_lxapps_except(preserved_app_ids)` additionally blocks creation, opening,
+and recall outside the caller's explicit preserved set. In-progress admissions
+finish before the shutdown snapshot is taken. Removed instances remain tracked
+until Logic acknowledges termination; timeout or cancellation leaves the barrier
+closed and retries wait for the same instances. Call `resume_lxapp_admission`
+only after the caller's operation is complete. The runtime provides lifecycle
+mechanisms; identity policy belongs to the auth provider.
+
+Logic-context accounting includes queued recreates/restarts: an old termination
+ACK must not report completion while a replacement context is still queued.
+Context-owned tasks drain before the count is decremented. Native API lookup and
+network permission checks reject a cancelled session before the worker processes
+its termination message.
+
 ### LxApp shutdown order
 
 `shutdown_with_options()`:

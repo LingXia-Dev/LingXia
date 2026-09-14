@@ -121,10 +121,11 @@ pub use lxapp::{
         set_open_blocked_listener as set_lxapp_open_blocked_listener,
         set_registry_change_listener as set_lxapp_registry_change_listener,
     },
-    restart_lxapp, set_display_language_preference, set_display_language_preference_in,
-    set_host_appearance_preference, subscribe_display_language_effective,
-    subscribe_display_language_state, subscribe_host_appearance, tabbar, touch_page_instance_by_id,
-    try_get, uninstall_lxapp,
+    restart_lxapp, resume_lxapp_admission, set_display_language_preference,
+    set_display_language_preference_in, set_host_appearance_preference, shutdown_lxapps_except,
+    subscribe_display_language_effective, subscribe_display_language_state,
+    subscribe_host_appearance, tabbar, terminate_lxapp, touch_page_instance_by_id, try_get,
+    uninstall_lxapp,
 };
 #[doc(hidden)]
 pub use native_authority::NativeControlPlaneAuthority;
