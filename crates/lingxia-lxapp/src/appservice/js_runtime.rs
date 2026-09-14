@@ -1381,7 +1381,7 @@ mod worker_assignment_tests {
                     lingxia_platform::Platform::new(
                         root.path().join("data").display().to_string(),
                         root.path().join("cache").display().to_string(),
-                        "en-US".into(),
+                        "en-US".to_string(),
                     )
                     .unwrap(),
                 );
