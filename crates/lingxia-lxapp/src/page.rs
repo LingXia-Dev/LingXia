@@ -22,8 +22,9 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_webview::runtime::destroy_webview_if_matches;
 use lingxia_webview::{
-    IncomingWebMessage, LoadDataRequest, LogLevel, NavigationOutcome, NavigationPolicy,
-    NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController, WebViewDelegate,
+    IncomingWebMessage, LoadDataRequest, LogLevel, NativeWebViewId, NavigationOutcome,
+    NavigationPolicy, NewWindowPolicy, WebTag, WebView, WebViewBuilder, WebViewController,
+    WebViewDelegate,
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
@@ -204,6 +205,7 @@ pub struct PageState {
     /// A parked page holds an inert blank document while nobody is on it;
     /// its navigation events must not run the render pipeline.
     parked: bool,
+    renderer_recovery_pending: bool,
     // Navigation bar state
     pub(crate) navbar_state: NavigationBarState,
     // A malformed page config owns this page's load outcome; it must not
@@ -421,6 +423,7 @@ impl PageInstance {
             ready_dispatched: false,
             reset: PageReset::None,
             parked: false,
+            renderer_recovery_pending: false,
             navbar_state: page_config.create_navbar_state(),
             config_load_error,
             enable_pull_down_refresh: page_config.is_pull_down_refresh_enabled(),
@@ -821,6 +824,46 @@ impl PageInstance {
         }
     }
 
+    pub(crate) fn needs_renderer_recovery(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .is_ok_and(|state| state.renderer_recovery_pending)
+    }
+
+    /// WKWebView survives renderer loss; only its document must be rebuilt.
+    #[cfg(target_vendor = "apple")]
+    pub(crate) fn recover_renderer(&self) -> Result<(), LxAppError> {
+        let _transition = self.reset_transition_guard();
+        {
+            let mut state = self.inner.state.lock().unwrap();
+            if !std::mem::take(&mut state.renderer_recovery_pending) {
+                return Ok(());
+            }
+            // A departed page already owes a fresh document on its next entry.
+            if state.document_is_departing() {
+                return Ok(());
+            }
+        }
+        if self.webview().is_none() {
+            return Ok(());
+        }
+        if let Err(error) = self.load_html() {
+            self.inner.state.lock().unwrap().renderer_recovery_pending = true;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn invalidate_renderer_state(state: &mut PageState) {
+        // Logic and the entry/query survive. Replaying onLoad would reset
+        // forms and duplicate subscriptions; only onReady belongs to the new DOM.
+        state.bridge_ready = false;
+        state.ready_dispatched = false;
+        state.render_status = PageRenderStatus::Unstarted;
+        state.renderer_recovery_pending = true;
+    }
+
     /// Apply a re-read page JSON to a retained instance. Dev reload uses this
     /// so `navigationStyle` and the rest of the native chrome follow the file.
     pub(crate) fn apply_reloaded_page_json(&self, lxapp: &LxApp) {
@@ -979,6 +1022,7 @@ impl PageInstance {
         // `onReady` is the first-paint hook of a visible entry. A document
         // that finished off-screen (preloaded tab) waits until Show.
         if state.entry == EntryPhase::Loaded
+            && (!state.requires_bridge_ready || state.bridge_ready)
             && state.render_status == PageRenderStatus::Finished
             && !state.ready_dispatched
             && state.visibility == Visibility::Shown
@@ -1428,6 +1472,12 @@ impl PageInstance {
         // pipeline again.
         if let Ok(mut state) = self.inner.state.lock() {
             state.parked = false;
+            // A normal rebuild may have repaired the document before the
+            // deferred foreground recovery gets to it.
+            #[cfg(target_vendor = "apple")]
+            {
+                state.renderer_recovery_pending = false;
+            }
         }
         let lxapp = self.owning_lxapp();
         let path = self.path();
@@ -1918,6 +1968,24 @@ enum ClassifiedNavigation {
 }
 
 impl WebViewDelegate for PageInstance {
+    fn on_web_content_process_terminated(&self, native_view: NativeWebViewId) {
+        if self
+            .webview()
+            .is_none_or(|view| view.native_view_id() != native_view)
+        {
+            return;
+        }
+        {
+            let _transition = self.reset_transition_guard();
+            Self::invalidate_renderer_state(&mut self.inner.state.lock().unwrap());
+            self.cancel_bridge_work();
+        }
+        warn!("Page renderer terminated; scheduling recovery")
+            .with_appid(self.appid())
+            .with_path(self.path());
+        self.owning_lxapp().recover_terminated_renderers();
+    }
+
     fn on_navigation_event(&self, event: lingxia_webview::NavigationEvent) {
         // A parked document's navigation is bookkeeping, not a page render:
         // it must not inject scripts or advance the render clock.
@@ -2088,11 +2156,64 @@ mod tests {
             ready_dispatched: false,
             reset: PageReset::None,
             parked: false,
+            renderer_recovery_pending: false,
             navbar_state: NavigationBarState::default(),
             config_load_error: None,
             enable_pull_down_refresh: false,
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
+        }
+    }
+
+    #[test]
+    fn renderer_recovery_preserves_logic_entry_query_and_visibility() {
+        let mut state = test_page_state();
+        state.entry = EntryPhase::Loaded;
+        state.visibility = Visibility::Shown;
+        state.event = Some(PageLifecycleEvent::OnShow);
+        state.query = serde_json::json!({"step": "login"});
+        state.bridge_ready = true;
+        state.ready_dispatched = true;
+        state.render_status = PageRenderStatus::Finished;
+
+        PageInstance::invalidate_renderer_state(&mut state);
+        assert!(state.renderer_recovery_pending);
+        assert!(!state.accepts_view_state_patches());
+        assert_eq!(state.entry, EntryPhase::Loaded);
+        assert_eq!(state.visibility, Visibility::Shown);
+        assert_eq!(state.query, serde_json::json!({"step": "login"}));
+        assert!(!PageInstance::handshake_should_request_on_load(
+            &state, false
+        ));
+
+        let mut events = Vec::new();
+        state.requires_bridge_ready = true;
+        state.render_status = PageRenderStatus::Finished;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert!(events.is_empty());
+        state.bridge_ready = true;
+        PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+        assert_eq!(events, vec![(PageLifecycleEvent::OnReady, None)]);
+    }
+
+    #[test]
+    fn renderer_recovery_does_not_reenter_hidden_or_parked_pages() {
+        for parked in [false, true] {
+            let mut state = test_page_state();
+            state.parked = parked;
+            if parked {
+                state.reset = PageReset::AwaitingEntry;
+            }
+            PageInstance::invalidate_renderer_state(&mut state);
+            assert_eq!(state.parked, parked);
+            assert!(!PageInstance::handshake_should_request_on_load(
+                &state, false
+            ));
+            let mut events = Vec::new();
+            state.bridge_ready = true;
+            state.render_status = PageRenderStatus::Finished;
+            PageInstance::collect_ready_lifecycle_events(&mut state, &mut events);
+            assert!(events.is_empty());
         }
     }
 
