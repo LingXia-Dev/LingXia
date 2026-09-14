@@ -548,8 +548,9 @@ surfaces are WebView-lifecycle only — no app page lifecycle events fire.
 ## Renderer termination recovery
 
 `PageInstance` handles the platform's exact-native-view termination callback,
-invalidates render readiness and cancels the departed bridge connection. Host
-`OnHide` defers recovery; `OnShow` retries pending pages before notifying Logic.
+invalidates render readiness and cancels the departed bridge connection. `OnHide` (host background, capsule close
+or app switch) defers recovery; `OnShow` retries pending pages before notifying
+Logic.
 
 On Apple, reload through `load_html()` (never `reload()` against the logical
 base URL). Keep PageSvc, its live data, entry/query and visibility; the fresh

@@ -1121,7 +1121,7 @@ impl LxApp {
     }
 
     pub(crate) fn recover_terminated_renderers(&self) {
-        if !self.host_foreground.load(Ordering::SeqCst)
+        if !self.shown.load(Ordering::SeqCst)
             || !matches!(
                 self.status(),
                 LxAppSessionStatus::Opened | LxAppSessionStatus::Opening
@@ -1162,9 +1162,9 @@ impl LxApp {
         payload_json: Option<String>,
     ) -> Result<(), LxAppError> {
         match event {
-            AppServiceEvent::OnHide => self.host_foreground.store(false, Ordering::SeqCst),
+            AppServiceEvent::OnHide => self.shown.store(false, Ordering::SeqCst),
             AppServiceEvent::OnShow => {
-                self.host_foreground.store(true, Ordering::SeqCst);
+                self.shown.store(true, Ordering::SeqCst);
                 self.recover_terminated_renderers();
             }
             _ => {}
