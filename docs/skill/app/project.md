@@ -186,7 +186,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 - `productVersion` — semver, stamped into every OS package
 - `platforms` — enabled set (`macos`, `windows`, `ios`, `android`, `harmony`)
 
-Optional `lingxiaId` / `lingxiaServer` / `packageIdSuffix`: [Environment](#environment).
+Optional `lingxiaId` / `lingxiaServer`: [Environment](#environment).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
@@ -307,7 +307,7 @@ A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env
 
 **What each env produces:**
 
-| Env | Default `packageIdSuffix` | Launcher icon | Default `lingxia dev/build` | Default `lingxia package` |
+| Env | Package id suffix | Launcher icon | Default `lingxia dev/build` | Default `lingxia package` |
 |---|---|---|---|---|
 | `dev` | `.dev` | red `D` badge | ✓ | |
 | `prod` | `(none)` | unmodified | | ✓ |
@@ -342,18 +342,7 @@ appLinks:
 
 Omit an env → no App Links for that build. See [App Links](./applinks.md).
 
-### Per-env `packageIdSuffix`
-
-Built-in defaults (`.dev` / none) cover most apps:
-
-```yaml
-app:
-  packageIdSuffix:
-    dev: .internal
-    prod: ""            # "" = opt out of any suffix
-```
-
-Validation: each suffix matches `^\.[a-z0-9]+(\.[a-z0-9]+)*$` or is `""`. Empty `lingxiaServer` is rejected. Per-env maps must set at least one of `dev` or `prod`. Unknown keys are YAML parse errors.
+Empty `lingxiaServer` is rejected. Per-env maps must set at least one of `dev` or `prod`. Unknown keys are YAML parse errors.
 
 ### Reading the env at runtime
 
