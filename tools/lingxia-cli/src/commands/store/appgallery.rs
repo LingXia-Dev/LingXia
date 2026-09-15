@@ -1,16 +1,16 @@
 //! Huawei AppGallery Connect submission via the Publishing API.
 //!
-//! Flow: client-credentials token → get an upload URL → multipart-upload the
-//! `.app`/`.hap` → bind the file to the app → submit for review.
+//! HarmonyOS 5+ flow: client-credentials token → OBS upload URL
+//! (`/publish/v2/upload-url/for-obs`) → PUT the `.app`/`.hap` to OBS → bind
+//! with `/publish/v3/app-package-info` → optionally submit for review.
+//! `--draft` stops after bind; review is started from the AGC console.
 //!
-//! NOT E2E-verified — needs a real AppGallery Connect account. Implemented to
-//! the documented Publishing API
-//! (https://developer.huawei.com/consumer/en/doc/AppGallery-connect-Guides/agcapi-publishingapi).
+//! The older `/publish/v2/upload-url` + multipart path is Android-oriented
+//! and returns 204144645 for HarmonyOS 5 apps.
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use colored::Colorize;
-use serde_json::{Value, json};
-use std::io::Read;
+use serde_json::{Map, Value, json};
 use std::path::Path;
 
 use super::backend::{SubmitOptions, http};
@@ -95,38 +95,55 @@ pub fn submit(
         .file_name()
         .and_then(|n| n.to_str())
         .context("artifact has no file name")?;
-    let suffix = artifact
+    let content_length = std::fs::metadata(artifact)
+        .with_context(|| format!("stat {}", artifact.display()))?
+        .len();
+
+    if artifact
         .extension()
-        .and_then(|e| e.to_str())
-        .context("artifact has no extension")?;
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("hap"))
+    {
+        eprintln!(
+            "{} AppGallery HarmonyOS 5 expects an .app package; a raw .hap may fail AGC parsing.",
+            "Warning:".yellow()
+        );
+    }
 
-    // 1. Get an upload URL + auth code.
     let up = session.get(&format!(
-        "{API}/publish/v2/upload-url?appId={app_id}&suffix={suffix}"
+        "{API}/publish/v2/upload-url/for-obs?appId={app_id}&fileName={}&contentLength={content_length}",
+        urlencode(file_name)
     ))?;
-    let upload_url = up
-        .get("uploadUrl")
+    require_agc_ok(&up, "get upload URL")?;
+    let url_info = up
+        .get("urlInfo")
+        .context("AppGallery response missing urlInfo")?;
+    let object_id = url_info
+        .get("objectId")
         .and_then(Value::as_str)
-        .context("no uploadUrl in response")?;
-    let auth_code = up
-        .get("authCode")
+        .context("urlInfo missing objectId")?
+        .to_string();
+    let upload_url = url_info
+        .get("url")
         .and_then(Value::as_str)
-        .context("no authCode in response")?;
-
-    // 2. Multipart-upload the artifact.
-    let dest = upload_file(upload_url, auth_code, artifact, file_name)?;
+        .context("urlInfo missing url")?;
+    let headers = url_info.get("headers").and_then(Value::as_object);
+    upload_to_obs(upload_url, headers, artifact)?;
     println!("  {} uploaded {file_name}", "✓".green());
 
-    // 3. Bind the uploaded file to the app.
-    let bind = json!({
-        "fileType": 5,
-        "files": [{ "fileName": file_name, "fileDestUrl": dest }],
-    });
-    session.put(
-        &format!("{API}/publish/v2/app-file-info?appId={app_id}"),
-        &bind,
+    let bind = session.put(
+        &format!("{API}/publish/v3/app-package-info?appId={app_id}"),
+        &json!({ "fileName": file_name, "objectId": object_id }),
     )?;
-    println!("  {} bound file to app {app_id}", "✓".green());
+    require_agc_ok(&bind, "bind package")?;
+    if let Some(package_id) = bind.get("packageId").and_then(Value::as_str) {
+        println!(
+            "  {} bound file to app {app_id} (packageId {package_id})",
+            "✓".green()
+        );
+    } else {
+        println!("  {} bound file to app {app_id}", "✓".green());
+    }
 
     if opts.draft {
         println!(
@@ -148,7 +165,8 @@ pub fn submit(
 
 pub fn status(creds: &AgcApiCredentials, cfg: &AppGalleryConfig) -> Result<()> {
     let session = Session::login(creds)?;
-    let info = session.get(&format!("{API}/publish/v2/app-info?appId={}", cfg.app_id))?;
+    let info = session.get(&format!("{API}/publish/v3/app-info?appId={}", cfg.app_id))?;
+    require_agc_ok(&info, "query app info")?;
     let state = info
         .pointer("/appInfo/releaseState")
         .and_then(Value::as_i64)
@@ -158,57 +176,55 @@ pub fn status(creds: &AgcApiCredentials, cfg: &AppGalleryConfig) -> Result<()> {
     Ok(())
 }
 
-/// Multipart-upload the artifact to the AGC upload URL; returns the
-/// `fileDestUrl` used to bind it.
-fn upload_file(
+fn require_agc_ok(v: &Value, what: &str) -> Result<()> {
+    match v.pointer("/ret/code").and_then(Value::as_i64) {
+        Some(0) => Ok(()),
+        Some(code) => {
+            let msg = v
+                .pointer("/ret/msg")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown error");
+            bail!("{what} failed: {code} {msg}")
+        }
+        None => bail!("{what} failed: response missing ret.code"),
+    }
+}
+
+fn upload_to_obs(
     upload_url: &str,
-    auth_code: &str,
+    headers: Option<&Map<String, Value>>,
     artifact: &Path,
-    file_name: &str,
-) -> Result<String> {
-    let mut bytes = Vec::new();
-    std::fs::File::open(artifact)
-        .with_context(|| format!("open {}", artifact.display()))?
-        .read_to_end(&mut bytes)
-        .with_context(|| format!("read {}", artifact.display()))?;
-
-    let boundary = format!("----LingXiaAGC{:x}", bytes.len());
-    let mut body = Vec::new();
-    let mut field = |name: &str, value: &str| {
-        body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-        body.extend_from_slice(
-            format!("Content-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n")
-                .as_bytes(),
-        );
-    };
-    field("authCode", auth_code);
-    field("fileCount", "1");
-    field("parseType", "1");
-    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
-    body.extend_from_slice(
-        format!("Content-Disposition: form-data; name=\"file\"; filename=\"{file_name}\"\r\nContent-Type: application/octet-stream\r\n\r\n")
-            .as_bytes(),
+) -> Result<()> {
+    let bytes = std::fs::read(artifact).with_context(|| format!("read {}", artifact.display()))?;
+    println!(
+        "  {} uploading {} ({:.1} MB) to AppGallery OBS...",
+        "→".dimmed(),
+        artifact
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("package"),
+        bytes.len() as f64 / (1024.0 * 1024.0)
     );
-    body.extend_from_slice(&bytes);
-    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-
-    let mut resp = http()
-        .post(upload_url)
-        .header(
-            "Content-Type",
-            &format!("multipart/form-data; boundary={boundary}"),
-        )
-        .send(body.as_slice())
-        .map_err(|e| anyhow::anyhow!("AppGallery upload failed: {e}"))?;
-    let v: Value = resp
-        .body_mut()
-        .read_json()
-        .context("parse upload response")?;
-    v.pointer("/result/UploadFileRsp/fileInfoList/0/fileDestUlr")
-        .or_else(|| v.pointer("/result/UploadFileRsp/fileInfoList/0/fileDestUrl"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-        .context("upload response missing fileDestUrl")
+    let mut req = crate::http_client::create_agent(900).put(upload_url);
+    if let Some(headers) = headers {
+        for (key, value) in headers {
+            if key.eq_ignore_ascii_case("host") {
+                continue;
+            }
+            if let Some(value) = value.as_str() {
+                req = req.header(key, value);
+            }
+        }
+    }
+    let mut resp = req
+        .send(&bytes)
+        .map_err(|e| anyhow::anyhow!("AppGallery OBS upload failed: {e}"))?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.body_mut().read_to_string().unwrap_or_default();
+        bail!("AppGallery OBS upload HTTP {status}: {}", body.trim());
+    }
+    Ok(())
 }
 
 fn urlencode(s: &str) -> String {
