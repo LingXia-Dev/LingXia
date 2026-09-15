@@ -47,7 +47,9 @@ pub fn newer_released_cli() -> Option<(String, String)> {
     ))
 }
 
-pub fn maybe_auto_update() {
+pub fn maybe_auto_update(skip_skill: bool) {
+    #[cfg(target_os = "windows")]
+    let _ = skip_skill;
     notify_deferred_update_failure();
 
     let Ok(raw_exe_path) = current_exe_path() else {
@@ -79,7 +81,11 @@ pub fn maybe_auto_update() {
             // The binary on disk is now a different release, so its skill is
             // the one that should be installed -- and only it can write it.
             #[cfg(not(target_os = "windows"))]
-            Ok(SelfReplace::Complete) => sync_skill_through(&exe_path),
+            Ok(SelfReplace::Complete) => {
+                if !skip_skill {
+                    sync_skill_through(&exe_path);
+                }
+            }
             #[cfg(target_os = "windows")]
             Ok(SelfReplace::Deferred) => {}
             Err(err) => {

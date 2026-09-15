@@ -55,6 +55,9 @@ mod wallet;
 #[command(name = "lingxia")]
 #[command(about = "LingXia CLI - Build cross-platform apps with ease", long_about = None)]
 struct Cli {
+    /// Skip automatic skill synchronization, including during upgrade (for CI).
+    #[arg(long, global = true, env = "LINGXIA_SKIP_SKILL", value_parser = clap::builder::BoolishValueParser::new())]
+    skip_skill: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -802,20 +805,6 @@ enum AuthLogoutProvider {
 
 fn main() -> Result<()> {
     let raw_args: Vec<String> = std::env::args().collect();
-    // Skipped for `upgrade`, which does this deliberately and with the user's
-    // arguments: running both would download twice and race on the binary. Also
-    // skipped for the internal helpers the CLI starts on its own -- each does
-    // the one job it was started for, and a detached worker must never replace
-    // the binary out from under the command that spawned it.
-    if !raw_args.iter().any(|arg| {
-        matches!(
-            arg.as_str(),
-            "upgrade" | "__sync-skill" | "__refresh-templates"
-        )
-    }) {
-        update::maybe_auto_update();
-    }
-
     let cli = match Cli::try_parse_from(&raw_args) {
         Ok(cli) => cli,
         Err(err) => {
@@ -828,6 +817,20 @@ fn main() -> Result<()> {
         }
     };
 
+    // Skipped for `upgrade`, which does this deliberately and with the user's
+    // arguments: running both would download twice and race on the binary. Also
+    // skipped for the internal helpers the CLI starts on its own -- each does
+    // the one job it was started for, and a detached worker must never replace
+    // the binary out from under the command that spawned it.
+    if !raw_args.iter().any(|arg| {
+        matches!(
+            arg.as_str(),
+            "upgrade" | "__sync-skill" | "__refresh-templates"
+        )
+    }) {
+        update::maybe_auto_update(cli.skip_skill);
+    }
+
     // Every run reconciles the installed skill with the one this binary
     // carries, so the two cannot drift. `upgrade` and `__sync-skill` do it
     // themselves: one hands the job to the binary it just installed, the other
@@ -836,7 +839,9 @@ fn main() -> Result<()> {
         cli.command,
         Commands::SyncSkill | Commands::RefreshTemplates { .. } | Commands::Upgrade { .. }
     ) {
-        update::sync_installed_skill(false);
+        if !cli.skip_skill {
+            update::sync_installed_skill(false);
+        }
         // Templates come from git, so this only reads state and hands any
         // fetching to a detached worker.
         commands::template_provider::refresh_due_in_background();
@@ -1045,7 +1050,7 @@ fn main() -> Result<()> {
             version,
             yes,
         } => {
-            let code = commands::upgrade::execute(check, version, yes)?;
+            let code = commands::upgrade::execute(check, version, yes, cli.skip_skill)?;
             if code != 0 {
                 std::process::exit(code);
             }
