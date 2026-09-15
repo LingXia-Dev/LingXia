@@ -5,7 +5,7 @@ use crate::platform::{
     project_named_artifact, resolve_cargo_target_dir, resolve_lingxia_target_dir,
     set_native_client_codegen_env,
 };
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use std::env;
 use std::path::{Component, Path, PathBuf};
@@ -111,14 +111,29 @@ impl HarmonyPlatform {
                 "  {} --native-only: native library built; skipping ohpm + hvigor",
                 "⏭️".dimmed()
             );
-            return Ok(BuildArtifacts::Harmony { hap_path: so });
+            return Ok(BuildArtifacts::Harmony {
+                hap_path: so,
+                app_path: None,
+            });
         }
 
         self.ohpm_install(&staging)?;
         let hvigor_artifact = self.build_hap(&staging, config)?;
         let hap_path = project_named_artifact(&hvigor_artifact, config.lingxia_config.as_ref())?;
+        let app_path = if config.package {
+            let project_name = config
+                .lingxia_config
+                .as_ref()
+                .and_then(|cfg| cfg.app.as_ref())
+                .map(|app| app.project_name.trim())
+                .filter(|name| !name.is_empty())
+                .unwrap_or("app");
+            Some(pack_harmony_app(&staging, project_name)?)
+        } else {
+            None
+        };
 
-        Ok(BuildArtifacts::Harmony { hap_path })
+        Ok(BuildArtifacts::Harmony { hap_path, app_path })
     }
     fn build_rust_library(&self, project_root: &Path, config: &BuildConfig) -> Result<PathBuf> {
         println!("{}", "Compiling native code (HarmonyOS)...".cyan());
@@ -1021,6 +1036,59 @@ fn parse_crate_and_lib_name(manifest_path: &Path) -> Result<(String, String)> {
     Ok((package_name, lib_name))
 }
 
+fn pack_harmony_app(staging: &Path, project_name: &str) -> Result<PathBuf> {
+    println!("{}", "Packing AppGallery .app...".cyan());
+    let hvigorw = ensure_command("hvigorw")?;
+    let status = Command::new(&hvigorw)
+        .arg("assembleApp")
+        .arg("--no-daemon")
+        .current_dir(staging)
+        .status()
+        .context("Failed to execute hvigorw assembleApp")?;
+    if !status.success() {
+        bail!("hvigorw assembleApp failed");
+    }
+    let found = find_assembled_app(staging).ok_or_else(|| {
+        anyhow!(
+            "No .app produced under {} after assembleApp. AppGallery HarmonyOS 5 needs an .app, not a raw .hap.",
+            staging.display()
+        )
+    })?;
+    let dest = found.with_file_name(format!("{project_name}.app"));
+    if dest != found {
+        std::fs::copy(&found, &dest)
+            .with_context(|| format!("Failed to copy {} -> {}", found.display(), dest.display()))?;
+    }
+    println!("  {} AppGallery .app {}", "✓".green(), dest.display());
+    Ok(dest)
+}
+
+fn find_assembled_app(staging: &Path) -> Option<PathBuf> {
+    let outputs = staging.join("build/outputs/default");
+    let mut apps = Vec::new();
+    collect_apps(&outputs, &mut apps);
+    apps.into_iter().max_by_key(|path| {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.contains("unsigned"))
+            .unwrap_or(false)
+    })
+}
+
+fn collect_apps(dir: &Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_apps(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("app") {
+            out.push(path);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1365,5 +1433,16 @@ mod tests {
         let content = r#"{"app":{"versionCode": "1000000"}}"#;
         let err = replace_json5_number_field_value(content, "versionCode", 2007).unwrap_err();
         assert!(err.to_string().contains("non-integer"));
+    }
+
+    #[test]
+    fn find_assembled_app_prefers_unsigned_app() {
+        let dir = TempDir::new().unwrap();
+        let outputs = dir.path().join("build/outputs/default");
+        fs::create_dir_all(&outputs).unwrap();
+        fs::write(outputs.join("demo-default-signed.app"), b"s").unwrap();
+        fs::write(outputs.join("demo-default-unsigned.app"), b"u").unwrap();
+        let found = super::find_assembled_app(dir.path()).unwrap();
+        assert_eq!(found.file_name().unwrap(), "demo-default-unsigned.app");
     }
 }

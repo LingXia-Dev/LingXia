@@ -9,7 +9,7 @@
 //!
 //! Uses a temporary keychain to avoid password prompts.
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -289,6 +289,16 @@ impl ProvisioningContext {
         Self::new(&device)
     }
 
+    fn for_app_store() -> Result<Self> {
+        let auth = crate::resolver::resolve_apple_auth(Some(AppleChannel::Ios), AppleNeed::Auth)?;
+        Ok(Self {
+            auth,
+            device_info: DeviceInfo::default_macos(),
+            target_device_udid: String::new(),
+            target_device_name: String::new(),
+        })
+    }
+
     /// Run the complete provisioning workflow
     ///
     /// Returns the provisioning result needed for signing.
@@ -308,6 +318,7 @@ impl ProvisioningContext {
                 private_key_pem,
                 team_id,
                 cached_signing_identity,
+                ..
             } => self.provision_with_asc(
                 &key_id,
                 &issuer_id,
@@ -462,6 +473,81 @@ impl ProvisioningContext {
         let entitlements = extract_entitlements_from_profile(&profile_data)?;
 
         println!("  {} Provisioning complete", "✓".green());
+
+        Ok(ProvisioningResult {
+            signing_identity,
+            profile_data,
+            bundle_id: original_bundle_id.to_string(),
+            entitlements,
+            identity_material,
+        })
+    }
+
+    fn provision_app_store(&self, original_bundle_id: &str) -> Result<ProvisioningResult> {
+        match self.auth.auth.clone() {
+            AuthCredentials::AppStoreConnect {
+                key_id,
+                issuer_id,
+                private_key_pem,
+                team_id,
+                cached_distribution_identity,
+                ..
+            } => self.provision_app_store_with_asc(
+                &key_id,
+                &issuer_id,
+                &private_key_pem,
+                &team_id,
+                cached_distribution_identity,
+                original_bundle_id,
+            ),
+            AuthCredentials::AppleId { .. } => bail!(
+                "App Store IPA signing needs an App Store Connect API key \
+                 (`lingxia auth login apple`). Apple ID login only issues device \
+                 development profiles."
+            ),
+        }
+    }
+
+    fn provision_app_store_with_asc(
+        &self,
+        key_id: &str,
+        issuer_id: &str,
+        private_key_pem: &str,
+        team_id: &str,
+        cached_distribution_identity: Option<CachedSigningIdentity>,
+        original_bundle_id: &str,
+    ) -> Result<ProvisioningResult> {
+        let client = AppStoreConnectClient::new(key_id, issuer_id, private_key_pem, team_id)?;
+
+        println!(
+            "{}",
+            "Step 1/3: Ensuring distribution certificate...".cyan()
+        );
+        let (cert_id, signing_identity, identity_material) = self
+            .ensure_distribution_certificate_asc(
+                &client,
+                key_id,
+                team_id,
+                cached_distribution_identity,
+            )?;
+
+        println!("{}", "Step 2/3: Ensuring Bundle ID...".cyan());
+        let bundle_id_record = self.ensure_bundle_id_asc(&client, original_bundle_id)?;
+
+        println!(
+            "{}",
+            "Step 3/3: Creating App Store provisioning profile...".cyan()
+        );
+        let profile_data = self.create_store_profile_asc(
+            &client,
+            &bundle_id_record.id,
+            original_bundle_id,
+            &cert_id,
+            &signing_identity,
+        )?;
+
+        let entitlements = extract_entitlements_from_profile(&profile_data)?;
+        println!("  {} App Store provisioning complete", "✓".green());
 
         Ok(ProvisioningResult {
             signing_identity,
@@ -877,6 +963,136 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
         ))
     }
 
+    fn ensure_distribution_certificate_asc(
+        &self,
+        client: &AppStoreConnectClient,
+        key_id: &str,
+        team_id: &str,
+        cached_distribution_identity: Option<CachedSigningIdentity>,
+    ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        if let Some(cached) = cached_distribution_identity {
+            if self.validate_cached_distribution_identity(client, &cached)? {
+                let cert_data = base64_decode(&cached.cert_data_b64)?;
+                println!("  {} Reusing cached distribution certificate", "✓".green());
+                return Ok((
+                    cached.cert_id,
+                    cached.signing_identity,
+                    Some(IdentityMaterial {
+                        cert_data,
+                        private_key: cached.private_key,
+                    }),
+                ));
+            }
+            println!(
+                "  {} Cached distribution certificate is stale, creating a new one...",
+                "!".yellow()
+            );
+            self.update_cached_distribution_identity(key_id, team_id, None)?;
+        }
+
+        println!("  Creating new iOS Distribution certificate...");
+        let (csr_content, private_key) = generate_csr("LingXia Distribution")?;
+        let new_cert = client
+            .create_certificate(&csr_content, super::asc::CertificateType::IosDistribution)
+            .context(
+                "Failed to create an iOS Distribution certificate. If the account already \
+                 has two, revoke an unused one in App Store Connect or export the existing \
+                 cert's private key — LingXia can only sign an IPA with a cert it created.",
+            )?;
+        let cert_content = new_cert
+            .attributes
+            .certificate_content
+            .as_ref()
+            .ok_or_else(|| anyhow!("No certificate content"))?;
+        let cert_data = base64_decode(cert_content)?;
+        let sha1 = sha1_hex_upper(&cert_data);
+        let result = (
+            new_cert.id,
+            sha1,
+            Some(IdentityMaterial {
+                cert_data,
+                private_key,
+            }),
+        );
+        self.cache_created_distribution_identity(key_id, team_id, &result)?;
+        println!("  {} Created distribution certificate", "✓".green());
+        Ok(result)
+    }
+
+    fn cache_created_distribution_identity(
+        &self,
+        key_id: &str,
+        team_id: &str,
+        cert: &(String, String, Option<IdentityMaterial>),
+    ) -> Result<()> {
+        let Some(material) = &cert.2 else {
+            return Ok(());
+        };
+        let cache = CachedSigningIdentity {
+            cert_id: cert.0.clone(),
+            signing_identity: cert.1.clone(),
+            cert_data_b64: base64_encode(&material.cert_data),
+            private_key: material.private_key.clone(),
+        };
+        self.update_cached_distribution_identity(key_id, team_id, Some(cache))
+    }
+
+    fn validate_cached_distribution_identity(
+        &self,
+        client: &AppStoreConnectClient,
+        cache: &CachedSigningIdentity,
+    ) -> Result<bool> {
+        let certs = client
+            .list_certificates()
+            .context("Failed to validate cached distribution certificate")?;
+        let Some(cert) = certs.into_iter().find(|c| c.id == cache.cert_id) else {
+            return Ok(false);
+        };
+        let kind = cert.attributes.certificate_type.as_deref().unwrap_or("");
+        if kind != "IOS_DISTRIBUTION" && kind != "APPLE_DISTRIBUTION" {
+            return Ok(false);
+        }
+        if let Some(cert_content) = cert.attributes.certificate_content.as_deref() {
+            let cert_data = base64_decode(cert_content)?;
+            if sha1_hex_upper(&cert_data) != cache.signing_identity {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    fn update_cached_distribution_identity(
+        &self,
+        key_id: &str,
+        team_id: &str,
+        cache: Option<CachedSigningIdentity>,
+    ) -> Result<()> {
+        if self.auth.source != AuthSource::Wallet {
+            return Ok(());
+        }
+        let wallet = Wallet::open()?;
+        let Some(mut creds) = wallet.load_apple_asc(team_id)? else {
+            return Ok(());
+        };
+        let mut changed = false;
+        if let AuthCredentials::AppStoreConnect {
+            key_id: stored_key_id,
+            team_id: stored_team_id,
+            cached_distribution_identity,
+            ..
+        } = &mut creds
+            && stored_key_id == key_id
+            && stored_team_id == team_id
+        {
+            *cached_distribution_identity = cache;
+            changed = true;
+        }
+        if changed {
+            wallet.save_apple_auth(&creds)?;
+        }
+        Ok(())
+    }
+
     fn cache_created_api_signing_identity(
         &self,
         key_id: &str,
@@ -1135,6 +1351,70 @@ Fix options:\n\
 
         unreachable!("ASC profile creation loop should always return")
     }
+
+    fn create_store_profile_asc(
+        &self,
+        client: &AppStoreConnectClient,
+        bundle_id_id: &str,
+        bundle_identifier: &str,
+        cert_id: &str,
+        signing_identity: &str,
+    ) -> Result<Vec<u8>> {
+        let prefix = store_profile_name_prefix(bundle_identifier);
+        let profiles = client.list_profiles()?;
+        if let Some(existing) = select_reusable_dev_profile_by_prefix(
+            profiles
+                .iter()
+                .map(|p| (p.id.as_str(), p.attributes.name.as_deref().unwrap_or(""))),
+            &prefix,
+        ) {
+            match client.download_profile(existing.profile_id) {
+                Ok(profile_data)
+                    if profile_includes_signing_identity(&profile_data, signing_identity)?
+                        && profile_matches_bundle_id(&profile_data, bundle_identifier)? =>
+                {
+                    println!(
+                        "  {} Reusing App Store profile: {}",
+                        "✓".green(),
+                        existing.profile_name
+                    );
+                    return Ok(profile_data);
+                }
+                Ok(_) => println!(
+                    "  {} Reusable App Store profile {} does not match, creating a new one",
+                    "!".yellow(),
+                    existing.profile_name
+                ),
+                Err(err) => println!(
+                    "  {} Failed to download App Store profile {}, creating a new one: {}",
+                    "!".yellow(),
+                    existing.profile_name,
+                    err
+                ),
+            }
+        }
+
+        let profile_name = format!(
+            "{}{}-{}",
+            prefix,
+            chrono::Utc::now().timestamp_millis(),
+            std::process::id()
+        );
+        let profile = client.create_profile(
+            &profile_name,
+            super::asc::ProfileType::IosAppStore,
+            bundle_id_id,
+            &[cert_id.to_string()],
+            &[],
+        )?;
+        let profile_data = client.download_profile(&profile.id)?;
+        println!(
+            "  {} Created App Store profile: {}",
+            "✓".green(),
+            profile_name
+        );
+        Ok(profile_data)
+    }
 }
 
 struct ReusableProfile<'a> {
@@ -1169,6 +1449,10 @@ fn build_profile_name(bundle_id: &str) -> String {
         std::process::id(),
         seq
     )
+}
+
+fn store_profile_name_prefix(bundle_id: &str) -> String {
+    profile_name_prefix(bundle_id).replacen("LingXia Dev ", "LingXia Store ", 1)
 }
 
 fn profile_name_prefix(bundle_id: &str) -> String {
@@ -1432,6 +1716,45 @@ pub fn sign_app(
         // temp_keychain is automatically cleaned up when dropped
     } else {
         // Provisioning reused a Keychain identity; sign using the default keychain.
+        Signer::sign(
+            app_path,
+            &result.signing_identity,
+            &result.profile_data,
+            Some(&signing_entitlements),
+            Some(&result.bundle_id),
+        )?;
+    }
+    Ok(result)
+}
+
+/// Sign an `.app` with an iOS App Store distribution profile. Does not
+/// require a connected device.
+pub fn sign_app_for_app_store(
+    app_path: &Path,
+    app_link_hosts: &[String],
+) -> Result<ProvisioningResult> {
+    let info_plist = app_path.join("Info.plist");
+    let bundle_id = read_bundle_id(&info_plist)?;
+    super::capabilities::validate_built_app_info_plist(app_path)?;
+
+    let ctx = ProvisioningContext::for_app_store()?;
+    let result = ctx.provision_app_store(&bundle_id)?;
+    cache_profile_for_reuse(&result.profile_data);
+    let signing_entitlements =
+        apply_capability_entitlement_policy(&result.entitlements, &bundle_id, app_link_hosts)?;
+
+    if let Some(ref material) = result.identity_material {
+        let temp_keychain = TempKeychain::new().context("Failed to create temporary keychain")?;
+        temp_keychain.import_identity(&material.cert_data, &material.private_key)?;
+        Signer::sign_with_keychain(
+            app_path,
+            &result.signing_identity,
+            &result.profile_data,
+            Some(&signing_entitlements),
+            Some(&result.bundle_id),
+            Some(temp_keychain.path()),
+        )?;
+    } else {
         Signer::sign(
             app_path,
             &result.signing_identity,

@@ -326,6 +326,33 @@ impl AppStoreConnectClient {
         certificate_ids: &[String],
         device_ids: &[String],
     ) -> Result<Profile> {
+        let mut relationships = serde_json::json!({
+            "bundleId": {
+                "data": {
+                    "type": "bundleIds",
+                    "id": bundle_id
+                }
+            },
+            "certificates": {
+                "data": certificate_ids.iter().map(|id| {
+                    serde_json::json!({
+                        "type": "certificates",
+                        "id": id
+                    })
+                }).collect::<Vec<_>>()
+            }
+        });
+        // App Store profiles must not include devices.
+        if !device_ids.is_empty() {
+            relationships["devices"] = serde_json::json!({
+                "data": device_ids.iter().map(|id| {
+                    serde_json::json!({
+                        "type": "devices",
+                        "id": id
+                    })
+                }).collect::<Vec<_>>()
+            });
+        }
         let body = serde_json::json!({
             "data": {
                 "type": "profiles",
@@ -333,30 +360,7 @@ impl AppStoreConnectClient {
                     "name": name,
                     "profileType": profile_type.as_str()
                 },
-                "relationships": {
-                    "bundleId": {
-                        "data": {
-                            "type": "bundleIds",
-                            "id": bundle_id
-                        }
-                    },
-                    "certificates": {
-                        "data": certificate_ids.iter().map(|id| {
-                            serde_json::json!({
-                                "type": "certificates",
-                                "id": id
-                            })
-                        }).collect::<Vec<_>>()
-                    },
-                    "devices": {
-                        "data": device_ids.iter().map(|id| {
-                            serde_json::json!({
-                                "type": "devices",
-                                "id": id
-                            })
-                        }).collect::<Vec<_>>()
-                    }
-                }
+                "relationships": relationships
             }
         });
 
@@ -432,12 +436,14 @@ pub struct CertificateAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum CertificateType {
     IosDevelopment,
+    IosDistribution,
 }
 
 impl CertificateType {
     pub fn as_str(&self) -> &'static str {
         match self {
             CertificateType::IosDevelopment => "IOS_DEVELOPMENT",
+            CertificateType::IosDistribution => "IOS_DISTRIBUTION",
         }
     }
 }
@@ -522,12 +528,14 @@ pub struct ProfileAttributes {
 #[derive(Debug, Clone, Copy)]
 pub enum ProfileType {
     IosAppDevelopment,
+    IosAppStore,
 }
 
 impl ProfileType {
     pub fn as_str(&self) -> &'static str {
         match self {
             ProfileType::IosAppDevelopment => "IOS_APP_DEVELOPMENT",
+            ProfileType::IosAppStore => "IOS_APP_STORE",
         }
     }
 }

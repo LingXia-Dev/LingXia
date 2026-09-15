@@ -439,7 +439,7 @@ impl Platform for IosPlatform {
         }
 
         let ipa_path = if config.ipa {
-            apple::provisioning::sign_app(&app_path, None, app_link_hosts)?;
+            apple::provisioning::sign_app_for_app_store(&app_path, app_link_hosts)?;
             let app_name = app_path
                 .file_stem()
                 .and_then(|n| n.to_str())
