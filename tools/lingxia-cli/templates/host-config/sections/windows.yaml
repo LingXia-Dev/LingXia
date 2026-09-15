@@ -1,5 +1,3 @@
 
-# Windows host settings.
 windows:
-  # Cargo binary name in windows/Cargo.toml.
   executableName: {{PROJECT_NAME}}
