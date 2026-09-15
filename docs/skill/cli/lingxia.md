@@ -278,7 +278,7 @@ lingxia doctor --platform harmony
 
 ### Setup — `upgrade`
 
-Low-frequency, and not part of building anything: `upgrade` **always** moves
+Low-frequency, and not part of building anything: by default, `upgrade` moves
 the CLI, `lxdev` and the Runner to a newer release when one exists (the same
 replace the daily auto-update performs). **Inside a project** it then compares
 the project's LingXia line — npm `@lingxia/*`, native crate, Android
@@ -289,6 +289,8 @@ and you choose whether to apply them (default yes). `--yes` skips the prompt;
 non-interactive runs skip the project half unless `--yes` is set.
 The skipped non-interactive project half exits nonzero so automation cannot
 mistake missing confirmation for a completed upgrade.
+
+In CI, keep tool upgrades separate from host-project dependency changes.
 
 Applying a newer line:
 

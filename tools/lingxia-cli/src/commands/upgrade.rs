@@ -9,7 +9,7 @@
 //! LingXia line (npm / crate / SDK pins, major.minor) with this CLI. A newer
 //! line is offered as a prompt — never applied silently.
 
-use crate::update::{self, SelfReplace, UpdateStatus};
+use crate::update::{self, SelfReplace, UpdateScope, UpdateStatus};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use semver::Version;
@@ -46,6 +46,7 @@ pub fn execute(
     check: bool,
     version: Option<String>,
     yes: bool,
+    cli_only: bool,
     skip_skill: bool,
 ) -> Result<i32> {
     // CLI first, always. The new CLI's baked compatibility line is what the
@@ -53,9 +54,14 @@ pub fn execute(
     // Unix. Windows stages the swap until this process exits — project pins
     // are compared to *this* CLI's line, and the user re-runs after the new
     // binary is in place for a newer line.
-    let project_root = crate::commands::project_upgrade::find_project_root();
+    let project_root = if cli_only {
+        None
+    } else {
+        crate::commands::project_upgrade::find_project_root()
+    };
+    let skip_skill = skip_skill || cli_only;
 
-    let cli = run_cli_step(check, version.as_deref(), project_root.is_some())?;
+    let cli = run_cli_step(check, version.as_deref(), project_root.is_some(), cli_only)?;
 
     if !skip_skill && should_sync_skill(&cli, check) {
         crate::update::sync_installed_skill(true);
@@ -96,6 +102,10 @@ pub fn execute(
         return Ok(combine_exit(check, &cli, project));
     }
 
+    #[cfg(target_os = "windows")]
+    if cli_only && matches!(cli, CliStep::Staged) {
+        return Ok(EXIT_UPDATE_AVAILABLE);
+    }
     Ok(cli_exit(&cli))
 }
 
@@ -133,7 +143,12 @@ fn blocks_project_upgrade(cli: &CliStep) -> bool {
     matches!(cli, CliStep::NotReplaceable)
 }
 
-fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<CliStep> {
+fn run_cli_step(
+    check: bool,
+    version: Option<&str>,
+    in_project: bool,
+    cli_only: bool,
+) -> Result<CliStep> {
     let exe_path = update::current_exe_path()?
         .canonicalize()
         .context("Failed to resolve the running executable")?;
@@ -192,9 +207,14 @@ fn run_cli_step(check: bool, version: Option<&str>, in_project: bool) -> Result<
         "Updating LingXia CLI {} -> {}...",
         status.current_version, status.latest_version
     );
-    let kind = update::install_update(&exe_path, &status)?;
+    let scope = if cli_only {
+        UpdateScope::CliOnly
+    } else {
+        UpdateScope::All
+    };
+    let kind = update::install_update(&exe_path, &status, scope)?;
     println!(
-        "{} lingxia, lxdev and the Runner are now {}.",
+        "{} LingXia CLI update prepared for {}.",
         "✓".green(),
         status.latest_version
     );
