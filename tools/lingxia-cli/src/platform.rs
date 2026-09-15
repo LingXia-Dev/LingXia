@@ -171,7 +171,7 @@ pub struct BuildConfig {
     pub lingxia_config: Option<LingXiaConfig>,
     /// Sign and package as IPA (iOS only)
     pub ipa: bool,
-    /// Package host app for update delivery (macOS .app.zip)
+    /// Package host app for distribution (macOS .app.zip or Harmony .app).
     pub package: bool,
     /// Package macOS app bundle as DMG (macOS only)
     pub dmg: bool,

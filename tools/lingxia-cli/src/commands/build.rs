@@ -416,7 +416,7 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
             },
             lingxia_config: Some(config.clone()),
             ipa: ipa && matches!(platform_type, PlatformType::Ios),
-            package: package && matches!(platform_type, PlatformType::MacOs),
+            package: platform_package_requested(package, platform_type),
             dmg: dmg && matches!(platform_type, PlatformType::MacOs),
             android_aab: android_dist.as_deref() == Some("play")
                 && matches!(platform_type, PlatformType::Android),
@@ -525,6 +525,10 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
     }
 
     Ok(())
+}
+
+fn platform_package_requested(package: bool, platform: &PlatformType) -> bool {
+    package && matches!(platform, PlatformType::MacOs | PlatformType::Harmony)
 }
 
 pub(crate) fn validate_extra_native_features(
@@ -948,12 +952,50 @@ fn build_standalone_apple_swift_package(
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_build_env, stage_package_artifact, validate_platform_target_options};
+    use super::{
+        platform_package_requested, resolve_build_env, stage_package_artifact,
+        validate_platform_target_options,
+    };
     use crate::config::{AppEnv, LingXiaConfig};
     use crate::platform::BuildArtifacts;
     use crate::platform::detector::PlatformType;
     use std::fs;
     use tempfile::TempDir;
+
+    #[test]
+    fn package_flag_reaches_harmony_and_macos_builders_only() {
+        for (platform, expected) in [
+            (PlatformType::Harmony, true),
+            (PlatformType::MacOs, true),
+            (PlatformType::Ios, false),
+            (PlatformType::Android, false),
+            (PlatformType::Windows, false),
+        ] {
+            assert_eq!(platform_package_requested(true, &platform), expected);
+            assert!(!platform_package_requested(false, &platform));
+        }
+    }
+
+    #[test]
+    fn package_stages_harmony_app_instead_of_hap() {
+        let temp = TempDir::new().unwrap();
+        let hap_path = temp.path().join("demo.hap");
+        let app_path = temp.path().join("demo.app");
+        fs::write(&hap_path, b"hap").unwrap();
+        fs::write(&app_path, b"app").unwrap();
+        let artifacts = BuildArtifacts::Harmony {
+            hap_path,
+            app_path: Some(app_path),
+        };
+
+        let staged = stage_package_artifact(temp.path(), &PlatformType::Harmony, &artifacts)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(staged, temp.path().join("dist/harmony/demo.app"));
+        assert_eq!(fs::read(staged).unwrap(), b"app");
+        assert!(!temp.path().join("dist/harmony/demo.hap").exists());
+    }
 
     #[test]
     fn package_stages_project_named_android_apk_and_removes_stale_name() {
