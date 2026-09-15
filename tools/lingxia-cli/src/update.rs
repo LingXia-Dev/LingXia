@@ -107,15 +107,15 @@ pub fn sync_installed_skill(create: bool) {
 
     match crate::commands::skill::sync_home_skill(create) {
         Ok(Sync::Skipped | Sync::Current) => {}
-        Ok(Sync::Created) => println!(
+        Ok(Sync::Created) => eprintln!(
             "Installed the LingXia agent skill ({}).",
             env!("CARGO_PKG_VERSION")
         ),
-        Ok(Sync::Rewritten { previous }) if previous == env!("CARGO_PKG_VERSION") => println!(
+        Ok(Sync::Rewritten { previous }) if previous == env!("CARGO_PKG_VERSION") => eprintln!(
             "Refreshed the installed LingXia agent skill ({}).",
             env!("CARGO_PKG_VERSION")
         ),
-        Ok(Sync::Rewritten { previous }) => println!(
+        Ok(Sync::Rewritten { previous }) => eprintln!(
             "Updated the installed LingXia agent skill ({} -> {}).",
             previous,
             env!("CARGO_PKG_VERSION")

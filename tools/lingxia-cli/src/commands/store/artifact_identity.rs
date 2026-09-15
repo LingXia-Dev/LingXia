@@ -84,6 +84,35 @@ fn extract(artifact: &Path) -> Result<Extracted> {
 
 /// IPA: `Payload/<App>.app/Info.plist` → `CFBundleIdentifier`.
 fn ipa_identity(artifact: &Path) -> Result<Extracted> {
+    let value = ipa_plist(artifact)?;
+    let bundle_id = value
+        .as_dictionary()
+        .and_then(|d| d.get("CFBundleIdentifier"))
+        .and_then(|v| v.as_string())
+        .context("Info.plist has no CFBundleIdentifier")?;
+    Ok(Extracted::Identity(bundle_id.to_string()))
+}
+
+pub fn ipa_build_selection(artifact: &Path) -> Result<super::processing::BuildSelection> {
+    let value = ipa_plist(artifact)?;
+    let dict = value
+        .as_dictionary()
+        .context("Info.plist is not a dictionary")?;
+    let field = |key| -> Result<String> {
+        Ok(dict
+            .get(key)
+            .and_then(plist::Value::as_string)
+            .filter(|s| !s.trim().is_empty())
+            .with_context(|| format!("Info.plist has no {key}"))?
+            .to_owned())
+    };
+    Ok(super::processing::BuildSelection {
+        version: Some(field("CFBundleShortVersionString")?),
+        build_number: Some(field("CFBundleVersion")?),
+    })
+}
+
+fn ipa_plist(artifact: &Path) -> Result<plist::Value> {
     let file =
         std::fs::File::open(artifact).with_context(|| format!("open {}", artifact.display()))?;
     let mut zip =
@@ -97,18 +126,10 @@ fn ipa_identity(artifact: &Path) -> Result<Extracted> {
             && parts.next().is_none())
         .then_some(i)
     });
-    let Some(index) = plist_index else {
-        return Ok(Extracted::Unsupported("no Payload/*.app/Info.plist found"));
-    };
+    let index = plist_index.context("no Payload/*.app/Info.plist found")?;
     let mut bytes = Vec::new();
     zip.by_index(index)?.read_to_end(&mut bytes)?;
-    let value = plist::Value::from_reader(Cursor::new(bytes)).context("parse Info.plist")?;
-    let bundle_id = value
-        .as_dictionary()
-        .and_then(|d| d.get("CFBundleIdentifier"))
-        .and_then(|v| v.as_string())
-        .context("Info.plist has no CFBundleIdentifier")?;
-    Ok(Extracted::Identity(bundle_id.to_string()))
+    plist::Value::from_reader(Cursor::new(bytes)).context("parse Info.plist")
 }
 
 /// Harmony `.app` / `.hap`: `pack.info` JSON → `summary.app.bundleName`.
@@ -164,6 +185,38 @@ mod tests {
         }
         writer.finish().unwrap();
         buffer.into_inner()
+    }
+
+    #[test]
+    fn ipa_processing_selection_uses_main_app_versions() {
+        let temp = tempfile::TempDir::new().unwrap();
+        let path = temp.path().join("app.ipa");
+        let plist = br#"<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>CFBundleShortVersionString</key><string>2.3</string>
+<key>CFBundleVersion</key><string>47</string>
+</dict></plist>"#;
+        let bytes = write_zip(&[
+            (
+                "Payload/My.app/PlugIns/Extension.appex/Info.plist",
+                b"not the main app",
+            ),
+            ("Payload/My.app/Info.plist", plist),
+        ]);
+        std::fs::write(&path, bytes).unwrap();
+        let build = ipa_build_selection(&path).unwrap();
+        assert_eq!(build.version.as_deref(), Some("2.3"));
+        assert_eq!(build.build_number.as_deref(), Some("47"));
+        assert!(
+            super::super::appstore::upload_selection(
+                &path,
+                &super::super::processing::BuildSelection {
+                    version: Some("2.3".into()),
+                    build_number: Some("46".into()),
+                }
+            )
+            .is_err()
+        );
     }
 
     #[test]

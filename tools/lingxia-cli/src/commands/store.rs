@@ -8,12 +8,14 @@
 mod appgallery;
 mod appstore;
 mod artifact_identity;
+mod automation;
 mod backend;
 pub(crate) mod creds;
 mod googleplay;
 mod honor;
 mod msstore;
 mod oppo;
+mod processing;
 mod xiaomi;
 
 use anyhow::{Context, Result, bail};
@@ -39,11 +41,22 @@ pub enum StoreAction {
         /// Release track/channel (store-specific)
         #[arg(long)]
         track: Option<String>,
+        #[command(flatten)]
+        processing: processing::ProcessingOptions,
+        #[command(flatten)]
+        build: processing::BuildSelection,
     },
     /// Poll submission / processing status
     Status {
         #[arg(short, long)]
         platform: String,
+        /// Exact App Store build id or AGC packageId returned by submit.
+        #[arg(long, conflicts_with_all = ["version", "build_number"])]
+        submission_id: Option<String>,
+        #[command(flatten)]
+        processing: processing::ProcessingOptions,
+        #[command(flatten)]
+        build: processing::BuildSelection,
     },
 }
 
@@ -53,14 +66,31 @@ pub fn run(action: StoreAction) -> Result<()> {
             platform,
             release_notes,
             track,
-        } => submit(
-            StorePlatform::parse(&platform)?,
-            SubmitOptions {
+            processing,
+            build,
+        } => {
+            let opts = SubmitOptions {
                 release_notes,
                 track,
-            },
-        ),
-        StoreAction::Status { platform } => status(StorePlatform::parse(&platform)?),
+            };
+            if automation::handles(&platform, &processing, &build, None) {
+                automation::run(&platform, Some(opts), None, processing, build)
+            } else {
+                submit(StorePlatform::parse(&platform)?, opts)
+            }
+        }
+        StoreAction::Status {
+            platform,
+            submission_id,
+            processing,
+            build,
+        } => {
+            if automation::handles(&platform, &processing, &build, submission_id.as_deref()) {
+                automation::run(&platform, None, submission_id, processing, build)
+            } else {
+                status(StorePlatform::parse(&platform)?)
+            }
+        }
     }
 }
 
