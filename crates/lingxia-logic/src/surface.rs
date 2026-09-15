@@ -2182,23 +2182,18 @@ struct JSSurfaceContext {
 
 /// Adaptive context derived from this lxapp presentation's actual viewport.
 fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
-    use lingxia_surface::SizeClass;
+    use lingxia_surface::ContentSizeClass;
     let (width, height, viewport_class) = lxapp.surface_viewport().unwrap_or_else(|| {
         let layout = lxapp.surface_derived_layout();
         let width = layout.as_ref().map(|_| 0.0).unwrap_or(0.0);
         let size_class = layout
             .as_ref()
-            .map(|layout| layout.size_class)
-            .unwrap_or(SizeClass::Compact);
+            .map(|layout| layout.size_class.to_content())
+            .unwrap_or(ContentSizeClass::Compact);
         (width, 0.0, size_class)
     });
-    let size_class = match viewport_class {
-        SizeClass::Compact => "compact",
-        SizeClass::Medium => "medium",
-        SizeClass::Expanded => "expanded",
-    };
     JSSurfaceContext {
-        size_class: size_class.to_string(),
+        size_class: viewport_class.as_str().to_string(),
         width,
         height,
     }

@@ -672,8 +672,9 @@ them fewer than two items.
 
 A phone strip fits five slots. Past that the host shows the first four, then a
 **More** slot; tapping it opens the rest in a panel above the bar. A pad strip
-fits the declaration cap (ten), so it does not fold. Desktop hosts list every
-item in their sidebar instead.
+fits the declaration cap (ten), so it does not fold. That is the only pad
+chrome difference: the host is still mobile (no desktop sidebar). Desktop
+hosts list every item in their sidebar instead.
 
 The split is host-owned — nothing to configure, no API to open the panel. What
 follows:

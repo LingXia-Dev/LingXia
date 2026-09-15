@@ -61,17 +61,18 @@ lxapp 通过 `lx.surface.onContext` 获得自己的 surface viewport 等级：
 | 尺寸等级 | viewport 宽度 |
 |---|---:|
 | `compact` | 小于 600 logical pixels |
-| `medium` | 600 到 840 |
-| `expanded` | 大于 840 |
+| `regular` | 600 及以上 |
 
-这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。只改变布局时用 CSS/container query；组件树或交互模型变化时再使用 surface context。
+这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。`regular` 不是桌面：要和 `isMobile()` / `isDesktop()` 一起用（平板和折叠屏手机都是 mobile）。展开折叠屏会改 `sizeClass`，不会改宿主形态。平板是 `regular` + mobile（系统分屏很窄时是 `compact` + mobile），壳仍是手机投影，没有桌面侧栏。桌面 workspace View 是桌面宿主上的 `regular`；手持设备上的两栏是 mobile 上的 `regular`，用 CSS，不要第三档 size class。
+
+宿主 shell 仍用独立的 `medium` 档做 chrome 仲裁（icon rail、最多一个停靠 aside）——那个名字不是页面尺寸档。
 
 同一份声明在 shell 层会呈现为几种形态：
 
 - **宽桌面** — 完整侧栏，main 旁可停靠多个 aside。
 - **中等桌面** — 侧栏收成 icon rail，最多停靠一个 aside。
 - **窄桌面** — icon rail 仍在，main 保持桌面 workspace；无法停靠的 aside 覆盖在 main 上。浏览器 chrome 留在顶部。
-- **手机 / 手机 Runner** — 侧栏消失，main 全屏，aside 覆盖其上。
+- **手机或平板 / 对应 Runner** — 侧栏消失，main 全屏，aside 覆盖其上。平板仍是这一列；多出来的宽度给页面两栏，不是桌面壳。
 
 ## 运行时打开 surface
 

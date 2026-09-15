@@ -77,6 +77,7 @@ relationships, or lifecycle semantics defined here.
 | **pin** | A user-saved quick entry for an lxapp or website |
 | **sidebar action** | An app-declared runtime callback entry owned by the single runtime writer and placed in the header or footer |
 | **home lxapp** | The host's primary lxapp named by `app.homeAppId`; its identity is independent of `launch` and of whether it currently has a visible surface |
+| **pad** | A tablet mobile host. `is_pad` only widens the compact tab strip; it is not a host class and MUST NOT select the desktop shell |
 
 ### 1.1 Content
 
@@ -247,29 +248,51 @@ reuse, or lifecycle semantics.
 
 ### 3.1 Two size-class scopes
 
-Shell and content use the same width breakpoints, but with different scopes:
+Shell and content share the compact width boundary. They MUST use different
+vocabularies: the shell answers how many chrome regions fit; content answers
+whether this surface has room for a non-compact layout. `regular` is not
+desktop.
 
-| Size class | Available width |
+**Shell size class** is computed from the full client-area width of the main
+window and drives sidebar and aside arbitration:
+
+| Shell size class | Available width |
 |---|---|
 | `compact` | `< 600 dp/pt` |
 | `medium` | `600–840 dp/pt` |
 | `expanded` | `> 840 dp/pt` |
 
-- **Shell size class**: computed from the full client-area width of the main
-  window; drives sidebar and aside arbitration.
-- **Content size class**: computed per surface from its actual viewport width;
-  exposed to content via the surface-context subscription.
-- The two MUST NOT be conflated; a narrow aside inside an expanded shell can
-  legitimately receive a compact content size class.
-- Breakpoints use 24 dp/pt hysteresis: upgrading requires crossing
-  `boundary + 24`, downgrading requires dropping below `boundary - 24`.
+**Content size class** is computed per surface from its actual viewport width
+and is the only size class exposed on `lx.surface.onContext`:
+
+| Content size class | Available width |
+|---|---|
+| `compact` | `< 600 dp/pt` |
+| `regular` | `≥ 600 dp/pt` |
+
+- Content `regular` covers both shell `medium` and shell `expanded` viewports.
+  Content MUST NOT expose `medium` or `expanded`; those names are shell
+  admission classes, not page layouts.
+- Authors MUST branch content `sizeClass` at most once: `compact` versus
+  `regular`. Spacing, columns, and wrapping inside `regular` use CSS or
+  container queries plus the raw `width` / `height`. A product MUST NOT ship a
+  third View for fold, tablet, or the shell's medium band. Host form is a
+  separate input (`isMobile()` / `isDesktop()`); see §3.2.
+- The two scopes MUST NOT be conflated; a narrow aside inside an expanded
+  shell can legitimately receive a compact content size class.
+- Shell breakpoints use 24 dp/pt hysteresis at both 600 and 840: upgrading
+  requires crossing `boundary + 24`, downgrading requires dropping below
+  `boundary - 24`.
+- Content hysteresis applies only at 600. Crossing 840 MUST NOT change the
+  content `sizeClass`; `width` and `height` still update.
 
 ### 3.2 Degradation matrix
 
 Window size class and host form are independent inputs. Resizing a desktop
 window into the compact class MUST NOT turn its navigation into a mobile
-projection. Mobile and phone Runner hosts use the device-compact column because
-of their host form, not merely because their width is below 600.
+projection. Mobile hosts — phone, tablet, and phone/tablet Runner — use the
+device-compact column because of their host form, not merely because their
+width is below 600.
 
 | Region | expanded desktop | medium desktop | compact desktop | device compact |
 |---|---|---|---|---|
@@ -278,6 +301,35 @@ of their host form, not merely because their width is below 600.
 | aside | up to 3 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
 | float | popover / overlay | popover / overlay | popover / overlay | bottom sheet / popover |
 | standalone window | supported | supported | supported | rejected |
+
+Content size class and host form are likewise independent. Tablets and
+foldable phones are mobile. Unfolding a foldable MUST NOT change host form;
+it MAY flip the content size class when the inner viewport crosses 600.
+
+| | mobile host | desktop host |
+|---|---|---|
+| content `compact` | folded phone; pad OS split under 600 | narrow desktop window; desktop chrome stays |
+| content `regular` | unfolded fold, tablet | desktop workspace |
+
+- Content MUST NOT treat `regular` as desktop. A desktop workspace View is
+  `regular` **and** a desktop host.
+- Content MUST NOT expose a third size class for fold or tablet. Two-pane on
+  a handheld is `regular` + mobile, done with CSS or a product View.
+- Fold hinge, tabletop posture, and dual-screen regions are out of scope for
+  size class; width classes do not describe them.
+
+A tablet (pad) is a mobile host. Its typical viewport is content `regular`;
+an OS split that leaves a column under 600 is content `compact`. Host form
+does not change.
+
+The shell on pad MUST use the device-compact column: no sidebar, full-screen
+main, overlay asides. `is_pad` MUST only change compact tab-strip capacity
+(declaration cap instead of five slots). It MUST NOT set `isDesktop()`, MUST
+NOT reuse the desktop medium or expanded column, and MUST NOT present pins,
+an icon rail, or docked multi-aside chrome. Pad extra width belongs to
+content two-pane. A future pad-only projection, if any, is a distinct
+`is_pad` skin (for example a nav rail and at most one docked aside), not
+`HostClass::Desktop`.
 
 ### 3.3 Sizing and admission
 
@@ -649,9 +701,14 @@ retains its top address toolbar. At narrow widths the address field flexes and
 secondary actions MAY collapse into overflow, but desktop browser chrome MUST
 NOT move to the bottom or paint inside the sidebar rail.
 
-The following rules apply to device-compact hosts (mobile and phone Runner):
+The following rules apply to device-compact hosts (phone, tablet, and
+phone/tablet Runner):
 
 - Main is full screen; the active lxapp's tabbar returns to the bottom.
+- A tablet is still this column. `is_pad` only lays out the full tab-bar
+  declaration (no **More** fold); it MUST NOT restore the sidebar, docked
+  asides, or any other desktop shell chrome. Pad extra width is content
+  two-pane, not a shrunk desktop workspace.
 - A device-compact browser main uses the same provider chrome on Windows and macOS:
   an editable address row above an action row with page Back/Forward, Reload,
   user New Tab, browser-workspace tab switcher/count, and Dismiss when an
@@ -856,9 +913,11 @@ target appId is already owned by another live Surface, navigation fails with
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
-- Content can subscribe to its surface context (content size class plus
-  viewport dimensions); the subscription fires once immediately with the
-  current value, then only on actual change.
+- Content can subscribe to its surface context (content size class
+  `compact` | `regular` plus viewport dimensions); the subscription fires
+  once immediately with the current value, then only on actual change.
+  Crossing the shell's 840 boundary MUST NOT by itself change content
+  `sizeClass`.
 
 ### 7.3 Shell writer
 
@@ -1017,7 +1076,10 @@ lowercase keys). Synonyms are not allowed.
 | aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel, dock (dock is a presentation value only) |
 | sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
-| size class | `size_class` | `sizeClass` | `SizeClass` | breakpoint (internal boundary values may use it) |
+| shell size class | `size_class` | automation `sizeClass` (`compact` \| `medium` \| `expanded`) | `SizeClass` | breakpoint (internal boundary values may use it) |
+| content size class | `size_class` | `sizeClass` (`compact` \| `regular`) | `ContentSizeClass` | medium, expanded (shell-only; content maps both to `regular`) |
+| host form | `host_class` | `isMobile` / `isDesktop` | `HostClass` | pad as a third class |
+| pad | `pad` | not on `sizeClass` | `is_pad` | tablet host class, desktop-on-pad |
 | admission | `admission` | — | `admission` module/functions | aliases other than arbitrate |
 | writer | `writer` | — | `ShellWriter` | owner, master |
 | error codes | `E_*` | verbatim | mapped to the same `E_*` wire strings | per-platform error names |
