@@ -47,7 +47,10 @@ impl Platform for HarmonyPlatform {
         let lingxia_config = config.lingxia_config.as_ref();
         let harmony_config = lingxia_config.and_then(|c| c.harmony.as_ref());
         let harmony_dir = resolve_harmony_dir(&config.project_root, harmony_config)?;
-        let package_name = read_bundle_name(&harmony_dir)?;
+        let package_name = match lingxia_config {
+            Some(cfg) => cfg.resolved_package_id_with_suffix("harmony", &config.resolved_env)?,
+            None => read_bundle_name(&harmony_dir)?,
+        };
         let resolution = resolve_effective_acl_permissions(&package_name);
         let effective_acl_permissions = resolution.effective_permissions;
 

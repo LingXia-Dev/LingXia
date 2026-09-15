@@ -2,12 +2,14 @@ use super::{
     DEFAULT_ABILITY_NAME, HarmonyPlatform, HarmonySigner, ProvisioningManager, SigningConfig,
     SigningMode, project::resolve_harmony_dir, read_bundle_name, resolve_effective_acl_permissions,
 };
+use crate::config::{LingXiaConfig, ResolvedEnv};
 use crate::platform::{
     BuildProfile, Device, DeviceType, InstallConfig, RunConfig, resolve_lingxia_target_dir,
 };
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -36,7 +38,9 @@ impl HarmonyPlatform {
         let hap_path = self.sign_before_install(&hap_path, &config.project_root, &target_udids)?;
 
         if config.reinstall {
-            let package_id = infer_harmony_bundle_for_uninstall(&config.project_root);
+            let package_id = read_hap_bundle_name(&hap_path)
+                .ok()
+                .or_else(|| infer_harmony_bundle_for_uninstall(&config.project_root));
             if let Some(package_id) = package_id {
                 if let Err(err) = self.uninstall_impl(&package_id, config.device_id.as_deref()) {
                     eprintln!(
@@ -120,18 +124,37 @@ impl HarmonyPlatform {
         if let Some(ref device_id) = config.device_id {
             cmd.arg("-t").arg(device_id);
         }
-        // TODO: when Harmony enables env suffix (.dev) on bundleName,
-        // auto-detect the installed variant via `hdc shell bm dump -a` — mirror
-        // android.rs::resolve_installed_app_id / devicectl::resolve_installed_bundle_id.
-        // Today harmony deploys are release-only so the canonical id always
-        // matches what's on device.
+        let package_id = match resolve_installed_harmony_bundle(
+            &hdc,
+            config.device_id.as_deref(),
+            &config.package_id,
+        ) {
+            Ok(Some(id)) => id,
+            Ok(None) => {
+                return Err(anyhow!(
+                    "No installed Harmony bundle matching {} (or {}.<env>) on device. \
+                     Run `lingxia install` first.",
+                    config.package_id,
+                    config.package_id
+                ));
+            }
+            Err(err) => {
+                eprintln!(
+                    "{} could not list installed Harmony bundles ({err}); launching {}",
+                    "Warning:".yellow(),
+                    config.package_id
+                );
+                config.package_id.clone()
+            }
+        };
+
         cmd.arg("shell")
             .arg("aa")
             .arg("start")
             .arg("-a")
             .arg(ability)
             .arg("-b")
-            .arg(&config.package_id);
+            .arg(&package_id);
 
         let output = cmd
             .output()
@@ -147,7 +170,7 @@ impl HarmonyPlatform {
             };
             return Err(anyhow!(
                 "Failed to launch app (bundle={}, ability={}): {}",
-                config.package_id,
+                package_id,
                 ability,
                 msg
             ));
@@ -209,6 +232,7 @@ impl HarmonyPlatform {
             output_path,
             BuildProfile::Debug,
             target_udids,
+            None,
         )
     }
 
@@ -217,6 +241,7 @@ impl HarmonyPlatform {
         input_hap: &Path,
         project_root: &Path,
         build_profile: BuildProfile,
+        resolved_env: Option<&ResolvedEnv>,
     ) -> Result<PathBuf> {
         let output_path = signed_output_path(input_hap);
         self.sign_hap_with_project_config_at(
@@ -225,6 +250,7 @@ impl HarmonyPlatform {
             output_path,
             build_profile,
             &[],
+            resolved_env,
         )
     }
 
@@ -235,12 +261,18 @@ impl HarmonyPlatform {
         output_path: PathBuf,
         build_profile: BuildProfile,
         target_udids: &[String],
+        resolved_env: Option<&ResolvedEnv>,
     ) -> Result<PathBuf> {
-        let signing = load_signing_config(project_root, build_profile, target_udids)?;
+        let bundle_name = signing_bundle_name(input_hap, project_root, resolved_env)?;
+        let signing = load_signing_config(&bundle_name, build_profile, target_udids)?;
         let signer = HarmonySigner::new_native();
         let aligned_hap = align_unsigned_hap_for_mmap(input_hap)?;
         let signing_input = aligned_hap.as_deref().unwrap_or(input_hap);
-        println!("  {} Signing HAP (Rust native signer)...", "→".dimmed());
+        println!(
+            "  {} Signing HAP `{}` (Rust native signer)...",
+            "→".dimmed(),
+            bundle_name
+        );
         signer
             .sign_hap(&signing, signing_input, &output_path)
             .context("HAP signing failed")?;
@@ -257,19 +289,47 @@ impl HarmonyPlatform {
     }
 }
 
-fn load_signing_config(
+fn signing_bundle_name(
+    hap_path: &Path,
     project_root: &Path,
+    resolved_env: Option<&ResolvedEnv>,
+) -> Result<String> {
+    match read_hap_bundle_name(hap_path) {
+        Ok(name) => Ok(name),
+        Err(hap_err) => {
+            fallback_signing_bundle_name(project_root, resolved_env).with_context(|| {
+                format!(
+                    "Could not read app.bundleName from HAP {} ({hap_err})",
+                    hap_path.display()
+                )
+            })
+        }
+    }
+}
+
+fn fallback_signing_bundle_name(
+    project_root: &Path,
+    resolved_env: Option<&ResolvedEnv>,
+) -> Result<String> {
+    let config = LingXiaConfig::load(project_root)?;
+    match resolved_env {
+        Some(env) => config.resolved_package_id_with_suffix("harmony", env),
+        None => bail!(
+            "Could not resolve Harmony signing bundle without HAP app.bundleName or a build env"
+        ),
+    }
+}
+
+fn load_signing_config(
+    bundle_name: &str,
     build_profile: BuildProfile,
     target_udids: &[String],
 ) -> Result<SigningConfig> {
-    let harmony_dir = resolve_harmony_dir(project_root, None)?;
-    let bundle_name = read_bundle_name(&harmony_dir)?;
-
     let mode = match build_profile {
         BuildProfile::Debug => SigningMode::Debug,
         BuildProfile::Release => SigningMode::Release,
     };
-    let resolution = resolve_effective_acl_permissions(&bundle_name);
+    let resolution = resolve_effective_acl_permissions(bundle_name);
     if !resolution.missing_permissions.is_empty() {
         eprintln!(
             "{} Harmony restricted ACL permissions not granted for `{}`: {}",
@@ -286,13 +346,31 @@ fn load_signing_config(
     }
     let effective_acl_permissions = resolution.effective_permissions;
 
+    // Debug profiles require a device list. Build-time signing does not
+    // receive `--device`, so pick up whatever is currently connected.
+    let resolved_udids = if target_udids.is_empty() && mode == SigningMode::Debug {
+        discover_connected_harmony_udids()
+    } else {
+        target_udids.to_vec()
+    };
+
     let mut provisioning = ProvisioningManager::from_storage()?;
     provisioning.prepare_signing_config(
-        &bundle_name,
+        bundle_name,
         mode,
-        target_udids,
+        &resolved_udids,
         &effective_acl_permissions,
     )
+}
+
+fn discover_connected_harmony_udids() -> Vec<String> {
+    let Ok(targets) = connected_devices() else {
+        return Vec::new();
+    };
+    targets
+        .iter()
+        .filter_map(|target| fetch_harmony_udid(target).ok())
+        .collect()
 }
 
 pub(super) fn ensure_command(name: &str) -> Result<PathBuf> {
@@ -468,6 +546,100 @@ fn read_hap_bundle_name(hap_path: &Path) -> Result<String> {
                 hap_path.display()
             )
         })
+}
+
+fn resolve_installed_harmony_bundle(
+    hdc: &Path,
+    device_id: Option<&str>,
+    base_id: &str,
+) -> Result<Option<String>> {
+    let installed = list_installed_harmony_bundles(hdc, device_id)?;
+    Ok(pick_installed_package_variant(base_id, &installed))
+}
+
+fn list_installed_harmony_bundles(hdc: &Path, device_id: Option<&str>) -> Result<Vec<String>> {
+    let mut cmd = Command::new(hdc);
+    if let Some(device_id) = device_id {
+        cmd.arg("-t").arg(device_id);
+    }
+    cmd.arg("shell").arg("bm").arg("dump").arg("-a");
+    let output = cmd
+        .output()
+        .context("Failed to execute hdc shell bm dump -a")?;
+    if !output.status.success() {
+        return Err(anyhow!(
+            "hdc shell bm dump -a failed: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
+    Ok(parse_harmony_bundle_names(&String::from_utf8_lossy(
+        &output.stdout,
+    )))
+}
+
+fn parse_harmony_bundle_names(dump: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut seen = HashSet::new();
+    for line in dump.lines() {
+        let trimmed = line.trim().trim_end_matches(',');
+        if trimmed.is_empty() {
+            continue;
+        }
+        let value = if let Some(rest) = trimmed.strip_prefix("bundleName:") {
+            rest.trim()
+        } else if let Some(rest) = trimmed.strip_prefix("\"bundleName\"") {
+            rest.trim().trim_start_matches(':').trim()
+        } else if looks_like_harmony_bundle_id(trimmed) {
+            trimmed
+        } else {
+            continue;
+        };
+        let name = value.trim_matches(|c: char| c == '"' || c == '\'' || c.is_whitespace());
+        if name.is_empty() || !seen.insert(name.to_string()) {
+            continue;
+        }
+        names.push(name.to_string());
+    }
+    names
+}
+
+fn looks_like_harmony_bundle_id(value: &str) -> bool {
+    if !value.contains('.') || value.contains(' ') || value.ends_with(':') {
+        return false;
+    }
+    value
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+}
+
+fn pick_installed_package_variant(base_id: &str, installed: &[String]) -> Option<String> {
+    let prefix = format!("{base_id}.");
+    let mut matches: Vec<String> = installed
+        .iter()
+        .filter(|pkg| {
+            pkg.as_str() == base_id
+                || pkg
+                    .strip_prefix(&prefix)
+                    .map(|rest| !rest.is_empty() && !rest.contains('.'))
+                    .unwrap_or(false)
+        })
+        .cloned()
+        .collect();
+    if matches.is_empty() {
+        return None;
+    }
+    if let Some(idx) = matches.iter().position(|pkg| pkg == base_id) {
+        return Some(matches.swap_remove(idx));
+    }
+    if matches.len() > 1 {
+        eprintln!(
+            "{} multiple installed variants of {base_id}: {:?} — picking {}",
+            "warn:".yellow(),
+            matches,
+            matches[0]
+        );
+    }
+    Some(matches.remove(0))
 }
 
 fn verify_bundle_installed(hdc: &Path, device_id: Option<&str>, package_id: &str) -> Result<()> {
@@ -912,7 +1084,8 @@ fn hdc_command_failed(stdout: &str, stderr: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        hdc_install_failed, preferred_resign_source, read_hap_bundle_name, sibling_unsigned_hap,
+        hdc_install_failed, parse_harmony_bundle_names, pick_installed_package_variant,
+        preferred_resign_source, read_hap_bundle_name, sibling_unsigned_hap, signing_bundle_name,
     };
     use std::fs;
     use std::io::Write;
@@ -971,5 +1144,87 @@ mod tests {
         archive.finish().unwrap();
 
         assert_eq!(read_hap_bundle_name(&hap_path).unwrap(), "app.lingxia.test");
+    }
+
+    #[test]
+    fn signing_bundle_name_prefers_hap_module_json() {
+        let temp = tempdir().unwrap();
+        let hap_path = temp.path().join("entry-default-unsigned.hap");
+        let file = fs::File::create(&hap_path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("module.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive
+            .write_all(br#"{"app":{"bundleName":"com.example.app.dev"},"module":{"name":"entry"}}"#)
+            .unwrap();
+        archive.finish().unwrap();
+
+        assert_eq!(
+            signing_bundle_name(&hap_path, temp.path(), None).unwrap(),
+            "com.example.app.dev"
+        );
+    }
+
+    #[test]
+    fn parse_harmony_bundle_names_reads_dump_a_list() {
+        let dump = "ID: 100:\ncom.huawei.hmos.settings\ncom.example.app\ncom.example.app.dev\n";
+        assert_eq!(
+            parse_harmony_bundle_names(dump),
+            vec![
+                "com.huawei.hmos.settings".to_string(),
+                "com.example.app".to_string(),
+                "com.example.app.dev".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_harmony_bundle_names_reads_plain_and_json_fields() {
+        let dump = r#"
+ID: 1
+	bundleName: com.example.app
+	appId: 123
+"bundleName": "com.example.app.dev",
+bundleName: com.example.app
+"#;
+        let names = parse_harmony_bundle_names(dump);
+        assert_eq!(
+            names,
+            vec![
+                "com.example.app".to_string(),
+                "com.example.app.dev".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn pick_installed_package_variant_prefers_canonical_id() {
+        let installed = vec![
+            "com.example.app.dev".to_string(),
+            "com.example.app".to_string(),
+            "com.other.app".to_string(),
+        ];
+        assert_eq!(
+            pick_installed_package_variant("com.example.app", &installed).as_deref(),
+            Some("com.example.app")
+        );
+        assert_eq!(
+            pick_installed_package_variant("com.example.app.dev", &installed).as_deref(),
+            Some("com.example.app.dev")
+        );
+        assert_eq!(
+            pick_installed_package_variant("com.missing.app", &installed),
+            None
+        );
+    }
+
+    #[test]
+    fn pick_installed_package_variant_accepts_single_segment_suffix() {
+        let installed = vec!["com.example.app.dev".to_string()];
+        assert_eq!(
+            pick_installed_package_variant("com.example.app", &installed).as_deref(),
+            Some("com.example.app.dev")
+        );
     }
 }
