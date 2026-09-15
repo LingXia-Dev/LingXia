@@ -2,8 +2,8 @@
 //! platform's publishing API.
 //!
 //! Flow: client-credentials token → get an upload URL → upload the `.apk` →
-//! bind the file to the app → submit for review. Honor's console descends from
-//! Huawei AGC, so the shape mirrors `appgallery.rs`.
+//! bind the file to the app. Honor's console descends from Huawei AGC, so the
+//! shape mirrors `appgallery.rs`.
 //!
 //! NOT E2E-verified — needs a real Honor developer account. The exact
 //! open-platform endpoints/payloads are not publicly stable, so uncertain steps
@@ -63,16 +63,6 @@ impl Session {
         resp.body_mut().read_json().context("parse response")
     }
 
-    fn post(&self, url: &str, body: &Value) -> Result<Value> {
-        let mut resp = http()
-            .post(url)
-            .header("Authorization", &format!("Bearer {}", self.token))
-            .header("client_id", &self.client_id)
-            .send_json(body)
-            .map_err(|e| anyhow::anyhow!("POST {url} failed: {e}"))?;
-        resp.body_mut().read_json().context("parse response")
-    }
-
     fn put(&self, url: &str, body: &Value) -> Result<Value> {
         let mut resp = http()
             .put(url)
@@ -88,7 +78,7 @@ pub fn submit(
     creds: &HonorCreds,
     app_id: &str,
     artifact: &Path,
-    opts: &SubmitOptions,
+    _opts: &SubmitOptions,
 ) -> Result<()> {
     let session = Session::login(creds)?;
     println!("  {} authenticated with Honor AppGallery", "✓".green());
@@ -119,23 +109,6 @@ pub fn submit(
         &json!({ "files": [{ "fileName": file_name, "fileDestUrl": dest }] }),
     )?;
     println!("  {} bound file to app {app_id}", "✓".green());
-
-    if opts.draft {
-        println!(
-            "  {} draft uploaded — submit it in the Honor console to publish",
-            "ℹ".blue()
-        );
-        return Ok(());
-    }
-
-    // 4. Submit for review.
-    // TODO: verify Honor app-submit endpoint + payload (release notes field).
-    let mut body = json!({ "appId": app_id });
-    if let Some(notes) = &opts.release_notes {
-        body["remark"] = json!(notes);
-    }
-    session.post(&format!("{API}/publish/app-submit?appId={app_id}"), &body)?;
-    println!("  {} submitted app {app_id} for review", "✓".green());
     Ok(())
 }
 

@@ -201,10 +201,11 @@ The concrete flows are in [App signing](#app-signing) above; see
 
 ## `lingxia store`
 
-Submit a built installable to an **OS app store**. Talks to stores only — never
+Upload a built installable to an **OS app store**. Talks to stores only — never
 the LingXia server (that's `publish`) and never builds (run `build`/`package`
 first; `submit` consumes the staged `dist/<platform>/` and fails clearly if it's
-missing). The artifact's real bundle/package identity is checked against the
+missing). The CLI does not submit for review; do that in the store console.
+The artifact's real bundle/package identity is checked against the
 platform block in `lingxia.yaml` before any credential or network use, so a
 dev-suffixed or wrong-app artifact fails immediately. Credentials come from
 the wallet (`lingxia auth login googleplay|xiaomi|oppo|honor|msstore`, Apple
@@ -214,7 +215,7 @@ only, a partial group is an error. Store-record settings (numeric app ids,
 default track) live under the platform blocks in `lingxia.yaml`.
 
 Run `lingxia store --help` for the current set of supported stores and per-action
-flags (`--draft`, release notes, track, etc.).
+flags (release notes, track, etc.).
 
 ## `lingxia ds`
 

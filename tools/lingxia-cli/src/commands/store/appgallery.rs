@@ -2,8 +2,7 @@
 //!
 //! HarmonyOS 5+ flow: client-credentials token → OBS upload URL
 //! (`/publish/v2/upload-url/for-obs`) → PUT the `.app`/`.hap` to OBS → bind
-//! with `/publish/v3/app-package-info` → optionally submit for review.
-//! `--draft` stops after bind; review is started from the AGC console.
+//! with `/publish/v3/app-package-info`. Review is started from the AGC console.
 //!
 //! The older `/publish/v2/upload-url` + multipart path is Android-oriented
 //! and returns 204144645 for HarmonyOS 5 apps.
@@ -60,16 +59,6 @@ impl Session {
         resp.body_mut().read_json().context("parse response")
     }
 
-    fn post(&self, url: &str, body: &Value) -> Result<Value> {
-        let mut resp = http()
-            .post(url)
-            .header("Authorization", &format!("Bearer {}", self.token))
-            .header("client_id", &self.client_id)
-            .send_json(body)
-            .map_err(|e| anyhow::anyhow!("POST {url} failed: {e}"))?;
-        resp.body_mut().read_json().context("parse response")
-    }
-
     fn put(&self, url: &str, body: &Value) -> Result<Value> {
         let mut resp = http()
             .put(url)
@@ -85,7 +74,7 @@ pub fn submit(
     creds: &AgcApiCredentials,
     cfg: &AppGalleryConfig,
     artifact: &Path,
-    opts: &SubmitOptions,
+    _opts: &SubmitOptions,
 ) -> Result<()> {
     let app_id = &cfg.app_id;
     let session = Session::login(creds)?;
@@ -144,22 +133,6 @@ pub fn submit(
     } else {
         println!("  {} bound file to app {app_id}", "✓".green());
     }
-
-    if opts.draft {
-        println!(
-            "  {} draft uploaded — submit it in AppGallery Connect to send for review",
-            "ℹ".blue()
-        );
-        return Ok(());
-    }
-
-    // 4. Submit for review (releaseType 1 = release now after approval).
-    let mut url = format!("{API}/publish/v2/app-submit?appId={app_id}&releaseType=1");
-    if let Some(notes) = &opts.release_notes {
-        url.push_str(&format!("&remark={}", urlencode(notes)));
-    }
-    session.post(&url, &json!({}))?;
-    println!("  {} submitted app {app_id} for review", "✓".green());
     Ok(())
 }
 
