@@ -53,9 +53,9 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
 
         // Step 2: Install
         println!("{}", "Step 2/4: Installing...".bold());
-        let harmony_dir =
-            platform::harmony::resolve_harmony_dir(&ctx.project_root, ctx.config.harmony.as_ref())?;
-        let bundle_name = platform::harmony::read_bundle_name(&harmony_dir)?;
+        let bundle_name = ctx
+            .config
+            .resolved_package_id_with_suffix("harmony", &ctx.resolved_env)?;
         let install_config = InstallConfig {
             project_root: ctx.project_root.clone(),
             artifact_path: Some(built_hap_path.clone()),
@@ -79,7 +79,6 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
         let _session_registration =
             log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
 
-        // Read bundleName from app.json5 (authoritative source).
         let run_config = RunConfig {
             package_id: bundle_name.clone(),
             main_activity: None, // defaults to "EntryAbility" in harmony platform

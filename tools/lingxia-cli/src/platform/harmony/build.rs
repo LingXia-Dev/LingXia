@@ -1,9 +1,9 @@
 use super::{HarmonyPlatform, OHOS_TARGET, deploy::ensure_command};
 use crate::commands::rust::run_cargo_rustc_for_target;
 use crate::platform::{
-    BuildArtifacts, BuildConfig, BuildProfile, lingxia_workspace_root,
-    native_client_out_for_host_project, project_named_artifact, resolve_cargo_target_dir,
-    resolve_lingxia_target_dir, set_native_client_codegen_env,
+    BuildArtifacts, BuildConfig, lingxia_workspace_root, native_client_out_for_host_project,
+    project_named_artifact, resolve_cargo_target_dir, resolve_lingxia_target_dir,
+    set_native_client_codegen_env,
 };
 use anyhow::{Context, Result, anyhow};
 use colored::Colorize;
@@ -265,7 +265,7 @@ impl HarmonyPlatform {
             harmony_dir.join("entry/build/default/outputs/default/entry-default-unsigned.hap");
         if unsigned.exists() {
             println!("  {} HAP built (unsigned)", "✓".green());
-            return self.sign_hap_after_build(unsigned, &config.project_root, config.profile);
+            return self.sign_hap_after_build(unsigned, config);
         }
 
         let signed =
@@ -281,13 +281,13 @@ impl HarmonyPlatform {
         ))
     }
 
-    fn sign_hap_after_build(
-        &self,
-        unsigned_hap: PathBuf,
-        project_root: &Path,
-        build_profile: BuildProfile,
-    ) -> Result<PathBuf> {
-        self.sign_hap_with_project_config(&unsigned_hap, project_root, build_profile)
+    fn sign_hap_after_build(&self, unsigned_hap: PathBuf, config: &BuildConfig) -> Result<PathBuf> {
+        self.sign_hap_with_project_config(
+            &unsigned_hap,
+            &config.project_root,
+            config.profile,
+            Some(&config.resolved_env),
+        )
     }
 }
 
