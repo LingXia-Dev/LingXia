@@ -534,15 +534,11 @@ class LxAppActivity : AppCompatActivity() {
             val currentBg = tabBar?.config?.backgroundColor ?: tabBarConfig?.backgroundColor
             val isTabBarTransparent = currentBg == Color.TRANSPARENT ||
                                      (currentBg?.let { Color.alpha(it) < 255 } == true)
-            // Reserve the system bar strip only where the host actually draws
-            // the bottom: an opaque TabBar that is *on screen*. Keying this off
-            // the TabBar config alone reserved it on pages that hide the bar
-            // too, and what showed through the reserved strip was the theme's
-            // colorBackground — a plate the page never asked for, under a page
-            // that had no chrome down there at all. The opaque bar also shrank
-            // the window, so such a page could not reach the bottom edge even
-            // if it wanted to. Pages pad for the system bars the standard way,
-            // via env(safe-area-inset-bottom).
+            // Root padding is only for an opaque TabBar that is *on screen*:
+            // that strip is the bar's own plate continuing under the system
+            // nav. A hidden bar must not take this path — the reserved band
+            // would be empty host chrome. The WebView still stays out of the
+            // gesture / navigation zone via [updateLayoutMargins].
             val hostOwnsBottom = !isTabBarTransparent && tabBar?.visibility == View.VISIBLE
 
             // Keep host chrome anchored while resizing only the WebView around the IME.
@@ -749,8 +745,8 @@ class LxAppActivity : AppCompatActivity() {
     }
 
     /**
-     * Provides a single source of truth for bottom content inset.
-     * Gesture nav -> 0, 3-button visible -> visible bottom inset, others -> 0.
+     * Bottom inset overlays should sit above: the visible 3-button strip, or
+     * the gesture-nav tap-eating zone when that strip is gone.
      */
     fun getContentBottomInset(): Int = systemBottomInset
 
@@ -1027,6 +1023,12 @@ class LxAppActivity : AppCompatActivity() {
                     }
                     null -> { }
                 }
+            }
+
+            // Pushed pages hide the TabBar; keep the WebView above the
+            // gesture / navigation zone instead of drawing into it.
+            if (!isTabBarVisible && !isPageFullscreen) {
+                bottomMargin = maxOf(bottomMargin, systemBottomInset)
             }
 
             bottomMargin = maxOf(bottomMargin, imeContentBottomInset)
@@ -1554,6 +1556,7 @@ class LxAppActivity : AppCompatActivity() {
         }
         tabBar?.visibility = if (show) View.VISIBLE else View.GONE
         syncNavigationBarToTabBar(visible = show)
+        updateLayoutMargins()
     }
 
     /**
