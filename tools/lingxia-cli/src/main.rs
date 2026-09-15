@@ -480,6 +480,9 @@ enum Commands {
         /// Upgrade project pins and SDKs without prompting
         #[arg(short = 'y', long)]
         yes: bool,
+        /// Update only lingxia; skip lxdev, Runner, project changes, and skill sync.
+        #[arg(long)]
+        cli_only: bool,
     },
 
     /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
@@ -1049,8 +1052,9 @@ fn main() -> Result<()> {
             check,
             version,
             yes,
+            cli_only,
         } => {
-            let code = commands::upgrade::execute(check, version, yes, cli.skip_skill)?;
+            let code = commands::upgrade::execute(check, version, yes, cli_only, cli.skip_skill)?;
             if code != 0 {
                 std::process::exit(code);
             }

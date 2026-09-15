@@ -77,7 +77,7 @@ pub fn maybe_auto_update(skip_skill: bool) {
             "Updating LingXia CLI {} -> {}...",
             status.current_version, status.latest_version
         );
-        match install_update(&exe_path, &status) {
+        match install_update(&exe_path, &status, UpdateScope::All) {
             // The binary on disk is now a different release, so its skill is
             // the one that should be installed -- and only it can write it.
             #[cfg(not(target_os = "windows"))]
@@ -141,7 +141,17 @@ pub(crate) fn sync_skill_through(exe: &Path) {
     }
 }
 
-pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<SelfReplace> {
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum UpdateScope {
+    CliOnly,
+    All,
+}
+
+pub(crate) fn install_update(
+    exe_path: &Path,
+    status: &UpdateStatus,
+    scope: UpdateScope,
+) -> Result<SelfReplace> {
     let asset_name = current_platform_asset_name()?;
     let bytes = github::download_release_asset_from_repo(
         &status.release_repo,
@@ -212,6 +222,10 @@ pub(crate) fn install_update(exe_path: &Path, status: &UpdateStatus) -> Result<S
             SelfReplace::Deferred
         }
     };
+
+    if scope == UpdateScope::CliOnly {
+        return Ok(kind);
+    }
 
     // The CLI, lxdev, and the runner ship from one release, so update them
     // together. Both are best-effort: a failure (e.g. offline, or an older

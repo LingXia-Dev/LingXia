@@ -60,6 +60,7 @@ written out by the CLI itself — there is no install command. It has no version
 of its own and no release train: an installed copy always came from the binary
 that wrote it, and every run rewrites it when its content digest differs from
 the embedded one, so a development build's edits land as soon as it runs.
+CI can skip this synchronization; CLI-only upgrades also leave skills alone.
 
 Giving it a version of its own would reintroduce the only failure it can have:
 a skill describing calls the runtime it is paired with does not provide.
