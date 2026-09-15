@@ -1694,11 +1694,12 @@ true
  | 'reclaimed' | 'unknown'"###;
 
         /// The current surface viewport context, delivered to `lx.surface.onContext()`
-        /// so an lxapp can self-adapt (e.g. switch column count by `sizeClass`).
+        /// so an lxapp can choose a compact or workspace View. Column count and
+        /// spacing inside `regular` use CSS or the raw `width` / `height`.
         ///
         type SurfaceContext = r###"{
-    /** compact (<600) / medium (600–840) / expanded (>840), with hysteresis. */
-    sizeClass: 'compact' | 'medium' | 'expanded';
+    /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
+    sizeClass: 'compact' | 'regular';
     /** Actual surface viewport width in logical pixels. */
     width: number;
     /** Actual surface viewport height in logical pixels. */

@@ -5,9 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::model::SurfaceId;
 
-/// Available-width band. Aligned to Material breakpoints and computed from the
-/// full client-area width, not the physical screen. `Ord` follows the declared
-/// order (Compact < Medium < Expanded).
+/// Shell available-width band. Aligned to Material breakpoints and computed
+/// from the full client-area width, not the physical screen. `Ord` follows
+/// the declared order (Compact < Medium < Expanded). Content sees
+/// [`ContentSizeClass`] instead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SizeClass {
@@ -55,6 +56,63 @@ impl SizeClass {
             prev
         } else {
             raw
+        }
+    }
+
+    /// Author-facing content class: shell `medium` and `expanded` collapse to
+    /// `regular`.
+    pub fn to_content(self) -> ContentSizeClass {
+        ContentSizeClass::from(self)
+    }
+}
+
+/// Viewport band exposed to lxapp content via `lx.surface.onContext`.
+/// Compact `< 600`; Regular `≥ 600`. Shell `medium`/`expanded` are not
+/// distinct values here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentSizeClass {
+    Compact,
+    Regular,
+}
+
+impl ContentSizeClass {
+    pub fn from_width(width: f64) -> Self {
+        if width < COMPACT_MAX {
+            ContentSizeClass::Compact
+        } else {
+            ContentSizeClass::Regular
+        }
+    }
+
+    /// Hysteresis only at the compact boundary. Crossing 840 must not flip
+    /// this class.
+    pub fn resolve(prev: Option<Self>, width: f64, margin: f64) -> Self {
+        let raw = Self::from_width(width);
+        let Some(prev) = prev else { return raw };
+        if prev == raw {
+            return prev;
+        }
+        if (width - COMPACT_MAX).abs() < margin {
+            prev
+        } else {
+            raw
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ContentSizeClass::Compact => "compact",
+            ContentSizeClass::Regular => "regular",
+        }
+    }
+}
+
+impl From<SizeClass> for ContentSizeClass {
+    fn from(value: SizeClass) -> Self {
+        match value {
+            SizeClass::Compact => ContentSizeClass::Compact,
+            SizeClass::Medium | SizeClass::Expanded => ContentSizeClass::Regular,
         }
     }
 }

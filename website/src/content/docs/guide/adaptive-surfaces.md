@@ -61,10 +61,9 @@ An lxapp receives its own surface viewport class through `lx.surface.onContext`:
 | Size class | Viewport width |
 |---|---:|
 | `compact` | less than 600 logical pixels |
-| `medium` | 600 through 840 |
-| `expanded` | greater than 840 |
+| `regular` | 600 and above |
 
-This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. Use CSS/container queries for layout-only changes and surface context when the component tree or interaction model changes.
+This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. Branch the component tree on `compact` versus `regular`; use CSS/container queries for layout-only changes inside `regular`. The host shell still uses a separate `medium` band for chrome admission (icon rail, one docked aside) — that name is not a page size class.
 
 At the shell level the same declaration drives several realizations:
 

@@ -19,8 +19,8 @@ pub use content::{SlotKind, SurfaceContent};
 pub use graph::SurfaceGraph;
 pub use layout::PlanAsideSlot;
 pub use layout::{
-    Axis, BottomOwner, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan, LayoutTree,
-    PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
+    Axis, BottomOwner, ContentSizeClass, DEFAULT_HYSTERESIS, DerivedLayout, LayoutPresentationPlan,
+    LayoutTree, PlanAside, PlanFloat, SizeClass, SplitForm, SwitcherForm,
 };
 pub use manager::SurfaceManager;
 pub use model::{
@@ -261,6 +261,42 @@ mod tests {
         assert_eq!(
             SizeClass::resolve(Some(SizeClass::Compact), 850.0, DEFAULT_HYSTERESIS),
             SizeClass::Expanded
+        );
+    }
+
+    #[test]
+    fn content_class_collapses_medium_and_expanded() {
+        assert_eq!(
+            ContentSizeClass::from_width(599.0),
+            ContentSizeClass::Compact
+        );
+        assert_eq!(
+            ContentSizeClass::from_width(600.0),
+            ContentSizeClass::Regular
+        );
+        assert_eq!(
+            ContentSizeClass::from_width(840.0),
+            ContentSizeClass::Regular
+        );
+        assert_eq!(
+            ContentSizeClass::from_width(841.0),
+            ContentSizeClass::Regular
+        );
+        assert_eq!(SizeClass::Medium.to_content(), ContentSizeClass::Regular);
+        assert_eq!(SizeClass::Expanded.to_content(), ContentSizeClass::Regular);
+    }
+
+    #[test]
+    fn content_hysteresis_is_only_at_compact_boundary() {
+        let held =
+            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 590.0, DEFAULT_HYSTERESIS);
+        assert_eq!(held, ContentSizeClass::Regular);
+        let switched =
+            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 500.0, DEFAULT_HYSTERESIS);
+        assert_eq!(switched, ContentSizeClass::Compact);
+        assert_eq!(
+            ContentSizeClass::resolve(Some(ContentSizeClass::Regular), 900.0, DEFAULT_HYSTERESIS),
+            ContentSizeClass::Regular
         );
     }
 
