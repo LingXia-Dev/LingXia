@@ -1253,7 +1253,7 @@ mod tests {
         std::fs::create_dir_all(&dist).unwrap();
         std::fs::write(
             project.join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: lxapp\n",
         )
         .unwrap();
         std::fs::write(
@@ -1282,7 +1282,7 @@ mod tests {
         let project = temp.path();
         std::fs::write(
             project.join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n    - type: lxapp\n      appId: settings\n      path: settings\n",
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n    - type: lxapp\n      appId: settings\n      path: settings\n",
         )
         .unwrap();
 
