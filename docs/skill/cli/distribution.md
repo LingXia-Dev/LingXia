@@ -150,6 +150,14 @@ certificate** from your Apple Developer account, applied at build time. Store
 the account credential with `lingxia auth login apple`; manage profiles and the
 certificate through your Apple Developer account / Xcode.
 
+`lingxia package -p ios` uses App Store distribution signing. Its certificate
+and private key are cached at `~/.lingxia/credentials/apple/<team>/distribution.json`,
+including with env-provided API credentials. Persist this secret file between
+CI jobs to reuse the certificate; API-key login/rotation does not replace it.
+Embedded extensions receive separate profiles for their bundle IDs. Enable
+their requested capabilities in the Apple Developer portal before packaging;
+an extension entitlement missing from its profile stops signing.
+
 ### Android
 
 Self-managed: generate a keystore once and keep it for the life of the app

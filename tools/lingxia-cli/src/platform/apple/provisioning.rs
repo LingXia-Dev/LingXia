@@ -524,12 +524,7 @@ impl ProvisioningContext {
             "Step 1/3: Ensuring distribution certificate...".cyan()
         );
         let (cert_id, signing_identity, identity_material) = self
-            .ensure_distribution_certificate_asc(
-                &client,
-                key_id,
-                team_id,
-                cached_distribution_identity,
-            )?;
+            .ensure_distribution_certificate_asc(&client, team_id, cached_distribution_identity)?;
 
         println!("{}", "Step 2/3: Ensuring Bundle ID...".cyan());
         let bundle_id_record = self.ensure_bundle_id_asc(&client, original_bundle_id)?;
@@ -966,12 +961,16 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
     fn ensure_distribution_certificate_asc(
         &self,
         client: &AppStoreConnectClient,
-        key_id: &str,
         team_id: &str,
         cached_distribution_identity: Option<CachedSigningIdentity>,
     ) -> Result<(String, String, Option<IdentityMaterial>)> {
+        let wallet = Wallet::open()?;
+        let cached_distribution_identity = wallet
+            .load_apple_distribution(team_id)?
+            .or(cached_distribution_identity);
         if let Some(cached) = cached_distribution_identity {
             if self.validate_cached_distribution_identity(client, &cached)? {
+                wallet.save_apple_distribution(team_id, Some(&cached))?;
                 let cert_data = base64_decode(&cached.cert_data_b64)?;
                 println!("  {} Reusing cached distribution certificate", "✓".green());
                 return Ok((
@@ -987,7 +986,7 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
                 "  {} Cached distribution certificate is stale, creating a new one...",
                 "!".yellow()
             );
-            self.update_cached_distribution_identity(key_id, team_id, None)?;
+            wallet.save_apple_distribution(team_id, None)?;
         }
 
         println!("  Creating new iOS Distribution certificate...");
@@ -1014,14 +1013,13 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
                 private_key,
             }),
         );
-        self.cache_created_distribution_identity(key_id, team_id, &result)?;
+        self.cache_created_distribution_identity(team_id, &result)?;
         println!("  {} Created distribution certificate", "✓".green());
         Ok(result)
     }
 
     fn cache_created_distribution_identity(
         &self,
-        key_id: &str,
         team_id: &str,
         cert: &(String, String, Option<IdentityMaterial>),
     ) -> Result<()> {
@@ -1034,7 +1032,7 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
             cert_data_b64: base64_encode(&material.cert_data),
             private_key: material.private_key.clone(),
         };
-        self.update_cached_distribution_identity(key_id, team_id, Some(cache))
+        Wallet::open()?.save_apple_distribution(team_id, Some(&cache))
     }
 
     fn validate_cached_distribution_identity(
@@ -1059,38 +1057,6 @@ Tip: Revoke the existing iOS Development certificate in Apple Developer portal, 
             }
         }
         Ok(true)
-    }
-
-    fn update_cached_distribution_identity(
-        &self,
-        key_id: &str,
-        team_id: &str,
-        cache: Option<CachedSigningIdentity>,
-    ) -> Result<()> {
-        if self.auth.source != AuthSource::Wallet {
-            return Ok(());
-        }
-        let wallet = Wallet::open()?;
-        let Some(mut creds) = wallet.load_apple_asc(team_id)? else {
-            return Ok(());
-        };
-        let mut changed = false;
-        if let AuthCredentials::AppStoreConnect {
-            key_id: stored_key_id,
-            team_id: stored_team_id,
-            cached_distribution_identity,
-            ..
-        } = &mut creds
-            && stored_key_id == key_id
-            && stored_team_id == team_id
-        {
-            *cached_distribution_identity = cache;
-            changed = true;
-        }
-        if changed {
-            wallet.save_apple_auth(&creds)?;
-        }
-        Ok(())
     }
 
     fn cache_created_api_signing_identity(
@@ -1739,6 +1705,9 @@ pub fn sign_app_for_app_store(
 
     let ctx = ProvisioningContext::for_app_store()?;
     let result = ctx.provision_app_store(&bundle_id)?;
+    prepare_app_store_extensions(app_path, &result.signing_identity, |extension_id| {
+        ctx.provision_app_store(extension_id)
+    })?;
     cache_profile_for_reuse(&result.profile_data);
     let signing_entitlements =
         apply_capability_entitlement_policy(&result.entitlements, &bundle_id, app_link_hosts)?;
@@ -1764,6 +1733,104 @@ pub fn sign_app_for_app_store(
         )?;
     }
     Ok(result)
+}
+
+fn prepare_app_store_extensions(
+    app_path: &Path,
+    signing_identity: &str,
+    mut provision: impl FnMut(&str) -> Result<ProvisioningResult>,
+) -> Result<()> {
+    for directory in ["PlugIns", "Extensions"] {
+        let directory = app_path.join(directory);
+        if !directory.exists() {
+            continue;
+        }
+        for entry in std::fs::read_dir(directory)? {
+            let extension = entry?.path();
+            if extension.extension().is_none_or(|ext| ext != "appex") || !extension.is_dir() {
+                continue;
+            }
+            let bundle_id = read_bundle_id(&extension.join("Info.plist"))?;
+            let result = provision(&bundle_id)
+                .with_context(|| format!("Provision App Store extension {bundle_id}"))?;
+            if result.bundle_id != bundle_id || result.signing_identity != signing_identity {
+                bail!(
+                    "App Store extension {bundle_id} must use its own bundle ID and the host signing certificate"
+                );
+            }
+            let sources = std::fs::read_dir(&extension)?
+                .map(|entry| entry.map(|entry| entry.path()))
+                .collect::<std::io::Result<Vec<_>>>()?
+                .into_iter()
+                .filter(|path| path.extension().is_some_and(|ext| ext == "entitlements"))
+                .collect::<Vec<_>>();
+            if sources.len() > 1 {
+                bail!("Multiple entitlement files in {}", extension.display());
+            }
+            let source = sources.first();
+            let requested = source.map(plist::Value::from_file).transpose()?;
+            let entitlements =
+                extension_distribution_entitlements(&result.entitlements, requested.as_ref())
+                    .with_context(|| format!("Invalid App Store entitlements for {bundle_id}"))?;
+            // Signer consumes this file when it signs extensions before the host.
+            let output = source
+                .cloned()
+                .unwrap_or_else(|| extension.join("LingXia.entitlements"));
+            entitlements.to_file_xml(output)?;
+            std::fs::write(
+                extension.join("embedded.mobileprovision"),
+                &result.profile_data,
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn extension_distribution_entitlements(
+    profile: &[u8],
+    requested: Option<&plist::Value>,
+) -> Result<plist::Value> {
+    let mut grants = plist::from_bytes::<plist::Value>(profile)?
+        .into_dictionary()
+        .ok_or_else(|| anyhow!("Profile entitlements must be a dictionary"))?;
+    if let Some(requested) = requested {
+        let requested = requested
+            .as_dictionary()
+            .ok_or_else(|| anyhow!("Extension entitlements must be a dictionary"))?;
+        for (key, value) in requested {
+            // Distribution identity and debugger access come from the profile.
+            if matches!(
+                key.as_str(),
+                "application-identifier" | "com.apple.developer.team-identifier" | "get-task-allow"
+            ) {
+                continue;
+            }
+            if !grants
+                .get(key)
+                .is_some_and(|grant| entitlement_is_allowed(value, grant))
+            {
+                bail!(
+                    "Provisioning profile does not authorize extension entitlement {key}; enable it for the extension App ID and regenerate the profile"
+                );
+            }
+            grants.insert(key.clone(), value.clone());
+        }
+    }
+    Ok(plist::Value::Dictionary(grants))
+}
+
+fn entitlement_is_allowed(requested: &plist::Value, grant: &plist::Value) -> bool {
+    match (requested, grant) {
+        (plist::Value::String(value), plist::Value::String(allowed)) => allowed
+            .strip_suffix('*')
+            .map_or(value == allowed, |prefix| value.starts_with(prefix)),
+        (plist::Value::Array(values), plist::Value::Array(allowed)) => values.iter().all(|value| {
+            allowed
+                .iter()
+                .any(|grant| entitlement_is_allowed(value, grant))
+        }),
+        _ => requested == grant,
+    }
 }
 
 /// Read bundle ID from Info.plist
@@ -1954,6 +2021,84 @@ fn update_permission_cache(platform: PermissionPlatform, app_id: &str, permissio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn app_store_extensions_get_their_own_profile_and_entitlements() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = temp.path().join("Host.app");
+        let extension = app.join("PlugIns/PacketTunnel.appex");
+        std::fs::create_dir_all(&extension).unwrap();
+        let id = "com.example.host.PacketTunnel";
+        let mut info = plist::Dictionary::new();
+        info.insert("CFBundleIdentifier".into(), id.into());
+        plist::Value::Dictionary(info)
+            .to_file_xml(extension.join("Info.plist"))
+            .unwrap();
+        let entitlement = "com.apple.developer.networking.networkextension";
+        let mut requested = plist::Dictionary::new();
+        requested.insert(
+            entitlement.into(),
+            plist::Value::Array(vec!["packet-tunnel-provider".into()]),
+        );
+        requested.insert("get-task-allow".into(), true.into());
+        plist::Value::Dictionary(requested.clone())
+            .to_file_xml(extension.join("PacketTunnel.entitlements"))
+            .unwrap();
+        let mut grants = requested;
+        grants.insert("application-identifier".into(), format!("TEAM.{id}").into());
+        grants.insert("get-task-allow".into(), false.into());
+        let mut bytes = Vec::new();
+        plist::Value::Dictionary(grants)
+            .to_writer_xml(&mut bytes)
+            .unwrap();
+        let mut calls = Vec::new();
+        prepare_app_store_extensions(&app, "certificate", |bundle_id| {
+            calls.push(bundle_id.to_string());
+            Ok(ProvisioningResult {
+                signing_identity: "certificate".into(),
+                profile_data: b"extension-profile".to_vec(),
+                bundle_id: bundle_id.into(),
+                entitlements: bytes.clone(),
+                identity_material: None,
+            })
+        })
+        .unwrap();
+        assert_eq!(calls, vec![id]);
+        assert_eq!(
+            std::fs::read(extension.join("embedded.mobileprovision")).unwrap(),
+            b"extension-profile"
+        );
+        let signed = plist::Value::from_file(extension.join("PacketTunnel.entitlements")).unwrap();
+        let signed = signed.as_dictionary().unwrap();
+        assert_eq!(
+            signed["application-identifier"].as_string(),
+            Some(format!("TEAM.{id}").as_str())
+        );
+        assert_eq!(signed["get-task-allow"].as_boolean(), Some(false));
+        assert_eq!(
+            signed[entitlement].as_array().unwrap()[0].as_string(),
+            Some("packet-tunnel-provider")
+        );
+    }
+
+    #[test]
+    fn app_store_extension_rejects_ungranted_entitlements() {
+        let mut profile = Vec::new();
+        plist::Value::Dictionary(plist::Dictionary::new())
+            .to_writer_xml(&mut profile)
+            .unwrap();
+        let mut requested = plist::Dictionary::new();
+        requested.insert(
+            "com.apple.developer.networking.networkextension".into(),
+            plist::Value::Array(vec!["packet-tunnel-provider".into()]),
+        );
+        let error = extension_distribution_entitlements(
+            &profile,
+            Some(&plist::Value::Dictionary(requested)),
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("does not authorize"));
+    }
 
     #[test]
     fn test_base64_decode() {
