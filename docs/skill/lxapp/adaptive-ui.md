@@ -48,6 +48,11 @@ change host form:
 Do not add a third size class for fold. Two-pane on a handheld is `regular`
 on mobile — CSS or a product View, still not `medium`.
 
+A tablet is `regular` + mobile (or `compact` + mobile in a narrow OS split).
+The host shell stays device-compact: no sidebar, overlay asides. `is_pad`
+only shows every tab-bar item; it is not `isDesktop()` and MUST NOT be used
+to mount a desktop shell. Extra pad width is page two-pane, not WorkspaceView.
+
 ## Edge-to-edge windows
 
 `lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
