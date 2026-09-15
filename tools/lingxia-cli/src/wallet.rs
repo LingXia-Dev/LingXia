@@ -10,7 +10,9 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use crate::platform::apple::auth::{AuthCredentials, DeveloperIdCredentials};
+use crate::platform::apple::auth::{
+    AuthCredentials, CachedSigningIdentity, DeveloperIdCredentials,
+};
 use crate::platform::harmony::AgcApiCredentials;
 
 const ASC_FILE: &str = "asc.json";
@@ -164,6 +166,31 @@ impl Wallet {
 
     pub fn load_apple_asc(&self, team_id: &str) -> Result<Option<AuthCredentials>> {
         self.load_apple_slot(team_id, ASC_FILE)
+    }
+
+    /// Signing keys survive API-key rotation and env-only authentication.
+    pub fn load_apple_distribution(&self, team_id: &str) -> Result<Option<CachedSigningIdentity>> {
+        let path = self.apple_team_dir(team_id)?.join("distribution.json");
+        if !path.exists() {
+            return Ok(match self.load_apple_asc(team_id)? {
+                Some(AuthCredentials::AppStoreConnect {
+                    cached_distribution_identity,
+                    ..
+                }) => cached_distribution_identity,
+                _ => None,
+            });
+        }
+        let bytes = fs::read(&path).with_context(|| format!("read {}", path.display()))?;
+        serde_json::from_slice(&bytes).with_context(|| format!("parse {}", path.display()))
+    }
+
+    pub fn save_apple_distribution(
+        &self,
+        team_id: &str,
+        identity: Option<&CachedSigningIdentity>,
+    ) -> Result<()> {
+        let path = self.apple_team_dir(team_id)?.join("distribution.json");
+        write_secret(&path, &serde_json::to_vec_pretty(&identity)?)
     }
 
     pub fn load_apple_id(&self, team_id: &str) -> Result<Option<AuthCredentials>> {
@@ -630,6 +657,58 @@ pub fn display_fingerprint(fingerprint: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn distribution_identity_survives_env_only_runs_and_api_key_rotation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let wallet = Wallet::at(tmp.path());
+        let identity = CachedSigningIdentity {
+            cert_id: "certificate".into(),
+            signing_identity: "fingerprint".into(),
+            cert_data_b64: "certificate-data".into(),
+            private_key: "private-key".into(),
+        };
+        wallet
+            .save_apple_distribution("TEAMAAAAAA", Some(&identity))
+            .unwrap();
+        let reopened = Wallet::at(tmp.path());
+        assert!(reopened.load_apple_asc("TEAMAAAAAA").unwrap().is_none());
+        assert_eq!(
+            reopened
+                .load_apple_distribution("TEAMAAAAAA")
+                .unwrap()
+                .unwrap()
+                .private_key,
+            "private-key"
+        );
+        reopened.save_apple_auth(&asc("TEAMAAAAAA")).unwrap();
+        assert_eq!(
+            reopened
+                .load_apple_distribution("TEAMAAAAAA")
+                .unwrap()
+                .unwrap()
+                .cert_id,
+            "certificate"
+        );
+        assert!(
+            reopened
+                .load_apple_distribution("TEAMBBBBBB")
+                .unwrap()
+                .is_none()
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = reopened
+                .apple_team_dir("TEAMAAAAAA")
+                .unwrap()
+                .join("distribution.json");
+            assert_eq!(
+                fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                0o600
+            );
+        }
+    }
 
     fn asc(team: &str) -> AuthCredentials {
         AuthCredentials::AppStoreConnect {
