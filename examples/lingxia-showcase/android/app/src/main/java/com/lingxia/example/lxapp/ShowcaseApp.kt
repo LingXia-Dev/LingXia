@@ -6,7 +6,7 @@ import android.app.Application
 class ShowcaseApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        // Uncomment with MainActivity.setUrlPlayerEngineFactory to use libmpv.
+        // Uncomment with lingxia.packageMpvJni=true and the MainActivity factory.
         // MpvNative.load()
     }
 }

@@ -14,9 +14,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Default URL playback is ExoPlayer. To use host libmpv instead:
-        // 1. Set android:name=".ShowcaseApp" on <application> in AndroidManifest.xml
-        // 2. Uncomment MpvNative.load() in ShowcaseApp
-        // 3. Uncomment the factory line below (must stay before quickStart)
+        // 1. Set lingxia.packageMpvJni=true in gradle.properties (or -P)
+        // 2. Set android:name=".ShowcaseApp" on <application> in AndroidManifest.xml
+        // 3. Uncomment MpvNative.load() in ShowcaseApp
+        // 4. Uncomment the factory line below (must stay before quickStart)
         // Lingxia.setUrlPlayerEngineFactory(MpvUrlPlayerEngineFactory())
         Lingxia.quickStart(this) {
             nativeRegisterHostAddon()
