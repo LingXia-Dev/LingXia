@@ -9,6 +9,12 @@ export function isFileUrl(value: string): boolean {
   return schemeEnd > 0 && normalized.substring(0, schemeEnd).toLowerCase() === 'file';
 }
 
+export function isExternalWindowUrl(value: string): boolean {
+  const scheme = value.trim().split(':')[0].toLowerCase();
+  return /^[a-z][a-z0-9+.-]*:/i.test(value.trim()) &&
+    !['file', 'content', 'about', 'data', 'blob', 'javascript'].includes(scheme);
+}
+
 export function isSupportedUrl(value: string, urlCallback: boolean): boolean {
   return isHttpUrl(value) || (!urlCallback && isFileUrl(value));
 }

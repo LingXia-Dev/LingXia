@@ -10,7 +10,7 @@ import { browserTabClose, browserTabPathForId, disposePageInstance, getBuiltinBr
 import { FloatSurfaceWindowManager } from './surface/FloatSurfaceWindow';
 import { SurfaceCloseButton } from './surface/SurfaceChrome';
 import { SurfaceLayoutConfig, SurfacePosition } from './surface/SurfaceModel';
-import { isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
+import { isExternalWindowUrl, isFileUrl, isHttpUrl, isSameOrigin, isSupportedUrl } from './surface/SurfaceUrlPolicy';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.Surface';
@@ -995,10 +995,10 @@ export struct SurfaceManager {
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
-              .multiWindowAccess(true)
-              .allowWindowOpenMethod(true)
+              .multiWindowAccess(surface.urlCallback)
+              .allowWindowOpenMethod(surface.urlCallback)
               .onWindowNew((event) => {
-                if (!event) {
+                if (!surface.urlCallback || !event) {
                   return;
                 }
                 try {
@@ -1007,7 +1007,10 @@ export struct SurfaceManager {
                   hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
                 }
                 const targetUrl = event.targetUrl;
-                if (isHttpUrl(targetUrl)) {
+                if (urlCallbackDispatch(targetUrl)) {
+                  return;
+                }
+                if (isExternalWindowUrl(targetUrl)) {
                   Lingxia.launchWithUrl(targetUrl);
                 }
               })

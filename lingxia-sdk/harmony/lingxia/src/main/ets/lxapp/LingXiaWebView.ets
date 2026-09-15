@@ -31,6 +31,8 @@ import {
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
 import { Lingxia } from '../app/Lingxia';
+import { urlCallbackDispatch } from 'liblingxia.so';
+import { isExternalWindowUrl } from './APIs/surface/SurfaceUrlPolicy';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -164,7 +166,8 @@ export struct LingXiaWebView {
       .multiWindowAccess(this.openNewWindowExternally)
       .allowWindowOpenMethod(this.openNewWindowExternally)
       .onWindowNew((event) => {
-        if (!this.openNewWindowExternally || !event) {
+        if (!this.openNewWindowExternally || !event ||
+          !WebViewManager.getGenerationForController(this.webTag, this.controller)) {
           return;
         }
         try {
@@ -173,8 +176,10 @@ export struct LingXiaWebView {
           hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
         }
         const targetUrl = String(event.targetUrl ?? '').trim();
-        const lower = targetUrl.toLowerCase();
-        if (lower.startsWith('https://') || lower.startsWith('http://')) {
+        if (urlCallbackDispatch(targetUrl)) {
+          return;
+        }
+        if (isExternalWindowUrl(targetUrl)) {
           Lingxia.launchWithUrl(targetUrl);
         }
       })

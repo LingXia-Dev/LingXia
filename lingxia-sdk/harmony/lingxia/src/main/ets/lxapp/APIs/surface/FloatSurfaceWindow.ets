@@ -22,7 +22,7 @@ import { LingXiaWebView } from '../../LingXiaWebView';
 import { addWebViewUiCallback, extractWebTag, removeWebViewUiCallback, WebViewInfo, WebViewManager, toWebTag } from '../../WebViewBridge';
 import { browserTabPathForId, getBuiltinBrowserAppId, notifyPageInstanceMounted, notifyPageInstanceVisible, urlCallbackDispatch, webviewLoadErrorDocument } from 'liblingxia.so';
 import type { SurfaceLayoutConfig } from './SurfaceModel';
-import { isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
+import { isExternalWindowUrl, isFileUrl, isHttpUrl } from './SurfaceUrlPolicy';
 import { SurfaceCloseButton } from './SurfaceChrome';
 
 const DOMAIN = 0x0000;
@@ -329,10 +329,10 @@ struct LingXiaFloatSurfacePage {
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
               })
-              .multiWindowAccess(true)
-              .allowWindowOpenMethod(true)
+              .multiWindowAccess(this.layout!.urlCallback)
+              .allowWindowOpenMethod(this.layout!.urlCallback)
               .onWindowNew((event) => {
-                if (!event) {
+                if (!this.layout!.urlCallback || !event) {
                   return;
                 }
                 try {
@@ -341,7 +341,10 @@ struct LingXiaFloatSurfacePage {
                   hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
                 }
                 const targetUrl = event.targetUrl;
-                if (isHttpUrl(targetUrl)) {
+                if (urlCallbackDispatch(targetUrl)) {
+                  return;
+                }
+                if (isExternalWindowUrl(targetUrl)) {
                   Lingxia.launchWithUrl(targetUrl);
                 }
               })
