@@ -70,7 +70,7 @@ fn render_host_config(
         lxapp
             .map(|lxapp| {
                 format!(
-                    "  # Bundled control lxapp. Its source is declared in resources.bundles.\n  homeAppId: {}",
+                    "  homeAppId: {}   # bundled control lxapp; source is resources.bundles",
                     yaml_string(&lxapp.app_id)
                 )
             })
@@ -158,7 +158,7 @@ fn render_resources_section(lxapp: Option<&LxAppInfo>) -> String {
         return String::new();
     };
     format!(
-        "# Resource bundle sources copied into native app assets.\n# app.homeAppId and lxapp surfaces reference appId; bundles resolve local assets.\nresources:\n  bundles:\n    - type: lxapp\n      appId: {}\n      path: {}",
+        "# Bundled lxapps. homeAppId and lxapp surfaces reference appId.\nresources:\n  bundles:\n    - type: lxapp\n      appId: {}\n      path: {}",
         yaml_string(&lxapp.app_id),
         yaml_string(&lxapp.dir_name)
     )

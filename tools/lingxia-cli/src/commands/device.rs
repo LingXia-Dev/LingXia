@@ -187,7 +187,6 @@ mod tests {
                 product_version: "0.1.0".into(),
                 lingxia_server: None,
                 lingxia_id: None,
-                package_id_suffix: None,
                 platforms: vec![
                     "android".into(),
                     "ios".into(),

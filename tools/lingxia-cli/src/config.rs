@@ -1253,15 +1253,6 @@ pub struct HostAppConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lingxia_id: Option<String>,
 
-    /// Optional overrides for the built-in env package-id suffixes
-    /// (`.dev` / none). Specify `""` to opt out of a default,
-    /// e.g. `dev: ""` keeps the dev build using the base id.
-    /// Almost no projects need this — the defaults match the common case.
-    #[serde(default)]
-    #[serde(rename = "packageIdSuffix")]
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub package_id_suffix: Option<PackageIdSuffixOverrides>,
-
     /// Platforms to build for this app (e.g. ["android"]).
     pub platforms: Vec<String>,
 
@@ -1310,24 +1301,6 @@ impl LingxiaServer {
                 AppEnv::Dev => per.dev.as_deref(),
                 AppEnv::Prod => per.prod.as_deref(),
             },
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct PackageIdSuffixOverrides {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub dev: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prod: Option<String>,
-}
-
-impl PackageIdSuffixOverrides {
-    pub fn for_env(&self, version: AppEnv) -> Option<&str> {
-        match version {
-            AppEnv::Dev => self.dev.as_deref(),
-            AppEnv::Prod => self.prod.as_deref(),
         }
     }
 }
@@ -1384,9 +1357,7 @@ impl AppEnv {
         }
     }
 
-    /// Built-in default `packageIdSuffix` for this environment. Used when the
-    /// override block doesn't specify one — most projects never need to. An
-    /// explicit `packageIdSuffix: ""` in YAML opts out (no suffix at all).
+    /// Built-in package-id suffix: `dev` → `.dev`, `prod` → none.
     pub fn default_package_id_suffix(self) -> Option<&'static str> {
         match self {
             Self::Dev => Some(".dev"),
@@ -1958,7 +1929,6 @@ impl LingXiaConfig {
                 product_version: "0.0.1".to_string(),
                 lingxia_server: Some(LingxiaServer::Single("https://api.example.com".to_string())),
                 lingxia_id: None,
-                package_id_suffix: None,
                 platforms: vec!["android".to_string()],
                 home_app_id: Some(home_app_id.to_string()),
             }),
@@ -2115,9 +2085,6 @@ impl LingXiaConfig {
             }
             if let Some(server) = app.lingxia_server.as_ref() {
                 validate_lingxia_server(server)?;
-            }
-            if let Some(over) = app.package_id_suffix.as_ref() {
-                validate_package_id_suffix_overrides(over)?;
             }
             for platform in &app_platforms {
                 let Some(ui) = self.resolved_ui_for_platform(platform)? else {
@@ -2804,48 +2771,16 @@ fn validate_lingxia_server(cfg: &LingxiaServer) -> Result<()> {
     Ok(())
 }
 
-fn validate_package_id_suffix_overrides(over: &PackageIdSuffixOverrides) -> Result<()> {
-    for (name, suffix) in [("dev", over.dev.as_deref()), ("prod", over.prod.as_deref())] {
-        let Some(suffix) = suffix else {
-            continue;
-        };
-        // Empty string is the explicit "opt out of default suffix" form.
-        if !suffix.is_empty() && !is_valid_package_id_suffix(suffix) {
-            return Err(anyhow!(
-                "app.packageIdSuffix.{name} must start with '.' \
-                 and use lowercase a-z 0-9 segments (got '{suffix}'); \
-                 use \"\" to opt out of the default"
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn is_valid_package_id_suffix(suffix: &str) -> bool {
-    // Pattern: ^\.[a-z0-9]+(\.[a-z0-9]+)*$
-    if !suffix.starts_with('.') || suffix.len() < 2 {
-        return false;
-    }
-    let body = &suffix[1..];
-    body.split('.').all(|seg| {
-        !seg.is_empty()
-            && seg
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
-    })
-}
-
 impl LingXiaConfig {
     /// Resolve the active environment for this build.
     ///
-    /// Model: env is a build-time property with built-in defaults
-    /// (`dev`=".dev", `prod`=no suffix). Yaml only supplies optional overrides.
+    /// Env is a build-time property with built-in package-id suffixes
+    /// (`dev`=".dev", `prod`=none). YAML only overrides server and app-link
+    /// hosts.
     ///
     /// - `lingxia_server`: `app.lingxiaServer` is queried; `Single` applies
     ///   everywhere, `PerEnv` selects by env. Empty string if not configured.
-    /// - `package_id_suffix`: `app.packageIdSuffix.<env>` wins; an explicit
-    ///   `""` opts out of the built-in default. Otherwise the env's built-in
-    ///   default is used.
+    /// - `package_id_suffix`: the env's built-in suffix.
     /// - `app_link_hosts`: `appLinks.hosts` is queried the same way; `Single`
     ///   applies everywhere, `PerEnv` selects by env. Empty if AppLinks are
     ///   off for this env.
@@ -2862,12 +2797,7 @@ impl LingXiaConfig {
             .map(str::to_string)
             .unwrap_or_default();
 
-        let configured_suffix = app
-            .package_id_suffix
-            .as_ref()
-            .and_then(|over| over.for_env(version));
-        let package_id_suffix =
-            resolve_env_suffix(configured_suffix, version.default_package_id_suffix());
+        let package_id_suffix = version.default_package_id_suffix().map(str::to_string);
 
         let app_link_hosts = self
             .app_links
@@ -2881,14 +2811,6 @@ impl LingXiaConfig {
             package_id_suffix,
             app_link_hosts,
         })
-    }
-}
-
-fn resolve_env_suffix(configured: Option<&str>, default: Option<&str>) -> Option<String> {
-    match configured {
-        None => default.map(str::to_string),
-        Some("") => None,
-        Some(value) => Some(value.to_string()),
     }
 }
 
@@ -3415,8 +3337,7 @@ android:
 
     #[test]
     fn resolve_env_applies_builtin_suffix_with_single_server() {
-        // Default template: single top-level server, no overrides. Each env
-        // still resolves to its built-in suffix.
+        // Single top-level server. Each env still gets its built-in suffix.
         let config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
 
         let dev = config.resolve_env(AppEnv::Dev).unwrap();
@@ -3461,16 +3382,24 @@ android:
     }
 
     #[test]
-    fn resolve_env_suffix_override_opts_out_with_empty_string() {
-        let mut config = LingXiaConfig::new_android("my-app", "com.example.myapp", "my-app");
-        let app = config.app.as_mut().unwrap();
-        app.package_id_suffix = Some(PackageIdSuffixOverrides {
-            dev: Some(String::new()),
-            ..Default::default()
-        });
-
-        let dev = config.resolve_env(AppEnv::Dev).unwrap();
-        assert_eq!(dev.effective_package_id_suffix(), None);
+    fn package_id_suffix_yaml_is_rejected() {
+        let yaml = r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 1.0.0
+  platforms: [android]
+  homeAppId: my-app
+  packageIdSuffix:
+    dev: ".internal"
+android:
+  packageId: com.example.myapp
+"#;
+        let err = yaml::from_str::<LingXiaConfig>(yaml)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("unknown field `packageIdSuffix`"), "{err}");
     }
 
     #[test]

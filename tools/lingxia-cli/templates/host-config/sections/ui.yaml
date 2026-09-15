@@ -1,68 +1,38 @@
 
-# UI declaration: one surface per entry. You declare "what + relationship";
-# the Host derives the platform form (window/panel/sidebar/tab/tray) by screen
-# size — no macos: / windows: blocks.
+# One surface per entry. Declare content + relationship; the host picks the
+# platform form (window/panel/sidebar/tab/tray) by screen size.
 #
-# Each entry starts with its content key (exactly one):
-#   lxapp   an lxapp, by appId          roles: main | aside | float
-#   url     an in-app browser page      roles: main | aside (requires capabilities.browser: true)
-#   native  a host capability           roles: main | aside (terminal or browser)
-# Other fields:
-#   role    main (switchable primary) | aside (docked companion) | float (popup)
-#   edge    aside dock edge: left | right | top | bottom (default right;
-#           terminal defaults to bottom)
-#   size    aside preferred size hint, e.g. { width: 320 }
-#   launch  open on start; at most one main has launch (none = launch from tray)
-#   page    optional configured page name for lxapp content (never a route path)
-#   query   optional page parameters, e.g. { source: tray }
-#   tray    menu bar (macOS) / system tray (Windows) entry; required on float
+# Content (exactly one): lxapp (appId) | url | native (terminal|browser)
+# role: main | aside | float
+# edge: aside dock edge (default right; terminal defaults to bottom)
+# size / launch / page / query / tray as needed. At most one launch main.
 surfaces:
   - {{MAIN_SURFACE_CONTENT}}
     role: main
     launch: true
-    # tray:                  # off by default; uncomment for a menu-bar / tray app
+    # tray:
     #   label: {{PRODUCT_NAME}}
-    #   # icon: icons/status.svg
     #   action: activate
-    #   # exclusive: true     # menu-bar / tray only, no dock / taskbar icon
+    #   # exclusive: true     # no dock / taskbar icon
 
-  # Right-edge companion example (e.g. an AI assistant). The referenced lxapp
-  # must be provided by the runtime / update flow. Persistent sidebar entries
-  # are declared at runtime via lx.shell.sidebarActions, not in YAML.
   # - lxapp: assistant
   #   role: aside
-  #   edge: right            # left | right | top | bottom
+  #   edge: right
   #   size: { width: 320 }
 
-  # In-app browser page (requires capabilities.browser: true).
   # - url: https://example.com
   #   role: aside
   #   edge: right
 
-  # Built-in terminal (requires capabilities.terminal: true).
   # - native: terminal
   #   role: aside
-  #   edge: bottom           # top | bottom
-  #   platforms: [macos, windows]   # availability filter: desktop only
+  #   edge: bottom
+  #   platforms: [macos, windows]
 
-  # Tray popover (role: float requires a tray; clicking the tray icon opens it
-  # as an auto-dismissing popover anchored under the icon).
   # - lxapp: panel
   #   role: float
   #   page: tray
   #   query: { source: tray }
   #   tray:
-  #     # icon: icons/status.svg
   #     action: toggle
   #     size: { width: 320, height: 480 }
-
-  # Menu-bar / tray app (tray = macOS menu bar / Windows tray icon):
-  #   action: toggle      visible -> hide, hidden -> show
-  #   action: activate    show and bring to front
-  #   exclusive: true     no dock / taskbar icon — the app lives only in the
-  #                       tray. Default false keeps the dock /
-  #                       taskbar icon alongside the tray.
-  #   icon is optional; label is used for tooltip / text-only status items.
-
-# Note: capabilities (feature/permission gates) and resources (local bundles)
-# are independent top-level blocks — never put them inside a surface.

@@ -1,10 +1,6 @@
 
-# HTTPS App Links / associated domains. The CLI syncs platform manifest/entitlement files.
+# HTTPS App Links / associated domains.
 appLinks:
-  # DNS hosts accepted as app links, without scheme or path.
-  # A list applies to every env. To vary by env (same shape as app.lingxiaServer):
-  #   hosts:
-  #     dev: [app-dev.example.com]
-  #     prod: [app.example.com]
+  # A list applies to every env. Same per-env map shape as app.lingxiaServer.
   hosts:
 {{APP_LINK_HOSTS}}

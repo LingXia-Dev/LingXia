@@ -13,7 +13,7 @@ These used to share the same three names. They do not.
 
 | Axis | Values | Meaning |
 | --- | --- | --- |
-| Host **env** | `dev` \| `prod` | Build-time property of the host: `lingxiaServer`, `appLinks.hosts`, `packageIdSuffix` + badge, publish token, and which server the host self-updates from. **No channel.** |
+| Host **env** | `dev` \| `prod` | Build-time property of the host: `lingxiaServer`, `appLinks.hosts`, built-in `.dev` suffix + badge, publish token, and which server the host self-updates from. **No channel.** |
 | Lxapp **channel** | `release` \| `draft` | Publish line of an lxapp package inside an env, plus that line's rules. Fingermark directories include this value. |
 
 `prod` is the host env. `release` is an lxapp channel. `--release` is a
@@ -30,9 +30,9 @@ spellings.
 ## Mental model
 
 Env is a **build-time property** with built-in defaults. Every host build is
-`dev` or `prod`. YAML only carries optional overrides.
+`dev` or `prod`. YAML only overrides server and app-link hosts.
 
-| Env | Built-in `packageIdSuffix` | Launcher icon | Default `lingxia build/dev` | Default `lingxia package` |
+| Env | Package id suffix | Launcher icon | Default `lingxia build/dev` | Default `lingxia package` |
 | --- | --- | --- | --- | --- |
 | `dev` | `.dev` | red `D` badge | ✓ | |
 | `prod` | (none) | unmodified | | ✓ |
@@ -65,10 +65,6 @@ app:
   #   dev: http://192.168.1.10:8080
   #   prod: https://api.myapp.com
 
-  # packageIdSuffix:
-  #   dev: .internal
-  #   prod: ""
-
 appLinks:
   hosts: [app.example.com]
   # hosts:
@@ -79,7 +75,6 @@ appLinks:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `app.lingxiaServer` | `string` \| `{dev?, prod?}` | Omit entirely for server-less apps. |
-| `app.packageIdSuffix` | `{dev?, prod?}` | Absent → built-in default, `""` → opt out, `"<x>"` → use that. |
 | `appLinks.hosts` | `[string]` \| `{dev?, prod?}` | Omit an env to give that build no App Links. |
 
 `deny_unknown_fields` means typos (and leftover `developer`/`preview`/`release`
@@ -131,8 +126,6 @@ lingxia publish --env prod --channel draft     # testers, same-version overwrite
 | no fields | `.dev`, server="" | none, server="" |
 | `lingxiaServer: "X"` | `.dev`, server=X | none, server=X |
 | `lingxiaServer: {dev:A, prod:B}` | `.dev`, server=A | none, server=B |
-| `packageIdSuffix: {dev: ""}` | **none** (opt-out) | none |
-| `packageIdSuffix: {dev: ".d"}` | `.d` | none |
 | `appLinks.hosts: [H]` | hosts=`[H]` | hosts=`[H]` |
 | `appLinks.hosts: {dev:[D], prod:[R]}` | hosts=`[D]` | hosts=`[R]` |
 

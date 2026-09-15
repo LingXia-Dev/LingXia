@@ -1,9 +1,5 @@
 
-# Android host settings used by Gradle and native Rust cross-compilation.
 android:
-  # Minimum Android SDK. Also used to derive the default NDK API level.
-  minSdk: 29
-  # Target Android SDK.
+  minSdk: 29            # also the default NDK API level
   targetSdk: 35
-  # Compile Android SDK.
   compileSdk: 35
