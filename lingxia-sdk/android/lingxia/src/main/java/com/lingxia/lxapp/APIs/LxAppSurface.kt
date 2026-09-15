@@ -799,6 +799,8 @@ internal object LxAppSurface {
             settings.databaseEnabled = true
             settings.allowFileAccess = !urlCallback
             settings.allowContentAccess = false
+            settings.setSupportMultipleWindows(true)
+            settings.javaScriptCanOpenWindowsAutomatically = true
             webViewClient = object : WebViewClient() {
                 // URL surfaces may cross origins during auth. Consume the
                 // registered callback, and hand non-web deep links to Android.
@@ -853,7 +855,31 @@ internal object LxAppSurface {
                     nextUrl: String?
                 ): Boolean = nextUrl?.let(Uri::parse)?.let(::handles) ?: true
             }
-            webChromeClient = WebChromeClient()
+            webChromeClient = object : WebChromeClient() {
+                // target=_blank / window.open: keep the login sheet and hand
+                // the URL to the system browser.
+                override fun onCreateWindow(
+                    view: android.webkit.WebView?,
+                    isDialog: Boolean,
+                    isUserGesture: Boolean,
+                    resultMsg: android.os.Message?
+                ): Boolean {
+                    val href = view?.hitTestResult?.extra
+                    if (!href.isNullOrBlank()) {
+                        try {
+                            activity.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    Uri.parse(href)
+                                )
+                            )
+                        } catch (error: Exception) {
+                            Log.w(TAG, "no handler for new-window $href: $error")
+                        }
+                    }
+                    return false
+                }
+            }
         }
         if (ephemeralWebData) {
             // CookieManager is process-global and asynchronous, so wait for

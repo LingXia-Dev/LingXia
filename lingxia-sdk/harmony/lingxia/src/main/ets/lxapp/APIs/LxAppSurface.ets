@@ -953,6 +953,7 @@ export struct SurfaceManager {
               webTag: surface.pageWebTag,
               controller: this.getWebController(surface),
               appearanceDark: surface.appearanceDark,
+              openNewWindowExternally: surface.urlCallback,
               renderVisibility: Visibility.Visible,
               renderWidth: '100%',
               renderHeight: '100%',
@@ -993,6 +994,22 @@ export struct SurfaceManager {
                 }
                 Lingxia.launchWithUrl(targetUrl);
                 return true;
+              })
+              .multiWindowAccess(true)
+              .allowWindowOpenMethod(true)
+              .onWindowNew((event) => {
+                if (!event) {
+                  return;
+                }
+                try {
+                  event.handler.setWebController(null);
+                } catch (error) {
+                  hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
+                }
+                const targetUrl = event.targetUrl;
+                if (isHttpUrl(targetUrl)) {
+                  Lingxia.launchWithUrl(targetUrl);
+                }
               })
               .onErrorReceive((event) => {
                 if (!event || !event.request || !event.error || !event.request.isMainFrame()) {

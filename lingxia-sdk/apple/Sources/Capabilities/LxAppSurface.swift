@@ -242,7 +242,7 @@ enum LxAppSurface {
         }
     }
 
-    private final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
+    private final class WebNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDelegate {
         let initialURL: URL
         /// Browser-relaxed navigation for URL surfaces that host multi-origin
         /// journeys (e.g. an auth page hopping through an external IdP and
@@ -268,6 +268,13 @@ enum LxAppSurface {
                 decisionHandler(.cancel)
                 return
             }
+            // target=_blank / window.open (nil targetFrame): keep the login
+            // sheet and hand http(s) to the system browser.
+            if navigationAction.targetFrame == nil {
+                LxAppSurface.openURLSurfaceNewWindow(url)
+                decisionHandler(.cancel)
+                return
+            }
             if allowsCrossOrigin {
                 // Any http(s) destination may render. Other schemes are app
                 // deep links (dingtalk://, feishu://, ...) an IdP page uses to
@@ -288,6 +295,13 @@ enum LxAppSurface {
                 return
             }
             decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if let url = navigationAction.request.url {
+                LxAppSurface.openURLSurfaceNewWindow(url)
+            }
+            return nil
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -538,6 +552,7 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
+                wkWebView.uiDelegate = delegate
                 prepareRunnerWebSurface(wkWebView)
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 contentHost.addSubview(wkWebView)
@@ -1544,7 +1559,7 @@ enum LxAppSurface {
         }
     }
 
-    private final class WebNavigationDelegate: NSObject, WKNavigationDelegate {
+    private final class WebNavigationDelegate: NSObject, WKNavigationDelegate, WKUIDelegate {
         let initialURL: URL
         /// Browser-relaxed navigation for URL surfaces that host multi-origin
         /// journeys (e.g. an auth page hopping through an external IdP and
@@ -1570,6 +1585,13 @@ enum LxAppSurface {
                 decisionHandler(.cancel)
                 return
             }
+            // target=_blank / window.open (nil targetFrame): keep the login
+            // sheet and hand http(s) to the system browser.
+            if navigationAction.targetFrame == nil {
+                LxAppSurface.openURLSurfaceNewWindow(url)
+                decisionHandler(.cancel)
+                return
+            }
             if allowsCrossOrigin {
                 // Any http(s) destination may render. Other schemes are app
                 // deep links (dingtalk://, feishu://, ...) an IdP page uses to
@@ -1590,6 +1612,13 @@ enum LxAppSurface {
                 return
             }
             decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+            if let url = navigationAction.request.url {
+                LxAppSurface.openURLSurfaceNewWindow(url)
+            }
+            return nil
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
@@ -1915,6 +1944,7 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
+                wkWebView.uiDelegate = delegate
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
                 wkWebView.isOpaque = false
@@ -2239,6 +2269,18 @@ enum LxAppSurface {
 import WebKit
 
 extension LxAppSurface {
+    /// `target=_blank` / `window.open` from a URL surface (the auth login
+    /// sheet). Keep the sheet; hand http(s) to the system browser.
+    static func openURLSurfaceNewWindow(_ url: URL) {
+        let scheme = url.scheme?.lowercased() ?? ""
+        guard scheme == "http" || scheme == "https" else { return }
+        #if os(macOS)
+        NSWorkspace.shared.open(url)
+        #else
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        #endif
+    }
+
     static func supportsWebSurfaceURL(_ url: URL, urlCallback: Bool) -> Bool {
         guard let scheme = url.scheme?.lowercased() else { return false }
         if urlCallback {
