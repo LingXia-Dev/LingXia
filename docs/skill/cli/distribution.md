@@ -150,13 +150,8 @@ certificate** from your Apple Developer account, applied at build time. Store
 the account credential with `lingxia auth login apple`; manage profiles and the
 certificate through your Apple Developer account / Xcode.
 
-`lingxia package -p ios` uses App Store distribution signing. Its certificate
-and private key are cached at `~/.lingxia/credentials/apple/<team>/distribution.json`,
-including with env-provided API credentials. Persist this secret file between
-CI jobs to reuse the certificate; API-key login/rotation does not replace it.
-Embedded extensions receive separate profiles for their bundle IDs. Enable
-their requested capabilities in the Apple Developer portal before packaging;
-an extension entitlement missing from its profile stops signing.
+App Store builds reuse their distribution signing material across CI jobs;
+embedded extensions need matching profiles and capabilities.
 
 ### Android
 
@@ -224,14 +219,12 @@ and Harmony reuse their `auth login` credentials); each provider's
 only, a partial group is an error. Store-record settings (numeric app ids,
 default track) live under the platform blocks in `lingxia.yaml`.
 
-Run `lingxia store --help` for the current set of supported stores and per-action
-flags (release notes, track, etc.).
+Store-specific release notes and channels remain managed by the store flow.
 
 ### CI
 
-Persist signing keys/certificates separately from API credentials so ephemeral
-runners reuse the app's signing identity. Split jobs transfer the packaged
-`dist/<platform>/` with its matching project config.
+Persist signing keys/certificates separately from API credentials. Transfer the
+packaged artifact with its matching project config between jobs.
 
 For Apple/Harmony, gate subsequent steps on processing completion. After a
 timeout, resume querying the same submission instead of uploading again.
