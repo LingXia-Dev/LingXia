@@ -420,6 +420,7 @@ export interface LxAppEvalOptions {
   captureCalls?: boolean;
 }
 
+/** Shell admission class. Content `lx.surface.onContext` uses `compact` | `regular`. */
 export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
 export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
 export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';

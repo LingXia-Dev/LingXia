@@ -10,7 +10,7 @@ The generated `@lingxia/types` declarations are authoritative:
 
 ```ts
 type SurfaceContext = {
-  sizeClass: 'compact' | 'medium' | 'expanded';
+  sizeClass: 'compact' | 'regular';
   width: number;
   height: number;
 };
@@ -22,16 +22,17 @@ lx.surface.onContext(
 
 The subscription invokes the handler immediately, then only when the actual
 surface viewport changes. `width` and `height` use logical pixels. `sizeClass`
-uses the following ranges with platform-managed hysteresis:
+uses the following ranges with platform-managed hysteresis at 600:
 
 | Size class | Actual surface viewport width |
 |---|---:|
 | `compact` | less than 600 |
-| `medium` | 600 through 840 |
-| `expanded` | greater than 840 |
+| `regular` | 600 and above |
 
 Content size class is scoped to the lxapp surface. It is not the shell size
-class. An aside inside an expanded desktop shell can receive `compact`.
+class. The shell still uses `compact` / `medium` / `expanded` internally for
+sidebar and aside admission; content never sees `medium` or `expanded`. An
+aside inside an expanded desktop shell can receive `compact`.
 
 ## Edge-to-edge windows
 
@@ -177,5 +178,5 @@ pass `appearance: "light" | "dark" | "system"` to pin or release the simulated
 color scheme for dual-theme assertions.
 
 Assert that the old View is absent from the DOM and that Logic-owned state is
-still visible after each switch. Add a medium preset when the product gives
-`medium` distinct behavior.
+still visible after each switch. Do not add a third View for the shell's
+medium band; spacing inside `regular` belongs to CSS or container queries.

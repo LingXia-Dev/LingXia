@@ -61,10 +61,9 @@ lxapp 通过 `lx.surface.onContext` 获得自己的 surface viewport 等级：
 | 尺寸等级 | viewport 宽度 |
 |---|---:|
 | `compact` | 小于 600 logical pixels |
-| `medium` | 600 到 840 |
-| `expanded` | 大于 840 |
+| `regular` | 600 及以上 |
 
-这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。只改变布局时用 CSS/container query；组件树或交互模型变化时再使用 surface context。
+这是 lxapp surface 的尺寸，不是设备类型判断，也不一定等于宿主窗口尺寸。宽桌面宿主里的 aside 仍可能是 `compact`。组件树只在 `compact` 与 `regular` 之间分支；`regular` 内部的疏密、列数用 CSS/container query。宿主 shell 仍用独立的 `medium` 档做 chrome 仲裁（icon rail、最多一个停靠 aside）——那个名字不是页面尺寸档。
 
 同一份声明在 shell 层会呈现为几种形态：
 

@@ -28,7 +28,7 @@ struct SurfaceViewportContext {
     session_id: u64,
     width: f64,
     height: f64,
-    size_class: lingxia_surface::SizeClass,
+    size_class: lingxia_surface::ContentSizeClass,
 }
 
 /// The surface graph is per-WINDOW, not per-lxapp. The graph and its single
@@ -2492,7 +2492,8 @@ impl LxApp {
 
     /// Report this lxapp presentation's actual viewport. Unlike shell width,
     /// this is measured after sidebar/navbar/aside layout and therefore drives
-    /// the content-facing `lx.onSurfaceContext` size class.
+    /// the content-facing `lx.surface.onContext` size class (`compact` |
+    /// `regular`).
     pub fn set_surface_viewport(&self, width: f64, height: f64) -> bool {
         if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {
             return false;
@@ -2502,7 +2503,7 @@ impl LxApp {
             let previous = viewports
                 .get(&self.appid)
                 .filter(|context| context.session_id == self.session_id());
-            let size_class = lingxia_surface::SizeClass::resolve(
+            let size_class = lingxia_surface::ContentSizeClass::resolve(
                 previous.map(|context| context.size_class),
                 width,
                 lingxia_surface::DEFAULT_HYSTERESIS,
@@ -2529,7 +2530,7 @@ impl LxApp {
         changed
     }
 
-    pub fn surface_viewport(&self) -> Option<(f64, f64, lingxia_surface::SizeClass)> {
+    pub fn surface_viewport(&self) -> Option<(f64, f64, lingxia_surface::ContentSizeClass)> {
         SURFACE_VIEWPORTS
             .get()
             .and_then(|viewports| viewports.lock().ok())

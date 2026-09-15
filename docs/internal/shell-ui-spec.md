@@ -247,22 +247,41 @@ reuse, or lifecycle semantics.
 
 ### 3.1 Two size-class scopes
 
-Shell and content use the same width breakpoints, but with different scopes:
+Shell and content share the compact width boundary. They MUST use different
+vocabularies: the shell answers how many chrome regions fit; content answers
+whether this surface is a compact interaction or a workspace.
 
-| Size class | Available width |
+**Shell size class** is computed from the full client-area width of the main
+window and drives sidebar and aside arbitration:
+
+| Shell size class | Available width |
 |---|---|
 | `compact` | `< 600 dp/pt` |
 | `medium` | `600–840 dp/pt` |
 | `expanded` | `> 840 dp/pt` |
 
-- **Shell size class**: computed from the full client-area width of the main
-  window; drives sidebar and aside arbitration.
-- **Content size class**: computed per surface from its actual viewport width;
-  exposed to content via the surface-context subscription.
-- The two MUST NOT be conflated; a narrow aside inside an expanded shell can
-  legitimately receive a compact content size class.
-- Breakpoints use 24 dp/pt hysteresis: upgrading requires crossing
-  `boundary + 24`, downgrading requires dropping below `boundary - 24`.
+**Content size class** is computed per surface from its actual viewport width
+and is the only size class exposed on `lx.surface.onContext`:
+
+| Content size class | Available width |
+|---|---|
+| `compact` | `< 600 dp/pt` |
+| `regular` | `≥ 600 dp/pt` |
+
+- Content `regular` covers both shell `medium` and shell `expanded` viewports.
+  Content MUST NOT expose `medium` or `expanded`; those names are shell
+  admission classes, not page layouts.
+- Authors MUST branch at most once: `sizeClass === 'compact'` versus
+  `regular`. Spacing, columns, and wrapping inside `regular` use CSS or
+  container queries plus the raw `width` / `height`. A product MUST NOT ship a
+  third View for the shell's medium band.
+- The two scopes MUST NOT be conflated; a narrow aside inside an expanded
+  shell can legitimately receive a compact content size class.
+- Shell breakpoints use 24 dp/pt hysteresis at both 600 and 840: upgrading
+  requires crossing `boundary + 24`, downgrading requires dropping below
+  `boundary - 24`.
+- Content hysteresis applies only at 600. Crossing 840 MUST NOT change the
+  content `sizeClass`; `width` and `height` still update.
 
 ### 3.2 Degradation matrix
 
@@ -856,9 +875,11 @@ target appId is already owned by another live Surface, navigation fails with
   runtime id, never broadcast by appId or page name; replies return to the
   opener's handle. Native surfaces support messaging only when the capability
   declares it.
-- Content can subscribe to its surface context (content size class plus
-  viewport dimensions); the subscription fires once immediately with the
-  current value, then only on actual change.
+- Content can subscribe to its surface context (content size class
+  `compact` | `regular` plus viewport dimensions); the subscription fires
+  once immediately with the current value, then only on actual change.
+  Crossing the shell's 840 boundary MUST NOT by itself change content
+  `sizeClass`.
 
 ### 7.3 Shell writer
 
@@ -1017,7 +1038,8 @@ lowercase keys). Synonyms are not allowed.
 | aside / slot | `aside / slot` | `AsideSlot` | `AsideSlot`, `SlotKind` | panel, dock (dock is a presentation value only) |
 | sidebar action | `sidebar_action` | `lx.shell.sidebarActions`, `ShellSidebarAction`, `ResolvedShellSidebarAction` | `SidebarAction*` | activator, launcher |
 | pin | `pin` | — | `Pin*`, `MAX_SHELL_PINS` | favorite, shortcut |
-| size class | `size_class` | `sizeClass` | `SizeClass` | breakpoint (internal boundary values may use it) |
+| shell size class | `size_class` | automation `sizeClass` (`compact` \| `medium` \| `expanded`) | `SizeClass` | breakpoint (internal boundary values may use it) |
+| content size class | `size_class` | `sizeClass` (`compact` \| `regular`) | `ContentSizeClass` | medium, expanded (shell-only; content maps both to `regular`) |
 | admission | `admission` | — | `admission` module/functions | aliases other than arbitrate |
 | writer | `writer` | — | `ShellWriter` | owner, master |
 | error codes | `E_*` | verbatim | mapped to the same `E_*` wire strings | per-platform error names |
