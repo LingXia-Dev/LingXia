@@ -470,6 +470,7 @@ fn login_with_api_key(wallet: &Wallet, args: ApiKeyLoginArgs, yes: bool) -> Resu
         private_key_pem,
         team_id: team_id.clone(),
         cached_signing_identity: None,
+        cached_distribution_identity: None,
     };
 
     if let Some(AuthCredentials::AppStoreConnect {

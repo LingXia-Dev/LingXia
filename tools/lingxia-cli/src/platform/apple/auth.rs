@@ -32,9 +32,12 @@ pub enum AuthCredentials {
         private_key_pem: String,
         /// Selected team ID
         team_id: String,
-        /// Cached signing identity created via App Store Connect API
+        /// Cached iOS Development identity created via App Store Connect API
         #[serde(default)]
         cached_signing_identity: Option<CachedSigningIdentity>,
+        /// Cached iOS Distribution identity for App Store IPA signing
+        #[serde(default)]
+        cached_distribution_identity: Option<CachedSigningIdentity>,
     },
     /// Apple ID authentication (Xcode private API)
     #[serde(rename = "appleId")]

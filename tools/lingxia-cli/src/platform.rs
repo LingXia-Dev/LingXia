@@ -305,6 +305,7 @@ pub enum BuildArtifacts {
     },
     Harmony {
         hap_path: PathBuf,
+        app_path: Option<PathBuf>,
     },
     Windows {
         exe_path: PathBuf,
@@ -363,7 +364,9 @@ impl BuildArtifacts {
                 .as_deref()
                 .or(dmg_path.as_deref())
                 .unwrap_or(app_path.as_path()),
-            BuildArtifacts::Harmony { hap_path } => hap_path.as_path(),
+            BuildArtifacts::Harmony { hap_path, app_path } => {
+                app_path.as_deref().unwrap_or(hap_path.as_path())
+            }
             BuildArtifacts::Windows { exe_path } => exe_path.as_path(),
         }
     }

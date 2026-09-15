@@ -204,6 +204,7 @@ fn asc_from_env(constraint: Option<&str>) -> Result<Option<AuthCredentials>> {
         private_key_pem,
         team_id,
         cached_signing_identity: None,
+        cached_distribution_identity: None,
     }))
 }
 
@@ -951,6 +952,7 @@ mod tests {
             private_key_pem: "-----BEGIN PRIVATE KEY-----\nx\n-----END PRIVATE KEY-----".into(),
             team_id: team.into(),
             cached_signing_identity: None,
+            cached_distribution_identity: None,
         }
     }
 

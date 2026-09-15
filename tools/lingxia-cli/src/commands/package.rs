@@ -100,7 +100,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         progress: options.progress,
         platforms: options.platforms,
         all_platforms: options.all_platforms,
-        ipa: false,
+        ipa: true,
         dmg: false,
         android_dist: options.android_dist,
         msix: options.msix || options.self_signed,

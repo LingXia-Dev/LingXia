@@ -204,7 +204,9 @@ The concrete flows are in [App signing](#app-signing) above; see
 Upload a built installable to an **OS app store**. Talks to stores only — never
 the LingXia server (that's `publish`) and never builds (run `build`/`package`
 first; `submit` consumes the staged `dist/<platform>/` and fails clearly if it's
-missing). The CLI does not submit for review; do that in the store console.
+missing). `lingxia package` writes store artifacts: Harmony `.app` (not a raw
+HAP), iOS App Store–signed `.ipa`. The CLI does not submit for review; do that
+in the store console.
 The artifact's real bundle/package identity is checked against the
 platform block in `lingxia.yaml` before any credential or network use, so a
 dev-suffixed or wrong-app artifact fails immediately. Credentials come from
