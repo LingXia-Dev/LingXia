@@ -1112,6 +1112,7 @@ mod tests {
             r#"
 app:
   projectName: demo
+  packageId: app.example.demo
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
@@ -1120,10 +1121,6 @@ app:
     - android
     - macos
   homeAppId: demo.home
-android:
-  packageId: app.example.demo
-macos:
-  bundleId: app.example.demo
 surfaces:
   - lxapp: demo.home
     role: main
@@ -1158,6 +1155,7 @@ surfaces:
             r#"
 app:
   projectName: demo
+  packageId: app.example.demo
   productName: Demo
   productVersion: 1.0.0
   lingxiaId: demo
@@ -1166,10 +1164,6 @@ app:
     - android
     - harmony
   homeAppId: demo.home
-android:
-  packageId: app.example.demo
-harmony:
-  bundleName: app.example.demo
 "#,
         )
         .unwrap();

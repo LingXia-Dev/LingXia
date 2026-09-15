@@ -312,7 +312,7 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         write(
             &temp.path().join("lingxia.yaml"),
-            "app:\n  projectName: demo-host\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n    - type: lxapp\n      appId: settings\n      path: settings\n    - type: lxapp\n      appId: packaged\n      package: \"@demo/packaged\"\n      version: \"1.0.0\"\n    - type: lxapp\n      appId: missing\n      path: nowhere\n",
+            "app:\n  projectName: demo-host\n  packageId: app.example.demohost\n  productName: Demo Host\n  productVersion: 1.0.0\n  platforms: [windows]\n  homeAppId: demo\nresources:\n  bundles:\n    - type: lxapp\n      appId: demo\n      path: home\n    - type: lxapp\n      appId: settings\n      path: settings\n    - type: lxapp\n      appId: packaged\n      package: \"@demo/packaged\"\n      version: \"1.0.0\"\n    - type: lxapp\n      appId: missing\n      path: nowhere\n",
         );
         write(
             &temp.path().join("home/lxapp.json"),
