@@ -63,7 +63,7 @@ An lxapp receives its own surface viewport class through `lx.surface.onContext`:
 | `compact` | less than 600 logical pixels |
 | `regular` | 600 and above |
 
-This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. `regular` is not desktop: pair it with `isMobile()` / `isDesktop()` (tablets and foldable phones are mobile). Unfolding a fold changes `sizeClass` and does not change host form. A desktop workspace View is `regular` on a desktop host; two-pane on a handheld is `regular` on mobile, done with CSS, not a third size class.
+This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. `regular` is not desktop: pair it with `isMobile()` / `isDesktop()` (tablets and foldable phones are mobile). Unfolding a fold changes `sizeClass` and does not change host form. A tablet is `regular` + mobile (or `compact` + mobile in a narrow OS split); its shell stays the mobile projection — no desktop sidebar. A desktop workspace View is `regular` on a desktop host; two-pane on a handheld is `regular` on mobile, done with CSS, not a third size class.
 
 The host shell still uses a separate `medium` band for chrome admission (icon rail, one docked aside) — that name is not a page size class.
 
@@ -72,7 +72,7 @@ At the shell level the same declaration drives several realizations:
 - **Wide desktop** — full sidebar and several docked asides beside the main.
 - **Medium desktop** — the sidebar collapses to an icon rail; at most one aside stays docked.
 - **Narrow desktop** — the icon rail remains and `main` keeps a desktop workspace; asides overlay the main when they cannot dock. Browser chrome stays at the top.
-- **Mobile / phone Runner** — the sidebar disappears, `main` goes full screen, and asides overlay it.
+- **Mobile / phone or tablet Runner** — the sidebar disappears, `main` goes full screen, and asides overlay it. A tablet is still this projection; extra width is page two-pane, not a desktop shell.
 
 ## Open surfaces at runtime
 
