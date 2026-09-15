@@ -10,6 +10,11 @@ val mpvAarUrl = "https://repo1.maven.org/maven2/dev/jdtech/mpv/libmpv/1.0.0/libm
 val mpvDir = layout.buildDirectory.dir("mpv")
 val mpvJniDir = layout.buildDirectory.dir("mpv/jni")
 
+val packageMpvJni = providers
+    .gradleProperty("lingxia.packageMpvJni")
+    .map { it.equals("true", ignoreCase = true) }
+    .orElse(false)
+    .get()
 val requestedMinSdk = (project.findProperty("MIN_SDK") as String?)?.toIntOrNull() ?: 29
 val lingxiaApplicationIdSuffix = providers
     .gradleProperty("lingxia.applicationIdSuffix")
@@ -138,6 +143,9 @@ android {
         lingxiaResOverlayDir?.let { dir ->
             res.srcDir(file(dir))
         }
+        if (packageMpvJni) {
+            jniLibs.srcDir(mpvJniDir)
+        }
     }
 
     signingConfigs {
@@ -179,9 +187,6 @@ android {
             pickFirsts += "**/libc++_shared.so"
         }
     }
-    sourceSets.getByName("main") {
-        jniLibs.srcDir(mpvJniDir)
-    }
 }
 
 // libmpv's published AAR requires compileSdk 36. Extract only the JNI libs and
@@ -209,9 +214,11 @@ val extractMpvJni by tasks.registering {
     }
 }
 
-tasks.matching { it.name.startsWith("merge") && it.name.contains("JniLibFolders") }
-    .configureEach { dependsOn(extractMpvJni) }
-tasks.named("preBuild").configure { dependsOn(extractMpvJni) }
+if (packageMpvJni) {
+    tasks.matching { it.name.startsWith("merge") && it.name.contains("JniLibFolders") }
+        .configureEach { dependsOn(extractMpvJni) }
+    tasks.named("preBuild").configure { dependsOn(extractMpvJni) }
+}
 
 dependencies {
     implementation(project(":lingxia"))

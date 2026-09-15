@@ -3,7 +3,7 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Opt-in libmpv: set android:name=".ShowcaseApp" and uncomment the factory in MainActivity. -->
+    <!-- Opt-in libmpv: lingxia.packageMpvJni=true, android:name=".ShowcaseApp", uncomment the factory. -->
     <application
         android:allowBackup="true"
         android:icon="${lxAppIcon}"
