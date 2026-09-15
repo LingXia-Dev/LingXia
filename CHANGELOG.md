@@ -19,6 +19,51 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.17.0 — 2026-09-15
+
+### Writing an lxapp
+
+- **webview**: preserve login popup policy across platforms (4d2ea0522)
+- **webview**: open login new-windows in the system browser (6bd4dea8d)
+- **lxapp**: split admission blocking from draining (00827be46)
+- **lxapp**: keep retirement bookkeeping bounded and race-free (e34efd0ce)
+- **lxapp**: remove redundant admission argument borrow (12c9bb4db)
+- **lxapp**: make test locale types explicit across platforms (8ece7f68b)
+- **lxapp**: await full shutdown and block concurrent opens (aeacc7743)
+- **webview**: scope renderer recovery and clear native mounts (788ab423e)
+- **lxapp**: recover pages after renderer termination (11944aa2b)
+- **lxapp**: drop leftover preview channel mentions (b168dc31f)
+- **lxapp**: use if for the draft header badge (12c90e4f6)
+- **lxapp**: drop the preview publish channel (8e8e6ced1)
+
+### Embedding a host app
+
+- **android**: keep secondary-page WebView above the gesture zone (094468745)
+- **apple**: capture component manager before deinit self escape (129b3ff63)
+- **windows**: ship design icons inside lingxia-windows-sdk (bd3e78ce5)
+- **android**: split optional camera and scanner SDK modules (e32d0381d)
+- **macos**: expose window chrome buttons to AX keyword queries (83491427b)
+- **windows**: match caption buttons by accessibility name (ff2691b8c)
+- **windows**: restore full-chrome surface caption controls (494a0794e)
+- **android**: keep the tab bar above the gesture zone (25c470392)
+
+### CLI and CI
+
+- **cli**: wait for store processing and emit JSON results (f49556b7c)
+- **cli**: add CLI-only upgrades for host app CI (a92376121)
+- **cli**: allow CI to skip skill synchronization (a3044b8ba)
+- **cli**: forward the Harmony package flag (78159bee1)
+- **cli**: persist App Store cert outside ASC login and sign extensions (101882f36)
+- **cli**: package Harmony .app and App Store IPA (ea54b3cbe)
+- **cli**: make store submit upload-only (6a8283196)
+- **cli**: upload Harmony packages to AGC via OBS (9fdcdbbf0)
+- **cli**: sign Harmony HAPs with the env-suffixed bundle (0571243ba)
+- **cli**: keep productName a string and follow display language (6758cb801)
+- **cli**: require app.packageId and localize productName (d369b944c)
+- **release**: do not publish the empty-notes how-to as release notes (d22ed87c5)
+- **cli**: apply app.productVersion to every platform package (#401) (ec49b1f07)
+- **lxdev**: bundle test directories without temporary source files (95e1fdefd)
+
 ## 0.16.0 — 2026-09-12
 
 ### Breaking
