@@ -107,7 +107,7 @@ override the stored files, which is the CI path.
 | iOS | Provisioning profile + distribution certificate | via your Apple Developer account / Xcode |
 | Android | Self-managed keystore | a release keystore (`keytool`) |
 | Windows | Self-signed (or your own) MSIX | `--self-signed`, or a real code-signing cert |
-| Harmony | Local keystore | nothing — the CLI generates one |
+| Harmony | AGC certificate + provisioning profile | AGC Connect API client credentials; the CLI manages signing material |
 
 ### macOS (Developer ID + notarization)
 
@@ -186,9 +186,9 @@ re-signs with the app signing key it holds.
 
 `lingxia build --platform windows --msix --self-signed` signs an MSIX with a
 generated self-signed cert (trusted locally) — enough to install and test;
-store distribution needs a real code-signing certificate. Harmony builds sign
-with a CLI-generated local keystore automatically; AppGallery publishing needs
-Huawei's own signing material through the Harmony tooling.
+store distribution needs a real code-signing certificate. Harmony builds resolve
+AGC credentials and manage the signing key, certificate, and profile; release
+builds request release signing material.
 
 ## `lingxia auth`
 
@@ -226,6 +226,16 @@ default track) live under the platform blocks in `lingxia.yaml`.
 
 Run `lingxia store --help` for the current set of supported stores and per-action
 flags (release notes, track, etc.).
+
+### CI
+
+Persist signing keys/certificates separately from API credentials so ephemeral
+runners reuse the app's signing identity. Split jobs transfer the packaged
+`dist/<platform>/` with its matching project config.
+
+For Apple/Harmony, gate subsequent steps on processing completion. After a
+timeout, resume querying the same submission instead of uploading again.
+Processing completion does not mean review approval.
 
 ## `lingxia ds`
 

@@ -824,11 +824,12 @@ fn main() -> Result<()> {
     // arguments: running both would download twice and race on the binary. Also
     // skipped for the internal helpers the CLI starts on its own -- each does
     // the one job it was started for, and a detached worker must never replace
-    // the binary out from under the command that spawned it.
+    // the binary out from under the command that spawned it. JSON commands
+    // must not emit updater output before their machine-readable result.
     if !raw_args.iter().any(|arg| {
         matches!(
             arg.as_str(),
-            "upgrade" | "__sync-skill" | "__refresh-templates"
+            "upgrade" | "__sync-skill" | "__refresh-templates" | "--json"
         )
     }) {
         update::maybe_auto_update(cli.skip_skill);
