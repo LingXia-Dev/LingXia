@@ -63,7 +63,9 @@ An lxapp receives its own surface viewport class through `lx.surface.onContext`:
 | `compact` | less than 600 logical pixels |
 | `regular` | 600 and above |
 
-This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. Branch the component tree on `compact` versus `regular`; use CSS/container queries for layout-only changes inside `regular`. The host shell still uses a separate `medium` band for chrome admission (icon rail, one docked aside) — that name is not a page size class.
+This is the lxapp surface size, not a device-family check and not necessarily the host window size. An aside inside a wide desktop shell may still be `compact`. `regular` is not desktop: pair it with `isMobile()` / `isDesktop()` (tablets and foldable phones are mobile). Unfolding a fold changes `sizeClass` and does not change host form. A desktop workspace View is `regular` on a desktop host; two-pane on a handheld is `regular` on mobile, done with CSS, not a third size class.
+
+The host shell still uses a separate `medium` band for chrome admission (icon rail, one docked aside) — that name is not a page size class.
 
 At the shell level the same declaration drives several realizations:
 

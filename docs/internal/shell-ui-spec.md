@@ -249,7 +249,8 @@ reuse, or lifecycle semantics.
 
 Shell and content share the compact width boundary. They MUST use different
 vocabularies: the shell answers how many chrome regions fit; content answers
-whether this surface is a compact interaction or a workspace.
+whether this surface has room for a non-compact layout. `regular` is not
+desktop.
 
 **Shell size class** is computed from the full client-area width of the main
 window and drives sidebar and aside arbitration:
@@ -271,10 +272,11 @@ and is the only size class exposed on `lx.surface.onContext`:
 - Content `regular` covers both shell `medium` and shell `expanded` viewports.
   Content MUST NOT expose `medium` or `expanded`; those names are shell
   admission classes, not page layouts.
-- Authors MUST branch at most once: `sizeClass === 'compact'` versus
+- Authors MUST branch content `sizeClass` at most once: `compact` versus
   `regular`. Spacing, columns, and wrapping inside `regular` use CSS or
   container queries plus the raw `width` / `height`. A product MUST NOT ship a
-  third View for the shell's medium band.
+  third View for fold, tablet, or the shell's medium band. Host form is a
+  separate input (`isMobile()` / `isDesktop()`); see §3.2.
 - The two scopes MUST NOT be conflated; a narrow aside inside an expanded
   shell can legitimately receive a compact content size class.
 - Shell breakpoints use 24 dp/pt hysteresis at both 600 and 840: upgrading
@@ -297,6 +299,22 @@ of their host form, not merely because their width is below 600.
 | aside | up to 3 visible slots | up to 1 visible slot | full-screen overlay over main | full-screen overlay |
 | float | popover / overlay | popover / overlay | popover / overlay | bottom sheet / popover |
 | standalone window | supported | supported | supported | rejected |
+
+Content size class and host form are likewise independent. Tablets and
+foldable phones are mobile. Unfolding a foldable MUST NOT change host form;
+it MAY flip the content size class when the inner viewport crosses 600.
+
+| | mobile host | desktop host |
+|---|---|---|
+| content `compact` | folded phone | narrow desktop window; desktop chrome stays |
+| content `regular` | unfolded fold, tablet | desktop workspace |
+
+- Content MUST NOT treat `regular` as desktop. A desktop workspace View is
+  `regular` **and** a desktop host.
+- Content MUST NOT expose a third size class for fold or tablet. Two-pane on
+  a handheld is `regular` + mobile, done with CSS or a product View.
+- Fold hinge, tabletop posture, and dual-screen regions are out of scope for
+  size class; width classes do not describe them.
 
 ### 3.3 Sizing and admission
 

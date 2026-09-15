@@ -461,7 +461,7 @@ Two different questions, answered separately:
 - **Which machine is this?** `isMobile()` / `isDesktop()` — the form factor. Branch on these for anything a phone should not show at all.
 - **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform.
 
-Neither is a size class. `lx.surface.onContext` answers "how much room is there"; a narrowed desktop window is still a desktop.
+Neither is a size class. `lx.surface.onContext` answers "how much room is there"; a narrowed desktop window is still a desktop. An unfolded fold is still a phone: `regular` + mobile, not a desktop workspace. Combine the two; do not invent a third size class.
 
 - **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isMobile, isDesktop, isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isRunner, os }` (typed, sync).
 - **View (any framework)**: `window.LingXiaBridge.platform` — `isMobile()`, `isDesktop()`, `isApple()`, `isIOS()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
