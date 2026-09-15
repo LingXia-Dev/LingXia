@@ -158,7 +158,7 @@ fn install_url_surface_bridge() {
             .data_mode(data_mode)
             .on_navigation(move |request| url_surface_navigation_policy(url_callback, &request.url))
             .on_new_window(move |url| {
-                if url_callback {
+                url_surface_new_window_policy(url_callback, url, |url| {
                     if let Some(app) = lxapp::try_get(&app_id) {
                         let _ = app.runtime.open_url(OpenUrlRequest {
                             owner_appid: app_id.clone(),
@@ -168,8 +168,7 @@ fn install_url_surface_bridge() {
                             want_tab_id: false,
                         });
                     }
-                }
-                NewWindowPolicy::Cancel
+                })
             })
             .create();
         std::mem::drop(crate::task::spawn(async move {
@@ -203,6 +202,18 @@ fn url_surface_navigation_policy(url_callback: bool, url: &str) -> NavigationPol
     } else {
         NavigationPolicy::Allow
     }
+}
+
+fn url_surface_new_window_policy(
+    url_callback: bool,
+    url: &str,
+    open_external: impl FnOnce(&str),
+) -> NewWindowPolicy {
+    // NewWindowRequested does not pass through the navigation handler.
+    if url_callback && url_surface_navigation_policy(url_callback, url) == NavigationPolicy::Allow {
+        open_external(url);
+    }
+    NewWindowPolicy::Cancel
 }
 
 #[cfg(feature = "browser-runtime")]
@@ -282,6 +293,24 @@ fn update_app_visible_webtags(appid: &str, webtag_key: &str, visible: bool) -> O
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn url_surface_new_windows_enforce_file_policy_before_os_handoff() {
+        for (callback, url, expected) in [
+            (true, "file:///C:/Temp/report.html", false),
+            (true, " FILE:/C:/Temp/report.html", false),
+            (true, "https://example.com/terms", true),
+            (true, "feishu://authorize", true),
+            (false, "https://example.com/terms", false),
+        ] {
+            let mut opened = None;
+            let policy = url_surface_new_window_policy(callback, url, |target| {
+                opened = Some(target.to_string());
+            });
+            assert_eq!(policy, NewWindowPolicy::Cancel);
+            assert_eq!(opened.as_deref(), expected.then_some(url));
+        }
+    }
 
     #[test]
     fn app_visibility_is_aggregated_across_webtags() {

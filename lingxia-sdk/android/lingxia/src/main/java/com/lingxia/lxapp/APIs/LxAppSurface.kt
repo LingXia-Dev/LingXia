@@ -799,8 +799,8 @@ internal object LxAppSurface {
             settings.databaseEnabled = true
             settings.allowFileAccess = !urlCallback
             settings.allowContentAccess = false
-            settings.setSupportMultipleWindows(true)
-            settings.javaScriptCanOpenWindowsAutomatically = true
+            settings.setSupportMultipleWindows(urlCallback)
+            settings.javaScriptCanOpenWindowsAutomatically = urlCallback
             webViewClient = object : WebViewClient() {
                 // URL surfaces may cross origins during auth. Consume the
                 // registered callback, and hand non-web deep links to Android.
@@ -864,20 +864,52 @@ internal object LxAppSurface {
                     isUserGesture: Boolean,
                     resultMsg: android.os.Message?
                 ): Boolean {
-                    val href = view?.hitTestResult?.extra
-                    if (!href.isNullOrBlank()) {
+                    if (!urlCallback || view == null || resultMsg == null) return false
+                    val transport = resultMsg.obj as? android.webkit.WebView.WebViewTransport
+                        ?: return false
+                    // Hit-test data describes the clicked element, not window.open's URL.
+                    val popup = android.webkit.WebView(activity)
+                    popup.settings.allowFileAccess = false
+                    popup.settings.allowContentAccess = false
+                    var finished = false
+                    fun dispose() {
+                        if (finished) return
+                        finished = true
+                        popup.post { popup.destroy() }
+                    }
+                    fun capture(href: String): Boolean {
+                        if (finished) return true
+                        if (href.isBlank() || href == "about:blank") return false
+                        dispose()
+                        if (NativeApi.urlCallbackDispatch(href)) return true
+                        val target = Uri.parse(href)
+                        val scheme = target.scheme?.lowercase()
+                        if (scheme == null || scheme in setOf("file", "content", "about", "data", "blob", "javascript")) return true
                         try {
                             activity.startActivity(
-                                android.content.Intent(
-                                    android.content.Intent.ACTION_VIEW,
-                                    Uri.parse(href)
-                                )
+                                android.content.Intent(android.content.Intent.ACTION_VIEW, target)
                             )
                         } catch (error: Exception) {
                             Log.w(TAG, "no handler for new-window $href: $error")
                         }
+                        return true
                     }
-                    return false
+                    popup.webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(child: android.webkit.WebView?, request: WebResourceRequest?): Boolean =
+                            request?.url?.toString()?.let(::capture) ?: true
+
+                        @Deprecated("Deprecated in Android")
+                        override fun shouldOverrideUrlLoading(child: android.webkit.WebView?, href: String?): Boolean =
+                            href?.let(::capture) ?: true
+
+                        override fun onPageStarted(child: android.webkit.WebView?, href: String?, favicon: android.graphics.Bitmap?) {
+                            if (href != null && capture(href)) child?.stopLoading()
+                        }
+                    }
+                    popup.postDelayed({ dispose() }, 5000L)
+                    transport.webView = popup
+                    resultMsg.sendToTarget()
+                    return true
                 }
             }
         }

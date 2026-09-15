@@ -269,8 +269,8 @@ enum LxAppSurface {
                 return
             }
             // target=_blank / window.open (nil targetFrame): keep the login
-            // sheet and hand http(s) to the system browser.
-            if navigationAction.targetFrame == nil {
+            // sheet and hand web URLs and app deep links to the system handler.
+            if urlCallback && navigationAction.targetFrame == nil {
                 LxAppSurface.openURLSurfaceNewWindow(url)
                 decisionHandler(.cancel)
                 return
@@ -298,7 +298,7 @@ enum LxAppSurface {
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if let url = navigationAction.request.url {
+            if urlCallback, let url = navigationAction.request.url {
                 LxAppSurface.openURLSurfaceNewWindow(url)
             }
             return nil
@@ -552,7 +552,7 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
-                wkWebView.uiDelegate = delegate
+                if urlCallback { wkWebView.uiDelegate = delegate }
                 prepareRunnerWebSurface(wkWebView)
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 contentHost.addSubview(wkWebView)
@@ -1586,8 +1586,8 @@ enum LxAppSurface {
                 return
             }
             // target=_blank / window.open (nil targetFrame): keep the login
-            // sheet and hand http(s) to the system browser.
-            if navigationAction.targetFrame == nil {
+            // sheet and hand web URLs and app deep links to the system handler.
+            if urlCallback && navigationAction.targetFrame == nil {
                 LxAppSurface.openURLSurfaceNewWindow(url)
                 decisionHandler(.cancel)
                 return
@@ -1615,7 +1615,7 @@ enum LxAppSurface {
         }
 
         func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-            if let url = navigationAction.request.url {
+            if urlCallback, let url = navigationAction.request.url {
                 LxAppSurface.openURLSurfaceNewWindow(url)
             }
             return nil
@@ -1944,7 +1944,7 @@ enum LxAppSurface {
                     allowsCrossOrigin: true,
                     urlCallback: urlCallback)
                 wkWebView.navigationDelegate = delegate
-                wkWebView.uiDelegate = delegate
+                if urlCallback { wkWebView.uiDelegate = delegate }
                 wkWebView.translatesAutoresizingMaskIntoConstraints = false
                 wkWebView.scrollView.contentInsetAdjustmentBehavior = .never
                 wkWebView.isOpaque = false
@@ -2270,10 +2270,12 @@ import WebKit
 
 extension LxAppSurface {
     /// `target=_blank` / `window.open` from a URL surface (the auth login
-    /// sheet). Keep the sheet; hand http(s) to the system browser.
+    /// sheet). Keep the sheet; hand web URLs and app deep links to the system handler.
     static func openURLSurfaceNewWindow(_ url: URL) {
+        if urlCallbackDispatch(url.absoluteString) { return }
         let scheme = url.scheme?.lowercased() ?? ""
-        guard scheme == "http" || scheme == "https" else { return }
+        guard !scheme.isEmpty,
+              !["file", "content", "about", "data", "blob", "javascript"].contains(scheme) else { return }
         #if os(macOS)
         NSWorkspace.shared.open(url)
         #else
