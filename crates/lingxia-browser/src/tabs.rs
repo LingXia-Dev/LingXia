@@ -1113,8 +1113,9 @@ pub(crate) fn is_aside_tab(tab_id: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Whether `tab_id` is hosted outside product browser chrome. Its new-window
-/// requests load inline rather than spawning a main-area tab.
+/// Whether `tab_id` is hosted outside product browser chrome. New-window
+/// requests from a URL-callback (login) tab go to the OS browser; other
+/// standalone tabs spawn a sibling aside rather than a main-area tab.
 pub(crate) fn is_standalone_tab(tab_id: &str) -> bool {
     let Some(normalized) = normalize_runtime_tab_id(tab_id) else {
         return false;

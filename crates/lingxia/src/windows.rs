@@ -3,10 +3,12 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use lingxia_platform::traits::app_runtime::AppRuntime;
+use lingxia_platform::traits::app_runtime::{AppRuntime, OpenUrlRequest, OpenUrlTarget};
 use lingxia_platform::traits::ui::SurfaceContent;
 pub use lingxia_platform::{Platform, PlatformError, set_windows_app_exit_handler};
-use lingxia_webview::{NavigationPolicy, WebTag, WebViewController, WebViewDataMode};
+use lingxia_webview::{
+    NavigationPolicy, NewWindowPolicy, WebTag, WebViewController, WebViewDataMode,
+};
 
 static WINDOWS_APP_VISIBLE_WEBTAGS: LazyLock<Mutex<HashMap<String, HashSet<String>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -138,9 +140,10 @@ fn install_url_surface_bridge() {
         };
         // With the browser engine compiled in, a URL surface is a
         // standalone managed browser tab (downloads, new-window policy:
-        // window.open from a docked aside opens a sibling aside tab) - macOS
-        // DockedBrowser parity. Without it (plain builds), a browser-profile
-        // WebView2 renders the URL directly.
+        // a URL-callback / login tab opens the OS browser; a docked aside
+        // opens a sibling aside tab) — macOS DockedBrowser parity. Without
+        // it (plain builds), a browser-profile WebView2 renders the URL
+        // directly.
         #[cfg(feature = "browser-runtime")]
         if let Some(resolved) = resolve_url_surface_as_browser_tab(request, data_mode) {
             return Some(resolved);
@@ -149,9 +152,25 @@ fn install_url_surface_bridge() {
         let webtag = WebTag::new(&request.app_id, &request.path, Some(request.session_id));
         let url = request.path.clone();
         let url_callback = request.url_callback;
+        let app_id = request.app_id.clone();
+        let session_id = request.session_id;
         let session = lingxia_webview::WebViewBuilder::browser(webtag)
             .data_mode(data_mode)
             .on_navigation(move |request| url_surface_navigation_policy(url_callback, &request.url))
+            .on_new_window(move |url| {
+                if url_callback {
+                    if let Some(app) = lxapp::try_get(&app_id) {
+                        let _ = app.runtime.open_url(OpenUrlRequest {
+                            owner_appid: app_id.clone(),
+                            owner_session_id: session_id,
+                            url: url.to_string(),
+                            target: OpenUrlTarget::External,
+                            want_tab_id: false,
+                        });
+                    }
+                }
+                NewWindowPolicy::Cancel
+            })
             .create();
         std::mem::drop(crate::task::spawn(async move {
             match session.wait_ready().await {

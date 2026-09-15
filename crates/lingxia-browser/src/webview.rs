@@ -656,6 +656,13 @@ fn callback_policy_blocks_file_navigation(url_callback: &AtomicBool, url: &str) 
     callback_blocks_file_navigation(url_callback.load(Ordering::Acquire), url)
 }
 
+/// A URL-callback surface is the interactive login sheet. `target=_blank` /
+/// `window.open` must leave that sheet in place and hand the URL to the OS
+/// browser — not replace the authorize page, and not spawn an in-app tab.
+fn url_callback_opens_new_window_externally(url_callback: bool) -> bool {
+    url_callback
+}
+
 pub(crate) fn browser_create_webview(
     path: &str,
     session_id: u64,
@@ -786,6 +793,16 @@ pub(crate) fn browser_create_webview(
                 return NewWindowPolicy::Cancel;
             }
             let normalized = normalize_browser_target_url(url);
+            if url_callback_opens_new_window_externally(url_callback.load(Ordering::Acquire)) {
+                let _ = runtime_for_new_window.open_url(OpenUrlRequest {
+                    owner_appid: owner_appid_for_new_window.clone(),
+                    owner_session_id: owner_session_for_new_window,
+                    url: normalized,
+                    target: OpenUrlTarget::External,
+                    want_tab_id: false,
+                });
+                return NewWindowPolicy::Cancel;
+            }
             // A docked aside browser tab: surface the target as ANOTHER aside
             // tab in the same panel — the same open-in-new-tab behavior as the
             // self browser. Deferred onto the executor so we never re-enter
@@ -1062,10 +1079,16 @@ pub(crate) fn browser_destroy_webview_if_matches(
 mod tests {
     use super::{
         BrowserTabNavigationState, callback_blocks_file_navigation,
-        callback_policy_blocks_file_navigation,
+        callback_policy_blocks_file_navigation, url_callback_opens_new_window_externally,
     };
     use lingxia_webview::{NavigationEvent, NavigationId};
     use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[test]
+    fn login_callback_tabs_open_new_windows_in_the_system_browser() {
+        assert!(url_callback_opens_new_window_externally(true));
+        assert!(!url_callback_opens_new_window_externally(false));
+    }
 
     #[test]
     fn callback_tabs_block_file_navigation_only() {

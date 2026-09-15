@@ -30,6 +30,7 @@ import {
 } from './WebViewBridge';
 import { NativeComponentEmbedManager } from './NativeComponents/NativeComponentEmbed';
 import { setEmbedController, teardownEmbedManager } from './NativeComponents/NativeBridgeInternal';
+import { Lingxia } from '../app/Lingxia';
 
 const DOMAIN = 0x0000;
 const TAG = 'LingXia.WebView';
@@ -67,6 +68,9 @@ export struct LingXiaWebView {
   @Prop renderZIndex: number = 0
   @Prop renderHitTest: HitTestMode = HitTestMode.Default
   @Prop appearanceDark: boolean = false
+  /// URL-callback (login) surfaces: target=_blank / window.open leave the
+  /// sheet in place and hand http(s) to the system browser.
+  @Prop openNewWindowExternally: boolean = false
   controller: webview.WebviewController = new webview.WebviewController()
   onFullscreenChange?: (webTag: string, componentId: string, isFullscreen: boolean) => void
 
@@ -157,6 +161,23 @@ export struct LingXiaWebView {
       // focused editable above the IME — engine-owned keyboard avoidance,
       // replacing the removed native-embed input's manual position sync.
       .keyboardAvoidMode(WebKeyboardAvoidMode.RESIZE_CONTENT)
+      .multiWindowAccess(this.openNewWindowExternally)
+      .allowWindowOpenMethod(this.openNewWindowExternally)
+      .onWindowNew((event) => {
+        if (!this.openNewWindowExternally || !event) {
+          return;
+        }
+        try {
+          event.handler.setWebController(null);
+        } catch (error) {
+          hilog.warn(DOMAIN, TAG, `onWindowNew: setWebController(null) failed: ${error}`);
+        }
+        const targetUrl = String(event.targetUrl ?? '').trim();
+        const lower = targetUrl.toLowerCase();
+        if (lower.startsWith('https://') || lower.startsWith('http://')) {
+          Lingxia.launchWithUrl(targetUrl);
+        }
+      })
       .onLoadIntercept((event) => {
         if (event && event.data) {
           const request = event.data;
