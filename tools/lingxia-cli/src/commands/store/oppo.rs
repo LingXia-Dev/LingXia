@@ -1,7 +1,6 @@
 //! OPPO 软件商店 submission via the OPPO open platform's app-publish API.
 //!
-//! Flow: client-credentials auth → request an upload URL → upload the `.apk` →
-//! submit the new version for the package.
+//! Flow: client-credentials auth → request an upload URL → upload the `.apk`.
 //!
 //! NOT E2E-verified — needs a real OPPO developer account. The exact
 //! open-platform endpoints/payloads are not publicly stable, so uncertain steps
@@ -9,7 +8,7 @@
 
 use anyhow::{Context, Result};
 use colored::Colorize;
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::io::Read;
 use std::path::Path;
 
@@ -57,23 +56,14 @@ impl Session {
             .map_err(|e| anyhow::anyhow!("GET {url} failed: {e}"))?;
         resp.body_mut().read_json().context("parse response")
     }
-
-    fn post(&self, url: &str, body: &Value) -> Result<Value> {
-        let mut resp = http()
-            .post(url)
-            .header("access-token", &self.token)
-            .send_json(body)
-            .map_err(|e| anyhow::anyhow!("POST {url} failed: {e}"))?;
-        resp.body_mut().read_json().context("parse response")
-    }
 }
 
 pub fn submit(
     creds: &OppoCreds,
-    pkg: &str,
-    app_id: Option<&str>,
+    _pkg: &str,
+    _app_id: Option<&str>,
     artifact: &Path,
-    opts: &SubmitOptions,
+    _opts: &SubmitOptions,
 ) -> Result<()> {
     let session = Session::login(creds)?;
     println!("  {} authenticated with OPPO 软件商店", "✓".green());
@@ -85,28 +75,8 @@ pub fn submit(
         .pointer("/data/upload_url")
         .and_then(Value::as_str)
         .context("OPPO response missing upload_url")?;
-    let dest = upload_apk(upload_url, artifact)?;
+    upload_apk(upload_url, artifact)?;
     println!("  {} uploaded {}", "✓".green(), artifact.display());
-
-    if opts.draft {
-        println!(
-            "  {} draft uploaded — submit it in the OPPO console to publish",
-            "ℹ".blue()
-        );
-        return Ok(());
-    }
-
-    // 2. Submit the new version for the package.
-    // TODO: verify OPPO app-submit endpoint + payload (app id + release notes).
-    let mut body = json!({ "pkg_name": pkg, "apk_url": dest });
-    if let Some(app_id) = app_id {
-        body["app_id"] = json!(app_id);
-    }
-    if let Some(notes) = &opts.release_notes {
-        body["update_desc"] = json!(notes);
-    }
-    session.post(&format!("{API}/resource/v1/app/upd"), &body)?;
-    println!("  {} submitted {pkg} for review", "✓".green());
     Ok(())
 }
 

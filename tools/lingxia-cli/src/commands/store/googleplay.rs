@@ -143,12 +143,10 @@ pub fn submit(
         "✓".green()
     );
 
-    // 3. Assign the version code to a track release. `draft` keeps the release
-    // unpublished; otherwise it rolls out to 100%.
-    let release_status = if opts.draft { "draft" } else { "completed" };
+    // Persist the upload as an unpublished track release.
     let mut release = json!({
         "versionCodes": [version_code.to_string()],
-        "status": release_status,
+        "status": "draft",
     });
     if let Some(notes) = &opts.release_notes {
         release["releaseNotes"] = json!([{ "language": "en-US", "text": notes }]);
@@ -157,13 +155,9 @@ pub fn submit(
         &format!("{API}/applications/{pkg}/edits/{edit_id}/tracks/{track}"),
         &json!({ "track": track, "releases": [release] }),
     )?;
-    println!(
-        "  {} assigned to track '{track}' ({release_status})",
-        "✓".green()
-    );
+    println!("  {} assigned to track '{track}' (draft)", "✓".green());
 
-    // 4. Commit the edit. Without a commit the edit is discarded; for drafts the
-    // release simply stays unpublished after commit.
+    // 4. Commit the edit. Without a commit the edit is discarded.
     session.post(
         &format!("{API}/applications/{pkg}/edits/{edit_id}:commit"),
         &json!({}),

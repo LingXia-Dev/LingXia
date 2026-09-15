@@ -72,10 +72,11 @@ impl StorePlatform {
 }
 
 /// Per-run intent from CLI flags (never persisted).
+///
+/// `lingxia store submit` only uploads. Review / rollout is started in the
+/// store console, not by this CLI.
 #[derive(Clone, Debug, Default)]
 pub struct SubmitOptions {
-    /// Create the submission but do not commit it for review.
-    pub draft: bool,
     pub release_notes: Option<String>,
     /// Per-store release track/channel (e.g. Google Play `internal`/`production`).
     pub track: Option<String>,

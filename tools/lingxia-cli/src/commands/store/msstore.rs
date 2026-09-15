@@ -120,23 +120,10 @@ pub fn submit(
     upload_package(&upload_url, artifact)?;
     println!("  {} uploaded {pkg_name}", "✓".green());
 
-    if opts.draft {
-        println!(
-            "  {} draft created — commit it in Partner Center to send for review",
-            "ℹ".blue()
-        );
-        return Ok(());
-    }
-
-    // 5. Commit for processing/certification.
-    http()
-        .post(&format!(
-            "{API_BASE}/applications/{app_id}/submissions/{submission_id}/commit"
-        ))
-        .header("Authorization", &format!("Bearer {token}"))
-        .send("".as_bytes())
-        .map_err(|e| anyhow::anyhow!("commit submission failed: {e}"))?;
-    println!("  {} committed submission {submission_id}", "✓".green());
+    println!(
+        "  {} uploaded — commit the submission in Partner Center to send for review",
+        "ℹ".blue()
+    );
     Ok(())
 }
 

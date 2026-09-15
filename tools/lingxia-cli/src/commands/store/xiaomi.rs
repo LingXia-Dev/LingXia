@@ -1,8 +1,7 @@
 //! Xiaomi GetApps (小米应用商店) submission via the developer open platform's
 //! app-publish ("应用上传/推送") API.
 //!
-//! Flow: client-credentials auth → request an upload slot → upload the `.apk` →
-//! submit/commit the new version for the package.
+//! Flow: client-credentials auth → request an upload slot → upload the `.apk`.
 //!
 //! NOT E2E-verified — needs a real Xiaomi developer account. The exact
 //! open-platform endpoints/payloads are not publicly stable, so uncertain steps
@@ -49,15 +48,6 @@ impl Session {
         Ok(Self { token })
     }
 
-    fn post(&self, url: &str, body: &Value) -> Result<Value> {
-        let mut resp = http()
-            .post(url)
-            .header("Authorization", &format!("Bearer {}", self.token))
-            .send_json(body)
-            .map_err(|e| anyhow::anyhow!("POST {url} failed: {e}"))?;
-        resp.body_mut().read_json().context("parse response")
-    }
-
     fn get(&self, url: &str) -> Result<Value> {
         let mut resp = http()
             .get(url)
@@ -68,32 +58,20 @@ impl Session {
     }
 }
 
-pub fn submit(creds: &XiaomiCreds, pkg: &str, artifact: &Path, opts: &SubmitOptions) -> Result<()> {
+pub fn submit(
+    creds: &XiaomiCreds,
+    pkg: &str,
+    artifact: &Path,
+    _opts: &SubmitOptions,
+) -> Result<()> {
     let session = Session::login(creds)?;
     println!("  {} authenticated with Xiaomi GetApps", "✓".green());
 
     // 1. Upload the APK bytes.
     // TODO: verify Xiaomi upload endpoint/field names and whether an upload slot
     // must be requested first.
-    let dest = upload_apk(&session, pkg, artifact)?;
+    upload_apk(&session, pkg, artifact)?;
     println!("  {} uploaded {}", "✓".green(), artifact.display());
-
-    if opts.draft {
-        println!(
-            "  {} draft uploaded — submit it in the Xiaomi console to publish",
-            "ℹ".blue()
-        );
-        return Ok(());
-    }
-
-    // 2. Submit the new version for the package.
-    // TODO: verify Xiaomi submit/commit endpoint + payload (release notes field).
-    let mut body = json!({ "packageName": pkg, "apk": dest });
-    if let Some(notes) = &opts.release_notes {
-        body["updateDesc"] = json!(notes);
-    }
-    session.post(&format!("{API}/dev/push"), &body)?;
-    println!("  {} submitted {pkg} for review", "✓".green());
     Ok(())
 }
 

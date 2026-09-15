@@ -28,13 +28,11 @@ use creds::{resolve_googleplay, resolve_honor, resolve_msstore, resolve_oppo, re
 
 #[derive(Subcommand)]
 pub enum StoreAction {
-    /// Upload the built artifact (dist/<platform>/) to the OS store
+    /// Upload the built artifact (dist/<platform>/) to the OS store.
+    /// Does not submit for review — do that in the store console.
     Submit {
         #[arg(short, long)]
         platform: String,
-        /// Create the submission without committing it for review
-        #[arg(long)]
-        draft: bool,
         /// Release notes / "what's new" text
         #[arg(long)]
         release_notes: Option<String>,
@@ -53,13 +51,11 @@ pub fn run(action: StoreAction) -> Result<()> {
     match action {
         StoreAction::Submit {
             platform,
-            draft,
             release_notes,
             track,
         } => submit(
             StorePlatform::parse(&platform)?,
             SubmitOptions {
-                draft,
                 release_notes,
                 track,
             },
@@ -131,7 +127,7 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
     artifact_identity::verify(&artifact, &expected_identity(&config, platform)?)?;
 
     println!(
-        "{} submitting {} to {}",
+        "{} uploading {} to {}",
         "→".cyan(),
         artifact.display(),
         platform.store_name()
@@ -203,7 +199,10 @@ fn submit(platform: StorePlatform, opts: SubmitOptions) -> Result<()> {
             honor::submit(&resolve_honor()?, &cfg.app_id, &artifact, &opts)?;
         }
     }
-    println!("{} submit flow complete", "✓".green());
+    println!(
+        "{} uploaded — submit for review in the store console",
+        "✓".green()
+    );
     Ok(())
 }
 
