@@ -646,7 +646,11 @@ class SidebarView: NSView {
         // already handled by `buttonCenterYFromTop`. 28pt matches the standard
         // macOS titlebar row height.
         static let trafficLightsHeight: CGFloat = 28
-        static let actionButtonSize: CGFloat = 28
+        /// Header icon buttons (actions and the collapse toggle). 24pt with a
+        /// 2pt pitch seats two actions beside the traffic lights in the default
+        /// 148pt sidebar; 28pt/4pt fit only one.
+        static let actionButtonSize: CGFloat = 24
+        static let actionButtonSpacing: CGFloat = 2
         static let resizeHandleWidth: CGFloat = 5
         /// Bottom dock height — tall enough for one row of icon buttons plus breathing room.
         static let footerHeight: CGFloat = 48
@@ -913,7 +917,7 @@ class SidebarView: NSView {
         headerActionStack.translatesAutoresizingMaskIntoConstraints = false
         headerActionStack.orientation = .horizontal
         headerActionStack.alignment = .centerY
-        headerActionStack.spacing = 4
+        headerActionStack.spacing = Layout.actionButtonSpacing
         headerView.addSubview(headerActionStack)
 
         // Scroll view (trailing inset to leave room for resize handle)
@@ -1093,7 +1097,8 @@ class SidebarView: NSView {
 
             hideButton.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -8),
 
-            headerActionStack.trailingAnchor.constraint(equalTo: hideButton.leadingAnchor, constant: -4),
+            headerActionStack.trailingAnchor.constraint(
+                equalTo: hideButton.leadingAnchor, constant: -Layout.actionButtonSpacing),
             headerActionLeadingClearance(),
 
             // Scroll view: inset trailing by resize handle width, extends above footer
@@ -1983,7 +1988,10 @@ class SidebarView: NSView {
         guard !hidden else { return }
         let reserve = measuredHeaderLeadingReserve()
         headerActionLeadingConstraint?.constant = reserve
-        let availableWidth = max(0, bounds.width - reserve - 8 - Layout.actionButtonSize - 4)
+        let availableWidth = max(
+            0,
+            bounds.width - reserve - 8 - Layout.actionButtonSize - Layout.actionButtonSpacing
+        )
         let stride = Layout.actionButtonSize + headerActionStack.spacing
         let fits = availableWidth < Layout.actionButtonSize
             ? 0
