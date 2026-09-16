@@ -647,13 +647,6 @@ Page({
     );
   },
 
-  updateTabBarForegrounds: function (_options: { color?: string; selectedColor?: string }) {
-    return Promise.reject({
-      code: "E_INVALID_ARG",
-      message: "tabBar.style is not patchable; colors follow the host",
-    });
-  },
-
   updateTabBarItem: function (options: TabBarItemPatch) {
     console.log("updateTabBarItem called with:", options);
     return this._runChromeUpdate("Tab bar update", () =>

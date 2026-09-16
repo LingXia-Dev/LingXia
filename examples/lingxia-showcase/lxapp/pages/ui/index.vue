@@ -547,45 +547,6 @@
             </div>
           </div>
 
-          <!-- Style Controls -->
-          <div class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-            <div class="px-4 py-3 border-b border-line-100">
-              <h3 class="text-base font-medium text-gray-900">Style Controls</h3>
-            </div>
-            <div class="p-4 space-y-3">
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Text Color</label>
-                  <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 border border-line-300 rounded" :style="{ backgroundColor: tabColor }"></div>
-                    <input type="text" v-model="tabColor" class="flex-1 px-2 py-1 border border-line-300 rounded text-sm" />
-                  </div>
-                </div>
-                <div>
-                  <label class="block text-sm font-medium text-gray-700 mb-1">Selected Color</label>
-                  <div class="flex items-center space-x-2">
-                    <div class="w-8 h-8 border border-line-300 rounded" :style="{ backgroundColor: tabSelectedColor }"></div>
-                    <input type="text" v-model="tabSelectedColor" class="flex-1 px-2 py-1 border border-line-300 rounded text-sm" />
-                  </div>
-                </div>
-              </div>
-              <button data-testid="tabbar-style-apply" @click="updateTabBarForegrounds({ color: tabColor, selectedColor: tabSelectedColor })"
-                class="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium">Apply Custom Style</button>
-              <div class="mt-4">
-                <label class="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
-                <div class="grid grid-cols-2 gap-2">
-                  <button @click="applyTheme({ color: '#666666', selectedColor: '#007AFF' })"
-                    class="px-3 py-2 bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg text-sm font-medium">Default</button>
-                  <button @click="applyTheme({ color: '#CCCCCC', selectedColor: '#0A84FF' })"
-                    class="px-3 py-2 bg-surface-800 hover:bg-surface-900 text-white rounded-lg text-sm font-medium">Dark</button>
-                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#34C759' })"
-                    class="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium">Green</button>
-                  <button @click="applyTheme({ color: '#8E8E93', selectedColor: '#AF52DE' })"
-                    class="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 dark:text-purple-400 rounded-lg text-sm font-medium">Purple</button>
-                </div>
-              </div>
-            </div>
-          </div>
         </template>
 
       </div>
@@ -622,7 +583,6 @@ const {
   clearTabBarBadge,
   revealTabBar,
   concealTabBar,
-  updateTabBarForegrounds,
   updateTabBarItem,
   setAppearance,
   chooseToastIcon,
@@ -685,8 +645,6 @@ const navbarBgColor = ref('');
 const navbarTextColor = ref('');
 const badgeText = ref('99');
 const itemText = ref('New Tab');
-const tabColor = ref('#666666');
-const tabSelectedColor = ref('#007AFF');
 const surfaceKind = ref<'aside' | 'float' | 'window'>('aside');
 const surfaceKinds = [
   { id: 'aside', label: 'Aside', hint: 'Docks beside the main and splits it; a compact window folds it into a switchable tab.' },
@@ -750,11 +708,5 @@ function handleOpenSurface() {
     width,
     height,
   });
-}
-
-function applyTheme(theme: { color: string; selectedColor: string }) {
-  tabColor.value = theme.color;
-  tabSelectedColor.value = theme.selectedColor;
-  updateTabBarForegrounds(theme);
 }
 </script>

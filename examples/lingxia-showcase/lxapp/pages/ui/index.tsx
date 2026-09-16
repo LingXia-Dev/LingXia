@@ -50,7 +50,6 @@ export default function UIPage() {
     clearTabBarBadge,
     revealTabBar,
     concealTabBar,
-    updateTabBarForegrounds,
     updateTabBarItem,
     setAppearance,
     chooseToastIcon,
@@ -138,8 +137,6 @@ export default function UIPage() {
   const [itemText, setItemText] = React.useState('New Tab');
   const [itemIcon, setItemIcon] = React.useState('');
   const [selectedIcon, setSelectedIcon] = React.useState('');
-  const [color, setColor] = React.useState('#666666');
-  const [selectedColor, setSelectedColor] = React.useState('#007AFF');
 
 
   return (
@@ -1168,118 +1165,6 @@ export default function UIPage() {
 
 
 
-            {/* Style Controls */}
-            <div className="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
-              <div className="px-4 py-3 border-b border-line-100">
-                <h3 className="text-base font-medium text-gray-900">Style Controls</h3>
-                <p className="text-sm text-gray-500 mt-1">Customize TabBar appearance</p>
-              </div>
-              <div className="p-4 space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Text Color</label>
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-8 h-8 border border-line-300 rounded cursor-pointer"
-                        style={{ backgroundColor: color }}
-                      ></div>
-                      <input
-                        type="text"
-                        value={color}
-                        onChange={(e) => setColor(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-line-300 rounded text-sm"
-                        placeholder="#666666"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Selected Color</label>
-                    <div className="flex items-center space-x-2">
-                      <div
-                        className="w-8 h-8 border border-line-300 rounded cursor-pointer"
-                        style={{ backgroundColor: selectedColor }}
-                      ></div>
-                      <input
-                        type="text"
-                        value={selectedColor}
-                        onChange={(e) => setSelectedColor(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-line-300 rounded text-sm"
-                        placeholder="#007AFF"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <button
-                  data-testid="tabbar-style-apply"
-                  onClick={() => {
-                    const result = updateTabBarForegrounds({
-                      color,
-                      selectedColor
-                    });
-                    console.log('Set TabBar style:', result);
-                  }}
-                  className="w-full bg-blue-500 hover:bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
-                >
-                  Apply Custom Style
-                </button>
-
-                {/* Preset Themes */}
-                <div className="mt-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Preset Themes</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {
-                        const theme = { color: '#666666', selectedColor: '#007AFF' };
-                        setColor(theme.color);
-                        setSelectedColor(theme.selectedColor);
-                        const result = updateTabBarForegrounds(theme);
-                        console.log('Applied Default theme:', result);
-                      }}
-                      className="px-3 py-2 bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Default
-                    </button>
-                    <button
-                      onClick={() => {
-                        const theme = { color: '#CCCCCC', selectedColor: '#0A84FF' };
-                        setColor(theme.color);
-                        setSelectedColor(theme.selectedColor);
-                        const result = updateTabBarForegrounds(theme);
-                        console.log('Applied Dark theme:', result);
-                      }}
-                      className="px-3 py-2 bg-surface-800 hover:bg-surface-900 text-white rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Dark
-                    </button>
-                    <button
-                      onClick={() => {
-                        const theme = { color: '#8E8E93', selectedColor: '#34C759' };
-                        setColor(theme.color);
-                        setSelectedColor(theme.selectedColor);
-                        const result = updateTabBarForegrounds(theme);
-                        console.log('Applied Green theme:', result);
-                      }}
-                      className="px-3 py-2 bg-green-100 hover:bg-green-200 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Green
-                    </button>
-                    <button
-                      onClick={() => {
-                        const theme = { color: '#8E8E93', selectedColor: '#AF52DE' };
-                        setColor(theme.color);
-                        setSelectedColor(theme.selectedColor);
-                        const result = updateTabBarForegrounds(theme);
-                        console.log('Applied Purple theme:', result);
-                      }}
-                      className="px-3 py-2 bg-purple-100 hover:bg-purple-200 text-purple-700 dark:text-purple-400 rounded-lg text-sm font-medium transition-colors"
-                    >
-                      Purple
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
 
 
 
