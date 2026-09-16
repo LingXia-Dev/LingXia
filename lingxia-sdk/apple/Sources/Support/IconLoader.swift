@@ -161,12 +161,14 @@ enum LxIcon {
 
     /// Bundled LingXia mark for guest lxapps that have no registry artwork.
     static func defaultLxappMark() -> NSImage? {
-        Bundle.lingxiaResources.url(
-            forResource: "lxapp_default",
-            withExtension: "png",
-            subdirectory: "icons"
-        ).flatMap { NSImage(contentsOf: $0) }
+        defaultLxappMarkImage
     }
+
+    private static let defaultLxappMarkImage: NSImage? = Bundle.lingxiaResources.url(
+        forResource: "lxapp_default",
+        withExtension: "png",
+        subdirectory: "icons"
+    ).flatMap { NSImage(contentsOf: $0) }
 
     /// Sidebar / pin artwork for an lxapp. Home is the product itself, so it
     /// always uses the host icon. Other apps use the registry file, then the
@@ -179,9 +181,19 @@ enum LxIcon {
         return image(at: path) ?? defaultLxappMark()
     }
 
+    /// Decoded lxapp artwork by path + file stamp. Sidebar rows, pins, and the
+    /// rail all ask for the same file on every refresh.
+    @MainActor
+    private static var lxappImageCache: [String: NSImage] = [:]
+
+    @MainActor
     private static func image(at path: String) -> NSImage? {
         guard !path.isEmpty else { return nil }
-        return NSImage(contentsOfFile: path)
+        let key = "\(path)|\(TabBarHelper.fileStamp(path))"
+        if let cached = lxappImageCache[key] { return cached }
+        guard let image = NSImage(contentsOfFile: path) else { return nil }
+        lxappImageCache[key] = image
+        return image
     }
 
     /// Square-crop to the opaque plate. Transparent Apple-grid padding is

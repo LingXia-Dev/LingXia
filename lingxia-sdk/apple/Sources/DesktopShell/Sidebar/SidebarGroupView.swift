@@ -551,7 +551,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             didRestoreCollapsedState = true
             if let collapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId),
                collapsed == isExpanded {
-                toggleExpanded(persist: false)
+                toggleExpanded(persist: false, animated: false)
             }
         }
     }
@@ -739,14 +739,16 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         setExpanded(!userCollapsed, persist: false)
     }
 
+    /// Switcher / API driven: no height animation, so the sidebar settles in
+    /// the same frame as the page it now describes.
     private func setExpanded(_ expanded: Bool, persist: Bool) {
         guard isExpanded != expanded else { return }
-        toggleExpanded(persist: persist)
+        toggleExpanded(persist: persist, animated: false)
     }
 
     /// `persist: true` only for user-driven toggles (chevron/header click);
     /// API sync and state restore pass false so only user intent is stored.
-    private func toggleExpanded(persist: Bool = true) {
+    private func toggleExpanded(persist: Bool = true, animated: Bool = true) {
         isExpanded.toggle()
         if persist {
             LxAppShellPersistence.setGroupCollapsed(!isExpanded, appId: providerAppId)
@@ -766,22 +768,24 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             itemsBackground.isHidden = false
         }
 
-        NSAnimationContext.runAnimationGroup({ context in
-            context.duration = 0.2
-            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            itemsHeightConstraint?.animator().constant = isExpanded ? totalHeight : 0
-            attributionHeightConstraint?.animator().constant =
-                isExpanded ? max(0, totalHeight - Layout.itemTopPadding * 2) : 0
-        }, completionHandler: { [weak self] in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if !self.isExpanded {
-                    self.itemsContainer.isHidden = true
-                    self.itemsBackground.isHidden = true
+        let expandedHeight = isExpanded ? totalHeight : 0
+        let attributionHeight = isExpanded ? max(0, totalHeight - Layout.itemTopPadding * 2) : 0
+        if animated {
+            NSAnimationContext.runAnimationGroup({ context in
+                context.duration = 0.2
+                context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+                itemsHeightConstraint?.animator().constant = expandedHeight
+                attributionHeightConstraint?.animator().constant = attributionHeight
+            }, completionHandler: { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.finishExpandToggle()
                 }
-                self.onLayoutChanged?()
-            }
-        })
+            })
+        } else {
+            itemsHeightConstraint?.constant = expandedHeight
+            attributionHeightConstraint?.constant = attributionHeight
+            finishExpandToggle()
+        }
 
         // Chevron: down = expanded, up = collapsed (like Chrome)
         chevronIndicator.image = NSImage(
@@ -796,6 +800,14 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             headerView.layer?.maskedCorners = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
         }
 
+    }
+
+    private func finishExpandToggle() {
+        if !isExpanded {
+            itemsContainer.isHidden = true
+            itemsBackground.isHidden = true
+        }
+        onLayoutChanged?()
     }
 
     @objc private func chevronClicked() {

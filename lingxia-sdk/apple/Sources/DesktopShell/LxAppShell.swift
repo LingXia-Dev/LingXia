@@ -267,6 +267,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainAddHandler: (() -> Bool)?
     private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Bool)?
     private var managedMainRenameHandler: ((String, String) -> Void)?
+    /// Host-chrome refreshes requested this run-loop pass, by lxapp id. `true`
+    /// marks a tabbar-state change (navbar + auto-hide + awaited callers too).
+    private var pendingHostChromeSync: [String: Bool] = [:]
+    private var hostChromeSyncScheduled = false
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
     private var browserRestoreActiveMainHandler: (() -> Bool)?
@@ -834,14 +838,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             queue: .main
         ) { [weak self] notification in
             let appId = notification.object as? String
-            Task { @MainActor in
+            MainActor.assumeIsolated {
                 guard let self, let appId else { return }
-                self.sidebarView?.refreshAppGroup(appId: appId)
-                let highlightId = self.managedMainSurfaceByLxappId[appId] ?? appId
-                if self.tabManager.activeTab?.appId == appId
-                    || self.managedMainLxappBySurfaceId[highlightId] == appId {
-                    self.sidebarView?.setActiveHighlight(appId: highlightId)
-                }
+                self.scheduleHostChromeSync(appId: appId, tabBarChanged: false)
             }
         }
         // A registry answer landed after the paint that asked for it: rebuild
@@ -863,22 +862,54 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             queue: .main
         ) { [weak self] notification in
             let appId = notification.object as? String
-            Task { @MainActor in
-                defer {
-                    // Applied (or no shell to apply to): resolve awaited callers.
-                    if let appId {
-                        TabBarUpdateWaiters.complete(appId)
-                    }
+            MainActor.assumeIsolated {
+                guard let self, let appId else {
+                    // No shell to apply to: resolve awaited callers anyway.
+                    if let appId { TabBarUpdateWaiters.complete(appId) }
+                    return
                 }
-                guard let self, let appId else { return }
-                self.sidebarView?.refreshAppGroup(appId: appId)
-                self.refreshNavigationBar(for: appId)
-                let highlightId = self.managedMainSurfaceByLxappId[appId] ?? appId
-                if self.tabManager.activeTab?.appId == appId
-                    || self.managedMainLxappBySurfaceId[highlightId] == appId {
-                    self.sidebarView?.setActiveHighlight(appId: highlightId)
-                }
-                self.reconcileSidebarAutoHide()
+                self.scheduleHostChromeSync(appId: appId, tabBarChanged: true)
+            }
+        }
+    }
+
+    /// One tab click makes the runtime sync host chrome several times (before
+    /// and after the navigate, after the click, on page show). Applying each
+    /// one rebuilt the sidebar four to five times on the main queue *before*
+    /// Core Animation committed the page swap, which is what held the new page
+    /// off screen for ~100ms. Collect them and apply once, on a later pass.
+    private func scheduleHostChromeSync(appId: String, tabBarChanged: Bool) {
+        pendingHostChromeSync[appId] = (pendingHostChromeSync[appId] ?? false) || tabBarChanged
+        guard !hostChromeSyncScheduled else { return }
+        hostChromeSyncScheduled = true
+        // A plain `main.async` still runs inside this run-loop pass, ahead of
+        // the CA commit; a timer fires on the next pass, after it.
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(1)) { [weak self] in
+            self?.flushHostChromeSync()
+        }
+    }
+
+    private func flushHostChromeSync() {
+        hostChromeSyncScheduled = false
+        // Take the batch first: a sync posted during this pass re-arms a new one.
+        let pending = pendingHostChromeSync
+        pendingHostChromeSync = [:]
+        for (appId, tabBarChanged) in pending {
+            sidebarView?.refreshAppGroup(appId: appId)
+            if tabBarChanged {
+                refreshNavigationBar(for: appId)
+            }
+            // Only the mounted main re-asserts the selection. Any app with a
+            // managed surface used to pass here, so a tab click in app B also
+            // re-selected app A for a moment and the accordion collapsed and
+            // re-expanded B on every click.
+            if attachedMainAppId == appId {
+                sidebarView?.setActiveHighlight(appId: managedMainSurfaceByLxappId[appId] ?? appId)
+            }
+            if tabBarChanged {
+                reconcileSidebarAutoHide()
+                // Applied: resolve awaited `lx.tabBar.update()` callers.
+                TabBarUpdateWaiters.complete(appId)
             }
         }
     }

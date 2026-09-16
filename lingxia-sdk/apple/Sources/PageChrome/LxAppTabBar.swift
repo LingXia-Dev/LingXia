@@ -112,6 +112,18 @@ struct TabBarHelper {
     /// the file is not required to be pre-rounded.
     static let appTileCornerRatio: CGFloat = 0.22
 
+    /// Cache-key stamp for an icon file: size and mtime, so a rewritten
+    /// registry/lxapp icon at the same path is decoded again. Non-file paths
+    /// (SF symbols, bundle names) stamp as empty.
+    static func fileStamp(_ path: String) -> String {
+        guard path.hasPrefix("/"),
+              let attrs = try? FileManager.default.attributesOfItem(atPath: path)
+        else { return "" }
+        let size = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+        let modified = (attrs[.modificationDate] as? Date)?.timeIntervalSince1970 ?? 0
+        return "\(size):\(modified)"
+    }
+
     #if os(macOS)
     /// Raster lxapp artwork as a rounded tile. Favicons and template glyphs
     /// must not go through this — they stay square / tintable.

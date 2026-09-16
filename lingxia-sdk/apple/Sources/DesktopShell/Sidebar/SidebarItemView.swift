@@ -50,6 +50,10 @@ class SidebarItemView: NSView {
     /// the mobile tabbar.
     private var iconPath = ""
     private var iconIsTemplate = true
+    /// Decoded, tile-sized icons by app + path + file stamp. Every sidebar
+    /// refresh reconfigures every row; decoding the PNG/PDF again each time
+    /// was most of the per-click main-thread cost.
+    private static var iconCache: [String: (image: NSImage, isTemplate: Bool)] = [:]
 
     let itemIndex: Int
     /// Declaration index in `lxapp.json` — what `TabBarClick` and selection key on.
@@ -224,6 +228,11 @@ class SidebarItemView: NSView {
     }
 
     private func loadIcon(path: String) {
+        let key = "\(appId)|\(path)|\(TabBarHelper.fileStamp(path))"
+        if let cached = Self.iconCache[key] {
+            applyIcon(cached.image, isTemplate: cached.isTemplate)
+            return
+        }
         let image: NSImage?
         if path.hasPrefix("SF:") {
             let symbolName = String(path.dropFirst(3))
@@ -246,20 +255,28 @@ class SidebarItemView: NSView {
         let resolvedPath = image == nil ? "SF:doc" : path
         let resolvedImage = image
             ?? NSImage(systemSymbolName: "doc", accessibilityDescription: nil)
-        iconIsTemplate = TabBarHelper.isTemplateIcon(resolvedPath)
-        iconView.image = resolvedImage.map {
+        let isTemplate = TabBarHelper.isTemplateIcon(resolvedPath)
+        let sized = resolvedImage.map {
             TabBarHelper.appKitIcon($0, path: resolvedPath, size: Layout.iconSize)
         }
-        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Layout.iconSize * TabBarHelper.appTileCornerRatio
-        iconView.layer?.masksToBounds = !iconIsTemplate
-        iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
+        if let sized {
+            Self.iconCache[key] = (sized, isTemplate)
+        }
+        applyIcon(sized, isTemplate: isTemplate)
+    }
+
+    private func applyIcon(_ image: NSImage?, isTemplate: Bool) {
+        iconIsTemplate = isTemplate
+        iconView.image = image
+        iconView.layer?.cornerRadius = isTemplate ? 0 : Layout.iconSize * TabBarHelper.appTileCornerRatio
+        iconView.layer?.masksToBounds = !isTemplate
+        iconView.contentTintColor = isTemplate ? LxAppHostTheme.mutedForeground : nil
     }
 
     private func updateAppearance() {
         let accent = selectedTint ?? LxAppHostTheme.accent
         accentBar.isHidden = !isSelected
         accentBar.layer?.backgroundColor = themeCGColor(accent)
-        loadIcon(path: iconPath)
         if isSelected {
             // Windows-baseline selected card: a light floating card on the
             // dark base, accent icon + accent bar. The title takes the
