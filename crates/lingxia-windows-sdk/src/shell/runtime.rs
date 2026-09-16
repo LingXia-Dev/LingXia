@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// Atomics here back browser tab-sync debounce/presentation generations and
-// shell-created terminal workspace identities.
-#[cfg(feature = "browser-runtime")]
-use std::sync::atomic::AtomicBool;
+// AtomicU64 backs browser tab-sync/presentation generations and shell-created
+// terminal workspace identities.
 #[cfg(any(feature = "browser-runtime", feature = "terminal-runtime"))]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
@@ -1062,7 +1061,7 @@ fn apply_windows_host_color_mode() {
 
 pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
-        sync_related_shell_layouts(&appid);
+        request_related_shell_sync(&appid);
     }));
     // The product's light/dark setting moved. Chrome paints from
     // `host_appearance_dark()`; WebViews and the terminal must be told too.
@@ -1241,18 +1240,88 @@ pub(super) fn install() {
 }
 
 fn sync_related_shell_layouts(appid: &str) {
-    let mut appids = Vec::from([appid.to_string()]);
-    if let Some(owner_appid) = shell_owner_appid()
-        && !appids.iter().any(|appid| appid == &owner_appid)
-    {
-        appids.push(owner_appid);
-    }
-    let current_appid = lxapp::get_current_lxapp().0;
-    if !current_appid.is_empty() && !appids.iter().any(|appid| appid == &current_appid) {
-        appids.push(current_appid);
-    }
-    for appid in appids {
+    for appid in related_shell_appids(&[appid.to_string()]) {
         sync_app_shell_layout(&appid);
+    }
+}
+
+/// The app, the shell owner, and the current app, deduplicated across every
+/// requested app id.
+fn related_shell_appids(requested: &[String]) -> Vec<String> {
+    let mut appids: Vec<String> = Vec::new();
+    let owner_appid = shell_owner_appid();
+    let current_appid = lxapp::get_current_lxapp().0;
+    for appid in requested
+        .iter()
+        .cloned()
+        .chain(owner_appid)
+        .chain((!current_appid.is_empty()).then_some(current_appid))
+    {
+        if !appids.contains(&appid) {
+            appids.push(appid);
+        }
+    }
+    appids
+}
+
+static PENDING_SHELL_SYNC: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static SHELL_SYNC_SCHEDULED: AtomicBool = AtomicBool::new(false);
+
+/// Runtime host-UI updates (`update_navbar_ui` + `update_tabbar_ui`) arrive
+/// several times per navigation — a tab click alone sends four pairs, most of
+/// them before the page is presented. Each used to run a full related-layout
+/// pass on the caller's thread, so the click paid ~10 layout passes ahead of
+/// the swap. Collect them and run one pass off the caller, after the
+/// presentation that triggered them. Present paths still push their own
+/// layout synchronously, so nothing on screen waits for this.
+fn request_related_shell_sync(appid: &str) {
+    {
+        let mut pending = PENDING_SHELL_SYNC
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        if !pending.iter().any(|pending| pending == appid) {
+            pending.push(appid.to_string());
+        }
+    }
+    if SHELL_SYNC_SCHEDULED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::mem::drop(lingxia::task::spawn(async move {
+        flush_related_shell_sync();
+    }));
+}
+
+/// Passes run one after another: the flag stays set while a pass builds, so a
+/// request during it queues for the next pass instead of racing it.
+fn flush_related_shell_sync() {
+    let take_pending = || {
+        std::mem::take(
+            &mut *PENDING_SHELL_SYNC
+                .get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .unwrap_or_else(|err| err.into_inner()),
+        )
+    };
+    loop {
+        let pending = take_pending();
+        if pending.is_empty() {
+            SHELL_SYNC_SCHEDULED.store(false, Ordering::Release);
+            // A request that queued after the take saw the flag still set.
+            let requeued = PENDING_SHELL_SYNC.get().is_some_and(|pending| {
+                !pending
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .is_empty()
+            });
+            if requeued && !SHELL_SYNC_SCHEDULED.swap(true, Ordering::AcqRel) {
+                continue;
+            }
+            return;
+        }
+        for appid in related_shell_appids(&pending) {
+            sync_app_shell_layout(&appid);
+        }
     }
 }
 
@@ -2765,6 +2834,24 @@ fn build_sidebar_header_actions(app: &LxApp) -> Vec<WindowsShellHeaderActionLayo
         })
         .collect::<Vec<_>>();
     if let Some(source) = static_settings_source() {
+        // Settings takes one of the two header slots (spec §4.5).
+        if actions.len() >= MAX_HEADER_SIDEBAR_ACTIONS {
+            let dropped = actions[MAX_HEADER_SIDEBAR_ACTIONS - 1..]
+                .iter()
+                .map(|action| action.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            // Layouts rebuild per sync pass; warn once per distinct drop.
+            static LAST_DROPPED: Mutex<Option<String>> = Mutex::new(None);
+            let key = format!("{}:{dropped}", app.appid);
+            let mut last = LAST_DROPPED.lock().unwrap_or_else(|err| err.into_inner());
+            if last.as_deref() != Some(key.as_str()) {
+                log::warn!(
+                    "header sidebar actions exceed the slots left beside Settings; dropping {dropped}"
+                );
+                *last = Some(key);
+            }
+        }
         actions.insert(
             0,
             WindowsShellHeaderActionLayout {
