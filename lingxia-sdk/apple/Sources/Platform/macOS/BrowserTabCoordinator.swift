@@ -1843,16 +1843,11 @@ final class BrowserTabCoordinator: NSObject {
         return "\(scheme)://\(host)\(port)"
     }
 
+    /// Built-in `lingxia://` pages (settings, downloads, …) have no site
+    /// favicon. Use the host app's icon so those rows read as product chrome,
+    /// not the LingXia SDK mark shipped in the framework bundle.
     private func bundledFavicon() -> NSImage? {
-        #if SWIFT_PACKAGE
-        let bundle = Bundle.lingxiaResources
-        #else
-        let bundle = Bundle(for: BrowserTabCoordinator.self)
-        #endif
-        guard let faviconURL = bundle.url(forResource: "favicon", withExtension: "ico") else {
-            return nil
-        }
-        return NSImage(contentsOf: faviconURL)
+        LxIcon.hostAppImage()
     }
 
     private func fetchFavicon(for origin: String, tabId: String, webView: WKWebView) {

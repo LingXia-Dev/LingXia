@@ -116,7 +116,7 @@ final class SurfaceMenuPresenter: NSObject {
         for (sectionIndex, section) in snapshot.sections.enumerated() {
             if sectionIndex > 0 { menu.addItem(.separator()) }
             for item in section.items {
-                let title = item.label ?? Self.title(for: item.action.action)
+                let title = Self.title(for: item)
                 guard !title.isEmpty || item.action.owner == "information" else { continue }
                 let menuItem = NSMenuItem(
                     title: title,
@@ -125,10 +125,7 @@ final class SurfaceMenuPresenter: NSObject {
                 )
                 menuItem.target = item.enabled ? self : nil
                 menuItem.isEnabled = item.enabled
-                if let icon = item.icon, !icon.isEmpty {
-                    menuItem.image = NSImage(contentsOfFile: icon)
-                        ?? NSImage(systemSymbolName: icon, accessibilityDescription: title)
-                }
+                menuItem.image = Self.icon(for: item)
                 menuItem.representedObject = Selection(
                     revision: snapshot.revision,
                     surfaceId: snapshot.surfaceId,
@@ -159,7 +156,16 @@ final class SurfaceMenuPresenter: NSObject {
         onAction?(selection.revision, selection.surfaceId, selection.action, nil)
     }
 
-    private static func title(for action: String?) -> String {
+    private static func title(for item: SurfaceMenuSnapshot.Item) -> String {
+        switch item.action.owner {
+        case "information", "external":
+            return item.label ?? ""
+        default:
+            return localizedTitle(for: item.action.action) ?? item.label ?? ""
+        }
+    }
+
+    private static func localizedTitle(for action: String?) -> String? {
         switch action {
         case "rename": L10n.string("lx_surface_rename")
         case "resetTitle": L10n.string("lx_surface_reset_title")
@@ -168,7 +174,30 @@ final class SurfaceMenuPresenter: NSObject {
         case "closeAfter": L10n.string("lx_surface_close_after")
         case "restart": L10n.string("lx_capsule_restart")
         case "cleanCacheRestart": L10n.string("lx_capsule_clean_cache")
-        default: ""
+        default: nil
+        }
+    }
+
+    /// Same `design/icons/svg` names as the iOS / Android / Harmony capsule
+    /// (`icon_restart`, `icon_clean_cache`, …). Close-tab rows reuse the
+    /// sidebar bookmark glyphs from that set.
+    private static func icon(for item: SurfaceMenuSnapshot.Item) -> NSImage? {
+        if let path = item.icon, !path.isEmpty {
+            return LxIcon.menuImage(fromPath: path)
+        }
+        switch (item.action.owner, item.action.action) {
+        case ("lxapp", "restart"):
+            return LxIcon.menuSymbol("icon_restart")
+        case ("lxapp", "cleanCacheRestart"):
+            return LxIcon.menuSymbol("icon_clean_cache")
+        case ("switcher", "close"):
+            return LxIcon.menuSymbol("icon_close_x")
+        case ("switcher", "closeOthers"):
+            return LxIcon.menuSymbol("icon_close_other_tabs")
+        case ("switcher", "closeAfter"):
+            return LxIcon.menuSymbol("icon_close_tabs_below")
+        default:
+            return nil
         }
     }
 }

@@ -471,7 +471,7 @@ class LxAppCapsuleMenu {
             action: #selector(MacCapsuleMenuTarget.cleanCacheClicked),
             keyEquivalent: ""
         )
-        cleanItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        cleanItem.image = LxIcon.menuSymbol("icon_clean_cache")
         cleanItem.target = target
         menu.addItem(cleanItem)
 
@@ -481,7 +481,7 @@ class LxAppCapsuleMenu {
             action: #selector(MacCapsuleMenuTarget.restartClicked),
             keyEquivalent: ""
         )
-        restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        restartItem.image = LxIcon.menuSymbol("icon_restart")
         restartItem.target = target
         menu.addItem(restartItem)
 
@@ -493,7 +493,7 @@ class LxAppCapsuleMenu {
                 action: #selector(MacCapsuleMenuTarget.uninstallClicked),
                 keyEquivalent: ""
             )
-            uninstallItem.image = NSImage(systemSymbolName: "xmark.bin", accessibilityDescription: nil)
+            uninstallItem.image = LxIcon.menuSymbol("icon_uninstall")
             uninstallItem.target = target
             menu.addItem(uninstallItem)
         }
@@ -507,7 +507,7 @@ class LxAppCapsuleMenu {
                     action: #selector(MacCapsuleMenuTarget.moreActionClicked(_:)),
                     keyEquivalent: ""
                 )
-                customItem.image = NSImage(contentsOfFile: item.iconPath)
+                customItem.image = LxIcon.menuImage(fromPath: item.iconPath)
                 customItem.representedObject = snapshot.token(at: index)
                 customItem.target = target
                 menu.addItem(customItem)

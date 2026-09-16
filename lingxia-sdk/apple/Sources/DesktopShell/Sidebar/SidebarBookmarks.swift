@@ -400,10 +400,7 @@ final class LxappPinTileView: NSView {
     func refreshFromRust() {
         let info = getLxAppInfo(appId)
         let iconPath = getLxAppDisplayIconPath(appId).toString()
-        let source = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
-            ?? Bundle.lingxiaResources.url(
-                forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-                .flatMap { NSImage(contentsOf: $0) }
+        let source = LxIcon.lxappImage(appId: appId, path: iconPath)
         iconView.image = source.map {
             TabBarHelper.appTileIcon($0, size: SidebarPinTileView.Layout.iconSize)
         }

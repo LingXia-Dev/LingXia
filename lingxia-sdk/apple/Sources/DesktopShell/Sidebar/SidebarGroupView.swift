@@ -166,13 +166,6 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     private let appIconView = NSImageView()
     private let appNameLabel = NSTextField(labelWithString: "")
 
-    /// The bundled default LingXia mark, used when an lxapp declares no icon.
-    private static let defaultAppIcon: NSImage? = {
-        guard let url = Bundle.lingxiaResources.url(
-            forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-        else { return nil }
-        return NSImage(contentsOf: url)
-    }()
     private let chevronIndicator = NSButton()
     /// Collapsed-state aggregate: a dot on the header while any tabbar item
     /// carries a badge or red dot (notifications never vanish
@@ -478,17 +471,11 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         applyColors()
     }
 
-    /// Show the lxapp's icon (`path` is an absolute file path from the lxapp
-    /// bundle), falling back to the bundled default LingXia mark when the
-    /// lxapp declares none or the file can't be read. The shell clips the
-    /// square tile — AppIcon.png is not required to be pre-rounded.
+    /// Show the lxapp's icon (`path` is an absolute file path from the
+    /// registry cache). Home uses the host product icon; other apps fall
+    /// back to the bundled default mark. The shell clips the square tile.
     private func loadAppIcon(path: String) {
-        let source: NSImage?
-        if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
-            source = image
-        } else {
-            source = Self.defaultAppIcon
-        }
+        let source = LxIcon.lxappImage(appId: providerAppId, path: path)
         appIconView.image = source.map { TabBarHelper.appTileIcon($0, size: Layout.appIconSize) }
     }
 
@@ -556,7 +543,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         if !isRenaming {
             appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
         }
-        appIconView.image = (managedIcon ?? Self.defaultAppIcon).map {
+        appIconView.image = (managedIcon ?? LxIcon.lxappImage(appId: providerAppId, path: "")).map {
             TabBarHelper.appTileIcon($0, size: Layout.appIconSize)
         }
         closeButton.isHidden = true
@@ -868,6 +855,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
                 action: #selector(contextMenuTogglePin),
                 keyEquivalent: ""
             )
+            pinItem.image = LxIcon.menuSymbol(pinned ? "icon_unpin" : "icon_pin")
             pinItem.target = self
             menu.addItem(pinItem)
             menu.addItem(NSMenuItem.separator())
@@ -879,6 +867,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             action: #selector(contextMenuRestart),
             keyEquivalent: ""
         )
+        restartItem.image = LxIcon.menuSymbol("icon_restart")
         restartItem.target = self
         menu.addItem(restartItem)
 
@@ -888,6 +877,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             action: #selector(contextMenuCleanCache),
             keyEquivalent: ""
         )
+        cleanItem.image = LxIcon.menuSymbol("icon_clean_cache")
         cleanItem.target = self
         menu.addItem(cleanItem)
 
@@ -900,6 +890,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
                     action: #selector(contextMenuMoreAction(_:)),
                     keyEquivalent: ""
                 )
+                actionItem.image = LxIcon.menuImage(fromPath: item.iconPath)
                 actionItem.representedObject = snapshot.token(at: index)
                 actionItem.target = self
                 menu.addItem(actionItem)

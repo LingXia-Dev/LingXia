@@ -136,7 +136,7 @@ final class UpdateAvailableCard: NSObject {
 
     private func header() -> NSView {
         let icon = NSImageView()
-        icon.image = NSApp.applicationIconImage
+        icon.image = LxIcon.hostAppImage()
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setContentHuggingPriority(.required, for: .horizontal)

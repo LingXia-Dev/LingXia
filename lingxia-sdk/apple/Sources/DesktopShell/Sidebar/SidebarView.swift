@@ -744,14 +744,6 @@ class SidebarView: NSView {
     private var railHoverDismissTask: Task<Void, Never>?
     private var isRailHoverPanelHovered = false
 
-    /// The bundled default LingXia mark, used when an lxapp declares no icon.
-    private static let defaultAppIcon: NSImage? = {
-        guard let url = Bundle.lingxiaResources.url(
-            forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
-        else { return nil }
-        return NSImage(contentsOf: url)
-    }()
-
     /// A shared design icon (bundled PDF) as a tintable template image, so the
     /// header affordances match their iOS counterparts.
     private static func designIcon(_ name: String) -> NSImage? {
@@ -1275,8 +1267,7 @@ class SidebarView: NSView {
             case "lxapp":
                 let info = getLxAppInfo(pin.key)
                 let iconPath = getLxAppDisplayIconPath(pin.key).toString()
-                let image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
-                    ?? Self.defaultAppIcon
+                let image = LxIcon.lxappImage(appId: pin.key, path: iconPath)
                 let name = info.app_name.toString()
                 let key = "pin-lxapp:\(pin.key)"
                 let button = makeRailButton(
@@ -1343,16 +1334,14 @@ class SidebarView: NSView {
             let image: NSImage?
             if group.isManagedMain {
                 tooltip = group.managedLabel ?? group.appId
-                image = group.managedIcon ?? Self.defaultAppIcon
+                let iconAppId = group.contentAppId ?? group.appId
+                image = group.managedIcon
+                    ?? LxIcon.lxappImage(appId: iconAppId, path: "")
             } else {
                 let info = getLxAppInfo(group.appId)
                 let iconPath = getLxAppDisplayIconPath(group.appId).toString()
                 tooltip = info.app_name.toString()
-                if !iconPath.isEmpty, let img = NSImage(contentsOfFile: iconPath) {
-                    image = img
-                } else {
-                    image = Self.defaultAppIcon
-                }
+                image = LxIcon.lxappImage(appId: group.appId, path: iconPath)
             }
             let key = "app:\(group.appId)"
             let isTemplate = group.isManagedMain && group.contentAppId == nil
@@ -2539,7 +2528,8 @@ class SidebarView: NSView {
 
         let icon = NSImageView()
         icon.translatesAutoresizingMaskIntoConstraints = false
-        icon.image = NSApp.applicationIconImage
+        let hostIcon = LxIcon.hostAppImage()
+        icon.image = hostIcon.map { TabBarHelper.appTileIcon($0, size: 16) }
             ?? Self.designIcon("icon_globe")
             ?? NSImage(systemSymbolName: "globe", accessibilityDescription: nil)
         icon.imageScaling = .scaleProportionallyDown
