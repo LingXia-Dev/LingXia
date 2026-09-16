@@ -136,7 +136,7 @@ final class UpdateAvailableCard: NSObject {
 
     private func header() -> NSView {
         let icon = NSImageView()
-        icon.image = LxIcon.hostAppImage()
+        icon.image = LxIcon.hostAppImage().map { TabBarHelper.appTileIcon($0, size: 52) }
         icon.imageScaling = .scaleProportionallyUpOrDown
         icon.translatesAutoresizingMaskIntoConstraints = false
         icon.setContentHuggingPriority(.required, for: .horizontal)

@@ -1847,7 +1847,9 @@ final class BrowserTabCoordinator: NSObject {
     /// favicon. Use the host app's icon so those rows read as product chrome,
     /// not the LingXia SDK mark shipped in the framework bundle.
     private func bundledFavicon() -> NSImage? {
-        LxIcon.hostAppImage()
+        // Favicon rows draw their image unclipped, so hand them a pre-rounded
+        // tile; the raw host artwork is a full-bleed square.
+        LxIcon.hostAppImage().map { TabBarHelper.appTileIcon($0, size: 16) }
     }
 
     private func fetchFavicon(for origin: String, tabId: String, webView: WKWebView) {
