@@ -29,29 +29,22 @@ uses the following ranges with platform-managed hysteresis at 600:
 | `compact` | less than 600 |
 | `regular` | 600 and above |
 
-Content size class is scoped to the lxapp surface. It is not the shell size
-class and it is not the host form. The shell still uses
-`compact` / `medium` / `expanded` internally for sidebar and aside admission;
-content never sees `medium` or `expanded`. An aside inside an expanded
-desktop shell can receive `compact`.
+Content size class is scoped to the lxapp surface, not the host window: an
+aside inside a wide desktop shell can receive `compact`. The shell's own
+`medium` / `expanded` bands drive chrome admission and never reach content.
 
-`regular` means the surface is at least 600 wide. It does not mean desktop.
-Pair it with `usePlatform().isDesktop` / `isMobile` (tablets and foldable
-phones are mobile). Unfolding a fold flips `sizeClass` in place and does not
-change host form:
+`regular` is room, not desktop. Pair it with `usePlatform().isDesktop`;
+tablets and foldable phones are mobile, and unfolding a fold flips
+`sizeClass` without changing host form:
 
 | | mobile | desktop |
 |---|---|---|
-| `compact` | folded phone | narrow desktop window |
+| `compact` | folded phone, narrow tablet split | narrow desktop window |
 | `regular` | unfolded fold, tablet | desktop workspace |
 
-Do not add a third size class for fold. Two-pane on a handheld is `regular`
-on mobile — CSS or a product View, still not `medium`.
-
-A tablet is `regular` + mobile (or `compact` + mobile in a narrow OS split).
-The host shell stays device-compact: no sidebar, overlay asides. `is_pad`
-only shows every tab-bar item; it is not `isDesktop()` and MUST NOT be used
-to mount a desktop shell. Extra pad width is page two-pane, not WorkspaceView.
+Do not add a third size class or View for fold or tablet. Extra width on a
+mobile `regular` surface is page two-pane via CSS; the host shell there stays
+mobile (full tab bar on a tablet, no desktop sidebar).
 
 ## Edge-to-edge windows
 
@@ -155,9 +148,8 @@ export default function PageView() {
 }
 ```
 
-Workspace is the desktop interaction, not "anything wider than a phone". A
-`regular` mobile surface (unfolded fold, tablet) keeps CompactView; extra
-columns there are CSS.
+Workspace is the desktop interaction, not "anything wider than a phone": a
+`regular` mobile surface keeps CompactView.
 
 The React bridge snapshot is initially empty. Gate required nested data before
 reading it; keep React hooks above the gate so hook order remains stable.
@@ -209,5 +201,4 @@ pass `appearance: "light" | "dark" | "system"` to pin or release the simulated
 color scheme for dual-theme assertions.
 
 Assert that the old View is absent from the DOM and that Logic-owned state is
-still visible after each switch. Do not add a third View for fold or the
-shell's medium band.
+still visible after each switch.
