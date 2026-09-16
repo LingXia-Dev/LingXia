@@ -733,13 +733,20 @@ or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise reject
 
 ```ts
 await lx.tabBar.update({
-  style: { selectedForegroundColor: '#ff0000' },
   items: [{ index: 1, text: 'Inbox', badge: '3' }],
 });
 await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
 await lx.tabBar.update({ visibility: 'hidden' });
 await lx.tabBar.update({ visibility: 'auto' });
 ```
+
+Tab bar colors are platform-split. On iOS / Android / Harmony the bar
+keeps static `lxapp.json` `tabBar.style` (then the lxapp's own appearance
+defaults) so it stays with the page — it does not follow OS dark mode by
+itself. On macOS / Windows the sidebar group is host chrome: static style
+is the light palette, and a dark host uses the shell theme so a
+`#FFFFFF` bar cannot paint a white card on a dark sidebar.
+`lx.tabBar.update()` does not patch colors — a `style` field is rejected.
 
 `lx.navigationBar.update()` patches the current page's bar the same way:
 
