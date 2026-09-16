@@ -222,7 +222,7 @@ class LxAppCapsuleMenu {
         typealias Action = (iconName: String?, iconPath: String?, title: String, token: String, isDestructive: Bool)
         let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
         let customActions: [Action] = snapshot.items.enumerated().map { index, item in
-            (nil, item.iconPath, item.label, snapshot.token(at: index), false)
+            (nil, item.iconPath.isEmpty ? String?.none : item.iconPath, item.label, snapshot.token(at: index), false)
         }
         let systemActions: [Action] = [
             ("icon_clean_cache", nil, L10n.string("lx_capsule_clean_cache"), "clean_cache_restart", false),

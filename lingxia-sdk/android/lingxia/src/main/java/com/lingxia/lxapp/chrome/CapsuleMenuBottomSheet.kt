@@ -103,10 +103,11 @@ internal object CapsuleMenuBottomSheet {
                     val item = items.optJSONObject(index) ?: continue
                     val label = item.optString("label").trim()
                     val iconPath = item.optString("iconPath").trim()
-                    if (generation > 0 && label.isNotEmpty() && iconPath.isNotEmpty()) {
+                    // A missing icon file arrives as "": keep the row, iconless.
+                    if (generation > 0 && label.isNotEmpty()) {
                         add(
                             MenuItem(
-                                iconPath = iconPath,
+                                iconPath = iconPath.ifEmpty { null },
                                 title = label,
                                 action = "more:$generation:$index",
                                 color = color

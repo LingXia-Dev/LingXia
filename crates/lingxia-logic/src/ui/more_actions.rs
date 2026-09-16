@@ -134,17 +134,17 @@ fn parse_action(app: &LxApp, item: &JSObject) -> JSResult<ParsedMoreAction> {
             "More action onClick must be a function",
         )
     })?;
-    let icon_path = app.resolve_accessible_path(&icon).map_err(|_| {
-        rong::HostError::new(
-            rong::error::E_INVALID_ARG,
-            format!("More action icon '{icon}' could not be resolved"),
-        )
-    })?;
+    // A missing file must not drop the action — the host already draws
+    // items without icons. Rejecting here hid More actions whenever an
+    // lxapp pointed at a renamed or platform-specific asset (png vs svg).
+    let icon_path = app
+        .resolve_accessible_path(&icon)
+        .ok()
+        .filter(|path| path.exists())
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_default();
     Ok(ParsedMoreAction {
-        item: LxAppMoreAction {
-            label,
-            icon_path: icon_path.to_string_lossy().into_owned(),
-        },
+        item: LxAppMoreAction { label, icon_path },
         handler,
     })
 }
