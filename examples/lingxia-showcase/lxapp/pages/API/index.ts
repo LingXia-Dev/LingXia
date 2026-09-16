@@ -155,6 +155,12 @@ Page({
     });
   },
 
+  navigateToClipboardPage: async function() {
+    await lx.navigateTo({
+      page: "clipboard",
+    });
+  },
+
   exitApp: async function() {
     const result = await lx.showModal({
       title: "Exit App",

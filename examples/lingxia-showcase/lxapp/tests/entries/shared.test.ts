@@ -16,6 +16,7 @@ import '../api/device-profile.test.js';
 import '../api/io-contracts.test.js';
 import '../api/host-app.test.js';
 import '../api/argument-contracts.test.js';
+import '../api/clipboard.test.js';
 import '../api/transfer.test.js';
 import '../pages/bridge-repro.test.js';
 import '../pages/stream.test.js';
@@ -33,6 +34,7 @@ import '../pages/system.test.js';
 import '../pages/todo.test.js';
 import '../pages/ui.test.js';
 import '../pages/chrome.test.js';
+import '../pages/clipboard.test.js';
 import '../pages/render.test.js';
 import '../pending/backlog-pending.test.js';
 

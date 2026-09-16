@@ -60,6 +60,10 @@
       "path": "pages/share/index"
     },
     {
+      "name": "clipboard",
+      "path": "pages/clipboard/index"
+    },
+    {
       "name": "components",
       "path": "pages/components/index"
     },
