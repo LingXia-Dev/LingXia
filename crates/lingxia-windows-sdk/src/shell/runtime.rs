@@ -8,10 +8,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
-    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
-    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout,
-    WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
-    WindowsShellTabBarPosition, WindowsShellWindowLayout,
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellAuxiliaryTabs,
+    WindowsShellFooterActionLayout, WindowsShellHeaderActionLayout,
+    WindowsShellNavigationBarLayout, WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout,
+    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 #[cfg(feature = "browser-runtime")]
 use lingxia_browser::BrowserTabInfo;
@@ -2708,6 +2708,7 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
                     closable: false,
                     icon_png: None,
                     icon_path: lxapp_auxiliary_icon_path(&appid),
+                    tabs: None,
                 })
             }
             ShellPinTarget::Bookmark { key } => build_pinned_bookmark_item(&key, tabs),
@@ -2736,6 +2737,10 @@ fn build_surface_switcher_items(
             closable: item.closable,
             icon_png: None,
             icon_path: surface_switcher_icon_path(owner, item),
+            tabs: match &item.content {
+                SwitcherContentKind::Lxapp { app_id } => lxapp_rail_tabs(app_id),
+                _ => None,
+            },
         })
         .collect()
 }
@@ -2916,6 +2921,7 @@ fn build_browser_tab_items(tabs: Vec<BrowserTabSummary>) -> Vec<WindowsShellAuxi
                 closable: true,
                 icon_png,
                 icon_path: String::new(),
+                tabs: None,
             }
         })
         .collect()
@@ -2955,6 +2961,7 @@ fn build_pinned_bookmark_item(
         pinned: true,
         closable: false,
         icon_png,
+        tabs: None,
     })
 }
 
@@ -3002,9 +3009,49 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
                 closable: main_lxapp_closable(&info.appid),
                 icon_png: None,
                 icon_path,
+                tabs: lxapp_rail_tabs(&info.appid),
             }
         })
         .collect()
+}
+
+/// An lxapp's sidebar pages for the collapsed rail's hover panel — what the
+/// expanded group would list. `None` when it declares no tab bar or the API
+/// hid it; desktop ignores mobile's per-route auto-hide.
+fn lxapp_rail_tabs(appid: &str) -> Option<WindowsShellAuxiliaryTabs> {
+    let app = lxapp::try_get(appid)?;
+    let tabbar = app.get_tabbar()?;
+    if tabbar.visibility == lxapp::page_chrome::TabBarVisibilityPreference::Hidden {
+        return None;
+    }
+    let items = tabbar
+        .visible_items()
+        .map(|(index, item)| WindowsShellTabBarItemLayout {
+            index,
+            page_path: item.page_path.clone(),
+            text: item.text.clone().unwrap_or_default(),
+            icon_path: item.icon_path.clone().unwrap_or_default(),
+            badge: item.badge.clone(),
+            has_red_dot: item.has_red_dot,
+        })
+        .collect::<Vec<_>>();
+    if items.is_empty() {
+        return None;
+    }
+    let current_page = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let current_path = normalize_tab_path(&current_page);
+    let selected_index = tabbar
+        .items
+        .iter()
+        .position(|item| normalize_tab_path(&item.page_path) == current_path)
+        .map_or(-1, |index| index as i32);
+    Some(WindowsShellAuxiliaryTabs {
+        app_id: appid.to_string(),
+        items,
+        selected_index,
+    })
 }
 
 fn host_app_icon_path() -> Option<String> {

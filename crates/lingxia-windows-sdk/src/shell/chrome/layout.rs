@@ -128,6 +128,18 @@ pub struct WindowsShellAuxiliaryItemLayout {
     /// Absolute icon path (PNG or SVG) used when `icon_png` is absent —
     /// e.g. an open lxapp's own icon. Empty falls back to the LingXia mark.
     pub icon_path: String,
+    /// The row's lxapp tab pages, for the collapsed rail's hover panel. Only
+    /// the expanded group carries items in the tab bar itself; every other
+    /// lxapp row brings its own here.
+    pub tabs: Option<WindowsShellAuxiliaryTabs>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WindowsShellAuxiliaryTabs {
+    /// Target of a page click; routed like the group's own tab bar.
+    pub app_id: String,
+    pub items: Vec<WindowsShellTabBarItemLayout>,
+    pub selected_index: i32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

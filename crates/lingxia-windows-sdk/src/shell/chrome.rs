@@ -1219,20 +1219,44 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
 ) -> Option<CollapsedSidebarTabbarPopup> {
     let layout = shell_layout(layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
-    if tabbar.items.is_empty()
-        || !matches!(
-            tabbar.position,
-            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-        )
-        || !(tabbar.collapsed || tabbar.icon_rail)
+    if !matches!(
+        tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) || !(tabbar.collapsed || tabbar.icon_rail)
     {
         return None;
     }
     let tabbar_rect = compute_chrome_rects(client, layout).tab_bar?;
-    let anchor = sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar), 0);
-    if !rect_contains(&anchor, point) {
-        return None;
-    }
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let hit = |anchor: RECT| {
+        anchor.top >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+            && anchor.bottom <= viewport_bottom
+            && rect_contains(&anchor, point)
+    };
+    // The expanded group lists its own pages; every other lxapp row brings
+    // its pages along, so hovering any of them opens the same panel (macOS
+    // parity) instead of a bare name tooltip.
+    let group_anchor =
+        sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar), scroll_offset);
+    let (anchor, popup_tabbar) = if !tabbar.items.is_empty() && hit(group_anchor) {
+        (group_anchor, tabbar.clone())
+    } else {
+        tabbar
+            .auxiliary_items
+            .iter()
+            .enumerate()
+            .find_map(|(index, item)| {
+                let tabs = item.tabs.as_ref()?;
+                let anchor = sidebar_rail_item_rect(
+                    tabbar_rect,
+                    sidebar_auxiliary_rail_index(tabbar, index),
+                    scroll_offset,
+                );
+                hit(anchor).then(|| (anchor, auxiliary_popup_tabbar(tabbar, item, tabs)))
+            })?
+    };
+    let tabbar = &popup_tabbar;
     let (width, height) = collapsed_sidebar_tabbar_popup_size(tabbar);
     let top = anchor.top.min(client.bottom - height).max(client.top);
     let left = match tabbar.position {
@@ -1365,6 +1389,29 @@ fn collapsed_sidebar_popup_title_height(tabbar: &WindowsShellTabBarLayout) -> i3
     } else {
         SIDEBAR_TABBAR_POPUP_TITLE_HEIGHT
     }
+}
+
+/// Another lxapp's pages dressed as a tab bar for the rail panel. Colors come
+/// from the shell theme: the owner's declared tints belong to its own app.
+fn auxiliary_popup_tabbar(
+    owner: &WindowsShellTabBarLayout,
+    item: &WindowsShellAuxiliaryItemLayout,
+    tabs: &WindowsShellAuxiliaryTabs,
+) -> WindowsShellTabBarLayout {
+    let mut tabbar = owner.clone();
+    tabbar.app_name = item.title.clone();
+    tabbar.app_icon_path = item.icon_path.clone();
+    tabbar.group_id = tabs.app_id.clone();
+    tabbar.group_target_id = item.id.clone();
+    tabbar.group_active = item.active;
+    tabbar.items = tabs.items.clone();
+    tabbar.selected_index = tabs.selected_index;
+    tabbar.overflow_start_index = -1;
+    tabbar.items_api_hidden = false;
+    tabbar.color = shell_palette().text_muted;
+    tabbar.selected_color = shell_palette().accent;
+    tabbar.paint_items_background = false;
+    tabbar
 }
 
 pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
@@ -2832,6 +2879,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let layout = WindowsShellWindowLayout {
             tab_bar: Some(rail.clone()),
@@ -2941,6 +2989,7 @@ mod scroll_tests {
             closable: false,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
             id: "web:docs".to_string(),
@@ -2950,6 +2999,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
 
         let divider = sidebar_rail_pinned_divider_rect(rail_rect, &rail, 0).unwrap();
@@ -2986,6 +3036,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let layout = WindowsShellWindowLayout {
             tab_bar: Some(rail.clone()),
@@ -3550,6 +3601,7 @@ mod scroll_tests {
                 closable: true,
                 icon_png: None,
                 icon_path: String::new(),
+                tabs: None,
             }],
             show_auxiliary_add: false,
             header_actions: Vec::new(),
@@ -3612,6 +3664,7 @@ mod scroll_tests {
                 closable: true,
                 icon_png: None,
                 icon_path: String::new(),
+                tabs: None,
             }],
             show_auxiliary_add: true,
             header_actions: Vec::new(),

@@ -457,6 +457,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         };
 
         let menu = sidebar_auxiliary_menu_rect(item_rect, &item);
@@ -478,6 +479,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let sidebar = RECT {
             left: 0,
@@ -513,6 +515,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         tabbar.show_auxiliary_add = true;
         let sidebar = RECT {
