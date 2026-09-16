@@ -94,21 +94,12 @@ fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
             &path.display().to_string(),
         );
     }
-    // The product AppIcon keeps Apple-grid / launcher padding. Sidebar
-    // tiles are 16px; draw the tightened plate so home matches lxapp rows.
-    let image =
-        if crate::app_icon::current_app_icon_path().as_deref() == Some(path) {
-            image::DynamicImage::ImageRgba8(crate::app_icon::prepare_app_icon_image(path).map_err(
-                |err| format!("Failed to load Windows host icon {}: {err}", path.display()),
-            )?)
-        } else {
-            image::open(path).map_err(|err| {
-                format!(
-                    "Failed to load Windows shell icon {}: {err}",
-                    path.display()
-                )
-            })?
-        };
+    let image = image::open(path).map_err(|err| {
+        format!(
+            "Failed to load Windows shell icon {}: {err}",
+            path.display()
+        )
+    })?;
     create_icon_from_image(image, size, &path.display().to_string())
 }
 

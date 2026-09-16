@@ -556,6 +556,13 @@ impl Platform for MacosPlatform {
         }
 
         sync_primary_spm_resources_to_app_root(&bin_dir, &app_path)?;
+        if let Err(err) = stage_host_chrome_into_app(&config.project_root, &app_path) {
+            eprintln!(
+                "  {} Skipping host chrome icon: {}",
+                "Warning:".yellow(),
+                err
+            );
+        }
 
         // Developer ID signing + notarization is a distribution concern: only
         // packaged artifacts (.app.zip / DMG) go through it. Dev and plain
@@ -787,6 +794,16 @@ fn remove_stale_macos_app_bundles(output_dir: &Path, current_app_name: &str) -> 
         println!("  Removed stale macOS app bundle → {}", path.display());
     }
     Ok(())
+}
+
+/// Put the full-bleed chrome tile in the running .app so sidebar / Settings
+/// do not pick the 16pt Dock slot from `applicationIconImage`.
+fn stage_host_chrome_into_app(project_root: &Path, app_bundle: &Path) -> Result<()> {
+    let source = project_root.join("AppIcon.png");
+    if !source.exists() {
+        return Ok(());
+    }
+    write_host_chrome_icon(&source, &app_bundle.join("Contents").join("Resources"))
 }
 
 fn sync_primary_spm_resources_to_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
@@ -1255,7 +1272,47 @@ pub fn generate_icons(
     let macos_dir = resolve_macos_dir(project_root, macos_config)?;
     let resources_dir = get_resources_dir(&macos_dir, macos_config, app_project_name)?;
     let normalized_icon = build_macos_icon_source(source_icon)?;
-    crate::appicon::generate_macos_icons(normalized_icon.path(), &resources_dir)
+    crate::appicon::generate_macos_icons(normalized_icon.path(), &resources_dir)?;
+    // Dock catalog keeps the 73% inset. Sidebar / Settings need the
+    // full-bleed source so a 16pt tile matches lxapp artwork.
+    write_host_chrome_icon(source_icon, &resources_dir)
+}
+
+/// Sidebar / Downloads / Settings tile: the source, square, no Dock inset.
+/// The shell applies the same 0.22 clip as lxapp PNGs.
+pub(crate) const HOST_CHROME_ICON_REL: &str = "icons/host-chrome.png";
+const HOST_CHROME_PX: u32 = 256;
+
+pub(crate) fn write_host_chrome_icon(source_icon: &Path, dest_dir: &Path) -> Result<()> {
+    let dest = dest_dir.join(HOST_CHROME_ICON_REL);
+    let png = host_chrome_png(source_icon)?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&dest, png).with_context(|| format!("Failed to write {}", dest.display()))?;
+    println!("  Wrote {} (chrome tile, no Dock inset)", dest.display());
+    Ok(())
+}
+
+pub(crate) fn host_chrome_png(source_icon: &Path) -> Result<Vec<u8>> {
+    let img = image::open(source_icon)
+        .with_context(|| format!("Failed to open {}", source_icon.display()))?;
+    let rgba = square_cover(&img, HOST_CHROME_PX);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut buf, ImageFormat::Png)
+        .context("Failed to encode host chrome PNG")?;
+    Ok(buf.into_inner())
+}
+
+fn square_cover(img: &DynamicImage, size: u32) -> image::RgbaImage {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let edge = w.min(h).max(1);
+    let x = (w - edge) / 2;
+    let y = (h - edge) / 2;
+    let cropped = image::imageops::crop_imm(&rgba, x, y, edge, edge).to_image();
+    image::imageops::resize(&cropped, size, size, FilterType::Lanczos3)
 }
 
 /// Get the resources directory path for a macOS Swift Package

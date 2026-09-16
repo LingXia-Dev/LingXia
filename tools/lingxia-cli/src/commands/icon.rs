@@ -350,6 +350,9 @@ fn run_check_preview(
         .context("Failed to reopen composed macOS icon")?
         .resize_exact(512, 512, imageops::FilterType::Lanczos3)
         .to_rgba8();
+    let chrome = image::load_from_memory(&platform::macos::host_chrome_png(source)?)
+        .context("Failed to decode host chrome preview")?
+        .to_rgba8();
     // Windows: same tightening as the packed ICO, at the small sizes that matter.
     let win_master = crate::r#gen::icons::tighten_icon(img.to_rgba8());
     let win = |s: u32| -> RgbaImage {
@@ -372,6 +375,7 @@ fn run_check_preview(
         .replace("__ANDROID__", &to_b64(&android)?)
         .replace("__HARMONY__", &to_b64(&harmony)?)
         .replace("__MACOS__", &to_b64(&macos)?)
+        .replace("__CHROME__", &to_b64(&chrome)?)
         .replace("__WIN48__", &to_b64(&win(48))?)
         .replace("__WIN32__", &to_b64(&win(32))?)
         .replace("__WIN16__", &to_b64(&win(16))?);
@@ -452,6 +456,13 @@ const PREVIEW_TEMPLATE: &str = r#"<!doctype html>
     <figure><span class="tile alpha" style="width:128px;height:128px"><img src="data:image/png;base64,__MACOS__"></span><figcaption>dock 128</figcaption></figure>
     <figure><span class="tile alpha" style="width:64px;height:64px"><img src="data:image/png;base64,__MACOS__"></span><figcaption>finder 64</figcaption></figure>
     <figure><span class="tile alpha" style="width:32px;height:32px"><img src="data:image/png;base64,__MACOS__"></span><figcaption>32</figcaption></figure>
+  </div>
+
+  <h2>Host chrome — full-bleed source (sidebar / Settings 16pt)</h2>
+  <div class="row">
+    <figure><span class="tile" style="width:128px;height:128px;border-radius:22%"><img src="data:image/png;base64,__CHROME__"></span><figcaption>chrome 128</figcaption></figure>
+    <figure><span class="tile" style="width:32px;height:32px;border-radius:22%"><img src="data:image/png;base64,__CHROME__"></span><figcaption>sidebar 16pt @2x</figcaption></figure>
+    <figure><span class="tile alpha" style="width:32px;height:32px"><img src="data:image/png;base64,__MACOS__"></span><figcaption>dock 16pt (do not use)</figcaption></figure>
   </div>
 
   <h2>Windows — tightened ICO cells (shown 2×, pixel-accurate)</h2>

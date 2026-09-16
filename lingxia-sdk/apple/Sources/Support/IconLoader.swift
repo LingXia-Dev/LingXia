@@ -122,15 +122,38 @@ enum LxIcon {
     /// The running host product's icon — Downloads/Settings, the home lxapp
     /// row, and other chrome that should read as this app, not the SDK mark.
     ///
-    /// macOS `AppIcon` follows Apple's icon grid (~10% transparent margin).
-    /// Crop that padding so a 16pt sidebar tile matches a full-bleed lxapp PNG.
+    /// Prefers `icons/host-chrome.png` (full-bleed source from `lingxia icon`
+    /// / the macOS pack step). `NSApp.applicationIconImage` is the Dock
+    /// catalog: at 16pt AppKit picks the inset 16×16 slot, which reads as a
+    /// tiny glyph next to an lxapp tile.
     @MainActor
     static func hostAppImage() -> NSImage? {
         if let cachedHostAppImage { return cachedHostAppImage }
-        guard let raw = NSApp.applicationIconImage else { return nil }
-        let image = tightenOpaqueBounds(raw)
+        let image = hostChromeImage()
+            ?? NSApp.applicationIconImage.map(tightenOpaqueBounds)
         cachedHostAppImage = image
         return image
+    }
+
+    private static func hostChromeImage() -> NSImage? {
+        let bundles = [Bundle.main] + Bundle.allBundles
+        for bundle in bundles {
+            if let url = bundle.url(
+                forResource: "host-chrome", withExtension: "png", subdirectory: "icons"
+            ) ?? bundle.url(forResource: "host-chrome", withExtension: "png"),
+               let image = NSImage(contentsOf: url)
+            {
+                return image
+            }
+            guard let root = bundle.resourceURL else { continue }
+            for rel in ["icons/host-chrome.png", "Resources/icons/host-chrome.png"] {
+                let url = root.appendingPathComponent(rel)
+                if let image = NSImage(contentsOf: url) {
+                    return image
+                }
+            }
+        }
+        return nil
     }
 
     @MainActor
