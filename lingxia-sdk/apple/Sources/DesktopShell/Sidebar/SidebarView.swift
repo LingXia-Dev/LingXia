@@ -485,13 +485,16 @@ private final class SidebarRailPagePanel {
         stack.addArrangedSubview(titleLabel)
 
         for (index, item) in items.enumerated() {
-            let itemView = SidebarItemView(appId: providerAppId ?? selectionAppId, itemIndex: index)
+            let itemView = SidebarItemView(
+                appId: providerAppId ?? selectionAppId,
+                itemIndex: index
+            )
             itemView.translatesAutoresizingMaskIntoConstraints = false
             itemView.configure(item: item)
-            itemView.isSelected = (index == selectedIndex)
-            itemView.onClick = { [weak self] selectedIndex in
+            itemView.isSelected = (item.cachedIndex == selectedIndex)
+            itemView.onClick = { [weak self] tabIndex in
                 guard let self else { return }
-                self.onPageSelected?(self.selectionAppId, selectedIndex)
+                self.onPageSelected?(self.selectionAppId, tabIndex)
                 self.onDismissRequested?()
             }
             stack.addArrangedSubview(itemView)
@@ -818,7 +821,7 @@ class SidebarView: NSView {
     var onAppSelected: ((String) -> Void)?
     /// Called when user requests to close an app: (appId)
     var onAppCloseRequested: ((String) -> Void)?
-    var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedMainContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
     var onManagedMainRenameCommitted: ((String, String) -> Void)?
     /// Called when the bottom hide button is clicked
     var onHideRequested: (() -> Void)?
@@ -1280,7 +1283,8 @@ class SidebarView: NSView {
                     key: key,
                     tooltip: name.isEmpty ? pin.key : name,
                     image: image,
-                    isTemplate: false
+                    isTemplate: false,
+                    roundRaster: true
                 )
                 button.action = #selector(railPinnedLxappClicked(_:))
                 railStack.addArrangedSubview(button)
@@ -1351,6 +1355,7 @@ class SidebarView: NSView {
                 }
             }
             let key = "app:\(group.appId)"
+            let isTemplate = group.isManagedMain && group.contentAppId == nil
             let btn = makeRailButton(
                 key: key,
                 tooltip: tooltip,
@@ -1358,7 +1363,8 @@ class SidebarView: NSView {
                 // Native/browser glyphs are tintable. Lxapp provider assets are
                 // full-color artwork; treating their opaque tile as a template
                 // turns the entire icon into a flat white/gray square.
-                isTemplate: group.isManagedMain && group.contentAppId == nil
+                isTemplate: isTemplate,
+                roundRaster: !isTemplate
             )
             btn.action = #selector(railAppClicked(_:))
             if let railButton = btn as? SidebarRailButton {
@@ -1366,6 +1372,11 @@ class SidebarView: NSView {
                 railButton.onCloseRequested = { [weak self] in
                     self?.closeRailHoverPanel()
                     self?.onAppCloseRequested?(group.appId)
+                }
+                let surfaceId = group.appId
+                railButton.onContextMenuRequested = { [weak self] event, button in
+                    self?.closeRailHoverPanel()
+                    _ = self?.onManagedMainContextMenuRequested?(surfaceId, event, button)
                 }
                 // Same gate as the expanded group: a managed main only offers
                 // its pages when it actually hosts an lxapp, and the tabBar
@@ -1449,11 +1460,15 @@ class SidebarView: NSView {
                     NSImage(systemSymbolName: $0, accessibilityDescription: item.label)
                 }
             let key = "sidebar-action:\(item.id)"
+            let isTemplate = TabBarHelper.isTemplateIcon(iconPath)
             let button = makeRailButton(
                 key: key,
                 tooltip: item.label,
                 image: image,
-                isTemplate: TabBarHelper.isTemplateIcon(iconPath)
+                isTemplate: isTemplate,
+                // Brand/PNG tiles match switcher rounding; SVG glyphs stay
+                // unclipped so the shell can tint them.
+                roundRaster: !isTemplate
             )
             button.action = #selector(railSidebarActionClicked(_:))
             button.isEnabled = !item.disabled
@@ -1468,7 +1483,13 @@ class SidebarView: NSView {
         refreshRailHighlight()
     }
 
-    private func makeRailButton(key: String, tooltip: String, image: NSImage?, isTemplate: Bool) -> NSButton {
+    private func makeRailButton(
+        key: String,
+        tooltip: String,
+        image: NSImage?,
+        isTemplate: Bool,
+        roundRaster: Bool = false
+    ) -> NSButton {
         let btn = SidebarRailButton()
         btn.translatesAutoresizingMaskIntoConstraints = false
         btn.isBordered = false
@@ -1500,11 +1521,19 @@ class SidebarView: NSView {
             }
         }
         if let image {
-            let copy = image.copy() as? NSImage ?? image
-            copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
-            copy.isTemplate = isTemplate
-            btn.image = copy
-            if isTemplate { btn.contentTintColor = LxAppHostTheme.mutedForeground }
+            // App tiles are square PNGs the shell rounds. Favicons and template
+            // glyphs stay unclipped so a site mark is not given an app-icon mask.
+            if isTemplate {
+                btn.image = TabBarHelper.appKitIcon(image, path: "SF:circle", size: Layout.railIconSize)
+                btn.contentTintColor = LxAppHostTheme.mutedForeground
+            } else if roundRaster {
+                btn.image = TabBarHelper.appTileIcon(image, size: Layout.railIconSize)
+            } else {
+                let copy = image.copy() as? NSImage ?? image
+                copy.size = NSSize(width: Layout.railIconSize, height: Layout.railIconSize)
+                copy.isTemplate = false
+                btn.image = copy
+            }
         }
         NSLayoutConstraint.activate([
             btn.widthAnchor.constraint(equalToConstant: Layout.railButtonSize),
@@ -1540,7 +1569,8 @@ class SidebarView: NSView {
     @objc private func railAppClicked(_ sender: NSButton) {
         guard let key = sender.identifier?.rawValue, key.hasPrefix("app:") else { return }
         let appId = String(key.dropFirst(4))
-        let index = getTabBar(appId).map { Int($0.selected_index) } ?? 0
+        let providerId = model.appGroups.first(where: { $0.appId == appId })?.contentAppId ?? appId
+        let index = getTabBar(providerId).map { Int($0.selected_index) } ?? 0
         onAppPageSelected?(appId, index)
     }
 
@@ -1715,7 +1745,12 @@ class SidebarView: NSView {
 
         var items: [TabBarItem] = []
         var selectedIndex = 0
-        if let tabProviderAppId, let tabBar = getTabBar(tabProviderAppId), tabBar.is_visible {
+        // Desktop does not auto-hide tab pages on a detail route; only an
+        // explicit API hide should drop the page list from the hover panel.
+        if let tabProviderAppId,
+           let tabBar = getTabBar(tabProviderAppId),
+           tabBar.items_count > 0,
+           !tabBar.is_api_hidden {
             items = tabBar.getItems(appId: tabProviderAppId)
             selectedIndex = Int(tabBar.selected_index)
         }
@@ -1906,6 +1941,12 @@ class SidebarView: NSView {
             button.imageScaling = .scaleProportionallyDown
             button.contentTintColor = isTemplate ? LxAppHostTheme.mutedForeground : nil
             button.image = Self.sidebarActionIcon(item.iconURL, size: 16)
+                ?? item.systemImageName.flatMap {
+                    NSImage(systemSymbolName: $0, accessibilityDescription: item.label)
+                }
+            if !isTemplate, let image = button.image {
+                button.image = TabBarHelper.appTileIcon(image, size: 16)
+            }
             button.toolTip = item.label
             button.setAccessibilityLabel(item.label)
             button.isEnabled = !item.disabled
@@ -2159,7 +2200,13 @@ class SidebarView: NSView {
     /// Refresh a specific app group from Rust data
     func refreshAppGroup(appId: String) {
         guard !appUIOnlyMode else { return }
-        groupViews[appId]?.refreshFromRust()
+        if let view = groupViews[appId] {
+            view.refreshFromRust()
+            return
+        }
+        // TabBar updates arrive with the lxapp id; a managed main's group is
+        // keyed by its Surface id.
+        groupViews.values.first { $0.appId == appId || $0.contentAppId == appId }?.refreshFromRust()
     }
 
     /// Set active highlight on the appropriate group and item.
@@ -2276,7 +2323,7 @@ class SidebarView: NSView {
                     self?.onAppCloseRequested?(appId)
                 }
                 groupView.onManagedContextMenuRequested = { [weak self] surfaceId, event, view in
-                    self?.onManagedMainContextMenuRequested?(surfaceId, event, view)
+                    self?.onManagedMainContextMenuRequested?(surfaceId, event, view) ?? false
                 }
                 groupView.onManagedRenameCommitted = { [weak self] surfaceId, title in
                     self?.onManagedMainRenameCommitted?(surfaceId, title)
@@ -2345,7 +2392,7 @@ class SidebarView: NSView {
                 group.isActiveGroup = true
                 if let idx = pageIndex {
                     group.setActiveHighlight(pageIndex: idx)
-                } else if let tabBar = getTabBar(appId) {
+                } else if let tabBar = getTabBar(group.contentAppId ?? group.appId) {
                     group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
                 }
             } else {
@@ -3078,8 +3125,10 @@ final class SidebarActionRowView: NSView {
     func setIcon(_ image: NSImage, path: String? = nil) {
         let iconPath = path ?? ""
         iconIsTemplate = TabBarHelper.isTemplateIcon(iconPath)
-        iconView.image = TabBarHelper.appKitIcon(image, path: iconPath, size: Self.iconSize)
-        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Self.iconSize * 0.22
+        iconView.image = iconIsTemplate
+            ? TabBarHelper.appKitIcon(image, path: iconPath, size: Self.iconSize)
+            : TabBarHelper.appTileIcon(image, size: Self.iconSize)
+        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Self.iconSize * TabBarHelper.appTileCornerRatio
         iconView.layer?.masksToBounds = !iconIsTemplate
         iconView.contentTintColor = iconIsTemplate ? SidebarActionChromePalette.mutedText : nil
     }

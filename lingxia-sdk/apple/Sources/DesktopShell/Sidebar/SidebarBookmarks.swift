@@ -371,6 +371,9 @@ final class LxappPinTileView: NSView {
 
         iconView.imageScaling = .scaleProportionallyDown
         iconView.translatesAutoresizingMaskIntoConstraints = false
+        iconView.wantsLayer = true
+        iconView.layer?.cornerRadius = SidebarPinTileView.Layout.iconSize * TabBarHelper.appTileCornerRatio
+        iconView.layer?.masksToBounds = true
         addSubview(iconView)
         refreshFromRust()
         setAccessibilityElement(true)
@@ -397,10 +400,13 @@ final class LxappPinTileView: NSView {
     func refreshFromRust() {
         let info = getLxAppInfo(appId)
         let iconPath = getLxAppDisplayIconPath(appId).toString()
-        iconView.image = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
+        let source = (iconPath.isEmpty ? nil : NSImage(contentsOfFile: iconPath))
             ?? Bundle.lingxiaResources.url(
                 forResource: "lxapp_default", withExtension: "png", subdirectory: "icons")
                 .flatMap { NSImage(contentsOf: $0) }
+        iconView.image = source.map {
+            TabBarHelper.appTileIcon($0, size: SidebarPinTileView.Layout.iconSize)
+        }
         let name = info.app_name.toString()
         toolTip = name.isEmpty ? appId : name
         setAccessibilityLabel(toolTip ?? appId)

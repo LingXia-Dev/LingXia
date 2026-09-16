@@ -457,12 +457,16 @@ crammed in the moment the window crosses 840.
   disables the chevron; `visibility: 'auto'` clears the API-hidden state and
   expands. The user chevron only changes `userCollapsed` while API-visible; it
   MUST NOT override the API-hidden state.
-- **Only explicit API calls map to collapse/expand.** The mobile implicit
-  behavior "navigating to a non-tab page auto-hides the tabbar" does not
-  propagate to desktop: the sidebar is a persistent navigation region, so
-  drilling into a detail page keeps the group expanded and merely clears item
-  selection (see two-level selection below) — otherwise every navigation would
-  bounce the group and lose the waypoint.
+- **Accordion.** Only the active main lxapp's group is expanded. Switching the
+  main collapses the other groups and reveals the incoming one; the user
+  chevron toggles the active group. Expand/collapse is instant, and only the
+  chevron animates.
+- **Within the active group, only explicit API calls map to collapse/expand.**
+  The mobile implicit behavior "navigating to a non-tab page auto-hides the
+  tabbar" does not propagate to desktop: the sidebar is a persistent
+  navigation region, so drilling into a detail page keeps the group expanded
+  and merely clears item selection (see two-level selection below) — otherwise
+  every navigation would bounce the group and lose the waypoint.
 - Desktop MUST fully support `lx.tabBar.update()` item, badge, red-dot,
   and visibility patches. JS must not patch colors. While collapsed, badges
   / red dots aggregate onto the parent lxapp tab.
