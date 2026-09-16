@@ -613,12 +613,11 @@ fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
     })
 }
 
-/// Draws the app-menu button at the window's leading edge, like Arc: the
-/// LingXia brand mark (the bare vessel glyph on transparency,
-/// `<asset_dir>/icons/lingxia.png`) rather than the app's launcher icon, whose
-/// full plate reads as a white box in the caption row. Falls back to a subtle
-/// monochrome glyph matching the rest of the caption row before the asset dir
-/// is known. Clicking the button opens the About/Exit menu.
+/// Draws the app-menu button at the window's leading edge. Uses the host
+/// product icon (About/Exit entry) so chrome matches the running app; the
+/// LingXia mark is only the last-resort fallback inside `draw_default_app_icon`.
+/// Falls back to a subtle monochrome glyph before any icon path is known.
+/// Clicking the button opens the About/Exit menu.
 fn draw_app_menu_icon(hdc: HDC, rect: RECT) {
     let icon_rect = centered_square(rect, 18);
     if draw_default_app_icon(hdc, icon_rect) {

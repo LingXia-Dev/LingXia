@@ -2309,9 +2309,9 @@ fn build_tab_bar_layout(
     if !sidebar_has_content {
         return None;
     }
-    // The LingXia icon is copied next to the app by the CLI; record its path so
-    // the chrome can load it as the default icon (lxapp items / browser tabs
-    // with no icon of their own).
+    // Last-resort chrome mark when the host has no launcher icon yet. Draw
+    // time prefers `current_app_icon_path` so Downloads/Settings and About/Exit
+    // show the running product, not the framework glyph.
     super::chrome::set_default_icon_path(
         switcher_app
             .runtime
@@ -2392,9 +2392,19 @@ fn build_tab_bar_layout(
         app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
-        app_icon_path: this_item
-            .map(|item| surface_switcher_icon_path(switcher_app, item))
-            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()),
+        app_icon_path: if is_home_lxapp(&app.appid) {
+            host_app_icon_path().unwrap_or_else(|| {
+                this_item
+                    .map(|item| surface_switcher_icon_path(switcher_app, item))
+                    .unwrap_or_else(|| {
+                        lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()
+                    })
+            })
+        } else {
+            this_item
+                .map(|item| surface_switcher_icon_path(switcher_app, item))
+                .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default())
+        },
         group_id: app.appid.clone(),
         group_target_id,
         group_active,
@@ -2629,10 +2639,8 @@ fn build_surface_switcher_items(
 fn surface_switcher_title(item: &SurfaceSwitcherItem) -> String {
     if let SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id } =
         &item.content
-        && item.title.as_deref().is_none_or(|title| title == app_id)
-        && let Some(title) = lxapp::try_get(app_id)
-            .map(|app| app.runtime_info().app_name)
-            .filter(|title| !title.trim().is_empty())
+        && !item.title_overridden
+        && let Some(title) = lxapp::lxapp_display_name(app_id)
     {
         return title;
     }
@@ -2877,11 +2885,22 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
         .collect()
 }
 
-/// Sidebar row icon for an open lxapp: the registry's cached artwork, else the
-/// icon the package declares, else the icon of its configured surface/panel
+fn host_app_icon_path() -> Option<String> {
+    crate::app_icon::current_app_icon_path()
+        .map(|path| path.to_string_lossy().into_owned())
+        .filter(|path| !path.is_empty())
+}
+
+/// Sidebar row icon for an open lxapp: the host product icon for home, else
+/// the registry's cached artwork, else the icon of its configured surface/panel
 /// slot (matching the panel footer action), else empty so the row falls back to
-/// the LingXia mark.
+/// the host / LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
+    if is_home_lxapp(appid) {
+        if let Some(icon) = host_app_icon_path() {
+            return icon;
+        }
+    }
     if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
         return icon;
     }
@@ -4816,12 +4835,14 @@ fn surface_menu_entry(
         SurfaceMenuAction::Information {} => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::Lxapp { action } => match action {
-            LxappSurfaceMenuAction::Restart => {
-                (lingxia_logic::i18n::t(I18nKey::CapsuleRestart), None)
-            }
-            LxappSurfaceMenuAction::CleanCacheRestart => {
-                (lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache), None)
-            }
+            LxappSurfaceMenuAction::Restart => (
+                lingxia_logic::i18n::t(I18nKey::CapsuleRestart),
+                Some(crate::WindowsDesignIcon::Restart),
+            ),
+            LxappSurfaceMenuAction::CleanCacheRestart => (
+                lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
+                Some(crate::WindowsDesignIcon::CleanCache),
+            ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {

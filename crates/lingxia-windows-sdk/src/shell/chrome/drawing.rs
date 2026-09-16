@@ -707,15 +707,24 @@ fn default_icon_path() -> Option<String> {
         .and_then(|slot| slot.clone())
 }
 
-/// Draws the LingXia icon into `rect` - the default icon for sidebar entries
+/// Draws the host app icon into `rect` — the default for sidebar entries
 /// with no icon of their own (lxapp items / browser tabs that report none,
-/// built-in/internal pages). Loaded from the CLI-copied asset path; returns
-/// `false` when no asset dir is known yet or the file is missing.
+/// built-in pages such as Downloads/Settings, and the About/Exit entry).
+/// Prefers the product launcher icon applied at startup; falls back to the
+/// CLI-copied LingXia mark only when that path is unknown. Returns `false`
+/// when neither file is available.
 pub(in crate::shell) fn draw_default_app_icon(hdc: HDC, rect: RECT) -> bool {
+    let size = rect_width(&rect).max(1) as u32;
+    if let Some(path) = crate::app_icon::current_app_icon_path() {
+        let path = path.to_string_lossy();
+        if !path.is_empty() && draw_icon_from_path(hdc, &path, rect, size) {
+            return true;
+        }
+    }
     let Some(path) = default_icon_path() else {
         return false;
     };
-    draw_icon_from_path(hdc, &path, rect, rect_width(&rect).max(1) as u32)
+    draw_icon_from_path(hdc, &path, rect, size)
 }
 
 /// Draws `path`'s icon (PNG or SVG), falling back to the default LingXia mark

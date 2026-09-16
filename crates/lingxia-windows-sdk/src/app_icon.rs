@@ -55,8 +55,9 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
 
 /// The source PNG path of the applied product/app icon (the launcher icon
 /// resolved at startup), if one was set. This is the application's icon, not
-/// any single lxapp's icon. Only the product shell's About box and tray icon
-/// read it (the app-menu button draws the brand glyph), so it is gated to
+/// any single lxapp's icon. Chrome uses it for the About/Exit entry, the
+/// About box, the tray icon, and built-in pages that have no favicon of
+/// their own.
 pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
     APP_ICON_PATH
         .get()
@@ -110,7 +111,7 @@ fn current_app_icon_handles() -> Option<AppIconHandles> {
 /// 16-48px. When the icon has a uniform background (the four corners agree), the
 /// padding is cropped to a square around the visible content; flat backgrounds
 /// retain a small margin. Icons without a uniform border are returned unchanged.
-fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
+pub(crate) fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
     let image = if path
         .extension()
         .and_then(|ext| ext.to_str())

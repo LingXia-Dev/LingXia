@@ -323,8 +323,8 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
         let menu_rect = sidebar_auxiliary_menu_rect(item_rect, item);
         // 16px icon left of the title: the page favicon when supplied, else
-        // the default LingXia mark (internal pages like Downloads/Settings
-        // report no favicon, mirroring the macOS bundled fallback).
+        // the host app icon (internal pages like Downloads/Settings report
+        // no favicon; the LingXia mark is only the last-resort fallback).
         // Top-level browser tabs share the lxapp header's outer row and icon
         // axis. Only lxapp page items are indented beneath their parent.
         let mut label_left = item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET;
