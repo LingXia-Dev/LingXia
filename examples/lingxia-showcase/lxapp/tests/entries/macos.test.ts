@@ -11,5 +11,6 @@ import '../pages/preview-https.test.js';
 import '../platform/desktop/terminal-api.test.js';
 import '../platform/desktop/preview-media.test.js';
 import '../platform/desktop/terminal.test.js';
+import '../platform/desktop/clipboard-interop.test.js';
 import '../platform/macos/location-permission.test.js';
 
