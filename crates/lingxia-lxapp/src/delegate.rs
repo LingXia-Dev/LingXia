@@ -353,30 +353,38 @@ impl LxApp {
 
             // Let page.navigate own the committed selection; Windows may mirror it early
             // to keep native chrome responsive while the target WebView finishes loading.
+            // `index` is the declaration index in `lxapp.json`, not the host's
+            // visible-slot position (`showOn` can drop items from the strip).
             let tab_pages = self
                 .get_tabbar()
                 .map(|t| t.get_tabbar_pages())
                 .unwrap_or_default();
-            if let Some(tab_path) = tab_pages.get(index) {
-                if let Some(current_page_path) = self.peek_current_page_path() {
-                    let current_page = self
-                        .get_page(&current_page_path)
-                        .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
-                    let target_page = self.get_or_create_page(tab_path);
-
-                    if current_page
-                        .navigate_to(target_page, NavigationType::SwitchTab)
-                        .is_ok()
-                    {
-                        return true;
-                    }
-                }
-                // Fallback or error handling if no current page
+            let Some(tab_path) = tab_pages.get(index).cloned() else {
+                error!("Invalid tab index: {}", index).with_appid(self.appid.clone());
+                return false;
+            };
+            // A just-opened guest can race the first page onto the stack. Fall
+            // back to the initial route so the click still SwitchTabs instead
+            // of no-oping while the user is looking at the app.
+            let current_page_path = self
+                .peek_current_page_path()
+                .unwrap_or_else(|| self.initial_route());
+            if current_page_path.is_empty() {
                 error!("Could not get current page to perform navigation")
                     .with_appid(self.appid.clone());
-            } else {
-                error!("Invalid tab index: {}", index).with_appid(self.appid.clone());
+                return false;
             }
+            let current_page = self
+                .get_page(&current_page_path)
+                .unwrap_or_else(|| self.get_or_create_page(&current_page_path));
+            let target_page = self.get_or_create_page(&tab_path);
+            if current_page
+                .navigate_to(target_page, NavigationType::SwitchTab)
+                .is_ok()
+            {
+                return true;
+            }
+            error!("Could not switch to tab index {}", index).with_appid(self.appid.clone());
         } else {
             error!("Invalid tab index format: {}", data).with_appid(self.appid.clone());
         }

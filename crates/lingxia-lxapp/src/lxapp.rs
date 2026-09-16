@@ -1063,14 +1063,7 @@ pub struct LxAppRuntimeTabBarInfo {
     pub route_visible: bool,
     pub effective_visible: bool,
     pub selected_index: i32,
-    pub runtime_style: LxAppRuntimeTabBarStyleInfo,
     pub items: Vec<LxAppRuntimeTabBarItemInfo>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LxAppRuntimeTabBarStyleInfo {
-    pub foreground_color: Option<String>,
-    pub selected_foreground_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1460,16 +1453,6 @@ impl LxApp {
             route_visible: tabbar.route_visible,
             effective_visible: tabbar.is_effectively_visible(),
             selected_index: tabbar.selected_index,
-            runtime_style: LxAppRuntimeTabBarStyleInfo {
-                foreground_color: tabbar
-                    .runtime_style
-                    .foreground_color
-                    .map(|color| color.to_string()),
-                selected_foreground_color: tabbar
-                    .runtime_style
-                    .selected_foreground_color
-                    .map(|color| color.to_string()),
-            },
             items: tabbar
                 .items
                 .into_iter()
