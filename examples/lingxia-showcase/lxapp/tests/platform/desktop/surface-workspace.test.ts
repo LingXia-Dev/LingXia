@@ -750,24 +750,74 @@ function firstLxappWorkspacePoint(
   ];
 }
 
-function firstLxappWorkspaceMenuRegion(
+/// While a guest lxapp is the active main it is the expanded group, placed at
+/// its switcher position; the root lxapp collapses to a plain top-level row.
+function activeGuestGroupPoint(
   host: DesktopWindowInfo,
   pinCount: number,
-  rootPageCount: number,
-  workspaceIndex = 0,
+  switcherIndex: number,
+): [number, number] {
+  const pinRows = Math.ceil(pinCount / 4);
+  const pinnedGridHeight = pinRows * (36 + 5);
+  const topBarHeight = 32;
+  const rowHeight = 36;
+  const topLevelGap = 4;
+  return [
+    host.bounds.x + 84,
+    host.bounds.y
+      + topBarHeight
+      + pinnedGridHeight
+      + switcherIndex * (rowHeight + topLevelGap)
+      + rowHeight / 2,
+  ];
+}
+
+/// The group header's trailing controls: chevron slot, close, then ellipsis.
+function activeGuestGroupMenuRegion(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  switcherIndex: number,
 ): [number, number, number, number] {
   const sidebarWidth = 184;
   const itemInset = 8;
+  const chevronWidth = 18;
   const trailingControlWidth = 22;
-  const [, centerY] = firstLxappWorkspacePoint(
-    host, pinCount, rootPageCount, workspaceIndex,
-  );
+  const [, centerY] = activeGuestGroupPoint(host, pinCount, switcherIndex);
   return [
-    host.bounds.x + sidebarWidth - itemInset - trailingControlWidth * 2,
+    host.bounds.x + sidebarWidth - itemInset - chevronWidth - trailingControlWidth * 2,
     centerY - 18,
     trailingControlWidth,
     36,
   ];
+}
+
+function activeGuestGroupClosePoint(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  switcherIndex: number,
+): [number, number] {
+  const menu = activeGuestGroupMenuRegion(host, pinCount, switcherIndex);
+  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
+}
+
+/// From a guest main: the collapsed root row first, then its Home page once
+/// the root group expands.
+async function selectRootHomeFromGuest(
+  app: LxAppDriver,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  pinCount: number,
+): Promise<void> {
+  const rootRowPoint = activeGuestGroupPoint(host, pinCount, 0);
+  await desktop.pointer.move({ at: rootRowPoint });
+  await desktop.pointer.click({ at: rootRowPoint });
+  await waitForValue(async () => {
+    const candidate = await app.surfaceLayout();
+    return candidate.activeMainId === 'lingxia-showcase' ? true : undefined;
+  }, 'root workspace selected from its collapsed row');
+  const homePagePoint = showcaseHomePagePoint(host, pinCount);
+  await desktop.pointer.move({ at: homePagePoint });
+  await desktop.pointer.click({ at: homePagePoint });
 }
 
 function firstLxappWorkspaceRegion(
@@ -806,18 +856,6 @@ async function waitForNativeHover(
     const hovered = await desktop.screenshot({ region });
     return hovered.base64 !== baseline.base64 ? true : undefined;
   }, description);
-}
-
-function firstLxappWorkspaceClosePoint(
-  host: DesktopWindowInfo,
-  pinCount: number,
-  rootPageCount: number,
-  workspaceIndex = 0,
-): [number, number] {
-  const menu = firstLxappWorkspaceMenuRegion(
-    host, pinCount, rootPageCount, workspaceIndex,
-  );
-  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
 }
 
 function regionCenter(region: [number, number, number, number]): [number, number] {
@@ -2499,17 +2537,22 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     // Hover must visibly reveal the row's explicit ellipsis, and clicking that
     // affordance must open the native lifecycle menu. This checks both
     // discoverability and routing instead of relying on an invisible right-click.
-    const workspacePoint = firstLxappWorkspacePoint(
-      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+    const chatSwitcherIndex = coldLayout.mainSwitcher.items
+      .findIndex((item) => item.surfaceId === 'lingxia-chat');
+    // Chat is the active main here, so its row is the expanded group header.
+    const activeChatPoint = activeGuestGroupPoint(host, coldPins.length, chatSwitcherIndex);
+    const workspaceMenuRegion = activeGuestGroupMenuRegion(
+      host, coldPins.length, chatSwitcherIndex,
     );
-    const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(
+    // With the root active again, Chat is a workspace row below its pages.
+    const workspacePoint = firstLxappWorkspacePoint(
       host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
     );
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
     await waitForNativeHover(
       desktop,
       host,
-      workspacePoint,
+      activeChatPoint,
       workspaceMenuRegion,
       'visible Chat workspace ellipsis on hover',
     );
@@ -2550,10 +2593,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       id: 'lingxia-chat', visible: true, alive: true, events: [],
     });
 
-    const homePagePoint = showcaseHomePagePoint(host, coldPins.length);
     host = await ensureHostForeground(desktop, host);
-    await desktop.pointer.move({ at: homePagePoint });
-    await desktop.pointer.click({ at: homePagePoint });
+    await selectRootHomeFromGuest(app, desktop, host, coldPins.length);
     await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.current_page?.startsWith('pages/home/index')
@@ -2600,8 +2641,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       { type: 'show', id: 'lingxia-chat', source: 'shell' },
     ]);
 
-    const workspaceClosePoint = firstLxappWorkspaceClosePoint(
-      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+    const workspaceClosePoint = activeGuestGroupClosePoint(
+      host, coldPins.length, chatSwitcherIndex,
     );
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: workspaceClosePoint });
@@ -2722,9 +2763,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       },
       'Chat main before root sidebar switch',
     );
-    await desktop.pointer.click({
-      at: showcaseHomePagePoint(host, pinsAfterMenu.length),
-    });
+    await selectRootHomeFromGuest(app, desktop, host, pinsAfterMenu.length);
     const afterSidebarClick = await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.current_page?.startsWith('pages/home/index')
