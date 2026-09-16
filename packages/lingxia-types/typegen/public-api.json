@@ -158,7 +158,6 @@
     "TabBarApi",
     "TabBarItemPatch",
     "TabBarPatch",
-    "TabBarStylePatch",
     "TrayApi",
     "TrayMenuItem",
     "TrayMenuSeparator",

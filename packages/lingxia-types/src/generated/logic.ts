@@ -1996,13 +1996,7 @@ export type TabBarItemPatch = {
 
 export type TabBarPatch = {
     visibility?: TabBarVisibilityPreference;
-    style?: TabBarStylePatch | null;
     items?: readonly TabBarItemPatch[];
-};
-
-export type TabBarStylePatch = {
-    foregroundColor?: string | null;
-    selectedForegroundColor?: string | null;
 };
 
 export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';

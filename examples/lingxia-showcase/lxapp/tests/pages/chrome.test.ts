@@ -337,7 +337,6 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
       script: `
         await lx.tabBar.update({
           visibility: 'auto',
-          style: null,
           items: [{
             index: 0,
             text: null,
@@ -391,26 +390,15 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
     );
   });
 
-  await t.step('reset style with null', async () => {
-    await app.eval({
-      script: `
-        await lx.tabBar.update({
-          style: { foregroundColor: '#102030', selectedForegroundColor: '#405060' },
-        });
-      `,
-    });
-    await waitForTabBar(
+  await t.step('reject color style patches', async () => {
+    const before = await tabBar(app);
+    const rejected = await evalCaught(
       app,
-      (state) => state.runtime_style.foreground_color === '#102030',
-      'custom tabBar style',
+      `await lx.tabBar.update({ style: { foregroundColor: '#102030' } });`,
     );
-    await app.eval({ script: `await lx.tabBar.update({ style: null });` });
-    await waitForTabBar(
-      app,
-      (state) => state.runtime_style.foreground_color === null
-        && state.runtime_style.selected_foreground_color === null,
-      'tabBar style reset',
-    );
+    expect(rejected.ok).toBeFalsy();
+    expect(rejected.code).toBe('E_INVALID_ARG');
+    expect(await tabBar(app)).toEqual(before);
   });
 
   await t.step('reject invalid updates with E_INVALID_ARG', async () => {

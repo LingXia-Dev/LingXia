@@ -2335,19 +2335,10 @@ pub fn get_tab_bar(appid: &str) -> Option<self::bridge::TabBar> {
                 == lxapp::page_chrome::TabBarVisibilityPreference::Hidden,
             selected_index: tabbar.selected_index,
             overflow_start_index: tabbar.compact_overflow_slot_index(),
-            styled_mask: (tabbar
-                .runtime_style
-                .foreground_color
-                .or(tabbar.style.foreground_color)
-                .is_some() as u32)
-                | ((tabbar
-                    .runtime_style
-                    .selected_foreground_color
-                    .or(tabbar.style.selected_foreground_color)
-                    .is_some() as u32)
-                    << 1)
-                | ((tabbar.style.background_color.is_some() as u32) << 2)
-                | ((tabbar.style.divider_color.is_some() as u32) << 3),
+            // Desktop sidebar is host chrome: a light-pinned lxapp must not
+            // paint `#FFFFFF` onto a dark sidebar. Mobile ignores this mask
+            // and keeps lxapp-resolved colors.
+            styled_mask: lxapp.tabbar_declared_color_mask(),
         })
     })
 }

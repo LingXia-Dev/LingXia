@@ -49,6 +49,15 @@ enum LxAppLayoutReconciler {
 
     static func requestLxappMainActivation(appId: String) {
         requestedLxappMainActivation = appId
+        // Home is often already the graph's active main while a browser tab
+        // covers it (Settings, Downloads). `set_active_main` then publishes
+        // no new plan, so the layout pass never consumes this intent. Replace
+        // the cover immediately when one is up.
+        guard let shell = LxAppActiveHost.activeShell, shell.browserIsCoveringMain else {
+            return
+        }
+        requestedLxappMainActivation = nil
+        shell.reconcileActiveMain(appId: appId)
     }
 
     /// A newly-presented browser/native cover invalidates any older intent —

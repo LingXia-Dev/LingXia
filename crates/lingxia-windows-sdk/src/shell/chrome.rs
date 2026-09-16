@@ -893,19 +893,17 @@ fn push_tabbar_selected_rects(
         return;
     }
     for index in [old_tabbar.selected_index, new_tabbar.selected_index] {
-        if index < 0 || index as usize >= new_tabbar.items.len() {
+        if index < 0 {
             continue;
         }
         let item_rect = if matches!(
             new_tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         ) {
-            sidebar_item_rect(
-                rect,
-                new_tabbar,
-                index as usize,
-                new_tabbar.main_scroll_offset,
-            )
+            let Some(slot) = new_tabbar.visible_slot_for_item(index) else {
+                continue;
+            };
+            sidebar_item_rect(rect, new_tabbar, slot, new_tabbar.main_scroll_offset)
         } else {
             // A folded item paints in the "more" slot, not one of its own.
             let Some(slot) = new_tabbar.bottom_slot_for_item(index) else {
@@ -1394,11 +1392,13 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
         bottom: collapsed_sidebar_tabbar_popup_size(&popup_tabbar).1,
     });
     let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar);
-    (0..popup_tabbar.items.len()).find(|&index| {
+    (0..popup_tabbar.items.len()).find_map(|slot| {
         rect_contains(
-            &sidebar_item_rect(item_bounds, &popup_tabbar, index, 0),
+            &sidebar_item_rect(item_bounds, &popup_tabbar, slot, 0),
             point,
         )
+        .then_some(())
+        .and_then(|_| popup_tabbar.click_index_at_slot(slot))
     })
 }
 
@@ -2206,11 +2206,18 @@ pub(super) fn chrome_hit_test(
                 if action.is_some_and(|action| !action.disabled)
                     && rect_contains(&action_rect, point)
                 {
+                    let command = match action.map(|item| &item.source) {
+                        Some(WindowsShellSidebarActionSource::StaticSettings(_)) => {
+                            command_id::STATIC_SETTINGS_CLICK
+                        }
+                        _ => command_id::SIDEBAR_ACTION,
+                    };
                     return Some(chrome_command(
-                        command_id::SIDEBAR_ACTION,
+                        command,
                         json!({
                             "generation": action.map(|item| item.generation).unwrap_or_default(),
                             "action_id": action_id,
+                            "panel_id": action_id,
                         }),
                     ));
                 }
@@ -2358,10 +2365,18 @@ pub(super) fn chrome_hit_test(
                 // A slot's position is not an item's index once `showOn` drops
                 // one, so the declaration index has to be resolved, not assumed.
                 let index = if sidebar {
-                    slot
+                    match tabbar.click_index_at_slot(slot) {
+                        Some(index) => index,
+                        None => continue,
+                    }
                 } else {
                     match tabbar.bottom_slot(slot) {
-                        Some(BottomSlot::Tab(index)) => index,
+                        Some(BottomSlot::Tab(visible)) => {
+                            match tabbar.click_index_at_slot(visible) {
+                                Some(index) => index,
+                                None => continue,
+                            }
+                        }
                         Some(BottomSlot::More) => {
                             return Some(WindowsChromeHit::Command(
                                 WindowsChromeCommand::new(command_id::TAB_BAR_MORE_CLICK)
@@ -2726,6 +2741,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0xffffff,
+            paint_items_background: false,
             background_transparent,
             border_color: 0,
             selected_index: 0,
@@ -3166,6 +3182,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
@@ -3231,6 +3248,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
@@ -3502,6 +3520,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
@@ -3563,6 +3582,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,

@@ -2186,15 +2186,29 @@ impl LxApp {
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if let Some(execution) = self.dispatch_provider_surface_menu_intent(&intent) {
+            return execution;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
+    }
+
+    /// Lxapp MoreActions and restart/cache live on the provider, not the
+    /// surface graph. Both the sync and deferred host paths must run this
+    /// before the graph-only interpreter, or sidebar menu items appear
+    /// and then do nothing.
+    fn dispatch_provider_surface_menu_intent(
+        &self,
+        intent: &lingxia_shell::SurfaceMenuIntent,
+    ) -> Option<HostSurfaceMenuExecution> {
         if matches!(
             &intent.action,
             lingxia_shell::SurfaceMenuAction::Information {}
         ) {
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted: false,
                 removed_surface_ids: Vec::new(),
                 snapshot: self.surface_switcher_snapshot(),
-            };
+            });
         }
         if let lingxia_shell::SurfaceMenuAction::Lxapp { action } = &intent.action {
             let action = *action;
@@ -2230,11 +2244,11 @@ impl LxApp {
                     })
                     .is_ok()
             });
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted,
                 removed_surface_ids: Vec::new(),
                 snapshot,
-            };
+            });
         }
         if let lingxia_shell::SurfaceMenuAction::External {
             namespace,
@@ -2258,13 +2272,13 @@ impl LxApp {
                     .ok()
                     .zip(crate::try_get(namespace))
                     .is_some_and(|(index, app)| app.activate_more_action(*generation, index));
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted,
                 removed_surface_ids: Vec::new(),
                 snapshot,
-            };
+            });
         }
-        window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
+        None
     }
 
     #[doc(hidden)]
@@ -2272,6 +2286,9 @@ impl LxApp {
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if let Some(execution) = self.dispatch_provider_surface_menu_intent(&intent) {
+            return execution;
+        }
         window_controller(PRIMARY_WINDOW, &self.runtime)
             .perform_surface_menu_intent_deferred(intent)
     }

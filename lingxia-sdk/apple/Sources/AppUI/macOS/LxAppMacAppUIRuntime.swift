@@ -844,6 +844,29 @@ final class LxAppMacAppUIRuntime: NSObject {
         }
     }
 
+    /// Activate a switcher main from the sidebar. Declared YAML surfaces go
+    /// through `openSurface`. A dynamic lxapp opened via `lx.navigateToApp`
+    /// has no YAML entry, so `openSurface` would throw "unknown surface" and
+    /// leave its tabBar clicks stranded — attach it through the lxapp
+    /// provider path instead, matching `restoreActiveMainProvider`.
+    private func activateSwitcherMain(id: String) {
+        if surfaceById[id] != nil {
+            openSurfaceHandlingError(id: id)
+            return
+        }
+        guard let ownerAppId = graphOwnerAppId,
+              let snapshot = SurfaceSwitcherBridge.snapshot(ownerAppId: ownerAppId),
+              let item = snapshot.items.first(where: { $0.surfaceId == id }),
+              item.content.kind == "lxapp",
+              let appId = item.content.appId
+        else {
+            LXLog.error("AppUI cannot activate undeclared surface=\(id)", category: "MacAppUI")
+            return
+        }
+        shell.activateMainLxAppProvider(appId: appId)
+        _ = setActiveMainSurface(ownerAppId, id)
+    }
+
     private func openManagedSurfaceNow(id: String) -> Bool {
         do {
             try openSurface(id: id)
@@ -1427,13 +1450,13 @@ final class LxAppMacAppUIRuntime: NSObject {
             mainSidebarItems(from: switcher),
             activeId: switcher?.activeSurfaceId
         ) { [weak self] surfaceID in
-            self?.openSurfaceHandlingError(id: surfaceID)
+            self?.activateSwitcherMain(id: surfaceID)
         } onClose: { [weak self] surfaceID in
             self?.closeMainSurface(id: surfaceID)
         } onAdd: { [weak self] in
             self?.addSurfaceForActiveMain() ?? false
         } onContextMenu: { [weak self] surfaceID, event, view in
-            self?.presentSurfaceMenu(surfaceID: surfaceID, event: event, from: view)
+            self?.presentSurfaceMenu(surfaceID: surfaceID, event: event, from: view) ?? false
         } onRename: { [weak self] surfaceID, title in
             self?.commitSurfaceRename(surfaceID: surfaceID, title: title)
         }
@@ -1463,14 +1486,16 @@ final class LxAppMacAppUIRuntime: NSObject {
         )
     }
 
-    private func presentSurfaceMenu(surfaceID: String, event: NSEvent, from view: NSView) {
-        guard let ownerAppId = graphOwnerAppId,
-              let snapshot = SurfaceMenuBridge.snapshot(
-                  ownerAppId: ownerAppId,
-                  surfaceId: surfaceID
-              )
-        else { return }
-        surfaceMenuPresenter.present(snapshot, event: event, from: view)
+    @discardableResult
+    private func presentSurfaceMenu(surfaceID: String, event: NSEvent, from view: NSView) -> Bool {
+        guard let ownerAppId = graphOwnerAppId else { return false }
+        guard let snapshot = SurfaceMenuBridge.snapshot(
+            ownerAppId: ownerAppId,
+            surfaceId: surfaceID
+        ) else {
+            return false
+        }
+        return surfaceMenuPresenter.present(snapshot, event: event, from: view)
     }
 
     private func performSurfaceMenuAction(

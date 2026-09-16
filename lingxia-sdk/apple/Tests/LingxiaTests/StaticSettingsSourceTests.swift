@@ -10,7 +10,7 @@ final class StaticSettingsSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testAddonDestinationProducesFooterWithoutBundledDestination() throws {
+    func testAddonDestinationProducesHeaderWithoutBundledDestination() throws {
         let app = try JSONDecoder().decode(
             LxAppGeneratedAppConfig.self,
             from: Data(#"{"productName":"Native host"}"#.utf8)
@@ -21,9 +21,9 @@ final class StaticSettingsSourceTests: XCTestCase {
             #"{"kind":"nativeAction","actionId":"preferences"}"#
         )
         XCTAssertEqual(source?.destinationKind, .nativeAction)
-        let footer = LxAppStaticSettingsSource.mergeFooter(runtimeItems: [], source: source)
-        XCTAssertEqual(footer.map(\.id), [LxAppStaticSettingsSource.sidebarItemID])
-        XCTAssertEqual(footer.first?.sidebarActionSource, .staticSettings)
+        let header = LxAppStaticSettingsSource.mergeHeader(runtimeItems: [], source: source)
+        XCTAssertEqual(header.map(\.id), [LxAppStaticSettingsSource.sidebarItemID])
+        XCTAssertEqual(header.first?.sidebarActionSource, .staticSettings)
         var calls = 0
         XCTAssertTrue(source?.activate(itemID: LxAppStaticSettingsSource.sidebarItemID) {
             calls += 1
@@ -67,7 +67,7 @@ final class StaticSettingsSourceTests: XCTestCase {
     }
 
     @MainActor
-    func testStaticFooterExistsOnlyForAConfiguredTypedSource() {
+    func testStaticHeaderExistsOnlyForAConfiguredTypedSource() {
         let runtime = [
             LxAppUIActionItem(
                 id: "settings",
@@ -81,7 +81,7 @@ final class StaticSettingsSourceTests: XCTestCase {
             ),
         ]
 
-        let absent = LxAppStaticSettingsSource.mergeFooter(
+        let absent = LxAppStaticSettingsSource.mergeHeader(
             runtimeItems: runtime,
             source: nil
         )
@@ -91,15 +91,15 @@ final class StaticSettingsSourceTests: XCTestCase {
         let source = LxAppStaticSettingsSource(
             .browserControlPage(route: "/settings", query: nil)
         )
-        let configured = LxAppStaticSettingsSource.mergeFooter(
+        let configured = LxAppStaticSettingsSource.mergeHeader(
             runtimeItems: runtime,
             source: source
         )
         XCTAssertEqual(
             configured.map(\.id),
-            ["settings", LxAppStaticSettingsSource.sidebarItemID]
+            [LxAppStaticSettingsSource.sidebarItemID, "settings"]
         )
-        XCTAssertEqual(configured.last?.sidebarActionSource, .staticSettings)
+        XCTAssertEqual(configured.first?.sidebarActionSource, .staticSettings)
     }
 
     func testBrowserSettingsAndClearSiteDataRemainBrowserLocalRoutes() {

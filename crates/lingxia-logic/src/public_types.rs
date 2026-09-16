@@ -479,11 +479,6 @@ rong::js_api! {
     style?: NavigationBarStylePatch | null;
 }"###;
 
-        type TabBarStylePatch = r###"{
-    foregroundColor?: string | null;
-    selectedForegroundColor?: string | null;
-}"###;
-
         type TabBarItemPatch = r###"{
     index: number;
     text?: string | null;
@@ -503,7 +498,6 @@ rong::js_api! {
 
         type TabBarPatch = r###"{
     visibility?: TabBarVisibilityPreference;
-    style?: TabBarStylePatch | null;
     items?: readonly TabBarItemPatch[];
 }"###;
 

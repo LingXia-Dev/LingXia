@@ -25,9 +25,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
     /// Owns when and how a page slides. Shared with the runner so the two
     /// hosts cannot drift apart again.
     private let pageTransition = LxAppPageTransition()
-    private var snapshotSwapGeneration: UInt64 = 0
-    private weak var pendingSnapshotTarget: WKWebView?
-    private var pendingSnapshotPath: String?
 
     nonisolated(unsafe) private var closeAppObserver: NSObjectProtocol?
 
@@ -117,13 +114,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         path: String,
         animation: LxAppAnimation = .none
     ) {
-        if pendingSnapshotTarget === webView, pendingSnapshotPath == path {
-            return
-        }
-        snapshotSwapGeneration &+= 1
-        let swapGeneration = snapshotSwapGeneration
-        pendingSnapshotTarget = nil
-        pendingSnapshotPath = nil
         // A controller-backed host can observe the same committed navigation
         // after the platform callback already attached it. Keep that repeated
         // delivery idempotent instead of detaching and constraining the same
@@ -146,9 +136,11 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         // Sliding a page that has not painted yet shows its content settling —
         // React mounting, images and fonts landing — inside a frame that is
         // already moving. Hold the outgoing page instead and slide once the
-        // incoming one can draw itself; nothing moves while we wait, so this
-        // reads as the animation starting a moment later rather than as a stall.
-        if activeWebView !== webView,
+        // incoming one can draw itself. Tab switches (`.none`) must not wait:
+        // a later click cancels the pending swap, so "not that fast" tabbar
+        // clicks never change the page.
+        if animation != .none,
+           activeWebView !== webView,
            LxAppPageTransition.needsPaintWait(webView, animation: animation) {
             let sessionId = self.sessionId
             pageTransition.whenPagePaints(
@@ -165,65 +157,13 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
             return
         }
 
-        // A warm tab has finished loading while detached, but WebKit can still
-        // expose a black backing-store frame when it is reparented. Snapshot
-        // the destination before the swap and hold that exact frame briefly
-        // over the newly attached live view.
-        if animation == .none,
-           activeWebView != nil,
-           activeWebView !== webView,
-           webView.superview !== webViewContainer,
-           !webView.bounds.isEmpty {
-            pendingSnapshotTarget = webView
-            pendingSnapshotPath = path
-            webView.takeSnapshot(with: nil) { [weak self, weak webView] image, _ in
-                Task { @MainActor in
-                    guard let self, let webView else { return }
-                    self.commitPreparedSwap(
-                        webView,
-                        path: path,
-                        image: image,
-                        generation: swapGeneration
-                    )
-                }
-            }
-            // Snapshotting a detached WebView is normally immediate, but a
-            // failed WebKit callback must never swallow the navigation.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self, weak webView] in
-                guard let self, let webView else { return }
-                self.commitPreparedSwap(
-                    webView,
-                    path: path,
-                    image: nil,
-                    generation: swapGeneration
-                )
-            }
-            return
-        }
-
+        pageTransition.cancelPendingWait()
         performWebViewSwap(webView, animation: animation)
-    }
-
-    private func commitPreparedSwap(
-        _ webView: WKWebView,
-        path: String,
-        image: NSImage?,
-        generation: UInt64
-    ) {
-        guard snapshotSwapGeneration == generation,
-              currentPath == path,
-              activeWebView !== webView
-        else { return }
-        snapshotSwapGeneration &+= 1
-        pendingSnapshotTarget = nil
-        pendingSnapshotPath = nil
-        performWebViewSwap(webView, animation: .none, preparedSnapshot: image)
     }
 
     private func performWebViewSwap(
         _ webView: WKWebView,
-        animation: LxAppAnimation,
-        preparedSnapshot: NSImage? = nil
+        animation: LxAppAnimation
     ) {
         if activeWebView !== webView {
             pageTransition.install(animation, on: webViewContainer)
@@ -243,17 +183,6 @@ class macOSLxAppViewController: NSViewController, WKNavigationDelegate {
         WebViewManager.attachLxAppWebView(webView, to: webViewContainer)
         activeWebView = webView
         coverUntilContentPaints(webView)
-
-        if let preparedSnapshot {
-            let cover = NSImageView(frame: webViewContainer.bounds)
-            cover.image = preparedSnapshot
-            cover.imageScaling = .scaleAxesIndependently
-            cover.autoresizingMask = [.width, .height]
-            webViewContainer.addSubview(cover, positioned: .above, relativeTo: nil)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
-                cover.removeFromSuperview()
-            }
-        }
     }
 
     /// The ground behind the page. Anything that exposes it — a fade, a seam

@@ -152,10 +152,22 @@ pub fn activate_sidebar_action(mut intent: SidebarActionIntent) -> ShellResult<(
         let snapshot = active.manager.snapshot();
         let current_generation = snapshot.sidebar_actions.generation();
         if intent.generation != current_generation {
-            return Err(ShellError::StaleSidebarActionIntent {
-                generation: intent.generation,
-                current: current_generation,
-            });
+            // Chrome can be one replace() behind: the same stable id is still
+            // live, so retarget rather than drop the click. A recycled or
+            // cleared id still fails.
+            let still_live = snapshot
+                .sidebar_actions
+                .items()
+                .iter()
+                .any(|item| item.id == id);
+            if still_live {
+                intent.generation = current_generation;
+            } else {
+                return Err(ShellError::StaleSidebarActionIntent {
+                    generation: intent.generation,
+                    current: current_generation,
+                });
+            }
         }
         let Some(item) = snapshot
             .sidebar_actions
@@ -338,6 +350,48 @@ mod tests {
             })
         );
         assert!(host.activated.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn stale_generation_retargets_when_the_id_is_still_live() {
+        let _guard = test_guard();
+        reset_for_test();
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(TestHost::default());
+        initialize(dir.path(), host.clone()).unwrap();
+        let manager = manager().unwrap();
+        manager
+            .replace_sidebar_actions(vec![ShellSidebarAction {
+                id: "brand".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
+                label: "Brand".to_string(),
+                icon: "icons/brand.svg".to_string(),
+                disabled: false,
+            }])
+            .unwrap();
+        manager
+            .replace_sidebar_actions(vec![ShellSidebarAction {
+                id: "brand".to_string(),
+                placement: crate::SidebarActionPlacement::Footer,
+                label: "Brand 2".to_string(),
+                icon: "icons/brand.svg".to_string(),
+                disabled: false,
+            }])
+            .unwrap();
+
+        activate_sidebar_action(SidebarActionIntent {
+            id: "brand".to_string(),
+            generation: 1,
+        })
+        .unwrap();
+
+        assert_eq!(
+            host.activated.lock().unwrap().as_slice(),
+            &[SidebarActionIntent {
+                id: "brand".to_string(),
+                generation: 2,
+            }]
+        );
     }
 
     #[test]

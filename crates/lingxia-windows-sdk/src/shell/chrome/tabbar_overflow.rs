@@ -277,6 +277,7 @@ mod tests {
             color: 0x666666,
             selected_color: 0x1677ff,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index,

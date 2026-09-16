@@ -146,6 +146,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         static let chevronSize: CGFloat = 10
         static let closeButtonSize: CGFloat = 16
         static let itemTopPadding: CGFloat = 2
+        /// Sidebar app tile. Raster `AppIcon.png` is a square; the shell clips it.
+        static let appIconSize: CGFloat = 16
     }
 
     let appId: String
@@ -223,7 +225,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     /// main to this lxapp, so an lxapp with no tabBar items is still switchable.
     var onAppSelected: ((String) -> Void)?
     var onCloseRequested: ((String) -> Void)?
-    var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Void)?
+    var onManagedContextMenuRequested: ((String, NSEvent, NSView) -> Bool)?
     var onManagedRenameCommitted: ((String, String) -> Void)?
     var onLayoutChanged: (() -> Void)?
 
@@ -321,15 +323,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
                 if !self.isExpanded { self.toggleExpanded() }
             }
         }
-        if managedLabel == nil || contentAppId != nil {
-            headerView.onRightClick = { [weak self] event in
-                self?.showContextMenu(with: event)
-            }
-        } else {
-            headerView.onRightClick = { [weak self] event in
-                guard let self else { return }
-                self.onManagedContextMenuRequested?(self.appId, event, self.headerView)
-            }
+        headerView.onRightClick = { [weak self] event in
+            self?.requestContextMenu(with: event)
         }
         addSubview(headerView)
 
@@ -337,7 +332,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         appIconView.translatesAutoresizingMaskIntoConstraints = false
         appIconView.imageScaling = .scaleProportionallyUpOrDown
         appIconView.wantsLayer = true
-        appIconView.layer?.cornerRadius = 3
+        appIconView.layer?.cornerRadius = Layout.appIconSize * TabBarHelper.appTileCornerRatio
         appIconView.layer?.masksToBounds = true
         headerView.addSubview(appIconView)
 
@@ -432,8 +427,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             // App icon: leading edge of the header
             appIconView.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: Layout.headerHPadding),
             appIconView.centerYAnchor.constraint(equalTo: headerView.centerYAnchor),
-            appIconView.widthAnchor.constraint(equalToConstant: 16),
-            appIconView.heightAnchor.constraint(equalToConstant: 16),
+            appIconView.widthAnchor.constraint(equalToConstant: Layout.appIconSize),
+            appIconView.heightAnchor.constraint(equalToConstant: Layout.appIconSize),
 
             // App name: right after the icon
             appNameLabel.leadingAnchor.constraint(equalTo: appIconView.trailingAnchor, constant: 6),
@@ -485,13 +480,16 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     /// Show the lxapp's icon (`path` is an absolute file path from the lxapp
     /// bundle), falling back to the bundled default LingXia mark when the
-    /// lxapp declares none or the file can't be read.
+    /// lxapp declares none or the file can't be read. The shell clips the
+    /// square tile — AppIcon.png is not required to be pre-rounded.
     private func loadAppIcon(path: String) {
+        let source: NSImage?
         if !path.isEmpty, let image = NSImage(contentsOfFile: path) {
-            appIconView.image = image
+            source = image
         } else {
-            appIconView.image = Self.defaultAppIcon
+            source = Self.defaultAppIcon
         }
+        appIconView.image = source.map { TabBarHelper.appTileIcon($0, size: Layout.appIconSize) }
     }
 
     /// Reload data from Rust API
@@ -558,7 +556,9 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         if !isRenaming {
             appNameLabel.stringValue = (managedLabel ?? appId).uppercased()
         }
-        appIconView.image = managedIcon ?? Self.defaultAppIcon
+        appIconView.image = (managedIcon ?? Self.defaultAppIcon).map {
+            TabBarHelper.appTileIcon($0, size: Layout.appIconSize)
+        }
         closeButton.isHidden = true
         rebuildItems(items: [])
     }
@@ -629,38 +629,51 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     }
 
     private func rebuildItems(items: [TabBarItem]) {
-        for view in itemViews { view.removeFromSuperview() }
-        itemViews.removeAll()
-
-        var yOffset: CGFloat = Layout.itemTopPadding
-        for (index, item) in items.enumerated() {
-            let itemView = SidebarItemView(appId: providerAppId, itemIndex: index)
-            itemView.translatesAutoresizingMaskIntoConstraints = false
-            itemView.selectedTint = tabBarTint
-            itemView.unselectedTint = itemTint
-            itemView.configure(item: item)
-            itemView.onClick = { [weak self] idx in
-                guard let self else { return }
-                self.onPageSelected?(self.appId, idx)
+        // Reuse rows when the tab set is unchanged so a tabBarStateChanged
+        // mid-click does not destroy the view under the cursor.
+        let canReuse = itemViews.count == items.count
+            && zip(itemViews, items).allSatisfy({ $0.tabIndex == $1.cachedIndex })
+        if canReuse {
+            for (itemView, item) in zip(itemViews, items) {
+                itemView.selectedTint = tabBarTint
+                itemView.unselectedTint = itemTint
+                itemView.configure(item: item)
             }
-            itemsContainer.addSubview(itemView)
+        } else {
+            for view in itemViews { view.removeFromSuperview() }
+            itemViews.removeAll()
 
-            NSLayoutConstraint.activate([
-                itemView.topAnchor.constraint(equalTo: itemsContainer.topAnchor, constant: yOffset),
-                itemView.leadingAnchor.constraint(equalTo: itemsContainer.leadingAnchor, constant: Layout.groupInset),
-                itemView.trailingAnchor.constraint(equalTo: itemsContainer.trailingAnchor, constant: -Layout.groupInset),
-            ])
+            var yOffset: CGFloat = Layout.itemTopPadding
+            for (index, item) in items.enumerated() {
+                let itemView = SidebarItemView(appId: providerAppId, itemIndex: index)
+                itemView.translatesAutoresizingMaskIntoConstraints = false
+                itemView.selectedTint = tabBarTint
+                itemView.unselectedTint = itemTint
+                itemView.configure(item: item)
+                itemView.onClick = { [weak self] idx in
+                    guard let self else { return }
+                    self.onPageSelected?(self.appId, idx)
+                }
+                itemsContainer.addSubview(itemView)
 
-            itemViews.append(itemView)
-            yOffset += SidebarItemView.Layout.height
-            if index + 1 < items.count {
-                yOffset += 1
+                NSLayoutConstraint.activate([
+                    itemView.topAnchor.constraint(equalTo: itemsContainer.topAnchor, constant: yOffset),
+                    itemView.leadingAnchor.constraint(equalTo: itemsContainer.leadingAnchor, constant: Layout.groupInset),
+                    itemView.trailingAnchor.constraint(equalTo: itemsContainer.trailingAnchor, constant: -Layout.groupInset),
+                ])
+
+                itemViews.append(itemView)
+                yOffset += SidebarItemView.Layout.height
+                if index + 1 < items.count {
+                    yOffset += 1
+                }
             }
         }
 
-        let totalHeight = yOffset
-        // The chevron is a collapse/expand affordance — only meaningful when the
-        // group actually has items. No tabBar items → no chevron.
+        let rows = CGFloat(items.count)
+        let totalHeight = Layout.itemTopPadding
+            + rows * SidebarItemView.Layout.height
+            + max(0, rows - 1)
         chevronIndicator.isHidden = items.isEmpty
         attributionLine.isHidden = items.isEmpty
         let hasNotifications = items.contains { !$0.badge.toString().isEmpty || $0.has_red_dot }
@@ -671,10 +684,10 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         }
     }
 
-    /// Set the active highlight on a specific item index
+    /// Set the active highlight on a specific tab (declaration index).
     func setActiveHighlight(pageIndex: Int) {
-        for (index, itemView) in itemViews.enumerated() {
-            itemView.isSelected = (index == pageIndex)
+        for itemView in itemViews {
+            itemView.isSelected = (itemView.tabIndex == pageIndex)
         }
     }
 
@@ -748,17 +761,18 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     }
 
     @objc private func menuClicked() {
-        if managedLabel != nil, contentAppId == nil {
-            guard let event = NSApp.currentEvent else { return }
-            onManagedContextMenuRequested?(appId, event, headerView)
+        guard let event = NSApp.currentEvent else { return }
+        requestContextMenu(with: event)
+    }
+
+    /// Switcher rows use the host SurfaceMenu snapshot (includes
+    /// `lx.setMoreActions`). Fall back to the hand-built menu only when the
+    /// graph has no snapshot for this id.
+    private func requestContextMenu(with event: NSEvent) {
+        if onManagedContextMenuRequested?(appId, event, headerView) == true {
             return
         }
-        let menu = buildContextMenu()
-        menu.popUp(
-            positioning: nil,
-            at: NSPoint(x: menuButton.frame.minX, y: menuButton.frame.minY),
-            in: headerView
-        )
+        showContextMenu(with: event)
     }
 
     // MARK: - Header hover tracking

@@ -412,10 +412,25 @@ crammed in the moment the window crosses 840.
   selection (see two-level selection below) — otherwise every navigation would
   bounce the group and lose the waypoint.
 - Desktop MUST fully support `lx.tabBar.update()` item, badge, red-dot,
-  visibility, and style patches. While collapsed, badges/red dots aggregate
-  onto the parent lxapp tab.
+  and visibility patches. JS must not patch colors. While collapsed, badges
+  / red dots aggregate onto the parent lxapp tab.
+- **Tab bar colors are not a single cross-platform policy.**
+  - **iOS / Android / Harmony (mobile tabbar).** The bar sits on the lxapp
+    page. Colors are the static `lxapp.json` `tabBar.style` (then lxapp
+    appearance defaults for unset keys). The bar MUST NOT follow the OS /
+    host dark mode on its own: most lxapps never implemented a dark page,
+    so a dark bar on a light page is worse than a light bar on a dark OS.
+    A light-pinned lxapp (`appearance: "light"`) keeps its authored bar.
+  - **macOS / Windows (desktop sidebar).** The expanded group is host
+    chrome, not a mini-program widget. It MUST follow the **host**
+    appearance so the sidebar stays one surface. Static `tabBar.style` is
+    a light palette; when the host is dark the host theme (then dark
+    defaults) win, including for a light-pinned lxapp — a `#FFFFFF`
+    `backgroundColor` MUST NOT paint a white card onto a dark sidebar.
+    Unset keys inherit the shell theme in every appearance.
 - **Mapping of tabbar style keys onto the sidebar** (one-to-one with mobile
-  semantics; unset keys inherit the resolved Page Chrome theme):
+  semantics; on desktop, unset keys and every key while the host is dark
+  inherit the shell / Page Chrome theme):
 
   | tabbar style | Mobile | Desktop sidebar |
   |---|---|---|
@@ -450,10 +465,10 @@ allowed.
 - **Styling adapts to the tabbar config**: the attribution line's base color
   follows `dividerColor`; the selected item shows a left-edge accent bar
   colored by `selectedForegroundColor`; selected item text/icon colors are
-  same-sourced. Only `foregroundColor` and `selectedForegroundColor` are
-  runtime-mutable via `lx.tabBar.update()`; background and divider remain
-  manifest-owned. The shell injects no accent of its own and inherits the Page
-  Chrome theme when fields are unset.
+  same-sourced. Colors follow host appearance, or a static `lxapp.json`
+  `tabBar.style` when declared. `lx.tabBar.update()` does not patch colors.
+  The shell injects no accent of its own and inherits the Page Chrome theme
+  when fields are unset.
 
 ### 4.4 Pins
 
