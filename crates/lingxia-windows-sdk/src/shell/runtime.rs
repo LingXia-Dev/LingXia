@@ -5376,9 +5376,11 @@ fn show_lxapp_auxiliary_context_menu(
     let info = target.as_ref().map(|target| target.get_lxapp_info());
     let is_home = is_home_lxapp(target_appid);
     let pinned = is_lxapp_pinned(target_appid);
+    let display_name = lxapp::lxapp_display_name(target_appid)
+        .or_else(|| info.as_ref().map(|info| info.app_name.clone()));
     let header_item = lxapp_context_menu_header(
         target_appid,
-        info.as_ref().map(|info| info.app_name.as_str()),
+        display_name.as_deref(),
         info.as_ref().map(|info| info.version.as_str()),
         info.as_ref().map(|info| info.release_type.as_str()),
     );

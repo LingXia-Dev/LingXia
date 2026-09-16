@@ -3339,7 +3339,7 @@ impl LxApp {
         let (current_appid, _, _) = get_current_lxapp();
         if current_appid != self.appid {
             let page = self.get_or_create_page(&current_path);
-            let title = self.get_lxapp_info().app_name;
+            let title = self.listing_name();
             let stored = self
                 .state
                 .lock()
@@ -3442,7 +3442,7 @@ impl LxApp {
         page.set_query(startup_options.query.clone());
 
         // Open UI
-        let title = self.get_lxapp_info().app_name;
+        let title = self.listing_name();
         self.runtime.show_lxapp(
             self.appid.clone(),
             title,
@@ -3691,6 +3691,12 @@ impl LxApp {
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
         self.config().get_lxapp_info(self.release_type.as_str())
+    }
+
+    /// Name shown in host chrome. The registry record wins; the package
+    /// `appName` is only the fallback when the registry has never answered.
+    pub fn listing_name(&self) -> String {
+        registry::display_name(&self.appid).unwrap_or_else(|| self.get_lxapp_info().app_name)
     }
 }
 
