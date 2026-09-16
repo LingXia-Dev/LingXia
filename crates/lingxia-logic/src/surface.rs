@@ -2184,13 +2184,12 @@ struct JSSurfaceContext {
 fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
     use lingxia_surface::ContentSizeClass;
     let (width, height, viewport_class) = lxapp.surface_viewport().unwrap_or_else(|| {
-        let layout = lxapp.surface_derived_layout();
-        let width = layout.as_ref().map(|_| 0.0).unwrap_or(0.0);
-        let size_class = layout
-            .as_ref()
+        // No measured viewport yet: report the shell band, with zero dimensions.
+        let size_class = lxapp
+            .surface_derived_layout()
             .map(|layout| layout.size_class.to_content())
             .unwrap_or(ContentSizeClass::Compact);
-        (width, 0.0, size_class)
+        (0.0, 0.0, size_class)
     });
     JSSurfaceContext {
         size_class: viewport_class.as_str().to_string(),
