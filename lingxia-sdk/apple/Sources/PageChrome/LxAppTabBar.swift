@@ -108,6 +108,18 @@ struct TabBarHelper {
         return ext == "svg" || ext.isEmpty
     }
 
+    /// Corner ratio for a square app tile (`AppIcon.png`). The shell clips;
+    /// the file is not required to be pre-rounded.
+    static let appTileCornerRatio: CGFloat = 0.22
+
+    #if os(macOS)
+    /// Raster lxapp artwork as a rounded tile. Favicons and template glyphs
+    /// must not go through this — they stay square / tintable.
+    static func appTileIcon(_ image: NSImage, size: CGFloat) -> NSImage {
+        appKitIcon(image, path: "AppIcon.png", size: size)
+    }
+    #endif
+
     @ViewBuilder
     static func styledIcon(
         _ image: Image,
@@ -126,7 +138,7 @@ struct TabBarHelper {
                 .resizable()
                 .scaledToFill()
                 .frame(width: size, height: size)
-                .clipShape(RoundedRectangle(cornerRadius: size * 0.22, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: size * appTileCornerRatio, style: .continuous))
         }
     }
 
@@ -156,8 +168,8 @@ struct TabBarHelper {
         NSGraphicsContext.current?.imageInterpolation = .high
         NSBezierPath(
             roundedRect: NSRect(origin: .zero, size: targetSize),
-            xRadius: size * 0.22,
-            yRadius: size * 0.22
+            xRadius: size * appTileCornerRatio,
+            yRadius: size * appTileCornerRatio
         ).addClip()
         image.draw(
             in: NSRect(origin: .zero, size: targetSize),

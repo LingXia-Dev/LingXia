@@ -265,7 +265,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var managedMainActivateHandler: ((String) -> Void)?
     private var managedMainCloseHandler: ((String) -> Void)?
     private var managedMainAddHandler: (() -> Bool)?
-    private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Void)?
+    private var managedMainContextMenuHandler: ((String, NSEvent, NSView) -> Bool)?
     private var managedMainRenameHandler: ((String, String) -> Void)?
     private var declaredBrowserSurfaceActivateHandler: ((String) -> Void)?
     private var declaredBrowserSurfaceCloseHandler: ((String) -> Void)?
@@ -553,7 +553,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             self?.closeTab(appId)
         }
         sidebar.onManagedMainContextMenuRequested = { [weak self] surfaceId, event, view in
-            self?.managedMainContextMenuHandler?(surfaceId, event, view)
+            self?.managedMainContextMenuHandler?(surfaceId, event, view) ?? false
         }
         sidebar.onManagedMainRenameCommitted = { [weak self] surfaceId, title in
             self?.managedMainRenameHandler?(surfaceId, title)
@@ -837,8 +837,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             Task { @MainActor in
                 guard let self, let appId else { return }
                 self.sidebarView?.refreshAppGroup(appId: appId)
-                if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
-                    self.sidebarView?.setActiveHighlight(appId: appId)
+                let highlightId = self.managedMainSurfaceByLxappId[appId] ?? appId
+                if self.tabManager.activeTab?.appId == appId
+                    || self.managedMainLxappBySurfaceId[highlightId] == appId {
+                    self.sidebarView?.setActiveHighlight(appId: highlightId)
                 }
             }
         }
@@ -871,8 +873,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 guard let self, let appId else { return }
                 self.sidebarView?.refreshAppGroup(appId: appId)
                 self.refreshNavigationBar(for: appId)
-                if let activeAppId = self.tabManager.activeTab?.appId, activeAppId == appId {
-                    self.sidebarView?.setActiveHighlight(appId: appId)
+                let highlightId = self.managedMainSurfaceByLxappId[appId] ?? appId
+                if self.tabManager.activeTab?.appId == appId
+                    || self.managedMainLxappBySurfaceId[highlightId] == appId {
+                    self.sidebarView?.setActiveHighlight(appId: highlightId)
                 }
                 self.reconcileSidebarAutoHide()
             }
@@ -936,7 +940,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func handleSidebarPageSelection(appId: String, itemIndex: Int) {
         let providerAppId = managedMainLxappBySurfaceId[appId] ?? appId
         if managedMainSurfaceIDs.contains(appId) {
-            managedMainActivateHandler?(appId)
+            // Already showing this lxapp: skip activate. Re-entering
+            // setActiveMainSurface remounts the current page and races
+            // SwitchTab, which is the "tab click does nothing" report.
+            if attachedMainAppId != providerAppId {
+                managedMainActivateHandler?(appId)
+            }
         } else if browserCoordinator.isActive {
             switchToTab(providerAppId)
         } else if tabManager.activeTab?.appId != providerAppId {
@@ -1214,17 +1223,20 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
         let isNewViewController = viewControllers[appId] == nil
 
+        // Pin the VC before creating pages so a synchronous layout commit can
+        // find it. Do not call `resolveMainProviderPath` here: that mints a
+        // page while `viewControllers[appId]` is still nil and can nest a
+        // second VC. Peek this app's stack-top, else let Rust resolve "".
+        let pathForOpen = peekExistingPath(for: appId)
         let viewController = viewControllers[appId] ?? {
-            let currentPath = LxAppCore.getCurrentPath()
-            let vc = macOSLxAppViewController(appId: appId, path: currentPath, sessionId: sessionId)
+            let vc = macOSLxAppViewController(appId: appId, path: pathForOpen, sessionId: sessionId)
             viewControllers[appId] = vc
             return vc
         }()
         viewController.updateSessionId(sessionId)
 
         if isNewViewController {
-            let currentPath = LxAppCore.getCurrentPath()
-            let created = createPageInstance(appId, currentPath, sessionId, 0, "")
+            let created = createPageInstance(appId, pathForOpen, sessionId, 0, "")
             let resolvedPath = created.resolved_path.toString()
             let createError = created.error.toString()
             if !created.ok || resolvedPath.isEmpty {
@@ -1236,6 +1248,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                     createError
                 )
                 return
+            }
+            if viewController.currentPath.isEmpty || viewController.currentPath != resolvedPath {
+                viewController.navigate(appId: appId, to: resolvedPath, with: .none)
             }
         }
 
@@ -1315,6 +1330,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// This app's stack-top path when it is already current; otherwise empty.
+    /// Empty lets `createPageInstance` resolve the initial route instead of
+    /// pinning another lxapp's global current path onto a new VC.
+    private func peekExistingPath(for appId: String) -> String {
+        let current = getCurrentLxApp()
+        guard current.appid.toString() == appId else { return "" }
+        return current.path.toString()
+    }
+
     /// Resolve the page path to pin a freshly-created main VC to. A dynamic
     /// open commits its layout before the runtime finishes pushing the target
     /// app onto the navigation stack, so the global current path can still
@@ -1323,11 +1347,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// target app instead: its own stack-top page when it already leads the
     /// stack, else Rust's page-instance resolution for its current route.
     private func resolveMainProviderPath(for appId: String) -> String? {
-        let current = getCurrentLxApp()
-        if current.appid.toString() == appId {
-            let path = current.path.toString()
-            if !path.isEmpty { return path }
-        }
+        let existing = peekExistingPath(for: appId)
+        if !existing.isEmpty { return existing }
         guard let sessionId = resolvedSessionId(for: appId) else { return nil }
         let created = createPageInstance(appId, "", sessionId, 0, "")
         let resolvedPath = created.resolved_path.toString()
@@ -1408,7 +1429,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         onActivate: @escaping (String) -> Void,
         onClose: @escaping (String) -> Void,
         onAdd: @escaping () -> Bool,
-        onContextMenu: @escaping (String, NSEvent, NSView) -> Void,
+        onContextMenu: @escaping (String, NSEvent, NSView) -> Bool,
         onRename: @escaping (String, String) -> Void
     ) {
         managedMainSurfaceIDs = Set(items.map(\.id))
@@ -1805,12 +1826,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         // recompute this drives would run against a half-built shell. The
         // declaration is held; `setupSidebarInterface` projects it.
         guard sidebarView != nil else { return }
-        updateSidebarHeaderActions(runtimeSidebarActionItems(placement: "header"))
-        let footer = LxAppStaticSettingsSource.mergeFooter(
-            runtimeItems: runtimeSidebarActionItems(placement: "footer"),
+        let header = LxAppStaticSettingsSource.mergeHeader(
+            runtimeItems: runtimeSidebarActionItems(placement: "header"),
             source: staticSettingsSource
         )
-        updateSidebarHostActions(footer)
+        updateSidebarHeaderActions(header)
+        updateSidebarHostActions(runtimeSidebarActionItems(placement: "footer"))
     }
 
     private func runtimeSidebarActionItems(placement: String) -> [LxAppUIActionItem] {
@@ -1861,7 +1882,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 iconURL: item.iconURL,
                 label: item.label,
                 active: item.active,
-                disabled: item.disabled
+                disabled: item.disabled,
+                source: item.sidebarActionSource,
+                systemImageName: item.builtInIcon
             )
         }
         sidebarView?.updateHeaderActionItems(sidebarItems)

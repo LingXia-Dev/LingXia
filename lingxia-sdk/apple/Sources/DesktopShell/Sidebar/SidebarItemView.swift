@@ -52,12 +52,16 @@ class SidebarItemView: NSView {
     private var iconIsTemplate = true
 
     let itemIndex: Int
+    /// Declaration index in `lxapp.json` — what `TabBarClick` and selection key on.
+    /// `itemIndex` is the visible slot, which diverges once `showOn` drops an item.
+    private(set) var tabIndex: Int
     let appId: String
     var onClick: ((Int) -> Void)?
 
     init(appId: String, itemIndex: Int) {
         self.appId = appId
         self.itemIndex = itemIndex
+        self.tabIndex = itemIndex
         super.init(frame: .zero)
         setupViews()
     }
@@ -189,6 +193,7 @@ class SidebarItemView: NSView {
     }
 
     func configure(item: TabBarItem) {
+        tabIndex = item.cachedIndex
         titleLabel.stringValue = item.cachedText
 
         iconPath = item.cachedIconPath
@@ -245,7 +250,7 @@ class SidebarItemView: NSView {
         iconView.image = resolvedImage.map {
             TabBarHelper.appKitIcon($0, path: resolvedPath, size: Layout.iconSize)
         }
-        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Layout.iconSize * 0.22
+        iconView.layer?.cornerRadius = iconIsTemplate ? 0 : Layout.iconSize * TabBarHelper.appTileCornerRatio
         iconView.layer?.masksToBounds = !iconIsTemplate
         iconView.contentTintColor = iconIsTemplate ? LxAppHostTheme.mutedForeground : nil
     }
@@ -331,7 +336,7 @@ class SidebarItemView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onClick?(itemIndex)
+        onClick?(tabIndex)
     }
 }
 

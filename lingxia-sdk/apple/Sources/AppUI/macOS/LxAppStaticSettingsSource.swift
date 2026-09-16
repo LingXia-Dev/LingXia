@@ -46,21 +46,27 @@ struct LxAppStaticSettingsSource: Equatable, Sendable {
         id != sidebarItemID
     }
 
+    /// Settings is bootstrap-owned header chrome (icon-only, with Downloads),
+    /// not a Logic `sidebarActions` entry and not a footer row.
     @MainActor
-    static func mergeFooter(
+    static func mergeHeader(
         runtimeItems: [LxAppUIActionItem],
         source: LxAppStaticSettingsSource?
     ) -> [LxAppUIActionItem] {
         var items = runtimeItems.filter { acceptsRuntimeSidebarAction(id: $0.id) }
         guard source != nil else { return items }
-        items.append(LxAppUIActionItem(
+        let settings = LxAppUIActionItem(
             id: sidebarItemID,
             label: "Settings",
             iconURL: nil,
             builtInIcon: "gearshape",
             closable: false,
             sidebarActionSource: .staticSettings
-        ))
+        )
+        items.insert(settings, at: 0)
+        if items.count > 2 {
+            items = Array(items.prefix(2))
+        }
         return items
     }
 }
