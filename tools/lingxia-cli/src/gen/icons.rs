@@ -198,13 +198,18 @@ pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
 /// Dock-normalize a full-bleed brand plate: 73% visual ratio and a 22%
 /// rounded corner, matching macOS `AppIcon`.
 /// Keep in sync with `lingxia-windows-sdk` `app_icon::dock_normalize_icon`.
-fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
+pub(crate) fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     let (width, height) = image.dimensions();
     if width == 0 || height == 0 {
         return image;
     }
     let canvas = width.max(height);
     let ratio = opaque_bounds_ratio(&image);
+    // Art already at dock size (e.g. a CLI-staged dev icon whose env badge
+    // overhangs the plate) passes through; rescaling would shrink it again.
+    if ratio <= 0.73 + 0.05 {
+        return image;
+    }
     let scale = (0.73 / ratio).clamp(0.60, 0.92);
     let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
     // Keep the plate's parity equal to the canvas's so the centering offset

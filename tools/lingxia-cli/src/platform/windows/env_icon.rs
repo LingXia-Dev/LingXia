@@ -9,7 +9,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::AppEnv;
-use crate::platform::env_badge::{badge_png_file, env_badge};
+use crate::platform::env_badge::{composite_corner_badge, env_badge};
 
 /// Resolve the launcher icon `lingxia-windows-sdk` loads at runtime from a
 /// prepared assets dir: `<assets>/AppIcon.png` first, then
@@ -52,7 +52,7 @@ pub fn stage_dist_host_icon(
             )
         })?;
     }
-    badge_png_file(&host_icon, version)
+    badge_windows_host_icon(&host_icon, version)
 }
 
 /// Stage a badged copy of the launcher icon for `lingxia dev`, returning the
@@ -74,8 +74,29 @@ pub fn stage_dev_badged_icon(
     let dest = overlay_dir.join("AppIcon.png");
     fs::copy(&src, &dest)
         .with_context(|| format!("Failed to copy {} -> {}", src.display(), dest.display()))?;
-    badge_png_file(&dest, version)?;
+    badge_windows_host_icon(&dest, version)?;
     Ok(Some(dest))
+}
+
+/// Badge a Windows host icon in place on its taskbar plate. The runtime
+/// normalizes full-bleed art to a rounded 73% plate, which would clip a
+/// corner badge; normalize here first so the badge sits on the plate's
+/// corner, and the runtime passes the already-sized art through.
+fn badge_windows_host_icon(path: &Path, version: AppEnv) -> Result<bool> {
+    let Some((letter, accent)) = env_badge(version) else {
+        return Ok(false);
+    };
+    let img = image::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+    let rgba = img.to_rgba8();
+    if rgba.width() < 60 {
+        return Ok(false);
+    }
+    let mut plate = crate::r#gen::icons::dock_normalize_icon(rgba);
+    composite_corner_badge(&mut plate, letter, accent);
+    plate
+        .save_with_format(path, image::ImageFormat::Png)
+        .with_context(|| format!("Failed to write {}", path.display()))?;
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -153,8 +174,11 @@ mod tests {
         assert_ne!(host_after, host_before);
         assert_ne!(host_after, content_before);
 
+        // Badged from the root icon, on a taskbar plate: its own color in the
+        // middle, a transparent margin at the corner.
         let decoded = image::open(&host_icon).unwrap().to_rgba8();
-        assert_eq!(decoded.get_pixel(0, 0), &Rgba([0x10, 0x40, 0xE0, 0xFF]));
+        assert_eq!(decoded.get_pixel(128, 128), &Rgba([0x10, 0x40, 0xE0, 0xFF]));
+        assert_eq!(decoded.get_pixel(0, 0)[3], 0);
     }
 
     #[test]

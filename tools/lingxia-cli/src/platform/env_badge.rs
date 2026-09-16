@@ -5,9 +5,7 @@
 //! appearance; platform modules decide which icon copy to badge and where to
 //! stage it.
 
-use anyhow::{Context, Result};
-use image::{ImageFormat, Rgba, RgbaImage};
-use std::path::Path;
+use image::{Rgba, RgbaImage};
 
 use crate::config::AppEnv;
 
@@ -20,49 +18,95 @@ pub fn env_badge(version: AppEnv) -> Option<(char, [u8; 4])> {
     }
 }
 
-/// Badge a single PNG file in place. No-op (returns `false`) when the env
-/// needs no badge, the file is missing, or the icon is too small to carry the
-/// badge legibly (< 60 px wide, e.g. a tiny notification glyph).
-pub fn badge_png_file(path: &Path, version: AppEnv) -> Result<bool> {
-    let Some((letter, accent)) = env_badge(version) else {
-        return Ok(false);
-    };
-    if !path.is_file() {
-        return Ok(false);
-    }
-    let img = image::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
-    let mut rgba = img.to_rgba8();
-    if rgba.width() < 60 {
-        return Ok(false);
-    }
-    composite_badge(&mut rgba, letter, accent);
-    rgba.save_with_format(path, ImageFormat::Png)
-        .with_context(|| format!("Failed to write {}", path.display()))?;
-    Ok(true)
+/// Where the badge sits on the icon plate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BadgePlacement {
+    /// Wholly inside the plate. For OS-masked full-bleed icons (iOS), whose
+    /// corners the system cuts away.
+    Inside,
+    /// Tucked into the plate's bottom-right rounded corner, close to both
+    /// edges but never past them. For desktop plates the shell does not mask.
+    Corner,
 }
 
 /// Composite a circular badge with a hand-rolled bitmap letter at the
-/// bottom-right of `img`. Sized relative to the icon so it stays readable
-/// from 60x60 home-screen icons up to the 1024x1024 marketing icon.
-pub fn composite_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
-    composite_badge_inset(img, letter, accent, 0.0);
-}
-
-/// Like [`composite_badge`], but anchored to an artwork rect inset from the
-/// canvas by `margin_frac` per side. macOS launcher icons keep ~10% of the
-/// canvas transparent around the rounded square, so a canvas-anchored badge
-/// would float outside the visible icon.
-pub fn composite_badge_inset(img: &mut RgbaImage, letter: char, accent: [u8; 4], margin_frac: f32) {
+/// bottom-right of an artwork rect inset from the canvas by `margin_frac` per
+/// side. Sized relative to the icon so it stays readable from 60x60
+/// home-screen icons up to the 1024x1024 marketing icon.
+pub fn composite_badge_inset(
+    img: &mut RgbaImage,
+    letter: char,
+    accent: [u8; 4],
+    margin_frac: f32,
+    placement: BadgePlacement,
+) {
     let (w, h) = img.dimensions();
     let margin = ((w.min(h) as f32) * margin_frac).round() as i32;
-    let artwork = (w.min(h) as i32 - 2 * margin).max(1);
+    let side = (w.min(h) as i32 - 2 * margin).max(1);
+    composite_badge_in_plate(img, letter, accent, (margin, margin, side, side), placement);
+}
+
+/// Badge a desktop icon on the corner of its visible plate, measured from
+/// alpha so it follows whatever margin the icon pipeline left.
+pub fn composite_corner_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
+    let plate = opaque_plate(img).unwrap_or((0, 0, img.width() as i32, img.height() as i32));
+    composite_badge_in_plate(img, letter, accent, plate, BadgePlacement::Corner);
+}
+
+/// Bounding rect of the pixels that are clearly part of the plate.
+fn opaque_plate(img: &RgbaImage) -> Option<(i32, i32, i32, i32)> {
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (u32::MAX, u32::MAX, 0u32, 0u32);
+    for (x, y, pixel) in img.enumerate_pixels() {
+        if pixel.0[3] <= 12 {
+            continue;
+        }
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    (min_x <= max_x).then(|| {
+        (
+            min_x as i32,
+            min_y as i32,
+            (max_x - min_x + 1) as i32,
+            (max_y - min_y + 1) as i32,
+        )
+    })
+}
+
+/// Badge anchored to an explicit plate rect `(left, top, width, height)`.
+pub fn composite_badge_in_plate(
+    img: &mut RgbaImage,
+    letter: char,
+    accent: [u8; 4],
+    plate: (i32, i32, i32, i32),
+    placement: BadgePlacement,
+) {
+    let (w, h) = img.dimensions();
+    let (left, top, plate_w, plate_h) = plate;
+    let artwork = plate_w.min(plate_h).max(1);
     let badge_diameter = ((artwork as f32) * 0.30).round() as i32;
-    // Pull the badge in from the artwork corner so the whole circle clears the
-    // icon's rounded corner (a corner-anchored badge pokes into the transparent
-    // zone past the squircle). ~0.4·diameter of corner clearance seats it inside.
-    let inset = ((badge_diameter as f32 * 0.4).round() as i32).max(2) + margin;
-    let center_x = w as i32 - badge_diameter / 2 - inset;
-    let center_y = h as i32 - badge_diameter / 2 - inset;
+    let (right_to_center, bottom_to_center) = match placement {
+        // ~0.4·diameter of corner clearance keeps the whole circle clear of
+        // a rounded corner the OS will mask.
+        BadgePlacement::Inside => {
+            let edge = badge_diameter / 2 + ((badge_diameter as f32 * 0.4).round() as i32).max(2);
+            (edge, edge)
+        }
+        // Just inside the plate's 22% corner arc: tangent to it from within,
+        // plus a hairline gap so the white ring never meets the edge.
+        BadgePlacement::Corner => {
+            let corner_r = artwork as f32 * 0.22;
+            let badge_r = badge_diameter as f32 / 2.0;
+            let gap = (artwork as f32 * 0.012).max(1.0);
+            let edge = corner_r - (corner_r - badge_r - gap) / std::f32::consts::SQRT_2;
+            let edge = edge.round() as i32;
+            (edge, edge)
+        }
+    };
+    let center_x = left + plate_w - right_to_center;
+    let center_y = top + plate_h - bottom_to_center;
     let outer_r = badge_diameter / 2;
     let border_w = (badge_diameter / 16).max(2);
     let inner_r = (outer_r - border_w).max(1);
@@ -159,7 +203,9 @@ fn letter_glyph(letter: char) -> &'static [u8] {
 
 #[cfg(test)]
 mod tests {
-    use super::{composite_badge, env_badge, letter_glyph};
+    use super::{
+        BadgePlacement, composite_badge_inset, composite_corner_badge, env_badge, letter_glyph,
+    };
     use crate::config::AppEnv;
     use image::{Rgba, RgbaImage};
 
@@ -179,12 +225,49 @@ mod tests {
     #[test]
     fn composite_badge_modifies_bottom_right_pixels() {
         let mut img = RgbaImage::from_pixel(120, 120, Rgba([0, 0, 0, 0xFF]));
-        composite_badge(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF]);
+        composite_badge_inset(
+            &mut img,
+            'D',
+            [0xD3, 0x2F, 0x2F, 0xFF],
+            0.0,
+            BadgePlacement::Inside,
+        );
         // Pixel at the badge center should now be the accent color rather than
         // the original black.
         let center = *img.get_pixel(95, 95);
         assert_ne!(center, Rgba([0, 0, 0, 0xFF]));
         // Upper-left should be untouched.
         assert_eq!(*img.get_pixel(10, 10), Rgba([0, 0, 0, 0xFF]));
+    }
+
+    #[test]
+    fn corner_badge_stays_inside_the_plate_corner() {
+        // 100px opaque plate inside a 20px transparent margin. A 30px badge
+        // sits in the rounded corner, near both edges, never past them.
+        let mut img = RgbaImage::from_pixel(140, 140, Rgba([0, 0, 0, 0]));
+        for y in 20..120 {
+            for x in 20..120 {
+                img.put_pixel(x, y, Rgba([40, 40, 40, 0xFF]));
+            }
+        }
+        composite_corner_badge(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF]);
+        let plate = Rgba([40, 40, 40, 0xFF]);
+        // Nothing lands in the transparent margin.
+        for i in 0..140 {
+            for j in 120..140 {
+                assert_eq!(img.get_pixel(i, j).0[3], 0, "below the plate at {i},{j}");
+                assert_eq!(img.get_pixel(j, i).0[3], 0, "right of the plate at {j},{i}");
+            }
+        }
+        // The badge reaches close to both edges.
+        assert_ne!(
+            *img.get_pixel(103, 116),
+            plate,
+            "badge near the bottom edge"
+        );
+        assert_ne!(*img.get_pixel(116, 103), plate, "badge near the right edge");
+        // The rounded corner itself stays plate.
+        assert_eq!(*img.get_pixel(118, 118), plate);
+        assert_eq!(*img.get_pixel(40, 40), plate);
     }
 }

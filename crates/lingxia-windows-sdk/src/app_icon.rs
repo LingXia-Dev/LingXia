@@ -166,6 +166,11 @@ fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     }
     let canvas = width.max(height);
     let ratio = opaque_bounds_ratio(&image);
+    // Art already at dock size (e.g. a CLI-staged dev icon whose env badge
+    // overhangs the plate) passes through; rescaling would shrink it again.
+    if ratio <= TARGET_DOCK_VISUAL_RATIO + 0.05 {
+        return image;
+    }
     let scale = (TARGET_DOCK_VISUAL_RATIO / ratio).clamp(0.60, 0.92);
     let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
     // Keep the plate's parity equal to the canvas's so the centering offset

@@ -14,7 +14,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::AppEnv;
-use crate::platform::env_badge::{composite_badge_inset, env_badge};
+use crate::platform::env_badge::{
+    BadgePlacement, composite_badge_inset, composite_corner_badge, env_badge,
+};
 
 /// If the active env needs a badge, stage a copy of `Assets.xcassets` with a
 /// badged `AppIcon.appiconset` and return the staging *resources_dir*; the
@@ -27,6 +29,8 @@ use crate::platform::env_badge::{composite_badge_inset, env_badge};
 ///
 /// `opaque`: iOS icons are square and must carry no alpha; macOS icons are
 /// the rounded square itself and must keep it, or the corners come out black.
+/// It also picks the badge placement: an opaque (OS-masked) icon keeps the
+/// badge inside, a macOS plate carries it on its corner.
 pub fn prepare_overlay_resources_dir(
     staging_base: &Path,
     resources_dir: &Path,
@@ -96,7 +100,17 @@ fn badge_appiconset(
         if rgba.width() < 60 {
             continue;
         }
-        composite_badge_inset(&mut rgba, letter, accent, margin_frac);
+        if opaque {
+            composite_badge_inset(
+                &mut rgba,
+                letter,
+                accent,
+                margin_frac,
+                BadgePlacement::Inside,
+            );
+        } else {
+            composite_corner_badge(&mut rgba, letter, accent);
+        }
         // iOS app icons must be opaque: an alpha channel — even a fully
         // opaque one — makes the home screen composite the icon over black,
         // which reads as a ghosted tile. macOS is the opposite: the icon is
