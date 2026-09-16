@@ -51,10 +51,10 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
     if let Ok(mut slot) = APP_ICON_PATH.get_or_init(|| Mutex::new(None)).lock() {
         *slot = Some(path.to_path_buf());
     }
-    if let Some(chrome) = resolve_host_chrome_icon(path) {
-        if let Ok(mut slot) = APP_CHROME_ICON_PATH.get_or_init(|| Mutex::new(None)).lock() {
-            *slot = Some(chrome);
-        }
+    if let Some(chrome) = resolve_host_chrome_icon(path)
+        && let Ok(mut slot) = APP_CHROME_ICON_PATH.get_or_init(|| Mutex::new(None)).lock()
+    {
+        *slot = Some(chrome);
     }
     Ok(())
 }

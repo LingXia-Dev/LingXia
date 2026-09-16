@@ -2997,10 +2997,10 @@ fn host_app_icon_path() -> Option<String> {
 /// slot (matching the panel footer action), else empty so the row falls back to
 /// the host / LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
-    if is_home_lxapp(appid) {
-        if let Some(icon) = host_app_icon_path() {
-            return icon;
-        }
+    if is_home_lxapp(appid)
+        && let Some(icon) = host_app_icon_path()
+    {
+        return icon;
     }
     if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
         return icon;
