@@ -922,6 +922,34 @@ extension LxApp {
         }
     }
 
+    nonisolated static func clipboardWrite(kind: RustStr, payload: RustStr) -> String {
+        let kindString = kind.toString()
+        let payloadString = payload.toString()
+        return executeOnMain {
+            LxAppClipboard.write(kind: kindString, payload: payloadString)
+        }
+    }
+
+    nonisolated static func clipboardRead(kind: RustStr, image_output_path imageOutputPath: RustStr) -> String {
+        let kindString = kind.toString()
+        let dest = imageOutputPath.toString()
+        return executeOnMain {
+            LxAppClipboard.read(kind: kindString, imageOutputPath: dest)
+        }
+    }
+
+    nonisolated static func clipboardClear() -> String {
+        executeOnMain {
+            LxAppClipboard.clear()
+        }
+    }
+
+    nonisolated static func clipboardTypes() -> String {
+        executeOnMain {
+            LxAppClipboard.types()
+        }
+    }
+
     public static func handleAppLink(url: URL) {
         guard url.scheme == "https" else { return }
         let _ = onApplinkReceived(url.absoluteString)

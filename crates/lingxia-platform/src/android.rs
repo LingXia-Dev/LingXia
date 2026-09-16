@@ -6,6 +6,7 @@ use jni::{
 use std::sync::OnceLock;
 
 mod app;
+mod clipboard;
 mod device;
 mod file;
 mod keyboard;
@@ -89,10 +90,11 @@ pub enum CachedClass {
     AppScreenshot = 17,
     LxApp = 18,
     LxAppShare = 19,
+    LxAppClipboard = 20,
 }
 
 impl CachedClass {
-    const COUNT: usize = 20;
+    const COUNT: usize = 21;
 
     pub const fn class_path(self) -> &'static str {
         match self {
@@ -116,6 +118,7 @@ impl CachedClass {
             CachedClass::LxAppNetwork => "com/lingxia/lxapp/APIs/LxAppNetwork",
             CachedClass::AppScreenshot => "com/lingxia/app/AppScreenshot",
             CachedClass::LxAppShare => "com/lingxia/lxapp/APIs/LxAppShare",
+            CachedClass::LxAppClipboard => "com/lingxia/lxapp/APIs/LxAppClipboard",
         }
     }
 
@@ -201,12 +204,17 @@ impl CachedClass {
                 "Global class reference not found: ",
                 "com/lingxia/lxapp/APIs/LxAppShare"
             ),
+            CachedClass::LxAppClipboard => concat!(
+                "Global class reference not found: ",
+                "com/lingxia/lxapp/APIs/LxAppClipboard"
+            ),
         }
     }
 }
 
 fn cached_slot(kind: CachedClass) -> &'static OnceLock<Global<JClass<'static>>> {
     static CLASS_CACHE: [OnceLock<Global<JClass<'static>>>; CachedClass::COUNT] = [
+        OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),
         OnceLock::new(),

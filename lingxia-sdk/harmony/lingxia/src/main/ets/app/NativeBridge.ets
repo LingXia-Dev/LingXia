@@ -16,6 +16,7 @@ import { LxAppSurface } from '../lxapp/APIs/LxAppSurface';
 import { LxAppBrowserManager } from '../lxapp/LxAppBrowser';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
 import { LxAppShare } from '../lxapp/APIs/LxAppShare';
+import { LxAppClipboard } from '../lxapp/APIs/LxAppClipboard';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
 import { LxAppNetwork } from '../lxapp/APIs/LxAppNetwork';
 import { LxAppCapsule } from '../lxapp/APIs/LxAppCapsule';
@@ -480,6 +481,22 @@ class NativeBridge {
       callbackId: string
     ): boolean => {
       return LxAppShare.share(title, text, url, filesJson, callbackId);
+    });
+
+    this.register('clipboardWrite', (kind: string, payload: string, callbackId: string): boolean => {
+      return LxAppClipboard.write(kind, payload, callbackId);
+    });
+
+    this.register('clipboardRead', (kind: string, imageOutputPath: string, callbackId: string): boolean => {
+      return LxAppClipboard.read(kind, imageOutputPath, callbackId);
+    });
+
+    this.register('clipboardClear', (callbackId: string): boolean => {
+      return LxAppClipboard.clear(callbackId);
+    });
+
+    this.register('clipboardTypes', (callbackId: string): boolean => {
+      return LxAppClipboard.types(callbackId);
     });
 
     // WiFi APIs
