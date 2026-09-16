@@ -350,7 +350,7 @@ fn run_check_preview(
         .context("Failed to reopen composed macOS icon")?
         .resize_exact(512, 512, imageops::FilterType::Lanczos3)
         .to_rgba8();
-    let chrome = image::load_from_memory(&platform::macos::host_chrome_png(source)?)
+    let chrome = image::load_from_memory(&crate::r#gen::icons::host_chrome_png(source)?)
         .context("Failed to decode host chrome preview")?
         .to_rgba8();
     // Windows: same Dock normalization as the packed ICO, at the small sizes that matter.

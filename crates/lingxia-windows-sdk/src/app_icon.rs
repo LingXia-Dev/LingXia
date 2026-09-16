@@ -167,7 +167,12 @@ fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     let canvas = width.max(height);
     let ratio = opaque_bounds_ratio(&image);
     let scale = (TARGET_DOCK_VISUAL_RATIO / ratio).clamp(0.60, 0.92);
-    let icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    // Keep the plate's parity equal to the canvas's so the centering offset
+    // is exact; a half-pixel shift reads as a lopsided tile at 16px.
+    if (canvas - icon_size) % 2 == 1 {
+        icon_size += 1;
+    }
     let offset = (canvas - icon_size) / 2;
     let mut plate = image::imageops::resize(
         &image,

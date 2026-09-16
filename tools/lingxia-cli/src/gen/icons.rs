@@ -206,7 +206,12 @@ fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
     let canvas = width.max(height);
     let ratio = opaque_bounds_ratio(&image);
     let scale = (0.73 / ratio).clamp(0.60, 0.92);
-    let icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    // Keep the plate's parity equal to the canvas's so the centering offset
+    // is exact; a half-pixel shift reads as a lopsided tile at 16px.
+    if (canvas - icon_size) % 2 == 1 {
+        icon_size += 1;
+    }
     let offset = (canvas - icon_size) / 2;
     let mut plate = image::imageops::resize(
         &image,
@@ -1062,4 +1067,41 @@ mod ico_tests {
             assert_alpha_is_symmetric(&entry.decode().unwrap());
         }
     }
+}
+
+/// Sidebar / Downloads / Settings tile: the source, square, no Dock inset.
+/// The shell applies the same 0.22 clip as lxapp PNGs.
+pub const HOST_CHROME_ICON_REL: &str = "icons/host-chrome.png";
+const HOST_CHROME_PX: u32 = 256;
+
+pub fn write_host_chrome_icon(source_icon: &Path, dest_dir: &Path) -> Result<()> {
+    let dest = dest_dir.join(HOST_CHROME_ICON_REL);
+    let png = host_chrome_png(source_icon)?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&dest, png).with_context(|| format!("Failed to write {}", dest.display()))?;
+    println!("  Wrote {} (chrome tile, no Dock inset)", dest.display());
+    Ok(())
+}
+
+pub fn host_chrome_png(source_icon: &Path) -> Result<Vec<u8>> {
+    let img = image::open(source_icon)
+        .with_context(|| format!("Failed to open {}", source_icon.display()))?;
+    let rgba = square_cover(&img, HOST_CHROME_PX);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .context("Failed to encode host chrome PNG")?;
+    Ok(buf.into_inner())
+}
+
+fn square_cover(img: &image::DynamicImage, size: u32) -> image::RgbaImage {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let edge = w.min(h).max(1);
+    let x = (w - edge) / 2;
+    let y = (h - edge) / 2;
+    let cropped = image::imageops::crop_imm(&rgba, x, y, edge, edge).to_image();
+    image::imageops::resize(&cropped, size, size, image::imageops::FilterType::Lanczos3)
 }

@@ -803,7 +803,10 @@ fn stage_host_chrome_into_app(project_root: &Path, app_bundle: &Path) -> Result<
     if !source.exists() {
         return Ok(());
     }
-    write_host_chrome_icon(&source, &app_bundle.join("Contents").join("Resources"))
+    crate::r#gen::icons::write_host_chrome_icon(
+        &source,
+        &app_bundle.join("Contents").join("Resources"),
+    )
 }
 
 fn sync_primary_spm_resources_to_app_root(bin_dir: &Path, app_bundle: &Path) -> Result<()> {
@@ -1275,44 +1278,7 @@ pub fn generate_icons(
     crate::appicon::generate_macos_icons(normalized_icon.path(), &resources_dir)?;
     // Dock catalog keeps the 73% inset. Sidebar / Settings need the
     // full-bleed source so a 16pt tile matches lxapp artwork.
-    write_host_chrome_icon(source_icon, &resources_dir)
-}
-
-/// Sidebar / Downloads / Settings tile: the source, square, no Dock inset.
-/// The shell applies the same 0.22 clip as lxapp PNGs.
-pub(crate) const HOST_CHROME_ICON_REL: &str = "icons/host-chrome.png";
-const HOST_CHROME_PX: u32 = 256;
-
-pub(crate) fn write_host_chrome_icon(source_icon: &Path, dest_dir: &Path) -> Result<()> {
-    let dest = dest_dir.join(HOST_CHROME_ICON_REL);
-    let png = host_chrome_png(source_icon)?;
-    if let Some(parent) = dest.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(&dest, png).with_context(|| format!("Failed to write {}", dest.display()))?;
-    println!("  Wrote {} (chrome tile, no Dock inset)", dest.display());
-    Ok(())
-}
-
-pub(crate) fn host_chrome_png(source_icon: &Path) -> Result<Vec<u8>> {
-    let img = image::open(source_icon)
-        .with_context(|| format!("Failed to open {}", source_icon.display()))?;
-    let rgba = square_cover(&img, HOST_CHROME_PX);
-    let mut buf = std::io::Cursor::new(Vec::new());
-    DynamicImage::ImageRgba8(rgba)
-        .write_to(&mut buf, ImageFormat::Png)
-        .context("Failed to encode host chrome PNG")?;
-    Ok(buf.into_inner())
-}
-
-fn square_cover(img: &DynamicImage, size: u32) -> image::RgbaImage {
-    let rgba = img.to_rgba8();
-    let (w, h) = rgba.dimensions();
-    let edge = w.min(h).max(1);
-    let x = (w - edge) / 2;
-    let y = (h - edge) / 2;
-    let cropped = image::imageops::crop_imm(&rgba, x, y, edge, edge).to_image();
-    image::imageops::resize(&cropped, size, size, FilterType::Lanczos3)
+    crate::r#gen::icons::write_host_chrome_icon(source_icon, &resources_dir)
 }
 
 /// Get the resources directory path for a macOS Swift Package
