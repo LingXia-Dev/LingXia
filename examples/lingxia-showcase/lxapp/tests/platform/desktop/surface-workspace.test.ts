@@ -84,11 +84,7 @@ async function openSettingsMain(
     await desktop.window.focus({ window: current.id });
     const layout = await app.surfaceLayout();
     await desktop.pointer.click({
-      at: staticSettingsActionPoint(
-        current,
-        layout.switcherForm === 'rail',
-        DESKTOP_FOOTER_ACTION_COUNT,
-      ),
+      at: staticSettingsActionPoint(current, layout.switcherForm === 'rail'),
     });
     return;
   }
@@ -666,15 +662,27 @@ function pinnedShortcutPoint(
   ];
 }
 
-/// Four runtime actions from `lxapp.ts`, followed by the host-owned static
-/// Settings action. The rail lays them out from the bottom, so adding another
-/// source without updating this clicks a different action.
-const DESKTOP_FOOTER_ACTION_COUNT = 5;
+/// Four runtime footer actions from `lxapp.ts`. The rail lays actions out
+/// from the bottom, so adding another source without updating these clicks a
+/// different action.
+const DESKTOP_FOOTER_ACTION_COUNT = 4;
+/// Header actions: the host's typed Settings, then showcase Downloads. The
+/// rail has no header row, so these lead its action stack.
+const DESKTOP_HEADER_ACTION_COUNT = 2;
+/// The rail shows at most five action cells.
+const DESKTOP_RAIL_ACTION_CELLS = Math.min(DESKTOP_HEADER_ACTION_COUNT + DESKTOP_FOOTER_ACTION_COUNT, 5);
 // The mobile-only Device item is filtered out; every other declared tab is a
 // root page row above dynamic workspaces in the expanded desktop sidebar.
 const SHOWCASE_DESKTOP_TAB_COUNT = 6;
 
-function firstRailFooterActionPoint(
+function railActionPoint(host: DesktopWindowInfo, index: number): [number, number] {
+  const first = firstRailActionPoint(host, DESKTOP_RAIL_ACTION_CELLS);
+  const cell = nativeWindowExtent('windows', host, 30);
+  const gap = nativeWindowExtent('windows', host, 4);
+  return [first[0], first[1] + index * (cell + gap)];
+}
+
+function firstRailActionPoint(
   host: DesktopWindowInfo,
   footerActionCount: number,
 ): [number, number] {
@@ -696,19 +704,22 @@ function firstRailFooterActionPoint(
 function staticSettingsActionPoint(
   host: DesktopWindowInfo,
   rail: boolean,
-  footerActionCount: number,
 ): [number, number] {
-  const cell = nativeWindowExtent('windows', host, 30);
-  const margin = nativeWindowExtent('windows', host, 6);
   if (!rail) {
+    // Typed Settings leads the header actions, right-aligned against the
+    // collapse toggle at the 184-DIP sidebar's trailing edge.
+    const size = 28;
+    const gap = 4;
+    const toggleLeft = 184 - 8 - size;
+    const settingsLeft = toggleLeft - gap
+      - DESKTOP_HEADER_ACTION_COUNT * size
+      - (DESKTOP_HEADER_ACTION_COUNT - 1) * gap;
     return [
-      host.bounds.x + nativeWindowExtent('windows', host, 92),
-      host.bounds.y + host.bounds.h - margin - cell / 2,
+      host.bounds.x + nativeWindowExtent('windows', host, settingsLeft + size / 2),
+      host.bounds.y + nativeWindowExtent('windows', host, 16),
     ];
   }
-  const first = firstRailFooterActionPoint(host, footerActionCount);
-  const gap = nativeWindowExtent('windows', host, 4);
-  return [first[0], first[1] + (footerActionCount - 1) * (cell + gap)];
+  return railActionPoint(host, 0);
 }
 
 function firstLxappWorkspacePoint(
@@ -1639,12 +1650,13 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
 
-    // Exercise the real native footer action. Medium projects three fixture
-    // actions (Chat, Terminal, Ping) into the icon rail above its expand cell.
-    // Derive Chat's first-cell center from that production geometry so this
-    // cannot accidentally click the expand control or a main-page item.
+    // Exercise the real native footer action. Medium projects the header
+    // actions (Settings, Downloads) and then the footer actions into the icon
+    // rail above its expand cell; Chat is the first footer action. Derive its
+    // cell center from that production geometry so this cannot click the
+    // expand control, a header action, or a main-page item.
     await desktop.pointer.click({
-      at: firstRailFooterActionPoint(host, DESKTOP_FOOTER_ACTION_COUNT),
+      at: railActionPoint(host, DESKTOP_HEADER_ACTION_COUNT),
     });
 
     const chatAside = async () => {
