@@ -625,6 +625,9 @@ Header geometry:
 - Header accepts at most **2** icon-only actions and preserves declaration
   order. If the complete set cannot fit beside native window controls, none of
   the actions render; partial truncation is forbidden.
+- A configured bootstrap Settings entry occupies the first header slot, so
+  one runtime header action remains. Runtime actions beyond that are dropped
+  in declaration order and the host MUST log a warning naming them.
 - Header actions do not render in the collapsed desktop rail or compact size
   class. Their `label` is still the tooltip and accessibility text.
 
