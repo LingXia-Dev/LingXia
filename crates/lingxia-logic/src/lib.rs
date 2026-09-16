@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 mod app;
 mod authorization;
 mod capability;
+mod clipboard;
 mod device;
 mod dismissal;
 mod display;
@@ -63,6 +64,7 @@ impl LxLogicExtension for LxLogicRuntime {
         app::init(ctx)?;
         lxapp::init(ctx)?;
         device::init(ctx)?;
+        clipboard::init(ctx)?;
         display::init(ctx)?;
         location::init(ctx)?;
         navigator::init(ctx)?;

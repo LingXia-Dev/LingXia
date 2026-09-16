@@ -19,6 +19,7 @@ export const ERR_CODE_INFO_BY_CODE = {
   3005: { code: 3005, key: "err_code_3005" },
   3006: { code: 3006, key: "err_code_3006" },
   3007: { code: 3007, key: "err_code_3007" },
+  3008: { code: 3008, key: "err_code_3008" },
   4000: { code: 4000, key: "err_code_4000" },
   4001: { code: 4001, key: "err_code_4001" },
   4002: { code: 4002, key: "err_code_4002" },

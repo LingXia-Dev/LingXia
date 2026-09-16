@@ -574,6 +574,87 @@ export type ChosenMediaEntry = {
     isOriginal: boolean;
 };
 
+export type ClipboardApi = globalThis.ClipboardApi;
+
+export type ClipboardItem = {
+    type: 'text';
+    text: string;
+} | {
+    type: 'image';
+    /**
+     * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
+     * copy it with `lx.fs` if you need to keep it.
+     */
+    filePath: string;
+    /** Always `image/png` today; present so a future host can vary it. */
+    mimeType?: string;
+};
+
+export type ClipboardReadOptions = {
+    /** Omit to receive every representation the host can surface. */
+    type?: ClipboardType;
+};
+
+/**
+ * Result of `lx.clipboard.read`. Omit `type` to receive every
+ * representation this host can surface. A requested type that is
+ * absent is `{ empty: true }`, not an error.
+ */
+export type ClipboardReadResult = {
+    canceled: false;
+    empty: true;
+} | {
+    canceled: false;
+    empty: false;
+    items: ClipboardItem[];
+} | CanceledResult;
+
+/**
+ * Result of `lx.clipboard.readText`. Branch on `canceled`, then on
+ * `empty` — the same shape `read` uses. A copied empty string is
+ * `{ empty: false, text: '' }`; an image-only clipboard is
+ * `{ empty: true }`.
+ */
+export type ClipboardTextResult = {
+    canceled: false;
+    empty: true;
+} | {
+    canceled: false;
+    empty: false;
+    text: string;
+} | CanceledResult;
+
+/** Representations the runtime can round-trip. Closed union. */
+export type ClipboardType = 'text' | 'image';
+
+/**
+ * Result of `lx.clipboard.types`. `types` is empty for an empty
+ * clipboard; representations this runtime cannot round-trip (HTML,
+ * files) are omitted rather than reported.
+ */
+export type ClipboardTypesResult = {
+    canceled: false;
+    types: ClipboardType[];
+} | CanceledResult;
+
+/**
+ * One clipboard write. `text` is universal; `image` is a PNG/JPEG
+ * file the host re-encodes as the platform's native image format.
+ */
+export type ClipboardWriteItem = {
+    type: 'text';
+    /** Unicode text. Rejects `E_INVALID_ARG` when larger than 1 MiB. */
+    text: string;
+} | {
+    type: 'image';
+    /**
+     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
+     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `E_INVALID_ARG` when the file is not a decodable image.
+     */
+    filePath: string;
+};
+
 export type CompressImageOptions = {
     path: string;
     quality?: number;
@@ -2562,6 +2643,51 @@ export declare class LxFile {
 }
 
 declare global {
+  interface ClipboardApi {
+    /**
+     * Replace the clipboard with Unicode text.
+     * Empty string is a valid payload (it is not `clear()`). The runtime does not
+     * present a toast — call `lx.showToast` if the product wants one. Rejects
+     * `E_INVALID_ARG` above 1 MiB.
+     */
+    writeText(text: string): Promise<void>;
+    /**
+     * Read Unicode text.
+     * Resolves `{ canceled: true }` only when the user dismisses the OS paste
+     * prompt (iOS 16+, macOS 15.4+). No text representation (empty clipboard, or
+     * image-only) resolves `{ canceled: false, empty: true }`. A copied empty
+     * string resolves `{ canceled: false, empty: false, text: '' }`. Rejects 3008
+     * when the host denies clipboard access outright: a macOS "never allow"
+     * setting, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
+     */
+    readText(): Promise<ClipboardTextResult>;
+    /**
+     * Replace the clipboard with a typed item.
+     * `type: 'text'` is universal. Other types reject when unsupported.
+     */
+    write(item: ClipboardWriteItem): Promise<void>;
+    /**
+     * Read the clipboard.
+     * Omit `type` to receive every representation this host can surface.
+     * Pass `type` to request one; if that representation is absent, the
+     * completed result is `{ empty: true }` rather than a mismatch error.
+     * Images arrive as a temporary PNG under `lx://temp`. Dismissal and
+     * permission behave as in `readText`.
+     */
+    read(options?: ClipboardReadOptions): Promise<ClipboardReadResult>;
+    /** Remove every representation. */
+    clear(): Promise<void>;
+    /**
+     * Which representations are present, without reading payloads.
+     * Never shows the OS paste prompt: every host can peek types without
+     * reading. `canceled` is reserved for hosts that cannot, so branch on it
+     * anyway. The answer is a hint — content may change before you read it.
+     */
+    types(): Promise<ClipboardTypesResult>;
+  }
+}
+
+declare global {
   interface FileSystemApi {
     /**
      * Create a lazy reference to a LingXia-managed path.
@@ -2646,6 +2772,7 @@ declare global {
      * a context that does not expose an API reports false for it.
      */
     supports(query: LxCapabilityQuery): boolean;
+    readonly clipboard: ClipboardApi;
     /** Vibrate briefly, where the device has a vibrator. */
     vibrateShort(): boolean;
     /** Vibrate for a longer pulse, where the device has a vibrator. */

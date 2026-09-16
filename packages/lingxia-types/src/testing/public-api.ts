@@ -31,6 +31,7 @@ import type {
   ControlDisplayLanguageApi,
   DisplayLanguageApi,
   DownloadTask,
+  ClipboardApi,
   FileSystemApi,
   HostAppApi,
   HostAppUpdateInfo,
@@ -62,6 +63,7 @@ export const LX_API_NAMES = [
   'chooseDirectory',
   'chooseFile',
   'chooseMedia',
+  'clipboard',
   'compressImage',
   'compressVideo',
   'connectWifi',
@@ -170,6 +172,7 @@ const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', '
 const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
+const CLIPBOARD_API = ['clear', 'read', 'readText', 'types', 'write', 'writeText'] as const;
 const FILE_SYSTEM_API = [
   'copy',
   'exists',
@@ -334,6 +337,7 @@ export const LX_RUNTIME_SURFACES = [
     optionalMembers: ['terminal'],
     properties: [
       'app',
+      'clipboard',
       'env',
       'fs',
       'navigationBar',
@@ -476,6 +480,7 @@ export const LX_RUNTIME_SURFACES = [
   },
   { name: 'lx.tray', layer: 'logic', expression: 'lx.tray', members: TRAY_API },
   { name: 'lx.fs', layer: 'logic', expression: 'lx.fs', members: FILE_SYSTEM_API },
+  { name: 'lx.clipboard', layer: 'logic', expression: 'lx.clipboard', members: CLIPBOARD_API },
   { name: 'Storage', layer: 'logic', expression: 'lx.getStorage()', members: STORAGE_API },
   { name: 'UpdateManager', layer: 'logic', expression: 'lx.getUpdateManager()', members: UPDATE_MANAGER_API },
   {
@@ -749,6 +754,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<ShellApi['sidebarActions'], typeof SHELL_SIDEBAR_ACTIONS_API>>,
   AssertTrue<Exact<TrayApi, typeof TRAY_API>>,
   AssertTrue<Exact<FileSystemApi, typeof FILE_SYSTEM_API>>,
+  AssertTrue<Exact<ClipboardApi, typeof CLIPBOARD_API>>,
   AssertTrue<Exact<LxFile, typeof LX_FILE_API>>,
   AssertTrue<Exact<Storage, typeof STORAGE_API>>,
   AssertTrue<Exact<UpdateManager, typeof UPDATE_MANAGER_API>>,

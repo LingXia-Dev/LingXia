@@ -55,7 +55,7 @@ editor applies the correct environment to each file.
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
 Most methods are flat on `lx`. Related capabilities use typed namespaces such
-as `lx.env`, `lx.app`, `lx.navigationBar`, `lx.tabBar`,
+as `lx.env`, `lx.app`, `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
 map. Page Chrome geometry is a View concern exposed through the framework
 page-chrome helpers and the low-level `window.lxPageChrome` snapshot.
@@ -155,8 +155,10 @@ refusal reads like: [The Control app](../app/control-app.md).
 ## Handling errors
 
 A rejection means the operation failed. It never means the user said no: the
-six dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
-`chooseDirectory`, `chooseMedia`, `scanCode` — resolve a result discriminated
+dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
+`chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
+(`readText`, `read`, `types`, where iOS 16+ / macOS 15.4+ may show a paste
+prompt) — resolve a result discriminated
 on `canceled`, so dismissal is a branch rather than an error path. (`lx.share` stands apart: some
 platforms only observe that the system sheet opened and closed, so it reports a
 three-state `outcome` — `'completed' | 'dismissed' | 'unknown'` — rather than
