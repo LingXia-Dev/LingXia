@@ -2251,10 +2251,15 @@ fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
     url
 }
 
+/// Blank start pages show an empty address field (macOS parity). WebView2
+/// reports host-only URLs with a trailing slash (`lingxia://newtab/`), and a
+/// start page may carry a query, so compare the bare page identity.
 fn browser_url_is_hidden(url: &str) -> bool {
+    let url = url.trim().to_ascii_lowercase();
+    let page = url.split(['?', '#']).next().unwrap_or_default();
     matches!(
-        url.trim().to_ascii_lowercase().as_str(),
-        "about:blank" | "lingxia://newtab" | "lingxia://"
+        page.trim_end_matches('/'),
+        "about:blank" | "lingxia://newtab" | "lingxia:"
     )
 }
 
@@ -7705,6 +7710,9 @@ mod tests {
         assert!(browser_url_is_hidden("about:blank"));
         assert!(browser_url_is_hidden(" LINGXIA://NEWTAB "));
         assert!(browser_url_is_hidden("lingxia://"));
+        assert!(browser_url_is_hidden("lingxia://newtab/"));
+        assert!(browser_url_is_hidden("lingxia://newtab/?from=shortcut"));
+        assert!(!browser_url_is_hidden("lingxia://settings/"));
         assert!(!browser_url_is_hidden("https://example.com"));
     }
 
