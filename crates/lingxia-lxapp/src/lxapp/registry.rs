@@ -260,6 +260,19 @@ fn cached_icon_is_gone(record: &RegistryRecord, icons_dir: &Path) -> bool {
         .is_some_and(|file| !icons_dir.join(file).exists())
 }
 
+/// A listing without a name is not done — `lxapp.json` is only a fallback, and
+/// a 404 / empty answer cached for the full TTL would hide a later rename.
+/// `attempted_recently` still floors retries at a minute.
+fn listing_needs_refresh(cached: &RegistryRecord) -> bool {
+    cached
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .is_none()
+        || is_expired(cached, LISTING_TTL)
+}
+
 /// The registry's name for this app.
 pub(crate) fn name(appid: &str) -> Option<String> {
     lxapp_registry_provider()?;
@@ -288,25 +301,29 @@ pub(crate) fn status(appid: &str) -> LxAppStatus {
 
 /// Refresh in the background when the cache is missing or past its TTL.
 /// The sidebar calls this as it populates; nothing waits on the result.
-pub(crate) fn ensure_fresh(appids: &[String]) {
+pub(crate) fn ensure_fresh<S: AsRef<str>>(appids: &[S]) {
     if lxapp_registry_provider().is_none() {
         return;
     }
     let icons_dir = icons_dir();
     for appid in appids {
+        let appid = appid.as_ref();
+        if appid.trim().is_empty() {
+            continue;
+        }
         let cached = record(appid);
         let needs_fetch = match (&cached, &icons_dir) {
             (None, _) => true,
             (Some(cached), Some(icons_dir)) => {
-                is_expired(cached, LISTING_TTL) || cached_icon_is_gone(cached, icons_dir)
+                listing_needs_refresh(cached) || cached_icon_is_gone(cached, icons_dir)
             }
-            (Some(cached), None) => is_expired(cached, LISTING_TTL),
+            (Some(cached), None) => listing_needs_refresh(cached),
         };
         if !needs_fetch || attempted_recently(appid) {
             continue;
         }
         mark_attempted(appid);
-        let appid = appid.clone();
+        let appid = appid.to_string();
         std::mem::drop(crate::executor::spawn(Box::pin(async move {
             let Some(_guard) = RefreshGuard::acquire(appid.clone()) else {
                 return;
@@ -736,7 +753,10 @@ fn sweep_orphan_icons(candidates: &[String], icons_dir: &Path) {
 ///
 /// One entry point on purpose — a sidebar row and the window title reading
 /// different sources is how the same app ends up with two names on screen.
+/// Looking up the name is also what schedules a background `registryinfo`
+/// refresh, so a server-side rename does not wait on an unrelated relayout.
 pub fn display_name(appid: &str) -> Option<String> {
+    ensure_fresh(&[appid]);
     name(appid)
         .or_else(|| runtime_registry::try_get(appid).map(|app| app.get_lxapp_info().app_name))
         .filter(|name| !name.trim().is_empty())
@@ -748,6 +768,7 @@ pub fn display_name(appid: &str) -> Option<String> {
 /// first fetch lands, and for a local project the registry has never heard of,
 /// callers get `None` and draw their own default mark.
 pub fn display_icon_path(appid: &str) -> Option<String> {
+    ensure_fresh(&[appid]);
     icon_path(appid).filter(|path| !path.trim().is_empty())
 }
 
@@ -881,6 +902,19 @@ mod tests {
             grants: BTreeMap::new(),
             fetched_at: now_secs(),
         }
+    }
+
+    #[test]
+    fn a_nameless_record_is_refreshed_instead_of_waiting_out_the_listing_ttl() {
+        let mut record = record_for("demo", None);
+        assert!(!listing_needs_refresh(&record));
+
+        record.name = None;
+        assert!(!is_expired(&record, LISTING_TTL));
+        assert!(listing_needs_refresh(&record));
+
+        record.name = Some("   ".to_string());
+        assert!(listing_needs_refresh(&record));
     }
 
     #[test]

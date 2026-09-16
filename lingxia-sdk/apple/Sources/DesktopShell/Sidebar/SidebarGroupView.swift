@@ -281,9 +281,20 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         itemsBackground.layer?.backgroundColor = themeCGColor((itemsAreaColor ?? NSColor.clear))
     }
 
+    private var lastAppearanceIsDark: Bool?
+
     override func viewDidChangeEffectiveAppearance() {
         super.viewDidChangeEffectiveAppearance()
-        applyColors()
+        // The declared-color mask depends on the host scheme, so a scheme flip
+        // re-reads it; re-parenting also lands here and only needs repainting.
+        let isDark = effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        if let lastAppearanceIsDark, lastAppearanceIsDark != isDark {
+            self.lastAppearanceIsDark = isDark
+            refreshFromRust()
+        } else {
+            self.lastAppearanceIsDark = isDark
+            applyColors()
+        }
     }
 
     private func setupViews() {

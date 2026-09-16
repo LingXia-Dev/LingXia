@@ -57,10 +57,11 @@ mod bridge {
         /// ignore this.
         pub overflow_start_index: i32,
         /// Which style fields the app DECLARED (bit0 color, bit1
-        /// selectedColor, bit2 backgroundColor, bit3 borderStyle). The color
+        /// selectedColor, bit2 backgroundColor, bit3 borderStyle). Desktop
+        /// always clears bit2 — `backgroundColor` is mobile-only. The color
         /// fields above always carry effective values (mobile defaults);
         /// desktop skins use this mask to keep undeclared styles on the
-        /// neutral theme instead of inheriting light mobile defaults.
+        /// yaml theme instead of inheriting light mobile defaults.
         pub styled_mask: u32,
     }
 
@@ -2171,19 +2172,21 @@ pub fn on_surface_closed(appid: &str, id: &str, reason: &str) -> bool {
 ///
 /// This works around a swift-bridge `Option<struct with String>` limitation.
 pub fn get_lxapp_info(appid: &str) -> self::bridge::LxAppInfo {
+    // Registry first even when the package is not running — pins and a
+    // closed switcher row still have a server-owned name. `lxapp.json` is
+    // only the fallback once a running app can supply it.
+    let registry_name = lxapp::lxapp_display_name(appid);
     if let Some(lxapp) = lxapp::try_get(appid) {
         let lxapp_info = lxapp.get_lxapp_info();
         self::bridge::LxAppInfo {
-            // Registry name when there is one, so a sidebar row and a window
-            // title never disagree about what this app is called.
-            app_name: lxapp::lxapp_display_name(appid).unwrap_or(lxapp_info.app_name),
+            app_name: registry_name.unwrap_or(lxapp_info.app_name),
             version: lxapp_info.version,
             release_type: lxapp_info.release_type,
             cache_dir: lxapp.user_cache_dir.to_string_lossy().into_owned(),
         }
     } else {
         self::bridge::LxAppInfo {
-            app_name: String::new(),
+            app_name: registry_name.unwrap_or_default(),
             version: String::new(),
             release_type: String::new(),
             cache_dir: String::new(),

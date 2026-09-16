@@ -609,9 +609,12 @@ Add a `tabBar` block alongside `pages`:
 }
 ```
 
-All style keys are optional and inherit the host theme. `presentation` is
-`"standard"` (the View ends above the bar) or `"immersive"` (the View extends
-behind it). An immersive bar must omit `backgroundColor` and `dividerColor`.
+All style keys are optional and inherit the host theme. `backgroundColor`
+paints the **mobile** bar only; on desktop the sidebar uses the host
+`lingxia.yaml` `theme.windowBackgroundColor` instead — a `#FFFFFF` fill
+must not become a white card next to home. `presentation` is `"standard"`
+(the View ends above the bar) or `"immersive"` (the View extends behind
+it). An immersive bar must omit `backgroundColor` and `dividerColor`.
 
 Rules:
 
@@ -740,13 +743,17 @@ await lx.tabBar.update({ visibility: 'hidden' });
 await lx.tabBar.update({ visibility: 'auto' });
 ```
 
-Tab bar colors are platform-split. On iOS / Android / Harmony the bar
-keeps static `lxapp.json` `tabBar.style` (then the lxapp's own appearance
-defaults) so it stays with the page — it does not follow OS dark mode by
-itself. On macOS / Windows the sidebar group is host chrome: static style
-is the light palette, and a dark host uses the shell theme so a
-`#FFFFFF` bar cannot paint a white card on a dark sidebar.
-`lx.tabBar.update()` does not patch colors — a `style` field is rejected.
+Tab bar colors are platform-split, and `lx.tabBar.update()` cannot patch
+them — a `style` field is rejected.
+
+- **Mobile** (iOS / Android / Harmony): the bar sits on the page and keeps
+  static `lxapp.json` `tabBar.style` (then the lxapp's own appearance
+  defaults). It does not follow OS dark mode by itself.
+- **Desktop** (macOS / Windows): the sidebar is host chrome and follows
+  `lingxia.yaml` `theme`. `tabBar.style.backgroundColor` is unused there.
+  Other static keys (`foregroundColor`, `selectedForegroundColor`,
+  `dividerColor`) may tint items while the host is light; a dark host
+  uses the shell theme for every key.
 
 `lx.navigationBar.update()` patches the current page's bar the same way:
 

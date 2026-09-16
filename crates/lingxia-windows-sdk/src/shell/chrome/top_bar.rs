@@ -613,13 +613,19 @@ fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
     })
 }
 
+/// Product tile in the About/Exit caption button. Sidebar/home tiles stay
+/// 16px full-bleed; this slot sits next to 18px design glyphs (gear /
+/// sidebar toggle) whose SVGs already carry padding. 14px matches that
+/// optical weight and the macOS header-action size.
+const APP_MENU_ICON_SIZE: i32 = 14;
+
 /// Draws the app-menu button at the window's leading edge. Uses the host
 /// product icon (About/Exit entry) so chrome matches the running app; the
 /// LingXia mark is only the last-resort fallback inside `draw_default_app_icon`.
 /// Falls back to a subtle monochrome glyph before any icon path is known.
 /// Clicking the button opens the About/Exit menu.
 fn draw_app_menu_icon(hdc: HDC, rect: RECT) {
-    let icon_rect = centered_square(rect, 18);
+    let icon_rect = centered_square(rect, APP_MENU_ICON_SIZE);
     if draw_default_app_icon(hdc, icon_rect) {
         return;
     }

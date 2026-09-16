@@ -496,6 +496,11 @@ rong::js_api! {
     redDot?: boolean;
 }"###;
 
+        /// Patch for `lx.tabBar.update()`. Items, badges, red dots, and
+        /// visibility only — a `style` field is rejected. Colors stay in
+        /// static `lxapp.json` `tabBar.style`. `backgroundColor` is
+        /// mobile-only; the desktop sidebar follows the host
+        /// `lingxia.yaml` theme.
         type TabBarPatch = r###"{
     visibility?: TabBarVisibilityPreference;
     items?: readonly TabBarItemPatch[];

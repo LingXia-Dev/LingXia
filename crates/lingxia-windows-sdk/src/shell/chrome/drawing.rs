@@ -668,22 +668,10 @@ pub(in crate::shell) fn draw_icon_from_path(hdc: HDC, path: &str, rect: RECT, si
     let Some(handle) = cached_png_icon_handle(path, size) else {
         return false;
     };
-    // Raster AppIcon / PNG tiles are square; the shell clips them. SVG
-    // glyphs stay unclipped so they tint as templates (macOS parity).
-    if icon_path_is_template(path) {
-        draw_icon_handle(hdc, handle, rect)
-    } else {
-        draw_icon_handle_rounded(hdc, handle, rect)
-    }
-}
-
-/// SVG (and extension-less) paths are tintable glyphs, not app tiles.
-fn icon_path_is_template(path: &str) -> bool {
-    let ext = std::path::Path::new(path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .unwrap_or("");
-    ext.eq_ignore_ascii_case("svg") || ext.is_empty()
+    // Raster tiles are already corner-masked in the cached bitmap
+    // (`icons::apply_app_tile_corners`). SVG glyphs stay unmasked so they
+    // tint as templates.
+    draw_icon_handle(hdc, handle, rect)
 }
 
 /// Absolute path to the LingXia icon, copied next to the app by the CLI
@@ -767,35 +755,6 @@ fn draw_icon_handle(hdc: HDC, handle: isize, rect: RECT) -> bool {
             WindowsAndMessaging::DI_NORMAL,
         )
         .is_ok()
-    }
-}
-
-/// Clip a square raster tile to the same ~22% continuous-ish corner the
-/// macOS sidebar uses. Favicon bytes skip this path so web tabs stay bare.
-fn draw_icon_handle_rounded(hdc: HDC, handle: isize, rect: RECT) -> bool {
-    let size = rect_width(&rect).min(rect_height(&rect));
-    if size <= 0 {
-        return false;
-    }
-    let radius = ((size as f32) * 0.22).round().max(1.0) as i32;
-    let diameter = (radius * 2).min(size);
-    unsafe {
-        let saved = SaveDC(hdc);
-        let region = CreateRoundRectRgn(
-            rect.left,
-            rect.top,
-            rect.right,
-            rect.bottom,
-            diameter,
-            diameter,
-        );
-        if !region.is_invalid() {
-            let _ = ExtSelectClipRgn(hdc, Some(region), RGN_AND);
-            let _ = DeleteObject(HGDIOBJ(region.0));
-        }
-        let ok = draw_icon_handle(hdc, handle, rect);
-        let _ = RestoreDC(hdc, saved);
-        ok
     }
 }
 

@@ -479,20 +479,23 @@ crammed in the moment the window crosses 840.
     A light-pinned lxapp (`appearance: "light"`) keeps its authored bar.
   - **macOS / Windows (desktop sidebar).** The expanded group is host
     chrome, not a mini-program widget. It MUST follow the **host**
-    appearance so the sidebar stays one surface. Static `tabBar.style` is
-    a light palette; when the host is dark the host theme (then dark
-    defaults) win, including for a light-pinned lxapp — a `#FFFFFF`
-    `backgroundColor` MUST NOT paint a white card onto a dark sidebar.
-    Unset keys inherit the shell theme in every appearance.
+    `theme` (`lingxia.yaml`) so the sidebar stays one surface.
+    `tabBar.style.backgroundColor` is mobile-only: it MUST NOT paint the
+    expanded items card in any appearance — including a `#FFFFFF` fill
+    on a light sidebar. Other static style keys may tint items while the
+    host is light; when the host is dark the host theme wins for every
+    key, including for a light-pinned lxapp. Unset keys inherit the
+    shell theme in every appearance.
 - **Mapping of tabbar style keys onto the sidebar** (one-to-one with mobile
-  semantics; on desktop, unset keys and every key while the host is dark
-  inherit the shell / Page Chrome theme):
+  semantics except `backgroundColor`. On desktop, that key and every unset
+  key — and every key while the host is dark — inherit the shell / yaml
+  theme):
 
   | tabbar style | Mobile | Desktop sidebar |
   |---|---|---|
   | `foregroundColor` | Unselected item text | Unselected item title color |
   | `selectedForegroundColor` | Selected item text | Selected item title color + left-edge accent bar |
-  | `backgroundColor` | Bar background | Expanded group (items container) background |
+  | `backgroundColor` | Bar background | Unused (sidebar / yaml `windowBackgroundColor`) |
   | `dividerColor` | Bar divider | Attribution line base color |
 
   Colors apply to text and structural elements alike; an item's single

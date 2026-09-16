@@ -508,6 +508,13 @@ impl TabBar {
             | ((self.style.divider_color.is_some() as u32) << 3)
     }
 
+    /// Desktop sidebar mask: same as [`Self::declared_color_mask`], except
+    /// `backgroundColor` is never taken. That key paints the mobile bar on the
+    /// page; the sidebar is host chrome and inherits `lingxia.yaml` theme.
+    pub fn desktop_declared_color_mask(&self, host_dark: bool) -> u32 {
+        self.declared_color_mask(host_dark) & !0b0100
+    }
+
     pub fn apply_patch<F>(&mut self, patch: &TabBarPatch, mut resolve_icon: F) -> Result<(), String>
     where
         F: FnMut(&str, &str) -> Result<String, String>,
@@ -693,10 +700,11 @@ impl LxApp {
     }
 
     /// Desktop sidebar mask: host appearance, not the lxapp's pin.
+    /// `backgroundColor` is stripped — mobile-only.
     pub fn tabbar_declared_color_mask(&self) -> u32 {
         self.get_tabbar()
             .map(|tabbar| {
-                tabbar.declared_color_mask(super::host_appearance::host_appearance_dark())
+                tabbar.desktop_declared_color_mask(super::host_appearance::host_appearance_dark())
             })
             .unwrap_or(0)
     }
@@ -905,6 +913,10 @@ mod tests {
         );
         assert_eq!(tabbar.declared_color_mask(false) & 0b0100, 0b0100);
         assert_eq!(tabbar.declared_color_mask(true), 0);
+        // Desktop keeps item tints in light, but never the mobile bar fill.
+        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0001, 0b0001);
+        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0100, 0);
+        assert_eq!(tabbar.desktop_declared_color_mask(true), 0);
     }
 
     #[test]

@@ -92,6 +92,7 @@ fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
             image::DynamicImage::ImageRgba8(image),
             size,
             &path.display().to_string(),
+            false,
         );
     }
     let image = image::open(path).map_err(|err| {
@@ -100,7 +101,9 @@ fn create_icon_from_path(path: &Path, size: u32) -> Result<isize, String> {
             path.display()
         )
     })?;
-    create_icon_from_image(image, size, &path.display().to_string())
+    // Raster tiles get an anti-aliased 22% corner in the bitmap. GDI
+    // `CreateRoundRectRgn` clip aliases that arc into a staircase at 16px.
+    create_icon_from_image(image, size, &path.display().to_string(), true)
 }
 
 /// Rasterizes an SVG (icons may be SVG, as on macOS) to an `size`x`size`
@@ -133,17 +136,53 @@ fn rasterize_svg(svg: &[u8], size: u32) -> Result<image::RgbaImage, String> {
 fn create_icon_from_png_bytes(png: &[u8], size: u32) -> Result<isize, String> {
     let image = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .map_err(|err| format!("Failed to decode PNG icon bytes: {err}"))?;
-    create_icon_from_image(image, size, "<png bytes>")
+    create_icon_from_image(image, size, "<png bytes>", false)
+}
+
+/// Same ratio as macOS `appTileCornerRatio` / the old GDI clip.
+const APP_TILE_CORNER_RATIO: f32 = 0.22;
+
+/// Soft-masks a square tile to a rounded rect. Coverage uses a 1px SDF so
+/// the corner blends instead of a hard GDI region edge.
+fn apply_app_tile_corners(image: &mut image::RgbaImage) {
+    let width = image.width();
+    let height = image.height();
+    if width == 0 || height == 0 {
+        return;
+    }
+    let half_w = width as f32 * 0.5;
+    let half_h = height as f32 * 0.5;
+    let radius = (width.min(height) as f32 * APP_TILE_CORNER_RATIO).max(1.0);
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        let px = x as f32 + 0.5 - half_w;
+        let py = y as f32 + 0.5 - half_h;
+        let qx = px.abs() - half_w + radius;
+        let qy = py.abs() - half_h + radius;
+        let outside = qx.max(0.0).hypot(qy.max(0.0));
+        let inside = qx.max(qy).min(0.0);
+        let coverage = (0.5 - (outside + inside - radius)).clamp(0.0, 1.0);
+        if coverage <= 0.0 {
+            *pixel = image::Rgba([0, 0, 0, 0]);
+            continue;
+        }
+        if coverage < 1.0 {
+            pixel.0[3] = (f32::from(pixel.0[3]) * coverage).round() as u8;
+        }
+    }
 }
 
 fn create_icon_from_image(
     image: image::DynamicImage,
     size: u32,
     source: &str,
+    tile_corners: bool,
 ) -> Result<isize, String> {
-    let image = image
+    let mut image = image
         .resize_exact(size, size, image::imageops::FilterType::Lanczos3)
         .into_rgba8();
+    if tile_corners {
+        apply_app_tile_corners(&mut image);
+    }
 
     let mut bgra = Vec::with_capacity(image.len());
     for pixel in image.pixels() {
@@ -201,4 +240,25 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
         hash = hash.wrapping_mul(FNV_PRIME);
     }
     hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn app_tile_corners_are_transparent_and_center_stays_opaque() {
+        let mut image = image::RgbaImage::from_pixel(16, 16, image::Rgba([20, 40, 80, 255]));
+        apply_app_tile_corners(&mut image);
+        assert_eq!(image.get_pixel(0, 0).0[3], 0);
+        assert_eq!(image.get_pixel(15, 0).0[3], 0);
+        assert_eq!(image.get_pixel(0, 15).0[3], 0);
+        assert_eq!(image.get_pixel(15, 15).0[3], 0);
+        assert_eq!(image.get_pixel(8, 8).0[3], 255);
+        let fringe = image.get_pixel(1, 0).0[3];
+        assert!(
+            fringe > 0 && fringe < 255,
+            "corner fringe should be anti-aliased, got {fringe}"
+        );
+    }
 }

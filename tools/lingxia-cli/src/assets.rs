@@ -385,6 +385,10 @@ pub(crate) fn prepare_configured_host_assets(
                 {
                     stage_windows_host_icon(project_root, &assets_root)?;
                 }
+                let host_icon = project_root.join("AppIcon.png");
+                if host_icon.is_file() {
+                    platform::macos::write_host_chrome_icon(&host_icon, &assets_root)?;
+                }
             }
         }
     }
