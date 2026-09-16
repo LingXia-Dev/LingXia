@@ -3346,6 +3346,15 @@ impl LxApp {
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
+            // Match first-open: put this lxapp on the switcher before the
+            // webview covers the previous main, or the row lands a frame late.
+            #[cfg(target_os = "windows")]
+            if !matches!(
+                stored.open_mode,
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+            ) {
+                self.set_active_main();
+            }
             self.runtime.show_lxapp(
                 self.appid.clone(),
                 title,
@@ -3443,6 +3452,36 @@ impl LxApp {
 
         // Open UI
         let title = self.listing_name();
+
+        // Windows: seed the switcher graph before `show_lxapp` presents the
+        // webview. Present-first left the page on screen while the new row
+        // waited on `set_active_main` + `present_layout`.
+        #[cfg(target_os = "windows")]
+        let is_panel = matches!(
+            startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        );
+        #[cfg(target_os = "windows")]
+        {
+            let surface = if is_panel {
+                PresentationKind::Panel
+            } else {
+                PresentationKind::Window
+            };
+            let query = (!startup_options.query.is_empty())
+                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
+            self.create_page_instance(
+                PageOwner::Scene(SceneId("system".to_string())),
+                PageTarget::Path(startup_options.path.clone()),
+                query,
+                surface,
+                None,
+            )?;
+            if !is_panel {
+                self.set_active_main();
+            }
+        }
+
         self.runtime.show_lxapp(
             self.appid.clone(),
             title,
@@ -3454,31 +3493,8 @@ impl LxApp {
         )?;
 
         #[cfg(target_os = "windows")]
-        {
-            let surface = match startup_options.open_mode {
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => {
-                    PresentationKind::Panel
-                }
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => {
-                    PresentationKind::Window
-                }
-            };
-            let query = (!startup_options.query.is_empty())
-                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
-            self.create_page_instance(
-                PageOwner::Scene(SceneId("system".to_string())),
-                PageTarget::Path(startup_options.path),
-                query,
-                surface,
-                None,
-            )?;
-            if !matches!(
-                startup_options.open_mode,
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
-            ) {
-                self.set_active_main();
-                self.sync_host_ui();
-            }
+        if !is_panel {
+            self.sync_host_ui();
         }
         Ok(())
     }

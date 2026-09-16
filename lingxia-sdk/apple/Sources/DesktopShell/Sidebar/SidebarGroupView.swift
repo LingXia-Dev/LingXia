@@ -184,9 +184,12 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     private var lastAppliedTabBarVisible: Bool?
     /// One-shot guard for applying the persisted user collapse state.
     private var didRestoreCollapsedState = false
+    /// Switch-in happened before tab items existed; expand once they arrive.
+    private var pendingReveal = false
     /// True when this group's lxapp is the active main — set by SidebarView.
     /// Clicking the active group's header toggles collapse; a non-active group's
-    /// header switches to it instead.
+    /// header switches to it. Switching collapses every other group so the
+    /// sidebar matches Windows: only one tabbar is expanded at a time.
     var isActiveGroup = false { didSet { updateActiveAppearance() } }
     /// Fired after a pin/unpin from the context menu so the sidebar
     /// re-renders its pin grid (the store itself lives in Rust).
@@ -199,8 +202,8 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     private var attributionBaseColor: NSColor = LxAppHostTheme.separator
     /// Unselected item title tint from the tabbar's `color`; nil = neutral.
     private var itemTint: NSColor?
-    /// Expanded items-area wash from the tabbar's `backgroundColor`;
-    /// nil = transparent (the sidebar base shows through).
+    /// Expanded items-area wash. Desktop mask never sets the
+    /// `backgroundColor` bit, so this stays nil (sidebar / yaml theme).
     private var itemsAreaColor: NSColor?
     /// Thin vertical line binding the expanded items to their group header
     /// (Windows-baseline attribution line, tabbar-tinted).
@@ -276,8 +279,7 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         appNameLabel.textColor = LxAppHostTheme.foreground
         chevronIndicator.contentTintColor = LxAppHostTheme.mutedForeground
         closeButton.contentTintColor = LxAppHostTheme.mutedForeground.withAlphaComponent(0.9)
-        // tabbar backgroundColor maps to the expanded items area (the group's
-        // own strip surface); unset stays transparent on the sidebar base.
+        // Desktop never applies tabBar.style.backgroundColor; yaml theme wins.
         itemsBackground.layer?.backgroundColor = themeCGColor((itemsAreaColor ?? NSColor.clear))
     }
 
@@ -318,13 +320,12 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
             guard let self else { return }
             // The ACTIVE app's header toggles its page list (collapse/expand) —
             // so clicking the group you're on retracts its items, not only the
-            // small chevron. A DIFFERENT app's header switches to it and ensures
-            // its list is shown (switching never hides another app's items).
+            // small chevron. A DIFFERENT app's header switches to it; SidebarView
+            // then collapses every other group (Windows accordion).
             if self.isActiveGroup && !self.itemViews.isEmpty {
                 self.toggleExpanded()
             } else {
                 self.onAppSelected?(self.appId)
-                if !self.isExpanded { self.toggleExpanded() }
             }
         }
         headerView.onRightClick = { [weak self] event in
@@ -534,8 +535,13 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         let apiVisible = !tabBar.is_api_hidden
         if lastAppliedTabBarVisible != apiVisible {
             lastAppliedTabBarVisible = apiVisible
-            if isExpanded != apiVisible && !itemViews.isEmpty {
-                toggleExpanded(persist: false)
+            if !itemViews.isEmpty {
+                if !apiVisible {
+                    setExpanded(false, persist: false)
+                } else if isActiveGroup {
+                    let userCollapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId) ?? false
+                    setExpanded(!userCollapsed, persist: false)
+                }
             }
         }
 
@@ -676,6 +682,9 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         attributionLine.isHidden = items.isEmpty
         let hasNotifications = items.contains { !$0.badge.toString().isEmpty || $0.has_red_dot }
         aggregateDot.isHidden = isExpanded || !hasNotifications
+        if pendingReveal, !items.isEmpty {
+            revealForSwitcher()
+        }
         if isExpanded {
             itemsHeightConstraint?.constant = totalHeight
             attributionHeightConstraint?.constant = max(0, totalHeight - Layout.itemTopPadding * 2)
@@ -694,6 +703,45 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         for itemView in itemViews {
             itemView.isSelected = false
         }
+    }
+
+    /// Windows shows only the active lxapp's tabbar. An inactive group is
+    /// collapsed here without writing `userCollapsed`, so coming back restores
+    /// the last chevron state instead of treating the switch as a user hide.
+    ///
+    /// `wasActive` is the group's highlight *before* this selection pass. An
+    /// already-active group is left alone — otherwise a later `applySelection`
+    /// (badge, registry, relayout) would reopen a tabbar the user just hid.
+    func syncExpandedForSwitcher(isActive: Bool, wasActive: Bool) {
+        if lastAppliedTabBarVisible == false {
+            pendingReveal = false
+            setExpanded(false, persist: false)
+            return
+        }
+        if isActive {
+            if !wasActive {
+                revealForSwitcher()
+            }
+            return
+        }
+        pendingReveal = false
+        setExpanded(false, persist: false)
+    }
+
+    private func revealForSwitcher() {
+        if lastAppliedTabBarVisible == false { return }
+        if itemViews.isEmpty {
+            pendingReveal = true
+            return
+        }
+        pendingReveal = false
+        let userCollapsed = LxAppShellPersistence.groupCollapsed(appId: providerAppId) ?? false
+        setExpanded(!userCollapsed, persist: false)
+    }
+
+    private func setExpanded(_ expanded: Bool, persist: Bool) {
+        guard isExpanded != expanded else { return }
+        toggleExpanded(persist: persist)
     }
 
     /// `persist: true` only for user-driven toggles (chevron/header click);
@@ -751,7 +799,14 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
     }
 
     @objc private func chevronClicked() {
-        toggleExpanded()
+        if isActiveGroup {
+            toggleExpanded()
+            return
+        }
+        // Inactive chevron is a switch, not a second open tree. Expand is
+        // user intent (they hit the control), then SidebarView collapses others.
+        onAppSelected?(appId)
+        if !isExpanded { toggleExpanded() }
     }
 
     @objc private func closeClicked() {

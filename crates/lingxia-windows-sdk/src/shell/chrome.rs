@@ -2336,6 +2336,15 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
+                // Same as macOS: the active lxapp's header toggles its page
+                // list. Re-sending BROWSER_TAB_CLICK is a no-op and made the
+                // chevron look broken when the hit landed on the name row.
+                if tabbar.group_active && !tabbar.items_api_hidden && !tabbar.items.is_empty() {
+                    return Some(chrome_command(
+                        command_id::SIDEBAR_GROUP_TOGGLE,
+                        json!({ "group": tabbar.group_id.clone() }),
+                    ));
+                }
                 let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,

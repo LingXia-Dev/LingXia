@@ -2375,9 +2375,12 @@ class SidebarView: NSView {
             return NSColor.clear.cgColor
         }()
 
-        // App group selection.
+        // App group selection. Accordion matches Windows: only the active
+        // lxapp keeps its tabbar open; a browser/native main collapses all.
         for (id, group) in groupViews {
             if case .app(let appId, let pageIndex) = model.selection, id == appId {
+                let wasActive = group.isActiveGroup
+                group.syncExpandedForSwitcher(isActive: true, wasActive: wasActive)
                 group.isActiveGroup = true
                 if let idx = pageIndex {
                     group.setActiveHighlight(pageIndex: idx)
@@ -2385,6 +2388,8 @@ class SidebarView: NSView {
                     group.setActiveHighlight(pageIndex: Int(tabBar.selected_index))
                 }
             } else {
+                let wasActive = group.isActiveGroup
+                group.syncExpandedForSwitcher(isActive: false, wasActive: wasActive)
                 group.isActiveGroup = false
                 group.clearHighlight()
             }
