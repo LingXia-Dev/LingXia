@@ -415,6 +415,7 @@ mod tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
