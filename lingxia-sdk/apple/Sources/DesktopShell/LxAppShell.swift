@@ -283,7 +283,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         if let viewController = viewControllers[appId] {
             return viewController
         }
-        if let currentViewController, currentViewController.appId == appId {
+        // A torn-down main (restart, close) can outlive its dictionary entry
+        // here; handing it back skips the present and leaves the card blank.
+        if let currentViewController,
+           currentViewController.appId == appId,
+           currentViewController.isViewLoaded,
+           currentViewController.view.superview != nil {
             return currentViewController
         }
         return nil
@@ -1243,6 +1248,16 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         storeSession(sessionId, for: appId)
         LxAppCore.setCurrentApp(appId: appId, path: path)
         tabManager.addTab(appId: appId)
+        // A managed main reopened by the runtime (an update restart) has no
+        // switcher click behind it: its surface stayed active while its
+        // controller was torn down, so nothing mounts the rebuilt one. A native
+        // main or browser cover owns the area otherwise; leave it in place.
+        if managedMainSurfaceByLxappId[appId] != nil,
+           attachedMainAppId == nil,
+           managedMainView == nil,
+           !browserCoordinator.isActive {
+            mountLxAppMainProvider(appId: appId)
+        }
         macOSLxApp.navigate(appId: appId, path: path, animationType: .none)
     }
 
@@ -1677,12 +1692,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             _ = onLxappClosed(appId, sessionId)
         }
 
+        // Clear the main ref too, else the rebuilt VC after a restart is treated
+        // as already-attached and never re-mounted → blank content.
+        if currentViewController?.appId == appId {
+            currentViewController = nil
+        }
         if let viewController = viewControllers[appId] {
-            // Clear the main ref too, else the rebuilt VC after a restart is treated
-            // as already-attached and never re-mounted → blank content.
-            if currentViewController === viewController {
-                currentViewController = nil
-            }
             viewController.destroyNativeComponents()
             viewController.view.removeFromSuperview()
             viewControllers.removeValue(forKey: appId)
