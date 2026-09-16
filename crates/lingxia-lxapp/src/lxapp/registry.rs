@@ -236,6 +236,48 @@ fn record(appid: &str) -> Option<RegistryRecord> {
     metadata::registry_get(appid).ok().flatten()
 }
 
+/// How long a chrome lookup may reuse a record without touching redb.
+const RECORD_CACHE_TTL: Duration = Duration::from_secs(2);
+
+struct CachedRecord {
+    read_at: Instant,
+    record: Option<RegistryRecord>,
+}
+
+fn record_cache() -> &'static Mutex<HashMap<String, CachedRecord>> {
+    static CACHE: OnceLock<Mutex<HashMap<String, CachedRecord>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Record for chrome paths (names, icons). Sidebar and switcher rebuilds ask
+/// for the same app many times per click; each answer is a redb read plus a
+/// JSON decode, so serve repeats from memory. Returns whether this call hit
+/// the store, which is also the moment `ensure_fresh` re-checks disk state.
+fn cached_record(appid: &str) -> (Option<RegistryRecord>, bool) {
+    let mut cache = record_cache().lock().unwrap_or_else(|err| err.into_inner());
+    if let Some(entry) = cache.get(appid)
+        && entry.read_at.elapsed() < RECORD_CACHE_TTL
+    {
+        return (entry.record.clone(), false);
+    }
+    let record = record(appid);
+    cache.insert(
+        appid.to_string(),
+        CachedRecord {
+            read_at: Instant::now(),
+            record: record.clone(),
+        },
+    );
+    (record, true)
+}
+
+fn invalidate_record(appid: &str) {
+    record_cache()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .remove(appid);
+}
+
 /// A record written with a clock that was ahead reads as "aged negative
 /// seconds". Treat it as expired rather than as eternally fresh — otherwise one
 /// bad clock pins a stale `Published` past every later suspension.
@@ -276,7 +318,8 @@ fn listing_needs_refresh(cached: &RegistryRecord) -> bool {
 /// The registry's name for this app.
 pub(crate) fn name(appid: &str) -> Option<String> {
     lxapp_registry_provider()?;
-    record(appid)
+    cached_record(appid)
+        .0
         .and_then(|record| record.name)
         .filter(|name| !name.trim().is_empty())
 }
@@ -285,7 +328,7 @@ pub(crate) fn name(appid: &str) -> Option<String> {
 /// Callers fall back to a host-drawn default mark from here.
 pub(crate) fn icon_path(appid: &str) -> Option<String> {
     lxapp_registry_provider()?;
-    let file = record(appid).and_then(|record| record.icon_file)?;
+    let file = cached_record(appid).0.and_then(|record| record.icon_file)?;
     let path = icons_dir()?.join(file);
     path.exists().then(|| path.to_string_lossy().into_owned())
 }
@@ -311,7 +354,12 @@ pub(crate) fn ensure_fresh<S: AsRef<str>>(appids: &[S]) {
         if appid.trim().is_empty() {
             continue;
         }
-        let cached = record(appid);
+        // A record served from memory was checked against disk within
+        // `RECORD_CACHE_TTL`; only a store read re-runs the TTL and icon test.
+        let (cached, from_store) = cached_record(appid);
+        if !from_store {
+            continue;
+        }
         let needs_fetch = match (&cached, &icons_dir) {
             (None, _) => true,
             (Some(cached), Some(icons_dir)) => {
@@ -466,6 +514,7 @@ pub(crate) async fn fetch_records(
     if let Err(err) = metadata::registry_upsert(&stored) {
         crate::warn!("Failed to cache registry record for {}: {}", appid, err);
     }
+    invalidate_record(appid);
     let changed = [appid.to_string()];
     notify_changed(&changed);
     Ok(info)
@@ -610,6 +659,7 @@ async fn fetch_icons(appid: &str, info: &LxAppRegistryInfo) {
         crate::warn!("Failed to cache registry icon for {}: {}", appid, err);
         return;
     }
+    invalidate_record(appid);
     notify_changed(&[appid.to_string()]);
 }
 
@@ -721,6 +771,7 @@ fn sweep_staging_files() {
 pub(crate) fn clear(appid: &str) {
     // Records go first and unconditionally: an unavailable icon directory must
     // not leave an uninstalled app's name and status answering lookups.
+    invalidate_record(appid);
     let orphan_candidates = match metadata::registry_remove_all(appid) {
         Ok(files) => files,
         Err(err) => {
@@ -728,6 +779,8 @@ pub(crate) fn clear(appid: &str) {
             return;
         }
     };
+    // A lookup between the first invalidation and the removal re-cached the old record.
+    invalidate_record(appid);
     if orphan_candidates.is_empty() {
         return;
     }
