@@ -623,13 +623,16 @@ Activation behavior:
 Header geometry:
 
 - Header accepts at most **2** icon-only actions and preserves declaration
-  order. If the complete set cannot fit beside native window controls, none of
-  the actions render; partial truncation is forbidden.
+  order.
 - A configured bootstrap Settings entry occupies the first header slot, so
-  one runtime header action remains. Runtime actions beyond that are dropped
-  in declaration order and the host MUST log a warning naming them.
-- Header actions do not render in the collapsed desktop rail or compact size
-  class. Their `label` is still the tooltip and accessibility text.
+  one runtime header action remains. Runtime actions beyond the available
+  slots are dropped in declaration order and the host MUST log a warning
+  naming them (once per distinct set, not per layout pass).
+- If the capped set cannot fit beside native window controls, none of the
+  actions render; width-based partial truncation is forbidden.
+- In the collapsed desktop rail, header actions lead the icon stack, above the
+  footer actions. They do not render in the compact size class. Their `label`
+  is still the tooltip and accessibility text.
 
 Expanded footer geometry:
 

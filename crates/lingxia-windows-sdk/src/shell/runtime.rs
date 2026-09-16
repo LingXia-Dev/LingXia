@@ -1872,7 +1872,7 @@ fn build_window_layout_with_visible_main(
     };
     let owner_app = shell_owner_app_for(app);
     let shell_app = owner_app.as_deref().unwrap_or(app);
-    let footer_actions = build_footer_actions(shell_app);
+    let mut footer_actions = build_footer_actions(shell_app);
     // A simulator frame whose toolbar carries the close/minimize dots owns the
     // window controls, so the shell drops its own caption there. A framed
     // simulated desktop keeps the standard Windows caption buttons.
@@ -1904,6 +1904,30 @@ fn build_window_layout_with_visible_main(
     let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
+    // The rail has no header row, so header actions (Settings, Downloads)
+    // lead its action stack instead of vanishing (macOS parity).
+    if let Some(tabbar) = tab_bar.as_ref().filter(|tabbar| {
+        (tabbar.collapsed || tabbar.icon_rail)
+            && matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+    }) {
+        let mut rail_actions = tabbar
+            .header_actions
+            .iter()
+            .map(|action| WindowsShellFooterActionLayout {
+                generation: action.generation,
+                id: action.id.clone(),
+                label: action.label.clone(),
+                icon_path: action.icon_path.clone(),
+                disabled: action.disabled,
+                source: action.source.clone(),
+            })
+            .collect::<Vec<_>>();
+        rail_actions.append(&mut footer_actions);
+        footer_actions = rail_actions;
+    }
     let compact_browser_chrome = address_bar.is_some()
         && suppress_window_controls
         && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;

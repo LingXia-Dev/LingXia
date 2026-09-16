@@ -1446,14 +1446,18 @@ class SidebarView: NSView {
             $0.removeFromSuperview()
         }
         // Footer actions keep their bottom ownership in the rail. Only their
-        // icon remains; the label moves to the tooltip.
-        for item in model.panelItems {
+        // icon remains; the label moves to the tooltip. The header row has no
+        // room in the rail, so its actions (Settings, Downloads) lead the same
+        // stack instead of becoming unreachable.
+        let railActions = headerActionItems.map { ("sidebar-header-action:", $0) }
+            + model.panelItems.map { ("sidebar-action:", $0) }
+        for (prefix, item) in railActions {
             let iconPath = item.iconURL?.path ?? ""
             let image = Self.sidebarActionIcon(item.iconURL, size: Layout.railIconSize)
                 ?? item.systemImageName.flatMap {
                     NSImage(systemSymbolName: $0, accessibilityDescription: item.label)
                 }
-            let key = "sidebar-action:\(item.id)"
+            let key = prefix + item.id
             let isTemplate = TabBarHelper.isTemplateIcon(iconPath)
             let button = makeRailButton(
                 key: key,
@@ -1594,10 +1598,19 @@ class SidebarView: NSView {
 
     @objc private func railSidebarActionClicked(_ sender: NSButton) {
         closeRailHoverPanel()
-        guard let key = sender.identifier?.rawValue, key.hasPrefix("sidebar-action:") else { return }
-        let id = String(key.dropFirst("sidebar-action:".count))
-        guard let item = model.panelItems.first(where: { $0.id == id }) else { return }
-        onPanelItemToggled?(item.generation, id, item.source)
+        guard let key = sender.identifier?.rawValue else { return }
+        let item: PanelIconItem?
+        if key.hasPrefix("sidebar-header-action:") {
+            let id = String(key.dropFirst("sidebar-header-action:".count))
+            item = headerActionItems.first(where: { $0.id == id })
+        } else if key.hasPrefix("sidebar-action:") {
+            let id = String(key.dropFirst("sidebar-action:".count))
+            item = model.panelItems.first(where: { $0.id == id })
+        } else {
+            item = nil
+        }
+        guard let item else { return }
+        onPanelItemToggled?(item.generation, item.id, item.source)
     }
 
     private func browserContextMenu(for id: String) -> NSMenu? {
@@ -1958,6 +1971,10 @@ class SidebarView: NSView {
             ])
         }
         updateHeaderActionVisibility()
+        if isCompact {
+            rebuildRail()
+            updateSidebarActionFooterHeight()
+        }
     }
 
     /// The constraint keeping the actions clear of the traffic lights, created
@@ -2048,7 +2065,9 @@ class SidebarView: NSView {
 
     private func updateSidebarActionFooterHeight() {
         if isCompact {
-            let visibleActions = min(CGFloat(model.panelItems.count), Layout.footerMaxRows)
+            // The rail stack carries the header actions ahead of the footer ones.
+            let railActions = headerActionItems.count + model.panelItems.count
+            let visibleActions = min(CGFloat(railActions), Layout.footerMaxRows)
             let actionHeight = visibleActions > 0
                 ? visibleActions * Layout.railButtonSize
                     + max(0, visibleActions - 1) * railFooterStack.spacing
