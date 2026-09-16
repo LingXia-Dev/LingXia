@@ -1134,8 +1134,30 @@ fn relative_to(path: &Path, root: &Path) -> String {
 }
 
 fn normalize_path(path: &Path) -> Result<PathBuf> {
-    path.canonicalize()
-        .with_context(|| format!("Failed to canonicalize {}", path.display()))
+    let canonical = path
+        .canonicalize()
+        .with_context(|| format!("Failed to canonicalize {}", path.display()))?;
+    Ok(strip_verbatim_prefix(canonical))
+}
+
+/// Windows `canonicalize` yields `\\?\D:\…`. That prefix never matches the
+/// project root, so diagnostics printed absolute verbatim paths and every
+/// module id carried it; keep plain drive paths.
+#[cfg(windows)]
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy();
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        PathBuf::from(format!(r"\\{rest}"))
+    } else if let Some(rest) = text.strip_prefix(r"\\?\") {
+        PathBuf::from(rest)
+    } else {
+        path
+    }
+}
+
+#[cfg(not(windows))]
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    path
 }
 
 fn format_diagnostics<T: std::fmt::Debug>(diagnostics: &[T]) -> String {
