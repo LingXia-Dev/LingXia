@@ -97,14 +97,18 @@ fn draw_tab_bar_inner(
         let item_rect = tab_item_rect(rect, tabbar.position, count, slot);
         let is_more = kind == BottomSlot::More;
         let item = match kind {
-            BottomSlot::Tab(index) => tabbar.items.get(index),
+            BottomSlot::Tab(visible) => tabbar.items.get(visible),
             BottomSlot::More => None,
         };
         let selected = match kind {
-            BottomSlot::Tab(index) => tabbar.selected_index == index as i32,
-            BottomSlot::More => {
-                overflow_start.is_some_and(|start| tabbar.selected_index >= start as i32)
+            BottomSlot::Tab(_) => {
+                item.is_some_and(|item| tabbar.selected_index == item.index as i32)
             }
+            BottomSlot::More => overflow_start.is_some_and(|start| {
+                tabbar.items[start..]
+                    .iter()
+                    .any(|item| tabbar.selected_index == item.index as i32)
+            }),
         };
         let color = if selected {
             tabbar.selected_color
@@ -391,7 +395,7 @@ pub(super) fn draw_sidebar_items(
     cursor: Option<(i32, i32)>,
     scroll_offset: i32,
 ) {
-    if !tabbar.background_transparent && !tabbar.items.is_empty() {
+    if !tabbar.background_transparent && tabbar.paint_items_background && !tabbar.items.is_empty() {
         let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
         fill_round_rect_aa(
             hdc,
@@ -425,7 +429,7 @@ pub(super) fn draw_sidebar_items(
 
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, tabbar, index, scroll_offset);
-        let selected = tabbar.selected_index == index as i32;
+        let selected = tabbar.selected_index == item.index as i32;
         if selected {
             // A flat selection avoids the horizontal shadow residue that was
             // especially visible while the old and new rows repainted during
