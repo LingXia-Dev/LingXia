@@ -239,8 +239,8 @@ mod bridge {
 
         // Show or hide the shell's "an AI assistant is in control" indicator.
         // Returns false when no macOS shell is present.
-        #[swift_bridge(swift_name = "LxApp.setAgentControlIndicator")]
-        fn set_agent_control_indicator(visible: bool) -> bool;
+        #[swift_bridge(swift_name = "LxApp.setControlSessionIndicator")]
+        fn set_control_session_indicator(visible: bool) -> bool;
 
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
@@ -507,7 +507,7 @@ pub use bridge::{
     update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
-pub use bridge::{notify_app_update_ready, reveal_in_file_manager, set_agent_control_indicator};
+pub use bridge::{notify_app_update_ready, reveal_in_file_manager, set_control_session_indicator};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

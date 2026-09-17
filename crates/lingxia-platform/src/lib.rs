@@ -28,7 +28,7 @@ pub struct ScreenInfo {
     pub scale: f64,
 }
 
-pub mod agent_control;
+pub mod control_session;
 pub(crate) mod rt;
 pub mod traits;
 
@@ -121,8 +121,8 @@ pub use android::{
     write_external_storage_text,
 };
 
-pub use agent_control::{
-    AgentControlStopHandler, request_agent_control_stop, set_agent_control_stop_handler,
+pub use control_session::{
+    ControlSessionStopHandler, request_control_session_stop, set_control_session_stop_handler,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

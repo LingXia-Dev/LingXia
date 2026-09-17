@@ -9,9 +9,9 @@ import AppKit
 ///   control   Stop";
 /// - an orange dot on the Dock icon, for when the app is in the background.
 @MainActor
-final class AgentControlIndicator {
-    private let border = AgentControlBorderView()
-    private let capsule: AgentControlCapsule
+final class ControlSessionIndicator {
+    private let border = ControlSessionBorderView()
+    private let capsule: ControlSessionCapsule
     private var dockMark: NSView?
 
     fileprivate enum Style {
@@ -20,7 +20,7 @@ final class AgentControlIndicator {
     }
 
     init(onStop: @escaping () -> Void) {
-        capsule = AgentControlCapsule(onStop: onStop)
+        capsule = ControlSessionCapsule(onStop: onStop)
     }
 
     /// `content` is the view the capsule centres on; both views go on the
@@ -83,9 +83,9 @@ final class AgentControlIndicator {
 private func addPulse(to layer: CALayer?) {
     guard let layer, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
     let pulse = CABasicAnimation(keyPath: "opacity")
-    pulse.fromValue = AgentControlIndicator.Style.pulse.from
-    pulse.toValue = AgentControlIndicator.Style.pulse.to
-    pulse.duration = AgentControlIndicator.Style.pulse.duration
+    pulse.fromValue = ControlSessionIndicator.Style.pulse.from
+    pulse.toValue = ControlSessionIndicator.Style.pulse.to
+    pulse.duration = ControlSessionIndicator.Style.pulse.duration
     pulse.autoreverses = true
     pulse.repeatCount = .infinity
     pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
@@ -94,7 +94,7 @@ private func addPulse(to layer: CALayer?) {
 
 /// A tinted frame around the window. Clicks pass straight through.
 @MainActor
-private final class AgentControlBorderView: NSView {
+private final class ControlSessionBorderView: NSView {
     private static let width: CGFloat = 3
     // macOS window corners; the window clips anything outside them.
     private static let cornerRadius: CGFloat = 10
@@ -104,7 +104,7 @@ private final class AgentControlBorderView: NSView {
         wantsLayer = true
         layer?.borderWidth = Self.width
         layer?.cornerRadius = Self.cornerRadius
-        layer?.borderColor = themeCGColor(AgentControlIndicator.Style.tint)
+        layer?.borderColor = themeCGColor(ControlSessionIndicator.Style.tint)
         setAccessibilityElement(false)
     }
 
@@ -120,7 +120,7 @@ private final class AgentControlBorderView: NSView {
 
 /// "● An AI assistant is in control   Stop"
 @MainActor
-private final class AgentControlCapsule: NSView {
+private final class ControlSessionCapsule: NSView {
     private let onStop: () -> Void
     private let dot = NSView()
 
@@ -150,7 +150,7 @@ private final class AgentControlCapsule: NSView {
         layer?.cornerRadius = Style.height / 2
         layer?.backgroundColor = themeCGColor(Style.background)
         layer?.borderWidth = 1
-        layer?.borderColor = themeCGColor(AgentControlIndicator.Style.tint.withAlphaComponent(0.6))
+        layer?.borderColor = themeCGColor(ControlSessionIndicator.Style.tint.withAlphaComponent(0.6))
         shadow = NSShadow()
         layer?.shadowColor = NSColor.black.cgColor
         layer?.shadowOpacity = 0.25
@@ -159,24 +159,24 @@ private final class AgentControlCapsule: NSView {
 
         dot.wantsLayer = true
         dot.layer?.cornerRadius = Style.dotSize / 2
-        dot.layer?.backgroundColor = themeCGColor(AgentControlIndicator.Style.tint)
+        dot.layer?.backgroundColor = themeCGColor(ControlSessionIndicator.Style.tint)
         dot.translatesAutoresizingMaskIntoConstraints = false
 
-        let title = NSTextField(labelWithString: L10n.string("lx_agent_control_active"))
+        let title = NSTextField(labelWithString: L10n.string("lx_control_session_active"))
         title.font = NSFont.systemFont(ofSize: 12, weight: .semibold)
         title.textColor = .white
         title.lineBreakMode = .byTruncatingTail
         title.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         title.translatesAutoresizingMaskIntoConstraints = false
 
-        let stopTitle = L10n.string("lx_agent_control_stop")
+        let stopTitle = L10n.string("lx_control_session_stop")
         let stop = NSButton(title: stopTitle, target: self, action: #selector(stopClicked))
         stop.isBordered = false
         stop.attributedTitle = NSAttributedString(
             string: stopTitle,
             attributes: [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: AgentControlIndicator.Style.tint,
+                .foregroundColor: ControlSessionIndicator.Style.tint,
             ])
         stop.setContentCompressionResistancePriority(.required, for: .horizontal)
         stop.translatesAutoresizingMaskIntoConstraints = false
