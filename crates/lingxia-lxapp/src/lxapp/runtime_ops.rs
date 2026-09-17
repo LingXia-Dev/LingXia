@@ -280,8 +280,9 @@ pub fn dispose_page_instance_by_id(id: &str, reason: CloseReason) -> Result<(), 
 /// Triggers memory cleanup for LxApps.
 /// This function should be called by the platform when the system is under memory pressure.
 pub fn on_low_memory() {
+    info!("on_low_memory: discarding hidden-main tab WebViews, then evicting an unused lxapp");
+    super::page_discard::enforce_page_webview_budget_with_limit(0);
     if let Some(manager) = super::runtime_registry::get_lxapps_manager() {
-        info!("on_low_memory triggered, evicting least recently used app.");
         manager.evict_lru_lxapp();
     }
 }

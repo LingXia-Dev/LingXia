@@ -28,6 +28,8 @@ use lingxia_webview::{
 };
 use ring::rand::{SecureRandom, SystemRandom};
 
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
@@ -97,7 +99,6 @@ type WebviewReadyReceiver = Arc<Mutex<watch::Receiver<Option<Result<(), String>>
 const DEFAULT_VIEW_CALL_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Inner state of a page that can be shared across threads
-#[derive(Clone)]
 pub(crate) struct PageInstanceInner {
     id: PageInstanceId,
     appid: String,
@@ -145,6 +146,11 @@ pub(crate) struct PageInstanceInner {
     // Serializes teardown/rebuild transitions of the owed reset, so the timer
     // and an entry racing each other cannot interleave terminate/create sends.
     reset_transition: Arc<std::sync::Mutex<()>>,
+
+    /// Native WebView was reclaimed to free memory. Logic, `data`, and the
+    /// instance stay; [`PageInstance::ensure_live_webview`] recreates the view.
+    discarded: AtomicBool,
+    webview_create_in_flight: AtomicBool,
 }
 
 /// A page runs on three independent clocks, and conflating them is what let
@@ -490,115 +496,12 @@ impl PageInstance {
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
+            discarded: AtomicBool::new(false),
+            webview_create_in_flight: AtomicBool::new(true),
         });
-
-        // Capture weak ref before moving inner into page
-        let page_weak_for_lx = Arc::downgrade(&inner);
 
         let page = Self { inner };
-
-        // Initiate WebView creation with scheme handlers
-        // Register closure-based scheme handlers so lingxia-webview
-        // doesn't need to know about lxapp business logic.
-        // Captures for navigation handler (no PageInstanceInner ref → no circular ref)
-        let runtime_for_nav = lxapp.runtime.clone();
-        let appid_for_nav = appid.clone();
-        let session_id_for_nav = lxapp.session_id();
-
-        // Captures for new-window handler
-        let runtime_for_new_window = lxapp.runtime.clone();
-        let appid_for_new_window = appid.clone();
-        let session_id_for_new_window = lxapp.session_id();
-
-        let session = WebViewBuilder::strict(webtag)
-            .surface_owned(isolated)
-            .delegate(Arc::new(page.clone()))
-            .on_scheme("lx", move |req| {
-                let page_weak_for_lx = page_weak_for_lx.clone();
-                async move {
-                    let Some(inner) = page_weak_for_lx.upgrade() else {
-                        return None.into();
-                    };
-                    let page = PageInstance::from_inner(inner);
-                    let lxapp = page.owning_lxapp();
-                    if lxapp.status() == LxAppSessionStatus::Closed {
-                        return None.into();
-                    }
-                    lxapp.handle_lingxia_request(&page, req).into()
-                }
-            })
-            .on_navigation(move |request| {
-                let url = request.url.as_str();
-                let scheme = url.split(':').next().unwrap_or("");
-                match scheme {
-                    // lx:// pages and inline content are always allowed
-                    "lx" | "data" | "blob" => NavigationPolicy::Allow,
-                    _ => {
-                        // Strict mode: https/http/about and external schemes (tel:, mailto:, etc.)
-                        // must go through openURL so the host app controls navigation.
-                        // about: is silently cancelled (no legitimate use in strict lxapp pages).
-                        if scheme != "about" {
-                            let _ = runtime_for_nav.open_url(OpenUrlRequest {
-                                owner_appid: appid_for_nav.clone(),
-                                owner_session_id: session_id_for_nav,
-                                url: url.to_string(),
-                                target: OpenUrlTarget::External,
-                                want_tab_id: false,
-                            });
-                        }
-                        NavigationPolicy::Cancel
-                    }
-                }
-            })
-            .on_new_window(move |url| {
-                let _ = runtime_for_new_window.open_url(OpenUrlRequest {
-                    owner_appid: appid_for_new_window.clone(),
-                    owner_session_id: session_id_for_new_window,
-                    url: url.to_string(),
-                    target: OpenUrlTarget::SelfTarget,
-                    want_tab_id: false,
-                });
-                NewWindowPolicy::Cancel
-            })
-            .create();
-
-        // Spawn task to wait for WebView creation completion
-        // Keep a strong reference to ensure page stays alive during WebView creation
-        let page_for_task = page.clone();
-        let appid_clone = appid.clone();
-        let path_clone = path.clone();
-
-        crate::executor::spawn(async move {
-            match session.wait_ready().await {
-                Ok(webview_controller) => {
-                    // First attach WebView to page
-                    page_for_task.attach_webview(webview_controller.clone());
-
-                    // Call setup callback - let external code handle the rest
-                    let result = setup_callback(&page_for_task).await;
-
-                    // Mark ready after setup completes so waiters are released only once page is usable.
-                    page_for_task.mark_webview_ready(result);
-                }
-                Err(e) => {
-                    let still_registered = page_for_task
-                        .owning_lxapp()
-                        .get_page_by_instance_id(&page_for_task.instance_id())
-                        .is_some();
-                    if page_for_task.document_is_departing() || !still_registered {
-                        debug!("Cancelled WebView creation for departed page: {}", e)
-                            .with_appid(appid_clone)
-                            .with_path(path_clone);
-                    } else {
-                        error!("Failed to create WebView: {}", e)
-                            .with_appid(appid_clone)
-                            .with_path(path_clone);
-                    }
-                    page_for_task.mark_webview_ready(Err(e.to_string()));
-                }
-            }
-        });
-
+        page.spawn_strict_webview(setup_callback);
         page
     }
 
@@ -635,6 +538,8 @@ impl PageInstance {
             document_start_scripts: lxapp.document_start_scripts_snapshot(),
             page_scripts: lxapp.page_scripts_snapshot(),
             loaded_tx,
+            discarded: AtomicBool::new(false),
+            webview_create_in_flight: AtomicBool::new(false),
         });
         Self { inner }
     }
@@ -655,6 +560,171 @@ impl PageInstance {
     /// bare path.
     pub(crate) fn is_isolated(&self) -> bool {
         self.inner.isolated
+    }
+
+    pub(crate) fn is_discarded(&self) -> bool {
+        self.inner.discarded.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn has_live_webview(&self) -> bool {
+        self.webview().is_some() && !self.is_discarded()
+    }
+
+    /// Destroy the native WebView without unloading the page. Logic, `data`,
+    /// query, and the instance stay; the next show recreates the document.
+    pub(crate) fn discard_webview(&self) -> Result<(), LxAppError> {
+        if self.inner.isolated {
+            return Ok(());
+        }
+        if self.inner.webview_create_in_flight.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        let Some(webview) = self.webview() else {
+            self.inner.discarded.store(true, Ordering::SeqCst);
+            return Ok(());
+        };
+        self.cancel_bridge_work();
+        if let Ok(mut webview_guard) = self.inner.webview.lock() {
+            let _ = webview_guard.take();
+        }
+        destroy_webview_if_matches(&self.webtag(), &webview);
+        if let Ok(mut state) = self.inner.state.lock() {
+            Self::invalidate_document_state(&mut state);
+        }
+        let _ = self.inner.webview_ready_tx.send(None);
+        self.inner.discarded.store(true, Ordering::SeqCst);
+        Ok(())
+    }
+
+    /// Recreate a discarded page WebView. No-op when the view is already live
+    /// or a create is already in flight.
+    pub(crate) fn ensure_live_webview(&self) {
+        if self.has_live_webview() {
+            return;
+        }
+        if !self.is_discarded() {
+            return;
+        }
+        if self
+            .inner
+            .webview_create_in_flight
+            .swap(true, Ordering::SeqCst)
+        {
+            return;
+        }
+        self.inner.discarded.store(false, Ordering::SeqCst);
+        let _ = self.inner.webview_ready_tx.send(None);
+        self.spawn_strict_webview(|page| {
+            let page = page.clone();
+            async move {
+                let result = page.load_html().map_err(|err| err.to_string());
+                if result.is_err() {
+                    page.inner.discarded.store(true, Ordering::SeqCst);
+                }
+                result
+            }
+        });
+    }
+
+    fn spawn_strict_webview<F, Fut>(&self, setup_callback: F)
+    where
+        F: Fn(&PageInstance) -> Fut + Send + 'static,
+        Fut: Future<Output = Result<(), String>> + Send + 'static,
+    {
+        let page_weak_for_lx = Arc::downgrade(&self.inner);
+        let lxapp = self.owning_lxapp();
+        let runtime_for_nav = lxapp.runtime.clone();
+        let appid_for_nav = self.appid();
+        let session_id_for_nav = lxapp.session_id();
+        let runtime_for_new_window = lxapp.runtime.clone();
+        let appid_for_new_window = self.appid();
+        let session_id_for_new_window = lxapp.session_id();
+        let isolated = self.inner.isolated;
+        let webtag = self.webtag();
+
+        let session = WebViewBuilder::strict(webtag)
+            .surface_owned(isolated)
+            .delegate(Arc::new(self.clone()))
+            .on_scheme("lx", move |req| {
+                let page_weak_for_lx = page_weak_for_lx.clone();
+                async move {
+                    let Some(inner) = page_weak_for_lx.upgrade() else {
+                        return None.into();
+                    };
+                    let page = PageInstance::from_inner(inner);
+                    let lxapp = page.owning_lxapp();
+                    if lxapp.status() == LxAppSessionStatus::Closed {
+                        return None.into();
+                    }
+                    lxapp.handle_lingxia_request(&page, req).into()
+                }
+            })
+            .on_navigation(move |request| {
+                let url = request.url.as_str();
+                let scheme = url.split(':').next().unwrap_or("");
+                match scheme {
+                    "lx" | "data" | "blob" => NavigationPolicy::Allow,
+                    _ => {
+                        if scheme != "about" {
+                            let _ = runtime_for_nav.open_url(OpenUrlRequest {
+                                owner_appid: appid_for_nav.clone(),
+                                owner_session_id: session_id_for_nav,
+                                url: url.to_string(),
+                                target: OpenUrlTarget::External,
+                                want_tab_id: false,
+                            });
+                        }
+                        NavigationPolicy::Cancel
+                    }
+                }
+            })
+            .on_new_window(move |url| {
+                let _ = runtime_for_new_window.open_url(OpenUrlRequest {
+                    owner_appid: appid_for_new_window.clone(),
+                    owner_session_id: session_id_for_new_window,
+                    url: url.to_string(),
+                    target: OpenUrlTarget::SelfTarget,
+                    want_tab_id: false,
+                });
+                NewWindowPolicy::Cancel
+            })
+            .create();
+
+        let page_for_task = self.clone();
+        let appid_clone = self.appid();
+        let path_clone = self.path();
+        crate::executor::spawn(async move {
+            let result = match session.wait_ready().await {
+                Ok(webview_controller) => {
+                    page_for_task.attach_webview(webview_controller.clone());
+                    setup_callback(&page_for_task).await
+                }
+                Err(e) => {
+                    let still_registered = page_for_task
+                        .owning_lxapp()
+                        .get_page_by_instance_id(&page_for_task.instance_id())
+                        .is_some();
+                    if page_for_task.document_is_departing() || !still_registered {
+                        debug!("Cancelled WebView creation for departed page: {}", e)
+                            .with_appid(appid_clone)
+                            .with_path(path_clone);
+                    } else {
+                        error!("Failed to create WebView: {}", e)
+                            .with_appid(appid_clone)
+                            .with_path(path_clone);
+                    }
+                    Err(e.to_string())
+                }
+            };
+            page_for_task
+                .inner
+                .webview_create_in_flight
+                .store(false, Ordering::SeqCst);
+            if result.is_err() {
+                page_for_task.inner.discarded.store(true, Ordering::SeqCst);
+            }
+            page_for_task.mark_webview_ready(result);
+        });
     }
 
     /// The webview tag identifying this page instance's view (also the
@@ -855,12 +925,16 @@ impl PageInstance {
         Ok(())
     }
 
-    fn invalidate_renderer_state(state: &mut PageState) {
+    fn invalidate_document_state(state: &mut PageState) {
         // Logic and the entry/query survive. Replaying onLoad would reset
         // forms and duplicate subscriptions; only onReady belongs to the new DOM.
         state.bridge_ready = false;
         state.ready_dispatched = false;
         state.render_status = PageRenderStatus::Unstarted;
+    }
+
+    fn invalidate_renderer_state(state: &mut PageState) {
+        Self::invalidate_document_state(state);
         state.renderer_recovery_pending = true;
     }
 
@@ -1310,8 +1384,12 @@ impl PageInstance {
     }
 
     pub(crate) fn mark_webview_ready(&self, result: Result<(), String>) {
+        let ok = result.is_ok();
         // Ignore errors; receiver will handle missing updates.
         let _ = self.inner.webview_ready_tx.send(Some(result));
+        if ok {
+            crate::lxapp::page_discard::enforce_page_webview_budget();
+        }
     }
 
     pub(crate) fn mark_page_svc_ready(&self) {
@@ -1370,6 +1448,9 @@ impl PageInstance {
     }
 
     pub async fn wait_webview_ready(&self) -> Result<(), String> {
+        if self.is_discarded() {
+            self.ensure_live_webview();
+        }
         let rx = {
             // Clone receiver so concurrent waiters don't block each other.
             self.inner
@@ -1615,6 +1696,9 @@ impl PageInstance {
         // Public entry points run this before resolving PageSvc/query state;
         // keep the same preflight here as a backstop for direct native calls.
         lxapp.validate_navigation_entry(&target_url, nav_type)?;
+        if target_page.is_discarded() {
+            target_page.ensure_live_webview();
+        }
         let is_tabbar_page = lxapp
             .get_tabbar()
             .is_some_and(|tabbar| tabbar.is_tabbar_page(&path));
@@ -2167,6 +2251,28 @@ mod tests {
             orientation_override: OrientationOverride::default(),
             query: serde_json::json!({}),
         }
+    }
+
+    #[test]
+    fn document_discard_preserves_logic_entry_query_and_visibility() {
+        let mut state = test_page_state();
+        state.entry = EntryPhase::Loaded;
+        state.visibility = Visibility::Hidden;
+        state.event = Some(PageLifecycleEvent::OnHide);
+        state.query = serde_json::json!({"step": "login"});
+        state.bridge_ready = true;
+        state.ready_dispatched = true;
+        state.render_status = PageRenderStatus::Finished;
+
+        PageInstance::invalidate_document_state(&mut state);
+        assert!(!state.renderer_recovery_pending);
+        assert!(!state.accepts_view_state_patches());
+        assert_eq!(state.entry, EntryPhase::Loaded);
+        assert_eq!(state.visibility, Visibility::Hidden);
+        assert_eq!(state.query, serde_json::json!({"step": "login"}));
+        assert!(!PageInstance::handshake_should_request_on_load(
+            &state, false
+        ));
     }
 
     #[test]
