@@ -1,4 +1,14 @@
-import type { NavigatorChannel, NavigatorOpenType, NavigatorTarget } from "./navigator.js";
+import type {
+  NavigatorChannel,
+  NavigatorEdge,
+  NavigatorFloatPosition,
+  NavigatorInteraction,
+  NavigatorOpenType,
+  NavigatorPlacement,
+  NavigatorSize,
+  NavigatorTarget,
+  NavigatorWindowChrome,
+} from "./navigator.js";
 import type { NavigatorQuery } from "./navigator.js";
 import type { LxMediaSwiperItem } from "./media_swiper.js";
 import type { LxVideoQuality, LxVideoEventPayloads } from "./video.js";
@@ -37,6 +47,12 @@ export interface NavigatorNativeAttrOptions {
   openType?: NavigatorOpenType;
   target?: NavigatorTarget;
   delta?: number;
+  as?: NavigatorPlacement;
+  edge?: NavigatorEdge;
+  position?: NavigatorFloatPosition;
+  chrome?: NavigatorWindowChrome;
+  size?: NavigatorSize;
+  interaction?: NavigatorInteraction;
   appId?: string;
   query?: NavigatorQuery;
   channel?: NavigatorChannel;
@@ -64,6 +80,12 @@ export function buildNavigatorNativeAttrs(
   if (options.url) result.url = options.url;
   if (options.page) result.page = options.page;
   if (options.target) result.target = options.target;
+  if (options.as) result.as = options.as;
+  if (options.edge) result.edge = options.edge;
+  if (options.position) result.position = options.position;
+  if (options.chrome) result.chrome = options.chrome;
+  if (options.size) result.size = JSON.stringify(options.size);
+  if (options.interaction) result.interaction = JSON.stringify(options.interaction);
   if (options.appId) result["app-id"] = options.appId;
   if (options.query) result.query = JSON.stringify(options.query);
   if (options.channel) result.channel = options.channel;

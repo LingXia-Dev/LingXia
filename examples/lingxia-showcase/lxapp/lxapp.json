@@ -1,7 +1,7 @@
 {
   "appId": "lingxia-showcase",
   "appName": "LingXia Showcase",
-  "version": "1.6.12",
+  "version": "1.6.13",
   "pages": [
     {
       "name": "home",

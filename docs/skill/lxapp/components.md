@@ -329,48 +329,54 @@ user reaches the last item; `onError` carries an error `code`.
 
 ## `LxNavigator`
 
-Declarative navigation — wraps content that, when tapped, navigates inside or
-outside the lxapp. The full attribute list (`url`, `page`, `query`,
-`delta`, `app-id`, `channel`, `target-version`, `phone-number`, …) is the
-exported `LxNavigatorAttributes` from `@lingxia/elements`. The doc-only behavior
-is the routing it selects via `open-type` / `target`. `page` is the configured
-page name from `lxapp.json`; full routes are not accepted through a `path`
-attribute.
+Declarative navigation — wraps content that, when tapped, opens a page, another
+lxapp, or a URL. The full attribute list is the exported
+`LxNavigatorAttributes` from `@lingxia/elements`. `page` is the configured page
+name from `lxapp.json`; full routes are not accepted through a `path` attribute.
 
-**`open-type` routing:**
+**`target`** — what to open. Inferred when omitted: `app-id` → `lxapp`,
+`url` → `url`, otherwise `page`.
+
+**`as`** — where to open it. Same values and options as Logic's
+`lx.surface.openUrl` / `lx.surface.openPage`:
+
+| `target` | `as` | Result | Extra attributes |
+|---|---|---|---|
+| `url` | `external` (default) | System browser | — |
+| `url` | `tab` | In-app browser tab | — |
+| `url` | `aside` | Browser docked beside the main | `edge`, `size` |
+| `page` | *(omitted)* | Runs `open-type` in the page stack | — |
+| `page` | `float` | Page float over the current surface | `position`, `size`, `interaction` |
+| `page` | `window` | Separate desktop window (rejected on mobile) | `chrome`, `size`, `interaction` |
+| `lxapp` | *(not allowed)* | Opens `app-id` (optional `page`, `query`, `channel`, `target-version`) | — |
+
+`size` and `interaction` are objects in React/Vue (JSON strings on the raw
+`<lx-navigator>` tag). A placement opens without handing back a handle; use
+Logic's `lx.surface.*` when you need to message, hide, or close the surface.
+
+**`open-type`** — applies to `target="page"` without `as`, except that
+`navigateBack`, `exit`, and `tel` work for any target:
 
 | Value | Behavior |
 |---|---|
 | `navigate` (default) | Push a new page in the current lxapp |
 | `redirect` | Replace the current page |
-| `navigateBack` | Pop back; use `delta` for distance |
+| `navigateBack` | Pop back by `delta`; with `target="lxapp"`, return from the opened lxapp |
 | `reLaunch` | Restart the app at a new page |
 | `switchTab` | Switch to a tab page |
 | `exit` | Exit the current lxapp |
-| `openUrl` | Open `url`; where it opens is decided by `target` |
 | `tel` | Trigger a phone call (use with `phone-number`) |
-
-**`target`** — when omitted it is inferred: `app-id` set → `lxapp`;
-`url` starts with `http(s)://` → `browser`; otherwise `self`. Except for `tel`,
-`exit`, and `navigateBack`, `target` is applied before `open-type`:
-
-| Value | Behavior |
-|---|---|
-| `browser` | Open `url` in the system browser |
-| `lxapp` | Open lxapp `app-id` (optional `page`, `query`, `channel`, `target-version`); `navigateBack` returns from it |
-| `self` + `http(s)` `url` | Open `url` in the in-app browser |
-| `self` + `page` | Run `open-type` inside the current lxapp |
-
-An `http(s)` `url` with no `target` goes to the system browser; set
-`target="self"` to keep it in the app. `LxNavigator` has no aside/`edge`
-placement — use `lx.surface.openUrl(url, { as: 'aside', edge })` from Logic.
 
 **Events:** `onSuccess` / `onFail` / `onComplete` — `event.detail` is
 `{ success?: boolean; errMsg?: string }`.
 
 ```tsx
-<LxNavigator page="detail" query='{"id":42}' onFail={actions.onNavFail}>
+<LxNavigator page="detail" query={{ id: 42 }} onFail={actions.onNavFail}>
   <div>Open detail</div>
+</LxNavigator>
+
+<LxNavigator url="https://example.com" as="aside" edge="right">
+  <div>Docs</div>
 </LxNavigator>
 ```
 

@@ -153,7 +153,7 @@
 
             <LxNavigator
               url="https://www.deepseek.com"
-              target="self"
+              as="tab"
               @success="addLog('✓ Opening DeepSeek in-app')"
               @fail="onFailWithMessage('Failed to open in-app browser', $event)"
             >
@@ -167,7 +167,37 @@
 
             <LxNavigator
               url="https://www.deepseek.com"
-              target="browser"
+              as="aside"
+              edge="right"
+              @success="addLog('✓ Opening DeepSeek as aside')"
+              @fail="onFailWithMessage('Failed to open aside', $event)"
+            >
+              <div class="w-full py-2.5 px-4 bg-linear-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                <div class="flex items-center justify-center gap-2">
+                  <span>🗂️</span>
+                  <span>Open DeepSeek as Aside</span>
+                </div>
+              </div>
+            </LxNavigator>
+
+            <LxNavigator
+              page="surface"
+              as="float"
+              :size="{ width: '80%', height: '60%' }"
+              :interaction="{ closeButton: true }"
+              @success="addLog('✓ Opening page as float')"
+              @fail="onFailWithMessage('Failed to open float', $event)"
+            >
+              <div class="w-full py-2.5 px-4 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                <div class="flex items-center justify-center gap-2">
+                  <span>🪟</span>
+                  <span>Open Page as Float</span>
+                </div>
+              </div>
+            </LxNavigator>
+
+            <LxNavigator
+              url="https://www.deepseek.com"
               @success="addLog('✓ Opening DeepSeek in external browser')"
               @fail="onFailWithMessage('Failed to open external browser', $event)"
             >
@@ -249,7 +279,8 @@
           <div class="flex-1">
             <div class="text-sm font-medium text-blue-900 dark:text-blue-400 mb-1">Smart & Simple</div>
             <div class="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-              • HTTPS URLs → auto open in browser<br />
+              • url → system browser; as tab/aside keeps it in-app<br />
+              • page + as float/window → surface placement<br />
               • appId → auto target other lxapp<br />
               • Pass data via query string in path
             </div>

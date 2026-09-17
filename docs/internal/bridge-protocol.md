@@ -53,6 +53,9 @@ Routing rules:
 
 - `host.*` methods → Host registry (unary `req` and `notify` only)
 - all other `req`, `notify`, `ch.open` → Logic
+- `surface.openPage` / `surface.openUrl` `req` → Logic's `lx.surface` open with
+  `{ page | url, options }`; resolves `null`. Other `surface.*` names are
+  `BRIDGE_METHOD_NOT_FOUND`, never page methods.
 - Bridge MAY initiate `req` to View-owned handlers (see 3.2)
 - state replication is produced by Logic and relayed through Bridge to View
 

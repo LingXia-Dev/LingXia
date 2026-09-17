@@ -5,14 +5,20 @@ import type {
   LxNavigatorEvent,
   NavigatorQuery,
   NavigatorOpenType,
-  NavigatorTarget
+  NavigatorTarget,
+  NavigatorEdge,
+  NavigatorFloatPosition,
+  NavigatorInteraction,
+  NavigatorPlacement,
+  NavigatorSize,
+  NavigatorWindowChrome,
 } from '@lingxia/elements';
 import { buildNavigatorNativeAttrs } from '@lingxia/elements';
 
 // Import to ensure custom element is registered
 import '@lingxia/elements';
 
-export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete' | 'query'> {
+export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess' | 'onFail' | 'onComplete' | 'query' | 'size' | 'interaction'> {
   // Navigation
   url?: string;
   page?: string;
@@ -20,6 +26,14 @@ export interface LxNavigatorProps extends Omit<LxNavigatorAttributes, 'onSuccess
   target?: NavigatorTarget; // Auto-inferred if not specified
   delta?: number;
   query?: NavigatorQuery;
+
+  // Placement
+  as?: NavigatorPlacement;
+  edge?: NavigatorEdge;
+  position?: NavigatorFloatPosition;
+  chrome?: NavigatorWindowChrome;
+  size?: NavigatorSize;
+  interaction?: NavigatorInteraction;
 
   // Open external lxapp
   appId?: string;
@@ -57,6 +71,12 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       target, // Auto-inferred, no default
       delta = 1,
       query,
+      as,
+      edge,
+      position,
+      chrome,
+      size,
+      interaction,
       appId,
       channel,
       targetVersion,
@@ -121,6 +141,12 @@ export const LxNavigator = React.forwardRef<HTMLElement, LxNavigatorProps>(
       target,
       delta,
       query,
+      as,
+      edge,
+      position,
+      chrome,
+      size,
+      interaction,
       appId,
       channel,
       targetVersion,

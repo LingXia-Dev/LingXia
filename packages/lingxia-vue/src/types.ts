@@ -11,6 +11,12 @@ import type {
   NavigatorOpenType,
   NavigatorQuery,
   NavigatorTarget,
+  NavigatorEdge,
+  NavigatorFloatPosition,
+  NavigatorInteraction,
+  NavigatorPlacement,
+  NavigatorSize,
+  NavigatorWindowChrome,
 } from '@lingxia/elements';
 
 export type NativeStyle = Omit<Pick<CSSProperties, NativeStyleProperty>, "borderStyle"> & {
@@ -189,6 +195,12 @@ export interface LxNavigatorProps {
   target?: NavigatorTarget;
   delta?: number;
   query?: NavigatorQuery;
+  as?: NavigatorPlacement;
+  edge?: NavigatorEdge;
+  position?: NavigatorFloatPosition;
+  chrome?: NavigatorWindowChrome;
+  size?: NavigatorSize;
+  interaction?: NavigatorInteraction;
   appId?: string;
   channel?: NavigatorChannel;
   targetVersion?: string;
