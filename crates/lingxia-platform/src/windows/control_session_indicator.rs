@@ -11,23 +11,23 @@
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 
-use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateBitmap, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DeleteDC,
-    DeleteObject, DrawTextW, EndPaint, FillRect, GetDC, ReleaseDC, ScreenToClient, SelectObject,
-    SetBkMode, SetTextColor, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
-    BLENDFUNCTION, DIB_RGB_COLORS, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HFONT, HGDIOBJ,
-    PAINTSTRUCT, TRANSPARENT,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION, BeginPaint,
+    CreateBitmap, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DIB_RGB_COLORS, DT_LEFT,
+    DT_RIGHT, DT_SINGLELINE, DT_VCENTER, DeleteDC, DeleteObject, DrawTextW, EndPaint, FillRect,
+    GetDC, HFONT, HGDIOBJ, PAINTSTRUCT, ReleaseDC, ScreenToClient, SelectObject, SetBkMode,
+    SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-    COINIT_APARTMENTTHREADED,
+    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+    CoUninitialize,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{ITaskbarList3, TaskbarList};
 use windows::Win32::UI::WindowsAndMessaging::*;
+use windows::core::{PCWSTR, w};
 
 use super::update_callout::{dpi_scale, make_font, rgb, to_wide};
 use super::update_card::Lang;
@@ -225,7 +225,7 @@ fn capsule_width(font: HFONT, lang: Lang, scale: f32) -> i32 {
 }
 
 fn text_width(font: HFONT, text: &str) -> i32 {
-    use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, DT_CALCRECT};
+    use windows::Win32::Graphics::Gdi::{DT_CALCRECT, GetDC, ReleaseDC};
     unsafe {
         let dc = GetDC(None);
         let old = SelectObject(dc, font.into());
