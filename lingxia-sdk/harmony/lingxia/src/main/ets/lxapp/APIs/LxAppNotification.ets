@@ -74,6 +74,8 @@ export class LxAppNotification {
         }
         const request: notificationManager.NotificationRequest = {
           id: numericId(key),
+          // The default OTHER_TYPES slot never surfaces to the user.
+          notificationSlotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
           content: {
             notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
             normal: {
