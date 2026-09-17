@@ -300,7 +300,7 @@ final class MacNativeComponentManager {
 
     func detachIslandVideo(id: String) {
         guard islandVideos.removeValue(forKey: id) != nil else { return }
-        MacComponentRouter.shared.unregister(componentId: id)
+        MacComponentRouter.shared.unregister(componentId: id, manager: self)
         componentCallbacks.removeValue(forKey: id)
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.removeValue(forKey: id)
@@ -658,7 +658,7 @@ final class MacNativeComponentManager {
         componentDataset.removeValue(forKey: id)
         componentCallbacks.removeValue(forKey: id)
         componentDocumentRects.removeValue(forKey: id)
-        MacComponentRouter.shared.unregister(componentId: id)
+        MacComponentRouter.shared.unregister(componentId: id, manager: self)
     }
 
     private func updatePlaybackIntent(componentId: String, event: String?) {

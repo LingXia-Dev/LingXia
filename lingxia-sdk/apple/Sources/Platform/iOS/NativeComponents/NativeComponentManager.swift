@@ -419,7 +419,7 @@ final class NativeComponentManager {
 
     func detachIslandVideo(id: String) {
         guard islandVideos.removeValue(forKey: id) != nil else { return }
-        ComponentRouter.shared.unregister(componentId: id)
+        ComponentRouter.shared.unregister(componentId: id, manager: self)
         componentCallbacks.removeValue(forKey: id)
         componentsPendingAutoResume.remove(id)
         componentPlaybackIntent.removeValue(forKey: id)
@@ -829,7 +829,7 @@ final class NativeComponentManager {
         pendingEventsByComponent.removeValue(forKey: id)
         // Unregister first to block any queued command from being routed back to a component
         // that is in the middle of teardown.
-        ComponentRouter.shared.unregister(componentId: id)
+        ComponentRouter.shared.unregister(componentId: id, manager: self)
         let callbackId = componentCallbacks.removeValue(forKey: id)
         guard let component = components.removeValue(forKey: id) else { return }
         if component is VideoComponent {

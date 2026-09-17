@@ -26,7 +26,11 @@ final class ComponentRouter {
         managers[componentId] = WeakManager(value: manager)
     }
     
-    func unregister(componentId: String) {
+    /// Drop `manager`'s registration. A reloaded page registers the same ids
+    /// before the previous page's manager finishes its deferred teardown, so
+    /// an id now owned by another live manager is left alone.
+    func unregister(componentId: String, manager: NativeComponentManager) {
+        if let owner = managers[componentId]?.value, owner !== manager { return }
         StreamDecoderRegistry.shared.destroy(componentId: componentId)
         managers.removeValue(forKey: componentId)
     }
