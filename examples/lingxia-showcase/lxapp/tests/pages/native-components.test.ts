@@ -292,6 +292,24 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     throw new Error('native menu More button was not visible after opening the H5 menu');
   }
   const beforeScrollCenterY = nativeButton.rect.center_y;
+  // A phone fits the whole video page in one screen, so there would be nothing
+  // to scroll. Pad the document so geometry always has somewhere to follow.
+  await app.page.eval({
+    page: 'video',
+    script: `(() => {
+      const spacer = document.createElement('div');
+      spacer.id = 'native-island-scroll-spacer';
+      spacer.style.height = '100vh';
+      document.body.appendChild(spacer);
+      return true;
+    })()`,
+  });
+  defer(async () => {
+    await app.page.eval({
+      page: 'video',
+      script: `document.querySelector('#native-island-scroll-spacer')?.remove(); window.scrollTo(0, 0); true`,
+    }).catch(() => {});
+  });
   const starveAnimationFrames = testArgs.platform?.toLocaleLowerCase() === 'windows';
   if (starveAnimationFrames) {
     const scrollY = await app.page.eval({
