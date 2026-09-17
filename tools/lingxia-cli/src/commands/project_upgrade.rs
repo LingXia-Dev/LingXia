@@ -92,6 +92,8 @@ enum SdkStep {
 
 struct UpgradePlan {
     edits: Vec<Edit>,
+    /// `lxapp.json` floors; pending even when the pins are already current.
+    min_runtime_edits: Vec<Edit>,
     sdk_steps: Vec<SdkStep>,
     sdk_version: String,
     project_line: Option<(u64, u64)>,
@@ -126,20 +128,25 @@ pub fn execute(root: &Path, check: bool, yes: bool) -> Result<i32> {
     report_plan(root, &prepared);
 
     if !prepared.line_behind() {
-        if !prepared.sdk_pending() {
+        if !prepared.sdk_pending() && prepared.min_runtime_edits.is_empty() {
             println!("  {}", "up to date".green());
             return Ok(0);
         }
-        // The pins are current but a platform SDK the project already names is
-        // not in the cache — an earlier fetch failed. Finish it: there is no
-        // version change here to report or confirm.
+        // The pins are current but the project is incomplete for its own line
+        // (an SDK fetch never landed, or an lxapp has no floor yet). Finish
+        // it: there is no version change here to report or confirm.
         if check {
             println!();
             println!(
-                "{} A pinned SDK package is missing; run `lingxia upgrade` to fetch it.",
+                "{} The project is incomplete for its LingXia line; run `lingxia upgrade` to finish it.",
                 "!".yellow()
             );
             return Ok(EXIT_UPGRADE_AVAILABLE);
+        }
+        write_edits(&prepared.min_runtime_edits)?;
+        if !prepared.min_runtime_edits.is_empty() {
+            println!();
+            println!("{} lxapp.json minRuntime updated.", "✓".green());
         }
         let failures = apply_sdk_steps(root, &prepared.sdk_steps, &prepared.sdk_version);
         if !failures.is_empty() {
@@ -178,6 +185,7 @@ fn build_plan(root: &Path) -> Result<UpgradePlan> {
     let in_workspace = crate::platform::is_inside_lingxia_workspace(root);
     Ok(UpgradePlan {
         edits: plan(root)?,
+        min_runtime_edits: plan_min_runtime(root)?,
         sdk_steps: collect_sdk_steps(root, in_workspace, &sdk_version),
         sdk_version,
         project_line: project_compat_line(root),
@@ -201,13 +209,15 @@ fn report_plan(root: &Path, prepared: &UpgradePlan) {
     }
 
     let pending_sdk = prepared.sdk_pending();
-    if !prepared.line_behind() && !pending_sdk {
+    let line_behind = prepared.line_behind();
+    if !line_behind && !pending_sdk && prepared.min_runtime_edits.is_empty() {
         return;
     }
 
-    if !prepared.edits.is_empty() {
+    let pin_edits: &[Edit] = if line_behind { &prepared.edits } else { &[] };
+    if !pin_edits.is_empty() || !prepared.min_runtime_edits.is_empty() {
         println!();
-        for edit in &prepared.edits {
+        for edit in pin_edits.iter().chain(&prepared.min_runtime_edits) {
             println!(
                 "  {}",
                 edit.path.strip_prefix(root).unwrap_or(&edit.path).display()
@@ -286,9 +296,9 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
     let mut npm_dirs = Vec::new();
     let mut cargo_dirs: Vec<(PathBuf, Vec<String>)> = Vec::new();
     let mut operation_failures = Vec::new();
+    write_edits(&prepared.edits)?;
+    write_edits(&prepared.min_runtime_edits)?;
     for edit in &prepared.edits {
-        fs::write(&edit.path, &edit.new_content)
-            .with_context(|| format!("write {}", edit.path.display()))?;
         if edit.refresh_npm
             && let Some(dir) = edit.path.parent()
         {
@@ -300,7 +310,7 @@ fn apply_plan(root: &Path, prepared: &UpgradePlan) -> Result<()> {
             cargo_dirs.push((dir.to_path_buf(), edit.cargo_update.clone()));
         }
     }
-    if !prepared.edits.is_empty() {
+    if !prepared.edits.is_empty() || !prepared.min_runtime_edits.is_empty() {
         println!();
         println!("{} Project pins updated.", "✓".green());
     }
@@ -477,6 +487,19 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         }
     }
 
+    Ok(edits)
+}
+
+fn write_edits(edits: &[Edit]) -> Result<()> {
+    for edit in edits {
+        fs::write(&edit.path, &edit.new_content)
+            .with_context(|| format!("write {}", edit.path.display()))?;
+    }
+    Ok(())
+}
+
+fn plan_min_runtime(root: &Path) -> Result<Vec<Edit>> {
+    let mut edits = Vec::new();
     let floor = crate::versions::min_runtime_floor();
     for lxapp_json in find_lxapp_jsons(root) {
         let content = fs::read_to_string(&lxapp_json)
@@ -671,37 +694,69 @@ fn find_lxapp_jsons(root: &Path) -> Vec<PathBuf> {
 }
 
 fn rewrite_lxapp_min_runtime(content: &str, floor: &str) -> (String, Vec<String>) {
-    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(content) else {
-        return (content.to_string(), Vec::new());
+    let unchanged = || (content.to_string(), Vec::new());
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return unchanged();
     };
-    let Some(object) = value.as_object_mut() else {
-        return (content.to_string(), Vec::new());
+    let Some(object) = value.as_object() else {
+        return unchanged();
     };
-    let current = object
-        .get("minRuntime")
-        .and_then(|value| value.as_str())
+    let current = object.get("minRuntime").and_then(|value| value.as_str());
+    if !should_raise_min_runtime(current.map(str::trim).unwrap_or(""), floor) {
+        return unchanged();
+    }
+    // Edit the text so the author's formatting and key order survive.
+    let edited = match current {
+        Some(current) => replace_min_runtime_value(content, current, floor),
+        None if object.contains_key("minRuntime") => None,
+        None => insert_min_runtime_line(content, floor),
+    };
+    let Some(edited) = edited else {
+        return unchanged();
+    };
+    let from = current
         .map(str::trim)
-        .unwrap_or("")
-        .to_string();
-    if !should_raise_min_runtime(&current, floor) {
-        return (content.to_string(), Vec::new());
+        .filter(|value| !value.is_empty())
+        .unwrap_or("(missing)");
+    (edited, vec![format!("minRuntime: {from} -> {floor}")])
+}
+
+fn replace_min_runtime_value(content: &str, current: &str, floor: &str) -> Option<String> {
+    let key = content.find("\"minRuntime\"")?;
+    let old = format!("\"{current}\"");
+    let at = key + content[key..].find(&old)?;
+    Some(format!(
+        "{}\"{floor}\"{}",
+        &content[..at],
+        &content[at + old.len()..]
+    ))
+}
+
+/// After the top-level `version` line when there is one, else first in the object.
+fn insert_min_runtime_line(content: &str, floor: &str) -> Option<String> {
+    let version_line = content.split_inclusive('\n').find(|line| {
+        line.trim_start().starts_with("\"version\"") && line.trim_end().ends_with(',')
+    });
+    if let Some(line) = version_line {
+        let indent = &line[..line.len() - line.trim_start().len()];
+        let at = content.find(line)? + line.len();
+        return Some(format!(
+            "{}{indent}\"minRuntime\": \"{floor}\",\n{}",
+            &content[..at],
+            &content[at..]
+        ));
     }
-    object.insert(
-        "minRuntime".to_string(),
-        serde_json::Value::String(floor.to_string()),
-    );
-    let change = if current.is_empty() {
-        format!("minRuntime: (missing) -> {floor}")
+    let brace = content.find('{')? + 1;
+    let rest = &content[brace..];
+    let separator = if rest.trim_start().starts_with('}') {
+        ""
     } else {
-        format!("minRuntime: {current} -> {floor}")
+        ","
     };
-    match serde_json::to_string_pretty(&value) {
-        Ok(mut pretty) => {
-            pretty.push('\n');
-            (pretty, vec![change])
-        }
-        Err(_) => (content.to_string(), Vec::new()),
-    }
+    Some(format!(
+        "{}\"minRuntime\": \"{floor}\"{separator}{rest}",
+        &content[..brace]
+    ))
 }
 
 fn should_raise_min_runtime(current: &str, floor: &str) -> bool {
@@ -1437,6 +1492,7 @@ mod tests {
     fn a_current_project_still_has_work_while_an_sdk_is_uncached() {
         let plan = |cached| UpgradePlan {
             edits: Vec::new(),
+            min_runtime_edits: Vec::new(),
             sdk_steps: vec![SdkStep::Fetch {
                 platform: SdkPlatform::Android,
                 cached,
@@ -1594,17 +1650,53 @@ mod tests {
     fn upgrade_inserts_or_raises_min_runtime_but_never_lowers_it() {
         let floor = crate::versions::min_runtime_floor();
         let (missing, changes) = rewrite_lxapp_min_runtime("{}", &floor);
+        assert_eq!(changes, vec![format!("minRuntime: (missing) -> {floor}")]);
+        assert_eq!(missing, format!("{{\"minRuntime\": \"{floor}\"}}"));
+
+        // Formatting and key order are the author's; only the floor line lands.
+        let source = "{\n  \"appId\": \"demo\",\n  \"version\": \"1.0.0\",\n  \"pages\": [\"a\", \"b\"]\n}\n";
+        let (inserted, changes) = rewrite_lxapp_min_runtime(source, &floor);
         assert_eq!(changes.len(), 1);
-        assert!(missing.contains(&format!("\"minRuntime\": \"{floor}\"")));
+        assert_eq!(
+            inserted,
+            format!(
+                "{{\n  \"appId\": \"demo\",\n  \"version\": \"1.0.0\",\n  \"minRuntime\": \"{floor}\",\n  \"pages\": [\"a\", \"b\"]\n}}\n"
+            )
+        );
 
         let (raised, changes) =
             rewrite_lxapp_min_runtime(r#"{ "appId": "demo", "minRuntime": "0.1.0" }"#, &floor);
         assert_eq!(changes, vec![format!("minRuntime: 0.1.0 -> {floor}")]);
-        assert!(raised.contains(&format!("\"minRuntime\": \"{floor}\"")));
+        assert_eq!(
+            raised,
+            format!(r#"{{ "appId": "demo", "minRuntime": "{floor}" }}"#)
+        );
 
         let source = r#"{ "appId": "demo", "minRuntime": "9.9.0" }"#;
         let (kept, changes) = rewrite_lxapp_min_runtime(source, "0.17.0");
         assert!(changes.is_empty());
         assert_eq!(kept, source);
+    }
+
+    #[test]
+    fn a_current_project_without_a_floor_still_gets_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let range = crate::versions::npm_compat_range();
+        fs::write(
+            root.join("package.json"),
+            format!("{{\n  \"dependencies\": {{\n    \"@lingxia/types\": \"{range}\"\n  }}\n}}\n"),
+        )
+        .unwrap();
+        fs::write(
+            root.join("lxapp.json"),
+            "{\n  \"appId\": \"demo\",\n  \"version\": \"1.0.0\"\n}\n",
+        )
+        .unwrap();
+
+        let prepared = build_plan(root).unwrap();
+        assert!(!prepared.line_behind());
+        assert!(prepared.edits.is_empty());
+        assert_eq!(prepared.min_runtime_edits.len(), 1);
     }
 }
