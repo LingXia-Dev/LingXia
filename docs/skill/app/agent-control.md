@@ -38,9 +38,8 @@ publishes under native-host authority; lxapp automation binds a handle only
 after its sealed `AutomationHost` grant is checked. The handle is revalidated
 for snapshot, dispatch, and completion, so restart/takeover cannot reuse it.
 
-`--allow-control` acknowledges an authorized mutation; it does not grant
-access. Use `--allow-destructive` only when the request explicitly authorizes
-the destructive effect.
+The access setting above decides whether agents may act. Pass
+`--allow-destructive` only when the user asked for the destructive effect.
 
 ## Product command discovery
 

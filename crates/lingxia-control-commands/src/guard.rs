@@ -1,9 +1,14 @@
 //! Explicit acknowledgement to act, and what a failure costs the caller.
 //!
 //! The flags prevent an accidental mutating invocation; they are not proof of
-//! user consent because the caller can add them. Every mount applies the same
-//! acknowledgement rule, and every failure carries a code the caller can branch
-//! on instead of collapsing to prose and exit 1.
+//! user consent because the caller can add them. A development mount asks for
+//! them; a shipped product's own command line does not ask for
+//! `--allow-control`, because access there is the product's setting, answered
+//! by the running app, and an agent would type the flag anyway. Losing work
+//! still needs `--allow-destructive` on every mount. Every failure carries a
+//! code the caller can branch on instead of collapsing to prose and exit 1.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 #[cfg(feature = "desktop")]
 use lingxia_device_io as device_io;
@@ -51,6 +56,13 @@ impl GuardError {
     }
 }
 
+static PRODUCT_MOUNT: AtomicBool = AtomicBool::new(false);
+
+/// Mark this process as a shipped product's own command line.
+pub(crate) fn mark_product_mount() {
+    PRODUCT_MOUNT.store(true, Ordering::SeqCst);
+}
+
 /// Whether this invocation may change anything.
 ///
 /// `destructive` marks the commands that lose work rather than merely causing
@@ -61,7 +73,21 @@ pub fn gate(
     destructive: bool,
     allow_destructive: bool,
 ) -> Result<(), GuardError> {
-    if !(allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL")) {
+    gate_for(
+        PRODUCT_MOUNT.load(Ordering::SeqCst),
+        allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL"),
+        destructive,
+        allow_destructive,
+    )
+}
+
+fn gate_for(
+    product_mount: bool,
+    allow_control: bool,
+    destructive: bool,
+    allow_destructive: bool,
+) -> Result<(), GuardError> {
+    if !(product_mount || allow_control) {
         return Err(GuardError::permission(
             "mutating command needs --allow-control (or LXDEV_DESKTOP_ALLOW_CONTROL=1)",
         ));
@@ -188,6 +214,17 @@ mod tests {
     fn a_local_device_error_keeps_its_exit_code() {
         let missing: anyhow::Error = device_io::Error::NotFound("no such window".into()).into();
         assert_eq!(exit_code(&missing), 3);
+    }
+
+    /// A product's command line needs no control acknowledgement, but losing
+    /// work still asks for one on every mount.
+    #[test]
+    fn product_mount_skips_the_control_flag_but_not_the_destructive_one() {
+        assert!(gate_for(false, false, false, false).is_err());
+        assert!(gate_for(false, true, false, false).is_ok());
+        assert!(gate_for(true, false, false, false).is_ok());
+        assert!(gate_for(true, false, true, false).is_err());
+        assert!(gate_for(true, false, true, true).is_ok());
     }
 
     /// The transport decoder cannot see the enum in a build without device

@@ -27,10 +27,9 @@ use crate::{app, browser, extra};
     about = "Drive this product from the command line"
 )]
 struct Cli {
-    /// Acknowledge input sent to this product's own windows. The machine and
-    /// browser namespaces carry their own copies of this flag; this one covers
-    /// the commands that sit at the top level.
-    #[arg(long, global = true)]
+    /// Accepted so existing scripts keep parsing; a product's command line
+    /// does not need it (see `guard`), so help does not offer it.
+    #[arg(long, global = true, hide = true)]
     allow_control: bool,
     #[command(subcommand)]
     command: Command,
@@ -42,7 +41,7 @@ struct Cli {
 /// `myapp app screenshot` asks the user to name the thing they already typed.
 #[derive(clap::Subcommand)]
 enum Command {
-    /// This product's own windows: screenshot, windows, mouse, key, applink
+    /// This product's own windows: screenshot, windows, mouse, key
     #[command(flatten)]
     Own(app::AppCommand),
     /// Drive the in-app browser: tabs, navigation, page content
@@ -64,6 +63,7 @@ pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
         return None;
     }
     let _console = crate::console::attach_parent();
+    crate::guard::mark_product_mount();
 
     let endpoint = crate::transport::endpoint_in(app_data_dir);
     let transport = ControlSocket::at(endpoint);
@@ -107,13 +107,7 @@ pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
                 target: std::env::consts::OS.to_string(),
                 session: None,
             };
-            report(app::execute(
-                &context,
-                app::AppOptions {
-                    allow_control,
-                    command,
-                },
-            ))
+            report(app::execute_own(&context, allow_control, command))
         }
     })
 }
@@ -146,7 +140,6 @@ const COMMANDS: &[&str] = &[
     "windows",
     "mouse",
     "key",
-    "applink",
     "help",
     "--help",
     "-h",
@@ -163,9 +156,28 @@ fn first_argument_is_a_command(args: &[OsString]) -> bool {
 }
 
 fn cli_command(extras: &[crate::ExtraProductCommand]) -> clap::Command {
-    let mut command = Cli::command();
+    let mut command = hide_control_acknowledgement(Cli::command());
     for extra in extras {
         command = command.subcommand(clap::Command::new(extra.name).about(extra.about));
+    }
+    command
+}
+
+/// The namespaces shared with `lxdev` declare `--allow-control` for its sake.
+/// Here it is a no-op, so it stays parseable but out of every help page.
+fn hide_control_acknowledgement(mut command: clap::Command) -> clap::Command {
+    if command
+        .get_arguments()
+        .any(|arg| arg.get_id() == "allow_control")
+    {
+        command = command.mut_arg("allow_control", |arg| arg.hide(true));
+    }
+    let names: Vec<String> = command
+        .get_subcommands()
+        .map(|sub| sub.get_name().to_string())
+        .collect();
+    for name in names {
+        command = command.mut_subcommand(name, hide_control_acknowledgement);
     }
     command
 }
@@ -244,6 +256,35 @@ mod tests {
                 .into_iter()
                 .map(OsString::from)
                 .collect::<Vec<_>>()
+        );
+    }
+
+    /// `--allow-control` still parses, so older scripts keep working, but no
+    /// help page offers it and `applink` is not a product command.
+    #[test]
+    fn product_help_offers_neither_allow_control_nor_applink() {
+        let mut command = cli_command(&[]);
+        let help = command.render_long_help().to_string();
+        assert!(!help.contains("--allow-control"), "{help}");
+        assert!(!help.contains("applink"), "{help}");
+
+        let mut browser = cli_command(&[]);
+        let browser_help = browser
+            .find_subcommand_mut("browser")
+            .expect("browser namespace")
+            .render_long_help()
+            .to_string();
+        assert!(!browser_help.contains("--allow-control"), "{browser_help}");
+
+        assert!(
+            cli_command(&[])
+                .try_get_matches_from(["product", "--allow-control", "doctor"])
+                .is_ok()
+        );
+        assert!(
+            cli_command(&[])
+                .try_get_matches_from(["product", "applink", "https://example.com"])
+                .is_err()
         );
     }
 
