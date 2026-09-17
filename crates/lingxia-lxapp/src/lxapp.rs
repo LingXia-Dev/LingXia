@@ -42,6 +42,7 @@ pub mod host_appearance;
 pub(crate) mod metadata;
 pub mod navbar;
 pub mod page_chrome;
+pub(crate) mod page_discard;
 mod page_instance_host;
 mod permissions;
 pub(crate) mod registry;
@@ -2784,6 +2785,10 @@ impl LxApp {
 
     pub fn is_opened(&self) -> bool {
         matches!(self.status(), LxAppSessionStatus::Opened)
+    }
+
+    pub(crate) fn is_shown(&self) -> bool {
+        self.shown.load(Ordering::SeqCst)
     }
 
     pub(crate) fn document_start_scripts_snapshot(&self) -> Vec<Arc<str>> {
