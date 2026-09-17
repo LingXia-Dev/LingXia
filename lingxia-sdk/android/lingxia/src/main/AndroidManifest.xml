@@ -55,6 +55,15 @@
             android:name="com.lingxia.lxapp.APIs.file.LocalFileChooserActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name="com.lingxia.lxapp.APIs.LxLocalNotificationTapActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <receiver
+            android:name="com.lingxia.lxapp.APIs.LxLocalNotificationReceiver"
+            android:exported="false" />
         <provider
             android:name="com.lingxia.lxapp.APIs.document.LingxiaDocumentProvider"
             android:authorities="${applicationId}.lingxia.documents"
