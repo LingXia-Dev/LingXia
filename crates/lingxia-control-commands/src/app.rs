@@ -20,9 +20,6 @@ pub struct AppContext<'a> {
 
 #[derive(Args, Clone)]
 pub struct AppOptions {
-    /// Acknowledge input sent to the host app window
-    #[arg(long, global = true)]
-    pub allow_control: bool,
     #[command(subcommand)]
     pub command: DevAppCommand,
 }
@@ -274,18 +271,13 @@ impl MouseButtonArg {
 
 pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
     match options.command {
-        DevAppCommand::Own(command) => execute_own(context, options.allow_control, command),
+        DevAppCommand::Own(command) => execute_own(context, command),
         DevAppCommand::Applink { url, json } => execute_applink(context, url, json),
     }
 }
 
 /// Run one of the product's own window commands.
-pub fn execute_own(context: &AppContext, allow_control: bool, command: AppCommand) -> Result<()> {
-    // Synthetic input is synthetic input; that the window belongs to the
-    // product rather than to some other app does not make it free.
-    if matches!(command, AppCommand::Mouse { .. } | AppCommand::Key { .. }) {
-        crate::guard::gate(allow_control, false, false)?;
-    }
+pub fn execute_own(context: &AppContext, command: AppCommand) -> Result<()> {
     match command {
         AppCommand::Doctor { json } => execute_doctor(context, json),
         AppCommand::Screenshot {

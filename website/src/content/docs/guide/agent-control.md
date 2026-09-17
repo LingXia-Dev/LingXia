@@ -53,9 +53,9 @@ Native terminal snapshots and commands use an owner-bound surface handle, not
 a globally authoritative surface-id string. Restart or session takeover cannot
 reuse a stale handle.
 
-`--allow-control` acknowledges an authorized mutation; it does not grant
-access. Use `--allow-destructive` only when the request explicitly authorizes
-the destructive effect.
+Changes need no flag; while an assistant is in control the app shows it and
+offers Stop. Use `--allow-destructive` only when the request explicitly
+authorizes the destructive effect.
 
 Leaf commands document their own syntax through `--help`, and prefer `--json`
 where a leaf offers it. Failures use stable exit codes — 2 usage, 3 not found,

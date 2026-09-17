@@ -2,16 +2,13 @@ mod backend;
 
 pub use backend::Backend;
 
-use crate::guard::desktop_gate as gate;
+use crate::guard::desktop_confirm_destructive as confirm_destructive;
 use clap::{Args, Subcommand};
 use lingxia_device_io as device_io;
 use serde::Serialize;
 
 #[derive(Args, Clone)]
 pub struct DesktopOptions {
-    /// Acknowledge mutating desktop commands (or set LXDEV_DESKTOP_ALLOW_CONTROL=1)
-    #[arg(long, global = true)]
-    allow_control: bool,
     /// Acknowledge destructive commands like `window close` (or set
     /// LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)
     #[arg(long, global = true)]
@@ -638,19 +635,10 @@ pub enum WindowAction {
 }
 
 pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
-    let allow_control = options.allow_control;
     let allow_destructive = options.allow_destructive;
     match options.command {
         DesktopCommand::Doctor { json } => finish(json, backend.doctor(), print_doctor),
         DesktopCommand::Permissions { request, json } => {
-            if request {
-                // Prompting puts a system dialog in front of someone and can
-                // change what this tool is allowed to do afterwards. Reading
-                // the current grants does not.
-                if let Err(error) = gate(allow_control, false, allow_destructive) {
-                    return finish::<device_io::Permissions>(json, Err(error), print_permissions);
-                }
-            }
             let perms = if request {
                 backend.request_permissions()
             } else {
@@ -680,44 +668,28 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
             };
             finish(json, backend.pixel(x, y), print_pixel)
         }
-        DesktopCommand::Window { action } => {
-            run_window(backend, action, allow_control, allow_destructive)
-        }
-        // The gate comes first. Resolving a target activates the window on
-        // Windows, and foregrounding someone's app is already a change to their
-        // machine — doing it and *then* refusing the command is a refusal that
-        // has already had an effect.
+        DesktopCommand::Window { action } => run_window(backend, action, allow_destructive),
         DesktopCommand::Pointer {
             window,
             pid,
             action,
-        } => match gate(allow_control, false, allow_destructive)
-            .and_then(|()| resolve_target(backend, pid, window))
-        {
-            Ok(t) => run_pointer(backend, action, t, allow_control, allow_destructive),
+        } => match resolve_target(backend, pid, window) {
+            Ok(t) => run_pointer(backend, action, t),
             Err(e) => finish::<device_io::Ack>(action.json(), Err(e), print_ack),
         },
         DesktopCommand::Key {
             window,
             pid,
             action,
-        } => match gate(allow_control, false, allow_destructive)
-            .and_then(|()| resolve_target(backend, pid, window))
-        {
-            Ok(t) => run_key(backend, action, t, allow_control, allow_destructive),
+        } => match resolve_target(backend, pid, window) {
+            Ok(t) => run_key(backend, action, t),
             Err(e) => finish::<device_io::Ack>(action.json(), Err(e), print_ack),
         },
-        DesktopCommand::Clipboard { action } => {
-            run_clipboard(backend, action, allow_control, allow_destructive)
-        }
-        DesktopCommand::Ax { action } => run_ax(backend, action, allow_control, allow_destructive),
+        DesktopCommand::Clipboard { action } => run_clipboard(backend, action, allow_destructive),
+        DesktopCommand::Ax { action } => run_ax(backend, action),
         DesktopCommand::Wait { action } => run_wait(backend, action),
-        DesktopCommand::App { action } => {
-            run_app(backend, action, allow_control, allow_destructive)
-        }
-        DesktopCommand::Process { action } => {
-            run_process(backend, action, allow_control, allow_destructive)
-        }
+        DesktopCommand::App { action } => run_app(backend, action, allow_destructive),
+        DesktopCommand::Process { action } => run_process(backend, action, allow_destructive),
         DesktopCommand::Snapshot {
             window,
             no_ax,
@@ -727,12 +699,7 @@ pub fn execute(backend: &Backend, options: DesktopOptions) -> i32 {
     }
 }
 
-fn run_app(
-    backend: &Backend,
-    action: AppAction,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
+fn run_app(backend: &Backend, action: AppAction, allow_destructive: bool) -> i32 {
     match action {
         AppAction::Launch {
             app,
@@ -741,8 +708,7 @@ fn run_app(
             timeout_ms,
             json,
         } => {
-            let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| backend.app_launch(&app, &args, wait_window.as_deref(), timeout_ms));
+            let r = backend.app_launch(&app, &args, wait_window.as_deref(), timeout_ms);
             finish(json, r, |lr: &device_io::LaunchResult| {
                 let win = lr
                     .window
@@ -775,7 +741,7 @@ fn run_app(
                     "pass exactly one of --match / --pid / --window".into(),
                 )),
             };
-            let r = gate(allow_control, true, allow_destructive)
+            let r = confirm_destructive(allow_destructive)
                 .and(target)
                 .and_then(|t| backend.app_quit(t, force));
             finish(json, r, print_ack)
@@ -783,12 +749,7 @@ fn run_app(
     }
 }
 
-fn run_process(
-    backend: &Backend,
-    action: ProcessAction,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
+fn run_process(backend: &Backend, action: ProcessAction, allow_destructive: bool) -> i32 {
     match action {
         ProcessAction::List { match_query, json } => {
             finish(json, backend.process_list(match_query.as_deref()), |ps| {
@@ -798,7 +759,7 @@ fn run_process(
             })
         }
         ProcessAction::Kill { pid, force, json } => {
-            let r = gate(allow_control, true, allow_destructive)
+            let r = confirm_destructive(allow_destructive)
                 .and_then(|_| backend.process_kill(pid, force));
             finish(json, r, print_ack)
         }
@@ -845,12 +806,7 @@ fn run_snapshot(backend: &Backend, window: String, no_ax: bool, depth: Option<u3
     0
 }
 
-fn run_ax(
-    backend: &Backend,
-    action: AxAction,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
+fn run_ax(backend: &Backend, action: AxAction) -> i32 {
     match action {
         AxAction::Tree {
             window,
@@ -880,29 +836,15 @@ fn run_ax(
             json,
         } => {
             let q = device_io::AxQuery::parse(&match_query);
-            let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| backend.ax_invoke(&window, &q));
-            finish(json, r, print_ack)
+            finish(json, backend.ax_invoke(&window, &q), print_ack)
         }
-        AxAction::Focus(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
-            backend.ax_focus(w, q)
-        }),
-        AxAction::Select(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
-            backend.ax_select(w, q)
-        }),
-        AxAction::Expand(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
-            backend.ax_expand(w, q)
-        }),
-        AxAction::Collapse(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
-            backend.ax_collapse(w, q)
-        }),
-        AxAction::ScrollIntoView(s) => ax_act(s, allow_control, allow_destructive, |w, q| {
-            backend.ax_scroll_into_view(w, q)
-        }),
+        AxAction::Focus(s) => ax_act(s, |w, q| backend.ax_focus(w, q)),
+        AxAction::Select(s) => ax_act(s, |w, q| backend.ax_select(w, q)),
+        AxAction::Expand(s) => ax_act(s, |w, q| backend.ax_expand(w, q)),
+        AxAction::Collapse(s) => ax_act(s, |w, q| backend.ax_collapse(w, q)),
+        AxAction::ScrollIntoView(s) => ax_act(s, |w, q| backend.ax_scroll_into_view(w, q)),
         AxAction::SetValue { sel, value } => {
-            ax_act(sel, allow_control, allow_destructive, move |w, q| {
-                backend.ax_set_value(w, q, &value)
-            })
+            ax_act(sel, move |w, q| backend.ax_set_value(w, q, &value))
         }
         AxAction::HitTest { at, json, .. } => {
             // Read-only: no gate. Window scope is advisory (ElementFromPoint is
@@ -913,16 +855,13 @@ fn run_ax(
     }
 }
 
-/// Run a gated single-node AX action.
+/// Run a single-node AX action.
 fn ax_act(
     sel: AxSel,
-    allow_control: bool,
-    allow_destructive: bool,
     op: impl Fn(&str, &device_io::AxQuery) -> device_io::Result<device_io::Ack>,
 ) -> i32 {
     let q = device_io::AxQuery::parse(&sel.match_query);
-    let r = gate(allow_control, false, allow_destructive).and_then(|_| op(&sel.window, &q));
-    finish(sel.json, r, print_ack)
+    finish(sel.json, op(&sel.window, &q), print_ack)
 }
 
 fn run_wait(backend: &Backend, action: WaitAction) -> i32 {
@@ -1043,31 +982,19 @@ fn print_ax_nodes(nodes: &Vec<device_io::AxNode>) {
     }
 }
 
-fn run_clipboard(
-    backend: &Backend,
-    action: ClipboardAction,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
+fn run_clipboard(backend: &Backend, action: ClipboardAction, allow_destructive: bool) -> i32 {
     match action {
         ClipboardAction::Get { json } => finish(json, backend.clipboard_get(), print_clipboard),
         ClipboardAction::Set { text, json } => {
-            let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| backend.clipboard_set(&text));
-            finish(json, r, print_ack)
+            finish(json, backend.clipboard_set(&text), print_ack)
         }
         ClipboardAction::Clear { json } => {
             // Whatever was on the clipboard is not coming back, and it may be
             // the only copy of something a person cut a moment ago.
-            let r = gate(allow_control, true, allow_destructive)
-                .and_then(|_| backend.clipboard_clear());
+            let r = confirm_destructive(allow_destructive).and_then(|_| backend.clipboard_clear());
             finish(json, r, print_ack)
         }
-        ClipboardAction::Paste { json } => {
-            let r = gate(allow_control, false, allow_destructive)
-                .and_then(|_| backend.clipboard_paste());
-            finish(json, r, print_ack)
-        }
+        ClipboardAction::Paste { json } => finish(json, backend.clipboard_paste(), print_ack),
     }
 }
 
@@ -1146,31 +1073,23 @@ fn resolve_target(
     }
 }
 
-fn run_pointer(
-    backend: &Backend,
-    action: PointerAction,
-    target: InputTarget,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
-    let g = gate(allow_control, false, allow_destructive);
+fn run_pointer(backend: &Backend, action: PointerAction, target: InputTarget) -> i32 {
     let delivery_pid = target.delivery_pid;
     let window_id = target.window_id.as_deref();
     let (json, result) = match action {
         PointerAction::Move { at, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
-                .and_then(|(x, y)| backend.pointer_move(x, y, delivery_pid, window_id)),
+            parse_pair(&at).and_then(|(x, y)| backend.pointer_move(x, y, delivery_pid, window_id)),
         ),
         PointerAction::Down { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+            parse_pair(&at).and_then(|(x, y)| {
                 backend.pointer_down(x, y, button.into(), delivery_pid, window_id)
             }),
         ),
         PointerAction::Up { at, button, json } => (
             json,
-            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+            parse_pair(&at).and_then(|(x, y)| {
                 backend.pointer_up(x, y, button.into(), delivery_pid, window_id)
             }),
         ),
@@ -1181,7 +1100,7 @@ fn run_pointer(
             json,
         } => (
             json,
-            g.and_then(|_| parse_pair(&at)).and_then(|(x, y)| {
+            parse_pair(&at).and_then(|(x, y)| {
                 backend.pointer_click(x, y, button.into(), count, delivery_pid, window_id)
             }),
         ),
@@ -1192,35 +1111,26 @@ fn run_pointer(
             json,
         } => (
             json,
-            g.and_then(|_| Ok((parse_pair(&from)?, parse_pair(&to)?)))
+            parse_pair(&from)
+                .and_then(|from| Ok((from, parse_pair(&to)?)))
                 .and_then(|((fx, fy), (tx, ty))| {
                     backend.pointer_drag(fx, fy, tx, ty, button.into(), delivery_pid, window_id)
                 }),
         ),
         PointerAction::Scroll { at, dx, dy, json } => (
             json,
-            g.and_then(|_| parse_pair(&at))
+            parse_pair(&at)
                 .and_then(|(x, y)| backend.pointer_scroll(x, y, dx, dy, delivery_pid, window_id)),
         ),
     };
     finish(json, result, print_ack)
 }
 
-fn run_key(
-    backend: &Backend,
-    action: KeyAction,
-    target: InputTarget,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
-    let g = gate(allow_control, false, allow_destructive);
+fn run_key(backend: &Backend, action: KeyAction, target: InputTarget) -> i32 {
     let delivery_pid = target.delivery_pid;
     let window_id = target.window_id.as_deref();
     let (json, result) = match action {
-        KeyAction::Type { text, json } => (
-            json,
-            g.and_then(|_| backend.key_type(&text, delivery_pid, window_id)),
-        ),
+        KeyAction::Type { text, json } => (json, backend.key_type(&text, delivery_pid, window_id)),
         KeyAction::Press {
             key,
             modifier,
@@ -1229,41 +1139,23 @@ fn run_key(
             let mods: Vec<device_io::Modifier> = modifier.into_iter().map(Into::into).collect();
             (
                 json,
-                g.and_then(|_| backend.key_press(&key, &mods, delivery_pid, window_id)),
+                backend.key_press(&key, &mods, delivery_pid, window_id),
             )
         }
-        KeyAction::Down { key, json } => (
-            json,
-            g.and_then(|_| backend.key_down(&key, delivery_pid, window_id)),
-        ),
-        KeyAction::Up { key, json } => (
-            json,
-            g.and_then(|_| backend.key_up(&key, delivery_pid, window_id)),
-        ),
+        KeyAction::Down { key, json } => (json, backend.key_down(&key, delivery_pid, window_id)),
+        KeyAction::Up { key, json } => (json, backend.key_up(&key, delivery_pid, window_id)),
     };
     finish(json, result, print_ack)
 }
 
-/// Require acknowledgement for a mutating (and optionally destructive) command.
-fn run_window(
-    backend: &Backend,
-    action: WindowAction,
-    allow_control: bool,
-    allow_destructive: bool,
-) -> i32 {
-    // A gated single-target op that returns the updated window record.
-    fn gated(
+fn run_window(backend: &Backend, action: WindowAction, allow_destructive: bool) -> i32 {
+    // A single-target op that returns the updated window record.
+    fn on_window(
         sel: WindowSel,
-        allow_control: bool,
-        destructive: bool,
-        allow_destructive: bool,
         op: impl Fn(&device_io::WindowTarget) -> device_io::Result<device_io::Window>,
     ) -> i32 {
         let json = sel.json;
-        let result = gate(allow_control, destructive, allow_destructive)
-            .and_then(|_| sel.target())
-            .and_then(|t| op(&t));
-        finish(json, result, print_window_one)
+        finish(json, sel.target().and_then(|t| op(&t)), print_window_one)
     }
 
     match action {
@@ -1275,57 +1167,40 @@ fn run_window(
                 print_window_one,
             )
         }
-        WindowAction::Focus(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_focus(t)
-        }),
-        WindowAction::Raise(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_raise(t)
-        }),
-        WindowAction::Minimize(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_minimize(t)
-        }),
-        WindowAction::Maximize(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_maximize(t)
-        }),
-        WindowAction::Restore(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_restore(t)
-        }),
+        WindowAction::Focus(sel) => on_window(sel, |t| backend.window_focus(t)),
+        WindowAction::Raise(sel) => on_window(sel, |t| backend.window_raise(t)),
+        WindowAction::Minimize(sel) => on_window(sel, |t| backend.window_minimize(t)),
+        WindowAction::Maximize(sel) => on_window(sel, |t| backend.window_maximize(t)),
+        WindowAction::Restore(sel) => on_window(sel, |t| backend.window_restore(t)),
         WindowAction::AlwaysOnTop { sel, state } => {
             let on = state.as_bool();
-            gated(sel, allow_control, false, allow_destructive, move |t| {
-                backend.window_set_always_on_top(t, on)
-            })
+            on_window(sel, move |t| backend.window_set_always_on_top(t, on))
         }
-        WindowAction::Close(sel) => gated(sel, allow_control, true, allow_destructive, |t| {
-            backend.window_close(t)
-        }),
-        WindowAction::Activate(sel) => gated(sel, allow_control, false, allow_destructive, |t| {
-            backend.window_activate(t)
-        }),
+        WindowAction::Close(sel) => match confirm_destructive(allow_destructive) {
+            Ok(()) => on_window(sel, |t| backend.window_close(t)),
+            Err(e) => finish::<device_io::Window>(sel.json, Err(e), print_window_one),
+        },
+        WindowAction::Activate(sel) => on_window(sel, |t| backend.window_activate(t)),
         WindowAction::Move { sel, to, display } => {
             let json = sel.json;
-            let result = gate(allow_control, false, allow_destructive)
-                .and_then(|_| sel.target())
-                .and_then(|t| match (&display, &to) {
-                    (Some(d), _) => backend.window_move_display(&t, d),
-                    (None, Some(xy)) => {
-                        let (x, y) = parse_pair(xy)?;
-                        backend.window_move(&t, x, y)
-                    }
-                    (None, None) => Err(device_io::Error::Usage(
-                        "pass --to X,Y or --display <id>".into(),
-                    )),
-                });
+            let result = sel.target().and_then(|t| match (&display, &to) {
+                (Some(d), _) => backend.window_move_display(&t, d),
+                (None, Some(xy)) => {
+                    let (x, y) = parse_pair(xy)?;
+                    backend.window_move(&t, x, y)
+                }
+                (None, None) => Err(device_io::Error::Usage(
+                    "pass --to X,Y or --display <id>".into(),
+                )),
+            });
             finish(json, result, print_window_one)
         }
         WindowAction::Resize { sel, to } => {
             let json = sel.json;
-            let result = gate(allow_control, false, allow_destructive)
-                .and_then(|_| sel.target())
-                .and_then(|t| {
-                    let (wd, ht) = parse_pair(&to)?;
-                    backend.window_resize(&t, wd, ht)
-                });
+            let result = sel.target().and_then(|t| {
+                let (wd, ht) = parse_pair(&to)?;
+                backend.window_resize(&t, wd, ht)
+            });
             finish(json, result, print_window_one)
         }
     }
