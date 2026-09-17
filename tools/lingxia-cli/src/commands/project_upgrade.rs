@@ -1698,5 +1698,22 @@ mod tests {
         assert!(!prepared.line_behind());
         assert!(prepared.edits.is_empty());
         assert_eq!(prepared.min_runtime_edits.len(), 1);
+
+        let plan_for = |min_runtime: &str| {
+            fs::write(
+                root.join("lxapp.json"),
+                format!("{{\n  \"version\": \"1.0.0\",\n  \"minRuntime\": \"{min_runtime}\"\n}}\n"),
+            )
+            .unwrap();
+            build_plan(root).unwrap().min_runtime_edits
+        };
+        let floor = crate::versions::min_runtime_floor();
+        let raised = plan_for("0.1.0");
+        assert_eq!(
+            raised[0].changes,
+            vec![format!("minRuntime: 0.1.0 -> {floor}")]
+        );
+        assert!(plan_for("99.0.0").is_empty());
+        assert!(plan_for(&floor).is_empty());
     }
 }
