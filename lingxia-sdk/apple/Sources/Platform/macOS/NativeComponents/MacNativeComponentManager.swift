@@ -95,7 +95,9 @@ final class MacNativeComponentManager {
     func handle(message: [String: Any]) {
         guard let action = message["action"] as? String else { return }
         if island == nil, MacInlineNativeIsland.isIslandAction(action), let hostView {
-            island = MacInlineNativeIsland(host: hostView, manager: self, appId: appId) { [weak self] id, event, detail in
+            // The bridge installs before the page's WebView learns its lxapp, so the
+            // id captured at init may still be the placeholder; read it now.
+            island = MacInlineNativeIsland(host: hostView, manager: self, appId: webView?.appId ?? appId) { [weak self] id, event, detail in
                 self?.emitIslandEvent(componentId: id, event: event, detail: detail)
             }
         }
