@@ -11,22 +11,23 @@
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
+use windows::core::{w, PCWSTR};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateBitmap, CreateRoundRectRgn, CreateSolidBrush, DT_LEFT, DT_RIGHT,
-    DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, Ellipse, EndPaint, FillRect,
-    GetStockObject, HFONT, HGDIOBJ, NULL_PEN, PAINTSTRUCT, ScreenToClient, SelectObject, SetBkMode,
-    SetTextColor, SetWindowRgn, TRANSPARENT,
+    BeginPaint, CreateBitmap, CreateCompatibleDC, CreateDIBSection, CreateSolidBrush, DeleteDC,
+    DeleteObject, DrawTextW, EndPaint, FillRect, GetDC, ReleaseDC, ScreenToClient, SelectObject,
+    SetBkMode, SetTextColor, AC_SRC_ALPHA, AC_SRC_OVER, BITMAPINFO, BITMAPINFOHEADER, BI_RGB,
+    BLENDFUNCTION, DIB_RGB_COLORS, DT_LEFT, DT_RIGHT, DT_SINGLELINE, DT_VCENTER, HFONT, HGDIOBJ,
+    PAINTSTRUCT, TRANSPARENT,
 };
 use windows::Win32::System::Com::{
-    CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
-    CoUninitialize,
+    CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+    COINIT_APARTMENTTHREADED,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{ITaskbarList3, TaskbarList};
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::{PCWSTR, w};
 
 use super::update_callout::{dpi_scale, make_font, rgb, to_wide};
 use super::update_card::Lang;
@@ -154,7 +155,7 @@ fn run_indicator_thread(lang: Lang, generation: u64) {
         }
 
         let Ok(capsule) = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             capsule_class,
             w!("AI assistant"),
             WS_POPUP,
@@ -176,9 +177,6 @@ fn run_indicator_thread(lang: Lang, generation: u64) {
             }
             return;
         };
-        let height = px(CAPSULE_HEIGHT, scale);
-        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, height, height);
-        let _ = SetWindowRgn(capsule, Some(region), false);
 
         let taskbar = owner.and_then(|owner| set_taskbar_overlay(owner, lang));
         let indicator = Box::new(Indicator {
@@ -192,6 +190,7 @@ fn run_indicator_thread(lang: Lang, generation: u64) {
         });
         SetWindowLongPtrW(capsule, GWLP_USERDATA, Box::into_raw(indicator) as isize);
         CAPSULE_HWND.store(capsule.0 as isize, Ordering::SeqCst);
+        present_capsule(capsule);
 
         if GENERATION.load(Ordering::SeqCst) != generation {
             let _ = DestroyWindow(capsule);
@@ -226,7 +225,7 @@ fn capsule_width(font: HFONT, lang: Lang, scale: f32) -> i32 {
 }
 
 fn text_width(font: HFONT, text: &str) -> i32 {
-    use windows::Win32::Graphics::Gdi::{DT_CALCRECT, GetDC, ReleaseDC};
+    use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, DT_CALCRECT};
     unsafe {
         let dc = GetDC(None);
         let old = SelectObject(dc, font.into());
@@ -252,6 +251,14 @@ fn point_in_stop(hwnd: HWND, point: POINT) -> bool {
     point.x >= stop_left(indicator, dpi_scale()) - px(STOP_GAP / 2.0, dpi_scale())
 }
 
+fn point_in_capsule(hwnd: HWND, point: POINT) -> bool {
+    let Some(indicator) = (unsafe { indicator_ref(hwnd) }) else {
+        return false;
+    };
+    let height = px(CAPSULE_HEIGHT, dpi_scale());
+    rounded_rect_coverage(point.x, point.y, indicator.width, height, height / 2) > 128
+}
+
 unsafe extern "system" fn capsule_wnd_proc(
     hwnd: HWND,
     msg: u32,
@@ -261,8 +268,22 @@ unsafe extern "system" fn capsule_wnd_proc(
     unsafe {
         match msg {
             WM_PAINT => {
-                paint_capsule(hwnd);
+                let mut ps = PAINTSTRUCT::default();
+                let _ = BeginPaint(hwnd, &mut ps);
+                let _ = EndPaint(hwnd, &ps);
                 LRESULT(0)
+            }
+            WM_NCHITTEST => {
+                let mut point = POINT {
+                    x: (lparam.0 & 0xFFFF) as i16 as i32,
+                    y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
+                };
+                let _ = ScreenToClient(hwnd, &mut point);
+                if point_in_capsule(hwnd, point) {
+                    LRESULT(HTCLIENT as isize)
+                } else {
+                    LRESULT(HTTRANSPARENT as isize)
+                }
             }
             WM_TIMER => {
                 follow_owner(hwnd);
@@ -484,59 +505,180 @@ fn paint_frame(hwnd: HWND) {
     }
 }
 
-fn paint_capsule(hwnd: HWND) {
+/// Per-pixel alpha capsule. `SetWindowRgn` clips on whole pixels and leaves
+/// the ends jagged; this matches the shell chrome mask instead.
+fn present_capsule(hwnd: HWND) {
+    let Some(indicator) = (unsafe { indicator_ref(hwnd) }) else {
+        return;
+    };
+    let scale = dpi_scale();
+    let width = indicator.width;
+    let height = px(CAPSULE_HEIGHT, scale);
+    if width <= 0 || height <= 0 {
+        return;
+    }
+
     unsafe {
-        let Some(indicator) = indicator_ref(hwnd) else {
+        let screen = GetDC(None);
+        let dc = CreateCompatibleDC(Some(screen));
+        let info = BITMAPINFO {
+            bmiHeader: BITMAPINFOHEADER {
+                biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                biWidth: width,
+                biHeight: -height,
+                biPlanes: 1,
+                biBitCount: 32,
+                biCompression: BI_RGB.0,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let mut bits = std::ptr::null_mut();
+        let Ok(bitmap) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+        else {
+            let _ = DeleteDC(dc);
+            ReleaseDC(None, screen);
             return;
         };
-        let scale = dpi_scale();
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-        let mut client = RECT::default();
-        let _ = GetClientRect(hwnd, &mut client);
+        let pixels = std::slice::from_raw_parts_mut(bits.cast::<u32>(), (width * height) as usize);
+        let ink =
+            0xff00_0000 | (u32::from(INK.0) << 16) | (u32::from(INK.1) << 8) | u32::from(INK.2);
+        pixels.fill(ink);
+        paint_dot(pixels, width, height, scale);
 
-        let bg = CreateSolidBrush(rgb(INK.0, INK.1, INK.2));
-        FillRect(hdc, &client, bg);
-        let _ = DeleteObject(bg.into());
-
-        let dot = CreateSolidBrush(rgb(TINT.0, TINT.1, TINT.2));
-        let old_brush = SelectObject(hdc, dot.into());
-        let old_pen = SelectObject(hdc, GetStockObject(NULL_PEN));
-        let cy = client.bottom / 2;
+        let old_bitmap = SelectObject(dc, bitmap.into());
+        SetBkMode(dc, TRANSPARENT);
+        let old_font = SelectObject(dc, indicator.font.into());
         let d = px(DOT, scale);
         let left = px(PAD, scale);
-        let _ = Ellipse(hdc, left, cy - d / 2, left + d, cy - d / 2 + d);
-        SelectObject(hdc, old_pen);
-        SelectObject(hdc, old_brush);
-        let _ = DeleteObject(dot.into());
-
-        SetBkMode(hdc, TRANSPARENT);
-        let old_font = SelectObject(hdc, indicator.font.into());
-        let stop_left = stop_left(indicator, scale);
+        let stop = stop_left(indicator, scale);
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: width,
+            bottom: height,
+        };
         draw_text(
-            hdc,
+            dc,
             t_active(indicator.lang),
             RECT {
                 left: left + d + px(GAP, scale),
-                right: stop_left - px(STOP_GAP, scale),
+                right: stop - px(STOP_GAP, scale),
                 ..client
             },
             rgb(255, 255, 255),
             DT_LEFT,
         );
         draw_text(
-            hdc,
+            dc,
             t_stop(indicator.lang),
             RECT {
-                left: stop_left,
-                right: client.right - px(PAD, scale),
+                left: stop,
+                right: width - px(PAD, scale),
                 ..client
             },
             rgb(TINT.0, TINT.1, TINT.2),
             DT_RIGHT,
         );
-        SelectObject(hdc, old_font);
-        let _ = EndPaint(hwnd, &ps);
+        SelectObject(dc, old_font);
+        apply_rounded_alpha_mask(pixels, width, height, height / 2);
+
+        let size = SIZE {
+            cx: width,
+            cy: height,
+        };
+        let origin = POINT { x: 0, y: 0 };
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as u8,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as u8,
+            ..Default::default()
+        };
+        let _ = UpdateLayeredWindow(
+            hwnd,
+            Some(screen),
+            None,
+            Some(&size),
+            Some(dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            ULW_ALPHA,
+        );
+        SelectObject(dc, old_bitmap);
+        let _ = DeleteObject(bitmap.into());
+        let _ = DeleteDC(dc);
+        ReleaseDC(None, screen);
+    }
+}
+
+fn paint_dot(pixels: &mut [u32], width: i32, height: i32, scale: f32) {
+    let diameter = px(DOT, scale) as f32;
+    let radius = diameter / 2.0;
+    let cx = px(PAD, scale) as f32 + radius;
+    let cy = height as f32 / 2.0;
+    for y in 0..height {
+        for x in 0..width {
+            let dx = x as f32 + 0.5 - cx;
+            let dy = y as f32 + 0.5 - cy;
+            let coverage = (radius - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+            if coverage <= 0.0 {
+                continue;
+            }
+            let index = (y * width + x) as usize;
+            let pixel = pixels[index];
+            let blend = |channel: u8, dest: u32| {
+                let cover = (coverage * 255.0) as u32;
+                (u32::from(channel) * cover + dest * (255 - cover) + 127) / 255
+            };
+            pixels[index] = 0xff00_0000
+                | (blend(TINT.0, (pixel >> 16) & 0xff) << 16)
+                | (blend(TINT.1, (pixel >> 8) & 0xff) << 8)
+                | blend(TINT.2, pixel & 0xff);
+        }
+    }
+}
+
+fn rounded_rect_coverage(x: i32, y: i32, width: i32, height: i32, radius: i32) -> u32 {
+    let corner_x = if x < radius {
+        radius
+    } else if x >= width - radius {
+        width - radius
+    } else {
+        return 255;
+    };
+    let corner_y = if y < radius {
+        radius
+    } else if y >= height - radius {
+        height - radius
+    } else {
+        return 255;
+    };
+    let dx = x as f32 + 0.5 - corner_x as f32;
+    let dy = y as f32 + 0.5 - corner_y as f32;
+    let coverage = (radius as f32 - (dx * dx + dy * dy).sqrt() + 0.5).clamp(0.0, 1.0);
+    (coverage * 255.0) as u32
+}
+
+/// GDI-drawn glyphs carry garbage alpha, so the silhouette is geometric.
+fn apply_rounded_alpha_mask(pixels: &mut [u32], width: i32, height: i32, radius: i32) {
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y * width + x) as usize;
+            let alpha = rounded_rect_coverage(x, y, width, height, radius);
+            let pixel = pixels[index];
+            pixels[index] = match alpha {
+                255 => 0xff00_0000 | (pixel & 0x00ff_ffff),
+                0 => 0,
+                alpha => {
+                    let premultiply = |channel: u32| (channel * alpha + 127) / 255;
+                    (alpha << 24)
+                        | (premultiply((pixel >> 16) & 0xff) << 16)
+                        | (premultiply((pixel >> 8) & 0xff) << 8)
+                        | premultiply(pixel & 0xff)
+                }
+            };
+        }
     }
 }
 
