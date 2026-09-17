@@ -95,12 +95,12 @@ const GROUPS = [
   {
     slug: 'device',
     title: 'Device and input',
-    summary: 'Device, screen, and system facts, plus orientation and key events.',
+    summary: 'Device, screen, and system facts, the clipboard, plus orientation and key events.',
     members: [
       'getDeviceInfo', 'getScreenInfo', 'getSystemSetting',
       'vibrateShort', 'vibrateLong', 'makePhoneCall', 'getLocation',
       'setDeviceOrientation', 'onDeviceOrientationChange',
-      'onKeyDown', 'onKeyUp',
+      'onKeyDown', 'onKeyUp', 'clipboard',
     ],
   },
   {
