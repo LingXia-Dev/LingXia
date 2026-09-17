@@ -53,10 +53,10 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
         canceled: read.canceled,
         empty: read.canceled ? null : read.empty,
         text: !read.canceled && !read.empty ? read.text : null,
-        types: types.canceled ? null : types.types,
+        types,
       };
     `,
-  }) as { canceled: boolean; empty: boolean | null; text: string | null; types: string[] | null };
+  }) as { canceled: boolean; empty: boolean | null; text: string | null; types: string[] };
   expect(seen.canceled).toBe(false);
   expect(seen.empty).toBe(false);
   expect(seen.text).toBe(fromOs);
