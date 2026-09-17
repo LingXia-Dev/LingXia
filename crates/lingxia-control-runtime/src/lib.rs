@@ -9,6 +9,10 @@
 //! its own integrations. Both funnel through [`dispatch`], and a host enables only
 //! what it ships.
 
+#[cfg(all(test, target_vendor = "apple"))]
+#[path = "../../lingxia-platform/tests/support/apple_host_stubs.rs"]
+mod apple_host_stubs;
+
 mod app;
 #[cfg(feature = "dev-bridge")]
 mod bridge;
