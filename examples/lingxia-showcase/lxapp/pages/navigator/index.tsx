@@ -172,7 +172,7 @@ export default function NavigatorPage() {
 
               <LxNavigator
                 url="https://www.deepseek.com"
-                target="self"
+                as="tab"
                 onSuccess={() => addLog('✓ Opening DeepSeek in-app')}
                 onFail={onFailWithMessage('Failed to open in-app browser')}
               >
@@ -186,7 +186,37 @@ export default function NavigatorPage() {
 
               <LxNavigator
                 url="https://www.deepseek.com"
-                target="browser"
+                as="aside"
+                edge="right"
+                onSuccess={() => addLog('✓ Opening DeepSeek as aside')}
+                onFail={onFailWithMessage('Failed to open aside')}
+              >
+                <div className="w-full py-2.5 px-4 bg-linear-to-r from-indigo-500 to-violet-500 hover:from-indigo-600 hover:to-violet-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                  <div className="flex items-center justify-center gap-2">
+                    <span>🗂️</span>
+                    <span>Open DeepSeek as Aside</span>
+                  </div>
+                </div>
+              </LxNavigator>
+
+              <LxNavigator
+                page="surface"
+                as="float"
+                size={{ width: '80%', height: '60%' }}
+                interaction={{ closeButton: true }}
+                onSuccess={() => addLog('✓ Opening page as float')}
+                onFail={onFailWithMessage('Failed to open float')}
+              >
+                <div className="w-full py-2.5 px-4 bg-linear-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-lg text-sm font-medium text-center transition-all shadow-sm">
+                  <div className="flex items-center justify-center gap-2">
+                    <span>🪟</span>
+                    <span>Open Page as Float</span>
+                  </div>
+                </div>
+              </LxNavigator>
+
+              <LxNavigator
+                url="https://www.deepseek.com"
                 onSuccess={() => addLog('✓ Opening DeepSeek in external browser')}
                 onFail={onFailWithMessage('Failed to open external browser')}
               >
@@ -272,7 +302,8 @@ export default function NavigatorPage() {
             <div className="flex-1">
               <div className="text-sm font-medium text-blue-900 dark:text-blue-400 mb-1">Smart & Simple</div>
               <div className="text-xs text-blue-700 dark:text-blue-400 leading-relaxed">
-                • HTTPS URLs → auto open in browser<br />
+                • url → system browser; as tab/aside keeps it in-app<br />
+                • page + as float/window → surface placement<br />
                 • appId → auto target other lxapp<br />
                 • Pass data via query string in path
               </div>

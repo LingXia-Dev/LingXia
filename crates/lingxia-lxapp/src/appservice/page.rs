@@ -1,7 +1,7 @@
 use crate::PageLifecycleEvent;
 use crate::bridge::{
-    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_METHOD_NOT_FOUND, BRIDGE_TOPIC_NOT_FOUND,
-    OutboundContext, PageBridge, RpcError, SessionWorkId, ViewTransport,
+    BRIDGE_CANCELED, BRIDGE_INTERNAL_ERROR, BRIDGE_MALFORMED_MESSAGE, BRIDGE_METHOD_NOT_FOUND,
+    BRIDGE_TOPIC_NOT_FOUND, OutboundContext, PageBridge, RpcError, SessionWorkId, ViewTransport,
 };
 use crate::error;
 use crate::error::LxAppError;
@@ -376,6 +376,12 @@ impl PageSvc {
             json.json_to_js_value(&ctx).ok()
         };
 
+        if let Some(name) = method.strip_prefix("surface.") {
+            return self
+                .open_surface_for_view(name, params_json, &mut cancel_rx)
+                .await;
+        }
+
         let Some(js_func) = self.get_js_func(method) else {
             return Err(RpcError::new(
                 BRIDGE_METHOD_NOT_FOUND,
@@ -464,6 +470,50 @@ impl PageSvc {
         }
 
         js_value_to_json_str(value)
+    }
+
+    /// `surface.openPage` / `surface.openUrl` let a View reach the same
+    /// placements as Logic's `lx.surface`. The handle stays in Logic unused.
+    async fn open_surface_for_view(
+        &self,
+        name: &str,
+        params_json: Option<&str>,
+        cancel_rx: &mut oneshot::Receiver<()>,
+    ) -> Result<String, RpcError> {
+        let target_key = match name {
+            "openPage" => "page",
+            "openUrl" => "url",
+            _ => {
+                return Err(RpcError::new(
+                    BRIDGE_METHOD_NOT_FOUND,
+                    Some(format!("Method not found: surface.{name}")),
+                ));
+            }
+        };
+        let ctx = self.get_ctx();
+        let params = params_json
+            .and_then(|json| json.json_to_js_value(&ctx).ok())
+            .and_then(JSValue::into_object)
+            .ok_or_else(|| {
+                RpcError::new(
+                    BRIDGE_MALFORMED_MESSAGE,
+                    Some(format!("surface.{name} requires a params object")),
+                )
+            })?;
+        let call = async {
+            let target = params.get::<_, String>(target_key)?;
+            let options = params
+                .get::<_, JSValue>("options")
+                .unwrap_or_else(|_| JSValue::undefined(&ctx));
+            let open = ctx
+                .global()
+                .get::<_, JSObject>("lx")?
+                .get::<_, JSObject>("surface")?
+                .get::<_, JSFunc>(name)?;
+            open.call_async::<_, JSValue>(None, (target, options)).await
+        };
+        await_js_call_or_cancel(cancel_rx, call).await?;
+        Ok("null".to_owned())
     }
 
     pub(crate) async fn handle_notify(
