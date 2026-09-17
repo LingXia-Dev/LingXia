@@ -10,6 +10,9 @@ export default function SystemPage() {
     refreshAutostart,
     refreshCacheSize,
     clearCache,
+    refreshNotification,
+    showNotification,
+    cancelNotification,
   } = actions;
   const {
     currentType = 'appBaseInfo',
@@ -24,6 +27,10 @@ export default function SystemPage() {
     cacheBusy = false,
     cacheError = '',
     cacheNotice = '',
+    notificationSupported = false,
+    notificationPermission = '',
+    notificationLastId = '',
+    notificationError = '',
   } = data;
 
   return (
@@ -167,6 +174,68 @@ export default function SystemPage() {
                       className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
                     >
                       Re-read OS State
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {currentType === 'notification' && (
+          <>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">app.notification</h1>
+              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+            </div>
+
+            <div
+              data-testid="system-notification-panel"
+              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+            >
+              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-violet-50 to-purple-50">
+                  <span className="text-2xl">🔔</span>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-800 font-semibold">Local Notifications</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {notificationSupported
+                      ? 'Post and cancel a local banner — Control app only'
+                      : 'Not available on this host'}
+                  </div>
+                </div>
+                {notificationSupported && (
+                  <button
+                    onClick={showNotification}
+                    className="px-4 py-2 text-xs font-medium bg-violet-500 hover:bg-violet-600 text-white rounded-lg transition-colors"
+                  >
+                    Show
+                  </button>
+                )}
+              </div>
+
+              <div className="p-5">
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1 h-4 bg-violet-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
+                  </div>
+                  <InfoRow label="Supported" value={formatBool(notificationSupported)} />
+                  <InfoRow label="Permission" value={notificationPermission || '--'} />
+                  <InfoRow label="Last id" value={notificationLastId || '--'} />
+                  {notificationError && <InfoRow label="Error" value={notificationError} />}
+                  <div className="pt-3 flex gap-2">
+                    <button
+                      onClick={refreshNotification}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Re-read Permission
+                    </button>
+                    <button
+                      onClick={cancelNotification}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Cancel
                     </button>
                   </div>
                 </div>
