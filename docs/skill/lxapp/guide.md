@@ -204,8 +204,8 @@ On a memory-limited desktop host the shell may **discard** a hidden lxapp's
 non-current tab WebView. That is not `onUnload`: Logic `data` stays. The next
 show rebuilds the document (`onShow`, then a new `onReady`) — scroll position
 and open dialogs in that View do not survive. Put whatever must survive in
-`lx.getStorage()` or in `App({})`. The current tab of each open lxapp, and
-every tab of the visible one, stay warm.
+`lx.getStorage()` or in `App({})`. Every tab of the visible lxapp, and every
+page still on a hidden main's stack, stay warm.
 
 `lx.redirectTo` onto the page you are already on is the one exception: the page
 never leaves the screen, so it keeps its instance and simply gets `onLoad` again

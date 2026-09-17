@@ -538,9 +538,10 @@ reactivates before the native present.
 
 The live-view budget is **separate** from the browser-tab cap. It uses the
 same ¼-RAM / ~256 MiB estimate, clamped to 4–16 (8 if memory detection
-fails). Eligible first: live tab pages of a **hidden** main that are not that
-main's current page. Every page of the shown lxapp, and the current page of
-each hidden main, stay resident.
+fails). Eligible first: live **tab** pages of a **hidden** main that are not
+on that main's page stack. Every page of the shown lxapp, and every page
+still on a hidden main's stack (the resume page and anything under it), stay
+resident.
 
 Policy runs when a WebView becomes ready, when an lxapp hides, and on
 `on_low_memory` (which discards every eligible page, then may evict a
