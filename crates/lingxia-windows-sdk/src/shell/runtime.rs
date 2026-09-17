@@ -1245,17 +1245,36 @@ fn sync_related_shell_layouts(appid: &str) {
     }
 }
 
-/// The app, the shell owner, and the current app, deduplicated across every
-/// requested app id.
+/// The app, the shell owner, the visible main, and the stack-top app.
+///
+/// Chrome lives on the *visible* webtag. `get_current_lxapp` is the navigation
+/// stack top — sidebar focus does not push it — so a later `navigateToApp`
+/// leaves the on-screen guest out of the set. Toggling that guest then
+/// rebuilds home's hidden webtag and the last-opened guest, never the one
+/// the user is looking at.
 fn related_shell_appids(requested: &[String]) -> Vec<String> {
+    let stack_top = lxapp::get_current_lxapp().0;
+    merge_related_shell_appids(
+        requested,
+        shell_owner_appid(),
+        active_main_lxapp_id(),
+        (!stack_top.is_empty()).then_some(stack_top),
+    )
+}
+
+fn merge_related_shell_appids(
+    requested: &[String],
+    owner: Option<String>,
+    visible_main: Option<String>,
+    stack_top: Option<String>,
+) -> Vec<String> {
     let mut appids: Vec<String> = Vec::new();
-    let owner_appid = shell_owner_appid();
-    let current_appid = lxapp::get_current_lxapp().0;
     for appid in requested
         .iter()
         .cloned()
-        .chain(owner_appid)
-        .chain((!current_appid.is_empty()).then_some(current_appid))
+        .chain(owner)
+        .chain(visible_main)
+        .chain(stack_top)
     {
         if !appids.contains(&appid) {
             appids.push(appid);
@@ -4129,7 +4148,8 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
             update_sidebar_ui_state(&group, |state| {
                 state.items_collapsed = !state.items_collapsed;
             });
-            sync_shell_layout(appid);
+            // Remapped to the shell owner above; the chevron belongs to `group`.
+            sync_shell_layout(&group);
             return;
         }
         chrome_command::SIDEBAR_SCROLL => {
@@ -7526,7 +7546,8 @@ mod tests {
         browser_internal_page_deep_link, browser_internal_page_key, browser_url_is_hidden,
         build_lxapp_context_menu, chrome_command, chrome_command_is_page_scoped,
         lxapp_shortcut_action, main_workspace_add_target_for_capabilities,
-        preferred_sidebar_group_appid, sidebar_content_available, toggle_sidebar_projection,
+        merge_related_shell_appids, preferred_sidebar_group_appid, sidebar_content_available,
+        toggle_sidebar_projection,
     };
     #[cfg(feature = "browser-runtime")]
     use super::{
@@ -7747,6 +7768,23 @@ mod tests {
         assert_eq!(
             preferred_sidebar_group_appid(None, None, Some("app-b".to_string())).as_deref(),
             Some("app-b")
+        );
+    }
+
+    #[test]
+    fn related_shell_sync_includes_the_visible_main() {
+        assert_eq!(
+            merge_related_shell_appids(
+                &["home".into()],
+                Some("home".into()),
+                Some("mukeadmin".into()),
+                Some("storedata".into()),
+            ),
+            vec![
+                "home".to_string(),
+                "mukeadmin".to_string(),
+                "storedata".to_string()
+            ]
         );
     }
 
