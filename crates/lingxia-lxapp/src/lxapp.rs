@@ -2352,15 +2352,12 @@ impl LxApp {
             )));
         }
 
-        if let Some(required) = config.minRuntime.as_deref()
-            && let Err(error) = lingxia_update::ensure_runtime_satisfies(
-                required,
-                crate::SDK_RUNTIME_VERSION,
-                &self.appid,
-                &config.version,
-            )
+        // Install refuses a downloaded package below its floor, so reaching
+        // here means a bundled or already-committed one: refusing the load
+        // would leave no instance to run the update that replaces it.
+        if let Err(error) = config.ensure_runtime_satisfies(&self.appid, crate::SDK_RUNTIME_VERSION)
         {
-            return Err(LxAppError::requires_runtime_upgrade(error.to_string()));
+            error!("Loading despite runtime floor: {}", error).with_appid(self.appid.clone());
         }
 
         let mut tabbar = config

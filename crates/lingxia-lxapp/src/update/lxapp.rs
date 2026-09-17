@@ -474,7 +474,7 @@ impl UpdateManager {
             }
         };
 
-        if let Err(e) = Self::validate_installed_lxapp_manifest(&install_path) {
+        if let Err(e) = Self::validate_downloaded_lxapp_manifest(lxappid, &install_path) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
                 crate::error!(
                     "Failed to rollback invalid downloaded update at {}: {}",

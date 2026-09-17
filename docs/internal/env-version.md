@@ -152,9 +152,11 @@ project line). `lingxia new` writes it; `lingxia upgrade` raises it; publish
 copies it into `requiredRuntimeVersion` / `minRuntimeVersion`. The CLI
 version is never stamped. The update path gates on the signed
 `requiredRuntimeVersion` (the unsigned `minRuntimeVersion` only counts on a
-dev build with no keys); opening an installed package gates again on its own
-`lxapp.json`. Both refuse with business code 6002, and a package with no
-floor always opens.
+dev build with no keys); installing a downloaded archive gates again on its
+own `lxapp.json`, before metadata commits, so the previous install stays.
+Both refuse with business code 6002. Load never refuses: a bundled or
+already-installed package above the floor logs an error and opens, and a
+package with no floor always opens.
 
 Host self-update does not send a channel. Lxapp update still does. The signed
 host-update manifest uses an empty channel; lxapp/plugin manifests bind their

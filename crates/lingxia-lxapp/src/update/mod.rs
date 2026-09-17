@@ -290,7 +290,7 @@ impl UpdateManager {
             archive_path,
         )?;
 
-        if let Err(e) = Self::validate_installed_lxapp_manifest(&install_path) {
+        if let Err(e) = Self::validate_downloaded_lxapp_manifest(lxappid, &install_path) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
                 crate::error!(
                     "Failed to rollback invalid installation at {}: {}",
@@ -390,7 +390,17 @@ impl UpdateManager {
         ))
     }
 
-    fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<(), LxAppError> {
+    /// A downloaded package is also held to its runtime floor. Refusing it
+    /// before metadata commits keeps the previous install in place.
+    fn validate_downloaded_lxapp_manifest(
+        lxappid: &str,
+        install_path: &Path,
+    ) -> Result<(), LxAppError> {
+        Self::validate_installed_lxapp_manifest(install_path)?
+            .ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)
+    }
+
+    fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<LxAppConfig, LxAppError> {
         let manifest_path = install_path.join("lxapp.json");
         let manifest = fs::read_to_string(&manifest_path).map_err(|e| {
             LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
@@ -398,10 +408,8 @@ impl UpdateManager {
         let manifest_json: serde_json::Value = serde_json::from_str(&manifest).map_err(|e| {
             LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
         })?;
-        LxAppConfig::from_value(manifest_json).map_err(|e| {
-            LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e))
-        })?;
-        Ok(())
+        LxAppConfig::from_value(manifest_json)
+            .map_err(|e| LxAppError::InvalidJsonFile(format!("{}: {}", manifest_path.display(), e)))
     }
 
     /// Uninstall on-disk contents for a specific (lxappid, release_type) and clear metadata.
