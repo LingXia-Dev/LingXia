@@ -40,7 +40,7 @@ app:
   zoom: "Zoom"
   bring_all_to_front: "Bring All to Front"
 
-# Shell indicator while an AI assistant drives the app over its control socket.
-agent_control:
+# Shell indicator while a local control session runs (an AI assistant driving the app).
+control_session:
   active: "An AI assistant is in control"
   stop: "Stop"

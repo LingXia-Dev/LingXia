@@ -203,9 +203,9 @@ pub trait AppRuntime:
     }
 
     /// Show or hide the shell's "an AI assistant is in control" indicator.
-    /// Its Stop button calls [`crate::request_agent_control_stop`]. Desktop
+    /// Its Stop button calls [`crate::request_control_session_stop`]. Desktop
     /// shells only; no-op elsewhere.
-    fn set_agent_control_indicator(&self, _active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, _active: bool) -> Result<(), PlatformError> {
         Ok(())
     }
 

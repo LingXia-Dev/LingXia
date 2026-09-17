@@ -102,16 +102,16 @@ pub fn install(enabled: bool) -> std::io::Result<()> {
 fn show_sessions_in_shell() {
     static INDICATOR: OnceLock<ControlEventSubscription> = OnceLock::new();
     INDICATOR.get_or_init(|| {
-        lingxia::app::set_agent_control_stop_handler(|| {
+        lingxia::app::set_control_session_stop_handler(|| {
             if let Err(error) = stop_current_session() {
                 log::warn!("stopping the agent session failed: {error}");
             }
         });
         subscribe(|event| {
             if let Some(active) = activity::indicator_for(event)
-                && let Err(error) = lingxia::app::set_agent_control_indicator(active)
+                && let Err(error) = lingxia::app::set_control_session_indicator(active)
             {
-                log::debug!("agent control indicator unavailable: {error}");
+                log::debug!("control session indicator unavailable: {error}");
             }
         })
     });

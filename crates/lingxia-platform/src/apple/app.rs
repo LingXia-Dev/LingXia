@@ -207,9 +207,9 @@ impl AppRuntime for Platform {
     }
 
     #[cfg(target_os = "macos")]
-    fn set_agent_control_indicator(&self, active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, active: bool) -> Result<(), PlatformError> {
         // No shell (headless) is not an error: there is nothing to show it on.
-        let _ = ffi::set_agent_control_indicator(active);
+        let _ = ffi::set_control_session_indicator(active);
         Ok(())
     }
 

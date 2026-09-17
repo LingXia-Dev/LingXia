@@ -1,13 +1,13 @@
 //! What the shell shows while an AI assistant drives the app over its control
 //! socket, modelled on computer-use agents. Mirrors the macOS
-//! `AgentControlIndicator`:
+//! `ControlSessionIndicator`:
 //!
 //! - a pulsing orange frame around the app window that ignores the mouse;
 //! - a capsule at the bottom centre, "● An AI assistant is in control   Stop";
 //! - an orange dot over the taskbar button, for when the app is behind others.
 //!
 //! Both windows are owned by the app window, so they follow it and hide with
-//! it. Stop ends the session through [`crate::request_agent_control_stop`].
+//! it. Stop ends the session through [`crate::request_control_session_stop`].
 
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU64, Ordering};
 
@@ -59,7 +59,7 @@ pub(super) fn show(locale: &str) {
     let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
     let lang = super::update_card::lang_of(locale);
     std::thread::Builder::new()
-        .name("lingxia-agent-control-indicator".to_string())
+        .name("lingxia-control-session-indicator".to_string())
         .spawn(move || run_indicator_thread(lang, generation))
         .ok();
 }
@@ -108,8 +108,8 @@ fn run_indicator_thread(lang: Lang, generation: u64) {
     unsafe {
         let com = CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_ok();
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
-        let capsule_class = w!("LxAgentControlCapsuleClass");
-        let frame_class = w!("LxAgentControlFrameClass");
+        let capsule_class = w!("LxControlSessionCapsuleClass");
+        let frame_class = w!("LxControlSessionFrameClass");
         RegisterClassW(&WNDCLASSW {
             lpfnWndProc: Some(capsule_wnd_proc),
             hInstance: hinstance.into(),
@@ -288,7 +288,7 @@ unsafe extern "system" fn capsule_wnd_proc(
                 };
                 if point_in_stop(hwnd, point) {
                     // The session-ended event takes the indicator down.
-                    crate::request_agent_control_stop();
+                    crate::request_control_session_stop();
                 }
                 LRESULT(0)
             }

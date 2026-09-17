@@ -30,7 +30,7 @@ struct AppEvent {
     static var updateInstallClick: AppUiEventType { AppUiEventType.UpdateInstallClick }
     static var trayClick: AppUiEventType { AppUiEventType.TrayClick }
     static var trayMenuClick: AppUiEventType { AppUiEventType.TrayMenuClick }
-    static var agentControlStopClick: AppUiEventType { AppUiEventType.AgentControlStopClick }
+    static var controlSessionStopClick: AppUiEventType { AppUiEventType.ControlSessionStopClick }
 }
 
 let ACTION_CLOSE_LXAPP = "com.lingxia.CLOSE_LXAPP_ACTION"

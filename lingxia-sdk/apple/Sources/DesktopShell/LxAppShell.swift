@@ -178,7 +178,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// visible above any dock panel.
     private var updateReadyCallout: UpdateReadyCallout?
     /// Border, capsule and Dock mark while an AI assistant drives the app.
-    private var agentControlIndicator: AgentControlIndicator?
+    private var controlSessionIndicator: ControlSessionIndicator?
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
@@ -1984,18 +1984,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         updateReadyCallout = nil
     }
 
-    func presentAgentControlIndicator() {
-        guard agentControlIndicator == nil, let window else { return }
-        let indicator = AgentControlIndicator {
-            _ = onAppEvent(AppEvent.agentControlStopClick, "")
+    func presentControlSessionIndicator() {
+        guard controlSessionIndicator == nil, let window else { return }
+        let indicator = ControlSessionIndicator {
+            _ = onAppEvent(AppEvent.controlSessionStopClick, "")
         }
         indicator.show(in: window, content: workspaceManager.contentContainer)
-        agentControlIndicator = indicator
+        controlSessionIndicator = indicator
     }
 
-    func dismissAgentControlIndicator() {
-        agentControlIndicator?.dismiss()
-        agentControlIndicator = nil
+    func dismissControlSessionIndicator() {
+        controlSessionIndicator?.dismiss()
+        controlSessionIndicator = nil
     }
 
     /// Open a browser-local management surface as a main browser

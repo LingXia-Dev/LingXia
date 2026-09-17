@@ -619,11 +619,11 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
-    fn set_agent_control_indicator(&self, active: bool) -> Result<(), PlatformError> {
+    fn set_control_session_indicator(&self, active: bool) -> Result<(), PlatformError> {
         if active {
-            super::agent_control_indicator::show(self.get_system_locale());
+            super::control_session_indicator::show(self.get_system_locale());
         } else {
-            super::agent_control_indicator::hide();
+            super::control_session_indicator::hide();
         }
         Ok(())
     }

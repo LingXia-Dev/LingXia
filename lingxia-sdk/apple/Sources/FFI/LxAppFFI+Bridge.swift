@@ -623,14 +623,14 @@ extension LxApp {
         }
     }
 
-    nonisolated static func setAgentControlIndicator(visible: Bool) -> Bool {
+    nonisolated static func setControlSessionIndicator(visible: Bool) -> Bool {
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
             if visible {
-                runtime.shell.presentAgentControlIndicator()
+                runtime.shell.presentControlSessionIndicator()
             } else {
-                runtime.shell.dismissAgentControlIndicator()
+                runtime.shell.dismissControlSessionIndicator()
             }
             return true
             #else
