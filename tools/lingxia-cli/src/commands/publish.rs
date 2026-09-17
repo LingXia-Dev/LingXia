@@ -104,9 +104,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .with_context(|| format!("Failed to read package: {}", package_path.display()))?;
     let sha256 = lingxia_update::archive_sha256_hex(&file_data);
     println!("   SHA256:  {sha256}");
-    if meta.min_runtime.is_empty() {
-        println!("   minRuntime: none");
-    } else {
+    if !meta.min_runtime.is_empty() {
         println!("   minRuntime: {}", meta.min_runtime);
     }
 
@@ -589,18 +587,7 @@ fn read_lxapp_json(cwd: &Path) -> Result<(String, String, String)> {
         serde_json::from_str(&fs::read_to_string(&path)?).context("Failed to parse lxapp.json")?;
     let id = non_empty_str(&val["appId"], "appId in lxapp.json")?;
     let version = non_empty_str(&val["version"], "version in lxapp.json")?;
-    let min_runtime = val
-        .get("minRuntime")
-        .and_then(|value| value.as_str())
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "lxapp.json minRuntime is required; raise it with `lingxia upgrade` \
-                 or set it explicitly. The CLI version is never stamped."
-            )
-        })?
-        .to_string();
+    let min_runtime = crate::versions::lxapp_min_runtime(&val)?;
     Ok((id, version, min_runtime))
 }
 

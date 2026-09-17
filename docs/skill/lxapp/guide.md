@@ -42,7 +42,7 @@ my-lxapp/
 └── shared/
 ```
 
-`lxapp.json` holds runtime metadata (`appId`, `appName`, `version`, `minRuntime`, `pages` — `name` is a legacy alias for `appName`; write `appName` in new projects). `minRuntime` is the lowest host SDK that may open this package. `lingxia new` writes the current project line (`M.m.0`); `lingxia upgrade` is the only command that raises it. Daily publish copies that value into the signed update envelope and never stamps the CLI version. It does not declare network hosts or privileges. `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
+`lxapp.json` holds runtime metadata (`appId`, `appName`, `version`, `minRuntime`, `pages` — `name` is a legacy alias for `appName`; write `appName` in new projects). `minRuntime` is the lowest host SDK that may open this package: `lingxia new` writes the project line (`M.m.0`), `lingxia upgrade` raises it, and build and publish refuse an lxapp without it. An older host refuses the package with business code `6002`. It does not declare network hosts or privileges. `lxapp.config.ts` holds build config (view tooling, aliases, static asset directories).
 
 ### Static assets
 

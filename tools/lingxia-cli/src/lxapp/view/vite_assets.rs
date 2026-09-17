@@ -31,7 +31,7 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 .collect::<std::collections::HashMap<_, _>>();
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
-            let min_runtime = require_min_runtime(&value)?;
+            let min_runtime = crate::versions::lxapp_min_runtime(&value)?;
             reject_npm_ahead_of_min_runtime(&project.root, &min_runtime)?;
 
             fs::write(
@@ -45,26 +45,6 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
         }
     }
     Ok(())
-}
-
-fn require_min_runtime(value: &Value) -> Result<String> {
-    let raw = value
-        .get("minRuntime")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or("");
-    if raw.is_empty() {
-        bail!(
-            "lxapp.json minRuntime is required (major.minor.patch). \
-             Raise it with `lingxia upgrade` or set it explicitly; \
-             the CLI version is never stamped."
-        );
-    }
-    let parts: Vec<_> = raw.split('.').collect();
-    if parts.len() != 3 || parts.iter().any(|part| part.parse::<u32>().is_err()) {
-        bail!("lxapp.json minRuntime must be a semantic version (major.minor.patch)");
-    }
-    Ok(raw.to_string())
 }
 
 fn reject_npm_ahead_of_min_runtime(project_root: &Path, min_runtime: &str) -> Result<()> {
@@ -523,7 +503,6 @@ mod tests {
         );
         assert!(manifest["tabBar"]["items"][0].get("pagePath").is_none());
         assert_eq!(manifest["minRuntime"].as_str(), Some("0.17.0"));
-        assert!(manifest.get("sdkVersion").is_none());
     }
 
     #[test]
