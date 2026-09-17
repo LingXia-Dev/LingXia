@@ -24,9 +24,10 @@ pub struct AppOptions {
     #[arg(long, global = true)]
     pub allow_control: bool,
     #[command(subcommand)]
-    pub command: AppCommand,
+    pub command: DevAppCommand,
 }
 
+/// What a shipped product exposes about its own windows.
 #[derive(Subcommand, Clone)]
 pub enum AppCommand {
     /// Report host-window automation capabilities
@@ -65,6 +66,15 @@ pub enum AppCommand {
         #[command(subcommand)]
         command: KeyCommand,
     },
+}
+
+/// `lxdev app`: the product's commands plus the ones only development needs.
+/// A product mounts [`AppCommand`] alone; its control socket refuses these
+/// anyway, so listing them there only advertised a command that cannot run.
+#[derive(Subcommand, Clone)]
+pub enum DevAppCommand {
+    #[command(flatten)]
+    Own(AppCommand),
     /// Inject an App Link (warm path)
     Applink {
         /// `https://` AppLink URL
@@ -263,15 +273,20 @@ impl MouseButtonArg {
 }
 
 pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
+    match options.command {
+        DevAppCommand::Own(command) => execute_own(context, options.allow_control, command),
+        DevAppCommand::Applink { url, json } => execute_applink(context, url, json),
+    }
+}
+
+/// Run one of the product's own window commands.
+pub fn execute_own(context: &AppContext, allow_control: bool, command: AppCommand) -> Result<()> {
     // Synthetic input is synthetic input; that the window belongs to the
     // product rather than to some other app does not make it free.
-    if matches!(
-        options.command,
-        AppCommand::Mouse { .. } | AppCommand::Key { .. }
-    ) {
-        crate::guard::gate(options.allow_control, false, false)?;
+    if matches!(command, AppCommand::Mouse { .. } | AppCommand::Key { .. }) {
+        crate::guard::gate(allow_control, false, false)?;
     }
-    match options.command {
+    match command {
         AppCommand::Doctor { json } => execute_doctor(context, json),
         AppCommand::Screenshot {
             window,
@@ -287,7 +302,6 @@ pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
             require_desktop_input(context, "key")?;
             execute_key(context, command)
         }
-        AppCommand::Applink { url, json } => execute_applink(context, url, json),
     }
 }
 
@@ -587,18 +601,21 @@ mod tests {
         .unwrap();
         assert!(matches!(
             cli.app.command,
-            AppCommand::Screenshot {
+            DevAppCommand::Own(AppCommand::Screenshot {
                 window: Some(window),
                 output: Some(output),
                 json: false,
-            } if window == "42" && output == "capture.png"
+            }) if window == "42" && output == "capture.png"
         ));
     }
 
     #[test]
     fn parses_app_doctor_json() {
         let cli = TestCli::try_parse_from(["test", "doctor", "--json"]).unwrap();
-        assert!(matches!(cli.app.command, AppCommand::Doctor { json: true }));
+        assert!(matches!(
+            cli.app.command,
+            DevAppCommand::Own(AppCommand::Doctor { json: true })
+        ));
     }
 
     #[test]
@@ -609,7 +626,7 @@ mod tests {
         .unwrap();
         assert!(matches!(
             cli.app.command,
-            AppCommand::Mouse {
+            DevAppCommand::Own(AppCommand::Mouse {
                 command: MouseCommand::Click(MouseClickOptions {
                     target: MouseTargetOptions {
                         window: Some(window),
@@ -617,7 +634,7 @@ mod tests {
                     },
                     ..
                 }),
-            } if window == "42"
+            }) if window == "42"
         ));
     }
 
@@ -626,9 +643,9 @@ mod tests {
         let cli = TestCli::try_parse_from(["test", "key", "type", "-typed"]).unwrap();
         assert!(matches!(
             cli.app.command,
-            AppCommand::Key {
+            DevAppCommand::Own(AppCommand::Key {
                 command: KeyCommand::Type(KeyTypeOptions { text, .. })
-            } if text == "-typed"
+            }) if text == "-typed"
         ));
     }
 
@@ -642,9 +659,28 @@ mod tests {
         .unwrap();
         assert!(matches!(
             cli.app.command,
-            AppCommand::Applink { url, json: false }
+            DevAppCommand::Applink { url, json: false }
                 if url == "https://applink.lingxia.app/lxapp/open?page=order&id=42"
         ));
+    }
+
+    /// A product mounts only the window commands; `applink` is development
+    /// tooling its control socket refuses.
+    #[test]
+    fn product_window_commands_do_not_include_applink() {
+        use clap::CommandFactory;
+
+        #[derive(Parser)]
+        struct ProductCli {
+            #[command(subcommand)]
+            command: AppCommand,
+        }
+        let names: Vec<String> = ProductCli::command()
+            .get_subcommands()
+            .map(|command| command.get_name().to_string())
+            .collect();
+        assert!(!names.iter().any(|name| name == "applink"), "{names:?}");
+        assert!(names.iter().any(|name| name == "screenshot"), "{names:?}");
     }
 
     #[test]
