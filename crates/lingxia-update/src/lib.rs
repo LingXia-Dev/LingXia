@@ -325,34 +325,46 @@ impl UpdatePackageInfo {
         current_runtime_version: &str,
         target_name: &str,
     ) -> Result<(), RuntimeCompatibilityError> {
-        let Some(required_runtime_version) = self.required_runtime_version_trimmed() else {
-            return Ok(());
-        };
-
-        let current = Version::parse(current_runtime_version).map_err(|_| {
-            RuntimeCompatibilityError::InvalidCurrentRuntimeVersion {
-                runtime_version: current_runtime_version.to_string(),
-            }
-        })?;
-        let required = Version::parse(required_runtime_version).map_err(|_| {
-            RuntimeCompatibilityError::InvalidRequiredRuntimeVersion {
-                target: target_name.to_string(),
-                update_version: self.version.clone(),
-                runtime_version: required_runtime_version.to_string(),
-            }
-        })?;
-
-        if current < required {
-            return Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade {
-                target: target_name.to_string(),
-                update_version: self.version.clone(),
-                required_runtime_version: required.to_string(),
-                current_runtime_version: current.to_string(),
-            });
+        match self.required_runtime_version_trimmed() {
+            Some(required) => ensure_runtime_satisfies(
+                required,
+                current_runtime_version,
+                target_name,
+                &self.version,
+            ),
+            None => Ok(()),
         }
-
-        Ok(())
     }
+}
+
+/// Refuses `target_name@version` when this runtime is below its floor.
+pub fn ensure_runtime_satisfies(
+    required_runtime_version: &str,
+    current_runtime_version: &str,
+    target_name: &str,
+    version: &str,
+) -> Result<(), RuntimeCompatibilityError> {
+    let current = Version::parse(current_runtime_version).map_err(|_| {
+        RuntimeCompatibilityError::InvalidCurrentRuntimeVersion {
+            runtime_version: current_runtime_version.to_string(),
+        }
+    })?;
+    let required = Version::parse(required_runtime_version).map_err(|_| {
+        RuntimeCompatibilityError::InvalidRequiredRuntimeVersion {
+            target: target_name.to_string(),
+            update_version: version.to_string(),
+            runtime_version: required_runtime_version.to_string(),
+        }
+    })?;
+    if current < required {
+        return Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade {
+            target: target_name.to_string(),
+            update_version: version.to_string(),
+            required_runtime_version: required.to_string(),
+            current_runtime_version: current.to_string(),
+        });
+    }
+    Ok(())
 }
 
 fn normalize_checksum(value: &str) -> Option<&str> {
@@ -395,7 +407,29 @@ pub trait UpdateProvider: Send + Sync + 'static {
 
 #[cfg(test)]
 mod tests {
-    use super::{Channel, UpdatePackageInfo, UpdateTarget, Version};
+    use super::{
+        Channel, RuntimeCompatibilityError, UpdatePackageInfo, UpdateTarget, Version,
+        ensure_runtime_satisfies,
+    };
+
+    #[test]
+    fn runtime_floor_is_a_full_semver_comparison() {
+        let check =
+            |required, current| ensure_runtime_satisfies(required, current, "demo", "1.0.0");
+        assert!(check("0.17.0", "0.17.0").is_ok());
+        assert!(check("0.17.0", "0.17.3").is_ok());
+        assert!(check("0.17.0", "1.0.0").is_ok());
+        assert!(matches!(
+            check("0.18.0", "0.17.9"),
+            Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade { .. })
+        ));
+        // A pre-release host sorts below its own line's `M.m.0` floor.
+        assert!(check("0.18.0", "0.18.0-rc.1").is_err());
+        assert!(matches!(
+            check("seventeen", "0.17.0"),
+            Err(RuntimeCompatibilityError::InvalidRequiredRuntimeVersion { .. })
+        ));
+    }
 
     fn package(version: &str, checksum: &str) -> UpdatePackageInfo {
         UpdatePackageInfo {

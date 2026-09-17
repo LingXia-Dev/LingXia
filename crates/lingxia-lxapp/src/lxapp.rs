@@ -2352,31 +2352,15 @@ impl LxApp {
             )));
         }
 
-        if let Some(required) = config
-            .minRuntime
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
+        if let Some(required) = config.minRuntime.as_deref()
+            && let Err(error) = lingxia_update::ensure_runtime_satisfies(
+                required,
+                crate::SDK_RUNTIME_VERSION,
+                &self.appid,
+                &config.version,
+            )
         {
-            let package = lingxia_update::UpdatePackageInfo {
-                version: config.version.clone(),
-                url: String::new(),
-                checksum_sha256: String::new(),
-                size: None,
-                release_notes: None,
-                is_force_update: false,
-                required_runtime_version: Some(required.to_string()),
-                authentication: None,
-            };
-            if let Err(error) =
-                package.ensure_runtime_compatible(crate::SDK_RUNTIME_VERSION, &self.appid)
-            {
-                return Err(LxAppError::RongJSHost {
-                    code: "6002".to_string(),
-                    message: error.to_string(),
-                    data: None,
-                });
-            }
+            return Err(LxAppError::requires_runtime_upgrade(error.to_string()));
         }
 
         let mut tabbar = config

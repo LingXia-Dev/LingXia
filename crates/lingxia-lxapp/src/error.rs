@@ -135,11 +135,9 @@ impl From<lingxia_update::UpdateError> for LxAppError {
             lingxia_update::UpdateError::UnsupportedOperation(detail) => {
                 LxAppError::UnsupportedOperation(detail)
             }
-            lingxia_update::UpdateError::RequiresRuntimeUpgrade(detail) => LxAppError::RongJSHost {
-                code: "6002".to_string(),
-                message: detail,
-                data: None,
-            },
+            lingxia_update::UpdateError::RequiresRuntimeUpgrade(detail) => {
+                LxAppError::requires_runtime_upgrade(detail)
+            }
             lingxia_update::UpdateError::ResourceNotFound(detail) => {
                 LxAppError::ResourceNotFound(detail)
             }
@@ -181,7 +179,22 @@ fn error_data_to_json(data: &ErrorData) -> Value {
     }
 }
 
+const REQUIRES_RUNTIME_UPGRADE_CODE: &str = "6002";
+
 impl LxAppError {
+    /// This host's runtime is below the package's `minRuntime`.
+    pub fn requires_runtime_upgrade(detail: impl Into<String>) -> Self {
+        Self::RongJSHost {
+            code: REQUIRES_RUNTIME_UPGRADE_CODE.to_string(),
+            message: detail.into(),
+            data: None,
+        }
+    }
+
+    pub fn is_requires_runtime_upgrade(&self) -> bool {
+        matches!(self, Self::RongJSHost { code, .. } if code == REQUIRES_RUNTIME_UPGRADE_CODE)
+    }
+
     /// The message without the variant's prefix.
     ///
     /// Every variant's `Display` prepends or appends its own label, which reads
