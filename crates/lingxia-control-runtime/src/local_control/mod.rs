@@ -93,7 +93,28 @@ pub fn install(enabled: bool) -> std::io::Result<()> {
     if let Err(error) = legacy::cleanup(&app_state_dir) {
         log::warn!("legacy product launcher cleanup failed: {error}");
     }
+    show_sessions_in_shell();
     set_enabled(enabled)
+}
+
+/// The desktop shell shows a running session with a Stop button. Disclosure is
+/// not optional, so the product does not wire this itself.
+fn show_sessions_in_shell() {
+    static INDICATOR: OnceLock<ControlEventSubscription> = OnceLock::new();
+    INDICATOR.get_or_init(|| {
+        lingxia::app::set_agent_control_stop_handler(|| {
+            if let Err(error) = stop_current_session() {
+                log::warn!("stopping the agent session failed: {error}");
+            }
+        });
+        subscribe(|event| {
+            if let Some(active) = activity::indicator_for(event)
+                && let Err(error) = lingxia::app::set_agent_control_indicator(active)
+            {
+                log::debug!("agent control indicator unavailable: {error}");
+            }
+        })
+    });
 }
 
 /// Start or stop listening. Persisting the choice is the caller's job — the

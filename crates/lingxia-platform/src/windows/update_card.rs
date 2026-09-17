@@ -790,7 +790,7 @@ pub(super) fn find_main_window() -> Option<HWND> {
                 let mut buf = [0u16; 64];
                 let n = GetClassNameW(hwnd, &mut buf);
                 let cls = String::from_utf16_lossy(&buf[..n.max(0) as usize]);
-                if !cls.starts_with("LxUpdate") {
+                if !cls.starts_with("LxUpdate") && !cls.starts_with("LxAgentControl") {
                     let mut r = RECT::default();
                     if GetWindowRect(hwnd, &mut r).is_ok() {
                         let area = (r.right - r.left) as i64 * (r.bottom - r.top) as i64;

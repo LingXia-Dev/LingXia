@@ -623,6 +623,23 @@ extension LxApp {
         }
     }
 
+    nonisolated static func setAgentControlIndicator(visible: Bool) -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            guard let runtime = LxAppMacAppUIRuntime.active else { return false }
+            if visible {
+                runtime.shell.presentAgentControlIndicator()
+            } else {
+                runtime.shell.dismissAgentControlIndicator()
+            }
+            return true
+            #else
+            _ = visible
+            return false
+            #endif
+        }
+    }
+
     nonisolated static func navigate(appid: RustStr, path: RustStr, animation_type: Int32) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()

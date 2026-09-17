@@ -4,9 +4,9 @@
 //! connection per command, so a connection is not what a person would call a
 //! session. A session here is a run of requests: the first one starts it, and
 //! it ends after a quiet spell, when the product stops it, or when access is
-//! switched off. The product subscribes and draws whatever disclosure fits it
-//! — an indicator with a Stop button, a notification while it is in the
-//! background, an activity log. LingXia draws nothing for this itself.
+//! switched off. The desktop shell shows a running session with a Stop button
+//! (see `local_control::install`); a product may subscribe for more, such as an
+//! activity log.
 //!
 //! Only this socket reports. The development websocket is a developer driving
 //! their own session and is deliberately left out.
@@ -170,6 +170,15 @@ pub(crate) fn record(method: &str, error: Option<&str>, began: Instant) {
     });
 }
 
+/// Whether an event changes the shell indicator: shown while a session runs.
+pub(crate) fn indicator_for(event: &ControlEvent) -> Option<bool> {
+    match event {
+        ControlEvent::SessionStarted { .. } => Some(true),
+        ControlEvent::SessionEnded { .. } => Some(false),
+        ControlEvent::Activity { .. } => None,
+    }
+}
+
 /// End the session in progress, if any.
 pub(crate) fn end(reason: ControlSessionEnd) {
     *LAST_END.lock().unwrap_or_else(|error| error.into_inner()) = Some(Instant::now());
@@ -323,6 +332,30 @@ mod tests {
         assert_eq!(effect_of("app.windows", "app"), ControlEffect::Reads);
         assert_eq!(effect_of("app.mouse", "app"), ControlEffect::Changes);
         assert_eq!(effect_of("lxapp.eval", "lxapp"), ControlEffect::Changes);
+    }
+
+    #[test]
+    fn the_indicator_follows_session_start_and_end_only() {
+        let started = ControlEvent::SessionStarted {
+            session: 1,
+            at_ms: 0,
+        };
+        let activity = ControlEvent::Activity {
+            session: 1,
+            at_ms: 1,
+            method: "browser.open".to_string(),
+            namespace: "browser".to_string(),
+            effect: ControlEffect::Changes,
+            error: None,
+        };
+        let ended = ControlEvent::SessionEnded {
+            session: 1,
+            at_ms: 2,
+            reason: ControlSessionEnd::Idle,
+        };
+        assert_eq!(indicator_for(&started), Some(true));
+        assert_eq!(indicator_for(&activity), None);
+        assert_eq!(indicator_for(&ended), Some(false));
     }
 
     #[test]

@@ -28,6 +28,7 @@ pub struct ScreenInfo {
     pub scale: f64,
 }
 
+pub mod agent_control;
 pub(crate) mod rt;
 pub mod traits;
 
@@ -118,6 +119,10 @@ pub use android::{
     CachedClass, Platform, get_android_id, get_api_level, get_system_property,
     has_telephony_feature, init_cached_class, initialize_jni, read_external_storage_text,
     write_external_storage_text,
+};
+
+pub use agent_control::{
+    AgentControlStopHandler, request_agent_control_stop, set_agent_control_stop_handler,
 };
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]

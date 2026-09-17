@@ -36,3 +36,8 @@ app:
   minimize: "最小化"
   zoom: "缩放"
   bring_all_to_front: "前置全部窗口"
+
+# Shell indicator while an AI assistant drives the app over its control socket.
+agent_control:
+  active: "AI 助手正在操作"
+  stop: "停止"

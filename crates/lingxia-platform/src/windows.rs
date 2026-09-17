@@ -2,6 +2,7 @@
 
 //! Windows platform implementation for LingXia.
 
+mod agent_control_indicator;
 mod app;
 mod clipboard;
 mod device;

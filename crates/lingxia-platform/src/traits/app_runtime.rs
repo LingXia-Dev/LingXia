@@ -202,6 +202,13 @@ pub trait AppRuntime:
         Ok(())
     }
 
+    /// Show or hide the shell's "an AI assistant is in control" indicator.
+    /// Its Stop button calls [`crate::request_agent_control_stop`]. Desktop
+    /// shells only; no-op elsewhere.
+    fn set_agent_control_indicator(&self, _active: bool) -> Result<(), PlatformError> {
+        Ok(())
+    }
+
     /// Set the tray title (text beside the icon, macOS). Desktop only; no-op elsewhere.
     fn set_tray_title(&self, _text: &str) -> Result<(), PlatformError> {
         Ok(())

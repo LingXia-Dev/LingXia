@@ -292,7 +292,7 @@ unsafe fn take_callout(hwnd: HWND) -> Option<Box<Callout>> {
     }
 }
 
-fn make_font(scale: f32, pt: i32, semibold: bool) -> HFONT {
+pub(super) fn make_font(scale: f32, pt: i32, semibold: bool) -> HFONT {
     let height = -((pt as f32 * scale * 96.0 / 72.0) as i32);
     let weight = if semibold { FW_SEMIBOLD } else { FW_NORMAL };
     unsafe {
@@ -315,7 +315,7 @@ fn make_font(scale: f32, pt: i32, semibold: bool) -> HFONT {
     }
 }
 
-fn dpi_scale() -> f32 {
+pub(super) fn dpi_scale() -> f32 {
     unsafe {
         let dc = windows::Win32::Graphics::Gdi::GetDC(None);
         if dc.is_invalid() {
@@ -330,7 +330,7 @@ fn dpi_scale() -> f32 {
     }
 }
 
-fn round_corners(hwnd: HWND) {
+pub(super) fn round_corners(hwnd: HWND) {
     use windows::Win32::Graphics::Dwm::{DWMWA_WINDOW_CORNER_PREFERENCE, DwmSetWindowAttribute};
     let pref: u32 = 2; // DWMWCP_ROUND
     unsafe {
@@ -343,10 +343,10 @@ fn round_corners(hwnd: HWND) {
     }
 }
 
-fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
+pub(super) fn rgb(r: u8, g: u8, b: u8) -> COLORREF {
     COLORREF((r as u32) | ((g as u32) << 8) | ((b as u32) << 16))
 }
 
-fn to_wide(value: &str) -> Vec<u16> {
+pub(super) fn to_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
