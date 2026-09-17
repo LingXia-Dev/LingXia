@@ -174,8 +174,9 @@ internal object LxAppNotification {
             .setAutoCancel(true)
             .setOnlyAlertOnce(silent)
             .apply {
-                if (silent && Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    setSilent(true)
+                if (silent) {
+                    @Suppress("DEPRECATION")
+                    setSound(null)
                 }
             }
             .build()

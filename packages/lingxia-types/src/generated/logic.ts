@@ -453,39 +453,6 @@ export type AppearanceApi = {
  */
 export type AppearancePreference = 'auto' | 'light' | 'dark';
 
-/**
- * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports({ capability: 'autostart' })` and the member's presence always
- * agree, so either gate works:
- * ```ts
- * if (lx.supports({ capability: 'autostart' })) {
- * // render the "Launch at startup" toggle
- * }
- * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
- * autostart by itself — the SDK registers the app only when `setEnabled(true)`
- * is called, so the decision stays with the user (typically a settings-page
- * toggle, default off).
- * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
- * are available only to the native-assigned Control app; other lxapps receive
- * a permission error.
- */
-export type NotificationApi = {
-    requestPermission(): Promise<'granted' | 'denied' | 'default'>;
-    show(options: {
-        id?: string;
-        title: string;
-        body?: string;
-        applink?: string;
-        schedule?: { at: number } | { delayMs: number };
-        silent?: boolean;
-    }): Promise<string>;
-    cancel(id: string): Promise<void>;
-    cancelAll(): Promise<void>;
-};
-
 export type AutostartApi = {
     /**
      * Whether the app is currently registered to launch at startup, read from
@@ -1239,6 +1206,58 @@ export type NetworkInfo = {
 
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
+
+/**
+ * Launch-at-startup control for the host app.
+ * Absent (`undefined`) wherever the host cannot register a startup item.
+ * `lx.supports({ capability: 'autostart' })` and the member's presence always
+ * agree, so either gate works:
+ * ```ts
+ * if (lx.supports({ capability: 'autostart' })) {
+ * // render the "Launch at startup" toggle
+ * }
+ * ```
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+ * member is absent on all platforms. Declaring the capability never enables
+ * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * is called, so the decision stays with the user (typically a settings-page
+ * toggle, default off).
+ * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+ * are available only to the native-assigned Control app; other lxapps receive
+ * a permission error.
+ * Local notifications as a Control-app resume affordance.
+ * Absent unless the host declared `capabilities.notifications` and the
+ * platform implements the local API. Presence and
+ * `lx.supports({ capability: 'notifications' })` always agree.
+ * Declaring the capability never prompts; permission runs on
+ * `requestPermission()` or the first `show()`.
+ * Control app only. Guest lxapps receive a permission error.
+ */
+export type NotificationApi = {
+    /**
+     * Ask for notification permission. Resolves `'granted'` / `'denied'`, or
+     * `'default'` on Apple hosts before the user has been asked. Windows has
+     * no prompt: `'granted'`, or `'denied'` when toasts are off in Settings.
+     */
+    requestPermission(): Promise<'granted' | 'denied' | 'default'>;
+    /**
+     * Post or replace a local notification. The same `id` updates in place.
+     * `applink` is validated like App Link delivery (`https://`, configured
+     * host) and is opened with `scene === 8003` on tap. Omit `schedule`, or
+     * pass a time that is not in the future, to show now. No OS banner while
+     * the product window is already frontmost (immediate `show`).
+     */
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        applink?: string;
+        schedule?: { at: number } | { delayMs: number };
+        silent?: boolean;
+    }): Promise<string>;
+    cancel(id: string): Promise<void>;
+    cancelAll(): Promise<void>;
+};
 
 /** File system APIs. */
 export type OpenFileOptions = {

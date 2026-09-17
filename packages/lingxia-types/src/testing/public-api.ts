@@ -38,6 +38,7 @@ import type {
   HostAppUpdateTask,
   LxFile,
   NavigationBarApi,
+  NotificationApi,
   PageMessagePort,
   PreviewMediaHandle,
   TabSurface,
@@ -136,15 +137,26 @@ const HOST_APP_API = [
   'env',
   'exit',
   'getBaseInfo',
+  'notification',
   'screenshot',
   'setBadge',
 ] as const;
-// `autostart`, `control`, and `cache` are injected only where they apply, so a
-// runtime walk of `lx.app` must not require them.
+// `autostart`, `control`, `cache`, and `notification` are injected only where
+// they apply, so a runtime walk of `lx.app` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
-  (name) => name !== 'autostart' && name !== 'control' && name !== 'cache',
+  (name) =>
+    name !== 'autostart' &&
+    name !== 'control' &&
+    name !== 'cache' &&
+    name !== 'notification',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const NOTIFICATION_API = [
+  'cancel',
+  'cancelAll',
+  'requestPermission',
+  'show',
+] as const;
 const APP_CACHE_API = ['clear', 'size'] as const;
 const DISPLAY_LANGUAGE_API = ['get', 'watch'] as const;
 const CONTROL_API = ['appearance', 'displayLanguage'] as const;
@@ -360,6 +372,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app.autostart',
     members: AUTOSTART_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.notification',
+    layer: 'logic',
+    expression: 'lx.app.notification',
+    members: NOTIFICATION_API,
     optional: true,
   },
   {
@@ -736,6 +755,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
   AssertTrue<Exact<ControlApi, typeof CONTROL_API>>,
