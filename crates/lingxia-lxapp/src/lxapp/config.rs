@@ -98,6 +98,19 @@ pub(crate) struct LxAppConfig {
 }
 
 impl LxAppConfig {
+    /// Business code 6002 when `runtime_version` is below `minRuntime`.
+    pub(crate) fn ensure_runtime_satisfies(
+        &self,
+        appid: &str,
+        runtime_version: &str,
+    ) -> Result<(), crate::error::LxAppError> {
+        let Some(required) = self.minRuntime.as_deref() else {
+            return Ok(());
+        };
+        lingxia_update::ensure_runtime_satisfies(required, runtime_version, appid, &self.version)
+            .map_err(|error| crate::error::LxAppError::requires_runtime_upgrade(error.to_string()))
+    }
+
     /// Create AppConfig from serde_json::Value
     pub fn from_value(value: Value) -> Result<Self, serde_json::Error> {
         if let Some(object) = value.as_object() {
@@ -464,6 +477,36 @@ mod tests {
         }))
         .unwrap_err();
         assert!(err.to_string().contains("minRuntime"), "{err}");
+    }
+
+    #[test]
+    fn runtime_floor_refuses_only_an_older_host() {
+        let config = |min_runtime: Option<&str>| {
+            let mut value = serde_json::json!({
+                "appId": "demo",
+                "appName": "Demo",
+                "version": "1.0.0",
+                "pages": [{"name":"home","path":"pages/home/index"}]
+            });
+            if let Some(min_runtime) = min_runtime {
+                value["minRuntime"] = min_runtime.into();
+            }
+            LxAppConfig::from_value(value).unwrap()
+        };
+        assert!(
+            config(None)
+                .ensure_runtime_satisfies("demo", "0.1.0")
+                .is_ok()
+        );
+        assert!(
+            config(Some("0.17.0"))
+                .ensure_runtime_satisfies("demo", "0.17.2")
+                .is_ok()
+        );
+        let error = config(Some("0.18.0"))
+            .ensure_runtime_satisfies("demo", "0.17.2")
+            .unwrap_err();
+        assert!(error.is_requires_runtime_upgrade(), "{error}");
     }
 
     #[test]
