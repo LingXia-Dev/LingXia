@@ -84,12 +84,6 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
         deliverAtMs: Int64,
         silent: Bool
     ) -> String {
-        let permission = requestPermission()
-        guard permission == "granted" else {
-            setLastError("notification permission is \(permission)")
-            return ""
-        }
-
         var trigger: UNNotificationTrigger?
         if deliverAtMs > 0 {
             let fire = Date(timeIntervalSince1970: TimeInterval(deliverAtMs) / 1000)
@@ -100,8 +94,16 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
                 )
             }
         }
+        // Immediate show is a no-op banner while this process is already in
+        // front; do not require permission just to resolve the id.
         if trigger == nil && isFrontmost() {
             return id
+        }
+
+        let permission = requestPermission()
+        guard permission == "granted" else {
+            setLastError("notification permission is \(permission)")
+            return ""
         }
 
         let content = UNMutableNotificationContent()

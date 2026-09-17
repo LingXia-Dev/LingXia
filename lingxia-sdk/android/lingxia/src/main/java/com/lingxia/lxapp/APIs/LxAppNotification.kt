@@ -91,18 +91,24 @@ internal object LxAppNotification {
             lastError = "no application context"
             return ""
         }
-        if (requestPermission() != "granted") {
-            lastError = "notification permission is denied"
-            return ""
-        }
         val now = System.currentTimeMillis()
         if (deliverAtMs > now + 500L) {
+            if (requestPermission() != "granted") {
+                lastError = "notification permission is denied"
+                return ""
+            }
             schedule(context, id, title, body, applink, deliverAtMs, silent)
             scheduledIds.add(id)
             return id
         }
+        // Immediate show is a no-op banner while this process is already in
+        // front; do not require permission just to resolve the id.
         if (isFrontmost()) {
             return id
+        }
+        if (requestPermission() != "granted") {
+            lastError = "notification permission is denied"
+            return ""
         }
         scheduledIds.remove(id)
         publishNow(context, id, title, body, applink, silent)
