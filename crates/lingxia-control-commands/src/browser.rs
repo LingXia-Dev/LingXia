@@ -7,9 +7,6 @@ use serde_json::{Value, json};
 
 #[derive(Args, Clone)]
 pub struct BrowserOptions {
-    /// Acknowledge commands that change the page or browser
-    #[arg(long, global = true)]
-    pub allow_control: bool,
     /// Acknowledge commands that lose state, like closing a tab or clearing cookies
     #[arg(long, global = true)]
     pub allow_destructive: bool,
@@ -504,12 +501,8 @@ pub struct BrowserContext<'a> {
 
 pub fn execute(context: &BrowserContext, options: BrowserOptions) -> Result<()> {
     let transport = context.transport;
-    match effect(&options.command) {
-        Effect::Reads => {}
-        Effect::Changes => crate::guard::gate(options.allow_control, false, false)?,
-        Effect::Destroys => {
-            crate::guard::gate(options.allow_control, true, options.allow_destructive)?
-        }
+    if matches!(effect(&options.command), Effect::Destroys) {
+        crate::guard::confirm_destructive(options.allow_destructive)?;
     }
 
     match options.command {

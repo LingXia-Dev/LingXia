@@ -1,14 +1,13 @@
-//! Explicit acknowledgement to act, and what a failure costs the caller.
+//! Explicit acknowledgement to lose work, and what a failure costs the caller.
 //!
-//! The flags prevent an accidental mutating invocation; they are not proof of
-//! user consent because the caller can add them. A development mount asks for
-//! them; a shipped product's own command line does not ask for
-//! `--allow-control`, because access there is the product's setting, answered
-//! by the running app, and an agent would type the flag anyway. Losing work
-//! still needs `--allow-destructive` on every mount. Every failure carries a
-//! code the caller can branch on instead of collapsing to prose and exit 1.
-
-use std::sync::atomic::{AtomicBool, Ordering};
+//! Commands that change things need no flag: access is the app's setting,
+//! answered by the running app, and the shell shows the user while an
+//! assistant is in control. A flag every caller types anyway would only teach
+//! agents to type it. Losing work — closing a window, quitting an app, killing
+//! a process, clearing cookies — still needs `--allow-destructive`, which
+//! prevents an accidental invocation but is not proof of consent. Every
+//! failure carries a code the caller can branch on instead of collapsing to
+//! prose and exit 1.
 
 #[cfg(feature = "desktop")]
 use lingxia_device_io as device_io;
@@ -56,59 +55,21 @@ impl GuardError {
     }
 }
 
-static PRODUCT_MOUNT: AtomicBool = AtomicBool::new(false);
-
-/// Mark this process as a shipped product's own command line.
-pub(crate) fn mark_product_mount() {
-    PRODUCT_MOUNT.store(true, Ordering::SeqCst);
-}
-
-/// Whether this invocation may change anything.
-///
-/// `destructive` marks the commands that lose work rather than merely causing
-/// it — closing a window, quitting an app, killing a process, clearing
-/// cookies. Those need the second flag as well.
-pub fn gate(
-    allow_control: bool,
-    destructive: bool,
-    allow_destructive: bool,
-) -> Result<(), GuardError> {
-    gate_for(
-        PRODUCT_MOUNT.load(Ordering::SeqCst),
-        allow_control || env_flag("LXDEV_DESKTOP_ALLOW_CONTROL"),
-        destructive,
-        allow_destructive,
-    )
-}
-
-fn gate_for(
-    product_mount: bool,
-    allow_control: bool,
-    destructive: bool,
-    allow_destructive: bool,
-) -> Result<(), GuardError> {
-    if !(product_mount || allow_control) {
-        return Err(GuardError::permission(
-            "mutating command needs --allow-control (or LXDEV_DESKTOP_ALLOW_CONTROL=1)",
-        ));
+/// Whether a command that loses work may run.
+pub fn confirm_destructive(allow_destructive: bool) -> Result<(), GuardError> {
+    if allow_destructive || env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE") {
+        return Ok(());
     }
-    if destructive && !(allow_destructive || env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE")) {
-        return Err(GuardError::permission(
-            "destructive command needs --allow-destructive (or LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)",
-        ));
-    }
-    Ok(())
+    Err(GuardError::permission(
+        "destructive command needs --allow-destructive (or LXDEV_DESKTOP_ALLOW_DESTRUCTIVE=1)",
+    ))
 }
 
-/// Apply the command guard at a desktop call site while preserving the
-/// device-I/O error contract used by JSON output and process exit codes.
+/// [`confirm_destructive`] at a desktop call site, keeping the device-I/O
+/// error contract used by JSON output and process exit codes.
 #[cfg(feature = "desktop")]
-pub(crate) fn desktop_gate(
-    allow_control: bool,
-    destructive: bool,
-    allow_destructive: bool,
-) -> device_io::Result<()> {
-    gate(allow_control, destructive, allow_destructive)
+pub(crate) fn desktop_confirm_destructive(allow_destructive: bool) -> device_io::Result<()> {
+    confirm_destructive(allow_destructive)
         .map_err(|error| device_io::Error::Permission(error.to_string()))
 }
 
@@ -205,7 +166,7 @@ mod tests {
         // A refusal raised locally never crossed a transport, so there is no
         // marker in its text — but it is still a permission answer, and an
         // agent branching on the code must see one.
-        let refused: anyhow::Error = GuardError::permission("needs --allow-control").into();
+        let refused: anyhow::Error = GuardError::permission("needs --allow-destructive").into();
         assert_eq!(exit_code(&refused), 6);
     }
 
@@ -216,15 +177,12 @@ mod tests {
         assert_eq!(exit_code(&missing), 3);
     }
 
-    /// A product's command line needs no control acknowledgement, but losing
-    /// work still asks for one on every mount.
     #[test]
-    fn product_mount_skips_the_control_flag_but_not_the_destructive_one() {
-        assert!(gate_for(false, false, false, false).is_err());
-        assert!(gate_for(false, true, false, false).is_ok());
-        assert!(gate_for(true, false, false, false).is_ok());
-        assert!(gate_for(true, false, true, false).is_err());
-        assert!(gate_for(true, false, true, true).is_ok());
+    fn losing_work_needs_the_destructive_flag() {
+        assert!(confirm_destructive(true).is_ok());
+        if !env_flag("LXDEV_DESKTOP_ALLOW_DESTRUCTIVE") {
+            assert!(confirm_destructive(false).is_err());
+        }
     }
 
     /// The transport decoder cannot see the enum in a build without device

@@ -27,10 +27,6 @@ use crate::{app, browser, extra};
     about = "Drive this product from the command line"
 )]
 struct Cli {
-    /// Accepted so existing scripts keep parsing; a product's command line
-    /// does not need it (see `guard`), so help does not offer it.
-    #[arg(long, global = true, hide = true)]
-    allow_control: bool,
     #[command(subcommand)]
     command: Command,
 }
@@ -63,7 +59,6 @@ pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
         return None;
     }
     let _console = crate::console::attach_parent();
-    crate::guard::mark_product_mount();
 
     let endpoint = crate::transport::endpoint_in(app_data_dir);
     let transport = ControlSocket::at(endpoint);
@@ -90,7 +85,6 @@ pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
             return Some(error.exit_code());
         }
     };
-    let allow_control = cli.allow_control;
     Some(match cli.command {
         Command::Browser(options) => {
             let context = browser::BrowserContext {
@@ -107,7 +101,7 @@ pub fn run_if_invoked(app_data_dir: &Path) -> Option<i32> {
                 target: std::env::consts::OS.to_string(),
                 session: None,
             };
-            report(app::execute_own(&context, allow_control, command))
+            report(app::execute_own(&context, command))
         }
     })
 }
@@ -156,28 +150,9 @@ fn first_argument_is_a_command(args: &[OsString]) -> bool {
 }
 
 fn cli_command(extras: &[crate::ExtraProductCommand]) -> clap::Command {
-    let mut command = hide_control_acknowledgement(Cli::command());
+    let mut command = Cli::command();
     for extra in extras {
         command = command.subcommand(clap::Command::new(extra.name).about(extra.about));
-    }
-    command
-}
-
-/// The namespaces shared with `lxdev` declare `--allow-control` for its sake.
-/// Here it is a no-op, so it stays parseable but out of every help page.
-fn hide_control_acknowledgement(mut command: clap::Command) -> clap::Command {
-    if command
-        .get_arguments()
-        .any(|arg| arg.get_id() == "allow_control")
-    {
-        command = command.mut_arg("allow_control", |arg| arg.hide(true));
-    }
-    let names: Vec<String> = command
-        .get_subcommands()
-        .map(|sub| sub.get_name().to_string())
-        .collect();
-    for name in names {
-        command = command.mut_subcommand(name, hide_control_acknowledgement);
     }
     command
 }
@@ -259,28 +234,12 @@ mod tests {
         );
     }
 
-    /// `--allow-control` still parses, so older scripts keep working, but no
-    /// help page offers it and `applink` is not a product command.
+    /// `applink` is a development command, not a product one.
     #[test]
-    fn product_help_offers_neither_allow_control_nor_applink() {
+    fn product_help_does_not_offer_applink() {
         let mut command = cli_command(&[]);
         let help = command.render_long_help().to_string();
-        assert!(!help.contains("--allow-control"), "{help}");
         assert!(!help.contains("applink"), "{help}");
-
-        let mut browser = cli_command(&[]);
-        let browser_help = browser
-            .find_subcommand_mut("browser")
-            .expect("browser namespace")
-            .render_long_help()
-            .to_string();
-        assert!(!browser_help.contains("--allow-control"), "{browser_help}");
-
-        assert!(
-            cli_command(&[])
-                .try_get_matches_from(["product", "--allow-control", "doctor"])
-                .is_ok()
-        );
         assert!(
             cli_command(&[])
                 .try_get_matches_from(["product", "applink", "https://example.com"])
