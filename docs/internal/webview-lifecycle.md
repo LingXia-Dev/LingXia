@@ -522,7 +522,9 @@ Live -> Discarded -> Recreating -> Live
 
 `discard_webview()`:
 
-1. Rejects isolated surface pages and in-flight creates.
+1. Rejects isolated surface pages, in-flight creates, and — rechecked at the
+   moment of destruction, since the budget works from a snapshot — any page
+   whose lxapp is shown or that has entered the stack.
 2. Cancels bridge work, detaches the page→webview `Arc`, and calls
    `destroy_webview_if_matches`.
 3. Invalidates document clocks (`bridge_ready`, `ready_dispatched`, render
@@ -543,9 +545,27 @@ on that main's page stack. Every page of the shown lxapp, and every page
 still on a hidden main's stack (the resume page and anything under it), stay
 resident.
 
-Policy runs when a WebView becomes ready, when an lxapp hides, and on
-`on_low_memory` (which discards every eligible page, then may evict a
-non-home lxapp). It does **not** discard on every main switch.
+`destroy_webview_if_matches` also drops the tag's create session when that
+session resolved to the destroyed instance. The session's terminal result owns
+the view; left in place it pins the native WebView until the next same-tag
+create, and the discard frees nothing.
+
+A reload that fails destroys the half-built view, so the tag is free for the
+next attempt; the page stays discarded.
+
+Eligible pages idle for 10 minutes are discarded even under the cap. The idle
+clock starts no earlier than the moment their lxapp was hidden.
+
+Policy runs when a WebView becomes ready, after an lxapp switch completes, and
+on `on_low_memory` (which discards every eligible page, then may evict a
+non-home lxapp). Switching a → b budgets only **after** b is shown: on a's
+`onHide` both are still hidden, and b's tabs — older than a's — would be
+reclaimed just as the user arrives. With b shown, a's off-stack tabs compete
+with every other hidden main's, oldest first. Host backgrounding does not run
+the policy.
+
+Desktop hosts only. Compact hosts keep native page containers bound to their
+WebViews, so the policy is a no-op there.
 
 Desktop preload is the landing / selected tab only (`TabBar::preload_page_paths`).
 Compact hosts still warm strip slots.

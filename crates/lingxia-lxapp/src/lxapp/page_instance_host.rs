@@ -1162,15 +1162,9 @@ impl LxApp {
         payload_json: Option<String>,
     ) -> Result<(), LxAppError> {
         match event {
-            AppServiceEvent::OnHide => {
-                self.shown.store(false, Ordering::SeqCst);
-                crate::lxapp::page_discard::enforce_page_webview_budget();
-            }
+            AppServiceEvent::OnHide => self.mark_hidden(),
             AppServiceEvent::OnShow => {
                 self.shown.store(true, Ordering::SeqCst);
-                if let Ok(page) = self.current_page() {
-                    page.ensure_live_webview();
-                }
                 self.recover_terminated_renderers();
             }
             _ => {}
