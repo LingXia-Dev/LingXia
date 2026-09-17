@@ -177,6 +177,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     /// column (above the footer dock), on the window's top layer so it stays
     /// visible above any dock panel.
     private var updateReadyCallout: UpdateReadyCallout?
+    /// Border, capsule and Dock mark while an AI assistant drives the app.
+    private var agentControlIndicator: AgentControlIndicator?
     private var navigationToolbar: MacNavigationToolbar?
     private var sidebarWidthConstraint: NSLayoutConstraint?
     private var contentLeadingConstraint: NSLayoutConstraint?
@@ -1980,6 +1982,20 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     func dismissUpdateReadyCallout() {
         updateReadyCallout?.removeFromSuperview()
         updateReadyCallout = nil
+    }
+
+    func presentAgentControlIndicator() {
+        guard agentControlIndicator == nil, let window else { return }
+        let indicator = AgentControlIndicator {
+            _ = onAppEvent(AppEvent.agentControlStopClick, "")
+        }
+        indicator.show(in: window, content: workspaceManager.contentContainer)
+        agentControlIndicator = indicator
+    }
+
+    func dismissAgentControlIndicator() {
+        agentControlIndicator?.dismiss()
+        agentControlIndicator = nil
     }
 
     /// Open a browser-local management surface as a main browser

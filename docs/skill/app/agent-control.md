@@ -48,6 +48,10 @@ The access setting above decides whether agents may act. Pass
 `Reads`/`Changes`/`Unclassified`), and session end (20 s idle,
 `stop_current_session()`, or access switched off). Host namespaces arrive
 `Unclassified`; the product classifies its own methods.
+While a session runs, the desktop shell frames the window in a pulsing
+border, shows an "An AI assistant is in control · Stop" capsule at the bottom
+of the content, and marks the Dock icon or taskbar button. Stop calls
+`stop_current_session()`. The product draws nothing for that.
 
 ## Product command discovery
 

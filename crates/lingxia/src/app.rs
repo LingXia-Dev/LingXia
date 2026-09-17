@@ -137,6 +137,23 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
     state_file_in(&app.user_data_dir, name)
 }
 
+/// Show or hide the desktop shell's "an AI assistant is in control" indicator.
+///
+/// `lingxia-control-runtime` drives this from its session events; a product
+/// does not need to call it.
+#[doc(hidden)]
+pub fn set_agent_control_indicator(active: bool) -> crate::Result<()> {
+    crate::runtime::platform()?
+        .set_agent_control_indicator(active)
+        .map_err(crate::Error::from)
+}
+
+/// What the indicator's Stop button does. Installed by the control runtime.
+#[doc(hidden)]
+pub fn set_agent_control_stop_handler(handler: impl Fn() + Send + Sync + 'static) {
+    lingxia_platform::set_agent_control_stop_handler(std::sync::Arc::new(handler));
+}
+
 /// Requests host app termination through the active platform runtime.
 pub fn exit() -> crate::Result<()> {
     crate::bootstrap::teardown_runner_display_language_session();

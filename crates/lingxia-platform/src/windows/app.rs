@@ -619,6 +619,15 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
+    fn set_agent_control_indicator(&self, active: bool) -> Result<(), PlatformError> {
+        if active {
+            super::agent_control_indicator::show(self.get_system_locale());
+        } else {
+            super::agent_control_indicator::hide();
+        }
+        Ok(())
+    }
+
     fn navigate(
         &self,
         appid: String,

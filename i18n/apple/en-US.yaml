@@ -39,3 +39,8 @@ app:
   minimize: "Minimize"
   zoom: "Zoom"
   bring_all_to_front: "Bring All to Front"
+
+# Shell indicator while an AI assistant drives the app over its control socket.
+agent_control:
+  active: "An AI assistant is in control"
+  stop: "Stop"

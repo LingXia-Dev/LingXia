@@ -206,6 +206,13 @@ impl AppRuntime for Platform {
         Ok(())
     }
 
+    #[cfg(target_os = "macos")]
+    fn set_agent_control_indicator(&self, active: bool) -> Result<(), PlatformError> {
+        // No shell (headless) is not an error: there is nothing to show it on.
+        let _ = ffi::set_agent_control_indicator(active);
+        Ok(())
+    }
+
     fn set_tray_title(&self, text: &str) -> Result<(), PlatformError> {
         if ffi::set_tray_title(text) {
             Ok(())

@@ -109,6 +109,8 @@ mod bridge {
         /// Tray menu item clicked; `data` is the item index (delivered to the
         /// item's `onClick` registered by `lx.tray.setMenu`)
         TrayMenuClick,
+        /// Stop pressed on the "an AI assistant is in control" indicator
+        AgentControlStopClick,
     }
 
     // Current LxApp info from Rust stack
@@ -1122,6 +1124,9 @@ pub fn on_app_event(event_type: self::bridge::AppUiEventType, data: &str) -> boo
             // The sidebar "ready to update" callout was clicked: swap the
             // staged bundle and quit so it relaunches into the new version.
             lingxia_platform::apply_staged_macos_update()
+        }
+        self::bridge::AppUiEventType::AgentControlStopClick => {
+            lingxia_platform::request_agent_control_stop()
         }
         self::bridge::AppUiEventType::UpdateInstallClick => {
             // The "update available" reminder was clicked: re-run the update

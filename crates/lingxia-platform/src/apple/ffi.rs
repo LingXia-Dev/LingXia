@@ -237,6 +237,11 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.notifyAppUpdateReady")]
         fn notify_app_update_ready(state: &str, info_json: &str) -> bool;
 
+        // Show or hide the shell's "an AI assistant is in control" indicator.
+        // Returns false when no macOS shell is present.
+        #[swift_bridge(swift_name = "LxApp.setAgentControlIndicator")]
+        fn set_agent_control_indicator(visible: bool) -> bool;
+
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
 
@@ -502,7 +507,7 @@ pub use bridge::{
     update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
-pub use bridge::{notify_app_update_ready, reveal_in_file_manager};
+pub use bridge::{notify_app_update_ready, reveal_in_file_manager, set_agent_control_indicator};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]
