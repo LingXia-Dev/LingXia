@@ -509,6 +509,46 @@ Platform hosts decide *when* to discard:
   the incoming tab. Presentation calls `reactivate` before waiting for WebView2
   readiness.
 
+### Lxapp page discard and reactivation
+
+Discard is memory reclamation, not page teardown. It destroys a hidden main's
+non-current tab WebView while keeping the `PageInstance`, PageSvc, Logic
+`data`, query, and sidebar row. The implementation lives in
+`crates/lingxia-lxapp/src/lxapp/page_discard.rs` and `PageInstance::discard_webview`.
+
+```
+Live -> Discarded -> Recreating -> Live
+```
+
+`discard_webview()`:
+
+1. Rejects isolated surface pages and in-flight creates.
+2. Cancels bridge work, detaches the page→webview `Arc`, and calls
+   `destroy_webview_if_matches`.
+3. Invalidates document clocks (`bridge_ready`, `ready_dispatched`, render
+   status) but **not** entry, query, or visibility — so `onLoad` does not
+   replay and Logic `data` survives.
+4. Does not emit `onHide` / `onUnload` and must not run surface cascades or
+   LRU removal.
+
+`ensure_live_webview()` / `wait_webview_ready()` reverse that: a discarded
+page allocates a new strict WebView on the same tag, `load_html`s, and the
+next show is `onShow` plus a fresh `onReady`. Navigation onto a discarded tab
+reactivates before the native present.
+
+The live-view budget is **separate** from the browser-tab cap. It uses the
+same ¼-RAM / ~256 MiB estimate, clamped to 4–16 (8 if memory detection
+fails). Eligible first: live tab pages of a **hidden** main that are not that
+main's current page. Every page of the shown lxapp, and the current page of
+each hidden main, stay resident.
+
+Policy runs when a WebView becomes ready, when an lxapp hides, and on
+`on_low_memory` (which discards every eligible page, then may evict a
+non-home lxapp). It does **not** discard on every main switch.
+
+Desktop preload is the landing / selected tab only (`TabBar::preload_page_paths`).
+Compact hosts still warm strip slots.
+
 ## Page Lifecycle Events vs WebView Callbacks
 
 `PageInstance` implements `WebViewDelegate`:
@@ -683,6 +723,7 @@ is the quickest way to keep them straight:
 | `dispose_page_instance_internal()` | Full page-instance teardown | Yes | Yes | Yes (both) | Yes (via the two edges) |
 | LRU eviction | Lightweight reclaim of an inactive page | **No** | Yes | **No** | Yes |
 | Browser tab discard | Destroys a background tab WebView but retains restorable tab state | No | Internal browser page only | No | Yes; recreated on activation |
+| Lxapp page discard | Destroys a hidden-main tab WebView; keeps PageInstance, Logic, `data`, switcher row | **No** | Yes | **No** | Yes; recreated on show |
 
 ### PageInstance disposal
 
@@ -871,6 +912,10 @@ reactivation creates a replacement WebView.
   successor selection while reclaiming memory. Keep host active state in sync
   before discarding, and always reactivate a discarded tab before attempting to
   present its WebView.
+- **Lxapp page discard is not close and is not LRU eviction.** Do not dispatch
+  `onUnload`, do not drop PageSvc, and do not evict the current tab of a hidden
+  main. Reactivate before presenting. The browser and lxapp live-view counters
+  must not share one budget.
 - **External-navigation policy lives in the lxapp navigation handler, not in
   the core or the Apple https interception.** If you need to change what
   happens when a strict page hits an external URL, edit the handler in
