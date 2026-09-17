@@ -24,12 +24,17 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use lingxia_control_protocol::{ControlMessage, ControlRequest, ControlResponse};
 
+mod activity;
 mod legacy;
 
 #[cfg_attr(unix, path = "unix.rs")]
 #[cfg_attr(windows, path = "windows.rs")]
 mod platform;
 
+pub use activity::{
+    ControlEffect, ControlEvent, ControlEventSubscription, ControlSessionEnd, current_session,
+    subscribe,
+};
 pub use platform::endpoint_name;
 
 /// LingXia-owned runtime directory for this product, once [`install`] has run.
@@ -94,6 +99,31 @@ pub fn install(enabled: bool) -> std::io::Result<()> {
 /// Start or stop listening. Persisting the choice is the caller's job — the
 /// settings surface owns that, and this stays callable from a test.
 pub fn set_enabled(enabled: bool) -> std::io::Result<()> {
+    let result = switch(enabled);
+    if !enabled && result.is_ok() {
+        // After RUNNING is released: a listener may ask `is_enabled`.
+        activity::end(ControlSessionEnd::Disabled);
+    }
+    result
+}
+
+/// Disconnect whoever is driving the product now without turning access off.
+///
+/// Connections carry the epoch their listener started under, so dropping them
+/// means replacing the listener; the command line reads the endpoint afresh
+/// on every call and simply reconnects to the new one if the agent asks again.
+/// A product's Stop button calls this; a product that wants the agent to stay
+/// out switches access off instead.
+pub fn stop_current_session() -> std::io::Result<()> {
+    if is_enabled() {
+        switch(false)?;
+        switch(true)?;
+    }
+    activity::end(ControlSessionEnd::Stopped);
+    Ok(())
+}
+
+fn switch(enabled: bool) -> std::io::Result<()> {
     let control_dir = CONTROL_DIR
         .get()
         .ok_or_else(|| std::io::Error::other("control socket is not installed"))?;
@@ -361,10 +391,17 @@ pub(crate) fn reply_with(
     dispatch: impl FnOnce(ControlRequest) -> ControlResponse,
 ) -> ControlResponse {
     match serde_json::from_str::<ControlMessage>(line) {
-        Ok(ControlMessage::Request(request)) => match refuse_unless_declared(&request.method) {
-            Some(reason) => ControlResponse::error(request.id, "not_declared", reason),
-            None => dispatch(request),
-        },
+        Ok(ControlMessage::Request(request)) => {
+            let method = request.method.clone();
+            let began = std::time::Instant::now();
+            let reply = match refuse_unless_declared(&request.method) {
+                Some(reason) => ControlResponse::error(request.id, "not_declared", reason),
+                None => dispatch(request),
+            };
+            let error = reply.error.as_ref().map(|error| error.code.as_str());
+            activity::record(&method, error, began);
+            reply
+        }
         // Anything else on this transport is a client mistake, and saying so
         // beats closing the connection on it.
         Ok(_) => ControlResponse::error(
