@@ -618,8 +618,11 @@ impl PageInstance {
             let page = page.clone();
             async move {
                 let result = page.load_html().map_err(|err| err.to_string());
-                if result.is_err() {
+                if let Err(ref err) = result {
                     page.inner.discarded.store(true, Ordering::SeqCst);
+                    crate::warn!("failed to reload discarded page WebView: {err}")
+                        .with_appid(page.appid())
+                        .with_path(page.path());
                 }
                 result
             }
@@ -1880,6 +1883,9 @@ impl PageInstance {
         }
 
         if let Ok(dest) = lxapp.current_page() {
+            if dest.is_discarded() {
+                dest.ensure_live_webview();
+            }
             let path = dest.path();
             // Forward navigation clears selected_index on detail pages, so
             // Back must restore selection as well as visibility.
