@@ -961,6 +961,8 @@ pub struct LxApp {
     /// Last app-level visibility event was OnShow. OnHide also fires on
     /// capsule close and app switch, not only when the host backgrounds.
     shown: AtomicBool,
+    /// When the app last left the screen; a tab's idle clock starts no earlier.
+    hidden_since: Mutex<Option<Instant>>,
     /// Session being torn down for a restart, or 0. Page instances must not be
     /// (re)created on it; the recreated instance starts fresh at 0.
     restart_closing_session: AtomicU64,
@@ -2061,6 +2063,7 @@ impl LxApp {
             app_launch_dispatched: AtomicBool::new(false),
             pending_restart_request: AtomicBool::new(false),
             shown: AtomicBool::new(true),
+            hidden_since: Mutex::new(None),
             restart_closing_session: AtomicU64::new(0),
             session,
             logic_contexts: tokio::sync::watch::channel(0).0,
@@ -2789,6 +2792,18 @@ impl LxApp {
 
     pub(crate) fn is_shown(&self) -> bool {
         self.shown.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn mark_hidden(&self) {
+        if self.shown.swap(false, Ordering::SeqCst)
+            && let Ok(mut since) = self.hidden_since.lock()
+        {
+            *since = Some(Instant::now());
+        }
+    }
+
+    pub(crate) fn hidden_since(&self) -> Option<Instant> {
+        self.hidden_since.lock().ok().and_then(|since| *since)
     }
 
     pub(crate) fn document_start_scripts_snapshot(&self) -> Vec<Arc<str>> {

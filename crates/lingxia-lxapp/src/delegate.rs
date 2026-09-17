@@ -256,6 +256,10 @@ impl LxAppDelegate for LxApp {
 
         self.sync_host_ui();
 
+        // After the incoming app is shown: budgeting on the outgoing app's
+        // onHide would see both hidden and reclaim the one being entered.
+        lxapp::page_discard::enforce_page_webview_budget();
+
         resolved_path
     }
 

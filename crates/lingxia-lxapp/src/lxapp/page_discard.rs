@@ -5,18 +5,22 @@
 //! keep every visited View resident. Discard is not close: Logic, `data`, the
 //! switcher row, and the instance stay; only the native WebView goes away.
 
+use super::host_class::{HostClass, host_class};
 use super::runtime_registry::{get_lxapps_manager, get_platform};
 use super::{HOST_SURFACE_OWNER_APP_ID, LxAppSessionStatus};
 use crate::{LxApp, debug, warn};
 use lingxia_platform::traits::device::DeviceHardware;
 use std::collections::HashSet;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 const ESTIMATED_PAGE_WEBVIEWS_SHARE: u64 = 4;
 const ESTIMATED_PAGE_WEBVIEW_BYTES: u64 = 256 * 1024 * 1024;
 const MIN_LIVE_PAGE_WEBVIEWS: usize = 4;
 const MAX_LIVE_PAGE_WEBVIEWS: usize = 16;
 const DEFAULT_LIVE_PAGE_WEBVIEWS: usize = 8;
+/// A tab this long untouched in a hidden main is two picks away; its reload
+/// costs less than keeping the View resident.
+const IDLE_DISCARD_AFTER: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug, Clone)]
 pub(crate) struct LivePageSnapshot {
@@ -30,18 +34,20 @@ pub(crate) struct LivePageSnapshot {
     pub live: bool,
 }
 
-/// Oldest eligible hidden-main tab pages whose live views exceed `limit`.
+/// Hidden-main tab pages to reclaim, oldest first: everything idle past
+/// `IDLE_DISCARD_AFTER`, then as many more as the live count exceeds `limit`.
 ///
 /// Eligible: an off-stack tab page of a hidden lxapp. Protected: every page of
 /// a shown lxapp, every page still on a hidden main's stack (resume page and
 /// anything under it), and non-tab instances. Isolated / departing pages are
 /// never candidates.
-pub(crate) fn discard_candidates(pages: &[LivePageSnapshot], limit: usize) -> Vec<String> {
+pub(crate) fn discard_candidates(
+    pages: &[LivePageSnapshot],
+    limit: usize,
+    now: Instant,
+) -> Vec<String> {
     let live_count = pages.iter().filter(|page| page.live).count();
     let excess = live_count.saturating_sub(limit);
-    if excess == 0 {
-        return Vec::new();
-    }
     let mut eligible: Vec<&LivePageSnapshot> = pages
         .iter()
         .filter(|page| {
@@ -54,9 +60,13 @@ pub(crate) fn discard_candidates(pages: &[LivePageSnapshot], limit: usize) -> Ve
         })
         .collect();
     eligible.sort_by_key(|page| page.last_active);
+    let idle = eligible
+        .iter()
+        .filter(|page| now.saturating_duration_since(page.last_active) >= IDLE_DISCARD_AFTER)
+        .count();
     eligible
         .into_iter()
-        .take(excess)
+        .take(excess.max(idle))
         .map(|page| page.instance_id.clone())
         .collect()
 }
@@ -82,6 +92,10 @@ pub fn enforce_page_webview_budget() {
 
 /// `limit == 0` discards every eligible page (critical memory pressure).
 pub fn enforce_page_webview_budget_with_limit(limit: usize) {
+    // Compact hosts keep native page containers bound to their WebViews.
+    if host_class() != HostClass::Desktop {
+        return;
+    }
     let Some(manager) = get_lxapps_manager() else {
         return;
     };
@@ -107,10 +121,14 @@ pub fn enforce_page_webview_budget_with_limit(limit: usize) {
             .into_iter()
             .map(|page| page.instance_id_string())
             .collect();
+        let hidden_since = app.hidden_since();
         for page in app.live_page_instances() {
+            // Idle counts from the app leaving the screen: a tab of the app
+            // the user sat in is one pick away however long ago it was shown.
+            let last_active = page.get_last_active_time().unwrap_or_else(Instant::now);
             snapshots.push(LivePageSnapshot {
                 instance_id: page.instance_id_string(),
-                last_active: page.get_last_active_time().unwrap_or_else(Instant::now),
+                last_active: hidden_since.map_or(last_active, |since| since.max(last_active)),
                 shown_app: shown,
                 on_stack: stack_ids.contains(&page.instance_id_string()),
                 is_tab_page: page.is_tabbar_page(),
@@ -122,7 +140,7 @@ pub fn enforce_page_webview_budget_with_limit(limit: usize) {
         }
     }
 
-    for instance_id in discard_candidates(&snapshots, limit) {
+    for instance_id in discard_candidates(&snapshots, limit, Instant::now()) {
         let Some(page) = pages_by_id
             .iter()
             .find(|page| page.instance_id_string() == instance_id)
@@ -144,7 +162,6 @@ pub fn enforce_page_webview_budget_with_limit(limit: usize) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     fn page(
         id: &str,
@@ -173,7 +190,7 @@ mod tests {
             page("a2", 80, true, false, true, true),
             page("a3", 70, true, false, true, true),
         ];
-        assert!(discard_candidates(&pages, 1).is_empty());
+        assert!(discard_candidates(&pages, 1, Instant::now()).is_empty());
     }
 
     #[test]
@@ -185,7 +202,7 @@ mod tests {
             page("guest-older", 80, false, false, true, true),
         ];
         assert_eq!(
-            discard_candidates(&pages, 2),
+            discard_candidates(&pages, 2, Instant::now()),
             vec!["guest-older".to_string(), "guest-old".to_string()]
         );
     }
@@ -197,7 +214,10 @@ mod tests {
             page("detail", 5, false, true, false, true),
             page("other-tab", 90, false, false, true, true),
         ];
-        assert_eq!(discard_candidates(&pages, 2), vec!["other-tab".to_string()]);
+        assert_eq!(
+            discard_candidates(&pages, 2, Instant::now()),
+            vec!["other-tab".to_string()]
+        );
     }
 
     #[test]
@@ -212,7 +232,10 @@ mod tests {
             page("warm-detail", 70, false, false, false, true),
             page("other-tab", 60, false, false, true, true),
         ];
-        assert_eq!(discard_candidates(&pages, 1), vec!["other-tab".to_string()]);
+        assert_eq!(
+            discard_candidates(&pages, 1, Instant::now()),
+            vec!["other-tab".to_string()]
+        );
     }
 
     #[test]
@@ -221,7 +244,21 @@ mod tests {
             page("current", 1, false, true, true, true),
             page("other", 20, false, false, true, true),
         ];
-        assert!(discard_candidates(&pages, 4).is_empty());
+        assert!(discard_candidates(&pages, 4, Instant::now()).is_empty());
+    }
+
+    #[test]
+    fn idle_hidden_tabs_go_even_under_the_cap() {
+        let pages = [
+            page("current", 1, false, true, true, true),
+            page("recent", 60, false, false, true, true),
+            page("idle", 11 * 60, false, false, true, true),
+            page("idle-shown", 20 * 60, true, false, true, true),
+        ];
+        assert_eq!(
+            discard_candidates(&pages, 16, Instant::now()),
+            vec!["idle".to_string()]
+        );
     }
 
     #[test]

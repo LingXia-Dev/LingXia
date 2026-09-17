@@ -579,6 +579,12 @@ impl PageInstance {
         if self.inner.webview_create_in_flight.load(Ordering::SeqCst) {
             return Ok(());
         }
+        // The budget works from a snapshot; the app may have been shown, or
+        // this tab entered, since it was taken.
+        let lxapp = self.owning_lxapp();
+        if lxapp.is_shown() || lxapp.get_page_stack().contains(&self.instance_id_string()) {
+            return Ok(());
+        }
         let Some(webview) = self.webview() else {
             self.inner.discarded.store(true, Ordering::SeqCst);
             return Ok(());
@@ -619,6 +625,12 @@ impl PageInstance {
             async move {
                 let result = page.load_html().map_err(|err| err.to_string());
                 if let Err(ref err) = result {
+                    // Same-tag creates refuse a registered view, so a kept
+                    // one would fail every later reload.
+                    let attached = page.inner.webview.lock().ok().and_then(|mut v| v.take());
+                    if let Some(webview) = attached {
+                        destroy_webview_if_matches(&page.webtag(), &webview);
+                    }
                     page.inner.discarded.store(true, Ordering::SeqCst);
                     crate::warn!("failed to reload discarded page WebView: {err}")
                         .with_appid(page.appid())
