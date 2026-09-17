@@ -543,6 +543,51 @@ impl AppRuntime for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
     }
 
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        tokio::runtime::Handle::current().block_on(crate::rt::native_call(|callback_id| {
+            let id = callback_id.to_string();
+            lingxia_webview::platform::harmony::tsfn::call_arkts(
+                "notificationRequestPermission",
+                &[&id],
+            )
+            .map_err(|e| {
+                PlatformError::Platform(format!("Failed to request notification permission: {e}"))
+            })
+        }))
+    }
+
+    fn notification_show(
+        &self,
+        request: &crate::traits::app_runtime::LocalNotificationShow,
+    ) -> Result<String, PlatformError> {
+        let deliver_at = request.deliver_at_ms.unwrap_or(0).to_string();
+        let silent = if request.silent { "true" } else { "false" };
+        lingxia_webview::platform::harmony::tsfn::call_arkts(
+            "notificationShow",
+            &[
+                &request.id,
+                &request.title,
+                &request.body,
+                request.applink.as_deref().unwrap_or_default(),
+                &deliver_at,
+                silent,
+            ],
+        )
+        .map_err(|e| PlatformError::Platform(format!("Failed to show notification: {e}")))?;
+        Ok(request.id.clone())
+    }
+
+    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("notificationCancel", &[id])
+            .map_err(|e| PlatformError::Platform(format!("Failed to cancel notification: {e}")))
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        lingxia_webview::platform::harmony::tsfn::call_arkts("notificationCancelAll", &[]).map_err(
+            |e| PlatformError::Platform(format!("Failed to cancel all notifications: {e}")),
+        )
+    }
+
     fn navigate(
         &self,
         appid: String,

@@ -445,6 +445,7 @@ export class LingxiaBaseAbility extends UIAbility {
 
   onForeground(): void {
     super.onForeground();
+    Lingxia.inForeground = true;
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onForeground');
 
     this.disableSystemGestureBack();
@@ -466,6 +467,7 @@ export class LingxiaBaseAbility extends UIAbility {
 
   onBackground(): void {
     super.onBackground();
+    Lingxia.inForeground = false;
     hilog.info(DOMAIN, TAG, '%{public}s', 'Ability onBackground');
 
     // Notify native layer that app entered background

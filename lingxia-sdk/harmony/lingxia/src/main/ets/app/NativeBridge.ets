@@ -17,6 +17,7 @@ import { LxAppBrowserManager } from '../lxapp/LxAppBrowser';
 import { LxAppFile } from '../lxapp/APIs/LxAppFile';
 import { LxAppShare } from '../lxapp/APIs/LxAppShare';
 import { LxAppClipboard } from '../lxapp/APIs/LxAppClipboard';
+import { LxAppNotification } from '../lxapp/APIs/LxAppNotification';
 import { LxAppWifi } from '../lxapp/APIs/LxAppWifi';
 import { LxAppNetwork } from '../lxapp/APIs/LxAppNetwork';
 import { LxAppCapsule } from '../lxapp/APIs/LxAppCapsule';
@@ -497,6 +498,29 @@ class NativeBridge {
 
     this.register('clipboardTypes', (callbackId: string): boolean => {
       return LxAppClipboard.types(callbackId);
+    });
+
+    this.register('notificationRequestPermission', (callbackId: string): void => {
+      LxAppNotification.requestPermission(callbackId);
+    });
+
+    this.register('notificationShow', (
+      id: string,
+      title: string,
+      body: string,
+      applink: string,
+      deliverAtMs: string,
+      silent: string
+    ): boolean => {
+      return LxAppNotification.show(id, title, body, applink, deliverAtMs, silent);
+    });
+
+    this.register('notificationCancel', (id: string): boolean => {
+      return LxAppNotification.cancel(id);
+    });
+
+    this.register('notificationCancelAll', (): boolean => {
+      return LxAppNotification.cancelAll();
     });
 
     // WiFi APIs
