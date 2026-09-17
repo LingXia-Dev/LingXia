@@ -25,15 +25,9 @@ Page({
   },
 
   async _peekTypes() {
-    const result = await lx.clipboard.types();
-    if (result.canceled) {
-      this.setData({ typesText: "Canceled" });
-      return result;
-    }
-    this.setData({
-      typesText: result.types.length > 0 ? result.types.join(", ") : "empty",
-    });
-    return result;
+    const types = await lx.clipboard.types();
+    this.setData({ typesText: types.length > 0 ? types.join(", ") : "empty" });
+    return types;
   },
 
   // After a read that got nothing — dismissed, empty, or denied — show what
@@ -162,10 +156,8 @@ Page({
 
   peekTypes: async function () {
     try {
-      const result = await this._peekTypes();
-      this.setData({
-        statusText: result.canceled ? "Types canceled" : "Peeked types",
-      });
+      await this._peekTypes();
+      this.setData({ statusText: "Peeked types" });
     } catch (error) {
       await this._fail(error, "types failed");
     }

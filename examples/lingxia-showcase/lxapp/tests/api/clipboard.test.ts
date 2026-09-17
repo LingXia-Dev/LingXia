@@ -56,20 +56,20 @@ spec('round-trip text, empty clipboard, and typed image items', {
           writtenCanceled: written.canceled,
           writtenEmpty: written.canceled ? null : written.empty,
           writtenText: !written.canceled && !written.empty ? written.text : null,
-          afterWriteTypes: afterWrite.canceled ? [] : afterWrite.types,
+          afterWriteTypes: afterWrite,
           typedEmpty: typed.canceled ? true : typed.empty,
           typedText: !typed.canceled && !typed.empty
             ? typed.items.find((item) => item.type === 'text')?.text
             : null,
           emptyStringEmpty: emptyString.canceled ? null : emptyString.empty,
           emptyStringText: !emptyString.canceled && !emptyString.empty ? emptyString.text : null,
-          imageTypes: imageTypes.canceled ? [] : imageTypes.types,
+          imageTypes,
           imageEmpty: imageRead.canceled ? true : imageRead.empty,
           imageWidth: imageInfo && imageInfo.width,
           imageHeight: imageInfo && imageInfo.height,
           afterClearEmpty: afterClear.canceled ? null : afterClear.empty,
           emptyRead: emptyRead.canceled ? false : emptyRead.empty,
-          emptyTypes: emptyTypes.canceled ? null : emptyTypes.types,
+          emptyTypes,
         };
       } finally {
         await files.remove(root, { recursive: true }).catch(() => {});
@@ -90,7 +90,7 @@ spec('round-trip text, empty clipboard, and typed image items', {
     imageHeight: number | null;
     afterClearEmpty: boolean | null;
     emptyRead: boolean;
-    emptyTypes: string[] | null;
+    emptyTypes: string[];
   };
 
   expect(result.writtenCanceled).toBe(false);
@@ -151,26 +151,26 @@ async function expectHarmonyReadsDenied(
         const afterClear = await lx.clipboard.readText();
         const emptyTypes = await lx.clipboard.types();
         return {
-          textTypes: textTypes.canceled ? null : textTypes.types,
+          textTypes,
           readText,
           read,
-          imageTypes: imageTypes.canceled ? null : imageTypes.types,
+          imageTypes,
           readImage,
           afterClearEmpty: afterClear.canceled ? null : afterClear.empty,
-          emptyTypes: emptyTypes.canceled ? null : emptyTypes.types,
+          emptyTypes,
         };
       } finally {
         await files.remove(root, { recursive: true }).catch(() => {});
       }
     `,
   }) as {
-    textTypes: string[] | null;
+    textTypes: string[];
     readText: string;
     read: string;
-    imageTypes: string[] | null;
+    imageTypes: string[];
     readImage: string;
     afterClearEmpty: boolean | null;
-    emptyTypes: string[] | null;
+    emptyTypes: string[];
   };
 
   expect(result.textTypes).toContain('text');
