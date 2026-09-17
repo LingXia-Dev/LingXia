@@ -41,6 +41,14 @@ for snapshot, dispatch, and completion, so restart/takeover cannot reuse it.
 The access setting above decides whether agents may act. Pass
 `--allow-destructive` only when the user asked for the destructive effect.
 
+## Agent sessions
+
+`local_control::subscribe` reports each request on the product socket as a
+`ControlEvent`: session start, one `Activity` per request (method,
+`Reads`/`Changes`/`Unclassified`), and session end (20 s idle,
+`stop_current_session()`, or access switched off). Host namespaces arrive
+`Unclassified`; the product classifies its own methods.
+
 ## Product command discovery
 
 Invoke the exact product executable as `<executable> --cli ...`; LingXia has no

@@ -369,7 +369,7 @@ fn result_window(result: Option<&Value>) -> Option<(String, (i32, i32))> {
 }
 
 /// Whether a method changes the machine, by name alone.
-fn changes_machine(name: &str) -> bool {
+pub(crate) fn changes_machine(name: &str) -> bool {
     const ACTUATES: &[&str] = &[
         "desktop.pointer.",
         "desktop.key.",
