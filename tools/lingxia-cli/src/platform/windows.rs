@@ -48,6 +48,8 @@ pub fn generate_icons(project_root: &Path, source_icon: &Path) -> Result<()> {
     };
     fs::write(&out, &ico).with_context(|| format!("Failed to write {}", out.display()))?;
     println!("  Generated {} ({} bytes)", out.display(), ico.len());
+    // Sidebar / Settings tile: full-bleed source, no Dock inset.
+    crate::r#gen::icons::write_host_chrome_icon(source_icon, &windows_dir)?;
     Ok(())
 }
 

@@ -25,11 +25,12 @@ struct AppIconHandles {
 
 static APP_ICON_HANDLES: OnceLock<Mutex<Option<AppIconHandles>>> = OnceLock::new();
 static APP_ICON_PATH: OnceLock<Mutex<Option<std::path::PathBuf>>> = OnceLock::new();
+static APP_CHROME_ICON_PATH: OnceLock<Mutex<Option<std::path::PathBuf>>> = OnceLock::new();
 static ICON_HOOK_INSTALLED: OnceLock<()> = OnceLock::new();
 
 pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
     install_icon_hook();
-    // Decode + tighten once, then rasterize to each size. The large icon is
+    // Decode + normalize once, then rasterize to each size. The large icon is
     // rendered at 48px (not 32px) so the taskbar/alt-tab downscale it crisply on
     // high-DPI displays instead of upscaling a 32px icon.
     let image = prepare_app_icon_image(path)?;
@@ -50,13 +51,43 @@ pub(crate) fn set_app_icon_from_path(path: &Path) -> Result<(), String> {
     if let Ok(mut slot) = APP_ICON_PATH.get_or_init(|| Mutex::new(None)).lock() {
         *slot = Some(path.to_path_buf());
     }
+    if let Some(chrome) = resolve_host_chrome_icon(path)
+        && let Ok(mut slot) = APP_CHROME_ICON_PATH.get_or_init(|| Mutex::new(None)).lock()
+    {
+        *slot = Some(chrome);
+    }
     Ok(())
+}
+
+/// Full-bleed chrome tile (`icons/host-chrome.png`) when the CLI staged one
+/// next to the launcher icon. Sidebar / Settings use this so they are not
+/// Dock-inset.
+pub(crate) fn current_chrome_icon_path() -> Option<std::path::PathBuf> {
+    APP_CHROME_ICON_PATH
+        .get()
+        .and_then(|path| path.lock().ok())
+        .and_then(|path| path.clone())
+}
+
+/// Dist keeps the tile beside the launcher icon; `lingxia dev` launches a
+/// badged copy from `windows/overlay/<env>/`, whose tile is in `windows/assets/`.
+fn resolve_host_chrome_icon(app_icon: &Path) -> Option<std::path::PathBuf> {
+    app_icon.ancestors().take(6).find_map(|ancestor| {
+        [
+            ancestor.join("icons"),
+            ancestor.join("assets").join("icons"),
+        ]
+        .into_iter()
+        .map(|dir| dir.join("host-chrome.png"))
+        .find(|candidate| candidate.is_file())
+    })
 }
 
 /// The source PNG path of the applied product/app icon (the launcher icon
 /// resolved at startup), if one was set. This is the application's icon, not
-/// any single lxapp's icon. Only the product shell's About box and tray icon
-/// read it (the app-menu button draws the brand glyph), so it is gated to
+/// any single lxapp's icon. Chrome uses it for the About/Exit entry, the
+/// About box, the tray icon, and built-in pages that have no favicon of
+/// their own.
 pub(crate) fn current_app_icon_path() -> Option<std::path::PathBuf> {
     APP_ICON_PATH
         .get()
@@ -104,13 +135,13 @@ fn current_app_icon_handles() -> Option<AppIconHandles> {
         .and_then(|icons| icons.lock().ok().and_then(|icons| *icons))
 }
 
-/// Decodes the app-icon PNG and tightens it for the small Windows taskbar /
-/// alt-tab cell: a mobile launcher icon centers its glyph inside a wide safe-
-/// area margin, which reads as a tiny logo lost in padding once scaled to
-/// 16-48px. When the icon has a uniform background (the four corners agree), the
-/// padding is cropped to a square around the visible content; flat backgrounds
-/// retain a small margin. Icons without a uniform border are returned unchanged.
-fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
+/// Decodes the launcher PNG and Dock-normalizes it for the taskbar / alt-tab
+/// cell: 73% visual ratio plus a 22% rounded plate, matching macOS `AppIcon`.
+///
+/// Keep the ratios in sync with `tools/lingxia-cli/src/gen/icons.rs`
+/// (`png_to_ico_bytes`), or the embedded `.exe` icon and the live taskbar
+/// drift apart.
+pub(crate) fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
     let image = if path
         .extension()
         .and_then(|ext| ext.to_str())
@@ -122,7 +153,89 @@ fn prepare_app_icon_image(path: &Path) -> Result<image::RgbaImage, String> {
             .map_err(|err| format!("Failed to load Windows app icon {}: {err}", path.display()))?
             .into_rgba8()
     };
-    Ok(tighten_icon(image))
+    Ok(dock_normalize_icon(image))
+}
+
+const TARGET_DOCK_VISUAL_RATIO: f32 = 0.73;
+const APP_TILE_CORNER_RATIO: f32 = 0.22;
+
+fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
+    let (width, height) = image.dimensions();
+    if width == 0 || height == 0 {
+        return image;
+    }
+    let canvas = width.max(height);
+    let ratio = opaque_bounds_ratio(&image);
+    // Art already at dock size (e.g. a CLI-staged dev icon whose env badge
+    // overhangs the plate) passes through; rescaling would shrink it again.
+    if ratio <= TARGET_DOCK_VISUAL_RATIO + 0.05 {
+        return image;
+    }
+    let scale = (TARGET_DOCK_VISUAL_RATIO / ratio).clamp(0.60, 0.92);
+    let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    // Keep the plate's parity equal to the canvas's so the centering offset
+    // is exact; a half-pixel shift reads as a lopsided tile at 16px.
+    if (canvas - icon_size) % 2 == 1 {
+        icon_size += 1;
+    }
+    let offset = (canvas - icon_size) / 2;
+    let mut plate = image::imageops::resize(
+        &image,
+        icon_size,
+        icon_size,
+        image::imageops::FilterType::Lanczos3,
+    );
+    apply_rounded_corner_mask(&mut plate, icon_size as f32 * APP_TILE_CORNER_RATIO);
+    let mut out = image::RgbaImage::new(canvas, canvas);
+    image::imageops::overlay(&mut out, &plate, offset as i64, offset as i64);
+    out
+}
+
+fn opaque_bounds_ratio(image: &image::RgbaImage) -> f32 {
+    let (width, height) = image.dimensions();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (width, height, 0u32, 0u32);
+    let mut found = false;
+    for (x, y, pixel) in image.enumerate_pixels() {
+        if pixel.0[3] <= 12 {
+            continue;
+        }
+        found = true;
+        min_x = min_x.min(x);
+        min_y = min_y.min(y);
+        max_x = max_x.max(x);
+        max_y = max_y.max(y);
+    }
+    if !found {
+        return 1.0;
+    }
+    let bw = (max_x - min_x + 1) as f32 / width as f32;
+    let bh = (max_y - min_y + 1) as f32 / height as f32;
+    bw.max(bh).clamp(0.01, 1.0)
+}
+
+fn apply_rounded_corner_mask(image: &mut image::RgbaImage, radius: f32) {
+    let (width, height) = image.dimensions();
+    let radius = radius.clamp(1.0, width.min(height) as f32 * 0.5);
+    let left = radius;
+    let top = radius;
+    let right = width as f32 - radius;
+    let bottom = height as f32 - radius;
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        let xf = x as f32 + 0.5;
+        let yf = y as f32 + 0.5;
+        let cx = xf.clamp(left, right);
+        let cy = yf.clamp(top, bottom);
+        let dist = (xf - cx).hypot(yf - cy);
+        if dist <= radius - 1.0 {
+            continue;
+        }
+        if dist >= radius {
+            pixel.0[3] = 0;
+            continue;
+        }
+        let edge = ((radius - dist) * 255.0).clamp(0.0, 255.0) as u16;
+        pixel.0[3] = ((u16::from(pixel.0[3]) * edge) / 255) as u8;
+    }
 }
 
 fn rasterize_svg_icon(path: &Path) -> Result<image::RgbaImage, String> {
@@ -210,80 +323,6 @@ fn invert_dark_pixels(image: &mut image::RgbaImage) {
     }
 }
 
-fn tighten_icon(image: image::RgbaImage) -> image::RgbaImage {
-    let (w, h) = image.dimensions();
-    if w == 0 || h == 0 {
-        return image;
-    }
-    let bg = image.get_pixel(0, 0).0;
-    let corners = [
-        image.get_pixel(w - 1, 0).0,
-        image.get_pixel(0, h - 1).0,
-        image.get_pixel(w - 1, h - 1).0,
-    ];
-    // Transparent corners mean the padding is alpha, not a flat color. Their
-    // RGB is meaningless and may be close to a dark, visible icon plate.
-    let transparent_bg = bg[3] < 16;
-    if transparent_bg {
-        if corners.iter().any(|c| c[3] >= 16) {
-            return image;
-        }
-    } else if corners.iter().any(|c| !color_close(*c, bg, 12)) {
-        return image;
-    }
-    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
-    let mut found = false;
-    for (x, y, pixel) in image.enumerate_pixels() {
-        let p = pixel.0;
-        let is_background = if transparent_bg {
-            p[3] < 16
-        } else {
-            p[3] < 16 || color_close(p, bg, 32)
-        };
-        if is_background {
-            continue;
-        }
-        found = true;
-        min_x = min_x.min(x);
-        min_y = min_y.min(y);
-        max_x = max_x.max(x);
-        max_y = max_y.max(y);
-    }
-    if !found {
-        return image;
-    }
-    // Square crop centered on the visible content, clamped to the image and
-    // back-filled with the background where it would overrun an edge.
-    let content = (max_x - min_x + 1).max(max_y - min_y + 1);
-    // A transparent source already defines its own silhouette; adding another
-    // safe area makes rounded plates visibly smaller than native Windows icons.
-    let side = if transparent_bg {
-        content
-    } else {
-        content + content / 4
-    };
-    // Center pixel spans, not their truncated integer midpoint. This preserves
-    // half-pixel centers for even-sized content and avoids a top-left bias.
-    let start_x = (min_x as i64 + max_x as i64 + 1 - side as i64).div_euclid(2);
-    let start_y = (min_y as i64 + max_y as i64 + 1 - side as i64).div_euclid(2);
-    let mut out = image::RgbaImage::from_pixel(side, side, image::Rgba(bg));
-    for oy in 0..side {
-        for ox in 0..side {
-            let sx = start_x + ox as i64;
-            let sy = start_y + oy as i64;
-            if sx >= 0 && sy >= 0 && (sx as u32) < w && (sy as u32) < h {
-                out.put_pixel(ox, oy, *image.get_pixel(sx as u32, sy as u32));
-            }
-        }
-    }
-    out
-}
-
-/// Whether two RGBA colors are within `tol` per channel (ignoring alpha).
-fn color_close(a: [u8; 4], b: [u8; 4], tol: u8) -> bool {
-    a[0].abs_diff(b[0]) <= tol && a[1].abs_diff(b[1]) <= tol && a[2].abs_diff(b[2]) <= tol
-}
-
 fn create_icon_from_image(
     source: &image::RgbaImage,
     size: u32,
@@ -368,23 +407,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn transparent_padding_does_not_hide_a_dark_icon_plate() {
-        let mut source = image::RgbaImage::new(20, 20);
-        for y in 4..=15 {
-            for x in 4..=15 {
-                source.put_pixel(x, y, image::Rgba([18, 22, 25, 255]));
-            }
-        }
-
-        let tightened = tighten_icon(source);
-        assert_eq!(tightened.dimensions(), (12, 12));
-    }
-
-    #[test]
     fn dark_tray_glyph_is_inverted_for_the_notification_area() {
         let mut source = image::RgbaImage::new(8, 8);
         source.put_pixel(3, 3, image::Rgba([0, 0, 0, 255]));
         invert_dark_pixels(&mut source);
         assert_eq!(source.get_pixel(3, 3).0, [255, 255, 255, 255]);
+    }
+
+    #[test]
+    fn dock_normalize_insets_a_full_bleed_plate_and_rounds_it() {
+        let source = image::RgbaImage::from_pixel(20, 20, image::Rgba([20, 80, 200, 255]));
+        let normalized = dock_normalize_icon(source);
+        assert_eq!(normalized.dimensions(), (20, 20));
+        assert_eq!(normalized.get_pixel(0, 0).0[3], 0);
+        assert_eq!(normalized.get_pixel(10, 10).0[3], 255);
     }
 }

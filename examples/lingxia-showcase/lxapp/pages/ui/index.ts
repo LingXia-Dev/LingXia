@@ -647,18 +647,6 @@ Page({
     );
   },
 
-  updateTabBarForegrounds: function (options: { color?: string; selectedColor?: string }) {
-    console.log("updateTabBarForegrounds called with:", options);
-    return this._runChromeUpdate("Tab bar update", () =>
-      lx.tabBar.update({
-        style: {
-          foregroundColor: options.color,
-          selectedForegroundColor: options.selectedColor,
-        },
-      }),
-    );
-  },
-
   updateTabBarItem: function (options: TabBarItemPatch) {
     console.log("updateTabBarItem called with:", options);
     return this._runChromeUpdate("Tab bar update", () =>

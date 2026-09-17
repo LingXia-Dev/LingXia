@@ -385,6 +385,18 @@ pub(crate) fn prepare_configured_host_assets(
                 {
                     stage_windows_host_icon(project_root, &assets_root)?;
                 }
+                // The chrome tile is a nicety: an unreadable launcher icon
+                // must not fail the asset step (the macOS bundle path agrees).
+                let host_icon = project_root.join("AppIcon.png");
+                if host_icon.is_file()
+                    && let Err(err) =
+                        crate::r#gen::icons::write_host_chrome_icon(&host_icon, &assets_root)
+                {
+                    eprintln!(
+                        "{}: skipping host chrome icon: {err:#}",
+                        "warning".yellow().bold()
+                    );
+                }
             }
         }
     }

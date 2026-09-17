@@ -609,9 +609,12 @@ Add a `tabBar` block alongside `pages`:
 }
 ```
 
-All style keys are optional and inherit the host theme. `presentation` is
-`"standard"` (the View ends above the bar) or `"immersive"` (the View extends
-behind it). An immersive bar must omit `backgroundColor` and `dividerColor`.
+All style keys are optional and inherit the host theme. `backgroundColor`
+paints the **mobile** bar only; on desktop the sidebar uses the host
+`lingxia.yaml` `theme.windowBackgroundColor` instead — a `#FFFFFF` fill
+must not become a white card next to home. `presentation` is `"standard"`
+(the View ends above the bar) or `"immersive"` (the View extends behind
+it). An immersive bar must omit `backgroundColor` and `dividerColor`.
 
 Rules:
 
@@ -733,13 +736,24 @@ or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise reject
 
 ```ts
 await lx.tabBar.update({
-  style: { selectedForegroundColor: '#ff0000' },
   items: [{ index: 1, text: 'Inbox', badge: '3' }],
 });
 await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
 await lx.tabBar.update({ visibility: 'hidden' });
 await lx.tabBar.update({ visibility: 'auto' });
 ```
+
+Tab bar colors are platform-split, and `lx.tabBar.update()` cannot patch
+them — a `style` field is rejected.
+
+- **Mobile** (iOS / Android / Harmony): the bar sits on the page and keeps
+  static `lxapp.json` `tabBar.style` (then the lxapp's own appearance
+  defaults). It does not follow OS dark mode by itself.
+- **Desktop** (macOS / Windows): the sidebar is host chrome and follows
+  `lingxia.yaml` `theme`. `tabBar.style.backgroundColor` is unused there.
+  Other static keys (`foregroundColor`, `selectedForegroundColor`,
+  `dividerColor`) may tint items while the host is light; a dark host
+  uses the shell theme for every key.
 
 `lx.navigationBar.update()` patches the current page's bar the same way:
 

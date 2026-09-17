@@ -1,18 +1,17 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-// Atomics here back browser tab-sync debounce/presentation generations and
-// shell-created terminal workspace identities.
-#[cfg(feature = "browser-runtime")]
-use std::sync::atomic::AtomicBool;
+// AtomicU64 backs browser tab-sync/presentation generations and shell-created
+// terminal workspace identities.
 #[cfg(any(feature = "browser-runtime", feature = "terminal-runtime"))]
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::AtomicU64;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use super::{
-    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellFooterActionLayout,
-    WindowsShellHeaderActionLayout, WindowsShellNavigationBarLayout,
-    WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
-    WindowsShellTabBarPosition, WindowsShellWindowLayout,
+    WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout, WindowsShellAuxiliaryTabs,
+    WindowsShellFooterActionLayout, WindowsShellHeaderActionLayout,
+    WindowsShellNavigationBarLayout, WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout,
+    WindowsShellTabBarLayout, WindowsShellTabBarPosition, WindowsShellWindowLayout,
 };
 #[cfg(feature = "browser-runtime")]
 use lingxia_browser::BrowserTabInfo;
@@ -27,8 +26,8 @@ use lingxia_platform::traits::app_runtime::{
 };
 use lingxia_platform::traits::ui::{ManagedSurfaceCompletion, ManagedSurfaceFuture};
 use lingxia_shell::{
-    ResolvedShellSidebarAction, ShellPin, ShellPinTarget, SidebarActionIntent,
-    SidebarActionPlacement,
+    MAX_HEADER_SIDEBAR_ACTIONS, ResolvedShellSidebarAction, ShellPin, ShellPinTarget,
+    SidebarActionIntent, SidebarActionPlacement,
 };
 use lingxia_surface::{
     Edge, LayoutPresentationPlan, SizeClass, SlotKind, SurfaceIcon, SurfaceSwitcherItem,
@@ -1062,7 +1061,7 @@ fn apply_windows_host_color_mode() {
 
 pub(super) fn install() {
     lingxia_platform::set_windows_ui_update_handler(Arc::new(|appid| {
-        sync_related_shell_layouts(&appid);
+        request_related_shell_sync(&appid);
     }));
     // The product's light/dark setting moved. Chrome paints from
     // `host_appearance_dark()`; WebViews and the terminal must be told too.
@@ -1241,18 +1240,88 @@ pub(super) fn install() {
 }
 
 fn sync_related_shell_layouts(appid: &str) {
-    let mut appids = Vec::from([appid.to_string()]);
-    if let Some(owner_appid) = shell_owner_appid()
-        && !appids.iter().any(|appid| appid == &owner_appid)
-    {
-        appids.push(owner_appid);
-    }
-    let current_appid = lxapp::get_current_lxapp().0;
-    if !current_appid.is_empty() && !appids.iter().any(|appid| appid == &current_appid) {
-        appids.push(current_appid);
-    }
-    for appid in appids {
+    for appid in related_shell_appids(&[appid.to_string()]) {
         sync_app_shell_layout(&appid);
+    }
+}
+
+/// The app, the shell owner, and the current app, deduplicated across every
+/// requested app id.
+fn related_shell_appids(requested: &[String]) -> Vec<String> {
+    let mut appids: Vec<String> = Vec::new();
+    let owner_appid = shell_owner_appid();
+    let current_appid = lxapp::get_current_lxapp().0;
+    for appid in requested
+        .iter()
+        .cloned()
+        .chain(owner_appid)
+        .chain((!current_appid.is_empty()).then_some(current_appid))
+    {
+        if !appids.contains(&appid) {
+            appids.push(appid);
+        }
+    }
+    appids
+}
+
+static PENDING_SHELL_SYNC: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+static SHELL_SYNC_SCHEDULED: AtomicBool = AtomicBool::new(false);
+
+/// Runtime host-UI updates (`update_navbar_ui` + `update_tabbar_ui`) arrive
+/// several times per navigation — a tab click alone sends four pairs, most of
+/// them before the page is presented. Each used to run a full related-layout
+/// pass on the caller's thread, so the click paid ~10 layout passes ahead of
+/// the swap. Collect them and run one pass off the caller, after the
+/// presentation that triggered them. Present paths still push their own
+/// layout synchronously, so nothing on screen waits for this.
+fn request_related_shell_sync(appid: &str) {
+    {
+        let mut pending = PENDING_SHELL_SYNC
+            .get_or_init(|| Mutex::new(Vec::new()))
+            .lock()
+            .unwrap_or_else(|err| err.into_inner());
+        if !pending.iter().any(|pending| pending == appid) {
+            pending.push(appid.to_string());
+        }
+    }
+    if SHELL_SYNC_SCHEDULED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    std::mem::drop(lingxia::task::spawn(async move {
+        flush_related_shell_sync();
+    }));
+}
+
+/// Passes run one after another: the flag stays set while a pass builds, so a
+/// request during it queues for the next pass instead of racing it.
+fn flush_related_shell_sync() {
+    let take_pending = || {
+        std::mem::take(
+            &mut *PENDING_SHELL_SYNC
+                .get_or_init(|| Mutex::new(Vec::new()))
+                .lock()
+                .unwrap_or_else(|err| err.into_inner()),
+        )
+    };
+    loop {
+        let pending = take_pending();
+        if pending.is_empty() {
+            SHELL_SYNC_SCHEDULED.store(false, Ordering::Release);
+            // A request that queued after the take saw the flag still set.
+            let requeued = PENDING_SHELL_SYNC.get().is_some_and(|pending| {
+                !pending
+                    .lock()
+                    .unwrap_or_else(|err| err.into_inner())
+                    .is_empty()
+            });
+            if requeued && !SHELL_SYNC_SCHEDULED.swap(true, Ordering::AcqRel) {
+                continue;
+            }
+            return;
+        }
+        for appid in related_shell_appids(&pending) {
+            sync_app_shell_layout(&appid);
+        }
     }
 }
 
@@ -1784,6 +1853,15 @@ fn install_shell_chrome_event_handler(webtag: &WebTag, appid: &str) {
 }
 
 fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
+    let visible_main = active_main_lxapp_id().and_then(|appid| lxapp::try_get(&appid));
+    build_window_layout_with_visible_main(app, path, visible_main.as_deref())
+}
+
+fn build_window_layout_with_visible_main(
+    app: &LxApp,
+    path: &str,
+    visible_main: Option<&LxApp>,
+) -> WindowsShellWindowLayout {
     // The Arc-style address bar owns the top bar while a browser tab is
     // presented; the lxapp navigation bar yields for that time.
     let address_bar = build_address_bar_layout();
@@ -1794,7 +1872,7 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     let owner_app = shell_owner_app_for(app);
     let shell_app = owner_app.as_deref().unwrap_or(app);
-    let footer_actions = build_footer_actions(shell_app);
+    let mut footer_actions = build_footer_actions(shell_app);
     // A simulator frame whose toolbar carries the close/minimize dots owns the
     // window controls, so the shell drops its own caption there. A framed
     // simulated desktop keeps the standard Windows caption buttons.
@@ -1820,17 +1898,36 @@ fn build_window_layout(app: &LxApp, path: &str) -> WindowsShellWindowLayout {
     };
     // A presented browser tab covers the phone tab bar, matching the macOS
     // runner's full-screen browser surface; side tab bars (sidebar) stay.
-    let active_main_app = preferred_sidebar_group_appid(
-        shell_owner_appid(),
-        presented_browser_group_appid(),
-        active_main_lxapp_id(),
-    )
-    .and_then(|appid| lxapp::try_get(&appid));
-    let tab_bar_app =
-        tab_bar_owner_for_layout(app, owner_app.as_deref(), active_main_app.as_deref());
+    // Tab pages follow the visible main, not the shell owner. Owner-first
+    // lookup kept drawing home's (possibly collapsed) group after a switch.
+    let tab_bar_app = tab_bar_owner_for_layout(app, owner_app.as_deref(), visible_main);
     let tab_bar = build_tab_bar_layout(tab_bar_app, &footer_actions).filter(|tabbar| {
         address_bar.is_none() || !matches!(tabbar.position, WindowsShellTabBarPosition::Bottom)
     });
+    // The rail has no header row, so header actions (Settings, Downloads)
+    // lead its action stack instead of vanishing (macOS parity).
+    if let Some(tabbar) = tab_bar.as_ref().filter(|tabbar| {
+        (tabbar.collapsed || tabbar.icon_rail)
+            && matches!(
+                tabbar.position,
+                WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+            )
+    }) {
+        let mut rail_actions = tabbar
+            .header_actions
+            .iter()
+            .map(|action| WindowsShellFooterActionLayout {
+                generation: action.generation,
+                id: action.id.clone(),
+                label: action.label.clone(),
+                icon_path: action.icon_path.clone(),
+                disabled: action.disabled,
+                source: action.source.clone(),
+            })
+            .collect::<Vec<_>>();
+        rail_actions.append(&mut footer_actions);
+        footer_actions = rail_actions;
+    }
     let compact_browser_chrome = address_bar.is_some()
         && suppress_window_controls
         && resolved_shell_size_class(Some(shell_app)) == SizeClass::Compact;
@@ -1924,6 +2021,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         color: 0x666666,
         selected_color: 0x1677ff,
         background_color: 0xffffff,
+        paint_items_background: false,
         background_transparent: true,
         border_color: 0xf0f0f0,
         selected_index: -1,
@@ -1965,24 +2063,26 @@ fn shell_owner_app_for(active: &LxApp) -> Option<Arc<LxApp>> {
 fn tab_bar_owner_for_layout<'a>(
     active: &'a LxApp,
     owner: Option<&'a LxApp>,
-    active_main: Option<&'a LxApp>,
+    visible_main: Option<&'a LxApp>,
 ) -> &'a LxApp {
-    if let Some(owner) = owner
-        && matches!(
-            tabbar_position(&owner.appid),
-            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-        )
-    {
-        return owner;
+    // The visible lxapp owns the tab pages the user is looking at. Desktop
+    // used to keep drawing the shell owner's items after `navigateToApp`, so
+    // sidebar clicks SwitchTab'd a background home app (macOS had the same
+    // hole). Present-time callers pass the incoming app here so the first
+    // chrome pass does not wait for a later switcher snapshot. Sidebar
+    // width/rail still key off the owner separately.
+    if let Some(main) = visible_main {
+        return main;
     }
     if matches!(
         tabbar_position(&active.appid),
         WindowsShellTabBarPosition::Bottom
+            | WindowsShellTabBarPosition::Left
+            | WindowsShellTabBarPosition::Right
     ) {
-        active
-    } else {
-        owner.or(active_main).unwrap_or(active)
+        return active;
     }
+    owner.unwrap_or(active)
 }
 
 fn prime_tabbar_selection(app: &LxApp, selected_index: usize) {
@@ -2151,10 +2251,15 @@ fn browser_tab_display_url(tab: &BrowserTabSummary) -> String {
     url
 }
 
+/// Blank start pages show an empty address field (macOS parity). WebView2
+/// reports host-only URLs with a trailing slash (`lingxia://newtab/`), and a
+/// start page may carry a query, so compare the bare page identity.
 fn browser_url_is_hidden(url: &str) -> bool {
+    let url = url.trim().to_ascii_lowercase();
+    let page = url.split(['?', '#']).next().unwrap_or_default();
     matches!(
-        url.trim().to_ascii_lowercase().as_str(),
-        "about:blank" | "lingxia://newtab" | "lingxia://"
+        page.trim_end_matches('/'),
+        "about:blank" | "lingxia://newtab" | "lingxia:"
     )
 }
 
@@ -2218,10 +2323,15 @@ fn build_tab_bar_layout(
             .iter()
             .position(|item| normalize_tab_path(&item.page_path) == target)
     });
-    let ui_state = sidebar_ui_state(&app.appid);
     let runtime_info = app.runtime_info();
     let switcher_owner = shell_owner_appid().and_then(|appid| lxapp::try_get(&appid));
     let switcher_app = switcher_owner.as_deref().unwrap_or(app);
+    // Width / rail belong to the shell owner, not the visible guest —
+    // otherwise opening a second lxapp would reset the sidebar. The
+    // expanded-group chevron is per lxapp (`group_id`), or toggling B
+    // writes B and the next paint still reads home.
+    let ui_state = sidebar_ui_state(&switcher_app.appid);
+    let items_ui_state = sidebar_ui_state(&app.appid);
     let size_class = resolved_shell_size_class(Some(switcher_app));
     let switcher = switcher_app.surface_switcher_snapshot();
     let root = switcher.root_surface_id.as_deref().and_then(|root_id| {
@@ -2230,19 +2340,23 @@ fn build_tab_bar_layout(
             .iter()
             .find(|item| item.surface_id == root_id)
     });
-    let group_active = root.map(|item| item.active).unwrap_or_else(|| {
-        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
-    });
-    let root_owns_lxapp_navigation = root.is_none_or(|item| {
+    let this_item = switcher.items.iter().find(|item| {
         matches!(
             &item.content,
             SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id }
                 if app_id == &app.appid
         )
     });
+    let group_active = this_item.map(|item| item.active).unwrap_or_else(|| {
+        presented_browser_tab().is_none() && active_main_lxapp_id().as_deref() == Some(&app.appid)
+    });
+    // Show this lxapp's own tab pages. The root-only filter hid a guest
+    // main's items after navigateToApp, so the sidebar kept drawing home.
+    // A terminal/browser root with no matching lxapp item still hides them.
+    let show_lxapp_tabs = this_item.is_some() || root.is_none();
     let items = tabbar
         .as_ref()
-        .filter(|_| root_owns_lxapp_navigation)
+        .filter(|_| show_lxapp_tabs)
         .map(|tabbar| {
             tabbar
                 .visible_items()
@@ -2271,7 +2385,10 @@ fn build_tab_bar_layout(
             SwitcherContentKind::Browser | SwitcherContentKind::Native { .. } => None,
         })
         .collect::<HashSet<_>>();
-    let mut main_rows = build_surface_switcher_items(switcher_app, &switcher);
+    let group_target_id = this_item
+        .map(|item| format!("{AUX_SURFACE_PREFIX}{}", item.surface_id))
+        .unwrap_or_else(|| format!("{AUX_LXAPP_PREFIX}{}", app.appid));
+    let mut main_rows = build_surface_switcher_items(switcher_app, &switcher, &group_target_id);
     main_rows.extend(
         build_open_lxapp_items(&app.appid)
             .into_iter()
@@ -2280,21 +2397,18 @@ fn build_tab_bar_layout(
             }),
     );
     main_rows.extend(build_browser_tab_items(browser_tabs));
-    let group_target_id = root
-        .map(|item| format!("{AUX_SURFACE_PREFIX}{}", item.surface_id))
-        .unwrap_or_else(|| format!("{AUX_LXAPP_PREFIX}{}", app.appid));
     let (group_order_index, main_rows) = order_main_tab_rows(&group_target_id, main_rows);
     auxiliary_items.extend(main_rows);
     // The global "+" follows the active main provider: browser opens a tab,
     // while a terminal root opens another main workspace. A device-framed
     // runner hosts a single app and never exposes desktop workspace creation.
-    let owner_window = owner_window_handle(&app.appid);
+    let owner_window = owner_window_handle(&switcher_app.appid);
     let device_framed = owner_window.map(window_has_device_frame).unwrap_or(false);
     let frame_status_bar_height = owner_window
         .map(device_frame_status_bar_height)
         .unwrap_or(0);
     let mut show_auxiliary_add = main_workspace_add_target(&switcher).is_some() && !device_framed;
-    let mut header_actions = build_sidebar_header_actions(app);
+    let mut header_actions = build_sidebar_header_actions(switcher_app);
     let sidebar_has_content = sidebar_content_available(
         !items.is_empty(),
         !auxiliary_items.is_empty(),
@@ -2305,18 +2419,22 @@ fn build_tab_bar_layout(
     if !sidebar_has_content {
         return None;
     }
-    // The LingXia icon is copied next to the app by the CLI; record its path so
-    // the chrome can load it as the default icon (lxapp items / browser tabs
-    // with no icon of their own).
+    // Last-resort chrome mark when the host has no launcher icon yet. Draw
+    // time prefers `current_app_icon_path` so Downloads/Settings and About/Exit
+    // show the running product, not the framework glyph.
     super::chrome::set_default_icon_path(
-        app.runtime
+        switcher_app
+            .runtime
             .asset_dir()
             .join("icons")
             .join("lingxia.png")
             .to_string_lossy()
             .into_owned(),
     );
-    let requested_position = tabbar_position(&app.appid);
+    // Shell chrome shape (sidebar vs bottom) follows the host, not the
+    // guest's own tabBar position — a mobile lxapp must not collapse the
+    // desktop sidebar into a phone strip.
+    let requested_position = tabbar_position(&switcher_app.appid);
     let (position, force_icon_rail, show_shell_entries) = adaptive_tabbar_projection(
         requested_position,
         size_class,
@@ -2356,9 +2474,11 @@ fn build_tab_bar_layout(
         position,
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
     );
-    // An app without a tabBar declaration inherits the desktop shell surface;
-    // an explicit backgroundColor still styles the full sidebar as requested.
+    // Desktop sidebar never takes tabBar.style.backgroundColor (mobile-only);
+    // yaml `windowBackgroundColor` shows through. Color/selectedColor still
+    // apply on light host when the app declared them.
     let resolved_style = app.resolved_tabbar_style();
+    let declared_mask = app.tabbar_declared_color_mask();
     let tabbar_background_transparent = tabbar.as_ref().is_some_and(|tabbar| {
         tabbar.presentation == lxapp::page_chrome::TabBarPresentation::Immersive
     });
@@ -2380,23 +2500,33 @@ fn build_tab_bar_layout(
         },
         position,
         dimension,
-        app_name: root.map(surface_switcher_title).unwrap_or_else(|| {
+        app_name: this_item.map(surface_switcher_title).unwrap_or_else(|| {
             lxapp::lxapp_display_name(&app.appid).unwrap_or(runtime_info.app_name)
         }),
-        app_icon_path: root
-            .map(|item| surface_switcher_icon_path(switcher_app, item))
-            .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()),
+        app_icon_path: if is_home_lxapp(&app.appid) {
+            host_app_icon_path().unwrap_or_else(|| {
+                this_item
+                    .map(|item| surface_switcher_icon_path(switcher_app, item))
+                    .unwrap_or_else(|| {
+                        lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default()
+                    })
+            })
+        } else {
+            this_item
+                .map(|item| surface_switcher_icon_path(switcher_app, item))
+                .unwrap_or_else(|| lxapp::lxapp_display_icon_path(&app.appid).unwrap_or_default())
+        },
         group_id: app.appid.clone(),
         group_target_id,
         group_active,
-        group_closable: root
+        group_closable: this_item
             .map(|item| item.closable)
             .unwrap_or_else(|| main_lxapp_closable(&app.appid)),
         group_order_index,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail || force_icon_rail,
         items_api_hidden,
-        items_collapsed: items_api_hidden || ui_state.items_collapsed,
+        items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
         footer_action_height: if desktop_sidebar {
             super::chrome::panel_footer_action_height(dimension, footer_actions)
         } else {
@@ -2404,18 +2534,29 @@ fn build_tab_bar_layout(
         },
         main_scroll_offset: ui_state.main_scroll_offset,
         footer_action_scroll_row: ui_state.footer_action_scroll_row,
-        color: resolved_style
-            .map(|style| style.foreground_color.rgba() >> 8)
-            .unwrap_or(0x666666),
-        selected_color: resolved_style
-            .map(|style| style.selected_foreground_color.rgba() >> 8)
-            .unwrap_or(0x1677ff),
+        color: if desktop_sidebar && declared_mask & 0b0001 == 0 {
+            super::style::shell_palette().text_muted
+        } else {
+            resolved_style
+                .map(|style| style.foreground_color.rgba() >> 8)
+                .unwrap_or(0x666666)
+        },
+        selected_color: if desktop_sidebar && declared_mask & 0b0010 == 0 {
+            super::style::shell_palette().accent
+        } else {
+            resolved_style
+                .map(|style| style.selected_foreground_color.rgba() >> 8)
+                .unwrap_or(0x1677ff)
+        },
         // Transparent bottom bars keep the WebView laid out underneath; a
         // small overlay window draws only the tab items above that content.
         background_color: resolved_style
             .and_then(|style| style.background_color)
             .map(|color| color.rgba() >> 8)
             .unwrap_or(0),
+        // Desktop mask already drops `backgroundColor`; keep the guard so a
+        // stale caller cannot paint a mobile white card on the sidebar.
+        paint_items_background: desktop_sidebar && declared_mask & 0b0100 != 0,
         background_transparent: tabbar_background_transparent,
         border_color: resolved_style
             .and_then(|style| style.divider_color)
@@ -2553,13 +2694,9 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
         .into_iter()
         .filter_map(|pin| match pin.0 {
             ShellPinTarget::Lxapp { key: appid } => {
-                let info = lxapp::try_get(&appid).map(|app| app.runtime_info());
-                let title = info
-                    .as_ref()
-                    .map(|info| info.app_name.trim())
-                    .filter(|title| !title.is_empty())
-                    .unwrap_or(&appid)
-                    .to_string();
+                // Registry name when the record has one; `lxapp.json` `appName`
+                // is only the fallback inside `lxapp_display_name`.
+                let title = lxapp::lxapp_display_name(&appid).unwrap_or_else(|| appid.clone());
                 let surface_id = panel_item_for_lxapp(&appid)
                     .map(|(panel_id, _, _)| panel_id)
                     .unwrap_or_else(|| appid.clone());
@@ -2576,6 +2713,7 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
                     closable: false,
                     icon_png: None,
                     icon_path: lxapp_auxiliary_icon_path(&appid),
+                    tabs: None,
                 })
             }
             ShellPinTarget::Bookmark { key } => build_pinned_bookmark_item(&key, tabs),
@@ -2586,11 +2724,16 @@ fn build_pinned_items(tabs: &[BrowserTabSummary]) -> Vec<WindowsShellAuxiliaryIt
 fn build_surface_switcher_items(
     owner: &LxApp,
     snapshot: &lingxia_surface::SurfaceSwitcherSnapshot,
+    expanded_group_id: &str,
 ) -> Vec<WindowsShellAuxiliaryItemLayout> {
     snapshot
         .items
         .iter()
-        .filter(|item| !item.root)
+        .filter(|item| {
+            // The expanded group occupies one switcher slot. Include the
+            // root when a guest main is expanded, otherwise home vanishes.
+            format!("{AUX_SURFACE_PREFIX}{}", item.surface_id) != expanded_group_id
+        })
         .map(|item| WindowsShellAuxiliaryItemLayout {
             id: format!("{AUX_SURFACE_PREFIX}{}", item.surface_id),
             title: surface_switcher_title(item),
@@ -2599,6 +2742,10 @@ fn build_surface_switcher_items(
             closable: item.closable,
             icon_png: None,
             icon_path: surface_switcher_icon_path(owner, item),
+            tabs: match &item.content {
+                SwitcherContentKind::Lxapp { app_id } => lxapp_rail_tabs(app_id),
+                _ => None,
+            },
         })
         .collect()
 }
@@ -2606,10 +2753,8 @@ fn build_surface_switcher_items(
 fn surface_switcher_title(item: &SurfaceSwitcherItem) -> String {
     if let SwitcherContentKind::Lxapp { app_id } | SwitcherContentKind::Page { app_id } =
         &item.content
-        && item.title.as_deref().is_none_or(|title| title == app_id)
-        && let Some(title) = lxapp::try_get(app_id)
-            .map(|app| app.runtime_info().app_name)
-            .filter(|title| !title.trim().is_empty())
+        && !item.title_overridden
+        && let Some(title) = lxapp::lxapp_display_name(app_id)
     {
         return title;
     }
@@ -2711,7 +2856,7 @@ fn build_sidebar_header_actions(app: &LxApp) -> Vec<WindowsShellHeaderActionLayo
     {
         return Vec::new();
     }
-    resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Header)
+    let mut actions = resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Header)
         .into_iter()
         .map(|item| WindowsShellHeaderActionLayout {
             generation: item.generation,
@@ -2719,8 +2864,49 @@ fn build_sidebar_header_actions(app: &LxApp) -> Vec<WindowsShellHeaderActionLayo
             label: item.label,
             icon_path: resolved_sidebar_action_icon_path(app, item.icon_path.as_deref()),
             disabled: item.disabled,
+            source: WindowsShellSidebarActionSource::Runtime,
         })
-        .collect()
+        .collect::<Vec<_>>();
+    if let Some(source) = static_settings_source() {
+        // Settings takes one of the two header slots (spec §4.5).
+        if actions.len() >= MAX_HEADER_SIDEBAR_ACTIONS {
+            let dropped = actions[MAX_HEADER_SIDEBAR_ACTIONS - 1..]
+                .iter()
+                .map(|action| action.id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            // Layouts rebuild per sync pass; warn once per distinct drop.
+            static LAST_DROPPED: Mutex<Option<String>> = Mutex::new(None);
+            let key = format!("{}:{dropped}", app.appid);
+            let mut last = LAST_DROPPED.lock().unwrap_or_else(|err| err.into_inner());
+            if last.as_deref() != Some(key.as_str()) {
+                log::warn!(
+                    "header sidebar actions exceed the slots left beside Settings; dropping {dropped}"
+                );
+                *last = Some(key);
+            }
+        }
+        actions.insert(
+            0,
+            WindowsShellHeaderActionLayout {
+                generation: 0,
+                id: crate::static_settings::STATIC_SETTINGS_ACTION_ID.to_string(),
+                label: "Settings".to_string(),
+                icon_path: app
+                    .runtime
+                    .asset_dir()
+                    .join("icons")
+                    .join("design")
+                    .join("icon_browser_settings.png")
+                    .to_string_lossy()
+                    .into_owned(),
+                disabled: false,
+                source: WindowsShellSidebarActionSource::StaticSettings(source.destination_kind),
+            },
+        );
+        actions.truncate(MAX_HEADER_SIDEBAR_ACTIONS);
+    }
+    actions
 }
 
 // Browser tab rows stay visible independently of pinned shortcuts (a pinned
@@ -2740,6 +2926,7 @@ fn build_browser_tab_items(tabs: Vec<BrowserTabSummary>) -> Vec<WindowsShellAuxi
                 closable: true,
                 icon_png,
                 icon_path: String::new(),
+                tabs: None,
             }
         })
         .collect()
@@ -2779,6 +2966,7 @@ fn build_pinned_bookmark_item(
         pinned: true,
         closable: false,
         icon_png,
+        tabs: None,
     })
 }
 
@@ -2826,16 +3014,70 @@ fn build_open_lxapp_items(owner_appid: &str) -> Vec<WindowsShellAuxiliaryItemLay
                 closable: main_lxapp_closable(&info.appid),
                 icon_png: None,
                 icon_path,
+                tabs: lxapp_rail_tabs(&info.appid),
             }
         })
         .collect()
 }
 
-/// Sidebar row icon for an open lxapp: the registry's cached artwork, else the
-/// icon the package declares, else the icon of its configured surface/panel
+/// An lxapp's sidebar pages for the collapsed rail's hover panel — what the
+/// expanded group would list. `None` when it declares no tab bar or the API
+/// hid it; desktop ignores mobile's per-route auto-hide.
+fn lxapp_rail_tabs(appid: &str) -> Option<WindowsShellAuxiliaryTabs> {
+    let app = lxapp::try_get(appid)?;
+    let tabbar = app.get_tabbar()?;
+    if tabbar.visibility == lxapp::page_chrome::TabBarVisibilityPreference::Hidden {
+        return None;
+    }
+    let items = tabbar
+        .visible_items()
+        .map(|(index, item)| WindowsShellTabBarItemLayout {
+            index,
+            page_path: item.page_path.clone(),
+            text: item.text.clone().unwrap_or_default(),
+            icon_path: item.icon_path.clone().unwrap_or_default(),
+            badge: item.badge.clone(),
+            has_red_dot: item.has_red_dot,
+        })
+        .collect::<Vec<_>>();
+    if items.is_empty() {
+        return None;
+    }
+    let current_page = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let current_path = normalize_tab_path(&current_page);
+    let selected_index = tabbar
+        .items
+        .iter()
+        .position(|item| normalize_tab_path(&item.page_path) == current_path)
+        .map_or(-1, |index| index as i32);
+    Some(WindowsShellAuxiliaryTabs {
+        app_id: appid.to_string(),
+        items,
+        selected_index,
+    })
+}
+
+fn host_app_icon_path() -> Option<String> {
+    if let Some(path) = crate::app_icon::current_chrome_icon_path() {
+        return Some(path.to_string_lossy().into_owned());
+    }
+    crate::app_icon::current_app_icon_path()
+        .map(|path| path.to_string_lossy().into_owned())
+        .filter(|path| !path.is_empty())
+}
+
+/// Sidebar row icon for an open lxapp: the host product icon for home, else
+/// the registry's cached artwork, else the icon of its configured surface/panel
 /// slot (matching the panel footer action), else empty so the row falls back to
-/// the LingXia mark.
+/// the host / LingXia mark.
 fn lxapp_auxiliary_icon_path(appid: &str) -> String {
+    if is_home_lxapp(appid)
+        && let Some(icon) = host_app_icon_path()
+    {
+        return icon;
+    }
     if let Some(icon) = lxapp::lxapp_display_icon_path(appid) {
         return icon;
     }
@@ -3045,7 +3287,7 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
     {
         return Vec::new();
     }
-    let mut actions = resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Footer)
+    resolved_sidebar_actions_for_placement(app, SidebarActionPlacement::Footer)
         .into_iter()
         .map(|item| WindowsShellFooterActionLayout {
             generation: item.generation,
@@ -3055,25 +3297,7 @@ fn build_footer_actions(app: &LxApp) -> Vec<WindowsShellFooterActionLayout> {
             disabled: item.disabled,
             source: WindowsShellSidebarActionSource::Runtime,
         })
-        .collect::<Vec<_>>();
-    if let Some(source) = static_settings_source() {
-        actions.push(WindowsShellFooterActionLayout {
-            generation: 0,
-            id: crate::static_settings::STATIC_SETTINGS_ACTION_ID.to_string(),
-            label: "Settings".to_string(),
-            icon_path: app
-                .runtime
-                .asset_dir()
-                .join("icons")
-                .join("design")
-                .join("icon_browser_settings.png")
-                .to_string_lossy()
-                .into_owned(),
-            disabled: false,
-            source: WindowsShellSidebarActionSource::StaticSettings(source.destination_kind),
-        });
-    }
-    actions
+        .collect()
 }
 
 static STATIC_SETTINGS_SOURCE: OnceLock<
@@ -3329,6 +3553,18 @@ fn reconcile_lxapp_main_from_layout(plan: &LayoutPresentationPlan) {
     let Some(app) = lxapp::try_get(app_id) else {
         return;
     };
+    // A first open activates before its page WebView exists; `show_lxapp`
+    // presents it once created, so there is nothing to reconcile yet.
+    let path = app
+        .peek_current_page()
+        .unwrap_or_else(|| app.initial_route());
+    let page_ready = app.get_page(&path).is_some_and(|page| {
+        lingxia_webview::platform::windows::find_webview_handler(&page.webtag()).is_some()
+    });
+    if !page_ready {
+        log::debug!("lxapp main not ready to reconcile yet: {app_id}");
+        return;
+    }
     if !present_current_lxapp_main(&app) {
         log::warn!("failed to reconcile Windows lxapp main from layout: {app_id}");
     }
@@ -3659,7 +3895,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                     screen_y,
                 );
             } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
-                show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+                show_lxapp_auxiliary_context_menu(
+                    appid,
+                    target_appid,
+                    payload_isize(&event, "source_window"),
+                    screen_x,
+                    screen_y,
+                );
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
                 show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
             } else {
@@ -4181,9 +4423,12 @@ fn present_current_lxapp_main(app: &LxApp) -> bool {
         webtag.key()
     );
     install_shell_chrome_event_handler(&webtag, &app.appid);
+    // This webview is going on screen. Do not inherit a stale switcher
+    // snapshot that still names the previous main — that left the outgoing
+    // tabbar expanded after the page had already switched.
     let _ = set_webview_window_layout(
         &webtag,
-        WindowsWindowLayout::new(build_window_layout(app, &path)),
+        WindowsWindowLayout::new(build_window_layout_with_visible_main(app, &path, Some(app))),
     );
     match present_webview_in_active_group(&webtag) {
         Ok(()) => true,
@@ -4681,6 +4926,15 @@ fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
         lingxia_surface::SurfaceContent::Native { capability, .. } => capability == "browser",
         _ => false,
     };
+    // Activate the graph first so the incoming webview's first chrome pass
+    // belongs to it. Present-then-activate left the previous tabbar on
+    // screen: the page switched, but the visible webtag still carried the
+    // outgoing group, and the follow-up sync only refreshed the hidden
+    // owner webtag.
+    if !deferred && !owner.set_active_main_surface(surface_id) {
+        log::warn!("failed to activate Windows main surface {surface_id}");
+        return;
+    }
     if let Err(error) = present_main_surface(&owner, surface_id) {
         log::warn!("failed to present Windows main surface {surface_id}: {error}");
         return;
@@ -4688,11 +4942,15 @@ fn handle_main_surface_click(owner_appid: &str, surface_id: &str) {
     if deferred {
         return;
     }
-    if !owner.set_active_main_surface(surface_id) {
-        log::warn!("failed to activate Windows main surface {surface_id}");
-        return;
+    match &content {
+        lingxia_surface::SurfaceContent::Lxapp { app_id, .. }
+        | lingxia_surface::SurfaceContent::Page { app_id, .. } => {
+            reveal_and_sync_sidebar(owner_appid, app_id);
+        }
+        _ => {
+            sync_shell_layout(owner_appid);
+        }
     }
-    sync_shell_layout(owner_appid);
 }
 
 fn handle_main_surface_close(owner_appid: &str, surface_id: &str) {
@@ -4788,12 +5046,14 @@ fn surface_menu_entry(
         SurfaceMenuAction::Information {} => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::External { .. } => (item.label.clone().unwrap_or_default(), None),
         SurfaceMenuAction::Lxapp { action } => match action {
-            LxappSurfaceMenuAction::Restart => {
-                (lingxia_logic::i18n::t(I18nKey::CapsuleRestart), None)
-            }
-            LxappSurfaceMenuAction::CleanCacheRestart => {
-                (lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache), None)
-            }
+            LxappSurfaceMenuAction::Restart => (
+                lingxia_logic::i18n::t(I18nKey::CapsuleRestart),
+                Some(crate::WindowsDesignIcon::Restart),
+            ),
+            LxappSurfaceMenuAction::CleanCacheRestart => (
+                lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
+                Some(crate::WindowsDesignIcon::CleanCache),
+            ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {
@@ -4918,7 +5178,6 @@ fn present_successor_main(owner: &LxApp, surface_id: &str) -> Result<(), String>
     let content = owner
         .main_surface_content(surface_id)
         .ok_or_else(|| format!("unknown main surface: {surface_id}"))?;
-    present_main_surface(owner, surface_id)?;
     let deferred = matches!(content, lingxia_surface::SurfaceContent::Browser { .. })
         || matches!(
             content,
@@ -4928,6 +5187,7 @@ fn present_successor_main(owner: &LxApp, surface_id: &str) -> Result<(), String>
     if !deferred && !owner.set_active_main_surface(surface_id) {
         return Err(format!("failed to activate main surface: {surface_id}"));
     }
+    present_main_surface(owner, surface_id)?;
     Ok(())
 }
 
@@ -5094,8 +5354,7 @@ fn discard_main_surface_provider(
 
 fn handle_lxapp_auxiliary_click(owner_appid: &str, target_appid: &str) {
     focus_or_open_lxapp(owner_appid, target_appid);
-    sync_shell_layout(owner_appid);
-    sync_shell_layout(target_appid);
+    reveal_and_sync_sidebar(owner_appid, target_appid);
 }
 
 fn handle_lxapp_auxiliary_close(owner_appid: &str, target_appid: &str) {
@@ -5132,6 +5391,20 @@ fn lxapp_shortcut_action(current: Option<lxapp::LxAppOpenRegion>) -> LxappShortc
         None => LxappShortcutAction::Open,
         Some(lxapp::LxAppOpenRegion::Main) => LxappShortcutAction::Focus,
         Some(lxapp::LxAppOpenRegion::Aside) => LxappShortcutAction::PromoteAside,
+    }
+}
+
+fn reveal_sidebar_group_items(appid: &str) {
+    update_sidebar_ui_state(appid, |state| {
+        state.items_collapsed = false;
+    });
+}
+
+fn reveal_and_sync_sidebar(owner_appid: &str, target_appid: &str) {
+    reveal_sidebar_group_items(target_appid);
+    sync_shell_layout(owner_appid);
+    if target_appid != owner_appid {
+        sync_shell_layout(target_appid);
     }
 }
 
@@ -5338,19 +5611,23 @@ fn lxapp_context_menu_header(
 fn show_lxapp_auxiliary_context_menu(
     owner_appid: &str,
     target_appid: &str,
+    source_window: Option<isize>,
     screen_x: i32,
     screen_y: i32,
 ) {
-    let Some(window) = owner_window_handle(owner_appid) else {
+    let Some(window) = source_window.or_else(|| owner_window_handle(owner_appid)) else {
+        log::warn!("no source window for lxapp context menu {target_appid}");
         return;
     };
     let target = lxapp::try_get(target_appid);
     let info = target.as_ref().map(|target| target.get_lxapp_info());
     let is_home = is_home_lxapp(target_appid);
     let pinned = is_lxapp_pinned(target_appid);
+    let display_name = lxapp::lxapp_display_name(target_appid)
+        .or_else(|| info.as_ref().map(|info| info.app_name.clone()));
     let header_item = lxapp_context_menu_header(
         target_appid,
-        info.as_ref().map(|info| info.app_name.as_str()),
+        display_name.as_deref(),
         info.as_ref().map(|info| info.version.as_str()),
         info.as_ref().map(|info| info.release_type.as_str()),
     );
@@ -7441,6 +7718,9 @@ mod tests {
         assert!(browser_url_is_hidden("about:blank"));
         assert!(browser_url_is_hidden(" LINGXIA://NEWTAB "));
         assert!(browser_url_is_hidden("lingxia://"));
+        assert!(browser_url_is_hidden("lingxia://newtab/"));
+        assert!(browser_url_is_hidden("lingxia://newtab/?from=shortcut"));
+        assert!(!browser_url_is_hidden("lingxia://settings/"));
         assert!(!browser_url_is_hidden("https://example.com"));
     }
 

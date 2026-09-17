@@ -98,18 +98,31 @@ pub(super) fn top_bar_controls(
     let app_icon =
         (cfg!(feature = "browser-shell") && !compact_sidebar).then(|| square_button(app_icon_left));
 
-    // Sidebar toggle: sits just right of the app-menu button (or takes its
-    // slot when there is none). It is
-    // The collapse toggle lives in the sidebar header while the sidebar is
-    // expanded. Once collapsed to a rail, the rail draws the *same* toggle
-    // icon pinned to its bottom (see `draw_sidebar_rail`), so the top bar
-    // shows none here — otherwise the rail would carry two expand affordances.
-    let sidebar_toggle = (has_sidebar_toggle && !compact_sidebar).then(|| {
-        let left = app_icon
-            .map(|rect| rect.right + TOP_BAR_BUTTON_GAP)
-            .unwrap_or(app_icon_left);
-        square_button(left)
-    });
+    // The collapse toggle lives at the trailing edge of the sidebar header
+    // while the sidebar is expanded. Once collapsed to a rail, the rail draws
+    // the *same* toggle icon pinned to its bottom (see `draw_sidebar_rail`),
+    // so the top bar shows none here — otherwise the rail would carry two
+    // expand affordances.
+    let sidebar_toggle = tabbar
+        .filter(|_| has_sidebar_toggle && !compact_sidebar)
+        .map(|tabbar| {
+            let width = super::sidebar_column_width(tabbar);
+            let sidebar_rect = match tabbar.position {
+                WindowsShellTabBarPosition::Right => RECT {
+                    left: client.right - width,
+                    top: top_bar.top,
+                    right: client.right,
+                    bottom: top_bar.bottom,
+                },
+                _ => RECT {
+                    left: client.left,
+                    top: top_bar.top,
+                    right: client.left + width,
+                    bottom: top_bar.bottom,
+                },
+            };
+            super::sidebar_header_toggle_rect(sidebar_rect)
+        });
     let mut left_edge = top_bar.left + TOP_BAR_PADDING;
     // The app-menu slot is skipped on a device-framed screen (the icon is not
     // drawn there — its menu lives on the frame's capsule), freeing the
@@ -118,9 +131,6 @@ pub(super) fn top_bar_controls(
         && let Some(app_icon) = app_icon
     {
         left_edge = left_edge.max(app_icon.right + TOP_BAR_BUTTON_GAP);
-    }
-    if let Some(toggle) = &sidebar_toggle {
-        left_edge = left_edge.max(toggle.right + TOP_BAR_BUTTON_GAP);
     }
 
     let mut controls = TopBarControls {
@@ -364,7 +374,8 @@ pub(super) fn draw_top_bar_controls(
             .unwrap_or(WindowsDesignIcon::SidebarCollapse);
         // Muted like the sidebar header actions - it's a secondary control,
         // not a primary caption button.
-        draw_hover_wash(hdc, toggle, 5, cursor);
+        // Same wash as the header actions it now sits beside.
+        draw_hover_wash(hdc, toggle, 6, cursor);
         draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
     }
     // Back/forward dim while the presented tab has no history in that
@@ -613,14 +624,19 @@ fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
     })
 }
 
-/// Draws the app-menu button at the window's leading edge, like Arc: the
-/// LingXia brand mark (the bare vessel glyph on transparency,
-/// `<asset_dir>/icons/lingxia.png`) rather than the app's launcher icon, whose
-/// full plate reads as a white box in the caption row. Falls back to a subtle
-/// monochrome glyph matching the rest of the caption row before the asset dir
-/// is known. Clicking the button opens the About/Exit menu.
+/// Product tile in the About/Exit caption button. Sidebar/home tiles stay
+/// 16px full-bleed; this slot sits next to 18px design glyphs (gear /
+/// sidebar toggle) whose SVGs already carry padding. 14px matches that
+/// optical weight and the macOS header-action size.
+const APP_MENU_ICON_SIZE: i32 = 14;
+
+/// Draws the app-menu button at the window's leading edge. Uses the host
+/// product icon (About/Exit entry) so chrome matches the running app; the
+/// LingXia mark is only the last-resort fallback inside `draw_default_app_icon`.
+/// Falls back to a subtle monochrome glyph before any icon path is known.
+/// Clicking the button opens the About/Exit menu.
 fn draw_app_menu_icon(hdc: HDC, rect: RECT) {
-    let icon_rect = centered_square(rect, 18);
+    let icon_rect = centered_square(rect, APP_MENU_ICON_SIZE);
     if draw_default_app_icon(hdc, icon_rect) {
         return;
     }

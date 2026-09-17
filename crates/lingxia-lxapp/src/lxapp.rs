@@ -1063,14 +1063,7 @@ pub struct LxAppRuntimeTabBarInfo {
     pub route_visible: bool,
     pub effective_visible: bool,
     pub selected_index: i32,
-    pub runtime_style: LxAppRuntimeTabBarStyleInfo,
     pub items: Vec<LxAppRuntimeTabBarItemInfo>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct LxAppRuntimeTabBarStyleInfo {
-    pub foreground_color: Option<String>,
-    pub selected_foreground_color: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1460,16 +1453,6 @@ impl LxApp {
             route_visible: tabbar.route_visible,
             effective_visible: tabbar.is_effectively_visible(),
             selected_index: tabbar.selected_index,
-            runtime_style: LxAppRuntimeTabBarStyleInfo {
-                foreground_color: tabbar
-                    .runtime_style
-                    .foreground_color
-                    .map(|color| color.to_string()),
-                selected_foreground_color: tabbar
-                    .runtime_style
-                    .selected_foreground_color
-                    .map(|color| color.to_string()),
-            },
             items: tabbar
                 .items
                 .into_iter()
@@ -3356,13 +3339,22 @@ impl LxApp {
         let (current_appid, _, _) = get_current_lxapp();
         if current_appid != self.appid {
             let page = self.get_or_create_page(&current_path);
-            let title = self.get_lxapp_info().app_name;
+            let title = self.listing_name();
             let stored = self
                 .state
                 .lock()
                 .unwrap_or_else(|err| err.into_inner())
                 .startup_options
                 .clone();
+            // Match first-open: put this lxapp on the switcher before the
+            // webview covers the previous main, or the row lands a frame late.
+            #[cfg(target_os = "windows")]
+            if !matches!(
+                stored.open_mode,
+                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+            ) {
+                self.set_active_main();
+            }
             self.runtime.show_lxapp(
                 self.appid.clone(),
                 title,
@@ -3459,7 +3451,37 @@ impl LxApp {
         page.set_query(startup_options.query.clone());
 
         // Open UI
-        let title = self.get_lxapp_info().app_name;
+        let title = self.listing_name();
+
+        // Windows: seed the switcher graph before `show_lxapp` presents the
+        // webview. Present-first left the page on screen while the new row
+        // waited on `set_active_main` + `present_layout`.
+        #[cfg(target_os = "windows")]
+        let is_panel = matches!(
+            startup_options.open_mode,
+            lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
+        );
+        #[cfg(target_os = "windows")]
+        {
+            let surface = if is_panel {
+                PresentationKind::Panel
+            } else {
+                PresentationKind::Window
+            };
+            let query = (!startup_options.query.is_empty())
+                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
+            self.create_page_instance(
+                PageOwner::Scene(SceneId("system".to_string())),
+                PageTarget::Path(startup_options.path.clone()),
+                query,
+                surface,
+                None,
+            )?;
+            if !is_panel {
+                self.set_active_main();
+            }
+        }
+
         self.runtime.show_lxapp(
             self.appid.clone(),
             title,
@@ -3471,31 +3493,8 @@ impl LxApp {
         )?;
 
         #[cfg(target_os = "windows")]
-        {
-            let surface = match startup_options.open_mode {
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel => {
-                    PresentationKind::Panel
-                }
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Normal => {
-                    PresentationKind::Window
-                }
-            };
-            let query = (!startup_options.query.is_empty())
-                .then(|| PageQueryInput::Raw(startup_options.query.clone()));
-            self.create_page_instance(
-                PageOwner::Scene(SceneId("system".to_string())),
-                PageTarget::Path(startup_options.path),
-                query,
-                surface,
-                None,
-            )?;
-            if !matches!(
-                startup_options.open_mode,
-                lingxia_platform::traits::app_runtime::LxAppOpenMode::Panel
-            ) {
-                self.set_active_main();
-                self.sync_host_ui();
-            }
+        if !is_panel {
+            self.sync_host_ui();
         }
         Ok(())
     }
@@ -3708,6 +3707,12 @@ impl LxApp {
 
     pub fn get_lxapp_info(&self) -> config::LxAppInfo {
         self.config().get_lxapp_info(self.release_type.as_str())
+    }
+
+    /// Name shown in host chrome. The registry record wins; the package
+    /// `appName` is only the fallback when the registry has never answered.
+    pub fn listing_name(&self) -> String {
+        registry::display_name(&self.appid).unwrap_or_else(|| self.get_lxapp_info().app_name)
     }
 }
 

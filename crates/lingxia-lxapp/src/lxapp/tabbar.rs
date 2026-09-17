@@ -50,21 +50,6 @@ impl TabBarStyle {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TabBarRuntimeStyle {
-    pub foreground_color: Option<PageChromeColor>,
-    pub selected_foreground_color: Option<PageChromeColor>,
-}
-
-#[derive(Debug, Clone, Deserialize, Default, PartialEq, Eq)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct TabBarRuntimeStylePatch {
-    #[serde(default)]
-    pub foreground_color: PatchField<PageChromeColor>,
-    #[serde(default)]
-    pub selected_foreground_color: PatchField<PageChromeColor>,
-}
-
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TabBarItemPatch {
@@ -84,8 +69,6 @@ pub struct TabBarItemPatch {
 pub struct TabBarPatch {
     #[serde(default)]
     pub visibility: ValuePatchField<TabBarVisibilityPreference>,
-    #[serde(default)]
-    pub style: PatchField<TabBarRuntimeStylePatch>,
     #[serde(default)]
     pub items: ValuePatchField<Vec<TabBarItemPatch>>,
 }
@@ -177,8 +160,6 @@ pub struct TabBar {
     pub route_visible: bool,
     #[serde(skip)]
     pub selected_index: i32,
-    #[serde(skip)]
-    pub runtime_style: TabBarRuntimeStyle,
 }
 
 impl TabBar {
@@ -257,7 +238,6 @@ impl TabBar {
         result.visibility = TabBarVisibilityPreference::Auto;
         result.route_visible = true;
         result.selected_index = 0;
-        result.runtime_style = TabBarRuntimeStyle::default();
         for item in &mut result.items {
             item.initialize_runtime(base_path);
         }
@@ -484,17 +464,18 @@ impl TabBar {
         let theme_background = theme.and_then(|style| style.surface_background_color);
         let theme_divider = theme.and_then(|style| style.separator_color);
         let standard = self.presentation == TabBarPresentation::Standard;
+        // Mobile paints this bar next to the lxapp page, so static
+        // `tabBar.style` always wins. Desktop ignores these values when the
+        // host is dark (`declared_color_mask(true) == 0`).
         ResolvedTabBarStyle {
             foreground_color: self
-                .runtime_style
+                .style
                 .foreground_color
-                .or(self.style.foreground_color)
                 .or_else(|| theme_foreground.map(theme_color))
                 .unwrap_or(defaults.foreground_color),
             selected_foreground_color: self
-                .runtime_style
+                .style
                 .selected_foreground_color
-                .or(self.style.selected_foreground_color)
                 .or_else(|| theme_selected.map(theme_color))
                 .unwrap_or(defaults.selected_foreground_color),
             background_color: standard.then(|| {
@@ -514,28 +495,32 @@ impl TabBar {
         }
     }
 
+    /// Bits for colors taken from static `tabBar.style`. Desktop hosts pass
+    /// `host_dark`; when the host is dark every bit is zero so a light JSON
+    /// palette cannot paint a white card on the sidebar.
+    pub fn declared_color_mask(&self, host_dark: bool) -> u32 {
+        if host_dark {
+            return 0;
+        }
+        (self.style.foreground_color.is_some() as u32)
+            | ((self.style.selected_foreground_color.is_some() as u32) << 1)
+            | ((self.style.background_color.is_some() as u32) << 2)
+            | ((self.style.divider_color.is_some() as u32) << 3)
+    }
+
+    /// Desktop sidebar mask: same as [`Self::declared_color_mask`], except
+    /// `backgroundColor` is never taken. That key paints the mobile bar on the
+    /// page; the sidebar is host chrome and inherits `lingxia.yaml` theme.
+    pub fn desktop_declared_color_mask(&self, host_dark: bool) -> u32 {
+        self.declared_color_mask(host_dark) & !0b0100
+    }
+
     pub fn apply_patch<F>(&mut self, patch: &TabBarPatch, mut resolve_icon: F) -> Result<(), String>
     where
         F: FnMut(&str, &str) -> Result<String, String>,
     {
         if let ValuePatchField::Value(visibility) = patch.visibility {
             self.set_visibility(visibility);
-        }
-        match &patch.style {
-            PatchField::Missing => {}
-            PatchField::Null => self.runtime_style = TabBarRuntimeStyle::default(),
-            PatchField::Value(style) => {
-                apply_opaque_color_patch(
-                    &style.foreground_color,
-                    &mut self.runtime_style.foreground_color,
-                    "tabBar.style.foregroundColor",
-                )?;
-                apply_opaque_color_patch(
-                    &style.selected_foreground_color,
-                    &mut self.runtime_style.selected_foreground_color,
-                    "tabBar.style.selectedForegroundColor",
-                )?;
-            }
         }
         let mut indexes = HashSet::new();
         let items = match &patch.items {
@@ -603,7 +588,6 @@ impl TabBar {
 
     pub(crate) fn restore_patchable_from(&mut self, original: &Self) {
         self.visibility = original.visibility;
-        self.runtime_style = original.runtime_style;
         for (item, original_item) in self.items.iter_mut().zip(&original.items) {
             item.text.clone_from(&original_item.text);
             item.icon_path.clone_from(&original_item.icon_path);
@@ -611,22 +595,6 @@ impl TabBar {
             item.has_red_dot = original_item.has_red_dot;
         }
     }
-}
-
-fn apply_opaque_color_patch(
-    field: &PatchField<PageChromeColor>,
-    target: &mut Option<PageChromeColor>,
-    path: &str,
-) -> Result<(), String> {
-    match field {
-        PatchField::Missing => {}
-        PatchField::Null => *target = None,
-        PatchField::Value(color) if !color.is_opaque() => {
-            return Err(format!("{path}: expected opaque #RRGGBB"));
-        }
-        PatchField::Value(color) => *target = Some(*color),
-    }
-    Ok(())
 }
 
 fn apply_string_patch(field: &PatchField<String>, mut apply: impl FnMut(Option<String>)) {
@@ -730,6 +698,16 @@ impl LxApp {
         };
         Some(tabbar.resolved_style(theme, defaults))
     }
+
+    /// Desktop sidebar mask: host appearance, not the lxapp's pin.
+    /// `backgroundColor` is stripped — mobile-only.
+    pub fn tabbar_declared_color_mask(&self) -> u32 {
+        self.get_tabbar()
+            .map(|tabbar| {
+                tabbar.desktop_declared_color_mask(super::host_appearance::host_appearance_dark())
+            })
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -759,12 +737,17 @@ mod patch_tests {
         .unwrap_err();
         assert!(error.to_string().contains("unknown field"));
 
-        let patch: TabBarPatch = serde_json::from_value(serde_json::json!({
+        let style_rejected = serde_json::from_value::<TabBarPatch>(serde_json::json!({
             "style": null,
+            "items": [{"index": 0, "text": null}]
+        }))
+        .unwrap_err();
+        assert!(style_rejected.to_string().contains("unknown field"));
+
+        let patch: TabBarPatch = serde_json::from_value(serde_json::json!({
             "items": [{"index": 0, "text": null, "badge": null}]
         }))
         .unwrap();
-        assert_eq!(patch.style, PatchField::Null);
         assert!(matches!(
             patch.items,
             ValuePatchField::Value(ref items)
@@ -902,6 +885,38 @@ mod tests {
             .map(|(name, path)| (name.as_str(), path.as_str()))
             .collect();
         tabbar.validate(&pages)
+    }
+
+    fn dark_defaults() -> ResolvedTabBarStyle {
+        ResolvedTabBarStyle {
+            foreground_color: PageChromeColor::from_rgba(0xAEAE_B2FF),
+            selected_foreground_color: PageChromeColor::from_rgba(0x0A84_FFFF),
+            background_color: Some(PageChromeColor::from_rgba(0x1C1C_1EFF)),
+            divider_color: Some(PageChromeColor::from_rgba(0x3838_3AFF)),
+        }
+    }
+
+    #[test]
+    fn mobile_keeps_declared_style_desktop_mask_drops_it_when_host_is_dark() {
+        let tabbar = manifest(serde_json::json!({
+            "style": {
+                "foregroundColor": "#667085",
+                "selectedForegroundColor": "#2563EB",
+                "backgroundColor": "#FFFFFF"
+            },
+            "items": [{ "page": "home" }, { "page": "settings" }]
+        }));
+        let mobile = tabbar.resolved_style(None, dark_defaults());
+        assert_eq!(
+            mobile.background_color,
+            Some(PageChromeColor::from_rgba(0xFFFF_FFFF))
+        );
+        assert_eq!(tabbar.declared_color_mask(false) & 0b0100, 0b0100);
+        assert_eq!(tabbar.declared_color_mask(true), 0);
+        // Desktop keeps item tints in light, but never the mobile bar fill.
+        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0001, 0b0001);
+        assert_eq!(tabbar.desktop_declared_color_mask(false) & 0b0100, 0);
+        assert_eq!(tabbar.desktop_declared_color_mask(true), 0);
     }
 
     #[test]

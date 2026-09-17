@@ -582,10 +582,6 @@ export interface LxAppRuntimeTabBarInfo {
   route_visible: boolean;
   effective_visible: boolean;
   selected_index: number;
-  runtime_style: {
-    foreground_color: string | null;
-    selected_foreground_color: string | null;
-  };
   items: Array<{
     index: number;
     text: string | null;

@@ -505,16 +505,18 @@ impl LxApp {
         let Some((resolved, revision)) = self.adopt_host_appearance() else {
             return Ok(());
         };
-        if let Ok(page) = self.current_page_for_chrome() {
-            if let Err(error) = self
-                .apply_page_chrome_commit(&page, revision, resolved)
+        let current = self.current_page_for_chrome().ok();
+        if let Some(page) = &current
+            && let Err(error) = self
+                .apply_page_chrome_commit(page, revision, resolved)
                 .await
-            {
-                warn!("Failed to repaint chrome for appearance: {error}")
-                    .with_appid(self.appid.clone());
-            }
-            self.publish_appearance_to_background_pages(&page, revision, resolved);
+        {
+            warn!("Failed to repaint chrome for appearance: {error}")
+                .with_appid(self.appid.clone());
         }
+        // An app with no current page still has live documents: the built-in
+        // browser app's pages are bound to tabs, not to a navigation stack.
+        self.publish_appearance_to_background_pages(current.as_ref(), revision, resolved);
         Ok(())
     }
 
@@ -537,11 +539,11 @@ impl LxApp {
     /// flip prefers-color-scheme in place (Android) keep stale palettes.
     fn publish_appearance_to_background_pages(
         &self,
-        current: &PageInstance,
+        current: Option<&PageInstance>,
         revision: u64,
         appearance: ResolvedAppearance,
     ) {
-        let current_id = current.instance_id_string();
+        let current_id = current.map(PageInstance::instance_id_string);
         let others: Vec<PageInstance> = {
             let state = self.state.lock().unwrap_or_else(|error| error.into_inner());
             let pages_by_id = state
@@ -550,7 +552,7 @@ impl LxApp {
                 .unwrap_or_else(|error| error.into_inner());
             pages_by_id
                 .values()
-                .filter(|page| page.instance_id_string() != current_id)
+                .filter(|page| current_id.as_deref() != Some(page.instance_id_string().as_str()))
                 .cloned()
                 .collect()
         };

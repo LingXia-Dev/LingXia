@@ -165,7 +165,7 @@ pub const WINDOWS_ICO_SIZES: &[u32] = &[16, 24, 32, 48, 64, 128, 256];
 /// (rc.exe / llvm-rc / windres) accepts.
 ///
 /// Renders once at master resolution and shares the PNG path — including its
-/// launcher-padding tightening — so SVG and PNG sources produce identical ICOs.
+/// Dock normalization — so SVG and PNG sources produce identical ICOs.
 pub fn svg_to_ico_bytes(svg_content: &str, sizes: &[u32]) -> Result<Vec<u8>> {
     let master = sizes.iter().copied().max().unwrap_or(256).max(256) * 4;
     let png = svg_to_png_bytes(svg_content, master)?;
@@ -173,13 +173,13 @@ pub fn svg_to_ico_bytes(svg_content: &str, sizes: &[u32]) -> Result<Vec<u8>> {
 }
 
 /// Pack a source app-icon PNG (e.g. a 1024px `AppIcon.png`) into a multi-size
-/// Windows ICO, first cropping uniform launcher padding so the small taskbar /
-/// Explorer cell is filled — matching the runtime `app_icon` look on Windows.
+/// Windows ICO. Dock-normalizes (73% plate + 22% corners) so the embedded
+/// `.exe` icon matches the runtime taskbar / alt-tab look.
 pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
     let source = image::load_from_memory_with_format(png, image::ImageFormat::Png)
         .context("Failed to decode app icon PNG")?
         .into_rgba8();
-    let source = tighten_icon(source);
+    let source = dock_normalize_icon(source);
     let mut dir = ico::IconDir::new(ico::ResourceType::Icon);
     for &size in sizes {
         let resized =
@@ -195,45 +195,47 @@ pub fn png_to_ico_bytes(png: &[u8], sizes: &[u32]) -> Result<Vec<u8>> {
     Ok(buf)
 }
 
-/// Crop uniform launcher padding so the glyph fills the small icon cell. A
-/// mobile launcher icon centers its glyph in a wide safe-area margin, which
-/// reads as a tiny logo lost in padding at 16–48px. When the border is one flat
-/// color or fully transparent (the four corners agree), crop to a square around
-/// the visible content; flat backgrounds retain a small margin. Full-bleed /
-/// photographic icons are returned unchanged. Mirrors the runtime
-/// `lingxia-windows-sdk::app_icon` tightening so the embedded `.exe` icon and
-/// the running window icon match.
-pub(crate) fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
-    let (w, h) = img.dimensions();
-    if w == 0 || h == 0 {
-        return img;
+/// Dock-normalize a full-bleed brand plate: 73% visual ratio and a 22%
+/// rounded corner, matching macOS `AppIcon`.
+/// Keep in sync with `lingxia-windows-sdk` `app_icon::dock_normalize_icon`.
+pub(crate) fn dock_normalize_icon(image: image::RgbaImage) -> image::RgbaImage {
+    let (width, height) = image.dimensions();
+    if width == 0 || height == 0 {
+        return image;
     }
-    let bg = img.get_pixel(0, 0).0;
-    let corners = [
-        img.get_pixel(w - 1, 0).0,
-        img.get_pixel(0, h - 1).0,
-        img.get_pixel(w - 1, h - 1).0,
-    ];
-    // Transparent corners mean the padding is alpha, not a flat color — the
-    // RGB of transparent pixels is meaningless, so compare alpha only there.
-    let transparent_bg = bg[3] < 16;
-    if transparent_bg {
-        if corners.iter().any(|c| c[3] >= 16) {
-            return img;
-        }
-    } else if corners.iter().any(|c| !color_close(*c, bg, 12)) {
-        return img;
+    let canvas = width.max(height);
+    let ratio = opaque_bounds_ratio(&image);
+    // Art already at dock size (e.g. a CLI-staged dev icon whose env badge
+    // overhangs the plate) passes through; rescaling would shrink it again.
+    if ratio <= 0.73 + 0.05 {
+        return image;
     }
-    let (mut min_x, mut min_y, mut max_x, mut max_y) = (w, h, 0u32, 0u32);
+    let scale = (0.73 / ratio).clamp(0.60, 0.92);
+    let mut icon_size = (canvas as f32 * scale).round().max(1.0) as u32;
+    // Keep the plate's parity equal to the canvas's so the centering offset
+    // is exact; a half-pixel shift reads as a lopsided tile at 16px.
+    if (canvas - icon_size) % 2 == 1 {
+        icon_size += 1;
+    }
+    let offset = (canvas - icon_size) / 2;
+    let mut plate = image::imageops::resize(
+        &image,
+        icon_size,
+        icon_size,
+        image::imageops::FilterType::Lanczos3,
+    );
+    apply_dock_corner_mask(&mut plate, icon_size as f32 * 0.22);
+    let mut out = image::RgbaImage::new(canvas, canvas);
+    image::imageops::overlay(&mut out, &plate, offset as i64, offset as i64);
+    out
+}
+
+fn opaque_bounds_ratio(image: &image::RgbaImage) -> f32 {
+    let (width, height) = image.dimensions();
+    let (mut min_x, mut min_y, mut max_x, mut max_y) = (width, height, 0u32, 0u32);
     let mut found = false;
-    for (x, y, pixel) in img.enumerate_pixels() {
-        let p = pixel.0;
-        let is_background = if transparent_bg {
-            p[3] < 16
-        } else {
-            p[3] < 16 || color_close(p, bg, 32)
-        };
-        if is_background {
+    for (x, y, pixel) in image.enumerate_pixels() {
+        if pixel.0[3] <= 12 {
             continue;
         }
         found = true;
@@ -243,35 +245,36 @@ pub(crate) fn tighten_icon(img: image::RgbaImage) -> image::RgbaImage {
         max_y = max_y.max(y);
     }
     if !found {
-        return img;
+        return 1.0;
     }
-    let content = (max_x - min_x + 1).max(max_y - min_y + 1);
-    // A transparent source already defines its own silhouette; adding another
-    // safe area makes rounded plates visibly smaller than native Windows icons.
-    let side = if transparent_bg {
-        content
-    } else {
-        content + content / 4
-    };
-    // Center pixel spans, not their truncated integer midpoint. This preserves
-    // half-pixel centers for even-sized content and avoids a top-left bias.
-    let start_x = (min_x as i64 + max_x as i64 + 1 - side as i64).div_euclid(2);
-    let start_y = (min_y as i64 + max_y as i64 + 1 - side as i64).div_euclid(2);
-    let mut out = image::RgbaImage::from_pixel(side, side, image::Rgba(bg));
-    for oy in 0..side {
-        for ox in 0..side {
-            let sx = start_x + ox as i64;
-            let sy = start_y + oy as i64;
-            if sx >= 0 && sy >= 0 && (sx as u32) < w && (sy as u32) < h {
-                out.put_pixel(ox, oy, *img.get_pixel(sx as u32, sy as u32));
-            }
-        }
-    }
-    out
+    let bw = (max_x - min_x + 1) as f32 / width as f32;
+    let bh = (max_y - min_y + 1) as f32 / height as f32;
+    bw.max(bh).clamp(0.01, 1.0)
 }
 
-fn color_close(a: [u8; 4], b: [u8; 4], tol: u8) -> bool {
-    a[0].abs_diff(b[0]) <= tol && a[1].abs_diff(b[1]) <= tol && a[2].abs_diff(b[2]) <= tol
+fn apply_dock_corner_mask(image: &mut image::RgbaImage, radius: f32) {
+    let (width, height) = image.dimensions();
+    let radius = radius.clamp(1.0, width.min(height) as f32 * 0.5);
+    let left = radius;
+    let top = radius;
+    let right = width as f32 - radius;
+    let bottom = height as f32 - radius;
+    for (x, y, pixel) in image.enumerate_pixels_mut() {
+        let xf = x as f32 + 0.5;
+        let yf = y as f32 + 0.5;
+        let cx = xf.clamp(left, right);
+        let cy = yf.clamp(top, bottom);
+        let dist = (xf - cx).hypot(yf - cy);
+        if dist <= radius - 1.0 {
+            continue;
+        }
+        if dist >= radius {
+            pixel.0[3] = 0;
+            continue;
+        }
+        let edge = ((radius - dist) * 255.0).clamp(0.0, 255.0) as u16;
+        pixel.0[3] = ((u16::from(pixel.0[3]) * edge) / 255) as u8;
+    }
 }
 
 pub fn svg_size(svg_content: &str) -> Result<(f32, f32)> {
@@ -1051,25 +1054,6 @@ mod ico_tests {
     }
 
     #[test]
-    fn tighten_icon_preserves_even_content_center() {
-        let mut source = image::RgbaImage::new(20, 20);
-        for y in 2..=17 {
-            for x in 3..=16 {
-                source.put_pixel(x, y, image::Rgba([21, 24, 29, 255]));
-            }
-        }
-
-        let tightened = tighten_icon(source);
-        assert_eq!(tightened.dimensions(), (16, 16));
-        assert_eq!(tightened.get_pixel(0, 8).0[3], 0);
-        assert_eq!(tightened.get_pixel(15, 8).0[3], 0);
-        assert_eq!(tightened.get_pixel(8, 0).0[3], 255);
-        assert_eq!(tightened.get_pixel(8, 15).0[3], 255);
-        assert_eq!(tightened.get_pixel(1, 1).0[3], 255);
-        assert_eq!(tightened.get_pixel(14, 14).0[3], 255);
-    }
-
-    #[test]
     fn svg_to_ico_packs_all_sizes() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#15181D"/><circle cx="32" cy="32" r="16" fill="#1FDDA4"/></svg>"##;
         let ico = svg_to_ico_bytes(svg, WINDOWS_ICO_SIZES).unwrap();
@@ -1088,4 +1072,41 @@ mod ico_tests {
             assert_alpha_is_symmetric(&entry.decode().unwrap());
         }
     }
+}
+
+/// Sidebar / Downloads / Settings tile: the source, square, no Dock inset.
+/// The shell applies the same 0.22 clip as lxapp PNGs.
+pub const HOST_CHROME_ICON_REL: &str = "icons/host-chrome.png";
+const HOST_CHROME_PX: u32 = 256;
+
+pub fn write_host_chrome_icon(source_icon: &Path, dest_dir: &Path) -> Result<()> {
+    let dest = dest_dir.join(HOST_CHROME_ICON_REL);
+    let png = host_chrome_png(source_icon)?;
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(&dest, png).with_context(|| format!("Failed to write {}", dest.display()))?;
+    println!("  Wrote {} (chrome tile, no Dock inset)", dest.display());
+    Ok(())
+}
+
+pub fn host_chrome_png(source_icon: &Path) -> Result<Vec<u8>> {
+    let img = image::open(source_icon)
+        .with_context(|| format!("Failed to open {}", source_icon.display()))?;
+    let rgba = square_cover(&img, HOST_CHROME_PX);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    image::DynamicImage::ImageRgba8(rgba)
+        .write_to(&mut buf, image::ImageFormat::Png)
+        .context("Failed to encode host chrome PNG")?;
+    Ok(buf.into_inner())
+}
+
+fn square_cover(img: &image::DynamicImage, size: u32) -> image::RgbaImage {
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let edge = w.min(h).max(1);
+    let x = (w - edge) / 2;
+    let y = (h - edge) / 2;
+    let cropped = image::imageops::crop_imm(&rgba, x, y, edge, edge).to_image();
+    image::imageops::resize(&cropped, size, size, image::imageops::FilterType::Lanczos3)
 }

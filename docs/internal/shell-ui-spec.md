@@ -457,23 +457,45 @@ crammed in the moment the window crosses 840.
   disables the chevron; `visibility: 'auto'` clears the API-hidden state and
   expands. The user chevron only changes `userCollapsed` while API-visible; it
   MUST NOT override the API-hidden state.
-- **Only explicit API calls map to collapse/expand.** The mobile implicit
-  behavior "navigating to a non-tab page auto-hides the tabbar" does not
-  propagate to desktop: the sidebar is a persistent navigation region, so
-  drilling into a detail page keeps the group expanded and merely clears item
-  selection (see two-level selection below) — otherwise every navigation would
-  bounce the group and lose the waypoint.
+- **Accordion.** Only the active main lxapp's group is expanded. Switching the
+  main collapses the other groups and reveals the incoming one; the user
+  chevron toggles the active group. Expand/collapse is instant, and only the
+  chevron animates.
+- **Within the active group, only explicit API calls map to collapse/expand.**
+  The mobile implicit behavior "navigating to a non-tab page auto-hides the
+  tabbar" does not propagate to desktop: the sidebar is a persistent
+  navigation region, so drilling into a detail page keeps the group expanded
+  and merely clears item selection (see two-level selection below) — otherwise
+  every navigation would bounce the group and lose the waypoint.
 - Desktop MUST fully support `lx.tabBar.update()` item, badge, red-dot,
-  visibility, and style patches. While collapsed, badges/red dots aggregate
-  onto the parent lxapp tab.
+  and visibility patches. JS must not patch colors. While collapsed, badges
+  / red dots aggregate onto the parent lxapp tab.
+- **Tab bar colors are not a single cross-platform policy.**
+  - **iOS / Android / Harmony (mobile tabbar).** The bar sits on the lxapp
+    page. Colors are the static `lxapp.json` `tabBar.style` (then lxapp
+    appearance defaults for unset keys). The bar MUST NOT follow the OS /
+    host dark mode on its own: most lxapps never implemented a dark page,
+    so a dark bar on a light page is worse than a light bar on a dark OS.
+    A light-pinned lxapp (`appearance: "light"`) keeps its authored bar.
+  - **macOS / Windows (desktop sidebar).** The expanded group is host
+    chrome, not a mini-program widget. It MUST follow the **host**
+    `theme` (`lingxia.yaml`) so the sidebar stays one surface.
+    `tabBar.style.backgroundColor` is mobile-only: it MUST NOT paint the
+    expanded items card in any appearance — including a `#FFFFFF` fill
+    on a light sidebar. Other static style keys may tint items while the
+    host is light; when the host is dark the host theme wins for every
+    key, including for a light-pinned lxapp. Unset keys inherit the
+    shell theme in every appearance.
 - **Mapping of tabbar style keys onto the sidebar** (one-to-one with mobile
-  semantics; unset keys inherit the resolved Page Chrome theme):
+  semantics except `backgroundColor`. On desktop, that key and every unset
+  key — and every key while the host is dark — inherit the shell / yaml
+  theme):
 
   | tabbar style | Mobile | Desktop sidebar |
   |---|---|---|
   | `foregroundColor` | Unselected item text | Unselected item title color |
   | `selectedForegroundColor` | Selected item text | Selected item title color + left-edge accent bar |
-  | `backgroundColor` | Bar background | Expanded group (items container) background |
+  | `backgroundColor` | Bar background | Unused (sidebar / yaml `windowBackgroundColor`) |
   | `dividerColor` | Bar divider | Attribution line base color |
 
   Colors apply to text and structural elements alike; an item's single
@@ -502,10 +524,10 @@ allowed.
 - **Styling adapts to the tabbar config**: the attribution line's base color
   follows `dividerColor`; the selected item shows a left-edge accent bar
   colored by `selectedForegroundColor`; selected item text/icon colors are
-  same-sourced. Only `foregroundColor` and `selectedForegroundColor` are
-  runtime-mutable via `lx.tabBar.update()`; background and divider remain
-  manifest-owned. The shell injects no accent of its own and inherits the Page
-  Chrome theme when fields are unset.
+  same-sourced. Colors follow host appearance, or a static `lxapp.json`
+  `tabBar.style` when declared. `lx.tabBar.update()` does not patch colors.
+  The shell injects no accent of its own and inherits the Page Chrome theme
+  when fields are unset.
 
 ### 4.4 Pins
 
@@ -601,10 +623,16 @@ Activation behavior:
 Header geometry:
 
 - Header accepts at most **2** icon-only actions and preserves declaration
-  order. If the complete set cannot fit beside native window controls, none of
-  the actions render; partial truncation is forbidden.
-- Header actions do not render in the collapsed desktop rail or compact size
-  class. Their `label` is still the tooltip and accessibility text.
+  order.
+- A configured bootstrap Settings entry occupies the first header slot, so
+  one runtime header action remains. Runtime actions beyond the available
+  slots are dropped in declaration order and the host MUST log a warning
+  naming them (once per distinct set, not per layout pass).
+- If the capped set cannot fit beside native window controls, none of the
+  actions render; width-based partial truncation is forbidden.
+- In the collapsed desktop rail, header actions lead the icon stack, above the
+  footer actions. They do not render in the compact size class. Their `label`
+  is still the tooltip and accessibility text.
 
 Expanded footer geometry:
 

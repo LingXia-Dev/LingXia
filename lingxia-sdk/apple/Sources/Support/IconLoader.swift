@@ -118,6 +118,151 @@ enum LxIcon {
         guard size.width > 0, size.height > 0 else { return nil }
         return size
     }
+
+    /// The running host product's icon — Downloads/Settings, the home lxapp
+    /// row, and other chrome that should read as this app, not the SDK mark.
+    ///
+    /// Prefers `icons/host-chrome.png` (full-bleed source from `lingxia icon`
+    /// / the macOS pack step). `NSApp.applicationIconImage` is the Dock
+    /// catalog: at 16pt AppKit picks the inset 16×16 slot, which reads as a
+    /// tiny glyph next to an lxapp tile.
+    @MainActor
+    static func hostAppImage() -> NSImage? {
+        if let cachedHostAppImage { return cachedHostAppImage }
+        let image = hostChromeImage()
+            ?? NSApp.applicationIconImage.map(tightenOpaqueBounds)
+        cachedHostAppImage = image
+        return image
+    }
+
+    private static func hostChromeImage() -> NSImage? {
+        let bundles = [Bundle.main] + Bundle.allBundles
+        for bundle in bundles {
+            if let url = bundle.url(
+                forResource: "host-chrome", withExtension: "png", subdirectory: "icons"
+            ) ?? bundle.url(forResource: "host-chrome", withExtension: "png"),
+               let image = NSImage(contentsOf: url)
+            {
+                return image
+            }
+            guard let root = bundle.resourceURL else { continue }
+            for rel in ["icons/host-chrome.png", "Resources/icons/host-chrome.png"] {
+                let url = root.appendingPathComponent(rel)
+                if let image = NSImage(contentsOf: url) {
+                    return image
+                }
+            }
+        }
+        return nil
+    }
+
+    @MainActor
+    private static var cachedHostAppImage: NSImage?
+
+    /// Bundled LingXia mark for guest lxapps that have no registry artwork.
+    static func defaultLxappMark() -> NSImage? {
+        defaultLxappMarkImage
+    }
+
+    private static let defaultLxappMarkImage: NSImage? = Bundle.lingxiaResources.url(
+        forResource: "lxapp_default",
+        withExtension: "png",
+        subdirectory: "icons"
+    ).flatMap { NSImage(contentsOf: $0) }
+
+    /// Sidebar / pin artwork for an lxapp. Home is the product itself, so it
+    /// always uses the host icon. Other apps use the registry file, then the
+    /// SDK default mark.
+    @MainActor
+    static func lxappImage(appId: String, path: String) -> NSImage? {
+        if LxAppCore.isHomeLxApp(appId) {
+            return hostAppImage() ?? image(at: path) ?? defaultLxappMark()
+        }
+        return image(at: path) ?? defaultLxappMark()
+    }
+
+    /// Decoded lxapp artwork by path + file stamp. Sidebar rows, pins, and the
+    /// rail all ask for the same file on every refresh.
+    @MainActor
+    private static var lxappImageCache: [String: NSImage] = [:]
+
+    @MainActor
+    private static func image(at path: String) -> NSImage? {
+        guard !path.isEmpty else { return nil }
+        let key = "\(path)|\(TabBarHelper.fileStamp(path))"
+        if let cached = lxappImageCache[key] { return cached }
+        guard let image = NSImage(contentsOfFile: path) else { return nil }
+        lxappImageCache[key] = image
+        return image
+    }
+
+    /// Square-crop to the opaque plate. Transparent Apple-grid padding is
+    /// dropped; artwork that already fills the canvas is left alone.
+    private static func tightenOpaqueBounds(_ image: NSImage) -> NSImage {
+        guard let tiff = image.tiffRepresentation,
+              let rep = NSBitmapImageRep(data: tiff),
+              let data = rep.bitmapData,
+              rep.hasAlpha,
+              rep.samplesPerPixel >= 4
+        else { return image }
+
+        let width = rep.pixelsWide
+        let height = rep.pixelsHigh
+        guard width > 0, height > 0 else { return image }
+
+        let spp = rep.samplesPerPixel
+        let alphaIndex = spp - 1
+        let bytesPerRow = rep.bytesPerRow
+        let threshold: UInt8 = 16
+
+        var minX = width
+        var minY = height
+        var maxX = 0
+        var maxY = 0
+        var found = false
+        for y in 0..<height {
+            let row = data.advanced(by: y * bytesPerRow)
+            for x in 0..<width {
+                if row[x * spp + alphaIndex] < threshold { continue }
+                found = true
+                minX = min(minX, x)
+                minY = min(minY, y)
+                maxX = max(maxX, x)
+                maxY = max(maxY, y)
+            }
+        }
+        guard found else { return image }
+
+        let content = max(maxX - minX + 1, maxY - minY + 1)
+        // Already full-bleed (less than ~5% inset) — do not re-crop.
+        if content * 20 >= max(width, height) * 19 {
+            return image
+        }
+
+        var startX = (minX + maxX + 1 - content) / 2
+        var startY = (minY + maxY + 1 - content) / 2
+        startX = max(0, min(startX, width - content))
+        startY = max(0, min(startY, height - content))
+        let crop = CGRect(x: startX, y: startY, width: content, height: content)
+        guard let cropped = rep.cgImage?.cropping(to: crop) else { return image }
+        return NSImage(cgImage: cropped, size: NSSize(width: content, height: content))
+    }
+
+    /// 16pt menu glyph from `design/icons/svg` (the same PDF iOS capsule
+    /// loads via `LxIcon.image(named:)`). No SF Symbol stand-in — missing
+    /// names stay empty so platforms cannot drift apart.
+    static func menuSymbol(_ name: String) -> NSImage? {
+        image(named: name, size: CGSize(width: 16, height: 16))
+    }
+
+    /// Lxapp More-action artwork for `NSMenuItem`: 16pt, template when the
+    /// source is an SVG so it tints with the menu instead of sitting oversized.
+    static func menuImage(fromPath path: String) -> NSImage? {
+        guard !path.isEmpty, let source = NSImage(contentsOfFile: path) else {
+            return nil
+        }
+        return TabBarHelper.appKitIcon(source, path: path, size: 16)
+    }
 }
 
 private class MacOSBundleToken {}

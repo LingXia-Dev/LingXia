@@ -1361,6 +1361,10 @@ impl PageInstance {
                         .with_path(self.inner.path.clone());
                 }
             }
+            // The page-chrome bootstrap was captured when the app first loaded
+            // and carries that moment's scheme; stamp the live one onto this
+            // new document so a later Appearance change is not undone.
+            self.owning_lxapp().republish_page_scheme(self);
         }
         self.notify_render_started_inner();
     }

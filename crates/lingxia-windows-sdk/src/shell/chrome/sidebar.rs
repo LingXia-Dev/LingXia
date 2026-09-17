@@ -97,14 +97,18 @@ fn draw_tab_bar_inner(
         let item_rect = tab_item_rect(rect, tabbar.position, count, slot);
         let is_more = kind == BottomSlot::More;
         let item = match kind {
-            BottomSlot::Tab(index) => tabbar.items.get(index),
+            BottomSlot::Tab(visible) => tabbar.items.get(visible),
             BottomSlot::More => None,
         };
         let selected = match kind {
-            BottomSlot::Tab(index) => tabbar.selected_index == index as i32,
-            BottomSlot::More => {
-                overflow_start.is_some_and(|start| tabbar.selected_index >= start as i32)
+            BottomSlot::Tab(_) => {
+                item.is_some_and(|item| tabbar.selected_index == item.index as i32)
             }
+            BottomSlot::More => overflow_start.is_some_and(|start| {
+                tabbar.items[start..]
+                    .iter()
+                    .any(|item| tabbar.selected_index == item.index as i32)
+            }),
         };
         let color = if selected {
             tabbar.selected_color
@@ -391,7 +395,7 @@ pub(super) fn draw_sidebar_items(
     cursor: Option<(i32, i32)>,
     scroll_offset: i32,
 ) {
-    if !tabbar.background_transparent && !tabbar.items.is_empty() {
+    if !tabbar.background_transparent && tabbar.paint_items_background && !tabbar.items.is_empty() {
         let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
         fill_round_rect_aa(
             hdc,
@@ -425,7 +429,7 @@ pub(super) fn draw_sidebar_items(
 
     for (index, item) in tabbar.items.iter().enumerate() {
         let item_rect = sidebar_item_rect(rect, tabbar, index, scroll_offset);
-        let selected = tabbar.selected_index == index as i32;
+        let selected = tabbar.selected_index == item.index as i32;
         if selected {
             // A flat selection avoids the horizontal shadow residue that was
             // especially visible while the old and new rows repainted during
@@ -795,11 +799,25 @@ pub(super) fn sidebar_group_menu_rect(
 /// then refuses to use.
 fn header_leading_reserve() -> i32 {
     let app_menu = if cfg!(feature = "browser-shell") {
-        TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP
+        TOP_BAR_BUTTON_SIZE
     } else {
         0
     };
-    TOP_BAR_PADDING + app_menu + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+    TOP_BAR_PADDING + app_menu + SIDEBAR_HEADER_ACTION_GAP
+}
+
+/// The collapse toggle: the header's trailing slot, flush with the chevron
+/// column below and centered on the same axis as the header actions, so the
+/// strip reads window menu leading, sidebar controls trailing (macOS order).
+pub(super) fn sidebar_header_toggle_rect(sidebar_rect: RECT) -> RECT {
+    let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
+    let right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
+    normalize_rect(RECT {
+        left: right - SIDEBAR_HEADER_ACTION_SIZE,
+        top,
+        right,
+        bottom: top + SIDEBAR_HEADER_ACTION_SIZE,
+    })
 }
 
 /// How many header actions a strip of `available` pixels can seat. The last
@@ -832,7 +850,7 @@ pub(super) fn sidebar_header_action_rects(
     }
     let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
     let leading_limit = sidebar_rect.left + header_leading_reserve();
-    let mut right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
+    let mut right = sidebar_header_toggle_rect(sidebar_rect).left - SIDEBAR_HEADER_ACTION_GAP;
     // Draw the ones that fit rather than measuring the whole set and giving up
     // on it: a sidebar one icon too narrow would otherwise lose the buttons
     // that did fit, which reads as the header having lost them all.
@@ -933,9 +951,14 @@ mod tests {
     use super::*;
     use lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS;
 
-    /// Space the strip has left once the leading controls took theirs.
+    /// Space the strip has left once the leading controls and the trailing
+    /// collapse toggle took theirs.
     fn available_at(sidebar_width: i32) -> i32 {
-        sidebar_width - SIDEBAR_ITEM_INSET - header_leading_reserve()
+        sidebar_width
+            - SIDEBAR_ITEM_INSET
+            - SIDEBAR_HEADER_ACTION_SIZE
+            - SIDEBAR_HEADER_ACTION_GAP
+            - header_leading_reserve()
     }
 
     /// The declaration limit is only honest if the standard sidebar can seat
@@ -955,14 +978,27 @@ mod tests {
     #[test]
     fn the_reserve_tracks_the_buttons_that_exist() {
         let expected = if cfg!(feature = "browser-shell") {
-            TOP_BAR_PADDING
-                + 2 * TOP_BAR_BUTTON_SIZE
-                + TOP_BAR_BUTTON_GAP
-                + SIDEBAR_HEADER_ACTION_GAP
-        } else {
             TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+        } else {
+            TOP_BAR_PADDING + SIDEBAR_HEADER_ACTION_GAP
         };
         assert_eq!(header_leading_reserve(), expected);
+    }
+
+    #[test]
+    fn the_toggle_closes_the_header_row_after_the_actions() {
+        let sidebar = RECT {
+            left: 0,
+            top: 0,
+            right: SHELL_SIDEBAR_WIDTH,
+            bottom: 600,
+        };
+        let toggle = sidebar_header_toggle_rect(sidebar);
+        assert_eq!(toggle.right, SHELL_SIDEBAR_WIDTH - SIDEBAR_ITEM_INSET);
+        assert_eq!(toggle.right - toggle.left, SIDEBAR_HEADER_ACTION_SIZE);
+        // Same vertical axis as the actions it sits beside.
+        let top = (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
+        assert_eq!(toggle.top, top);
     }
 
     #[test]

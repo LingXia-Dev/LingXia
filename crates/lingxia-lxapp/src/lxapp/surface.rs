@@ -768,7 +768,7 @@ impl WindowSurfaceController {
     }
 
     fn switcher_snapshot(&self) -> lingxia_surface::SurfaceSwitcherSnapshot {
-        self.manager.lock().unwrap().switcher_snapshot()
+        apply_registry_switcher_titles(self.manager.lock().unwrap().switcher_snapshot())
     }
 
     fn main_surface_content(&self, surface_id: &str) -> Option<lingxia_surface::SurfaceContent> {
@@ -2073,7 +2073,7 @@ impl LxApp {
     /// drive the switch imperatively — it routes the switch through here so the
     /// graph stays the single source of truth.
     pub fn set_active_main(&self) {
-        let title = self.get_lxapp_info().app_name;
+        let title = self.listing_name();
         window_controller(PRIMARY_WINDOW, &self.runtime).set_active_main(
             &self.appid,
             &title,
@@ -2141,7 +2141,7 @@ impl LxApp {
                         vec![lingxia_shell::SurfaceMenuItem::information(
                             lxapp_surface_menu_header(
                                 &app_id,
-                                &info.app_name,
+                                &app.listing_name(),
                                 &info.version,
                                 &info.release_type,
                             ),
@@ -2186,15 +2186,29 @@ impl LxApp {
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if let Some(execution) = self.dispatch_provider_surface_menu_intent(&intent) {
+            return execution;
+        }
+        window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
+    }
+
+    /// Lxapp MoreActions and restart/cache live on the provider, not the
+    /// surface graph. Both the sync and deferred host paths must run this
+    /// before the graph-only interpreter, or sidebar menu items appear
+    /// and then do nothing.
+    fn dispatch_provider_surface_menu_intent(
+        &self,
+        intent: &lingxia_shell::SurfaceMenuIntent,
+    ) -> Option<HostSurfaceMenuExecution> {
         if matches!(
             &intent.action,
             lingxia_shell::SurfaceMenuAction::Information {}
         ) {
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted: false,
                 removed_surface_ids: Vec::new(),
                 snapshot: self.surface_switcher_snapshot(),
-            };
+            });
         }
         if let lingxia_shell::SurfaceMenuAction::Lxapp { action } = &intent.action {
             let action = *action;
@@ -2230,11 +2244,11 @@ impl LxApp {
                     })
                     .is_ok()
             });
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted,
                 removed_surface_ids: Vec::new(),
                 snapshot,
-            };
+            });
         }
         if let lingxia_shell::SurfaceMenuAction::External {
             namespace,
@@ -2258,13 +2272,13 @@ impl LxApp {
                     .ok()
                     .zip(crate::try_get(namespace))
                     .is_some_and(|(index, app)| app.activate_more_action(*generation, index));
-            return HostSurfaceMenuExecution {
+            return Some(HostSurfaceMenuExecution {
                 accepted,
                 removed_surface_ids: Vec::new(),
                 snapshot,
-            };
+            });
         }
-        window_controller(PRIMARY_WINDOW, &self.runtime).perform_surface_menu_intent(intent)
+        None
     }
 
     #[doc(hidden)]
@@ -2272,6 +2286,9 @@ impl LxApp {
         &self,
         intent: lingxia_shell::SurfaceMenuIntent,
     ) -> HostSurfaceMenuExecution {
+        if let Some(execution) = self.dispatch_provider_surface_menu_intent(&intent) {
+            return execution;
+        }
         window_controller(PRIMARY_WINDOW, &self.runtime)
             .perform_surface_menu_intent_deferred(intent)
     }
@@ -2691,6 +2708,26 @@ impl LxApp {
             }
         }
     }
+}
+
+/// Switcher rows show the registry name unless the user renamed that surface.
+fn apply_registry_switcher_titles(
+    mut snapshot: lingxia_surface::SurfaceSwitcherSnapshot,
+) -> lingxia_surface::SurfaceSwitcherSnapshot {
+    for item in &mut snapshot.items {
+        if item.title_overridden {
+            continue;
+        }
+        let app_id = match &item.content {
+            lingxia_surface::SwitcherContentKind::Lxapp { app_id }
+            | lingxia_surface::SwitcherContentKind::Page { app_id } => app_id.as_str(),
+            _ => continue,
+        };
+        if let Some(name) = crate::lxapp_display_name(app_id) {
+            item.title = Some(name);
+        }
+    }
+    snapshot
 }
 
 fn lxapp_surface_menu_header(

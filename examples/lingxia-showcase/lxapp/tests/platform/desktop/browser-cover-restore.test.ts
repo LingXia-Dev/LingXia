@@ -9,7 +9,15 @@ import type {
   LxAppDriver,
 } from '@lingxia/types/automation';
 
-const WINDOWS_FOOTER_ACTION_COUNT = 5;
+/// Showcase sidebar actions besides the host's typed Settings: Downloads in
+/// the header, four footer actions.
+const SHOWCASE_SIDEBAR_ACTIONS: SidebarActionCounts = { header: 1, footer: 4 };
+
+interface SidebarActionCounts {
+  /** Runtime header actions; the typed Settings leads them. */
+  header: number;
+  footer: number;
+}
 
 function desktopShowcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
   return windows
@@ -57,30 +65,34 @@ function windowsSidebarUsesRail(
 function windowsStaticSettingsPoint(
   host: DesktopWindowInfo,
   rail: boolean,
-  footerActionCount: number,
+  actions: SidebarActionCounts,
 ): [number, number] {
   const scale = host.scale;
-  const cell = 30 * scale;
-  const margin = 8 * scale;
   if (!rail) {
-    // The host appends the typed Settings action after all runtime actions.
-    // Expanded footer rows pack two actions across the 184-DIP sidebar, so the
-    // trailing action is always in the rightmost cell of its final row.
-    const expandedSidebarWidth = 184 * scale;
+    // Typed Settings leads the header actions, which sit right-aligned
+    // against the collapse toggle at the 184-DIP sidebar's trailing edge.
+    const size = 28;
+    const gap = 4;
+    const toggleLeft = 184 - 8 - size;
+    const shown = Math.min(1 + actions.header, 2);
+    const settingsLeft = toggleLeft - gap - shown * size - (shown - 1) * gap;
     return [
-      host.bounds.x + expandedSidebarWidth - margin - cell / 2,
-      host.bounds.y + host.bounds.h - margin - cell / 2,
+      host.bounds.x + (settingsLeft + size / 2) * scale,
+      host.bounds.y + 16 * scale,
     ];
   }
+  // The rail has no header row: header actions lead its action stack, so
+  // Settings is the first cell. At most five cells show.
+  const cell = 30 * scale;
   const gap = 4 * scale;
+  const margin = 8 * scale;
   const expandCell = 34 * scale;
-  const total = footerActionCount * cell + (footerActionCount - 1) * gap;
+  const visible = Math.min(1 + actions.header + actions.footer, 5);
+  const total = visible * cell + (visible - 1) * gap;
   const firstTop = host.bounds.h - gap - expandCell - margin - total;
   return [
     host.bounds.x + 22 * scale,
-    host.bounds.y + firstTop
-      + (footerActionCount - 1) * (cell + gap)
-      + cell / 2,
+    host.bounds.y + firstTop + cell / 2,
   ];
 }
 
@@ -88,7 +100,7 @@ async function clickStaticSettings(
   app: LxAppDriver,
   platform: string,
   desktop: DesktopDriver,
-  footerActionCount = WINDOWS_FOOTER_ACTION_COUNT,
+  actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
   const windows = await desktop.windows();
   const host = desktopShowcaseHost(windows);
@@ -102,7 +114,7 @@ async function clickStaticSettings(
       at: windowsStaticSettingsPoint(
         host,
         windowsSidebarUsesRail(host, windows),
-        footerActionCount,
+        actions,
       ),
     });
     return;
@@ -121,17 +133,19 @@ async function clickStaticSettings(
     && node.rect.x < host.bounds.x + Math.min(220, host.bounds.w * 0.3)
   ));
   expect(settings.length).toBeGreaterThan(0);
+  // Typed Settings is header chrome (or the rail's first action), above any
+  // runtime footer action that borrows its label.
   settings.sort((left, right) => left.rect.y - right.rect.y || left.rect.x - right.rect.x);
-  const staticSettings = settings[settings.length - 1];
+  const staticSettings = settings[0];
   await desktop.ax.invoke({ window: host.id, match: `id:${staticSettings.id}` });
 }
 
 async function openHostSettings(
   app: LxAppDriver,
   platform: string,
-  footerActionCount = WINDOWS_FOOTER_ACTION_COUNT,
+  actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
-  await clickStaticSettings(app, platform, lx.automation().desktop, footerActionCount);
+  await clickStaticSettings(app, platform, lx.automation().desktop, actions);
 }
 
 async function restoreShowcaseSidebarActions(app: LxAppDriver): Promise<void> {
@@ -206,9 +220,10 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
         ]);
       `,
     });
-    // Three runtime items plus the separately typed static item. Presentation
-    // strings may match, but the static click must never dispatch their callbacks.
-    await openHostSettings(app, platform, 4);
+    // Three runtime footer items beside the separately typed static item.
+    // Presentation strings may match, but the static click must never
+    // dispatch their callbacks.
+    await openHostSettings(app, platform, { header: 0, footer: 3 });
     const settings = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),

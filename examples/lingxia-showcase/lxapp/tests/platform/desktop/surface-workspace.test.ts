@@ -84,11 +84,7 @@ async function openSettingsMain(
     await desktop.window.focus({ window: current.id });
     const layout = await app.surfaceLayout();
     await desktop.pointer.click({
-      at: staticSettingsActionPoint(
-        current,
-        layout.switcherForm === 'rail',
-        DESKTOP_FOOTER_ACTION_COUNT,
-      ),
+      at: staticSettingsActionPoint(current, layout.switcherForm === 'rail'),
     });
     return;
   }
@@ -655,9 +651,11 @@ function pinnedShortcutPoint(
   const tile = 36;
   const gap = 5;
   const columns = 4;
-  const sidebarWidth = 184;
-  const gridWidth = columns * tile + (columns - 1) * gap;
-  const gridLeft = Math.floor((sidebarWidth - gridWidth) / 2);
+  // Leading-aligned on the shared first-column icon axis (8 + 8 + 8), not
+  // centered in the 184 sidebar: the Windows pin grid and macOS tiles both
+  // sit on that axis so the grid does not drift when the sidebar resizes.
+  const iconAxis = 24;
+  const gridLeft = iconAxis - tile / 2;
   const row = Math.floor(index / columns);
   const column = index % columns;
   return [
@@ -666,15 +664,27 @@ function pinnedShortcutPoint(
   ];
 }
 
-/// Four runtime actions from `lxapp.ts`, followed by the host-owned static
-/// Settings action. The rail lays them out from the bottom, so adding another
-/// source without updating this clicks a different action.
-const DESKTOP_FOOTER_ACTION_COUNT = 5;
+/// Four runtime footer actions from `lxapp.ts`. The rail lays actions out
+/// from the bottom, so adding another source without updating these clicks a
+/// different action.
+const DESKTOP_FOOTER_ACTION_COUNT = 4;
+/// Header actions: the host's typed Settings, then showcase Downloads. The
+/// rail has no header row, so these lead its action stack.
+const DESKTOP_HEADER_ACTION_COUNT = 2;
+/// The rail shows at most five action cells.
+const DESKTOP_RAIL_ACTION_CELLS = Math.min(DESKTOP_HEADER_ACTION_COUNT + DESKTOP_FOOTER_ACTION_COUNT, 5);
 // The mobile-only Device item is filtered out; every other declared tab is a
 // root page row above dynamic workspaces in the expanded desktop sidebar.
 const SHOWCASE_DESKTOP_TAB_COUNT = 6;
 
-function firstRailFooterActionPoint(
+function railActionPoint(host: DesktopWindowInfo, index: number): [number, number] {
+  const first = firstRailActionPoint(host, DESKTOP_RAIL_ACTION_CELLS);
+  const cell = nativeWindowExtent('windows', host, 30);
+  const gap = nativeWindowExtent('windows', host, 4);
+  return [first[0], first[1] + index * (cell + gap)];
+}
+
+function firstRailActionPoint(
   host: DesktopWindowInfo,
   footerActionCount: number,
 ): [number, number] {
@@ -696,19 +706,22 @@ function firstRailFooterActionPoint(
 function staticSettingsActionPoint(
   host: DesktopWindowInfo,
   rail: boolean,
-  footerActionCount: number,
 ): [number, number] {
-  const cell = nativeWindowExtent('windows', host, 30);
-  const margin = nativeWindowExtent('windows', host, 6);
   if (!rail) {
+    // Typed Settings leads the header actions, right-aligned against the
+    // collapse toggle at the 184-DIP sidebar's trailing edge.
+    const size = 28;
+    const gap = 4;
+    const toggleLeft = 184 - 8 - size;
+    const settingsLeft = toggleLeft - gap
+      - DESKTOP_HEADER_ACTION_COUNT * size
+      - (DESKTOP_HEADER_ACTION_COUNT - 1) * gap;
     return [
-      host.bounds.x + nativeWindowExtent('windows', host, 92),
-      host.bounds.y + host.bounds.h - margin - cell / 2,
+      host.bounds.x + nativeWindowExtent('windows', host, settingsLeft + size / 2),
+      host.bounds.y + nativeWindowExtent('windows', host, 16),
     ];
   }
-  const first = firstRailFooterActionPoint(host, footerActionCount);
-  const gap = nativeWindowExtent('windows', host, 4);
-  return [first[0], first[1] + (footerActionCount - 1) * (cell + gap)];
+  return railActionPoint(host, 0);
 }
 
 function firstLxappWorkspacePoint(
@@ -739,24 +752,74 @@ function firstLxappWorkspacePoint(
   ];
 }
 
-function firstLxappWorkspaceMenuRegion(
+/// While a guest lxapp is the active main it is the expanded group, placed at
+/// its switcher position; the root lxapp collapses to a plain top-level row.
+function activeGuestGroupPoint(
   host: DesktopWindowInfo,
   pinCount: number,
-  rootPageCount: number,
-  workspaceIndex = 0,
+  switcherIndex: number,
+): [number, number] {
+  const pinRows = Math.ceil(pinCount / 4);
+  const pinnedGridHeight = pinRows * (36 + 5);
+  const topBarHeight = 32;
+  const rowHeight = 36;
+  const topLevelGap = 4;
+  return [
+    host.bounds.x + 84,
+    host.bounds.y
+      + topBarHeight
+      + pinnedGridHeight
+      + switcherIndex * (rowHeight + topLevelGap)
+      + rowHeight / 2,
+  ];
+}
+
+/// The group header's trailing controls: chevron slot, close, then ellipsis.
+function activeGuestGroupMenuRegion(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  switcherIndex: number,
 ): [number, number, number, number] {
   const sidebarWidth = 184;
   const itemInset = 8;
+  const chevronWidth = 18;
   const trailingControlWidth = 22;
-  const [, centerY] = firstLxappWorkspacePoint(
-    host, pinCount, rootPageCount, workspaceIndex,
-  );
+  const [, centerY] = activeGuestGroupPoint(host, pinCount, switcherIndex);
   return [
-    host.bounds.x + sidebarWidth - itemInset - trailingControlWidth * 2,
+    host.bounds.x + sidebarWidth - itemInset - chevronWidth - trailingControlWidth * 2,
     centerY - 18,
     trailingControlWidth,
     36,
   ];
+}
+
+function activeGuestGroupClosePoint(
+  host: DesktopWindowInfo,
+  pinCount: number,
+  switcherIndex: number,
+): [number, number] {
+  const menu = activeGuestGroupMenuRegion(host, pinCount, switcherIndex);
+  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
+}
+
+/// From a guest main: the collapsed root row first, then its Home page once
+/// the root group expands.
+async function selectRootHomeFromGuest(
+  app: LxAppDriver,
+  desktop: DesktopDriver,
+  host: DesktopWindowInfo,
+  pinCount: number,
+): Promise<void> {
+  const rootRowPoint = activeGuestGroupPoint(host, pinCount, 0);
+  await desktop.pointer.move({ at: rootRowPoint });
+  await desktop.pointer.click({ at: rootRowPoint });
+  await waitForValue(async () => {
+    const candidate = await app.surfaceLayout();
+    return candidate.activeMainId === 'lingxia-showcase' ? true : undefined;
+  }, 'root workspace selected from its collapsed row');
+  const homePagePoint = showcaseHomePagePoint(host, pinCount);
+  await desktop.pointer.move({ at: homePagePoint });
+  await desktop.pointer.click({ at: homePagePoint });
 }
 
 function firstLxappWorkspaceRegion(
@@ -797,20 +860,28 @@ async function waitForNativeHover(
   }, description);
 }
 
-function firstLxappWorkspaceClosePoint(
-  host: DesktopWindowInfo,
-  pinCount: number,
-  rootPageCount: number,
-  workspaceIndex = 0,
-): [number, number] {
-  const menu = firstLxappWorkspaceMenuRegion(
-    host, pinCount, rootPageCount, workspaceIndex,
-  );
-  return [menu[0] + menu[2] * 1.5, menu[1] + menu[3] / 2];
-}
-
 function regionCenter(region: [number, number, number, number]): [number, number] {
   return [region[0] + region[2] / 2, region[1] + region[3] / 2];
+}
+
+/// Win32 `TrackPopupMenu` windows include a DWM drop shadow, so GetWindowRect
+/// can sit tens of pixels away from the click. Match the new untitled host
+/// popup rather than requiring the frame origin to hug the pointer.
+function hostPopupMenu(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+  visibleIdsBefore: Set<string>,
+): DesktopWindowInfo | undefined {
+  return windows.find((window) => (
+    window.visible
+    && !visibleIdsBefore.has(window.id)
+    && window.process.toLocaleLowerCase() === host.process.toLocaleLowerCase()
+    && window.title === ''
+    && window.bounds.w > 0
+    && window.bounds.w < host.bounds.w
+    && window.bounds.h > 0
+    && window.bounds.h < host.bounds.h
+  ));
 }
 
 async function firstEnabledNativeMenuItem(
@@ -1639,12 +1710,13 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     const baselineWebViewIds = new Set(baselineWebViews.map((window) => window.id));
     host = await ensureHostForeground(desktop, host);
 
-    // Exercise the real native footer action. Medium projects three fixture
-    // actions (Chat, Terminal, Ping) into the icon rail above its expand cell.
-    // Derive Chat's first-cell center from that production geometry so this
-    // cannot accidentally click the expand control or a main-page item.
+    // Exercise the real native footer action. Medium projects the header
+    // actions (Settings, Downloads) and then the footer actions into the icon
+    // rail above its expand cell; Chat is the first footer action. Derive its
+    // cell center from that production geometry so this cannot click the
+    // expand control, a header action, or a main-page item.
     await desktop.pointer.click({
-      at: firstRailFooterActionPoint(host, DESKTOP_FOOTER_ACTION_COUNT),
+      at: railActionPoint(host, DESKTOP_HEADER_ACTION_COUNT),
     });
 
     const chatAside = async () => {
@@ -2487,17 +2559,22 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     // Hover must visibly reveal the row's explicit ellipsis, and clicking that
     // affordance must open the native lifecycle menu. This checks both
     // discoverability and routing instead of relying on an invisible right-click.
-    const workspacePoint = firstLxappWorkspacePoint(
-      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+    const chatSwitcherIndex = coldLayout.mainSwitcher.items
+      .findIndex((item) => item.surfaceId === 'lingxia-chat');
+    // Chat is the active main here, so its row is the expanded group header.
+    const activeChatPoint = activeGuestGroupPoint(host, coldPins.length, chatSwitcherIndex);
+    const workspaceMenuRegion = activeGuestGroupMenuRegion(
+      host, coldPins.length, chatSwitcherIndex,
     );
-    const workspaceMenuRegion = firstLxappWorkspaceMenuRegion(
+    // With the root active again, Chat is a workspace row below its pages.
+    const workspacePoint = firstLxappWorkspacePoint(
       host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
     );
     const workspaceMenuPoint = regionCenter(workspaceMenuRegion);
     await waitForNativeHover(
       desktop,
       host,
-      workspacePoint,
+      activeChatPoint,
       workspaceMenuRegion,
       'visible Chat workspace ellipsis on hover',
     );
@@ -2508,18 +2585,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.click({ at: workspaceMenuPoint });
     const workspaceMenu = await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && !visibleWorkspaceMenuWindowIds.has(window.id)
-        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
-        && window.title === ''
-        && Math.abs(window.bounds.x - workspaceMenuPoint[0]) <= 8
-        && Math.abs(window.bounds.y - workspaceMenuPoint[1]) <= 8
-        && window.bounds.w > 0
-        && window.bounds.w < host!.bounds.w
-        && window.bounds.h > 0
-        && window.bounds.h < host!.bounds.h
-      ))
+      hostPopupMenu(host!, await desktop.windows(), visibleWorkspaceMenuWindowIds)
     ), 'native Chat workspace context menu');
     await desktop.key.press({ key: 'Escape' });
     await waitForValue(async () => (
@@ -2538,10 +2604,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       id: 'lingxia-chat', visible: true, alive: true, events: [],
     });
 
-    const homePagePoint = showcaseHomePagePoint(host, coldPins.length);
     host = await ensureHostForeground(desktop, host);
-    await desktop.pointer.move({ at: homePagePoint });
-    await desktop.pointer.click({ at: homePagePoint });
+    await selectRootHomeFromGuest(app, desktop, host, coldPins.length);
     await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.current_page?.startsWith('pages/home/index')
@@ -2588,8 +2652,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       { type: 'show', id: 'lingxia-chat', source: 'shell' },
     ]);
 
-    const workspaceClosePoint = firstLxappWorkspaceClosePoint(
-      host, coldPins.length, SHOWCASE_DESKTOP_TAB_COUNT, chatWorkspaceIndex,
+    const workspaceClosePoint = activeGuestGroupClosePoint(
+      host, coldPins.length, chatSwitcherIndex,
     );
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.move({ at: workspaceClosePoint });
@@ -2650,6 +2714,11 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       }, 'pinned Chat reopened without a ghost workspace after openApp');
     }
 
+    host = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
+    const pinsBeforeMenu = await shell.pins();
+    const pinIndexBeforeMenu = pinsBeforeMenu.findIndex((pin) => samePin(pin, targetPin));
+    expect(pinIndexBeforeMenu).toBeGreaterThanOrEqual(0);
+    const pinMenuPoint = pinnedShortcutPoint(host, pinIndexBeforeMenu);
     const windowsBeforeMenu = await desktop.windows();
     const visibleWindowIdsBeforeMenu = new Set(windowsBeforeMenu
       .filter((window) => window.visible)
@@ -2662,22 +2731,21 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await desktop.pointer.move({
       at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
     });
-    await desktop.pointer.move({ at: coldPinPoint });
-    await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
-    const menu = await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && !visibleWindowIdsBeforeMenu.has(window.id)
-        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
-        && window.title === ''
-        && Math.abs(window.bounds.x - coldPinPoint[0]) <= 8
-        && Math.abs(window.bounds.y - coldPinPoint[1]) <= 8
-        && window.bounds.w > 0
-        && window.bounds.w < host!.bounds.w
-        && window.bounds.h > 0
-        && window.bounds.h < host!.bounds.h
-      ))
-    ), 'native pinned Chat context menu');
+    await desktop.pointer.move({ at: pinMenuPoint });
+    await desktop.pointer.click({ at: pinMenuPoint, button: 'right' });
+    let menu = await waitForValue(async () => (
+      hostPopupMenu(host!, await desktop.windows(), visibleWindowIdsBeforeMenu)
+    ), 'native pinned Chat context menu', 8_000).catch(() => undefined);
+    if (!menu) {
+      await desktop.pointer.move({
+        at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
+      });
+      await desktop.pointer.move({ at: pinMenuPoint });
+      await desktop.pointer.click({ at: pinMenuPoint, button: 'right' });
+      menu = await waitForValue(async () => (
+        hostPopupMenu(host!, await desktop.windows(), visibleWindowIdsBeforeMenu)
+      ), 'native pinned Chat context menu');
+    }
     if (initiallyPinned) {
       await desktop.key.press({ key: 'Escape' });
     } else {
@@ -2710,9 +2778,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       },
       'Chat main before root sidebar switch',
     );
-    await desktop.pointer.click({
-      at: showcaseHomePagePoint(host, pinsAfterMenu.length),
-    });
+    await selectRootHomeFromGuest(app, desktop, host, pinsAfterMenu.length);
     const afterSidebarClick = await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
       return info.current_page?.startsWith('pages/home/index')

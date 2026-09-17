@@ -18,6 +18,17 @@ fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
 }
 
 /// Patch this lxapp's tab bar; unset fields stay as they are.
+///
+/// Items, badges, red dots, and visibility only. A `style` field is
+/// rejected — colors stay in static `lxapp.json` `tabBar.style`.
+///
+/// `tabBar.style.backgroundColor` is mobile-only: it paints the bar on
+/// iOS / Android / Harmony. On macOS / Windows the sidebar follows the
+/// host `lingxia.yaml` theme (`windowBackgroundColor`) instead, so a
+/// `#FFFFFF` fill cannot paint a card on the sidebar. Other style keys
+/// (`foregroundColor`, `selectedForegroundColor`, `dividerColor`) may
+/// tint items while the desktop host is light; a dark host uses the
+/// shell theme for every key.
 async fn update(ctx: JSContext, patch: JSObject) -> JSResult<()> {
     let patch = parse_patch::<TabBarPatch>(&patch, "tabBar")?;
     let app = LxApp::from_ctx(&ctx)?;

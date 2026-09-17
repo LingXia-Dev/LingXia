@@ -15,10 +15,24 @@ struct SurfaceMenuSnapshot: Decodable {
             let namespace: String?
             let generation: UInt64?
             let actionId: String?
+
+            private enum CodingKeys: String, CodingKey {
+                case owner, action, namespace, generation, actionId
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var values = encoder.container(keyedBy: CodingKeys.self)
+                try values.encode(owner, forKey: .owner)
+                try values.encodeIfPresent(action, forKey: .action)
+                try values.encodeIfPresent(namespace, forKey: .namespace)
+                try values.encodeIfPresent(generation, forKey: .generation)
+                try values.encodeIfPresent(actionId, forKey: .actionId)
+            }
         }
 
         let action: Action
         let label: String?
+        let icon: String?
         let enabled: Bool
         let role: String
     }
@@ -45,8 +59,18 @@ enum SurfaceMenuBridge {
 
     static func snapshot(ownerAppId: String, surfaceId: String) -> SurfaceMenuSnapshot? {
         let json = surfaceMenu(ownerAppId, surfaceId).toString()
-        guard let data = json.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(SurfaceMenuSnapshot.self, from: data)
+        guard let data = json.data(using: .utf8), !json.isEmpty, json != "null" else {
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(SurfaceMenuSnapshot.self, from: data)
+        } catch {
+            LXLog.error(
+                "surface menu decode failed surface=\(surfaceId): \(error)",
+                category: "SurfaceMenu"
+            )
+            return nil
+        }
     }
 
     static func perform(
@@ -85,19 +109,23 @@ enum SurfaceMenuBridge {
 final class SurfaceMenuPresenter: NSObject {
     var onAction: ((UInt64, String, SurfaceMenuSnapshot.Item.Action, String?) -> Void)?
 
-    func present(_ snapshot: SurfaceMenuSnapshot, event: NSEvent, from view: NSView) {
+    @discardableResult
+    func present(_ snapshot: SurfaceMenuSnapshot, event: NSEvent, from view: NSView) -> Bool {
         let menu = NSMenu()
         menu.autoenablesItems = false
         for (sectionIndex, section) in snapshot.sections.enumerated() {
             if sectionIndex > 0 { menu.addItem(.separator()) }
             for item in section.items {
+                let title = Self.title(for: item)
+                guard !title.isEmpty || item.action.owner == "information" else { continue }
                 let menuItem = NSMenuItem(
-                    title: item.label ?? Self.title(for: item.action.action),
-                    action: #selector(menuItemSelected(_:)),
+                    title: title,
+                    action: item.enabled ? #selector(menuItemSelected(_:)) : nil,
                     keyEquivalent: ""
                 )
-                menuItem.target = self
+                menuItem.target = item.enabled ? self : nil
                 menuItem.isEnabled = item.enabled
+                menuItem.image = Self.icon(for: item)
                 menuItem.representedObject = Selection(
                     revision: snapshot.revision,
                     surfaceId: snapshot.surfaceId,
@@ -106,8 +134,9 @@ final class SurfaceMenuPresenter: NSObject {
                 menu.addItem(menuItem)
             }
         }
-        guard !menu.items.isEmpty else { return }
+        guard !menu.items.isEmpty else { return false }
         NSMenu.popUpContextMenu(menu, with: event, for: view)
+        return true
     }
 
     private final class Selection: NSObject {
@@ -127,7 +156,16 @@ final class SurfaceMenuPresenter: NSObject {
         onAction?(selection.revision, selection.surfaceId, selection.action, nil)
     }
 
-    private static func title(for action: String?) -> String {
+    private static func title(for item: SurfaceMenuSnapshot.Item) -> String {
+        switch item.action.owner {
+        case "information", "external":
+            return item.label ?? ""
+        default:
+            return localizedTitle(for: item.action.action) ?? item.label ?? ""
+        }
+    }
+
+    private static func localizedTitle(for action: String?) -> String? {
         switch action {
         case "rename": L10n.string("lx_surface_rename")
         case "resetTitle": L10n.string("lx_surface_reset_title")
@@ -136,7 +174,30 @@ final class SurfaceMenuPresenter: NSObject {
         case "closeAfter": L10n.string("lx_surface_close_after")
         case "restart": L10n.string("lx_capsule_restart")
         case "cleanCacheRestart": L10n.string("lx_capsule_clean_cache")
-        default: ""
+        default: nil
+        }
+    }
+
+    /// Same `design/icons/svg` names as the iOS / Android / Harmony capsule
+    /// (`icon_restart`, `icon_clean_cache`, …). Close-tab rows reuse the
+    /// sidebar bookmark glyphs from that set.
+    private static func icon(for item: SurfaceMenuSnapshot.Item) -> NSImage? {
+        if let path = item.icon, !path.isEmpty {
+            return LxIcon.menuImage(fromPath: path)
+        }
+        switch (item.action.owner, item.action.action) {
+        case ("lxapp", "restart"):
+            return LxIcon.menuSymbol("icon_restart")
+        case ("lxapp", "cleanCacheRestart"):
+            return LxIcon.menuSymbol("icon_clean_cache")
+        case ("switcher", "close"):
+            return LxIcon.menuSymbol("icon_close_x")
+        case ("switcher", "closeOthers"):
+            return LxIcon.menuSymbol("icon_close_other_tabs")
+        case ("switcher", "closeAfter"):
+            return LxIcon.menuSymbol("icon_close_tabs_below")
+        default:
+            return nil
         }
     }
 }

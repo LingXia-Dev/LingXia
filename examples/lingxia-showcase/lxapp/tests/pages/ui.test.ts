@@ -89,7 +89,6 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
       script: `
         await lx.tabBar.update({
           visibility: 'auto',
-          style: null,
           items: [{
             index: 1,
             text: null,
@@ -126,10 +125,6 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   await app.eval({
     script: `
       await lx.tabBar.update({
-        style: {
-          foregroundColor: '#102030',
-          selectedForegroundColor: '#405060',
-        },
         items: [{
           index: 1,
           text: 'Automation',
@@ -144,14 +139,12 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   const assetPath = (value: string | null | undefined) => (value ?? '').replace(/\\/g, '/');
   const styled = await waitForTabBar(
     (state) => (
-      state.runtime_style.foreground_color === '#102030'
-      && state.runtime_style.selected_foreground_color === '#405060'
-      && state.items[1]?.text === 'Automation'
+      state.items[1]?.text === 'Automation'
       && assetPath(state.items[1]?.icon_path).endsWith('/public/home.png')
       && state.items[1]?.badge === '7'
       && state.items[1]?.red_dot === false
     ),
-    'TabBar style, text, and badge update',
+    'TabBar text and badge update',
   );
 
   const invalid = await evalCaught(
@@ -210,19 +203,13 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   await app.eval({
     script: `
       await lx.tabBar.update({
-        style: {
-          foregroundColor: '#203040',
-          selectedForegroundColor: '#506070',
-        },
+        items: [{ index: 1, badge: 'chrome' }],
       });
     `,
   });
   await waitForTabBar(
-    (state) => (
-      state.runtime_style.foreground_color === '#203040'
-      && state.runtime_style.selected_foreground_color === '#506070'
-    ),
-    'home tabBar style after chrome refresh',
+    (state) => state.items[1]?.badge === 'chrome',
+    'home tabBar item patch after chrome refresh',
   );
   const viewportAfterChromeRefresh = await readHomeViewportHeight();
   expect(viewportAfterChromeRefresh).toBe(viewportBeforeChromeRefresh);

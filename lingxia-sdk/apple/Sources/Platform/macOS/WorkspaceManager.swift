@@ -27,6 +27,54 @@ private func lxWorkspaceFormatRect(_ rect: NSRect) -> String {
     )
 }
 
+/// A content container that spins on its own paper until content is attached.
+///
+/// The spinner is one-shot: the first attached content retires it for good, so a
+/// later detach (the lxapp restart that applies an update) can never re-expose a
+/// stale "loading" circle over the page area, and nothing keeps animating
+/// invisibly behind the content.
+@MainActor
+final class LoadingContentView: NSView {
+    private let spinner = NSProgressIndicator()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = false
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
+        ])
+        spinner.startAnimation(nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// Attached content, excluding the container's own spinner — callers that
+    /// move content between containers must not carry the spinner along.
+    var contentSubviews: [NSView] { subviews.filter { $0 !== spinner } }
+
+    override func didAddSubview(_ subview: NSView) {
+        super.didAddSubview(subview)
+        guard subview !== spinner, !spinner.isHidden else { return }
+        spinner.stopAnimation(nil)
+        spinner.isHidden = true
+    }
+
+    override func willRemoveSubview(_ subview: NSView) {
+        super.willRemoveSubview(subview)
+        // Callers that clear the container wholesale must not leave the spinner
+        // animating off-tree.
+        if subview === spinner { spinner.stopAnimation(nil) }
+    }
+}
+
 enum PanelPosition: String {
     case left
     case right
@@ -111,7 +159,7 @@ private class PanelSlot {
     /// Visual surface: NSVisualEffectView for blur + automatic dark/light handling.
     let blurView: NSVisualEffectView
     /// Content container where the panel's WebView is attached.
-    let containerView: NSView
+    let containerView: LoadingContentView
     /// Drag handle placed as a sibling of shadowWrapper in overlayParent.
     let resizeHandle: PanelResizeHandle
     /// Width (left/right panels) or height (bottom panel) constraint — updated on resize drag.
@@ -131,8 +179,6 @@ private class PanelSlot {
     /// zero-height while the slot has at most one child.
     let slotTabStrip = AsideSlotTabStripView()
     private var slotStripHeight: NSLayoutConstraint?
-    /// Centered spinner shown until the first content view attaches.
-    private let loadingIndicator = NSProgressIndicator()
 
     var isVisible: Bool = false
     var currentSize: CGFloat
@@ -155,20 +201,12 @@ private class PanelSlot {
         blurView.layer?.masksToBounds = true
         blurView.translatesAutoresizingMaskIntoConstraints = false
 
-        containerView = NSView()
+        // Loading feedback for a cold first open: the panel docks on click,
+        // and the container's spinner owns the paper until the content lands.
+        containerView = LoadingContentView(frame: .zero)
         containerView.wantsLayer = true
         containerView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         containerView.translatesAutoresizingMaskIntoConstraints = false
-
-        // Loading feedback for a cold first open: the panel docks on click,
-        // and this spinner owns the paper until the content view lands
-        // (the content attach clears the container's subviews).
-        loadingIndicator.style = .spinning
-        loadingIndicator.controlSize = .small
-        loadingIndicator.isDisplayedWhenStopped = false
-        loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        loadingIndicator.startAnimation(nil)
-        containerView.addSubview(loadingIndicator)
 
         resizeHandle = PanelResizeHandle(position: config.position)
         resizeHandle.translatesAutoresizingMaskIntoConstraints = false
@@ -193,8 +231,6 @@ private class PanelSlot {
             containerView.leadingAnchor.constraint(equalTo: blurView.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: blurView.trailingAnchor),
             containerView.bottomAnchor.constraint(equalTo: blurView.bottomAnchor),
-            loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            loadingIndicator.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
         ])
     }
 
@@ -271,7 +307,9 @@ class WorkspaceManager: NSObject {
     private static let minMainRegionHeight: CGFloat = 240
 
     /// Main content view; active ViewController's view is placed here.
-    let contentContainer = NSView()
+    /// Cold-boot feedback for the main card: it spins on the paper until the
+    /// first content view attaches, then retires the spinner for good.
+    let contentContainer = LoadingContentView(frame: .zero)
 
     /// Toolbar + contentContainer wrapper; placed inside the WebView card by WindowController.
     let workspaceView = NSView()
@@ -297,27 +335,12 @@ class WorkspaceManager: NSObject {
     /// below native navigation chrome inside the main card.
     private weak var toolbarRef: NSView?
 
-    /// Cold-boot feedback for the main card: spins on the paper until the
-    /// first webview attaches on top of it.
-    private let mainLoadingIndicator = NSProgressIndicator()
-
     override init() {
         super.init()
         workspaceView.wantsLayer = true
         contentContainer.wantsLayer = true
         contentContainer.translatesAutoresizingMaskIntoConstraints = false
         workspaceView.addSubview(contentContainer)
-
-        mainLoadingIndicator.style = .spinning
-        mainLoadingIndicator.controlSize = .small
-        mainLoadingIndicator.isDisplayedWhenStopped = false
-        mainLoadingIndicator.translatesAutoresizingMaskIntoConstraints = false
-        mainLoadingIndicator.startAnimation(nil)
-        contentContainer.addSubview(mainLoadingIndicator)
-        NSLayoutConstraint.activate([
-            mainLoadingIndicator.centerXAnchor.constraint(equalTo: contentContainer.centerXAnchor),
-            mainLoadingIndicator.centerYAnchor.constraint(equalTo: contentContainer.centerYAnchor),
-        ])
     }
 
     /// Must be called once by WindowController after the sidebar is placed.
@@ -561,7 +584,7 @@ class WorkspaceManager: NSObject {
         )
 
         // Detach the panel's content view so it survives the slot swap.
-        let content = old.containerView.subviews
+        let content = old.containerView.contentSubviews
         for view in content { view.removeFromSuperview() }
 
         // Tear the old slot's cards out of the dock and forget it.

@@ -893,19 +893,17 @@ fn push_tabbar_selected_rects(
         return;
     }
     for index in [old_tabbar.selected_index, new_tabbar.selected_index] {
-        if index < 0 || index as usize >= new_tabbar.items.len() {
+        if index < 0 {
             continue;
         }
         let item_rect = if matches!(
             new_tabbar.position,
             WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
         ) {
-            sidebar_item_rect(
-                rect,
-                new_tabbar,
-                index as usize,
-                new_tabbar.main_scroll_offset,
-            )
+            let Some(slot) = new_tabbar.visible_slot_for_item(index) else {
+                continue;
+            };
+            sidebar_item_rect(rect, new_tabbar, slot, new_tabbar.main_scroll_offset)
         } else {
             // A folded item paints in the "more" slot, not one of its own.
             let Some(slot) = new_tabbar.bottom_slot_for_item(index) else {
@@ -1221,20 +1219,44 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
 ) -> Option<CollapsedSidebarTabbarPopup> {
     let layout = shell_layout(layout)?;
     let tabbar = layout.tab_bar.as_ref()?;
-    if tabbar.items.is_empty()
-        || !matches!(
-            tabbar.position,
-            WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
-        )
-        || !(tabbar.collapsed || tabbar.icon_rail)
+    if !matches!(
+        tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) || !(tabbar.collapsed || tabbar.icon_rail)
     {
         return None;
     }
     let tabbar_rect = compute_chrome_rects(client, layout).tab_bar?;
-    let anchor = sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar), 0);
-    if !rect_contains(&anchor, point) {
-        return None;
-    }
+    let (scroll_offset, _, viewport_bottom) =
+        sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
+    let hit = |anchor: RECT| {
+        anchor.top >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+            && anchor.bottom <= viewport_bottom
+            && rect_contains(&anchor, point)
+    };
+    // The expanded group lists its own pages; every other lxapp row brings
+    // its pages along, so hovering any of them opens the same panel (macOS
+    // parity) instead of a bare name tooltip.
+    let group_anchor =
+        sidebar_rail_item_rect(tabbar_rect, sidebar_group_rail_index(tabbar), scroll_offset);
+    let (anchor, popup_tabbar) = if !tabbar.items.is_empty() && hit(group_anchor) {
+        (group_anchor, tabbar.clone())
+    } else {
+        tabbar
+            .auxiliary_items
+            .iter()
+            .enumerate()
+            .find_map(|(index, item)| {
+                let tabs = item.tabs.as_ref()?;
+                let anchor = sidebar_rail_item_rect(
+                    tabbar_rect,
+                    sidebar_auxiliary_rail_index(tabbar, index),
+                    scroll_offset,
+                );
+                hit(anchor).then(|| (anchor, auxiliary_popup_tabbar(tabbar, item, tabs)))
+            })?
+    };
+    let tabbar = &popup_tabbar;
     let (width, height) = collapsed_sidebar_tabbar_popup_size(tabbar);
     let top = anchor.top.min(client.bottom - height).max(client.top);
     let left = match tabbar.position {
@@ -1369,6 +1391,29 @@ fn collapsed_sidebar_popup_title_height(tabbar: &WindowsShellTabBarLayout) -> i3
     }
 }
 
+/// Another lxapp's pages dressed as a tab bar for the rail panel. Colors come
+/// from the shell theme: the owner's declared tints belong to its own app.
+fn auxiliary_popup_tabbar(
+    owner: &WindowsShellTabBarLayout,
+    item: &WindowsShellAuxiliaryItemLayout,
+    tabs: &WindowsShellAuxiliaryTabs,
+) -> WindowsShellTabBarLayout {
+    let mut tabbar = owner.clone();
+    tabbar.app_name = item.title.clone();
+    tabbar.app_icon_path = item.icon_path.clone();
+    tabbar.group_id = tabs.app_id.clone();
+    tabbar.group_target_id = item.id.clone();
+    tabbar.group_active = item.active;
+    tabbar.items = tabs.items.clone();
+    tabbar.selected_index = tabs.selected_index;
+    tabbar.overflow_start_index = -1;
+    tabbar.items_api_hidden = false;
+    tabbar.color = shell_palette().text_muted;
+    tabbar.selected_color = shell_palette().accent;
+    tabbar.paint_items_background = false;
+    tabbar
+}
+
 pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
     let rows = tabbar.items.len().max(1) as i32;
     (
@@ -1394,11 +1439,13 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
         bottom: collapsed_sidebar_tabbar_popup_size(&popup_tabbar).1,
     });
     let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar);
-    (0..popup_tabbar.items.len()).find(|&index| {
+    (0..popup_tabbar.items.len()).find_map(|slot| {
         rect_contains(
-            &sidebar_item_rect(item_bounds, &popup_tabbar, index, 0),
+            &sidebar_item_rect(item_bounds, &popup_tabbar, slot, 0),
             point,
         )
+        .then_some(())
+        .and_then(|_| popup_tabbar.click_index_at_slot(slot))
     })
 }
 
@@ -2206,11 +2253,18 @@ pub(super) fn chrome_hit_test(
                 if action.is_some_and(|action| !action.disabled)
                     && rect_contains(&action_rect, point)
                 {
+                    let command = match action.map(|item| &item.source) {
+                        Some(WindowsShellSidebarActionSource::StaticSettings(_)) => {
+                            command_id::STATIC_SETTINGS_CLICK
+                        }
+                        _ => command_id::SIDEBAR_ACTION,
+                    };
                     return Some(chrome_command(
-                        command_id::SIDEBAR_ACTION,
+                        command,
                         json!({
                             "generation": action.map(|item| item.generation).unwrap_or_default(),
                             "action_id": action_id,
+                            "panel_id": action_id,
                         }),
                     ));
                 }
@@ -2329,6 +2383,15 @@ pub(super) fn chrome_hit_test(
                     point,
                 )
             {
+                // Same as macOS: the active lxapp's header toggles its page
+                // list. Re-sending BROWSER_TAB_CLICK is a no-op and made the
+                // chevron look broken when the hit landed on the name row.
+                if tabbar.group_active && !tabbar.items_api_hidden && !tabbar.items.is_empty() {
+                    return Some(chrome_command(
+                        command_id::SIDEBAR_GROUP_TOGGLE,
+                        json!({ "group": tabbar.group_id.clone() }),
+                    ));
+                }
                 let payload = json!({ "tab_id": tabbar.group_target_id.clone() });
                 return Some(chrome_command_with_context(
                     command_id::BROWSER_TAB_CLICK,
@@ -2358,10 +2421,18 @@ pub(super) fn chrome_hit_test(
                 // A slot's position is not an item's index once `showOn` drops
                 // one, so the declaration index has to be resolved, not assumed.
                 let index = if sidebar {
-                    slot
+                    match tabbar.click_index_at_slot(slot) {
+                        Some(index) => index,
+                        None => continue,
+                    }
                 } else {
                     match tabbar.bottom_slot(slot) {
-                        Some(BottomSlot::Tab(index)) => index,
+                        Some(BottomSlot::Tab(visible)) => {
+                            match tabbar.click_index_at_slot(visible) {
+                                Some(index) => index,
+                                None => continue,
+                            }
+                        }
                         Some(BottomSlot::More) => {
                             return Some(WindowsChromeHit::Command(
                                 WindowsChromeCommand::new(command_id::TAB_BAR_MORE_CLICK)
@@ -2726,6 +2797,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0xffffff,
+            paint_items_background: false,
             background_transparent,
             border_color: 0,
             selected_index: 0,
@@ -2807,6 +2879,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let layout = WindowsShellWindowLayout {
             tab_bar: Some(rail.clone()),
@@ -2916,6 +2989,7 @@ mod scroll_tests {
             closable: false,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
             id: "web:docs".to_string(),
@@ -2925,6 +2999,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
 
         let divider = sidebar_rail_pinned_divider_rect(rail_rect, &rail, 0).unwrap();
@@ -2961,6 +3036,7 @@ mod scroll_tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let layout = WindowsShellWindowLayout {
             tab_bar: Some(rail.clone()),
@@ -3166,6 +3242,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
@@ -3231,6 +3308,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: false,
             border_color: 0,
             selected_index: 0,
@@ -3502,6 +3580,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
@@ -3522,6 +3601,7 @@ mod scroll_tests {
                 closable: true,
                 icon_png: None,
                 icon_path: String::new(),
+                tabs: None,
             }],
             show_auxiliary_add: false,
             header_actions: Vec::new(),
@@ -3563,6 +3643,7 @@ mod scroll_tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
@@ -3583,6 +3664,7 @@ mod scroll_tests {
                 closable: true,
                 icon_png: None,
                 icon_path: String::new(),
+                tabs: None,
             }],
             show_auxiliary_add: true,
             header_actions: Vec::new(),

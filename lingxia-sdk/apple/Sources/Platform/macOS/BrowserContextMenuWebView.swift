@@ -56,6 +56,14 @@ final class BrowserContextMenuWebView: WKWebView {
             super.rightMouseDown(with: event)
             return
         }
+        // The download lookup below holds the event until a script returns and
+        // then replays it, and WebKit's menu built from that late event has a
+        // dead Copy. Internal pages (settings, history, ...) never offer an
+        // http(s) download, so give them WebKit's own menu straight away.
+        if url?.scheme?.lowercased() == "lingxia" {
+            super.rightMouseDown(with: event)
+            return
+        }
 
         resolveDownloadCandidate(for: event) { [weak self] candidate in
             guard let self else { return }

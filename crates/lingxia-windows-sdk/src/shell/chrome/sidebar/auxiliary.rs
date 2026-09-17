@@ -323,8 +323,8 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         let close_rect = sidebar_auxiliary_close_rect(item_rect);
         let menu_rect = sidebar_auxiliary_menu_rect(item_rect, item);
         // 16px icon left of the title: the page favicon when supplied, else
-        // the default LingXia mark (internal pages like Downloads/Settings
-        // report no favicon, mirroring the macOS bundled fallback).
+        // the host app icon (internal pages like Downloads/Settings report
+        // no favicon; the LingXia mark is only the last-resort fallback).
         // Top-level browser tabs share the lxapp header's outer row and icon
         // axis. Only lxapp page items are indented beneath their parent.
         let mut label_left = item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET;
@@ -415,6 +415,7 @@ mod tests {
             color: 0,
             selected_color: 0,
             background_color: 0,
+            paint_items_background: false,
             background_transparent: true,
             border_color: 0,
             selected_index: -1,
@@ -456,6 +457,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         };
 
         let menu = sidebar_auxiliary_menu_rect(item_rect, &item);
@@ -468,6 +470,46 @@ mod tests {
     }
 
     #[test]
+    fn pinned_tile_right_click_uses_the_lxapp_context_menu() {
+        let tabbar = tabbar_with_auxiliary_item(WindowsShellAuxiliaryItemLayout {
+            id: "pin:lxapp:chat".to_string(),
+            title: "Chat".to_string(),
+            active: true,
+            pinned: true,
+            closable: false,
+            icon_png: None,
+            icon_path: String::new(),
+            tabs: None,
+        });
+        let sidebar = RECT {
+            left: 0,
+            top: 0,
+            right: 184,
+            bottom: 500,
+        };
+        let rows = sidebar_auxiliary_rects(sidebar, &tabbar, 0, sidebar.bottom).unwrap();
+        let pin = rows.items[0].1;
+        assert_eq!(pin.left, SIDEBAR_ICON_AXIS - PINNED_SHORTCUT_SIZE / 2);
+        assert_eq!(pin.top, SHELL_TOP_BAR_HEIGHT);
+        let point = ((pin.left + pin.right) / 2, (pin.top + pin.bottom) / 2);
+
+        let Some(WindowsChromeHit::CommandWithContext {
+            command,
+            context_menu,
+        }) = sidebar_auxiliary_hit_test(sidebar, &tabbar, point, 0, sidebar.bottom)
+        else {
+            panic!("pinned tile did not produce a click plus context menu");
+        };
+        assert_eq!(command.id, command_id::BROWSER_TAB_CLICK);
+        assert_eq!(context_menu.id, command_id::SIDEBAR_AUXILIARY_CONTEXT_MENU);
+        assert_eq!(
+            context_menu.payload,
+            serde_json::json!({ "tab_id": "pin:lxapp:chat" })
+        );
+        assert!(context_menu.include_screen_position);
+    }
+
+    #[test]
     fn workspace_ellipsis_opens_its_context_menu_on_left_click() {
         let tabbar = tabbar_with_auxiliary_item(WindowsShellAuxiliaryItemLayout {
             id: "surface:chat".to_string(),
@@ -477,6 +519,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         let sidebar = RECT {
             left: 0,
@@ -512,6 +555,7 @@ mod tests {
             closable: true,
             icon_png: None,
             icon_path: String::new(),
+            tabs: None,
         });
         tabbar.show_auxiliary_add = true;
         let sidebar = RECT {

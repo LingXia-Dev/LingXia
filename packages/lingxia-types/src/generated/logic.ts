@@ -1995,15 +1995,16 @@ export type TabBarItemPatch = {
     redDot?: boolean;
 };
 
+/**
+ * Patch for `lx.tabBar.update()`. Items, badges, red dots, and
+ * visibility only — a `style` field is rejected. Colors stay in
+ * static `lxapp.json` `tabBar.style`. `backgroundColor` is
+ * mobile-only; the desktop sidebar follows the host
+ * `lingxia.yaml` theme.
+ */
 export type TabBarPatch = {
     visibility?: TabBarVisibilityPreference;
-    style?: TabBarStylePatch | null;
     items?: readonly TabBarItemPatch[];
-};
-
-export type TabBarStylePatch = {
-    foregroundColor?: string | null;
-    selectedForegroundColor?: string | null;
 };
 
 export type TabBarVisibilityPreference = 'auto' | 'visible' | 'hidden';
@@ -3000,7 +3001,18 @@ declare global {
 
 declare global {
   interface TabBarApi {
-    /** Patch this lxapp's tab bar; unset fields stay as they are. */
+    /**
+     * Patch this lxapp's tab bar; unset fields stay as they are.
+     * Items, badges, red dots, and visibility only. A `style` field is
+     * rejected — colors stay in static `lxapp.json` `tabBar.style`.
+     * `tabBar.style.backgroundColor` is mobile-only: it paints the bar on
+     * iOS / Android / Harmony. On macOS / Windows the sidebar follows the
+     * host `lingxia.yaml` theme (`windowBackgroundColor`) instead, so a
+     * `#FFFFFF` fill cannot paint a card on the sidebar. Other style keys
+     * (`foregroundColor`, `selectedForegroundColor`, `dividerColor`) may
+     * tint items while the desktop host is light; a dark host uses the
+     * shell theme for every key.
+     */
     update(patch: TabBarPatch): Promise<void>;
   }
 }

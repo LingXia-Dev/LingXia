@@ -222,7 +222,7 @@ class LxAppCapsuleMenu {
         typealias Action = (iconName: String?, iconPath: String?, title: String, token: String, isDestructive: Bool)
         let snapshot = LxAppMoreActionSnapshot.load(appId: appId)
         let customActions: [Action] = snapshot.items.enumerated().map { index, item in
-            (nil, item.iconPath, item.label, snapshot.token(at: index), false)
+            (nil, item.iconPath.isEmpty ? String?.none : item.iconPath, item.label, snapshot.token(at: index), false)
         }
         let systemActions: [Action] = [
             ("icon_clean_cache", nil, L10n.string("lx_capsule_clean_cache"), "clean_cache_restart", false),
@@ -471,7 +471,7 @@ class LxAppCapsuleMenu {
             action: #selector(MacCapsuleMenuTarget.cleanCacheClicked),
             keyEquivalent: ""
         )
-        cleanItem.image = NSImage(systemSymbolName: "trash", accessibilityDescription: nil)
+        cleanItem.image = LxIcon.menuSymbol("icon_clean_cache")
         cleanItem.target = target
         menu.addItem(cleanItem)
 
@@ -481,7 +481,7 @@ class LxAppCapsuleMenu {
             action: #selector(MacCapsuleMenuTarget.restartClicked),
             keyEquivalent: ""
         )
-        restartItem.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: nil)
+        restartItem.image = LxIcon.menuSymbol("icon_restart")
         restartItem.target = target
         menu.addItem(restartItem)
 
@@ -493,7 +493,7 @@ class LxAppCapsuleMenu {
                 action: #selector(MacCapsuleMenuTarget.uninstallClicked),
                 keyEquivalent: ""
             )
-            uninstallItem.image = NSImage(systemSymbolName: "xmark.bin", accessibilityDescription: nil)
+            uninstallItem.image = LxIcon.menuSymbol("icon_uninstall")
             uninstallItem.target = target
             menu.addItem(uninstallItem)
         }
@@ -507,7 +507,7 @@ class LxAppCapsuleMenu {
                     action: #selector(MacCapsuleMenuTarget.moreActionClicked(_:)),
                     keyEquivalent: ""
                 )
-                customItem.image = NSImage(contentsOfFile: item.iconPath)
+                customItem.image = LxIcon.menuImage(fromPath: item.iconPath)
                 customItem.representedObject = snapshot.token(at: index)
                 customItem.target = target
                 menu.addItem(customItem)
