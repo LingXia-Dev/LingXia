@@ -282,7 +282,8 @@ Low-frequency, and not part of building anything: `upgrade` moves
 the CLI, `lxdev` and the Runner to a newer release when one exists (the same
 replace the daily auto-update performs). **Inside a project** it then compares
 the project's LingXia line — npm `@lingxia/*`, native crate, Android
-`sdkVersion`, Apple cached SDK, Windows git/crate pins — with this CLI. The
+`sdkVersion`, Apple cached SDK, Windows git/crate pins, and each
+`lxapp.json` `minRuntime` — with this CLI. The
 safe comparison is **major.minor** (same-line patches are not a new version).
 If the project is on an older line, the pending pin/SDK changes are printed
 and you choose whether to apply them (default yes). `--yes` skips the prompt;
@@ -296,6 +297,7 @@ skill synchronization is unnecessary.
 Applying a newer line:
 
 - `@lingxia/*` npm ranges (lockfile refreshed via `npm install`)
+- each `lxapp.json` `minRuntime` raised to the new `M.m.0` (never lowered if you set it higher)
 - scaffolded LingXia crate requirements in `native/Cargo.toml`, followed by
   targeted `cargo update -p ...` lockfile refreshes
 - **Android:** gradle `lingxia.sdkVersion` fallback, then the Maven zip into

@@ -50,6 +50,13 @@ pub fn minor_tilde_range(version: &str) -> String {
     format!("~{major}.{minor}.0")
 }
 
+/// Project-line floor written into `lxapp.json` `minRuntime`.
+/// Patch is always `0`: a CLI patch must not raise the host gate.
+pub fn min_runtime_floor() -> String {
+    let (major, minor) = major_minor(env!("LINGXIA_RUST_CRATE_VERSION"));
+    format!("{major}.{minor}.0")
+}
+
 fn major_minor(version: &str) -> (&str, &str) {
     let mut parts = version.split('.');
     (
@@ -86,6 +93,12 @@ mod tests {
             "CLI reports rong {}, workspace declares {declared}",
             env!("LINGXIA_RONG_VERSION"),
         );
+    }
+
+    #[test]
+    fn min_runtime_floor_is_the_compat_line_patch_zero() {
+        let (major, minor) = major_minor(env!("LINGXIA_RUST_CRATE_VERSION"));
+        assert_eq!(min_runtime_floor(), format!("{major}.{minor}.0"));
     }
 
     #[test]

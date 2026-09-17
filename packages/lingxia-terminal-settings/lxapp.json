@@ -2,6 +2,7 @@
   "appId": "app.lingxia.terminal-settings",
   "name": "Terminal Settings",
   "version": "0.12.0",
+  "minRuntime": "0.17.0",
   "framework": "html",
   "logic": true,
   "pages": [

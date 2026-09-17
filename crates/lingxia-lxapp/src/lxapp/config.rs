@@ -67,6 +67,10 @@ pub(crate) struct LxAppConfig {
     #[serde(default)]
     pub version: String,
 
+    /// Lowest host SDK runtime that may open this package.
+    #[serde(default)]
+    pub minRuntime: Option<String>,
+
     /// Logic entry configuration.
     ///
     /// - omitted => defaults to `logic.js`
@@ -159,6 +163,20 @@ impl LxAppConfig {
             serde_json::Error::custom(r#""version" must be a semantic version (major.minor.patch)"#)
         })?;
         self.version = self.version.trim().to_string();
+
+        if let Some(min_runtime) = self.minRuntime.as_mut() {
+            let trimmed = min_runtime.trim();
+            if trimmed.is_empty() {
+                self.minRuntime = None;
+            } else {
+                Version::parse(trimmed).map_err(|_| {
+                    serde_json::Error::custom(
+                        r#""minRuntime" must be a semantic version (major.minor.patch)"#,
+                    )
+                })?;
+                *min_runtime = trimmed.to_string();
+            }
+        }
 
         if let Some(LxAppLogicEntry::Entry(entry)) = &mut self.logic {
             let trimmed = entry.trim();
@@ -415,6 +433,37 @@ mod tests {
             !err.contains("pages[].name, not path"),
             "path hint is CLI-only: {err}"
         );
+    }
+
+    #[test]
+    fn min_runtime_is_optional_and_must_be_semver_when_set() {
+        LxAppConfig::from_value(serde_json::json!({
+            "appId": "demo",
+            "appName": "Demo",
+            "version": "1.0.0",
+            "pages": [{"name":"home","path":"pages/home/index"}]
+        }))
+        .unwrap();
+
+        let config = LxAppConfig::from_value(serde_json::json!({
+            "appId": "demo",
+            "appName": "Demo",
+            "version": "1.0.0",
+            "minRuntime": "0.17.0",
+            "pages": [{"name":"home","path":"pages/home/index"}]
+        }))
+        .unwrap();
+        assert_eq!(config.minRuntime.as_deref(), Some("0.17.0"));
+
+        let err = LxAppConfig::from_value(serde_json::json!({
+            "appId": "demo",
+            "appName": "Demo",
+            "version": "1.0.0",
+            "minRuntime": "seventeen",
+            "pages": [{"name":"home","path":"pages/home/index"}]
+        }))
+        .unwrap_err();
+        assert!(err.to_string().contains("minRuntime"), "{err}");
     }
 
     #[test]

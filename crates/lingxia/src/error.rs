@@ -140,6 +140,9 @@ impl From<lingxia_update::UpdateError> for Error {
             lingxia_update::UpdateError::UnsupportedOperation(detail) => {
                 Self::InvalidRequest(detail)
             }
+            lingxia_update::UpdateError::RequiresRuntimeUpgrade(detail) => {
+                Self::InvalidRequest(detail)
+            }
             lingxia_update::UpdateError::ResourceNotFound(detail) => Self::NotFound(detail),
             lingxia_update::UpdateError::Io(detail)
             | lingxia_update::UpdateError::Runtime(detail) => Self::Internal(detail),

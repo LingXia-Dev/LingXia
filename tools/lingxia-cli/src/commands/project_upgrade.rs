@@ -477,6 +477,22 @@ fn plan(root: &Path) -> Result<Vec<Edit>> {
         }
     }
 
+    let floor = crate::versions::min_runtime_floor();
+    for lxapp_json in find_lxapp_jsons(root) {
+        let content = fs::read_to_string(&lxapp_json)
+            .with_context(|| format!("read {}", lxapp_json.display()))?;
+        let (new_content, changes) = rewrite_lxapp_min_runtime(&content, &floor);
+        if !changes.is_empty() {
+            edits.push(Edit {
+                path: lxapp_json,
+                new_content,
+                changes,
+                refresh_npm: false,
+                cargo_update: Vec::new(),
+            });
+        }
+    }
+
     Ok(edits)
 }
 
@@ -647,37 +663,88 @@ fn apply_sdk_steps(root: &Path, steps: &[SdkStep], sdk_version: &str) -> Vec<Str
     failures
 }
 
+fn find_lxapp_jsons(root: &Path) -> Vec<PathBuf> {
+    let mut found = Vec::new();
+    walk_named_files(root, "lxapp.json", 0, &mut found);
+    found.sort();
+    found
+}
+
+fn rewrite_lxapp_min_runtime(content: &str, floor: &str) -> (String, Vec<String>) {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(content) else {
+        return (content.to_string(), Vec::new());
+    };
+    let Some(object) = value.as_object_mut() else {
+        return (content.to_string(), Vec::new());
+    };
+    let current = object
+        .get("minRuntime")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .unwrap_or("")
+        .to_string();
+    if !should_raise_min_runtime(&current, floor) {
+        return (content.to_string(), Vec::new());
+    }
+    object.insert(
+        "minRuntime".to_string(),
+        serde_json::Value::String(floor.to_string()),
+    );
+    let change = if current.is_empty() {
+        format!("minRuntime: (missing) -> {floor}")
+    } else {
+        format!("minRuntime: {current} -> {floor}")
+    };
+    match serde_json::to_string_pretty(&value) {
+        Ok(mut pretty) => {
+            pretty.push('\n');
+            (pretty, vec![change])
+        }
+        Err(_) => (content.to_string(), Vec::new()),
+    }
+}
+
+fn should_raise_min_runtime(current: &str, floor: &str) -> bool {
+    if current.is_empty() {
+        return true;
+    }
+    match (major_minor(current), major_minor(floor)) {
+        (Some(current_line), Some(floor_line)) => current_line < floor_line,
+        _ => true,
+    }
+}
+
 /// All package.json files that belong to the project (root plus embedded
 /// lxapps in a host project), skipping build/output directories.
 fn find_package_jsons(root: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
-    walk(root, 0, &mut found);
+    walk_named_files(root, "package.json", 0, &mut found);
     found.sort();
-    return found;
+    found
+}
 
-    fn walk(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
-        if depth > 3 {
-            return;
+fn walk_named_files(dir: &Path, file_name: &str, depth: usize, found: &mut Vec<PathBuf>) {
+    if depth > 3 {
+        return;
+    }
+    let candidate = dir.join(file_name);
+    if candidate.is_file() {
+        found.push(candidate);
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
         }
-        let candidate = dir.join("package.json");
-        if candidate.is_file() {
-            found.push(candidate);
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if SKIP_DIRS.contains(&name.as_ref()) {
+            continue;
         }
-        let Ok(entries) = fs::read_dir(dir) else {
-            return;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if !path.is_dir() {
-                continue;
-            }
-            let name = entry.file_name();
-            let name = name.to_string_lossy();
-            if SKIP_DIRS.contains(&name.as_ref()) {
-                continue;
-            }
-            walk(&path, depth + 1, found);
-        }
+        walk_named_files(&path, file_name, depth + 1, found);
     }
 }
 
@@ -1521,5 +1588,23 @@ mod tests {
         .unwrap();
         assert_eq!(pinned_windows_sdk_version(root).as_deref(), Some("0.11.2"));
         assert_eq!(project_compat_line(root), Some((0, 11)));
+    }
+
+    #[test]
+    fn upgrade_inserts_or_raises_min_runtime_but_never_lowers_it() {
+        let floor = crate::versions::min_runtime_floor();
+        let (missing, changes) = rewrite_lxapp_min_runtime("{}", &floor);
+        assert_eq!(changes.len(), 1);
+        assert!(missing.contains(&format!("\"minRuntime\": \"{floor}\"")));
+
+        let (raised, changes) =
+            rewrite_lxapp_min_runtime(r#"{ "appId": "demo", "minRuntime": "0.1.0" }"#, &floor);
+        assert_eq!(changes, vec![format!("minRuntime: 0.1.0 -> {floor}")]);
+        assert!(raised.contains(&format!("\"minRuntime\": \"{floor}\"")));
+
+        let source = r#"{ "appId": "demo", "minRuntime": "9.9.0" }"#;
+        let (kept, changes) = rewrite_lxapp_min_runtime(source, "0.17.0");
+        assert!(changes.is_empty());
+        assert_eq!(kept, source);
     }
 }

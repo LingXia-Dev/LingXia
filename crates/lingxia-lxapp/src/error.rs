@@ -135,6 +135,11 @@ impl From<lingxia_update::UpdateError> for LxAppError {
             lingxia_update::UpdateError::UnsupportedOperation(detail) => {
                 LxAppError::UnsupportedOperation(detail)
             }
+            lingxia_update::UpdateError::RequiresRuntimeUpgrade(detail) => LxAppError::RongJSHost {
+                code: "6002".to_string(),
+                message: detail,
+                data: None,
+            },
             lingxia_update::UpdateError::ResourceNotFound(detail) => {
                 LxAppError::ResourceNotFound(detail)
             }

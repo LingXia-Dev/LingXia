@@ -17,6 +17,9 @@ pub(super) fn lxapp_error_to_update_error(error: LxAppError) -> UpdateError {
         | LxAppError::PluginNotConfigured(detail)
         | LxAppError::PluginDownloadFailed(detail)
         | LxAppError::InvalidJsonFile(detail) => UpdateError::runtime(detail),
+        LxAppError::RongJSHost { code, message, .. } if code == "6002" => {
+            UpdateError::requires_runtime_upgrade(message)
+        }
         LxAppError::RongJSHost { code, message, .. } => {
             UpdateError::runtime(format!("{code}: {message}"))
         }
