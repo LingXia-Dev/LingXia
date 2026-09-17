@@ -192,6 +192,77 @@ spec('subscribe to and release the display language listener', {
   expect(result.distinct).toBeTruthy();
 });
 
+spec('request permission and replace local notifications by id', {
+  id: 'HOSTAPP-NOTIFICATION-001',
+  covers: [
+    'lx.app.notification',
+    'lx.app.notification.requestPermission',
+    'lx.app.notification.show',
+    'lx.app.notification.cancel',
+    'lx.app.notification.cancelAll',
+  ],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
+
+  const offered = await app.eval({
+    script: `return !!(lx.app.notification && typeof lx.app.notification.show === 'function')`,
+  }) as boolean;
+  expect(offered).toBe(true);
+  const supported = await app.eval({ script: `return !!lx.supports({ capability: 'notifications' })` });
+  expect(supported).toBe(true);
+
+  const result = await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const permission = await lx.app.notification.requestPermission();
+      if (permission !== 'granted' && permission !== 'denied' && permission !== 'default') {
+        return { ok: false, reason: 'permission:' + permission };
+      }
+      const id = await lx.app.notification.show({
+        id: 'automation-local',
+        title: 'LingXia automation',
+        body: 'frontmost show resolves without a banner',
+        silent: true,
+      });
+      await lx.app.notification.cancel(id);
+      let scheduled = null;
+      if (permission === 'granted') {
+        scheduled = await lx.app.notification.show({
+          id: 'automation-local-later',
+          title: 'LingXia automation',
+          body: 'scheduled then cancelled',
+          schedule: { delayMs: 60_000 },
+          silent: true,
+        });
+        await lx.app.notification.cancel(scheduled);
+      }
+      await lx.app.notification.cancelAll();
+      let rejected = false;
+      try {
+        await lx.app.notification.show({ title: 'bad', applink: 'http://example.com/x' });
+      } catch {
+        rejected = true;
+      }
+      return { ok: true, permission, id, scheduled, rejected };
+    `,
+  }) as {
+    ok: boolean;
+    permission?: string;
+    id?: string;
+    scheduled?: string;
+    rejected?: boolean;
+    reason?: string;
+  };
+
+  expect(result.ok).toBeTruthy();
+  expect(result.id).toBe('automation-local');
+  if (result.permission === 'granted') {
+    expect(result.scheduled).toBe('automation-local-later');
+  }
+  expect(result.rejected).toBeTruthy();
+});
+
 autostartSpec('report autostart state and accept an idempotent write', {
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.app.autostart', 'lx.app.autostart.isEnabled', 'lx.app.autostart.setEnabled'],
