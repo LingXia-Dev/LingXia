@@ -31,15 +31,8 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
                 .collect::<std::collections::HashMap<_, _>>();
 
             rewrite_manifest_pages(value.get_mut("pages"), &page_map)?;
-
-            // Stamp the @lingxia line compiled into the page bundles so a
-            // loading runtime can check compatibility.
-            if let Some(sdk_version) =
-                crate::commands::project_upgrade::installed_lingxia_npm_version(&project.root)
-                && let Some(object) = value.as_object_mut()
-            {
-                object.insert("sdkVersion".to_string(), Value::String(sdk_version));
-            }
+            let min_runtime = require_min_runtime(&value)?;
+            reject_npm_ahead_of_min_runtime(&project.root, &min_runtime)?;
 
             fs::write(
                 project.output_dir.join("lxapp.json"),
@@ -52,6 +45,48 @@ pub(super) fn write_root_manifest(project: &Project) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn require_min_runtime(value: &Value) -> Result<String> {
+    let raw = value
+        .get("minRuntime")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if raw.is_empty() {
+        bail!(
+            "lxapp.json minRuntime is required (major.minor.patch). \
+             Raise it with `lingxia upgrade` or set it explicitly; \
+             the CLI version is never stamped."
+        );
+    }
+    let parts: Vec<_> = raw.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|part| part.parse::<u32>().is_err()) {
+        bail!("lxapp.json minRuntime must be a semantic version (major.minor.patch)");
+    }
+    Ok(raw.to_string())
+}
+
+fn reject_npm_ahead_of_min_runtime(project_root: &Path, min_runtime: &str) -> Result<()> {
+    let Some(npm) = crate::commands::project_upgrade::installed_lingxia_npm_version(project_root)
+    else {
+        return Ok(());
+    };
+    if version_line(&npm) > version_line(min_runtime) {
+        bail!(
+            "installed @lingxia/* {npm} is newer than lxapp.json minRuntime {min_runtime}; \
+             run `lingxia upgrade` or raise minRuntime"
+        );
+    }
+    Ok(())
+}
+
+fn version_line(version: &str) -> (u32, u32) {
+    let mut parts = version.split('.');
+    (
+        parts.next().and_then(|part| part.parse().ok()).unwrap_or(0),
+        parts.next().and_then(|part| part.parse().ok()).unwrap_or(0),
+    )
 }
 
 fn rewrite_manifest_pages(
@@ -454,6 +489,7 @@ mod tests {
   "appId": "demo",
   "appName": "Demo",
   "version": "1.0.0",
+  "minRuntime": "0.17.0",
   "pages": [
     { "name": "home", "path": "pages/home/index" },
     { "name": "settings", "path": "pages/settings/index" }
@@ -486,12 +522,12 @@ mod tests {
             Some("home")
         );
         assert!(manifest["tabBar"]["items"][0].get("pagePath").is_none());
-        // No node_modules in this fixture: nothing to stamp.
+        assert_eq!(manifest["minRuntime"].as_str(), Some("0.17.0"));
         assert!(manifest.get("sdkVersion").is_none());
     }
 
     #[test]
-    fn write_root_manifest_stamps_the_installed_lingxia_line() {
+    fn write_root_manifest_rejects_npm_newer_than_min_runtime() {
         let temp = tempdir().unwrap();
         let mut project = make_project(temp.path());
         project.framework = ProjectFramework::React;
@@ -499,22 +535,20 @@ mod tests {
         write_file(
             temp.path(),
             "lxapp.json",
-            r#"{ "appId": "demo", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
+            r#"{ "appId": "demo", "minRuntime": "0.17.0", "pages": [ { "name": "home", "path": "pages/home/index" } ] }"#,
         );
         write_file(
             temp.path(),
             "node_modules/@lingxia/page-runtime/package.json",
-            r#"{ "name": "@lingxia/page-runtime", "version": "0.12.3" }"#,
+            r#"{ "name": "@lingxia/page-runtime", "version": "0.18.1" }"#,
         );
         fs::create_dir_all(&project.output_dir).unwrap();
 
-        write_root_manifest(&project).unwrap();
-
-        let manifest: Value = serde_json::from_str(
-            &fs::read_to_string(project.output_dir.join("lxapp.json")).unwrap(),
-        )
-        .unwrap();
-        assert_eq!(manifest["sdkVersion"].as_str(), Some("0.12.3"));
+        let err = write_root_manifest(&project).unwrap_err();
+        assert!(
+            err.to_string().contains("newer than lxapp.json minRuntime"),
+            "{err}"
+        );
     }
 
     #[test]

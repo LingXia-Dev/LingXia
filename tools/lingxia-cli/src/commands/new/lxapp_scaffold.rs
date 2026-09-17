@@ -135,6 +135,10 @@ pub(super) fn build_framework_vars(
         "LINGXIA_FRAMEWORK_RANGE".to_string(),
         crate::versions::minor_tilde_range(lingxia_bridge_version),
     );
+    vars.insert(
+        "MIN_RUNTIME".to_string(),
+        crate::versions::min_runtime_floor(),
+    );
 
     let (
         fw_display,
@@ -415,7 +419,7 @@ mod tests {
         ).unwrap();
         fs::write(
             lxapp.join("lxapp.json"),
-            r#"{"framework":"{{FRAMEWORK}}","pages":[{"name":"home","path":"pages/home/index.{{PAGE_EXT}}"}]}"#,
+            r#"{"framework":"{{FRAMEWORK}}","minRuntime":"{{MIN_RUNTIME}}","pages":[{"name":"home","path":"pages/home/index.{{PAGE_EXT}}"}]}"#,
         )
         .unwrap();
         fs::write(
@@ -652,6 +656,7 @@ mod tests {
         assert_eq!(vars["LINGXIA_BRIDGE_VERSION"], "1.2.3");
         // One range for framework + types; npm install takes the latest patch.
         assert_eq!(vars["LINGXIA_FRAMEWORK_RANGE"], "~1.2.0");
+        assert_eq!(vars["MIN_RUNTIME"], crate::versions::min_runtime_floor());
     }
 
     // --- scaffold output: React ---
@@ -790,6 +795,13 @@ mod tests {
         assert!(
             !s.contains("\"security\""),
             "new lxapps omit security until they declare a host capability"
+        );
+        assert!(
+            s.contains(&format!(
+                "\"minRuntime\":\"{}\"",
+                crate::versions::min_runtime_floor()
+            )),
+            "new lxapps declare the project-line minRuntime: {s}"
         );
     }
 

@@ -370,6 +370,9 @@ fn js_error_from_update_error(error: UpdateError) -> rong::RongJSError {
         UpdateError::UnsupportedOperation(detail) => {
             js_error_from_business_code_with_detail(6000, detail)
         }
+        UpdateError::RequiresRuntimeUpgrade(detail) => {
+            js_error_from_business_code_with_detail(6002, detail)
+        }
         UpdateError::ResourceNotFound(detail) => js_resource_not_found_error(detail),
         UpdateError::Io(detail) | UpdateError::Runtime(detail) => js_internal_error(detail),
     }

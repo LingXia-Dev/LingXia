@@ -147,6 +147,13 @@ Opening an lxapp takes `channel` (not `envVersion`). App Links use
 `channel=` (not `envVersion=`). Omit it to use `default_channel()` from the
 host env.
 
+An lxapp package's host floor is `lxapp.json` `minRuntime` (`M.m.0` of the
+project line). `lingxia new` writes it; `lingxia upgrade` raises it; publish
+copies it into `requiredRuntimeVersion` / `minRuntimeVersion`. The CLI
+version is never stamped. Opening an already-installed package compares that
+floor to this host's `SDK_RUNTIME_VERSION` and maps a miss to business code
+6002.
+
 Host self-update does not send a channel. Lxapp update still does. The signed
 host-update manifest uses an empty channel; lxapp/plugin manifests bind their
 requested channel. Publishing requires a key in `prod`, including `draft`.

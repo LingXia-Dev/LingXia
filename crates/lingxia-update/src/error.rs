@@ -6,6 +6,8 @@ pub enum UpdateError {
     InvalidParameter(String),
     #[error("unsupported operation: {0}")]
     UnsupportedOperation(String),
+    #[error("{0}")]
+    RequiresRuntimeUpgrade(String),
     #[error("resource not found: {0}")]
     ResourceNotFound(String),
     #[error("I/O error: {0}")]
@@ -21,6 +23,10 @@ impl UpdateError {
 
     pub fn unsupported(detail: impl Into<String>) -> Self {
         Self::UnsupportedOperation(detail.into())
+    }
+
+    pub fn requires_runtime_upgrade(detail: impl Into<String>) -> Self {
+        Self::RequiresRuntimeUpgrade(detail.into())
     }
 
     pub fn not_found(detail: impl Into<String>) -> Self {

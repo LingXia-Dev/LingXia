@@ -30,6 +30,7 @@ struct PackageMeta {
     version: String,
     env: AppEnv,
     channel: Option<String>,
+    min_runtime: String,
 }
 
 struct ResolvedPackage {
@@ -103,6 +104,11 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .with_context(|| format!("Failed to read package: {}", package_path.display()))?;
     let sha256 = lingxia_update::archive_sha256_hex(&file_data);
     println!("   SHA256:  {sha256}");
+    if meta.min_runtime.is_empty() {
+        println!("   minRuntime: none");
+    } else {
+        println!("   minRuntime: {}", meta.min_runtime);
+    }
 
     let upload_url = format!("{lingxia_server}/api/v1/package/upload");
     println!("   Upload → {upload_url}");
@@ -128,7 +134,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             version: &meta.version,
             sha256: &sha256,
             size: file_data.len() as u64,
-            required_runtime_version: "",
+            required_runtime_version: &meta.min_runtime,
         },
     )?;
 
@@ -143,6 +149,9 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     }
     if meta.target == "app" {
         fields.push(("platform", platform));
+    }
+    if !meta.min_runtime.is_empty() {
+        fields.push(("minRuntimeVersion", meta.min_runtime.clone()));
     }
     fields.extend(
         extra
@@ -371,7 +380,7 @@ fn resolve_meta(
 
     match target.as_str() {
         "lxapp" => {
-            let (id, version) = read_lxapp_json(cwd)?;
+            let (id, version, min_runtime) = read_lxapp_json(cwd)?;
             let channel = match channel_arg {
                 Some(value) => normalize_channel(value)?,
                 None => env.default_channel().to_string(),
@@ -382,6 +391,7 @@ fn resolve_meta(
                 version,
                 env,
                 channel: Some(channel),
+                min_runtime,
             })
         }
         "lxplugin" => {
@@ -396,6 +406,7 @@ fn resolve_meta(
                 version,
                 env,
                 channel: Some(channel),
+                min_runtime: String::new(),
             })
         }
         "app" => {
@@ -412,6 +423,7 @@ fn resolve_meta(
                 version,
                 env,
                 channel: None,
+                min_runtime: String::new(),
             })
         }
         _ => bail!("Unknown target: {target}"),
@@ -568,7 +580,7 @@ fn read_windows_zip_app_json(path: &Path) -> Result<Vec<u8>> {
     )
 }
 
-fn read_lxapp_json(cwd: &Path) -> Result<(String, String)> {
+fn read_lxapp_json(cwd: &Path) -> Result<(String, String, String)> {
     let path = cwd.join("lxapp.json");
     if !path.exists() {
         bail!("lxapp.json not found in {}", cwd.display());
@@ -577,7 +589,19 @@ fn read_lxapp_json(cwd: &Path) -> Result<(String, String)> {
         serde_json::from_str(&fs::read_to_string(&path)?).context("Failed to parse lxapp.json")?;
     let id = non_empty_str(&val["appId"], "appId in lxapp.json")?;
     let version = non_empty_str(&val["version"], "version in lxapp.json")?;
-    Ok((id, version))
+    let min_runtime = val
+        .get("minRuntime")
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            anyhow::anyhow!(
+                "lxapp.json minRuntime is required; raise it with `lingxia upgrade` \
+                 or set it explicitly. The CLI version is never stamped."
+            )
+        })?
+        .to_string();
+    Ok((id, version, min_runtime))
 }
 
 fn read_lxplugin_json(cwd: &Path) -> Result<(String, String)> {
@@ -1274,7 +1298,7 @@ app:
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("lxapp.json"),
-            br#"{"appId":"demo","version":"1.0.0","pages":["index.html"]}"#,
+            br#"{"appId":"demo","version":"1.0.0","minRuntime":"0.17.0","pages":["index.html"]}"#,
         )
         .unwrap();
 
@@ -1283,6 +1307,7 @@ app:
         assert_eq!(meta.target, "lxapp");
         assert_eq!(meta.env, AppEnv::Dev);
         assert_eq!(meta.channel.as_deref(), Some("draft"));
+        assert_eq!(meta.min_runtime, "0.17.0");
     }
 
     #[test]
@@ -1290,7 +1315,7 @@ app:
         let temp = TempDir::new().unwrap();
         fs::write(
             temp.path().join("lxapp.json"),
-            br#"{"appId":"demo","version":"1.0.0","pages":["index.html"]}"#,
+            br#"{"appId":"demo","version":"1.0.0","minRuntime":"0.17.0","pages":["index.html"]}"#,
         )
         .unwrap();
 
