@@ -10,7 +10,7 @@ import UserNotifications
 /// Local notifications for `lx.app.notification`. Does not request permission
 /// on install — that waits for `requestPermission` / first `show`.
 final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
-    static let shared = MacLocalNotification()
+    nonisolated(unsafe) static let shared = MacLocalNotification()
     private static let lock = NSLock()
     nonisolated(unsafe) private static var lastError = ""
     static let localMarker = "lx.local"

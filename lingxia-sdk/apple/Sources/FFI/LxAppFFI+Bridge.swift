@@ -566,25 +566,25 @@ extension LxApp {
     }
 
     nonisolated static func notificationShow(
-        id: String,
-        title: String,
-        body: String,
-        applink: String,
-        deliverAtMs: Int64,
+        id: RustStr,
+        title: RustStr,
+        body: RustStr,
+        applink: RustStr,
+        deliver_at_ms: Int64,
         silent: Bool
     ) -> String {
         MacLocalNotification.show(
-            id: id,
-            title: title,
-            body: body,
-            applink: applink,
-            deliverAtMs: deliverAtMs,
+            id: id.toString(),
+            title: title.toString(),
+            body: body.toString(),
+            applink: applink.toString(),
+            deliverAtMs: deliver_at_ms,
             silent: silent
         )
     }
 
-    nonisolated static func notificationCancel(id: String) -> Bool {
-        MacLocalNotification.cancel(id: id)
+    nonisolated static func notificationCancel(id: RustStr) -> Bool {
+        MacLocalNotification.cancel(id: id.toString())
     }
 
     nonisolated static func notificationCancelAll() -> Bool {
