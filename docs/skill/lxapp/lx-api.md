@@ -132,7 +132,7 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`, `lx.app.control`, `lx.app.cache`. Presence and
+`lx.terminal`, `lx.app.autostart`, `lx.app.notification`, `lx.app.control`, `lx.app.cache`. Presence and
 `lx.supports()` are answered from one registry, so `('terminal' in lx)` and
 `lx.supports({ capability: 'terminal' })` can never disagree. `lx.app.cache`
 uses the same gate as `lx.app.control`.

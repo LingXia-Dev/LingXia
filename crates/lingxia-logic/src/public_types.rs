@@ -168,6 +168,42 @@ rong::js_api! {
         /// are available only to the native-assigned Control app; other lxapps receive
         /// a permission error.
         ///
+        /// Local notifications as a Control-app resume affordance.
+        ///
+        /// Absent unless the host declared `capabilities.notifications` and the
+        /// platform implements the local API. Presence and
+        /// `lx.supports({ capability: 'notifications' })` always agree.
+        /// Declaring the capability never prompts; permission runs on
+        /// `requestPermission()` or the first `show()`.
+        ///
+        /// Control app only. Guest lxapps receive a permission error.
+        ///
+        type NotificationApi = r###"{
+    /**
+     * Ask for notification permission. Resolves `'granted'` / `'denied'`, or
+     * `'default'` on Apple hosts before the user has been asked. Windows has
+     * no prompt: `'granted'`, or `'denied'` when toasts are off in Settings.
+     */
+    requestPermission(): Promise<'granted' | 'denied' | 'default'>;
+    /**
+     * Post or replace a local notification. The same `id` updates in place.
+     * `applink` is validated like App Link delivery (`https://`, configured
+     * host) and is opened with `scene === 8003` on tap. Omit `schedule`, or
+     * pass a time that is not in the future, to show now. No OS banner while
+     * the product window is already frontmost (immediate `show`).
+     */
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        applink?: string;
+        schedule?: { at: number } | { delayMs: number };
+        silent?: boolean;
+    }): Promise<string>;
+    cancel(id: string): Promise<void>;
+    cancelAll(): Promise<void>;
+}"###;
+
         type AutostartApi = r###"{
     /**
      * Whether the app is currently registered to launch at startup, read from

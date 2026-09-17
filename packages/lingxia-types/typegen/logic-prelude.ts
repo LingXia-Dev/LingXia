@@ -190,6 +190,12 @@ declare global {
      */
     autostart?: AutostartApi;
 
+    /**
+     * Local notifications. Absent where the host cannot post them; its presence
+     * and `lx.supports({ capability: 'notifications' })` always agree.
+     */
+    notification?: NotificationApi;
+
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 

@@ -9,6 +9,7 @@ mod appearance;
 mod autostart;
 mod cache;
 mod display_language;
+mod notification;
 mod screenshot;
 mod update;
 
@@ -116,6 +117,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     init_control_namespace(ctx, &app)?;
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     autostart::init(ctx, &app)?;
+    notification::init(ctx, &app)?;
     cache::init(ctx, &app)?;
     screenshot::init(ctx)?;
     update::init(ctx)?;

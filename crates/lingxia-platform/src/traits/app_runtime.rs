@@ -18,6 +18,17 @@ use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
+/// One local notification to post or replace.
+#[derive(Debug, Clone)]
+pub struct LocalNotificationShow {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub applink: Option<String>,
+    pub deliver_at_ms: Option<u64>,
+    pub silent: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationType {
     None = 0,
@@ -230,6 +241,27 @@ pub trait AppRuntime:
     /// Register or unregister the app as a per-user startup item.
     fn autostart_set_enabled(&self, _enabled: bool) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported("autostart".to_string()))
+    }
+
+    /// OS permission for local notifications: `"granted"`, `"denied"`, or
+    /// `"default"` (not yet asked; macOS only).
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    /// Upsert a local notification. `id` is the replace key. `deliver_at_ms`
+    /// is epoch milliseconds; `None` or a time that is not in the future
+    /// means now. Returns the id that was used.
+    fn notification_show(&self, _request: &LocalNotificationShow) -> Result<String, PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    fn notification_cancel(&self, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
     }
 
     /// Replace the tray dropdown menu. `items_json` is a JSON array of

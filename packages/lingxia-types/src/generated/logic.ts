@@ -193,6 +193,12 @@ declare global {
      */
     autostart?: AutostartApi;
 
+    /**
+     * Local notifications. Absent where the host cannot post them; its presence
+     * and `lx.supports({ capability: 'notifications' })` always agree.
+     */
+    notification?: NotificationApi;
+
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 
@@ -466,6 +472,20 @@ export type AppearancePreference = 'auto' | 'light' | 'dark';
  * are available only to the native-assigned Control app; other lxapps receive
  * a permission error.
  */
+export type NotificationApi = {
+    requestPermission(): Promise<'granted' | 'denied' | 'default'>;
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        applink?: string;
+        schedule?: { at: number } | { delayMs: number };
+        silent?: boolean;
+    }): Promise<string>;
+    cancel(id: string): Promise<void>;
+    cancelAll(): Promise<void>;
+};
+
 export type AutostartApi = {
     /**
      * Whether the app is currently registered to launch at startup, read from
