@@ -150,9 +150,11 @@ host env.
 An lxapp package's host floor is `lxapp.json` `minRuntime` (`M.m.0` of the
 project line). `lingxia new` writes it; `lingxia upgrade` raises it; publish
 copies it into `requiredRuntimeVersion` / `minRuntimeVersion`. The CLI
-version is never stamped. Opening an already-installed package compares that
-floor to this host's `SDK_RUNTIME_VERSION` and maps a miss to business code
-6002.
+version is never stamped. The update path gates on the signed
+`requiredRuntimeVersion` (the unsigned `minRuntimeVersion` only counts on a
+dev build with no keys); opening an installed package gates again on its own
+`lxapp.json`. Both refuse with business code 6002, and a package with no
+floor always opens.
 
 Host self-update does not send a channel. Lxapp update still does. The signed
 host-update manifest uses an empty channel; lxapp/plugin manifests bind their
