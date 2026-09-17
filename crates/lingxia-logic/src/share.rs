@@ -297,7 +297,9 @@ fn resolve_share_files(lxapp: &LxApp, files: Vec<String>) -> JSResult<Vec<String
         .collect()
 }
 
-fn is_platform_file_reference(path: &str) -> bool {
+/// `content://`, `datashare://`, `file://` — a reference some platform picker
+/// handed back rather than a managed `lx://` path. Shared with `lx.clipboard`.
+pub(crate) fn is_platform_file_reference(path: &str) -> bool {
     let Some((scheme, _)) = path.split_once(':') else {
         return false;
     };

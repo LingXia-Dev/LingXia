@@ -10,6 +10,8 @@ import type {
   DownloadTask,
   DownloadsDownloadOptions,
   DownloadsDownloadResult,
+  ClipboardTextResult,
+  ClipboardType,
   FileSystemApi,
   HostAppApi,
   HostOs,
@@ -67,6 +69,9 @@ const bytesResult: Promise<Uint8Array> = managedFile.bytes();
 const binaryResult: Promise<ArrayBuffer> = managedFile.arrayBuffer();
 const jsonResult: Promise<unknown> = managedFile.json();
 const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
+const clipboardWrite: Promise<void> = lx.clipboard.writeText("copied");
+const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
+const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
 const cacheSize: Promise<number> | undefined = lx.app.cache?.size();
 // @ts-expect-error cache is Control-only; guests do not have the member
 lx.app.cache.size();
@@ -103,6 +108,9 @@ export type GeneratedQualityGate = [
   typeof textResult,
   typeof binaryResult,
   typeof screenshotResult,
+  typeof clipboardWrite,
+  typeof clipboardText,
+  typeof clipboardTypes,
   typeof cacheSize,
   typeof hostOs,
   typeof deviceOs,

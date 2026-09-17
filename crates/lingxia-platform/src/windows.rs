@@ -3,6 +3,7 @@
 //! Windows platform implementation for LingXia.
 
 mod app;
+mod clipboard;
 mod device;
 mod file;
 mod keyboard;

@@ -108,3 +108,26 @@ spec('answer a missing file with not-found, never an internal error', {
   });
   expect(exists).toEqual([false, false]);
 });
+
+spec('reject malformed clipboard arguments without touching the OS clipboard', {
+  id: 'ARGS-CLIPBOARD-001',
+  covers: ['lx.clipboard.write', 'lx.clipboard.writeText', 'lx.clipboard.read'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'ARGS-CLIPBOARD-001');
+
+  await assertRejections(t, app, [
+    { label: 'write not object', call: `lx.clipboard.write('text')`, code: 'E_INVALID_ARG' },
+    { label: 'write unknown type', call: `lx.clipboard.write({ type: 'html', text: 'x' })`, code: 'E_INVALID_ARG' },
+    { label: 'write text missing', call: `lx.clipboard.write({ type: 'text' })`, code: 'E_INVALID_ARG' },
+    { label: 'write image empty path', call: `lx.clipboard.write({ type: 'image', filePath: '' })`, code: 'E_INVALID_ARG' },
+    { label: 'write image absolute', call: `lx.clipboard.write({ type: 'image', filePath: '/tmp/a.png' })`, code: 'E_INVALID_ARG' },
+    { label: 'read unknown type', call: `lx.clipboard.read({ type: 'html' })`, code: 'E_INVALID_ARG' },
+    { label: 'read not object', call: `lx.clipboard.read('text')`, code: 'E_INVALID_ARG' },
+    {
+      label: 'writeText oversized',
+      call: `lx.clipboard.writeText('x'.repeat(1024 * 1024 + 1))`,
+      code: 'E_INVALID_ARG',
+    },
+  ]);
+});

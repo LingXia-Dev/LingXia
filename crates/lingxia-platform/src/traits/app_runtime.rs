@@ -5,6 +5,7 @@ use crate::AssetFileEntry;
 use crate::error::PlatformError;
 
 use super::PlatformFuture;
+use super::clipboard::ClipboardService;
 use super::device::{Device, DeviceHardware};
 use super::file::FileService;
 use super::location::Location;
@@ -99,6 +100,7 @@ pub trait AppRuntime:
     + MediaRuntime
     + Network
     + SurfacePresenter
+    + ClipboardService
     + Device
     + DeviceHardware
     + SecureStore

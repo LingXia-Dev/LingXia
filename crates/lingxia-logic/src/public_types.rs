@@ -580,6 +580,68 @@ rong::js_api! {
     isOriginal: boolean;
 }"###;
 
+        /// Representations the runtime can round-trip. Closed union.
+        type ClipboardType = r###"'text' | 'image'"###;
+
+        /// One clipboard write. Every host accepts both: `image` takes a PNG or
+        /// JPEG file and re-encodes it as the platform's native image format.
+        type ClipboardWriteItem = r###"{
+    type: 'text';
+    /** Unicode text. Rejects `E_INVALID_ARG` when larger than 1 MiB. */
+    text: string;
+} | {
+    type: 'image';
+    /**
+     * Managed `lx://` path, or a picker result from `lx.chooseFile` /
+     * `lx.chooseMedia` — the same file rules as `lx.share`. Rejects
+     * `E_INVALID_ARG` when the file is not a decodable image.
+     */
+    filePath: string;
+}"###;
+
+        type ClipboardReadOptions = r###"{
+    /** Omit to receive every representation the host can surface. */
+    type?: ClipboardType;
+}"###;
+
+        /// Result of `lx.clipboard.readText`. Branch on `canceled`, then on
+        /// `empty` — the same shape `read` uses. A copied empty string is
+        /// `{ empty: false, text: '' }`; an image-only clipboard is
+        /// `{ empty: true }`.
+        type ClipboardTextResult = r###"{
+    canceled: false;
+    empty: true;
+} | {
+    canceled: false;
+    empty: false;
+    text: string;
+} | CanceledResult"###;
+
+        /// Result of `lx.clipboard.read`. Omit `type` to receive every
+        /// representation this host can surface. A requested type that is
+        /// absent is `{ empty: true }`, not an error.
+        type ClipboardReadResult = r###"{
+    canceled: false;
+    empty: true;
+} | {
+    canceled: false;
+    empty: false;
+    items: ClipboardItem[];
+} | CanceledResult"###;
+
+        type ClipboardItem = r###"{
+    type: 'text';
+    text: string;
+} | {
+    type: 'image';
+    /**
+     * Temporary `lx://temp` PNG, session-scoped and auto-cleaned. Move or
+     * copy it with `lx.fs` if you need to keep it.
+     */
+    filePath: string;
+}"###;
+
+
         type CompressImageOptions = r###"{
     path: string;
     quality?: number;
@@ -2001,6 +2063,7 @@ true
 
         // Runtime namespaces are emitted as global interfaces. Re-export their
         // public module types without maintaining a second declaration.
+        type ClipboardApi = "globalThis.ClipboardApi";
         type FileSystemApi = "globalThis.FileSystemApi";
         type HostAppApi = "globalThis.HostAppApi";
         type LxEnv = "globalThis.LxEnv";

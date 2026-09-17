@@ -31,6 +31,7 @@ err_code:
   3005: "Storage permission denied"
   3006: "Notification permission denied"
   3007: "Bluetooth permission denied"
+  3008: "Clipboard permission denied"
 
   # 4xxx - Service/System errors
   4000: "Service unavailable"

@@ -127,6 +127,7 @@
       <!-- Navigation - Dropdown -->
       <div class="bg-surface rounded-lg shadow-sm">
         <div
+          data-testid="api-navigation-section"
           class="px-4 py-4 flex items-center justify-between cursor-pointer hover:bg-surface-50"
           @click="toggleSection({ section: 'navigation' })"
         >
@@ -144,20 +145,6 @@
             @click="openDeepSeek"
           >
             <div class="text-sm text-gray-700">Open DeepSeek</div>
-            <div class="w-4 h-4 text-gray-400">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                <path d="M9 18l6-6-6-6"/>
-              </svg>
-            </div>
-          </div>
-          <div
-            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
-            @click="navigateToSharePage"
-          >
-            <div>
-              <div class="text-sm text-gray-700">Share</div>
-              <div class="text-xs text-gray-400">Text, page, image, and file sharing</div>
-            </div>
             <div class="w-4 h-4 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M9 18l6-6-6-6"/>
@@ -487,6 +474,35 @@
               </svg>
             </div>
           </div>
+          <div
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToSharePage"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Share</div>
+              <div class="text-xs text-gray-400">Text, page, image, and file sharing</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
+            data-testid="api-clipboard"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToClipboardPage"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Clipboard</div>
+              <div class="text-xs text-gray-400">lx.clipboard text and image</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -664,6 +680,7 @@ type PageActions = {
   navigateToTestMiniApp(): void;
   openDeepSeek(): void;
   navigateToSharePage(): void;
+  navigateToClipboardPage(): void;
   exitApp(): void;
   navigateToPullDownRefreshPage(): void;
 };
@@ -688,6 +705,7 @@ const {
   navigateToTestMiniApp,
   openDeepSeek,
   navigateToSharePage,
+  navigateToClipboardPage,
   exitApp,
   navigateToPullDownRefreshPage,
 } = actions;

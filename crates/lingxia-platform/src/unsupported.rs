@@ -8,6 +8,9 @@ use crate::error::PlatformError;
 use crate::traits::app_runtime::{
     AnimationType, AppRuntime, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
 };
+use crate::traits::clipboard::{
+    ClipboardContents, ClipboardReadRequest, ClipboardService, ClipboardTypes, ClipboardWrite,
+};
 use crate::traits::device::{Device, DeviceHardware};
 use crate::traits::file::{
     ChooseDirectoryRequest, ChooseFileRequest, FileDialogResult, FileService, OpenFileRequest,
@@ -234,6 +237,32 @@ impl MediaRuntime for Platform {
         _request: &ExtractVideoThumbnailRequest,
     ) -> Result<VideoThumbnail, PlatformError> {
         not_supported("extract_video_thumbnail")
+    }
+}
+
+impl ClipboardService for Platform {
+    fn clipboard_write(
+        &self,
+        _item: ClipboardWrite,
+    ) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async { not_supported("clipboard.write") }
+    }
+
+    fn clipboard_read(
+        &self,
+        _request: ClipboardReadRequest,
+    ) -> impl Future<Output = Result<ClipboardContents, PlatformError>> + Send {
+        async { not_supported("clipboard.read") }
+    }
+
+    fn clipboard_clear(&self) -> impl Future<Output = Result<(), PlatformError>> + Send {
+        async { not_supported("clipboard.clear") }
+    }
+
+    fn clipboard_types(
+        &self,
+    ) -> impl Future<Output = Result<ClipboardTypes, PlatformError>> + Send {
+        async { not_supported("clipboard.types") }
     }
 }
 

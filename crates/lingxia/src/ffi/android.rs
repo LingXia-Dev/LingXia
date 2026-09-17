@@ -126,6 +126,7 @@ fn init_cached_java_classes(env: &mut Env<'_>) {
         CachedClass::LxAppNetwork,
         CachedClass::AppScreenshot,
         CachedClass::LxAppShare,
+        CachedClass::LxAppClipboard,
     ];
 
     for class in classes {
