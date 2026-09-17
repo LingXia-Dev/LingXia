@@ -30,7 +30,6 @@
     "ClipboardReadResult",
     "ClipboardTextResult",
     "ClipboardType",
-    "ClipboardTypesResult",
     "ClipboardWriteItem",
     "CompressImageOptions",
     "CompressImageResult",

@@ -17,8 +17,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const TEXT_MAX_BYTES: usize = 1024 * 1024;
 
-/// System clipboard. Text is available on every host; other item types reject
-/// when this host cannot represent them. The runtime never presents a toast on
+/// System clipboard: text and PNG images on every host. The runtime never presents a toast on
 /// write — call `lx.showToast` if the product wants one (Android 13+ shows the
 /// system's own "copied" notice, which no app can suppress).
 fn namespace(ctx: &JSContext) -> JSResult<JSObject> {
@@ -47,9 +46,13 @@ async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
 /// Resolves `{ canceled: true }` only when the user dismisses the OS paste
 /// prompt (iOS 16+, macOS 15.4+). No text representation (empty clipboard, or
 /// image-only) resolves `{ canceled: false, empty: true }`. A copied empty
-/// string resolves `{ canceled: false, empty: false, text: '' }`. Rejects 3008
-/// when the host denies clipboard access outright: a macOS "never allow"
-/// setting, or HarmonyOS without `ohos.permission.READ_PASTEBOARD`.
+/// string resolves `{ canceled: false, empty: false, text: '' }`.
+///
+/// Rejects `E_PERMISSION_DENIED` when the host denies clipboard access
+/// outright: a macOS "never allow" setting, or HarmonyOS without
+/// `ohos.permission.READ_PASTEBOARD`. Android denies a read while the app has
+/// no window focus and reports it as an empty clipboard, so read in response
+/// to a user action.
 async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
     let contents = read_contents(&ctx, Some(ClipboardKind::Text)).await?;
     if contents.canceled {
@@ -70,7 +73,8 @@ async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
 
 /// Replace the clipboard with a typed item.
 ///
-/// `type: 'text'` is universal. Other types reject when unsupported.
+/// Rejects `E_INVALID_ARG` for text above 1 MiB or an image file that does not
+/// decode.
 async fn write(ctx: JSContext, item: JSValue) -> JSResult<()> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let item = parse_write_item(&lxapp, item)?;
@@ -100,28 +104,32 @@ async fn clear(ctx: JSContext) -> JSResult<()> {
         .map_err(map_platform_error)
 }
 
-/// Which representations are present, without reading payloads.
+/// Which representations are present, without reading payloads. An empty
+/// array is an empty clipboard; representations this runtime cannot
+/// round-trip (HTML, files) are omitted.
 ///
-/// Never shows the OS paste prompt: every host can peek types without
-/// reading. `canceled` is reserved for hosts that cannot, so branch on it
-/// anyway. The answer is a hint — content may change before you read it.
-async fn types(ctx: JSContext) -> JSResult<JSObject> {
+/// Never shows the OS paste prompt and needs no permission on any host, so it
+/// is the way to decide whether to offer "Paste". The answer is a hint —
+/// content may change before you read it.
+async fn types(ctx: JSContext) -> JSResult<rong::JSArray> {
     let lxapp = LxApp::from_ctx(&ctx)?;
-    let peeked = match lxapp.runtime.clipboard_types().await {
-        Ok(peeked) => peeked,
-        Err(PlatformError::BusinessError(USER_DISMISSED)) => return canceled(&ctx),
-        Err(error) => return Err(map_platform_error(error)),
-    };
+    let peeked = lxapp
+        .runtime
+        .clipboard_types()
+        .await
+        .map_err(map_platform_error)?;
+    // Every host peeks without a prompt; one that claims a dismissal here has
+    // failed, and must not read as an empty clipboard.
     if peeked.canceled {
-        return canceled(&ctx);
+        return Err(js_error_from_platform_error(&PlatformError::Platform(
+            "clipboard host reported dismissal for a type peek".into(),
+        )));
     }
-    let result = completed(&ctx)?;
     let list = rong::JSArray::new(&ctx)?;
     for kind in peeked.kinds {
         list.push(kind.as_str())?;
     }
-    result.set("types", list)?;
-    Ok(result)
+    Ok(list)
 }
 
 async fn write_item(ctx: &JSContext, item: ClipboardWrite) -> JSResult<()> {
@@ -180,9 +188,6 @@ fn contents_to_read_result(ctx: &JSContext, contents: ClipboardContents) -> JSRe
         let item = JSObject::new(ctx);
         item.set("type", "image")?;
         item.set("filePath", uri)?;
-        if let Some(mime) = contents.image_mime.filter(|value| !value.is_empty()) {
-            item.set("mimeType", mime)?;
-        }
         items.push(item)?;
     }
     result.set("items", items)?;
@@ -302,10 +307,10 @@ fn to_managed_uri(lxapp: &LxApp, path: &Path) -> JSResult<String> {
 fn map_platform_error(error: PlatformError) -> rong::RongJSError {
     match error {
         // Reads map dismissal to `{ canceled: true }` before reaching here.
-        // A write/clear has no prompt to dismiss, so a host sending 2000 for
-        // it is a real failure — never let it read as "the user said no".
+        // Writes, clear and the type peek have no prompt to dismiss, so a host
+        // sending 2000 for one is a real failure — never "the user said no".
         PlatformError::BusinessError(USER_DISMISSED) => js_error_from_platform_error(
-            &PlatformError::Platform("clipboard host reported dismissal for a write".into()),
+            &PlatformError::Platform("clipboard host reported dismissal without a prompt".into()),
         ),
         other => js_error_from_platform_error(&other),
     }
@@ -334,7 +339,7 @@ rong::js_api! {
             ts_return = "Promise<ClipboardReadResult>"
         ) = read;
         fn clear() = clear;
-        fn types(ts_return = "Promise<ClipboardTypesResult>") = types;
+        fn types(ts_return = "Promise<ClipboardType[]>") = types;
     }
 }
 

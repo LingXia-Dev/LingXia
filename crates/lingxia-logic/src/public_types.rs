@@ -584,8 +584,8 @@ rong::js_api! {
         /// Representations the runtime can round-trip. Closed union.
         type ClipboardType = r###"'text' | 'image'"###;
 
-        /// One clipboard write. `text` is universal; `image` is a PNG/JPEG
-        /// file the host re-encodes as the platform's native image format.
+        /// One clipboard write. Every host accepts both: `image` takes a PNG or
+        /// JPEG file and re-encodes it as the platform's native image format.
         type ClipboardWriteItem = r###"{
     type: 'text';
     /** Unicode text. Rejects `E_INVALID_ARG` when larger than 1 MiB. */
@@ -640,17 +640,8 @@ rong::js_api! {
      * copy it with `lx.fs` if you need to keep it.
      */
     filePath: string;
-    /** Always `image/png` today; present so a future host can vary it. */
-    mimeType?: string;
 }"###;
 
-        /// Result of `lx.clipboard.types`. `types` is empty for an empty
-        /// clipboard; representations this runtime cannot round-trip (HTML,
-        /// files) are omitted rather than reported.
-        type ClipboardTypesResult = r###"{
-    canceled: false;
-    types: ClipboardType[];
-} | CanceledResult"###;
 
         type CompressImageOptions = r###"{
     path: string;

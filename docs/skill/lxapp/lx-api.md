@@ -157,8 +157,8 @@ refusal reads like: [The Control app](../app/control-app.md).
 A rejection means the operation failed. It never means the user said no: the
 dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
 `chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
-(`readText`, `read`, `types`, where iOS 16+ / macOS 15.4+ may show a paste
-prompt) — resolve a result discriminated
+(`readText` and `read`, where iOS 16+ / macOS 15.4+ may show a paste prompt)
+— resolve a result discriminated
 on `canceled`, so dismissal is a branch rather than an error path. (`lx.share` stands apart: some
 platforms only observe that the system sheet opened and closed, so it reports a
 three-state `outcome` — `'completed' | 'dismissed' | 'unknown'` — rather than
