@@ -2908,6 +2908,21 @@ fn remove_session_signals_if_matches(
     }
 }
 
+/// Drop the tag's session only while it still resolved to `expected`. Its
+/// terminal result owns the view, so a kept session pins the native WebView
+/// until the next same-tag create replaces it.
+fn remove_session_signals_owning(
+    webtag: &WebTag,
+    expected: &Arc<WebView>,
+) -> Option<Arc<WebViewSessionSignals>> {
+    let sessions = WEBVIEW_SESSIONS.get()?;
+    let mut guard = lock_or_recover(sessions, "webview_sessions.remove_owning");
+    let owns = guard.get(webtag.key()).is_some_and(|signals| {
+        matches!(signals.terminal_result(), Some(Ok(current)) if Arc::ptr_eq(&current, expected))
+    });
+    owns.then(|| guard.remove(webtag.key())).flatten()
+}
+
 /// WebView identifier combining appid, path, and optional session id.
 /// Example: `appid:path#123`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -3273,8 +3288,9 @@ fn remove_arc_if_matches<T>(
 }
 
 /// Remove one ready WebView only while it is still the instance registered for
-/// its tag. Tag-scoped session, callback, and navigation state may already
-/// belong to a newer create cycle and is deliberately left untouched.
+/// its tag. Tag-scoped callback and navigation state may already belong to a
+/// newer create cycle and is left untouched; the session goes only when it is
+/// provably this instance's.
 pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView>) -> bool {
     // Close before touching the registry: a queued message must not cross the
     // remove-to-close window and become in-flight. Closing an already detached
@@ -3288,6 +3304,9 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
         None
     };
     if let Some(webview) = removed {
+        if let Some(signals) = remove_session_signals_owning(webtag, &webview) {
+            signals.publish_destroyed();
+        }
         #[cfg(target_os = "windows")]
         {
             let _ = webview.inner.set_content_visible(false);
