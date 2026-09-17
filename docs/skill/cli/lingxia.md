@@ -297,7 +297,7 @@ skill synchronization is unnecessary.
 Applying a newer line:
 
 - `@lingxia/*` npm ranges (lockfile refreshed via `npm install`)
-- each `lxapp.json` `minRuntime` raised to the new `M.m.0` (never lowered if you set it higher)
+- each `lxapp.json` `minRuntime` raised to the new `M.m.0` (never lowered if you set it higher); a missing one is added even when the project is already on this CLI's line
 - scaffolded LingXia crate requirements in `native/Cargo.toml`, followed by
   targeted `cargo update -p ...` lockfile refreshes
 - **Android:** gradle `lingxia.sdkVersion` fallback, then the Maven zip into
