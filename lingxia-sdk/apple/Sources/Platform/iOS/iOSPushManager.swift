@@ -166,7 +166,17 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
         // Process the notification directly (foreground - no forwarding to Rust)
         os_log("Foreground notification - not forwarding to Rust", log: Self.log, type: .info)
 
-        // Show notification even when app is in foreground
+        if userInfo[MacLocalNotification.localMarker] != nil {
+            let active = if Thread.isMainThread {
+                UIApplication.shared.applicationState == .active
+            } else {
+                DispatchQueue.main.sync { UIApplication.shared.applicationState == .active }
+            }
+            completionHandler(active ? [] : [.banner, .sound])
+            return
+        }
+
+        // Remote push still surfaces a banner while the app is foreground.
         completionHandler([.banner, .sound, .badge])
     }
 
@@ -177,6 +187,14 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
 
         let userInfo = response.notification.request.content.userInfo
         os_log("User tapped notification: %{public}@", log: Self.log, type: .info, String(describing: userInfo))
+
+        if userInfo[MacLocalNotification.localMarker] != nil {
+            if let applink = userInfo["applink"] as? String, !applink.isEmpty {
+                let _ = onApplinkReceived(applink)
+            }
+            completionHandler()
+            return
+        }
 
         // Process the notification with tap trigger
         self.processNotificationData(userInfo: userInfo, trigger: "tap")

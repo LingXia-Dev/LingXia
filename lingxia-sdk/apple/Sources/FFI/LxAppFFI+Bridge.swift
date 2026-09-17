@@ -561,6 +561,40 @@ extension LxApp {
         #endif
     }
 
+    nonisolated static func notificationRequestPermission() -> String {
+        MacLocalNotification.requestPermission()
+    }
+
+    nonisolated static func notificationShow(
+        id: String,
+        title: String,
+        body: String,
+        applink: String,
+        deliverAtMs: Int64,
+        silent: Bool
+    ) -> String {
+        MacLocalNotification.show(
+            id: id,
+            title: title,
+            body: body,
+            applink: applink,
+            deliverAtMs: deliverAtMs,
+            silent: silent
+        )
+    }
+
+    nonisolated static func notificationCancel(id: String) -> Bool {
+        MacLocalNotification.cancel(id: id)
+    }
+
+    nonisolated static func notificationCancelAll() -> Bool {
+        MacLocalNotification.cancelAll()
+    }
+
+    nonisolated static func notificationLastError() -> String {
+        MacLocalNotification.takeLastError()
+    }
+
     nonisolated static func autostartSetEnabled(enabled: Bool) -> Bool {
         #if os(macOS)
         if #available(macOS 13.0, *) {

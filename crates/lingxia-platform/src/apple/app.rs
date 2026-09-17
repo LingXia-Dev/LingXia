@@ -243,6 +243,49 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        Ok(ffi::notification_request_permission())
+    }
+
+    fn notification_show(
+        &self,
+        request: &crate::traits::app_runtime::LocalNotificationShow,
+    ) -> Result<String, PlatformError> {
+        let id = ffi::notification_show(
+            &request.id,
+            &request.title,
+            &request.body,
+            request.applink.as_deref().unwrap_or(""),
+            request.deliver_at_ms.map(|ms| ms as i64).unwrap_or(-1),
+            request.silent,
+        );
+        if id.is_empty() {
+            let detail = ffi::notification_last_error();
+            return Err(PlatformError::Platform(if detail.is_empty() {
+                "failed to show notification".into()
+            } else {
+                detail
+            }));
+        }
+        Ok(id)
+    }
+
+    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+        if ffi::notification_cancel(id) {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(ffi::notification_last_error()))
+        }
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        if ffi::notification_cancel_all() {
+            Ok(())
+        } else {
+            Err(PlatformError::Platform(ffi::notification_last_error()))
+        }
+    }
+
     fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
         if ffi::autostart_set_enabled(enabled) {
             Ok(())

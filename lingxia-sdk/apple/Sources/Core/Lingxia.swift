@@ -64,6 +64,9 @@ public enum Lingxia {
     @discardableResult
     public static func initializeRuntime() throws -> LxAppRuntimeInfo {
         CrashBacktrace.install()
+        #if os(macOS)
+        MacLocalNotification.installDelegate()
+        #endif
         do {
             return try LxAppRuntime.shared.initialize()
         } catch LxAppRuntimeError.alreadyInitialized {
