@@ -307,18 +307,39 @@ impl TabBar {
         }
     }
 
-    /// Tab pages worth creating up front — exactly those holding a slot of
-    /// their own. Warming a tab costs a page service and a WebView, which only
-    /// pays off for a destination that is one tap away; anything the strip
-    /// folds behind "more" is a tap further out and can load on first pick.
+    /// Tab pages worth creating up front. Warming a tab costs a page service
+    /// and a WebView, which only pays off for a destination that is one tap
+    /// away.
+    ///
+    /// Desktop shows every item in the sidebar, so only the landing / selected
+    /// tab is warmed — the rest load on first pick. Compact hosts still warm
+    /// the strip slots; anything folded behind "more" waits.
     pub fn preload_page_paths_for(&self, class: HostClass) -> Vec<String> {
-        self.preload_page_paths_with(class, Self::COMPACT_SLOTS)
+        match class {
+            HostClass::Desktop => self.landing_preload_paths(class),
+            HostClass::Mobile => self.preload_page_paths_with(class, Self::COMPACT_SLOTS),
+        }
     }
 
     /// [`Self::preload_page_paths_for`] on the host actually running, using
-    /// this process's phone-or-pad strip capacity.
+    /// this process's phone-or-pad strip capacity on compact hosts.
     pub fn preload_page_paths(&self) -> Vec<String> {
-        self.preload_page_paths_with(host_class(), Self::compact_strip_slots())
+        match host_class() {
+            HostClass::Desktop => self.landing_preload_paths(HostClass::Desktop),
+            HostClass::Mobile => {
+                self.preload_page_paths_with(HostClass::Mobile, Self::compact_strip_slots())
+            }
+        }
+    }
+
+    fn landing_preload_paths(&self, class: HostClass) -> Vec<String> {
+        let selected = usize::try_from(self.selected_index).ok();
+        self.visible_items_for(class)
+            .find(|(index, _)| selected == Some(*index))
+            .or_else(|| self.visible_items_for(class).next())
+            .map(|(_, item)| item.page_path.clone())
+            .into_iter()
+            .collect()
     }
 
     fn preload_page_paths_with(&self, class: HostClass, slots: usize) -> Vec<String> {
@@ -1136,6 +1157,18 @@ mod tests {
                 .last()
                 .map(String::as_str),
             Some("pages/p3/index")
+        );
+        // Desktop items are all one click away, so only the landing tab is
+        // warmed. Opening several 10-tab lxapps must not mint 4 WebViews each.
+        assert_eq!(
+            items(10).preload_page_paths_for(HostClass::Desktop),
+            vec!["pages/p0/index".to_string()]
+        );
+        let mut selected = items(10);
+        selected.set_selected_index(3);
+        assert_eq!(
+            selected.preload_page_paths_for(HostClass::Desktop),
+            vec!["pages/p3/index".to_string()]
         );
     }
 
