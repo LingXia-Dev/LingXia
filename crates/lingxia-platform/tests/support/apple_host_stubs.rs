@@ -69,6 +69,7 @@ lifecycle_stub!(update_tabbar_ui(appid: RustStr));
 host_stub!(present_layout(window_id: RustStr, layout_json: RustStr) -> bool);
 host_stub!(close_surface(id: RustStr, appid: RustStr, reason: RustStr) -> bool);
 host_stub!(request_lxapp_main_activation(appid: RustStr));
+host_stub!(navigate(appid: RustStr, path: RustStr, animation_type: i32) -> bool);
 host_stub!(open_lxapp(appid: RustStr, path: RustStr, session_id: u64, presentation: i32, panel_id: RustStr) -> bool);
 lifecycle_stub!(close_lxapp(appid: RustStr, session_id: u64));
 host_stub!(present_surface(

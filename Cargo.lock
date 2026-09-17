@@ -3522,6 +3522,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "swift-bridge",
  "tokio",
  "tungstenite",
  "windows 0.62.2",
