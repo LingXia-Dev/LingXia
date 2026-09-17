@@ -214,7 +214,12 @@ internal object LxAppNotification {
         }
         val pending = PendingIntent.getBroadcast(context, notifyId(id), intent, pendingFlags())
         val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        alarms.set(AlarmManager.RTC_WAKEUP, deliverAtMs, pending)
+        // Battery saver defers a plain `set` indefinitely once the app is backgrounded.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, deliverAtMs, pending)
+        } else {
+            alarms.set(AlarmManager.RTC_WAKEUP, deliverAtMs, pending)
+        }
     }
 
     private fun cancelAlarm(context: Context, id: String) {
@@ -309,11 +314,10 @@ internal class LxLocalNotificationTapActivity : Activity() {
         }
         val launch = packageManager.getLaunchIntentForPackage(packageName)
         if (launch != null) {
-            launch.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
+            // Same flags as a launcher icon tap: resume the task as it stands.
+            // Reordering the entry activity would cover the lxapp with the splash.
+            launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
             startActivity(launch)
         }
         finish()
