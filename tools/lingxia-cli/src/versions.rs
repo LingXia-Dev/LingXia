@@ -57,6 +57,24 @@ pub fn min_runtime_floor() -> String {
     format!("{major}.{minor}.0")
 }
 
+/// The floor an `lxapp.json` declares; build and publish both refuse a
+/// package without one.
+pub fn lxapp_min_runtime(manifest: &serde_json::Value) -> anyhow::Result<String> {
+    let raw = manifest
+        .get("minRuntime")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .unwrap_or("");
+    if raw.is_empty() {
+        anyhow::bail!("lxapp.json minRuntime is required; run `lingxia upgrade` to add it");
+    }
+    let parts: Vec<_> = raw.split('.').collect();
+    if parts.len() != 3 || parts.iter().any(|part| part.parse::<u32>().is_err()) {
+        anyhow::bail!("lxapp.json minRuntime must be major.minor.patch, got \"{raw}\"");
+    }
+    Ok(raw.to_string())
+}
+
 fn major_minor(version: &str) -> (&str, &str) {
     let mut parts = version.split('.');
     (
@@ -99,6 +117,24 @@ mod tests {
     fn min_runtime_floor_is_the_compat_line_patch_zero() {
         let (major, minor) = major_minor(env!("LINGXIA_RUST_CRATE_VERSION"));
         assert_eq!(min_runtime_floor(), format!("{major}.{minor}.0"));
+    }
+
+    #[test]
+    fn lxapp_min_runtime_is_required_and_numeric() {
+        let read = |json: &str| lxapp_min_runtime(&serde_json::from_str(json).unwrap());
+        assert_eq!(read(r#"{"minRuntime":" 0.17.0 "}"#).unwrap(), "0.17.0");
+        assert!(
+            read("{}")
+                .unwrap_err()
+                .to_string()
+                .contains("lingxia upgrade")
+        );
+        for bad in ["0.17", "0.17.x", "0.17.0-beta.1"] {
+            assert!(
+                read(&format!(r#"{{"minRuntime":"{bad}"}}"#)).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

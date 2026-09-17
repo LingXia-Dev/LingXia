@@ -424,6 +424,7 @@ mod native_main_scaffold_tests {
                 "appId": "com.example.settings",
                 "name": "Settings",
                 "version": "0.0.0",
+                "minRuntime": "0.17.0",
                 "logic": false,
                 "pages": [{
                     "name": "settings",
