@@ -651,9 +651,11 @@ function pinnedShortcutPoint(
   const tile = 36;
   const gap = 5;
   const columns = 4;
-  const sidebarWidth = 184;
-  const gridWidth = columns * tile + (columns - 1) * gap;
-  const gridLeft = Math.floor((sidebarWidth - gridWidth) / 2);
+  // Leading-aligned on the shared first-column icon axis (8 + 8 + 8), not
+  // centered in the 184 sidebar: the Windows pin grid and macOS tiles both
+  // sit on that axis so the grid does not drift when the sidebar resizes.
+  const iconAxis = 24;
+  const gridLeft = iconAxis - tile / 2;
   const row = Math.floor(index / columns);
   const column = index % columns;
   return [
@@ -860,6 +862,26 @@ async function waitForNativeHover(
 
 function regionCenter(region: [number, number, number, number]): [number, number] {
   return [region[0] + region[2] / 2, region[1] + region[3] / 2];
+}
+
+/// Win32 `TrackPopupMenu` windows include a DWM drop shadow, so GetWindowRect
+/// can sit tens of pixels away from the click. Match the new untitled host
+/// popup rather than requiring the frame origin to hug the pointer.
+function hostPopupMenu(
+  host: DesktopWindowInfo,
+  windows: DesktopWindowInfo[],
+  visibleIdsBefore: Set<string>,
+): DesktopWindowInfo | undefined {
+  return windows.find((window) => (
+    window.visible
+    && !visibleIdsBefore.has(window.id)
+    && window.process.toLocaleLowerCase() === host.process.toLocaleLowerCase()
+    && window.title === ''
+    && window.bounds.w > 0
+    && window.bounds.w < host.bounds.w
+    && window.bounds.h > 0
+    && window.bounds.h < host.bounds.h
+  ));
 }
 
 async function firstEnabledNativeMenuItem(
@@ -2563,18 +2585,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     host = await ensureHostForeground(desktop, host);
     await desktop.pointer.click({ at: workspaceMenuPoint });
     const workspaceMenu = await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && !visibleWorkspaceMenuWindowIds.has(window.id)
-        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
-        && window.title === ''
-        && Math.abs(window.bounds.x - workspaceMenuPoint[0]) <= 8
-        && Math.abs(window.bounds.y - workspaceMenuPoint[1]) <= 8
-        && window.bounds.w > 0
-        && window.bounds.w < host!.bounds.w
-        && window.bounds.h > 0
-        && window.bounds.h < host!.bounds.h
-      ))
+      hostPopupMenu(host!, await desktop.windows(), visibleWorkspaceMenuWindowIds)
     ), 'native Chat workspace context menu');
     await desktop.key.press({ key: 'Escape' });
     await waitForValue(async () => (
@@ -2703,6 +2714,11 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       }, 'pinned Chat reopened without a ghost workspace after openApp');
     }
 
+    host = (await desktop.windows()).find((window) => window.id === host!.id) ?? host;
+    const pinsBeforeMenu = await shell.pins();
+    const pinIndexBeforeMenu = pinsBeforeMenu.findIndex((pin) => samePin(pin, targetPin));
+    expect(pinIndexBeforeMenu).toBeGreaterThanOrEqual(0);
+    const pinMenuPoint = pinnedShortcutPoint(host, pinIndexBeforeMenu);
     const windowsBeforeMenu = await desktop.windows();
     const visibleWindowIdsBeforeMenu = new Set(windowsBeforeMenu
       .filter((window) => window.visible)
@@ -2715,22 +2731,21 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await desktop.pointer.move({
       at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
     });
-    await desktop.pointer.move({ at: coldPinPoint });
-    await desktop.pointer.click({ at: coldPinPoint, button: 'right' });
-    const menu = await waitForValue(async () => (
-      (await desktop.windows()).find((window) => (
-        window.visible
-        && !visibleWindowIdsBeforeMenu.has(window.id)
-        && window.process.toLocaleLowerCase() === host!.process.toLocaleLowerCase()
-        && window.title === ''
-        && Math.abs(window.bounds.x - coldPinPoint[0]) <= 8
-        && Math.abs(window.bounds.y - coldPinPoint[1]) <= 8
-        && window.bounds.w > 0
-        && window.bounds.w < host!.bounds.w
-        && window.bounds.h > 0
-        && window.bounds.h < host!.bounds.h
-      ))
-    ), 'native pinned Chat context menu');
+    await desktop.pointer.move({ at: pinMenuPoint });
+    await desktop.pointer.click({ at: pinMenuPoint, button: 'right' });
+    let menu = await waitForValue(async () => (
+      hostPopupMenu(host!, await desktop.windows(), visibleWindowIdsBeforeMenu)
+    ), 'native pinned Chat context menu', 8_000).catch(() => undefined);
+    if (!menu) {
+      await desktop.pointer.move({
+        at: [host.bounds.x + 12, host.bounds.y + Math.round(host.bounds.h * 0.55)],
+      });
+      await desktop.pointer.move({ at: pinMenuPoint });
+      await desktop.pointer.click({ at: pinMenuPoint, button: 'right' });
+      menu = await waitForValue(async () => (
+        hostPopupMenu(host!, await desktop.windows(), visibleWindowIdsBeforeMenu)
+      ), 'native pinned Chat context menu');
+    }
     if (initiallyPinned) {
       await desktop.key.press({ key: 'Escape' });
     } else {

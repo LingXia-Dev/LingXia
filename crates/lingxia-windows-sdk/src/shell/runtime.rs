@@ -3895,7 +3895,13 @@ fn handle_chrome_event(appid: &str, event: WindowsChromeCommand) {
                     screen_y,
                 );
             } else if let Some(target_appid) = auxiliary_lxapp_id(&tab_id) {
-                show_lxapp_auxiliary_context_menu(appid, target_appid, screen_x, screen_y);
+                show_lxapp_auxiliary_context_menu(
+                    appid,
+                    target_appid,
+                    payload_isize(&event, "source_window"),
+                    screen_x,
+                    screen_y,
+                );
             } else if tab_id.starts_with(AUX_BOOKMARK_PREFIX) {
                 show_pinned_bookmark_context_menu(appid, &tab_id, screen_x, screen_y);
             } else {
@@ -5605,10 +5611,12 @@ fn lxapp_context_menu_header(
 fn show_lxapp_auxiliary_context_menu(
     owner_appid: &str,
     target_appid: &str,
+    source_window: Option<isize>,
     screen_x: i32,
     screen_y: i32,
 ) {
-    let Some(window) = owner_window_handle(owner_appid) else {
+    let Some(window) = source_window.or_else(|| owner_window_handle(owner_appid)) else {
+        log::warn!("no source window for lxapp context menu {target_appid}");
         return;
     };
     let target = lxapp::try_get(target_appid);
