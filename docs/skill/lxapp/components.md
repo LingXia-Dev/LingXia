@@ -347,11 +347,23 @@ attribute.
 | `reLaunch` | Restart the app at a new page |
 | `switchTab` | Switch to a tab page |
 | `exit` | Exit the current lxapp |
-| `openUrl` | Open an external URL (or another lxapp) |
+| `openUrl` | Open `url`; where it opens is decided by `target` |
 | `tel` | Trigger a phone call (use with `phone-number`) |
 
-**`target`:** `self` (default), `lxapp`, `browser` — auto-inferred from
-`open-type` if omitted.
+**`target`** — when omitted it is inferred: `app-id` set → `lxapp`;
+`url` starts with `http(s)://` → `browser`; otherwise `self`. Except for `tel`,
+`exit`, and `navigateBack`, `target` is applied before `open-type`:
+
+| Value | Behavior |
+|---|---|
+| `browser` | Open `url` in the system browser |
+| `lxapp` | Open lxapp `app-id` (optional `page`, `query`, `channel`, `target-version`); `navigateBack` returns from it |
+| `self` + `http(s)` `url` | Open `url` in the in-app browser |
+| `self` + `page` | Run `open-type` inside the current lxapp |
+
+An `http(s)` `url` with no `target` goes to the system browser; set
+`target="self"` to keep it in the app. `LxNavigator` has no aside/`edge`
+placement — use `lx.surface.openUrl(url, { as: 'aside', edge })` from Logic.
 
 **Events:** `onSuccess` / `onFail` / `onComplete` — `event.detail` is
 `{ success?: boolean; errMsg?: string }`.
