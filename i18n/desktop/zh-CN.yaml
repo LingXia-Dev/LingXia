@@ -22,6 +22,7 @@ browser:
   pin_to_sidebar: "固定到侧栏"
   unpin: "取消固定"
   manage_bookmarks: "管理书签…"
+  settings: "设置"
 
 # Terminal panel (native Windows shell terminal)
 terminal:
@@ -38,3 +39,7 @@ terminal:
   change_title: "修改标题…"
   reset: "重置终端"
   read_only: "终端只读"
+
+# Compact desktop keeps the rail expand glyph visible but inert.
+sidebar:
+  expand_needs_wider_window: "窗口太窄，请先放大"

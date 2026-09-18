@@ -658,6 +658,9 @@ Compact rail:
   expand control; actions
   MUST NOT overlap it or run off-window. Rail width MAY stay platform-specific
   for system-chrome clearance.
+- In the compact desktop size class the expand control stays visible but MUST
+  NOT activate or persist a sidebar choice. It SHOULD expose a tooltip that the
+  window is too narrow. Medium still allows a session expand.
 - In device-compact projections sidebar actions do not render, but declarations
   still validate and reappear if the same process returns to a desktop form.
 

@@ -2048,6 +2048,7 @@ fn build_self_browser_tab_bar_layout() -> Option<WindowsShellTabBarLayout> {
         overflow_start_index: -1,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail,
+        rail_expand_disabled: resolved_shell_size_class(None) == SizeClass::Compact,
         items_api_hidden: false,
         items_collapsed: false,
         footer_action_height: 0,
@@ -2544,6 +2545,7 @@ fn build_tab_bar_layout(
         group_order_index,
         collapsed: ui_state.collapsed,
         icon_rail: ui_state.icon_rail || force_icon_rail,
+        rail_expand_disabled: size_class == SizeClass::Compact,
         items_api_hidden,
         items_collapsed: items_api_hidden || items_ui_state.items_collapsed,
         footer_action_height: if desktop_sidebar {
@@ -2641,6 +2643,9 @@ fn adaptive_tabbar_projection(
 }
 
 fn toggle_sidebar_projection(state: &mut SidebarUiState, size_class: SizeClass) {
+    if size_class == SizeClass::Compact {
+        return;
+    }
     state.collapsed = false;
     if size_class == SizeClass::Medium {
         // Medium is already projected as a rail, so the toggle reveals the full
@@ -2910,7 +2915,7 @@ fn build_sidebar_header_actions(app: &LxApp) -> Vec<WindowsShellHeaderActionLayo
             WindowsShellHeaderActionLayout {
                 generation: 0,
                 id: crate::static_settings::STATIC_SETTINGS_ACTION_ID.to_string(),
-                label: "Settings".to_string(),
+                label: lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserSettings),
                 icon_path: app
                     .runtime
                     .asset_dir()
@@ -6675,7 +6680,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
             WindowsDesignIcon::History,
         ),
         ContextMenuEntry::item(
-            "Settings".to_string(),
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserSettings),
             true,
             WindowsDesignIcon::BrowserSettings,
         ),
@@ -7636,6 +7641,15 @@ mod tests {
         toggle_sidebar_projection(&mut state, SizeClass::Medium);
         assert!(!state.medium_expanded);
         assert!(!state.icon_rail);
+
+        let mut compact = SidebarUiState {
+            icon_rail: true,
+            seeded: true,
+            ..SidebarUiState::default()
+        };
+        toggle_sidebar_projection(&mut compact, SizeClass::Compact);
+        assert!(compact.icon_rail);
+        assert!(!compact.medium_expanded);
     }
 
     #[test]

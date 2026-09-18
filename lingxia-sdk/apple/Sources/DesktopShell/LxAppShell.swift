@@ -1039,6 +1039,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
 
         sidebarView?.setCompactMode(iconRail)
+        sidebarView?.railExpandEnabled = surfaceSizeClass != .compact
         constraint.constant = targetWidth
         contentLeadingConstraint?.constant = contentLeading(forSidebarWidth: targetWidth)
         browserCoordinator.syncToolbarLeading(

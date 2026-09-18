@@ -57,7 +57,7 @@ struct LxAppStaticSettingsSource: Equatable, Sendable {
         guard source != nil else { return items }
         let settings = LxAppUIActionItem(
             id: sidebarItemID,
-            label: "Settings",
+            label: L10n.string("lx_browser_settings"),
             iconURL: nil,
             builtInIcon: "gearshape",
             closable: false,

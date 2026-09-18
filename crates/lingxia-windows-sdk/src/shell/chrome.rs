@@ -602,7 +602,11 @@ fn chrome_hover_rect(
             sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
         let expand = sidebar_rail_expand_rect(tabbar_rect);
         if rect_contains(&expand, point) {
-            return Some(expand);
+            return if tabbar.rail_expand_disabled {
+                None
+            } else {
+                Some(expand)
+            };
         }
         if point.1 < tabbar_rect.top + SHELL_TOP_BAR_HEIGHT || point.1 >= viewport_bottom {
             return None;
@@ -856,6 +860,7 @@ fn tabbar_requires_full_repaint(
         || old_tabbar.items != new_tabbar.items
         || old_tabbar.collapsed != new_tabbar.collapsed
         || old_tabbar.icon_rail != new_tabbar.icon_rail
+        || old_tabbar.rail_expand_disabled != new_tabbar.rail_expand_disabled
         || old_tabbar.items_api_hidden != new_tabbar.items_api_hidden
         || old_tabbar.items_collapsed != new_tabbar.items_collapsed
         || old_tabbar.footer_action_height != new_tabbar.footer_action_height
@@ -1347,6 +1352,15 @@ pub(crate) fn collapsed_sidebar_tooltip(
                 hovered = Some((anchor, action.label.as_str()));
                 break;
             }
+        }
+    }
+    let expand_label;
+    if hovered.is_none() && tabbar.rail_expand_disabled {
+        let expand = sidebar_rail_expand_rect(tabbar_rect);
+        if rect_contains(&expand, point) {
+            expand_label =
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpandNeedsWiderWindow);
+            hovered = Some((expand, expand_label.as_str()));
         }
     }
 
@@ -2275,6 +2289,11 @@ pub(super) fn chrome_hit_test(
         }
         if sidebar && (tabbar.collapsed || tabbar.icon_rail) {
             if rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point) {
+                if tabbar.rail_expand_disabled {
+                    // Consume the click so it is not a dead miss; the rail
+                    // tooltip already names the reason on hover.
+                    return Some(WindowsChromeHit::Chrome);
+                }
                 return Some(chrome_command(command_id::SIDEBAR_TOGGLE, json!({})));
             }
             let group_rect = sidebar_rail_item_rect(
@@ -2773,8 +2792,8 @@ mod scroll_tests {
         layout_without_covered_main_chrome, phone_browser_bar_active, phone_browser_bar_rects,
         rect_height, sidebar_auxiliary_rail_index, sidebar_auxiliary_rects,
         sidebar_caption_contains, sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect,
-        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
-        tabbar_requires_full_repaint, top_bar_controls,
+        sidebar_rail_expand_rect, sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect,
+        sidebar_top_level_icon_rect, tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
         WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
@@ -2812,6 +2831,7 @@ mod scroll_tests {
             }],
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -2920,6 +2940,52 @@ mod scroll_tests {
         )
         .unwrap();
         assert_eq!(action_tooltip.text, "Terminal");
+    }
+
+    #[test]
+    fn compact_rail_expand_stays_visible_but_rejects_the_click() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 480,
+            bottom: 737,
+        };
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.dimension = 184;
+        rail.icon_rail = true;
+        rail.rail_expand_disabled = true;
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(rail),
+            ..Default::default()
+        };
+        let window_layout = WindowsWindowLayout::new(layout.clone());
+        let state = WindowsChromeState {
+            hwnd: HWND::default(),
+            client,
+            layout: window_layout.clone(),
+            attached: None,
+            frame_button_hover: None,
+            frame_button_pressed: None,
+            cursor: None,
+        };
+        let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
+        let expand = sidebar_rail_expand_rect(rail_rect);
+        let center = (
+            (expand.left + expand.right) / 2,
+            (expand.top + expand.bottom) / 2,
+        );
+
+        assert!(matches!(
+            chrome_hit_test(&state, &layout, center),
+            Some(WindowsChromeHit::Chrome)
+        ));
+
+        let tooltip = collapsed_sidebar_tooltip(client, &window_layout, center).unwrap();
+        assert_eq!(
+            tooltip.text,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpandNeedsWiderWindow)
+        );
     }
 
     #[test]
@@ -3250,6 +3316,7 @@ mod scroll_tests {
             items: Vec::new(),
             collapsed: true,
             icon_rail: true,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -3323,6 +3390,7 @@ mod scroll_tests {
             }],
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -3588,6 +3656,7 @@ mod scroll_tests {
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
@@ -3651,6 +3720,7 @@ mod scroll_tests {
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
