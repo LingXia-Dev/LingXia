@@ -203,7 +203,7 @@ impl std::fmt::Display for LxAppStatus {
 /// The registry's record for one lxapp: the facts the server owns.
 ///
 /// Deliberately carries nothing about a *package* — version, url, checksum,
-/// `minRuntimeVersion` all belong to `UpdatePackageInfo` and travel the update
+/// `minRuntime` all belong to `UpdatePackageInfo` and travel the update
 /// path. Server-owned facts in, package facts out; the two must never become
 /// two answers to the same question.
 /// The request names the app; this describes it. Fill in what the registry

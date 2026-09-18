@@ -120,7 +120,7 @@ fn runtime_compatibility_to_update_error(error: RuntimeCompatibilityError) -> Up
         RuntimeCompatibilityError::InvalidCurrentRuntimeVersion { .. } => {
             UpdateError::runtime(error.to_string())
         }
-        RuntimeCompatibilityError::InvalidRequiredRuntimeVersion { .. } => {
+        RuntimeCompatibilityError::InvalidMinRuntime { .. } => {
             UpdateError::invalid_parameter(error.to_string())
         }
         RuntimeCompatibilityError::RequiresRuntimeUpgrade { .. } => {

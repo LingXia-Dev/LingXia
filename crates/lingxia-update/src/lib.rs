@@ -269,7 +269,9 @@ pub struct UpdatePackageInfo {
     pub size: Option<u64>,
     pub release_notes: Option<Vec<String>>,
     pub is_force_update: bool,
-    pub required_runtime_version: Option<String>,
+    /// The lxapp's `minRuntime` as the check-update response reported it; an
+    /// early, unsigned hint. The archive's own `lxapp.json` is the gate that counts.
+    pub min_runtime: Option<String>,
     pub authentication: Option<UpdateAuthentication>,
 }
 
@@ -313,8 +315,8 @@ impl UpdatePackageInfo {
         }
     }
 
-    pub fn required_runtime_version_trimmed(&self) -> Option<&str> {
-        self.required_runtime_version
+    pub fn min_runtime_trimmed(&self) -> Option<&str> {
+        self.min_runtime
             .as_deref()
             .map(str::trim)
             .filter(|value| !value.is_empty())
@@ -325,7 +327,7 @@ impl UpdatePackageInfo {
         current_runtime_version: &str,
         target_name: &str,
     ) -> Result<(), RuntimeCompatibilityError> {
-        match self.required_runtime_version_trimmed() {
+        match self.min_runtime_trimmed() {
             Some(required) => ensure_runtime_satisfies(
                 required,
                 current_runtime_version,
@@ -339,7 +341,7 @@ impl UpdatePackageInfo {
 
 /// Refuses `target_name@version` when this runtime is below its floor.
 pub fn ensure_runtime_satisfies(
-    required_runtime_version: &str,
+    min_runtime: &str,
     current_runtime_version: &str,
     target_name: &str,
     version: &str,
@@ -349,18 +351,17 @@ pub fn ensure_runtime_satisfies(
             runtime_version: current_runtime_version.to_string(),
         }
     })?;
-    let required = Version::parse(required_runtime_version).map_err(|_| {
-        RuntimeCompatibilityError::InvalidRequiredRuntimeVersion {
+    let required =
+        Version::parse(min_runtime).map_err(|_| RuntimeCompatibilityError::InvalidMinRuntime {
             target: target_name.to_string(),
             update_version: version.to_string(),
-            runtime_version: required_runtime_version.to_string(),
-        }
-    })?;
+            runtime_version: min_runtime.to_string(),
+        })?;
     if current < required {
         return Err(RuntimeCompatibilityError::RequiresRuntimeUpgrade {
             target: target_name.to_string(),
             update_version: version.to_string(),
-            required_runtime_version: required.to_string(),
+            min_runtime: required.to_string(),
             current_runtime_version: current.to_string(),
         });
     }
@@ -377,20 +378,20 @@ pub enum RuntimeCompatibilityError {
     #[error("invalid SDK runtime version '{runtime_version}'")]
     InvalidCurrentRuntimeVersion { runtime_version: String },
     #[error(
-        "invalid minRuntimeVersion '{runtime_version}' from update metadata for {target}@{update_version}"
+        "invalid minRuntime '{runtime_version}' from update metadata for {target}@{update_version}"
     )]
-    InvalidRequiredRuntimeVersion {
+    InvalidMinRuntime {
         target: String,
         update_version: String,
         runtime_version: String,
     },
     #[error(
-        "{target} update {update_version} requires runtime >= {required_runtime_version}, current SDK runtime is {current_runtime_version}; update host app first"
+        "{target} update {update_version} requires runtime >= {min_runtime}, current SDK runtime is {current_runtime_version}; update host app first"
     )]
     RequiresRuntimeUpgrade {
         target: String,
         update_version: String,
-        required_runtime_version: String,
+        min_runtime: String,
         current_runtime_version: String,
     },
 }
@@ -427,7 +428,7 @@ mod tests {
         assert!(check("0.18.0", "0.18.0-rc.1").is_err());
         assert!(matches!(
             check("seventeen", "0.17.0"),
-            Err(RuntimeCompatibilityError::InvalidRequiredRuntimeVersion { .. })
+            Err(RuntimeCompatibilityError::InvalidMinRuntime { .. })
         ));
     }
 
@@ -439,7 +440,7 @@ mod tests {
             size: None,
             release_notes: None,
             is_force_update: false,
-            required_runtime_version: None,
+            min_runtime: None,
             authentication: None,
         }
     }

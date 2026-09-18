@@ -148,7 +148,7 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         fields.push(("platform", platform));
     }
     if !meta.min_runtime.is_empty() {
-        fields.push(("minRuntimeVersion", meta.min_runtime.clone()));
+        fields.push(("minRuntime", meta.min_runtime.clone()));
     }
     fields.extend(
         extra
