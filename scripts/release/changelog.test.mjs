@@ -54,6 +54,14 @@ test('keeps a multi-line Release-Note trailer intact', () => {
   assert.equal(note.note, 'lxapps can open an external URL.\nIt is subject to trustedDomains.');
 });
 
+test('reads a Release-Note trailer from a CRLF commit body', () => {
+  const note = commit(
+    'feat(logic): add lx.app.notification',
+    'Release-Note: Control apps can post local banners via lx.app.notification.\r\n\r\n',
+  );
+  assert.equal(note.note, 'Control apps can post local banners via lx.app.notification.');
+});
+
 test('does not mistake a prose colon for a trailer', () => {
   const note = commit('fix(cli): tidy', 'We had a problem: the path was wrong.\n');
   assert.equal(note.note, null);

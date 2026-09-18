@@ -81,7 +81,10 @@ function readTrailers(body) {
     key = null;
     value = [];
   };
-  for (const line of body.split('\n')) {
+  // `git log %b` keeps the bytes in the commit object. A Windows rewrite
+  // stores CRLF; `.` and `$` do not treat CR as a line ending, so a real
+  // `Release-Note:` line would otherwise vanish.
+  for (const line of body.split(/\r?\n/)) {
     const start = /^([A-Za-z][A-Za-z-]*):[ \t]*(.*)$/.exec(line);
     if (start) {
       flush();
