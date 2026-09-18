@@ -40,7 +40,6 @@ pub struct SignRequest<'a> {
     pub platform: &'a str,
     pub version: &'a str,
     pub sha256: &'a str,
-    pub size: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,7 +61,6 @@ struct ManifestWire {
     platform: String,
     version: String,
     sha256: String,
-    size: u64,
 }
 
 pub fn archive_sha256_hex(data: &[u8]) -> String {
@@ -95,7 +93,6 @@ pub fn compact_manifest(req: &SignRequest<'_>) -> Result<Vec<u8>, UpdateError> {
         platform: req.platform.to_string(),
         version: req.version.to_string(),
         sha256: req.sha256.to_string(),
-        size: req.size,
     };
     serde_json::to_vec(&wire)
         .map_err(|e| UpdateError::runtime(format!("encode update manifest: {e}")))
@@ -252,21 +249,10 @@ pub fn verify_checked_update(
 
     package.version = manifest.version;
     package.checksum_sha256 = manifest.sha256;
-    package.size = Some(manifest.size);
     Ok(package)
 }
 
-pub fn verify_archive_bytes(
-    data: &[u8],
-    expected_sha256: &str,
-    expected_size: u64,
-) -> Result<(), UpdateError> {
-    if data.len() as u64 != expected_size {
-        return Err(UpdateError::invalid_parameter(format!(
-            "archive size mismatch: expected {expected_size}, got {}",
-            data.len()
-        )));
-    }
+pub fn verify_archive_bytes(data: &[u8], expected_sha256: &str) -> Result<(), UpdateError> {
     let actual = archive_sha256_hex(data);
     if actual != expected_sha256 {
         return Err(UpdateError::invalid_parameter(format!(
@@ -373,7 +359,7 @@ mod tests {
     const SEED: [u8; 32] = [7u8; 32];
     const ARCHIVE: &[u8] = b"lingxia-update-golden-archive";
 
-    fn request<'a>(sha256: &'a str, size: u64) -> SignRequest<'a> {
+    fn request(sha256: &str) -> SignRequest<'_> {
         SignRequest {
             kind: "lxapp",
             target_id: "shop",
@@ -381,7 +367,6 @@ mod tests {
             platform: "any",
             version: "1.2.3",
             sha256,
-            size,
         }
     }
 
@@ -411,12 +396,12 @@ mod tests {
     fn matching_key_accepts_signed_artifact() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
-        let auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let auth = sign_package(&SEED, &request(&sha256)).unwrap();
         let keys = [public_key_base64url(&SEED)];
         let verified =
             verify_checked_update(package(Some(auth), &sha256, size), &target(), &keys).unwrap();
         assert_eq!(verified.checksum_sha256, sha256);
-        verify_archive_bytes(ARCHIVE, &verified.checksum_sha256, size).unwrap();
+        verify_archive_bytes(ARCHIVE, &verified.checksum_sha256).unwrap();
     }
 
     #[test]
@@ -431,20 +416,20 @@ mod tests {
     fn flipped_archive_byte_rejects() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
-        let auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let auth = sign_package(&SEED, &request(&sha256)).unwrap();
         let keys = [public_key_base64url(&SEED)];
         let verified =
             verify_checked_update(package(Some(auth), &sha256, size), &target(), &keys).unwrap();
         let mut tampered = ARCHIVE.to_vec();
         tampered[0] ^= 0xff;
-        assert!(verify_archive_bytes(&tampered, &verified.checksum_sha256, size).is_err());
+        assert!(verify_archive_bytes(&tampered, &verified.checksum_sha256).is_err());
     }
 
     #[test]
     fn flipped_signed_json_field_rejects() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
-        let mut auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let mut auth = sign_package(&SEED, &request(&sha256)).unwrap();
         let original = decode_base64url(&auth.signed).unwrap();
         let mut value: serde_json::Value = serde_json::from_slice(&original).unwrap();
         value["version"] = serde_json::json!("9.9.9");
@@ -459,7 +444,7 @@ mod tests {
     fn flipped_signature_rejects() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
-        let mut auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let mut auth = sign_package(&SEED, &request(&sha256)).unwrap();
         let mut sig = decode_base64url(&auth.signatures[0]).unwrap();
         sig[0] ^= 0xff;
         auth.signatures[0] = encode_base64url(&sig);
@@ -521,14 +506,14 @@ mod tests {
         let size = ARCHIVE.len() as u64;
         let mut dev = target();
         dev.channel = "draft".into();
-        let mut req = request(&sha256, size);
+        let mut req = request(&sha256);
         req.channel = "draft";
         let auth = sign_package(&SEED, &req).unwrap();
         let keys = [public_key_base64url(&SEED)];
         verify_checked_update(package(Some(auth), &sha256, size), &dev, &keys).unwrap();
 
         // A package signed for release does not satisfy a draft request.
-        let release_auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let release_auth = sign_package(&SEED, &request(&sha256)).unwrap();
         assert!(
             verify_checked_update(package(Some(release_auth), &sha256, size), &dev, &keys).is_err()
         );
@@ -543,7 +528,7 @@ mod tests {
     fn draft_invalid_envelope_rejects() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         let size = ARCHIVE.len() as u64;
-        let mut auth = sign_package(&SEED, &request(&sha256, size)).unwrap();
+        let mut auth = sign_package(&SEED, &request(&sha256)).unwrap();
         auth.signatures[0] = encode_base64url(&[0u8; 64]);
         let mut dev = target();
         dev.channel = "draft".into();
@@ -554,16 +539,14 @@ mod tests {
     #[test]
     fn prod_publish_without_key_file_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
-        let err =
-            sign_package_from_key_file(AppEnv::Prod, None, &request(&sha256, ARCHIVE.len() as u64))
-                .unwrap_err();
+        let err = sign_package_from_key_file(AppEnv::Prod, None, &request(&sha256)).unwrap_err();
         assert!(err.to_string().contains("--update-signing-key-file"));
     }
 
     #[test]
     fn prod_draft_publish_without_key_file_fails() {
         let sha256 = archive_sha256_hex(ARCHIVE);
-        let mut req = request(&sha256, ARCHIVE.len() as u64);
+        let mut req = request(&sha256);
         req.channel = "draft";
         let err = sign_package_from_key_file(AppEnv::Prod, None, &req).unwrap_err();
         assert!(err.to_string().contains("prod publish"));
@@ -573,7 +556,7 @@ mod tests {
     fn dev_publish_without_key_file_is_unsigned() {
         let sha256 = archive_sha256_hex(ARCHIVE);
         assert!(
-            sign_package_from_key_file(AppEnv::Dev, None, &request(&sha256, ARCHIVE.len() as u64),)
+            sign_package_from_key_file(AppEnv::Dev, None, &request(&sha256),)
                 .unwrap()
                 .is_none()
         );
