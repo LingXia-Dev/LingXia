@@ -131,7 +131,6 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             platform: &platform,
             version: &meta.version,
             sha256: &sha256,
-            size: file_data.len() as u64,
         },
     )?;
 
@@ -1194,7 +1193,7 @@ app:
         assert!(body.contains("name=\"platform\"\r\n\r\nandroid"));
     }
 
-    fn sign_request<'a>(sha256: &'a str, size: u64) -> lingxia_update::SignRequest<'a> {
+    fn sign_request(sha256: &str) -> lingxia_update::SignRequest<'_> {
         lingxia_update::SignRequest {
             kind: "lxapp",
             target_id: "shop",
@@ -1202,22 +1201,20 @@ app:
             platform: "any",
             version: "1.0.1",
             sha256,
-            size,
         }
     }
 
     #[test]
     fn signed_multipart_fields_omits_envelope_for_dev_without_key() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        let extra = signed_multipart_fields(AppEnv::Dev, None, &sign_request(&sha256, 3)).unwrap();
+        let extra = signed_multipart_fields(AppEnv::Dev, None, &sign_request(&sha256)).unwrap();
         assert!(extra.is_empty());
     }
 
     #[test]
     fn signed_multipart_fields_requires_key_for_prod() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
-        let err =
-            signed_multipart_fields(AppEnv::Prod, None, &sign_request(&sha256, 3)).unwrap_err();
+        let err = signed_multipart_fields(AppEnv::Prod, None, &sign_request(&sha256)).unwrap_err();
         assert!(
             err.to_string().contains("--update-signing-key-file"),
             "{err}"
@@ -1228,7 +1225,7 @@ app:
     fn signed_multipart_policy_follows_env_for_every_channel() {
         let sha256 = lingxia_update::archive_sha256_hex(b"pkg");
         for channel in ["release", "draft", ""] {
-            let mut req = sign_request(&sha256, 3);
+            let mut req = sign_request(&sha256);
             req.channel = channel;
             if channel.is_empty() {
                 req.kind = "app";
@@ -1259,7 +1256,7 @@ app:
         let extra = signed_multipart_fields(
             AppEnv::Prod,
             Some(key_path.as_path()),
-            &sign_request(&sha256, package.len() as u64),
+            &sign_request(&sha256),
         )
         .unwrap();
         // No scheme field: the envelope does not name its own algorithm.

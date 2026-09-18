@@ -389,7 +389,6 @@ mod tests {
                 platform: host_update_platform(),
                 version,
                 sha256: &sha256,
-                size: ARCHIVE.len() as u64,
             },
         )
         .expect("sign host package")
