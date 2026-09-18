@@ -54,12 +54,12 @@ Page({
 ```
 
 Rules:
-- `this.data` is read-only. Never mutate it directly — use `setData`.
-- `setData` accepts a partial object. Only the listed keys are updated; the rest are unchanged.
-- A top-level key must exist in `data` and match its type, so a misspelling is a
-  compile error rather than a silently ignored write.
-- A key that addresses inside `data` — `'profile.name'`, `'rows[0].label'` — is
-  resolved at runtime, so its value is unchecked.
+- `this.data` is a read-only view. Never mutate it directly — use `setData`.
+- `setData` accepts a partial object of top-level keys. Only the listed keys are
+  updated; the rest are unchanged. A misspelled or wrongly typed key is a
+  compile error.
+- Nested writes use `setPath(['profile', 'name'], value)` (checked) or
+  `setDataPath('profile.name', value)` (unchecked string path).
 - The call is synchronous on the Logic side. Replication to View is asynchronous.
 
 ### View side
@@ -176,7 +176,7 @@ Page({
 
 `StreamHandle` exposes `send` (a chunk), `end` (final value), and `error` (terminate with an error). For the exact signatures read the `StreamHandle` declaration in `@lingxia/types` — that is authoritative; don't re-copy it here.
 
-The explicit handle has **no cancellation callback**: when the View cancels, the runtime resolves the call with `BRIDGE_CANCELED` and drops the handle — your handler is not notified. If you need to clean up on cancel (abort a job, close a file), use the generator form and a `finally` block instead; that is the only form that observes cancellation.
+The explicit handle exposes `onCancel(handler)` (returns unsubscribe). When the View cancels, the runtime invokes that handler, then resolves the call with `BRIDGE_CANCELED`. The generator form still observes cancel in `finally`; use `onCancel` when your source is callback-based.
 
 The runtime distinguishes the two forms automatically — you never declare them by hand. At build time the CLI classifies each page action into a `BridgeMode` (`"notify" | "call" | "stream"`) and emits a `__modes` map onto `window.__pageBridge`; a method that returns an `AsyncGenerator` (or takes the injected handle) is tagged `"stream"`, everything else falls through. There is no author-facing metadata field to maintain.
 

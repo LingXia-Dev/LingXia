@@ -43,31 +43,92 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
 
 /**
  * A `setData` key that addresses inside `data` — `'a.b'` or `'rows[0].name'`.
- * Values behind a path stay `unknown`: the runtime resolves the path, so the
- * type cannot.
+ * Kept for documentation; nested writes go through `setPath` (checked) or
+ * `setDataPath` (unchecked). `setData` no longer accepts these keys.
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
 /**
- * A field initialized to `null` or `[]` states nothing about what will fill it
- * later, so it stays open. Annotate it (`null as Profile | null`) to have the
- * fill checked.
+ * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
+ * Annotate the field (`null as Profile | null`) when a later fill should be
+ * checked.
  */
-export type LazyInitField<T> = [T] extends [null | undefined]
-  ? unknown
-  : [T] extends [never[]]
-    ? unknown[]
-    : T;
+export type LazyInitField<T> = T;
+
+type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
+
+type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
 
 /**
- * Top-level keys are checked against `data`; only path-shaped keys stay open.
- * A misspelled or wrongly typed top-level key is a compile error.
+ * Deep readonly view of page `data`. Static only — the runtime object is not
+ * frozen.
  */
-export type SetDataPatch<TData> = { [K in keyof TData]?: LazyInitField<TData[K]> } &
-  Partial<Record<PageDataPath, unknown>>;
+export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
+  ? T
+  : T extends PagePrimitive
+    ? T
+    : T extends Function
+      ? T
+      : T extends readonly (infer U)[]
+        ? ReadonlyArray<DeepReadonly<U, PageReadonlyDepth[D]>>
+        : { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> };
+
+/**
+ * Tuple path into `data`, depth-capped so large page states stay completable.
+ */
+export type DataPath<T, D extends number = 5> = [D] extends [never]
+  ? never
+  : T extends readonly (infer U)[]
+    ? [number] | [number, ...DataPath<U, PageReadonlyDepth[D]>]
+    : T extends object
+      ? {
+          [K in keyof T & (string | number)]:
+            | [K]
+            | (DataPath<T[K], PageReadonlyDepth[D]> extends infer Rest
+                ? Rest extends readonly PropertyKey[]
+                  ? [K, ...Rest]
+                  : never
+                : never);
+        }[keyof T & (string | number)]
+      : never;
+
+export type DataPathValue<T, P extends readonly PropertyKey[]> = P extends readonly [
+  infer K,
+  ...infer Rest,
+]
+  ? Rest extends readonly PropertyKey[]
+    ? Rest['length'] extends 0
+      ? K extends keyof T
+        ? T[K]
+        : K extends number
+          ? T extends readonly (infer U)[]
+            ? U
+            : never
+          : never
+      : K extends keyof T
+        ? DataPathValue<T[K], Rest>
+        : K extends number
+          ? T extends readonly (infer U)[]
+            ? DataPathValue<U, Rest>
+            : never
+          : never
+    : never
+  : never;
+
+/**
+ * Top-level keys are checked against `data`. Nested writes use `setPath` or
+ * the unchecked `setDataPath`.
+ */
+export type SetDataPatch<TData> = { [K in keyof TData]?: TData[K] };
+
+type SetDataValue<TData, K> = K extends PageDataPath
+  ? { "LingXia type error": "use setPath or setDataPath for nested writes" }
+  : K extends keyof TData
+    ? TData[K]
+    : { "LingXia type error": "unknown data key" };
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
-  data: TData;
+  readonly data: { readonly [K in keyof TData]: DeepReadonly<TData[K]> };
   route: string;
   /**
    * Available when this page was opened as a surface via
@@ -78,7 +139,17 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
-  setData(data: SetDataPatch<TData>, callback?: () => void): void;
+  setData<TPatch extends Record<string, unknown>>(
+    data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
+    callback?: () => void,
+  ): void;
+  setPath<const P extends DataPath<TData>>(
+    path: P,
+    value: DataPathValue<TData, P>,
+    callback?: () => void,
+  ): void;
+  /** Nested write by a runtime-resolved string path. The value is not checked. */
+  setDataPath(path: string, value: unknown, callback?: () => void): void;
 }
 
 /**
@@ -95,6 +166,12 @@ export interface StreamHandle<T = unknown> {
   end(result?: unknown): void;
   /** End the stream with an error. */
   error(code: string, message?: string): void;
+  /**
+   * Called once if View cancels before `end`/`error`. Returns unsubscribe.
+   * The generator form still observes cancel in `finally`; use this for the
+   * callback-based handle.
+   */
+  onCancel(handler: () => void): () => void;
 }
 
 /**
@@ -108,9 +185,9 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
   send(payload: TSend): void;
   /** Close the channel from Logic side. */
   close(code?: string, reason?: string): void;
-  /** Register a listener for incoming events. */
-  on(event: 'data', handler: (payload: TReceive) => void): void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
+  /** Register a listener for incoming events. Returns unsubscribe. */
+  on(event: 'data', handler: (payload: TReceive) => void): () => void;
+  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
 }
 
 /**
@@ -129,19 +206,38 @@ export type DownloadOptions<TDestination extends DownloadDestination = DownloadD
 export type DownloadResultForDestination<TDestination extends DownloadDestination> =
   TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
 
-export interface DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> {
-  kind: 'progress' | 'paused' | 'resumed' | 'canceled' | 'completed';
-  downloadedBytes?: number;
-  totalBytes?: number;
-  /** Present only when the total size is known. */
-  progress?: number;
-  result?: TResult;
-}
+export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
+  | {
+      kind: 'progress' | 'paused' | 'resumed';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      /** Present only when the total size is known. */
+      progress?: number;
+    }
+  | {
+      kind: 'canceled';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      progress?: number;
+    }
+  | {
+      kind: 'completed';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      progress?: number;
+      result: TResult;
+    };
 
-export interface DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> {
-  done: boolean;
-  value?: DownloadProgressEvent<TResult>;
-}
+export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> =
+  IteratorResult<DownloadProgressEvent<TResult>, void>;
+
+export type AppTempDownloadResult = Extract<AppDownloadResult, { tempFilePath: string }>;
+export type AppPersistedDownloadResult = Extract<AppDownloadResult, { filePath: AppDownloadFilePath }>;
+
+export type ChooseFileSingleResult = {
+  canceled: false;
+  paths: [string];
+} | CanceledResult;
 
 export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadResult>
   extends PromiseLike<TDownloadResult>,
@@ -222,6 +318,14 @@ declare global {
      * `lx.app.control !== undefined`.
      */
     cache?: AppCacheApi;
+
+    /**
+     * Take over host updates for the rest of this process. Irreversible: the
+     * built-in auto-flow will not prompt or download again, including after
+     * the calling page unloads. Does not cancel an already-started update task.
+     * `update.apply()` claims as well. `checkUpdate()` does not.
+     */
+    claimCustomUpdate(): void;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -237,12 +341,30 @@ declare global {
 
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable app-owned path. */
+    downloadFile(
+      options: AppDownloadOptions & { filePath: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary app-owned path. */
+    downloadFile(
+      options: AppDownloadOptions & { filePath?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
     /** Download to the lxapp-managed app directory. */
     downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
     /** Download with a destination-correlated result type. */
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
+    /** Single-file picker: a completed selection is exactly one path. */
+    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
+    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
+    /**
+     * Opens a file picker.
+     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
+     * completed selection resolves `{ canceled: false, paths }` with at least one
+     * path. Rejects when the picker fails or returns an invalid payload.
+     */
+    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.

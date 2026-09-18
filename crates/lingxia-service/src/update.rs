@@ -30,8 +30,8 @@ pub type HostAppInstaller = dyn Fn(&Path) -> Result<(), UpdateError> + Send + Sy
 static HOST_APP_INSTALLER: OnceLock<RwLock<Option<Arc<HostAppInstaller>>>> = OnceLock::new();
 static CUSTOM_HOST_UPDATE: AtomicBool = AtomicBool::new(false);
 
-/// Control's `lx.app.checkUpdate()` completed. From here the built-in
-/// auto-flow must not prompt or download — JS owns apply().
+/// Control claimed custom host updates (`claimCustomUpdate` or `apply()`).
+/// From here the built-in auto-flow must not prompt or download — JS owns apply().
 pub fn claim_custom_host_update() {
     CUSTOM_HOST_UPDATE.store(true, Ordering::SeqCst);
 }

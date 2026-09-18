@@ -8,11 +8,13 @@ const unsubscribeOrientation: () => void = lx.onDeviceOrientationChange(() => {}
 const unsubscribeKeyDown: () => void = lx.onKeyDown(() => {});
 const unsubscribeKeyUp: () => void = lx.onKeyUp(() => {});
 
-// The update manager's callbacks are single-slot rather than a listener list,
-// but they hand back the same handle — the idiom holds across the whole surface.
+// The update manager is a listener set; each subscribe call returns its own
+// unsubscribe handle, same idiom as the rest of the surface.
 const updates = lx.getUpdateManager();
 const unsubscribeUpdateReady: () => void = updates.onUpdateReady(() => {});
+const secondReady: () => void = updates.onUpdateReady(() => {});
 const unsubscribeUpdateFailed: () => void = updates.onUpdateFailed(() => {});
+void secondReady;
 
 // No lx member can remove a listener it did not register.
 // @ts-expect-error offNetworkChange no longer exists

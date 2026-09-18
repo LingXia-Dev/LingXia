@@ -146,7 +146,7 @@ pub mod host_app {
             if !connected {
                 return;
             }
-            // Already finished, or Control claimed the flow via checkUpdate.
+            // Already finished, or Control claimed the flow via claimCustomUpdate / apply().
             if AUTO_TRIGGERED.load(Ordering::SeqCst)
                 || lingxia_service::update::custom_host_update_claimed()
             {
@@ -223,7 +223,7 @@ pub mod host_app {
     async fn run_flow() -> crate::Result<Outcome> {
         if lingxia_service::update::custom_host_update_claimed() {
             log::info!(
-                "[lingxia] host app auto update: skipped (Control checkUpdate owns the flow)"
+                "[lingxia] host app auto update: skipped (Control claimed the custom update flow)"
             );
             return Ok(Outcome::UpToDate);
         }

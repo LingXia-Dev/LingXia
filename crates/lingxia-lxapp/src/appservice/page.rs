@@ -136,7 +136,10 @@ struct ChannelState {
 
 struct ChannelListeners {
     on_data: Option<JSFunc>,
+    on_data_token: u64,
     on_close: Option<JSFunc>,
+    on_close_token: u64,
+    next_token: u64,
 }
 
 struct ChannelTurn {
@@ -395,8 +398,9 @@ impl PageSvc {
         // The handler receives `(params, streamHandle)` and is expected to call
         // `streamHandle.end(result)` or `streamHandle.error(code, msg)`.
         if self.stream_handlers.contains(method) {
-            let (stream_handle, mut end_rx) =
+            let (stream_handle, mut end_rx, cancel_handler) =
                 self.create_stream_handle(req_id, work_id, outbound.clone())?;
+            let notify_cancel = || notify_stream_cancel(&cancel_handler);
             let call = async {
                 match call_arg {
                     Some(val) => {
@@ -414,10 +418,18 @@ impl PageSvc {
                     }
                 }
             };
-            await_js_call_or_cancel(&mut cancel_rx, call).await?;
+            if let Err(error) = await_js_call_or_cancel(&mut cancel_rx, call).await {
+                if error.code == BRIDGE_CANCELED {
+                    notify_cancel();
+                }
+                return Err(error);
+            }
             return tokio::select! {
                 biased;
-                _ = &mut cancel_rx => Err(RpcError::new(BRIDGE_CANCELED, None)),
+                _ = &mut cancel_rx => {
+                    notify_cancel();
+                    Err(RpcError::new(BRIDGE_CANCELED, None))
+                },
                 result = &mut end_rx => match result {
                     Ok(r) => r,
                     Err(_) => Err(RpcError::new(
@@ -596,7 +608,10 @@ impl PageSvc {
 
         let listeners = Rc::new(RefCell::new(ChannelListeners {
             on_data: None,
+            on_data_token: 0,
             on_close: None,
+            on_close_token: 0,
+            next_token: 0,
         }));
         let key = ChannelKey {
             work_id,
@@ -1222,6 +1237,12 @@ impl PageSvc {
     }
 }
 
+fn notify_stream_cancel(handler: &Rc<RefCell<Option<JSFunc>>>) {
+    if let Some(callback) = handler.borrow_mut().take() {
+        let _ = callback.call::<_, ()>(None, ());
+    }
+}
+
 impl PageSvc {
     fn register_functions(&mut self, obj: &JSObject, meta_json: Option<&str>) -> JSResult<()> {
         let meta: PageBindingMeta = meta_json
@@ -1328,7 +1349,8 @@ impl PageSvc {
     /// Create an explicit stream handle JS object for Logic-layer functions
     /// that prefer an imperative push API over the generator pattern.
     ///
-    /// The returned object exposes `send(data)`, `end(result)`, `error(code, msg)`.
+    /// The returned object exposes `send(data)`, `end(result)`, `error(code, msg)`,
+    /// and `onCancel(handler)`.
     /// The caller awaits `end_rx` to receive the final result (or error) once
     /// the JS function has finished pushing events.
     fn create_stream_handle(
@@ -1336,7 +1358,14 @@ impl PageSvc {
         req_id: &str,
         work_id: Option<SessionWorkId>,
         outbound: Option<OutboundContext>,
-    ) -> Result<(JSObject, oneshot::Receiver<Result<String, RpcError>>), RpcError> {
+    ) -> Result<
+        (
+            JSObject,
+            oneshot::Receiver<Result<String, RpcError>>,
+            Rc<RefCell<Option<JSFunc>>>,
+        ),
+        RpcError,
+    > {
         let ctx = self.get_ctx();
         let handle = JSObject::new(&ctx);
 
@@ -1425,7 +1454,28 @@ impl PageSvc {
         .map_err(rpc_error_from_rong)?;
         handle.set("error", error_fn).map_err(rpc_error_from_rong)?;
 
-        Ok((handle, end_rx))
+        let cancel_handler = Rc::new(RefCell::new(None::<JSFunc>));
+        let cancel_store = cancel_handler.clone();
+        let ctx_on_cancel = ctx.clone();
+        let handle_for_handler = handle.clone();
+        let on_cancel_fn = JSFunc::new(&ctx, move |handler: JSFunc| {
+            *cancel_store.borrow_mut() = Some(handler.clone());
+            let _ = handle_for_handler.set("_cancelHandler", handler);
+            let cancel_store = cancel_store.clone();
+            let handle_for_handler = handle_for_handler.clone();
+            let ctx_unsub = ctx_on_cancel.clone();
+            JSFunc::new(&ctx_on_cancel, move || {
+                *cancel_store.borrow_mut() = None;
+                let _ = handle_for_handler.set("_cancelHandler", JSValue::undefined(&ctx_unsub));
+                Ok(())
+            })
+        })
+        .map_err(rpc_error_from_rong)?;
+        handle
+            .set("onCancel", on_cancel_fn)
+            .map_err(rpc_error_from_rong)?;
+
+        Ok((handle, end_rx, cancel_handler))
     }
 
     fn create_channel_context(
@@ -1569,15 +1619,42 @@ impl PageSvc {
             .set("close", close_fn)
             .map_err(rpc_error_from_rong)?;
 
-        // ch.on(event, handler)
+        // ch.on(event, handler) — returns unsubscribe.
+        let ctx_on = ctx.clone();
         let on_fn = JSFunc::new(&ctx, move |event: String, handler: JSFunc| {
-            let mut ls = listeners.borrow_mut();
-            match event.as_str() {
-                "data" => ls.on_data = Some(handler),
-                "close" => ls.on_close = Some(handler),
-                _ => {}
-            }
-            Ok(())
+            let token = {
+                let mut ls = listeners.borrow_mut();
+                ls.next_token += 1;
+                let token = ls.next_token;
+                match event.as_str() {
+                    "data" => {
+                        ls.on_data = Some(handler);
+                        ls.on_data_token = token;
+                    }
+                    "close" => {
+                        ls.on_close = Some(handler);
+                        ls.on_close_token = token;
+                    }
+                    _ => {}
+                }
+                token
+            };
+            let listeners = listeners.clone();
+            JSFunc::new(&ctx_on, move || {
+                let mut ls = listeners.borrow_mut();
+                match event.as_str() {
+                    "data" if ls.on_data_token == token => {
+                        ls.on_data = None;
+                        ls.on_data_token = 0;
+                    }
+                    "close" if ls.on_close_token == token => {
+                        ls.on_close = None;
+                        ls.on_close_token = 0;
+                    }
+                    _ => {}
+                }
+                Ok(())
+            })
         })
         .map_err(rpc_error_from_rong)?;
         channel_ctx.set("on", on_fn).map_err(rpc_error_from_rong)?;

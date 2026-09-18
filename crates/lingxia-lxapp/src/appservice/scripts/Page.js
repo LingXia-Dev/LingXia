@@ -108,6 +108,17 @@
       }, DEBOUNCE_WAIT);
     };
 
+    pageSvc.setPath = function (path, value, callback) {
+      return pageSvc.setData({ [pathSegmentsToKey(path)]: value }, callback);
+    };
+
+    pageSvc.setDataPath = function (path, value, callback) {
+      if (typeof path !== "string" || !path) {
+        throw new Error("setDataPath: Invalid path");
+      }
+      return pageSvc.setData({ [path]: value }, callback);
+    };
+
     return pageSvc;
   }
 
@@ -178,6 +189,27 @@ function applyUpdate(root, pendingBaseState, pendingOps, path, nextValue) {
 
   setValueBySegments(root, segments, nextValue);
   enqueuePendingPatch(root, pendingOps, segments, existedBefore);
+}
+
+function pathSegmentsToKey(path) {
+  if (!Array.isArray(path) || path.length === 0) {
+    throw new Error("setPath: Invalid path");
+  }
+  let key = "";
+  for (const segment of path) {
+    if (typeof segment === "number") {
+      if (!Number.isInteger(segment) || segment < 0) {
+        throw new Error("setPath: Invalid path");
+      }
+      key += `[${segment}]`;
+      continue;
+    }
+    if (typeof segment !== "string" || segment === "") {
+      throw new Error("setPath: Invalid path");
+    }
+    key = key === "" ? segment : `${key}.${segment}`;
+  }
+  return key;
 }
 
 function parseDataPath(path) {

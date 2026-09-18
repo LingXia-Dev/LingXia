@@ -194,7 +194,7 @@ Jump straight here when the user reports a concrete failure:
 | `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
 | Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |
 | `#[lingxia::native]` compiles but View can't call it | [`./native/development.md`](./native/development.md) → "Generated Native Client" |
-| Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → use the generator form + `finally` (the explicit handle has no cancel hook) |
+| Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → generator `finally`, or `stream.onCancel()` on the explicit handle |
 | `lingxia.yaml` change ignored after rebuild | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia clean`, then rebuild |
 | iOS dev app can't reach Mac dev server | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia dev` (LAN reachability) |
 | `Lingxia.initialize(...)` not found | [`./app/apple-sdk.md`](./app/apple-sdk.md) → use `Lingxia.quickStart()` (legacy removed) |
