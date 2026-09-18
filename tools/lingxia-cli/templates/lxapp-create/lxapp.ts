@@ -4,12 +4,7 @@ App({
 
     // Setup update manager
     const um = lx.getUpdateManager();
-    um.onUpdateReady(async (info) => {
-      if (info?.isForceUpdate) {
-        um.applyUpdate();
-        return;
-      }
-
+    um.onUpdateReady(async () => {
       const applyNow = await lx.showModal({
         title: "Update Available",
         content: "A new version is ready. Apply now?",

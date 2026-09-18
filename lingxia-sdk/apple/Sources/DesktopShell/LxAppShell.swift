@@ -2016,9 +2016,8 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     /// Present the "ready to update" card with release notes. Clicking Restart
-    /// Now applies the staged update; Later dismisses (omitted for forced
-    /// updates, which are blocking). Reached directly for forced updates, or by
-    /// clicking the bottom-left "ready" sidebar callout for normal updates.
+    /// Now applies the staged update; Later dismisses. Reached by clicking the
+    /// bottom-left "ready" sidebar callout.
     func presentUpdateReadyCard(infoJSON: String) {
         UpdateAvailableCard.presentReady(
             info: UpdateReadyInfo(json: infoJSON),

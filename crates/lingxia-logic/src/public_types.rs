@@ -902,7 +902,6 @@ rong::js_api! {
     version: string;
     size?: number;
     releaseNotes?: string[];
-    isForceUpdate: boolean;
     /**
      * Download and apply this checked update.
      *
@@ -1836,7 +1835,6 @@ true
 
         type UpdateReadyInfo = r###"{
     version?: string;
-    isForceUpdate?: boolean;
     channel?: "release" | "draft" | string;
 }"###;
 

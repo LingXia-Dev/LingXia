@@ -105,10 +105,6 @@ date:
 splash:
   skip: "跳过"
 
-# App Update
-update:
-  downloading: "正在下载更新"
-
 # Host shell
 shell:
   pin_limit_title: "侧栏固定项"

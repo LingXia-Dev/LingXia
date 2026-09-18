@@ -229,13 +229,12 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.setTrayClickIntercept")]
         fn set_tray_click_intercept(intercept: bool) -> bool;
 
-        // Ask the macOS shell to surface the post-download update prompt.
-        // `state` is "ready" (downloaded → minimal sidebar callout, click opens
-        // the notes card) or "ready-force" (forced → blocking notes card).
-        // `info_json` carries {version, releaseNotes, isForceUpdate} the prompt
-        // renders. Returns true if a UI was available; false means headless.
+        // Ask the macOS shell to surface the post-download "ready" sidebar
+        // callout; clicking it opens the notes card. `info_json` carries
+        // {version, releaseNotes}. Returns true if a UI was available; false
+        // means headless.
         #[swift_bridge(swift_name = "LxApp.notifyAppUpdateReady")]
-        fn notify_app_update_ready(state: &str, info_json: &str) -> bool;
+        fn notify_app_update_ready(info_json: &str) -> bool;
 
         // Show or hide the shell's "an AI assistant is in control" indicator.
         // Returns false when no macOS shell is present.

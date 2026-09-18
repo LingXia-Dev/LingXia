@@ -132,11 +132,6 @@ async fn do_navigate_to_app(
             crate::update::ensure_first_install(&lxapp, &target_appid, release_type),
         )
         .await?;
-        await_or_cancel(
-            cancel,
-            crate::update::ensure_force_update_for_installed(&lxapp, &target_appid, release_type),
-        )
-        .await?;
     }
 
     let target_app = crate::ensure_lxapp(&target_appid, release_type)?;

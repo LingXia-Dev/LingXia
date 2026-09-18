@@ -3,9 +3,7 @@ import AppKit
 
 /// The centered "ready to update" card. Shown once the package has downloaded
 /// silently — its job is to surface *what's new* and let the user restart to
-/// apply. Reached two ways:
-///   - normal update: clicking the bottom-left "ready" sidebar callout
-///   - forced update: presented directly (blocking, no Later)
+/// apply. Reached by clicking the bottom-left "ready" sidebar callout.
 ///
 /// It attaches as a child window of the app so it follows the window on drag
 /// and hides/miniaturizes with it.
@@ -27,8 +25,7 @@ final class UpdateAvailableCard: NSObject {
         static let notesMaxHeight: CGFloat = 150
     }
 
-    /// Present the "ready to update" card with release notes. A forced update
-    /// omits the Later button (blocking).
+    /// Present the "ready to update" card with release notes.
     static func presentReady(
         info: UpdateReadyInfo,
         over window: NSWindow?,
@@ -122,14 +119,12 @@ final class UpdateAvailableCard: NSObject {
         let spacer = NSView()
         row.addArrangedSubview(spacer)
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        if !info.isForceUpdate {
-            let later = NSButton(
-                title: Self.string("lx_update_card_later"), target: self,
-                action: #selector(laterClicked))
-            later.bezelStyle = .rounded
-            later.keyEquivalent = "\u{1b}"
-            row.addArrangedSubview(later)
-        }
+        let later = NSButton(
+            title: Self.string("lx_update_card_later"), target: self,
+            action: #selector(laterClicked))
+        later.bezelStyle = .rounded
+        later.keyEquivalent = "\u{1b}"
+        row.addArrangedSubview(later)
         row.addArrangedSubview(restart)
         root.addArrangedSubview(row)
     }
@@ -285,17 +280,15 @@ final class UpdateAvailableCard: NSObject {
     }
 }
 
-/// Parsed fields from the `{version, releaseNotes, isForceUpdate}` JSON the Rust
-/// side passes to the ready prompt.
+/// Parsed fields from the `{version, releaseNotes}` JSON the Rust side passes
+/// to the ready prompt.
 struct UpdateReadyInfo {
     let version: String
     let releaseNotes: [String]
-    let isForceUpdate: Bool
 
     init(json: String) {
         var version = ""
         var notes: [String] = []
-        var force = false
         if let data = json.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             version = (obj["version"] as? String) ?? ""
@@ -303,11 +296,9 @@ struct UpdateReadyInfo {
                 notes = arr.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             }
-            force = (obj["isForceUpdate"] as? Bool) ?? false
         }
         self.version = version
         self.releaseNotes = notes
-        self.isForceUpdate = force
     }
 }
 #endif

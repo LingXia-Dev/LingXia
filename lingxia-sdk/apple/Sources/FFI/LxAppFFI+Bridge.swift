@@ -594,30 +594,21 @@ extension LxApp {
         #endif
     }
 
-    /// Show the post-download update prompt. `state` is "ready" (downloaded →
-    /// minimal sidebar callout; clicking it opens the notes card) or
-    /// "ready-force" (forced → blocking notes card, no dismiss). `info_json`
-    /// carries {version, releaseNotes, isForceUpdate} the card renders. Returns
-    /// `true` only when a macOS shell is present — `false` tells Rust to fall
-    /// back (restart when headless).
-    nonisolated static func notifyAppUpdateReady(state: RustStr, info_json: RustStr) -> Bool {
-        let stateString = state.toString()
+    /// Show the post-download update prompt: the minimal sidebar callout, which
+    /// opens the notes card on click. `info_json` carries {version,
+    /// releaseNotes} the card renders. Returns `true` only when a macOS shell
+    /// is present — `false` tells Rust to fall back (restart when headless).
+    nonisolated static func notifyAppUpdateReady(info_json: RustStr) -> Bool {
         let infoJSON = info_json.toString()
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            if stateString == "ready-force" {
-                runtime.shell.presentUpdateReadyCard(infoJSON: infoJSON)
-                return true
-            }
-            // Normal update: remember the notes, show the minimal callout. The
-            // notes card opens when the user clicks the callout.
             runtime.shell.setPendingUpdateInfo(infoJSON)
             runtime.shell.presentUpdateReadyCallout(
                 appName: runtime.appConfig.productName, state: .ready)
             return true
             #else
-            _ = (stateString, infoJSON)
+            _ = infoJSON
             return false
             #endif
         }

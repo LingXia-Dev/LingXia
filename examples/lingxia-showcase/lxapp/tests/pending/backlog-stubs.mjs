@@ -28,13 +28,6 @@ export default [
     reason: "lx.app.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
   },
   {
-    id: "PEND-UPDATE-INFO-001",
-    title: "HostAppUpdateInfo fields from a real staged host update",
-    mode: "external-fixture",
-    covers: ["HostAppUpdateInfo.isForceUpdate"],
-    reason: "needs a cloud provider serving a staged host build to populate the info",
-  },
-  {
     id: "PEND-SHARE-001",
     title: "share text, page, and files through the OS share sheet",
     mode: "external-ui",

@@ -99,9 +99,9 @@ fn install_update_on_windows(
         *slot = Some(staged);
     }
 
-    // Build the "ready to update" card model: version / release notes / forced
-    // come from `info_json` (`{version, releaseNotes, isForceUpdate}`); the size
-    // comes from the downloaded package, and the logo from the app assets.
+    // Build the "ready to update" card model: version / release notes come
+    // from `info_json` (`{version, releaseNotes}`); the size comes from the
+    // downloaded package, and the logo from the app assets.
     let mut info = parse_card_info(info_json);
     info.product_name = platform.product_name().to_string();
     info.logo_path = resolve_brand_logo(platform.asset_dir());
@@ -113,8 +113,8 @@ fn install_update_on_windows(
     Ok(())
 }
 
-/// Parse the install hand-off JSON (`{"version","releaseNotes":[...],
-/// "isForceUpdate"}`) into the card model.
+/// Parse the install hand-off JSON (`{"version","releaseNotes":[...]}`) into
+/// the card model.
 fn parse_card_info(info_json: &str) -> super::update_card::CardInfo {
     let mut info = super::update_card::CardInfo::default();
     let Ok(value) = serde_json::from_str::<serde_json::Value>(info_json) else {
@@ -135,10 +135,6 @@ fn parse_card_info(info_json: &str) -> super::update_card::CardInfo {
             .filter(|s| !s.is_empty())
             .collect();
     }
-    info.is_force_update = value
-        .get("isForceUpdate")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
     info
 }
 

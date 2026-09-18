@@ -402,7 +402,6 @@ mod tests {
             checksum_sha256: sha256.into(),
             size: Some(size),
             release_notes: None,
-            is_force_update: false,
             min_runtime: None,
             authentication: auth,
         }

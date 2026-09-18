@@ -3,8 +3,7 @@
 //! Per the unified update flow, the package downloads silently in the
 //! background and the only user-facing moment is this card: app logo,
 //! `v{version} · {size}`, scrollable release notes, and **Later / Restart
-//! Now**. A forced update shows the card directly (no "Later"); a normal
-//! update first shows the bottom-left callout ([`super::update_callout`]) and
+//! Now**. The bottom-left callout ([`super::update_callout`]) shows first and
 //! the card opens when the user clicks it.
 //!
 //! The card is owned by the app window (so it centers over the app, tracks it
@@ -36,7 +35,6 @@ pub(super) struct CardInfo {
     pub version: String,
     pub size_bytes: Option<u64>,
     pub release_notes: Vec<String>,
-    pub is_force_update: bool,
     /// Brand logo PNG to show in the header (resolved by the caller).
     pub logo_path: Option<std::path::PathBuf>,
     /// BCP-47 system locale (e.g. "zh-CN") for the card/callout strings.
@@ -110,19 +108,13 @@ static LAST_READY_INFO: Mutex<Option<CardInfo>> = Mutex::new(None);
 
 // ── Public entry points (called from update.rs / update_callout.rs) ──────────
 
-/// Present the post-download "ready to update" affordance. Forced updates show
-/// the card directly; normal updates show the dismissible bottom-left callout
-/// (which opens the card on click).
+/// Present the post-download "ready to update" affordance: the dismissible
+/// bottom-left callout, which opens the card on click.
 pub(super) fn present_ready(info: CardInfo) {
-    let forced = info.is_force_update;
     if let Ok(mut slot) = LAST_READY_INFO.lock() {
-        *slot = Some(info.clone());
+        *slot = Some(info);
     }
-    if forced {
-        show_card(info);
-    } else {
-        super::update_callout::show();
-    }
+    super::update_callout::show();
 }
 
 /// Open the card from the stored update details (the callout was clicked).
@@ -408,19 +400,15 @@ fn layout(hwnd: HWND) {
         let gap = px(10.0);
         let _ = ShowWindow(card.restart, SW_SHOW);
         let _ = MoveWindow(card.restart, width - pad - btn_w, y, btn_w, btn_h, true);
-        if card.info.is_force_update {
-            let _ = ShowWindow(card.later, SW_HIDE);
-        } else {
-            let _ = ShowWindow(card.later, SW_SHOW);
-            let _ = MoveWindow(
-                card.later,
-                width - pad - btn_w * 2 - gap,
-                y,
-                btn_w,
-                btn_h,
-                true,
-            );
-        }
+        let _ = ShowWindow(card.later, SW_SHOW);
+        let _ = MoveWindow(
+            card.later,
+            width - pad - btn_w * 2 - gap,
+            y,
+            btn_w,
+            btn_h,
+            true,
+        );
         y += btn_h;
 
         let total_h = y + pad;

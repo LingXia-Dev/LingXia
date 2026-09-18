@@ -28,9 +28,8 @@ pub trait UpdateService: Send + Sync + 'static {
     ///
     /// # Arguments
     /// * `package_path` - Local, readable update package path (e.g. .apk on Android)
-    /// * `info_json` - Prompt metadata `{version, releaseNotes, isForceUpdate}`.
-    ///   Release notes are shown in the "ready to update" prompt; when
-    ///   `isForceUpdate` is true the prompt is blocking (no dismiss).
+    /// * `info_json` - Prompt metadata `{version, releaseNotes}` shown in the
+    ///   dismissible "ready to update" prompt.
     ///
     /// # Platform Support / Notes
     /// - Android: Shows the post-download "ready to install" prompt (with
