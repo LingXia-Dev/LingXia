@@ -131,7 +131,7 @@ type SetDataValue<TData, K> = K extends PageDataPath
     : { "LingXia type error": "unknown data key" };
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
-  readonly data: DeepReadonly<TData>;
+  readonly data: { readonly [K in keyof TData]: DeepReadonly<TData[K]> };
   route: string;
   /**
    * Available when this page was opened as a surface via
