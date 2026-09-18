@@ -1681,9 +1681,12 @@ impl LingXiaConfig {
             }
         };
         if let Some(id) = override_id {
-            crate::host_identity::validate_package_id_field(
+            // The override is read in its own platform's style: an Apple
+            // listing may own a dashed bundle id that Android could not use.
+            crate::host_identity::validate_package_id_styled(
                 crate::host_identity::platform_package_id_field(platform),
                 id,
+                crate::host_identity::platform_id_style(platform),
             )?;
             return Ok(id.to_string());
         }

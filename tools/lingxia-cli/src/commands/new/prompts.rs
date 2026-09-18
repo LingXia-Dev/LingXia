@@ -157,7 +157,11 @@ pub(super) fn gather_native_project_info(
         }
     };
 
-    let default_package_id = format!("{}.{}", DEFAULT_PACKAGE_PREFIX, name.to_lowercase());
+    let default_package_id = format!(
+        "{}.{}",
+        DEFAULT_PACKAGE_PREFIX,
+        crate::commands::new::validation::package_segment_from_project_name(&name)
+    );
     let package_id = match package_id {
         Some(p) => {
             validate_package_id(&p)?;
