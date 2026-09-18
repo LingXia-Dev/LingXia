@@ -114,6 +114,7 @@ fn register_platform_i18n() {
     lingxia_platform::i18n::set_localizer(|key| {
         let i18n_key = match key {
             "common.about" => I18nKey::CommonAbout,
+            "common.cancel" => I18nKey::CommonCancel,
             "common.exit" => I18nKey::CommonExit,
             "common.version" => I18nKey::CommonVersion,
             "file_chooser.select_folder" => I18nKey::FileChooserSelectFolder,
@@ -124,6 +125,9 @@ fn register_platform_i18n() {
             "webview.load_error_title" => I18nKey::WebviewLoadErrorTitle,
             "webview.load_error_message" => I18nKey::WebviewLoadErrorMessage,
             "webview.retry" => I18nKey::WebviewRetry,
+            "update.store_title" => I18nKey::UpdateStoreTitle,
+            "update.store_message" => I18nKey::UpdateStoreMessage,
+            "update.open_store" => I18nKey::UpdateOpenStore,
             _ => return None,
         };
         Some(i18n::t(i18n_key))

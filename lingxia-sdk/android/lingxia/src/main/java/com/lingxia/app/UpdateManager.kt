@@ -466,19 +466,6 @@ internal object UpdateManager {
         return dialog
     }
 
-    /**
-     * Hand off a downloaded-and-verified update for installation.
-     *
-     * The package was downloaded silently in the background. Rather than pop the
-     * system installer unprompted, present a lightweight "ready to install"
-     * prompt; the system installer fires only when the user confirms. When no
-     * activity is in the foreground the update is remembered and the prompt is
-     * shown on return.
-     *
-     * @param apkPath Absolute file path to the downloaded APK file
-     * @param infoJson `{version, releaseNotes}` shown in the prompt
-     * @return true once the request has been accepted (prompt shown or deferred)
-     */
     private val STORE_INSTALLERS = setOf(
         "com.android.vending",
         "com.google.android.feedback",
@@ -494,6 +481,11 @@ internal object UpdateManager {
         "com.amazon.venezia",
         "com.hihonor.appmarket",
     )
+
+    private val PLAY_INSTALLERS = setOf("com.android.vending", "com.google.android.feedback")
+
+    /** One listing attempt: `targetPackage` pins the intent to that store. */
+    private data class StoreListingIntent(val url: String, val targetPackage: String?)
 
     /**
      * True when this APK was installed by a store. Sideload / `adb install`
@@ -533,66 +525,70 @@ internal object UpdateManager {
         val context = Lingxia.applicationContext() ?: return false
         val pkg = context.packageName
         val installer = installerPackage(context)
-        for (url in storeListingCandidates(pkg, installer, storeUrlFromInfo(infoJson))) {
-            if (tryOpenView(context, url)) return true
+        for (candidate in storeListingCandidates(pkg, installer, storeUrlFromInfo(infoJson))) {
+            if (tryOpenView(context, candidate)) return true
         }
         Log.w(TAG, "Failed to open store listing installer=$installer pkg=$pkg")
         return false
     }
 
     /**
-     * Open the listing in the store that installed this APK. `market://` is
-     * only a portable hint — Huawei / Honor / Xiaomi / OPPO / vivo / Samsung
-     * / Amazon / Yingyongbao need their own scheme or they show a chooser
-     * (or Play). HTTPS Play is last-resort for Play and unknown installers,
-     * never for a known OEM store.
+     * Open the listing in the store that installed this APK. Every store
+     * handles `market://`, so pinning that to the installing package lands on
+     * its own listing with no chooser and no Play bounce; the OEM's private
+     * scheme and the HTTPS pages are only fallbacks for stores that refuse it.
      */
     private fun storeListingCandidates(
         pkg: String,
         installer: String?,
         baked: String?,
-    ): List<String> {
-        val out = ArrayList<String>()
-        fun add(url: String) {
-            if (url.isNotBlank() && url !in out) out.add(url)
+    ): List<StoreListingIntent> {
+        val out = ArrayList<StoreListingIntent>()
+        fun add(url: String, targetPackage: String?) {
+            if (url.isBlank()) return
+            val candidate = StoreListingIntent(url, targetPackage)
+            if (candidate !in out) out.add(candidate)
         }
-        when (installer) {
-            "com.android.vending", "com.google.android.feedback" -> {
-                add("market://details?id=$pkg")
-                add("https://play.google.com/store/apps/details?id=$pkg")
-            }
-            "com.huawei.appmarket" -> add("appmarket://details?id=$pkg")
-            "com.hihonor.appmarket" -> add("appmarket://details?id=$pkg")
-            "com.xiaomi.market", "com.xiaomi.mipicks" -> add("mimarket://details?id=$pkg")
-            "com.oppo.market", "com.heytap.market" -> add("oppomarket://details?packagename=$pkg")
-            "com.vivo.appstore", "com.bbk.appstore" -> add("vivomarket://details?id=$pkg")
-            "com.sec.android.app.samsungapps" -> add("samsungapps://ProductDetail/$pkg")
-            "com.amazon.venezia" -> {
-                add("amzn://apps/android?p=$pkg")
-                add("https://www.amazon.com/gp/mas/dl/android?p=$pkg")
-            }
-            "com.tencent.android.qqdownloader" -> add("tmast://appdetails?pname=$pkg")
-            else -> {
-                add("market://details?id=$pkg")
-                add("https://play.google.com/store/apps/details?id=$pkg")
-            }
+        if (installer == null || installer !in STORE_INSTALLERS) {
+            add("market://details?id=$pkg", null)
+            add("https://play.google.com/store/apps/details?id=$pkg", null)
+            baked?.let { add(it, null) }
+            return out
         }
-        // Baked `market://` is a Play-shaped hint; skip it for known OEM stores
-        // so we do not bounce into Play or a chooser.
-        val oem = installer != null && installer !in setOf(
-            "com.android.vending",
-            "com.google.android.feedback",
-        )
-        baked?.let { url ->
-            if (!(oem && url.startsWith("market://"))) add(url)
+        add("market://details?id=$pkg", installer)
+        for (scheme in oemStoreSchemes(pkg, installer)) {
+            add(scheme, installer)
+            add(scheme, null)
         }
+        for (url in storeHttpsListings(pkg, installer)) {
+            add(url, null)
+        }
+        baked?.let { add(it, null) }
         return out
     }
 
-    private fun tryOpenView(context: Context, url: String): Boolean {
+    private fun oemStoreSchemes(pkg: String, installer: String): List<String> = when (installer) {
+        "com.huawei.appmarket", "com.hihonor.appmarket" -> listOf("appmarket://details?id=$pkg")
+        "com.xiaomi.market", "com.xiaomi.mipicks" -> listOf("mimarket://details?id=$pkg")
+        "com.oppo.market", "com.heytap.market" -> listOf("oppomarket://details?packagename=$pkg")
+        "com.vivo.appstore", "com.bbk.appstore" -> listOf("vivomarket://details?id=$pkg")
+        "com.sec.android.app.samsungapps" -> listOf("samsungapps://ProductDetail/$pkg")
+        "com.amazon.venezia" -> listOf("amzn://apps/android?p=$pkg")
+        "com.tencent.android.qqdownloader" -> listOf("tmast://appdetails?pname=$pkg")
+        else -> emptyList()
+    }
+
+    private fun storeHttpsListings(pkg: String, installer: String): List<String> = when (installer) {
+        in PLAY_INSTALLERS -> listOf("https://play.google.com/store/apps/details?id=$pkg")
+        "com.amazon.venezia" -> listOf("https://www.amazon.com/gp/mas/dl/android?p=$pkg")
+        else -> emptyList()
+    }
+
+    private fun tryOpenView(context: Context, candidate: StoreListingIntent): Boolean {
         return try {
-            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(candidate.url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                candidate.targetPackage?.let { setPackage(it) }
             }
             context.startActivity(intent)
             true
@@ -640,6 +636,19 @@ internal object UpdateManager {
         }
     }
 
+    /**
+     * Hand off a downloaded-and-verified update for installation.
+     *
+     * The package was downloaded silently in the background. Rather than pop the
+     * system installer unprompted, present a lightweight "ready to install"
+     * prompt; the system installer fires only when the user confirms. When no
+     * activity is in the foreground the update is remembered and the prompt is
+     * shown on return.
+     *
+     * @param apkPath Absolute file path to the downloaded APK file
+     * @param infoJson `{version, releaseNotes}` shown in the prompt
+     * @return true once the request has been accepted (prompt shown or deferred)
+     */
     @JvmStatic
     fun installUpdate(apkPath: String, infoJson: String?): Boolean {
         val info = ReadyInfo.parse(infoJson)

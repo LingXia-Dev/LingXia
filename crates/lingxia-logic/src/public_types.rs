@@ -971,7 +971,7 @@ rong::js_api! {
     downloadedBytes?: number;
     progress?: number;
 } | {
-    state: 'downloaded' | 'installRequested';
+    state: 'downloaded' | 'installRequested' | 'storeOpened';
 } | {
     state: 'failed';
     stage: HostAppUpdateApplyStage;
@@ -997,7 +997,8 @@ rong::js_api! {
      * consumed with `for await...of` to render progress.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
-     * platform store listing (no package is downloaded).
+     * platform store listing (no package is downloaded) and resolves
+     * `storeOpened`; whether the user then updates is not reported.
      */
     apply(): HostAppUpdateTask;
 }"###;
@@ -1008,7 +1009,8 @@ rong::js_api! {
 }"###;
 
         type HostAppUpdateResult = r###"{
-    state: 'installRequested';
+    /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
+    state: 'installRequested' | 'storeOpened';
 }"###;
 
         type HostAppUpdateTask = r###"PromiseLike<HostAppUpdateResult> & AsyncIterable<HostAppUpdateEvent> & {

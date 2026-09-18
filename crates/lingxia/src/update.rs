@@ -239,13 +239,27 @@ pub mod host_app {
                 version: update.version,
             });
         }
-        // Store channel never self-downloads. Surface the same ready prompt
-        // with a store CTA; the user opens the marketplace from there.
+        // Store channel never self-downloads, and never opens the store on its
+        // own: it only offers the prompt. Opening the listing is a user action.
         if !service.self_update_supported() {
+            let now = unix_now_secs();
+            let last = load_store_prompt_record();
+            if !should_prompt_store_update(last.as_ref(), &update.version, now) {
+                log::info!(
+                    "[lingxia] host app update {} available; store prompt snoozed",
+                    update.version
+                );
+                return Ok(Outcome::Deferred {
+                    version: update.version,
+                });
+            }
             let package_id = runtime_package_id();
             let info =
                 lingxia_service::update::store_update_info_json(&update, package_id.as_deref());
-            let shown = service.present_store_update(&info) || service.open_update_store(&info);
+            let shown = service.present_store_update(&info);
+            if shown {
+                record_store_prompt(&update.version, now);
+            }
             log::info!(
                 "[lingxia] host app update {} available; store channel (prompt shown: {shown})",
                 update.version
@@ -265,6 +279,62 @@ pub mod host_app {
         crate::runtime::platform()
             .ok()
             .and_then(|runtime| runtime.get_app_identifier().ok())
+    }
+
+    const STORE_PROMPT_STATE_FILE: &str = "host-update-store-prompt.json";
+    const STORE_PROMPT_SNOOZE_SECS: u64 = 3 * 24 * 60 * 60;
+
+    /// Last store prompt the auto-flow actually put on screen.
+    #[derive(serde::Serialize, serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct StorePromptRecord {
+        version: String,
+        prompted_at_unix_secs: u64,
+    }
+
+    /// The store listing can lag the feed by days of review, so re-asking on
+    /// every cold start is noise. A newer version always asks again.
+    fn should_prompt_store_update(
+        last: Option<&StorePromptRecord>,
+        version: &str,
+        now_unix_secs: u64,
+    ) -> bool {
+        match last {
+            Some(record) if record.version == version => {
+                now_unix_secs.saturating_sub(record.prompted_at_unix_secs)
+                    >= STORE_PROMPT_SNOOZE_SECS
+            }
+            _ => true,
+        }
+    }
+
+    fn load_store_prompt_record() -> Option<StorePromptRecord> {
+        let path = crate::app::state_file(STORE_PROMPT_STATE_FILE).ok()?;
+        let bytes = std::fs::read(path).ok()?;
+        serde_json::from_slice(&bytes).ok()
+    }
+
+    fn record_store_prompt(version: &str, now_unix_secs: u64) {
+        let Ok(path) = crate::app::state_file(STORE_PROMPT_STATE_FILE) else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let record = StorePromptRecord {
+            version: version.to_string(),
+            prompted_at_unix_secs: now_unix_secs,
+        };
+        if let Ok(bytes) = serde_json::to_vec(&record) {
+            let _ = std::fs::write(path, bytes);
+        }
+    }
+
+    fn unix_now_secs() -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|elapsed| elapsed.as_secs())
+            .unwrap_or(0)
     }
 
     async fn apply(
@@ -302,6 +372,9 @@ pub mod host_app {
                         version: version.clone(),
                     });
                     return Ok(Outcome::Installed { version });
+                }
+                AppUpdateEvent::StoreOpened { version } => {
+                    return Ok(Outcome::Deferred { version });
                 }
                 AppUpdateEvent::Failed { stage, error } => {
                     return Err(crate::Error::Internal(format!(
@@ -371,6 +444,43 @@ pub mod host_app {
     /// failed attempts and may receive multiple `isConnected: true` events.
     static AUTO_RUNNING: AtomicBool = AtomicBool::new(false);
     static AUTO_LISTENER_ID: AtomicU64 = AtomicU64::new(0);
+
+    #[cfg(test)]
+    mod tests {
+        use super::{STORE_PROMPT_SNOOZE_SECS, StorePromptRecord, should_prompt_store_update};
+
+        const NOW: u64 = 1_800_000_000;
+
+        fn record(version: &str, prompted_at_unix_secs: u64) -> StorePromptRecord {
+            StorePromptRecord {
+                version: version.to_string(),
+                prompted_at_unix_secs,
+            }
+        }
+
+        #[test]
+        fn first_sighting_prompts() {
+            assert!(should_prompt_store_update(None, "1.2.0", NOW));
+        }
+
+        #[test]
+        fn same_version_inside_window_is_snoozed() {
+            let last = record("1.2.0", NOW - STORE_PROMPT_SNOOZE_SECS + 1);
+            assert!(!should_prompt_store_update(Some(&last), "1.2.0", NOW));
+        }
+
+        #[test]
+        fn same_version_after_window_prompts_again() {
+            let last = record("1.2.0", NOW - STORE_PROMPT_SNOOZE_SECS);
+            assert!(should_prompt_store_update(Some(&last), "1.2.0", NOW));
+        }
+
+        #[test]
+        fn newer_version_resets_the_snooze() {
+            let last = record("1.2.0", NOW);
+            assert!(should_prompt_store_update(Some(&last), "1.3.0", NOW));
+        }
+    }
 }
 
 pub(crate) fn install_auto_trigger(runtime: std::sync::Arc<lingxia_platform::Platform>) {

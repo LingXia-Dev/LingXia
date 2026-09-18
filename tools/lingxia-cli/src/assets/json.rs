@@ -1,5 +1,6 @@
-use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, ResolvedEnv};
+use crate::config::{HOST_CONFIG_FILE, LingXiaConfig, ResolvedEnv, UpdateSigningConfig};
 use anyhow::{Result, anyhow};
+use colored::Colorize;
 use std::collections::HashMap;
 
 use super::bundles::PreparedResourceBundle;
@@ -117,12 +118,8 @@ pub(super) fn build_app_json_from_config(
     }
 
     if let Some(update) = config.update.as_ref() {
-        let platforms = config
-            .app
-            .as_ref()
-            .map(|app| app.platforms.as_slice())
-            .unwrap_or(&[]);
-        update.validate(platforms)?;
+        update.validate()?;
+        warn_missing_store_listing_ids(config, update);
         if !update.trusted_public_keys.is_empty() {
             obj.insert(
                 "updateTrustedPublicKeys".to_string(),
@@ -151,6 +148,43 @@ pub(super) fn build_app_json_from_config(
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)
+}
+
+/// Platforms whose store listing cannot be opened at runtime: the channel
+/// resolves to `store` but no listing id is configured. Android and Harmony
+/// address the listing by package / bundle name, so they never appear here.
+pub(super) fn store_platforms_missing_listing_id(
+    app_platforms: &[String],
+    update: &UpdateSigningConfig,
+    listing_ids: &HashMap<String, String>,
+) -> Vec<String> {
+    use lingxia_app_context::update::{UpdateChannel, resolve_update_channel};
+
+    app_platforms
+        .iter()
+        .filter(|platform| matches!(platform.as_str(), "ios" | "macos" | "windows"))
+        .filter(|platform| {
+            resolve_update_channel(update.channel, &update.platforms, platform)
+                == UpdateChannel::Store
+        })
+        .filter(|platform| !listing_ids.contains_key(platform.as_str()))
+        .cloned()
+        .collect()
+}
+
+fn warn_missing_store_listing_ids(config: &LingXiaConfig, update: &UpdateSigningConfig) {
+    let app_platforms = config
+        .app
+        .as_ref()
+        .map(|app| app.platforms.as_slice())
+        .unwrap_or(&[]);
+    let listing_ids = store_listing_ids_from_config(config);
+    for platform in store_platforms_missing_listing_id(app_platforms, update, &listing_ids) {
+        eprintln!(
+            "{}: {platform} uses update channel `store` but {platform}.store.appId is not set; the update prompt will have no listing to open",
+            "warning".yellow().bold()
+        );
+    }
 }
 
 /// Numeric / Partner-Center listing ids used to open the store page.

@@ -211,7 +211,7 @@ fn generated_app_json_embeds_store_listing_ids() {
 }
 
 #[test]
-fn store_only_update_table_allows_empty_keys() {
+fn store_only_update_table_still_requires_keys() {
     use lingxia_app_context::UpdateChannel;
 
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
@@ -223,10 +223,37 @@ fn store_only_update_table_allows_empty_keys() {
         channel: Some(UpdateChannel::Store),
         ..Default::default()
     });
-    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
-    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
-    assert!(value.get("updateTrustedPublicKeys").is_none());
-    assert_eq!(value["updateChannel"], "store");
+    let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
+    assert!(err.to_string().contains("omit the update: table"), "{err}");
+}
+
+#[test]
+fn store_channel_without_listing_id_is_reported() {
+    use lingxia_app_context::UpdateChannel;
+    use std::collections::{BTreeMap, HashMap};
+
+    let mut platforms = BTreeMap::new();
+    platforms.insert("macos".into(), UpdateChannel::Store);
+    platforms.insert("android".into(), UpdateChannel::Store);
+    let update = UpdateSigningConfig {
+        trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
+        channel: None,
+        platforms,
+    };
+    let app_platforms = vec![
+        "ios".to_string(),
+        "macos".to_string(),
+        "windows".to_string(),
+        "android".to_string(),
+    ];
+    let mut listing_ids = HashMap::new();
+    listing_ids.insert("ios".to_string(), "1234567890".to_string());
+
+    // ios has an id, windows defaults to direct, android needs no id.
+    assert_eq!(
+        super::json::store_platforms_missing_listing_id(&app_platforms, &update, &listing_ids),
+        vec!["macos".to_string()]
+    );
 }
 
 #[test]

@@ -70,8 +70,14 @@ impl crate::traits::update::UpdateService for Platform {
     }
 
     fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
-        set_pending_store_update(info_json);
-        Ok(ffi::notify_app_update_ready(info_json))
+        // Only arm the click handler when a prompt is actually on screen;
+        // a stale slot would hijack a later direct-install restart click.
+        set_pending_store_update(Some(info_json));
+        let shown = ffi::notify_app_update_ready(info_json);
+        if !shown {
+            set_pending_store_update(None);
+        }
+        Ok(shown)
     }
 
     fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
@@ -607,9 +613,9 @@ fn pending_store_update_slot() -> &'static std::sync::Mutex<Option<String>> {
     SLOT.get_or_init(|| std::sync::Mutex::new(None))
 }
 
-fn set_pending_store_update(info_json: &str) {
+fn set_pending_store_update(info_json: Option<&str>) {
     if let Ok(mut slot) = pending_store_update_slot().lock() {
-        *slot = Some(info_json.to_string());
+        *slot = info_json.map(str::to_string);
     }
 }
 

@@ -201,7 +201,7 @@ pub(crate) fn set_click_intercept(intercept: bool) {
 /// Take the post-download prompt for an exclusive-tray host. Returns `false`
 /// when this process is not exclusive or has no tray, so the window callout
 /// can still run.
-pub(crate) fn present_update_ready(_forced: bool) -> bool {
+pub(crate) fn present_update_ready() -> bool {
     if !crate::window_host::is_exclusive_tray_host() || !is_installed() {
         return false;
     }
@@ -253,7 +253,7 @@ fn show_update_balloon() {
     data.uFlags |= NIF_INFO;
     data.dwInfoFlags = NIIF_INFO;
     write_tray_tip_sized(&mut data.szInfoTitle, title);
-    write_tray_info(&mut data.szInfo, body);
+    write_tray_tip_sized(&mut data.szInfo, body);
     let _ = unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) };
 }
 
@@ -269,10 +269,6 @@ fn write_tray_tip_sized<const N: usize>(target: &mut [u16; N], text: &str) {
     for (slot, ch) in target.iter_mut().take(max_len).zip(text.encode_utf16()) {
         *slot = ch;
     }
-}
-
-fn write_tray_info(target: &mut [u16; 256], text: &str) {
-    write_tray_tip_sized(target, text);
 }
 
 fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
@@ -949,12 +945,6 @@ mod tests {
         assert_eq!(y, 1048 - 420 - 8);
         assert!(x + 320 <= work.right);
         assert!(x >= work.left);
-    }
-
-    #[test]
-    fn exclusive_update_prompt_skips_without_tray() {
-        assert!(!super::present_update_ready(false));
-        assert!(!super::present_update_ready(true));
     }
 
     #[test]

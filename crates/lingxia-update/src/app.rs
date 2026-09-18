@@ -26,6 +26,10 @@ pub enum AppUpdateEvent {
     InstallRequested {
         version: String,
     },
+    /// Store channel: the listing was opened; nothing was downloaded.
+    StoreOpened {
+        version: String,
+    },
     Failed {
         stage: AppUpdateStage,
         error: String,
@@ -80,7 +84,9 @@ impl AppUpdateApply {
 
         if matches!(
             event,
-            AppUpdateEvent::InstallRequested { .. } | AppUpdateEvent::Failed { .. }
+            AppUpdateEvent::InstallRequested { .. }
+                | AppUpdateEvent::StoreOpened { .. }
+                | AppUpdateEvent::Failed { .. }
         ) {
             self.done = true;
         }

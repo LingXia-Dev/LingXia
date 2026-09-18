@@ -68,8 +68,9 @@ pub struct LingXiaConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
     /// In-app update trust and distribution channel. Omit the whole table
-    /// to skip prod check-update (dev still checks, unsigned). If any
-    /// enabled platform uses `direct`, list 1 or 2 `trustedPublicKeys`.
+    /// to skip prod check-update (dev still checks, unsigned). If present,
+    /// must list 1 or 2 `trustedPublicKeys` — the signed feed is the version
+    /// signal on the `store` channel too.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateSigningConfig>,
 }
@@ -91,7 +92,7 @@ pub struct UpdateSigningConfig {
 }
 
 impl UpdateSigningConfig {
-    pub fn validate(&self, app_platforms: &[String]) -> Result<()> {
+    pub fn validate(&self) -> Result<()> {
         for platform in self.platforms.keys() {
             if !AUTHORING_PLATFORMS.contains(&platform.as_str()) {
                 return Err(anyhow!(
@@ -100,33 +101,15 @@ impl UpdateSigningConfig {
                 ));
             }
         }
+        // The feed is the version signal on every channel, and prod only
+        // queries it with a trusted key — store builds need keys too.
         match self.trusted_public_keys.len() {
             1 | 2 => Ok(()),
-            0 if !self.any_direct(app_platforms) => Ok(()),
             0 => Err(anyhow!(
-                "update.trustedPublicKeys must list 1 or 2 keys when any platform uses channel: direct; omit the update: table to skip prod check-update"
+                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip prod check-update"
             )),
             _ => Err(anyhow!("update.trustedPublicKeys allows at most two keys")),
         }
-    }
-
-    fn any_direct(&self, app_platforms: &[String]) -> bool {
-        use lingxia_app_context::update::{UpdateChannel, resolve_update_channel};
-
-        if app_platforms.is_empty() {
-            if self.channel == Some(UpdateChannel::Store)
-                && self
-                    .platforms
-                    .values()
-                    .all(|channel| *channel == UpdateChannel::Store)
-            {
-                return false;
-            }
-            return true;
-        }
-        app_platforms.iter().any(|platform| {
-            resolve_update_channel(self.channel, &self.platforms, platform) == UpdateChannel::Direct
-        })
     }
 }
 
@@ -2067,12 +2050,7 @@ impl LingXiaConfig {
 
     fn validate(&self) -> Result<()> {
         if let Some(update) = self.update.as_ref() {
-            let platforms = self
-                .app
-                .as_ref()
-                .map(|app| app.platforms.as_slice())
-                .unwrap_or(&[]);
-            update.validate(platforms)?;
+            update.validate()?;
         }
         validate_capability_dependencies(self.capabilities.as_ref())?;
         if let Some(destination) = self.settings_destination.as_ref() {

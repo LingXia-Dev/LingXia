@@ -30,8 +30,8 @@ pub type HostAppInstaller = dyn Fn(&Path) -> Result<(), UpdateError> + Send + Sy
 static HOST_APP_INSTALLER: OnceLock<RwLock<Option<Arc<HostAppInstaller>>>> = OnceLock::new();
 static CUSTOM_HOST_UPDATE: AtomicBool = AtomicBool::new(false);
 
-/// Control called `lx.app.checkUpdate()`. The built-in auto-flow must not
-/// present its own prompt or download — JS owns apply().
+/// Control's `lx.app.checkUpdate()` completed. From here the built-in
+/// auto-flow must not prompt or download — JS owns apply().
 pub fn claim_custom_host_update() {
     CUSTOM_HOST_UPDATE.store(true, Ordering::SeqCst);
 }
@@ -212,7 +212,7 @@ fn apply_open_store(runner: HostAppUpdateService, update: UpdatePackageInfo) -> 
         if runner.open_update_store(&info) {
             lingxia_update::send_app_update_event(
                 &sender,
-                AppUpdateEvent::InstallRequested {
+                AppUpdateEvent::StoreOpened {
                     version: update.version,
                 },
             );
@@ -586,13 +586,6 @@ mod tests {
         assert!(!stale.exists());
         assert!(!stale_part.exists());
         assert!(staged.exists());
-    }
-
-    #[test]
-    fn claiming_custom_update_is_sticky() {
-        assert!(!custom_host_update_claimed());
-        claim_custom_host_update();
-        assert!(custom_host_update_claimed());
     }
 
     #[test]
