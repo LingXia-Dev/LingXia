@@ -86,16 +86,14 @@ capabilities:
 #   mark: design/splash-mark.png
 #   minDuration: 600
 
-# In-app host updates. The table requires 1-2 trustedPublicKeys: the signed
-# feed is the version signal on the store channel too.
-# Channel is per build: flip android to store on the Play-signed package.
-# A store-installed process always behaves as store, even if this still says direct.
+# In-app host updates. Needs 1-2 trustedPublicKeys; see the distribution docs
+# for minting them. Channel is per build, and a store-installed process always
+# behaves as store. Omitting the table keeps these same channels at runtime,
+# but prod then never checks for updates.
 # update:
 #   trustedPublicKeys: [ ... ]
-#   channel: direct
 #   platforms:
-#     ios: store
-#     android: direct
+{{UPDATE_PLATFORM_CHANNELS}}
 
 # Raw host assets. Use resources.bundles for lxapps.
 # assets: assets
