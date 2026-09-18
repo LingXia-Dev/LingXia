@@ -437,6 +437,8 @@ fn present_default_host(lxapp_id: Option<&str>, asset_dir: &Path) -> Result<()> 
     ));
     if let Err(message) = tray_icon::install_from_ui(asset_dir) {
         log::warn!("failed to install Windows tray icon: {message}");
+    } else {
+        lingxia_platform::windows::replay_windows_exclusive_update_ready();
     }
     Ok(())
 }

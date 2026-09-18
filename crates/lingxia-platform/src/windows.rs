@@ -63,6 +63,7 @@ pub use update_card::{
     open_ready_card as open_windows_update_ready_card,
     open_ready_prompt as open_windows_update_ready_prompt,
     pending_update_opens_store as windows_update_opens_store,
+    replay_exclusive_tray_prompt as replay_windows_exclusive_update_ready,
 };
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 

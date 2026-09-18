@@ -150,6 +150,24 @@ pub(super) fn present_ready(info: CardInfo) {
     super::update_callout::show();
 }
 
+/// Exclusive-tray icon finished installing. If a ready prompt arrived
+/// earlier (auto-check before the handler / `NIM_ADD`), take it now and
+/// hide any window callout that was the fallback.
+pub fn replay_exclusive_tray_prompt() {
+    let pending = LAST_READY_INFO
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|_| ()))
+        .is_some();
+    if !pending {
+        return;
+    }
+    if super::app::invoke_windows_exclusive_update_ready() {
+        LAST_EXCLUSIVE.store(true, Ordering::Relaxed);
+        super::update_callout::hide();
+    }
+}
+
 /// Open the card from the stored update details (the callout or exclusive-tray
 /// menu / balloon was clicked).
 fn open_pending_store_listing() -> bool {
