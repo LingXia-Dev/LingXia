@@ -13,6 +13,21 @@ const targetPlatform = testArgs.platform?.toLowerCase();
 const fullscreenSpec = httpBase && !selectedGate && targetPlatform !== 'windows' ? spec : spec.skip;
 const VIDEO_ID = 'lx-video-source-fixture';
 
+function showcaseHost(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
+  return windows
+    .filter((window) => {
+      const title = window.title.toLocaleLowerCase();
+      const process = window.process.toLocaleLowerCase();
+      return window.visible
+        && window.bounds.w >= 320
+        && window.bounds.h >= 320
+        && (title.includes('lingxia') || process.includes('lingxiademo'));
+    })
+    .sort((left, right) => (
+      right.bounds.w * right.bounds.h - left.bounds.w * left.bounds.h
+    ))[0];
+}
+
 fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
   id: 'DESKTOP-VIDEO-FULLSCREEN-001',
   covers: ['lx.createVideoContext', 'VideoContext.requestFullScreen', 'VideoContext.exitFullScreen', 'DesktopDriver.windows', 'DesktopDriver.displays'],
@@ -47,14 +62,59 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
     await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   });
 
+  // Desktop chrome cases before this one can leave a split, a surface float,
+  // or a rail hover child window over the page. AVPlayer then accepts play()
+  // without ever emitting Playing — the same leftover-panel class the entry
+  // order comment on preview-https is guarding.
+  const layout = await app.surfaceLayout();
+  for (const float of layout.floats) {
+    await app.eval({
+      timeoutMs: 15_000,
+      script: `
+        const handle = lx.surface.get(${JSON.stringify(float.id)});
+        if (handle) await handle.close();
+      `,
+    }).catch(() => undefined);
+  }
+  const terminalVisible = layout.asides.some((surface) => surface.id === 'terminal')
+    || layout.asideSlots.some((slot) => (
+      slot.children.includes('terminal') && slot.visible && !slot.overlay
+    ));
+  if (terminalVisible) {
+    await app.eval({
+      timeoutMs: 20_000,
+      script: `
+        const handle = await lx.surface.openDeclared('terminal');
+        if (handle.alive) await handle.close();
+      `,
+    }).catch(() => undefined);
+  }
+  const host = showcaseHost(await desktop.windows());
+  if (host) {
+    await desktop.window.focus({ window: host.id });
+    await desktop.pointer.move({
+      at: [
+        Math.round(host.bounds.x + host.bounds.w * 0.62),
+        Math.round(host.bounds.y + host.bounds.h * 0.55),
+      ],
+    });
+  }
+
   await app.nav.to({
     page: 'video',
     query: { automationFixture: 'video-source', src: `${httpBase}/media/sample.mp4` },
   });
   await waitForCurrentPage(app, 'video');
+  await app.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
   await app.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
-  await command('play()');
-  await waitForElementText(app, 'video', '[data-testid="video-event"]', (text) => text.includes('Playing'), 15_000);
+  await eventually(async () => {
+    await command('play()');
+    return eventLog();
+  }, (text) => text.includes('Playing'), {
+    describe: 'video [data-testid="video-event"] text',
+    timeoutMs: 15_000,
+    intervalMs: 400,
+  });
   const before = new Set((await fullscreenWindows()).map((window) => window.id));
 
   await t.step('requestFullScreen() reports on and presents a display-sized window', async () => {
