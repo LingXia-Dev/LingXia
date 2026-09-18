@@ -41,7 +41,6 @@ pub struct SignRequest<'a> {
     pub version: &'a str,
     pub sha256: &'a str,
     pub size: u64,
-    pub required_runtime_version: &'a str,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -64,8 +63,6 @@ struct ManifestWire {
     version: String,
     sha256: String,
     size: u64,
-    #[serde(rename = "requiredRuntimeVersion")]
-    required_runtime_version: String,
 }
 
 pub fn archive_sha256_hex(data: &[u8]) -> String {
@@ -99,7 +96,6 @@ pub fn compact_manifest(req: &SignRequest<'_>) -> Result<Vec<u8>, UpdateError> {
         version: req.version.to_string(),
         sha256: req.sha256.to_string(),
         size: req.size,
-        required_runtime_version: req.required_runtime_version.to_string(),
     };
     serde_json::to_vec(&wire)
         .map_err(|e| UpdateError::runtime(format!("encode update manifest: {e}")))
@@ -257,16 +253,6 @@ pub fn verify_checked_update(
     package.version = manifest.version;
     package.checksum_sha256 = manifest.sha256;
     package.size = Some(manifest.size);
-    // Empty signed value is the authenticated "no floor"; do not keep the
-    // provider's unsigned minRuntimeVersion.
-    package.required_runtime_version = {
-        let trimmed = manifest.required_runtime_version.trim();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed.to_string())
-        }
-    };
     Ok(package)
 }
 
@@ -396,7 +382,6 @@ mod tests {
             version: "1.2.3",
             sha256,
             size,
-            required_runtime_version: "",
         }
     }
 

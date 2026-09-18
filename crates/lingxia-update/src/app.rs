@@ -393,7 +393,6 @@ mod tests {
                 version,
                 sha256: &sha256,
                 size: ARCHIVE.len() as u64,
-                required_runtime_version: "",
             },
         )
         .expect("sign host package")
