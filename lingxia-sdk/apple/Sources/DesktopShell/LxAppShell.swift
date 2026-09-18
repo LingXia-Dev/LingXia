@@ -624,8 +624,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
-            case .ready, .store:
-                // Open the notes card; Restart applies, Open Store opens the listing.
+            case .store:
+                self?.applyPendingHostUpdate()
+            case .ready:
                 self?.presentUpdateReadyCard(infoJSON: self?.pendingUpdateInfoJSON ?? "{}")
             case .available:
                 _ = onAppEvent(AppEvent.updateInstallClick, "")
@@ -1954,8 +1955,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let callout = UpdateReadyCallout(appName: appName, state: state) { [weak self] in
             guard let self else { return }
             switch state {
-            case .ready, .store:
-                // Open the notes card; Restart applies, Open Store opens the listing.
+            case .store:
+                self.applyPendingHostUpdate()
+            case .ready:
                 self.presentUpdateReadyCard(infoJSON: self.pendingUpdateInfoJSON)
             case .available:
                 _ = onAppEvent(AppEvent.updateInstallClick, "")
