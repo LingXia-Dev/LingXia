@@ -16,7 +16,7 @@ Pick the directory that matches who actually reads the string at runtime.
 | `permission/runtime/` | Same as `shared/` | Runtime permission dialog texts (e.g. `permission.media_reason`). |
 | `permission/cli/` | Apple `Info.plist` (CLI build step only) | `apple.info_plist.*` keys consumed during `lingxia build` for Apple targets. |
 | `logic/` *(optional)* | Rust + TS only | Strings the logic crate / JS bridge surfaces but no native SDK reads. |
-| `desktop/` *(optional)* | Rust + TS only | Desktop-shell strings (terminal, browser tabs) read only by the Windows SDK — kept out of the mobile resource bundles. |
+| `desktop/` *(optional)* | Rust + TS + Apple | Desktop-shell strings (sidebar, browser chrome, terminal) for the Windows SDK and the Apple SDK (`Localizable.strings`). Kept out of the Android and Harmony resource bundles. Do not move a desktop chrome key to `apple/` just because Swift reads it. |
 | `android/` *(optional)* | Android `strings.xml` only | Android-only SDK strings (e.g. `R.string.lx_update_install_*`). |
 | `apple/` *(optional)* | Apple `Localizable.strings` only | iOS / macOS-only SDK strings. |
 | `harmony/` *(optional)* | Harmony `string.json` only | Harmony-only SDK strings. |

@@ -14,6 +14,16 @@ import { showcaseApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { attachShot } from '../../helpers/poll.js';
 
+function isLocalizedSettingsLabel(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed === 'Settings' || trimmed === '设置';
+}
+
+function isLocalizedExpandSidebarLabel(name: string): boolean {
+  const trimmed = name.trim();
+  return trimmed === 'Expand sidebar' || trimmed === '展开侧栏';
+}
+
 interface VisibilityEvent {
   id: string;
   source: string;
@@ -93,13 +103,13 @@ async function openSettingsMain(
   await desktop.window.focus({ window: current.id });
   const buttons = await desktop.ax.query({
     window: current.id,
-    match: 'name:Settings',
+    match: 'role:button',
     all: true,
   });
   const settings = buttons.filter((node) => (
     node.role === 'button'
     && node.enabled
-    && node.name.trim() === 'Settings'
+    && isLocalizedSettingsLabel(node.name)
     && node.rect.w > 0
     && node.rect.h > 0
     && node.rect.x < current.bounds.x + Math.min(220, current.bounds.w * 0.3)
@@ -387,11 +397,14 @@ async function expandMediumSidebar(
         const button = await waitForValue(async () => {
           const nodes = await desktop.ax.query({
             window: foreground.id,
-            match: 'name:Expand sidebar',
+            match: 'role:button',
             all: true,
           });
           return nodes.find((node) => (
-            node.enabled && node.rect.w > 0 && node.rect.h > 0
+            node.enabled
+            && isLocalizedExpandSidebarLabel(node.name)
+            && node.rect.w > 0
+            && node.rect.h > 0
           ));
         }, 'macOS medium sidebar expand control', 3_000);
         await desktop.pointer.click({ at: regionCenter([

@@ -1050,8 +1050,8 @@ class SidebarView: NSView {
         hideButton.wantsLayer = true
         hideButton.layer?.cornerRadius = 6
         hideButton.layer?.backgroundColor = NSColor.clear.cgColor
-        hideButton.toolTip = "Collapse sidebar"
-        hideButton.setAccessibilityLabel("Collapse sidebar")
+        hideButton.toolTip = L10n.string("lx_sidebar_collapse")
+        hideButton.setAccessibilityLabel(L10n.string("lx_sidebar_collapse"))
         hideButton.target = self
         hideButton.action = #selector(hideButtonClicked)
         headerView.addSubview(hideButton)
@@ -1827,9 +1827,11 @@ class SidebarView: NSView {
     }
 
     /// The rail column in screen space — the edge every hover float clears.
+    /// Use the scroll column, not `self.bounds`: the resize handle sits past
+    /// that trailing edge, and shifting maxX would offset every rail float.
     private func railScreenFrame() -> NSRect {
         guard let window else { return .zero }
-        return window.convertToScreen(convert(bounds, to: nil))
+        return window.convertToScreen(railScrollView.convert(railScrollView.bounds, to: nil))
     }
 
     private func scheduleRailHoverDismiss() {
@@ -2838,7 +2840,7 @@ class SidebarView: NSView {
         railExpandButton.alphaValue = railExpandEnabled ? 1 : 0.45
         railExpandButton.toolTip = nil
         railExpandButton.setAccessibilityLabel(
-            railExpandEnabled ? "Expand sidebar" : railExpandBlockedLabel()
+            railExpandEnabled ? L10n.string("lx_sidebar_expand") : railExpandBlockedLabel()
         )
         if railExpandEnabled, railHoverKey == Self.railExpandBlockedKey {
             closeRailHoverPanel()

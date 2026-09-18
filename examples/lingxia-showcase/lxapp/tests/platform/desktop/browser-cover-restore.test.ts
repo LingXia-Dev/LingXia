@@ -121,13 +121,13 @@ async function clickStaticSettings(
   }
   const buttons = await desktop.ax.query({
     window: host.id,
-    match: 'name:Settings',
+    match: 'role:button',
     all: true,
   });
   const settings = buttons.filter((node) => (
     node.role === 'button'
     && node.enabled
-    && node.name.trim() === 'Settings'
+    && (node.name.trim() === 'Settings' || node.name.trim() === '设置')
     && node.rect.w > 0
     && node.rect.h > 0
     && node.rect.x < host.bounds.x + Math.min(220, host.bounds.w * 0.3)

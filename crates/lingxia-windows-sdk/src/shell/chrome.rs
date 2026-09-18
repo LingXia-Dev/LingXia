@@ -1395,6 +1395,34 @@ pub(crate) fn collapsed_sidebar_tooltip(
     })
 }
 
+/// Compact rail expand is inert chrome. True only on that glyph so a click can
+/// refresh its hint without dismissing other rail floats.
+pub(crate) fn disabled_rail_expand_hit(
+    client: RECT,
+    layout: &WindowsWindowLayout,
+    point: (i32, i32),
+) -> bool {
+    let Some(layout) = shell_layout(layout) else {
+        return false;
+    };
+    let Some(tabbar) = layout.tab_bar.as_ref() else {
+        return false;
+    };
+    if !tabbar.rail_expand_disabled || !(tabbar.collapsed || tabbar.icon_rail) {
+        return false;
+    }
+    if !matches!(
+        tabbar.position,
+        WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right
+    ) {
+        return false;
+    }
+    let Some(tabbar_rect) = compute_chrome_rects(client, layout).tab_bar else {
+        return false;
+    };
+    rect_contains(&sidebar_rail_expand_rect(tabbar_rect), point)
+}
+
 /// Title band above the popup rows. The rail suppresses the group tooltip once
 /// there are pages to show, so this panel is where the switcher names itself.
 fn collapsed_sidebar_popup_title_height(tabbar: &WindowsShellTabBarLayout) -> i32 {
@@ -2788,12 +2816,13 @@ mod scroll_tests {
         collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup_hit,
         collapsed_sidebar_tabbar_popup_item_bounds, collapsed_sidebar_tabbar_popup_size,
         collapsed_sidebar_tooltip, compute_attached_layout, compute_chrome_rects,
-        covering_panel_layout, footer_action_rects, layout_for_maximized_native_panel,
-        layout_without_covered_main_chrome, phone_browser_bar_active, phone_browser_bar_rects,
-        rect_height, sidebar_auxiliary_rail_index, sidebar_auxiliary_rects,
-        sidebar_caption_contains, sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect,
-        sidebar_rail_expand_rect, sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect,
-        sidebar_top_level_icon_rect, tabbar_requires_full_repaint, top_bar_controls,
+        covering_panel_layout, disabled_rail_expand_hit, footer_action_rects,
+        layout_for_maximized_native_panel, layout_without_covered_main_chrome,
+        phone_browser_bar_active, phone_browser_bar_rects, rect_height,
+        sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
+        sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
+        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
+        tabbar_requires_full_repaint, top_bar_controls,
     };
     use lingxia_windows_contract::{
         WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
@@ -2986,6 +3015,15 @@ mod scroll_tests {
             tooltip.text,
             lingxia_logic::i18n::t(lingxia_logic::I18nKey::SidebarExpandNeedsWiderWindow)
         );
+        assert!(disabled_rail_expand_hit(client, &window_layout, center));
+        assert!(!disabled_rail_expand_hit(
+            client,
+            &window_layout,
+            (
+                (client.left + client.right) / 2,
+                (client.top + client.bottom) / 2
+            ),
+        ));
     }
 
     #[test]
