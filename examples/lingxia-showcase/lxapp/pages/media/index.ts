@@ -7,7 +7,9 @@ import type {
   ExtractVideoThumbnailOptions,
   ImageInfo,
   PreviewMediaOptions,
+  PreviewMediaResult,
   ScanCodeOptions,
+  VideoCompressQuality,
   VideoInfo,
 } from "@lingxia/types";
 import { eventDetail, type NativeEvent } from "../../shared/lib/native-events";
@@ -382,11 +384,11 @@ function createState(modeKey: unknown) {
       | { path?: string; width?: number; height?: number; type?: string; size?: number }
       | null,
     compressError: "",
-    videoInfoResult: null,
+    videoInfoResult: null as VideoInfo | null,
     videoInfoError: "",
     videoInfoBusy: false,
     thumbnailVideoPath: "",
-    thumbnailSourceInfo: null,
+    thumbnailSourceInfo: null as VideoInfo | null,
     thumbnailQuality: defaults.thumbnailQuality || "80",
     thumbnailMaxWidth: "",
     thumbnailMaxHeight: "",
@@ -400,7 +402,7 @@ function createState(modeKey: unknown) {
     videoCompressFps: "30",
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
-    videoCompressProgress: null,
+    videoCompressProgress: null as number | null,
     videoCompressResult: null as { tempFilePath?: string } | null,
     videoCompressError: "",
     previewRotateKey: "meta",
@@ -409,7 +411,7 @@ function createState(modeKey: unknown) {
     previewHideIndexIndicator: false,
     previewImageDurationMs: "2000",
     previewSessionBusy: false,
-    previewSessionResult: null,
+    previewSessionResult: null as PreviewMediaResult | null,
     previewSessionError: "",
     componentRotateKey: "meta",
     componentObjectFitKey: "cover",
@@ -972,23 +974,14 @@ Page({
     }
 
     const quality = (this.data.videoCompressQuality || "").trim().toLowerCase();
-    const payload: CompressVideoOptions = { path: sourcePath };
-    if (quality) {
-      payload.quality = quality as CompressVideoOptions["quality"];
-    } else {
-      const bitrate = parsePositiveInt(this.data.videoCompressBitrate);
-      const fps = parsePositiveInt(this.data.videoCompressFps);
-      const resolution = parseResolutionRatio(this.data.videoCompressResolution);
-      if (typeof bitrate === "number") {
-        payload.bitrate = bitrate;
-      }
-      if (typeof fps === "number") {
-        payload.fps = fps;
-      }
-      if (typeof resolution === "number") {
-        payload.resolution = resolution;
-      }
-    }
+    const payload: CompressVideoOptions = quality
+      ? { path: sourcePath, quality: quality as VideoCompressQuality }
+      : {
+          path: sourcePath,
+          bitrate: parsePositiveInt(this.data.videoCompressBitrate),
+          fps: parsePositiveInt(this.data.videoCompressFps),
+          resolution: parseResolutionRatio(this.data.videoCompressResolution),
+        };
 
     this.setData({
       videoCompressBusy: true,

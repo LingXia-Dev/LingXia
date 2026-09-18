@@ -1,6 +1,7 @@
+import type { LocationInfo } from "@lingxia/types";
 Page({
   data: {
-    location: null,
+    location: null as LocationInfo | null,
     locationError: "",
     isLoading: false,
   },

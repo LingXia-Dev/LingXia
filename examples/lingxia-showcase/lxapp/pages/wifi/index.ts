@@ -1,4 +1,4 @@
-import type { ConnectWifiOptions } from "@lingxia/types";
+import type { ConnectWifiOptions, WifiInfo } from "@lingxia/types";
 import { showcaseApp } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 const app = showcaseApp();
@@ -6,7 +6,10 @@ const app = showcaseApp();
 // The two module-level listener helpers take the page instance, so they need a
 // name for the slice of it they touch.
 interface WifiPage {
-  data: { wifiListenerEnabled: boolean; wifiConnectedEvents: unknown[] };
+  data: {
+    readonly wifiListenerEnabled: boolean;
+    readonly wifiConnectedEvents: readonly unknown[];
+  };
   _offWifiConnected: (() => void) | null;
   setData(patch: Record<string, unknown>): void;
 }
@@ -49,8 +52,8 @@ function stopWifiConnectedListener(page: WifiPage) {
 
 Page({
   data: {
-    wifiList: null,
-    connectedWifi: null,
+    wifiList: null as WifiInfo[] | null,
+    connectedWifi: null as WifiInfo | null,
     wifiModuleEnabled: false,
     wifiListenerEnabled: false,
     wifiConnectedEvents: [] as unknown[],

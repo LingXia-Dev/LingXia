@@ -74,7 +74,9 @@ export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
       ? T
       : T extends readonly (infer U)[]
         ? ReadonlyArray<DeepReadonly<U, PageReadonlyDepth[D]>>
-        : { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> };
+        : T extends object
+          ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
+          : T;
 
 /**
  * Tuple path into `data`, depth-capped so large page states stay completable.
@@ -127,7 +129,7 @@ export type SetDataPatch<TData> = { [K in keyof TData]?: TData[K] };
 type SetDataValue<TData, K> = K extends PageDataPath
   ? { "LingXia type error": "use setPath or setDataPath for nested writes" }
   : K extends keyof TData
-    ? TData[K]
+    ? TData[K] | DeepReadonly<TData[K]>
     : { "LingXia type error": "unknown data key" };
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
@@ -388,7 +390,7 @@ export type StorageSchema = object;
 
 type StorageKey<S extends object> = Extract<keyof S, string>;
 type StorageEntry<S extends object> = {
-  [K in StorageKey<S>]: [key: K, value: S[K]];
+  [K in StorageKey<S>]: [key: K, value: S[K] | DeepReadonly<S[K]>];
 }[StorageKey<S>];
 
 /**
