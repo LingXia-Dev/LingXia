@@ -415,10 +415,12 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
     let body_mode = read_upload_body_mode_field(&obj)?;
     let field_name = read_optional_string_field(&obj, "name", "uploadFile")?;
     let form_data = read_string_map(&obj, "formData", "uploadFile")?;
+    let file_name = read_optional_string_field(&obj, "fileName", "uploadFile")?;
     // A raw body has nowhere to carry multipart framing, so reject it rather
-    // than dropping fields the lxapp believes it sent.
+    // than dropping fields the lxapp believes it sent. An empty formData
+    // object is still an explicit multipart field and is rejected too.
     if body_mode == UploadBodyMode::Raw {
-        if !form_data.is_empty() {
+        if get_present_property(&obj, "formData").is_some() {
             return Err(js_invalid_parameter_error(
                 "uploadFile formData requires bodyMode \"multipart\"",
             ));
@@ -426,6 +428,25 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
         if field_name.is_some() {
             return Err(js_invalid_parameter_error(
                 "uploadFile name requires bodyMode \"multipart\"",
+            ));
+        }
+        if file_name.is_some() {
+            return Err(js_invalid_parameter_error(
+                "uploadFile fileName requires bodyMode \"multipart\"",
+            ));
+        }
+    } else {
+        if get_present_property(&obj, "formData").is_some() && form_data.is_empty() {
+            return Err(js_invalid_parameter_error(
+                "uploadFile formData must include at least one field",
+            ));
+        }
+        if file_name
+            .as_deref()
+            .is_some_and(|name| name.trim().is_empty())
+        {
+            return Err(js_invalid_parameter_error(
+                "uploadFile fileName must be a non-empty string",
             ));
         }
     }
@@ -438,7 +459,7 @@ fn parse_upload_options(options: JSValue) -> JSResult<ParsedUploadOptions> {
         headers: read_string_map(&obj, "headers", "uploadFile")?,
         form_data,
         timeout_ms: read_optional_timeout_field(&obj)?,
-        file_name: read_optional_string_field(&obj, "fileName", "uploadFile")?,
+        file_name,
         mime_type: read_optional_string_field(&obj, "mimeType", "uploadFile")?,
         signal: read_optional_signal(&obj)?,
     })
@@ -998,7 +1019,8 @@ mod tests {
             "a field name has nowhere to go in an unframed body"
         );
 
-        // Both stay legal under the multipart default, and raw alone is fine.
+        // Populated formData stays legal under the multipart default, and raw
+        // alone is fine.
         assert!(parse_upload_options(options(&ctx, &[("formData", form_data)])).is_ok());
         let parsed = parse_upload_options(options(&ctx, &[("bodyMode", raw())])).unwrap();
         assert_eq!(parsed.body_mode, UploadBodyMode::Raw);
@@ -1006,11 +1028,11 @@ mod tests {
     }
 
     #[test]
-    fn empty_form_data_does_not_trip_the_raw_rejection() {
+    fn empty_form_data_is_rejected_in_every_body_mode() {
         let (_runtime, ctx) = js_context();
 
-        // `{}` and a map of nulls both mean "no fields", so neither should read
-        // as multipart intent the way a populated map does.
+        // `{}` and a map of nulls both mean "no fields". Passing the key is
+        // still an explicit formData value, so both modes reject it.
         let empty = JSObject::new(&ctx);
         let empty = JSValue::from_raw(&ctx, empty.into_value());
         let nulls = JSObject::new(&ctx);
@@ -1020,10 +1042,25 @@ mod tests {
         for form_data in [empty, nulls] {
             let raw = string(&ctx, "raw");
             assert!(
-                parse_upload_options(options(&ctx, &[("bodyMode", raw), ("formData", form_data)]))
-                    .is_ok()
+                parse_upload_options(options(
+                    &ctx,
+                    &[("bodyMode", raw), ("formData", form_data.clone())]
+                ))
+                .is_err()
             );
+            assert!(parse_upload_options(options(&ctx, &[("formData", form_data)])).is_err());
         }
+    }
+
+    #[test]
+    fn raw_rejects_file_name() {
+        let (_runtime, ctx) = js_context();
+        let raw = string(&ctx, "raw");
+        let file_name = string(&ctx, "clip.mp4");
+        assert!(
+            parse_upload_options(options(&ctx, &[("bodyMode", raw), ("fileName", file_name)]))
+                .is_err()
+        );
     }
 
     #[test]

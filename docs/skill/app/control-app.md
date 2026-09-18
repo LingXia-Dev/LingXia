@@ -50,9 +50,11 @@ guest cannot reach them:
 - `lx.app.setBadge(value)` — the product's own dock / taskbar / launcher icon.
 - `lx.app.cache` — every lxapp the host has ever run. Injected only into the
   Control app, same presence as `lx.app.control`; guests do not have the member.
-- `lx.app.checkUpdate()` and `lx.app.screenshot()` — the native host app,
-  not your bundle. (Your own bundle's updates are `lx.getUpdateManager()`,
-  which every lxapp has.)
+- `lx.app.checkUpdate()`, `lx.app.claimCustomUpdate()`, and
+  `lx.app.screenshot()` — the native host app, not your bundle. A check is a
+  query; claiming (or `update.apply()`) takes over the built-in auto-flow for
+  the rest of the process. (Your own bundle's updates are
+  `lx.getUpdateManager()`, which every lxapp has.)
 - `lx.app.autostart.*` — launch at login.
 - `lx.app.notification.*` — local banners that resume the product via App Link.
 - `lx.app.banner.*` — product-drawn top-right desktop card (inform or confirm).

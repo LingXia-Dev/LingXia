@@ -69,14 +69,14 @@ declare global {
   function getApp<T extends AppInstance = AppInstance>(): T | null;
   /**
    * `TData` comes from `data`, `TCustom` from everything else you declare, so
-   * `this.data` is typed, `this.myMethod()` resolves, and `setData` checks
-   * top-level keys against `data`.
+   * `this.data` is a readonly view of that type, `this.myMethod()` resolves,
+   * and `setData` checks top-level keys against `data`.
    */
   function Page<TData extends Record<string, unknown>, TCustom>(
     config: PageConfig<TData> &
       TCustom &
       NoLifecycleTypos<TCustom, PageLifecycleName> &
-      ThisType<PageInstance<TData> & TCustom>
+      ThisType<PageInstance<TData> & Omit<TCustom, keyof PageInstance>>
   ): void;
   function getCurrentPages<T extends PageInstance = PageInstance>(): T[];
 }

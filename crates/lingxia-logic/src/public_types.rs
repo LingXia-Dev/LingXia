@@ -733,10 +733,7 @@ rong::js_api! {
     tempFilePath: string;
 }"###;
 
-        type CompressVideoIteratorResult = r###"{
-    done: boolean;
-    value?: CompressVideoProgressEvent;
-}"###;
+        type CompressVideoIteratorResult = r###"IteratorResult<CompressVideoProgressEvent, void>"###;
 
         type CompressVideoOptions = r###"{
     /**
@@ -744,13 +741,22 @@ rong::js_api! {
      */
     path: string;
     /**
-     * Cross-platform note: video compression parameters are best-effort and may map to
-     * native presets instead of exact encoder settings.
-     *
-     * Compression quality preset.
-     * When provided, `bitrate`, `fps`, and `resolution` are ignored.
+     * Optional output path for compressed file.
      */
-    quality?: VideoCompressQuality;
+    outputPath?: string;
+} & (
+    | {
+    /**
+     * Compression quality preset.
+     * Mutually exclusive with `bitrate`, `fps`, and `resolution`.
+     */
+    quality: VideoCompressQuality;
+    bitrate?: never;
+    fps?: never;
+    resolution?: never;
+}
+    | {
+    quality?: never;
     /**
      * Preferred target video bitrate in kbps.
      * May be adjusted or ignored by platform codec/runtime limitations.
@@ -766,11 +772,8 @@ rong::js_api! {
      * May be approximated or ignored by platform transcoder capabilities.
      */
     resolution?: number;
-    /**
-     * Optional output path for compressed file.
-     */
-    outputPath?: string;
-}"###;
+}
+)"###;
 
         type CompressVideoProgressEvent = r###"{
     /** Transcode progress in percent, `0`-`100`. */
@@ -991,7 +994,9 @@ rong::js_api! {
     /**
      * Apply this checked update.
      *
-     * `apply()` is single-use for this update object.
+     * `apply()` is single-use for this update object. It also claims custom
+     * host updates for the rest of this process, same as
+     * {@link HostAppApi.claimCustomUpdate}.
      *
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
@@ -1003,10 +1008,7 @@ rong::js_api! {
     apply(): HostAppUpdateTask;
 }"###;
 
-        type HostAppUpdateIteratorResult = r###"{
-    done: boolean;
-    value?: HostAppUpdateEvent;
-}"###;
+        type HostAppUpdateIteratorResult = r###"IteratorResult<HostAppUpdateEvent, void>"###;
 
         type HostAppUpdateResult = r###"{
     /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
@@ -1912,6 +1914,10 @@ true
         /// lxapp. To update the native host app, the Control app uses the
         /// task-based `lx.app.checkUpdate()` API instead.
         ///
+        /// Listeners are a set: later subscriptions do not replace earlier ones.
+        /// The last pending ready/failed event is replayed to each new
+        /// subscriber until a newer event replaces it.
+        ///
         type UpdateManager = r###"{
     applyUpdate(): void;
     /** Subscribes to a ready update and returns the unsubscribe fn. */
@@ -1925,10 +1931,7 @@ true
     channel?: "release" | "draft" | string;
 }"###;
 
-        type UploadIteratorResult = r###"{
-    done: boolean;
-    value?: UploadProgressEvent;
-}"###;
+        type UploadIteratorResult = r###"IteratorResult<UploadProgressEvent, void>"###;
 
         /// Upload options. The file streams from disk, so the size ceiling is
         /// the remote's, not memory.
@@ -1939,12 +1942,12 @@ true
         /// - `multipart` (default) wraps the file in a `multipart/form-data`
         ///   envelope beside the `formData` text fields — what an ordinary form
         ///   endpoint parses. `name`, `fileName`, and `formData` describe that
-        ///   envelope.
+        ///   envelope. `formData`, when present, must contain at least one field.
         /// - `raw` sends the file bytes as the entire body. Presigned
         ///   object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
         ///   envelope would be stored verbatim as the object's contents,
-        ///   boundary lines and all. `name` and `formData` are then rejected
-        ///   rather than silently dropped, and `fileName` is ignored.
+        ///   boundary lines and all. `name`, `formData`, and `fileName` are
+        ///   then rejected rather than silently dropped.
         ///
         /// @example
         /// ```ts
@@ -1972,14 +1975,6 @@ true
      */
     method?: 'POST' | 'PUT' | 'PATCH';
     /**
-     * How the file bytes are framed. Default: `multipart`.
-     * `raw` sends them as the whole body under a `Content-Length` taken from
-     * the file itself, which is what presigned endpoints require.
-     */
-    bodyMode?: 'multipart' | 'raw';
-    /** Name of the multipart part carrying the file. Default: `file`. Multipart only. */
-    name?: string;
-    /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
      * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
@@ -1987,12 +1982,8 @@ true
      * carries the part boundary.
      */
     headers?: Record<string, string>;
-    /** Text fields sent alongside the file in the envelope. Multipart only. */
-    formData?: Record<string, string>;
     /** Request timeout in milliseconds. */
     timeout?: number;
-    /** Filename announced for the file part. Defaults to the file's own name. Multipart only. */
-    fileName?: string;
     /**
      * File MIME type. Types the file part under `multipart`; becomes the
      * request `Content-Type` under `raw`, where it defaults to
@@ -2001,11 +1992,30 @@ true
     mimeType?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
-}"###;
+} & (
+    | {
+    /**
+     * How the file bytes are framed. Default: `multipart`.
+     */
+    bodyMode?: 'multipart';
+    /** Name of the multipart part carrying the file. Default: `file`. */
+    name?: string;
+    /** Text fields sent alongside the file. Must be non-empty when set. */
+    formData?: Record<string, string>;
+    /** Filename announced for the file part. Defaults to the file's own name. */
+    fileName?: string;
+}
+    | {
+    /** Send the file bytes as the whole body. Multipart fields are rejected. */
+    bodyMode: 'raw';
+    name?: never;
+    formData?: never;
+    fileName?: never;
+}
+)"###;
 
         type UploadProgressEvent = r###"{
-    /** `completed` and `canceled` are terminal; iteration ends after either. */
-    kind: 'progress' | 'canceled' | 'completed';
+    kind: 'progress' | 'canceled';
     /** Bytes handed to the socket so far, envelope included under `multipart`. */
     uploadedBytes?: number;
     /**
@@ -2016,8 +2026,12 @@ true
     totalBytes?: number;
     /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
     progress?: number;
-    /** Present on `completed` only. */
-    result?: UploadResult;
+} | {
+    kind: 'completed';
+    uploadedBytes?: number;
+    totalBytes?: number;
+    progress?: number;
+    result: UploadResult;
 }"###;
 
         type UploadResult = r###"{

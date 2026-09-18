@@ -172,8 +172,8 @@ Page({
 
 | API | Description |
 | --- | --- |
-| `this.data` | Current page state. Read-only — use `setData()` to change. |
-| `this.setData(patch)` | Merge `patch` into `data` and replicate to View. Triggers re-render. Top-level keys are checked against `data`; a `'a.b'` / `'rows[0].name'` path is resolved at runtime. |
+| `this.data` | Current page state. A readonly view — use `setData()` / `setPath()` to change. |
+| `this.setData(patch)` | Merge a top-level partial into `data` and replicate to View. Nested writes use `setPath` (checked) or `setDataPath` (unchecked). |
 | `this.yourMethod()` | Anything else you declare beside the hooks is a page method, reachable through `this`. A name that differs from a lifecycle hook only in case (`onload`) is rejected, because the runtime would never call it. |
 | `onLoad(options)` | Lifecycle — page created. `options` are URL query params. |
 | `onShow()` | Lifecycle — page becomes visible (including back-navigation). |

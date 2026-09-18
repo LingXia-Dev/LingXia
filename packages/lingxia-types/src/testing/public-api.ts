@@ -134,6 +134,7 @@ const HOST_APP_API = [
   'banner',
   'cache',
   'checkUpdate',
+  'claimCustomUpdate',
   'control',
   'displayLanguage',
   'env',

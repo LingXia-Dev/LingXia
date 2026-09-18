@@ -8,22 +8,22 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-/// Identifies one `onUpdateReady`/`onUpdateFailed` registration. These are
-/// single-slot callbacks — subscribing again replaces the previous one — so an
-/// unsubscribe handle carries its token and clears the slot only while it still
-/// holds its own callback. Without it a stale handle would silently drop a
-/// later subscriber's.
+/// Identifies one `onUpdateReady`/`onUpdateFailed` registration so an
+/// unsubscribe handle clears only its own listener.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct UpdateSlotToken(u64);
+
+struct UpdateListener {
+    token: UpdateSlotToken,
+    callback: JSFunc,
+}
 
 #[derive(Default)]
 struct UpdateManagerState {
     manager: Option<JSObject>,
     lxappid: Option<String>,
-    on_ready: Option<JSFunc>,
-    ready_token: UpdateSlotToken,
-    on_failed: Option<JSFunc>,
-    failed_token: UpdateSlotToken,
+    on_ready: Vec<UpdateListener>,
+    on_failed: Vec<UpdateListener>,
     next_token: u64,
     pending_ready: Option<JSObject>,
     pending_failed: Option<JSObject>,
@@ -72,26 +72,37 @@ fn read_update_state<R>(ctx: &JSContext, read: impl FnOnce(&UpdateManagerState) 
     read(&state)
 }
 
-fn callbacks_from_state(ctx: &JSContext) -> (Option<JSFunc>, Option<JSFunc>) {
+fn callbacks_from_state(ctx: &JSContext) -> (Vec<JSFunc>, Vec<JSFunc>) {
     read_update_state(ctx, |state| {
-        (state.on_ready.clone(), state.on_failed.clone())
+        (
+            state
+                .on_ready
+                .iter()
+                .map(|listener| listener.callback.clone())
+                .collect(),
+            state
+                .on_failed
+                .iter()
+                .map(|listener| listener.callback.clone())
+                .collect(),
+        )
     })
 }
 
-fn take_pending_ready(ctx: &JSContext) -> Option<JSObject> {
-    let mut pending = None;
-    with_update_state(ctx, |state| {
-        pending = state.pending_ready.take();
-    });
-    pending
+fn pending_ready(ctx: &JSContext) -> Option<JSObject> {
+    read_update_state(ctx, |state| state.pending_ready.clone())
 }
 
-fn take_pending_failed(ctx: &JSContext) -> Option<JSObject> {
-    let mut pending = None;
-    with_update_state(ctx, |state| {
-        pending = state.pending_failed.take();
-    });
-    pending
+fn pending_failed(ctx: &JSContext) -> Option<JSObject> {
+    read_update_state(ctx, |state| state.pending_failed.clone())
+}
+
+fn deliver_update_listeners(listeners: &[JSFunc], payload: &JSObject) {
+    for callback in listeners {
+        if callback.call::<_, ()>(None, (payload.clone(),)).is_err() {
+            warn!("Update callback invocation failed; keeping the pending event");
+        }
+    }
 }
 
 // Register event handlers once per JSContext
@@ -103,29 +114,17 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
     }
 
     let ready_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
+        with_update_state(&ctx, |state| state.pending_ready = Some(_payload.clone()));
         let (ready_cb, _) = callbacks_from_state(&ctx);
-        if let Some(cb) = ready_cb {
-            if cb.call::<_, ()>(None, (_payload.clone(),)).is_err() {
-                warn!("UpdateReady callback invocation failed; preserving as pending event");
-                with_update_state(&ctx, |state| state.pending_ready = Some(_payload));
-            }
-        } else {
-            with_update_state(&ctx, |state| state.pending_ready = Some(_payload));
-        }
+        deliver_update_listeners(&ready_cb, &_payload);
         Ok(())
     })?;
     register_app_handler(ctx, "UpdateReady", ready_handler)?;
 
     let failed_handler = JSFunc::new(ctx, |ctx: JSContext, _payload: JSObject| -> JSResult<()> {
+        with_update_state(&ctx, |state| state.pending_failed = Some(_payload.clone()));
         let (_, failed_cb) = callbacks_from_state(&ctx);
-        if let Some(cb) = failed_cb {
-            if cb.call::<_, ()>(None, (_payload.clone(),)).is_err() {
-                warn!("UpdateFailed callback invocation failed; preserving as pending event");
-                with_update_state(&ctx, |state| state.pending_failed = Some(_payload));
-            }
-        } else {
-            with_update_state(&ctx, |state| state.pending_failed = Some(_payload));
-        }
+        deliver_update_listeners(&failed_cb, &_payload);
         Ok(())
     })?;
     register_app_handler(ctx, "UpdateFailed", failed_handler)?;
@@ -139,16 +138,16 @@ fn ensure_update_handlers(ctx: &JSContext) -> JSResult<()> {
 #[js_class(clone)]
 pub(crate) struct JSUpdateManager {
     appid: String,
-    on_ready: Option<JSFunc>,
-    on_failed: Option<JSFunc>,
+    on_ready: Vec<(UpdateSlotToken, JSFunc)>,
+    on_failed: Vec<(UpdateSlotToken, JSFunc)>,
 }
 
 impl JSUpdateManager {
     pub fn new(appid: String) -> Self {
         Self {
             appid,
-            on_ready: None,
-            on_failed: None,
+            on_ready: Vec::new(),
+            on_failed: Vec::new(),
         }
     }
 }
@@ -199,61 +198,55 @@ impl JSUpdateManager {
     /// Subscribes to a ready update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateReady")]
     fn on_update_ready(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
-        self.on_ready = Some(cb.clone());
         let token = claim_slot_token(&ctx);
+        self.on_ready.push((token, cb.clone()));
         with_update_state(&ctx, |state| {
-            state.ready_token = token;
-            state.on_ready = Some(cb);
+            state.on_ready.push(UpdateListener {
+                token,
+                callback: cb.clone(),
+            });
         });
-        if let Some(payload) = take_pending_ready(&ctx)
-            && let Some(ready_cb) = self.on_ready.as_ref()
-            && ready_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+        if let Some(payload) = pending_ready(&ctx)
+            && cb.call::<_, ()>(None, (payload,)).is_err()
         {
             warn!("Flushing pending UpdateReady failed; keeping event pending");
-            with_update_state(&ctx, |state| state.pending_ready = Some(payload));
         }
         let slot = update_registry(&ctx).state.clone();
         JSFunc::new(&ctx, move || {
             let mut state = slot.borrow_mut();
-            if state.ready_token == token {
-                state.on_ready = None;
-                state.ready_token = UpdateSlotToken::default();
-            }
+            state.on_ready.retain(|listener| listener.token != token);
         })
     }
 
     /// Subscribes to a failed update and returns the unsubscribe fn.
     #[js_method(rename = "onUpdateFailed")]
     fn on_update_failed(&mut self, ctx: JSContext, cb: JSFunc) -> JSResult<JSFunc> {
-        self.on_failed = Some(cb.clone());
         let token = claim_slot_token(&ctx);
+        self.on_failed.push((token, cb.clone()));
         with_update_state(&ctx, |state| {
-            state.failed_token = token;
-            state.on_failed = Some(cb);
+            state.on_failed.push(UpdateListener {
+                token,
+                callback: cb.clone(),
+            });
         });
-        if let Some(payload) = take_pending_failed(&ctx)
-            && let Some(failed_cb) = self.on_failed.as_ref()
-            && failed_cb.call::<_, ()>(None, (payload.clone(),)).is_err()
+        if let Some(payload) = pending_failed(&ctx)
+            && cb.call::<_, ()>(None, (payload,)).is_err()
         {
             warn!("Flushing pending UpdateFailed failed; keeping event pending");
-            with_update_state(&ctx, |state| state.pending_failed = Some(payload));
         }
         let slot = update_registry(&ctx).state.clone();
         JSFunc::new(&ctx, move || {
             let mut state = slot.borrow_mut();
-            if state.failed_token == token {
-                state.on_failed = None;
-                state.failed_token = UpdateSlotToken::default();
-            }
+            state.on_failed.retain(|listener| listener.token != token);
         })
     }
 
     #[js_method(gc_mark)]
     fn gc_mark(&self, mut mark_fn: impl FnMut(&JSValue)) {
-        if let Some(cb) = &self.on_ready {
+        for (_, cb) in &self.on_ready {
             mark_fn(cb.as_js_value());
         }
-        if let Some(cb) = &self.on_failed {
+        for (_, cb) in &self.on_failed {
             mark_fn(cb.as_js_value());
         }
     }
@@ -297,10 +290,8 @@ fn get_update_manager(ctx: JSContext) -> JSResult<JSObject> {
         // Drop callbacks/pending payload from any previous app binding. The
         // tokens go with them, so a handle from the old binding cannot match
         // and clear a subscriber the new one installs.
-        state.on_ready = None;
-        state.ready_token = UpdateSlotToken::default();
-        state.on_failed = None;
-        state.failed_token = UpdateSlotToken::default();
+        state.on_ready.clear();
+        state.on_failed.clear();
         state.pending_ready = None;
         state.pending_failed = None;
     });

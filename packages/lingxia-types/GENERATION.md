@@ -26,9 +26,9 @@ semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
 `JS*` class names stay unexported so they do not leak into the public contract.
 
 Rong typegen cannot yet express generic TS-only declaration names or correlated
-overloads. The minimal generation prelude therefore contains only nine generic
-contracts plus the `downloadFile` overloads. It is generator input, not a second
-public declaration tree.
+overloads. The generation prelude therefore holds generic page/storage
+contracts plus the `downloadFile` / `chooseFile` overloads. It is generator
+input, not a second public declaration tree.
 
 `check:quality` verifies the complete legacy public-name manifest, critical
 documentation, branded paths, overload resolution, and representative complex

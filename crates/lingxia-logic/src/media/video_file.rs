@@ -288,6 +288,12 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
     let explicit_output_uri = explicit_lx_output_uri(options.output_path.as_deref());
     let output_path = resolve_compress_video_output_path(&lxapp, options.output_path.as_deref())?;
     ensure_distinct_video_paths(&resolved_source, &output_path, "compressVideo")?;
+    reject_mixed_compress_settings(
+        options.quality.as_deref(),
+        options.bitrate,
+        options.fps,
+        options.resolution,
+    )?;
     let quality = parse_video_quality(options.quality.as_deref())?;
     let (bitrate_kbps, fps, resolution_ratio) = if quality.is_some() {
         (None, None, None)
@@ -607,6 +613,24 @@ fn normalize_video_codec_mime(codec: Option<String>) -> Option<String> {
     Some(normalized.to_string())
 }
 
+fn reject_mixed_compress_settings(
+    quality: Option<&str>,
+    bitrate: Option<u32>,
+    fps: Option<u32>,
+    resolution: Option<f64>,
+) -> JSResult<()> {
+    let has_quality = quality
+        .map(str::trim)
+        .is_some_and(|value| !value.is_empty());
+    let has_manual = bitrate.is_some() || fps.is_some() || resolution.is_some();
+    if has_quality && has_manual {
+        return Err(js_invalid_parameter_error(
+            "compressVideo quality cannot be combined with bitrate, fps, or resolution",
+        ));
+    }
+    Ok(())
+}
+
 fn parse_video_quality(value: Option<&str>) -> JSResult<Option<VideoCompressQuality>> {
     let Some(raw) = value.map(str::trim).filter(|v| !v.is_empty()) else {
         return Ok(None);
@@ -846,7 +870,7 @@ mod tests {
     use super::{
         PlatformVideoInfo, VideoOutputRoots, VideoOutputStorage, ensure_distinct_video_paths,
         explicit_lx_output_uri, normalize_video_codec_mime, platform_video_info_to_js,
-        validate_video_output,
+        reject_mixed_compress_settings, validate_video_output,
     };
     use std::fs;
 
@@ -1082,5 +1106,15 @@ mod tests {
         for input in [None, Some(""), Some("audio/opus"), Some("h266")] {
             assert_eq!(normalize_video_codec_mime(input.map(str::to_string)), None);
         }
+    }
+
+    #[test]
+    fn compress_rejects_quality_combined_with_manual_settings() {
+        assert!(reject_mixed_compress_settings(Some("low"), Some(800), None, None).is_err());
+        assert!(reject_mixed_compress_settings(Some("medium"), None, Some(24), None).is_err());
+        assert!(reject_mixed_compress_settings(Some("high"), None, None, Some(0.5)).is_err());
+        assert!(reject_mixed_compress_settings(Some("low"), None, None, None).is_ok());
+        assert!(reject_mixed_compress_settings(None, Some(800), Some(24), Some(0.5)).is_ok());
+        assert!(reject_mixed_compress_settings(None, None, None, None).is_ok());
     }
 }

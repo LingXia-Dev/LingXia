@@ -46,31 +46,92 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
 
 /**
  * A `setData` key that addresses inside `data` — `'a.b'` or `'rows[0].name'`.
- * Values behind a path stay `unknown`: the runtime resolves the path, so the
- * type cannot.
+ * Kept for documentation; nested writes go through `setPath` (checked) or
+ * `setDataPath` (unchecked). `setData` no longer accepts these keys.
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
 /**
- * A field initialized to `null` or `[]` states nothing about what will fill it
- * later, so it stays open. Annotate it (`null as Profile | null`) to have the
- * fill checked.
+ * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
+ * Annotate the field (`null as Profile | null`) when a later fill should be
+ * checked.
  */
-export type LazyInitField<T> = [T] extends [null | undefined]
-  ? unknown
-  : [T] extends [never[]]
-    ? unknown[]
-    : T;
+export type LazyInitField<T> = T;
+
+type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
+
+type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
 
 /**
- * Top-level keys are checked against `data`; only path-shaped keys stay open.
- * A misspelled or wrongly typed top-level key is a compile error.
+ * Deep readonly view of page `data`. Static only — the runtime object is not
+ * frozen.
  */
-export type SetDataPatch<TData> = { [K in keyof TData]?: LazyInitField<TData[K]> } &
-  Partial<Record<PageDataPath, unknown>>;
+export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
+  ? T
+  : T extends PagePrimitive
+    ? T
+    : T extends Function
+      ? T
+      : T extends readonly (infer U)[]
+        ? ReadonlyArray<DeepReadonly<U, PageReadonlyDepth[D]>>
+        : { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> };
+
+/**
+ * Tuple path into `data`, depth-capped so large page states stay completable.
+ */
+export type DataPath<T, D extends number = 5> = [D] extends [never]
+  ? never
+  : T extends readonly (infer U)[]
+    ? [number] | [number, ...DataPath<U, PageReadonlyDepth[D]>]
+    : T extends object
+      ? {
+          [K in keyof T & (string | number)]:
+            | [K]
+            | (DataPath<T[K], PageReadonlyDepth[D]> extends infer Rest
+                ? Rest extends readonly PropertyKey[]
+                  ? [K, ...Rest]
+                  : never
+                : never);
+        }[keyof T & (string | number)]
+      : never;
+
+export type DataPathValue<T, P extends readonly PropertyKey[]> = P extends readonly [
+  infer K,
+  ...infer Rest,
+]
+  ? Rest extends readonly PropertyKey[]
+    ? Rest['length'] extends 0
+      ? K extends keyof T
+        ? T[K]
+        : K extends number
+          ? T extends readonly (infer U)[]
+            ? U
+            : never
+          : never
+      : K extends keyof T
+        ? DataPathValue<T[K], Rest>
+        : K extends number
+          ? T extends readonly (infer U)[]
+            ? DataPathValue<U, Rest>
+            : never
+          : never
+    : never
+  : never;
+
+/**
+ * Top-level keys are checked against `data`. Nested writes use `setPath` or
+ * the unchecked `setDataPath`.
+ */
+export type SetDataPatch<TData> = { [K in keyof TData]?: TData[K] };
+
+type SetDataValue<TData, K> = K extends PageDataPath
+  ? { "LingXia type error": "use setPath or setDataPath for nested writes" }
+  : K extends keyof TData
+    ? TData[K]
+    : { "LingXia type error": "unknown data key" };
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
-  data: TData;
+  readonly data: DeepReadonly<TData>;
   route: string;
   /**
    * Available when this page was opened as a surface via
@@ -81,7 +142,17 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
-  setData(data: SetDataPatch<TData>, callback?: () => void): void;
+  setData<TPatch extends Record<string, unknown>>(
+    data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
+    callback?: () => void,
+  ): void;
+  setPath<const P extends DataPath<TData>>(
+    path: P,
+    value: DataPathValue<TData, P>,
+    callback?: () => void,
+  ): void;
+  /** Nested write by a runtime-resolved string path. The value is not checked. */
+  setDataPath(path: string, value: unknown, callback?: () => void): void;
 }
 
 /**
@@ -98,6 +169,12 @@ export interface StreamHandle<T = unknown> {
   end(result?: unknown): void;
   /** End the stream with an error. */
   error(code: string, message?: string): void;
+  /**
+   * Called once if View cancels before `end`/`error`. Returns unsubscribe.
+   * The generator form still observes cancel in `finally`; use this for the
+   * callback-based handle.
+   */
+  onCancel(handler: () => void): () => void;
 }
 
 /**
@@ -111,9 +188,9 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
   send(payload: TSend): void;
   /** Close the channel from Logic side. */
   close(code?: string, reason?: string): void;
-  /** Register a listener for incoming events. */
-  on(event: 'data', handler: (payload: TReceive) => void): void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
+  /** Register a listener for incoming events. Returns unsubscribe. */
+  on(event: 'data', handler: (payload: TReceive) => void): () => void;
+  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
 }
 
 /**
@@ -132,19 +209,38 @@ export type DownloadOptions<TDestination extends DownloadDestination = DownloadD
 export type DownloadResultForDestination<TDestination extends DownloadDestination> =
   TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
 
-export interface DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> {
-  kind: 'progress' | 'paused' | 'resumed' | 'canceled' | 'completed';
-  downloadedBytes?: number;
-  totalBytes?: number;
-  /** Present only when the total size is known. */
-  progress?: number;
-  result?: TResult;
-}
+export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
+  | {
+      kind: 'progress' | 'paused' | 'resumed';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      /** Present only when the total size is known. */
+      progress?: number;
+    }
+  | {
+      kind: 'canceled';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      progress?: number;
+    }
+  | {
+      kind: 'completed';
+      downloadedBytes?: number;
+      totalBytes?: number;
+      progress?: number;
+      result: TResult;
+    };
 
-export interface DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> {
-  done: boolean;
-  value?: DownloadProgressEvent<TResult>;
-}
+export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> =
+  IteratorResult<DownloadProgressEvent<TResult>, void>;
+
+export type AppTempDownloadResult = Extract<AppDownloadResult, { tempFilePath: string }>;
+export type AppPersistedDownloadResult = Extract<AppDownloadResult, { filePath: AppDownloadFilePath }>;
+
+export type ChooseFileSingleResult = {
+  canceled: false;
+  paths: [string];
+} | CanceledResult;
 
 export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadResult>
   extends PromiseLike<TDownloadResult>,
@@ -227,6 +323,14 @@ declare global {
      * `lx.app.cache?.…` and the query are interchangeable.
      */
     cache?: AppCacheApi;
+
+    /**
+     * Take over host updates for the rest of this process. Irreversible: the
+     * built-in auto-flow will not prompt or download again, including after
+     * the calling page unloads. Does not cancel an already-started update task.
+     * `update.apply()` claims as well. `checkUpdate()` does not.
+     */
+    claimCustomUpdate(): void;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -242,12 +346,30 @@ declare global {
 
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
+    /** Download to a durable app-owned path. */
+    downloadFile(
+      options: AppDownloadOptions & { filePath: string },
+    ): DownloadTask<AppPersistedDownloadResult>;
+    /** Download to a temporary app-owned path. */
+    downloadFile(
+      options: AppDownloadOptions & { filePath?: undefined },
+    ): DownloadTask<AppTempDownloadResult>;
     /** Download to the lxapp-managed app directory. */
     downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
     /** Download with a destination-correlated result type. */
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
+    /** Single-file picker: a completed selection is exactly one path. */
+    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
+    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
+    /**
+     * Opens a file picker.
+     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
+     * completed selection resolves `{ canceled: false, paths }` with at least one
+     * path. Rejects when the picker fails or returns an invalid payload.
+     */
+    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -678,10 +800,7 @@ export type CompressImageResult = {
     tempFilePath: string;
 };
 
-export type CompressVideoIteratorResult = {
-    done: boolean;
-    value?: CompressVideoProgressEvent;
-};
+export type CompressVideoIteratorResult = IteratorResult<CompressVideoProgressEvent, void>;
 
 export type CompressVideoOptions = {
     /**
@@ -689,13 +808,22 @@ export type CompressVideoOptions = {
      */
     path: string;
     /**
-     * Cross-platform note: video compression parameters are best-effort and may map to
-     * native presets instead of exact encoder settings.
-     *
-     * Compression quality preset.
-     * When provided, `bitrate`, `fps`, and `resolution` are ignored.
+     * Optional output path for compressed file.
      */
-    quality?: VideoCompressQuality;
+    outputPath?: string;
+} & (
+    | {
+    /**
+     * Compression quality preset.
+     * Mutually exclusive with `bitrate`, `fps`, and `resolution`.
+     */
+    quality: VideoCompressQuality;
+    bitrate?: never;
+    fps?: never;
+    resolution?: never;
+}
+    | {
+    quality?: never;
     /**
      * Preferred target video bitrate in kbps.
      * May be adjusted or ignored by platform codec/runtime limitations.
@@ -711,11 +839,8 @@ export type CompressVideoOptions = {
      * May be approximated or ignored by platform transcoder capabilities.
      */
     resolution?: number;
-    /**
-     * Optional output path for compressed file.
-     */
-    outputPath?: string;
-};
+}
+);
 
 export type CompressVideoProgressEvent = {
     /** Transcode progress in percent, `0`-`100`. */
@@ -1062,7 +1187,9 @@ export type HostAppUpdateInfo = {
     /**
      * Apply this checked update.
      *
-     * `apply()` is single-use for this update object.
+     * `apply()` is single-use for this update object. It also claims custom
+     * host updates for the rest of this process, same as
+     * {@link HostAppApi.claimCustomUpdate}.
      *
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
@@ -1074,10 +1201,7 @@ export type HostAppUpdateInfo = {
     apply(): HostAppUpdateTask;
 };
 
-export type HostAppUpdateIteratorResult = {
-    done: boolean;
-    value?: HostAppUpdateEvent;
-};
+export type HostAppUpdateIteratorResult = IteratorResult<HostAppUpdateEvent, void>;
 
 export type HostAppUpdateResult = {
     /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
@@ -2356,6 +2480,9 @@ export type UpdateFailedInfo = UpdateReadyInfo & {
  * Callback-based updates for this lxapp's bundle. Available to every
  * lxapp. To update the native host app, the Control app uses the
  * task-based `lx.app.checkUpdate()` API instead.
+ * Listeners are a set: later subscriptions do not replace earlier ones.
+ * The last pending ready/failed event is replayed to each new
+ * subscriber until a newer event replaces it.
  */
 export type UpdateManager = {
     applyUpdate(): void;
@@ -2370,10 +2497,7 @@ export type UpdateReadyInfo = {
     channel?: "release" | "draft" | string;
 };
 
-export type UploadIteratorResult = {
-    done: boolean;
-    value?: UploadProgressEvent;
-};
+export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
 
 /**
  * Upload options. The file streams from disk, so the size ceiling is
@@ -2383,12 +2507,12 @@ export type UploadIteratorResult = {
  * - `multipart` (default) wraps the file in a `multipart/form-data`
  * envelope beside the `formData` text fields — what an ordinary form
  * endpoint parses. `name`, `fileName`, and `formData` describe that
- * envelope.
+ * envelope. `formData`, when present, must contain at least one field.
  * - `raw` sends the file bytes as the entire body. Presigned
  * object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
  * envelope would be stored verbatim as the object's contents,
- * boundary lines and all. `name` and `formData` are then rejected
- * rather than silently dropped, and `fileName` is ignored.
+ * boundary lines and all. `name`, `formData`, and `fileName` are
+ * then rejected rather than silently dropped.
  * @example
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
@@ -2415,14 +2539,6 @@ export type UploadOptions = {
      */
     method?: 'POST' | 'PUT' | 'PATCH';
     /**
-     * How the file bytes are framed. Default: `multipart`.
-     * `raw` sends them as the whole body under a `Content-Length` taken from
-     * the file itself, which is what presigned endpoints require.
-     */
-    bodyMode?: 'multipart' | 'raw';
-    /** Name of the multipart part carrying the file. Default: `file`. Multipart only. */
-    name?: string;
-    /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
      * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
@@ -2430,12 +2546,8 @@ export type UploadOptions = {
      * carries the part boundary.
      */
     headers?: Record<string, string>;
-    /** Text fields sent alongside the file in the envelope. Multipart only. */
-    formData?: Record<string, string>;
     /** Request timeout in milliseconds. */
     timeout?: number;
-    /** Filename announced for the file part. Defaults to the file's own name. Multipart only. */
-    fileName?: string;
     /**
      * File MIME type. Types the file part under `multipart`; becomes the
      * request `Content-Type` under `raw`, where it defaults to
@@ -2444,11 +2556,30 @@ export type UploadOptions = {
     mimeType?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
-};
+} & (
+    | {
+    /**
+     * How the file bytes are framed. Default: `multipart`.
+     */
+    bodyMode?: 'multipart';
+    /** Name of the multipart part carrying the file. Default: `file`. */
+    name?: string;
+    /** Text fields sent alongside the file. Must be non-empty when set. */
+    formData?: Record<string, string>;
+    /** Filename announced for the file part. Defaults to the file's own name. */
+    fileName?: string;
+}
+    | {
+    /** Send the file bytes as the whole body. Multipart fields are rejected. */
+    bodyMode: 'raw';
+    name?: never;
+    formData?: never;
+    fileName?: never;
+}
+);
 
 export type UploadProgressEvent = {
-    /** `completed` and `canceled` are terminal; iteration ends after either. */
-    kind: 'progress' | 'canceled' | 'completed';
+    kind: 'progress' | 'canceled';
     /** Bytes handed to the socket so far, envelope included under `multipart`. */
     uploadedBytes?: number;
     /**
@@ -2459,8 +2590,12 @@ export type UploadProgressEvent = {
     totalBytes?: number;
     /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
     progress?: number;
-    /** Present on `completed` only. */
-    result?: UploadResult;
+} | {
+    kind: 'completed';
+    uploadedBytes?: number;
+    totalBytes?: number;
+    progress?: number;
+    result: UploadResult;
 };
 
 export type UploadResult = {
@@ -2817,15 +2952,22 @@ declare global {
      */
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
     /**
-     * Check whether the host app has an update.
-     * This host-level capability is restricted to the Control app. Once a check
-     * succeeds it claims the process for good: the built-in auto-flow will not
-     * prompt or download, so JS owns `apply()`. A failed check claims nothing.
-     * Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
-     * still surface a newer feed version; `apply()` opens the store listing
-     * instead of downloading.
+     * Query whether the host app has an update.
+     * This host-level capability is restricted to the Control app. A successful
+     * check does **not** take over the built-in auto-flow — that is
+     * `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
+     * check claims nothing. Incompatible updates are hidden as
+     * `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
+     * `apply()` opens the store listing instead of downloading.
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
+    /**
+     * Claim the process-lifetime custom host-update flow.
+     * Irreversible: the built-in auto-flow will not prompt or download again,
+     * including after the calling page unloads. Does not cancel an already-started
+     * update task. Later failed checks do not undo a claim already made.
+     */
+    claimCustomUpdate(): void;
     readonly env: HostAppEnv;
     /**
      * Read the host app's identity: OS, product name, product version, and SDK
@@ -2928,7 +3070,7 @@ declare global {
      * completed selection resolves `{ canceled: false, paths }` with at least one
      * path. Rejects when the picker fails or returns an invalid payload.
      */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
+    chooseFile(options: never): Promise<never>;
     /**
      * Opens a directory picker.
      * Resolves `{ canceled: true }` only when the user dismisses the picker. A

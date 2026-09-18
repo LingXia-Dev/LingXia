@@ -1385,10 +1385,8 @@ rong::js_api! {
     fn register_file_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
-        fn chooseFile(
-            ts_params = "options?: ChooseFileOptions",
-            ts_return = "Promise<ChooseFileResult>"
-        ) = choose_file;
+        // Precise multiple-correlated overloads remain in the curated Lx augmentation.
+        fn chooseFile(ts_params = "options: never", ts_return = "never") = choose_file;
         fn chooseDirectory(
             ts_params = "options?: ChooseDirectoryOptions",
             ts_return = "Promise<ChooseDirectoryResult>"

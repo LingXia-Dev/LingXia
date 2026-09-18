@@ -71,17 +71,18 @@ rong::js_api! {
     fn register_api(ctx) {
         namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
         fn checkUpdate(ts_return = "Promise<HostAppUpdateCheckResult>") = check_app_update;
+        fn claimCustomUpdate(ts_return = "void") = claim_custom_update;
     }
 }
 
-/// Check whether the host app has an update.
+/// Query whether the host app has an update.
 ///
-/// This host-level capability is restricted to the Control app. Once a check
-/// succeeds it claims the process for good: the built-in auto-flow will not
-/// prompt or download, so JS owns `apply()`. A failed check claims nothing.
-/// Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
-/// still surface a newer feed version; `apply()` opens the store listing
-/// instead of downloading.
+/// This host-level capability is restricted to the Control app. A successful
+/// check does **not** take over the built-in auto-flow — that is
+/// `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
+/// check claims nothing. Incompatible updates are hidden as
+/// `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
+/// `apply()` opens the store listing instead of downloading.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
     let lxapp = invocation.lxapp();
@@ -90,7 +91,6 @@ async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
         .check()
         .await
         .map_err(js_error_from_update_error)?;
-    lingxia_service::update::claim_custom_host_update();
     let Some(update) = update else {
         return create_check_result(&ctx, None, false);
     };
@@ -101,6 +101,17 @@ async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
 
     let store_channel = !host_update_service_from(&lxapp).self_update_supported();
     create_check_result(&ctx, Some(update), store_channel)
+}
+
+/// Claim the process-lifetime custom host-update flow.
+///
+/// Irreversible: the built-in auto-flow will not prompt or download again,
+/// including after the calling page unloads. Does not cancel an already-started
+/// update task. Later failed checks do not undo a claim already made.
+fn claim_custom_update(ctx: JSContext) -> JSResult<()> {
+    authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
+    lingxia_service::update::claim_custom_host_update();
+    Ok(())
 }
 
 fn create_check_result(
@@ -137,6 +148,7 @@ fn create_update_object(
         "apply",
         JSFunc::new(ctx, move |ctx: JSContext| {
             let invocation = authorization::require(&ctx, LogicRoute::AppApplyUpdate)?;
+            lingxia_service::update::claim_custom_host_update();
             let package = package
                 .lock()
                 .map_err(|_| js_internal_error("app update state is poisoned"))?

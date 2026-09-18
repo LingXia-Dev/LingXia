@@ -336,7 +336,7 @@ Page({
   },
 
   openSurfaceDemo: async function (config?: DemoSurfaceConfig) {
-    this.setData({ "surfaceDemo.message": "" });
+    this.setPath(["surfaceDemo", "message"], "");
 
     const cfg = config || {};
     // The content source picks the function; `as` is a small closed set within
@@ -350,9 +350,12 @@ Page({
     // answer is stable and does not need the error path to discover it.
     if (verb === "window" && !lx.supports({ capability: "surface", value: "window" })) {
       this.setData({
-        "surfaceDemo.message": "not supported",
-        "surfaceDemo.active": false,
-        "surfaceDemo.visible": false,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: "not supported",
+          active: false,
+          visible: false,
+        },
       });
       lx.showToast({ title: "not supported", icon: "none" });
       return;
@@ -368,9 +371,12 @@ Page({
       // the hide/show/close controls below.
       const single = verb === "float" || verb === "window";
       this.setData({
-        "surfaceDemo.message": `Opened ${surface.realized}: ${surface.id}`,
-        "surfaceDemo.active": single,
-        "surfaceDemo.visible": single,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Opened ${surface.realized}: ${surface.id}`,
+          active: single,
+          visible: single,
+        },
       });
       if (surface.kind === "page") {
         this._observeDemoPageSurface(surface);
@@ -381,9 +387,12 @@ Page({
       const message = surfaceErrorMessage(error);
       console.error("lx.surface open failed:", error);
       this.setData({
-        "surfaceDemo.message": `Failed (${surfaceErrorCode(error) ?? "unknown"}): ${message}`,
-        "surfaceDemo.active": false,
-        "surfaceDemo.visible": false,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Failed (${surfaceErrorCode(error) ?? "unknown"}): ${message}`,
+          active: false,
+          visible: false,
+        },
       });
       lx.showToast({ title: `open failed: ${message}`, icon: "none" });
     }
@@ -465,31 +474,40 @@ Page({
           ? (payload as { message?: unknown }).message || JSON.stringify(payload)
           : payload;
       const text = typeof message === "string" ? message : JSON.stringify(message);
-      this.setData({ "surfaceDemo.message": `Message: ${text}` });
+      this.setPath(["surfaceDemo", "message"], `Message: ${text}`);
     });
     // Both opener-side and page-side toggles flow through these events, so the
     // parent UI stays in sync even when the surface hides itself.
     surface.onShow((event) => {
       this.setData({
-        "surfaceDemo.visible": true,
-        "surfaceDemo.message": `Shown ${event.id} (source=${event.source})`,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          visible: true,
+          message: `Shown ${event.id} (source=${event.source})`,
+        },
       });
     });
     surface.onHide((event) => {
       this.setData({
-        "surfaceDemo.visible": false,
-        "surfaceDemo.message": `Hidden ${event.id} (source=${event.source})`,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          visible: false,
+          message: `Hidden ${event.id} (source=${event.source})`,
+        },
       });
     });
     surface.onClose((event) => {
       const currentMessage = this.data.surfaceDemo?.message || "";
       const closeMessage = `Closed ${event.id}: ${event.reason}`;
       this.setData({
-        "surfaceDemo.message": currentMessage.startsWith("Message:")
-          ? `${currentMessage} (${closeMessage})`
-          : closeMessage,
-        "surfaceDemo.active": false,
-        "surfaceDemo.visible": false,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: currentMessage.startsWith("Message:")
+            ? `${currentMessage} (${closeMessage})`
+            : closeMessage,
+          active: false,
+          visible: false,
+        },
       });
     });
   },
@@ -504,12 +522,15 @@ Page({
     try {
       await surface.show();
       this.setData({
-        "surfaceDemo.message": `Shown ${surface.id}`,
-        "surfaceDemo.visible": true,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Shown ${surface.id}`,
+          visible: true,
+        },
       });
     } catch (error) {
       console.warn("surface.show failed:", error);
-      this.setData({ "surfaceDemo.message": `Show failed: ${errorMessage(error, "unknown error")}` });
+      this.setPath(["surfaceDemo", "message"], `Show failed: ${errorMessage(error, "unknown error")}`);
     }
   },
 
@@ -521,12 +542,15 @@ Page({
     try {
       await surface.hide();
       this.setData({
-        "surfaceDemo.message": `Hidden ${surface.id}`,
-        "surfaceDemo.visible": false,
+        surfaceDemo: {
+          ...this.data.surfaceDemo,
+          message: `Hidden ${surface.id}`,
+          visible: false,
+        },
       });
     } catch (error) {
       console.warn("surface.hide failed:", error);
-      this.setData({ "surfaceDemo.message": `Hide failed: ${errorMessage(error, "unknown error")}` });
+      this.setPath(["surfaceDemo", "message"], `Hide failed: ${errorMessage(error, "unknown error")}`);
     }
   },
 
