@@ -973,17 +973,15 @@ class LxAppActivity : AppCompatActivity() {
         if (isMediaFullscreen) {
             navigationBar?.visibility = View.GONE
             tabBar?.visibility = View.GONE
-            (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
+            FrameLayout.LayoutParams(webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
                 topMargin = 0
                 bottomMargin = 0
                 leftMargin = 0
                 rightMargin = 0
-                webViewContainer.layoutParams = this
-                webViewContainer.requestLayout()
+                webViewContainer.updateFrameLayoutParamsIfChanged(this)
             }
             val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
             container?.translationY = 0f
-            container?.requestLayout()
             return
         }
         val isTabBarVisible = tabBar?.visibility == View.VISIBLE
@@ -1004,7 +1002,7 @@ class LxAppActivity : AppCompatActivity() {
             0
         }
 
-        (webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
+        FrameLayout.LayoutParams(webViewContainer.layoutParams as FrameLayout.LayoutParams).apply {
             topMargin = navBarHeight  // Use NavigationBar total height
             bottomMargin = 0
             leftMargin = 0
@@ -1033,13 +1031,11 @@ class LxAppActivity : AppCompatActivity() {
 
             bottomMargin = maxOf(bottomMargin, imeContentBottomInset)
 
-            webViewContainer.layoutParams = this
-            webViewContainer.requestLayout()
+            webViewContainer.updateFrameLayoutParamsIfChanged(this)
         }
 
         val container = webViewContainer.findViewWithTag<ViewGroup>("current_webview_container")
         container?.translationY = if (!isTabBarTransparent) calculateWebViewTranslationY() else 0f
-        container?.requestLayout()
     }
 
 
