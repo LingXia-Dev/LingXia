@@ -24,6 +24,11 @@ use tokio::sync::{Mutex, oneshot, watch};
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
+type CreatedStreamHandle = (
+    JSObject,
+    oneshot::Receiver<Result<String, RpcError>>,
+    Rc<RefCell<Option<JSFunc>>>,
+);
 
 #[js_class(clone)]
 pub struct PageSvc {
@@ -1358,14 +1363,7 @@ impl PageSvc {
         req_id: &str,
         work_id: Option<SessionWorkId>,
         outbound: Option<OutboundContext>,
-    ) -> Result<
-        (
-            JSObject,
-            oneshot::Receiver<Result<String, RpcError>>,
-            Rc<RefCell<Option<JSFunc>>>,
-        ),
-        RpcError,
-    > {
+    ) -> Result<CreatedStreamHandle, RpcError> {
         let ctx = self.get_ctx();
         let handle = JSObject::new(&ctx);
 
