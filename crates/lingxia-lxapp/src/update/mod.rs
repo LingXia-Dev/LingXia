@@ -288,7 +288,7 @@ impl UpdateManager {
             archive_path,
         )?;
 
-        if let Err(e) = Self::validate_downloaded_lxapp_manifest(lxappid, &install_path) {
+        if let Err(e) = Self::validate_downloaded_lxapp_manifest(lxappid, version, &install_path) {
             if let Err(cleanup_err) = fs::remove_dir_all(&install_path) {
                 crate::error!(
                     "Failed to rollback invalid installation at {}: {}",
@@ -390,12 +390,29 @@ impl UpdateManager {
 
     /// A downloaded package is also held to its runtime floor. Refusing it
     /// before metadata commits keeps the previous install in place.
+    /// The archive's own `lxapp.json` is under the signed sha256, so it must
+    /// name the app and version this install was for.
     fn validate_downloaded_lxapp_manifest(
         lxappid: &str,
+        version: &str,
         install_path: &Path,
     ) -> Result<(), LxAppError> {
-        Self::validate_installed_lxapp_manifest(install_path)?
-            .ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)
+        let manifest = Self::validate_installed_lxapp_manifest(install_path)?;
+        if manifest.appId != lxappid {
+            return Err(LxAppError::InvalidParameter(format!(
+                "package lxapp.json appId '{}' does not match '{lxappid}'",
+                manifest.appId
+            )));
+        }
+        if lingxia_update::Version::parse(version).ok()
+            != lingxia_update::Version::parse(&manifest.version).ok()
+        {
+            return Err(LxAppError::InvalidParameter(format!(
+                "package lxapp.json version '{}' does not match '{version}' for {lxappid}",
+                manifest.version
+            )));
+        }
+        manifest.ensure_runtime_satisfies(lxappid, crate::SDK_RUNTIME_VERSION)
     }
 
     fn validate_installed_lxapp_manifest(install_path: &Path) -> Result<LxAppConfig, LxAppError> {
@@ -603,5 +620,31 @@ impl UpdateManager {
             .map(|value| value.to_ascii_lowercase());
 
         metadata::upsert(&record)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::UpdateManager;
+
+    fn install_dir(manifest: &str) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("lxapp.json"), manifest).unwrap();
+        dir
+    }
+
+    #[test]
+    fn downloaded_manifest_must_name_the_expected_app_and_version() {
+        let dir = install_dir(
+            r#"{"appId":"shop","version":"1.2.0","pages":[{"name":"home","path":"pages/home/index"}]}"#,
+        );
+        UpdateManager::validate_downloaded_lxapp_manifest("shop", "1.2.0", dir.path()).unwrap();
+        assert!(
+            UpdateManager::validate_downloaded_lxapp_manifest("other", "1.2.0", dir.path())
+                .is_err()
+        );
+        assert!(
+            UpdateManager::validate_downloaded_lxapp_manifest("shop", "1.1.0", dir.path()).is_err()
+        );
     }
 }
