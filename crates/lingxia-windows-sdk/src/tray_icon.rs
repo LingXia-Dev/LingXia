@@ -199,14 +199,19 @@ pub(crate) fn set_click_intercept(intercept: bool) {
 }
 
 /// Take the post-download prompt for an exclusive-tray host. Returns `false`
-/// when this process is not exclusive or has no tray, so the window callout
-/// can still run.
+/// when this process is not exclusive, so the window callout can still run.
+///
+/// Exclusive hosts own the prompt even before `NIM_ADD` succeeds: returning
+/// `true` here stops the window callout. The balloon is shown now if the
+/// icon is up, or replayed after the tray icon is installed.
 pub(crate) fn present_update_ready() -> bool {
-    if !crate::window_host::is_exclusive_tray_host() || !is_installed() {
+    if !crate::window_host::is_exclusive_tray_host() {
         return false;
     }
     UPDATE_READY.store(true, Ordering::Relaxed);
-    show_update_balloon();
+    if is_installed() {
+        show_update_balloon();
+    }
     true
 }
 
