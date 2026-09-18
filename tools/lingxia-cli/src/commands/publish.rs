@@ -132,7 +132,6 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             version: &meta.version,
             sha256: &sha256,
             size: file_data.len() as u64,
-            required_runtime_version: &meta.min_runtime,
         },
     )?;
 
@@ -1204,7 +1203,6 @@ app:
             version: "1.0.1",
             sha256,
             size,
-            required_runtime_version: "",
         }
     }
 
