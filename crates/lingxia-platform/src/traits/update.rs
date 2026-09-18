@@ -74,10 +74,3 @@ pub fn store_url_in_update_info(info_json: &str) -> Option<String> {
                 .map(str::to_string)
         })
 }
-
-pub fn update_info_opens_store(info_json: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(info_json)
-        .ok()
-        .and_then(|value| value.get("openStore").and_then(|v| v.as_bool()))
-        .unwrap_or(false)
-}

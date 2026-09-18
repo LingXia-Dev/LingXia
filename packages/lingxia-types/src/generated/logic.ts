@@ -1005,7 +1005,7 @@ export type HostAppUpdateEvent = {
     downloadedBytes?: number;
     progress?: number;
 } | {
-    state: 'downloaded' | 'installRequested';
+    state: 'downloaded' | 'installRequested' | 'storeOpened';
 } | {
     state: 'failed';
     stage: HostAppUpdateApplyStage;
@@ -1031,7 +1031,8 @@ export type HostAppUpdateInfo = {
      * consumed with `for await...of` to render progress.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
-     * platform store listing (no package is downloaded).
+     * platform store listing (no package is downloaded) and resolves
+     * `storeOpened`; whether the user then updates is not reported.
      */
     apply(): HostAppUpdateTask;
 };
@@ -1042,7 +1043,8 @@ export type HostAppUpdateIteratorResult = {
 };
 
 export type HostAppUpdateResult = {
-    state: 'installRequested';
+    /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
+    state: 'installRequested' | 'storeOpened';
 };
 
 export type HostAppUpdateTask = PromiseLike<HostAppUpdateResult> & AsyncIterable<HostAppUpdateEvent> & {
@@ -2779,11 +2781,12 @@ declare global {
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
     /**
      * Check whether the host app has an update.
-     * This host-level capability is restricted to the Control app. Calling it
-     * claims the process: the built-in auto-flow will not prompt or download.
-     * Incompatible updates are hidden as
-     * `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
-     * `apply()` opens the store listing instead of downloading.
+     * This host-level capability is restricted to the Control app. Once a check
+     * succeeds it claims the process for good: the built-in auto-flow will not
+     * prompt or download, so JS owns `apply()`. A failed check claims nothing.
+     * Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
+     * still surface a newer feed version; `apply()` opens the store listing
+     * instead of downloading.
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
     readonly env: HostAppEnv;

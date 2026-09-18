@@ -86,7 +86,8 @@ capabilities:
 #   mark: design/splash-mark.png
 #   minDuration: 600
 
-# In-app host updates. Keys required when any platform is `direct`.
+# In-app host updates. The table requires 1-2 trustedPublicKeys: the signed
+# feed is the version signal on the store channel too.
 # Channel is per build: flip android to store on the Play-signed package.
 # A store-installed process always behaves as store, even if this still says direct.
 # update:

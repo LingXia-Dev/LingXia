@@ -80,7 +80,7 @@ fn android_update_manager_bool(open_store: bool, info_json: &str) -> Result<bool
         };
         Ok(result.z()?)
     })
-    .map_err(|e| PlatformError::Platform("Failed to call UpdateManager".to_string()))
+    .map_err(|e| PlatformError::Platform(format!("Failed to call UpdateManager: {e}")))
 }
 
 impl crate::traits::update::UpdateService for Platform {

@@ -29,6 +29,3 @@ update:
   # download; the system installer fires only when the user confirms.
   ready_message: "A new version has been downloaded. Install it now?"
   ready_title: "Update ready"
-  open_store: "Open store"
-  store_message: "A new version is available. Update it from the store?"
-  store_title: "Update available"

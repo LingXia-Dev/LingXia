@@ -76,20 +76,21 @@ rong::js_api! {
 
 /// Check whether the host app has an update.
 ///
-/// This host-level capability is restricted to the Control app. Calling it
-/// claims the process: the built-in auto-flow will not prompt or download.
-/// Incompatible updates are hidden as
-/// `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
-/// `apply()` opens the store listing instead of downloading.
+/// This host-level capability is restricted to the Control app. Once a check
+/// succeeds it claims the process for good: the built-in auto-flow will not
+/// prompt or download, so JS owns `apply()`. A failed check claims nothing.
+/// Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
+/// still surface a newer feed version; `apply()` opens the store listing
+/// instead of downloading.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
     let lxapp = invocation.lxapp();
-    lingxia_service::update::claim_custom_host_update();
 
     let update = host_update_service_from(&lxapp)
         .check()
         .await
         .map_err(js_error_from_update_error)?;
+    lingxia_service::update::claim_custom_host_update();
     let Some(update) = update else {
         return create_check_result(&ctx, None, false);
     };
@@ -293,6 +294,9 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
                 state: "installRequested".to_string(),
             })
         }
+        AppUpdateEvent::StoreOpened { .. } => AppUpdateCompletion::Success(JSAppUpdateResult {
+            state: "storeOpened".to_string(),
+        }),
         AppUpdateEvent::Failed { stage, error } => AppUpdateCompletion::Failed {
             stage: *stage,
             error: error.clone(),
@@ -308,7 +312,9 @@ fn host_update_service_from(lxapp: &LxApp) -> HostAppUpdateService {
 fn is_terminal_event(event: &AppUpdateEvent) -> bool {
     matches!(
         event,
-        AppUpdateEvent::InstallRequested { .. } | AppUpdateEvent::Failed { .. }
+        AppUpdateEvent::InstallRequested { .. }
+            | AppUpdateEvent::StoreOpened { .. }
+            | AppUpdateEvent::Failed { .. }
     )
 }
 
@@ -341,6 +347,13 @@ fn js_event_from_update_event(event: AppUpdateEvent) -> JSAppUpdateEvent {
         },
         AppUpdateEvent::InstallRequested { .. } => JSAppUpdateEvent {
             state: "installRequested".to_string(),
+            stage: None,
+            downloaded_bytes: None,
+            progress: None,
+            error: None,
+        },
+        AppUpdateEvent::StoreOpened { .. } => JSAppUpdateEvent {
+            state: "storeOpened".to_string(),
             stage: None,
             downloaded_bytes: None,
             progress: None,

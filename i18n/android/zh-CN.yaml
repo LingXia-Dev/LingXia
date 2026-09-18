@@ -20,6 +20,3 @@ update:
   # 后台静默下载完成后的“可安装”提示；仅在用户确认后才拉起系统安装器。
   ready_message: "新版本已下载完成，现在安装？"
   ready_title: "更新已就绪"
-  open_store: "打开应用商店"
-  store_message: "有新版本可用，请前往商店更新。"
-  store_title: "发现新版本"

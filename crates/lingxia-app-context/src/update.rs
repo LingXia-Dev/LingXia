@@ -154,20 +154,6 @@ pub fn store_update_url_for(
     }
 }
 
-/// Prefer `storeUrl` from the prompt JSON; otherwise rebuild from baked ids.
-pub fn store_url_from_info_json(info_json: &str, package_id: Option<&str>) -> Option<String> {
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(info_json)
-        && let Some(url) = value
-            .get("storeUrl")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-    {
-        return Some(url.to_string());
-    }
-    store_update_url(package_id)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

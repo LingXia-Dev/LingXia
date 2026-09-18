@@ -45,9 +45,62 @@ impl crate::traits::update::UpdateService for Platform {
     }
 
     fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
-        // No in-app notes card on Harmony; opening AppGallery is the prompt.
-        open_harmony_store(self, info_json)
+        let platform = self.clone();
+        let info_json = info_json.to_string();
+        // `show_modal` resolves only when the user taps, so it cannot run on
+        // the caller's thread; AppGallery opens from the confirm branch.
+        let _ = crate::rt::spawn(async move {
+            let options = crate::traits::ui::ModalOptions {
+                title: crate::i18n::text("update.store_title", "Update available"),
+                content: store_update_message(&info_json),
+                show_cancel: true,
+                cancel_text: crate::i18n::text("common.cancel", "Cancel"),
+                cancel_color: None,
+                confirm_text: crate::i18n::text("update.open_store", "Open store"),
+                confirm_color: None,
+            };
+            match crate::traits::ui::UserFeedback::show_modal(&platform, options).await {
+                Ok(result) if modal_confirmed(&result) => {
+                    if let Err(error) = open_harmony_store(&platform, &info_json) {
+                        warn!("[lingxia] failed to open AppGallery listing: {error}");
+                    }
+                }
+                Ok(_) => {}
+                Err(error) => warn!("[lingxia] store update prompt failed: {error}"),
+            }
+        });
+        Ok(true)
     }
+}
+
+fn modal_confirmed(result_json: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(result_json)
+        .ok()
+        .and_then(|value| value.get("confirm").and_then(serde_json::Value::as_bool))
+        .unwrap_or(false)
+}
+
+fn store_update_message(info_json: &str) -> String {
+    let notes = serde_json::from_str::<serde_json::Value>(info_json)
+        .ok()
+        .and_then(|value| {
+            let notes: Vec<String> = value
+                .get("releaseNotes")?
+                .as_array()?
+                .iter()
+                .filter_map(|note| note.as_str())
+                .map(str::trim)
+                .filter(|note| !note.is_empty())
+                .map(str::to_string)
+                .collect();
+            (!notes.is_empty()).then(|| notes.join("\n"))
+        });
+    notes.unwrap_or_else(|| {
+        crate::i18n::text(
+            "update.store_message",
+            "A new version is available. Update it from the store?",
+        )
+    })
 }
 
 fn open_harmony_store(platform: &Platform, info_json: &str) -> Result<bool, PlatformError> {
@@ -64,17 +117,14 @@ fn open_harmony_store(platform: &Platform, info_json: &str) -> Result<bool, Plat
     Ok(true)
 }
 
-/// AppGallery's native scheme uses the bundle name. HTTPS C-id is only
-/// the fallback when the bundle cannot be read — `open_url` is fire-and-
-/// forget, so we cannot try both.
+/// `open_url` is fire-and-forget, so only one URL can be tried: the caller's
+/// `storeUrl` already carries the bundle-name `appmarket://` scheme.
 fn harmony_store_open_url(platform: &Platform, info_json: &str) -> Option<String> {
-    if let Ok(bundle) = platform.get_app_identifier() {
+    crate::traits::update::store_url_in_update_info(info_json).or_else(|| {
+        let bundle = platform.get_app_identifier().ok()?;
         let bundle = bundle.trim();
-        if !bundle.is_empty() {
-            return Some(format!("appmarket://details?id={bundle}"));
-        }
-    }
-    crate::traits::update::store_url_in_update_info(info_json)
+        (!bundle.is_empty()).then(|| format!("appmarket://details?id={bundle}"))
+    })
 }
 
 // Note: No Drop impl needed for Platform because:

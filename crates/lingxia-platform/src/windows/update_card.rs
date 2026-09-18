@@ -142,7 +142,7 @@ pub(super) fn present_ready(info: CardInfo) {
     if let Ok(mut slot) = LAST_READY_INFO.lock() {
         *slot = Some(info);
     }
-    if super::app::invoke_windows_exclusive_update_ready(false) {
+    if super::app::invoke_windows_exclusive_update_ready() {
         LAST_EXCLUSIVE.store(true, Ordering::Relaxed);
         return;
     }
