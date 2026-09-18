@@ -16,7 +16,9 @@ it. An lxapp publish packages the current project first. `--env` (`dev` |
 `--env` defaults to `dev`, which implies channel `draft`. `--env prod`
 implies channel `release` unless `--channel` overrides it. Only host-app
 publish accepts a prebuilt package path; it does not take `--channel` (env
-is read from the packaged `app.json`). Authenticates with a bearer token:
+is read from the packaged `app.json`). An lxapp or plugin belongs to one
+product: pass `--lingxia-id`, or run from a host project whose `lingxia.yaml`
+has `app.lingxiaId`. Authenticates with a bearer token:
 the `--token` flag, `LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
 
 See `lingxia publish --help` for the flags.
