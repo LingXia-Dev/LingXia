@@ -68,6 +68,8 @@ internal object UpdateManager {
     // post-permission-grant re-install that proceeds without re-prompting.
     private val pendingReadyInstallPath = AtomicReference<String?>(null)
     @Volatile private var pendingReadyInstallInfo: ReadyInfo = ReadyInfo.EMPTY
+    // Store prompt requested before an activity existed (cold-start check).
+    private val pendingStoreUpdateInfo = AtomicReference<String?>(null)
     @Volatile private var installReceiver: BroadcastReceiver? = null
 
     /** Version + release notes shown in the "ready to install" prompt. */
@@ -109,6 +111,7 @@ internal object UpdateManager {
         activityRef = if (activity == null) null else WeakReference(activity)
         if (activity != null) {
             tryShowPendingReadyInstall()
+            tryShowPendingStoreUpdate()
             tryInstallPendingUpdate()
         }
     }
@@ -597,15 +600,35 @@ internal object UpdateManager {
         }
     }
 
+    /** @return true once the prompt is shown or deferred to the next activity. */
     @JvmStatic
     fun presentStoreUpdate(infoJson: String?): Boolean {
-        val activity = resolveActivity() ?: return false
-        if (activity.isFinishing || activity.isDestroyed) {
-            return false
+        val activity = resolveActivity()
+        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+            Log.w(TAG, "No current activity; deferring store update prompt")
+            pendingStoreUpdateInfo.set(infoJson ?: "")
+            return true
         }
+        showStoreUpdatePrompt(activity, infoJson)
+        return true
+    }
+
+    @JvmStatic
+    fun tryShowPendingStoreUpdate() {
+        val infoJson = pendingStoreUpdateInfo.getAndSet(null) ?: return
+        val activity = resolveActivity()
+        if (activity == null) {
+            pendingStoreUpdateInfo.set(infoJson)
+            return
+        }
+        showStoreUpdatePrompt(activity, infoJson)
+    }
+
+    private fun showStoreUpdatePrompt(activity: Activity, infoJson: String?) {
         val info = ReadyInfo.parse(infoJson)
         activity.runOnUiThread {
             if (activity.isFinishing || activity.isDestroyed) {
+                pendingStoreUpdateInfo.set(infoJson ?: "")
                 return@runOnUiThread
             }
             val message = if (info.releaseNotes.isNotEmpty()) {
@@ -623,7 +646,6 @@ internal object UpdateManager {
                 .setCancelable(true)
                 .show()
         }
-        return true
     }
 
     private fun storeUrlFromInfo(infoJson: String?): String? {
