@@ -176,7 +176,7 @@ pub(crate) fn exposes(ctx: &JSContext, key: &str) -> bool {
 
 /// Frozen feature support, not permission or current layout. Unknown strings
 /// return false; non-strings throw TypeError. Required features also need an
-/// appropriate lxapp.json minRuntime. The string API requires 0.18.0 or later.
+/// appropriate lxapp.json minRuntime.
 fn supports(ctx: JSContext, feature: JSValue) -> JSResult<bool> {
     if !feature.is_string() {
         return Err(HostError::new(

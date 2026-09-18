@@ -130,8 +130,7 @@ lx.surface.onContext(({ aside }) => {
 The supported set is frozen per Logic context. Unknown strings return false;
 non-strings throw TypeError. `LxFeature` is generated from the runtime registry.
 Required features need an appropriate `lxapp.json` `minRuntime`; optional ones
-use supports and a fallback. The string signature requires `minRuntime: "0.18.0"`
-or later. Permissions, grants and resource failures are checked at the
+use supports and a fallback. Permissions, grants and resource failures are checked at the
 operation, so true is not permission or a promise of success.
 
 `process` is where that gap shows: `lx.supports('process')` is true and

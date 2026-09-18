@@ -2,7 +2,7 @@
   "appId": "app.lingxia.browser",
   "name": "LingXia Browser",
   "version": "1.3.0",
-  "minRuntime": "0.18.0",
+  "minRuntime": "0.17.0",
   "controlProtocolVersion": 3,
   "logic": false,
   "pages": [
