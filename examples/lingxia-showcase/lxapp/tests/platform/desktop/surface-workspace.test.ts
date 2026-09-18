@@ -1040,6 +1040,29 @@ async function openChatAsMainWorkspace(app: LxAppDriver): Promise<void> {
   });
 }
 
+async function closeDeclaredTerminal(app: LxAppDriver): Promise<void> {
+  const layout = await app.surfaceLayout();
+  const visible = layout.asides.some((surface) => surface.id === 'terminal')
+    || layout.asideSlots.some((slot) => (
+      slot.children.includes('terminal') && slot.visible && !slot.overlay
+    ));
+  if (!visible) return;
+  await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const handle = await lx.surface.openDeclared('terminal');
+      if (handle.alive) await handle.close();
+    `,
+  });
+  await waitForValue(async () => {
+    const candidate = await app.surfaceLayout();
+    return !candidate.asides.some((surface) => surface.id === 'terminal')
+      && candidate.splitForm !== 'split'
+      ? true
+      : undefined;
+  }, 'closed declared terminal split');
+}
+
 async function closeChatSurface(app: LxAppDriver): Promise<void> {
   const manager = lx.automation().lxapps;
   let surfaceCloseError: unknown;
@@ -2342,6 +2365,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
   const dockedWidth = Math.round(1_200 * host.scale);
   try {
     await closeChatSurface(app);
+    await closeDeclaredTerminal(app);
     await waitForValue(async () => (
       containsSurface(await app.surfaceLayout(), 'lingxia-chat') ? undefined : true
     ), 'closed Chat baseline');
@@ -2844,6 +2868,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await desktop.key.press({ key: 'Escape' }).catch(() => undefined);
     await clearRetainedDynamicChatHandle(app).catch(() => undefined);
     await closeChatSurface(app).catch(() => undefined);
+    await closeDeclaredTerminal(app).catch(() => undefined);
     await setRootEdgeMarker(app, false).catch(() => undefined);
     await shell.setPin({ ...targetPin, pinned: initiallyPinned });
     await restoreHostBounds(desktop, host.id, originalBounds);
