@@ -403,7 +403,7 @@ mod tests {
             size: Some(size),
             release_notes: None,
             is_force_update: false,
-            required_runtime_version: None,
+            min_runtime: None,
             authentication: auth,
         }
     }

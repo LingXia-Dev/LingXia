@@ -29,7 +29,7 @@ fn emit_update_failed_event(
         "version": pkg.version,
         "isForceUpdate": pkg.is_force_update,
         "channel": channel.as_str(),
-        "minRuntimeVersion": pkg.required_runtime_version,
+        "minRuntime": pkg.min_runtime,
         "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
         "error": error,
     });
