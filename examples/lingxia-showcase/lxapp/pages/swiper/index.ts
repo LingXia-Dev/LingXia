@@ -20,7 +20,7 @@ function clampIndex(value: unknown, count: number) {
 
 Page({
   data: {
-    items: [],
+    items: [] as { id: string; type: "image" | "video"; src: string }[],
     index: 0,
     autoplay: false,
     loop: false,

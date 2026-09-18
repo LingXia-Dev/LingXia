@@ -1,7 +1,7 @@
 Page({
   data: {
     refreshCount: 0,
-    lastRefreshTime: null,
+    lastRefreshTime: null as string | null,
     isRefreshing: false,
   },
 

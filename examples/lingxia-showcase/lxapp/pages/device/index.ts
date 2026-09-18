@@ -1,15 +1,16 @@
+import type { DeviceInfo, NetworkInfo, ScreenInfo } from "@lingxia/types";
 import { errorMessage } from "../../shared/lib/errors";
 Page({
   data: {
     currentType: "device",
-    deviceInfo: null,
-    screenInfo: null,
-    networkInfo: null,
-    networkChange: null,
+    deviceInfo: null as DeviceInfo | null,
+    screenInfo: null as ScreenInfo | null,
+    networkInfo: null as NetworkInfo | null,
+    networkChange: null as NetworkInfo | null,
     networkListening: false,
     orientationListening: false,
     deviceOrientationValue: "",
-    orientationEvents: [],
+    orientationEvents: [] as string[],
     orientationLock: "",
   },
 

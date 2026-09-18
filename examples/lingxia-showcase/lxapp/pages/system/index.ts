@@ -1,14 +1,15 @@
+import type { AppBaseInfo, SystemSettingInfo } from "@lingxia/types";
 Page({
   data: {
     currentType: 'appBaseInfo',
-    appBaseInfo: null,
+    appBaseInfo: null as AppBaseInfo | null,
     displayLanguage: '',
-    systemSetting: null,
+    systemSetting: null as SystemSettingInfo | null,
     autostartSupported: false,
-    autostartEnabled: null,
+    autostartEnabled: null as boolean | null,
     autostartError: '',
-    cacheBytes: null,
-    cacheFreedBytes: null,
+    cacheBytes: null as number | null,
+    cacheFreedBytes: null as number | null,
     cacheBusy: false,
     cacheError: '',
     cacheNotice: '',

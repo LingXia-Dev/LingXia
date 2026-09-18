@@ -1,6 +1,7 @@
 import { showcaseApp } from "../../shared/lib/app";
 import { errorMessage } from "../../shared/lib/errors";
 import type {
+  ModalResult,
   PageSurface,
   ShowToastOptions,
   SurfaceEdge,
@@ -95,13 +96,13 @@ function newInstanceTag() {
 Page({
   data: {
     currentType: "navigation",
-    pageStack: [],
+    pageStack: [] as { index: number; name: string; current: boolean }[],
     instanceTag: "",
     previousInstanceTag: "",
     logicCounter: 0,
     moduleCounter: 0,
     events: [] as string[],
-    modalResult: null,
+    modalResult: null as ModalResult | null,
     toastIcon: "success" as NonNullable<ShowToastOptions["icon"]>,
     toastIconLabel: "Success",
     toastIconOptions: [
