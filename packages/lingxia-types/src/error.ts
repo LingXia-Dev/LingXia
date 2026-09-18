@@ -124,6 +124,29 @@ export function lxAppUnavailableReason(error: unknown): LxAppUnavailableReason |
     : null;
 }
 
+/** Business code of a rejection because the host is older than the lxapp's `minRuntime`. */
+export const LX_BIZ_CODE_HOST_UPGRADE_REQUIRED = 6002;
+
+/**
+ * Whether an open, navigation, or update was refused because the host is
+ * older than the lxapp's `minRuntime`.
+ *
+ * The rejection's `code` is `E_NOT_SUPPORTED`, which also covers missing
+ * capabilities; only `data.bizCode` says the user needs a newer host app.
+ *
+ * ```ts
+ * try {
+ *   await lx.navigateToApp({ appId })
+ * } catch (error) {
+ *   if (hostUpgradeRequired(error)) showUpdateHostNotice()
+ *   else throw error
+ * }
+ * ```
+ */
+export function hostUpgradeRequired(error: unknown): boolean {
+  return extractLxErrorCode(error) === LX_BIZ_CODE_HOST_UPGRADE_REQUIRED;
+}
+
 /** Every member of `SurfaceErrorCode`, for runtime narrowing. */
 export const SURFACE_ERROR_CODES = [
   'unsupported_placement',
