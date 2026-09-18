@@ -2861,7 +2861,7 @@ declare global {
     /**
      * Frozen feature support, not permission or current layout. Unknown strings
      * return false; non-strings throw TypeError. Required features also need an
-     * appropriate lxapp.json minRuntime. The string API requires 0.18.0 or later.
+     * appropriate lxapp.json minRuntime.
      */
     supports(feature: LxFeature): boolean;
     readonly clipboard: ClipboardApi;
