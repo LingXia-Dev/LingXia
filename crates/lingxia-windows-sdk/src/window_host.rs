@@ -7798,11 +7798,23 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             true
         }
-        Some(WindowsChromeHit::Chrome | WindowsChromeHit::Focusable { .. }) => {
+        Some(WindowsChromeHit::Chrome) => {
             #[cfg(feature = "shell-chrome")]
-            sync_sidebar_tabbar_popup(hwnd, point);
+            if let Some(webtag_key) = webtag_key.as_ref() {
+                let mut client = RECT::default();
+                if unsafe { WindowsAndMessaging::GetClientRect(hwnd, &mut client) }.is_ok()
+                    && crate::shell::disabled_rail_expand_hit(
+                        client,
+                        &current_window_layout(webtag_key),
+                        point,
+                    )
+                {
+                    sync_sidebar_tabbar_popup(hwnd, point);
+                }
+            }
             true
         }
+        Some(WindowsChromeHit::Focusable { .. }) => true,
         _ => false,
     }
 }

@@ -1,5 +1,5 @@
-# Desktop-shell strings — read only by the Windows SDK (Rust + TS).
-# Kept out of the mobile Android/iOS/Harmony resource bundles.
+# Desktop-shell strings — Windows SDK (Rust + TS) and Apple Localizable.strings.
+# Kept out of the Android and Harmony resource bundles.
 
 # Browser
 browser:
@@ -42,4 +42,6 @@ terminal:
 
 # Compact desktop keeps the rail expand glyph visible but inert.
 sidebar:
+  expand: "展开侧栏"
+  collapse: "收起侧栏"
   expand_needs_wider_window: "窗口太窄，请先放大"

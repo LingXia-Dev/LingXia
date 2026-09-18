@@ -88,7 +88,7 @@ pub(crate) use chrome::{
 pub(crate) use chrome::{
     SIDEBAR_RAIL_TOOLTIP_RADIUS, SIDEBAR_TABBAR_POPUP_RADIUS, bottom_tabbar_rect,
     collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip,
+    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip, disabled_rail_expand_hit,
     paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
     paint_transparent_tabbar_overlay, transparent_tabbar_overlay_rect,
 };
