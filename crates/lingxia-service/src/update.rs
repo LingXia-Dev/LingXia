@@ -20,8 +20,8 @@ use std::time::Duration;
 
 pub use lingxia_update::{
     AppUpdateApply, AppUpdateEvent, AppUpdateEventReceiver, AppUpdateProgressReporter,
-    AppUpdateStage, UpdateConfig, UpdateError, UpdatePackageInfo, UpdateProvider, UpdateTarget,
-    Version, VersionError, configure_update, subscribe_app_update_events, update_config,
+    AppUpdateStage, UpdateError, UpdatePackageInfo, UpdateProvider, UpdateTarget, Version,
+    VersionError, subscribe_app_update_events,
 };
 
 pub type HostAppInstaller = dyn Fn(&Path) -> Result<(), UpdateError> + Send + Sync + 'static;
@@ -136,7 +136,6 @@ impl HostAppUpdateService {
                 let info_json = serde_json::json!({
                     "version": update.version,
                     "releaseNotes": update.release_notes,
-                    "isForceUpdate": update.is_force_update,
                 })
                 .to_string();
                 runner

@@ -144,13 +144,7 @@ App({
     });
 
     const um = lx.getUpdateManager();
-    um.onUpdateReady(async (info) => {
-      if (info?.isForceUpdate) {
-        console.log("Force update ready; apply immediately");
-        um.applyUpdate();
-        return;
-      }
-
+    um.onUpdateReady(async () => {
       console.log("Update ready; asking user to apply...");
       const { t } = getAppMessages(resolveDisplayLanguage(lx.app.displayLanguage.get()));
       const applyNow = await lx.showModal({

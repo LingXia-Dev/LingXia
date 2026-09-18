@@ -118,7 +118,6 @@ fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<
     obj.set("version", update.version.clone())?;
     obj.set("size", update.size)?;
     obj.set("releaseNotes", update.release_notes.clone())?;
-    obj.set("isForceUpdate", update.is_force_update)?;
 
     let package = Arc::new(StdMutex::new(Some(update)));
     obj.set(

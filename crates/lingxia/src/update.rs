@@ -239,8 +239,7 @@ pub mod host_app {
         // No pre-download prompt: the package downloads silently in the
         // background. The only user-facing moment is the post-download
         // "ready to update" prompt, which each platform presents from its
-        // install hand-off (a dismissible reminder, or a blocking modal when
-        // the update is forced). Headless / non-desktop applies unattended.
+        // install hand-off. Headless / non-desktop applies unattended.
         apply(service, update).await
     }
 
@@ -249,7 +248,6 @@ pub mod host_app {
             "version": update.version,
             "size": update.size,
             "releaseNotes": update.release_notes,
-            "isForceUpdate": update.is_force_update,
         })
         .to_string()
     }

@@ -1029,7 +1029,6 @@ export type HostAppUpdateInfo = {
     version: string;
     size?: number;
     releaseNotes?: string[];
-    isForceUpdate: boolean;
     /**
      * Download and apply this checked update.
      *
@@ -2270,7 +2269,6 @@ export type UpdateManager = {
 
 export type UpdateReadyInfo = {
     version?: string;
-    isForceUpdate?: boolean;
     channel?: "release" | "draft" | string;
 };
 

@@ -1,4 +1,3 @@
-use crate::config::update_config;
 use crate::{
     BoxFuture, Channel, LxAppUpdateQuery, RuntimeCompatibilityError, UpdatePackageInfo,
     UpdateTarget, Version,
@@ -49,11 +48,7 @@ pub trait LxAppUpdateHost: Clone + Send + Sync + 'static {
         &'a self,
         update: &'a UpdatePackageInfo,
     ) -> BoxFuture<'a, Result<(), UpdateError>>;
-    fn wait_for_or_start_force_download<'a>(
-        &'a self,
-        update: &'a UpdatePackageInfo,
-    ) -> BoxFuture<'a, Result<(), UpdateError>>;
-    fn emit_update_ready(&self, version: &str, is_force_update: bool) -> Result<(), UpdateError>;
+    fn emit_update_ready(&self, version: &str) -> Result<(), UpdateError>;
     fn emit_update_failed(
         &self,
         update: &UpdatePackageInfo,
@@ -208,11 +203,11 @@ pub fn spawn_background_update_check<H: LxAppUpdateHost>(host: H, current_versio
             .await
         {
             Ok(true) => {
-                let _ = runner.emit_update_ready(&pkg.version, pkg.is_force_update);
+                let _ = runner.emit_update_ready(&pkg.version);
             }
             Ok(false) => match runner.download_update(&pkg).await {
                 Ok(()) => {
-                    let _ = runner.emit_update_ready(&pkg.version, pkg.is_force_update);
+                    let _ = runner.emit_update_ready(&pkg.version);
                 }
                 Err(error) => {
                     let _ = runner.emit_update_failed(&pkg, &error.to_string());
@@ -274,7 +269,7 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
         ));
     }
 
-    let target_semver = Version::parse(target_version).map_err(|_| {
+    Version::parse(target_version).map_err(|_| {
         UpdateError::invalid_parameter(format!(
             "targetVersion must be semantic version: {}",
             target_version
@@ -287,42 +282,6 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
     } else {
         None
     };
-
-    if host.is_ota_managed() && update_config().force_update_gate {
-        match with_foreground_update_timeout(
-            host.check_latest_update(current_version.as_deref()),
-            &format!("force-update gate check for {}", host.target_appid()),
-        )
-        .await
-        {
-            Ok(Some(pkg)) if pkg.is_force_update => {
-                let force_version = Version::parse(&pkg.version).map_err(|_| {
-                    UpdateError::unsupported(format!(
-                        "invalid forced update version '{}' for {}",
-                        pkg.version,
-                        host.target_appid()
-                    ))
-                })?;
-                if target_semver < force_version {
-                    return Err(UpdateError::unsupported(format!(
-                        "targetVersion {} is lower than required forced version {} for {} ({})",
-                        target_version,
-                        pkg.version,
-                        host.target_appid(),
-                        host.channel().as_str()
-                    )));
-                }
-            }
-            Ok(_) => {}
-            Err(error) => {
-                host.log_warning(&format!(
-                    "targetVersion force-update check failed (fail-open) for {}: {}",
-                    host.target_appid(),
-                    error
-                ));
-            }
-        }
-    }
 
     if current_version.as_deref() == Some(target_version)
         && (host.channel() != Channel::Draft || !host.is_ota_managed())
@@ -369,93 +328,4 @@ pub async fn ensure_target_version_ready<H: LxAppUpdateHost>(
     }
 
     host.download_update(&pkg).await
-}
-
-pub async fn ensure_force_update_for_installed<H: LxAppUpdateHost>(
-    host: &H,
-) -> Result<(), UpdateError> {
-    if !host.is_ota_managed() {
-        return Ok(());
-    }
-
-    if !update_config().force_update_gate {
-        return Ok(());
-    }
-
-    if !host.is_installed().await? {
-        return Ok(());
-    }
-
-    let current_version = match host.installed_version().await? {
-        Some(version) => version,
-        None => {
-            host.log_warning(&format!(
-                "Installed lxapp has no recorded version; skip force-update gating: {}",
-                host.target_appid()
-            ));
-            return Ok(());
-        }
-    };
-
-    let update = match with_foreground_update_timeout(
-        host.check_latest_update(Some(current_version.as_str())),
-        &format!(
-            "installed app force-update check for {}",
-            host.target_appid()
-        ),
-    )
-    .await
-    {
-        Ok(update) => update,
-        Err(error) => {
-            host.log_warning(&format!(
-                "force-update check failed (fail-open) for {}: {}",
-                host.target_appid(),
-                error
-            ));
-            return Ok(());
-        }
-    };
-
-    let Some(pkg) = update else {
-        return Ok(());
-    };
-
-    if let Err(error) = ensure_runtime_version_compatible(host, &pkg) {
-        if pkg.is_force_update {
-            return Err(error);
-        }
-        host.log_warning(&format!(
-            "optional update blocked by runtime version gate for {}: {}",
-            host.target_appid(),
-            error
-        ));
-        return Ok(());
-    }
-
-    if !pkg.is_force_update {
-        return Ok(());
-    }
-
-    let installed_checksum = if host.channel() == Channel::Draft {
-        host.installed_checksum().await?
-    } else {
-        None
-    };
-    if !pkg.should_replace(
-        host.channel(),
-        Some(current_version.as_str()),
-        installed_checksum.as_deref(),
-    ) {
-        return Ok(());
-    }
-
-    if host
-        .has_downloaded_update(&pkg.version, &pkg.checksum_sha256)
-        .await?
-    {
-        return Ok(());
-    }
-
-    host.wait_for_or_start_force_download(&pkg).await
 }

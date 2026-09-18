@@ -25,7 +25,6 @@ impl TestHost {
                 checksum_sha256: "new".into(),
                 size: None,
                 release_notes: None,
-                is_force_update: true,
                 min_runtime: None,
                 authentication: None,
             },
@@ -102,13 +101,7 @@ impl LxAppUpdateHost for TestHost {
         self.downloads.fetch_add(1, Ordering::SeqCst);
         Box::pin(async { Ok(()) })
     }
-    fn wait_for_or_start_force_download<'a>(
-        &'a self,
-        package: &'a UpdatePackageInfo,
-    ) -> BoxFuture<'a, Result<(), UpdateError>> {
-        self.download_update(package)
-    }
-    fn emit_update_ready(&self, _: &str, _: bool) -> Result<(), UpdateError> {
+    fn emit_update_ready(&self, _: &str) -> Result<(), UpdateError> {
         Ok(())
     }
     fn emit_update_failed(&self, _: &UpdatePackageInfo, _: &str) -> Result<(), UpdateError> {
@@ -153,28 +146,5 @@ async fn exact_release_keeps_version_only_shortcut() {
     let host = TestHost::new(Channel::Release);
     ensure_target_version_ready(&host, "1.0.0").await.unwrap();
     assert_eq!(host.exact_checks.load(Ordering::SeqCst), 0);
-    assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
-}
-
-#[tokio::test]
-async fn force_gate_requires_republished_draft_checksum() {
-    let mut host = TestHost::new(Channel::Draft);
-    host.pending_checksum = Some("old".into());
-    ensure_force_update_for_installed(&host).await.unwrap();
-    assert_eq!(host.downloads.load(Ordering::SeqCst), 1);
-    host.checksum = Some("new".into());
-    ensure_force_update_for_installed(&host).await.unwrap();
-    assert_eq!(host.downloads.load(Ordering::SeqCst), 1);
-}
-
-#[tokio::test]
-async fn force_gate_does_not_read_checksum_for_optional_or_release_packages() {
-    let mut host = TestHost::new(Channel::Draft);
-    host.checksum_error = true;
-    host.package.is_force_update = false;
-    ensure_force_update_for_installed(&host).await.unwrap();
-    host.channel = Channel::Release;
-    host.package.is_force_update = true;
-    ensure_force_update_for_installed(&host).await.unwrap();
     assert_eq!(host.downloads.load(Ordering::SeqCst), 0);
 }

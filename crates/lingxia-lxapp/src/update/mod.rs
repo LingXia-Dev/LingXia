@@ -1,6 +1,5 @@
 mod error_bridge;
 mod lxapp;
-pub(crate) mod state;
 
 use crate::archive;
 use crate::error::LxAppError;
@@ -22,11 +21,10 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub use self::lxapp::{ensure_first_install, ensure_target_version_ready};
 pub use self::lxapp::{
-    ensure_force_update_for_installed, prepare_lxapp_open, schedule_lxapp_update_check,
+    ensure_first_install, ensure_target_version_ready, prepare_lxapp_open,
+    schedule_lxapp_update_check,
 };
-pub use self::state::is_force_update_downloading;
 
 /// Coordinates update preparation, download, and installation for LxApps.
 #[derive(Clone)]

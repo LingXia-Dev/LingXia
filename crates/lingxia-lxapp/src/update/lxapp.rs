@@ -3,17 +3,10 @@ use crate::archive;
 use crate::update::error_bridge::lxapp_error_to_update_error;
 use lingxia_provider::BoxFuture;
 use lingxia_update::{LxAppUpdateHost, UpdateError};
-use tokio::task::yield_now;
 
-fn emit_update_ready_event(
-    target_appid: &str,
-    channel: Channel,
-    version: &str,
-    is_force_update: bool,
-) {
+fn emit_update_ready_event(target_appid: &str, channel: Channel, version: &str) {
     let payload = serde_json::json!({
         "version": version,
-        "isForceUpdate": is_force_update,
         "channel": channel.as_str(),
     });
     let _ = publish_app_event(target_appid, "UpdateReady", Some(payload.to_string()));
@@ -27,7 +20,6 @@ fn emit_update_failed_event(
 ) {
     let payload = serde_json::json!({
         "version": pkg.version,
-        "isForceUpdate": pkg.is_force_update,
         "channel": channel.as_str(),
         "minRuntime": pkg.min_runtime,
         "currentRuntimeVersion": crate::SDK_RUNTIME_VERSION,
@@ -173,110 +165,8 @@ impl LxAppUpdateHost for BoundLxAppUpdateHost {
         })
     }
 
-    fn wait_for_or_start_force_download<'a>(
-        &'a self,
-        update: &'a UpdatePackageInfo,
-    ) -> BoxFuture<'a, Result<(), UpdateError>> {
-        Box::pin(async move {
-            let manager = self.manager();
-            let key = state::force_update_download_key(&self.target_appid, self.release_type);
-
-            loop {
-                if let Some(mut rx) =
-                    state::force_update_tracker().try_start_download(&key, &update.version)
-                {
-                    let manager_bg = manager.clone();
-                    let key_bg = key.clone();
-                    let target_appid_bg = self.target_appid.clone();
-                    let url_bg = update.url.clone();
-                    let checksum_bg = update.checksum_sha256.clone();
-                    let version_bg = update.version.clone();
-                    let release_type = self.release_type;
-
-                    std::mem::drop(crate::executor::spawn(async move {
-                        let result = manager_bg
-                            .download_archive_with_checksum(
-                                &target_appid_bg,
-                                release_type,
-                                &url_bg,
-                                &checksum_bg,
-                                &version_bg,
-                            )
-                            .await;
-
-                        match result {
-                            Ok(_) => state::force_update_tracker().mark_completed(&key_bg),
-                            Err(err) => {
-                                state::force_update_tracker().mark_failed(&key_bg, err.to_string())
-                            }
-                        }
-                    }));
-
-                    loop {
-                        let state = { rx.borrow().clone() };
-                        match state {
-                            state::ForceUpdateDownloadState::Downloading { .. } => {
-                                if rx.changed().await.is_err() {
-                                    break;
-                                }
-                            }
-                            state::ForceUpdateDownloadState::Completed => break,
-                            state::ForceUpdateDownloadState::Failed(error) => {
-                                return Err(UpdateError::io(format!(
-                                    "forced update package download failed: {}",
-                                    error
-                                )));
-                            }
-                        }
-                    }
-                }
-
-                if let Some(mut rx) = state::force_update_tracker().wait_for_download(&key) {
-                    loop {
-                        let state = { rx.borrow().clone() };
-                        match state {
-                            state::ForceUpdateDownloadState::Downloading { .. } => {
-                                if rx.changed().await.is_err() {
-                                    break;
-                                }
-                            }
-                            state::ForceUpdateDownloadState::Completed => break,
-                            state::ForceUpdateDownloadState::Failed(error) => {
-                                return Err(UpdateError::io(format!(
-                                    "forced update package download failed: {}",
-                                    error
-                                )));
-                            }
-                        }
-                    }
-                }
-
-                // Another caller may have downloaded a different republish
-                // while we waited on this app/channel's shared tracker.
-                let prepared = manager
-                    .downloaded_update_matches(
-                        &self.target_appid,
-                        self.release_type,
-                        &update.version,
-                        &update.checksum_sha256,
-                    )
-                    .unwrap_or(false);
-                if prepared {
-                    return Ok(());
-                }
-
-                yield_now().await;
-            }
-        })
-    }
-
-    fn emit_update_ready(&self, version: &str, is_force_update: bool) -> Result<(), UpdateError> {
-        emit_update_ready_event(
-            &self.target_appid,
-            self.release_type,
-            version,
-            is_force_update,
-        );
+    fn emit_update_ready(&self, version: &str) -> Result<(), UpdateError> {
+        emit_update_ready_event(&self.target_appid, self.release_type, version);
         Ok(())
     }
 
@@ -574,22 +464,6 @@ pub async fn ensure_target_version_ready(
     .map_err(Into::into)
 }
 
-/// Ensure forced update package is prepared before opening an already-installed lxapp.
-pub async fn ensure_force_update_for_installed(
-    current_lxapp: &Arc<lxapp_runtime::LxApp>,
-    target_appid: &str,
-    release_type: Channel,
-) -> Result<(), LxAppError> {
-    lingxia_update::ensure_lxapp_force_update_for_installed(&BoundLxAppUpdateHost::new(
-        current_lxapp.clone(),
-        target_appid.to_string(),
-        release_type,
-        None,
-    ))
-    .await
-    .map_err(Into::into)
-}
-
 /// Prepare an lxapp package so shell surfaces can open it immediately.
 pub async fn prepare_lxapp_open(
     target_appid: &str,
@@ -606,10 +480,7 @@ pub async fn prepare_lxapp_open(
     // A suspended app must not open, installed or not, so the registry gate
     // runs before the installer would otherwise fetch it to disk.
     lxapp_runtime::registry::ensure_open_allowed(target_appid).await?;
-    // First install and any mandatory update complete before presentation.
     ensure_first_install(&home_lxapp, target_appid, release_type).await?;
-    // Server-mandated updates are admission gates, not freshness hints.
-    ensure_force_update_for_installed(&home_lxapp, target_appid, release_type).await?;
     Ok(())
 }
 

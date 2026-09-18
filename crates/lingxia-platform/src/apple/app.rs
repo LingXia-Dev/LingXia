@@ -457,21 +457,11 @@ fn install_update_on_macos(
     };
 
     // The download already finished silently. Ask the shell to surface the
-    // post-download prompt and wait for the user to click before swapping the
-    // bundle: a dismissible "ready to update" callout for normal updates, or a
-    // blocking "must update" modal when the update is forced. `info_json`
-    // carries the version + release notes the prompt renders. If there is no
-    // shell (headless run), restart immediately.
-    let is_force_update = serde_json::from_str::<serde_json::Value>(info_json)
-        .ok()
-        .and_then(|value| value.get("isForceUpdate").and_then(|v| v.as_bool()))
-        .unwrap_or(false);
-    let state = if is_force_update {
-        "ready-force"
-    } else {
-        "ready"
-    };
-    let has_ui = ffi::notify_app_update_ready(state, info_json);
+    // dismissible "ready to update" callout and wait for the user to click
+    // before swapping the bundle. `info_json` carries the version + release
+    // notes the prompt renders. If there is no shell (headless run), restart
+    // immediately.
+    let has_ui = ffi::notify_app_update_ready(info_json);
     if has_ui {
         if let Ok(mut slot) = staged_macos_update_slot().lock() {
             *slot = Some(staged);

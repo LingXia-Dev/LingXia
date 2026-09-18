@@ -159,7 +159,6 @@ export const I18N_KEYS = [
   "terminal_split_right",
   "terminal_split_up",
   "terminal_title",
-  "update_downloading",
   "video_quality",
   "video_speed",
   "webview_load_error_message",

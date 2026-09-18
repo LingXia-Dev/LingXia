@@ -72,11 +72,10 @@ internal object UpdateManager {
     /** Version + release notes shown in the "ready to install" prompt. */
     data class ReadyInfo(
         val version: String,
-        val releaseNotes: List<String>,
-        val isForce: Boolean
+        val releaseNotes: List<String>
     ) {
         companion object {
-            val EMPTY = ReadyInfo("", emptyList(), false)
+            val EMPTY = ReadyInfo("", emptyList())
 
             fun parse(json: String?): ReadyInfo {
                 if (json.isNullOrEmpty()) return EMPTY
@@ -91,8 +90,7 @@ internal object UpdateManager {
                     }
                     ReadyInfo(
                         obj.optString("version", ""),
-                        notes,
-                        obj.optBoolean("isForceUpdate", false)
+                        notes
                     )
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to parse update info JSON", e)
@@ -292,7 +290,7 @@ internal object UpdateManager {
     /**
      * Post-download "ready to install" prompt. Lightweight by design: the
      * package is already downloaded, so the only decision left is *when* to
-     * install. Confirm fires the system installer; a non-forced update can be
+     * install. Confirm fires the system installer; the update can be
      * dismissed and re-offered on the next update check.
      */
     /** Scrollable bulleted release-notes block, capped so the dialog stays compact. */
@@ -342,7 +340,6 @@ internal object UpdateManager {
         apkPath: String,
         info: ReadyInfo
     ): Dialog {
-        val isForce = info.isForce
         val metrics = metricsFor(activity)
         val dialog = Dialog(activity)
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
@@ -389,28 +386,25 @@ internal object UpdateManager {
         }
         header.addView(titleView)
 
-        var closeButton: ImageView? = null
-        if (!isForce) {
-            closeButton = ImageView(activity).apply {
-                id = View.generateViewId()
-                layoutParams = LinearLayout.LayoutParams(
-                    dp(activity, metrics.closeSizeDp),
-                    dp(activity, metrics.closeSizeDp)
-                )
-                setImageResource(R.drawable.icon_close_x)
-                setColorFilter(Color.parseColor("#9CA3AF"))
-                scaleType = ImageView.ScaleType.CENTER_INSIDE
-                val pad = dp(activity, if (metrics.isTv) 10 else 4)
-                setPadding(pad, pad, pad, pad)
-                background = closeButtonBackground(activity, metrics)
-                contentDescription = activity.getString(R.string.lx_common_close)
-                isClickable = true
-                isFocusable = true
-                isFocusableInTouchMode = true
-                setOnClickListener { dialog.dismiss() }
-            }
-            header.addView(closeButton)
+        val closeButton = ImageView(activity).apply {
+            id = View.generateViewId()
+            layoutParams = LinearLayout.LayoutParams(
+                dp(activity, metrics.closeSizeDp),
+                dp(activity, metrics.closeSizeDp)
+            )
+            setImageResource(R.drawable.icon_close_x)
+            setColorFilter(Color.parseColor("#9CA3AF"))
+            scaleType = ImageView.ScaleType.CENTER_INSIDE
+            val pad = dp(activity, if (metrics.isTv) 10 else 4)
+            setPadding(pad, pad, pad, pad)
+            background = closeButtonBackground(activity, metrics)
+            contentDescription = activity.getString(R.string.lx_common_close)
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            setOnClickListener { dialog.dismiss() }
         }
+        header.addView(closeButton)
         container.addView(header)
 
         if (info.version.isNotBlank()) {
@@ -461,11 +455,9 @@ internal object UpdateManager {
             }
         }
 
-        closeButton?.let { close ->
-            close.nextFocusDownId = confirmButton.id
-            close.nextFocusForwardId = confirmButton.id
-            confirmButton.nextFocusUpId = close.id
-        }
+        closeButton.nextFocusDownId = confirmButton.id
+        closeButton.nextFocusForwardId = confirmButton.id
+        confirmButton.nextFocusUpId = closeButton.id
 
         container.addView(confirmButton)
         dialog.setContentView(container)
@@ -478,12 +470,12 @@ internal object UpdateManager {
      *
      * The package was downloaded silently in the background. Rather than pop the
      * system installer unprompted, present a lightweight "ready to install"
-     * prompt; the system installer fires only when the user confirms. A forced
-     * update shows a non-dismissible prompt. When no activity is in the
-     * foreground the update is remembered and the prompt is shown on return.
+     * prompt; the system installer fires only when the user confirms. When no
+     * activity is in the foreground the update is remembered and the prompt is
+     * shown on return.
      *
      * @param apkPath Absolute file path to the downloaded APK file
-     * @param infoJson `{version, releaseNotes, isForceUpdate}` shown in the prompt
+     * @param infoJson `{version, releaseNotes}` shown in the prompt
      * @return true once the request has been accepted (prompt shown or deferred)
      */
     @JvmStatic

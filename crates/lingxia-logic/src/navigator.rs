@@ -1,12 +1,10 @@
-use crate::I18nKey;
 use crate::authorization;
 #[cfg(feature = "terminal")]
 use crate::authorization::LogicRoute;
-use crate::i18n::{js_error_from_lxapp_error, t};
+use crate::i18n::js_error_from_lxapp_error;
 use crate::update;
 #[cfg(feature = "terminal")]
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::host::HostInvocationContext;
 use lxapp::{self, Channel, LxApp, LxAppError, LxAppStartupOptions};
 use rong::{FromJSObject, JSContext, JSObject, JSResult};
@@ -158,12 +156,6 @@ pub(crate) async fn prepare_app_open(
                 .map_err(|e| js_error_from_lxapp_error(&e))?;
         } else {
             update::ensure_first_install(lxapp, &target_appid, release_type).await?;
-            if lxapp::is_force_update_downloading(&target_appid, release_type) {
-                show_force_update_downloading_toast(lxapp);
-            }
-            lxapp::ensure_force_update_for_installed(lxapp, &target_appid, release_type)
-                .await
-                .map_err(|e| js_error_from_lxapp_error(&e))?;
         }
     }
 
@@ -242,18 +234,6 @@ async fn do_navigate_to_app(
 
     lxapp::schedule_lxapp_update_check(&target_appid, release_type);
     Ok(())
-}
-
-fn show_force_update_downloading_toast(lxapp: &Arc<LxApp>) {
-    let title = t(I18nKey::UpdateDownloading);
-    let _ = lxapp.runtime.show_toast(ToastOptions {
-        title,
-        icon: ToastIcon::Loading,
-        image: None,
-        duration: 1.5,
-        mask: false,
-        position: ToastPosition::Center,
-    });
 }
 
 fn do_navigate_back_lxapp(lxapp: &LxApp) -> Result<(), LxAppError> {

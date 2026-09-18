@@ -1,5 +1,4 @@
 mod app;
-mod config;
 mod error;
 mod lxapp;
 mod signing;
@@ -16,11 +15,9 @@ pub use app::{
     ensure_app_update_candidate_version, send_app_update_event, send_app_update_failed,
     subscribe_app_update_events,
 };
-pub use config::{UpdateConfig, configure_update, update_config};
 pub use error::UpdateError;
 pub use lxapp::{
     LxAppUpdateHost, ensure_first_install as ensure_lxapp_first_install,
-    ensure_force_update_for_installed as ensure_lxapp_force_update_for_installed,
     ensure_target_version_ready as ensure_lxapp_target_version_ready, lxapp_update_scope_key,
     spawn_background_update_check as spawn_lxapp_background_update_check,
 };
@@ -268,7 +265,6 @@ pub struct UpdatePackageInfo {
     pub checksum_sha256: String,
     pub size: Option<u64>,
     pub release_notes: Option<Vec<String>>,
-    pub is_force_update: bool,
     /// The lxapp's `minRuntime` as the check-update response reported it; an
     /// early, unsigned hint. The archive's own `lxapp.json` is the gate that counts.
     pub min_runtime: Option<String>,
@@ -439,7 +435,6 @@ mod tests {
             checksum_sha256: checksum.to_string(),
             size: None,
             release_notes: None,
-            is_force_update: false,
             min_runtime: None,
             authentication: None,
         }

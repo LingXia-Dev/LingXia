@@ -157,10 +157,8 @@ pub trait AppUpdateHost: Clone + Send + Sync + 'static {
         progress: AppUpdateProgressReporter,
     ) -> BoxFuture<'a, Result<PathBuf, UpdateError>>;
     /// Hand off the downloaded package to the platform installer. `info_json`
-    /// carries the prompt metadata `{version, releaseNotes, isForceUpdate}`:
-    /// the platform shows release notes in the "ready to update" prompt and,
-    /// when `isForceUpdate` is true, presents a blocking "must update" prompt
-    /// instead of the dismissible reminder.
+    /// carries the prompt metadata `{version, releaseNotes}` the dismissible
+    /// "ready to update" prompt renders.
     fn install_app_update(&self, package_path: &Path, info_json: &str) -> Result<(), UpdateError>;
     fn log_app_update_warning(&self, detail: &str);
 }
@@ -375,7 +373,6 @@ mod tests {
             checksum_sha256: sha256,
             size: Some(ARCHIVE.len() as u64),
             release_notes: None,
-            is_force_update: true,
             min_runtime: None,
             authentication: auth,
         }

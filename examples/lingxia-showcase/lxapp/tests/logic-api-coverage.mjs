@@ -90,7 +90,6 @@ export default {
     { "api": "UpdateManager.onUpdateReady", "mode": "automated", "owner": "HOSTAPP-UPDATE-001" },
     { "api": "UpdateManager.applyUpdate", "mode": "destructive", "owner": "PEND-DESTRUCTIVE-001" },
     { "api": "UpdateManager.onUpdateFailed", "mode": "automated", "owner": "HOSTAPP-UPDATE-001" },
-    { "api": "HostAppUpdateInfo.isForceUpdate", "mode": "external-fixture", "owner": "PEND-UPDATE-INFO-001" },
     { "api": "DownloadTask.next", "mode": "automated", "owner": "TRANSFER-PROGRESS-001" },
     { "api": "DownloadTask.pause", "mode": "automated", "owner": "TRANSFER-PROGRESS-001" },
     { "api": "DownloadTask.resume", "mode": "automated", "owner": "TRANSFER-PROGRESS-001" },
