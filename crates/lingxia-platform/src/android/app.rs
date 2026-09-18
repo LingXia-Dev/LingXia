@@ -588,28 +588,19 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
     }
 
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        notification_word_call(false)
+    }
+
     fn notification_request_permission(&self) -> Result<String, PlatformError> {
-        with_env(|env| -> Result<String, PlatformError> {
-            let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
-                .map_err(|e| PlatformError::Platform(e.to_string()))?;
-            let result = env.call_static_method(
-                class,
-                jni_str!("requestPermission"),
-                jni_sig!("()Ljava/lang/String;"),
-                &[],
-            )?;
-            jstring_from_result(env, result)
-        })
-        .map_err(|e| {
-            PlatformError::Platform(format!("Failed to request notification permission: {e}"))
-        })
+        notification_word_call(true)
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<String, PlatformError> {
-        with_env(|env| -> Result<String, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+        with_env(|env| -> Result<_, PlatformError> {
             let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
                 .map_err(|e| PlatformError::Platform(e.to_string()))?;
             let id = env.new_string(&request.id)?;
@@ -631,11 +622,12 @@ impl AppRuntime for Platform {
                     JValue::Bool(request.silent),
                 ],
             )?;
-            let returned = jstring_from_result(env, result)?;
-            if returned.is_empty() {
+            let status = jstring_from_result(env, result)?;
+            if status.is_empty() {
                 return Err(PlatformError::Platform(notification_last_error(env, class)));
             }
-            Ok(returned)
+            crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
+                .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
         })
         .map_err(|e| PlatformError::Platform(format!("Failed to show notification: {e}")))
     }
@@ -789,6 +781,36 @@ impl JniStringResult for jni::objects::JValueOwned<'_> {
     }
 }
 
+/// `permission` / `requestPermission`: a status word, or empty with the reason
+/// left in `takeLastError`.
+fn notification_word_call(prompt: bool) -> Result<String, PlatformError> {
+    with_env(|env| -> Result<String, PlatformError> {
+        let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        let result = if prompt {
+            env.call_static_method(
+                class,
+                jni_str!("requestPermission"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+        } else {
+            env.call_static_method(
+                class,
+                jni_str!("permission"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+        };
+        let word = jstring_from_result(env, result)?;
+        if word.is_empty() {
+            return Err(PlatformError::Platform(notification_last_error(env, class)));
+        }
+        Ok(word)
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to read notification permission: {e}")))
+}
+
 fn notification_last_error(env: &mut Env, class: &JClass) -> String {
     env.call_static_method(
         class,
@@ -799,5 +821,5 @@ fn notification_last_error(env: &mut Env, class: &JClass) -> String {
     .ok()
     .and_then(|result| jstring_from_result(env, result).ok())
     .filter(|message| !message.is_empty())
-    .unwrap_or_else(|| "failed to show notification".into())
+    .unwrap_or_else(|| "notification request failed".into())
 }

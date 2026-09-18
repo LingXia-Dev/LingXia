@@ -152,6 +152,26 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 ---
 
+## Local notifications
+
+`lx.app.notification` — Control-app only, absent without
+`capabilities.notifications`. Signatures are in `@lingxia/types`; what they do
+not say:
+
+- An immediate `show` while the product is frontmost resolves
+  `status: 'suppressed'` and posts nothing. A scheduled one is presented when
+  it fires, frontmost or not.
+- `id` replaces on every path, `'suppressed'` included.
+- A tap delivers `applink` as [`scene === 8003`](../app/applinks.md); routing on
+  the URL is your Logic's job.
+- Limits: Android battery saver can fire a schedule minutes late, and a reboot
+  drops it. HarmonyOS banners are a user-only system toggle, `silent` does
+  nothing there, and `schedule` rejects unless Huawei granted the app the
+  agent-reminder privilege. A Windows schedule that fires after the product exited opens
+  it without the `applink`.
+
+---
+
 ## Handling errors
 
 A rejection means the operation failed. It never means the user said no: the

@@ -10,36 +10,43 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import androidx.core.content.ContextCompat
 import com.lingxia.app.Lingxia
-import com.lingxia.app.LxLog
-import com.lingxia.app.NativeApi
 import com.lingxia.app.PermissionManager
 import com.lingxia.lxapp.LxApp
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
  * Local notifications for `lx.app.notification`. Permission is requested on
- * `requestPermission` / first `show`, never at process start.
+ * `requestPermission` / the first `show` that reaches the OS, never at start.
+ *
+ * Nothing here is keyed by a hash of the id: a posted notification uses the id
+ * as its tag, and an alarm carries it in the intent data, so two ids can never
+ * replace each other. What is scheduled is persisted, because `cancelAll` must
+ * still find it after the process was killed.
  */
 internal object LxAppNotification {
-    private const val TAG = "LingXia.Notification"
     private const val CHANNEL_ID = "lingxia.local"
-    const val EXTRA_ID = "lingxia.local.id"
+    private const val SILENT_CHANNEL_ID = "lingxia.local.silent"
+    private const val NOTIFY_ID = 1
+    private const val PREFS = "lingxia.local.notifications"
+    private const val PREF_SCHEDULED = "scheduled"
+    private const val PREF_ASKED = "asked"
+    private const val SCHEME = "lxnotif"
+    const val EXTRA_LOCAL = "lingxia.local"
     const val EXTRA_TITLE = "lingxia.local.title"
     const val EXTRA_BODY = "lingxia.local.body"
     const val EXTRA_APPLINK = "lingxia.local.applink"
     const val EXTRA_SILENT = "lingxia.local.silent"
     private const val ACTION_FIRE = "com.lingxia.lxapp.LOCAL_NOTIFICATION_FIRE"
+    private const val PROMPT_TIMEOUT_SECONDS = 60L
 
     @Volatile
     private var lastError = ""
-    private val scheduledIds = ConcurrentHashMap.newKeySet<String>()
-    private val liveIds = ConcurrentHashMap.newKeySet<String>()
 
     @JvmStatic
     fun takeLastError(): String {
@@ -48,19 +55,25 @@ internal object LxAppNotification {
         return value
     }
 
+    /** `granted` / `denied` / `default`, never prompting. */
+    @JvmStatic
+    fun permission(): String {
+        val context = appContext() ?: return "denied"
+        if (notificationsEnabled(context)) return "granted"
+        val promptable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !prefs(context).getBoolean(PREF_ASKED, false)
+        return if (promptable) "default" else "denied"
+    }
+
+    /** `granted` / `denied`; empty when the prompt was left unanswered. */
     @JvmStatic
     fun requestPermission(): String {
         val context = appContext() ?: return "denied"
-        if (notificationsEnabled(context)) {
-            return "granted"
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            return if (notificationsEnabled(context)) "granted" else "denied"
-        }
+        if (notificationsEnabled(context)) return "granted"
+        // Below Android 13 there is no prompt: the setting is the answer.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return "denied"
         val activity = LxApp.getCurrentActivity() ?: Lingxia.getLastResumedActivity()
-        if (activity == null) {
-            return "denied"
-        }
+            ?: return "denied"
         val latch = CountDownLatch(1)
         var granted = false
         PermissionManager.ensurePermissions(
@@ -70,13 +83,15 @@ internal object LxAppNotification {
             granted = ok
             latch.countDown()
         }
-        if (!latch.await(30, TimeUnit.SECONDS)) {
-            lastError = "notification permission timed out"
-            return "denied"
+        if (!latch.await(PROMPT_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            lastError = "notification permission prompt was not answered"
+            return ""
         }
+        prefs(context).edit().putBoolean(PREF_ASKED, true).apply()
         return if (granted || notificationsEnabled(context)) "granted" else "denied"
     }
 
+    /** `shown` / `scheduled` / `suppressed`; empty on failure. */
     @JvmStatic
     fun show(
         id: String,
@@ -91,55 +106,46 @@ internal object LxAppNotification {
             lastError = "no application context"
             return ""
         }
-        val now = System.currentTimeMillis()
-        if (deliverAtMs > now + 500L) {
-            if (requestPermission() != "granted") {
-                lastError = "notification permission is denied"
-                return ""
-            }
-            schedule(context, id, title, body, applink, deliverAtMs, silent)
-            scheduledIds.add(id)
-            return id
+        val scheduled = deliverAtMs > System.currentTimeMillis() + 500L
+        if (!scheduled && isFrontmost()) {
+            // Still an upsert: whatever the id held must not outlive this call.
+            cancel(id)
+            return "suppressed"
         }
-        // Immediate show is a no-op banner while this process is already in
-        // front; do not require permission just to resolve the id.
-        if (isFrontmost()) {
-            return id
-        }
-        if (requestPermission() != "granted") {
-            lastError = "notification permission is denied"
+        val permission = requestPermission()
+        if (permission != "granted") {
+            if (permission.isNotEmpty()) lastError = "notification permission is $permission"
             return ""
         }
-        scheduledIds.remove(id)
+        cancel(id)
+        if (scheduled) {
+            schedule(context, id, title, body, applink, deliverAtMs, silent)
+            return "scheduled"
+        }
         publishNow(context, id, title, body, applink, silent)
-        return id
+        return "shown"
     }
 
     @JvmStatic
     fun cancel(id: String): Boolean {
         val context = appContext() ?: return true
-        scheduledIds.remove(id)
-        liveIds.remove(id)
         cancelAlarm(context, id)
-        notificationManager(context)?.cancel(CHANNEL_ID, notifyId(id))
+        forgetScheduled(context, id)
+        notificationManager(context)?.cancel(id, NOTIFY_ID)
         return true
     }
 
     @JvmStatic
     fun cancelAll(): Boolean {
         val context = appContext() ?: return true
-        for (id in scheduledIds.toList()) {
+        for (id in scheduledIds(context)) {
             cancelAlarm(context, id)
         }
-        scheduledIds.clear()
+        prefs(context).edit().remove(PREF_SCHEDULED).apply()
         val manager = notificationManager(context) ?: return true
-        for (id in liveIds.toList()) {
-            manager.cancel(CHANNEL_ID, notifyId(id))
-        }
-        liveIds.clear()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             for (posted in manager.activeNotifications) {
-                if (posted.tag == CHANNEL_ID) {
+                if (posted.notification.extras?.getBoolean(EXTRA_LOCAL, false) == true) {
                     manager.cancel(posted.tag, posted.id)
                 }
             }
@@ -155,20 +161,23 @@ internal object LxAppNotification {
         applink: String,
         silent: Boolean
     ) {
-        scheduledIds.remove(id)
-        liveIds.add(id)
-        ensureChannel(context)
+        forgetScheduled(context, id)
+        ensureChannels(context)
+        // An https data URI is what the SDK's App Link path already delivers.
         val tap = Intent(context, LxLocalNotificationTapActivity::class.java).apply {
-            putExtra(EXTRA_APPLINK, applink)
+            action = Intent.ACTION_VIEW
+            data = if (applink.isNotEmpty()) Uri.parse(applink) else idUri(id)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        val flags = pendingFlags()
-        val content = PendingIntent.getActivity(context, notifyId(id), tap, flags)
+        val content = PendingIntent.getActivity(context, 0, tap, pendingFlags())
         val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(context, CHANNEL_ID)
+            // From Android 8 the channel decides sound, so silence is a channel.
+            Notification.Builder(context, if (silent) SILENT_CHANNEL_ID else CHANNEL_ID)
         } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(context).setPriority(Notification.PRIORITY_HIGH)
+            Notification.Builder(context).setPriority(Notification.PRIORITY_HIGH).apply {
+                if (!silent) setDefaults(Notification.DEFAULT_SOUND)
+            }
         }
         val icon = context.applicationInfo.icon.takeIf { it != 0 }
             ?: android.R.drawable.stat_notify_chat
@@ -178,21 +187,24 @@ internal object LxAppNotification {
             .setContentText(body)
             .setContentIntent(content)
             .setAutoCancel(true)
-            .setOnlyAlertOnce(silent)
-            .apply {
-                if (silent) {
-                    @Suppress("DEPRECATION")
-                    setSound(null)
-                }
-            }
+            .addExtras(Bundle().apply { putBoolean(EXTRA_LOCAL, true) })
             .build()
-        notificationManager(context)?.notify(CHANNEL_ID, notifyId(id), notification)
+        notificationManager(context)?.notify(id, NOTIFY_ID, notification)
     }
 
-    fun fireIntent(context: Context, id: String): Intent {
+    fun idFromFireIntent(intent: Intent): String? {
+        val data = intent.data ?: return null
+        if (data.scheme != SCHEME) return null
+        return data.schemeSpecificPart?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun idUri(id: String): Uri = Uri.fromParts(SCHEME, id, null)
+
+    /** Intent equality ignores extras, so the id has to live in the data. */
+    private fun fireIntent(context: Context, id: String): Intent {
         return Intent(context, LxLocalNotificationReceiver::class.java).apply {
             action = ACTION_FIRE
-            putExtra(EXTRA_ID, id)
+            data = idUri(id)
         }
     }
 
@@ -205,14 +217,13 @@ internal object LxAppNotification {
         deliverAtMs: Long,
         silent: Boolean
     ) {
-        cancelAlarm(context, id)
         val intent = fireIntent(context, id).apply {
             putExtra(EXTRA_TITLE, title)
             putExtra(EXTRA_BODY, body)
             putExtra(EXTRA_APPLINK, applink)
             putExtra(EXTRA_SILENT, silent)
         }
-        val pending = PendingIntent.getBroadcast(context, notifyId(id), intent, pendingFlags())
+        val pending = PendingIntent.getBroadcast(context, 0, intent, pendingFlags())
         val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         // Battery saver defers a plain `set` indefinitely once the app is backgrounded.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -220,30 +231,54 @@ internal object LxAppNotification {
         } else {
             alarms.set(AlarmManager.RTC_WAKEUP, deliverAtMs, pending)
         }
+        rememberScheduled(context, id)
     }
 
     private fun cancelAlarm(context: Context, id: String) {
-        val pending = PendingIntent.getBroadcast(
-            context,
-            notifyId(id),
-            fireIntent(context, id),
-            pendingFlags()
-        )
+        val pending = PendingIntent.getBroadcast(context, 0, fireIntent(context, id), pendingFlags())
         val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         alarms.cancel(pending)
     }
 
-    private fun ensureChannel(context: Context) {
+    private fun prefs(context: Context) =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    private fun scheduledIds(context: Context): Set<String> =
+        prefs(context).getStringSet(PREF_SCHEDULED, emptySet())?.toSet() ?: emptySet()
+
+    @Synchronized
+    private fun rememberScheduled(context: Context, id: String) {
+        prefs(context).edit().putStringSet(PREF_SCHEDULED, scheduledIds(context) + id).apply()
+    }
+
+    @Synchronized
+    private fun forgetScheduled(context: Context, id: String) {
+        val ids = scheduledIds(context)
+        if (id in ids) {
+            prefs(context).edit().putStringSet(PREF_SCHEDULED, ids - id).apply()
+        }
+    }
+
+    private fun ensureChannels(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = notificationManager(context) ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                "LingXia",
-                NotificationManager.IMPORTANCE_HIGH
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(CHANNEL_ID, "LingXia", NotificationManager.IMPORTANCE_HIGH)
             )
-        )
+        }
+        if (manager.getNotificationChannel(SILENT_CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    SILENT_CHANNEL_ID,
+                    "LingXia (silent)",
+                    NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    setSound(null, null)
+                    enableVibration(false)
+                }
+            )
+        }
     }
 
     private fun notificationsEnabled(context: Context): Boolean {
@@ -280,16 +315,12 @@ internal object LxAppNotification {
             PendingIntent.FLAG_UPDATE_CURRENT
         }
     }
-
-    fun notifyId(id: String): Int {
-        val hashed = id.hashCode()
-        return if (hashed == 0) 1 else hashed
-    }
 }
 
+/** A scheduled notification is presented even if the product is frontmost. */
 internal class LxLocalNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val id = intent.getStringExtra(LxAppNotification.EXTRA_ID) ?: return
+        val id = LxAppNotification.idFromFireIntent(intent) ?: return
         LxAppNotification.publishNow(
             context.applicationContext,
             id,
@@ -301,24 +332,31 @@ internal class LxLocalNotificationReceiver : BroadcastReceiver() {
     }
 }
 
+/**
+ * Tap target. Its Intent is `ACTION_VIEW` on the applink, so a running SDK
+ * delivers it through the App Link path on creation like any other inbound link.
+ */
 internal class LxLocalNotificationTapActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val applink = intent?.getStringExtra(LxAppNotification.EXTRA_APPLINK).orEmpty()
-        if (applink.isNotEmpty()) {
-            try {
-                NativeApi.onAppLinkReceived(applink)
-            } catch (error: Throwable) {
-                LxLog.w("LingXia.Notification", "tap applink failed", error)
-            }
-        }
         val launch = packageManager.getLaunchIntentForPackage(packageName)
+        val link = intent?.data?.takeIf { it.scheme == "https" }
         if (launch != null) {
-            // Same flags as a launcher icon tap: resume the task as it stands.
-            // Reordering the entry activity would cover the lxapp with the splash.
-            launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-            startActivity(launch)
+            if (Lingxia.applicationContext() == null && link != null) {
+                // Cold start: nothing is listening yet, so the entry activity
+                // carries the link and the SDK delivers it once it is up.
+                startActivity(
+                    Intent(Intent.ACTION_VIEW, link)
+                        .setComponent(launch.component)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+            } else {
+                // Same flags as a launcher icon tap: resume the task as it stands.
+                // Reordering the entry activity would cover the lxapp with the splash.
+                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                startActivity(launch)
+            }
         }
         finish()
     }

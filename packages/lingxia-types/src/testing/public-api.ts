@@ -154,6 +154,7 @@ const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
 const NOTIFICATION_API = [
   'cancel',
   'cancelAll',
+  'getPermission',
   'requestPermission',
   'show',
 ] as const;

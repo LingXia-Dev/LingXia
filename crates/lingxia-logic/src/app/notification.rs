@@ -33,6 +33,10 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     }
     let notification = JSObject::new(ctx);
     notification.set(
+        "getPermission",
+        JSFunc::new(ctx, get_permission)?.name("getPermission")?,
+    )?;
+    notification.set(
         "requestPermission",
         JSFunc::new(ctx, request_permission)?.name("requestPermission")?,
     )?;
@@ -46,19 +50,30 @@ pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
+async fn get_permission(ctx: JSContext) -> JSResult<String> {
+    let invocation = authorization::require(&ctx, LogicRoute::AppNotificationGetPermission)?;
+    let runtime = invocation.lxapp().runtime.clone();
+    spawn_blocking(move || runtime.notification_permission()).await
+}
+
 async fn request_permission(ctx: JSContext) -> JSResult<String> {
     let invocation = authorization::require(&ctx, LogicRoute::AppNotificationRequestPermission)?;
     let runtime = invocation.lxapp().runtime.clone();
     spawn_blocking(move || runtime.notification_request_permission()).await
 }
 
-async fn show(ctx: JSContext, options: JSValue) -> JSResult<String> {
+async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let (invocation, request) =
         authorization::require_before_decode(&ctx, LogicRoute::AppNotificationShow, || {
             decode_show(options)
         })?;
     let runtime = invocation.lxapp().runtime.clone();
-    spawn_blocking(move || runtime.notification_show(&request)).await
+    let id = request.id.clone();
+    let status = spawn_blocking(move || runtime.notification_show(&request)).await?;
+    let result = JSObject::new(&ctx);
+    result.set("id", id)?;
+    result.set("status", status.as_str())?;
+    Ok(result)
 }
 
 async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {

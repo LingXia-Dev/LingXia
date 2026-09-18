@@ -14,6 +14,9 @@
         "name": "ohos.permission.VIBRATE"
       },
       {
+        "name": "ohos.permission.PUBLISH_AGENT_REMINDER"
+      },
+      {
         "name": "ohos.permission.LOCATION",
         "reason": "$string:lx_permission_location_reason",
         "usedScene": {

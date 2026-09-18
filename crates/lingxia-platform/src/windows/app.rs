@@ -443,7 +443,6 @@ impl Platform {
         {
             log::warn!("failed to set process AppUserModelID {id:?}: {err}");
         }
-        super::notification::install_toast_identity(self);
     }
 
     pub(super) fn data_dir(&self) -> &Path {
@@ -559,11 +558,19 @@ impl AppRuntime for Platform {
             .is_some_and(|cmd| cmd.eq_ignore_ascii_case(&autostart_command(&exe))))
     }
 
-    fn notification_request_permission(&self) -> Result<String, PlatformError> {
-        super::notification::request_permission(self)
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        super::notification::permission(self)
     }
 
-    fn notification_show(&self, request: &LocalNotificationShow) -> Result<String, PlatformError> {
+    // Windows has no prompt: the Settings toggle is the answer.
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        super::notification::permission(self)
+    }
+
+    fn notification_show(
+        &self,
+        request: &LocalNotificationShow,
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
         super::notification::show(self, request)
     }
 

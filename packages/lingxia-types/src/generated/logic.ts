@@ -1230,22 +1230,34 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
  * platform implements the local API. Presence and
  * `lx.supports({ capability: 'notifications' })` always agree.
  * Declaring the capability never prompts; permission runs on
- * `requestPermission()` or the first `show()`.
+ * `requestPermission()` or the first `show()` that reaches the OS.
  * Control app only. Guest lxapps receive a permission error.
  */
 export type NotificationApi = {
     /**
-     * Ask for notification permission. Resolves `'granted'` / `'denied'`, or
-     * `'default'` on Apple hosts before the user has been asked. Windows has
-     * no prompt: `'granted'`, or `'denied'` when toasts are off in Settings.
+     * Read the current permission without prompting. `'default'` means the
+     * user has not been asked yet.
      */
-    requestPermission(): Promise<'granted' | 'denied' | 'default'>;
+    getPermission(): Promise<'granted' | 'denied' | 'default'>;
     /**
-     * Post or replace a local notification. The same `id` updates in place.
-     * `applink` is validated like App Link delivery (`https://`, configured
-     * host) and is opened with `scene === 8003` on tap. Omit `schedule`, or
-     * pass a time that is not in the future, to show now. No OS banner while
-     * the product window is already frontmost (immediate `show`).
+     * Ask for notification permission. Prompts where the OS has a prompt and
+     * the user has not answered; otherwise reports the current setting.
+     * Rejects when the prompt is left unanswered.
+     */
+    requestPermission(): Promise<'granted' | 'denied'>;
+    /**
+     * Post or replace a local notification. `id` is the replace key: anything
+     * pending or delivered under it is replaced, whatever `status` comes back.
+     * Omit `id` to get a generated one. `applink` is validated like App Link
+     * delivery (`https://`, configured host) and arrives as `scene === 8003`
+     * on tap. Omit `schedule`, or pass a time that is not in the future, to
+     * show now.
+     *
+     * `status` says what happened: `'shown'` — handed to the OS now;
+     * `'scheduled'` — queued for `schedule`; `'suppressed'` — an immediate
+     * show while the product is already frontmost, where nothing is posted
+     * and no permission is needed. A scheduled notification is presented even
+     * if the product is frontmost when it fires.
      */
     show(options: {
         id?: string;
@@ -1253,9 +1265,12 @@ export type NotificationApi = {
         body?: string;
         applink?: string;
         schedule?: { at: number } | { delayMs: number };
+        /** No sound. The banner still appears. */
         silent?: boolean;
-    }): Promise<string>;
+    }): Promise<{ id: string; status: 'shown' | 'scheduled' | 'suppressed' }>;
+    /** Remove what is pending or delivered under `id`. Unknown ids are fine. */
     cancel(id: string): Promise<void>;
+    /** Remove every local notification this API posted or scheduled. */
     cancelAll(): Promise<void>;
 };
 

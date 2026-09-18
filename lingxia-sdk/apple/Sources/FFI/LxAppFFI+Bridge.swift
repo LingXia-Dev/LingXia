@@ -561,6 +561,10 @@ extension LxApp {
         #endif
     }
 
+    nonisolated static func notificationPermission() -> String {
+        MacLocalNotification.permission()
+    }
+
     nonisolated static func notificationRequestPermission() -> String {
         MacLocalNotification.requestPermission()
     }

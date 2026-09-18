@@ -243,31 +243,28 @@ impl AppRuntime for Platform {
         }
     }
 
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        notification_word(ffi::notification_permission())
+    }
+
     fn notification_request_permission(&self) -> Result<String, PlatformError> {
-        Ok(ffi::notification_request_permission())
+        notification_word(ffi::notification_request_permission())
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<String, PlatformError> {
-        let id = ffi::notification_show(
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+        let status = notification_word(ffi::notification_show(
             &request.id,
             &request.title,
             &request.body,
             request.applink.as_deref().unwrap_or(""),
             request.deliver_at_ms.map(|ms| ms as i64).unwrap_or(-1),
             request.silent,
-        );
-        if id.is_empty() {
-            let detail = ffi::notification_last_error();
-            return Err(PlatformError::Platform(if detail.is_empty() {
-                "failed to show notification".into()
-            } else {
-                detail
-            }));
-        }
-        Ok(id)
+        ))?;
+        crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
+            .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
     }
 
     fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
@@ -1062,4 +1059,17 @@ fn shell_quote_str(value: &str) -> String {
 #[cfg(target_os = "macos")]
 fn apple_script_quote_str(value: &str) -> String {
     format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// The Swift side answers with a word, or empty after recording why it failed.
+fn notification_word(word: String) -> Result<String, PlatformError> {
+    if !word.is_empty() {
+        return Ok(word);
+    }
+    let detail = ffi::notification_last_error();
+    Err(PlatformError::Platform(if detail.is_empty() {
+        "notification request failed".into()
+    } else {
+        detail
+    }))
 }

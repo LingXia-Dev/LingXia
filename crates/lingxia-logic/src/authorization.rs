@@ -21,6 +21,7 @@ pub(crate) enum LogicRoute {
     AppScreenshot,
     AppAutostartIsEnabled,
     AppAutostartSetEnabled,
+    AppNotificationGetPermission,
     AppNotificationRequestPermission,
     AppNotificationShow,
     AppNotificationCancel,
@@ -81,6 +82,7 @@ impl LogicRoute {
         Self::AppScreenshot,
         Self::AppAutostartIsEnabled,
         Self::AppAutostartSetEnabled,
+        Self::AppNotificationGetPermission,
         Self::AppNotificationRequestPermission,
         Self::AppNotificationShow,
         Self::AppNotificationCancel,
@@ -147,6 +149,7 @@ impl LogicRoute {
             | Self::AppScreenshot
             | Self::AppAutostartIsEnabled
             | Self::AppAutostartSetEnabled
+            | Self::AppNotificationGetPermission
             | Self::AppNotificationRequestPermission
             | Self::AppNotificationShow
             | Self::AppNotificationCancel
@@ -198,6 +201,7 @@ impl LogicRoute {
             Self::AppScreenshot => "lx.app.screenshot",
             Self::AppAutostartIsEnabled => "lx.app.autostart.isEnabled",
             Self::AppAutostartSetEnabled => "lx.app.autostart.setEnabled",
+            Self::AppNotificationGetPermission => "lx.app.notification.getPermission",
             Self::AppNotificationRequestPermission => "lx.app.notification.requestPermission",
             Self::AppNotificationShow => "lx.app.notification.show",
             Self::AppNotificationCancel => "lx.app.notification.cancel",

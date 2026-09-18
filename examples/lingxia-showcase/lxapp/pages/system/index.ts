@@ -157,7 +157,8 @@ Page({
       return;
     }
     try {
-      const permission = await notification.requestPermission();
+      // Reading must not prompt; `show` asks when it needs to.
+      const permission = await notification.getPermission();
       this.setData({
         notificationSupported: true,
         notificationPermission: permission,
@@ -180,10 +181,12 @@ Page({
       return;
     }
     try {
-      const id = await notification.show({
+      // An immediate show is suppressed while this page is frontmost.
+      const { id } = await notification.show({
         id: 'showcase-local',
         title: 'LingXia showcase',
         body: 'Local banner from the system page',
+        schedule: { delayMs: 5000 },
       });
       this.setData({ notificationLastId: id, notificationError: '' });
     } catch (error) {

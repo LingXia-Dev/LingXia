@@ -500,27 +500,31 @@ class NativeBridge {
       return LxAppClipboard.types(callbackId);
     });
 
+    this.register('notificationPermission', (callbackId: string): void => {
+      LxAppNotification.permission(callbackId);
+    });
+
     this.register('notificationRequestPermission', (callbackId: string): void => {
       LxAppNotification.requestPermission(callbackId);
     });
 
     this.register('notificationShow', (
+      callbackId: string,
       id: string,
       title: string,
       body: string,
       applink: string,
-      deliverAtMs: string,
-      silent: string
-    ): boolean => {
-      return LxAppNotification.show(id, title, body, applink, deliverAtMs, silent);
+      deliverAtMs: string
+    ): void => {
+      LxAppNotification.show(callbackId, id, title, body, applink, deliverAtMs);
     });
 
-    this.register('notificationCancel', (id: string): boolean => {
-      return LxAppNotification.cancel(id);
+    this.register('notificationCancel', (callbackId: string, id: string): void => {
+      LxAppNotification.cancel(callbackId, id);
     });
 
-    this.register('notificationCancelAll', (): boolean => {
-      return LxAppNotification.cancelAll();
+    this.register('notificationCancelAll', (callbackId: string): void => {
+      LxAppNotification.cancelAll(callbackId);
     });
 
     // WiFi APIs

@@ -2,7 +2,7 @@
 
 use super::app::Platform;
 use crate::error::PlatformError;
-use crate::traits::app_runtime::LocalNotificationShow;
+use crate::traits::app_runtime::{LocalNotificationShow, LocalNotificationStatus};
 use std::sync::Mutex;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::DateTime;
@@ -47,13 +47,7 @@ pub(super) fn aumid_from_identity(identity: &str) -> String {
         .collect()
 }
 
-pub fn install_toast_identity(_platform: &Platform) {
-    // Process AUMID is stamped in `install_taskbar_identity`. Unpackaged
-    // toasts use that id; the Start Menu shortcut is created on first show
-    // if the notifier reports Disabled for a missing shortcut.
-}
-
-pub(super) fn request_permission(platform: &Platform) -> Result<String, PlatformError> {
+pub(super) fn permission(platform: &Platform) -> Result<String, PlatformError> {
     ensure_start_menu_shortcut(platform);
     // Unpackaged Win32 often reports DisabledForApplication even when Show
     // still posts. Only treat explicit user / policy blocks as denied.
@@ -78,21 +72,46 @@ fn toast_setting(platform: &Platform) -> Result<NotificationSetting, PlatformErr
 pub(super) fn show(
     platform: &Platform,
     request: &LocalNotificationShow,
-) -> Result<String, PlatformError> {
+) -> Result<LocalNotificationStatus, PlatformError> {
     let now_ms = unix_now_ms();
-    let scheduled = request.deliver_at_ms.filter(|at| *at > now_ms);
-    // Immediate show is a no-op banner while this process is already in
-    // front; do not require the toast identity just to resolve the id.
+    let scheduled = request.deliver_at_ms.filter(|at| *at > now_ms + 500);
+    let id = request.id.clone();
     if scheduled.is_none() && process_is_frontmost() {
-        return Ok(request.id.clone());
+        // Still an upsert: whatever the id held must not outlive this call.
+        cancel(platform, &id)?;
+        return Ok(LocalNotificationStatus::Suppressed);
     }
-    let permission = request_permission(platform)?;
-    if permission != "granted" {
+    if permission(platform)? != "granted" {
         return Err(PlatformError::Platform(
             "notifications are disabled for this app in Windows Settings".into(),
         ));
     }
+    cancel(platform, &id)?;
 
+    let Some(at_ms) = scheduled else {
+        show_now(platform, request)?;
+        return Ok(LocalNotificationStatus::Shown);
+    };
+
+    let toast = ScheduledToastNotification::CreateScheduledToastNotification(
+        &toast_document(request)?,
+        DateTime {
+            UniversalTime: unix_ms_to_winrt(at_ms),
+        },
+    )
+    .map_err(win_err)?;
+    let token = schedule_token();
+    toast.SetTag(&HSTRING::from(&id)).map_err(win_err)?;
+    toast
+        .SetGroup(&HSTRING::from(TOAST_GROUP))
+        .map_err(win_err)?;
+    toast.SetId(&HSTRING::from(&token)).map_err(win_err)?;
+    notifier(platform)?.AddToSchedule(&toast).map_err(win_err)?;
+    hand_over_when_due(platform.clone(), request.clone(), at_ms, token);
+    Ok(LocalNotificationStatus::Scheduled)
+}
+
+fn toast_document(request: &LocalNotificationShow) -> Result<XmlDocument, PlatformError> {
     let xml = toast_xml(
         &request.title,
         &request.body,
@@ -101,45 +120,85 @@ pub(super) fn show(
     );
     let document = XmlDocument::new().map_err(win_err)?;
     document.LoadXml(&HSTRING::from(xml)).map_err(win_err)?;
+    Ok(document)
+}
 
-    let notifier = notifier(platform)?;
-    let id = request.id.clone();
-    if let Some(at_ms) = scheduled {
-        cancel(platform, &id)?;
-        let toast = ScheduledToastNotification::CreateScheduledToastNotification(
-            &document,
-            DateTime {
-                UniversalTime: unix_ms_to_winrt(at_ms),
-            },
-        )
+fn show_now(platform: &Platform, request: &LocalNotificationShow) -> Result<(), PlatformError> {
+    let toast =
+        ToastNotification::CreateToastNotification(&toast_document(request)?).map_err(win_err)?;
+    toast.SetTag(&HSTRING::from(&request.id)).map_err(win_err)?;
+    toast
+        .SetGroup(&HSTRING::from(TOAST_GROUP))
         .map_err(win_err)?;
-        toast.SetTag(&HSTRING::from(&id)).map_err(win_err)?;
-        toast
-            .SetGroup(&HSTRING::from(TOAST_GROUP))
-            .map_err(win_err)?;
-        notifier.AddToSchedule(&toast).map_err(win_err)?;
-    } else {
-        let toast = ToastNotification::CreateToastNotification(&document).map_err(win_err)?;
-        toast.SetTag(&HSTRING::from(&id)).map_err(win_err)?;
-        toast
-            .SetGroup(&HSTRING::from(TOAST_GROUP))
-            .map_err(win_err)?;
-        let applink = request.applink.clone().unwrap_or_default();
-        toast
-            .Activated(&TypedEventHandler::<ToastNotification, _>::new(
-                move |_, _| {
-                    if !applink.is_empty() {
-                        invoke_toast_activate(&applink);
-                    } else {
-                        activate_host_windows();
-                    }
-                    Ok(())
-                },
-            ))
-            .map_err(win_err)?;
-        notifier.Show(&toast).map_err(win_err)?;
+    let applink = request.applink.clone().unwrap_or_default();
+    toast
+        .Activated(&TypedEventHandler::<ToastNotification, _>::new(
+            move |_, _| {
+                if !applink.is_empty() {
+                    invoke_toast_activate(&applink);
+                } else {
+                    activate_host_windows();
+                }
+                Ok(())
+            },
+        ))
+        .map_err(win_err)?;
+    notifier(platform)?.Show(&toast).map_err(win_err)
+}
+
+/// A scheduled toast has no activation event, so a tap on one reaches nobody.
+/// The system schedule is what survives this process; while the process is
+/// still here at the due time, it takes the toast back and shows it itself,
+/// which is the only way its tap can carry the applink.
+fn hand_over_when_due(
+    platform: Platform,
+    request: LocalNotificationShow,
+    at_ms: u64,
+    token: String,
+) {
+    const LEAD_MS: u64 = 1_000;
+    std::thread::spawn(move || {
+        let wait = at_ms.saturating_sub(LEAD_MS).saturating_sub(unix_now_ms());
+        std::thread::sleep(std::time::Duration::from_millis(wait));
+        // Cancelled or replaced since: the token no longer matches anything.
+        if !take_scheduled(&platform, &request.id, &token) {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(
+            at_ms.saturating_sub(unix_now_ms()),
+        ));
+        if let Err(error) = show_now(&platform, &request) {
+            log::warn!(
+                "scheduled notification {} was not shown: {error}",
+                request.id
+            );
+        }
+    });
+}
+
+fn take_scheduled(platform: &Platform, id: &str, token: &str) -> bool {
+    let Ok(notifier) = notifier(platform) else {
+        return false;
+    };
+    let Ok(scheduled) = notifier.GetScheduledToastNotifications() else {
+        return false;
+    };
+    for index in 0..scheduled.Size().unwrap_or(0) {
+        if let Ok(toast) = scheduled.GetAt(index)
+            && toast.Tag().ok().map(|s| s.to_string()).as_deref() == Some(id)
+            && toast.Id().ok().map(|s| s.to_string()).as_deref() == Some(token)
+        {
+            return notifier.RemoveFromSchedule(&toast).is_ok();
+        }
     }
-    Ok(id)
+    false
+}
+
+/// `ScheduledToastNotification.Id` holds at most 16 characters.
+fn schedule_token() -> String {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    format!("{:08x}{:08x}", unix_now_ms() as u32, sequence as u32)
 }
 
 pub(super) fn cancel(platform: &Platform, id: &str) -> Result<(), PlatformError> {
@@ -197,6 +256,11 @@ fn notifier(
 }
 
 fn ensure_start_menu_shortcut(platform: &Platform) {
+    static DONE: std::sync::Once = std::sync::Once::new();
+    DONE.call_once(|| write_start_menu_shortcut(platform));
+}
+
+fn write_start_menu_shortcut(platform: &Platform) {
     let aumid = aumid_from_identity(&platform.autostart_value_name());
     let Ok(exe) = std::env::current_exe() else {
         return;
@@ -216,6 +280,10 @@ fn ensure_start_menu_shortcut(platform: &Platform) {
         })
         .collect();
     let link = programs.join(format!("{stem}.lnk"));
+    // An installer's shortcut already carries the identity; leave it alone.
+    if link.exists() {
+        return;
+    }
     if let Err(error) = write_aumid_shortcut(&link, &exe, &aumid) {
         log::warn!("failed to register toast Start Menu shortcut: {error}");
     }

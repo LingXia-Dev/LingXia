@@ -59,7 +59,7 @@ features:
 
 # Predeclared integrations. Ordinary SDK APIs (camera, …) are not listed here.
 capabilities:
-  notifications: false  # unlocks lx.app.notification on every host; iOS/Harmony still use this for remote-push bootstrap
+  notifications: false  # unlocks lx.app.notification; on iOS/Harmony also registers a push token. Never prompts by itself
   browser: {{BROWSER_CAPABILITY}}
   terminal: {{TERMINAL_CAPABILITY}}
   proxy: false          # desktop; requires browser

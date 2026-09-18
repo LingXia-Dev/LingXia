@@ -543,26 +543,21 @@ impl AppRuntime for Platform {
             .map_err(|e| PlatformError::Platform(format!("Failed to exit app: {}", e)))
     }
 
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        notification_call("notificationPermission", &[])
+    }
+
     fn notification_request_permission(&self) -> Result<String, PlatformError> {
-        tokio::runtime::Handle::current().block_on(crate::rt::native_call(|callback_id| {
-            let id = callback_id.to_string();
-            lingxia_webview::platform::harmony::tsfn::call_arkts(
-                "notificationRequestPermission",
-                &[&id],
-            )
-            .map_err(|e| {
-                PlatformError::Platform(format!("Failed to request notification permission: {e}"))
-            })
-        }))
+        notification_call("notificationRequestPermission", &[])
     }
 
     fn notification_show(
         &self,
         request: &crate::traits::app_runtime::LocalNotificationShow,
-    ) -> Result<String, PlatformError> {
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
         let deliver_at = request.deliver_at_ms.unwrap_or(0).to_string();
-        let silent = if request.silent { "true" } else { "false" };
-        lingxia_webview::platform::harmony::tsfn::call_arkts(
+        // `silent` has no counterpart here: the slot decides sound.
+        let status = notification_call(
             "notificationShow",
             &[
                 &request.id,
@@ -570,22 +565,18 @@ impl AppRuntime for Platform {
                 &request.body,
                 request.applink.as_deref().unwrap_or_default(),
                 &deliver_at,
-                silent,
             ],
-        )
-        .map_err(|e| PlatformError::Platform(format!("Failed to show notification: {e}")))?;
-        Ok(request.id.clone())
+        )?;
+        crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
+            .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
     }
 
     fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
-        lingxia_webview::platform::harmony::tsfn::call_arkts("notificationCancel", &[id])
-            .map_err(|e| PlatformError::Platform(format!("Failed to cancel notification: {e}")))
+        notification_call("notificationCancel", &[id]).map(|_| ())
     }
 
     fn notification_cancel_all(&self) -> Result<(), PlatformError> {
-        lingxia_webview::platform::harmony::tsfn::call_arkts("notificationCancelAll", &[]).map_err(
-            |e| PlatformError::Platform(format!("Failed to cancel all notifications: {e}")),
-        )
+        notification_call("notificationCancelAll", &[]).map(|_| ())
     }
 
     fn navigate(
@@ -729,5 +720,23 @@ pub(super) mod ffi {
     #[link(name = "bundle_ndk.z")]
     unsafe extern "C" {
         pub fn OH_NativeBundle_GetMainElementName() -> OH_NativeBundle_ElementName;
+    }
+}
+
+/// ArkTS answers through the callback once the system has: a word, or
+/// `error:<why>`. Returning before that would report work that never happened.
+fn notification_call(name: &'static str, args: &[&str]) -> Result<String, PlatformError> {
+    let args: Vec<String> = args.iter().map(|arg| arg.to_string()).collect();
+    let word =
+        tokio::runtime::Handle::current().block_on(crate::rt::native_call(move |callback_id| {
+            let callback_id = callback_id.to_string();
+            let mut call: Vec<&str> = vec![&callback_id];
+            call.extend(args.iter().map(String::as_str));
+            lingxia_webview::platform::harmony::tsfn::call_arkts(name, &call)
+                .map_err(|e| PlatformError::Platform(format!("{name} failed: {e}")))
+        }))?;
+    match word.strip_prefix("error:") {
+        Some(why) => Err(PlatformError::Platform(why.to_string())),
+        None => Ok(word),
     }
 }

@@ -152,12 +152,8 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
         os_log("Foreground notification - not forwarding to Rust", log: Self.log, type: .info)
 
         if userInfo[MacLocalNotification.localMarker] != nil {
-            let active = if Thread.isMainThread {
-                UIApplication.shared.applicationState == .active
-            } else {
-                DispatchQueue.main.sync { UIApplication.shared.applicationState == .active }
-            }
-            completionHandler(active ? [] : [.banner, .sound])
+            // Only a scheduled notification gets here while active.
+            completionHandler([.banner, .list, .sound])
             return
         }
 
@@ -175,7 +171,9 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
 
         if userInfo[MacLocalNotification.localMarker] != nil {
             if let applink = userInfo["applink"] as? String, !applink.isEmpty {
-                let _ = onApplinkReceived(applink)
+                DispatchQueue.main.async {
+                    let _ = onApplinkReceived(applink)
+                }
             }
             completionHandler()
             return
