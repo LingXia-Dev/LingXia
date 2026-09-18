@@ -305,7 +305,7 @@ Lxapp page content does not inherit these colors; it responds to the standard
 
 In-app host updates. Omit the table to skip prod `checkUpdate` (`dev` still checks, unsigned). If present, it must list 1–2 `trustedPublicKeys` (two = key rotation) — the signed feed is the version signal on every channel, including `store`. How to mint the seed/public pair: [Distribution](../cli/distribution.md#lingxia-publish).
 
-`channel` / `platforms` choose who installs the package. This is **not** the `ios.store` / `android.googlePlayStore` listing identity used by `lingxia store`.
+`channel` / `platforms` choose who installs the package. This is **not** the `ios.store` / `android.googlePlayStore` listing identity used by `lingxia store`. A freshly scaffolded `lingxia.yaml` already carries this block, commented out — uncomment it and add your key.
 
 ```yaml
 update:
