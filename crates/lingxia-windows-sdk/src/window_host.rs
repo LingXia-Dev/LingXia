@@ -7798,7 +7798,11 @@ fn handle_chrome_left_up(hwnd: HWND, point: (i32, i32)) -> bool {
             }
             true
         }
-        Some(WindowsChromeHit::Chrome | WindowsChromeHit::Focusable { .. }) => true,
+        Some(WindowsChromeHit::Chrome | WindowsChromeHit::Focusable { .. }) => {
+            #[cfg(feature = "shell-chrome")]
+            sync_sidebar_tabbar_popup(hwnd, point);
+            true
+        }
         _ => false,
     }
 }

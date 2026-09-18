@@ -564,15 +564,25 @@ fn draw_sidebar_rail(
     }
 
     // The collapse/expand toggle (same `SidebarExpand` design icon the top bar
-    // uses when expanded) pinned to the bottom of the rail, so a collapsed rail
-    // is never a dead end.
+    // uses when expanded) pinned to the bottom of the rail. Compact desktop
+    // keeps the glyph but treats it as disabled chrome, not a dead click.
     let expand_rect = sidebar_rail_expand_rect(rect);
-    draw_hover_wash(hdc, expand_rect, 8, cursor);
+    if !tabbar.rail_expand_disabled {
+        draw_hover_wash(hdc, expand_rect, 8, cursor);
+    }
     draw_design_icon_button(
         hdc,
         expand_rect,
         WindowsDesignIcon::SidebarExpand,
-        shell_palette().text_muted,
+        if tabbar.rail_expand_disabled {
+            blend_rgb(
+                shell_palette().text_muted,
+                shell_palette().sidebar_background,
+                40,
+            )
+        } else {
+            shell_palette().text_muted
+        },
         18,
     );
 }

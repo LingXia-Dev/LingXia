@@ -423,6 +423,7 @@ mod tests {
             items: Vec::new(),
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

@@ -22,6 +22,7 @@ browser:
   pin_to_sidebar: "Pin to Sidebar"
   unpin: "Unpin"
   manage_bookmarks: "Manage Bookmarks…"
+  settings: "Settings"
 
 # Terminal panel (native Windows shell terminal)
 terminal:
@@ -38,3 +39,7 @@ terminal:
   change_title: "Change Tab Title…"
   reset: "Reset Terminal"
   read_only: "Terminal Read-only"
+
+# Compact desktop keeps the rail expand glyph visible but inert.
+sidebar:
+  expand_needs_wider_window: "Widen the window first"

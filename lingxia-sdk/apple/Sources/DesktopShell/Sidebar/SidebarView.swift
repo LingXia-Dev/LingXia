@@ -696,6 +696,12 @@ class SidebarView: NSView {
     /// The rail-state expand toggle — the first icon in the collapsed rail,
     /// above the lxapp icons; clicking it restores the expanded sidebar.
     private let railExpandButton = NSButton()
+    private var railExpandTrackingArea: NSTrackingArea?
+    /// Compact desktop keeps the glyph visible but inert: the rail is already
+    /// the admitted sidebar, so a click must not pretend it can expand.
+    var railExpandEnabled = true {
+        didSet { updateRailExpandAffordances() }
+    }
     private var panelButtons: [SidebarActionRowView] = []
     /// The panel items currently materialized as footer buttons. Lets
     /// renderPanelItems() skip a rebuild when render() runs for an unrelated
@@ -1061,8 +1067,7 @@ class SidebarView: NSView {
         railExpandButton.wantsLayer = true
         railExpandButton.layer?.cornerRadius = 8
         railExpandButton.layer?.backgroundColor = NSColor.clear.cgColor
-        railExpandButton.toolTip = "Expand sidebar"
-        railExpandButton.setAccessibilityLabel("Expand sidebar")
+        updateRailExpandAffordances()
         railExpandButton.contentTintColor = LxAppHostTheme.mutedForeground
         railExpandButton.image = LxIcon.image(
             named: "icon_sidebar_expand",
@@ -1823,8 +1828,8 @@ class SidebarView: NSView {
 
     /// The rail column in screen space — the edge every hover float clears.
     private func railScreenFrame() -> NSRect {
-        guard let window = railScrollView.window else { return .zero }
-        return window.convertToScreen(railScrollView.convert(railScrollView.bounds, to: nil))
+        guard let window else { return .zero }
+        return window.convertToScreen(convert(bounds, to: nil))
     }
 
     private func scheduleRailHoverDismiss() {
@@ -2805,7 +2810,39 @@ class SidebarView: NSView {
     }
 
     @objc private func railExpandClicked() {
-        onShowRequested?()
+        if railExpandEnabled {
+            onShowRequested?()
+            return
+        }
+        showRailExpandBlockedHint()
+    }
+
+    private static let railExpandBlockedKey = "rail-expand-blocked"
+
+    private func railExpandBlockedLabel() -> String {
+        L10n.string("lx_sidebar_expand_needs_wider_window")
+    }
+
+    private func showRailExpandBlockedHint() {
+        showRailTooltip(
+            key: Self.railExpandBlockedKey,
+            label: railExpandBlockedLabel(),
+            relativeTo: railExpandButton
+        )
+    }
+
+    private func updateRailExpandAffordances() {
+        // Stay enabled so hover and click can still show the rail hint. A
+        // disabled NSButton swallows both, which is the "nothing happens" feel.
+        railExpandButton.isEnabled = true
+        railExpandButton.alphaValue = railExpandEnabled ? 1 : 0.45
+        railExpandButton.toolTip = nil
+        railExpandButton.setAccessibilityLabel(
+            railExpandEnabled ? "Expand sidebar" : railExpandBlockedLabel()
+        )
+        if railExpandEnabled, railHoverKey == Self.railExpandBlockedKey {
+            closeRailHoverPanel()
+        }
     }
 
     // MARK: - Footer / Add button hover
@@ -2838,6 +2875,18 @@ class SidebarView: NSView {
         )
         hideButton.addTrackingArea(hideArea)
         hideButtonTrackingArea = hideArea
+
+        if let existing = railExpandTrackingArea {
+            railExpandButton.removeTrackingArea(existing)
+        }
+        let expandArea = NSTrackingArea(
+            rect: railExpandButton.bounds,
+            options: [.mouseEnteredAndExited, .activeInActiveApp, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        railExpandButton.addTrackingArea(expandArea)
+        railExpandTrackingArea = expandArea
     }
 
     override public func mouseEntered(with event: NSEvent) {
@@ -2845,6 +2894,8 @@ class SidebarView: NSView {
             setAddButtonHovered(true)
         } else if event.trackingArea === hideButtonTrackingArea {
             setHideButtonHovered(true)
+        } else if event.trackingArea === railExpandTrackingArea, !railExpandEnabled {
+            showRailExpandBlockedHint()
         }
     }
 
@@ -2853,6 +2904,9 @@ class SidebarView: NSView {
             setAddButtonHovered(false)
         } else if event.trackingArea === hideButtonTrackingArea {
             setHideButtonHovered(false)
+        } else if event.trackingArea === railExpandTrackingArea,
+                  railHoverKey == Self.railExpandBlockedKey {
+            scheduleRailHoverDismiss()
         }
     }
 

@@ -192,6 +192,9 @@ pub struct WindowsShellTabBarLayout {
     /// Sidebar collapsed to an icon-only rail (the macOS first-collapse
     /// state). Ignored when `collapsed` is set.
     pub icon_rail: bool,
+    /// Compact desktop keeps the rail expand glyph visible but rejects the
+    /// click so a narrow window cannot persist an expanded sidebar choice.
+    pub rail_expand_disabled: bool,
     /// The lxapp explicitly hid its tabbar. Desktop keeps the group and the
     /// surrounding sidebar visible, but removes the child rows and disables
     /// the chevron until `visibility: 'auto'` clears this state.
@@ -315,6 +318,7 @@ mod click_index_tests {
             items,
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,

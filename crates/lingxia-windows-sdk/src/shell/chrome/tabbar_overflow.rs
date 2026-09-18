@@ -294,6 +294,7 @@ mod tests {
             overflow_start_index: if count > 5 { 4 } else { -1 },
             collapsed: false,
             icon_rail: false,
+            rail_expand_disabled: false,
             items_api_hidden: false,
             items_collapsed: false,
             footer_action_height: 0,
