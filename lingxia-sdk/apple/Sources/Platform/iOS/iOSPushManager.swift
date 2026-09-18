@@ -81,9 +81,10 @@ final class iOSPushManager: NSObject {
                     os_log("Notification permission authorized, registering for remote notifications", log: Self.log, type: .info)
                     UIApplication.shared.registerForRemoteNotifications()
                 case .notDetermined:
-                    // Request permission first
-                    os_log("Notification permission not determined, requesting permission", log: Self.log, type: .info)
-                    self.requestPermission()
+                    // A device token needs no authorization, and declaring the
+                    // capability must not prompt: the product asks through
+                    // `lx.app.notification.requestPermission()`.
+                    UIApplication.shared.registerForRemoteNotifications()
                 case .denied:
                     os_log("Notification permission denied", log: Self.log, type: .info)
                 case .ephemeral:
@@ -94,22 +95,6 @@ final class iOSPushManager: NSObject {
             }
         }
     }
-
-    /// Request notification permission
-    private func requestPermission() {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-            Self.setCachedPushEnabled(granted)
-            DispatchQueue.main.async {
-                if granted {
-                    os_log("Notification permission granted, registering for remote notifications", log: Self.log, type: .info)
-                    UIApplication.shared.registerForRemoteNotifications()
-                } else {
-                    os_log("Notification permission denied by user", log: Self.log, type: .info)
-                }
-            }
-        }
-    }
-
 
     /// Handle device token registration
     public func didRegisterForRemoteNotifications(withDeviceToken deviceToken: Data) {
