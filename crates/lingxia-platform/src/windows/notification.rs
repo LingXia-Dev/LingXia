@@ -167,11 +167,12 @@ fn hand_over_when_due(
         std::thread::sleep(std::time::Duration::from_millis(
             at_ms.saturating_sub(unix_now_ms()),
         ));
-        if let Err(error) = show_now(&platform, &request) {
-            log::warn!(
+        match show_now(&platform, &request) {
+            Ok(()) => log::info!("scheduled notification {} shown by the process", request.id),
+            Err(error) => log::warn!(
                 "scheduled notification {} was not shown: {error}",
                 request.id
-            );
+            ),
         }
     });
 }
@@ -194,11 +195,15 @@ fn take_scheduled(platform: &Platform, id: &str, token: &str) -> bool {
     false
 }
 
-/// `ScheduledToastNotification.Id` holds at most 16 characters.
+/// `ScheduledToastNotification.Id` rejects 16 characters (0x803E0120); eight
+/// hex digits of a per-process counter are unique for as long as we run.
 fn schedule_token() -> String {
-    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    format!("{:08x}{:08x}", unix_now_ms() as u32, sequence as u32)
+    format!(
+        "{:08x}",
+        (unix_now_ms() as u32).wrapping_add(sequence.wrapping_mul(0x9E37_79B9))
+    )
 }
 
 pub(super) fn cancel(platform: &Platform, id: &str) -> Result<(), PlatformError> {
