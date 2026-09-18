@@ -220,6 +220,31 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.autostartSetEnabled")]
         fn autostart_set_enabled(enabled: bool) -> bool;
 
+        #[swift_bridge(swift_name = "LxApp.notificationPermission")]
+        fn notification_permission() -> String;
+
+        #[swift_bridge(swift_name = "LxApp.notificationRequestPermission")]
+        fn notification_request_permission() -> String;
+
+        #[swift_bridge(swift_name = "LxApp.notificationShow")]
+        fn notification_show(
+            id: &str,
+            title: &str,
+            body: &str,
+            applink: &str,
+            deliver_at_ms: i64,
+            silent: bool,
+        ) -> String;
+
+        #[swift_bridge(swift_name = "LxApp.notificationCancel")]
+        fn notification_cancel(id: &str) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.notificationCancelAll")]
+        fn notification_cancel_all() -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.notificationLastError")]
+        fn notification_last_error() -> String;
+
         #[swift_bridge(swift_name = "LxApp.setTrayMenu")]
         fn set_tray_menu(items_json: &str) -> bool;
 
@@ -496,9 +521,11 @@ pub use bridge::{
     apply_appearance, autostart_is_enabled, autostart_is_supported, autostart_set_enabled,
     cancel_preview_media, clipboard_clear, clipboard_read, clipboard_types, clipboard_write,
     close_browser_tab, close_lxapp, close_surface, destroy_managed_surface, exit_app, hide_surface,
-    hide_toast, host_appearance_dark, navigate, on_home_first_ready, open_builtin_browser_page,
-    open_document_external, open_lxapp, open_managed_native_surface, open_url, present_layout,
-    present_surface, preview_media, request_lxapp_main_activation, review_document, set_app_badge,
+    hide_toast, host_appearance_dark, navigate, notification_cancel, notification_cancel_all,
+    notification_last_error, notification_permission, notification_request_permission,
+    notification_show, on_home_first_ready, open_builtin_browser_page, open_document_external,
+    open_lxapp, open_managed_native_surface, open_url, present_layout, present_surface,
+    preview_media, request_lxapp_main_activation, review_document, set_app_badge,
     set_host_color_mode, set_managed_surface_visible, set_shell_pins, set_sidebar_actions,
     set_tray_badge, set_tray_click_intercept, set_tray_icon, set_tray_menu, set_tray_title,
     set_tray_visible, share, show_action_sheet, show_modal, show_splash_campaign, show_surface,

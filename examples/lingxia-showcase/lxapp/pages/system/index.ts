@@ -11,7 +11,11 @@ Page({
     cacheFreedBytes: null,
     cacheBusy: false,
     cacheError: '',
-    cacheNotice: ''
+    cacheNotice: '',
+    notificationSupported: false,
+    notificationPermission: '',
+    notificationLastId: '',
+    notificationError: '',
   },
 
   onLoad: async function (options = {}) {
@@ -26,6 +30,9 @@ Page({
     if (type === 'cache') {
       await this.refreshCacheSize();
     }
+    if (type === 'notification') {
+      await this.refreshNotification();
+    }
   },
 
   onShow: function () {
@@ -37,6 +44,9 @@ Page({
     }
     if (this.data.currentType === 'cache') {
       this.refreshCacheSize();
+    }
+    if (this.data.currentType === 'notification') {
+      this.refreshNotification();
     }
   },
 
@@ -131,6 +141,75 @@ Page({
     } catch (error) {
       console.error('Failed to clear cache:', error);
       this.setData({ cacheBusy: false, cacheError: String(error) });
+    }
+  },
+
+  // Presence of the member is the support check — same latch as
+  // `lx.supports({ capability: 'notifications' })`.
+  refreshNotification: async function () {
+    const notification = lx.app.notification;
+    if (!notification) {
+      this.setData({
+        notificationSupported: false,
+        notificationPermission: '',
+        notificationError: '',
+      });
+      return;
+    }
+    try {
+      // Reading must not prompt; `show` asks when it needs to.
+      const permission = await notification.getPermission();
+      this.setData({
+        notificationSupported: true,
+        notificationPermission: permission,
+        notificationError: '',
+      });
+    } catch (error) {
+      console.error('Failed to read notification permission:', error);
+      this.setData({
+        notificationSupported: true,
+        notificationPermission: '',
+        notificationError: String(error),
+      });
+    }
+  },
+
+  showNotification: async function () {
+    const notification = lx.app.notification;
+    if (!notification) {
+      this.setData({ notificationError: 'Notifications are absent on this host' });
+      return;
+    }
+    try {
+      // An immediate show is suppressed while this page is frontmost.
+      const { id } = await notification.show({
+        id: 'showcase-local',
+        title: 'LingXia showcase',
+        body: 'Local banner from the system page',
+        schedule: { delayMs: 5000 },
+      });
+      this.setData({ notificationLastId: id, notificationError: '' });
+    } catch (error) {
+      console.error('Failed to show notification:', error);
+      this.setData({ notificationError: String(error) });
+    }
+  },
+
+  cancelNotification: async function () {
+    const notification = lx.app.notification;
+    if (!notification) {
+      return;
+    }
+    try {
+      if (this.data.notificationLastId) {
+        await notification.cancel(this.data.notificationLastId);
+      } else {
+        await notification.cancelAll();
+      }
+      this.setData({ notificationLastId: '', notificationError: '' });
+    } catch (error) {
+      console.error('Failed to cancel notification:', error);
+      this.setData({ notificationError: String(error) });
     }
   },
 

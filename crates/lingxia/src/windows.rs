@@ -33,6 +33,9 @@ pub fn init(platform: Platform) -> crate::Result<crate::RuntimeInfo> {
     install_lifecycle_bridge();
     install_url_surface_bridge();
     install_aside_panel_bridge();
+    lingxia_platform::set_toast_activate_handler(|url| {
+        let _ = lingxia_service::applink::deliver(url);
+    });
     crate::init_with_platform(platform)
 }
 

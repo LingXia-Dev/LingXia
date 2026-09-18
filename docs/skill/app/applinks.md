@@ -14,6 +14,7 @@ Inbound links reach Logic from:
 - OS App Links or Universal Links
 - browser handoff into the app
 - push notification links
+- a tap on a local notification posted with `lx.app.notification.show({ applink })`
 
 QR and barcode scans are the exception: `scanCode` auto-opens **only** the
 `/lxapp/` namespace. A product URL that merely shares a configured host is

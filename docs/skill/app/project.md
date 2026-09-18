@@ -373,7 +373,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 `capabilities` is for platform/runtime integrations that must be predeclared before the SDK auto-enables them. Each one toggles the corresponding native runtime feature at build (all default off). Do not list ordinary SDK APIs such as camera here; those request permission only when called.
 
-- `notifications` — push/notification integration where supported. iOS/Harmony SDK startup may request notification permission and fetch a push token.
+- `notifications` — unlocks [`lx.app.notification`](../lxapp/lx-api.md#local-notifications) ([Control app](./control-app.md) only) and, on iOS/Harmony, push-token registration. Declaring it never prompts; the product asks.
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
 - `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.

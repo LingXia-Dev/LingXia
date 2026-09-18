@@ -57,6 +57,8 @@ export class Lingxia {
   // (file/share/scan/media/push) — lxapp code reads these, never owns them.
   public static context: common.UIAbilityContext | null = null;
   public static windowStage: window.WindowStage | null = null;
+  /** True while the host UIAbility is in the foreground. */
+  public static inForeground: boolean = true;
   private static environmentCallback: EnvironmentCallback | null = null;
 
   /**
@@ -170,7 +172,8 @@ export class Lingxia {
 
     if ((Lingxia.capabilities & Lingxia.CAP_NOTIFICATIONS) !== 0) {
       try {
-        LxAppPush.requestEnableNotification();
+        // A push token needs no consent, and declaring the capability must
+        // not prompt: the product asks through `lx.app.notification`.
         LxAppPush.initToken();
       } catch (e) {
         LxLog.e(TAG, `Push init error: ${e}`);

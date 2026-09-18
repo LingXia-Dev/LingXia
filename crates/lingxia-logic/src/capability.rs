@@ -38,7 +38,7 @@ flag_capabilities! {
     "control" => |lxapp: &Arc<LxApp>| lxapp.is_control_app();
     "terminal" => |lxapp: &Arc<LxApp>| terminal_supported(lxapp);
     "autostart" => |_: &Arc<LxApp>| autostart_supported();
-    "notifications" => |_: &Arc<LxApp>| lingxia_app_context::capability::notifications();
+    "notifications" => |_: &Arc<LxApp>| notification_supported();
     "browser" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser();
     "proxy" => |_: &Arc<LxApp>| lingxia_app_context::capability::proxy();
     "selfUpdate" => |lxapp: &Arc<LxApp>| self_update_supported(lxapp);
@@ -95,6 +95,11 @@ fn autostart_supported() -> bool {
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn autostart_supported() -> bool {
     false
+}
+
+/// `lx.app.notification`'s presence check. Fenced like the member.
+fn notification_supported() -> bool {
+    lingxia_app_context::capability::notifications()
 }
 
 fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {

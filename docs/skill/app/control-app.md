@@ -54,6 +54,7 @@ guest cannot reach them:
   not your bundle. (Your own bundle's updates are `lx.getUpdateManager()`,
   which every lxapp has.)
 - `lx.app.autostart.*` — launch at login.
+- `lx.app.notification.*` — local banners that resume the product via App Link.
 - `lx.app.control.displayLanguage` / `lx.app.control.appearance` — the writers
   behind the product's language and light/dark setting.
 - `lx.shell.*` mutations — sidebar actions, opening declared surfaces,

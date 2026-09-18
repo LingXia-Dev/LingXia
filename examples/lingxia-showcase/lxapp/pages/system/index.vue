@@ -167,6 +167,77 @@
         </div>
       </template>
 
+      <!-- Local notifications -->
+      <template v-if="currentType === 'notification'">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">app.notification</h1>
+          <div class="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+        </div>
+
+        <div
+          data-testid="system-notification-panel"
+          class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+        >
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-violet-50 to-purple-50">
+              <span class="text-2xl">🔔</span>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Local Notifications</div>
+              <div class="text-xs text-gray-500 mt-0.5">
+                {{ notificationSupported ? 'Post and cancel a local banner — Control app only' : 'Not available on this host' }}
+              </div>
+            </div>
+            <button
+              v-if="notificationSupported"
+              @click="showNotification"
+              class="px-4 py-2 text-xs font-medium bg-violet-500 hover:bg-violet-600 text-white rounded-lg transition-colors"
+            >
+              Show
+            </button>
+          </div>
+
+          <div class="p-5">
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-1 h-4 bg-violet-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">State</h4>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Supported</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBool(notificationSupported) }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Permission</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ notificationPermission || '--' }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Last id</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ notificationLastId || '--' }}</span>
+              </div>
+              <div v-if="notificationError" class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Error</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ notificationError }}</span>
+              </div>
+              <div class="pt-3 flex gap-2">
+                <button
+                  @click="refreshNotification"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  Re-read Permission
+                </button>
+                <button
+                  @click="cancelNotification"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- Product cache -->
       <template v-if="currentType === 'cache'">
         <div class="mb-6 text-center">
@@ -249,6 +320,9 @@ const {
   refreshAutostart,
   refreshCacheSize,
   clearCache,
+  refreshNotification,
+  showNotification,
+  cancelNotification,
 } = actions;
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
@@ -263,6 +337,10 @@ const cacheNotice = computed(() => data.cacheNotice ?? '');
 const cacheFreedBytes = computed(() => data.cacheFreedBytes ?? null);
 const cacheBusy = computed(() => data.cacheBusy ?? false);
 const cacheError = computed(() => data.cacheError ?? '');
+const notificationSupported = computed(() => data.notificationSupported ?? false);
+const notificationPermission = computed(() => data.notificationPermission ?? '');
+const notificationLastId = computed(() => data.notificationLastId ?? '');
+const notificationError = computed(() => data.notificationError ?? '');
 
 function formatBytes(value: number | null): string {
   if (typeof value !== 'number') {

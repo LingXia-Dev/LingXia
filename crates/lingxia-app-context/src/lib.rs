@@ -1023,9 +1023,17 @@ pub mod capability {
             super::super::host_build().proxy
         }
 
-        /// Notifications are a platform fact rather than a build feature.
+        /// Local notification API (`lx.app.notification`). Every host that
+        /// implements the trait; iOS/Harmony still also use the yaml flag for
+        /// their existing remote-push bootstrap.
         pub fn notifications() -> bool {
-            cfg!(any(target_os = "ios", target_env = "ohos"))
+            cfg!(any(
+                target_os = "macos",
+                target_os = "windows",
+                target_os = "ios",
+                target_os = "android",
+                all(target_os = "linux", target_env = "ohos"),
+            ))
         }
     }
 
@@ -1034,7 +1042,8 @@ pub mod capability {
         build::browser() && super::browser_enabled()
     }
 
-    /// Host notifications.
+    /// Local notification API. Presence also requires the yaml flag; iOS/Harmony
+    /// push bootstrap still reads [`super::notifications_enabled`] directly.
     pub fn notifications() -> bool {
         build::notifications() && super::notifications_enabled()
     }

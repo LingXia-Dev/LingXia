@@ -98,6 +98,19 @@ pub fn os_label() -> &'static str {
     }
 }
 
+/// Local notifications are implemented on every LingXia host. Presence of
+/// `lx.app.notification` also requires the declared yaml capability.
+#[cfg(any(
+    target_os = "macos",
+    target_os = "windows",
+    target_os = "ios",
+    target_os = "android",
+    all(target_os = "linux", target_env = "ohos"),
+))]
+pub fn notification_supported() -> bool {
+    true
+}
+
 /// Whether launch-at-startup can actually work on this host, probed at
 /// runtime. macOS builds target 12 but SMAppService needs 13+, so the
 /// `lx.app.autostart` member must not be registered from a compile-time
@@ -138,20 +151,20 @@ pub use windows::{
     Platform, WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, WindowsUrlSurfaceWebTag,
     WindowsVideoCommandDispatcher, apply_staged_windows_update, install_windows_aside_panel_bridge,
     register_windows_media_preview_host, register_windows_video_command_dispatcher,
-    set_windows_activate_browser_tab_handler, set_windows_app_exit_handler,
-    set_windows_builtin_browser_downloads_handler, set_windows_capsule_rect_provider,
-    set_windows_close_browser_tab_handler, set_windows_home_first_ready_handler,
-    set_windows_host_appearance_dark, set_windows_host_color_mode_handler,
-    set_windows_layout_plan_handler, set_windows_lxapp_hidden_handler,
-    set_windows_lxapp_main_activation_handler, set_windows_managed_aside_event_handler,
-    set_windows_managed_native_surface_open_handler, set_windows_managed_surface_close_handler,
-    set_windows_managed_surface_visible_handler, set_windows_open_url_handler,
-    set_windows_page_visibility_handler, set_windows_pull_to_refresh_handler,
-    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
-    set_windows_surface_closed_handler, set_windows_surface_dispose_handler,
-    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
-    set_windows_ui_update_async_handler, set_windows_ui_update_handler,
-    set_windows_url_surface_handler, sync_windows_ui,
+    set_toast_activate_handler, set_windows_activate_browser_tab_handler,
+    set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
+    set_windows_capsule_rect_provider, set_windows_close_browser_tab_handler,
+    set_windows_home_first_ready_handler, set_windows_host_appearance_dark,
+    set_windows_host_color_mode_handler, set_windows_layout_plan_handler,
+    set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
+    set_windows_managed_aside_event_handler, set_windows_managed_native_surface_open_handler,
+    set_windows_managed_surface_close_handler, set_windows_managed_surface_visible_handler,
+    set_windows_open_url_handler, set_windows_page_visibility_handler,
+    set_windows_pull_to_refresh_handler, set_windows_shell_pins_handler,
+    set_windows_sidebar_actions_handler, set_windows_surface_closed_handler,
+    set_windows_surface_dispose_handler, set_windows_tray_click_intercept_handler,
+    set_windows_tray_menu_handler, set_windows_ui_update_async_handler,
+    set_windows_ui_update_handler, set_windows_url_surface_handler, sync_windows_ui,
 };
 
 #[cfg(not(any(

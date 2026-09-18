@@ -132,7 +132,7 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`, `lx.app.control`, `lx.app.cache`. Presence and
+`lx.terminal`, `lx.app.autostart`, `lx.app.notification`, `lx.app.control`, `lx.app.cache`. Presence and
 `lx.supports()` are answered from one registry, so `('terminal' in lx)` and
 `lx.supports({ capability: 'terminal' })` can never disagree. `lx.app.cache`
 uses the same gate as `lx.app.control`.
@@ -149,6 +149,26 @@ them. A matching app id or bundled source does not grant this authority.
 
 Which session is which, the full list of Control-app-only calls, and what a
 refusal reads like: [The Control app](../app/control-app.md).
+
+---
+
+## Local notifications
+
+`lx.app.notification` — Control-app only, absent without
+`capabilities.notifications`. Signatures are in `@lingxia/types`; what they do
+not say:
+
+- An immediate `show` while the product is frontmost resolves
+  `status: 'suppressed'` and posts nothing. A scheduled one is presented when
+  it fires, frontmost or not.
+- `id` replaces on every path, `'suppressed'` included.
+- A tap delivers `applink` as [`scene === 8003`](../app/applinks.md); routing on
+  the URL is your Logic's job.
+- Limits: Android battery saver can fire a schedule minutes late, and a reboot
+  drops it. HarmonyOS banners are a user-only system toggle, `silent` does
+  nothing there, and `schedule` rejects unless Huawei granted the app the
+  agent-reminder privilege. A Windows schedule that fires after the product exited opens
+  it without the `applink`.
 
 ---
 

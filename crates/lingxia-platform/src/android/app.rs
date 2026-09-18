@@ -588,6 +588,85 @@ impl AppRuntime for Platform {
         .map_err(|e| PlatformError::Platform(format!("Failed to close_browser_tab: {}", e)))
     }
 
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        notification_word_call(false)
+    }
+
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        notification_word_call(true)
+    }
+
+    fn notification_show(
+        &self,
+        request: &crate::traits::app_runtime::LocalNotificationShow,
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+        with_env(|env| -> Result<_, PlatformError> {
+            let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            let id = env.new_string(&request.id)?;
+            let title = env.new_string(&request.title)?;
+            let body = env.new_string(&request.body)?;
+            let applink = env.new_string(request.applink.as_deref().unwrap_or_default())?;
+            let result = env.call_static_method(
+                class,
+                jni_str!("show"),
+                jni_sig!(
+                    "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;JZ)Ljava/lang/String;"
+                ),
+                &[
+                    JValue::Object(&id),
+                    JValue::Object(&title),
+                    JValue::Object(&body),
+                    JValue::Object(&applink),
+                    JValue::Long(request.deliver_at_ms.unwrap_or(0) as i64),
+                    JValue::Bool(request.silent),
+                ],
+            )?;
+            let status = jstring_from_result(env, result)?;
+            if status.is_empty() {
+                return Err(PlatformError::Platform(notification_last_error(env, class)));
+            }
+            crate::traits::app_runtime::LocalNotificationStatus::from_native(&status)
+                .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to show notification: {e}")))
+    }
+
+    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), PlatformError> {
+            let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            let id = env.new_string(id)?;
+            let result = env.call_static_method(
+                class,
+                jni_str!("cancel"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&id)],
+            )?;
+            if result.z()? {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(notification_last_error(env, class)))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to cancel notification: {e}")))
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        with_env(|env| -> Result<(), PlatformError> {
+            let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
+                .map_err(|e| PlatformError::Platform(e.to_string()))?;
+            let result =
+                env.call_static_method(class, jni_str!("cancelAll"), jni_sig!("()Z"), &[])?;
+            if result.z()? {
+                Ok(())
+            } else {
+                Err(PlatformError::Platform(notification_last_error(env, class)))
+            }
+        })
+        .map_err(|e| PlatformError::Platform(format!("Failed to cancel all notifications: {e}")))
+    }
+
     fn activate_browser_tab(&self, tab_id: String) -> crate::traits::PlatformFuture {
         Box::pin(async move {
             let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
@@ -674,4 +753,73 @@ fn share_impl(
         Ok(())
     })
     .map_err(|e| PlatformError::Platform(format!("Failed to call Android share: {e}")))
+}
+
+fn jstring_from_result(
+    env: &mut Env,
+    result: impl JniStringResult,
+) -> Result<String, PlatformError> {
+    result.into_string(env)
+}
+
+trait JniStringResult {
+    fn into_string(self, env: &mut Env) -> Result<String, PlatformError>;
+}
+
+impl JniStringResult for jni::objects::JValueOwned<'_> {
+    fn into_string(self, env: &mut Env) -> Result<String, PlatformError> {
+        let object = self
+            .l()
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        if object.is_null() {
+            return Ok(String::new());
+        }
+        let value = unsafe { JString::from_raw(env, object.into_raw() as _) };
+        value
+            .try_to_string(env)
+            .map_err(|e| PlatformError::Platform(e.to_string()))
+    }
+}
+
+/// `permission` / `requestPermission`: a status word, or empty with the reason
+/// left in `takeLastError`.
+fn notification_word_call(prompt: bool) -> Result<String, PlatformError> {
+    with_env(|env| -> Result<String, PlatformError> {
+        let class: &JClass = super::get_cached_class(super::CachedClass::LxAppNotification)
+            .map_err(|e| PlatformError::Platform(e.to_string()))?;
+        let result = if prompt {
+            env.call_static_method(
+                class,
+                jni_str!("requestPermission"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+        } else {
+            env.call_static_method(
+                class,
+                jni_str!("permission"),
+                jni_sig!("()Ljava/lang/String;"),
+                &[],
+            )?
+        };
+        let word = jstring_from_result(env, result)?;
+        if word.is_empty() {
+            return Err(PlatformError::Platform(notification_last_error(env, class)));
+        }
+        Ok(word)
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to read notification permission: {e}")))
+}
+
+fn notification_last_error(env: &mut Env, class: &JClass) -> String {
+    env.call_static_method(
+        class,
+        jni_str!("takeLastError"),
+        jni_sig!("()Ljava/lang/String;"),
+        &[],
+    )
+    .ok()
+    .and_then(|result| jstring_from_result(env, result).ok())
+    .filter(|message| !message.is_empty())
+    .unwrap_or_else(|| "notification request failed".into())
 }

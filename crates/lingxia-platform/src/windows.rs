@@ -13,6 +13,7 @@ mod media;
 mod media_preview;
 mod mouse;
 mod network;
+mod notification;
 mod pull_to_refresh;
 mod registry;
 mod screenshot;
@@ -40,6 +41,7 @@ pub use app::{
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
 };
+pub use notification::set_toast_activate_handler;
 pub use pull_to_refresh::set_windows_pull_to_refresh_handler;
 pub use surface::{
     WindowsUrlSurfaceWebTag, install_windows_aside_panel_bridge, set_windows_layout_plan_handler,

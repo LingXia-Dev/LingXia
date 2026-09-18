@@ -192,6 +192,108 @@ spec('subscribe to and release the display language listener', {
   expect(result.distinct).toBeTruthy();
 });
 
+spec('request permission and replace local notifications by id', {
+  id: 'HOSTAPP-NOTIFICATION-001',
+  covers: [
+    'lx.app.notification',
+    'lx.app.notification.getPermission',
+    'lx.app.notification.requestPermission',
+    'lx.app.notification.show',
+    'lx.app.notification.cancel',
+    'lx.app.notification.cancelAll',
+  ],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
+
+  const offered = await app.eval({
+    script: `return !!(lx.app.notification && typeof lx.app.notification.show === 'function')`,
+  }) as boolean;
+  expect(offered).toBe(true);
+  const supported = await app.eval({ script: `return !!lx.supports({ capability: 'notifications' })` });
+  expect(supported).toBe(true);
+
+  const result = await app.eval({
+    timeoutMs: 30_000,
+    script: `
+      const n = lx.app.notification;
+      const permission = await n.getPermission();
+      // A pending OS prompt has nobody to answer it here, so only ask when
+      // the answer is already known.
+      const requested = permission === 'default' ? null : await n.requestPermission();
+      let immediate = null;
+      try {
+        immediate = await n.show({
+          id: 'automation-local',
+          title: 'LingXia automation',
+          body: 'suppressed while frontmost',
+          silent: true,
+        });
+      } catch (error) {
+        if (permission === 'granted') throw error;
+      }
+      let scheduled = null;
+      let replaced = null;
+      if (permission === 'granted') {
+        scheduled = await n.show({
+          id: 'automation-local',
+          title: 'LingXia automation',
+          body: 'scheduled',
+          schedule: { delayMs: 60_000 },
+          silent: true,
+        });
+        replaced = await n.show({
+          id: 'automation-local',
+          title: 'LingXia automation',
+          body: 'replaces the schedule',
+          schedule: { at: Date.now() + 120_000 },
+          silent: true,
+        });
+      }
+      await n.cancel('automation-local');
+      await n.cancel('never-shown');
+      await n.cancelAll();
+      const rejects = async (options) => {
+        try { await n.show(options); return false; } catch { return true; }
+      };
+      return {
+        permission,
+        requested,
+        immediate,
+        scheduled,
+        replaced,
+        rejected: {
+          http: await rejects({ title: 'bad', applink: 'http://example.com/x' }),
+          title: await rejects({ body: 'no title' }),
+          both: await rejects({ title: 'bad', schedule: { at: Date.now() + 1000, delayMs: 5 } }),
+          emptyId: await rejects({ id: '', title: 'bad' }),
+        },
+      };
+    `,
+  }) as {
+    permission: 'granted' | 'denied' | 'default';
+    requested: 'granted' | 'denied' | null;
+    immediate: { id: string; status: string } | null;
+    scheduled: { id: string; status: string } | null;
+    replaced: { id: string; status: string } | null;
+    rejected: Record<string, boolean>;
+  };
+
+  expect(['granted', 'denied', 'default']).toContain(result.permission);
+  if (result.requested !== null) {
+    expect(result.requested).toBe(result.permission);
+  }
+  if (result.immediate) {
+    expect(result.immediate.id).toBe('automation-local');
+    expect(['shown', 'suppressed']).toContain(result.immediate.status);
+  }
+  if (result.permission === 'granted') {
+    expect(result.scheduled).toEqual({ id: 'automation-local', status: 'scheduled' });
+    expect(result.replaced).toEqual({ id: 'automation-local', status: 'scheduled' });
+  }
+  expect(result.rejected).toEqual({ http: true, title: true, both: true, emptyId: true });
+});
+
 autostartSpec('report autostart state and accept an idempotent write', {
   id: 'HOSTAPP-AUTOSTART-001',
   covers: ['lx.app.autostart', 'lx.app.autostart.isEnabled', 'lx.app.autostart.setEnabled'],

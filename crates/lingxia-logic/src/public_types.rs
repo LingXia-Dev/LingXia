@@ -168,6 +168,57 @@ rong::js_api! {
         /// are available only to the native-assigned Control app; other lxapps receive
         /// a permission error.
         ///
+        /// Local notifications as a Control-app resume affordance.
+        ///
+        /// Absent unless the host declared `capabilities.notifications` and the
+        /// platform implements the local API. Presence and
+        /// `lx.supports({ capability: 'notifications' })` always agree.
+        /// Declaring the capability never prompts; permission runs on
+        /// `requestPermission()` or the first `show()` that reaches the OS.
+        ///
+        /// Control app only. Guest lxapps receive a permission error.
+        ///
+        type NotificationApi = r###"{
+    /**
+     * Read the current permission without prompting. `'default'` means the
+     * user has not been asked yet.
+     */
+    getPermission(): Promise<'granted' | 'denied' | 'default'>;
+    /**
+     * Ask for notification permission. Prompts where the OS has a prompt and
+     * the user has not answered; otherwise reports the current setting.
+     * Rejects when the prompt is left unanswered.
+     */
+    requestPermission(): Promise<'granted' | 'denied'>;
+    /**
+     * Post or replace a local notification. `id` is the replace key: anything
+     * pending or delivered under it is replaced, whatever `status` comes back.
+     * Omit `id` to get a generated one. `applink` is validated like App Link
+     * delivery (`https://`, configured host) and arrives as `scene === 8003`
+     * on tap. Omit `schedule`, or pass a time that is not in the future, to
+     * show now.
+     *
+     * `status` says what happened: `'shown'` — handed to the OS now;
+     * `'scheduled'` — queued for `schedule`; `'suppressed'` — an immediate
+     * show while the product is already frontmost, where nothing is posted
+     * and no permission is needed. A scheduled notification is presented even
+     * if the product is frontmost when it fires.
+     */
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        applink?: string;
+        schedule?: { at: number } | { delayMs: number };
+        /** No sound. The banner still appears. */
+        silent?: boolean;
+    }): Promise<{ id: string; status: 'shown' | 'scheduled' | 'suppressed' }>;
+    /** Remove what is pending or delivered under `id`. Unknown ids are fine. */
+    cancel(id: string): Promise<void>;
+    /** Remove every local notification this API posted or scheduled. */
+    cancelAll(): Promise<void>;
+}"###;
+
         type AutostartApi = r###"{
     /**
      * Whether the app is currently registered to launch at startup, read from

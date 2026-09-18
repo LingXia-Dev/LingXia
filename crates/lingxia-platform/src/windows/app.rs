@@ -11,7 +11,8 @@ use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
-    AnimationType, AppRuntime, BuiltinBrowserPage, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
+    AnimationType, AppRuntime, BuiltinBrowserPage, LocalNotificationShow, LxAppOpenMode,
+    OpenUrlRequest, OpenUrlResult,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -406,7 +407,7 @@ impl Platform {
     /// by every LingXia app without an explicit `windows_app_id`, so two such
     /// apps would clobber each other's entry — disambiguate with the product
     /// name (the same per-app key `state_root_for_product` uses).
-    fn autostart_value_name(&self) -> String {
+    pub(super) fn autostart_value_name(&self) -> String {
         if self.app_identifier != DEFAULT_APP_IDENTIFIER {
             self.app_identifier.clone()
         } else {
@@ -555,6 +556,30 @@ impl AppRuntime for Platform {
         // so it must read as disabled (re-enabling then rewrites the path).
         Ok(read_autostart_run_entry(&self.autostart_value_name())
             .is_some_and(|cmd| cmd.eq_ignore_ascii_case(&autostart_command(&exe))))
+    }
+
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        super::notification::permission(self)
+    }
+
+    // Windows has no prompt: the Settings toggle is the answer.
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        super::notification::permission(self)
+    }
+
+    fn notification_show(
+        &self,
+        request: &LocalNotificationShow,
+    ) -> Result<crate::traits::app_runtime::LocalNotificationStatus, PlatformError> {
+        super::notification::show(self, request)
+    }
+
+    fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
+        super::notification::cancel(self, id)
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        super::notification::cancel_all(self)
     }
 
     fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {

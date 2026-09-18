@@ -18,6 +18,48 @@ use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
+/// One local notification to post or replace.
+#[derive(Debug, Clone)]
+pub struct LocalNotificationShow {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub applink: Option<String>,
+    pub deliver_at_ms: Option<u64>,
+    pub silent: bool,
+}
+
+/// What `notification_show` did with the request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalNotificationStatus {
+    /// Handed to the OS for display now.
+    Shown,
+    /// Queued with the OS for `deliver_at_ms`.
+    Scheduled,
+    /// Immediate show while the product is frontmost: nothing was posted.
+    Suppressed,
+}
+
+impl LocalNotificationStatus {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Shown => "shown",
+            Self::Scheduled => "scheduled",
+            Self::Suppressed => "suppressed",
+        }
+    }
+
+    /// Parse the status word a native bridge returned.
+    pub fn from_native(value: &str) -> Option<Self> {
+        match value {
+            "shown" => Some(Self::Shown),
+            "scheduled" => Some(Self::Scheduled),
+            "suppressed" => Some(Self::Suppressed),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnimationType {
     None = 0,
@@ -230,6 +272,36 @@ pub trait AppRuntime:
     /// Register or unregister the app as a per-user startup item.
     fn autostart_set_enabled(&self, _enabled: bool) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported("autostart".to_string()))
+    }
+
+    /// Current OS permission without prompting: `"granted"`, `"denied"`, or
+    /// `"default"` (not yet asked).
+    fn notification_permission(&self) -> Result<String, PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    /// Prompt where the OS has a prompt. `"granted"` or `"denied"`; an
+    /// unanswered prompt is an error, never a status.
+    fn notification_request_permission(&self) -> Result<String, PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    /// Upsert a local notification: anything pending or delivered under `id`
+    /// is replaced first, on every path. `deliver_at_ms` is epoch
+    /// milliseconds; `None` or a time that is not in the future means now.
+    fn notification_show(
+        &self,
+        _request: &LocalNotificationShow,
+    ) -> Result<LocalNotificationStatus, PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    fn notification_cancel(&self, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    fn notification_cancel_all(&self) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("notification".to_string()))
     }
 
     /// Replace the tray dropdown menu. `items_json` is a JSON array of

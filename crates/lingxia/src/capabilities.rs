@@ -31,7 +31,10 @@ pub(crate) fn app_capabilities() -> u32 {
     if capability::build::browser() {
         caps |= CAP_BROWSER;
     }
-    if capability::notifications() {
+    if capability::notifications()
+        || (cfg!(any(target_os = "ios", target_env = "ohos"))
+            && lingxia_app_context::notifications_enabled())
+    {
         caps |= CAP_NOTIFICATIONS;
     }
     if capability::build::terminal() {

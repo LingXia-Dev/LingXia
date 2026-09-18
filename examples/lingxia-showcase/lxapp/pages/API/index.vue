@@ -325,6 +325,21 @@
             </div>
           </div>
           <div
+            data-testid="api-system-notification"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToSystemPage({ type: 'notification' })"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Local Notifications</div>
+              <div class="text-xs text-gray-500 mt-0.5">Post and cancel a local banner (Control app)</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
             data-testid="api-system-cache"
             class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToSystemPage({ type: 'cache' })"

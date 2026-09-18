@@ -91,6 +91,7 @@ spec("answer capability questions consistently with the optional members", { id:
     script: `
       const terminalAgrees = ('terminal' in lx) === lx.supports({ capability: 'terminal' });
       const autostartAgrees = !!lx.app.autostart === lx.supports({ capability: 'autostart' });
+      const notificationAgrees = !!lx.app.notification === lx.supports({ capability: 'notifications' });
       let rejectedUnknown = false;
       try {
         lx.supports({});
@@ -108,6 +109,7 @@ spec("answer capability questions consistently with the optional members", { id:
       return {
         terminalAgrees,
         autostartAgrees,
+        notificationAgrees,
         rejectedUnknown,
         rejectedMissingSurfaceValue: rejects({ capability: 'surface' }),
         rejectedFlagValue: rejects({ capability: 'terminal', value: 'window' }),
@@ -134,6 +136,7 @@ spec("answer capability questions consistently with the optional members", { id:
   }) as {
     terminalAgrees: boolean;
     autostartAgrees: boolean;
+    notificationAgrees: boolean;
     rejectedUnknown: boolean;
     rejectedNonObject: boolean;
     rejectedMissingSurfaceValue: boolean;
@@ -146,6 +149,7 @@ spec("answer capability questions consistently with the optional members", { id:
 
   expect(result.terminalAgrees).toBeTruthy();
   expect(result.autostartAgrees).toBeTruthy();
+  expect(result.notificationAgrees).toBeTruthy();
   expect(result.rejectedUnknown).toBeTruthy();
   expect(result.rejectedNonObject).toBeTruthy();
   expect(result.rejectedMissingSurfaceValue).toBeTruthy();

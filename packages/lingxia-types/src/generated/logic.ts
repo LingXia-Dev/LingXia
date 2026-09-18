@@ -193,6 +193,12 @@ declare global {
      */
     autostart?: AutostartApi;
 
+    /**
+     * Local notifications. Absent where the host cannot post them; its presence
+     * and `lx.supports({ capability: 'notifications' })` always agree.
+     */
+    notification?: NotificationApi;
+
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 
@@ -447,25 +453,6 @@ export type AppearanceApi = {
  */
 export type AppearancePreference = 'auto' | 'light' | 'dark';
 
-/**
- * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports({ capability: 'autostart' })` and the member's presence always
- * agree, so either gate works:
- * ```ts
- * if (lx.supports({ capability: 'autostart' })) {
- * // render the "Launch at startup" toggle
- * }
- * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
- * autostart by itself — the SDK registers the app only when `setEnabled(true)`
- * is called, so the decision stays with the user (typically a settings-page
- * toggle, default off).
- * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
- * are available only to the native-assigned Control app; other lxapps receive
- * a permission error.
- */
 export type AutostartApi = {
     /**
      * Whether the app is currently registered to launch at startup, read from
@@ -1219,6 +1206,73 @@ export type NetworkInfo = {
 
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
+
+/**
+ * Launch-at-startup control for the host app.
+ * Absent (`undefined`) wherever the host cannot register a startup item.
+ * `lx.supports({ capability: 'autostart' })` and the member's presence always
+ * agree, so either gate works:
+ * ```ts
+ * if (lx.supports({ capability: 'autostart' })) {
+ * // render the "Launch at startup" toggle
+ * }
+ * ```
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+ * member is absent on all platforms. Declaring the capability never enables
+ * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * is called, so the decision stays with the user (typically a settings-page
+ * toggle, default off).
+ * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+ * are available only to the native-assigned Control app; other lxapps receive
+ * a permission error.
+ * Local notifications as a Control-app resume affordance.
+ * Absent unless the host declared `capabilities.notifications` and the
+ * platform implements the local API. Presence and
+ * `lx.supports({ capability: 'notifications' })` always agree.
+ * Declaring the capability never prompts; permission runs on
+ * `requestPermission()` or the first `show()` that reaches the OS.
+ * Control app only. Guest lxapps receive a permission error.
+ */
+export type NotificationApi = {
+    /**
+     * Read the current permission without prompting. `'default'` means the
+     * user has not been asked yet.
+     */
+    getPermission(): Promise<'granted' | 'denied' | 'default'>;
+    /**
+     * Ask for notification permission. Prompts where the OS has a prompt and
+     * the user has not answered; otherwise reports the current setting.
+     * Rejects when the prompt is left unanswered.
+     */
+    requestPermission(): Promise<'granted' | 'denied'>;
+    /**
+     * Post or replace a local notification. `id` is the replace key: anything
+     * pending or delivered under it is replaced, whatever `status` comes back.
+     * Omit `id` to get a generated one. `applink` is validated like App Link
+     * delivery (`https://`, configured host) and arrives as `scene === 8003`
+     * on tap. Omit `schedule`, or pass a time that is not in the future, to
+     * show now.
+     *
+     * `status` says what happened: `'shown'` — handed to the OS now;
+     * `'scheduled'` — queued for `schedule`; `'suppressed'` — an immediate
+     * show while the product is already frontmost, where nothing is posted
+     * and no permission is needed. A scheduled notification is presented even
+     * if the product is frontmost when it fires.
+     */
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        applink?: string;
+        schedule?: { at: number } | { delayMs: number };
+        /** No sound. The banner still appears. */
+        silent?: boolean;
+    }): Promise<{ id: string; status: 'shown' | 'scheduled' | 'suppressed' }>;
+    /** Remove what is pending or delivered under `id`. Unknown ids are fine. */
+    cancel(id: string): Promise<void>;
+    /** Remove every local notification this API posted or scheduled. */
+    cancelAll(): Promise<void>;
+};
 
 /** File system APIs. */
 export type OpenFileOptions = {

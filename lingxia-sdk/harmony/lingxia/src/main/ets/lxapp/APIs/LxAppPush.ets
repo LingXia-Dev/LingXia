@@ -29,31 +29,6 @@ export class LxAppPush {
     }
   }
   /**
-   * Request user permission to enable notifications.
-   */
-  public static requestEnableNotification(): boolean {
-    try {
-      const ctx = Lingxia.context;
-      if (!ctx) {
-        LxLog.e(TAG, 'requestEnableNotification: no context');
-        return false;
-      }
-      (async () => {
-        try {
-          await notificationManager.requestEnableNotification(ctx);
-        } catch (e) {
-          const err: BusinessError = e as BusinessError;
-          LxLog.e(TAG, `requestEnableNotification failed: ${err.code} ${err.message}`);
-        }
-      })();
-      return true;
-    } catch (e) {
-      LxLog.e(TAG, `requestEnableNotification error: ${e}`);
-      return false;
-    }
-  }
-
-  /**
    * Clear app badge count to zero.
    */
   public static clearBadge(): boolean {

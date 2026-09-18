@@ -21,6 +21,11 @@ pub(crate) enum LogicRoute {
     AppScreenshot,
     AppAutostartIsEnabled,
     AppAutostartSetEnabled,
+    AppNotificationGetPermission,
+    AppNotificationRequestPermission,
+    AppNotificationShow,
+    AppNotificationCancel,
+    AppNotificationCancelAll,
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
@@ -77,6 +82,11 @@ impl LogicRoute {
         Self::AppScreenshot,
         Self::AppAutostartIsEnabled,
         Self::AppAutostartSetEnabled,
+        Self::AppNotificationGetPermission,
+        Self::AppNotificationRequestPermission,
+        Self::AppNotificationShow,
+        Self::AppNotificationCancel,
+        Self::AppNotificationCancelAll,
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
@@ -139,6 +149,11 @@ impl LogicRoute {
             | Self::AppScreenshot
             | Self::AppAutostartIsEnabled
             | Self::AppAutostartSetEnabled
+            | Self::AppNotificationGetPermission
+            | Self::AppNotificationRequestPermission
+            | Self::AppNotificationShow
+            | Self::AppNotificationCancel
+            | Self::AppNotificationCancelAll
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
@@ -186,6 +201,11 @@ impl LogicRoute {
             Self::AppScreenshot => "lx.app.screenshot",
             Self::AppAutostartIsEnabled => "lx.app.autostart.isEnabled",
             Self::AppAutostartSetEnabled => "lx.app.autostart.setEnabled",
+            Self::AppNotificationGetPermission => "lx.app.notification.getPermission",
+            Self::AppNotificationRequestPermission => "lx.app.notification.requestPermission",
+            Self::AppNotificationShow => "lx.app.notification.show",
+            Self::AppNotificationCancel => "lx.app.notification.cancel",
+            Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
