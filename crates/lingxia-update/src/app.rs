@@ -361,6 +361,9 @@ mod tests {
             capabilities: None,
             panels: None,
             update_trusted_public_keys: vec![public_key_base64url(&SEED)],
+            update_channel: None,
+            update_channels: Default::default(),
+            store_listing_ids: Default::default(),
         };
         lingxia_app_context::set_app_config(config).expect("install host verify config");
     }

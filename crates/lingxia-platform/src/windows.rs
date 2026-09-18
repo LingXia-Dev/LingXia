@@ -33,10 +33,11 @@ pub(crate) use app::request_windows_app_exit;
 pub use app::{
     Platform, current_locale, set_windows_activate_browser_tab_handler,
     set_windows_app_exit_handler, set_windows_builtin_browser_downloads_handler,
-    set_windows_close_browser_tab_handler, set_windows_lxapp_hidden_handler,
-    set_windows_lxapp_main_activation_handler, set_windows_open_url_handler,
-    set_windows_shell_pins_handler, set_windows_sidebar_actions_handler,
-    set_windows_tray_click_intercept_handler, set_windows_tray_menu_handler,
+    set_windows_close_browser_tab_handler, set_windows_exclusive_update_ready_handler,
+    set_windows_lxapp_hidden_handler, set_windows_lxapp_main_activation_handler,
+    set_windows_open_url_handler, set_windows_shell_pins_handler,
+    set_windows_sidebar_actions_handler, set_windows_tray_click_intercept_handler,
+    set_windows_tray_menu_handler,
 };
 pub use media_preview::{
     WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, register_windows_media_preview_host,
@@ -57,6 +58,11 @@ pub use ui_update::{
     set_windows_ui_update_handler, sync_windows_ui,
 };
 pub use update::apply_staged_windows_update;
+pub use update_card::{
+    open_ready_card as open_windows_update_ready_card,
+    open_ready_prompt as open_windows_update_ready_prompt,
+    pending_update_opens_store as windows_update_opens_store,
+};
 pub use video_player::{WindowsVideoCommandDispatcher, register_windows_video_command_dispatcher};
 
 use crate::error::PlatformError;

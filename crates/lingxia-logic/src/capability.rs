@@ -104,7 +104,10 @@ fn notification_supported() -> bool {
 
 fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
     use lingxia_platform::traits::update::UpdateService;
-    lxapp.runtime.self_update_supported()
+    lingxia_app_context::update::self_update_allowed(
+        lxapp.runtime.self_update_supported(),
+        lxapp.runtime.installed_from_store(),
+    )
 }
 
 /// Answers `{ capability: 'surface', value: … }`, optionally qualified by

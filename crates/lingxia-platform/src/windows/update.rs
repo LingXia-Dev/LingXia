@@ -27,15 +27,75 @@ use crate::traits::update::UpdateService;
 /// (no console window). Used both for tar and for the detached update helper.
 const NO_WINDOW: u32 = 0x0800_0000;
 
+fn windows_installed_from_store() -> bool {
+    use windows::ApplicationModel::{Package, PackageSignatureKind};
+    let Ok(package) = Package::Current() else {
+        return false;
+    };
+    matches!(package.SignatureKind(), Ok(PackageSignatureKind::Store))
+}
+
 impl UpdateService for Platform {
     fn self_update_supported(&self) -> bool {
-        // Windows ships outside any store and swaps its own install in place.
+        // Unpackaged Windows hosts swap their own install in place.
         true
+    }
+
+    fn installed_from_store(&self) -> bool {
+        windows_installed_from_store()
+    }
+
+    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+        Ok(open_windows_store_listing(info_json))
+    }
+
+    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+        present_windows_store_update(self, info_json);
+        Ok(true)
     }
 
     fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
         install_update_on_windows(self, package_path, info_json)
     }
+}
+
+fn open_windows_store_listing(info_json: &str) -> bool {
+    let Some(url) = crate::traits::update::store_url_in_update_info(info_json) else {
+        log::warn!("[lingxia] store update has no listing URL");
+        return false;
+    };
+    if open_shell_url(&url) {
+        return true;
+    }
+    if let Some(id) = url
+        .split_once("ProductId=")
+        .map(|(_, id)| id.trim())
+        .filter(|id| !id.is_empty())
+    {
+        return open_shell_url(&format!("https://apps.microsoft.com/detail/{id}"));
+    }
+    false
+}
+
+fn open_shell_url(url: &str) -> bool {
+    match super::file::open_with_shell_detached(url) {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("[lingxia] failed to open store listing: {error}");
+            false
+        }
+    }
+}
+
+fn present_windows_store_update(platform: &Platform, info_json: &str) {
+    let mut info = parse_card_info(info_json);
+    info.product_name = platform.product_name().to_string();
+    info.logo_path = resolve_brand_logo(platform.asset_dir());
+    info.locale = platform.get_system_locale().to_string();
+    info.open_store = true;
+    info.store_url = crate::traits::update::store_url_in_update_info(info_json);
+    super::update_callout::set_context(platform.product_name(), platform.get_system_locale());
+    super::update_card::present_ready(info);
 }
 
 /// A prepared host-app update awaiting the user's confirmation click. Held
@@ -135,6 +195,16 @@ fn parse_card_info(info_json: &str) -> super::update_card::CardInfo {
             .filter(|s| !s.is_empty())
             .collect();
     }
+    info.open_store = value
+        .get("openStore")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+    info.store_url = value
+        .get("storeUrl")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
     info
 }
 

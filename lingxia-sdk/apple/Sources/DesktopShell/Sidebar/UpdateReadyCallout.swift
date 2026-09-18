@@ -7,6 +7,8 @@ enum UpdateCalloutState {
     case available
     /// The update is downloaded and staged; clicking restarts to apply it.
     case ready
+    /// Store channel: clicking opens the marketplace listing.
+    case store
 }
 
 /// A small two-line callout shown above the bottom-left sidebar icon. Depending
@@ -62,8 +64,19 @@ final class UpdateReadyCallout: NSView {
         layer?.shadowRadius = 6
         layer?.shadowOffset = CGSize(width: 0, height: -1)
 
-        let titleKey = (state == .ready) ? "lx_update_ready_to_install" : "lx_update_available_title"
-        let subtitleKey = (state == .ready) ? "lx_update_click_to_restart" : "lx_update_click_to_install"
+        let titleKey: String
+        let subtitleKey: String
+        switch state {
+        case .ready:
+            titleKey = "lx_update_ready_to_install"
+            subtitleKey = "lx_update_click_to_restart"
+        case .store:
+            titleKey = "lx_update_available_title"
+            subtitleKey = "lx_update_click_to_open_store"
+        case .available:
+            titleKey = "lx_update_available_title"
+            subtitleKey = "lx_update_click_to_install"
+        }
 
         let title = NSTextField(labelWithString: L10n.string(titleKey, appName))
         title.font = NSFont.systemFont(ofSize: 12, weight: .semibold)

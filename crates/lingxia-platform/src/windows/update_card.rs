@@ -39,6 +39,9 @@ pub(super) struct CardInfo {
     pub logo_path: Option<std::path::PathBuf>,
     /// BCP-47 system locale (e.g. "zh-CN") for the card/callout strings.
     pub locale: String,
+    /// Store channel: primary button opens the marketplace instead of restart.
+    pub open_store: bool,
+    pub store_url: Option<String>,
 }
 
 /// UI language for the update card/callout. Mirrors the macOS `i18n/apple`
@@ -93,6 +96,28 @@ pub(super) fn t_click_to_install(lang: Lang) -> &'static str {
     }
 }
 
+pub(super) fn t_open_store(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Open Store",
+        Lang::Zh => "打开商店",
+    }
+}
+
+pub(super) fn t_click_to_open_store(lang: Lang) -> &'static str {
+    match lang {
+        Lang::En => "Click to open the store",
+        Lang::Zh => "点击打开商店",
+    }
+}
+
+pub fn pending_update_opens_store() -> bool {
+    LAST_READY_INFO
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().map(|info| info.open_store))
+        .unwrap_or(false)
+}
+
 // Control ids.
 const ID_LATER: usize = 1001;
 const ID_RESTART: usize = 1003;
@@ -105,23 +130,59 @@ static CARD_HWND: AtomicIsize = AtomicIsize::new(0);
 /// The staged update's details, so the callout can open the card later and so
 /// "Later" can re-show the reminder.
 static LAST_READY_INFO: Mutex<Option<CardInfo>> = Mutex::new(None);
+/// Exclusive-tray hosts have no lasting window; don't stall waiting for one.
+static LAST_EXCLUSIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 // ── Public entry points (called from update.rs / update_callout.rs) ──────────
 
 /// Present the post-download "ready to update" affordance: the dismissible
-/// bottom-left callout, which opens the card on click.
+/// bottom-left callout, which opens the card on click. Exclusive-tray hosts
+/// have no lasting window — the tray owns the prompt (menu + balloon).
 pub(super) fn present_ready(info: CardInfo) {
     if let Ok(mut slot) = LAST_READY_INFO.lock() {
         *slot = Some(info);
     }
+    if super::app::invoke_windows_exclusive_update_ready(false) {
+        LAST_EXCLUSIVE.store(true, Ordering::Relaxed);
+        return;
+    }
+    LAST_EXCLUSIVE.store(false, Ordering::Relaxed);
     super::update_callout::show();
 }
 
-/// Open the card from the stored update details (the callout was clicked).
-pub(super) fn open_ready_card() {
+/// Open the card from the stored update details (the callout or exclusive-tray
+/// menu / balloon was clicked).
+fn open_pending_store_listing() -> bool {
+    let url = LAST_READY_INFO
+        .lock()
+        .ok()
+        .and_then(|slot| slot.as_ref().and_then(|info| info.store_url.clone()));
+    let Some(url) = url else {
+        return false;
+    };
+    match super::file::open_with_shell_detached(&url) {
+        Ok(()) => true,
+        Err(error) => {
+            log::warn!("[lingxia] failed to open store listing: {error}");
+            false
+        }
+    }
+}
+
+pub fn open_ready_card() {
     let info = LAST_READY_INFO.lock().ok().and_then(|s| s.clone());
     if let Some(info) = info {
-        show_card(info);
+        show_card(info, !LAST_EXCLUSIVE.load(Ordering::Relaxed));
+    }
+}
+
+/// Exclusive-tray balloon / menu: store channel opens the listing; direct
+/// opens the notes card.
+pub fn open_ready_prompt() {
+    if pending_update_opens_store() {
+        let _ = open_pending_store_listing();
+    } else {
+        open_ready_card();
     }
 }
 
@@ -140,11 +201,11 @@ pub(super) fn dismiss() {
     }
 }
 
-fn show_card(info: CardInfo) {
+fn show_card(info: CardInfo, wait_for_owner: bool) {
     dismiss();
     std::thread::Builder::new()
         .name("lingxia-update-card".to_string())
-        .spawn(move || run_card_thread(info))
+        .spawn(move || run_card_thread(info, wait_for_owner))
         .ok();
 }
 
@@ -163,7 +224,7 @@ struct Card {
     restart: HWND,
 }
 
-fn run_card_thread(info: CardInfo) {
+fn run_card_thread(info: CardInfo, wait_for_owner: bool) {
     unsafe {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = w!("LxUpdateCardClass");
@@ -183,11 +244,13 @@ fn run_card_thread(info: CardInfo) {
         // drag, and hides/restores with it. The check can fire before the main
         // window is up, so poll briefly.
         let mut owner = find_main_window();
-        let mut tries = 0;
-        while owner.is_none() && tries < 50 {
-            std::thread::sleep(std::time::Duration::from_millis(100));
-            owner = find_main_window();
-            tries += 1;
+        if wait_for_owner {
+            let mut tries = 0;
+            while owner.is_none() && tries < 50 {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                owner = find_main_window();
+                tries += 1;
+            }
         }
         let (x, y) = centered_origin(width, height, owner);
 
@@ -241,7 +304,12 @@ fn run_card_thread(info: CardInfo) {
 
         let lang = lang_of(&info.locale);
         let later = make_button(hwnd, hinstance.into(), t_later(lang), ID_LATER);
-        let restart = make_button(hwnd, hinstance.into(), t_restart(lang), ID_RESTART);
+        let primary = if info.open_store {
+            t_open_store(lang)
+        } else {
+            t_restart(lang)
+        };
+        let restart = make_button(hwnd, hinstance.into(), primary, ID_RESTART);
 
         for ctl in [notes, later, restart] {
             SendMessageW(
@@ -339,13 +407,20 @@ unsafe extern "system" fn card_wnd_proc(
                 let id = wparam.0 & 0xFFFF;
                 match id {
                     ID_RESTART => {
-                        apply_staged_windows_update();
+                        if pending_update_opens_store() {
+                            let _ = open_pending_store_listing();
+                            let _ = DestroyWindow(hwnd);
+                        } else {
+                            apply_staged_windows_update();
+                        }
                     }
                     ID_LATER => {
-                        // Defer: close the card and leave the dismissible
-                        // bottom-left reminder so the user can apply later.
+                        // Defer: close the card. Dock+tray keeps the window
+                        // callout; exclusive-tray already has the tray menu.
                         let _ = DestroyWindow(hwnd);
-                        super::update_callout::show();
+                        if !LAST_EXCLUSIVE.load(Ordering::Relaxed) {
+                            super::update_callout::show();
+                        }
                     }
                     _ => {}
                 }

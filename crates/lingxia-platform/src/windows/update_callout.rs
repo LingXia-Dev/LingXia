@@ -263,7 +263,12 @@ fn paint(hwnd: HWND) {
             right: client.right - pad,
             bottom: px(48.0),
         };
-        let mut sw = to_wide(super::update_card::t_click_to_install(lang));
+        let subtitle = if super::update_card::pending_update_opens_store() {
+            super::update_card::t_click_to_open_store(lang)
+        } else {
+            super::update_card::t_click_to_install(lang)
+        };
+        let mut sw = to_wide(subtitle);
         let sn = sw.len().saturating_sub(1);
         DrawTextW(
             hdc,

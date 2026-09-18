@@ -39,7 +39,43 @@ pub struct Platform {
     resource_manager: Option<*mut NativeResourceManager>,
 }
 
-impl crate::traits::update::UpdateService for Platform {}
+impl crate::traits::update::UpdateService for Platform {
+    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+        open_harmony_store(self, info_json)
+    }
+
+    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+        // No in-app notes card on Harmony; opening AppGallery is the prompt.
+        open_harmony_store(self, info_json)
+    }
+}
+
+fn open_harmony_store(platform: &Platform, info_json: &str) -> Result<bool, PlatformError> {
+    let Some(url) = harmony_store_open_url(platform, info_json) else {
+        return Ok(false);
+    };
+    platform.open_url(crate::traits::app_runtime::OpenUrlRequest {
+        owner_appid: String::new(),
+        owner_session_id: 0,
+        url,
+        target: crate::traits::app_runtime::OpenUrlTarget::External,
+        want_tab_id: false,
+    })?;
+    Ok(true)
+}
+
+/// AppGallery's native scheme uses the bundle name. HTTPS C-id is only
+/// the fallback when the bundle cannot be read — `open_url` is fire-and-
+/// forget, so we cannot try both.
+fn harmony_store_open_url(platform: &Platform, info_json: &str) -> Option<String> {
+    if let Ok(bundle) = platform.get_app_identifier() {
+        let bundle = bundle.trim();
+        if !bundle.is_empty() {
+            return Some(format!("appmarket://details?id={bundle}"));
+        }
+    }
+    crate::traits::update::store_url_in_update_info(info_json)
+}
 
 // Note: No Drop impl needed for Platform because:
 // 1. resource_manager is borrowed from JS layer (no manual cleanup needed)

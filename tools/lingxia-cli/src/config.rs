@@ -67,9 +67,9 @@ pub struct LingXiaConfig {
     /// cannot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
-    /// In-app update trust. Omit the whole table to skip prod
-    /// check-update (dev still checks, unsigned). If present, must list
-    /// 1 or 2 `trustedPublicKeys`.
+    /// In-app update trust and distribution channel. Omit the whole table
+    /// to skip prod check-update (dev still checks, unsigned). If any
+    /// enabled platform uses `direct`, list 1 or 2 `trustedPublicKeys`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateSigningConfig>,
 }
@@ -79,17 +79,54 @@ pub struct LingXiaConfig {
 pub struct UpdateSigningConfig {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub trusted_public_keys: Vec<String>,
+    /// Default channel for platforms not listed in `platforms`.
+    /// Omit to keep each platform's compile default (`direct` except
+    /// iOS / HarmonyOS, which are `store`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<lingxia_app_context::UpdateChannel>,
+    /// Per-platform `store` | `direct`. Locks this *build*, not the product:
+    /// flip Android to `store` on the Play-signed package after listing.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub platforms: BTreeMap<String, lingxia_app_context::UpdateChannel>,
 }
 
 impl UpdateSigningConfig {
-    pub fn validate(&self) -> Result<()> {
+    pub fn validate(&self, app_platforms: &[String]) -> Result<()> {
+        for platform in self.platforms.keys() {
+            if !AUTHORING_PLATFORMS.contains(&platform.as_str()) {
+                return Err(anyhow!(
+                    "update.platforms.{platform} is not a host platform; expected {}",
+                    AUTHORING_PLATFORMS.join(", ")
+                ));
+            }
+        }
         match self.trusted_public_keys.len() {
             1 | 2 => Ok(()),
+            0 if !self.any_direct(app_platforms) => Ok(()),
             0 => Err(anyhow!(
-                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip prod check-update"
+                "update.trustedPublicKeys must list 1 or 2 keys when any platform uses channel: direct; omit the update: table to skip prod check-update"
             )),
             _ => Err(anyhow!("update.trustedPublicKeys allows at most two keys")),
         }
+    }
+
+    fn any_direct(&self, app_platforms: &[String]) -> bool {
+        use lingxia_app_context::update::{UpdateChannel, resolve_update_channel};
+
+        if app_platforms.is_empty() {
+            if self.channel == Some(UpdateChannel::Store)
+                && self
+                    .platforms
+                    .values()
+                    .all(|channel| *channel == UpdateChannel::Store)
+            {
+                return false;
+            }
+            return true;
+        }
+        app_platforms.iter().any(|platform| {
+            resolve_update_channel(self.channel, &self.platforms, platform) == UpdateChannel::Direct
+        })
     }
 }
 
@@ -2030,7 +2067,12 @@ impl LingXiaConfig {
 
     fn validate(&self) -> Result<()> {
         if let Some(update) = self.update.as_ref() {
-            update.validate()?;
+            let platforms = self
+                .app
+                .as_ref()
+                .map(|app| app.platforms.as_slice())
+                .unwrap_or(&[]);
+            update.validate(platforms)?;
         }
         validate_capability_dependencies(self.capabilities.as_ref())?;
         if let Some(destination) = self.settings_destination.as_ref() {
@@ -2881,6 +2923,72 @@ mod tests {
         let resources = parsed.resources.unwrap();
         assert_eq!(resources.bundles[0].app_id, "my-app");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("my-app"));
+    }
+
+    #[test]
+    fn update_yaml_accepts_per_platform_channel() {
+        let config = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android, ios]
+  homeAppId: my-app
+android: {}
+ios: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+update:
+  trustedPublicKeys: ["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"]
+  channel: direct
+  platforms:
+    ios: store
+    android: direct
+"#,
+        )
+        .unwrap();
+        let update = config.update.unwrap();
+        assert_eq!(
+            update.channel,
+            Some(lingxia_app_context::UpdateChannel::Direct)
+        );
+        assert_eq!(
+            update.platforms.get("ios").copied(),
+            Some(lingxia_app_context::UpdateChannel::Store)
+        );
+    }
+
+    #[test]
+    fn update_yaml_rejects_unknown_platform_channel() {
+        let err = load_config_yaml(
+            r#"
+app:
+  projectName: my-app
+  packageId: com.example.myapp
+  productName: My App
+  productVersion: 0.0.1
+  platforms: [android]
+  homeAppId: my-app
+android: {}
+resources:
+  bundles:
+    - type: lxapp
+      appId: my-app
+      path: my-app
+update:
+  trustedPublicKeys: ["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw"]
+  platforms:
+    linux: direct
+"#,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("update.platforms.linux"), "{err}");
     }
 
     #[test]

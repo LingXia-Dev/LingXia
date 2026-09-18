@@ -6,7 +6,6 @@ use crate::traits::app_runtime::LxAppOpenMode;
 use crate::traits::media_runtime::MediaRuntime;
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 #[cfg(target_os = "macos")]
-#[cfg(target_os = "macos")]
 use std::fs;
 #[cfg(target_os = "macos")]
 use std::fs::OpenOptions;
@@ -37,11 +36,42 @@ pub struct Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
+fn apple_store_receipt_present() -> bool {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2_foundation::{NSBundle, NSString};
+    let bundle = NSBundle::mainBundle();
+    let path: Option<Retained<NSString>> = unsafe { msg_send![&bundle, bundlePath] };
+    let Some(path) = path else {
+        return false;
+    };
+    let root = PathBuf::from(path.to_string());
+    root.join("_MASReceipt").join("receipt").is_file()
+        || root
+            .join("Contents")
+            .join("_MASReceipt")
+            .join("receipt")
+            .is_file()
+}
+
 impl crate::traits::update::UpdateService for Platform {
     fn self_update_supported(&self) -> bool {
-        // macOS ships outside the App Store and swaps its own bundle; iOS must
+        // macOS can swap its own bundle when the channel is direct; iOS must
         // update through the App Store.
         cfg!(target_os = "macos")
+    }
+
+    fn installed_from_store(&self) -> bool {
+        apple_store_receipt_present()
+    }
+
+    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+        Ok(open_apple_store_listing(info_json))
+    }
+
+    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+        set_pending_store_update(info_json);
+        Ok(ffi::notify_app_update_ready(info_json))
     }
 
     fn install_update(&self, package_path: &Path, info_json: &str) -> Result<(), PlatformError> {
@@ -497,10 +527,12 @@ fn install_update_on_macos(
     };
 
     // The download already finished silently. Ask the shell to surface the
-    // dismissible "ready to update" callout and wait for the user to click
-    // before swapping the bundle. `info_json` carries the version + release
-    // notes the prompt renders. If there is no shell (headless run), restart
-    // immediately.
+    // post-download prompt and wait for the user to click before swapping the
+    // bundle. `info_json` carries version + notes; store vs force is in that
+    // JSON. If there is no shell (headless run), restart immediately.
+    if let Ok(mut slot) = pending_store_update_slot().lock() {
+        *slot = None;
+    }
     let has_ui = ffi::notify_app_update_ready(info_json);
     if has_ui {
         if let Ok(mut slot) = staged_macos_update_slot().lock() {
@@ -556,11 +588,58 @@ fn spawn_and_exit_macos_update(staged: StagedMacosUpdate) -> Result<(), Platform
     Ok(())
 }
 
+fn pending_store_update_slot() -> &'static std::sync::Mutex<Option<String>> {
+    static SLOT: std::sync::OnceLock<std::sync::Mutex<Option<String>>> = std::sync::OnceLock::new();
+    SLOT.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn set_pending_store_update(info_json: &str) {
+    if let Ok(mut slot) = pending_store_update_slot().lock() {
+        *slot = Some(info_json.to_string());
+    }
+}
+
+fn peek_pending_store_update() -> Option<String> {
+    pending_store_update_slot()
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone())
+}
+
+fn open_apple_store_listing(info_json: &str) -> bool {
+    let Some(url) = crate::traits::update::store_url_in_update_info(info_json) else {
+        log::warn!("[lingxia] store update has no listing URL");
+        return false;
+    };
+    if open_external_url(&url) {
+        return true;
+    }
+    // itms-apps:// can fail when the App Store isn't registered; the
+    // HTTPS listing is Apple's Universal Link into the same page.
+    if let Some(https) = url.strip_prefix("itms-apps://") {
+        return open_external_url(&format!("https://{https}"));
+    }
+    false
+}
+
+fn open_external_url(url: &str) -> bool {
+    ffi::open_url(
+        "",
+        0,
+        url,
+        crate::traits::app_runtime::OpenUrlTarget::External as i32,
+    )
+}
+
 /// Apply the update staged by `install_update_on_macos`: launch the swap
 /// helper and quit so it can replace the running bundle. Returns `false`
 /// when nothing is staged (e.g. the click arrived twice). Invoked from the
 /// sidebar "click to restart" callout via the `UpdateRestartClick` app event.
+/// A store-channel prompt reuses this click to open the App Store instead.
 pub fn apply_staged_macos_update() -> bool {
+    if let Some(info) = peek_pending_store_update() {
+        return open_apple_store_listing(&info);
+    }
     #[cfg(target_os = "macos")]
     {
         let staged = staged_macos_update_slot()

@@ -632,25 +632,69 @@ extension LxApp {
         #endif
     }
 
-    /// Show the post-download update prompt: the minimal sidebar callout, which
-    /// opens the notes card on click. `info_json` carries {version,
-    /// releaseNotes} the card renders. Returns `true` only when a macOS shell
-    /// is present — `false` tells Rust to fall back (restart when headless).
+    /// Show the host-update prompt. On macOS this is the sidebar callout / notes
+    /// card (store channel included). On iOS it is the store-listing alert.
+    /// `info_json` carries version, notes, and `openStore`.
+    /// Returns `true` when a UI was shown; `false` tells Rust to fall back.
     nonisolated static func notifyAppUpdateReady(info_json: RustStr) -> Bool {
         let infoJSON = info_json.toString()
         return executeOnMain {
             #if os(macOS)
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.shell.setPendingUpdateInfo(infoJSON)
-            runtime.shell.presentUpdateReadyCallout(
-                appName: runtime.appConfig.productName, state: .ready)
+            runtime.presentHostUpdateReady(infoJSON: infoJSON)
             return true
+            #elseif os(iOS)
+            return presentIOSStoreUpdate(infoJSON: infoJSON)
             #else
             _ = infoJSON
             return false
             #endif
         }
     }
+
+    #if os(iOS)
+    @MainActor
+    private static func presentIOSStoreUpdate(infoJSON: String) -> Bool {
+        guard let data = infoJSON.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (obj["openStore"] as? Bool) == true,
+              let urlString = obj["storeUrl"] as? String,
+              let url = URL(string: urlString), !urlString.isEmpty
+        else {
+            return false
+        }
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first,
+              let root = window.rootViewController
+        else {
+            return false
+        }
+        var top = root
+        while let presented = top.presentedViewController {
+            top = presented
+        }
+        let title = L10n.string("lx_update_card_title")
+        let version = (obj["version"] as? String) ?? ""
+        let notes = (obj["releaseNotes"] as? [Any])?
+            .compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n") ?? ""
+        let message = [version.isEmpty ? nil : L10n.string("lx_update_card_version", version), notes]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n\n")
+        let alert = UIAlertController(
+            title: title,
+            message: message.isEmpty ? nil : message,
+            preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: L10n.string("lx_update_card_later"), style: .cancel))
+        alert.addAction(UIAlertAction(title: L10n.string("lx_update_card_open_store"), style: .default) { _ in
+            UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        })
+        top.present(alert, animated: true)
+        return true
+    }
+    #endif
 
     nonisolated static func setControlSessionIndicator(visible: Bool) -> Bool {
         return executeOnMain {

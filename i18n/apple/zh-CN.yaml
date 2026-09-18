@@ -16,6 +16,8 @@ update:
   card_notes_title: "更新内容"
   card_later: "稍后"
   card_restart: "立即重启"
+  card_open_store: "打开 App Store"
+  click_to_open_store: "点击打开 App Store"
 
 # lxapp 页面右键菜单（macOS）。refresh 仅当页面开启下拉刷新时出现；编辑项
 # 覆盖 WebKit 默认标题，使精简后的菜单完全本地化。
