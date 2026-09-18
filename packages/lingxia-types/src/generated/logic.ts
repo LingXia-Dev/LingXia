@@ -1054,16 +1054,21 @@ export type HostAppUpdateInfo = {
     size?: number;
     releaseNotes?: string[];
     /**
-     * Download and apply this checked update.
+     * How this update is applied. `store` opens the platform marketplace;
+     * `direct` downloads and self-installs. `lx.supports({ capability: 'selfUpdate' })`
+     * is true only for `direct`.
+     */
+    channel: 'direct' | 'store';
+    /**
+     * Apply this checked update.
      *
      * `apply()` is single-use for this update object.
      *
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
      *
-     * Requires `lx.supports({ capability: 'selfUpdate' })`. Where the host cannot
-     * install its own update it rejects with an unsupported-operation error;
-     * use `version` and `releaseNotes` to guide users to the app marketplace.
+     * On `direct`, downloads and hands off install. On `store`, opens the
+     * platform store listing (no package is downloaded).
      */
     apply(): HostAppUpdateTask;
 };
@@ -2811,10 +2816,11 @@ declare global {
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
     /**
      * Check whether the host app has an update.
-     * This host-level capability is restricted to the Control app. Calling it opts
-     * the process into custom update handling. Incompatible updates are hidden as
-     * `hasUpdate: false`; platforms that cannot apply a package may still return
-     * metadata and reject when `update.apply()` is invoked.
+     * This host-level capability is restricted to the Control app. Calling it
+     * claims the process: the built-in auto-flow will not prompt or download.
+     * Incompatible updates are hidden as
+     * `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
+     * `apply()` opens the store listing instead of downloading.
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
     readonly env: HostAppEnv;

@@ -86,6 +86,16 @@ capabilities:
 #   mark: design/splash-mark.png
 #   minDuration: 600
 
+# In-app host updates. Keys required when any platform is `direct`.
+# Channel is per build: flip android to store on the Play-signed package.
+# A store-installed process always behaves as store, even if this still says direct.
+# update:
+#   trustedPublicKeys: [ ... ]
+#   channel: direct
+#   platforms:
+#     ios: store
+#     android: direct
+
 # Raw host assets. Use resources.bundles for lxapps.
 # assets: assets
 

@@ -9,6 +9,9 @@ use thiserror::Error;
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 const APP_STATE_DIR: &str = "app_state";
 
+pub mod update;
+pub use update::UpdateChannel;
+
 #[derive(Debug, Error)]
 pub enum AppContextError {
     #[error("invalid app.json: {0}")]
@@ -386,6 +389,34 @@ pub struct AppConfig {
         skip_serializing_if = "Vec::is_empty"
     )]
     pub update_trusted_public_keys: Vec<String>,
+
+    /// Default update channel for platforms not listed in [`Self::update_channels`].
+    #[serde(
+        rename = "updateChannel",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub update_channel: Option<UpdateChannel>,
+
+    /// Per-platform update channel (`android` / `ios` / `macos` / `windows` /
+    /// `harmony`). Overrides [`Self::update_channel`] for that platform.
+    #[serde(
+        rename = "updateChannels",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub update_channels: BTreeMap<String, UpdateChannel>,
+
+    /// Numeric / store listing ids from `ios.store.appId`, `macos.store.appId`,
+    /// `windows.store.appId`, and `harmony.store.appId`. Used to open the
+    /// store page on a `store` update channel. Android Play uses the package
+    /// name instead.
+    #[serde(
+        rename = "storeListingIds",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub store_listing_ids: BTreeMap<String, String>,
 }
 
 /// The `capabilities:` section, shared verbatim between the CLI (parsing
@@ -1217,6 +1248,7 @@ mod tests {
         AppConfig, AppContextError, CampaignHandoff, SettingsDestination, ThemeColor, ThemeConfig,
         set_app_config,
     };
+    use std::collections::BTreeMap;
 
     fn test_config(product_name: &str) -> AppConfig {
         AppConfig {
@@ -1239,6 +1271,9 @@ mod tests {
             capabilities: None,
             panels: None,
             update_trusted_public_keys: Vec::new(),
+            update_channel: None,
+            update_channels: BTreeMap::new(),
+            store_listing_ids: BTreeMap::new(),
         }
     }
 
@@ -1264,6 +1299,44 @@ mod tests {
         assert_eq!(
             config.update_trusted_public_keys,
             vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_reads_update_channels() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Demo",
+                "productVersion": "1.0.0",
+                "updateChannel": "direct",
+                "updateChannels": { "ios": "store", "android": "direct" }
+            }"#,
+        )
+        .expect("app.json with update channels");
+        assert_eq!(config.update_channel, Some(super::UpdateChannel::Direct));
+        assert_eq!(
+            config.update_channels.get("ios").copied(),
+            Some(super::UpdateChannel::Store)
+        );
+    }
+
+    #[test]
+    fn parse_and_validate_reads_store_listing_ids() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Demo",
+                "productVersion": "1.0.0",
+                "storeListingIds": { "ios": "1234567890", "macos": "987" }
+            }"#,
+        )
+        .expect("app.json with store listing ids");
+        assert_eq!(
+            config.store_listing_ids.get("ios").map(String::as_str),
+            Some("1234567890")
+        );
+        assert_eq!(
+            config.store_listing_ids.get("macos").map(String::as_str),
+            Some("987")
         );
     }
 

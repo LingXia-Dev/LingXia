@@ -209,6 +209,9 @@ fn build_default_host_app_config(
         capabilities: None,
         panels: None,
         update_trusted_public_keys: Vec::new(),
+        update_channel: None,
+        update_channels: Default::default(),
+        store_listing_ids: Default::default(),
     }
 }
 

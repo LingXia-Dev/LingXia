@@ -117,16 +117,84 @@ pub(super) fn build_app_json_from_config(
     }
 
     if let Some(update) = config.update.as_ref() {
-        update.validate()?;
+        let platforms = config
+            .app
+            .as_ref()
+            .map(|app| app.platforms.as_slice())
+            .unwrap_or(&[]);
+        update.validate(platforms)?;
+        if !update.trusted_public_keys.is_empty() {
+            obj.insert(
+                "updateTrustedPublicKeys".to_string(),
+                serde_json::json!(update.trusted_public_keys),
+            );
+        }
+        if let Some(channel) = update.channel {
+            obj.insert("updateChannel".to_string(), serde_json::to_value(channel)?);
+        }
+        if !update.platforms.is_empty() {
+            obj.insert(
+                "updateChannels".to_string(),
+                serde_json::to_value(&update.platforms)?,
+            );
+        }
+    }
+
+    let store_listing_ids = store_listing_ids_from_config(config);
+    if !store_listing_ids.is_empty() {
         obj.insert(
-            "updateTrustedPublicKeys".to_string(),
-            serde_json::json!(update.trusted_public_keys),
+            "storeListingIds".to_string(),
+            serde_json::to_value(store_listing_ids)?,
         );
     }
 
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)
+}
+
+/// Numeric / Partner-Center listing ids used to open the store page.
+/// Android Play uses the running package name, so it is not baked here.
+fn store_listing_ids_from_config(config: &LingXiaConfig) -> HashMap<String, String> {
+    let mut ids = HashMap::new();
+    let mut push = |platform: &str, id: Option<&str>| {
+        if let Some(id) = id.map(str::trim).filter(|id| !id.is_empty()) {
+            ids.insert(platform.to_string(), id.to_string());
+        }
+    };
+    push(
+        "ios",
+        config
+            .ios
+            .as_ref()
+            .and_then(|cfg| cfg.store.as_ref())
+            .and_then(|store| store.app_id.as_deref()),
+    );
+    push(
+        "macos",
+        config
+            .macos
+            .as_ref()
+            .and_then(|cfg| cfg.store.as_ref())
+            .and_then(|store| store.app_id.as_deref()),
+    );
+    push(
+        "windows",
+        config
+            .windows
+            .as_ref()
+            .and_then(|cfg| cfg.store.as_ref())
+            .map(|store| store.app_id.as_str()),
+    );
+    push(
+        "harmony",
+        config
+            .harmony
+            .as_ref()
+            .and_then(|cfg| cfg.store.as_ref())
+            .map(|store| store.app_id.as_str()),
+    );
+    ids
 }
 
 fn dev_bundle_base_url(dev_ws_url: &str) -> Option<String> {

@@ -307,6 +307,26 @@ final class LxAppMacAppUIRuntime: NSObject {
     func setTrayVisible(_ visible: Bool) { trayController.setVisible(visible) }
     func setTrayClickIntercept(_ intercept: Bool) { trayController.clickIntercepted = intercept }
 
+    /// Post-download host update prompt. Exclusive-tray agents have no lasting
+    /// window, so the callout is skipped and the tray owns the reminder.
+    func presentHostUpdateReady(infoJSON: String) {
+        let openStore = UpdateReadyInfo(json: infoJSON).openStore
+        let calloutState: UpdateCalloutState = openStore ? .store : .ready
+        if uiConfig.launch.hideDockIcon == true {
+            shell.setPendingUpdateInfo(infoJSON)
+            trayController.presentUpdateReady(openStore: openStore) { [weak self] in
+                if openStore {
+                    self?.shell.applyPendingHostUpdate()
+                } else {
+                    self?.shell.presentUpdateReadyCard(infoJSON: infoJSON)
+                }
+            }
+            return
+        }
+        shell.setPendingUpdateInfo(infoJSON)
+        shell.presentUpdateReadyCallout(appName: appConfig.productName, state: calloutState)
+    }
+
     private func handleOpenedPanel(
         appId: String,
         path: String,

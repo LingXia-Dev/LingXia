@@ -20,6 +20,7 @@
 /// LingXia also fires [`check`] once per process on its own, as soon as the
 /// platform reports network connectivity.
 pub mod host_app {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
     use lingxia_platform::traits::network::Network;
     use lingxia_service::update::{
         AppUpdateEvent, AppUpdateStage, HostAppUpdateService, UpdateError, UpdatePackageInfo,
@@ -145,8 +146,10 @@ pub mod host_app {
             if !connected {
                 return;
             }
-            // Already finished successfully — nothing more to do.
-            if AUTO_TRIGGERED.load(Ordering::SeqCst) {
+            // Already finished, or Control claimed the flow via checkUpdate.
+            if AUTO_TRIGGERED.load(Ordering::SeqCst)
+                || lingxia_service::update::custom_host_update_claimed()
+            {
                 return;
             }
             // Another attempt is already running. Skip; if it fails it will
@@ -216,20 +219,35 @@ pub mod host_app {
     type SharedResult = Result<Outcome, String>;
 
     async fn run_flow() -> crate::Result<Outcome> {
+        if lingxia_service::update::custom_host_update_claimed() {
+            log::info!(
+                "[lingxia] host app auto update: skipped (Control checkUpdate owns the flow)"
+            );
+            return Ok(Outcome::UpToDate);
+        }
         emit(Progress::Checking);
         let service = service()?;
         let update = service.check().await?;
         let Some(update) = update else {
             return Ok(Outcome::UpToDate);
         };
-        // Store-delivered platforms (iOS App Store, HarmonyOS AppGallery) never
-        // self-download or self-install: the store owns updates. Point the user
-        // at the store when possible, then stop — no background download.
-        if !service.self_update_supported() {
-            let info = update_info_json(&update);
-            let opened = service.open_update_store(&info);
+        if lingxia_service::update::custom_host_update_claimed() {
             log::info!(
-                "[lingxia] host app update {} available; store-delivered platform (opened store: {opened})",
+                "[lingxia] host app auto update: skipped after check (Control owns the flow)"
+            );
+            return Ok(Outcome::Deferred {
+                version: update.version,
+            });
+        }
+        // Store channel never self-downloads. Surface the same ready prompt
+        // with a store CTA; the user opens the marketplace from there.
+        if !service.self_update_supported() {
+            let package_id = runtime_package_id();
+            let info =
+                lingxia_service::update::store_update_info_json(&update, package_id.as_deref());
+            let shown = service.present_store_update(&info) || service.open_update_store(&info);
+            log::info!(
+                "[lingxia] host app update {} available; store channel (prompt shown: {shown})",
                 update.version
             );
             return Ok(Outcome::Deferred {
@@ -243,13 +261,10 @@ pub mod host_app {
         apply(service, update).await
     }
 
-    fn update_info_json(update: &UpdatePackageInfo) -> String {
-        serde_json::json!({
-            "version": update.version,
-            "size": update.size,
-            "releaseNotes": update.release_notes,
-        })
-        .to_string()
+    fn runtime_package_id() -> Option<String> {
+        crate::runtime::platform()
+            .ok()
+            .and_then(|runtime| runtime.get_app_identifier().ok())
     }
 
     async fn apply(

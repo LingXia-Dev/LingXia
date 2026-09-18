@@ -18,6 +18,8 @@ update:
   card_notes_title: "What's new"
   card_later: "Later"
   card_restart: "Restart Now"
+  card_open_store: "Open App Store"
+  click_to_open_store: "Click to open the App Store"
 
 # lxapp page context menu (macOS right-click). `refresh` is shown only when
 # the page enabled pull-down refresh; the editing items relabel the WebKit

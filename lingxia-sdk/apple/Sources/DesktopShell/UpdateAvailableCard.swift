@@ -106,8 +106,9 @@ final class UpdateAvailableCard: NSObject {
         }
         root.addArrangedSubview(divider())
 
+        let primaryKey = info.openStore ? "lx_update_card_open_store" : "lx_update_card_restart"
         let restart = NSButton(
-            title: Self.string("lx_update_card_restart"), target: self,
+            title: Self.string(primaryKey), target: self,
             action: #selector(restartClicked))
         restart.bezelStyle = .rounded
         restart.keyEquivalent = "\r"
@@ -231,7 +232,9 @@ final class UpdateAvailableCard: NSObject {
         guard !didChoose else { return }
         didChoose = true
         onRestart()
-        // The app quits / relaunches; nothing more to do.
+        if info.openStore {
+            close()
+        }
     }
 
     @objc private func laterClicked() {
@@ -285,10 +288,12 @@ final class UpdateAvailableCard: NSObject {
 struct UpdateReadyInfo {
     let version: String
     let releaseNotes: [String]
+    let openStore: Bool
 
     init(json: String) {
         var version = ""
         var notes: [String] = []
+        var openStore = false
         if let data = json.data(using: .utf8),
            let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
             version = (obj["version"] as? String) ?? ""
@@ -296,9 +301,11 @@ struct UpdateReadyInfo {
                 notes = arr.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) }
                     .filter { !$0.isEmpty }
             }
+            openStore = (obj["openStore"] as? Bool) ?? false
         }
         self.version = version
         self.releaseNotes = notes
+        self.openStore = openStore
     }
 }
 #endif

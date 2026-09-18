@@ -15,6 +15,7 @@ final class LxAppMacTrayController: NSObject {
     /// delivered only to the owning lxapp (not broadcast to every loaded app).
     private var activatorSurface: [String: String] = [:]
     private(set) var defaultActivatorID: String?
+    private var baseToolTip: String?
 
     init(
         appConfig: LxAppGeneratedAppConfig,
@@ -45,6 +46,9 @@ final class LxAppMacTrayController: NSObject {
             button.target = self
             button.action = #selector(statusItemClicked(_:))
             button.toolTip = activator.label ?? activator.id
+            if defaultActivatorID == activator.id {
+                baseToolTip = button.toolTip
+            }
             button.sendAction(on: [.leftMouseUp, .rightMouseUp, .otherMouseUp])
 
             if let iconURL = resolvedIconURL(for: activator),
@@ -88,6 +92,19 @@ final class LxAppMacTrayController: NSObject {
     var includeDefaultQuit = false
     /// Hide the flyout before a context menu appears, matching Windows.
     var onWillShowMenu: (() -> Void)?
+    /// Exclusive-tray host has a staged update. Menu + badge are the prompt;
+    /// the window-anchored callout is not shown.
+    private var updateReady = false
+    private var updateOpensStore = false
+    private var onUpdateReady: (() -> Void)?
+
+    /// Take the post-download prompt for an exclusive-tray host.
+    func presentUpdateReady(openStore: Bool = false, onOpen: @escaping () -> Void) {
+        updateReady = true
+        updateOpensStore = openStore
+        onUpdateReady = onOpen
+        refreshTrayText()
+    }
 
     /// lx.tray.show()/hide() — toggle the status item's visibility.
     func setVisible(_ visible: Bool) {
@@ -140,24 +157,46 @@ final class LxAppMacTrayController: NSObject {
     }
 
     private func contextMenu() -> NSMenu? {
-        if let jsMenu {
-            return jsMenu
+        let menu: NSMenu
+        if let jsMenu, let copy = jsMenu.copy() as? NSMenu {
+            menu = copy
+        } else if includeDefaultQuit {
+            menu = NSMenu()
+            menu.autoenablesItems = false
+            let item = NSMenuItem(
+                title: L10n.string("lx_app_quit", appConfig.productName),
+                action: #selector(quitFromMenu),
+                keyEquivalent: "q"
+            )
+            item.target = self
+            menu.addItem(item)
+        } else if updateReady {
+            menu = NSMenu()
+            menu.autoenablesItems = false
+        } else {
+            return nil
         }
-        guard includeDefaultQuit else { return nil }
-        let menu = NSMenu()
-        menu.autoenablesItems = false
-        let item = NSMenuItem(
-            title: "Quit \(appConfig.productName)",
-            action: #selector(quitFromMenu),
-            keyEquivalent: "q"
-        )
-        item.target = self
-        menu.addItem(item)
+        if updateReady {
+            let item = NSMenuItem(
+                title: L10n.string(updateOpensStore ? "lx_update_card_open_store" : "lx_update_card_restart"),
+                action: #selector(updateReadyClicked),
+                keyEquivalent: ""
+            )
+            item.target = self
+            menu.insertItem(item, at: 0)
+            if menu.items.count > 1 {
+                menu.insertItem(.separator(), at: 1)
+            }
+        }
         return menu
     }
 
     @objc private func quitFromMenu() {
         NSApp.terminate(nil)
+    }
+
+    @objc private func updateReadyClicked() {
+        onUpdateReady?()
     }
 
     func setBadge(_ text: String?) {
@@ -183,14 +222,26 @@ final class LxAppMacTrayController: NSObject {
     /// macOS status items have no native count badge, so the title and badge are
     /// composited as text beside the icon (idiomatic, like the menu-bar clock).
     private func refreshTrayText() {
-        guard let id = defaultActivatorID, let button = statusItems[id]?.button else { return }
-        let text = [trayTitle, trayBadge].compactMap { $0 }.joined(separator: " ")
+        guard let id = defaultActivatorID, let item = statusItems[id], let button = item.button else {
+            return
+        }
+        let marker = (updateReady && trayTitle == nil && trayBadge == nil) ? "●" : nil
+        let text = [trayTitle, trayBadge, marker].compactMap { $0 }.joined(separator: " ")
         if text.isEmpty {
+            item.length = NSStatusItem.squareLength
             button.title = ""
             button.imagePosition = button.image != nil ? .imageOnly : .noImage
         } else {
+            item.length = NSStatusItem.variableLength
             button.title = button.image != nil ? " \(text)" : text
             button.imagePosition = button.image != nil ? .imageLeading : .noImage
+        }
+        if updateReady {
+            button.toolTip = L10n.string(
+                updateOpensStore ? "lx_update_available_title" : "lx_update_ready_to_install",
+                appConfig.productName)
+        } else {
+            button.toolTip = baseToolTip
         }
     }
 

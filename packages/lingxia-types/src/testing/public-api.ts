@@ -599,7 +599,7 @@ const DOWNLOAD_TASK_API = [
 ] as const;
 const UPLOAD_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
 const COMPRESS_VIDEO_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
-const HOST_UPDATE_INFO_API = ['apply', 'releaseNotes', 'size', 'version'] as const;
+const HOST_UPDATE_INFO_API = ['apply', 'channel', 'releaseNotes', 'size', 'version'] as const;
 const HOST_UPDATE_TASK_API = ['catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
 const PAGE_SURFACE_API = [
@@ -676,7 +676,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'HostAppUpdateInfo',
     members: HOST_UPDATE_INFO_API,
-    properties: ['releaseNotes', 'size', 'version'],
+    properties: ['channel', 'releaseNotes', 'size', 'version'],
     optionalProperties: ['releaseNotes', 'size'],
     fixture: 'external-service',
     factory: 'lx.app.checkUpdate().update',
