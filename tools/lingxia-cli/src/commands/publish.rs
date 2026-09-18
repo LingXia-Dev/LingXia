@@ -14,6 +14,7 @@ use crate::platform::detector::PlatformType;
 pub struct PublishOptions {
     pub token: Option<String>,
     pub lingxia_server: Option<String>,
+    pub lingxia_id: Option<String>,
     pub package: Option<String>,
     pub platform: Option<String>,
     pub env: Option<String>,
@@ -51,6 +52,12 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
     let mut meta = resolve_meta(&cwd, opts.env.as_deref(), opts.channel.as_deref())?;
+    // Known before packaging, so a missing product fails before the build.
+    let package_product = if meta.target == "app" {
+        None
+    } else {
+        Some(resolve_lingxia_id(&cwd, &meta.target, opts.lingxia_id)?)
+    };
     let package = resolve_package_for_publish(
         &cwd,
         &meta,
@@ -75,6 +82,8 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         }
         meta.channel = None;
     }
+    // The host app is its own product.
+    let lingxia_id = package_product.unwrap_or_else(|| meta.target_id.clone());
     // Resolve server and token after env is known. The token is keyed by
     // (canonical server URL, env) in the wallet.
     let lingxia_server = resolve_lingxia_server(&cwd, meta.env, opts.lingxia_server)?;
@@ -91,12 +100,13 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .map(|c| format!(" ({c})"))
         .unwrap_or_default();
     println!(
-        "{}  Publishing {} {} v{}{} …",
+        "{}  Publishing {} {} v{}{} to {} …",
         "→".cyan(),
         meta.target,
         meta.target_id.bold(),
         meta.version.bold(),
         channel_label,
+        lingxia_id.bold(),
     );
     println!("   Package: {}", package_path.display());
 
@@ -135,11 +145,15 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     )?;
 
     let mut fields: Vec<(&str, String)> = vec![
+        ("lingxiaId", lingxia_id.clone()),
         ("kind", meta.target.clone()),
-        ("id", meta.target_id.clone()),
         ("version", meta.version.clone()),
         ("sha256", sha256.clone()),
     ];
+    // A host-app package is the product itself; only packages inside it have an id.
+    if meta.target != "app" {
+        fields.push(("id", meta.target_id.clone()));
+    }
     if let Some(channel) = &meta.channel {
         fields.push(("channel", channel.clone()));
     }
@@ -655,6 +669,28 @@ fn resolve_token(env: AppEnv, server: &str, token_arg: Option<String>) -> Result
     );
 }
 
+/// The product an lxapp or plugin is published to: `--lingxia-id`, then
+/// `app.lingxiaId` in `lingxia.yaml`.
+fn resolve_lingxia_id(cwd: &Path, target: &str, flag: Option<String>) -> Result<String> {
+    if let Some(id) = flag {
+        let id = id.trim();
+        if id.is_empty() {
+            bail!("--lingxia-id cannot be empty");
+        }
+        return Ok(id.to_string());
+    }
+    if cwd.join(HOST_CONFIG_FILE).exists()
+        && let Ok(cfg) = LingXiaConfig::load(cwd)
+        && let Some(id) = cfg
+            .app
+            .and_then(|app| app.lingxia_id)
+            .filter(|id| !id.trim().is_empty())
+    {
+        return Ok(id);
+    }
+    bail!("Use --lingxia-id to name the product this {target} is published to");
+}
+
 fn resolve_lingxia_server(
     cwd: &Path,
     env: AppEnv,
@@ -1006,8 +1042,8 @@ fn build_multipart(
 mod tests {
     use super::{
         build_multipart, find_or_resolve_package, normalize_channel, normalize_platform,
-        package_matches, publish_build_args, read_app_package_metadata, resolve_meta,
-        resolve_publish_platform, signed_multipart_fields,
+        package_matches, publish_build_args, read_app_package_metadata, resolve_lingxia_id,
+        resolve_meta, resolve_publish_platform, signed_multipart_fields,
     };
     use crate::config::AppEnv;
     use std::fs;
@@ -1290,6 +1326,24 @@ app:
         assert_eq!(meta.env, AppEnv::Dev);
         assert_eq!(meta.channel.as_deref(), Some("draft"));
         assert_eq!(meta.min_runtime, "0.17.0");
+    }
+
+    #[test]
+    fn lxapp_publish_names_its_product() {
+        let temp = TempDir::new().unwrap();
+        fs::write(
+            temp.path().join("lxapp.json"),
+            br#"{"appId":"demo","version":"1.0.0","minRuntime":"0.17.0","pages":["index.html"]}"#,
+        )
+        .unwrap();
+        let meta = resolve_meta(temp.path(), None, None).unwrap();
+
+        assert!(resolve_lingxia_id(temp.path(), &meta.target, None).is_err());
+        assert!(resolve_lingxia_id(temp.path(), &meta.target, Some(" ".into())).is_err());
+        assert_eq!(
+            resolve_lingxia_id(temp.path(), &meta.target, Some("shop".into())).unwrap(),
+            "shop"
+        );
     }
 
     #[test]
