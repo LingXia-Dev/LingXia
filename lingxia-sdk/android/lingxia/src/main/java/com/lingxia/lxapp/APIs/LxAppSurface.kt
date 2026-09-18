@@ -28,6 +28,7 @@ import com.lingxia.app.LxLog
 import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.LxAppActivity
 import com.lingxia.lxapp.R
+import com.lingxia.lxapp.updateFrameLayoutParamsIfChanged
 import com.lingxia.app.NativeApi
 import com.lingxia.lxapp.NativeComponents.NativeBridge
 import com.lingxia.lxapp.APIs.media.ImmersiveWindowUi
@@ -1010,7 +1011,9 @@ internal object LxAppSurface {
             ?: rootView.height.takeIf { it > 0 }
             ?: activity.resources.displayMetrics.heightPixels
         val contentHeight = (rootHeight - clearance.reserved()).coerceAtLeast(dp(activity, 160))
-        surface.layoutParams = layoutParams(activity, request, rootWidth, contentHeight, clearance)
+        surface.updateFrameLayoutParamsIfChanged(
+            layoutParams(activity, request, rootWidth, contentHeight, clearance)
+        )
 
         // The seat is background, not content: the WebView ends where the
         // navigation bar begins, and the card's ground fills the band below.
