@@ -1,9 +1,9 @@
 //! Bottom-left "update available" callout — a small dark bubble, anchored to
 //! the app window's bottom-left, that announces a downloaded update without
 //! stealing focus. It is owned by the app window, so it tracks the app on drag
-//! and hides/restores with it. Clicking it opens the "ready to update" card
-//! ([`super::update_card::open_ready_card`]). Mirrors the macOS
-//! `UpdateReadyCallout` (a calm reminder, on the top layer).
+//! and hides/restores with it. Clicking it runs
+//! [`super::update_card::open_ready_prompt`]: store channel opens the listing,
+//! direct opens the notes card. Mirrors the macOS `UpdateReadyCallout`.
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicIsize, Ordering};
@@ -192,10 +192,11 @@ unsafe extern "system" fn callout_wnd_proc(
                 }
                 LRESULT(0)
             }
-            WM_LBUTTONUP => {
+            // NOACTIVATE popups often lose the first UP to owner activation.
+            // Fire on DOWN (and DBLCLK) so one press opens the store or card.
+            WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => {
                 let _ = DestroyWindow(hwnd);
-                // Open the "ready to update" card (release notes + Restart/Later).
-                super::update_card::open_ready_card();
+                super::update_card::open_ready_prompt();
                 LRESULT(0)
             }
             WM_CLOSE => {
