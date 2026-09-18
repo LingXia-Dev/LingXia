@@ -99,9 +99,57 @@ pub fn swift_target_name_from_project_name(project_name: &str) -> String {
     out
 }
 
+/// Turn a project name into one segment of a package id.
+///
+/// A project name may carry `-` (`h-app`); a package id may not, because
+/// Android's is a Java package name. Pasting the name in unchanged produced a
+/// default id the CLI then refused — a new project that could not build until
+/// its id was edited by hand.
+pub fn package_segment_from_project_name(project_name: &str) -> String {
+    let mut out = String::with_capacity(project_name.len());
+    let mut last_was_underscore = false;
+    for ch in project_name.chars() {
+        let mapped = if ch.is_alphanumeric() { ch } else { '_' };
+        if mapped == '_' {
+            if !last_was_underscore && !out.is_empty() {
+                out.push('_');
+                last_was_underscore = true;
+            }
+        } else {
+            out.extend(mapped.to_lowercase());
+            last_was_underscore = false;
+        }
+    }
+    while out.ends_with('_') {
+        out.pop();
+    }
+    if out.is_empty() {
+        out.push_str("app");
+    }
+    // A Java package segment cannot start with a digit.
+    if out.as_bytes().first().is_some_and(u8::is_ascii_digit) {
+        out.insert(0, '_');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dashed_project_name_still_derives_a_legal_default_id() {
+        assert_eq!(package_segment_from_project_name("h-app"), "h_app");
+        assert_eq!(package_segment_from_project_name("My App"), "my_app");
+        assert_eq!(package_segment_from_project_name("2fast"), "_2fast");
+        assert_eq!(package_segment_from_project_name("---"), "app");
+        assert_eq!(package_segment_from_project_name("a--b"), "a_b");
+        // Whatever it derives has to pass the id rule it feeds.
+        for name in ["h-app", "My App", "2fast", "---", "a--b"] {
+            let id = format!("app.lingxia.{}", package_segment_from_project_name(name));
+            assert!(validate_package_id(&id).is_ok(), "{id}");
+        }
+    }
 
     #[test]
     fn validate_lxapp_id_accepts_dotted_and_bare() {
