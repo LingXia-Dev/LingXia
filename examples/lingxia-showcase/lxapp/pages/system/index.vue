@@ -255,21 +255,12 @@
             <div class="flex-1">
               <div class="text-sm text-gray-800 font-semibold">Desktop Banner</div>
               <div class="text-xs text-gray-500 mt-0.5">
-                {{ bannerSupported ? 'Product-drawn top-right card — not an OS notification' : 'Not available on this host' }}
+                {{ bannerSupported ? 'Toast and Prompt show a native card at the window top-right' : 'Not available on this host' }}
               </div>
             </div>
-            <button
-              v-if="bannerSupported"
-              data-testid="system-banner-toast"
-              @click="showBannerToast"
-              :disabled="bannerBusy"
-              class="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-            >
-              Toast
-            </button>
           </div>
 
-          <div class="p-5">
+          <div class="p-5 space-y-3">
             <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
@@ -280,10 +271,36 @@
                 <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBool(bannerSupported) }}</span>
               </div>
               <div class="flex justify-between items-center py-3 border-b border-line-200">
-                <span class="text-sm text-gray-600">Background</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerBackground }}</span>
+                <span class="text-sm text-gray-600">Last result</span>
+                <span
+                  data-testid="system-banner-last"
+                  class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg"
+                >{{ bannerLast || '--' }}</span>
               </div>
-              <div class="pt-3 flex flex-wrap gap-2">
+              <div v-if="bannerError" class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Error</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerError }}</span>
+              </div>
+              <div class="pt-3">
+                <button
+                  data-testid="system-banner-reread"
+                  @click="refreshBanner"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  Re-read support
+                </button>
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">Show</h4>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">
+                Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card, not here.
+              </p>
+              <div class="flex flex-wrap gap-2 mb-3">
                 <button
                   v-for="value in bannerBackgrounds"
                   :key="value"
@@ -294,37 +311,42 @@
                   {{ value }}
                 </button>
               </div>
-              <div class="flex justify-between items-center py-3 border-b border-line-200">
-                <span class="text-sm text-gray-600">Last result</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerLast || '--' }}</span>
-              </div>
-              <div v-if="bannerError" class="flex justify-between items-center py-3 border-b border-line-200">
-                <span class="text-sm text-gray-600">Error</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerError }}</span>
-              </div>
-              <div class="pt-3 flex gap-2">
+              <div v-if="bannerSupported" class="flex gap-2">
+                <button
+                  data-testid="system-banner-toast"
+                  @click="showBannerToast"
+                  :disabled="bannerBusy"
+                  class="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                >
+                  Toast
+                </button>
                 <button
                   data-testid="system-banner-prompt"
                   @click="showBannerPrompt"
-                  :disabled="!bannerSupported || bannerBusy"
+                  :disabled="bannerBusy"
                   class="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
                 >
                   Prompt
                 </button>
-                <button
-                  data-testid="system-banner-dismiss"
-                  @click="dismissBanner"
-                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                >
-                  Dismiss
-                </button>
-                <button
-                  @click="refreshBanner"
-                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                >
-                  Re-read
-                </button>
               </div>
+            </div>
+
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">While showing</h4>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">
+                Use after Toast or Prompt. Dismiss is off until a card is up.
+              </p>
+              <button
+                data-testid="system-banner-dismiss"
+                @click="dismissBanner"
+                :disabled="!bannerBusy"
+                class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
+              >
+                Dismiss
+              </button>
             </div>
           </div>
         </div>
