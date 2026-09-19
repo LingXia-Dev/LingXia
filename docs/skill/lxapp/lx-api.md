@@ -132,7 +132,7 @@ what to render and never replaces handling a rejection: the answer can be stale
 by the time you act on it, and every gated operation still rejects.
 
 A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`, `lx.app.notification`, `lx.app.control`, `lx.app.cache`. Presence and
+`lx.terminal`, `lx.app.autostart`, `lx.app.notification`, `lx.app.banner`, `lx.app.control`, `lx.app.cache`. Presence and
 `lx.supports()` are answered from one registry, so `('terminal' in lx)` and
 `lx.supports({ capability: 'terminal' })` can never disagree. `lx.app.cache`
 uses the same gate as `lx.app.control`.
@@ -151,6 +151,26 @@ Which session is which, the full list of Control-app-only calls, and what a
 refusal reads like: [The Control app](../app/control-app.md).
 
 ---
+
+## Desktop banner
+
+`lx.app.banner` — Control-app only, desktop only (macOS / Windows). Not an OS
+notification and not bound to App Link. Presence and
+`lx.supports({ capability: 'banner' })` always agree; guests and mobile builds
+do not have the member. No yaml capability: this is product-drawn chrome.
+
+- No `actions`: informational card, auto-dismisses in 5s unless `timeoutMs` is
+  set. The close control resolves `{ canceled: true, reason: 'dismissed' }`.
+- With `actions` (at most two): a gate. No close control. Resolves the chosen
+  `action` id, or `canceled` on timeout / replace. Failures to present reject.
+- Same `id` replaces the current card (`reason: 'replaced'`). Different ids
+  queue. Host Rust uses the same primitive: `lingxia::app::banner::show`. That
+  call blocks until the card resolves — from an async Rust task use a blocking
+  worker. Do not call a no-timeout prompt on the macOS main thread: the panel
+  is presented on main, and a click cannot run while `show` holds it.
+- `background` is optional: omit/`system` follows the OS (vibrancy on macOS);
+  `light`/`dark` force chrome; `#RGB` / `#RRGGBB` / `#RRGGBBAA` paints a solid
+  fill and picks title contrast from luminance. Width is fixed at 328 pt.
 
 ## Local notifications
 

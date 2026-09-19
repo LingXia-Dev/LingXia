@@ -11,8 +11,8 @@ use super::{file, not_supported, surface, ui_update};
 use crate::AssetFileEntry;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{
-    AnimationType, AppRuntime, BuiltinBrowserPage, LocalNotificationShow, LxAppOpenMode,
-    OpenUrlRequest, OpenUrlResult,
+    AnimationType, AppRuntime, BuiltinBrowserPage, DesktopBannerOutcome, DesktopBannerShow,
+    LocalNotificationShow, LxAppOpenMode, OpenUrlRequest, OpenUrlResult,
 };
 use crate::traits::share::{ShareRequest, ShareResult, ShareService};
 use crate::traits::stream_decoder::{VideoStreamDecoderHandle, VideoStreamDecoderManager};
@@ -580,6 +580,18 @@ impl AppRuntime for Platform {
 
     fn notification_cancel_all(&self) -> Result<(), PlatformError> {
         super::notification::cancel_all(self)
+    }
+
+    fn banner_show(
+        &self,
+        request: &DesktopBannerShow,
+    ) -> Result<DesktopBannerOutcome, PlatformError> {
+        crate::desktop::banner::show(request.clone())
+    }
+
+    fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
+        crate::desktop::banner::dismiss(id);
+        Ok(())
     }
 
     fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {

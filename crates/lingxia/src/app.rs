@@ -137,6 +137,29 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
     state_file_in(&app.user_data_dir, name)
 }
 
+/// Product-drawn desktop banner (top-right). Not an OS notification.
+pub mod banner {
+    pub use lingxia_platform::traits::app_runtime::{
+        DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome,
+        DesktopBannerShow,
+    };
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+
+    /// Present a banner and wait until it is answered, dismissed, timed out, or replaced.
+    pub fn show(request: DesktopBannerShow) -> crate::Result<DesktopBannerOutcome> {
+        crate::runtime::platform()?
+            .banner_show(&request)
+            .map_err(crate::Error::from)
+    }
+
+    /// Dismiss a visible or queued banner. Unknown ids are fine.
+    pub fn dismiss(id: &str) -> crate::Result<()> {
+        crate::runtime::platform()?
+            .banner_dismiss(id)
+            .map_err(crate::Error::from)
+    }
+}
+
 /// Show or hide the desktop shell's "an AI assistant is in control" indicator.
 ///
 /// `lingxia-control-runtime` drives this from its session events; a product

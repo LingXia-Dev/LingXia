@@ -266,6 +266,20 @@ mod bridge {
         #[swift_bridge(swift_name = "LxApp.setControlSessionIndicator")]
         fn set_control_session_indicator(visible: bool) -> bool;
 
+        // Product-drawn top-right banner. macOS only; iOS returns false.
+        #[swift_bridge(swift_name = "LxApp.desktopBannerShow")]
+        fn desktop_banner_show(
+            id: &str,
+            title: &str,
+            body: &str,
+            actions_json: &str,
+            background: &str,
+            dismissible: bool,
+        ) -> bool;
+
+        #[swift_bridge(swift_name = "LxApp.desktopBannerHide")]
+        fn desktop_banner_hide() -> bool;
+
         #[swift_bridge(swift_name = "LxApp.isPushEnabled")]
         fn is_push_enabled() -> bool;
 
@@ -532,6 +546,8 @@ pub use bridge::{
     show_toast, take_opened_url_tab_id, update_navbar_ui, update_orientation_ui, update_tabbar_ui,
     update_tabbar_ui_async,
 };
+#[cfg(all(target_os = "macos", not(test)))]
+pub(crate) use bridge::{desktop_banner_hide, desktop_banner_show};
 #[cfg(target_os = "macos")]
 pub use bridge::{notify_app_update_ready, reveal_in_file_manager, set_control_session_indicator};
 
