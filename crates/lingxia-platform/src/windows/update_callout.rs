@@ -1,12 +1,12 @@
 //! Bottom-left "update available" callout — a small dark bubble, anchored to
 //! the app window's bottom-left, that announces a downloaded update without
 //! stealing focus. It is owned by the app window, so it tracks the app on drag
-//! and hides/restores with it. Clicking it opens the "ready to update" card
-//! ([`super::update_card::open_ready_card`]). Mirrors the macOS
-//! `UpdateReadyCallout` (a calm reminder, on the top layer).
+//! and hides/restores with it. Clicking it runs
+//! [`super::update_card::open_ready_prompt`]: store channel opens the listing,
+//! direct opens the notes card. Mirrors the macOS `UpdateReadyCallout`.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -19,6 +19,9 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::w;
 
 static CALLOUT_HWND: AtomicIsize = AtomicIsize::new(0);
+/// Set by [`hide`] so a callout thread still polling for its owner does not
+/// create a window after exclusive-tray replay has taken the prompt.
+static CALLOUT_SUPPRESS: AtomicBool = AtomicBool::new(false);
 static PRODUCT_NAME: Mutex<Option<String>> = Mutex::new(None);
 static LOCALE: Mutex<Option<String>> = Mutex::new(None);
 
@@ -34,7 +37,8 @@ pub(super) fn set_context(product: &str, locale: &str) {
 /// Show the "update available — click to install" callout at the app's
 /// bottom-left.
 pub(super) fn show() {
-    hide();
+    CALLOUT_SUPPRESS.store(false, Ordering::SeqCst);
+    close_hwnd();
     std::thread::Builder::new()
         .name("lingxia-update-callout".to_string())
         .spawn(run_callout_thread)
@@ -42,6 +46,11 @@ pub(super) fn show() {
 }
 
 pub(super) fn hide() {
+    CALLOUT_SUPPRESS.store(true, Ordering::SeqCst);
+    close_hwnd();
+}
+
+fn close_hwnd() {
     let hwnd = CALLOUT_HWND.load(Ordering::SeqCst);
     if hwnd != 0 {
         unsafe {
@@ -81,22 +90,25 @@ fn run_callout_thread() {
         let mut owner = super::update_card::find_main_window();
         let mut tries = 0;
         while owner.is_none() && tries < 50 {
+            if CALLOUT_SUPPRESS.load(Ordering::SeqCst) {
+                return;
+            }
             std::thread::sleep(std::time::Duration::from_millis(100));
             owner = super::update_card::find_main_window();
             tries += 1;
+        }
+        if CALLOUT_SUPPRESS.load(Ordering::SeqCst) {
+            return;
         }
 
         let mut anchor = RECT::default();
         let have_owner = owner
             .map(|h| GetWindowRect(h, &mut anchor).is_ok())
             .unwrap_or(false);
+        // No host window yet: do not pin to the screen work area (that puts
+        // the tip on the left while the app later opens on the right).
         if !have_owner {
-            let _ = SystemParametersInfoW(
-                SPI_GETWORKAREA,
-                0,
-                Some(&mut anchor as *mut _ as *mut _),
-                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-            );
+            return;
         }
         let x = anchor.left + px(16.0);
         let y = anchor.bottom - height - px(16.0);
@@ -140,6 +152,10 @@ fn run_callout_thread() {
         });
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(callout) as isize);
 
+        if CALLOUT_SUPPRESS.load(Ordering::SeqCst) {
+            let _ = DestroyWindow(hwnd);
+            return;
+        }
         CALLOUT_HWND.store(hwnd.0 as isize, Ordering::SeqCst);
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
         SetTimer(Some(hwnd), 1, 30, None);
@@ -192,10 +208,11 @@ unsafe extern "system" fn callout_wnd_proc(
                 }
                 LRESULT(0)
             }
-            WM_LBUTTONUP => {
+            // NOACTIVATE popups often lose the first UP to owner activation.
+            // Fire on DOWN (and DBLCLK) so one press opens the store or card.
+            WM_LBUTTONDOWN | WM_LBUTTONDBLCLK => {
                 let _ = DestroyWindow(hwnd);
-                // Open the "ready to update" card (release notes + Restart/Later).
-                super::update_card::open_ready_card();
+                super::update_card::open_ready_prompt();
                 LRESULT(0)
             }
             WM_CLOSE => {
@@ -263,7 +280,12 @@ fn paint(hwnd: HWND) {
             right: client.right - pad,
             bottom: px(48.0),
         };
-        let mut sw = to_wide(super::update_card::t_click_to_install(lang));
+        let subtitle = if super::update_card::pending_update_opens_store() {
+            super::update_card::t_click_to_open_store(lang)
+        } else {
+            super::update_card::t_click_to_install(lang)
+        };
+        let mut sw = to_wide(subtitle);
         let sn = sw.len().saturating_sub(1);
         DrawTextW(
             hdc,

@@ -333,6 +333,27 @@ fn invoke_windows_tray_click_intercept_handler(intercept: bool) {
     }
 }
 
+/// Exclusive-tray hosts have no persistent main window for the post-download
+/// callout. The Windows SDK registers this to take the prompt (tray menu +
+/// balloon). Returns `true` when the tray handled it.
+type WindowsExclusiveUpdateReadyHandler = Arc<dyn Fn() -> bool + Send + Sync>;
+static WINDOWS_EXCLUSIVE_UPDATE_READY_HANDLER: Mutex<Option<WindowsExclusiveUpdateReadyHandler>> =
+    Mutex::new(None);
+
+pub fn set_windows_exclusive_update_ready_handler(handler: WindowsExclusiveUpdateReadyHandler) {
+    if let Ok(mut slot) = WINDOWS_EXCLUSIVE_UPDATE_READY_HANDLER.lock() {
+        *slot = Some(handler);
+    }
+}
+
+pub(crate) fn invoke_windows_exclusive_update_ready() -> bool {
+    let handler = WINDOWS_EXCLUSIVE_UPDATE_READY_HANDLER
+        .lock()
+        .ok()
+        .and_then(|slot| slot.clone());
+    handler.map(|handler| handler()).unwrap_or(false)
+}
+
 #[derive(Debug, Clone)]
 pub struct Platform {
     data_dir: PathBuf,

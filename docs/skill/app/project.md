@@ -171,7 +171,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
-| `update` | Optional | In-app update keys. Omit the table, or list 1–2 `trustedPublicKeys` (two = key rotation). How to mint the seed/public pair: [Distribution](../cli/distribution.md#lingxia-publish) |
+| `update` | Optional | In-app update keys (1–2 `trustedPublicKeys`) and per-platform channel. See [`update`](#update). |
 
 ---
 
@@ -298,6 +298,36 @@ tinted page.
 
 Lxapp page content does not inherit these colors; it responds to the standard
 `prefers-color-scheme` surface and owns its CSS design.
+
+---
+
+## `update`
+
+In-app host updates. Omit the table to skip prod `checkUpdate` (`dev` still checks, unsigned). If present, it must list 1–2 `trustedPublicKeys` (two = key rotation) — the signed feed is the version signal on every channel, including `store`. How to mint the seed/public pair: [Distribution](../cli/distribution.md#lingxia-publish).
+
+`channel` / `platforms` choose who installs the package. This is **not** the `ios.store` / `android.googlePlayStore` listing identity used by `lingxia store`. A freshly scaffolded `lingxia.yaml` already carries this block, commented out — uncomment it and add your key.
+
+```yaml
+update:
+  trustedPublicKeys: [ ... ]
+  channel: direct          # default for platforms not listed
+  platforms:
+    ios: store
+    harmony: store
+    android: direct        # next Play-signed build: store
+    macos: direct          # MAS flavor: store
+    windows: direct
+```
+
+`direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.app.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports({ capability: 'selfUpdate' })` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
+
+**Publish the feed package for a `store` platform only after the store listing is live.** The feed is what tells users a new version exists — if it lands while the listing is still in review, everyone is sent to a page with nothing to update.
+
+Reuse the existing store identity — no extra yaml and no country URL. Apple uses `ios.store.appId` / `macos.store.appId` (numeric Apple ID) as `itms-apps://apps.apple.com/app/id…` (HTTPS listing as fallback); the storefront follows the signed-in Apple ID. Android opens the listing in the store that installed the APK (Play / Huawei / Honor / Xiaomi / OPPO / vivo / Samsung / Amazon / Yingyongbao): it sends `market://details?id=` addressed to that store's package, then that store's own scheme, then an HTTPS page — the `android.*Store` blocks are publish identity, not a second listing URL. Harmony uses `appmarket://details?id=` with the bundle name and falls back to the AppGallery HTTPS page from `harmony.store.appId`. Windows uses `windows.store.appId`. These listing ids are baked into `app.json` as `storeListingIds`, and a `store` platform that needs one but has none warns at build time. Do not put a store URL in `appLinks.hosts`: those hosts open *this* app, so a tap would bounce back into the old binary instead of the marketplace.
+
+Omitted values keep today's defaults: iOS and HarmonyOS are `store`; Android, macOS, and Windows are `direct`.
+
+The value is baked into **this build**. Changing yaml and shipping a new package does not rewrite already-installed binaries. A process actually installed by a store (Play / App Store / MAS receipt / Microsoft Store-signed package) always behaves as `store`, even when this build still says `direct` — so a sideloaded Android APK that the user later updates from Play flips channel in place. Same `applicationId` and a matching signing key; uninstall is only required when the store package cannot overlay the sideload signature. Sideloaded or developer-signed MSIX stays on this build's channel.
 
 ---
 
@@ -648,7 +678,7 @@ worker or hidden lxapp identity.
 A `tray:` entry adds a menu-bar item (macOS) / system-tray icon (Windows). The same declaration drives three shapes:
 
 - **Dock + tray** — `role: main` with a `tray:` (default `exclusive: false`). Keeps the dock / taskbar icon and full window UI; the tray entry summons the window (`action: activate` brings it to front, `toggle` hides on re-click).
-- **Tray only** — add `exclusive: true`. No dock / taskbar icon and no flash at launch (macOS sets `LSUIElement`; Windows uses `WS_EX_TOOLWINDOW`). The app lives only in the tray.
+- **Tray only** — add `exclusive: true`. No dock / taskbar icon and no flash at launch (macOS sets `LSUIElement`; Windows uses `WS_EX_TOOLWINDOW`). The app lives only in the tray. Host self-updates prompt from the tray (menu item + balloon on Windows, badge + menu on macOS). Dock + tray keeps the window callout.
 - **Tray popover** — `role: float` + a `tray:`. Clicking the tray icon opens the surface as an auto-dismissing popover anchored under the icon. Set its size with `tray.size: { width, height }` (default 360×420). A pure popover app has no `main`.
 
 ```yaml

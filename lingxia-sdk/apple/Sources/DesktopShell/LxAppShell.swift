@@ -624,8 +624,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         }
         sidebar.onUpdateActionRequested = { [weak self] state in
             switch state {
+            case .store:
+                self?.applyPendingHostUpdate()
             case .ready:
-                // Open the notes card; its Restart button applies the update.
                 self?.presentUpdateReadyCard(infoJSON: self?.pendingUpdateInfoJSON ?? "{}")
             case .available:
                 _ = onAppEvent(AppEvent.updateInstallClick, "")
@@ -1955,8 +1956,9 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         let callout = UpdateReadyCallout(appName: appName, state: state) { [weak self] in
             guard let self else { return }
             switch state {
+            case .store:
+                self.applyPendingHostUpdate()
             case .ready:
-                // Open the notes card; its Restart button applies the update.
                 self.presentUpdateReadyCard(infoJSON: self.pendingUpdateInfoJSON)
             case .available:
                 _ = onAppEvent(AppEvent.updateInstallClick, "")
@@ -2024,9 +2026,14 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
             info: UpdateReadyInfo(json: infoJSON),
             over: window,
             onRestart: {
-                _ = onAppEvent(AppEvent.updateRestartClick, "")
+                self.applyPendingHostUpdate()
             },
             onLater: {})
+    }
+
+    /// Exclusive-tray store prompt: open the listing without a window card.
+    func applyPendingHostUpdate() {
+        _ = onAppEvent(AppEvent.updateRestartClick, "")
     }
 
     /// Remember the version + release notes for the staged update so clicking

@@ -46,6 +46,7 @@ serde_json = { workspace = true }
 lingxia-windows-contract = { workspace = true }
 lingxia-webview = { workspace = true }
 windows = { workspace = true, features = [
+    "ApplicationModel",
     "Devices_Geolocation",
     "Foundation",
     "Networking",

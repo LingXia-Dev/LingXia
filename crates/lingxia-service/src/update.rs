@@ -15,6 +15,7 @@ use rong_rt::http as host_http;
 use std::fs;
 use std::io::{Error as IoError, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 use std::time::Duration;
 
@@ -27,6 +28,17 @@ pub use lingxia_update::{
 pub type HostAppInstaller = dyn Fn(&Path) -> Result<(), UpdateError> + Send + Sync + 'static;
 
 static HOST_APP_INSTALLER: OnceLock<RwLock<Option<Arc<HostAppInstaller>>>> = OnceLock::new();
+static CUSTOM_HOST_UPDATE: AtomicBool = AtomicBool::new(false);
+
+/// Control's `lx.app.checkUpdate()` completed. From here the built-in
+/// auto-flow must not prompt or download — JS owns apply().
+pub fn claim_custom_host_update() {
+    CUSTOM_HOST_UPDATE.store(true, Ordering::SeqCst);
+}
+
+pub fn custom_host_update_claimed() -> bool {
+    CUSTOM_HOST_UPDATE.load(Ordering::SeqCst)
+}
 
 fn host_app_installer_slot() -> &'static RwLock<Option<Arc<HostAppInstaller>>> {
     HOST_APP_INSTALLER.get_or_init(|| RwLock::new(None))
@@ -70,13 +82,19 @@ impl HostAppUpdateService {
     }
 
     pub async fn check(&self) -> Result<Option<UpdatePackageInfo>, UpdateError> {
+        // Store channel still queries the feed: version + notes are the signal
+        // that a marketplace update exists. apply() / the auto-flow then open
+        // the store instead of downloading.
         lingxia_update::check_app_update(self).await
     }
 
-    /// Whether this platform self-installs updates. Store-delivered platforms
-    /// (iOS, HarmonyOS) return `false` — the update must go through the store.
+    /// Whether this process may download and self-install. False when the
+    /// platform cannot, yaml says `store`, or the OS reports a store install.
     pub fn self_update_supported(&self) -> bool {
-        self.runtime.self_update_supported()
+        lingxia_app_context::update::self_update_allowed(
+            self.runtime.self_update_supported(),
+            self.runtime.installed_from_store(),
+        )
     }
 
     /// Open the platform store page so the user can update through the store.
@@ -91,7 +109,21 @@ impl HostAppUpdateService {
         }
     }
 
+    /// Prompt the user to open the store. Returns `true` when a UI was shown.
+    pub fn present_store_update(&self, info_json: &str) -> bool {
+        match self.runtime.present_store_update(info_json) {
+            Ok(shown) => shown,
+            Err(error) => {
+                log::debug!("[lingxia] present_store_update unavailable: {error}");
+                false
+            }
+        }
+    }
+
     pub fn apply(&self, update: UpdatePackageInfo) -> AppUpdateApply {
+        if !self.self_update_supported() {
+            return apply_open_store(self.clone(), update);
+        }
         let (apply, sender) = AppUpdateApply::channel();
         let runner = self.clone();
         let _ = rong_rt::RongExecutor::global().spawn(async move {
@@ -157,6 +189,42 @@ impl HostAppUpdateService {
         });
         apply
     }
+}
+
+/// Prompt metadata for a store-channel update. `openStore` tells the ready
+/// card to open the marketplace instead of installing a downloaded package.
+pub fn store_update_info_json(update: &UpdatePackageInfo, package_id: Option<&str>) -> String {
+    serde_json::json!({
+        "version": update.version,
+        "size": update.size,
+        "releaseNotes": update.release_notes,
+        "openStore": true,
+        "storeUrl": lingxia_app_context::update::store_update_url(package_id),
+    })
+    .to_string()
+}
+
+fn apply_open_store(runner: HostAppUpdateService, update: UpdatePackageInfo) -> AppUpdateApply {
+    let (apply, sender) = AppUpdateApply::channel();
+    let _ = rong_rt::RongExecutor::global().spawn(async move {
+        let package_id = runner.runtime.get_app_identifier().ok();
+        let info = store_update_info_json(&update, package_id.as_deref());
+        if runner.open_update_store(&info) {
+            lingxia_update::send_app_update_event(
+                &sender,
+                AppUpdateEvent::StoreOpened {
+                    version: update.version,
+                },
+            );
+        } else {
+            let error = UpdateError::unsupported(
+                "host app store listing is not configured or could not be opened",
+            );
+            log::warn!("Host app store update failed: {error}");
+            lingxia_update::send_app_update_failed(&sender, AppUpdateStage::Install, &error);
+        }
+    });
+    apply
 }
 
 impl lingxia_update::AppUpdateHost for HostAppUpdateService {

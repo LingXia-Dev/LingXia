@@ -513,9 +513,11 @@ mod bridge {
 }
 
 // Re-export the bridge functions for use in other modules
-// macOS-only: `notify_app_update_ready` is consumed only by the macOS updater
-// (`install_update_on_macos`); `reveal_in_file_manager` is macOS-only too.
+// `notify_app_update_ready` is macOS (callout/card) and iOS (store alert).
+// `reveal_in_file_manager` / control-session indicator stay macOS-only.
 pub use bridge::get_capsule_rect;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+pub use bridge::notify_app_update_ready;
 pub use bridge::{
     ActionSheetOptions, ModalOptions, ToastIcon, ToastOptions, ToastPosition, activate_browser_tab,
     apply_appearance, autostart_is_enabled, autostart_is_supported, autostart_set_enabled,
@@ -533,7 +535,7 @@ pub use bridge::{
     update_tabbar_ui_async,
 };
 #[cfg(target_os = "macos")]
-pub use bridge::{notify_app_update_ready, reveal_in_file_manager, set_control_session_indicator};
+pub use bridge::{reveal_in_file_manager, set_control_session_indicator};
 
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 #[allow(unused_imports)]

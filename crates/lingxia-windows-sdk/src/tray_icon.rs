@@ -14,9 +14,9 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_SETVERSION, NIN_SELECT, NINF_KEY,
-    NOTIFYICON_VERSION_4, NOTIFYICONDATAW, NOTIFYICONIDENTIFIER, Shell_NotifyIconGetRect,
-    Shell_NotifyIconW,
+    NIF_ICON, NIF_INFO, NIF_MESSAGE, NIF_TIP, NIIF_INFO, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    NIM_SETVERSION, NIN_BALLOONUSERCLICK, NIN_SELECT, NINF_KEY, NOTIFYICON_VERSION_4,
+    NOTIFYICONDATAW, NOTIFYICONIDENTIFIER, Shell_NotifyIconGetRect, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     self, AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu,
@@ -30,6 +30,7 @@ use windows::core::{PCWSTR, w};
 const TRAY_CALLBACK_MESSAGE: u32 = WM_APP + 0x5b1;
 const TRAY_ICON_ID: u32 = 1;
 const NIN_KEYSELECT: u32 = NIN_SELECT | NINF_KEY;
+const UPDATE_READY_COMMAND: usize = 0x7002;
 
 /// One entry in the JS-registered tray dropdown (`lx.tray.setMenu`). The native
 /// menu carries no default items; the developer supplies them (and their
@@ -48,6 +49,10 @@ static TRAY_MENU: Mutex<Vec<TrayMenuItem>> = Mutex::new(Vec::new());
 /// While set, a tray left-click is delivered to JS (`lx.tray.onClick`) instead
 /// of running the tray's configured surface action.
 static TRAY_CLICK_INTERCEPT: AtomicBool = AtomicBool::new(false);
+
+/// Exclusive-tray host has a downloaded update waiting. The window callout
+/// cannot be shown; the tray menu + balloon are the prompt.
+static UPDATE_READY: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Clone)]
 struct TrayItem {
@@ -191,6 +196,84 @@ pub(crate) fn set_menu(items_json: &str) {
 /// instead of running the tray's configured surface action.
 pub(crate) fn set_click_intercept(intercept: bool) {
     TRAY_CLICK_INTERCEPT.store(intercept, Ordering::Relaxed);
+}
+
+/// Take the post-download prompt for an exclusive-tray host. Returns `false`
+/// when this process is not exclusive, so the window callout can still run.
+///
+/// Exclusive hosts own the prompt even before `NIM_ADD` succeeds: returning
+/// `true` here stops the window callout. The balloon is shown now if the
+/// icon is up, or replayed after the tray icon is installed.
+pub(crate) fn present_update_ready() -> bool {
+    if !crate::window_host::is_exclusive_tray_host() {
+        return false;
+    }
+    UPDATE_READY.store(true, Ordering::Relaxed);
+    if is_installed() {
+        show_update_balloon();
+    }
+    true
+}
+
+fn show_update_balloon() {
+    let Some((hwnd, icon, tooltip)) = current_icon() else {
+        return;
+    };
+    let zh = tray_update_zh();
+    let store = lingxia_platform::windows::windows_update_opens_store();
+    let title = if store {
+        if zh {
+            "有可用更新"
+        } else {
+            "Update available"
+        }
+    } else if zh {
+        "更新已就绪"
+    } else {
+        "Update ready"
+    };
+    let body = if store {
+        if zh {
+            "从托盘菜单打开商店以更新。"
+        } else {
+            "Open the store from the tray menu to update."
+        }
+    } else if zh {
+        "从托盘菜单重启以安装。"
+    } else {
+        "Restart from the tray menu to install."
+    };
+    let tip = if store {
+        if zh {
+            format!("{tooltip} — 有可用更新")
+        } else {
+            format!("{tooltip} — update available")
+        }
+    } else if zh {
+        format!("{tooltip} — 更新已就绪")
+    } else {
+        format!("{tooltip} — update ready")
+    };
+    let mut data = notify_icon_data(hwnd, icon, &tip);
+    data.uFlags |= NIF_INFO;
+    data.dwInfoFlags = NIIF_INFO;
+    write_tray_tip_sized(&mut data.szInfoTitle, title);
+    write_tray_tip_sized(&mut data.szInfo, body);
+    let _ = unsafe { Shell_NotifyIconW(NIM_MODIFY, &data) };
+}
+
+fn current_icon() -> Option<(isize, isize, String)> {
+    let state = TRAY_STATE.get()?.lock().ok()?;
+    let state = state.as_ref()?;
+    Some((state.hwnd, state.icon, state.item.tooltip.clone()))
+}
+
+fn write_tray_tip_sized<const N: usize>(target: &mut [u16; N], text: &str) {
+    target.fill(0);
+    let max_len = target.len().saturating_sub(1);
+    for (slot, ch) in target.iter_mut().take(max_len).zip(text.encode_utf16()) {
+        *slot = ch;
+    }
 }
 
 fn tray_item_from_ui(asset_dir: &Path) -> Result<Option<TrayItem>, String> {
@@ -443,6 +526,10 @@ unsafe extern "system" fn tray_window_proc(
                 activate_tray_item();
                 return LRESULT(0);
             }
+            NIN_BALLOONUSERCLICK => {
+                open_pending_update_card();
+                return LRESULT(0);
+            }
             WM_CONTEXTMENU | WM_RBUTTONUP => {
                 show_tray_menu(hwnd);
                 return LRESULT(0);
@@ -538,6 +625,30 @@ fn toggle_runtime_tray_window(item: &TrayItem) -> bool {
 
 const DEFAULT_QUIT_COMMAND: usize = 0x7001;
 
+fn tray_update_zh() -> bool {
+    lingxia_platform::windows::current_locale()
+        .to_ascii_lowercase()
+        .starts_with("zh")
+}
+
+fn update_ready_menu_label() -> &'static str {
+    if lingxia_platform::windows::windows_update_opens_store() {
+        if tray_update_zh() {
+            "打开商店更新"
+        } else {
+            "Open store to update"
+        }
+    } else if tray_update_zh() {
+        "立即重启并更新"
+    } else {
+        "Restart to update"
+    }
+}
+
+fn open_pending_update_card() {
+    lingxia_platform::windows::open_windows_update_ready_prompt();
+}
+
 fn show_tray_menu(hwnd: HWND) {
     // A context menu replaces the flyout; leave only one surface up.
     crate::window_host::hide_exclusive_tray_popover();
@@ -559,6 +670,18 @@ fn show_tray_menu(hwnd: HWND) {
         let Ok(menu) = CreatePopupMenu() else {
             return;
         };
+        if UPDATE_READY.load(Ordering::Relaxed) {
+            let label = to_wide(update_ready_menu_label());
+            let _ = AppendMenuW(
+                menu,
+                MF_STRING,
+                UPDATE_READY_COMMAND,
+                PCWSTR(label.as_ptr()),
+            );
+            if !items.is_empty() || default_quit {
+                let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
+            }
+        }
         for (index, entry) in items.iter().enumerate() {
             if entry.separator {
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
@@ -611,6 +734,10 @@ fn show_tray_menu(hwnd: HWND) {
             {
                 let _ = lingxia::app::exit();
             }
+            return;
+        }
+        if command == UPDATE_READY_COMMAND {
+            open_pending_update_card();
             return;
         }
         if command >= 1 && command != DEFAULT_QUIT_COMMAND {

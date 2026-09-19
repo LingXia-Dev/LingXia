@@ -5,6 +5,8 @@ use crate::config::HOST_CONFIG_FILE;
 #[cfg(test)]
 use crate::config::LingXiaConfig;
 use anyhow::Result;
+use lingxia_app_context::UpdateChannel;
+use lingxia_app_context::update::default_update_channel;
 use std::{collections::HashMap, fs};
 
 const HOST_CONFIG_TEMPLATE: &str = include_str!("../../../templates/host-config/lingxia.yaml");
@@ -85,6 +87,10 @@ fn render_host_config(
         render_resources_section(lxapp),
     );
     vars.insert("PLATFORMS".to_string(), render_platforms(&config.platforms));
+    vars.insert(
+        "UPDATE_PLATFORM_CHANNELS".to_string(),
+        render_update_platform_channels(&config.platforms),
+    );
     vars.insert("APP_LINK_HOSTS".to_string(), render_app_link_hosts(config));
     vars.insert("SHELL_SECTION".to_string(), String::new());
     vars.insert(
@@ -168,6 +174,22 @@ fn render_platforms(platforms: &[Platform]) -> String {
     platforms
         .iter()
         .map(|platform| format!("  - {}", yaml_string(platform.as_str())))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Commented `update.platforms` entries for the selected platforms. Values come
+/// from the runtime compile defaults so the scaffold cannot drift from them.
+fn render_update_platform_channels(platforms: &[Platform]) -> String {
+    platforms
+        .iter()
+        .map(|platform| {
+            let channel = match default_update_channel(platform.as_str()) {
+                UpdateChannel::Store => "store",
+                UpdateChannel::Direct => "direct",
+            };
+            format!("#     {}: {channel}", platform.as_str())
+        })
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -303,6 +325,81 @@ mod tests {
         // Bundle appId is the namespaced id; its path stays the on-disk dir name.
         assert_eq!(resources.bundles[0].app_id, "lingxia.lxapp.demo");
         assert_eq!(resources.bundles[0].path.as_deref(), Some("lxapp"));
+    }
+
+    /// Uncomment the template's `update:` block and plug in a key, so the
+    /// scaffolded comment is checked against the real schema.
+    fn activate_update_block(yaml: &str) -> String {
+        let mut inside = false;
+        yaml.lines()
+            .map(|line| {
+                inside = inside && line.starts_with('#') || line.starts_with("# update:");
+                if !inside {
+                    return line.to_string();
+                }
+                line.strip_prefix("# ")
+                    .or_else(|| line.strip_prefix('#'))
+                    .unwrap_or(line)
+                    .replace("[ ... ]", "['6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw']")
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn template_update_block_parses_once_uncommented() {
+        let config = ProjectConfig {
+            name: "demo".to_string(),
+            product_name: "Demo".to_string(),
+            project_type: super::super::types::ProjectType::NativeApp,
+            platforms: vec![
+                Platform::Android,
+                Platform::Ios,
+                Platform::Macos,
+                Platform::Harmony,
+                Platform::Windows,
+            ],
+            package_id: "com.example.demo".to_string(),
+            app_link_hosts: Vec::new(),
+            target_dir: PathBuf::from("/tmp/demo"),
+        };
+        let lxapp = LxAppInfo {
+            app_id: "lingxia.lxapp.demo".to_string(),
+            dir_name: "lxapp".to_string(),
+        };
+
+        let yaml = render_host_config(
+            &config,
+            Some(&lxapp),
+            MainSurface::LxApp,
+            AppServiceMode::Enabled,
+        );
+        // Scaffolds stay valid without a key: the block ships commented out.
+        let scaffolded: LingXiaConfig = serde_yaml_ng::from_str(&yaml).unwrap();
+        assert!(scaffolded.update.is_none());
+
+        let activated: LingXiaConfig = serde_yaml_ng::from_str(&activate_update_block(&yaml))
+            .expect("uncommented update block should parse");
+        let update = activated.update.expect("update table should be present");
+        update
+            .validate()
+            .expect("template block must satisfy validate");
+        assert_eq!(update.platforms.len(), 5);
+        for (platform, channel) in [
+            ("ios", UpdateChannel::Store),
+            ("harmony", UpdateChannel::Store),
+            ("android", UpdateChannel::Direct),
+            ("macos", UpdateChannel::Direct),
+            ("windows", UpdateChannel::Direct),
+        ] {
+            assert_eq!(update.platforms.get(platform), Some(&channel), "{platform}");
+        }
+    }
+
+    #[test]
+    fn update_platform_channels_follow_the_selection() {
+        let rendered = render_update_platform_channels(&[Platform::Macos, Platform::Ios]);
+        assert_eq!(rendered, "#     macos: direct\n#     ios: store");
     }
 
     #[test]

@@ -4,8 +4,9 @@ use super::{
     validate_app_ui_svg_icon,
 };
 use crate::config::{
-    AppEnv, AppLinkHosts, AppLinksConfig, HostAppConfig, LingXiaConfig, LingxiaServer, PerEnvHosts,
-    ResolvedEnv, SettingsDestination, ThemeConfig, UpdateSigningConfig,
+    AppEnv, AppLinkHosts, AppLinksConfig, AppStoreConfig, HostAppConfig, IosConfig, LingXiaConfig,
+    LingxiaServer, MacosConfig, PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig,
+    UpdateSigningConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -117,6 +118,7 @@ fn update_table_requires_one_or_two_keys() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     config.update = Some(UpdateSigningConfig {
         trusted_public_keys: vec![],
+        ..Default::default()
     });
     let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
     assert!(err.to_string().contains("omit the update: table"), "{err}");
@@ -127,6 +129,7 @@ fn generated_app_json_embeds_update_trusted_public_keys() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     config.update = Some(UpdateSigningConfig {
         trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
+        ..Default::default()
     });
     let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
@@ -139,6 +142,117 @@ fn generated_app_json_embeds_update_trusted_public_keys() {
     assert_eq!(
         parsed.update_trusted_public_keys,
         vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".to_string()]
+    );
+    assert!(parsed.update_channel.is_none());
+    assert!(parsed.update_channels.is_empty());
+}
+
+#[test]
+fn generated_app_json_embeds_update_channels() {
+    use lingxia_app_context::UpdateChannel;
+    use std::collections::BTreeMap;
+
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    let mut platforms = BTreeMap::new();
+    platforms.insert("android".into(), UpdateChannel::Direct);
+    platforms.insert("ios".into(), UpdateChannel::Store);
+    config.update = Some(UpdateSigningConfig {
+        trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
+        channel: Some(UpdateChannel::Direct),
+        platforms,
+    });
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert_eq!(value["updateChannel"], "direct");
+    assert_eq!(value["updateChannels"]["android"], "direct");
+    assert_eq!(value["updateChannels"]["ios"], "store");
+    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+        .expect("runtime app.json parse");
+    assert_eq!(parsed.update_channel, Some(UpdateChannel::Direct));
+    assert_eq!(
+        parsed.update_channels.get("ios").copied(),
+        Some(UpdateChannel::Store)
+    );
+}
+
+#[test]
+fn generated_app_json_embeds_store_listing_ids() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    config.ios = Some(IosConfig {
+        bundle_id: None,
+        team_id: None,
+        deployment_target: None,
+        swift_version: None,
+        target_name: None,
+        store: Some(AppStoreConfig {
+            app_id: Some("1234567890".into()),
+        }),
+    });
+    config.macos = Some(MacosConfig {
+        bundle_id: None,
+        team_id: None,
+        deployment_target: None,
+        executable_name: None,
+        target_name: None,
+        store: Some(AppStoreConfig {
+            app_id: Some("987654321".into()),
+        }),
+    });
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert_eq!(value["storeListingIds"]["ios"], "1234567890");
+    assert_eq!(value["storeListingIds"]["macos"], "987654321");
+    let parsed = lingxia_app_context::AppConfig::parse_and_validate(&app_json)
+        .expect("runtime app.json parse");
+    assert_eq!(
+        parsed.store_listing_ids.get("ios").map(String::as_str),
+        Some("1234567890")
+    );
+}
+
+#[test]
+fn store_only_update_table_still_requires_keys() {
+    use lingxia_app_context::UpdateChannel;
+
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    if let Some(app) = config.app.as_mut() {
+        app.platforms = vec!["ios".into()];
+    }
+    config.update = Some(UpdateSigningConfig {
+        trusted_public_keys: vec![],
+        channel: Some(UpdateChannel::Store),
+        ..Default::default()
+    });
+    let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
+    assert!(err.to_string().contains("omit the update: table"), "{err}");
+}
+
+#[test]
+fn store_channel_without_listing_id_is_reported() {
+    use lingxia_app_context::UpdateChannel;
+    use std::collections::{BTreeMap, HashMap};
+
+    let mut platforms = BTreeMap::new();
+    platforms.insert("macos".into(), UpdateChannel::Store);
+    platforms.insert("android".into(), UpdateChannel::Store);
+    let update = UpdateSigningConfig {
+        trusted_public_keys: vec!["6kpsY-KcUgq-9VB7Ey7F-ZVHdq6-vnuSQh7qaRRG0iw".into()],
+        channel: None,
+        platforms,
+    };
+    let app_platforms = vec![
+        "ios".to_string(),
+        "macos".to_string(),
+        "windows".to_string(),
+        "android".to_string(),
+    ];
+    let mut listing_ids = HashMap::new();
+    listing_ids.insert("ios".to_string(), "1234567890".to_string());
+
+    // ios has an id, windows defaults to direct, android needs no id.
+    assert_eq!(
+        super::json::store_platforms_missing_listing_id(&app_platforms, &update, &listing_ids),
+        vec!["macos".to_string()]
     );
 }
 

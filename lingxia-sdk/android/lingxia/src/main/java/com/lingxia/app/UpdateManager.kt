@@ -4,6 +4,7 @@ import com.lingxia.lxapp.LxApp
 import com.lingxia.lxapp.R
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.app.Dialog
 import android.app.PendingIntent
 import android.app.UiModeManager
@@ -67,6 +68,8 @@ internal object UpdateManager {
     // post-permission-grant re-install that proceeds without re-prompting.
     private val pendingReadyInstallPath = AtomicReference<String?>(null)
     @Volatile private var pendingReadyInstallInfo: ReadyInfo = ReadyInfo.EMPTY
+    // Store prompt requested before an activity existed (cold-start check).
+    private val pendingStoreUpdateInfo = AtomicReference<String?>(null)
     @Volatile private var installReceiver: BroadcastReceiver? = null
 
     /** Version + release notes shown in the "ready to install" prompt. */
@@ -108,6 +111,7 @@ internal object UpdateManager {
         activityRef = if (activity == null) null else WeakReference(activity)
         if (activity != null) {
             tryShowPendingReadyInstall()
+            tryShowPendingStoreUpdate()
             tryInstallPendingUpdate()
         }
     }
@@ -463,6 +467,195 @@ internal object UpdateManager {
         dialog.setContentView(container)
         dialog.setOnShowListener { confirmButton.requestFocus() }
         return dialog
+    }
+
+    private val STORE_INSTALLERS = setOf(
+        "com.android.vending",
+        "com.google.android.feedback",
+        "com.huawei.appmarket",
+        "com.xiaomi.market",
+        "com.xiaomi.mipicks",
+        "com.sec.android.app.samsungapps",
+        "com.oppo.market",
+        "com.heytap.market",
+        "com.vivo.appstore",
+        "com.bbk.appstore",
+        "com.tencent.android.qqdownloader",
+        "com.amazon.venezia",
+        "com.hihonor.appmarket",
+    )
+
+    private val PLAY_INSTALLERS = setOf("com.android.vending", "com.google.android.feedback")
+
+    /** One listing attempt: `targetPackage` pins the intent to that store. */
+    private data class StoreListingIntent(val url: String, val targetPackage: String?)
+
+    /**
+     * True when this APK was installed by a store. Sideload / `adb install`
+     * (null installer, or the system package installer) is not a store.
+     */
+    @JvmStatic
+    fun installedFromStore(): Boolean {
+        val context = Lingxia.applicationContext() ?: return false
+        val installer = installerPackage(context) ?: return false
+        return STORE_INSTALLERS.contains(installer)
+    }
+
+    private fun installerPackage(context: Context): String? {
+        val pm = context.packageManager
+        return try {
+            if (Build.VERSION.SDK_INT >= 30) {
+                val info = pm.getInstallSourceInfo(context.packageName)
+                val installing = info.installingPackageName
+                if (!installing.isNullOrEmpty()) {
+                    return installing
+                }
+                // Only trust initiating when it is a known store — otherwise a
+                // sideload session can look like a store install.
+                val initiating = info.initiatingPackageName
+                initiating?.takeIf { STORE_INSTALLERS.contains(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                pm.getInstallerPackageName(context.packageName)
+            }
+        } catch (_: PackageManager.NameNotFoundException) {
+            null
+        }
+    }
+
+    @JvmStatic
+    fun openUpdateStore(infoJson: String?): Boolean {
+        val context = Lingxia.applicationContext() ?: return false
+        val pkg = context.packageName
+        val installer = installerPackage(context)
+        for (candidate in storeListingCandidates(pkg, installer, storeUrlFromInfo(infoJson))) {
+            if (tryOpenView(context, candidate)) return true
+        }
+        Log.w(TAG, "Failed to open store listing installer=$installer pkg=$pkg")
+        return false
+    }
+
+    /**
+     * Open the listing in the store that installed this APK. Every store
+     * handles `market://`, so pinning that to the installing package lands on
+     * its own listing with no chooser and no Play bounce; the OEM's private
+     * scheme and the HTTPS pages are only fallbacks for stores that refuse it.
+     */
+    private fun storeListingCandidates(
+        pkg: String,
+        installer: String?,
+        baked: String?,
+    ): List<StoreListingIntent> {
+        val out = ArrayList<StoreListingIntent>()
+        fun add(url: String, targetPackage: String?) {
+            if (url.isBlank()) return
+            val candidate = StoreListingIntent(url, targetPackage)
+            if (candidate !in out) out.add(candidate)
+        }
+        if (installer == null || installer !in STORE_INSTALLERS) {
+            add("market://details?id=$pkg", null)
+            add("https://play.google.com/store/apps/details?id=$pkg", null)
+            baked?.let { add(it, null) }
+            return out
+        }
+        add("market://details?id=$pkg", installer)
+        for (scheme in oemStoreSchemes(pkg, installer)) {
+            add(scheme, installer)
+            add(scheme, null)
+        }
+        for (url in storeHttpsListings(pkg, installer)) {
+            add(url, null)
+        }
+        baked?.let { add(it, null) }
+        return out
+    }
+
+    private fun oemStoreSchemes(pkg: String, installer: String): List<String> = when (installer) {
+        "com.huawei.appmarket", "com.hihonor.appmarket" -> listOf("appmarket://details?id=$pkg")
+        "com.xiaomi.market", "com.xiaomi.mipicks" -> listOf("mimarket://details?id=$pkg")
+        "com.oppo.market", "com.heytap.market" -> listOf("oppomarket://details?packagename=$pkg")
+        "com.vivo.appstore", "com.bbk.appstore" -> listOf("vivomarket://details?id=$pkg")
+        "com.sec.android.app.samsungapps" -> listOf("samsungapps://ProductDetail/$pkg")
+        "com.amazon.venezia" -> listOf("amzn://apps/android?p=$pkg")
+        "com.tencent.android.qqdownloader" -> listOf("tmast://appdetails?pname=$pkg")
+        else -> emptyList()
+    }
+
+    private fun storeHttpsListings(pkg: String, installer: String): List<String> = when (installer) {
+        in PLAY_INSTALLERS -> listOf("https://play.google.com/store/apps/details?id=$pkg")
+        "com.amazon.venezia" -> listOf("https://www.amazon.com/gp/mas/dl/android?p=$pkg")
+        else -> emptyList()
+    }
+
+    private fun tryOpenView(context: Context, candidate: StoreListingIntent): Boolean {
+        return try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(candidate.url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                candidate.targetPackage?.let { setPackage(it) }
+            }
+            context.startActivity(intent)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /** @return true once the prompt is shown or deferred to the next activity. */
+    @JvmStatic
+    fun presentStoreUpdate(infoJson: String?): Boolean {
+        val activity = resolveActivity()
+        if (activity == null || activity.isFinishing || activity.isDestroyed) {
+            Log.w(TAG, "No current activity; deferring store update prompt")
+            pendingStoreUpdateInfo.set(infoJson ?: "")
+            return true
+        }
+        showStoreUpdatePrompt(activity, infoJson)
+        return true
+    }
+
+    @JvmStatic
+    fun tryShowPendingStoreUpdate() {
+        val infoJson = pendingStoreUpdateInfo.getAndSet(null) ?: return
+        val activity = resolveActivity()
+        if (activity == null) {
+            pendingStoreUpdateInfo.set(infoJson)
+            return
+        }
+        showStoreUpdatePrompt(activity, infoJson)
+    }
+
+    private fun showStoreUpdatePrompt(activity: Activity, infoJson: String?) {
+        val info = ReadyInfo.parse(infoJson)
+        activity.runOnUiThread {
+            if (activity.isFinishing || activity.isDestroyed) {
+                pendingStoreUpdateInfo.set(infoJson ?: "")
+                return@runOnUiThread
+            }
+            val message = if (info.releaseNotes.isNotEmpty()) {
+                info.releaseNotes.joinToString("\n")
+            } else {
+                activity.getString(R.string.lx_update_store_message)
+            }
+            AlertDialog.Builder(activity)
+                .setTitle(activity.getString(R.string.lx_update_store_title))
+                .setMessage(message)
+                .setPositiveButton(activity.getString(R.string.lx_update_open_store)) { _, _ ->
+                    openUpdateStore(infoJson)
+                }
+                .setNegativeButton(activity.getString(R.string.lx_common_close), null)
+                .setCancelable(true)
+                .show()
+        }
+    }
+
+    private fun storeUrlFromInfo(infoJson: String?): String? {
+        if (infoJson.isNullOrEmpty()) return null
+        return try {
+            val url = JSONObject(infoJson).optString("storeUrl", "").trim()
+            url.takeIf { it.isNotEmpty() }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     /**

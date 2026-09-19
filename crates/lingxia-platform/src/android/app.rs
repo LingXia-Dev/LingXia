@@ -41,11 +41,64 @@ impl Clone for Platform {
 unsafe impl Send for Platform {}
 unsafe impl Sync for Platform {}
 
+fn android_installed_from_store() -> bool {
+    let Ok(update_manager_class) = super::get_cached_class(super::CachedClass::UpdateManager)
+    else {
+        return false;
+    };
+    with_env(|env| -> Result<bool, PlatformError> {
+        let result = env.call_static_method(
+            update_manager_class,
+            jni_str!("installedFromStore"),
+            jni_sig!("()Z"),
+            &[],
+        )?;
+        Ok(result.z()?)
+    })
+    .unwrap_or(false)
+}
+
+fn android_update_manager_bool(open_store: bool, info_json: &str) -> Result<bool, PlatformError> {
+    let update_manager_class: &JClass = super::get_cached_class(super::CachedClass::UpdateManager)
+        .map_err(|e| PlatformError::Platform(e.to_string()))?;
+    with_env(|env| -> Result<bool, PlatformError> {
+        let info_jstring = env.new_string(info_json)?;
+        let result = if open_store {
+            env.call_static_method(
+                update_manager_class,
+                jni_str!("openUpdateStore"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&info_jstring)],
+            )?
+        } else {
+            env.call_static_method(
+                update_manager_class,
+                jni_str!("presentStoreUpdate"),
+                jni_sig!("(Ljava/lang/String;)Z"),
+                &[JValue::Object(&info_jstring)],
+            )?
+        };
+        Ok(result.z()?)
+    })
+    .map_err(|e| PlatformError::Platform(format!("Failed to call UpdateManager: {e}")))
+}
+
 impl crate::traits::update::UpdateService for Platform {
     fn self_update_supported(&self) -> bool {
-        // Android ships as a sideloaded APK (GitHub Releases) and installs via
-        // PackageInstaller.
+        // Android can install via PackageInstaller when the channel is direct.
         true
+    }
+
+    fn installed_from_store(&self) -> bool {
+        android_installed_from_store()
+    }
+
+    fn open_update_store(&self, info_json: &str) -> Result<bool, PlatformError> {
+        android_update_manager_bool(true, info_json)
+    }
+
+    fn present_store_update(&self, info_json: &str) -> Result<bool, PlatformError> {
+        android_update_manager_bool(false, info_json)
     }
 
     fn install_update(&self, apk_path: &Path, info_json: &str) -> Result<(), PlatformError> {

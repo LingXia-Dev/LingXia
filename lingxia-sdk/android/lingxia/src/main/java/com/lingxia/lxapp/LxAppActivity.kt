@@ -1358,6 +1358,7 @@ class LxAppActivity : AppCompatActivity() {
         // Show the "ready to install" prompt for an update that finished
         // downloading while no activity was in the foreground.
         UpdateManager.tryShowPendingReadyInstall()
+        UpdateManager.tryShowPendingStoreUpdate()
         // Resume any update install that was deferred while the user was in
         // the "Install unknown apps" system settings screen.
         UpdateManager.tryInstallPendingUpdate()

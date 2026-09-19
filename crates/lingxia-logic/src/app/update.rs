@@ -76,10 +76,12 @@ rong::js_api! {
 
 /// Check whether the host app has an update.
 ///
-/// This host-level capability is restricted to the Control app. Calling it opts
-/// the process into custom update handling. Incompatible updates are hidden as
-/// `hasUpdate: false`; platforms that cannot apply a package may still return
-/// metadata and reject when `update.apply()` is invoked.
+/// This host-level capability is restricted to the Control app. Once a check
+/// succeeds it claims the process for good: the built-in auto-flow will not
+/// prompt or download, so JS owns `apply()`. A failed check claims nothing.
+/// Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
+/// still surface a newer feed version; `apply()` opens the store listing
+/// instead of downloading.
 async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
     let invocation = authorization::require(&ctx, LogicRoute::AppCheckUpdate)?;
     let lxapp = invocation.lxapp();
@@ -88,23 +90,29 @@ async fn check_app_update(ctx: JSContext) -> JSResult<JSObject> {
         .check()
         .await
         .map_err(js_error_from_update_error)?;
+    lingxia_service::update::claim_custom_host_update();
     let Some(update) = update else {
-        return create_check_result(&ctx, None);
+        return create_check_result(&ctx, None, false);
     };
     if let Err(error) = update.ensure_runtime_compatible(lxapp::SDK_RUNTIME_VERSION, "host app") {
         log::warn!("Host app update is hidden from JS because runtime is incompatible: {error}");
-        return create_check_result(&ctx, None);
+        return create_check_result(&ctx, None, false);
     }
 
-    create_check_result(&ctx, Some(update))
+    let store_channel = !host_update_service_from(&lxapp).self_update_supported();
+    create_check_result(&ctx, Some(update), store_channel)
 }
 
-fn create_check_result(ctx: &JSContext, update: Option<UpdatePackageInfo>) -> JSResult<JSObject> {
+fn create_check_result(
+    ctx: &JSContext,
+    update: Option<UpdatePackageInfo>,
+    store_channel: bool,
+) -> JSResult<JSObject> {
     let result = JSObject::new(ctx);
     match update {
         Some(update) => {
             result.set("hasUpdate", true)?;
-            result.set("update", create_update_object(ctx, update)?)?;
+            result.set("update", create_update_object(ctx, update, store_channel)?)?;
         }
         None => {
             result.set("hasUpdate", false)?;
@@ -113,11 +121,16 @@ fn create_check_result(ctx: &JSContext, update: Option<UpdatePackageInfo>) -> JS
     Ok(result)
 }
 
-fn create_update_object(ctx: &JSContext, update: UpdatePackageInfo) -> JSResult<JSObject> {
+fn create_update_object(
+    ctx: &JSContext,
+    update: UpdatePackageInfo,
+    store_channel: bool,
+) -> JSResult<JSObject> {
     let obj = JSObject::new(ctx);
     obj.set("version", update.version.clone())?;
     obj.set("size", update.size)?;
     obj.set("releaseNotes", update.release_notes.clone())?;
+    obj.set("channel", if store_channel { "store" } else { "direct" })?;
 
     let package = Arc::new(StdMutex::new(Some(update)));
     obj.set(
@@ -142,16 +155,6 @@ fn create_apply_task(
     package: UpdatePackageInfo,
 ) -> JSResult<JSObject> {
     let service = host_update_service_from(&lxapp);
-    // Store-delivered platforms (iOS/HarmonyOS) update through the store and
-    // never self-install; only platforms that report `self_update_supported`
-    // can apply a downloaded package in place.
-    if !service.self_update_supported() {
-        return Err(js_error_from_business_code_with_detail(
-            6000,
-            "host app self-update is not supported on this platform",
-        ));
-    }
-
     let apply = service.apply(package);
     let (tx, rx) = watch::channel::<Option<AppUpdateEvent>>(None);
     let (completion_tx, completion_rx) = oneshot::channel::<AppUpdateCompletion>();
@@ -291,6 +294,9 @@ fn completion_from_event(event: &AppUpdateEvent) -> AppUpdateCompletion {
                 state: "installRequested".to_string(),
             })
         }
+        AppUpdateEvent::StoreOpened { .. } => AppUpdateCompletion::Success(JSAppUpdateResult {
+            state: "storeOpened".to_string(),
+        }),
         AppUpdateEvent::Failed { stage, error } => AppUpdateCompletion::Failed {
             stage: *stage,
             error: error.clone(),
@@ -306,7 +312,9 @@ fn host_update_service_from(lxapp: &LxApp) -> HostAppUpdateService {
 fn is_terminal_event(event: &AppUpdateEvent) -> bool {
     matches!(
         event,
-        AppUpdateEvent::InstallRequested { .. } | AppUpdateEvent::Failed { .. }
+        AppUpdateEvent::InstallRequested { .. }
+            | AppUpdateEvent::StoreOpened { .. }
+            | AppUpdateEvent::Failed { .. }
     )
 }
 
@@ -339,6 +347,13 @@ fn js_event_from_update_event(event: AppUpdateEvent) -> JSAppUpdateEvent {
         },
         AppUpdateEvent::InstallRequested { .. } => JSAppUpdateEvent {
             state: "installRequested".to_string(),
+            stage: None,
+            downloaded_bytes: None,
+            progress: None,
+            error: None,
+        },
+        AppUpdateEvent::StoreOpened { .. } => JSAppUpdateEvent {
+            state: "storeOpened".to_string(),
             stage: None,
             downloaded_bytes: None,
             progress: None,
