@@ -3,7 +3,7 @@
 use crate::traits::app_runtime::{
     DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome, DesktopBannerShow,
 };
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
@@ -23,6 +23,9 @@ use super::update_callout::{make_font, rgb, round_corners, to_wide};
 const WM_MOUSELEAVE: u32 = 0x02A3;
 
 static HWND_SLOT: AtomicIsize = AtomicIsize::new(0);
+/// Set by `hide` so a dismiss that wins the race against `CreateWindowExW`
+/// still retires the card. `present` clears it after hiding the previous one.
+static HIDE_PENDING: AtomicBool = AtomicBool::new(false);
 
 const WM_APP_HIDE: u32 = WM_APP + 21;
 const PAD: f32 = 12.0;
@@ -56,6 +59,7 @@ enum Hover {
 
 pub(crate) fn present(request: &DesktopBannerShow) -> bool {
     hide();
+    HIDE_PENDING.store(false, Ordering::SeqCst);
     let request = request.clone();
     std::thread::Builder::new()
         .name("lingxia-desktop-banner".into())
@@ -64,6 +68,7 @@ pub(crate) fn present(request: &DesktopBannerShow) -> bool {
 }
 
 pub(crate) fn hide() {
+    HIDE_PENDING.store(true, Ordering::SeqCst);
     let hwnd = HWND_SLOT.swap(0, Ordering::SeqCst);
     if hwnd != 0 {
         unsafe {
@@ -148,7 +153,11 @@ fn run_banner_thread(request: DesktopBannerShow) {
         });
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(card) as isize);
         HWND_SLOT.store(hwnd.0 as isize, Ordering::SeqCst);
-        let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        if HIDE_PENDING.load(Ordering::SeqCst) {
+            let _ = DestroyWindow(hwnd);
+        } else {
+            let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+        }
 
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
