@@ -340,6 +340,22 @@
             </div>
           </div>
           <div
+            v-if="bannerAvailable"
+            data-testid="api-system-banner"
+            class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+            @click="navigateToSystemPage({ type: 'banner' })"
+          >
+            <div>
+              <div class="text-sm text-gray-700">Desktop Banner</div>
+              <div class="text-xs text-gray-500 mt-0.5">Top-right card with optional buttons (macOS / Windows)</div>
+            </div>
+            <div class="w-4 h-4 text-gray-400">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M9 18l6-6-6-6"/>
+              </svg>
+            </div>
+          </div>
+          <div
             data-testid="api-system-cache"
             class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
             @click="navigateToSystemPage({ type: 'cache' })"
@@ -666,7 +682,7 @@
 
 <script setup lang="ts">
 import { reactive } from 'vue';
-import { useLxPage } from '@lingxia/vue';
+import { useLxPage, usePlatform } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type ExpandedSections = {
@@ -705,6 +721,8 @@ type PageData = {
 };
 
 const { data, actions } = useLxPage<PageData, PageActions>();
+const { isMacOS, isWindows } = usePlatform();
+const bannerAvailable = isMacOS || isWindows;
 const {
   navigateToUIPage,
   navigateToDevicePage,

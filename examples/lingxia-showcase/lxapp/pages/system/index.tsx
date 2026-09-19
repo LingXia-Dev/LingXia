@@ -1,8 +1,10 @@
-import { useLxPage } from '@lingxia/react';
+import { useLxPage, usePlatform } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function SystemPage() {
   const { data, actions } = useLxPage();
+  const { isMacOS, isWindows } = usePlatform();
+  const bannerAvailable = isMacOS || isWindows;
   const {
     getBaseInfo,
     getSystemSetting,
@@ -13,6 +15,11 @@ export default function SystemPage() {
     refreshNotification,
     showNotification,
     cancelNotification,
+    refreshBanner,
+    setBannerBackground,
+    showBannerToast,
+    showBannerPrompt,
+    dismissBanner,
   } = actions;
   const {
     currentType = 'appBaseInfo',
@@ -31,6 +38,11 @@ export default function SystemPage() {
     notificationPermission = '',
     notificationLastId = '',
     notificationError = '',
+    bannerSupported = false,
+    bannerLast = '',
+    bannerError = '',
+    bannerBusy = false,
+    bannerBackground = 'system',
   } = data;
 
   return (
@@ -236,6 +248,94 @@ export default function SystemPage() {
                       className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
                     >
                       Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+        {currentType === 'banner' && bannerAvailable && (
+          <>
+            <div className="mb-6 text-center">
+              <h1 className="text-2xl font-light text-gray-800 mb-2">app.banner</h1>
+              <div className="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+            </div>
+
+            <div
+              data-testid="system-banner-panel"
+              className="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+            >
+              <div className="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+                <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-rose-50 to-orange-50">
+                  <span className="text-2xl">🪧</span>
+                </div>
+                <div className="flex-1">
+                  <div className="text-sm text-gray-800 font-semibold">Desktop Banner</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {bannerSupported
+                      ? 'Product-drawn top-right card — not an OS notification'
+                      : 'Not available on this host'}
+                  </div>
+                </div>
+                {bannerSupported && (
+                  <button
+                    data-testid="system-banner-toast"
+                    onClick={showBannerToast}
+                    disabled={bannerBusy}
+                    className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                  >
+                    Toast
+                  </button>
+                )}
+              </div>
+
+              <div className="p-5">
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">State</h4>
+                  </div>
+                  <InfoRow label="Supported" value={formatBool(bannerSupported)} />
+                  <InfoRow label="Background" value={bannerBackground} />
+                  <InfoRow label="Last result" value={bannerLast || '--'} />
+                  {bannerError && <InfoRow label="Error" value={bannerError} />}
+                  <div className="pt-3 flex flex-wrap gap-2">
+                    {['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'].map((value) => (
+                      <button
+                        key={value}
+                        onClick={() => setBannerBackground(value)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                          bannerBackground === value
+                            ? 'bg-rose-500 text-white'
+                            : 'bg-surface-100 hover:bg-surface-200 text-gray-700'
+                        }`}
+                      >
+                        {value}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pt-3 flex gap-2">
+                    <button
+                      data-testid="system-banner-prompt"
+                      onClick={showBannerPrompt}
+                      disabled={!bannerSupported || bannerBusy}
+                      className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                    >
+                      Prompt
+                    </button>
+                    <button
+                      data-testid="system-banner-dismiss"
+                      onClick={dismissBanner}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Dismiss
+                    </button>
+                    <button
+                      onClick={refreshBanner}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Re-read
                     </button>
                   </div>
                 </div>

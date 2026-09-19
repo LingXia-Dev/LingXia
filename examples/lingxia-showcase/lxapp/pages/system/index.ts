@@ -16,6 +16,11 @@ Page({
     notificationPermission: '',
     notificationLastId: '',
     notificationError: '',
+    bannerSupported: false,
+    bannerLast: '',
+    bannerError: '',
+    bannerBusy: false,
+    bannerBackground: 'system',
   },
 
   onLoad: async function (options = {}) {
@@ -33,6 +38,9 @@ Page({
     if (type === 'notification') {
       await this.refreshNotification();
     }
+    if (type === 'banner') {
+      this.refreshBanner();
+    }
   },
 
   onShow: function () {
@@ -47,6 +55,9 @@ Page({
     }
     if (this.data.currentType === 'notification') {
       this.refreshNotification();
+    }
+    if (this.data.currentType === 'banner') {
+      this.refreshBanner();
     }
   },
 
@@ -210,6 +221,96 @@ Page({
     } catch (error) {
       console.error('Failed to cancel notification:', error);
       this.setData({ notificationError: String(error) });
+    }
+  },
+
+  refreshBanner: function () {
+    const banner = lx.app.banner;
+    this.setData({
+      bannerSupported: !!(banner && typeof banner.show === 'function'),
+      bannerError: banner ? '' : 'Desktop banner is Control-app / desktop only',
+    });
+  },
+
+  setBannerBackground: function (background: string) {
+    this.setData({ bannerBackground: background });
+  },
+
+  showBannerToast: async function () {
+    const banner = lx.app.banner;
+    if (!banner) {
+      this.setData({ bannerError: 'Desktop banner is absent on this host' });
+      return;
+    }
+    if (this.data.bannerBusy) {
+      return;
+    }
+    this.setData({ bannerBusy: true, bannerError: '', bannerLast: '' });
+    try {
+      const result = await banner.show({
+        id: 'showcase-banner-toast',
+        title: 'LingXia showcase',
+        body: 'Desktop card — auto-dismisses',
+        timeoutMs: 5000,
+        background: this.data.bannerBackground,
+      });
+      this.setData({
+        bannerBusy: false,
+        bannerLast: result.canceled
+          ? `${result.reason}`
+          : `action:${result.action}`,
+      });
+    } catch (error) {
+      console.error('Failed to show banner toast:', error);
+      this.setData({ bannerBusy: false, bannerError: String(error) });
+    }
+  },
+
+  showBannerPrompt: async function () {
+    const banner = lx.app.banner;
+    if (!banner) {
+      this.setData({ bannerError: 'Desktop banner is absent on this host' });
+      return;
+    }
+    if (this.data.bannerBusy) {
+      return;
+    }
+    this.setData({ bannerBusy: true, bannerError: '', bannerLast: '' });
+    try {
+      const result = await banner.show({
+        id: 'showcase-banner-prompt',
+        title: 'Allow this action?',
+        body: 'Agent wants to call sendEmail',
+        actions: [
+          { id: 'deny', label: 'Deny' },
+          { id: 'allow', label: 'Allow', style: 'primary' },
+        ],
+        timeoutMs: 60_000,
+        background: this.data.bannerBackground,
+      });
+      this.setData({
+        bannerBusy: false,
+        bannerLast: result.canceled
+          ? `${result.reason}`
+          : `action:${result.action}`,
+      });
+    } catch (error) {
+      console.error('Failed to show banner prompt:', error);
+      this.setData({ bannerBusy: false, bannerError: String(error) });
+    }
+  },
+
+  dismissBanner: async function () {
+    const banner = lx.app.banner;
+    if (!banner) {
+      return;
+    }
+    try {
+      await banner.dismiss('showcase-banner-toast');
+      await banner.dismiss('showcase-banner-prompt');
+    } catch (error) {
+      console.error('Failed to dismiss banner:', error);
+      this.setData({ bannerError: String(error) });
     }
   },
 
