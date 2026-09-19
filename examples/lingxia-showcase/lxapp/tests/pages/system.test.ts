@@ -87,6 +87,9 @@ spec('opens the product cache panel from the rendered API menu', {
     css: '[data-testid="api-system-cache"]',
     state: 'visible',
   });
+  // The banner demo row sits above this item; without a scroll the Windows
+  // hit lands on chrome / the tab bar and navigation never starts.
+  await app.page.scrollTo({ page: 'api', css: '[data-testid="api-system-cache"]' });
   await app.page.click({ page: 'api', css: '[data-testid="api-system-cache"]' });
   await app.page.waitFor({
     page: 'system',

@@ -309,6 +309,15 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
   reason: 'Desktop banner is Control-app / macOS / Windows only.',
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BANNER-001');
+  t.defer(async () => {
+    await app.eval({
+      script: `try {
+        await lx.app.banner.dismiss('automation-banner-toast');
+        await lx.app.banner.dismiss('automation-banner-prompt');
+      } catch {}
+      return true;`,
+    });
+  });
 
   const offered = await app.eval({
     script: `return !!(lx.app.banner && typeof lx.app.banner.show === 'function')`,

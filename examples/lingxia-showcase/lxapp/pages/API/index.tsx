@@ -412,6 +412,21 @@ export default function APIPage() {
                   </svg>
                 </div>
               </div>
+              <div
+                data-testid="api-system-cache"
+                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
+                onClick={() => navigateToSystemPage({ type: 'cache' })}
+              >
+                <div>
+                  <div className="text-sm text-gray-700">Product Cache</div>
+                  <div className="text-xs text-gray-500 mt-0.5">Report and clear every lxapp's cache (home lxapp only)</div>
+                </div>
+                <div className="w-4 h-4 text-gray-400">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </div>
+              </div>
               {bannerAvailable && (
               <div
                 data-testid="api-system-banner"
@@ -429,21 +444,6 @@ export default function APIPage() {
                 </div>
               </div>
               )}
-              <div
-                data-testid="api-system-cache"
-                className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
-                onClick={() => navigateToSystemPage({ type: 'cache' })}
-              >
-                <div>
-                  <div className="text-sm text-gray-700">Product Cache</div>
-                  <div className="text-xs text-gray-500 mt-0.5">Report and clear every lxapp's cache (home lxapp only)</div>
-                </div>
-                <div className="w-4 h-4 text-gray-400">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M9 18l6-6-6-6"/>
-                  </svg>
-                </div>
-              </div>
               <div
                 className="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
                 onClick={exitApp}
