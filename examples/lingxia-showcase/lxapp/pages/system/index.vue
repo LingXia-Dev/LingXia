@@ -298,7 +298,8 @@
                 <h4 class="text-sm font-semibold text-gray-700">Show</h4>
               </div>
               <p class="text-xs text-gray-500 mb-3">
-                Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card, not here.
+                Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card.
+                Dismiss is off until a card is up.
               </p>
               <div class="flex flex-wrap gap-2 mb-3">
                 <button
@@ -311,7 +312,7 @@
                   {{ value }}
                 </button>
               </div>
-              <div v-if="bannerSupported" class="flex gap-2">
+              <div v-if="bannerSupported" class="flex flex-wrap gap-2">
                 <button
                   data-testid="system-banner-toast"
                   @click="showBannerToast"
@@ -328,25 +329,15 @@
                 >
                   Prompt
                 </button>
+                <button
+                  data-testid="system-banner-dismiss"
+                  @click="dismissBanner"
+                  :disabled="!bannerBusy"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
+                >
+                  Dismiss
+                </button>
               </div>
-            </div>
-
-            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
-                <h4 class="text-sm font-semibold text-gray-700">While showing</h4>
-              </div>
-              <p class="text-xs text-gray-500 mb-3">
-                Use after Toast or Prompt. Dismiss is off until a card is up.
-              </p>
-              <button
-                data-testid="system-banner-dismiss"
-                @click="dismissBanner"
-                :disabled="!bannerBusy"
-                class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
-              >
-                Dismiss
-              </button>
             </div>
           </div>
         </div>

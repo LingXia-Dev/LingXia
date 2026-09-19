@@ -310,7 +310,8 @@ export default function SystemPage() {
                     <h4 className="text-sm font-semibold text-gray-700">Show</h4>
                   </div>
                   <p className="text-xs text-gray-500 mb-3">
-                    Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card, not here.
+                    Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card.
+                    Dismiss is off until a card is up.
                   </p>
                   <div className="flex flex-wrap gap-2 mb-3">
                     {['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'].map((value) => (
@@ -328,7 +329,7 @@ export default function SystemPage() {
                     ))}
                   </div>
                   {bannerSupported && (
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
                       <button
                         data-testid="system-banner-toast"
                         onClick={showBannerToast}
@@ -345,26 +346,16 @@ export default function SystemPage() {
                       >
                         Prompt
                       </button>
+                      <button
+                        data-testid="system-banner-dismiss"
+                        onClick={() => dismissBanner()}
+                        disabled={!bannerBusy}
+                        className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
+                      >
+                        Dismiss
+                      </button>
                     </div>
                   )}
-                </div>
-
-                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
-                    <h4 className="text-sm font-semibold text-gray-700">While showing</h4>
-                  </div>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Use after Toast or Prompt. Dismiss is off until a card is up.
-                  </p>
-                  <button
-                    data-testid="system-banner-dismiss"
-                    onClick={() => dismissBanner()}
-                    disabled={!bannerBusy}
-                    className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
-                  >
-                    Dismiss
-                  </button>
                 </div>
               </div>
             </div>

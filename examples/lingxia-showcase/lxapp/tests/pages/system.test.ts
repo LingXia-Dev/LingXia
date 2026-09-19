@@ -189,11 +189,19 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
     { describe: 'Prompt to park a pending banner.show' },
   );
 
-  // Logic flips busy before React enables Dismiss; a click on the still-disabled
-  // control never reaches dismissBanner.
-  await app.page.scrollTo({ page: 'system', css: '[data-testid="system-banner-dismiss"]' });
+  // After Prompt the native card is WS_EX_TOPMOST over the WebView. Windows
+  // CDP clicks then miss the page button; fire the same control from the DOM.
   await waitForElementEnabled(app, 'system', '[data-testid="system-banner-dismiss"]');
-  await app.page.click({ page: 'system', css: '[data-testid="system-banner-dismiss"]' });
+  await app.page.eval({
+    page: 'system',
+    script: `
+      const button = document.querySelector('[data-testid="system-banner-dismiss"]');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) {
+        throw new Error('dismiss is not clickable');
+      }
+      button.click();
+    `,
+  });
   const dismissed = await eventually(
     () => bannerPageState(app),
     (state) => !state.bannerBusy && state.bannerLast === 'dismissed',
