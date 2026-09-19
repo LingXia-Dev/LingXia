@@ -12,11 +12,15 @@ use windows::Win32::Graphics::Gdi::{
     InvalidateRect, PAINTSTRUCT, PS_SOLID, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
+use windows::Win32::UI::Shell::ExtractIconExW;
 use windows::Win32::UI::WindowsAndMessaging::*;
-use windows::core::w;
+use windows::core::{PCWSTR, w};
 
 use super::update_callout::{make_font, rgb, round_corners, to_wide};
+
+/// `WM_MOUSELEAVE` (winuser.h) — not on `WindowsAndMessaging` in this crate rev.
+const WM_MOUSELEAVE: u32 = 0x02A3;
 
 static HWND_SLOT: AtomicIsize = AtomicIsize::new(0);
 
@@ -29,7 +33,6 @@ const BTN_H: f32 = 24.0;
 const BTN_W: f32 = 64.0;
 const CARD_W: f32 = 328.0;
 
-#[derive(Clone)]
 struct Card {
     id: String,
     title: String,
@@ -39,6 +42,7 @@ struct Card {
     title_font: HFONT,
     body_font: HFONT,
     btn_font: HFONT,
+    icon: Option<HICON>,
     hover: Hover,
     background: DesktopBannerBackground,
 }
@@ -78,6 +82,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = w!("LxDesktopBannerClass");
         let wc = WNDCLASSW {
+            style: CS_DROPSHADOW,
             lpfnWndProc: Some(banner_wnd_proc),
             hInstance: hinstance.into(),
             lpszClassName: class_name,
@@ -137,6 +142,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
             title_font: make_font(scale, 13, true),
             body_font: make_font(scale, 12, false),
             btn_font: make_font(scale, 12, true),
+            icon: load_app_icon(),
             hover: Hover::None,
             background: request.background.clone(),
         });
@@ -170,43 +176,50 @@ unsafe extern "system" fn banner_wnd_proc(
     wparam: WPARAM,
     lparam: LPARAM,
 ) -> LRESULT {
-    match msg {
-        WM_PAINT => {
-            paint(hwnd);
-            LRESULT(0)
-        }
-        WM_MOUSEMOVE => {
-            track_hover(hwnd, lparam);
-            LRESULT(0)
-        }
-        WM_LBUTTONUP => {
-            on_click(hwnd, lparam);
-            LRESULT(0)
-        }
-        WM_APP_HIDE | WM_CLOSE => {
-            let _ = DestroyWindow(hwnd);
-            LRESULT(0)
-        }
-        WM_DESTROY => {
-            if let Some(card) = take_card(hwnd) {
-                unsafe {
+    // Rust 2024: `unsafe fn` does not make the body an unsafe block.
+    unsafe {
+        match msg {
+            WM_PAINT => {
+                paint(hwnd);
+                LRESULT(0)
+            }
+            WM_MOUSEMOVE => {
+                track_hover(hwnd, lparam);
+                track_mouse_leave(hwnd);
+                LRESULT(0)
+            }
+            WM_MOUSELEAVE => {
+                clear_hover(hwnd);
+                LRESULT(0)
+            }
+            WM_LBUTTONUP => {
+                on_click(hwnd, lparam);
+                LRESULT(0)
+            }
+            WM_APP_HIDE | WM_CLOSE => {
+                let _ = DestroyWindow(hwnd);
+                LRESULT(0)
+            }
+            WM_DESTROY => {
+                if let Some(card) = take_card(hwnd) {
                     let _ = DeleteObject(card.title_font.into());
                     let _ = DeleteObject(card.body_font.into());
                     let _ = DeleteObject(card.btn_font.into());
+                    if let Some(icon) = card.icon {
+                        let _ = DestroyIcon(icon);
+                    }
                 }
-            }
-            HWND_SLOT.store(0, Ordering::SeqCst);
-            unsafe {
+                let this = hwnd.0 as isize;
+                let _ = HWND_SLOT.compare_exchange(this, 0, Ordering::SeqCst, Ordering::SeqCst);
                 PostQuitMessage(0);
+                LRESULT(0)
             }
-            LRESULT(0)
+            WM_DPICHANGED => {
+                let _ = InvalidateRect(Some(hwnd), None, true);
+                LRESULT(0)
+            }
+            _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
-        WM_DPICHANGED => {
-            let _ = GetDpiForWindow(hwnd);
-            let _ = InvalidateRect(Some(hwnd), None, true);
-            LRESULT(0)
-        }
-        _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
     }
 }
 
@@ -229,7 +242,7 @@ fn paint(hwnd: HWND) {
 
         let pad = px(PAD);
         let icon = px(ICON);
-        draw_icon_plate(hdc, pad, pad, icon);
+        draw_icon(hdc, pad, pad, icon, card.icon);
 
         let text_left = pad + icon + px(GAP);
         let text_right = client.right - pad - if card.dismissible { px(CLOSE) + 4 } else { 0 };
@@ -312,8 +325,12 @@ fn paint(hwnd: HWND) {
     }
 }
 
-fn draw_icon_plate(hdc: HDC, x: i32, y: i32, size: i32) {
+fn draw_icon(hdc: HDC, x: i32, y: i32, size: i32, icon: Option<HICON>) {
     unsafe {
+        if let Some(icon) = icon {
+            let _ = DrawIconEx(hdc, x, y, icon, size, size, 0, None, DI_NORMAL);
+            return;
+        }
         let brush = CreateSolidBrush(rgb(10, 132, 255));
         let rect = RECT {
             left: x,
@@ -323,6 +340,43 @@ fn draw_icon_plate(hdc: HDC, x: i32, y: i32, size: i32) {
         };
         FillRect(hdc, &rect, brush);
         let _ = DeleteObject(brush.into());
+    }
+}
+
+fn load_app_icon() -> Option<HICON> {
+    let exe = std::env::current_exe().ok()?;
+    let wide = to_wide(&exe.to_string_lossy());
+    let mut large = HICON::default();
+    let count = unsafe { ExtractIconExW(PCWSTR(wide.as_ptr()), 0, Some(&mut large), None, 1) };
+    if count > 0 && !large.is_invalid() {
+        Some(large)
+    } else {
+        None
+    }
+}
+
+fn track_mouse_leave(hwnd: HWND) {
+    let mut track = TRACKMOUSEEVENT {
+        cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+        dwFlags: TME_LEAVE,
+        hwndTrack: hwnd,
+        dwHoverTime: 0,
+    };
+    unsafe {
+        let _ = TrackMouseEvent(&mut track);
+    }
+}
+
+fn clear_hover(hwnd: HWND) {
+    let Some(card) = card_mut(hwnd) else {
+        return;
+    };
+    if card.hover == Hover::None {
+        return;
+    }
+    card.hover = Hover::None;
+    unsafe {
+        let _ = InvalidateRect(Some(hwnd), None, true);
     }
 }
 
