@@ -10,6 +10,10 @@ const MOBILE_HOSTS = new Set(['android', 'ios']);
 const autostartSpec = MOBILE_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
   ? spec.skip
   : spec;
+const DESKTOP_HOSTS = new Set(['macos', 'windows']);
+const bannerSpec = DESKTOP_HOSTS.has(testArgs.platform?.toLocaleLowerCase() ?? '')
+  ? spec
+  : spec.skip;
 
 spec('publish the lxapp sandbox roots through lx.env', {
   id: 'ENV-001',
@@ -292,6 +296,88 @@ spec('request permission and replace local notifications by id', {
     expect(result.replaced).toEqual({ id: 'automation-local', status: 'scheduled' });
   }
   expect(result.rejected).toEqual({ http: true, title: true, both: true, emptyId: true });
+});
+
+bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
+  id: 'HOSTAPP-BANNER-001',
+  covers: [
+    'lx.app.banner',
+    'lx.app.banner.show',
+    'lx.app.banner.dismiss',
+  ],
+  app: SHOWCASE_APP_ID,
+  reason: 'Desktop banner is Control-app / macOS / Windows only.',
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-BANNER-001');
+
+  const offered = await app.eval({
+    script: `return !!(lx.app.banner && typeof lx.app.banner.show === 'function')`,
+  }) as boolean;
+  expect(offered).toBe(true);
+  const supported = await app.eval({ script: `return !!lx.supports({ capability: 'banner' })` });
+  expect(supported).toBe(true);
+
+  const result = await app.eval({
+    timeoutMs: 20_000,
+    script: `
+      const banner = lx.app.banner;
+      const toast = await banner.show({
+        id: 'automation-banner-toast',
+        title: 'LingXia automation',
+        body: 'desktop card',
+        timeoutMs: 800,
+      });
+      const prompt = banner.show({
+        id: 'automation-banner-prompt',
+        title: 'Allow this action?',
+        body: 'agent consent',
+        actions: [
+          { id: 'deny', label: 'Deny' },
+          { id: 'allow', label: 'Allow', style: 'primary' },
+        ],
+        timeoutMs: 0,
+      });
+      await banner.dismiss('automation-banner-prompt');
+      await banner.dismiss('never-shown');
+      const promptResult = await prompt;
+      const rejects = async (options) => {
+        try { await banner.show(options); return false; } catch { return true; }
+      };
+      return {
+        toast,
+        prompt: promptResult,
+        rejected: {
+          title: await rejects({ body: 'no title' }),
+          emptyId: await rejects({ id: '', title: 'bad' }),
+          tooMany: await rejects({
+            title: 'bad',
+            actions: [
+              { id: 'a', label: 'A' },
+              { id: 'b', label: 'B' },
+              { id: 'c', label: 'C' },
+            ],
+          }),
+          background: await rejects({ title: 'bad', background: 'blurple' }),
+        },
+      };
+    `,
+  }) as {
+    toast: { id: string; canceled: boolean; reason?: string; action?: string };
+    prompt: { id: string; canceled: boolean; reason?: string; action?: string };
+    rejected: Record<string, boolean>;
+  };
+
+  expect(result.toast).toMatchObject({
+    id: 'automation-banner-toast',
+    canceled: true,
+    reason: 'timeout',
+  });
+  expect(result.prompt).toMatchObject({
+    id: 'automation-banner-prompt',
+    canceled: true,
+    reason: 'dismissed',
+  });
+  expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
 });
 
 autostartSpec('report autostart state and accept an idempotent write', {

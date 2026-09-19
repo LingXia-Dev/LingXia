@@ -238,6 +238,98 @@
         </div>
       </template>
 
+      <template v-if="currentType === 'banner' && bannerAvailable">
+        <div class="mb-6 text-center">
+          <h1 class="text-2xl font-light text-gray-800 mb-2">app.banner</h1>
+          <div class="w-16 h-0.5 bg-surface-400 mx-auto"></div>
+        </div>
+
+        <div
+          data-testid="system-banner-panel"
+          class="mb-5 bg-surface rounded-2xl shadow-sm border border-line-100 overflow-hidden"
+        >
+          <div class="flex items-center gap-4 px-5 py-5 border-b border-line-100">
+            <div class="flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-rose-50 to-orange-50">
+              <span class="text-2xl">🪧</span>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm text-gray-800 font-semibold">Desktop Banner</div>
+              <div class="text-xs text-gray-500 mt-0.5">
+                {{ bannerSupported ? 'Product-drawn top-right card — not an OS notification' : 'Not available on this host' }}
+              </div>
+            </div>
+            <button
+              v-if="bannerSupported"
+              data-testid="system-banner-toast"
+              @click="showBannerToast"
+              :disabled="bannerBusy"
+              class="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+            >
+              Toast
+            </button>
+          </div>
+
+          <div class="p-5">
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+              <div class="flex items-center gap-2 mb-4">
+                <span class="w-1 h-4 bg-rose-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">State</h4>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Supported</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ formatBool(bannerSupported) }}</span>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Background</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerBackground }}</span>
+              </div>
+              <div class="pt-3 flex flex-wrap gap-2">
+                <button
+                  v-for="value in bannerBackgrounds"
+                  :key="value"
+                  @click="setBannerBackground(value)"
+                  class="px-3 py-1.5 text-xs font-medium rounded-lg transition-colors"
+                  :class="bannerBackground === value ? 'bg-rose-500 text-white' : 'bg-surface-100 hover:bg-surface-200 text-gray-700'"
+                >
+                  {{ value }}
+                </button>
+              </div>
+              <div class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Last result</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerLast || '--' }}</span>
+              </div>
+              <div v-if="bannerError" class="flex justify-between items-center py-3 border-b border-line-200">
+                <span class="text-sm text-gray-600">Error</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ bannerError }}</span>
+              </div>
+              <div class="pt-3 flex gap-2">
+                <button
+                  data-testid="system-banner-prompt"
+                  @click="showBannerPrompt"
+                  :disabled="!bannerSupported || bannerBusy"
+                  class="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                >
+                  Prompt
+                </button>
+                <button
+                  data-testid="system-banner-dismiss"
+                  @click="dismissBanner"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  Dismiss
+                </button>
+                <button
+                  @click="refreshBanner"
+                  class="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                >
+                  Re-read
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
       <!-- Product cache -->
       <template v-if="currentType === 'cache'">
         <div class="mb-6 text-center">
@@ -309,10 +401,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLxPage } from '@lingxia/vue';
+import { useLxPage, usePlatform } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const { data, actions } = useLxPage();
+const { isMacOS, isWindows } = usePlatform();
+const bannerAvailable = isMacOS || isWindows;
 const {
   getBaseInfo,
   getSystemSetting,
@@ -323,6 +417,11 @@ const {
   refreshNotification,
   showNotification,
   cancelNotification,
+  refreshBanner,
+  setBannerBackground,
+  showBannerToast,
+  showBannerPrompt,
+  dismissBanner,
 } = actions;
 
 const currentType = computed(() => data.currentType ?? 'appBaseInfo');
@@ -341,6 +440,12 @@ const notificationSupported = computed(() => data.notificationSupported ?? false
 const notificationPermission = computed(() => data.notificationPermission ?? '');
 const notificationLastId = computed(() => data.notificationLastId ?? '');
 const notificationError = computed(() => data.notificationError ?? '');
+const bannerSupported = computed(() => data.bannerSupported ?? false);
+const bannerLast = computed(() => data.bannerLast ?? '');
+const bannerError = computed(() => data.bannerError ?? '');
+const bannerBusy = computed(() => data.bannerBusy ?? false);
+const bannerBackground = computed(() => data.bannerBackground ?? 'system');
+const bannerBackgrounds = ['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'];
 
 function formatBytes(value: number | null): string {
   if (typeof value !== 'number') {
