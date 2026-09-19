@@ -7,9 +7,11 @@ use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateSolidBrush, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE,
-    DT_VCENTER, DT_WORDBREAK, DeleteObject, DrawTextW, EndPaint, FillRect, HBRUSH, HDC, HFONT,
-    InvalidateRect, PAINTSTRUCT, PS_SOLID, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
+    BeginPaint, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DT_CALCRECT, DT_CENTER,
+    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteObject,
+    DrawTextW, EndPaint, FillRect, GetDC, GetTextMetricsW, HBRUSH, HDC, HFONT, InvalidateRect,
+    PAINTSTRUCT, PS_SOLID, ReleaseDC, RestoreDC, RoundRect, SaveDC, SelectClipRgn, SelectObject,
+    SetBkMode, SetTextColor, SetWindowRgn, TEXTMETRICW, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
@@ -30,11 +32,15 @@ static HIDE_PENDING: AtomicBool = AtomicBool::new(false);
 const WM_APP_HIDE: u32 = WM_APP + 21;
 const PAD: f32 = 12.0;
 const ICON: f32 = 36.0;
+const ICON_RADIUS: f32 = 8.0;
 const GAP: f32 = 10.0;
-const CLOSE: f32 = 16.0;
+const CLOSE: f32 = 20.0;
 const BTN_H: f32 = 24.0;
-const BTN_W: f32 = 64.0;
+const BTN_MIN_W: f32 = 56.0;
+const BTN_PAD_X: f32 = 20.0;
+const BTN_RADIUS: f32 = 6.0;
 const CARD_W: f32 = 328.0;
+const CARD_RADIUS: f32 = 12.0;
 
 struct Card {
     id: String,
@@ -46,6 +52,9 @@ struct Card {
     body_font: HFONT,
     btn_font: HFONT,
     icon: Option<HICON>,
+    title_height: i32,
+    body_height: i32,
+    button_widths: Vec<i32>,
     hover: Hover,
     background: DesktopBannerBackground,
 }
@@ -99,8 +108,9 @@ fn run_banner_thread(request: DesktopBannerShow) {
 
         let scale = super::update_callout::dpi_scale();
         let px = |v: f32| (v * scale) as i32;
+        let metrics = measure_card(&request, scale);
         let width = px(CARD_W);
-        let height = card_height(&request, scale);
+        let height = metrics.height;
 
         let mut work = RECT::default();
         let _ = SystemParametersInfoW(
@@ -133,6 +143,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
             }
         };
         round_corners(hwnd);
+        clip_round_window(hwnd, px(CARD_RADIUS));
 
         let card = Box::new(Card {
             id: request.id.clone(),
@@ -148,6 +159,9 @@ fn run_banner_thread(request: DesktopBannerShow) {
             body_font: make_font(scale, 12, false),
             btn_font: make_font(scale, 12, true),
             icon: load_app_icon(),
+            title_height: metrics.title_height,
+            body_height: metrics.body_height,
+            button_widths: metrics.button_widths,
             hover: Hover::None,
             background: request.background.clone(),
         });
@@ -167,16 +181,105 @@ fn run_banner_thread(request: DesktopBannerShow) {
     }
 }
 
-fn card_height(request: &DesktopBannerShow, scale: f32) -> i32 {
+struct CardMetrics {
+    height: i32,
+    title_height: i32,
+    body_height: i32,
+    button_widths: Vec<i32>,
+}
+
+fn measure_card(request: &DesktopBannerShow, scale: f32) -> CardMetrics {
     let px = |v: f32| (v * scale) as i32;
-    let mut height = px(PAD) + px(ICON) + px(PAD);
-    if !request.body.is_empty() {
-        height += px(36.0);
+    let pad = px(PAD);
+    let icon = px(ICON);
+    unsafe {
+        let hdc = GetDC(None);
+        let title_font = make_font(scale, 13, true);
+        let body_font = make_font(scale, 12, false);
+        let btn_font = make_font(scale, 12, true);
+        let title_height = line_height(hdc, title_font);
+        let body_line = line_height(hdc, body_font);
+        let body_height = if request.body.is_empty() {
+            0
+        } else {
+            // Always keep the macOS two-line slot. CALCRECT on the screen DC
+            // can undershoot DrawText wrap on the window DC and clip line 2.
+            body_line * 2 + 4
+        };
+        let button_widths = request
+            .actions
+            .iter()
+            .map(|action| {
+                let text_w = measure_text(hdc, btn_font, &action.label, px(CARD_W), false).0;
+                (text_w + px(BTN_PAD_X)).max(px(BTN_MIN_W))
+            })
+            .collect::<Vec<_>>();
+        let _ = DeleteObject(title_font.into());
+        let _ = DeleteObject(body_font.into());
+        let _ = DeleteObject(btn_font.into());
+        ReleaseDC(None, hdc);
+        let mut y = pad + title_height;
+        if body_height > 0 {
+            y += px(2.0) + body_height;
+        }
+        if !button_widths.is_empty() {
+            y += px(10.0) + px(BTN_H);
+        }
+        y += pad;
+        CardMetrics {
+            height: y.max(pad + icon + pad),
+            title_height,
+            body_height,
+            button_widths,
+        }
     }
-    if !request.actions.is_empty() {
-        height += px(BTN_H) + px(10.0);
+}
+
+fn line_height(hdc: HDC, font: HFONT) -> i32 {
+    unsafe {
+        let old = SelectObject(hdc, font.into());
+        let mut metrics = TEXTMETRICW::default();
+        let _ = GetTextMetricsW(hdc, &mut metrics);
+        SelectObject(hdc, old);
+        (metrics.tmHeight + metrics.tmExternalLeading).max(1)
     }
-    height
+}
+
+fn clip_round_window(hwnd: HWND, radius: i32) {
+    unsafe {
+        let mut window = RECT::default();
+        if GetWindowRect(hwnd, &mut window).is_err() {
+            return;
+        }
+        let width = window.right - window.left;
+        let height = window.bottom - window.top;
+        if width <= 0 || height <= 0 {
+            return;
+        }
+        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
+        let _ = SetWindowRgn(hwnd, Some(region), true);
+    }
+}
+
+fn measure_text(hdc: HDC, font: HFONT, text: &str, max_width: i32, wrap: bool) -> (i32, i32) {
+    unsafe {
+        let old = SelectObject(hdc, font.into());
+        let mut wide = to_wide(text);
+        let n = wide.len().saturating_sub(1);
+        let mut rect = RECT {
+            left: 0,
+            top: 0,
+            right: max_width.max(1),
+            bottom: 0,
+        };
+        let format = DT_NOPREFIX | DT_CALCRECT | if wrap { DT_WORDBREAK } else { DT_SINGLELINE };
+        let _ = DrawTextW(hdc, &mut wide[..n], &mut rect, format);
+        SelectObject(hdc, old);
+        (
+            (rect.right - rect.left).max(0),
+            (rect.bottom - rect.top).max(0),
+        )
+    }
 }
 
 unsafe extern "system" fn banner_wnd_proc(
@@ -244,17 +347,33 @@ fn paint(hwnd: HWND) {
         let scale = super::update_callout::dpi_scale();
         let px = |v: f32| (v * scale) as i32;
 
-        let (bg_color, title_color, body_color) = theme_colors(&card.background);
+        let (bg_color, title_color, body_color, border) = theme_colors(&card.background);
         let bg = CreateSolidBrush(bg_color);
-        FillRect(hdc, &client, bg);
+        let border_pen = CreatePen(PS_SOLID, 1, border);
+        let old_brush = SelectObject(hdc, bg.into());
+        let old_pen = SelectObject(hdc, border_pen.into());
+        let corner = px(CARD_RADIUS) * 2;
+        let _ = RoundRect(
+            hdc,
+            client.left,
+            client.top,
+            client.right,
+            client.bottom,
+            corner,
+            corner,
+        );
+        SelectObject(hdc, old_pen);
+        SelectObject(hdc, old_brush);
         let _ = DeleteObject(bg.into());
+        let _ = DeleteObject(border_pen.into());
 
         let pad = px(PAD);
         let icon = px(ICON);
         draw_icon(hdc, pad, pad, icon, card.icon);
 
         let text_left = pad + icon + px(GAP);
-        let text_right = client.right - pad - if card.dismissible { px(CLOSE) + 4 } else { 0 };
+        let title_right = client.right - pad - if card.dismissible { px(CLOSE) } else { 0 };
+        let body_right = client.right - pad;
 
         SetBkMode(hdc, TRANSPARENT);
         let old = SelectObject(hdc, card.title_font.into());
@@ -262,8 +381,8 @@ fn paint(hwnd: HWND) {
         let mut title_rect = RECT {
             left: text_left,
             top: pad,
-            right: text_right,
-            bottom: pad + px(20.0),
+            right: title_right,
+            bottom: pad + card.title_height,
         };
         let mut title = to_wide(&card.title);
         let title_n = title.len().saturating_sub(1);
@@ -277,11 +396,12 @@ fn paint(hwnd: HWND) {
         if !card.body.is_empty() {
             SelectObject(hdc, card.body_font.into());
             SetTextColor(hdc, body_color);
+            let body_top = pad + card.title_height + px(2.0);
             let mut body_rect = RECT {
                 left: text_left,
-                top: pad + px(20.0),
-                right: text_right,
-                bottom: pad + px(56.0),
+                top: body_top,
+                right: body_right,
+                bottom: body_top + card.body_height,
             };
             let mut body = to_wide(&card.body);
             let body_n = body.len().saturating_sub(1);
@@ -312,13 +432,13 @@ fn paint(hwnd: HWND) {
                 hdc,
                 &mut mark[..n],
                 &mut close_mut,
-                DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
+                DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
             );
             SelectObject(hdc, tf);
         }
 
         for (index, (_, label, style)) in card.actions.iter().enumerate() {
-            let rect = action_rect(hwnd, scale, card.actions.len(), index);
+            let rect = action_rect(hwnd, scale, card, index);
             paint_button(
                 hdc,
                 &rect,
@@ -336,19 +456,25 @@ fn paint(hwnd: HWND) {
 
 fn draw_icon(hdc: HDC, x: i32, y: i32, size: i32, icon: Option<HICON>) {
     unsafe {
+        let radius = ((size as f32) * ICON_RADIUS / ICON).round() as i32;
+        let region = CreateRoundRectRgn(x, y, x + size + 1, y + size + 1, radius * 2, radius * 2);
+        let saved = SaveDC(hdc);
+        SelectClipRgn(hdc, Some(region));
         if let Some(icon) = icon {
             let _ = DrawIconEx(hdc, x, y, icon, size, size, 0, None, DI_NORMAL);
-            return;
+        } else {
+            let brush = CreateSolidBrush(rgb(10, 132, 255));
+            let rect = RECT {
+                left: x,
+                top: y,
+                right: x + size,
+                bottom: y + size,
+            };
+            FillRect(hdc, &rect, brush);
+            let _ = DeleteObject(brush.into());
         }
-        let brush = CreateSolidBrush(rgb(10, 132, 255));
-        let rect = RECT {
-            left: x,
-            top: y,
-            right: x + size,
-            bottom: y + size,
-        };
-        FillRect(hdc, &rect, brush);
-        let _ = DeleteObject(brush.into());
+        let _ = RestoreDC(hdc, saved);
+        let _ = DeleteObject(region.into());
     }
 }
 
@@ -389,20 +515,28 @@ fn clear_hover(hwnd: HWND) {
     }
 }
 
-fn theme_colors(background: &DesktopBannerBackground) -> (COLORREF, COLORREF, COLORREF) {
+fn theme_colors(background: &DesktopBannerBackground) -> (COLORREF, COLORREF, COLORREF, COLORREF) {
     match background {
-        DesktopBannerBackground::Light => (rgb(245, 245, 247), rgb(28, 28, 30), rgb(110, 110, 115)),
+        DesktopBannerBackground::Light => (
+            rgb(245, 245, 247),
+            rgb(28, 28, 30),
+            rgb(110, 110, 115),
+            rgb(210, 210, 215),
+        ),
         DesktopBannerBackground::Color { r, g, b, .. } => {
-            let (title, body) = if background.prefers_dark_content() {
-                (rgb(28, 28, 30), rgb(110, 110, 115))
+            let (title, body, border) = if background.prefers_dark_content() {
+                (rgb(28, 28, 30), rgb(110, 110, 115), rgb(200, 200, 205))
             } else {
-                (rgb(255, 255, 255), rgb(174, 174, 178))
+                (rgb(255, 255, 255), rgb(174, 174, 178), rgb(70, 70, 74))
             };
-            (rgb(*r, *g, *b), title, body)
+            (rgb(*r, *g, *b), title, body, border)
         }
-        DesktopBannerBackground::System | DesktopBannerBackground::Dark => {
-            (rgb(44, 44, 46), rgb(255, 255, 255), rgb(174, 174, 178))
-        }
+        DesktopBannerBackground::System | DesktopBannerBackground::Dark => (
+            rgb(44, 44, 46),
+            rgb(255, 255, 255),
+            rgb(174, 174, 178),
+            rgb(70, 70, 74),
+        ),
     }
 }
 
@@ -417,13 +551,27 @@ fn paint_button(
 ) {
     unsafe {
         let (bg, fg) = match style {
-            DesktopBannerActionStyle::Primary => (rgb(10, 132, 255), rgb(255, 255, 255)),
-            DesktopBannerActionStyle::Destructive => (rgb(255, 69, 58), rgb(255, 255, 255)),
+            DesktopBannerActionStyle::Primary => (
+                if hover {
+                    rgb(64, 156, 255)
+                } else {
+                    rgb(10, 132, 255)
+                },
+                rgb(255, 255, 255),
+            ),
+            DesktopBannerActionStyle::Destructive => (
+                if hover {
+                    rgb(255, 105, 97)
+                } else {
+                    rgb(255, 69, 58)
+                },
+                rgb(255, 255, 255),
+            ),
             DesktopBannerActionStyle::Default if dark_content => {
                 if hover {
-                    (rgb(229, 229, 234), rgb(28, 28, 30))
+                    (rgb(226, 226, 230), rgb(28, 28, 30))
                 } else {
-                    (rgb(238, 238, 240), rgb(28, 28, 30))
+                    (rgb(236, 236, 239), rgb(28, 28, 30))
                 }
             }
             DesktopBannerActionStyle::Default => {
@@ -435,16 +583,23 @@ fn paint_button(
             }
         };
         let brush = CreateSolidBrush(bg);
-        FillRect(hdc, rect, brush);
+        let pen = CreatePen(PS_SOLID, 1, bg);
+        let old_brush = SelectObject(hdc, brush.into());
+        let old_pen = SelectObject(hdc, pen.into());
+        let radius = ((rect.bottom - rect.top) as f32 * (BTN_RADIUS / BTN_H) * 2.0).round() as i32;
+        let _ = RoundRect(
+            hdc,
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            radius,
+            radius,
+        );
+        SelectObject(hdc, old_brush);
+        SelectObject(hdc, old_pen);
         let _ = DeleteObject(brush.into());
-        if hover && style != DesktopBannerActionStyle::Default {
-            let pen = CreatePen(PS_SOLID, 1, rgb(255, 255, 255));
-            let old_pen = SelectObject(hdc, pen.into());
-            let _ = windows::Win32::Graphics::Gdi::MoveToEx(hdc, rect.left, rect.top, None);
-            let _ = windows::Win32::Graphics::Gdi::LineTo(hdc, rect.right, rect.top);
-            SelectObject(hdc, old_pen);
-            let _ = DeleteObject(pen.into());
-        }
+        let _ = DeleteObject(pen.into());
         let old = SelectObject(hdc, font.into());
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, fg);
@@ -455,11 +610,7 @@ fn paint_button(
             hdc,
             &mut text[..n],
             &mut text_rect,
-            DT_LEFT
-                | DT_SINGLELINE
-                | DT_VCENTER
-                | DT_NOPREFIX
-                | windows::Win32::Graphics::Gdi::DT_CENTER,
+            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
         );
         SelectObject(hdc, old);
     }
@@ -479,16 +630,23 @@ fn close_rect(hwnd: HWND, scale: f32) -> RECT {
     }
 }
 
-fn action_rect(hwnd: HWND, scale: f32, count: usize, index: usize) -> RECT {
+fn action_rect(hwnd: HWND, scale: f32, card: &Card, index: usize) -> RECT {
     let px = |v: f32| (v * scale) as i32;
     let mut client = RECT::default();
     unsafe {
         let _ = GetClientRect(hwnd, &mut client);
     }
-    let width = px(BTN_W);
     let height = px(BTN_H);
     let gap = px(8.0);
-    let right = client.right - px(PAD) - ((count - 1 - index) as i32) * (width + gap);
+    let mut right = client.right - px(PAD);
+    for width in card.button_widths.iter().skip(index + 1).rev() {
+        right -= *width + gap;
+    }
+    let width = card
+        .button_widths
+        .get(index)
+        .copied()
+        .unwrap_or(px(BTN_MIN_W));
     RECT {
         left: right - width,
         top: client.bottom - px(PAD) - height,
@@ -510,8 +668,7 @@ fn track_hover(hwnd: HWND, lparam: LPARAM) {
             .iter()
             .enumerate()
             .find_map(|(index, _)| {
-                pt_in(action_rect(hwnd, scale, card.actions.len(), index), point)
-                    .then_some(Hover::Action(index))
+                pt_in(action_rect(hwnd, scale, card, index), point).then_some(Hover::Action(index))
             })
             .unwrap_or(Hover::None)
     };
@@ -535,7 +692,7 @@ fn on_click(hwnd: HWND, lparam: LPARAM) {
         return;
     }
     for (index, (action, _, _)) in card.actions.iter().enumerate() {
-        if pt_in(action_rect(hwnd, scale, card.actions.len(), index), point) {
+        if pt_in(action_rect(hwnd, scale, card, index), point) {
             let id = card.id.clone();
             let action = action.clone();
             crate::desktop::banner::complete(
