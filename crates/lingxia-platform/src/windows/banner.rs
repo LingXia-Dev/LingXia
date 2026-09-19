@@ -1,4 +1,4 @@
-//! Screen-level top-right banner. Not owned by the app window.
+//! Top-right banner card, pinned to the host window when one is visible.
 
 use crate::traits::app_runtime::{
     DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome, DesktopBannerShow,
@@ -57,6 +57,7 @@ struct Card {
     button_widths: Vec<i32>,
     hover: Hover,
     background: DesktopBannerBackground,
+    owner: Option<HWND>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -112,15 +113,21 @@ fn run_banner_thread(request: DesktopBannerShow) {
         let width = px(CARD_W);
         let height = metrics.height;
 
-        let mut work = RECT::default();
-        let _ = SystemParametersInfoW(
-            SPI_GETWORKAREA,
-            0,
-            Some(&mut work as *mut _ as *mut _),
-            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-        );
-        let x = work.right - width - px(16.0);
-        let y = work.top + px(16.0);
+        let owner = super::update_card::find_main_window();
+        let mut anchor = RECT::default();
+        let have_owner = owner
+            .map(|h| GetWindowRect(h, &mut anchor).is_ok())
+            .unwrap_or(false);
+        if !have_owner {
+            let _ = SystemParametersInfoW(
+                SPI_GETWORKAREA,
+                0,
+                Some(&mut anchor as *mut _ as *mut _),
+                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+            );
+        }
+        let margin = px(16.0);
+        let (x, y) = banner_origin(anchor, width, height, margin);
 
         let hwnd = match CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
@@ -131,7 +138,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
             y,
             width,
             height,
-            None,
+            owner,
             None,
             Some(hinstance.into()),
             None,
@@ -164,6 +171,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
             button_widths: metrics.button_widths,
             hover: Hover::None,
             background: request.background.clone(),
+            owner,
         });
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(card) as isize);
         HWND_SLOT.store(hwnd.0 as isize, Ordering::SeqCst);
@@ -171,6 +179,7 @@ fn run_banner_thread(request: DesktopBannerShow) {
             let _ = DestroyWindow(hwnd);
         } else {
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
+            SetTimer(Some(hwnd), 1, 30, None);
         }
 
         let mut msg = MSG::default();
@@ -178,6 +187,46 @@ fn run_banner_thread(request: DesktopBannerShow) {
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
+    }
+}
+
+fn banner_origin(anchor: RECT, width: i32, _height: i32, margin: i32) -> (i32, i32) {
+    let x = (anchor.right - width - margin).max(anchor.left + margin.min(8));
+    let y = anchor.top + margin;
+    (x, y)
+}
+
+fn pin_to_owner(hwnd: HWND) {
+    let Some(card) = card_ref(hwnd) else {
+        return;
+    };
+    let Some(owner) = card.owner else {
+        return;
+    };
+    unsafe {
+        let mut anchor = RECT::default();
+        let mut current = RECT::default();
+        if GetWindowRect(owner, &mut anchor).is_err() || GetWindowRect(hwnd, &mut current).is_err()
+        {
+            return;
+        }
+        let width = current.right - current.left;
+        let height = current.bottom - current.top;
+        let scale = super::update_callout::dpi_scale();
+        let margin = (16.0 * scale) as i32;
+        let (x, y) = banner_origin(anchor, width, height, margin);
+        if x == current.left && y == current.top {
+            return;
+        }
+        let _ = SetWindowPos(
+            hwnd,
+            None,
+            x,
+            y,
+            0,
+            0,
+            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+        );
     }
 }
 
@@ -306,6 +355,10 @@ unsafe extern "system" fn banner_wnd_proc(
             }
             WM_LBUTTONUP => {
                 on_click(hwnd, lparam);
+                LRESULT(0)
+            }
+            WM_TIMER => {
+                pin_to_owner(hwnd);
                 LRESULT(0)
             }
             WM_APP_HIDE | WM_CLOSE => {
@@ -734,5 +787,33 @@ fn take_card(hwnd: HWND) -> Option<Box<Card>> {
         }
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
         Some(Box::from_raw(ptr))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::banner_origin;
+    use windows::Win32::Foundation::RECT;
+
+    #[test]
+    fn banner_origin_pins_to_the_anchor_top_right() {
+        let anchor = RECT {
+            left: 40,
+            top: 20,
+            right: 840,
+            bottom: 620,
+        };
+        assert_eq!(banner_origin(anchor, 328, 120, 16), (496, 36));
+    }
+
+    #[test]
+    fn banner_origin_stays_inside_a_narrow_anchor() {
+        let anchor = RECT {
+            left: 100,
+            top: 10,
+            right: 300,
+            bottom: 400,
+        };
+        assert_eq!(banner_origin(anchor, 328, 80, 16), (108, 26));
     }
 }
