@@ -340,14 +340,13 @@
             </div>
           </div>
           <div
-            v-if="bannerAvailable"
-            data-testid="api-system-banner"
+            data-testid="api-system-cache"
             class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
-            @click="navigateToSystemPage({ type: 'banner' })"
+            @click="navigateToSystemPage({ type: 'cache' })"
           >
             <div>
-              <div class="text-sm text-gray-700">Desktop Banner</div>
-              <div class="text-xs text-gray-500 mt-0.5">Top-right card with optional buttons (macOS / Windows)</div>
+              <div class="text-sm text-gray-700">Product Cache</div>
+              <div class="text-xs text-gray-500 mt-0.5">Report and clear every lxapp's cache (home lxapp only)</div>
             </div>
             <div class="w-4 h-4 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
@@ -356,13 +355,14 @@
             </div>
           </div>
           <div
-            data-testid="api-system-cache"
+            v-if="bannerAvailable"
+            data-testid="api-system-banner"
             class="px-4 py-3 hover:bg-surface-100 cursor-pointer flex items-center justify-between border-t border-line-200"
-            @click="navigateToSystemPage({ type: 'cache' })"
+            @click="navigateToSystemPage({ type: 'banner' })"
           >
             <div>
-              <div class="text-sm text-gray-700">Product Cache</div>
-              <div class="text-xs text-gray-500 mt-0.5">Report and clear every lxapp's cache (home lxapp only)</div>
+              <div class="text-sm text-gray-700">Desktop Banner</div>
+              <div class="text-xs text-gray-500 mt-0.5">Top-right card with optional buttons (macOS / Windows)</div>
             </div>
             <div class="w-4 h-4 text-gray-400">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
