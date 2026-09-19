@@ -21,6 +21,7 @@ Page({
     bannerError: '',
     bannerBusy: false,
     bannerBackground: 'system',
+    bannerActiveId: '',
   },
 
   onLoad: async function (options = {}) {
@@ -226,8 +227,9 @@ Page({
 
   refreshBanner: function () {
     const banner = lx.app.banner;
+    const supported = !!(banner && typeof banner.show === 'function');
     this.setData({
-      bannerSupported: !!(banner && typeof banner.show === 'function'),
+      bannerSupported: supported,
       bannerError: banner ? '' : 'Desktop banner is Control-app / desktop only',
     });
   },
@@ -245,7 +247,12 @@ Page({
     if (this.data.bannerBusy) {
       return;
     }
-    this.setData({ bannerBusy: true, bannerError: '', bannerLast: '' });
+    this.setData({
+      bannerBusy: true,
+      bannerError: '',
+      bannerLast: '',
+      bannerActiveId: 'showcase-banner-toast',
+    });
     try {
       const result = await banner.show({
         id: 'showcase-banner-toast',
@@ -275,7 +282,12 @@ Page({
     if (this.data.bannerBusy) {
       return;
     }
-    this.setData({ bannerBusy: true, bannerError: '', bannerLast: '' });
+    this.setData({
+      bannerBusy: true,
+      bannerError: '',
+      bannerLast: '',
+      bannerActiveId: 'showcase-banner-prompt',
+    });
     try {
       const result = await banner.show({
         id: 'showcase-banner-prompt',
@@ -306,8 +318,14 @@ Page({
       return;
     }
     try {
-      await banner.dismiss('showcase-banner-toast');
-      await banner.dismiss('showcase-banner-prompt');
+      const ids = [
+        this.data.bannerActiveId,
+        'showcase-banner-toast',
+        'showcase-banner-prompt',
+      ].filter((id, index, all) => id && all.indexOf(id) === index);
+      for (const id of ids) {
+        await banner.dismiss(id);
+      }
     } catch (error) {
       console.error('Failed to dismiss banner:', error);
       this.setData({ bannerError: String(error) });

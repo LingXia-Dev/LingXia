@@ -274,33 +274,45 @@ export default function SystemPage() {
                   <div className="text-sm text-gray-800 font-semibold">Desktop Banner</div>
                   <div className="text-xs text-gray-500 mt-0.5">
                     {bannerSupported
-                      ? 'Product-drawn top-right card — not an OS notification'
+                      ? 'Toast and Prompt show a native card at the window top-right'
                       : 'Not available on this host'}
                   </div>
                 </div>
-                {bannerSupported && (
-                  <button
-                    data-testid="system-banner-toast"
-                    onClick={showBannerToast}
-                    disabled={bannerBusy}
-                    className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-                  >
-                    Toast
-                  </button>
-                )}
               </div>
 
-              <div className="p-5">
+              <div className="p-5 space-y-3">
                 <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
                     <h4 className="text-sm font-semibold text-gray-700">State</h4>
                   </div>
                   <InfoRow label="Supported" value={formatBool(bannerSupported)} />
-                  <InfoRow label="Background" value={bannerBackground} />
-                  <InfoRow label="Last result" value={bannerLast || '--'} />
+                  <InfoRow
+                    label="Last result"
+                    value={bannerLast || '--'}
+                    testId="system-banner-last"
+                  />
                   {bannerError && <InfoRow label="Error" value={bannerError} />}
-                  <div className="pt-3 flex flex-wrap gap-2">
+                  <div className="pt-3">
+                    <button
+                      data-testid="system-banner-reread"
+                      onClick={() => refreshBanner()}
+                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
+                    >
+                      Re-read support
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">Show</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Toast auto-dismisses. Prompt is a gate — Allow / Deny are on the card, not here.
+                  </p>
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {['system', 'light', 'dark', '#f4f5f7', '#1c1c1e'].map((value) => (
                       <button
                         key={value}
@@ -315,29 +327,44 @@ export default function SystemPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="pt-3 flex gap-2">
-                    <button
-                      data-testid="system-banner-prompt"
-                      onClick={showBannerPrompt}
-                      disabled={!bannerSupported || bannerBusy}
-                      className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
-                    >
-                      Prompt
-                    </button>
-                    <button
-                      data-testid="system-banner-dismiss"
-                      onClick={dismissBanner}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Dismiss
-                    </button>
-                    <button
-                      onClick={refreshBanner}
-                      className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 text-gray-700 rounded-lg transition-colors"
-                    >
-                      Re-read
-                    </button>
+                  {bannerSupported && (
+                    <div className="flex gap-2">
+                      <button
+                        data-testid="system-banner-toast"
+                        onClick={showBannerToast}
+                        disabled={bannerBusy}
+                        className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                      >
+                        Toast
+                      </button>
+                      <button
+                        data-testid="system-banner-prompt"
+                        onClick={() => showBannerPrompt()}
+                        disabled={bannerBusy}
+                        className="px-4 py-2 text-xs font-medium bg-rose-500 hover:bg-rose-600 disabled:bg-surface-300 text-white rounded-lg transition-colors"
+                      >
+                        Prompt
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-1 h-4 bg-rose-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">While showing</h4>
                   </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Use after Toast or Prompt. Dismiss is off until a card is up.
+                  </p>
+                  <button
+                    data-testid="system-banner-dismiss"
+                    onClick={() => dismissBanner()}
+                    disabled={!bannerBusy}
+                    className="px-4 py-2 text-xs font-medium bg-surface-100 hover:bg-surface-200 disabled:bg-surface-300 disabled:text-gray-400 text-gray-700 rounded-lg transition-colors"
+                  >
+                    Dismiss
+                  </button>
                 </div>
               </div>
             </div>
@@ -425,14 +452,20 @@ function formatBytes(value: number | null): string {
 interface InfoRowProps {
   label: string;
   value?: string;
+  testId?: string;
 }
 
-function InfoRow({ label, value }: InfoRowProps) {
+function InfoRow({ label, value, testId }: InfoRowProps) {
   const display = value || '--';
   return (
     <div className="flex justify-between items-center py-3 border-b border-line-200 last:border-b-0">
       <span className="text-sm text-gray-600">{label}</span>
-      <span className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{display}</span>
+      <span
+        data-testid={testId}
+        className="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg"
+      >
+        {display}
+      </span>
     </div>
   );
 }
