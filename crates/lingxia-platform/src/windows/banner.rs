@@ -1,85 +1,95 @@
-//! Top-right banner card, pinned to the host window when one is visible.
+//! Top-right banner card: a per-pixel-alpha layered window pinned to the host
+//! window, or to the work area while the host is minimized or hidden.
+
+// The presenter is compiled out of test builds; only the pure layout is tested.
+#![cfg_attr(test, allow(dead_code))]
 
 use crate::traits::app_runtime::{
     DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome, DesktopBannerShow,
 };
-use std::sync::atomic::{AtomicBool, AtomicIsize, Ordering};
+use std::sync::Mutex;
+use std::time::Instant;
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
+use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, SIZE, WPARAM};
+use windows::Win32::Graphics::Dwm::{DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreatePen, CreateRoundRectRgn, CreateSolidBrush, DT_CALCRECT, DT_CENTER,
-    DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteObject,
-    DrawTextW, EndPaint, FillRect, GetDC, GetTextMetricsW, HBRUSH, HDC, HFONT, InvalidateRect,
-    PAINTSTRUCT, PS_SOLID, ReleaseDC, RestoreDC, RoundRect, SaveDC, SelectClipRgn, SelectObject,
-    SetBkMode, SetTextColor, SetWindowRgn, TEXTMETRICW, TRANSPARENT,
+    AC_SRC_ALPHA, AC_SRC_OVER, BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BLENDFUNCTION,
+    CLEARTYPE_QUALITY, CreateCompatibleDC, CreateDIBSection, CreateFontW, CreateRoundRectRgn,
+    DIB_RGB_COLORS, DT_CALCRECT, DT_CENTER, DT_EDITCONTROL, DT_END_ELLIPSIS, DT_LEFT, DT_NOPREFIX,
+    DT_SINGLELINE, DT_VCENTER, DT_WORDBREAK, DeleteDC, DeleteObject, DrawTextW, FONT_CHARSET,
+    FONT_CLIP_PRECISION, FONT_OUTPUT_PRECISION, FONT_QUALITY, FW_NORMAL, FW_SEMIBOLD, GdiFlush,
+    GetDC, GetTextFaceW, GetTextMetricsW, HBITMAP, HDC, HFONT, HGDIOBJ, ReleaseDC, RestoreDC,
+    SaveDC, SelectClipRgn, SelectObject, SetBkMode, SetTextColor, TEXTMETRICW, TRANSPARENT,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::Threading::GetCurrentProcessId;
+use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{TME_LEAVE, TRACKMOUSEEVENT, TrackMouseEvent};
 use windows::Win32::UI::Shell::ExtractIconExW;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::{PCWSTR, w};
 
-use super::update_callout::{make_font, rgb, round_corners, to_wide};
+use super::update_callout::{dpi_scale, rgb, to_wide};
 
 /// `WM_MOUSELEAVE` (winuser.h) — not on `WindowsAndMessaging` in this crate rev.
 const WM_MOUSELEAVE: u32 = 0x02A3;
-
-static HWND_SLOT: AtomicIsize = AtomicIsize::new(0);
-/// Set by `hide` so a dismiss that wins the race against `CreateWindowExW`
-/// still retires the card. `present` clears it after hiding the previous one.
-static HIDE_PENDING: AtomicBool = AtomicBool::new(false);
-
 const WM_APP_HIDE: u32 = WM_APP + 21;
+const TIMER_ANIM: usize = 1;
+const TIMER_PIN: usize = 2;
+
 const PAD: f32 = 12.0;
 const ICON: f32 = 36.0;
 const ICON_RADIUS: f32 = 8.0;
 const GAP: f32 = 10.0;
 const CLOSE: f32 = 20.0;
+const CLOSE_INSET: f32 = 8.0;
 const BTN_H: f32 = 24.0;
 const BTN_MIN_W: f32 = 56.0;
 const BTN_PAD_X: f32 = 20.0;
+const BTN_GAP: f32 = 8.0;
 const BTN_RADIUS: f32 = 6.0;
 const CARD_W: f32 = 328.0;
 const CARD_RADIUS: f32 = 12.0;
+const MARGIN: f32 = 16.0;
+/// Transparent gutter around the card that holds the soft shadow.
+const SHADOW: f32 = 26.0;
+const SHADOW_DROP: f32 = 6.0;
+const SHADOW_ALPHA: f32 = 0.22;
+const SLIDE: f32 = 18.0;
+const ENTER_MS: f32 = 220.0;
+const EXIT_MS: f32 = 140.0;
+const TITLE_PX: f32 = 14.0;
+const BODY_PX: f32 = 13.0;
+const BTN_PX: f32 = 12.0;
+const GLYPH_PX: f32 = 10.0;
+/// ChromeClose in Segoe Fluent Icons / Segoe MDL2 Assets.
+const CLOSE_GLYPH: &str = "\u{E8BB}";
 
-struct Card {
-    id: String,
-    title: String,
-    body: String,
-    actions: Vec<(String, String, DesktopBannerActionStyle)>,
-    dismissible: bool,
-    title_font: HFONT,
-    body_font: HFONT,
-    btn_font: HFONT,
-    icon: Option<HICON>,
-    title_height: i32,
-    body_height: i32,
-    button_widths: Vec<i32>,
-    hover: Hover,
-    background: DesktopBannerBackground,
-    owner: Option<HWND>,
+type Rgb = (u8, u8, u8);
+
+/// The live card. `generation` moves on every present and hide, so a window
+/// that finishes creating after it was superseded retires itself instead of
+/// leaking on screen outside the slot.
+struct Slot {
+    generation: u64,
+    hwnd: isize,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Hover {
-    None,
-    Close,
-    Action(usize),
+static SLOT: Mutex<Slot> = Mutex::new(Slot {
+    generation: 0,
+    hwnd: 0,
+});
+
+fn slot() -> std::sync::MutexGuard<'static, Slot> {
+    SLOT.lock().unwrap_or_else(|error| error.into_inner())
 }
 
-pub(crate) fn present(request: &DesktopBannerShow) -> bool {
-    hide();
-    HIDE_PENDING.store(false, Ordering::SeqCst);
-    let request = request.clone();
-    std::thread::Builder::new()
-        .name("lingxia-desktop-banner".into())
-        .spawn(move || run_banner_thread(request))
-        .is_ok()
-}
-
-pub(crate) fn hide() {
-    HIDE_PENDING.store(true, Ordering::SeqCst);
-    let hwnd = HWND_SLOT.swap(0, Ordering::SeqCst);
+/// Retire the current card and return the generation the next one owns.
+fn supersede() -> u64 {
+    let mut slot = slot();
+    let hwnd = std::mem::take(&mut slot.hwnd);
+    slot.generation += 1;
     if hwnd != 0 {
         unsafe {
             let _ = PostMessageW(
@@ -90,69 +100,321 @@ pub(crate) fn hide() {
             );
         }
     }
+    slot.generation
 }
 
-fn run_banner_thread(request: DesktopBannerShow) {
+pub(crate) fn present(request: &DesktopBannerShow) -> bool {
+    let generation = supersede();
+    let request = request.clone();
+    std::thread::Builder::new()
+        .name("lingxia-desktop-banner".into())
+        .spawn(move || run_banner_thread(request, generation))
+        .is_ok()
+}
+
+pub(crate) fn hide() {
+    supersede();
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Hit {
+    None,
+    Close,
+    Action(usize),
+}
+
+struct Fonts {
+    title: HFONT,
+    body: HFONT,
+    button: HFONT,
+    /// Icon font for the close mark; `None` falls back to a text `×`.
+    glyph: Option<HFONT>,
+}
+
+impl Fonts {
+    fn load(hdc: HDC, scale: f32) -> Self {
+        const TEXT: &[&str] = &["Segoe UI Variable Text", "Segoe UI"];
+        const GLYPH: &[&str] = &["Segoe Fluent Icons", "Segoe MDL2 Assets"];
+        let text = |size: f32, semibold: bool| {
+            resolve_font(hdc, scale, size, semibold, TEXT)
+                .unwrap_or_else(|| make_font(scale, size, semibold, "Segoe UI"))
+        };
+        Self {
+            title: text(TITLE_PX, true),
+            body: text(BODY_PX, false),
+            button: text(BTN_PX, true),
+            glyph: resolve_font(hdc, scale, GLYPH_PX, false, GLYPH),
+        }
+    }
+
+    fn release(&self) {
+        unsafe {
+            for font in [
+                Some(self.title),
+                Some(self.body),
+                Some(self.button),
+                self.glyph,
+            ]
+            .into_iter()
+            .flatten()
+            .filter(|font| !font.is_invalid())
+            {
+                let _ = DeleteObject(font.into());
+            }
+        }
+    }
+}
+
+/// 32-bit top-down DIB the card is drawn into and handed to
+/// `UpdateLayeredWindow`.
+struct Surface {
+    dc: HDC,
+    bitmap: HBITMAP,
+    previous: HGDIOBJ,
+    bits: *mut u32,
+    width: i32,
+    height: i32,
+}
+
+impl Surface {
+    fn new(width: i32, height: i32) -> Option<Self> {
+        if width <= 0 || height <= 0 {
+            return None;
+        }
+        unsafe {
+            let screen = GetDC(None);
+            let dc = CreateCompatibleDC(Some(screen));
+            ReleaseDC(None, screen);
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: width,
+                    biHeight: -height,
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits = std::ptr::null_mut();
+            let Ok(bitmap) = CreateDIBSection(Some(dc), &info, DIB_RGB_COLORS, &mut bits, None, 0)
+            else {
+                let _ = DeleteDC(dc);
+                return None;
+            };
+            let previous = SelectObject(dc, bitmap.into());
+            Some(Self {
+                dc,
+                bitmap,
+                previous,
+                bits: bits.cast(),
+                width,
+                height,
+            })
+        }
+    }
+
+    fn pixels(&mut self) -> &mut [u32] {
+        unsafe { std::slice::from_raw_parts_mut(self.bits, (self.width * self.height) as usize) }
+    }
+}
+
+impl Drop for Surface {
+    fn drop(&mut self) {
+        unsafe {
+            SelectObject(self.dc, self.previous);
+            let _ = DeleteObject(self.bitmap.into());
+            let _ = DeleteDC(self.dc);
+        }
+    }
+}
+
+struct Card {
+    id: String,
+    title: String,
+    body: String,
+    actions: Vec<(String, String, DesktopBannerActionStyle)>,
+    dismissible: bool,
+    palette: Palette,
+    owner: Option<HWND>,
+    scale: f32,
+    fonts: Fonts,
+    icon: Option<HICON>,
+    layout: Layout,
+    surface: Option<Surface>,
+    hover: Hit,
+    pressed: Hit,
+    shown_at: Instant,
+    closing_at: Option<Instant>,
+    hook: Option<HWINEVENTHOOK>,
+}
+
+/// Window-relative device-pixel geometry; the card sits `SHADOW` inside.
+#[derive(Debug, Clone, PartialEq)]
+struct Layout {
+    window: (i32, i32),
+    card: RECT,
+    icon: RECT,
+    title: RECT,
+    body: Option<RECT>,
+    close: Option<RECT>,
+    buttons: Vec<RECT>,
+}
+
+fn px(value: f32, scale: f32) -> i32 {
+    (value * scale).round() as i32
+}
+
+fn compute_layout(
+    scale: f32,
+    title_height: i32,
+    body_height: i32,
+    button_widths: &[i32],
+    dismissible: bool,
+) -> Layout {
+    let px = |value: f32| px(value, scale);
+    let inset = px(SHADOW);
+    let pad = px(PAD);
+    let icon = px(ICON);
+    let column = title_height
+        + if body_height > 0 {
+            px(2.0) + body_height
+        } else {
+            0
+        };
+    let mut height = pad + icon.max(column) + pad;
+    if !button_widths.is_empty() {
+        height += px(10.0) + px(BTN_H);
+    }
+    let card = RECT {
+        left: inset,
+        top: inset,
+        right: inset + px(CARD_W),
+        bottom: inset + height,
+    };
+    let icon_rect = RECT {
+        left: card.left + pad,
+        top: card.top + pad,
+        right: card.left + pad + icon,
+        bottom: card.top + pad + icon,
+    };
+    let close = dismissible.then(|| RECT {
+        left: card.right - px(CLOSE_INSET) - px(CLOSE),
+        top: card.top + px(CLOSE_INSET),
+        right: card.right - px(CLOSE_INSET),
+        bottom: card.top + px(CLOSE_INSET) + px(CLOSE),
+    });
+    // A text column shorter than the icon rides its midline.
+    let text_top = card.top + pad + ((icon - column) / 2).max(0);
+    let text_left = icon_rect.right + px(GAP);
+    let title = RECT {
+        left: text_left,
+        top: text_top,
+        right: close.map_or(card.right - pad, |close| close.left - px(4.0)),
+        bottom: text_top + title_height,
+    };
+    let body = (body_height > 0).then(|| RECT {
+        left: text_left,
+        top: title.bottom + px(2.0),
+        right: card.right - pad,
+        bottom: title.bottom + px(2.0) + body_height,
+    });
+    let mut right = card.right - pad;
+    let mut buttons = vec![RECT::default(); button_widths.len()];
+    for (index, width) in button_widths.iter().enumerate().rev() {
+        buttons[index] = RECT {
+            left: right - width,
+            top: card.bottom - pad - px(BTN_H),
+            right,
+            bottom: card.bottom - pad,
+        };
+        right -= width + px(BTN_GAP);
+    }
+    Layout {
+        window: (card.right + inset, card.bottom + inset),
+        card,
+        icon: icon_rect,
+        title,
+        body,
+        close,
+        buttons,
+    }
+}
+
+/// One or two lines, never the blank second line a short body would leave.
+fn body_lines(measured_height: i32, line_height: i32) -> i32 {
+    let line_height = line_height.max(1);
+    ((measured_height + line_height - 1) / line_height).clamp(1, 2)
+}
+
+fn measure_layout(hdc: HDC, fonts: &Fonts, request: &Card, scale: f32) -> Layout {
+    let px = |value: f32| px(value, scale);
+    let title_height = line_height(hdc, fonts.title);
+    let body_height = if request.body.is_empty() {
+        0
+    } else {
+        let line = line_height(hdc, fonts.body);
+        let width = px(CARD_W) - px(PAD) * 2 - px(ICON) - px(GAP);
+        let measured = measure_text(hdc, fonts.body, &request.body, width, true).1;
+        body_lines(measured, line) * line
+    };
+    let button_widths = request
+        .actions
+        .iter()
+        .map(|(_, label, _)| {
+            let text = measure_text(hdc, fonts.button, label, px(CARD_W), false).0;
+            (text + px(BTN_PAD_X)).max(px(BTN_MIN_W))
+        })
+        .collect::<Vec<_>>();
+    compute_layout(
+        scale,
+        title_height,
+        body_height,
+        &button_widths,
+        request.dismissible,
+    )
+}
+
+fn run_banner_thread(request: DesktopBannerShow, generation: u64) {
     unsafe {
         let hinstance = GetModuleHandleW(None).unwrap_or_default();
         let class_name = w!("LxDesktopBannerClass");
         let wc = WNDCLASSW {
-            style: CS_DROPSHADOW,
             lpfnWndProc: Some(banner_wnd_proc),
             hInstance: hinstance.into(),
             lpszClassName: class_name,
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            hbrBackground: HBRUSH(std::ptr::null_mut()),
             ..Default::default()
         };
         RegisterClassW(&wc);
 
-        let scale = super::update_callout::dpi_scale();
-        let px = |v: f32| (v * scale) as i32;
-        let metrics = measure_card(&request, scale);
-        let width = px(CARD_W);
-        let height = metrics.height;
-
         let owner = super::update_card::find_main_window();
-        let mut anchor = RECT::default();
-        let have_owner = owner
-            .map(|h| GetWindowRect(h, &mut anchor).is_ok())
-            .unwrap_or(false);
-        if !have_owner {
-            let _ = SystemParametersInfoW(
-                SPI_GETWORKAREA,
-                0,
-                Some(&mut anchor as *mut _ as *mut _),
-                SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-            );
-        }
-        let margin = px(16.0);
-        let (x, y) = banner_origin(anchor, width, height, margin);
-
+        let scale = owner_scale(owner);
+        // Unowned on purpose: an owned popup is hidden with a minimized host,
+        // and a permission prompt must still reach the user then.
         let hwnd = match CreateWindowExW(
-            WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+            WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
             class_name,
             w!(""),
             WS_POPUP,
-            x,
-            y,
-            width,
-            height,
-            owner,
+            0,
+            0,
+            1,
+            1,
+            None,
             None,
             Some(hinstance.into()),
             None,
         ) {
-            Ok(h) => h,
+            Ok(hwnd) => hwnd,
             Err(_) => {
                 crate::desktop::banner::fail(&request.id, "failed to present banner");
                 return;
             }
         };
-        round_corners(hwnd);
-        clip_round_window(hwnd, px(CARD_RADIUS));
 
-        let card = Box::new(Card {
+        let mut card = Box::new(Card {
             id: request.id.clone(),
             title: request.title.clone(),
             body: request.body.clone(),
@@ -162,24 +424,50 @@ fn run_banner_thread(request: DesktopBannerShow) {
                 .map(|action| (action.id.clone(), action.label.clone(), action.style))
                 .collect(),
             dismissible: request.actions.is_empty(),
-            title_font: make_font(scale, 13, true),
-            body_font: make_font(scale, 12, false),
-            btn_font: make_font(scale, 12, true),
-            icon: load_app_icon(),
-            title_height: metrics.title_height,
-            body_height: metrics.body_height,
-            button_widths: metrics.button_widths,
-            hover: Hover::None,
-            background: request.background.clone(),
+            palette: Palette::of(&request.background),
             owner,
+            scale,
+            fonts: Fonts {
+                title: HFONT::default(),
+                body: HFONT::default(),
+                button: HFONT::default(),
+                glyph: None,
+            },
+            icon: None,
+            layout: compute_layout(scale, 0, 0, &[], false),
+            surface: None,
+            hover: Hit::None,
+            pressed: Hit::None,
+            shown_at: Instant::now(),
+            closing_at: None,
+            hook: None,
         });
+        rebuild(&mut card, scale);
+        card.hook = owner.and_then(watch_owner);
+        let polling = owner.is_some() && card.hook.is_none();
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, Box::into_raw(card) as isize);
-        HWND_SLOT.store(hwnd.0 as isize, Ordering::SeqCst);
-        if HIDE_PENDING.load(Ordering::SeqCst) {
-            let _ = DestroyWindow(hwnd);
-        } else {
+
+        let current = {
+            let mut slot = slot();
+            let current = slot.generation == generation;
+            if current {
+                slot.hwnd = hwnd.0 as isize;
+            }
+            current
+        };
+        if current {
+            if let Some(card) = card_mut(hwnd) {
+                card.shown_at = Instant::now();
+                draw(card);
+                commit(hwnd, card);
+            }
             let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
-            SetTimer(Some(hwnd), 1, 30, None);
+            SetTimer(Some(hwnd), TIMER_ANIM, 15, None);
+            if polling {
+                SetTimer(Some(hwnd), TIMER_PIN, 30, None);
+            }
+        } else {
+            let _ = DestroyWindow(hwnd);
         }
 
         let mut msg = MSG::default();
@@ -190,97 +478,181 @@ fn run_banner_thread(request: DesktopBannerShow) {
     }
 }
 
-fn banner_origin(anchor: RECT, width: i32, _height: i32, margin: i32) -> (i32, i32) {
+/// (Re)load every DPI-dependent resource and lay the card out again.
+fn rebuild(card: &mut Card, scale: f32) {
+    card.scale = scale;
+    card.fonts.release();
+    if let Some(icon) = card.icon.take() {
+        unsafe {
+            let _ = DestroyIcon(icon);
+        }
+    }
+    unsafe {
+        let screen = GetDC(None);
+        let dc = CreateCompatibleDC(Some(screen));
+        ReleaseDC(None, screen);
+        card.fonts = Fonts::load(dc, scale);
+        card.layout = measure_layout(dc, &card.fonts, card, scale);
+        let _ = DeleteDC(dc);
+    }
+    card.icon = load_app_icon(px(ICON, scale));
+    card.surface = Surface::new(card.layout.window.0, card.layout.window.1);
+}
+
+fn owner_scale(owner: Option<HWND>) -> f32 {
+    let dpi = owner.map_or(0, |owner| unsafe { GetDpiForWindow(owner) });
+    if dpi == 0 {
+        dpi_scale()
+    } else {
+        dpi as f32 / 96.0
+    }
+}
+
+/// Follow the host through move / size / minimize / hide without polling.
+fn watch_owner(owner: HWND) -> Option<HWINEVENTHOOK> {
+    unsafe {
+        let thread = GetWindowThreadProcessId(owner, None);
+        if thread == 0 {
+            return None;
+        }
+        let hook = SetWinEventHook(
+            EVENT_OBJECT_SHOW,
+            EVENT_OBJECT_LOCATIONCHANGE,
+            None,
+            Some(owner_event),
+            GetCurrentProcessId(),
+            thread,
+            WINEVENT_OUTOFCONTEXT,
+        );
+        (!hook.is_invalid()).then_some(hook)
+    }
+}
+
+unsafe extern "system" fn owner_event(
+    _hook: HWINEVENTHOOK,
+    event: u32,
+    source: HWND,
+    object: i32,
+    child: i32,
+    _thread: u32,
+    _time: u32,
+) {
+    if object != OBJID_WINDOW.0 || child != 0 {
+        return;
+    }
+    if !matches!(
+        event,
+        EVENT_OBJECT_SHOW | EVENT_OBJECT_HIDE | EVENT_OBJECT_LOCATIONCHANGE
+    ) {
+        return;
+    }
+    let banner = slot().hwnd;
+    if banner == 0 {
+        return;
+    }
+    let banner = HWND(banner as *mut _);
+    if let Some(card) = card_mut(banner)
+        && card.owner == Some(source)
+    {
+        commit(banner, card);
+    }
+}
+
+/// Visible frame of a host the card can sit on; `None` while it is minimized,
+/// hidden, or gone. `GetWindowRect` would include the invisible resize border.
+fn owner_frame(owner: HWND) -> Option<RECT> {
+    unsafe {
+        if !IsWindow(Some(owner)).as_bool()
+            || !IsWindowVisible(owner).as_bool()
+            || IsIconic(owner).as_bool()
+        {
+            return None;
+        }
+        let mut rect = RECT::default();
+        if DwmGetWindowAttribute(
+            owner,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rect as *mut _ as *mut _,
+            std::mem::size_of::<RECT>() as u32,
+        )
+        .is_ok()
+            && rect.right > rect.left
+        {
+            return Some(rect);
+        }
+        GetWindowRect(owner, &mut rect).ok().map(|_| rect)
+    }
+}
+
+fn work_area() -> RECT {
+    let mut rect = RECT::default();
+    unsafe {
+        let _ = SystemParametersInfoW(
+            SPI_GETWORKAREA,
+            0,
+            Some(&mut rect as *mut _ as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
+    }
+    rect
+}
+
+/// Top-left of the card (not the window) inside `anchor`.
+fn banner_origin(anchor: RECT, width: i32, margin: i32) -> (i32, i32) {
     let x = (anchor.right - width - margin).max(anchor.left + margin.min(8));
     let y = anchor.top + margin;
     (x, y)
 }
 
-fn pin_to_owner(hwnd: HWND) {
-    let Some(card) = card_ref(hwnd) else {
+fn ease_out(t: f32) -> f32 {
+    1.0 - (1.0 - t.clamp(0.0, 1.0)).powi(3)
+}
+
+/// (slide offset factor, opacity) for the entrance and the fade-out.
+fn animation_state(card: &Card) -> (f32, f32) {
+    let enter = ease_out(card.shown_at.elapsed().as_secs_f32() * 1000.0 / ENTER_MS);
+    let exit = card.closing_at.map_or(1.0, |at| {
+        1.0 - (at.elapsed().as_secs_f32() * 1000.0 / EXIT_MS).clamp(0.0, 1.0)
+    });
+    (1.0 - enter, enter * exit)
+}
+
+/// Push the drawn surface to the screen at the pinned position.
+fn commit(hwnd: HWND, card: &Card) {
+    let Some(surface) = card.surface.as_ref() else {
         return;
     };
-    let Some(owner) = card.owner else {
-        return;
+    let anchor = card.owner.and_then(owner_frame).unwrap_or_else(work_area);
+    let width = card.layout.card.right - card.layout.card.left;
+    let (x, y) = banner_origin(anchor, width, px(MARGIN, card.scale));
+    let (slide, opacity) = animation_state(card);
+    let destination = POINT {
+        x: x - card.layout.card.left + (SLIDE * card.scale * slide) as i32,
+        y: y - card.layout.card.top,
+    };
+    let size = SIZE {
+        cx: surface.width,
+        cy: surface.height,
+    };
+    let origin = POINT { x: 0, y: 0 };
+    let blend = BLENDFUNCTION {
+        BlendOp: AC_SRC_OVER as u8,
+        SourceConstantAlpha: (opacity * 255.0) as u8,
+        AlphaFormat: AC_SRC_ALPHA as u8,
+        ..Default::default()
     };
     unsafe {
-        let mut anchor = RECT::default();
-        let mut current = RECT::default();
-        if GetWindowRect(owner, &mut anchor).is_err() || GetWindowRect(hwnd, &mut current).is_err()
-        {
-            return;
-        }
-        let width = current.right - current.left;
-        let height = current.bottom - current.top;
-        let scale = super::update_callout::dpi_scale();
-        let margin = (16.0 * scale) as i32;
-        let (x, y) = banner_origin(anchor, width, height, margin);
-        if x == current.left && y == current.top {
-            return;
-        }
-        let _ = SetWindowPos(
+        let _ = UpdateLayeredWindow(
             hwnd,
             None,
-            x,
-            y,
-            0,
-            0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE,
+            Some(&destination),
+            Some(&size),
+            Some(surface.dc),
+            Some(&origin),
+            COLORREF(0),
+            Some(&blend),
+            ULW_ALPHA,
         );
-    }
-}
-
-struct CardMetrics {
-    height: i32,
-    title_height: i32,
-    body_height: i32,
-    button_widths: Vec<i32>,
-}
-
-fn measure_card(request: &DesktopBannerShow, scale: f32) -> CardMetrics {
-    let px = |v: f32| (v * scale) as i32;
-    let pad = px(PAD);
-    let icon = px(ICON);
-    unsafe {
-        let hdc = GetDC(None);
-        let title_font = make_font(scale, 13, true);
-        let body_font = make_font(scale, 12, false);
-        let btn_font = make_font(scale, 12, true);
-        let title_height = line_height(hdc, title_font);
-        let body_line = line_height(hdc, body_font);
-        let body_height = if request.body.is_empty() {
-            0
-        } else {
-            // Always keep the macOS two-line slot. CALCRECT on the screen DC
-            // can undershoot DrawText wrap on the window DC and clip line 2.
-            body_line * 2 + 4
-        };
-        let button_widths = request
-            .actions
-            .iter()
-            .map(|action| {
-                let text_w = measure_text(hdc, btn_font, &action.label, px(CARD_W), false).0;
-                (text_w + px(BTN_PAD_X)).max(px(BTN_MIN_W))
-            })
-            .collect::<Vec<_>>();
-        let _ = DeleteObject(title_font.into());
-        let _ = DeleteObject(body_font.into());
-        let _ = DeleteObject(btn_font.into());
-        ReleaseDC(None, hdc);
-        let mut y = pad + title_height;
-        if body_height > 0 {
-            y += px(2.0) + body_height;
-        }
-        if !button_widths.is_empty() {
-            y += px(10.0) + px(BTN_H);
-        }
-        y += pad;
-        CardMetrics {
-            height: y.max(pad + icon + pad),
-            title_height,
-            body_height,
-            button_widths,
-        }
     }
 }
 
@@ -291,22 +663,6 @@ fn line_height(hdc: HDC, font: HFONT) -> i32 {
         let _ = GetTextMetricsW(hdc, &mut metrics);
         SelectObject(hdc, old);
         (metrics.tmHeight + metrics.tmExternalLeading).max(1)
-    }
-}
-
-fn clip_round_window(hwnd: HWND, radius: i32) {
-    unsafe {
-        let mut window = RECT::default();
-        if GetWindowRect(hwnd, &mut window).is_err() {
-            return;
-        }
-        let width = window.right - window.left;
-        let height = window.bottom - window.top;
-        if width <= 0 || height <= 0 {
-            return;
-        }
-        let region = CreateRoundRectRgn(0, 0, width + 1, height + 1, radius * 2, radius * 2);
-        let _ = SetWindowRgn(hwnd, Some(region), true);
     }
 }
 
@@ -321,13 +677,388 @@ fn measure_text(hdc: HDC, font: HFONT, text: &str, max_width: i32, wrap: bool) -
             right: max_width.max(1),
             bottom: 0,
         };
-        let format = DT_NOPREFIX | DT_CALCRECT | if wrap { DT_WORDBREAK } else { DT_SINGLELINE };
+        let format = DT_NOPREFIX
+            | DT_CALCRECT
+            | if wrap {
+                DT_WORDBREAK | DT_EDITCONTROL
+            } else {
+                DT_SINGLELINE
+            };
         let _ = DrawTextW(hdc, &mut wide[..n], &mut rect, format);
         SelectObject(hdc, old);
         (
             (rect.right - rect.left).max(0),
             (rect.bottom - rect.top).max(0),
         )
+    }
+}
+
+fn make_font(scale: f32, size: f32, semibold: bool, face: &str) -> HFONT {
+    let weight = if semibold { FW_SEMIBOLD } else { FW_NORMAL };
+    let face = to_wide(face);
+    unsafe {
+        CreateFontW(
+            -px(size, scale),
+            0,
+            0,
+            0,
+            weight.0 as i32,
+            0,
+            0,
+            0,
+            FONT_CHARSET(0),
+            FONT_OUTPUT_PRECISION(0),
+            FONT_CLIP_PRECISION(0),
+            FONT_QUALITY(CLEARTYPE_QUALITY.0),
+            0,
+            PCWSTR(face.as_ptr()),
+        )
+    }
+}
+
+/// First face the font mapper really resolves; GDI silently substitutes a
+/// missing face, which would turn the close glyph into a tofu box.
+fn resolve_font(hdc: HDC, scale: f32, size: f32, semibold: bool, faces: &[&str]) -> Option<HFONT> {
+    for face in faces {
+        let font = make_font(scale, size, semibold, face);
+        let resolved = unsafe {
+            let old = SelectObject(hdc, font.into());
+            let mut name = [0u16; 64];
+            let len = GetTextFaceW(hdc, Some(&mut name));
+            SelectObject(hdc, old);
+            String::from_utf16_lossy(&name[..(len.max(1) - 1) as usize])
+        };
+        if resolved.eq_ignore_ascii_case(face) {
+            return Some(font);
+        }
+        unsafe {
+            let _ = DeleteObject(font.into());
+        }
+    }
+    None
+}
+
+/// The exe icon at the drawn size; `ExtractIconExW` alone yields a 32px icon
+/// that blurs when stretched at high DPI.
+fn load_app_icon(size: i32) -> Option<HICON> {
+    let exe = std::env::current_exe().ok()?;
+    let wide = to_wide(&exe.to_string_lossy());
+    unsafe {
+        if wide.len() <= 260 {
+            let mut path = [0u16; 260];
+            path[..wide.len()].copy_from_slice(&wide);
+            let mut icons = [HICON::default()];
+            let count = PrivateExtractIconsW(&path, 0, size, size, Some(&mut icons), None, 0);
+            if count > 0 && count != u32::MAX && !icons[0].is_invalid() {
+                return Some(icons[0]);
+            }
+        }
+        let mut large = HICON::default();
+        let count = ExtractIconExW(PCWSTR(wide.as_ptr()), 0, Some(&mut large), None, 1);
+        (count > 0 && !large.is_invalid()).then_some(large)
+    }
+}
+
+struct Palette {
+    background: Rgb,
+    /// Card opacity from a `#RRGGBBAA` background.
+    opacity: f32,
+    title: Rgb,
+    body: Rgb,
+    /// Dark content on a light card; drives the neutral tints.
+    light: bool,
+}
+
+impl Palette {
+    fn of(background: &DesktopBannerBackground) -> Self {
+        let light = match background {
+            DesktopBannerBackground::System => !super::ui_update::windows_host_appearance_is_dark(),
+            other => other.prefers_dark_content(),
+        };
+        let (fill, opacity) = match background {
+            DesktopBannerBackground::Color { r, g, b, a } => ((*r, *g, *b), *a as f32 / 255.0),
+            _ if light => ((249, 249, 251), 1.0),
+            _ => ((44, 44, 46), 1.0),
+        };
+        let (title, body) = if light {
+            ((28, 28, 30), (99, 99, 104))
+        } else {
+            ((255, 255, 255), (174, 174, 178))
+        };
+        Self {
+            background: fill,
+            opacity,
+            title,
+            body,
+            light,
+        }
+    }
+
+    /// Neutral overlay: ink on a light card, white on a dark one.
+    fn tint(&self, strength: f32) -> Rgb {
+        let ink = if self.light {
+            (0, 0, 0)
+        } else {
+            (255, 255, 255)
+        };
+        mix(self.background, ink, strength)
+    }
+
+    fn button(&self, style: DesktopBannerActionStyle, hover: bool, pressed: bool) -> (Rgb, Rgb) {
+        let accent = |base: Rgb| {
+            let fill = if pressed {
+                mix(base, (0, 0, 0), 0.12)
+            } else if hover {
+                mix(base, (255, 255, 255), 0.14)
+            } else {
+                base
+            };
+            (fill, (255, 255, 255))
+        };
+        match style {
+            DesktopBannerActionStyle::Primary => accent((10, 132, 255)),
+            DesktopBannerActionStyle::Destructive => accent((255, 69, 58)),
+            DesktopBannerActionStyle::Default => {
+                let base = if self.light { 0.06 } else { 0.12 };
+                let boost = if pressed {
+                    0.10
+                } else if hover {
+                    0.05
+                } else {
+                    0.0
+                };
+                (self.tint(base + boost), self.title)
+            }
+        }
+    }
+}
+
+fn mix(from: Rgb, to: Rgb, amount: f32) -> Rgb {
+    let amount = amount.clamp(0.0, 1.0);
+    let channel = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * amount).round() as u8;
+    (
+        channel(from.0, to.0),
+        channel(from.1, to.1),
+        channel(from.2, to.2),
+    )
+}
+
+fn colorref(color: Rgb) -> COLORREF {
+    rgb(color.0, color.1, color.2)
+}
+
+fn opaque(color: Rgb) -> u32 {
+    0xff00_0000 | (u32::from(color.0) << 16) | (u32::from(color.1) << 8) | u32::from(color.2)
+}
+
+/// Signed distance from a pixel centre to a rounded rect (negative inside).
+fn rounded_distance(x: i32, y: i32, rect: &RECT, radius: f32) -> f32 {
+    let half_w = (rect.right - rect.left) as f32 / 2.0;
+    let half_h = (rect.bottom - rect.top) as f32 / 2.0;
+    let radius = radius.min(half_w).min(half_h);
+    let qx = (x as f32 + 0.5 - (rect.left as f32 + half_w)).abs() - (half_w - radius);
+    let qy = (y as f32 + 0.5 - (rect.top as f32 + half_h)).abs() - (half_h - radius);
+    let outside = (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt();
+    outside + qx.max(qy).min(0.0) - radius
+}
+
+fn coverage(distance: f32) -> f32 {
+    (0.5 - distance).clamp(0.0, 1.0)
+}
+
+/// Antialiased rounded-rect fill over opaque pixels.
+fn fill_rounded(pixels: &mut [u32], stride: i32, rect: &RECT, radius: f32, color: Rgb) {
+    for y in rect.top..rect.bottom {
+        for x in rect.left..rect.right {
+            let cover = coverage(rounded_distance(x, y, rect, radius));
+            if cover <= 0.0 {
+                continue;
+            }
+            let index = (y * stride + x) as usize;
+            let under = pixels[index];
+            let under = (
+                ((under >> 16) & 0xff) as u8,
+                ((under >> 8) & 0xff) as u8,
+                (under & 0xff) as u8,
+            );
+            pixels[index] = opaque(mix(under, color, cover));
+        }
+    }
+}
+
+/// Hairline, silhouette, and shadow. GDI leaves garbage in the alpha byte, so
+/// alpha is rebuilt from geometry and the colours premultiplied for
+/// `ULW_ALPHA`.
+fn compose(pixels: &mut [u32], layout: &Layout, palette: &Palette, scale: f32) {
+    let (width, height) = layout.window;
+    let card = layout.card;
+    let radius = CARD_RADIUS * scale;
+    let stroke = scale.round().max(1.0);
+    let hairline = palette.tint(if palette.light { 0.10 } else { 0.16 });
+    let drop = px(SHADOW_DROP, scale);
+    let shadow_rect = RECT {
+        top: card.top + drop,
+        bottom: card.bottom + drop,
+        ..card
+    };
+    let blur = ((SHADOW - SHADOW_DROP) * scale).max(1.0);
+    for y in 0..height {
+        for x in 0..width {
+            let index = (y * width + x) as usize;
+            let distance = rounded_distance(x, y, &card, radius);
+            let cover = coverage(distance) * palette.opacity;
+            let shadow = if cover >= 1.0 {
+                0.0
+            } else {
+                let fade = 1.0 - rounded_distance(x, y, &shadow_rect, radius).max(0.0) / blur;
+                SHADOW_ALPHA * fade.clamp(0.0, 1.0).powi(3)
+            };
+            let alpha = cover + (1.0 - coverage(distance)) * shadow;
+            if alpha <= 0.0 {
+                pixels[index] = 0;
+                continue;
+            }
+            let pixel = pixels[index];
+            let mut color = (
+                ((pixel >> 16) & 0xff) as u8,
+                ((pixel >> 8) & 0xff) as u8,
+                (pixel & 0xff) as u8,
+            );
+            if distance > -stroke - 0.5 {
+                color = mix(color, hairline, coverage(-(distance + stroke)));
+            }
+            let premultiplied = |channel: u8| (channel as f32 * cover).round() as u32;
+            pixels[index] = (((alpha * 255.0).round() as u32) << 24)
+                | (premultiplied(color.0) << 16)
+                | (premultiplied(color.1) << 8)
+                | premultiplied(color.2);
+        }
+    }
+}
+
+fn draw(card: &mut Card) {
+    let Some(mut surface) = card.surface.take() else {
+        return;
+    };
+    let scale = card.scale;
+    let layout = &card.layout;
+    let palette = &card.palette;
+    let stride = surface.width;
+    let dc = surface.dc;
+
+    let pixels = surface.pixels();
+    pixels.fill(opaque(palette.background));
+    if card.icon.is_none() {
+        fill_rounded(
+            pixels,
+            stride,
+            &layout.icon,
+            ICON_RADIUS * scale,
+            (10, 132, 255),
+        );
+    }
+    if let Some(close) = layout.close.as_ref()
+        && (card.hover == Hit::Close || card.pressed == Hit::Close)
+    {
+        let strength = if card.pressed == Hit::Close {
+            0.16
+        } else {
+            0.10
+        };
+        fill_rounded(pixels, stride, close, CLOSE * scale, palette.tint(strength));
+    }
+    let mut labels = Vec::with_capacity(card.actions.len());
+    for (index, ((_, label, style), rect)) in card.actions.iter().zip(&layout.buttons).enumerate() {
+        let hit = Hit::Action(index);
+        let (fill, text) = palette.button(*style, card.hover == hit, card.pressed == hit);
+        fill_rounded(pixels, stride, rect, BTN_RADIUS * scale, fill);
+        labels.push((label, *rect, text));
+    }
+
+    unsafe {
+        SetBkMode(dc, TRANSPARENT);
+        if let Some(icon) = card.icon {
+            let rect = layout.icon;
+            let radius = px(ICON_RADIUS, scale) * 2;
+            let region = CreateRoundRectRgn(
+                rect.left,
+                rect.top,
+                rect.right + 1,
+                rect.bottom + 1,
+                radius,
+                radius,
+            );
+            let saved = SaveDC(dc);
+            SelectClipRgn(dc, Some(region));
+            let size = rect.right - rect.left;
+            let _ = DrawIconEx(
+                dc, rect.left, rect.top, icon, size, size, 0, None, DI_NORMAL,
+            );
+            let _ = RestoreDC(dc, saved);
+            let _ = DeleteObject(region.into());
+        }
+        let single = DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX;
+        draw_text(
+            dc,
+            card.fonts.title,
+            &card.title,
+            layout.title,
+            palette.title,
+            DT_LEFT | DT_END_ELLIPSIS | single,
+        );
+        if let Some(body) = layout.body {
+            draw_text(
+                dc,
+                card.fonts.body,
+                &card.body,
+                body,
+                palette.body,
+                DT_LEFT | DT_WORDBREAK | DT_EDITCONTROL | DT_END_ELLIPSIS | DT_NOPREFIX,
+            );
+        }
+        if let Some(close) = layout.close {
+            let color = if card.hover == Hit::Close {
+                palette.title
+            } else {
+                palette.body
+            };
+            match card.fonts.glyph {
+                Some(font) => draw_text(dc, font, CLOSE_GLYPH, close, color, DT_CENTER | single),
+                None => draw_text(dc, card.fonts.title, "×", close, color, DT_CENTER | single),
+            }
+        }
+        for (label, rect, color) in labels {
+            draw_text(
+                dc,
+                card.fonts.button,
+                label,
+                rect,
+                color,
+                DT_CENTER | single,
+            );
+        }
+        let _ = GdiFlush();
+    }
+
+    compose(surface.pixels(), layout, palette, scale);
+    card.surface = Some(surface);
+}
+
+fn draw_text(
+    hdc: HDC,
+    font: HFONT,
+    text: &str,
+    mut rect: RECT,
+    color: Rgb,
+    format: windows::Win32::Graphics::Gdi::DRAW_TEXT_FORMAT,
+) {
+    unsafe {
+        let old = SelectObject(hdc, font.into());
+        SetTextColor(hdc, colorref(color));
+        let mut wide = to_wide(text);
+        let n = wide.len().saturating_sub(1);
+        DrawTextW(hdc, &mut wide[..n], &mut rect, format);
+        SelectObject(hdc, old);
     }
 }
 
@@ -340,17 +1071,17 @@ unsafe extern "system" fn banner_wnd_proc(
     // Rust 2024: `unsafe fn` does not make the body an unsafe block.
     unsafe {
         match msg {
-            WM_PAINT => {
-                paint(hwnd);
-                LRESULT(0)
-            }
             WM_MOUSEMOVE => {
-                track_hover(hwnd, lparam);
+                set_hit(hwnd, Some(hit_test(hwnd, lparam)), None);
                 track_mouse_leave(hwnd);
                 LRESULT(0)
             }
             WM_MOUSELEAVE => {
-                clear_hover(hwnd);
+                set_hit(hwnd, Some(Hit::None), Some(Hit::None));
+                LRESULT(0)
+            }
+            WM_LBUTTONDOWN => {
+                set_hit(hwnd, None, Some(hit_test(hwnd, lparam)));
                 LRESULT(0)
             }
             WM_LBUTTONUP => {
@@ -358,29 +1089,52 @@ unsafe extern "system" fn banner_wnd_proc(
                 LRESULT(0)
             }
             WM_TIMER => {
-                pin_to_owner(hwnd);
+                on_timer(hwnd, wparam.0);
                 LRESULT(0)
             }
-            WM_APP_HIDE | WM_CLOSE => {
+            WM_APP_HIDE => {
+                match card_mut(hwnd) {
+                    Some(card) if card.closing_at.is_none() => {
+                        card.closing_at = Some(Instant::now());
+                        SetTimer(Some(hwnd), TIMER_ANIM, 15, None);
+                    }
+                    Some(_) => {}
+                    None => {
+                        let _ = DestroyWindow(hwnd);
+                    }
+                }
+                LRESULT(0)
+            }
+            WM_CLOSE => {
                 let _ = DestroyWindow(hwnd);
+                LRESULT(0)
+            }
+            WM_DPICHANGED => {
+                if let Some(card) = card_mut(hwnd) {
+                    let dpi = (wparam.0 & 0xFFFF) as f32;
+                    rebuild(card, if dpi > 0.0 { dpi / 96.0 } else { card.scale });
+                    draw(card);
+                    commit(hwnd, card);
+                }
                 LRESULT(0)
             }
             WM_DESTROY => {
                 if let Some(card) = take_card(hwnd) {
-                    let _ = DeleteObject(card.title_font.into());
-                    let _ = DeleteObject(card.body_font.into());
-                    let _ = DeleteObject(card.btn_font.into());
+                    if let Some(hook) = card.hook {
+                        let _ = UnhookWinEvent(hook);
+                    }
+                    card.fonts.release();
                     if let Some(icon) = card.icon {
                         let _ = DestroyIcon(icon);
                     }
                 }
-                let this = hwnd.0 as isize;
-                let _ = HWND_SLOT.compare_exchange(this, 0, Ordering::SeqCst, Ordering::SeqCst);
+                {
+                    let mut slot = slot();
+                    if slot.hwnd == hwnd.0 as isize {
+                        slot.hwnd = 0;
+                    }
+                }
                 PostQuitMessage(0);
-                LRESULT(0)
-            }
-            WM_DPICHANGED => {
-                let _ = InvalidateRect(Some(hwnd), None, true);
                 LRESULT(0)
             }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
@@ -388,158 +1142,24 @@ unsafe extern "system" fn banner_wnd_proc(
     }
 }
 
-fn paint(hwnd: HWND) {
-    unsafe {
-        let Some(card) = card_ref(hwnd) else {
-            return;
-        };
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-        let mut client = RECT::default();
-        let _ = GetClientRect(hwnd, &mut client);
-        let scale = super::update_callout::dpi_scale();
-        let px = |v: f32| (v * scale) as i32;
-
-        let (bg_color, title_color, body_color, border) = theme_colors(&card.background);
-        let bg = CreateSolidBrush(bg_color);
-        let border_pen = CreatePen(PS_SOLID, 1, border);
-        let old_brush = SelectObject(hdc, bg.into());
-        let old_pen = SelectObject(hdc, border_pen.into());
-        let corner = px(CARD_RADIUS) * 2;
-        let _ = RoundRect(
-            hdc,
-            client.left,
-            client.top,
-            client.right,
-            client.bottom,
-            corner,
-            corner,
-        );
-        SelectObject(hdc, old_pen);
-        SelectObject(hdc, old_brush);
-        let _ = DeleteObject(bg.into());
-        let _ = DeleteObject(border_pen.into());
-
-        let pad = px(PAD);
-        let icon = px(ICON);
-        draw_icon(hdc, pad, pad, icon, card.icon);
-
-        let text_left = pad + icon + px(GAP);
-        let title_right = client.right - pad - if card.dismissible { px(CLOSE) } else { 0 };
-        let body_right = client.right - pad;
-
-        SetBkMode(hdc, TRANSPARENT);
-        let old = SelectObject(hdc, card.title_font.into());
-        SetTextColor(hdc, title_color);
-        let mut title_rect = RECT {
-            left: text_left,
-            top: pad,
-            right: title_right,
-            bottom: pad + card.title_height,
-        };
-        let mut title = to_wide(&card.title);
-        let title_n = title.len().saturating_sub(1);
-        DrawTextW(
-            hdc,
-            &mut title[..title_n],
-            &mut title_rect,
-            DT_LEFT | DT_SINGLELINE | DT_VCENTER | DT_END_ELLIPSIS | DT_NOPREFIX,
-        );
-
-        if !card.body.is_empty() {
-            SelectObject(hdc, card.body_font.into());
-            SetTextColor(hdc, body_color);
-            let body_top = pad + card.title_height + px(2.0);
-            let mut body_rect = RECT {
-                left: text_left,
-                top: body_top,
-                right: body_right,
-                bottom: body_top + card.body_height,
-            };
-            let mut body = to_wide(&card.body);
-            let body_n = body.len().saturating_sub(1);
-            DrawTextW(
-                hdc,
-                &mut body[..body_n],
-                &mut body_rect,
-                DT_LEFT | DT_WORDBREAK | DT_END_ELLIPSIS | DT_NOPREFIX,
-            );
-        }
-        SelectObject(hdc, old);
-
-        if card.dismissible {
-            let close = close_rect(hwnd, scale);
-            SetTextColor(
-                hdc,
-                if card.hover == Hover::Close {
-                    title_color
-                } else {
-                    body_color
-                },
-            );
-            let tf = SelectObject(hdc, card.title_font.into());
-            let mut mark = to_wide("×");
-            let n = mark.len().saturating_sub(1);
-            let mut close_mut = close;
-            DrawTextW(
-                hdc,
-                &mut mark[..n],
-                &mut close_mut,
-                DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
-            );
-            SelectObject(hdc, tf);
-        }
-
-        for (index, (_, label, style)) in card.actions.iter().enumerate() {
-            let rect = action_rect(hwnd, scale, card, index);
-            paint_button(
-                hdc,
-                &rect,
-                label,
-                *style,
-                card.hover == Hover::Action(index),
-                card.btn_font,
-                card.background.prefers_dark_content(),
-            );
-        }
-
-        let _ = EndPaint(hwnd, &ps);
+fn on_timer(hwnd: HWND, timer: usize) {
+    let Some(card) = card_mut(hwnd) else {
+        return;
+    };
+    commit(hwnd, card);
+    if timer != TIMER_ANIM {
+        return;
     }
-}
-
-fn draw_icon(hdc: HDC, x: i32, y: i32, size: i32, icon: Option<HICON>) {
+    let entered = card.shown_at.elapsed().as_secs_f32() * 1000.0 >= ENTER_MS;
+    let closed = card
+        .closing_at
+        .is_some_and(|at| at.elapsed().as_secs_f32() * 1000.0 >= EXIT_MS);
     unsafe {
-        let radius = ((size as f32) * ICON_RADIUS / ICON).round() as i32;
-        let region = CreateRoundRectRgn(x, y, x + size + 1, y + size + 1, radius * 2, radius * 2);
-        let saved = SaveDC(hdc);
-        SelectClipRgn(hdc, Some(region));
-        if let Some(icon) = icon {
-            let _ = DrawIconEx(hdc, x, y, icon, size, size, 0, None, DI_NORMAL);
-        } else {
-            let brush = CreateSolidBrush(rgb(10, 132, 255));
-            let rect = RECT {
-                left: x,
-                top: y,
-                right: x + size,
-                bottom: y + size,
-            };
-            FillRect(hdc, &rect, brush);
-            let _ = DeleteObject(brush.into());
+        if closed {
+            let _ = DestroyWindow(hwnd);
+        } else if entered && card.closing_at.is_none() {
+            let _ = KillTimer(Some(hwnd), TIMER_ANIM);
         }
-        let _ = RestoreDC(hdc, saved);
-        let _ = DeleteObject(region.into());
-    }
-}
-
-fn load_app_icon() -> Option<HICON> {
-    let exe = std::env::current_exe().ok()?;
-    let wide = to_wide(&exe.to_string_lossy());
-    let mut large = HICON::default();
-    let count = unsafe { ExtractIconExW(PCWSTR(wide.as_ptr()), 0, Some(&mut large), None, 1) };
-    if count > 0 && !large.is_invalid() {
-        Some(large)
-    } else {
-        None
     }
 }
 
@@ -555,209 +1175,59 @@ fn track_mouse_leave(hwnd: HWND) {
     }
 }
 
-fn clear_hover(hwnd: HWND) {
-    let Some(card) = card_mut(hwnd) else {
-        return;
-    };
-    if card.hover == Hover::None {
-        return;
-    }
-    card.hover = Hover::None;
-    unsafe {
-        let _ = InvalidateRect(Some(hwnd), None, true);
-    }
-}
-
-fn theme_colors(background: &DesktopBannerBackground) -> (COLORREF, COLORREF, COLORREF, COLORREF) {
-    match background {
-        DesktopBannerBackground::Light => (
-            rgb(245, 245, 247),
-            rgb(28, 28, 30),
-            rgb(110, 110, 115),
-            rgb(210, 210, 215),
-        ),
-        DesktopBannerBackground::Color { r, g, b, .. } => {
-            let (title, body, border) = if background.prefers_dark_content() {
-                (rgb(28, 28, 30), rgb(110, 110, 115), rgb(200, 200, 205))
-            } else {
-                (rgb(255, 255, 255), rgb(174, 174, 178), rgb(70, 70, 74))
-            };
-            (rgb(*r, *g, *b), title, body, border)
-        }
-        DesktopBannerBackground::System | DesktopBannerBackground::Dark => (
-            rgb(44, 44, 46),
-            rgb(255, 255, 255),
-            rgb(174, 174, 178),
-            rgb(70, 70, 74),
-        ),
-    }
-}
-
-fn paint_button(
-    hdc: HDC,
-    rect: &RECT,
-    label: &str,
-    style: DesktopBannerActionStyle,
-    hover: bool,
-    font: HFONT,
-    dark_content: bool,
-) {
-    unsafe {
-        let (bg, fg) = match style {
-            DesktopBannerActionStyle::Primary => (
-                if hover {
-                    rgb(64, 156, 255)
-                } else {
-                    rgb(10, 132, 255)
-                },
-                rgb(255, 255, 255),
-            ),
-            DesktopBannerActionStyle::Destructive => (
-                if hover {
-                    rgb(255, 105, 97)
-                } else {
-                    rgb(255, 69, 58)
-                },
-                rgb(255, 255, 255),
-            ),
-            DesktopBannerActionStyle::Default if dark_content => {
-                if hover {
-                    (rgb(226, 226, 230), rgb(28, 28, 30))
-                } else {
-                    (rgb(236, 236, 239), rgb(28, 28, 30))
-                }
-            }
-            DesktopBannerActionStyle::Default => {
-                if hover {
-                    (rgb(72, 72, 74), rgb(255, 255, 255))
-                } else {
-                    (rgb(58, 58, 60), rgb(255, 255, 255))
-                }
-            }
-        };
-        let brush = CreateSolidBrush(bg);
-        let pen = CreatePen(PS_SOLID, 1, bg);
-        let old_brush = SelectObject(hdc, brush.into());
-        let old_pen = SelectObject(hdc, pen.into());
-        let radius = ((rect.bottom - rect.top) as f32 * (BTN_RADIUS / BTN_H) * 2.0).round() as i32;
-        let _ = RoundRect(
-            hdc,
-            rect.left,
-            rect.top,
-            rect.right,
-            rect.bottom,
-            radius,
-            radius,
-        );
-        SelectObject(hdc, old_brush);
-        SelectObject(hdc, old_pen);
-        let _ = DeleteObject(brush.into());
-        let _ = DeleteObject(pen.into());
-        let old = SelectObject(hdc, font.into());
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, fg);
-        let mut text = to_wide(label);
-        let n = text.len().saturating_sub(1);
-        let mut text_rect = *rect;
-        DrawTextW(
-            hdc,
-            &mut text[..n],
-            &mut text_rect,
-            DT_CENTER | DT_SINGLELINE | DT_VCENTER | DT_NOPREFIX,
-        );
-        SelectObject(hdc, old);
-    }
-}
-
-fn close_rect(hwnd: HWND, scale: f32) -> RECT {
-    let px = |v: f32| (v * scale) as i32;
-    let mut client = RECT::default();
-    unsafe {
-        let _ = GetClientRect(hwnd, &mut client);
-    }
-    RECT {
-        left: client.right - px(PAD) - px(CLOSE),
-        top: px(PAD),
-        right: client.right - px(PAD),
-        bottom: px(PAD) + px(CLOSE),
-    }
-}
-
-fn action_rect(hwnd: HWND, scale: f32, card: &Card, index: usize) -> RECT {
-    let px = |v: f32| (v * scale) as i32;
-    let mut client = RECT::default();
-    unsafe {
-        let _ = GetClientRect(hwnd, &mut client);
-    }
-    let height = px(BTN_H);
-    let gap = px(8.0);
-    let mut right = client.right - px(PAD);
-    for width in card.button_widths.iter().skip(index + 1).rev() {
-        right -= *width + gap;
-    }
-    let width = card
-        .button_widths
-        .get(index)
-        .copied()
-        .unwrap_or(px(BTN_MIN_W));
-    RECT {
-        left: right - width,
-        top: client.bottom - px(PAD) - height,
-        right,
-        bottom: client.bottom - px(PAD),
-    }
-}
-
-fn track_hover(hwnd: HWND, lparam: LPARAM) {
-    let Some(card) = card_mut(hwnd) else {
-        return;
+fn hit_test(hwnd: HWND, lparam: LPARAM) -> Hit {
+    let Some(card) = card_ref(hwnd) else {
+        return Hit::None;
     };
     let point = point_from(lparam);
-    let scale = super::update_callout::dpi_scale();
-    let hover = if card.dismissible && pt_in(close_rect(hwnd, scale), point) {
-        Hover::Close
-    } else {
-        card.actions
-            .iter()
-            .enumerate()
-            .find_map(|(index, _)| {
-                pt_in(action_rect(hwnd, scale, card, index), point).then_some(Hover::Action(index))
-            })
-            .unwrap_or(Hover::None)
-    };
-    if hover != card.hover {
-        card.hover = hover;
-        unsafe {
-            let _ = InvalidateRect(Some(hwnd), None, true);
-        }
+    if card.layout.close.is_some_and(|close| pt_in(close, point)) {
+        return Hit::Close;
     }
+    card.layout
+        .buttons
+        .iter()
+        .position(|rect| pt_in(*rect, point))
+        .map_or(Hit::None, Hit::Action)
+}
+
+fn set_hit(hwnd: HWND, hover: Option<Hit>, pressed: Option<Hit>) {
+    let Some(card) = card_mut(hwnd) else {
+        return;
+    };
+    let hover = hover.unwrap_or(card.hover);
+    let pressed = pressed.unwrap_or(card.pressed);
+    if hover == card.hover && pressed == card.pressed {
+        return;
+    }
+    card.hover = hover;
+    card.pressed = pressed;
+    draw(card);
+    commit(hwnd, card);
 }
 
 fn on_click(hwnd: HWND, lparam: LPARAM) {
+    let hit = hit_test(hwnd, lparam);
+    let armed = card_ref(hwnd).is_some_and(|card| card.pressed == hit && card.closing_at.is_none());
+    set_hit(hwnd, None, Some(Hit::None));
     let Some(card) = card_ref(hwnd) else {
         return;
     };
-    let point = point_from(lparam);
-    let scale = super::update_callout::dpi_scale();
-    if card.dismissible && pt_in(close_rect(hwnd, scale), point) {
-        let id = card.id.clone();
-        crate::desktop::banner::complete(&id, DesktopBannerOutcome::Dismissed { id: id.clone() });
+    if !armed {
         return;
     }
-    for (index, (action, _, _)) in card.actions.iter().enumerate() {
-        if pt_in(action_rect(hwnd, scale, card, index), point) {
-            let id = card.id.clone();
-            let action = action.clone();
-            crate::desktop::banner::complete(
-                &id,
-                DesktopBannerOutcome::Action {
-                    id: id.clone(),
-                    action,
-                },
-            );
-            return;
-        }
-    }
+    let id = card.id.clone();
+    let outcome = match hit {
+        Hit::None => return,
+        Hit::Close => DesktopBannerOutcome::Dismissed { id: id.clone() },
+        Hit::Action(index) => match card.actions.get(index) {
+            Some((action, _, _)) => DesktopBannerOutcome::Action {
+                id: id.clone(),
+                action: action.clone(),
+            },
+            None => return,
+        },
+    };
+    crate::desktop::banner::complete(&id, outcome);
 }
 
 fn point_from(lparam: LPARAM) -> POINT {
@@ -792,8 +1262,7 @@ fn take_card(hwnd: HWND) -> Option<Box<Card>> {
 
 #[cfg(test)]
 mod tests {
-    use super::banner_origin;
-    use windows::Win32::Foundation::RECT;
+    use super::*;
 
     #[test]
     fn banner_origin_pins_to_the_anchor_top_right() {
@@ -803,7 +1272,7 @@ mod tests {
             right: 840,
             bottom: 620,
         };
-        assert_eq!(banner_origin(anchor, 328, 120, 16), (496, 36));
+        assert_eq!(banner_origin(anchor, 328, 16), (496, 36));
     }
 
     #[test]
@@ -814,6 +1283,50 @@ mod tests {
             right: 300,
             bottom: 400,
         };
-        assert_eq!(banner_origin(anchor, 328, 80, 16), (108, 26));
+        assert_eq!(banner_origin(anchor, 328, 16), (108, 26));
+    }
+
+    #[test]
+    fn body_takes_only_the_lines_it_needs() {
+        assert_eq!(body_lines(17, 17), 1);
+        assert_eq!(body_lines(34, 17), 2);
+        assert_eq!(body_lines(85, 17), 2);
+        assert_eq!(body_lines(0, 17), 1);
+    }
+
+    #[test]
+    fn title_only_toast_is_icon_high_with_a_centred_title() {
+        let layout = compute_layout(1.0, 18, 0, &[], true);
+        let card = layout.card;
+        assert_eq!(card.bottom - card.top, 60);
+        assert_eq!(
+            layout.title.top + layout.title.bottom,
+            layout.icon.top + layout.icon.bottom
+        );
+        assert!(layout.title.right <= layout.close.unwrap().left);
+        assert_eq!(layout.window, (328 + 52, 60 + 52));
+    }
+
+    #[test]
+    fn buttons_are_right_aligned_in_request_order() {
+        let layout = compute_layout(1.0, 18, 34, &[56, 70], false);
+        let card = layout.card;
+        assert_eq!(layout.buttons[1].right, card.right - 12);
+        assert_eq!(layout.buttons[0].right, layout.buttons[1].left - 8);
+        assert_eq!(layout.buttons[1].bottom, card.bottom - 12);
+        assert!(layout.body.unwrap().bottom + 10 <= layout.buttons[0].top);
+    }
+
+    #[test]
+    fn rounded_coverage_clears_the_corner_and_fills_the_middle() {
+        let rect = RECT {
+            left: 0,
+            top: 0,
+            right: 100,
+            bottom: 60,
+        };
+        assert_eq!(coverage(rounded_distance(0, 0, &rect, 12.0)), 0.0);
+        assert_eq!(coverage(rounded_distance(50, 30, &rect, 12.0)), 1.0);
+        assert_eq!(coverage(rounded_distance(50, 0, &rect, 12.0)), 1.0);
     }
 }
