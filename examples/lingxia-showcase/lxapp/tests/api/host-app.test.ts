@@ -367,12 +367,12 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
     rejected: Record<string, boolean>;
   };
 
-  expect(result.toast).toMatchObject({
+  expect(result.toast).toEqual({
     id: 'automation-banner-toast',
     canceled: true,
     reason: 'timeout',
   });
-  expect(result.prompt).toMatchObject({
+  expect(result.prompt).toEqual({
     id: 'automation-banner-prompt',
     canceled: true,
     reason: 'dismissed',

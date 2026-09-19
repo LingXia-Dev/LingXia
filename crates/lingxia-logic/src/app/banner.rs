@@ -106,7 +106,9 @@ fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
     };
     let background = match parsed.background {
         None => DesktopBannerBackground::System,
-        Some(value) => DesktopBannerBackground::parse(&value).map_err(js_invalid_parameter_error)?,
+        Some(value) => {
+            DesktopBannerBackground::parse(&value).map_err(js_invalid_parameter_error)?
+        }
     };
     Ok(DesktopBannerShow {
         id,
