@@ -19,9 +19,9 @@ use serde_json::json;
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
     CLEARTYPE_QUALITY, CLIP_DEFAULT_PRECIS, CreateFontW, DEFAULT_CHARSET, DEFAULT_PITCH, DT_CENTER,
-    DT_LEFT, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FF_SWISS, GetTextFaceW, HDC,
-    HFONT, HGDIOBJ, IntersectClipRect, OUT_DEFAULT_PRECIS, RestoreDC, SaveDC, SelectObject,
-    SetBkMode, SetTextColor, TRANSPARENT,
+    DT_LEFT, DT_NOPREFIX, DT_SINGLELINE, DT_VCENTER, DeleteObject, DrawTextW, FF_SWISS,
+    GetTextFaceW, HDC, HFONT, HGDIOBJ, IntersectClipRect, OUT_DEFAULT_PRECIS, RestoreDC, SaveDC,
+    SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
 use windows::Win32::UI::WindowsAndMessaging;
 use windows::core::PCWSTR;
@@ -1369,11 +1369,17 @@ pub(crate) fn collapsed_sidebar_tooltip(
     if text.is_empty() {
         return None;
     }
-    let text_width = text
-        .chars()
-        .map(|ch| if ch.is_ascii() { 7 } else { 14 })
-        .sum::<i32>();
-    let width = (text_width + SIDEBAR_RAIL_TOOLTIP_PADDING * 2).clamp(72, 240);
+    // Hug the real Segoe string, not a 7/14 guess — that undersizes at 125%+
+    // DPI and DT_END_ELLIPSIS then clips the label. Cap to the window, not 240.
+    let text_width = match measure_chrome_text_width(text) {
+        w if w > 0 => w,
+        _ => text
+            .chars()
+            .map(|ch| if ch.is_ascii() { 8 } else { 16 })
+            .sum::<i32>(),
+    };
+    let max_width = (client.right - client.left - SIDEBAR_RAIL_TOOLTIP_GAP * 2).clamp(72, 480);
+    let width = (text_width + SIDEBAR_RAIL_TOOLTIP_PADDING * 2 + 4).clamp(72, max_width);
     let height = SIDEBAR_RAIL_TOOLTIP_HEIGHT;
     let desired_left = match tabbar.position {
         WindowsShellTabBarPosition::Left => tabbar_rect.right + SIDEBAR_RAIL_TOOLTIP_GAP,
@@ -1583,7 +1589,7 @@ pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, 
             bottom: height,
         },
         shell_palette().text_primary,
-        DT_LEFT,
+        DT_LEFT | DT_NOPREFIX,
     );
     stroke_round_rect_aa(
         hdc,
@@ -2969,6 +2975,52 @@ mod scroll_tests {
         )
         .unwrap();
         assert_eq!(action_tooltip.text, "Terminal");
+    }
+
+    #[test]
+    fn compact_rail_tooltip_hugs_a_long_label_instead_of_capping_at_240() {
+        let client = RECT {
+            left: 0,
+            top: 0,
+            right: 720,
+            bottom: 737,
+        };
+        let long_title = "Documentation and release notes for the compact rail";
+        let mut rail = bottom_tabbar(true, false);
+        rail.position = WindowsShellTabBarPosition::Left;
+        rail.dimension = 184;
+        rail.icon_rail = true;
+        rail.auxiliary_items.push(WindowsShellAuxiliaryItemLayout {
+            id: "web:docs".to_string(),
+            title: long_title.to_string(),
+            active: false,
+            pinned: false,
+            closable: true,
+            icon_png: None,
+            icon_path: String::new(),
+            tabs: None,
+        });
+        let layout = WindowsShellWindowLayout {
+            tab_bar: Some(rail.clone()),
+            ..Default::default()
+        };
+        let window_layout = WindowsWindowLayout::new(layout.clone());
+        let rail_rect = compute_chrome_rects(client, &layout).tab_bar.unwrap();
+        let web_rect = sidebar_rail_item_rect(rail_rect, sidebar_auxiliary_rail_index(&rail, 0), 0);
+        let tooltip = collapsed_sidebar_tooltip(
+            client,
+            &window_layout,
+            (
+                (web_rect.left + web_rect.right) / 2,
+                (web_rect.top + web_rect.bottom) / 2,
+            ),
+        )
+        .unwrap();
+        assert_eq!(tooltip.text, long_title);
+        assert!(
+            tooltip.popup.right - tooltip.popup.left > 240,
+            "long rail tooltip must grow past the old 240px cap"
+        );
     }
 
     #[test]
