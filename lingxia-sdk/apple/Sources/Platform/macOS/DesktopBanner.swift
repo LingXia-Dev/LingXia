@@ -83,7 +83,7 @@ final class DesktopBannerController {
 
     private func position(_ panel: NSPanel, fitting size: NSSize) {
         let width = Self.cardWidth
-        let height = max(72, size.height)
+        let height = size.height
         panel.setContentSize(NSSize(width: width, height: height))
         guard let screen = NSScreen.main ?? NSScreen.screens.first else { return }
         let visible = screen.visibleFrame
@@ -237,7 +237,10 @@ private final class BannerView: NSView {
             icon.heightAnchor.constraint(equalToConstant: 36),
 
             titleField.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 10),
-            titleField.topAnchor.constraint(equalTo: topAnchor, constant: 12),
+            // A lone title sits on the icon's midline instead of hugging the top.
+            body.isEmpty && actions.isEmpty
+                ? titleField.centerYAnchor.constraint(equalTo: icon.centerYAnchor)
+                : titleField.topAnchor.constraint(equalTo: topAnchor, constant: 12),
             titleField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: dismissible ? -34 : -12),
 
             bodyField.leadingAnchor.constraint(equalTo: titleField.leadingAnchor),
@@ -290,8 +293,14 @@ private final class BannerView: NSView {
             last = row
         }
 
+        // The icon sets the floor: a short text column must not pull the card
+        // under it and clip the icon.
+        let hug = last.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12)
+        hug.priority = .defaultLow
         NSLayoutConstraint.activate([
-            last.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -12),
+            hug,
+            last.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -12),
+            icon.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -12),
             widthAnchor.constraint(equalToConstant: DesktopBannerController.cardWidth),
         ])
     }
