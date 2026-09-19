@@ -139,11 +139,11 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// Product-drawn desktop banner (top-right). Not an OS notification.
 pub mod banner {
-    pub use lingxia_platform::traits::app_runtime::{
-        DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground, DesktopBannerOutcome,
-        DesktopBannerShow,
-    };
     use lingxia_platform::traits::app_runtime::AppRuntime;
+    pub use lingxia_platform::traits::app_runtime::{
+        DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
+        DesktopBannerOutcome, DesktopBannerShow,
+    };
 
     /// Present a banner and wait until it is answered, dismissed, timed out, or replaced.
     pub fn show(request: DesktopBannerShow) -> crate::Result<DesktopBannerOutcome> {
