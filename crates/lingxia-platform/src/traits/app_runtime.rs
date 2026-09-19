@@ -29,6 +29,96 @@ pub struct LocalNotificationShow {
     pub silent: bool,
 }
 
+/// One button on a desktop banner.
+#[derive(Debug, Clone)]
+pub struct DesktopBannerAction {
+    pub id: String,
+    pub label: String,
+    pub style: DesktopBannerActionStyle,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DesktopBannerActionStyle {
+    Default,
+    Primary,
+    Destructive,
+}
+
+impl DesktopBannerActionStyle {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::Primary => "primary",
+            Self::Destructive => "destructive",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "default" => Some(Self::Default),
+            "primary" => Some(Self::Primary),
+            "destructive" => Some(Self::Destructive),
+            _ => None,
+        }
+    }
+}
+
+/// Card chrome. `System` follows the OS; a hex color is a solid fill.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum DesktopBannerBackground {
+    #[default]
+    System,
+    Light,
+    Dark,
+    Color {
+        r: u8,
+        g: u8,
+        b: u8,
+        a: u8,
+    },
+}
+
+/// One desktop banner to present. The caller waits until it resolves.
+#[derive(Debug, Clone)]
+pub struct DesktopBannerShow {
+    pub id: String,
+    pub title: String,
+    pub body: String,
+    pub actions: Vec<DesktopBannerAction>,
+    /// `None` means wait until a button, dismiss, or replace.
+    pub timeout_ms: Option<u64>,
+    pub background: DesktopBannerBackground,
+}
+
+/// How a desktop banner finished. Failures to present are errors, not this.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DesktopBannerOutcome {
+    Action { id: String, action: String },
+    Dismissed { id: String },
+    TimedOut { id: String },
+    Replaced { id: String },
+}
+
+impl DesktopBannerOutcome {
+    pub fn id(&self) -> &str {
+        match self {
+            Self::Action { id, .. }
+            | Self::Dismissed { id }
+            | Self::TimedOut { id }
+            | Self::Replaced { id } => id,
+        }
+    }
+
+    pub fn reason(&self) -> Option<&'static str> {
+        match self {
+            Self::Action { .. } => None,
+            Self::Dismissed { .. } => Some("dismissed"),
+            Self::TimedOut { .. } => Some("timeout"),
+            Self::Replaced { .. } => Some("replaced"),
+        }
+    }
+}
+
 /// What `notification_show` did with the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalNotificationStatus {
@@ -302,6 +392,19 @@ pub trait AppRuntime:
 
     fn notification_cancel_all(&self) -> Result<(), PlatformError> {
         Err(PlatformError::NotSupported("notification".to_string()))
+    }
+
+    /// Present a desktop banner and block until it resolves. Desktop only.
+    fn banner_show(
+        &self,
+        _request: &DesktopBannerShow,
+    ) -> Result<DesktopBannerOutcome, PlatformError> {
+        Err(PlatformError::NotSupported("banner".to_string()))
+    }
+
+    /// Dismiss a visible or queued banner. Unknown ids are fine.
+    fn banner_dismiss(&self, _id: &str) -> Result<(), PlatformError> {
+        Err(PlatformError::NotSupported("banner".to_string()))
     }
 
     /// Replace the tray dropdown menu. `items_json` is a JSON array of

@@ -594,6 +594,9 @@ mod bridge {
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
+        #[swift_bridge(swift_name = "onDesktopBannerOutcome")]
+        fn on_desktop_banner_outcome(id: &str, kind: i32, action: &str);
+
         #[swift_bridge(swift_name = "getCurrentLxApp")]
         fn get_current_lxapp() -> CurrentLxApp;
 
@@ -2374,6 +2377,27 @@ pub fn get_tab_bar_item(appid: &str, slot: i32) -> Option<self::bridge::TabBarIt
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
     lingxia_service::applink::deliver(url)
+}
+
+/// Desktop banner button or dismiss. `kind`: 0 action, 1 dismissed.
+pub fn on_desktop_banner_outcome(id: &str, kind: i32, action: &str) {
+    #[cfg(target_os = "macos")]
+    {
+        use lingxia_platform::traits::app_runtime::DesktopBannerOutcome;
+        let outcome = if kind == 0 {
+            DesktopBannerOutcome::Action {
+                id: id.to_string(),
+                action: action.to_string(),
+            }
+        } else {
+            DesktopBannerOutcome::Dismissed { id: id.to_string() }
+        };
+        lingxia_platform::desktop::banner::on_desktop_banner_outcome(id, outcome);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (id, kind, action);
+    }
 }
 
 /// Handle Push Notification Link with trigger context

@@ -199,6 +199,13 @@ declare global {
      */
     notification?: NotificationApi;
 
+    /**
+     * Product-drawn desktop banner (top-right). Absent off desktop and in
+     * guest lxapps; its presence and `lx.supports({ capability: 'banner' })`
+     * always agree.
+     */
+    banner?: BannerApi;
+
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 
@@ -468,6 +475,36 @@ export type AutostartApi = {
      * added — only call this from an explicit user action.
      */
     setEnabled(on: boolean): Promise<void>;
+};
+
+/**
+ * Product-drawn desktop banner, top-right. Not an OS notification and
+ * not bound to App Link. Present only in the desktop Control app;
+ * presence and `lx.supports({ capability: 'banner' })` always agree.
+ * No buttons: an informational card that auto-dismisses (5s unless
+ * `timeoutMs` is set). With buttons: a gate that waits for a choice,
+ * dismiss, timeout, or replace. User outcomes resolve; presentation
+ * failures reject.
+ */
+export type BannerApi = {
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        actions?: Array<{
+            id: string;
+            label: string;
+            style?: 'default' | 'primary' | 'destructive';
+        }>;
+        timeoutMs?: number;
+        /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
+        background?: 'system' | 'light' | 'dark' | string;
+    }): Promise<
+        | { canceled: false; id: string; action: string }
+        | { canceled: true; id: string; reason: 'dismissed' | 'timeout' | 'replaced' }
+    >;
+    /** Unknown ids are fine. */
+    dismiss(id: string): Promise<void>;
 };
 
 export type BinaryFileData = ArrayBuffer | ArrayBufferView;
@@ -1086,7 +1123,7 @@ export type LxAppEnvVersion = 'release' | 'draft';
 export type LxAppReleaseType = 'release' | 'draft';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so

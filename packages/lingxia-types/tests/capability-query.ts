@@ -12,6 +12,7 @@ const canAside: boolean = lx.supports({ capability: "surface", value: "aside" })
 const hasTerminal: boolean = lx.supports({ capability: "terminal" });
 const hasAutostart: boolean = lx.supports({ capability: "autostart" });
 const hasNotifications: boolean = lx.supports({ capability: "notifications" });
+const hasBanner: boolean = lx.supports({ capability: "banner" });
 const hasBrowser: boolean = lx.supports({ capability: "browser" });
 const hasProxy: boolean = lx.supports({ capability: "proxy" });
 const hasSelfUpdate: boolean = lx.supports({ capability: "selfUpdate" });

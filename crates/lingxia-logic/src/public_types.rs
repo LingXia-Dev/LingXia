@@ -219,6 +219,35 @@ rong::js_api! {
     cancelAll(): Promise<void>;
 }"###;
 
+        /// Product-drawn desktop banner, top-right. Not an OS notification and
+        /// not bound to App Link. Present only in the desktop Control app;
+        /// presence and `lx.supports({ capability: 'banner' })` always agree.
+        ///
+        /// No buttons: an informational card that auto-dismisses (5s unless
+        /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
+        /// dismiss, timeout, or replace. User outcomes resolve; presentation
+        /// failures reject.
+        type BannerApi = r###"{
+    show(options: {
+        id?: string;
+        title: string;
+        body?: string;
+        actions?: Array<{
+            id: string;
+            label: string;
+            style?: 'default' | 'primary' | 'destructive';
+        }>;
+        timeoutMs?: number;
+        /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
+        background?: 'system' | 'light' | 'dark' | string;
+    }): Promise<
+        | { canceled: false; id: string; action: string }
+        | { canceled: true; id: string; reason: 'dismissed' | 'timeout' | 'replaced' }
+    >;
+    /** Unknown ids are fine. */
+    dismiss(id: string): Promise<void>;
+}"###;
+
         type AutostartApi = r###"{
     /**
      * Whether the app is currently registered to launch at startup, read from

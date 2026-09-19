@@ -3,6 +3,7 @@
 //! Windows platform implementation for LingXia.
 
 mod app;
+pub(crate) mod banner;
 mod clipboard;
 mod control_session_indicator;
 mod device;

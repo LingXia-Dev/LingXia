@@ -196,6 +196,13 @@ declare global {
      */
     notification?: NotificationApi;
 
+    /**
+     * Product-drawn desktop banner (top-right). Absent off desktop and in
+     * guest lxapps; its presence and `lx.supports({ capability: 'banner' })`
+     * always agree.
+     */
+    banner?: BannerApi;
+
     /** The language this lxapp renders in. Every lxapp follows it. */
     readonly displayLanguage: DisplayLanguageApi;
 

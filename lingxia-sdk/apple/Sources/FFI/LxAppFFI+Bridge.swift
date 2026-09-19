@@ -669,6 +669,48 @@ extension LxApp {
         }
     }
 
+    nonisolated static func desktopBannerShow(
+        id: RustStr,
+        title: RustStr,
+        body: RustStr,
+        actions_json: RustStr,
+        background: RustStr,
+        dismissible: Bool
+    ) -> Bool {
+        let id = id.toString()
+        let title = title.toString()
+        let body = body.toString()
+        let actionsJSON = actions_json.toString()
+        let background = background.toString()
+        return executeOnMain {
+            #if os(macOS)
+            DesktopBannerController.shared.show(
+                id: id,
+                title: title,
+                body: body,
+                actionsJSON: actionsJSON,
+                background: background,
+                dismissible: dismissible
+            )
+            return true
+            #else
+            _ = (id, title, body, actionsJSON, background, dismissible)
+            return false
+            #endif
+        }
+    }
+
+    nonisolated static func desktopBannerHide() -> Bool {
+        return executeOnMain {
+            #if os(macOS)
+            DesktopBannerController.shared.hide()
+            return true
+            #else
+            return false
+            #endif
+        }
+    }
+
     nonisolated static func navigate(appid: RustStr, path: RustStr, animation_type: Int32) -> Bool {
         let appIdString = appid.toString()
         let pathString = path.toString()

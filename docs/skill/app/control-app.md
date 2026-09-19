@@ -55,6 +55,7 @@ guest cannot reach them:
   which every lxapp has.)
 - `lx.app.autostart.*` — launch at login.
 - `lx.app.notification.*` — local banners that resume the product via App Link.
+- `lx.app.banner.*` — product-drawn top-right desktop card (inform or confirm).
 - `lx.app.control.displayLanguage` / `lx.app.control.appearance` — the writers
   behind the product's language and light/dark setting.
 - `lx.shell.*` mutations — sidebar actions, opening declared surfaces,
