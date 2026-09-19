@@ -1,6 +1,7 @@
 import type { LxAppDriver } from '@lingxia/types/automation';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { waitForElementEnabled } from '../helpers/page.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
@@ -180,6 +181,7 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
   expect(reread.bannerLast).toBe('probe-cleared');
 
   await app.page.scrollTo({ page: 'system', css: '[data-testid="system-banner-prompt"]' });
+  await waitForElementEnabled(app, 'system', '[data-testid="system-banner-prompt"]');
   await app.page.click({ page: 'system', css: '[data-testid="system-banner-prompt"]' });
   await eventually(
     () => bannerPageState(app),
@@ -187,7 +189,10 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
     { describe: 'Prompt to park a pending banner.show' },
   );
 
+  // Logic flips busy before React enables Dismiss; a click on the still-disabled
+  // control never reaches dismissBanner.
   await app.page.scrollTo({ page: 'system', css: '[data-testid="system-banner-dismiss"]' });
+  await waitForElementEnabled(app, 'system', '[data-testid="system-banner-dismiss"]');
   await app.page.click({ page: 'system', css: '[data-testid="system-banner-dismiss"]' });
   const dismissed = await eventually(
     () => bannerPageState(app),
