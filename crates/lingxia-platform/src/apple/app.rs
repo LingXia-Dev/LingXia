@@ -283,6 +283,20 @@ impl AppRuntime for Platform {
         }
     }
 
+    #[cfg(target_os = "macos")]
+    fn banner_show(
+        &self,
+        request: &crate::traits::app_runtime::DesktopBannerShow,
+    ) -> Result<crate::traits::app_runtime::DesktopBannerOutcome, PlatformError> {
+        crate::desktop::banner::show(request.clone())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
+        crate::desktop::banner::dismiss(id);
+        Ok(())
+    }
+
     fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
         if ffi::autostart_set_enabled(enabled) {
             Ok(())

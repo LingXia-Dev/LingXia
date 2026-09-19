@@ -26,6 +26,8 @@ pub(crate) enum LogicRoute {
     AppNotificationShow,
     AppNotificationCancel,
     AppNotificationCancelAll,
+    AppBannerShow,
+    AppBannerDismiss,
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
@@ -87,6 +89,8 @@ impl LogicRoute {
         Self::AppNotificationShow,
         Self::AppNotificationCancel,
         Self::AppNotificationCancelAll,
+        Self::AppBannerShow,
+        Self::AppBannerDismiss,
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
@@ -154,6 +158,8 @@ impl LogicRoute {
             | Self::AppNotificationShow
             | Self::AppNotificationCancel
             | Self::AppNotificationCancelAll
+            | Self::AppBannerShow
+            | Self::AppBannerDismiss
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
@@ -206,6 +212,8 @@ impl LogicRoute {
             Self::AppNotificationShow => "lx.app.notification.show",
             Self::AppNotificationCancel => "lx.app.notification.cancel",
             Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
+            Self::AppBannerShow => "lx.app.banner.show",
+            Self::AppBannerDismiss => "lx.app.banner.dismiss",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",

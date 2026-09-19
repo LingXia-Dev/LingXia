@@ -28,6 +28,7 @@ pub struct ScreenInfo {
     pub scale: f64,
 }
 
+mod banner_background;
 pub mod control_session;
 pub(crate) mod rt;
 pub mod traits;
@@ -109,6 +110,17 @@ pub fn os_label() -> &'static str {
 ))]
 pub fn notification_supported() -> bool {
     true
+}
+
+/// Desktop banner is a product-drawn overlay, not an OS notification.
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub fn banner_supported() -> bool {
+    true
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub fn banner_supported() -> bool {
+    false
 }
 
 /// Whether launch-at-startup can actually work on this host, probed at

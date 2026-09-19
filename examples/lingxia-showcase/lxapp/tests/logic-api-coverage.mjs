@@ -70,6 +70,7 @@ export default {
     { "api": "lx.clipboard.types", "mode": "automated", "owner": "LOGIC-CLIPBOARD-001" },
     { "api": "lx.app.autostart", "mode": "automated", "owner": "HOSTAPP-AUTOSTART-001" },
     { "api": "lx.app.notification", "mode": "automated", "owner": "HOSTAPP-NOTIFICATION-001" },
+    { "api": "lx.app.banner", "mode": "automated", "owner": "HOSTAPP-BANNER-001" },
     { "api": "lx.app.cache", "mode": "automated", "owner": "HOSTAPP-CACHE-001" },
     { "api": "lx.getSystemSetting", "mode": "automated", "owner": "SYSTEM-001" },
     { "api": "lx.supports", "mode": "automated", "owner": "LOGIC-006" },

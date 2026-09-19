@@ -1,12 +1,28 @@
 import type { LxAppDriver } from '@lingxia/types/automation';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
+import { waitForElementEnabled } from '../helpers/page.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
+
+const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
+  ?? {} as Record<string, string>;
+const bannerPageSpec = new Set(['macos', 'windows']).has(
+  testArgs.platform?.toLocaleLowerCase() ?? '',
+)
+  ? spec
+  : spec.skip;
 
 interface SystemPageState {
   appBaseInfo: { os?: string; productName?: string } | null;
   displayLanguage?: string;
   systemSetting: { wifiEnabled?: boolean } | null;
+}
+
+interface BannerPageState {
+  bannerLast: string;
+  bannerBusy: boolean;
+  bannerActiveId: string;
+  bannerSupported: boolean;
 }
 
 async function systemState(app: LxAppDriver): Promise<SystemPageState> {
@@ -87,6 +103,9 @@ spec('opens the product cache panel from the rendered API menu', {
     css: '[data-testid="api-system-cache"]',
     state: 'visible',
   });
+  // The banner demo row sits above this item; without a scroll the Windows
+  // hit lands on chrome / the tab bar and navigation never starts.
+  await app.page.scrollTo({ page: 'api', css: '[data-testid="api-system-cache"]' });
   await app.page.click({ page: 'api', css: '[data-testid="api-system-cache"]' });
   await app.page.waitFor({
     page: 'system',
@@ -100,4 +119,93 @@ spec('opens the product cache panel from the rendered API menu', {
     full: true,
   });
   expect(panel.exists && panel.text).toContain('Product Cache');
+});
+
+async function bannerPageState(app: LxAppDriver): Promise<BannerPageState> {
+  return app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+      return {
+        bannerLast: page?.data?.bannerLast ?? '',
+        bannerBusy: !!page?.data?.bannerBusy,
+        bannerActiveId: page?.data?.bannerActiveId ?? '',
+        bannerSupported: !!page?.data?.bannerSupported,
+      };
+    `,
+  }) as Promise<BannerPageState>;
+}
+
+bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page', {
+  id: 'SYSTEM-BANNER-001',
+  covers: ['lx.app.banner', 'lx.app.banner.show', 'lx.app.banner.dismiss'],
+  app: SHOWCASE_APP_ID,
+  timeout: 60_000,
+  reason: 'Desktop banner is Control-app / macOS / Windows only.',
+}, async (t) => {
+  const { app } = bindFixture(t, 'SYSTEM-BANNER-001');
+  t.defer(async () => {
+    await app.eval({
+      script: `try {
+        await lx.app.banner.dismiss('showcase-banner-toast');
+        await lx.app.banner.dismiss('showcase-banner-prompt');
+      } catch {}
+      return true;`,
+    });
+  });
+
+  await app.nav.relaunch({ page: 'system', query: { type: 'banner' } });
+  await app.page.waitFor({
+    page: 'system',
+    css: '[data-testid="system-banner-panel"]',
+    state: 'visible',
+  });
+
+  // Re-read only refreshes support — seed a false so the click is proven.
+  await app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+      if (!page) throw new Error('system page missing');
+      page.setData({ bannerLast: 'probe-cleared', bannerSupported: false, bannerBusy: false });
+      return page.data.bannerLast;
+    `,
+  });
+
+  await app.page.scrollTo({ page: 'system', css: '[data-testid="system-banner-reread"]' });
+  await app.page.click({ page: 'system', css: '[data-testid="system-banner-reread"]' });
+  const reread = await eventually(
+    () => bannerPageState(app),
+    (state) => state.bannerSupported && state.bannerLast === 'probe-cleared',
+    { describe: 'Re-read click to restore support without clobbering Last result' },
+  );
+  expect(reread.bannerSupported).toBe(true);
+  expect(reread.bannerLast).toBe('probe-cleared');
+
+  await app.page.scrollTo({ page: 'system', css: '[data-testid="system-banner-prompt"]' });
+  await waitForElementEnabled(app, 'system', '[data-testid="system-banner-prompt"]');
+  await app.page.click({ page: 'system', css: '[data-testid="system-banner-prompt"]' });
+  await eventually(
+    () => bannerPageState(app),
+    (state) => state.bannerBusy && state.bannerActiveId === 'showcase-banner-prompt',
+    { describe: 'Prompt to park a pending banner.show' },
+  );
+
+  // After Prompt the native card is WS_EX_TOPMOST over the WebView. Windows
+  // CDP clicks then miss the page button; fire the same control from the DOM.
+  await waitForElementEnabled(app, 'system', '[data-testid="system-banner-dismiss"]');
+  await app.page.eval({
+    page: 'system',
+    script: `
+      const button = document.querySelector('[data-testid="system-banner-dismiss"]');
+      if (!(button instanceof HTMLButtonElement) || button.disabled) {
+        throw new Error('dismiss is not clickable');
+      }
+      button.click();
+    `,
+  });
+  const dismissed = await eventually(
+    () => bannerPageState(app),
+    (state) => !state.bannerBusy && state.bannerLast === 'dismissed',
+    { describe: 'Dismiss to resolve the prompt as dismissed' },
+  );
+  expect(dismissed.bannerLast).toBe('dismissed');
 });

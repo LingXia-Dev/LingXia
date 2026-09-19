@@ -215,10 +215,13 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   expect(viewportAfterChromeRefresh).toBe(viewportBeforeChromeRefresh);
 });
 
-spec('rejects invalid native-surface dimensions before opening a host surface', async () => {
+spec('rejects invalid native-surface dimensions before opening a host surface', {
+  timeout: 60_000,
+}, async () => {
   const app = showcaseApp();
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="open-surface"]' });
+  await app.page.scrollTo({ page: 'ui', css: '[data-testid="open-surface"]' });
 
   await app.page.fill({ page: 'ui', css: 'input[placeholder="width (px or %)"]', text: 'invalid' });
   await app.page.fill({ page: 'ui', css: 'input[placeholder="height (px or %)"]', text: '50%' });

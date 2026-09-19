@@ -92,6 +92,7 @@ spec("answer capability questions consistently with the optional members", { id:
       const terminalAgrees = ('terminal' in lx) === lx.supports({ capability: 'terminal' });
       const autostartAgrees = !!lx.app.autostart === lx.supports({ capability: 'autostart' });
       const notificationAgrees = !!lx.app.notification === lx.supports({ capability: 'notifications' });
+      const bannerAgrees = !!lx.app.banner === lx.supports({ capability: 'banner' });
       let rejectedUnknown = false;
       try {
         lx.supports({});
@@ -110,6 +111,7 @@ spec("answer capability questions consistently with the optional members", { id:
         terminalAgrees,
         autostartAgrees,
         notificationAgrees,
+        bannerAgrees,
         rejectedUnknown,
         rejectedMissingSurfaceValue: rejects({ capability: 'surface' }),
         rejectedFlagValue: rejects({ capability: 'terminal', value: 'window' }),
@@ -125,7 +127,7 @@ spec("answer capability questions consistently with the optional members", { id:
           { capability: 'surface', value: 'window' },
           { capability: 'surface', value: 'aside' },
           { capability: 'surface', value: 'tab' },
-          { capability: 'notifications' }, { capability: 'browser' },
+          { capability: 'notifications' }, { capability: 'banner' }, { capability: 'browser' },
           { capability: 'proxy' }, { capability: 'selfUpdate' },
           { capability: 'process' },
           { capability: 'appUse' }, { capability: 'computerUse' },
@@ -137,6 +139,7 @@ spec("answer capability questions consistently with the optional members", { id:
     terminalAgrees: boolean;
     autostartAgrees: boolean;
     notificationAgrees: boolean;
+    bannerAgrees: boolean;
     rejectedUnknown: boolean;
     rejectedNonObject: boolean;
     rejectedMissingSurfaceValue: boolean;
@@ -150,6 +153,7 @@ spec("answer capability questions consistently with the optional members", { id:
   expect(result.terminalAgrees).toBeTruthy();
   expect(result.autostartAgrees).toBeTruthy();
   expect(result.notificationAgrees).toBeTruthy();
+  expect(result.bannerAgrees).toBeTruthy();
   expect(result.rejectedUnknown).toBeTruthy();
   expect(result.rejectedNonObject).toBeTruthy();
   expect(result.rejectedMissingSurfaceValue).toBeTruthy();

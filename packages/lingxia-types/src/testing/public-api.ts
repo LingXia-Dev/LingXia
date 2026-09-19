@@ -25,6 +25,7 @@ import type {
   AppearanceApi,
   AppCacheApi,
   AutostartApi,
+  BannerApi,
   CompressVideoTask,
   ControlApi,
   ControlAppearanceApi,
@@ -130,6 +131,7 @@ export const LX_API_NAMES = [
 const HOST_APP_API = [
   'appearance',
   'autostart',
+  'banner',
   'cache',
   'checkUpdate',
   'control',
@@ -141,16 +143,18 @@ const HOST_APP_API = [
   'screenshot',
   'setBadge',
 ] as const;
-// `autostart`, `control`, `cache`, and `notification` are injected only where
-// they apply, so a runtime walk of `lx.app` must not require them.
+// `autostart`, `banner`, `control`, `cache`, and `notification` are injected
+// only where they apply, so a runtime walk of `lx.app` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
   (name) =>
     name !== 'autostart' &&
+    name !== 'banner' &&
     name !== 'control' &&
     name !== 'cache' &&
     name !== 'notification',
 );
 const AUTOSTART_API = ['isEnabled', 'setEnabled'] as const;
+const BANNER_API = ['dismiss', 'show'] as const;
 const NOTIFICATION_API = [
   'cancel',
   'cancelAll',
@@ -373,6 +377,13 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'logic',
     expression: 'lx.app.autostart',
     members: AUTOSTART_API,
+    optional: true,
+  },
+  {
+    name: 'lx.app.banner',
+    layer: 'logic',
+    expression: 'lx.app.banner',
+    members: BANNER_API,
     optional: true,
   },
   {
@@ -756,6 +767,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PublishedLx, typeof LX_API_NAMES>>,
   AssertTrue<Exact<HostAppApi, typeof HOST_APP_API>>,
   AssertTrue<Exact<AutostartApi, typeof AUTOSTART_API>>,
+  AssertTrue<Exact<BannerApi, typeof BANNER_API>>,
   AssertTrue<Exact<NotificationApi, typeof NOTIFICATION_API>>,
   AssertTrue<Exact<AppCacheApi, typeof APP_CACHE_API>>,
   AssertTrue<Exact<DisplayLanguageApi, typeof DISPLAY_LANGUAGE_API>>,
