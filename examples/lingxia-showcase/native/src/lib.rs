@@ -84,7 +84,7 @@ impl lingxia::HostAddon for ExampleHostAddon {
         // lxapp: a fixed page of a fixed lxapp, with schema-checked params as
         // its page query.
         routes.add(
-            lxapp_page_route("showcase.system", "lingxia-showcase", "pages/system/index")
+            lxapp_page_route("showcase.system", "lingxia-showcase", "system")
                 .param(RouteParam::string("focus").optional()),
         )
     }

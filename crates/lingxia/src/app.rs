@@ -194,8 +194,21 @@ pub mod notification {
         }
     }
 
+    /// The same capability gate the JS API answers to: a host that did not
+    /// declare `capabilities.notifications` has no notification API at all,
+    /// in Rust or in Logic.
+    fn require_capability() -> crate::Result<()> {
+        if lingxia_app_context::capability::notifications() {
+            return Ok(());
+        }
+        Err(crate::Error::invalid_request(
+            "this host did not declare capabilities.notifications",
+        ))
+    }
+
     /// `"granted"`, `"denied"`, or `"default"`. Never prompts.
     pub fn permission() -> crate::Result<String> {
+        require_capability()?;
         crate::runtime::platform()?
             .notification_permission()
             .map_err(crate::Error::from)
@@ -203,6 +216,7 @@ pub mod notification {
 
     /// Prompts where the OS has a prompt; otherwise reports the setting.
     pub fn request_permission() -> crate::Result<String> {
+        require_capability()?;
         crate::runtime::platform()?
             .notification_request_permission()
             .map_err(crate::Error::from)
@@ -211,6 +225,7 @@ pub mod notification {
     /// Post or replace. The target is validated before anything is persisted
     /// or handed to the OS, so an unknown route fails here rather than on tap.
     pub fn show(request: Notification) -> crate::Result<LocalNotificationStatus> {
+        require_capability()?;
         if request.id.trim().is_empty() {
             return Err(crate::Error::invalid_request("notification id is empty"));
         }
@@ -249,6 +264,7 @@ pub mod notification {
 
     /// Remove what is pending or delivered under `id`, and retire its target.
     pub fn cancel(id: &str) -> crate::Result<()> {
+        require_capability()?;
         intent::invalidate(id);
         crate::runtime::platform()?
             .notification_cancel(id)
@@ -256,6 +272,7 @@ pub mod notification {
     }
 
     pub fn cancel_all() -> crate::Result<()> {
+        require_capability()?;
         intent::invalidate_all();
         crate::runtime::platform()?
             .notification_cancel_all()

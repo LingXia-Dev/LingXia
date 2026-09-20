@@ -295,10 +295,18 @@ fn write_aumid_shortcut(
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::Foundation::PROPERTYKEY;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, IPersistFile};
+    use windows::Win32::System::Com::{
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        IPersistFile,
+    };
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
     use windows::core::{Interface, PCWSTR};
+
+    // IShellLink is STA. Bootstrap has not entered an apartment yet; without
+    // this the Start Menu link is never written and a cold toast tap has
+    // nowhere to go.
+    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
 
     // {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5
     const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {

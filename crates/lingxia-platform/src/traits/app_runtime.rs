@@ -18,6 +18,32 @@ use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
+/// The envelope an activation token travels in when the OS gives us one
+/// opaque string and hands it back on tap: a Windows toast's `launch`, a
+/// HarmonyOS reminder's `uri`, an Android tap Intent's data. Apple needs none
+/// — a `userInfo` key is already unambiguous.
+///
+/// The prefix says "this payload is ours"; `v1` is what a later envelope
+/// change branches on. Deliberately not `https`, so it can never reach the
+/// App Link parser and demand a configured product host, and not a registered
+/// URL scheme — nothing outside this process routes on it.
+///
+/// The Kotlin and ArkTS SDKs spell this out again; this is the normative form.
+pub const ACTIVATION_ENVELOPE: &str = "lxnotify:v1:";
+
+/// Wrap a token for a payload slot that only takes a string.
+pub fn wrap_activation(token: &str) -> String {
+    format!("{ACTIVATION_ENVELOPE}{token}")
+}
+
+/// The token a payload carries, or `None` when the payload is not ours.
+pub fn unwrap_activation(payload: &str) -> Option<&str> {
+    payload
+        .trim()
+        .strip_prefix(ACTIVATION_ENVELOPE)
+        .filter(|token| !token.is_empty())
+}
+
 /// One local notification to post or replace.
 #[derive(Debug, Clone)]
 pub struct LocalNotificationShow {
@@ -470,6 +496,19 @@ pub trait AppRuntime:
         Err(PlatformError::NotSupported(
             "built-in browser pages".to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod envelope_tests {
+    use super::{ACTIVATION_ENVELOPE, unwrap_activation, wrap_activation};
+
+    #[test]
+    fn the_envelope_round_trips_and_rejects_anything_else() {
+        assert_eq!(unwrap_activation(&wrap_activation("abc")), Some("abc"));
+        assert_eq!(unwrap_activation("https://example.com/x"), None);
+        assert_eq!(unwrap_activation(ACTIVATION_ENVELOPE), None);
+        assert_eq!(unwrap_activation(""), None);
     }
 }
 

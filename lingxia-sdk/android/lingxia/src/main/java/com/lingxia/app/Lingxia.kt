@@ -499,6 +499,11 @@ object Lingxia {
         val token = intent?.getStringExtra(NOTIFICATION_TOKEN_EXTRA)
             ?.takeIf { it.isNotEmpty() } ?: return
         if (intent.getBooleanExtra(NOTIFICATION_CONSUMED_EXTRA, false)) return
+        if (LxApp.homeAppId == null) {
+            // Runtime is not up yet. Leave the extra so initializeRuntime can
+            // deliver the same Intent after lingxiaInit.
+            return
+        }
         intent.putExtra(NOTIFICATION_CONSUMED_EXTRA, true)
         NativeApi.onNotificationActivated(token)
     }

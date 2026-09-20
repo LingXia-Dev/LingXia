@@ -22,7 +22,7 @@ use windows::Win32::System::Com::{
     CoRevokeClassObject, IClassFactory, IClassFactory_Impl, REGCLS_MULTIPLEUSE,
 };
 use windows::Win32::System::Registry::{
-    HKEY, HKEY_CURRENT_USER, KEY_SET_VALUE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
+    HKEY, HKEY_CURRENT_USER, KEY_WRITE, REG_OPTION_NON_VOLATILE, REG_SZ, RegCloseKey,
     RegCreateKeyExW, RegDeleteTreeW, RegSetValueExW,
 };
 use windows::Win32::UI::Notifications::{
@@ -32,9 +32,6 @@ use windows::Win32::UI::Notifications::{
 use windows::core::{BOOL, GUID, IUnknown, Interface, PCWSTR, Ref, Result as WinResult, implement};
 
 use crate::error::PlatformError;
-
-/// `launch` payload version. A tap carrying anything else is not ours.
-const LAUNCH_PREFIX: &str = "lxnotify:v1:";
 
 static REGISTRATION: AtomicU32 = AtomicU32::new(0);
 
@@ -73,13 +70,12 @@ fn fnv1a64(bytes: &[u8], offset: u64) -> u64 {
 }
 
 pub(super) fn launch_payload(activation_token: &str) -> String {
-    format!("{LAUNCH_PREFIX}{activation_token}")
+    crate::traits::app_runtime::wrap_activation(activation_token)
 }
 
 /// The token a `launch` payload carries, or `None` when it is not ours.
 pub(super) fn token_from_launch(args: &str) -> Option<&str> {
-    args.strip_prefix(LAUNCH_PREFIX)
-        .filter(|token| !token.is_empty())
+    crate::traits::app_runtime::unwrap_activation(args)
 }
 
 /// Register the class factory and the LocalServer32 key. Idempotent.
@@ -185,7 +181,7 @@ fn write_local_server(clsid: &GUID) -> Result<(), PlatformError> {
             None,
             None,
             REG_OPTION_NON_VOLATILE,
-            KEY_SET_VALUE,
+            KEY_WRITE,
             None,
             &mut key,
             None,
@@ -261,7 +257,6 @@ mod tests {
         assert_eq!(token_from_launch(&payload), Some("abc123"));
         assert_eq!(token_from_launch("https://example.com/x"), None);
         assert_eq!(token_from_launch(""), None);
-        assert_eq!(token_from_launch(LAUNCH_PREFIX), None);
     }
 
     #[test]

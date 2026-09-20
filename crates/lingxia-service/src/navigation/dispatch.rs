@@ -144,7 +144,7 @@ pub fn mark_ready() {
             );
             continue;
         }
-        deliver(&request);
+        let _ = deliver(&request);
     }
 }
 
@@ -161,8 +161,7 @@ pub fn dispatch(request: NavigationRequest) -> Result<(), NavigationError> {
     if !is_ready() {
         return enqueue(request);
     }
-    deliver(&request);
-    Ok(())
+    deliver(&request)
 }
 
 /// Publish-time check. The same rules the dispatcher applies on a tap.
@@ -219,7 +218,7 @@ fn expire(sequence: u64) {
     }
 }
 
-fn deliver(request: &NavigationRequest) {
+fn deliver(request: &NavigationRequest) -> Result<(), NavigationError> {
     let outcome = match &request.target {
         NavigationTarget::Activate => {
             activate();
@@ -236,14 +235,15 @@ fn deliver(request: &NavigationRequest) {
             )),
         },
     };
-    match outcome {
+    match &outcome {
         Ok(()) => log::info!(
             "navigation from {} opened {}",
             request.source.as_str(),
             request.target.describe()
         ),
-        Err(error) => report_unavailable(&error),
+        Err(error) => report_unavailable(error),
     }
+    outcome
 }
 
 #[cfg(test)]
@@ -266,6 +266,36 @@ mod tests {
         assert_eq!(request.param_str("orderId"), Some("42"));
         assert_eq!(request.param_str("missing"), None);
         assert_eq!(request.source, NavigationSource::Notification);
+    }
+
+    /// Drives the process-global queue, so it runs alone and drains what it
+    /// queued. `mark_ready` is a one-way latch and is deliberately not called.
+    #[test]
+    fn the_startup_queue_is_bounded_and_releases_each_waiter() {
+        assert!(
+            !is_ready(),
+            "the queue only exists before the host is ready"
+        );
+        for _ in 0..MAX_PENDING {
+            assert!(
+                dispatch(NavigationRequest::new(
+                    NavigationTarget::Activate,
+                    NavigationSource::Tray
+                ))
+                .is_ok()
+            );
+        }
+        let overflow = dispatch(NavigationRequest::new(
+            NavigationTarget::Activate,
+            NavigationSource::Tray,
+        ));
+        assert!(matches!(overflow, Err(NavigationError::Unavailable(_))));
+
+        // Each entry is released on its own deadline, not by a global sweep.
+        for sequence in 0..MAX_PENDING as u64 {
+            expire(sequence);
+        }
+        assert!(pending().lock().unwrap().is_empty());
     }
 
     #[test]

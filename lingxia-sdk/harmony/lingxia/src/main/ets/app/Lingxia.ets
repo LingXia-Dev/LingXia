@@ -40,9 +40,14 @@ const TAG = 'LingXia.Lingxia';
 export class Lingxia {
   // Host capabilities, resolved from the native runtime during initializeRuntime.
   public static capabilities: number = 0;
-  /** Want key and URI scheme a local-notification tap carries its token in. */
+  /**
+   * Where a local-notification tap carries its activation token: the Want
+   * parameters when they survive, and this envelope on the `uri` when they do
+   * not. The envelope is the normative one from `ACTIVATION_ENVELOPE` in
+   * `crates/lingxia-platform/src/traits/app_runtime.rs` — keep the two equal.
+   */
   public static readonly NOTIFICATION_TOKEN_KEY: string = 'lingxia.notification.token';
-  public static readonly NOTIFICATION_TOKEN_SCHEME: string = 'lxnotify://';
+  public static readonly ACTIVATION_ENVELOPE: string = 'lxnotify:v1:';
 
   public static readonly CAP_BROWSER: number = 0x1;
   public static readonly CAP_NOTIFICATIONS: number = 0x2;
@@ -65,6 +70,7 @@ export class Lingxia {
   /** True while the host UIAbility is in the foreground. */
   public static inForeground: boolean = true;
   private static environmentCallback: EnvironmentCallback | null = null;
+  private static pendingNotificationWant: Want | null = null;
 
   /**
    * Product-app entry point, paired with `LxAppNavigation`. Only stages the
@@ -171,6 +177,7 @@ export class Lingxia {
         webview.WebviewController.setWebDebuggingAccess(true);
       }
       Lingxia.observeHostAppearance(appContext);
+      Lingxia.flushPendingNotificationWant();
     } else {
       LxLog.e(TAG, 'Failed to get home app details from native init.');
     }
@@ -340,6 +347,10 @@ export class Lingxia {
       if (!want) { return; }
       const token: string = Lingxia.notificationTokenFrom(want);
       if (!token) { return; }
+      if (LxApp.getInstance().getHomeAppId() === null) {
+        Lingxia.pendingNotificationWant = want;
+        return;
+      }
       const result: number = onNotificationActivated(token);
       hilog.info(DOMAIN, TAG, `Notification activation processed with result: ${result}`);
     } catch (e) {
@@ -348,10 +359,18 @@ export class Lingxia {
     }
   }
 
+  private static flushPendingNotificationWant(): void {
+    const pending = Lingxia.pendingNotificationWant;
+    Lingxia.pendingNotificationWant = null;
+    if (pending) {
+      Lingxia.handleNotificationWant(pending);
+    }
+  }
+
   /**
    * A reminder's WantAgent does not always preserve `parameters`, so the token
-   * also rides an SDK-private URI scheme. It is not https and never reaches
-   * the App Link parser, so it needs no configured product host.
+   * also rides the activation envelope on the `uri`. It is not https and never
+   * reaches the App Link parser, so it needs no configured product host.
    */
   private static notificationTokenFrom(want: Want): string {
     const parameters = want.parameters as Record<string, Object> | undefined;
@@ -360,8 +379,8 @@ export class Lingxia {
       return carried;
     }
     const uri = want.uri;
-    if (typeof uri === 'string' && uri.startsWith(Lingxia.NOTIFICATION_TOKEN_SCHEME)) {
-      return uri.substring(Lingxia.NOTIFICATION_TOKEN_SCHEME.length);
+    if (typeof uri === 'string' && uri.startsWith(Lingxia.ACTIVATION_ENVELOPE)) {
+      return uri.substring(Lingxia.ACTIVATION_ENVELOPE.length);
     }
     return '';
   }

@@ -22,6 +22,16 @@
 //!
 //! Handlers navigate and nothing else. A side effect the user has to approve
 //! belongs behind the screen the handler opens, not in the handler.
+//!
+//! This is not the lxapp-facing page router. `lx.navigateTo` and friends move
+//! between pages of the lxapp that called them, and `lx.navigateToApp` moves
+//! between lxapps — both are in-process calls from a live lxapp, to a target
+//! that caller already names. A target here comes from outside the product
+//! entirely (an OS notification tap, a menu, the tray), has to survive the
+//! process exiting, and may only name what the host registered. What the two
+//! do share is what "a page of an lxapp" means: [`lxapp_page_route`] resolves
+//! a configured page name and appends the query exactly as `navigateToApp`
+//! does.
 
 use lingxia_service::navigation as service;
 
@@ -42,17 +52,22 @@ pub fn open(target: NavigationTarget, source: NavigationSource) -> crate::Result
 /// A route that opens one page of one lxapp.
 ///
 /// The lxapp and the page are fixed here, at registration: a caller names the
-/// route, never a path. Schema-checked parameters become the page query, so
-/// the page reads them exactly as it reads any other launch query. The scene
-/// is the ordinary one — an internal route is not an App Link and does not
-/// pretend to be `scene === 8003`.
+/// route, never a path. `page` is the configured page name from `lxapp.json`,
+/// resolved the same way `lx.navigateToApp` resolves it — internal paths are
+/// not a public selector anywhere else, and a navigation target is no place to
+/// reintroduce them.
+///
+/// Schema-checked parameters become the page query, so the page reads them
+/// exactly as it reads any other launch query. The scene is the ordinary one:
+/// an internal route is not an App Link and does not pretend to be
+/// `scene === 8003`.
 ///
 /// ```no_run
 /// use lingxia::navigation::{NavigationRoutes, RouteParam, lxapp_page_route};
 ///
 /// fn routes(routes: &mut NavigationRoutes) -> Result<(), String> {
 ///     routes.add(
-///         lxapp_page_route("orders.detail", "com.example.shop", "pages/order/index")
+///         lxapp_page_route("orders.detail", "com.example.shop", "order")
 ///             .param(RouteParam::string("orderId")),
 ///     )
 /// }
@@ -60,57 +75,47 @@ pub fn open(target: NavigationTarget, source: NavigationSource) -> crate::Result
 pub fn lxapp_page_route(
     name: impl Into<String>,
     appid: impl Into<String>,
-    path: impl Into<String>,
+    page: impl Into<String>,
 ) -> NavigationRoute {
     let appid = appid.into();
-    let path = path.into();
+    let page = page.into();
     NavigationRoute::new(name, move |request| {
-        let options = lxapp::LxAppStartupOptions::new(&path).set_query(page_query(request));
+        let params = match &request.target {
+            NavigationTarget::Route { params, .. } => serde_json::Value::Object(params.clone()),
+            _ => serde_json::Value::Object(Default::default()),
+        };
         let appid = appid.clone();
+        let page = page.clone();
         std::mem::drop(crate::task::spawn(async move {
-            if let Err(error) = lxapp::prepare_lxapp_open(&appid, options.release_type).await {
-                lxapp::notify_lxapp_open_blocked(&error);
-                return;
-            }
-            if let Err(error) = lxapp::open_lxapp(&appid, options) {
+            if let Err(error) = open_lxapp_page(&appid, &page, &params).await {
                 log::warn!("navigation route could not open {appid}: {error}");
+                service::report_unavailable(&NavigationError::unavailable(error));
             }
         }));
         Ok(())
     })
 }
 
-/// Route parameters as a page query. Only what the route declared is here, so
-/// there is nothing to filter — but values are still encoded, because a route
-/// parameter is a value, never query syntax.
-fn page_query(request: &NavigationRequest) -> String {
-    let NavigationTarget::Route { params, .. } = &request.target else {
-        return String::new();
-    };
-    params
-        .iter()
-        .map(|(key, value)| {
-            let text = match value {
-                serde_json::Value::String(text) => text.clone(),
-                other => other.to_string(),
-            };
-            format!("{}={}", encode_component(key), encode_component(&text))
-        })
-        .collect::<Vec<_>>()
-        .join("&")
-}
-
-fn encode_component(value: &str) -> String {
-    let mut encoded = String::with_capacity(value.len());
-    for byte in value.as_bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                encoded.push(*byte as char)
-            }
-            other => encoded.push_str(&format!("%{other:02X}")),
-        }
-    }
-    encoded
+/// Same steps `lx.navigateToApp` takes, minus the caller's lxapp: prepare the
+/// target, resolve the page *name*, append the query, open.
+async fn open_lxapp_page(
+    appid: &str,
+    page: &str,
+    params: &serde_json::Value,
+) -> Result<(), String> {
+    let release_type = lxapp::Channel::default();
+    lxapp::prepare_lxapp_open(appid, release_type)
+        .await
+        .inspect_err(lxapp::notify_lxapp_open_blocked)
+        .map_err(|error| error.to_string())?;
+    let target = lxapp::ensure_lxapp(appid, release_type).map_err(|error| error.to_string())?;
+    let path = target
+        .find_page_path_by_name(page)
+        .ok_or_else(|| format!("page name is not configured: {page}"))?;
+    let path = lxapp::append_page_query(path, params)?;
+    lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(&path))
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 /// Check a target without opening it. Same rules the dispatcher applies.
@@ -143,6 +148,7 @@ pub(crate) fn install(state_dir: std::path::PathBuf) -> crate::Result<()> {
     let count = routes.len();
     service::install(routes).map_err(crate::Error::internal)?;
     log::info!("navigation registry sealed with {count} route(s)");
+    service::drain_deferred_activations();
     Ok(())
 }
 

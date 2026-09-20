@@ -36,8 +36,15 @@ internal object LxAppNotification {
     private const val PREFS = "lingxia.local.notifications"
     private const val PREF_SCHEDULED = "scheduled"
     private const val PREF_ASKED = "asked"
-    private const val SCHEME = "lxnotif"
-    private const val TAP_SCHEME = "lxnotiftap"
+    /** Carries an alarm's public notification id. Not the tap envelope below. */
+    private const val ALARM_SCHEME = "lxalarm"
+    /**
+     * The activation envelope, as `ACTIVATION_ENVELOPE` in
+     * `crates/lingxia-platform/src/traits/app_runtime.rs` spells it. A tap
+     * Intent's data is the only slot that survives PendingIntent identity.
+     */
+    private const val ACTIVATION_SCHEME = "lxnotify"
+    private const val ACTIVATION_VERSION = "v1"
     const val EXTRA_LOCAL = "lingxia.local"
     const val EXTRA_TITLE = "lingxia.local.title"
     const val EXTRA_BODY = "lingxia.local.body"
@@ -197,18 +204,23 @@ internal object LxAppNotification {
 
     fun idFromFireIntent(intent: Intent): String? {
         val data = intent.data ?: return null
-        if (data.scheme != SCHEME) return null
+        if (data.scheme != ALARM_SCHEME) return null
         return data.schemeSpecificPart?.takeIf { it.isNotEmpty() }
     }
 
-    private fun idUri(id: String): Uri = Uri.fromParts(SCHEME, id, null)
+    private fun idUri(id: String): Uri = Uri.fromParts(ALARM_SCHEME, id, null)
 
-    private fun tokenUri(token: String): Uri = Uri.fromParts(TAP_SCHEME, token, null)
+    /** `lxnotify:v1:<token>` — the same envelope every other platform uses. */
+    private fun tokenUri(token: String): Uri =
+        Uri.fromParts(ACTIVATION_SCHEME, "$ACTIVATION_VERSION:$token", null)
 
     fun tokenFromTapIntent(intent: Intent): String {
         val data = intent.data ?: return ""
-        if (data.scheme != TAP_SCHEME) return ""
-        return data.schemeSpecificPart.orEmpty()
+        if (data.scheme != ACTIVATION_SCHEME) return ""
+        return data.schemeSpecificPart
+            ?.removePrefix("$ACTIVATION_VERSION:")
+            ?.takeIf { it.isNotEmpty() }
+            .orEmpty()
     }
 
     /** Intent equality ignores extras, so the id has to live in the data. */

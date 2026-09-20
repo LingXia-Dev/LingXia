@@ -38,8 +38,29 @@ pub fn activate_notification(token: &str) -> i32 {
     if token.is_empty() {
         return 0;
     }
+    if !intent::is_initialized() {
+        intent::defer(token);
+        return 1;
+    }
+    open_resolved_token(token)
+}
+
+/// Replay taps that arrived before [`intent::init`]. Call after the store and
+/// the route registry are up; each token then takes the ordinary path.
+pub fn drain_deferred_activations() {
+    for token in intent::take_deferred() {
+        let _ = activate_notification(&token);
+    }
+}
+
+fn open_resolved_token(token: &str) -> i32 {
     let resolved = match intent::resolve(token) {
-        Ok(resolved) => resolved,
+        Ok(Some(resolved)) => resolved,
+        // The OS delivered this tap twice. The first one already navigated.
+        Ok(None) => {
+            log::debug!("merging a repeat notification activation");
+            return 1;
+        }
         Err(error) => {
             report_unavailable(&error);
             return 0;
@@ -59,5 +80,18 @@ pub fn activate_notification(token: &str) -> i32 {
             report_unavailable(&error);
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tap_before_the_store_exists_is_not_reported_gone() {
+        intent::with_uninitialized_store(|| {
+            assert_eq!(activate_notification("early-token"), 1);
+            assert_eq!(intent::take_deferred(), vec!["early-token".to_string()]);
+        });
     }
 }

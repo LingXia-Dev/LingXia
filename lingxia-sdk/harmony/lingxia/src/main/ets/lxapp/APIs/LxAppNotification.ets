@@ -152,7 +152,7 @@ export class LxAppNotification {
         wantAgent: {
           pkgName: ctx.abilityInfo.bundleName,
           abilityName: ctx.abilityInfo.name,
-          uri: Lingxia.NOTIFICATION_TOKEN_SCHEME + activationToken,
+          uri: Lingxia.ACTIVATION_ENVELOPE + activationToken,
           parameters: LxAppNotification.tokenParameters(activationToken)
         }
       };
@@ -176,7 +176,7 @@ export class LxAppNotification {
     const want: Want = {
       bundleName: ctx.abilityInfo.bundleName,
       abilityName: ctx.abilityInfo.name,
-      uri: Lingxia.NOTIFICATION_TOKEN_SCHEME + activationToken,
+      uri: Lingxia.ACTIVATION_ENVELOPE + activationToken,
       parameters: LxAppNotification.tokenParameters(activationToken)
     };
     const request: notificationManager.NotificationRequest = {

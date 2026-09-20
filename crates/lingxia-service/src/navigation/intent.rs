@@ -24,6 +24,9 @@ const STORE_FILE: &str = "navigation-intents.json";
 const MAX_RECORDS: usize = 256;
 /// A consumed token is kept only to merge the OS's repeat callbacks.
 const CONSUMED_TTL_MS: u64 = 24 * 60 * 60 * 1000;
+/// Same bound as the startup dispatch queue: a host that never inits must
+/// not grow an unbounded tap list.
+const MAX_DEFERRED: usize = 8;
 
 /// A staged intent. Commit it once the OS accepted the notification, roll it
 /// back otherwise: the record must never outlive a submission that failed.
@@ -139,6 +142,37 @@ pub fn init(state_dir: PathBuf) {
     store.next_generation = 0;
 }
 
+pub fn is_initialized() -> bool {
+    locked().dir.is_some()
+}
+
+fn deferred() -> &'static Mutex<Vec<String>> {
+    static DEFERRED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+    DEFERRED.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Hold a tap that arrived before [`init`]. Duplicates merge.
+pub fn defer(token: &str) {
+    let token = token.trim();
+    if token.is_empty() {
+        return;
+    }
+    let mut queue = deferred().lock().unwrap_or_else(|error| error.into_inner());
+    if queue.iter().any(|held| held == token) {
+        return;
+    }
+    if queue.len() >= MAX_DEFERRED {
+        log::warn!("dropping a notification tap that arrived before the intent store was ready");
+        return;
+    }
+    queue.push(token.to_string());
+}
+
+pub fn take_deferred() -> Vec<String> {
+    let mut queue = deferred().lock().unwrap_or_else(|error| error.into_inner());
+    std::mem::take(&mut *queue)
+}
+
 /// Drop intents that were staged but never confirmed to the OS, including
 /// those a previous run left behind when it exited mid-publish.
 pub fn recover() {
@@ -153,7 +187,7 @@ pub fn recover() {
             "dropped {} unconfirmed notification intent(s) from a previous run",
             before - store.records.len()
         );
-        let _ = persist(&store);
+        persist_logged(&store, "recover");
     }
 }
 
@@ -204,7 +238,7 @@ pub fn commit(staged: &StagedIntent) {
     {
         record.status = Status::Posted;
     }
-    let _ = persist(&store);
+    persist_logged(&store, "commit");
 }
 
 /// The OS refused the notification, or a frontmost show suppressed it.
@@ -213,7 +247,7 @@ pub fn rollback(staged: &StagedIntent) {
     let before = store.records.len();
     store.records.retain(|record| record.token != staged.token);
     if store.records.len() != before {
-        let _ = persist(&store);
+        persist_logged(&store, "rollback");
     }
 }
 
@@ -224,7 +258,7 @@ pub fn invalidate(id: &str) {
     let before = store.records.len();
     store.records.retain(|record| record.id != id);
     if store.records.len() != before {
-        let _ = persist(&store);
+        persist_logged(&store, "invalidate");
     }
 }
 
@@ -233,7 +267,7 @@ pub fn invalidate_all() {
     load(&mut store);
     if !store.records.is_empty() {
         store.records.clear();
-        let _ = persist(&store);
+        persist_logged(&store, "invalidate_all");
     }
 }
 
@@ -245,9 +279,12 @@ pub struct ResolvedIntent {
     pub target: NavigationTarget,
 }
 
-/// Consume a token. Returns the target exactly once: the OS may deliver the
-/// same tap twice, and a replay must not navigate again.
-pub fn resolve(token: &str) -> Result<ResolvedIntent, NavigationError> {
+/// Consume a token.
+///
+/// `Ok(None)` means this token was already consumed: the OS delivered the same
+/// tap twice, and the second one merges into the first rather than navigating
+/// again or telling the user anything went wrong.
+pub fn resolve(token: &str) -> Result<Option<ResolvedIntent>, NavigationError> {
     let mut store = locked();
     load(&mut store);
     gc(&mut store);
@@ -257,7 +294,7 @@ pub fn resolve(token: &str) -> Result<ResolvedIntent, NavigationError> {
         .iter()
         .position(|record| record.token == token)
     else {
-        let _ = persist(&store);
+        persist_logged(&store, "resolve-miss");
         return Err(NavigationError::unavailable(
             "this notification's target is no longer available",
         ));
@@ -269,11 +306,7 @@ pub fn resolve(token: &str) -> Result<ResolvedIntent, NavigationError> {
         ));
     }
     match record.status {
-        Status::Consumed => {
-            return Err(NavigationError::unavailable(
-                "this notification was already opened",
-            ));
-        }
+        Status::Consumed => return Ok(None),
         Status::Pending => {
             return Err(NavigationError::unavailable(
                 "this notification was never confirmed by the system",
@@ -287,8 +320,8 @@ pub fn resolve(token: &str) -> Result<ResolvedIntent, NavigationError> {
     let id = record.id.clone();
     store.records[index].status = Status::Consumed;
     store.records[index].created_ms = unix_now_ms();
-    let _ = persist(&store);
-    Ok(ResolvedIntent { id, target })
+    persist_logged(&store, "resolve");
+    Ok(Some(ResolvedIntent { id, target }))
 }
 
 /// Live entries, for tests and diagnostics.
@@ -358,7 +391,36 @@ fn persist(store: &Store) -> Result<(), String> {
     // Replace whole: a half-written store would strand every live token.
     let temporary = path.with_extension("json.tmp");
     std::fs::write(&temporary, text).map_err(|error| format!("write: {error}"))?;
-    std::fs::rename(&temporary, &path).map_err(|error| format!("rename: {error}"))
+    match std::fs::rename(&temporary, &path) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            // Windows refuses rename-over-existing; drop the old file and retry.
+            #[cfg(windows)]
+            {
+                let _ = std::fs::remove_file(&path);
+                std::fs::rename(&temporary, &path)
+                    .map_err(|retry| format!("rename: {error}; retry after remove: {retry}"))
+            }
+            #[cfg(not(windows))]
+            Err(format!("rename: {error}"))
+        }
+    }
+}
+
+fn persist_retry(store: &Store) -> Result<(), String> {
+    match persist(store) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            log::warn!("navigation intent store persist retrying after {error}");
+            persist(store)
+        }
+    }
+}
+
+fn persist_logged(store: &Store, reason: &str) {
+    if let Err(error) = persist_retry(store) {
+        log::error!("navigation intent store persist failed ({reason}): {error}");
+    }
 }
 
 fn gc(store: &mut Store) {
@@ -416,6 +478,25 @@ fn unix_now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+#[cfg(test)]
+static SERIAL: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(super) fn with_uninitialized_store<T>(body: impl FnOnce() -> T) -> T {
+    let _guard = SERIAL.lock().unwrap_or_else(|error| error.into_inner());
+    {
+        let mut store = locked();
+        store.dir = None;
+        store.loaded = false;
+        store.records.clear();
+        store.next_generation = 0;
+    }
+    let _ = take_deferred();
+    let result = body();
+    let _ = take_deferred();
+    result
+}
+
 /// Snapshot of what is stored, for host diagnostics.
 pub fn debug_summary() -> BTreeMap<String, usize> {
     let mut store = locked();
@@ -436,12 +517,13 @@ mod tests {
     /// The store is process-global, so the cases run under one lock and reset
     /// it themselves rather than racing over a shared temp directory.
     fn with_store<T>(body: impl FnOnce() -> T) -> T {
-        static SERIAL: Mutex<()> = Mutex::new(());
         let _guard = SERIAL.lock().unwrap_or_else(|error| error.into_inner());
         let dir = tempfile::tempdir().expect("temp dir");
+        let _ = take_deferred();
         init(dir.path().to_path_buf());
         let result = body();
         init(dir.path().to_path_buf());
+        let _ = take_deferred();
         result
     }
 
@@ -454,8 +536,9 @@ mod tests {
         with_store(|| {
             let staged = stage("download:1", &target()).unwrap();
             commit(&staged);
-            assert_eq!(resolve(&staged.token).unwrap().target, target());
-            assert!(resolve(&staged.token).is_err());
+            assert_eq!(resolve(&staged.token).unwrap().unwrap().target, target());
+            // A repeat callback for the same tap merges instead of navigating.
+            assert_eq!(resolve(&staged.token).unwrap(), None);
         });
     }
 
@@ -479,7 +562,7 @@ mod tests {
             assert_ne!(first.token, second.token);
             assert!(resolve(&first.token).is_err());
             assert_eq!(
-                resolve(&second.token).unwrap().target,
+                resolve(&second.token).unwrap().unwrap().target,
                 NavigationTarget::Activate
             );
         });
@@ -503,7 +586,7 @@ mod tests {
             let abandoned = stage("b", &target()).unwrap();
             recover();
             assert!(resolve(&abandoned.token).is_err());
-            assert_eq!(resolve(&confirmed.token).unwrap().target, target());
+            assert_eq!(resolve(&confirmed.token).unwrap().unwrap().target, target());
         });
     }
 
@@ -514,7 +597,7 @@ mod tests {
             commit(&staged);
             let dir = { locked().dir.clone().unwrap() };
             init(dir);
-            assert_eq!(resolve(&staged.token).unwrap().target, target());
+            assert_eq!(resolve(&staged.token).unwrap().unwrap().target, target());
         });
     }
 
@@ -527,6 +610,17 @@ mod tests {
             }
             assert_eq!(live_count(), MAX_RECORDS);
             assert!(stage("one-too-many", &target()).is_err());
+        });
+    }
+
+    #[test]
+    fn a_tap_before_init_is_held_and_deduped() {
+        with_uninitialized_store(|| {
+            assert!(!is_initialized());
+            defer("held-token");
+            defer("held-token");
+            assert_eq!(take_deferred(), vec!["held-token".to_string()]);
+            assert!(take_deferred().is_empty());
         });
     }
 }
