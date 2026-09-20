@@ -106,6 +106,79 @@ function Invoke-SameRouteRelaunchStress {
   }
 }
 
+function Invoke-ProcessRestoreProbe {
+  param([string]$ResultDirectory)
+
+  $packageId = 'com.lingxia.example.lxapp.dev'
+  Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+  Invoke-Checked $lxdev @(
+    'lxapp', 'page', 'wait', '--page', 'home',
+    '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+  )
+  $beforeProcess = (& $adb @adbTarget shell pidof $packageId | Out-String).Trim()
+  if ([string]::IsNullOrWhiteSpace($beforeProcess)) { throw 'Showcase process is missing before the restore probe.' }
+  $activities = (& $adb @adbTarget shell dumpsys activity activities | Out-String)
+  $task = [regex]::Match($activities, 'mResumedActivity:.*' + [regex]::Escape($packageId) + '/com\.lingxia\.lxapp\.LxAppActivity t(\d+)')
+  if (-not $task.Success) { throw 'Showcase must be foreground and the device unlocked before the restore probe.' }
+
+  try {
+    Invoke-Checked $adb ($adbTarget + @('shell', 'input', 'keyevent', 'KEYCODE_HOME'))
+    $deadline = [DateTime]::UtcNow.AddSeconds(15)
+    do {
+      # am kill only kills a stopped background process; retry until the Home
+      # transition completes. Keep the task: force-stop would miss restoration.
+      Invoke-Checked $adb ($adbTarget + @('shell', 'am', 'kill', $packageId))
+      $remaining = (& $adb @adbTarget shell pidof $packageId | Out-String).Trim()
+      if ([string]::IsNullOrWhiteSpace($remaining)) { break }
+      Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not [string]::IsNullOrWhiteSpace($remaining)) { throw 'Showcase background process was not killed.' }
+
+    Invoke-Checked $adb ($adbTarget + @('shell', 'am', 'task', 'focus', $task.Groups[1].Value))
+    $restored = $false
+    $deadline = [DateTime]::UtcNow.AddSeconds(45)
+    do {
+      # The dev transport must reconnect to the fresh process before the
+      # regular Showcase drivers can verify its page and Logic runtime.
+      $probe = (& $lxdev lxapp page wait --page home --css '[data-testid="home-page"]' `
+        --state visible --timeout-ms 2000 2>&1 | Out-String)
+      if ($LASTEXITCODE -eq 0) { $restored = $true; break }
+      Start-Sleep -Milliseconds 500
+    } while ([DateTime]::UtcNow -lt $deadline)
+    if (-not $restored) { throw "Showcase did not recover from process death: $probe" }
+    $afterProcess = (& $adb @adbTarget shell pidof $packageId | Out-String).Trim()
+    if ([string]::IsNullOrWhiteSpace($afterProcess) -or $afterProcess -eq $beforeProcess) {
+      throw 'Restore probe did not obtain a fresh Showcase process.'
+    }
+    $activities = (& $adb @adbTarget shell dumpsys activity activities | Out-String)
+    if ($activities -notmatch ('mResumedActivity:.*' + [regex]::Escape($packageId) + '/com\.lingxia\.lxapp\.LxAppActivity ')) {
+      throw 'Showcase page exists but the page Activity is not foreground after restore.'
+    }
+    Invoke-Checked $lxdev @(
+      'lxapp', 'eval',
+      'if (lx.hello.sayHello("restore") !== "Hello, restore!") throw new Error("Host addon missing after restore"); return true;'
+    )
+    # Exercise navigation through Logic and back, beyond merely seeing a cover
+    # disappear or finding an Activity with the expected name.
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'components', '--json')
+    Invoke-Checked $lxdev @(
+      'lxapp', 'page', 'wait', '--page', 'components',
+      '--css', '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '10000'
+    )
+    Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
+    Invoke-Checked $lxdev @(
+      'lxapp', 'page', 'wait', '--page', 'home',
+      '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+    )
+    Write-Host "Android process restore passed: PID $beforeProcess -> $afterProcess"
+  } finally {
+    & $adb @adbTarget logcat -b all -d -v threadtime |
+      Set-Content -LiteralPath (Join-Path $ResultDirectory 'process-restore-logcat.txt') -Encoding utf8
+    & $adb @adbTarget shell dumpsys activity activities |
+      Set-Content -LiteralPath (Join-Path $ResultDirectory 'process-restore-activities.txt') -Encoding utf8
+  }
+}
+
 function Test-BenignAndroidSessionError {
   param([string]$Message)
   # The image contract deliberately probes a missing file and reports ENOENT
@@ -223,6 +296,7 @@ try {
         if ($testExitCode -eq 0) {
           Invoke-SameRouteRelaunchStress
           Invoke-NativeVideoLifecycleProbe $resultDirectory
+          Invoke-ProcessRestoreProbe $resultDirectory
           $nativeVideoProbeRan = $true
         }
         & $lxdev logs --json --limit 5000 |
