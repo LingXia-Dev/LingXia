@@ -287,12 +287,12 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-/// Event name on the per-app bus carrying `{ sizeClass, width, height }`.
+/// Event name on the per-app bus carrying `{ sizeClass, width, height, aside }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
 /// `lx.surface.onContext(handler)` — register a JS callback (scoped to this
 /// lxapp's JS context), invoke it immediately, then again whenever that
-/// presentation's actual viewport changes. Returns an unsubscribe fn.
+/// presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
 fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let initial = surface_context_for(&lxapp);
@@ -326,6 +326,7 @@ pub(crate) fn notify_surface_context_changed(appid: &str) {
         "sizeClass": context.size_class,
         "width": context.width,
         "height": context.height,
+        "aside": context.aside,
     })
     .to_string();
     publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(payload));
@@ -372,7 +373,8 @@ async fn open_page(
         "lx.surface.openPage",
     )?;
     let realized = resolve_placement(&ctx, &options, &["float", "window"], "float", |placement| {
-        placement != "window" || window_placement_available()
+        placement != "window"
+            || (crate::capability::exposes(&ctx, "surface.window") && window_placement_available())
     })?;
 
     let asked_one_placement = get_property(&options, "as")
@@ -693,7 +695,7 @@ fn resolve_placement(
     Err(surface_error(
         SurfaceErrorCode::UnsupportedPlacement,
         format!(
-            "this host build cannot realize {}; check lx.supports({{ capability: 'surface', value: … }}) first",
+            "this host build cannot realize {}; check lx.supports('surface.window') first",
             requested.join(" or ")
         ),
     ))
@@ -1443,15 +1445,17 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             {
                 return Err(surface_error(
                     SurfaceErrorCode::UnsupportedPlacement,
-                    "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
+                    "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports('surface.window') first",
                 ));
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
             {
-                if !window_placement_available() {
+                if !crate::capability::exposes(&ctx, "surface.window")
+                    || !window_placement_available()
+                {
                     return Err(surface_error(
                         SurfaceErrorCode::UnsupportedPlacement,
-                        "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports({ capability: 'surface', value: 'window' }) first",
+                        "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports('surface.window') first",
                     ));
                 }
                 build_window_options(&ctx, &path_value, size.as_ref())?
@@ -2174,6 +2178,7 @@ fn build_window_options(
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSSurfaceContext {
+    aside: bool,
     #[js_name = "sizeClass"]
     size_class: String,
     width: f64,
@@ -2192,6 +2197,7 @@ fn surface_context_for(lxapp: &LxApp) -> JSSurfaceContext {
         (0.0, 0.0, size_class)
     });
     JSSurfaceContext {
+        aside: aside_dock_available(lxapp),
         size_class: viewport_class.as_str().to_string(),
         width,
         height,

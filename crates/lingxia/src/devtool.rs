@@ -613,6 +613,7 @@ pub async fn lxapp_dev_restart(
                             Some(device.appearance),
                             Some(device.capsule),
                         )
+                        .await
                         .map_err(|error| {
                             format!("failed to restore simulated device after restart: {error}")
                         })?;

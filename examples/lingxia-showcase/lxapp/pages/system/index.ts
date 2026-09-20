@@ -157,7 +157,7 @@ Page({
   },
 
   // Presence of the member is the support check — same latch as
-  // `lx.supports({ capability: 'notifications' })`.
+  // `lx.supports('app.notification')`.
   refreshNotification: async function () {
     const notification = lx.app.notification;
     if (!notification) {

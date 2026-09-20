@@ -505,8 +505,8 @@ await lx.app.control?.displayLanguage.setPreference('zh-CN')
 lx.app.control?.displayLanguage.watchPreference((p) => …)
 ```
 
-`lx.app.control` is present only in that app, so `lx.app.control?.…` and
-`lx.supports({ capability: 'control' })` always agree. `watchPreference` tracks
+`lx.app.control` is present only in that app; test `lx.app.control !== undefined`
+when identity matters. `watchPreference` tracks
 what the user chose, so a system locale change under `'auto'` moves
 `displayLanguage.watch` without waking it.
 

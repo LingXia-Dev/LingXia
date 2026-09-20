@@ -951,6 +951,21 @@ impl WindowSurfaceController {
         if plan_changed {
             self.commit();
         }
+        if class_changed {
+            // Host docking can change without changing a page's viewport.
+            let appids: Vec<String> = get_lxapps_manager()
+                .map(|registry| {
+                    registry
+                        .lxapps
+                        .iter()
+                        .map(|entry| entry.key().clone())
+                        .collect()
+                })
+                .unwrap_or_default();
+            for appid in appids {
+                notify_surface_context_observer(&appid);
+            }
+        }
         class_changed
     }
 

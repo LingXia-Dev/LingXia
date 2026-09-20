@@ -1,5 +1,4 @@
 use crate::authorization::{self, LogicRoute};
-use crate::capability::is_control_app;
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::app_runtime::{
     AppRuntime, DesktopBannerAction, DesktopBannerActionStyle, DesktopBannerBackground,
@@ -31,9 +30,9 @@ struct JSShowOptions {
 }
 
 /// `lx.app.banner` — Control-app desktop overlay. Absent on guests and
-/// off desktop, so presence and `lx.supports({ capability: 'banner' })` agree.
+/// off desktop, so presence and `lx.supports('app.banner')` agree.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !is_control_app(ctx) || !lingxia_platform::banner_supported() {
+    if !crate::capability::exposes(ctx, "app.banner") {
         return Ok(());
     }
     let banner = JSObject::new(ctx);

@@ -36,10 +36,8 @@ if (!control) return;          // a guest — offer nothing that needs it
 await control.appearance.setPreference('dark');
 ```
 
-`lx.app.control` exists only in the Control app, so the check and
-`lx.supports({ capability: 'control' })` always agree — they are answered from
-the same registry. Bind it once at the top of a Settings screen rather than
-writing `lx.app.control!` at every call.
+`lx.app.control !== undefined` identifies the Control app. Bind the member once
+at the top of a Settings screen rather than writing `lx.app.control!` at every call.
 
 ## What only the Control app may call
 

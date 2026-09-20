@@ -59,6 +59,11 @@ pub(crate) fn reload_pages_for_host_class_change() {
         .map(|entry| entry.value().clone())
         .collect();
     for app in apps {
+        // The device coordinator reloads these documents after replacing PageSvc.
+        // View-only apps still need their host-class bridge config refreshed here.
+        if app.logic_enabled() && crate::device::logic_creation_paused() {
+            continue;
+        }
         for page in app.live_page_instances() {
             // Only documents that are actually on screen. A page that left the
             // stack is parked awaiting re-entry and a headless or LRU-detached

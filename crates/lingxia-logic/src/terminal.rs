@@ -597,9 +597,7 @@ fn install_change_pump(ctx: &JSContext) -> JSResult<()> {
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let invocation = authorization::invocation_from_context(ctx)?;
     let app = invocation.lxapp();
-    if !eligible(&app)
-        || authorization::authorize(&invocation, LogicRoute::TerminalSettingsGet).is_err()
-    {
+    if !crate::capability::exposes(ctx, "terminal") {
         return Ok(());
     }
 

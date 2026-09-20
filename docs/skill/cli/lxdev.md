@@ -49,6 +49,8 @@ websocket is not a remote machine-management API.
 - `get` — current preset, orientation, and appearance in one line
 - `set [--id <preset>] [--landscape|--portrait] [--appearance system|light|dark] [--capsule on|off]` — partial update: only the given properties change. `--capsule off` hides the simulated host capsule (phone presets draw it by default, as a real host does for a non-home lxapp) — use it when developing a home-style lxapp. Appearance pins the simulated screen's `prefers-color-scheme` at the host level (never injected into page DOM); `system` follows the OS. Example: `lxdev runner set --appearance dark` before dark-mode assertions or screenshots.
 
+Switching between desktop and handheld presets replaces live Logic contexts, including background apps, and waits for retained documents to reload. This resets app Logic state so frozen feature snapshots match the new host.
+
 **`app`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
 - `doctor` — report screenshot/input support, coordinate units, and keyboard-modifier reliability
 - `windows` — enumerate top-level host windows; the id feeds `--window` on the other `app` commands
@@ -133,3 +135,7 @@ Owner-drawn Win32 controls may not expose accessibility nodes.
 | `Multiple LingXia dev sessions are live` | Add `--session <id-prefix\|target>`. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
 | Commands connect but hang | Host app lost its bridge — use `lingxia dev stop` from the project, then start `lingxia dev` again. |
+
+`lxdev lxapp info` includes `logic_features`: a read-only snapshot keyed by Logic
+context id, with sorted feature names. Runner desktop/handheld preset changes
+recreate Logic contexts; rotation and resizing keep the existing feature set.

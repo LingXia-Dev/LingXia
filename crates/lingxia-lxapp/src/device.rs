@@ -143,12 +143,161 @@ pub fn device_get() -> Result<DeviceState, String> {
     device_controller()?.get()
 }
 
-/// Update the simulated environment; only the provided fields change.
-pub fn device_set(
+// Admission and enqueueing use the same lock, so an app cannot reserve a new
+// Logic context between the transition's snapshot and its shutdown barrier.
+static LOGIC_CREATION_PAUSED: std::sync::Mutex<bool> = std::sync::Mutex::new(false);
+static DEVICE_CHANGE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+pub(crate) fn logic_creation_guard()
+-> Result<std::sync::MutexGuard<'static, bool>, crate::LxAppError> {
+    let guard = LOGIC_CREATION_PAUSED.lock().unwrap();
+    if *guard {
+        return Err(crate::LxAppError::Runtime(
+            "Runner device change is in progress".into(),
+        ));
+    }
+    Ok(guard)
+}
+
+pub(crate) fn logic_creation_paused() -> bool {
+    *LOGIC_CREATION_PAUSED.lock().unwrap()
+}
+
+struct CreationPause;
+impl CreationPause {
+    fn begin() -> Self {
+        *LOGIC_CREATION_PAUSED.lock().unwrap() = true;
+        Self
+    }
+}
+impl Drop for CreationPause {
+    fn drop(&mut self) {
+        *LOGIC_CREATION_PAUSED.lock().unwrap() = false;
+    }
+}
+
+/// Change the simulated environment and await replacement Logic/page readiness.
+/// Runs independently of the caller, so disconnecting cannot strand paused apps.
+pub async fn device_set(
     id: Option<&str>,
     landscape: Option<bool>,
     appearance: Option<Appearance>,
     capsule: Option<bool>,
 ) -> Result<DeviceState, String> {
-    device_controller()?.set(id, landscape, appearance, capsule)
+    let id = id.map(str::to_owned);
+    crate::executor::spawn(async move { change_device(id, landscape, appearance, capsule).await })
+        .await
+        .map_err(|error| format!("device transition failed: {error}"))?
+}
+
+/// Native UI entry: never block a platform's main thread waiting for Logic.
+pub fn request_device_set(id: String, landscape: Option<bool>) {
+    std::mem::drop(crate::executor::spawn(async move {
+        if let Err(error) = device_set(Some(&id), landscape, None, None).await {
+            crate::error!("Runner device change failed: {error}");
+        }
+    }));
+}
+
+async fn apply_device(
+    id: Option<String>,
+    landscape: Option<bool>,
+    appearance: Option<Appearance>,
+    capsule: Option<bool>,
+) -> Result<DeviceState, String> {
+    tokio::task::spawn_blocking(move || {
+        device_controller()?.set(id.as_deref(), landscape, appearance, capsule)
+    })
+    .await
+    .map_err(|error| format!("device controller failed: {error}"))?
+}
+
+async fn resume_apps(apps: &[std::sync::Arc<crate::LxApp>]) -> Vec<String> {
+    futures::future::join_all(apps.iter().map(|app| async move {
+        app.resume_after_device_change()
+            .await
+            .err()
+            .map(|error| format!("{}: {error}", app.appid))
+    }))
+    .await
+    .into_iter()
+    .flatten()
+    .collect()
+}
+
+async fn change_device(
+    id: Option<String>,
+    landscape: Option<bool>,
+    appearance: Option<Appearance>,
+    capsule: Option<bool>,
+) -> Result<DeviceState, String> {
+    let _change = DEVICE_CHANGE.lock().await;
+    let (previous, target_group) = tokio::task::spawn_blocking({
+        let id = id.clone();
+        move || -> Result<_, String> {
+            let previous = device_get()?;
+            let group = match id {
+                Some(id) => {
+                    device_list()?
+                        .into_iter()
+                        .find(|entry| entry.id == id)
+                        .ok_or_else(|| format!("unknown device id: {id}"))?
+                        .group
+                }
+                None => previous.group.clone(),
+            };
+            Ok((previous, group))
+        }
+    })
+    .await
+    .map_err(|error| error.to_string())??;
+    if (previous.group == "desktop") == (target_group == "desktop") {
+        return apply_device(id, landscape, appearance, capsule).await;
+    }
+
+    let pause = CreationPause::begin();
+    let apps = crate::lxapp::get_lxapps_manager()
+        .map(|manager| manager.live_logic_instances())
+        .unwrap_or_default();
+    let mut failures: Vec<String> = futures::future::join_all(apps.iter().map(|app| async move {
+        app.quiesce_for_device_change()
+            .await
+            .err()
+            .map(|error| format!("{}: {error}", app.appid))
+    }))
+    .await
+    .into_iter()
+    .flatten()
+    .collect();
+    if !failures.is_empty() {
+        // The old environment remains authoritative if shutdown was not proven.
+        drop(pause);
+        failures.extend(resume_apps(&apps).await);
+        return Err(failures.join("; "));
+    }
+    let applied = apply_device(id, landscape, appearance, capsule).await;
+    if applied.is_err() {
+        if let Err(error) = apply_device(
+            Some(previous.id),
+            Some(previous.landscape),
+            Some(previous.appearance),
+            Some(previous.capsule),
+        )
+        .await
+        {
+            failures.push(format!("device rollback failed: {error}"));
+        }
+    }
+    // Every old context has terminated, and the selected environment is now
+    // published. New admissions and replacement contexts may observe it.
+    drop(pause);
+    failures.extend(resume_apps(&apps).await);
+    match applied {
+        Ok(state) if failures.is_empty() => Ok(state),
+        Ok(_) => Err(failures.join("; ")),
+        Err(error) => {
+            failures.insert(0, error);
+            Err(failures.join("; "))
+        }
+    }
 }

@@ -7,7 +7,7 @@ const VERSION = "0.6.1";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceDir = resolve(packageDir, "../..");
 const installRoot = join(workspaceDir, "target", "rong-typegen", VERSION);
-const binary = join(installRoot, "bin", process.platform === "win32" ? "rong-typegen.exe" : "rong-typegen");
+const binary = process.env.RONG_TYPEGEN_BIN || join(installRoot, "bin", process.platform === "win32" ? "rong-typegen.exe" : "rong-typegen");
 
 const outputs = [
   join(packageDir, "src", "generated", "logic.ts"),
@@ -23,6 +23,28 @@ const REGEN_HINT = "// Do not edit by hand — run `npm run gen:logic` in packag
 // unreferenced declarations.
 const BINDING_CLASS_BLOCK =
   /^export declare class (?:JSMessagePort|JSSurface|JSUpdateManager|JSVideoContext)\b[^]*?^}\n\n?/gm;
+
+function featureDeclaration() {
+  const entries = JSON.parse(readFileSync(join(workspaceDir, "crates/lingxia-logic/src/features.json"), "utf8"));
+  const index = new Map();
+  for (const entry of entries) {
+    if (index.has(entry.key)) throw new Error(`duplicate feature ${entry.key}`);
+    index.set(entry.key, entry);
+  }
+  const visiting = new Set(), visited = new Set();
+  function visit(key) {
+    if (visited.has(key)) return;
+    if (visiting.has(key)) throw new Error(`cyclic feature ${key}`);
+    const entry = index.get(key);
+    if (!entry) throw new Error(`missing feature ${key}`);
+    visiting.add(key);
+    entry.requires.forEach(visit);
+    visiting.delete(key);
+    visited.add(key);
+  }
+  index.forEach((_, key) => visit(key));
+  return `/** Feature contracts generated from the runtime registry. */\nexport type LxFeature = ${[...index.keys()].sort().map(key => `'${key}'`).join(" | ")};\n`;
+}
 
 function dropBindingClasses(source) {
   const next = source.replace(BINDING_CLASS_BLOCK, "");
@@ -41,6 +63,9 @@ function run(command, args) {
 }
 
 if (!existsSync(binary)) {
+  if (process.env.RONG_TYPEGEN_BIN || process.argv.includes("--no-install")) {
+    throw new Error(`type generator is not installed: ${binary}`);
+  }
   run("cargo", ["install", "rong_typegen", "--version", `=${VERSION}`, "--locked", "--root", installRoot]);
 }
 
@@ -55,7 +80,7 @@ try {
   for (const path of outputs) {
     let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
     if (path.endsWith("logic.ts")) {
-      source = dropBindingClasses(source);
+      source = dropBindingClasses(source) + "\n" + featureDeclaration();
     }
     writeFileSync(path, source);
   }

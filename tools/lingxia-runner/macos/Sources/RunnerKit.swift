@@ -62,7 +62,7 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
             return .handled
         }
 
-        RunnerApp.shared.setDeviceSize(.defaultDevice)
+        RunnerApp.shared.applyDeviceSize(.defaultDevice, orientation: nil)
         Task { @MainActor in
             guard await RunnerUserAgentPolicy.shared.prepare() else {
                 fatalError("LingXia Runner could not configure the engine user agent")

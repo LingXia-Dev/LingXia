@@ -188,20 +188,20 @@ declare global {
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports({ capability: 'autostart' })` always
+     * startup item; its presence and `lx.supports('app.autostart')` always
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
 
     /**
      * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports({ capability: 'notifications' })` always agree.
+     * and `lx.supports('app.notification')` always agree.
      */
     notification?: NotificationApi;
 
     /**
      * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports({ capability: 'banner' })`
+     * guest lxapps; its presence and `lx.supports('app.banner')`
      * always agree.
      */
     banner?: BannerApi;
@@ -214,17 +214,15 @@ declare global {
 
     /**
      * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time; its presence and
-     * `lx.supports({ capability: 'control' })` always agree, so
-     * `lx.app.control?.…` and the query are interchangeable.
+     * Control app the host sealed at build time. Use
+     * `lx.app.control !== undefined` to inspect that identity.
      */
     readonly control?: ControlApi;
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; its presence and
-     * `lx.supports({ capability: 'control' })` always agree, so
-     * `lx.app.cache?.…` and the query are interchangeable.
+     * Present only in the Control app; presence agrees with
+     * `lx.supports('app.cache')`.
      */
     cache?: AppCacheApi;
   }
@@ -236,7 +234,7 @@ declare global {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
      * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports({ capability: 'terminal' })` always agree.
+     * presence and `lx.supports('terminal')` always agree.
      */
     readonly terminal?: TerminalApi;
 
@@ -480,7 +478,7 @@ export type AutostartApi = {
 /**
  * Product-drawn desktop banner, top-right. Not an OS notification and
  * not bound to App Link. Present only in the desktop Control app;
- * presence and `lx.supports({ capability: 'banner' })` always agree.
+ * presence and `lx.supports('app.banner')` always agree.
  * No buttons: an informational card that auto-dismisses (5s unless
  * `timeoutMs` is set). With buttons: a gate that waits for a choice,
  * dismiss, timeout, or replace. User outcomes resolve; presentation
@@ -1055,7 +1053,7 @@ export type HostAppUpdateInfo = {
     releaseNotes?: string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
-     * `direct` downloads and self-installs. `lx.supports({ capability: 'selfUpdate' })`
+     * `direct` downloads and self-installs. `lx.supports('app.selfUpdate')`
      * is true only for `direct`.
      */
     channel: 'direct' | 'store';
@@ -1129,37 +1127,7 @@ export type LxAppEnvVersion = 'release' | 'draft';
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'draft';
 
-/** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
-
-/**
- * One capability question per call. The catalog is closed, so
- * completion enumerates it and a typo is a type error. `capability`
- * is the discriminant; only the `surface` branch accepts a `value`.
- * Two surface answers describe an *affordance*, not whether the call
- * succeeds: `tab` is "the host has an in-app browser" — without it a
- * url still opens, in the OS browser instead — and `aside` is "a
- * docked region exists right now", while a compact layout still opens
- * the url through the in-app browser's own chrome. Ask them to decide
- * what to render, not whether to call.
- * `chrome` qualifies a window and only a window: it asks whether this
- * host can produce that decoration, not merely a window.
- */
-export type LxCapabilityQuery = {
-    capability: 'surface';
-    value: 'window';
-    chrome?: WindowChrome;
-} | {
-    capability: 'surface';
-    value: Exclude<LxSurfaceCapability, 'window'>;
-} | {
-    capability: LxCapabilityFlag;
-};
-
 export type LxEnv = globalThis.LxEnv;
-
-/** Surface placements accepted by `lx.supports`. */
-export type LxSurfaceCapability = 'main' | 'aside' | 'float' | 'window' | 'tab';
 
 /** Device action APIs. */
 export type MakePhoneCallOptions = {
@@ -1254,10 +1222,10 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
 /**
  * Launch-at-startup control for the host app.
  * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports({ capability: 'autostart' })` and the member's presence always
+ * `lx.supports('app.autostart')` and the member's presence always
  * agree, so either gate works:
  * ```ts
- * if (lx.supports({ capability: 'autostart' })) {
+ * if (lx.supports('app.autostart')) {
  * // render the "Launch at startup" toggle
  * }
  * ```
@@ -1272,7 +1240,7 @@ export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g
  * Local notifications as a Control-app resume affordance.
  * Absent unless the host declared `capabilities.notifications` and the
  * platform implements the local API. Presence and
- * `lx.supports({ capability: 'notifications' })` always agree.
+ * `lx.supports('app.notification')` always agree.
  * Declaring the capability never prompts; permission runs on
  * `requestPermission()` or the first `show()` that reaches the OS.
  * Control app only. Guest lxapps receive a permission error.
@@ -2013,6 +1981,8 @@ export type SurfaceClosedEvent = {
  * spacing inside `regular` use CSS or the raw `width` / `height`.
  */
 export type SurfaceContext = {
+    /** Whether the host layout currently offers a docked aside. */
+    aside: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
     sizeClass: 'compact' | 'regular';
     /** Actual surface viewport width in logical pixels. */
@@ -2855,16 +2825,11 @@ declare global {
   interface Lx {
     readonly app: HostAppApi;
     /**
-     * Whether this host exposes a capability to this Logic context, right now.
-     * Synchronous, because it is meant to be called from render paths. The answer
-     * is live and may be stale by the time you act on it — it is an affordance for
-     * deciding what to render, not a replacement for handling a rejection.
-     * `{ capability: 'surface', value: 'aside' }` in particular changes when a
-     * desktop window crosses the compact breakpoint; pair it with
-     * `lx.surface.onContext` instead of polling. The answer is per runtime context:
-     * a context that does not expose an API reports false for it.
+     * Frozen feature support, not permission or current layout. Unknown strings
+     * return false; non-strings throw TypeError. Required features also need an
+     * appropriate lxapp.json minRuntime. The string API requires 0.18.0 or later.
      */
-    supports(query: LxCapabilityQuery): boolean;
+    supports(feature: LxFeature): boolean;
     readonly clipboard: ClipboardApi;
     /** Vibrate briefly, where the device has a vibrator. */
     vibrateShort(): boolean;
@@ -3212,7 +3177,7 @@ declare global {
     /**
      * `lx.surface.onContext(handler)` — register a JS callback (scoped to this
      * lxapp's JS context), invoke it immediately, then again whenever that
-     * presentation's actual viewport changes. Returns an unsubscribe fn.
+     * presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
      */
     onContext(handler: (context: SurfaceContext) => void): () => void;
   }
@@ -3265,3 +3230,6 @@ declare global {
 }
 
 export {};
+
+/** Feature contracts generated from the runtime registry. */
+export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.cache' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'process' | 'surface.float' | 'surface.main' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';

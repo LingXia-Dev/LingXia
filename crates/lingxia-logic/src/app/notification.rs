@@ -28,7 +28,7 @@ struct JSShowOptions {
 /// `lx.app.notification` — local banners as a resume affordance. Absent unless
 /// the host declared `capabilities.notifications`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !lingxia_app_context::capability::notifications() {
+    if !crate::capability::exposes(ctx, "app.notification") {
         return Ok(());
     }
     let notification = JSObject::new(ctx);

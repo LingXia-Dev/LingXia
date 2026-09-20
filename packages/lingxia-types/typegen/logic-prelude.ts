@@ -185,20 +185,20 @@ declare global {
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports({ capability: 'autostart' })` always
+     * startup item; its presence and `lx.supports('app.autostart')` always
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
 
     /**
      * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports({ capability: 'notifications' })` always agree.
+     * and `lx.supports('app.notification')` always agree.
      */
     notification?: NotificationApi;
 
     /**
      * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports({ capability: 'banner' })`
+     * guest lxapps; its presence and `lx.supports('app.banner')`
      * always agree.
      */
     banner?: BannerApi;
@@ -211,17 +211,15 @@ declare global {
 
     /**
      * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time; its presence and
-     * `lx.supports({ capability: 'control' })` always agree, so
-     * `lx.app.control?.…` and the query are interchangeable.
+     * Control app the host sealed at build time. Use
+     * `lx.app.control !== undefined` to inspect that identity.
      */
     readonly control?: ControlApi;
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; its presence and
-     * `lx.supports({ capability: 'control' })` always agree, so
-     * `lx.app.cache?.…` and the query are interchangeable.
+     * Present only in the Control app; presence agrees with
+     * `lx.supports('app.cache')`.
      */
     cache?: AppCacheApi;
   }
@@ -233,7 +231,7 @@ declare global {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
      * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports({ capability: 'terminal' })` always agree.
+     * presence and `lx.supports('terminal')` always agree.
      */
     readonly terminal?: TerminalApi;
 

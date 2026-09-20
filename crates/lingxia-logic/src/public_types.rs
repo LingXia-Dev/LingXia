@@ -149,11 +149,11 @@ rong::js_api! {
         /// Launch-at-startup control for the host app.
         ///
         /// Absent (`undefined`) wherever the host cannot register a startup item.
-        /// `lx.supports({ capability: 'autostart' })` and the member's presence always
+        /// `lx.supports('app.autostart')` and the member's presence always
         /// agree, so either gate works:
         ///
         /// ```ts
-        /// if (lx.supports({ capability: 'autostart' })) {
+        /// if (lx.supports('app.autostart')) {
         ///   // render the "Launch at startup" toggle
         /// }
         /// ```
@@ -172,7 +172,7 @@ rong::js_api! {
         ///
         /// Absent unless the host declared `capabilities.notifications` and the
         /// platform implements the local API. Presence and
-        /// `lx.supports({ capability: 'notifications' })` always agree.
+        /// `lx.supports('app.notification')` always agree.
         /// Declaring the capability never prompts; permission runs on
         /// `requestPermission()` or the first `show()` that reaches the OS.
         ///
@@ -221,7 +221,7 @@ rong::js_api! {
 
         /// Product-drawn desktop banner, top-right. Not an OS notification and
         /// not bound to App Link. Present only in the desktop Control app;
-        /// presence and `lx.supports({ capability: 'banner' })` always agree.
+        /// presence and `lx.supports('app.banner')` always agree.
         ///
         /// No buttons: an informational card that auto-dismisses (5s unless
         /// `timeoutMs` is set). With buttons: a gate that waits for a choice,
@@ -984,7 +984,7 @@ rong::js_api! {
     releaseNotes?: string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
-     * `direct` downloads and self-installs. `lx.supports({ capability: 'selfUpdate' })`
+     * `direct` downloads and self-installs. `lx.supports('app.selfUpdate')`
      * is true only for `direct`.
      */
     channel: 'direct' | 'store';
@@ -1845,6 +1845,8 @@ true
         /// spacing inside `regular` use CSS or the raw `width` / `height`.
         ///
         type SurfaceContext = r###"{
+    /** Whether the host layout currently offers a docked aside. */
+    aside: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
     sizeClass: 'compact' | 'regular';
     /** Actual surface viewport width in logical pixels. */

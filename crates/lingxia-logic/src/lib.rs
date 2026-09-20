@@ -43,6 +43,7 @@ unsafe extern "Rust" {
 
 impl LxLogicExtension for LxLogicRuntime {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
+        capability::init(ctx)?;
         // The host-bundled Terminal Settings package is a focused control UI,
         // not a general-purpose lxapp. Keep its cold path to the one API it is
         // allowed to use instead of registering the full LingXia surface.
@@ -50,16 +51,11 @@ impl LxLogicExtension for LxLogicRuntime {
         if terminal::owns_context(ctx)? {
             app::init_base(ctx)?;
             fs::init_download(ctx)?;
-            // Even the focused Terminal Settings context gets `lx.supports`:
-            // it is the one context where `lx.terminal` is present, so without
-            // it the documented "presence and the query never disagree" would
-            // be untestable exactly where it matters.
             terminal::init(ctx)?;
-            return capability::init(ctx);
+            return Ok(());
         }
 
         public_types::init(ctx)?;
-        capability::init(ctx)?;
         env::init(ctx)?;
         app::init(ctx)?;
         lxapp::init(ctx)?;

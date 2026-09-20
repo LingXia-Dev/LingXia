@@ -1,0 +1,20 @@
+[
+  {"key":"app.autostart","requires":[],"own":"Autostart"},
+  {"key":"app.notification","requires":[],"own":"Notifications"},
+  {"key":"app.banner","requires":[],"own":"Banner"},
+  {"key":"app.cache","requires":[],"own":"Control"},
+  {"key":"app.browser","requires":[],"own":"Browser"},
+  {"key":"app.proxy","requires":[],"own":"Proxy"},
+  {"key":"app.selfUpdate","requires":[],"own":"SelfUpdate"},
+  {"key":"app.appUse","requires":[],"own":"AppUse"},
+  {"key":"app.computerUse","requires":[],"own":"ComputerUse"},
+  {"key":"app.browserUse","requires":[],"own":"BrowserUse"},
+  {"key":"app.mediaCapture","requires":[],"own":"MediaCapture"},
+  {"key":"process","requires":[],"own":"Process"},
+  {"key":"terminal","requires":[],"own":"Terminal"},
+  {"key":"surface.main","requires":[],"own":"Always"},
+  {"key":"surface.float","requires":[],"own":"Always"},
+  {"key":"surface.tab","requires":["app.browser"],"own":"Always"},
+  {"key":"surface.window","requires":[],"own":"Window"},
+  {"key":"surface.window.fullChrome","requires":["surface.window"],"own":"FullChrome"}
+]

@@ -62,7 +62,7 @@ header {
 ```
 
 `chrome` defaults to `'system'`, which is the standard title bar. Ask
-`lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })`
+`lx.supports('surface.window.fullChrome')`
 before offering it.
 
 ## Runner safe areas and page chrome
@@ -202,3 +202,6 @@ color scheme for dual-theme assertions.
 
 Assert that the old View is absent from the DOM and that Logic-owned state is
 still visible after each switch.
+
+`SurfaceContext.aside` reports live host docking availability. It is not derived
+from the content viewport’s `sizeClass`; use `lx.surface.onContext` to observe it.

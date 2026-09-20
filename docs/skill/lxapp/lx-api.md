@@ -116,26 +116,27 @@ tray presentation on mobile, are silent no-ops. Result-bearing operations and
 invalid usage reject or throw. Each generated method's JSDoc is authoritative
 for its exact behavior.
 
-Ask before you offer, with `lx.supports(query)`:
+Use `lx.supports(feature)` for optional feature contracts:
 
 ```ts
-if (lx.supports({ capability: 'surface', value: 'window' })) {
-  // render "Open in new window"
+if (lx.supports('surface.window.fullChrome')) {
+  // offer a window with full chrome
 }
+lx.surface.onContext(({ aside }) => {
+  // aside is live host docking availability, independent of viewport sizeClass
+});
 ```
 
-The catalog is a closed union, so completion enumerates it and a typo is a
-compile error. The answer is live — `{ capability: 'surface', value: 'aside' }` changes when a
-desktop window crosses the compact breakpoint, so pair it with
-`lx.surface.onContext` rather than caching it. It is an affordance for deciding
-what to render and never replaces handling a rejection: the answer can be stale
-by the time you act on it, and every gated operation still rejects.
+The supported set is frozen per Logic context. Unknown strings return false;
+non-strings throw TypeError. `LxFeature` is generated from the runtime registry.
+Required features need an appropriate `lxapp.json` `minRuntime`; optional ones
+use supports and a fallback. The string signature requires `minRuntime: "0.18.0"`
+or later. Permissions, grants and resource failures are checked at the
+operation, so true is not permission or a promise of success.
 
-A whole namespace that a host may not carry at all stays an optional member —
-`lx.terminal`, `lx.app.autostart`, `lx.app.notification`, `lx.app.banner`, `lx.app.control`, `lx.app.cache`. Presence and
-`lx.supports()` are answered from one registry, so `('terminal' in lx)` and
-`lx.supports({ capability: 'terminal' })` can never disagree. `lx.app.cache`
-uses the same gate as `lx.app.control`.
+Optional namespaces and their base feature share the frozen set: `terminal`,
+`app.autostart`, `app.notification`, `app.banner`, `app.cache`. For Control app
+identity use `lx.app.control !== undefined`, not a feature key.
 
 `lx.app.control` holds the product-wide settings and their single writer. It is
 injected only into the app the host sealed as its Control app at build time, so
@@ -156,7 +157,7 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 `lx.app.banner` — Control-app only, desktop only (macOS / Windows). Not an OS
 notification and not bound to App Link. Presence and
-`lx.supports({ capability: 'banner' })` always agree; guests and mobile builds
+`lx.supports('app.banner')` always agree; guests and mobile builds
 do not have the member. No yaml capability: this is product-drawn chrome.
 
 - No `actions`: informational card, auto-dismisses in 5s unless `timeoutMs` is
