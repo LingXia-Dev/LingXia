@@ -411,6 +411,8 @@ pub mod dev_session {
     use std::collections::BTreeMap;
 
     pub const DEV_SESSION_PROTOCOL_VERSION: u32 = 2;
+    /// A test poll can carry 24 MiB of base64 artifacts plus an 8 MiB result.
+    pub const DEV_SESSION_MAX_MESSAGE_BYTES: usize = 40 * 1024 * 1024;
 
     pub mod capabilities {
         pub const REQUESTS: &str = "requests";

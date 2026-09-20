@@ -22,3 +22,25 @@ received artifacts. Keep the following invariants when changing these layers:
   not an alternate result model.
 - Check actionability before dispatch. Never retry an ambiguous input transport
   failure: the original click may already have had its side effect.
+
+## Automation JS boundary
+
+- `@lingxia/types/automation` describes the raw host drivers. Keep Logic eval,
+  WebView eval, browser tabs, and OS input as separate targets. Locators and
+  retry policy belong to `@lingxia/test`, not the product automation runtime.
+- `t.app`, `t.apps`, and `t.automation` share fixture guards and tracing.
+  Test helpers must retain these wrappers instead of acquiring raw drivers.
+  Code deliberately evaluated inside product Logic still uses `lx.automation()`.
+- Native Rong class instances are callable (`typeof === "function"`). Keep the
+  original receiver for native getters and methods; getter-returned drivers must
+  be wrapped as namespaces, not rebound as functions.
+- Locator queries, probes, and dispatch carry the same page and match index.
+  Multiple matches remain ambiguous even if only one is visible. Named pages
+  survive remounts; an instance id targets one live instance. Omitted page targets
+  follow the current page on every operation.
+- `eval<T>` declares the caller's expected result, not runtime validation.
+  Browser navigation eval returns `{ value, navigation }`; waits require exactly
+  one condition. Preserve automation error codes and JSON data in test reports.
+- Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
+  final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
+  after base64 encoding; both relay and CLI receiver need the shared limit.

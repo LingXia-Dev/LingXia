@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, showcaseApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, evalCaught, eventually } from '../../helpers/poll.js';
 
@@ -53,7 +53,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-TAB-001');
-  const platform = await runtimePlatform(showcaseApp());
+  const platform = await runtimePlatform(t.apps.lxapp(SHOWCASE_APP_ID));
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`browser tab surfaces require macOS or Windows; got ${platform || 'unknown'}`);
   }
@@ -62,7 +62,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   }) as boolean;
   expect(browserOffered).toBeTruthy();
 
-  const browser = lx.automation().browser;
+  const browser = t.automation.browser;
   const key = `${namespace}-tab`;
   const stateKey = `__lingxiaTabSurface_${namespace.replace(/-/g, '_')}`;
   const title = `fixture ${key}`;

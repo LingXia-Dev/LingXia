@@ -24,7 +24,7 @@ import {
   VERSION,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { LxAppDriver } from "@lingxia/types/automation";
+import type { Automation, LxAppDriver } from "@lingxia/types/automation";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -169,7 +169,7 @@ function suiteOf(file: string): string {
 }
 
 function automationRoot() {
-  const lx = (globalThis as { lx?: { automation?: () => { lxapp: { (): LxAppDriver; (id: string): LxAppDriver } } } }).lx;
+  const lx = (globalThis as { lx?: { automation?: () => Automation } }).lx;
   if (!lx || typeof lx.automation !== "function") {
     throw new Error("lx.automation() is not available in this runtime");
   }
@@ -454,7 +454,7 @@ async function run(): Promise<ProtocolReport> {
     const history = attempts.get(id) ?? [];
     history.push(record);
     attempts.set(id, history);
-    const finished = { ...record, attempts: history.map(attempt => ({ ...attempt })),
+    const finished = { ...record, attempts: history.length > 1 ? history.map(attempt => ({ ...attempt })) : undefined,
       flaky: record.status === "passed" && history.length > 1 };
     const previous = cases.findIndex(item => item.id === id);
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);

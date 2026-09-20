@@ -1,7 +1,8 @@
+import type { PageQueryResult } from "@lingxia/types/automation";
 import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
 import { displayLocation } from "./ids.js";
-import type { ExpectOptions, Locator, SourceLocation } from "./types.js";
+import type { ExpectOptions, Locator, LocatorOptions, SourceLocation } from "./types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
@@ -21,15 +22,17 @@ export interface QueryMatch {
 }
 
 export interface PageLike {
-  eval?(options: { script: string; timeoutMs?: number }): Promise<unknown>;
+  eval?(options: { script: string; timeoutMs?: number; page?: string }): Promise<unknown>;
   query(options: {
     css: string;
+    page?: string;
     all?: boolean;
     index?: number;
   }): Promise<QueryMatch>;
-  click(options: { css: string; index?: number }): Promise<void>;
-  fill(options: { css: string; text: string; index?: number }): Promise<void>;
-  type(options: { css: string; text: string; index?: number }): Promise<void>;
+  click(options: { css: string; page?: string; index?: number }): Promise<void>;
+  fill(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
+  press?(options: { css: string; key: string; page?: string; index?: number }): Promise<void>;
+  type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
 }
 
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
@@ -63,32 +66,49 @@ export class PageLocator implements Locator {
     private readonly record: ActionRecorder,
     selector: string,
     private readonly location: SourceLocation,
+    private readonly options: LocatorOptions = {},
   ) {
     this.selector = selector;
+    this.options = { ...options };
+    if (!selector.trim()) throw new TypeError("Locator selector must not be empty");
+    if (options.index !== undefined && (!Number.isInteger(options.index) || options.index < 0)) {
+      throw new TypeError("Locator index must be a non-negative integer");
+    }
+  }
+
+  nth(index: number): Locator {
+    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location, { ...this.options, index });
+  }
+
+  async press(key: string, options?: ExpectOptions): Promise<void> {
+    if (!this.page.press) throw new Error("This page driver does not support press");
+    await this.act("press", options, (css, index) => this.page.press!({ ...this.options, css, index, key }));
   }
 
   async click(options?: ExpectOptions): Promise<void> {
-    await this.act("click", options, (css, index) => this.page.click({ css, index }));
+    await this.act("click", options, (css, index) => this.page.click({ ...this.options, css, index }));
   }
 
   async fill(text: string, options?: ExpectOptions): Promise<void> {
-    await this.act("fill", options, (css, index) => this.page.fill({ css, text, index }));
+    await this.act("fill", options, (css, index) => this.page.fill({ ...this.options, css, text, index }));
   }
 
   async type(text: string, options?: ExpectOptions): Promise<void> {
-    await this.act("type", options, (css, index) => this.page.type({ css, text, index }));
+    await this.act("type", options, (css, index) => this.page.type({ ...this.options, css, text, index }));
   }
 
-  async query(): Promise<QueryMatch> {
-    return this.guard(() => this.page.query({ css: this.selector }));
+  async query(): Promise<PageQueryResult> {
+    return this.guard(() => this.page.query({ ...this.options, css: this.selector })) as Promise<PageQueryResult>;
   }
 
   async resolve(): Promise<LocatorResolve> {
     const all = await this.guard(() =>
-      this.page.query({ css: this.selector, all: true }),
+      this.page.query({ page: this.options.page, css: this.selector, all: true }),
     );
-    const items = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
-    const count = typeof all.count === "number" ? all.count : items.length;
+    const matches = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
+    const selected = this.options.index === undefined ? undefined : matches[this.options.index];
+    const items: QueryMatch[] = this.options.index === undefined ? matches : selected ? [{ ...selected, index: this.options.index }] : [];
+    const count = this.options.index === undefined ? (all.count ?? items.length) : items.length;
     const visibleItems = items.filter((item) => item.visible);
     const visibleCount = visibleItems.length;
     if (count === 0) {
@@ -103,6 +123,10 @@ export class PageLocator implements Locator {
         kind: "nothing",
       };
     }
+    if (count > 1) {
+      return { count, visibleCount, attached: true, visible: visibleCount > 0,
+        text: items.map(item => item.text ?? "").join("\n"), value: null, index: 0, kind: "many" };
+    }
     if (visibleCount === 0) {
       return {
         count,
@@ -114,18 +138,6 @@ export class PageLocator implements Locator {
         index: items[0]?.index ?? 0,
         enabled: items[0]?.enabled, editable: items[0]?.editable,
         kind: "hidden",
-      };
-    }
-    if (visibleCount > 1) {
-      return {
-        count,
-        visibleCount,
-        attached: true,
-        visible: true,
-        text: visibleItems.map((item) => item.text ?? "").join("\n"),
-        value: visibleItems[0]?.value ?? null,
-        index: visibleItems[0]?.index ?? 0,
-        kind: "many",
       };
     }
     const unique = visibleItems[0]!;
@@ -150,19 +162,19 @@ export class PageLocator implements Locator {
       return `locator ${formatValue(this.selector)} resolved to hidden`;
     }
     if (resolved.kind === "many") {
-      return `locator ${formatValue(this.selector)} resolved to ${resolved.visibleCount} matches`;
+      return `locator ${formatValue(this.selector)} resolved to ${resolved.count} matches`;
     }
     return `locator ${formatValue(this.selector)} resolved to a visible element`;
   }
 
   private async actionability(index: number, verb: string): Promise<true | string> {
     if (!this.page.eval) return true;
-    const result = await this.guard(() => this.page.eval!({ script: `(() => {
+    const result = await this.guard(() => this.page.eval!({ page: this.options.page, script: `(() => {
       const el = document.querySelectorAll(${JSON.stringify(this.selector)})[${index}];
       if (!el || !el.isConnected) return "element detached";
       el.scrollIntoView({block:"center", inline:"center", behavior:"instant"});
       if (el.matches(":disabled") || el.closest('[aria-disabled="true"]')) return "element is disabled";
-      if (${JSON.stringify(verb)} !== "click" && (el.readOnly || el.getAttribute("aria-readonly") === "true")) return "element is readonly";
+      if ((${JSON.stringify(verb)} === "fill" || ${JSON.stringify(verb)} === "type") && (el.readOnly || el.getAttribute("aria-readonly") === "true")) return "element is readonly";
       const r = el.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return hit && (hit === el || el.contains(hit)) ? true : "element is obscured";
@@ -180,7 +192,7 @@ export class PageLocator implements Locator {
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
       throw new TypeError("Action timeout and interval must be positive finite numbers");
     }
-    await this.record(`page.${verb}`, this.selector, async () => {
+    await this.record(`page.${verb}`, `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`, async () => {
       const started = Date.now();
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
@@ -189,14 +201,14 @@ export class PageLocator implements Locator {
         last = await this.resolve();
         reason = this.missText(last);
         if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
-          await this.guard(() => this.page.eval!({ script: `document.querySelectorAll(${JSON.stringify(this.selector)})[${last!.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})` }));
+          await this.guard(() => this.page.eval!({ page: this.options.page, script: `document.querySelectorAll(${JSON.stringify(this.selector)})[${last!.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})` }));
         }
         if (last.kind === "unique") {
           const rect = JSON.stringify(last.rect);
           const stable = last.rect === undefined || previousRect === rect;
           previousRect = rect;
           if (last.enabled === false) reason = "element is disabled";
-          else if (verb !== "click" && last.editable === false) reason = "element is not editable";
+          else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
           else if (!stable) reason = "element is moving";
           else {
             const check = await this.actionability(last.index, verb);

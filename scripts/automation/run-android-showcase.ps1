@@ -212,7 +212,7 @@ try {
       try {
         $resultDirectory = "test-results/automation/android-$currentFramework"
         $entry = 'tests/entries/android.test.ts'
-        & $lxdev test $entry `
+        & $lxdev test $entry --forbid-only `
           --timeout-secs $($TimeoutSeconds.ToString()) `
           --arg 'platform=android' `
           --arg "framework=$currentFramework" `

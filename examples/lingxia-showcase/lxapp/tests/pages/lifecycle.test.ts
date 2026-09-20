@@ -1,4 +1,4 @@
-import type { LxAppDriver } from '@lingxia/types/automation';
+import type { TestApp } from '@lingxia/test';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
@@ -25,7 +25,7 @@ spec('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-
   await waitForCurrentPage(app, 'bridge-repro');
 });
 
-async function surfaceLifecycleState(app: LxAppDriver): Promise<SurfaceLifecycleState | null> {
+async function surfaceLifecycleState(app: TestApp): Promise<SurfaceLifecycleState | null> {
   return app.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/surface/'));
@@ -41,7 +41,7 @@ async function surfaceLifecycleState(app: LxAppDriver): Promise<SurfaceLifecycle
 }
 
 async function waitForSurfaceLifecycle(
-  app: LxAppDriver,
+  app: TestApp,
   predicate: (state: SurfaceLifecycleState) => boolean,
 ): Promise<SurfaceLifecycleState> {
   const state = await eventually(surfaceLifecycleState.bind(null, app), (
@@ -92,7 +92,7 @@ interface ResetDemoState {
   moduleCounter: number;
 }
 
-async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> {
+async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
   return app.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
@@ -108,7 +108,7 @@ async function resetDemoState(app: LxAppDriver): Promise<ResetDemoState | null> 
   }) as Promise<ResetDemoState | null>;
 }
 
-async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
+async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
   await app.nav.to({ page: 'ui' });
   await waitForCurrentPage(app, 'ui');
   await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
@@ -123,7 +123,7 @@ async function enterResetDemo(app: LxAppDriver): Promise<ResetDemoState> {
   return state;
 }
 
-const waitForViewCounter = (app: LxAppDriver, expected: string) => waitForElementText(
+const waitForViewCounter = (app: TestApp, expected: string) => waitForElementText(
   app,
   'ui',
   '[data-testid="lifecycle-view-counter"]',
@@ -151,10 +151,10 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
     page: 'ui',
     script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
   });
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-view"]' });
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-module"]' });
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]' });
+  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  await app.page.testId("lifecycle-bump-view", { page: 'ui' }).click();
+  await app.page.testId("lifecycle-bump-module", { page: 'ui' }).click();
+  await app.page.testId("lifecycle-open-popup", { page: 'ui' }).click();
   await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
@@ -217,7 +217,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   if (first === null) throw new Error('first drill-down entry left the stack');
 
   // Distinguish the first instance before drilling deeper.
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
   await eventually(topDemoState, (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
@@ -379,7 +379,7 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
-  await app.page.click({ page: 'ui', css: '[data-testid="lifecycle-bump-logic"]' });
+  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });

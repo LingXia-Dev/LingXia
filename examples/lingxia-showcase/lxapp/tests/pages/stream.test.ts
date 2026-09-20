@@ -1,18 +1,18 @@
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
-import { showcaseApp } from '../helpers/app.js';
 import {
   waitForElementAttribute,
   waitForElementEnabled,
   waitForElementText,
 } from '../helpers/page.js';
 
-spec('streams a complete response from real page input', async () => {
-  const app = showcaseApp();
+spec('streams a complete response from real page input', async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'stream' });
   await app.page.waitFor({ page: 'stream', css: '[data-testid="stream-page"]' });
 
   const prompt = `gate stream ${Date.now()}`;
-  await app.page.fill({ page: 'stream', css: '[data-testid="stream-input"]', text: prompt });
+  await app.page.testId("stream-input", { page: 'stream' }).fill(prompt);
   await waitForElementAttribute(
     app,
     'stream',
@@ -21,7 +21,7 @@ spec('streams a complete response from real page input', async () => {
     prompt,
   );
   await waitForElementEnabled(app, 'stream', '[data-testid="stream-send"]');
-  await app.page.click({ page: 'stream', css: '[data-testid="stream-send"]' });
+  await app.page.testId("stream-send", { page: 'stream' }).click();
 
   expect(await waitForElementText(
     app,

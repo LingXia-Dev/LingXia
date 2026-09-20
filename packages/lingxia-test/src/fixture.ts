@@ -26,8 +26,11 @@ import type {
   AssertionRecord,
   Locator,
   LocatorMatchers,
+  LocatorOptions,
+  TestAutomation,
   RejectExpected,
   RetryMatchers,
+  ReportError,
   SourceLocation,
   StepRecord,
   TestApp,
@@ -41,7 +44,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { LxAppDriver, PageDriver } from "@lingxia/types/automation";
+import type { Automation, LxAppDriver, PageDriver } from "@lingxia/types/automation";
 
 export class TimeoutError extends Error {
   override readonly name = "TimeoutError";
@@ -51,6 +54,7 @@ export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "time
 
 export class LiveFixture implements Fixture {
   readonly apps: Apps;
+  readonly automation: TestAutomation;
   readonly args: Record<string, string>;
   readonly steps: StepRecord[] = [];
   /**
@@ -81,15 +85,22 @@ export class LiveFixture implements Fixture {
     rawApp: LxAppDriver,
     private readonly host: ResolvedHost,
     args: Record<string, string>,
-    private readonly automation: { lxapp: { (): LxAppDriver; (id: string): LxAppDriver } },
+    automation: Automation,
     private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
   ) {
     this.rawApp = rawApp;
     this.args = args;
     setAssertionSink((entry) => this.noteAssertion(entry));
-    this.apps = {
-      lxapp: (appId: string) => this.wrapApp(this.automation.lxapp(appId)),
-    };
+    const root = guardObject(automation, this, "", ["lxapp"]);
+    this.automation = new Proxy(root, {
+      get: (target, prop) => prop === "lxapp"
+        ? (appId?: string) => {
+          this.assertRunnable();
+          return this.wrapApp(appId === undefined ? automation.lxapp() : automation.lxapp(appId));
+        }
+        : Reflect.get(target, prop),
+    }) as TestAutomation;
+    this.apps = { lxapp: (appId: string) => this.automation.lxapp(appId) };
   }
 
   get app(): TestApp {
@@ -496,8 +507,8 @@ export class LiveFixture implements Fixture {
     // would write straight through to the real driver — `page.eval` would then
     // call itself forever.
     const overrides: Record<string, unknown> = {
-      testId: (id: string) => this.locator(page, testIdSelector(id), location()),
-      css: (selector: string) => this.locator(page, selector, location()),
+      testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
+      css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
       eval: (options: { script: string; timeoutMs?: number }) =>
         this.act("page.eval", summarise(options), () => page.eval(this.withEvalBudget(options))),
     };
@@ -510,13 +521,14 @@ export class LiveFixture implements Fixture {
     }) as unknown as TestPage;
   }
 
-  private locator(page: PageDriver, selector: string, location: SourceLocation): Locator {
+  private locator(page: PageDriver, selector: string, location: SourceLocation, options?: LocatorOptions): Locator {
     return new PageLocator(
       page as unknown as PageLike,
       (fn) => this.guard(fn),
       <T,>(verb: string, detail: string, op: () => Promise<T>) => this.act(verb, detail, op),
       selector,
       location,
+      options,
     );
   }
 
@@ -783,18 +795,27 @@ function guardObject<T extends object>(
 ): T {
   const cache = new Map<PropertyKey, unknown>();
   return new Proxy(target, {
-    get(obj, prop, receiver) {
-      if (skip.includes(prop)) return Reflect.get(obj, prop, receiver);
+    get(obj, prop) {
+      if (skip.includes(prop)) return Reflect.get(obj, prop, obj);
       if (cache.has(prop)) return cache.get(prop);
-      const value = Reflect.get(obj, prop, receiver);
-      if (typeof value === "function") {
+      const value = Reflect.get(obj, prop, obj);
+      // Rong native class instances are callable objects too. Getter results
+      // are driver namespaces; rebinding them as methods loses their members.
+      let owner: object | null = obj;
+      let accessor = false;
+      while (owner) {
+        const descriptor = Object.getOwnPropertyDescriptor(owner, prop);
+        if (descriptor) { accessor = typeof descriptor.get === "function"; break; }
+        owner = Object.getPrototypeOf(owner);
+      }
+      if (typeof value === "function" && !accessor) {
         const name = `${path}${String(prop)}`;
         const bound = (...args: unknown[]) =>
           fixture.act(name, summarise(args[0]), () => value.apply(obj, args));
         cache.set(prop, bound);
         return bound;
       }
-      if (value && typeof value === "object") {
+      if (value && (typeof value === "object" || typeof value === "function")) {
         const nested = guardObject(value as object, fixture, `${path}${String(prop)}.`);
         cache.set(prop, nested);
         return nested;
@@ -845,16 +866,7 @@ function safeJson(data: unknown): string {
   }
 }
 
-export function toReportError(error: unknown, step?: string): {
-  name: string;
-  message: string;
-  stack?: string;
-  matcher?: string;
-  expected?: string;
-  actual?: string;
-  location?: string;
-  step?: string;
-} {
+export function toReportError(error: unknown, step?: string): ReportError {
   if (error instanceof AssertionError) {
     const stack = remapStack(error.stack);
     return {
@@ -870,7 +882,12 @@ export function toReportError(error: unknown, step?: string): {
   }
   if (error instanceof Error) {
     const stack = remapStack(error.stack);
+    const details = error as Error & { code?: unknown; data?: unknown };
+    let data: unknown;
+    try { if (details.data !== undefined) data = JSON.parse(JSON.stringify(details.data)); } catch { /* Non-JSON diagnostic data must not break reporting. */ }
     return {
+      code: typeof details.code === "string" ? details.code : undefined,
+      data,
       name: error.name,
       message: error.message,
       stack,

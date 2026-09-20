@@ -1,5 +1,5 @@
+import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver } from '@lingxia/types/automation';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -18,7 +18,7 @@ const DOCUMENT_MARK = '__lxBridgeSpecDocument';
 
 const anyTransition = () => true;
 
-async function bridgeReady(app: LxAppDriver, page: string): Promise<boolean> {
+async function bridgeReady(app: TestApp, page: string): Promise<boolean> {
   return eventually(
     async () => (await app.page.eval({
       page,
@@ -29,7 +29,7 @@ async function bridgeReady(app: LxAppDriver, page: string): Promise<boolean> {
   );
 }
 
-async function expectBootstrap(app: LxAppDriver): Promise<void> {
+async function expectBootstrap(app: TestApp): Promise<void> {
   await app.page.waitFor({
     page: REPRO,
     css: '[data-testid="bridge-repro-page"][data-automation-contract="bridge-v1"]',
@@ -41,14 +41,14 @@ async function expectBootstrap(app: LxAppDriver): Promise<void> {
     .toContain('PASS');
 }
 
-async function expectEcho(app: LxAppDriver, n: number): Promise<void> {
-  await app.page.click({ page: REPRO, css: '#btn-echo' });
+async function expectEcho(app: TestApp, n: number): Promise<void> {
+  await app.page.css('#btn-echo', { page: REPRO }).click();
   expect(await waitForElementText(app, REPRO, '#stat-echo', (text) => text.includes(`echo #${n} `), 10_000))
     .toContain(`echo #${n} ok`);
 }
 
-async function expectGapFreeStream(app: LxAppDriver): Promise<void> {
-  await app.page.click({ page: REPRO, css: '#btn-restart' });
+async function expectGapFreeStream(app: TestApp): Promise<void> {
+  await app.page.css('#btn-restart', { page: REPRO }).click();
   await waitForElementText(
     app,
     REPRO,
@@ -59,23 +59,23 @@ async function expectGapFreeStream(app: LxAppDriver): Promise<void> {
   expect(await waitForElementText(app, REPRO, '#stream-verdict', (text) => /PASS|FAIL/.test(text)))
     .toContain('PASS');
   expect(await waitForElementText(app, REPRO, '#stat-gaps', () => true)).toContain('none');
-  await app.page.click({ page: REPRO, css: '#btn-stop' });
+  await app.page.css('#btn-stop', { page: REPRO }).click();
 }
 
-async function markDocument(app: LxAppDriver, page: string): Promise<void> {
+async function markDocument(app: TestApp, page: string): Promise<void> {
   await app.page.eval({ page, script: `(window.${DOCUMENT_MARK} = true, true)` });
 }
 
-async function isMarkedDocument(app: LxAppDriver, page: string): Promise<boolean> {
+async function isMarkedDocument(app: TestApp, page: string): Promise<boolean> {
   return (await app.page.eval({ page, script: `window.${DOCUMENT_MARK} === true` })) === true;
 }
 
-async function enterRepro(app: LxAppDriver): Promise<void> {
+async function enterRepro(app: TestApp): Promise<void> {
   await app.nav.to({ page: REPRO });
   await waitForCurrentPage(app, REPRO, 20_000);
 }
 
-async function startAtHome(app: LxAppDriver): Promise<void> {
+async function startAtHome(app: TestApp): Promise<void> {
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPage(app, 'home', 20_000);
 }
@@ -217,7 +217,7 @@ spec('bring the bridge back up after the app restarts', {
   // Restart replaces the LxApp instance and relaunches the initial route. A
   // driver stays bound to the instance it was created for, so everything after
   // the restart addresses the new instance through a fresh driver.
-  const freshDriver = () => lx.automation().lxapp(SHOWCASE_APP_ID);
+  const freshDriver = () => t.automation.lxapp(SHOWCASE_APP_ID);
   defer(async () => {
     await freshDriver().nav.relaunch({ page: 'home' });
   });
@@ -226,7 +226,7 @@ spec('bring the bridge back up after the app restarts', {
   await enterRepro(before);
   await expectBootstrap(before);
 
-  await lx.automation().lxapps.restart({ app: SHOWCASE_APP_ID });
+  await t.automation.lxapps.restart({ app: SHOWCASE_APP_ID });
   // `restart` resolves before the replacement instance exists, so resolve a
   // new driver on every poll until one reports the relaunched home.
   await eventually(

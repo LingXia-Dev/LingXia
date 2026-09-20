@@ -842,7 +842,7 @@ fn report(
                 case.status.as_str(),
                 error.message
             );
-            for field in ["phase", "step", "location", "expected", "actual"] {
+            for field in ["code", "phase", "step", "location", "expected", "actual"] {
                 if let Some(value) = error.detail.get(field).and_then(|v| v.as_str()) {
                     match field {
                         "expected" => eprintln!("  expected: {}", value.green()),

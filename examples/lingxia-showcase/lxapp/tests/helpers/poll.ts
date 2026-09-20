@@ -1,4 +1,4 @@
-import { expect, type Fixture } from '@lingxia/test';
+import { expect, type Fixture, type TestApp } from '@lingxia/test';
 import type { LxAppDriver } from '@lingxia/types/automation';
 
 export interface EventuallyOptions<T> {
@@ -116,7 +116,7 @@ export async function attachShot(
 }
 
 export function bindFixture(t: Fixture, id: string): {
-  app: LxAppDriver;
+  app: TestApp;
   namespace: string;
   defer: (cleanup: () => void | Promise<void>) => void;
 } {

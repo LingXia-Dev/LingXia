@@ -23,6 +23,7 @@ export type {
   LingxiaTestController,
   Locator,
   LocatorMatchers,
+  LocatorOptions,
   Matchers,
   ProtocolReport,
   RejectExpected,
@@ -32,5 +33,6 @@ export type {
   SpecStatus,
   StepRecord,
   TestApp,
+  TestAutomation,
   TestPage,
 } from "./types.js";

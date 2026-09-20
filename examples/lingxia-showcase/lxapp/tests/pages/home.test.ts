@@ -1,6 +1,7 @@
+import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID, showcaseApp } from '../helpers/app.js';
+import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
 import {
   currentPageOrNull,
@@ -12,7 +13,7 @@ import {
 } from '../helpers/page.js';
 
 async function waitForTabBar(
-  app: LxAppDriver,
+  app: TestApp,
   accept: (state: LxAppRuntimeTabBarInfo) => boolean,
   describe: string,
 ): Promise<LxAppRuntimeTabBarInfo> {
@@ -27,8 +28,8 @@ async function waitForTabBar(
   );
 }
 
-spec('home View MessagePort is up without relaunch', async () => {
-  const app = showcaseApp();
+spec('home View MessagePort is up without relaunch', async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') {
     await app.nav.switchTab({ page: 'home' });
@@ -38,8 +39,8 @@ spec('home View MessagePort is up without relaunch', async () => {
   await waitForCurrentPage(app, 'home', 20_000);
 });
 
-spec('greets through real page input and the Logic bridge', async () => {
-  const app = showcaseApp();
+spec('greets through real page input and the Logic bridge', async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   await eventually(
@@ -49,7 +50,7 @@ spec('greets through real page input and the Logic bridge', async () => {
   );
 
   const name = `Gate ${Date.now()}`;
-  await app.page.fill({ page: 'home', css: '[data-testid="home-name"]', text: name });
+  await app.page.testId("home-name", { page: 'home' }).fill(name);
   await waitForElementAttribute(
     app,
     'home',
@@ -58,7 +59,7 @@ spec('greets through real page input and the Logic bridge', async () => {
     name,
   );
   await waitForElementEnabled(app, 'home', '[data-testid="home-greet"]');
-  await app.page.click({ page: 'home', css: '[data-testid="home-greet"]' });
+  await app.page.testId("home-greet", { page: 'home' }).click();
 
   expect(await waitForElementText(
     app,
@@ -79,8 +80,8 @@ spec('switches display language from the home control', {
   ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
-}, async () => {
-  const app = showcaseApp();
+}, async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(
@@ -96,13 +97,9 @@ spec('switches display language from the home control', {
   try {
     await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-zh-CN"]');
+    await app.page.testId('home-language-zh-CN', { page: 'home' }).click();
     await eventually(
-      async () => {
-        await app.page.click({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
-        return await app.eval({
-          script: 'return lx.app.control.displayLanguage.getPreference()',
-        });
-      },
+      () => app.eval({ script: 'return lx.app.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'zh-CN',
       {
         describe: 'home language control to set zh-CN',
@@ -136,13 +133,9 @@ spec('switches display language from the home control', {
 
     await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-en-US"]' });
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-en-US"]');
+    await app.page.testId('home-language-en-US', { page: 'home' }).click();
     await eventually(
-      async () => {
-        await app.page.click({ page: 'home', css: '[data-testid="home-language-en-US"]' });
-        return await app.eval({
-          script: 'return lx.app.control.displayLanguage.getPreference()',
-        });
-      },
+      () => app.eval({ script: 'return lx.app.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'en-US',
       {
         describe: 'home language control to set en-US',

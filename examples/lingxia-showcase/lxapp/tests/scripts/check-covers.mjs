@@ -19,7 +19,13 @@ if (report.partial) {
   process.exit(2);
 }
 if (report.filtered) {
-  console.error('refusing to refresh covers from a filtered (--grep / spec.only) run');
+  console.error('refusing to refresh covers from a filtered selection run');
+  process.exit(2);
+}
+
+if (!(report.total > 0) || (report.cases ?? []).some(item => ['failed', 'timeout', 'xpass'].includes(item.status))
+    || ['failed', 'timeout', 'xpass'].some(status => Number(report[status] ?? 0) > 0)) {
+  console.error('refusing to refresh covers from an empty or failing run');
   process.exit(2);
 }
 

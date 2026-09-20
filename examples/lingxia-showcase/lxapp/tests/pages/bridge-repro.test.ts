@@ -1,5 +1,5 @@
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
-import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { attachShot } from '../helpers/poll.js';
 
@@ -10,7 +10,7 @@ const waitForText = (
 ) => waitForElementText(app, 'bridge-repro', css, predicate, 30_000);
 
 spec('keeps bootstrap, calls, and streams healthy across the page bridge', async (t) => {
-  const app = showcaseApp();
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   try {
     await app.nav.relaunch({ page: 'bridge-repro' });
     await app.page.waitFor({
@@ -22,17 +22,17 @@ spec('keeps bootstrap, calls, and streams healthy across the page bridge', async
     expect(await waitForText(app, '#bootstrap-verdict', (text) => text.includes('PASS')))
       .toContain('PASS');
 
-    await app.page.click({ page: 'bridge-repro', css: '#btn-echo' });
+    await app.page.css('#btn-echo', { page: 'bridge-repro' }).click();
     expect(await waitForText(app, '#stat-echo', (text) => text.includes('echo #1 ok')))
       .toContain('echo #1 ok');
 
-    await app.page.click({ page: 'bridge-repro', css: '#btn-restart' });
+    await app.page.css('#btn-restart', { page: 'bridge-repro' }).click();
     await waitForText(app, '#stat-received', (text) => Number.parseInt(text.replace(/\D+/g, ''), 10) >= 2);
     expect(await waitForText(app, '#stream-verdict', (text) => text.includes('PASS')))
       .toContain('PASS');
     expect(await waitForText(app, '#stat-gaps', (text) => text.includes('none'))).toContain('none');
     expect(await waitForText(app, '#stat-error', (text) => text.includes('none'))).toContain('none');
-    await app.page.click({ page: 'bridge-repro', css: '#btn-stop' });
+    await app.page.css('#btn-stop', { page: 'bridge-repro' }).click();
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
   } catch (error) {
     try {

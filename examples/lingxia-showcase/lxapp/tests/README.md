@@ -55,11 +55,21 @@ New cases use `spec` from `@lingxia/test`:
 - assert an observable public result, not a private host field;
 - use `t.expect` / `t.expect.poll` (or `PageDriver.waitFor`); fixed sleeps are
   permitted only for a documented physical stabilization interval;
-- use stable `data-testid` selectors (`page.testId('…')`) for page behavior;
+- use `app.page.testId('…', { page: 'home' })` for UI actions; select duplicate matches with `.nth(index)` and press keys with `.press('Enter')`;
+- use `t.automation` for host/browser/terminal drivers; keep raw drivers only for deliberate API-boundary checks;
 - for rejected operations, use `t.reject` and assert unchanged state;
 - keep one primary behavior per case so the report identifies the broken
   contract;
 - never catch and discard an error merely to make a platform pass.
+
+Use `--id ID` or `--last-failed path/to/report.json` for focused reruns;
+`--verbose` adds the full action trace. `--shard i/n` needs a separate host session
+and output directory per shard. Filtered runs cannot refresh the covers gate.
+
+Retries require real state recovery. `pages/todo.test.ts` supplies `spec.reset`
+and bounded `t.defer` cleanup; run it with `--retries 1`. Do not enable retries
+for the whole suite without file-specific reset hooks: cold-start, permission,
+and host-window contracts cannot share a generic relaunch reset.
 
 Failure forensics (screenshot + route/state) are attached by `@lingxia/test`.
 The covers gate (`tests/scripts/check-covers.mjs`) only refreshes from a full

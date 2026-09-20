@@ -1,4 +1,4 @@
-import type { LxAppDriver } from '@lingxia/types/automation';
+import type { TestApp } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
@@ -9,7 +9,7 @@ interface RefreshState {
   refreshing: boolean;
 }
 
-async function refreshState(app: LxAppDriver): Promise<RefreshState> {
+async function refreshState(app: TestApp): Promise<RefreshState> {
   return app.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
@@ -19,7 +19,7 @@ async function refreshState(app: LxAppDriver): Promise<RefreshState> {
 }
 
 async function waitForRefreshState(
-  app: LxAppDriver,
+  app: TestApp,
   predicate: (state: RefreshState) => boolean,
 ): Promise<RefreshState> {
   return eventually(refreshState.bind(null, app), predicate, {
@@ -28,7 +28,7 @@ async function waitForRefreshState(
   });
 }
 
-async function waitForStatus(app: LxAppDriver, expected: string): Promise<string> {
+async function waitForStatus(app: TestApp, expected: string): Promise<string> {
   return waitForElementText(
     app,
     'pullToRefresh',
@@ -45,7 +45,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   await app.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
 
   const before = await refreshState(app);
-  await app.page.click({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-start"]' });
+  await app.page.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
   const refreshing = await waitForRefreshState(
     app,
     (state) => state.refreshing && state.count > before.count,
@@ -59,7 +59,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   });
   expect(count.exists && Number(count.text)).toBe(refreshing.count);
 
-  await app.page.click({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-stop"]' });
+  await app.page.testId("pull-refresh-stop", { page: 'pullToRefresh' }).click();
   await waitForRefreshState(app, (state) => !state.refreshing && state.count === refreshing.count);
   expect(await waitForStatus(app, 'Idle')).toContain('Idle');
 

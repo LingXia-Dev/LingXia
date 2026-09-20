@@ -1,7 +1,10 @@
 use anyhow::{Context, Result, anyhow};
 use lingxia_control_protocol::{
     ControlRequest,
-    dev_session::{DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities},
+    dev_session::{
+        DEV_SESSION_MAX_MESSAGE_BYTES, DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage,
+        DevSessionRole, capabilities,
+    },
 };
 use serde_json::Value;
 use std::net::TcpStream;
@@ -30,6 +33,10 @@ pub fn execute_command(
     let (mut websocket, _) =
         connect(ws_url).with_context(|| format!("Failed to connect dev websocket: {ws_url}"))?;
     configure_read_timeout(&mut websocket, timeout);
+    websocket.set_config(|config| {
+        config.max_frame_size = Some(DEV_SESSION_MAX_MESSAGE_BYTES);
+        config.max_message_size = Some(DEV_SESSION_MAX_MESSAGE_BYTES);
+    });
 
     send_wire_message(
         &mut websocket,
@@ -121,5 +128,44 @@ impl<'a> DevSession<'a> {
 impl lingxia_control_commands::transport::Transport for DevSession<'_> {
     fn request(&self, method: &str, params: Option<Value>) -> Result<Option<Value>> {
         execute_command(self.ws_url, method, params)
+    }
+}
+
+#[cfg(test)]
+mod large_frame_tests {
+    use super::*;
+    use lingxia_control_protocol::ControlResponse;
+
+    #[test]
+    fn receives_artifact_frames_above_tungstenite_default() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let bytes = 17 * 1024 * 1024;
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut socket = tungstenite::accept(stream).unwrap();
+            loop {
+                let message = socket.read().unwrap();
+                if let DevSessionMessage::Request(request) =
+                    serde_json::from_str(message.to_text().unwrap()).unwrap()
+                {
+                    let response = DevSessionMessage::Response(ControlResponse::success(
+                        request.id,
+                        Some(Value::String("a".repeat(bytes))),
+                    ));
+                    socket
+                        .send(Message::Text(
+                            serde_json::to_string(&response).unwrap().into(),
+                        ))
+                        .unwrap();
+                    break;
+                }
+            }
+        });
+        let result = execute_command(&format!("ws://{address}"), "session.test.poll", None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(result.as_str().unwrap().len(), bytes);
+        server.join().unwrap();
     }
 }

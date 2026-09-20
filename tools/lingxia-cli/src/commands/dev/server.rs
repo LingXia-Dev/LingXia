@@ -3,7 +3,8 @@ use anyhow::{Context, Result, anyhow};
 use lingxia_control_protocol::{
     ControlRequest,
     dev_session::{
-        DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionRole,
+        DEV_SESSION_MAX_MESSAGE_BYTES, DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent,
+        DevSessionMessage, DevSessionRole,
     },
 };
 use std::fs::{File, OpenOptions};
@@ -576,12 +577,16 @@ fn handle_connection(
 #[allow(clippy::result_large_err)] // Tungstenite fixes this type in its callback contract.
 fn accept_websocket(stream: TcpStream) -> Result<(WebSocket<TcpStream>, Option<String>)> {
     let mut handshake_token = None;
-    let websocket = accept_hdr(stream, |request: &Request, response: Response| {
+    let mut websocket = accept_hdr(stream, |request: &Request, response: Response| {
         handshake_token =
             lingxia_control_protocol::dev_session::token_from_ws_url(&request.uri().to_string());
         Ok(response)
     })
     .map_err(|err| anyhow!("Failed to accept websocket: {err}"))?;
+    websocket.set_config(|config| {
+        config.max_frame_size = Some(DEV_SESSION_MAX_MESSAGE_BYTES);
+        config.max_message_size = Some(DEV_SESSION_MAX_MESSAGE_BYTES);
+    });
     Ok((websocket, handshake_token))
 }
 
@@ -1402,5 +1407,25 @@ mod tests {
             dev_port("com.example.app", "android"),
             dev_port("com.example.app", "ios")
         );
+    }
+}
+
+#[cfg(test)]
+mod large_frame_tests {
+    #[test]
+    fn accepts_runtime_artifact_frames_above_tungstenite_default() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let bytes = 17 * 1024 * 1024;
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let (mut socket, _) = super::accept_websocket(stream).unwrap();
+            assert_eq!(socket.read().unwrap().to_text().unwrap().len(), bytes);
+        });
+        let (mut socket, _) = tungstenite::connect(format!("ws://{address}")).unwrap();
+        socket
+            .send(tungstenite::Message::Text("a".repeat(bytes).into()))
+            .unwrap();
+        server.join().unwrap();
     }
 }

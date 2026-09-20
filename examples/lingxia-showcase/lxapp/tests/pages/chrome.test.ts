@@ -1,5 +1,6 @@
+import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver, LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
+import type { LxAppRuntimeNavigationBarInfo, LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { bindFixture, evalCaught, eventually, relaunchFromLogic } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
@@ -9,35 +10,35 @@ function hex(value: string | null | undefined): string {
   return (value ?? '').replace(/\\/g, '/').toUpperCase();
 }
 
-async function navigationBar(app: LxAppDriver): Promise<LxAppRuntimeNavigationBarInfo> {
+async function navigationBar(app: TestApp): Promise<LxAppRuntimeNavigationBarInfo> {
   const state = (await app.info()).navigation_bar;
   if (state === null || state === undefined) throw new Error('showcase NavigationBar snapshot is missing');
   return state;
 }
 
 async function waitForNavBar(
-  app: LxAppDriver,
+  app: TestApp,
   accept: (state: LxAppRuntimeNavigationBarInfo) => boolean,
   describe: string,
 ): Promise<LxAppRuntimeNavigationBarInfo> {
   return eventually(() => navigationBar(app), accept, { describe });
 }
 
-async function tabBar(app: LxAppDriver): Promise<LxAppRuntimeTabBarInfo> {
+async function tabBar(app: TestApp): Promise<LxAppRuntimeTabBarInfo> {
   const state = (await app.info()).tab_bar;
   if (state === null) throw new Error('showcase TabBar is not declared');
   return state;
 }
 
 async function waitForTabBar(
-  app: LxAppDriver,
+  app: TestApp,
   accept: (state: LxAppRuntimeTabBarInfo) => boolean,
   describe: string,
 ): Promise<LxAppRuntimeTabBarInfo> {
   return eventually(() => tabBar(app), accept, { describe });
 }
 
-async function appearanceOf(app: LxAppDriver): Promise<{ preference: string; resolved: string }> {
+async function appearanceOf(app: TestApp): Promise<{ preference: string; resolved: string }> {
   return app.eval({
     script: `return {
       preference: lx.app.control.appearance.getPreference(),
@@ -62,7 +63,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   await t.step('drive the ui page presets', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
     await app.page.waitFor({ page: 'ui', css: '[data-testid="navbar-preset-blue"]', state: 'visible' });
-    await app.page.click({ page: 'ui', css: '[data-testid="navbar-preset-blue"]' });
+    await app.page.testId("navbar-preset-blue", { page: 'ui' }).click();
     const styled = await waitForNavBar(
       app,
       (state) => state.title === 'Blue Theme'
@@ -93,7 +94,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('restore the home button from the page control', async () => {
-    await app.page.click({ page: 'ui', css: '[data-testid="navbar-home-auto"]' });
+    await app.page.testId("navbar-home-auto", { page: 'ui' }).click();
     await waitForNavBar(app, (state) => state.home_button === 'auto', 'auto home button');
   });
 
@@ -109,7 +110,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('reset title and style with null', async () => {
-    await app.page.click({ page: 'ui', css: '[data-testid="navbar-reset"]' });
+    await app.page.testId("navbar-reset", { page: 'ui' }).click();
     await waitForNavBar(
       app,
       (state) => state.title === 'User Interface'
@@ -164,7 +165,7 @@ spec("round-trip appearance preference through the ui controls", {
 
   for (const preference of ['light', 'dark', 'auto'] as const) {
     await t.step(`set ${preference}`, async () => {
-      await app.page.click({ page: 'ui', css: `[data-testid="ui-appearance-${preference}"]` });
+      await app.page.css(`[data-testid="ui-appearance-${preference}"]`, { page: 'ui' }).click();
       const state = await eventually(
         () => appearanceOf(app),
         (state) => state.preference === preference && (
@@ -194,7 +195,7 @@ spec("round-trip appearance preference through the ui controls", {
   });
 
   await t.step('persist across relaunch', async () => {
-    await app.page.click({ page: 'ui', css: '[data-testid="ui-appearance-dark"]' });
+    await app.page.testId("ui-appearance-dark", { page: 'ui' }).click();
     await eventually(() => appearanceOf(app), (state) => state.preference === 'dark', {
       describe: 'dark preference before relaunch',
     });
@@ -277,14 +278,14 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' });`,
     }) as Promise<{ canceled: boolean }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
-    await app.page.click({ page: 'ui', css: '.lx-modal-btn-confirm' });
+    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect((await confirmed).canceled).toBeFalsy();
 
     const canceled = app.eval({
       script: `return await lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true });`,
     }) as Promise<{ canceled: boolean }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-cancel', state: 'visible' });
-    await app.page.click({ page: 'ui', css: '.lx-modal-btn-cancel' });
+    await app.page.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
     expect((await canceled).canceled).toBeTruthy();
 
     const noCancel = app.eval({
@@ -296,7 +297,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `document.querySelectorAll('.lx-modal-btn-cancel').length`,
     });
     expect(cancelCount).toBe(0);
-    await app.page.click({ page: 'ui', css: '.lx-modal-btn-confirm' });
+    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect((await noCancel).canceled).toBeFalsy();
   });
 
@@ -305,7 +306,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showActionSheet({ itemList: ['View Details', '查看日志', 'Send Email', '删除'] });`,
     }) as Promise<{ canceled: boolean; index?: number }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-item', state: 'visible' });
-    await app.page.click({ page: 'ui', css: '.lx-as-item', index: 1 });
+    await app.page.css('.lx-as-item', { page: 'ui', index: 1 }).click();
     const selected = await picked;
     expect(selected.canceled).toBeFalsy();
     expect(selected.index).toBe(1);
@@ -314,7 +315,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showActionSheet({ itemList: ['One', 'Two'] });`,
     }) as Promise<{ canceled: boolean }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-cancel-btn', state: 'visible' });
-    await app.page.click({ page: 'ui', css: '.lx-as-cancel-btn' });
+    await app.page.css('.lx-as-cancel-btn', { page: 'ui' }).click();
     expect((await dismissed).canceled).toBeTruthy();
   });
 
@@ -358,17 +359,17 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="tabbar-show"]', state: 'visible' });
-  await app.page.click({ page: 'ui', css: '[data-testid="tabbar-show"]' });
+  await app.page.testId("tabbar-show", { page: 'ui' }).click();
   await waitForTabBar(app, (state) => state.effective_visible, 'forced tab bar');
 
   await t.step('drive showcase badge and red-dot buttons', async () => {
-    await app.page.click({ page: 'ui', css: '[data-testid="tabbar-reddot-show"]' });
+    await app.page.testId("tabbar-reddot-show", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.red_dot === true, 'red dot from button');
-    await app.page.fill({ page: 'ui', css: '[data-testid="tabbar-badge-input"]', text: '9' });
-    await app.page.click({ page: 'ui', css: '[data-testid="tabbar-badge-set"]' });
+    await app.page.testId("tabbar-badge-input", { page: 'ui' }).fill('9');
+    await app.page.testId("tabbar-badge-set", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.badge === '9', 'badge from button');
-    await app.page.fill({ page: 'ui', css: '[data-testid="tabbar-item-text"]', text: 'API+' });
-    await app.page.click({ page: 'ui', css: '[data-testid="tabbar-item-update"]' });
+    await app.page.testId("tabbar-item-text", { page: 'ui' }).fill('API+');
+    await app.page.testId("tabbar-item-update", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.text === 'API+', 'item text from button');
   });
 

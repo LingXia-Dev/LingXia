@@ -1,5 +1,5 @@
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
-import { showcaseApp } from '../helpers/app.js';
 import { waitForElementText } from '../helpers/page.js';
 
 const waitForText = (
@@ -8,8 +8,8 @@ const waitForText = (
   predicate: (text: string) => boolean,
 ) => waitForElementText(app, 'channel', css, predicate, 30_000);
 
-spec('receives channel ticks, switches symbols, and reconnects', async () => {
-  const app = showcaseApp();
+spec('receives channel ticks, switches symbols, and reconnects', async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'channel' });
   await app.page.waitFor({ page: 'channel', css: '[data-testid="channel-page"]' });
 
@@ -18,16 +18,16 @@ spec('receives channel ticks, switches symbols, and reconnects', async () => {
   expect(await waitForText(app, '[data-testid="channel-price"]', (text) => text.startsWith('$')))
     .toContain('$');
 
-  await app.page.click({ page: 'channel', css: '[data-testid="channel-symbol"][data-symbol="MSFT"]' });
+  await app.page.css('[data-testid="channel-symbol"][data-symbol="MSFT"]', { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-active"]', (text) => text === 'MSFT'))
     .toBe('MSFT');
   expect(await waitForText(app, '[data-testid="channel-price"]', (text) => text.startsWith('$')))
     .toContain('$');
 
-  await app.page.click({ page: 'channel', css: '[data-testid="channel-disconnect"]' });
+  await app.page.testId("channel-disconnect", { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-status"]', (text) => text === 'Disconnected'))
     .toBe('Disconnected');
-  await app.page.click({ page: 'channel', css: '[data-testid="channel-reconnect"]' });
+  await app.page.testId("channel-reconnect", { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-status"]', (text) => text === 'Connected'))
     .toBe('Connected');
 });
