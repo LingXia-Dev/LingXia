@@ -98,57 +98,39 @@ async fn set_app_badge(
         .into());
     }
 
-    // `auto` is best-effort decoration across whatever chrome exists: a
-    // product with no status item must not have its dock badge fail on the
-    // tray's account. A named surface is a specific request, so its failure is
-    // the caller's to see.
-    let strict = surface != BadgeSurface::Auto;
+    // The platform answers "painted" as a value, so a surface that has no
+    // chrome to paint on — a macOS status item the product never showed — is
+    // reported, not raised. Only a malfunction rejects, and it does so whether
+    // the caller named a surface or took `auto`.
     let mut painted = false;
     // Off the JS thread: a platform may block, and HarmonyOS answers through a
     // callback it can only wait for inside the async runtime.
     if surface != BadgeSurface::Tray && available.app_icon {
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
-        let outcome = blocking(move || runtime.set_app_badge(&text)).await?;
-        painted |= record(outcome, "appIcon", strict)?;
+        painted |= blocking(move || runtime.set_app_badge(&text)).await?;
     }
     if surface != BadgeSurface::AppIcon && available.tray {
         let runtime = lxapp.runtime.clone();
         let text = text.clone();
-        let outcome = blocking(move || runtime.set_tray_badge(&text)).await?;
-        painted |= record(outcome, "tray", strict)?;
+        painted |= blocking(move || runtime.set_tray_badge(&text)).await?;
     }
     Ok(painted)
 }
 
-/// Runs a platform call off the JS thread and hands back whatever it returned,
-/// so the caller decides whether a failure is worth reporting.
-async fn blocking<F>(work: F) -> JSResult<Result<(), lingxia_platform::error::PlatformError>>
+async fn blocking<F>(work: F) -> JSResult<bool>
 where
-    F: FnOnce() -> Result<(), lingxia_platform::error::PlatformError> + Send + 'static,
+    F: FnOnce() -> Result<bool, lingxia_platform::error::PlatformError> + Send + 'static,
 {
-    tokio::task::spawn_blocking(work).await.map_err(|error| {
-        rong::HostError::new(
-            rong::error::E_INTERNAL,
-            format!("lx.app.setBadge task failed: {error}"),
-        )
-        .into()
-    })
-}
-
-fn record(
-    outcome: Result<(), lingxia_platform::error::PlatformError>,
-    surface: &str,
-    strict: bool,
-) -> JSResult<bool> {
-    match outcome {
-        Ok(()) => Ok(true),
-        Err(error) if strict => Err(js_error_from_platform_error(&error)),
-        Err(error) => {
-            log::debug!("lx.app.setBadge skipped the {surface} surface: {error}");
-            Ok(false)
-        }
-    }
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| {
+            rong::HostError::new(
+                rong::error::E_INTERNAL,
+                format!("lx.app.setBadge task failed: {error}"),
+            )
+        })?
+        .map_err(|error| js_error_from_platform_error(&error))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

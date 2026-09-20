@@ -1626,10 +1626,11 @@ export type ScanCodeResult = {
  * HarmonyOS. Name one only when that surface is the point.
  * Asynchronous because it reports what actually happened: a platform that
  * answers through its own callback has to be waited for to be believed.
- * Under `auto` a surface that is simply absent — a macOS product with no
- * status item — is skipped, not an error; the return value says what was
- * actually painted. Name a surface and its failure is reported, because
- * that surface was the request.
+ * A surface with nothing to paint on is reported, not raised: a macOS
+ * status item exists from the moment a tray is declared but stays hidden
+ * until `lx.tray.show()`, and a badge on a hidden item is not a badge
+ * anyone can see. That resolves `false` whether you named the surface or
+ * took `auto`; only a malfunction rejects.
  * On iOS the home-screen badge is drawn by the notification system, so
  * it needs notification permission and only accepts a number — that is
  * the OS's rule, not an API coupling. Android has no cross-vendor

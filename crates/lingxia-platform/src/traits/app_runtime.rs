@@ -310,8 +310,11 @@ pub trait AppRuntime:
     // Err only on genuine failure.
 
     /// Set the tray (menu-bar / system-tray) badge. Desktop only; no-op elsewhere.
-    fn set_tray_badge(&self, _text: &str) -> Result<(), PlatformError> {
-        Ok(())
+    /// `Ok(false)` means there was nothing to paint on — no tray at all, or a
+    /// status item the product has not shown. Only a malfunction is an `Err`,
+    /// so a caller never needs to catch "this platform has no such chrome".
+    fn set_tray_badge(&self, _text: &str) -> Result<bool, PlatformError> {
+        Ok(false)
     }
 
     /// Set the tray icon (a resource path). Desktop only; no-op elsewhere.
@@ -348,8 +351,9 @@ pub trait AppRuntime:
 
     /// Set the app-icon badge: dock (macOS) / taskbar (Windows) / launcher icon
     /// (iOS, Android). No-op on platforms where it is not yet wired.
-    fn set_app_badge(&self, _text: &str) -> Result<(), PlatformError> {
-        Ok(())
+    /// `Ok(false)` means there was nothing to paint on. See [`Self::set_tray_badge`].
+    fn set_app_badge(&self, _text: &str) -> Result<bool, PlatformError> {
+        Ok(false)
     }
 
     /// Whether the app is registered to launch at system startup. Only reached

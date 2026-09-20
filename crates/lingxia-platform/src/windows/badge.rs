@@ -26,12 +26,14 @@ use crate::error::PlatformError;
 const MAX_GLYPHS: usize = 3;
 const ICON_SIZE: i32 = 32;
 
-pub(super) fn set_app_badge(text: &str) -> Result<(), PlatformError> {
+/// `Ok(false)` when this process has no taskbar button to overlay yet.
+pub(super) fn set_app_badge(text: &str) -> Result<bool, PlatformError> {
     let label = badge_label(text);
-    for hwnd in top_level_windows() {
-        apply_overlay(hwnd, label.as_deref())?;
+    let windows = top_level_windows();
+    for hwnd in &windows {
+        apply_overlay(*hwnd, label.as_deref())?;
     }
-    Ok(())
+    Ok(!windows.is_empty())
 }
 
 /// `None` clears. A count over two digits becomes `99+`, and a non-count was

@@ -632,7 +632,7 @@ impl AppRuntime for Platform {
     // SDK registers handlers we forward to. No registered handler => no-op,
     // honoring the "tray APIs never throw off-support" contract.
 
-    fn set_app_badge(&self, text: &str) -> Result<(), PlatformError> {
+    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
         super::badge::set_app_badge(text)
     }
 

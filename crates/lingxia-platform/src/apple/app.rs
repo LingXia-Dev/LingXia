@@ -199,14 +199,10 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn set_tray_badge(&self, text: &str) -> Result<(), PlatformError> {
-        if ffi::set_tray_badge(text) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(
-                "Failed to set tray badge".to_string(),
-            ))
-        }
+    fn set_tray_badge(&self, text: &str) -> Result<bool, PlatformError> {
+        // False is "no visible status item", not a failure: a declared tray
+        // stays hidden until `lx.tray.show()`.
+        Ok(ffi::set_tray_badge(text))
     }
 
     fn set_tray_icon(&self, icon: &str) -> Result<(), PlatformError> {
@@ -259,14 +255,9 @@ impl AppRuntime for Platform {
         }
     }
 
-    fn set_app_badge(&self, text: &str) -> Result<(), PlatformError> {
-        if ffi::set_app_badge(text) {
-            Ok(())
-        } else {
-            Err(PlatformError::Platform(
-                "Failed to set app badge".to_string(),
-            ))
-        }
+    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
+        // iOS returns false when the notification system refuses the count.
+        Ok(ffi::set_app_badge(text))
     }
 
     fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {

@@ -162,8 +162,9 @@ not say:
   marks the dock *and* the menu-bar item on macOS, the taskbar *and* the
   notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
   There is no separate tray badge call.
-- A platform with no such chrome is a no-op that resolves `false`, never a
-  rejection — call it unconditionally from portable code and gate the UI on
+- A surface with nothing to paint on resolves `false`, never a rejection —
+  no such chrome on this platform, or a macOS tray the product has not
+  `show()`n, which has a status item but nothing on screen — call it unconditionally from portable code and gate the UI on
   `lx.supports({ capability: 'badge' })`.
 - Unlike an optional namespace, the method is always there: `'setBadge' in
   lx.app` is true everywhere, and `badge` says what it can *do*, not whether

@@ -101,6 +101,34 @@ spec('set and clear the host app badge without leaving one behind', {
   expect(painted).toBe(supported);
 });
 
+spec('tell a hidden tray from a shown one in what setBadge reports', {
+  id: 'HOSTAPP-BADGE-004',
+  covers: ['lx.app.setBadge', 'lx.tray.show', 'lx.tray.hide'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
+  t.defer(async () => {
+    await app.eval({
+      script: `try { await lx.app.setBadge(null); lx.tray.hide(); } catch {} return true;`,
+    });
+  });
+
+  // A declared tray has a status item from the start but stays hidden until
+  // `show()`, so "the item took the value" is not "the user can see it".
+  const hidden = await app.eval({
+    script: `try { lx.tray.hide(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+  });
+  const shown = await app.eval({
+    script: `try { lx.tray.show(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+  });
+
+  // A hidden item is never a painted badge, whatever the platform. `shown` is
+  // true only where there is a tray at all, so showing may leave it false --
+  // but it can never go the other way.
+  expect(hidden).toBe(false);
+  expect(shown === true || shown === false).toBe(true);
+});
+
 spec('report a surface this platform does not have instead of failing', {
   id: 'HOSTAPP-BADGE-003',
   covers: ['lx.app.setBadge'],
@@ -508,7 +536,6 @@ spec('show, label, and retract the host tray item', {
     'lx.tray.show',
     'lx.tray.hide',
     'lx.tray.setTitle',
-    'lx.tray.setBadge',
     'lx.tray.setMenu',
     'lx.tray.setIcon',
     'lx.tray.onClick',
@@ -525,7 +552,6 @@ spec('show, label, and retract the host tray item', {
       lx.tray.show();
       lx.tray.setTitle('LX');
       lx.tray.setIcon('public/showcase-icon.svg');
-      lx.tray.setBadge('3');
       lx.tray.setMenu([
         { label: 'Open Showcase', onClick: () => {} },
         { separator: true },
@@ -533,7 +559,6 @@ spec('show, label, and retract the host tray item', {
       ]);
       const off = lx.tray.onClick(() => {});
       off();
-      lx.tray.setBadge(null);
       lx.tray.setTitle(null);
       lx.tray.hide();
       // Hiding a hidden tray stays a no-op.
