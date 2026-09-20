@@ -58,6 +58,8 @@ internal object UpdateManager {
     private const val NOTIFICATION_CHANNEL_ID = "lingxia_update"
     // Stable per-process ID; reusing replaces any previous confirm notification.
     private const val NOTIFICATION_ID_INSTALL_CONFIRM = 0x4C58_5550 // "LXUP"
+    private const val UPDATE_PREFS = "lingxia_update"
+    private const val KEY_SESSION_INSTALL_RESTRICTED = "session_install_restricted"
 
     private var activityRef: WeakReference<Activity>? = null
     // AtomicReference so check-and-clear in tryInstallPendingUpdate doesn't
@@ -782,54 +784,37 @@ internal object UpdateManager {
             !activity.packageManager.canRequestPackageInstalls()
     }
 
-    // UI-thread callers must not copy an APK into a PackageInstaller session
-    // inline; run that path on a worker. Non-UI callers use launchInstaller()
-    // directly so Rust can observe "request failed" vs "request launched".
+    // UI-thread callers must not parse or copy an APK inline; run validation
+    // and the install on a worker. Only a failed launch is re-offered — a
+    // rejected APK fails identically every time. Non-UI callers use
+    // launchInstaller() directly so Rust can observe "request failed" vs
+    // "request launched".
     private fun startInstall(activity: Activity, apkPath: String) {
         val update = stagedUpdate.get()?.takeIf { it.apkPath == apkPath }
         Thread({
+            if (!validateInstallRequest(activity, apkPath)) return@Thread
             if (!launchInstaller(activity, apkPath) && update != null) {
                 offerInstallRetry(update)
             }
         }, "LxUpdateInstaller").start()
     }
 
+    /** Launches an installer for an already-validated APK. */
     private fun launchInstaller(activity: Activity, apkPath: String): Boolean {
         try {
             val apkFile = File(apkPath)
-            if (!apkFile.exists() || apkFile.length() == 0L) {
-                LxLog.e(TAG, "APK file missing or empty: $apkPath (len=${apkFile.length()})")
-                showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_empty))
-                return false
-            }
-
-            val pkgInfo = activity.packageManager.getPackageArchiveInfo(apkPath, 0)
-            if (pkgInfo == null) {
-                LxLog.e(TAG, "Invalid APK (cannot parse package): $apkPath")
-                showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_invalid))
-                return false
-            }
-            if (pkgInfo.packageName != activity.packageName) {
-                LxLog.e(
-                    TAG,
-                    "APK package mismatch: ${pkgInfo.packageName} vs ${activity.packageName}"
-                )
-                showInstallErrorToast(activity, activity.getString(R.string.lx_update_install_apk_mismatch))
-                return false
-            }
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!activity.packageManager.canRequestPackageInstalls()) {
                     return requestInstallPermission(activity, apkPath)
                 }
             }
 
-            if (useLegacyUpdateInstaller(Build.VERSION.SDK_INT, Build.MANUFACTURER, Build.MODEL, isTvUi(activity))) {
-                Log.i(TAG, "Using ACTION_VIEW installer on Android 5.x Mi TV")
+            if (sessionInstallRestricted(activity)) {
+                Log.i(TAG, "Session installs are restricted here; using ACTION_VIEW installer")
                 return launchInstallerLegacy(activity, apkFile)
             }
 
-            // Primary path on other devices: PackageInstaller Session API.
+            // Primary path: PackageInstaller Session API.
             // Reasons: surfaces failure status, works on Android TV / restricted devices
             // where PackageInstallerActivity may be absent, and on API 31+ enables silent
             // self-update when signatures match.
@@ -947,6 +932,29 @@ internal object UpdateManager {
             createdSessionId?.let { abandonFailedSession(activity, it) }
             LxLog.e(TAG, "Session install failed", e)
             false
+        }
+    }
+
+    // Remembered across launches so a slow TV stick doesn't copy the whole APK
+    // into a session the package manager will reject again.
+    private fun sessionInstallRestricted(context: Context): Boolean = try {
+        context.applicationContext
+            .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_SESSION_INSTALL_RESTRICTED, false)
+    } catch (e: Exception) {
+        Log.w(TAG, "Could not read install policy prefs: ${e.message}")
+        false
+    }
+
+    private fun rememberSessionInstallRestricted(context: Context) {
+        try {
+            context.applicationContext
+                .getSharedPreferences(UPDATE_PREFS, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(KEY_SESSION_INSTALL_RESTRICTED, true)
+                .apply()
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not persist install policy prefs: ${e.message}")
         }
     }
 
@@ -1094,13 +1102,52 @@ internal object UpdateManager {
             }
             else -> {
                 LxLog.e(TAG, "Install failed: status=$status msg=\"$message\"")
-                showInstallErrorToast(ctx, ctx.getString(updateInstallErrorResource(status, message)))
                 val update = sessionUpdates.remove(sessionId)
-                if (update != null && status != PackageInstaller.STATUS_FAILURE_ABORTED) {
-                    offerInstallRetry(update)
+                if (isSessionInstallRestricted(message)) {
+                    rememberSessionInstallRestricted(ctx)
                 }
+                val action = installFailureAction(status, message, update != null)
+                if (update == null || action == InstallFailureAction.NONE) {
+                    showInstallFailure(ctx, status, message)
+                    return
+                }
+                if (action == InstallFailureAction.LEGACY_INSTALLER) {
+                    retryViaSystemInstaller(ctx, update, status, message)
+                    return
+                }
+                showInstallFailure(ctx, status, message)
+                offerInstallRetry(update)
             }
         }
+    }
+
+    /**
+     * Hand a session-rejected update to the system installer UI, which owns the
+     * consent such ROMs withhold from ordinary-app sessions. Runs on a worker:
+     * the receiver is on the main thread and the legacy path stages (copies)
+     * the APK before launching.
+     */
+    private fun retryViaSystemInstaller(
+        ctx: Context,
+        update: ReadyUpdate,
+        status: Int,
+        message: String
+    ) {
+        val activity = resolveActivity()?.takeIf { !it.isFinishing && !it.isDestroyed }
+        if (activity == null) {
+            showInstallFailure(ctx, status, message)
+            offerInstallRetry(update)
+            return
+        }
+        Thread({
+            if (launchInstallerLegacy(activity, File(update.apkPath))) return@Thread
+            showInstallFailure(ctx, status, message)
+            offerInstallRetry(update)
+        }, "LxUpdateInstaller").start()
+    }
+
+    private fun showInstallFailure(ctx: Context, status: Int, message: String) {
+        showInstallErrorToast(ctx, ctx.getString(updateInstallErrorResource(status, message)))
     }
 
     private fun tryStartActivity(activity: Activity, intent: Intent): Boolean {

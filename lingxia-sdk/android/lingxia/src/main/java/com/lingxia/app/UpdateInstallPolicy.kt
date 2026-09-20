@@ -1,21 +1,38 @@
 package com.lingxia.app
 
 import android.content.pm.PackageInstaller
-import android.os.Build
 import com.lingxia.lxapp.R
 
-internal fun useLegacyUpdateInstaller(sdk: Int, manufacturer: String, model: String, isTv: Boolean): Boolean =
-    // Mi TV's Android 5.x package manager rejects ordinary-app sessions before
-    // presenting consent. Its privileged ACTION_VIEW installer owns that consent.
-    sdk <= Build.VERSION_CODES.LOLLIPOP_MR1 &&
-        manufacturer.equals("xiaomi", ignoreCase = true) &&
-        // Older MIUI TV firmware can omit both TV uiMode and Leanback features.
-        (isTv || model.startsWith("MiTV", ignoreCase = true))
+/** Leading failure code of an install-status message, e.g. `INSTALL_FAILED_USER_RESTRICTED`. */
+internal fun installFailureCode(message: String): String = message.substringBefore(':').trim()
+
+/**
+ * True when the package manager refused the session itself. Such ROMs still
+ * let commit() succeed, so the status broadcast is the only place the refusal
+ * shows up — and the only signal that this device needs the installer UI.
+ */
+internal fun isSessionInstallRestricted(message: String): Boolean =
+    installFailureCode(message) == "INSTALL_FAILED_USER_RESTRICTED"
+
+/** What to do with a session that reported failure. */
+internal enum class InstallFailureAction { NONE, RETRY_PROMPT, LEGACY_INSTALLER }
+
+internal fun installFailureAction(
+    status: Int,
+    message: String,
+    hasUpdate: Boolean
+): InstallFailureAction = when {
+    !hasUpdate -> InstallFailureAction.NONE
+    isSessionInstallRestricted(message) -> InstallFailureAction.LEGACY_INSTALLER
+    // The user declined the install; re-offering it would fight them.
+    status == PackageInstaller.STATUS_FAILURE_ABORTED -> InstallFailureAction.NONE
+    else -> InstallFailureAction.RETRY_PROMPT
+}
 
 internal fun updateInstallErrorResource(status: Int, message: String): Int {
     // Android also maps USER_RESTRICTED to INCOMPATIBLE (7). Preserve the
     // specific cause instead of telling users their APK/CPU is incompatible.
-    if (message.substringBefore(':').trim() == "INSTALL_FAILED_USER_RESTRICTED") {
+    if (isSessionInstallRestricted(message)) {
         return R.string.lx_update_install_blocked
     }
     return when (status) {
