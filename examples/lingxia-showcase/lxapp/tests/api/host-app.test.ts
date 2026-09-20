@@ -73,48 +73,69 @@ spec('capture a host app screenshot into the lxapp sandbox', {
 
 spec('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
-  covers: ['lx.app.setBadge'],
+  covers: ['lx.app.setBadge', 'lx.supports'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
   t.defer(async () => {
-    await app.eval({ script: `try { lx.app.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
   });
 
-  const result = await app.eval({
+  // What the platform can paint decides what the call may claim, so the two
+  // are checked against each other rather than asserted separately.
+  const supported = await app.eval({
+    script: `return lx.supports({ capability: 'badge' });`,
+  });
+
+  const painted = await app.eval({
     script: `
-      lx.app.setBadge('7');
-      lx.app.setBadge(12);
-      lx.app.setBadge(null);
+      const first = await lx.app.setBadge(12);
+      await lx.app.setBadge(null);
       // Clearing an already-clear badge must stay a no-op, not an error.
-      lx.app.setBadge(null);
-      lx.app.setBadge('');
-      return 'ok';
+      await lx.app.setBadge(null);
+      await lx.app.setBadge('');
+      return first;
     `,
   });
 
-  expect(result).toBe('ok');
+  expect(painted).toBe(supported);
+});
+
+spec('report a surface this platform does not have instead of failing', {
+  id: 'HOSTAPP-BADGE-003',
+  covers: ['lx.app.setBadge'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
+  t.defer(async () => {
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
+  });
+
+  // A named surface that is absent resolves false; it never rejects, so
+  // portable code can ask for one without guarding the call.
+  const outcome = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'tray' });`);
+  expect(outcome.ok).toBeTruthy();
+  expect(typeof outcome.value).toBe('boolean');
+
+  const bad = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'dock' });`);
+  expect(bad.ok).toBeFalsy();
+  expect(bad.code).toBe('E_INVALID_ARG');
 });
 
 spec('reject a badge value that is neither a string, a number, nor null', {
   id: 'HOSTAPP-BADGE-002',
-  covers: ['lx.app.setBadge', 'lx.tray.setBadge'],
+  covers: ['lx.app.setBadge'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
-    await app.eval({ script: `try { lx.app.setBadge(null); lx.tray.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
   });
 
   // Coercing these would paint "[object Object]" on the dock instead of failing.
   for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
     await t.step(`lx.app.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `lx.app.setBadge(${literal}); return 'accepted';`);
-      expect(outcome.ok).toBeFalsy();
-      expect(outcome.code).toBe('E_INVALID_ARG');
-    });
-    await t.step(`lx.tray.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `lx.tray.setBadge(${literal}); return 'accepted';`);
+      const outcome = await evalCaught(app, `await lx.app.setBadge(${literal}); return 'accepted';`);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_INVALID_ARG');
     });
