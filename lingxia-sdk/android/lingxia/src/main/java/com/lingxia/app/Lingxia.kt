@@ -131,6 +131,20 @@ object Lingxia {
         }, 32L)
     }
 
+    internal fun restartFromLauncher(activity: Activity) {
+        val launchIntent = activity.packageManager.getLaunchIntentForPackage(activity.packageName)
+        if (launchIntent == null) {
+            Log.e(TAG, "Cannot restore LxApp: host has no launcher activity")
+        } else {
+            // The retained activity intents contain sessions from the dead process.
+            // Start through the host hook instead of initializing a runtime without its addon.
+            launchIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            Log.i(TAG, "Restoring LxApp through host launcher after process death")
+            activity.startActivity(launchIntent)
+        }
+        activity.finish()
+    }
+
     private fun openHomeFrom(activity: AppCompatActivity) {
         val existingLxAppActivity = LxApp.getCurrentActivity()?.takeUnless {
             it.isFinishing || it.isDestroyed
@@ -533,9 +547,7 @@ object Lingxia {
             }
             override fun onActivityDestroyed(activity: Activity) {
                 if (lastResumedActivity === activity) lastResumedActivity = null
-                if (activity is LxAppActivity && LxApp.getCurrentActivity() == activity) {
-                    LxApp.setCurrentActivity(null)
-                }
+                if (activity is LxAppActivity) LxApp.clearCurrentActivity(activity)
             }
             override fun onActivityStarted(activity: Activity) {}
             override fun onActivityPaused(activity: Activity) {}

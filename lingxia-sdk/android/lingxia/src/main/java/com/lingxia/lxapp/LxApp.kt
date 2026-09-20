@@ -41,15 +41,17 @@ object LxApp {
 
     @JvmStatic
     internal fun setCurrentActivity(activity: LxAppActivity?) {
+        // Application.onActivityCreated can run from super.onCreate, before
+        // runtime validation or any presenter views have been constructed.
+        if (activity != null && !activity.canPresentLxApp) return
         currentActivity = activity
         UpdateManager.init(activity)
         if (activity == null) return
         val waiting = activityStart.activityReady()
         if (waiting.isEmpty()) return
-        // The activity registers itself early in onCreate, before its views exist;
-        // openLxApp works on those views, so the held opens run after onCreate.
+        // Finish the initial page attachment before replaying queued navigation.
         Handler(Looper.getMainLooper()).post {
-            for (open in waiting) activity.openLxApp(open.appId, open.path, open.sessionId)
+            for (open in waiting) openWithSession(open.appId, open.path, open.sessionId)
         }
     }
 
@@ -64,7 +66,11 @@ object LxApp {
     }
 
     @JvmStatic
-    fun getCurrentActivity(): LxAppActivity? = currentActivity
+    fun getCurrentActivity(): LxAppActivity? = currentActivity?.takeIf { it.canPresentLxApp }
+
+    internal fun clearCurrentActivity(activity: LxAppActivity) {
+        if (currentActivity === activity) setCurrentActivity(null)
+    }
 
     /** The lxapp's applied scheme, or null before one resolves. */
     @JvmStatic
@@ -81,8 +87,9 @@ object LxApp {
     @JvmStatic
     fun applyAppearance(appId: String, dark: Boolean): Boolean {
         appearanceByApp[appId] = dark
-        val activity = currentActivity?.takeIf { it.getAppId() == appId } ?: return true
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId } ?: return true
         activity.runOnUiThread {
+            if (!activity.canPresentLxApp) return@runOnUiThread
             activity.delegate.localNightMode = if (dark) {
                 AppCompatDelegate.MODE_NIGHT_YES
             } else {
@@ -146,7 +153,7 @@ object LxApp {
             return
         }
         Log.d(TAG, "Closing LxApp with appId: $appId")
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         if (activity != null) {
             activity.runOnUiThread { activity.closeLxApp(sessionId) }
         } else {
@@ -156,7 +163,7 @@ object LxApp {
 
     @JvmStatic
     fun close(appId: String) {
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         val sessionId = activity?.getSessionId() ?: NativeApi.getLxAppSessionId(appId)
         if (sessionId <= 0L) {
             LxLog.e(TAG, "Missing valid session for close appId=$appId")
@@ -175,7 +182,7 @@ object LxApp {
     fun navigate(appId: String, path: String, animationTypeInt: Int): Boolean {
         val animationType = AnimationType.fromInt(animationTypeInt)
         Log.d(TAG, "navigate called for appId: $appId, path: $path, type: $animationType")
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
             activity.runOnUiThread { activity.navigate(path, animationType) }
             true
@@ -214,7 +221,7 @@ object LxApp {
         // carries the preference the launch starts from — the product's default
         // when the user never chose. The night mode is the application's, so the
         // application context serves when there is no activity yet.
-        val context = currentActivity ?: Lingxia.applicationContext() ?: return
+        val context = getCurrentActivity() ?: Lingxia.applicationContext() ?: return
         val manager = context.getSystemService(android.app.UiModeManager::class.java) ?: return
         val nightMode = when (mode) {
             0 -> android.app.UiModeManager.MODE_NIGHT_NO
@@ -226,7 +233,7 @@ object LxApp {
 
     @JvmStatic
     fun updateTabBarUI(appId: String): Boolean {
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
             LxAppActivity.updateTabBarUI(appId)
         } else {
@@ -242,7 +249,7 @@ object LxApp {
      */
     @JvmStatic
     fun updateTabBarUIAsync(callbackId: Long, appId: String) {
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         if (activity == null) {
             Log.w(TAG, "No matching activity for appId: $appId in updateTabBarUIAsync")
             NativeApi.onCallback(callbackId, false, PRESENTER_UNAVAILABLE)
@@ -260,7 +267,7 @@ object LxApp {
 
     @JvmStatic
     fun updateNavBarUI(appId: String): Boolean {
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
             activity.runOnUiThread { LxAppActivity.updateNavBarUI(appId) }
             true
@@ -272,7 +279,7 @@ object LxApp {
 
     @JvmStatic
     fun updateOrientationUI(appId: String): Boolean {
-        val activity = currentActivity?.takeIf { it.getAppId() == appId }
+        val activity = getCurrentActivity()?.takeIf { it.getAppId() == appId }
         return if (activity != null) {
             activity.runOnUiThread { LxAppActivity.updateOrientationUI(appId) }
             true
@@ -284,7 +291,7 @@ object LxApp {
 
     @JvmStatic
     fun getCapsuleRect(): String {
-        val activity = currentActivity ?: return "{}"
+        val activity = getCurrentActivity() ?: return "{}"
         if (Looper.myLooper() == Looper.getMainLooper()) {
             return activity.getCapsuleRectJSON(activity.getAppId())
         }
@@ -317,7 +324,7 @@ object LxApp {
                     Log.w(TAG, "onLxAppOpened rejected open request (stale session?) appId=$appId sessionId=$sessionId")
                     return@Runnable
                 }
-                val activity = currentActivity
+                val activity = getCurrentActivity()
                 if (activity != null) {
                     activity.openLxApp(appId, resolvedPath, sessionId)
                 } else {
@@ -350,7 +357,7 @@ object LxApp {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             openTask.run()
         } else {
-            currentActivity?.runOnUiThread(openTask)
+            getCurrentActivity()?.runOnUiThread(openTask)
                 ?: Handler(Looper.getMainLooper()).post(openTask)
         }
     }

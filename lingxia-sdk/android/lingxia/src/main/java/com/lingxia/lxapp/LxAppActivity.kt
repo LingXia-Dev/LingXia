@@ -50,6 +50,7 @@ import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import com.lingxia.app.LxLog
 import com.lingxia.app.NativeApi
+import com.lingxia.app.Lingxia
 import com.lingxia.app.PermissionManager
 import com.lingxia.app.UpdateManager
 import com.lingxia.lxapp.APIs.LxAppSurface
@@ -321,6 +322,10 @@ class LxAppActivity : AppCompatActivity() {
     private var tabBar: TabBar? = null
     private var navigationBar: NavigationBar? = null
     private var isDestroyed = false
+    private var presenterReady = false
+
+    internal val canPresentLxApp: Boolean
+        get() = presenterReady && !isFinishing && !isDestroyed
     private var hasEnteredBackground = false
     private var currentSessionId: Long = 0L
 
@@ -410,6 +415,13 @@ class LxAppActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        if (LxApp.homeAppId == null) {
+            // Android restores the task's top activity after process death, bypassing
+            // the host entry point. Its addon and fresh sessions must be created there.
+            Lingxia.restartFromLauncher(this)
+            return
+        }
+
         // Take the page's orientation before the first frame. The manifest
         // orientation only covers the bootstrap activity; this one would
         // otherwise be created following the sensor and rotate once the page
@@ -442,8 +454,6 @@ class LxAppActivity : AppCompatActivity() {
             finish()
             return
         }
-        // Set reference to this activity in LxApp
-        LxApp.setCurrentActivity(this)
         var initialPath = intent.getStringExtra(EXTRA_PATH) ?: ""
         val requestedSessionId = intent.getLongExtra(EXTRA_SESSION_ID, 0L)
         val resolvedEntry = ensureRuntimeReady(appId, initialPath, requestedSessionId) ?: run {
@@ -507,6 +517,8 @@ class LxAppActivity : AppCompatActivity() {
         createNavBar()
 
         // Chrome views exist now; a persisted non-default scheme can apply.
+        presenterReady = true
+        LxApp.setCurrentActivity(this)
         LxApp.replayStoredAppearance(this)
 
         // Defer capsule button creation to post-layout
@@ -1491,9 +1503,7 @@ class LxAppActivity : AppCompatActivity() {
 
         // A replacement activity can already be active when Android destroys
         // this instance during a configuration change.
-        if (LxApp.getCurrentActivity() === this) {
-            LxApp.setCurrentActivity(null)
-        }
+        LxApp.clearCurrentActivity(this)
 
         super.onDestroy()
     }
