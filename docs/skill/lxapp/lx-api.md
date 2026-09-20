@@ -220,14 +220,26 @@ not say:
 - An immediate `show` while the product is frontmost resolves
   `status: 'suppressed'` and posts nothing. A scheduled one is presented when
   it fires, frontmost or not.
-- `id` replaces on every path, `'suppressed'` included.
-- A tap delivers `applink` as [`scene === 8003`](../app/applinks.md); routing on
-  the URL is your Logic's job.
+- `id` replaces on every path, `'suppressed'` included, and the replaced
+  notification's tap target stops resolving at the same moment.
+- `status: 'posted'` means the OS accepted it for display. Nothing reports that
+  anyone saw, read, or acted on it.
+- `target` decides where a tap goes:
+  - omitted, or `{ kind: 'activate' }` — bring the product forward, nothing else;
+  - `{ kind: 'route', name, params }` — a location the host registered at
+    startup. No product URL, no configured App Link host. Ask the host which
+    names and parameters exist; an unknown name or an undeclared parameter
+    rejects at `show`, before anything is posted.
+  - `{ kind: 'appLink', url }` — an `https://` URL on a configured
+    [App Link](../app/applinks.md) host, delivered as `scene === 8003`.
+- A tap resolves the target again when it happens. A route the build no longer
+  registers, a cancelled or replaced notification, or cleared app data brings
+  the product forward and reports that it is unavailable — it never falls back
+  to some other target.
 - Limits: Android battery saver can fire a schedule minutes late, and a reboot
   drops it. HarmonyOS banners are a user-only system toggle, `silent` does
   nothing there, and `schedule` rejects unless Huawei granted the app the
-  agent-reminder privilege. A Windows schedule that fires after the product exited opens
-  it without the `applink`.
+  agent-reminder privilege.
 
 ---
 

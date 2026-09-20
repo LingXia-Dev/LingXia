@@ -39,6 +39,80 @@ pub fn open(target: NavigationTarget, source: NavigationSource) -> crate::Result
         .map_err(|error| crate::Error::invalid_request(error.to_string()))
 }
 
+/// A route that opens one page of one lxapp.
+///
+/// The lxapp and the page are fixed here, at registration: a caller names the
+/// route, never a path. Schema-checked parameters become the page query, so
+/// the page reads them exactly as it reads any other launch query. The scene
+/// is the ordinary one — an internal route is not an App Link and does not
+/// pretend to be `scene === 8003`.
+///
+/// ```no_run
+/// use lingxia::navigation::{NavigationRoutes, RouteParam, lxapp_page_route};
+///
+/// fn routes(routes: &mut NavigationRoutes) -> Result<(), String> {
+///     routes.add(
+///         lxapp_page_route("orders.detail", "com.example.shop", "pages/order/index")
+///             .param(RouteParam::string("orderId")),
+///     )
+/// }
+/// ```
+pub fn lxapp_page_route(
+    name: impl Into<String>,
+    appid: impl Into<String>,
+    path: impl Into<String>,
+) -> NavigationRoute {
+    let appid = appid.into();
+    let path = path.into();
+    NavigationRoute::new(name, move |request| {
+        let options = lxapp::LxAppStartupOptions::new(&path).set_query(page_query(request));
+        let appid = appid.clone();
+        std::mem::drop(crate::task::spawn(async move {
+            if let Err(error) = lxapp::prepare_lxapp_open(&appid, options.release_type).await {
+                lxapp::notify_lxapp_open_blocked(&error);
+                return;
+            }
+            if let Err(error) = lxapp::open_lxapp(&appid, options) {
+                log::warn!("navigation route could not open {appid}: {error}");
+            }
+        }));
+        Ok(())
+    })
+}
+
+/// Route parameters as a page query. Only what the route declared is here, so
+/// there is nothing to filter — but values are still encoded, because a route
+/// parameter is a value, never query syntax.
+fn page_query(request: &NavigationRequest) -> String {
+    let NavigationTarget::Route { params, .. } = &request.target else {
+        return String::new();
+    };
+    params
+        .iter()
+        .map(|(key, value)| {
+            let text = match value {
+                serde_json::Value::String(text) => text.clone(),
+                other => other.to_string(),
+            };
+            format!("{}={}", encode_component(key), encode_component(&text))
+        })
+        .collect::<Vec<_>>()
+        .join("&")
+}
+
+fn encode_component(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            other => encoded.push_str(&format!("%{other:02X}")),
+        }
+    }
+    encoded
+}
+
 /// Check a target without opening it. Same rules the dispatcher applies.
 pub fn validate(target: &NavigationTarget) -> crate::Result<()> {
     service::validate(target).map_err(|error| crate::Error::invalid_request(error.to_string()))

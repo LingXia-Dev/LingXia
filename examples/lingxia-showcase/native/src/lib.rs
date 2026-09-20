@@ -65,6 +65,30 @@ impl lingxia::HostAddon for ExampleHostAddon {
         lingxia::provider::register_lxapp_registry_provider(Box::new(ShowcaseGuestRegistry));
     }
 
+    /// Two shapes of internal navigation target, so a notification can send
+    /// the user somewhere without the product inventing an HTTPS URL for it.
+    fn install_navigation_routes(
+        &self,
+        routes: &mut lingxia::navigation::NavigationRoutes,
+    ) -> Result<(), String> {
+        use lingxia::navigation::{NavigationRoute, RouteParam, lxapp_page_route};
+        // Native: no lxapp, no home Logic, no configured App Link host.
+        routes.add(
+            NavigationRoute::new("showcase.native.note", |request| {
+                let note = request.param_str("text").unwrap_or_default();
+                log::info!("[showcase] native navigation route opened with: {note}");
+                Ok(())
+            })
+            .param(RouteParam::string("text")),
+        )?;
+        // lxapp: a fixed page of a fixed lxapp, with schema-checked params as
+        // its page query.
+        routes.add(
+            lxapp_page_route("showcase.system", "lingxia-showcase", "pages/system/index")
+                .param(RouteParam::string("focus").optional()),
+        )
+    }
+
     fn start_services(&self) {
         #[cfg(feature = "devtools")]
         lingxia_control_runtime::start_dev_session_bridge_from_env();

@@ -1,4 +1,5 @@
-import type { AppBaseInfo, SystemSettingInfo } from "@lingxia/types";
+import type { AppBaseInfo, NavigationTarget, SystemSettingInfo } from "@lingxia/types";
+
 Page({
   data: {
     currentType: 'appBaseInfo',
@@ -16,6 +17,7 @@ Page({
     notificationSupported: false,
     notificationPermission: '',
     notificationLastId: '',
+    notificationTarget: 'activate',
     notificationError: '',
     bannerSupported: false,
     bannerLast: '',
@@ -187,6 +189,10 @@ Page({
     }
   },
 
+  setNotificationTarget: function (target: string) {
+    this.setData({ notificationTarget: target });
+  },
+
   showNotification: async function () {
     const notification = lx.app.notification;
     if (!notification) {
@@ -198,7 +204,8 @@ Page({
       const { id } = await notification.show({
         id: 'showcase-local',
         title: 'LingXia showcase',
-        body: 'Local banner from the system page',
+        body: notificationBody(this.data.notificationTarget),
+        target: notificationTargetFor(this.data.notificationTarget),
         schedule: { delayMs: 5000 },
       });
       this.setData({ notificationLastId: id, notificationError: '' });
@@ -371,3 +378,28 @@ Page({
     }
   }
 });
+
+/**
+ * The three target shapes. `route` names what the host registered at startup
+ * (see the showcase's `install_navigation_routes`), so neither of these needs
+ * a product URL or a configured App Link host.
+ */
+function notificationTargetFor(choice: string): NavigationTarget {
+  if (choice === 'native') {
+    return { kind: 'route' as const, name: 'showcase.native.note', params: { text: 'from a notification' } };
+  }
+  if (choice === 'lxapp') {
+    return { kind: 'route' as const, name: 'showcase.system', params: { focus: 'notification' } };
+  }
+  return { kind: 'activate' as const };
+}
+
+function notificationBody(choice: string): string {
+  if (choice === 'native') {
+    return 'Tap opens a native route — no lxapp, no URL';
+  }
+  if (choice === 'lxapp') {
+    return 'Tap opens the system page through an lxapp route';
+  }
+  return 'Tap brings the showcase forward';
+}
