@@ -89,79 +89,27 @@ spec("answer capability questions consistently with the optional members", { id:
 
   const result = await app.eval({
     script: `
-      const terminalAgrees = ('terminal' in lx) === lx.supports({ capability: 'terminal' });
-      const autostartAgrees = !!lx.app.autostart === lx.supports({ capability: 'autostart' });
-      const notificationAgrees = !!lx.app.notification === lx.supports({ capability: 'notifications' });
-      const bannerAgrees = !!lx.app.banner === lx.supports({ capability: 'banner' });
-      let rejectedUnknown = false;
-      try {
-        lx.supports({});
-      } catch {
-        rejectedUnknown = true;
-      }
-      const rejects = (query) => {
-        try {
-          lx.supports(query);
-          return false;
-        } catch {
-          return true;
-        }
+      const terminalAgrees = ('terminal' in lx) === lx.supports('terminal');
+      const autostartAgrees = !!lx.app.autostart === lx.supports('app.autostart');
+      const notificationAgrees = !!lx.app.notification === lx.supports('app.notification');
+      const bannerAgrees = !!lx.app.banner === lx.supports('app.banner');
+      const rejects = (value) => {
+        try { lx.supports(value); return false; }
+        catch (error) { return error instanceof TypeError; }
       };
       return {
-        terminalAgrees,
-        autostartAgrees,
-        notificationAgrees,
-        bannerAgrees,
-        rejectedUnknown,
-        rejectedMissingSurfaceValue: rejects({ capability: 'surface' }),
-        rejectedFlagValue: rejects({ capability: 'terminal', value: 'window' }),
-        rejectedExtraField: rejects({ capability: 'browser', extra: true }),
-        // Untyped callers can pass anything; a non-object has to reject the
-        // same way a malformed one does, not through argument conversion.
-        rejectedNonObject: ['surface.window', null, 42, undefined].every(rejects),
-        // Placements every host can realize.
-        main: lx.supports({ capability: 'surface', value: 'main' }),
-        float: lx.supports({ capability: 'surface', value: 'float' }),
-        // Answers are booleans, never undefined, for every declared capability.
-        allBooleans: [
-          { capability: 'surface', value: 'window' },
-          { capability: 'surface', value: 'aside' },
-          { capability: 'surface', value: 'tab' },
-          { capability: 'notifications' }, { capability: 'banner' }, { capability: 'browser' },
-          { capability: 'proxy' }, { capability: 'selfUpdate' },
-          { capability: 'process' },
-          { capability: 'appUse' }, { capability: 'computerUse' },
-          { capability: 'browserUse' },
-        ].every((query) => typeof lx.supports(query) === 'boolean'),
+        terminalAgrees, autostartAgrees, notificationAgrees, bannerAgrees,
+        unknownFalse: ['', 'future.feature', 'not a key', 'surface.aside', 'control']
+          .every(key => lx.supports(key) === false),
+        typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
+        main: lx.supports('surface.main'),
+        float: lx.supports('surface.float'),
+        dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
       };
     `,
-  }) as {
-    terminalAgrees: boolean;
-    autostartAgrees: boolean;
-    notificationAgrees: boolean;
-    bannerAgrees: boolean;
-    rejectedUnknown: boolean;
-    rejectedNonObject: boolean;
-    rejectedMissingSurfaceValue: boolean;
-    rejectedFlagValue: boolean;
-    rejectedExtraField: boolean;
-    main: boolean;
-    float: boolean;
-    allBooleans: boolean;
-  };
+  }) as Record<string, boolean>;
 
-  expect(result.terminalAgrees).toBeTruthy();
-  expect(result.autostartAgrees).toBeTruthy();
-  expect(result.notificationAgrees).toBeTruthy();
-  expect(result.bannerAgrees).toBeTruthy();
-  expect(result.rejectedUnknown).toBeTruthy();
-  expect(result.rejectedNonObject).toBeTruthy();
-  expect(result.rejectedMissingSurfaceValue).toBeTruthy();
-  expect(result.rejectedFlagValue).toBeTruthy();
-  expect(result.rejectedExtraField).toBeTruthy();
-  expect(result.main).toBeTruthy();
-  expect(result.float).toBeTruthy();
-  expect(result.allBooleans).toBeTruthy();
+  for (const value of Object.values(result)) expect(value).toBeTruthy();
 });
 
 spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {

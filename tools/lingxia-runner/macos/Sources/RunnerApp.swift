@@ -2,6 +2,9 @@ import AppKit
 import os.log
 @_spi(Runner) import lingxia
 
+@_silgen_name("lingxia_runner_request_device")
+private func requestDevice(_ id: UnsafePointer<CChar>)
+
 struct RunnerWebTarget {
     let url: URL
     let tabId: String
@@ -89,12 +92,12 @@ public class RunnerApp {
     /// Set device size for the Runner window
     /// This can be called to change device while running
     public func setDeviceSize(_ size: MobileDeviceSize) {
-        setDeviceSize(size, orientation: nil)
+        size.id.withCString { requestDevice($0) }
     }
 
     /// Apply a device and an optional explicit orientation as one host update.
     /// A nil orientation preserves the selector's existing family behavior.
-    func setDeviceSize(
+    func applyDeviceSize(
         _ size: MobileDeviceSize,
         orientation: RunnerDeviceOrientation?
     ) {

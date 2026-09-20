@@ -319,7 +319,7 @@ update:
     windows: direct
 ```
 
-`direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.app.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports({ capability: 'selfUpdate' })` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
+`direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.app.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports('app.selfUpdate')` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
 
 **Publish the feed package for a `store` platform only after the store listing is live.** The feed is what tells users a new version exists — if it lands while the listing is still in review, everyone is sent to a page with nothing to update.
 

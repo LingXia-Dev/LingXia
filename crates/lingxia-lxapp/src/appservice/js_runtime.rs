@@ -4,8 +4,6 @@ use crate::error::LxAppError;
 use crate::host::ProcessSessionAuthority;
 use crate::lx;
 use crate::lxapp::LxApp;
-#[cfg(feature = "process")]
-use crate::warn;
 use crate::{debug, error, info};
 
 use rong::{JSContext, JSResult, JSRuntime, JSValue, RongJSError, Source, error::HostError};
@@ -711,24 +709,18 @@ pub(crate) async fn lxapp_service_handler(
                 return;
             }
             #[cfg(feature = "process")]
-            if lxapp.is_home_lxapp && lingxia_app_context::process_enabled() {
-                if !lxapp.process_access_enabled() {
-                    warn!(
-                        "[Worker {}] Process capability requires a host privilege grant and a native ControlApp Process grant",
-                        worker_id
+            if lxapp.process_supported() {
+                // Namespace presence is stable. ProcessSessionAuthority still
+                // checks the current grant for every operation.
+                let authority: Arc<dyn ProcessAuthority> =
+                    Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
+                if let Err(e) = rong_command::init_with_authority(&ctx, authority) {
+                    error!(
+                        "[Worker {}] Failed to initialize process capability: {}",
+                        worker_id, e
                     )
                     .with_appid(lxapp.appid.clone());
-                } else {
-                    let authority: Arc<dyn ProcessAuthority> =
-                        Arc::new(ProcessSessionAuthority::for_lxapp(&lxapp));
-                    if let Err(e) = rong_command::init_with_authority(&ctx, authority) {
-                        error!(
-                            "[Worker {}] Failed to initialize process capability: {}",
-                            worker_id, e
-                        )
-                        .with_appid(lxapp.appid.clone());
-                        return;
-                    }
+                    return;
                 }
             }
             let _ = lx::init(&ctx);
@@ -1119,6 +1111,7 @@ pub(crate) fn create_app_svc(
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
     free_workers: &Arc<Mutex<VecDeque<usize>>>,
 ) -> Result<(), LxAppError> {
+    let _creation = crate::device::logic_creation_guard()?;
     let appid = lxapp.appid.clone();
 
     let key = lxapp.as_ref() as *const _ as usize;
@@ -1335,6 +1328,7 @@ pub(crate) fn restart_app_svc(
     sender: &mpsc::Sender<ServiceMessage>,
     instance_assignments: &Arc<Mutex<HashMap<usize, WorkerAssignment>>>,
 ) -> Result<(), LxAppError> {
+    let _creation = crate::device::logic_creation_guard()?;
     let key = lxapp.as_ref() as *const _ as usize;
     let mut assignments = instance_assignments.lock().unwrap();
     let Some(assignment) = assignments.get(&key).copied() else {

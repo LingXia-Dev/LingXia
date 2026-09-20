@@ -1,359 +1,244 @@
-//! `lx.supports(query)` — one capability query for every namespace.
-//!
-//! Runtime dispatch is emitted from the registry below, and a test keeps its
-//! generated TypeScript metadata in lockstep. The answer is read live: `aside`
-//! genuinely changes when a desktop window crosses the compact breakpoint. It
-//! is an affordance for building UI, never a substitute for handling a
-//! rejection.
+//! Stable, context-scoped feature contracts. Permissions and layout stay live
+//! at their own API boundaries, never in a supports lookup.
 
-use crate::i18n::{js_internal_error, js_invalid_parameter_error};
+use crate::i18n::js_internal_error;
 use lxapp::LxApp;
-use rong::{JSContext, JSResult, JSValue};
-use std::sync::Arc;
+use rong::{HostError, JSContext, JSContextService, JSResult, JSValue};
+use serde::Deserialize;
+use std::collections::{BTreeMap, BTreeSet};
+use std::sync::{Arc, OnceLock, Weak};
 
-/// Values `{ capability: 'surface', value: … }` accepts, in type order.
-const SURFACE_PLACEMENTS: &[&str] = &["main", "aside", "float", "window", "tab"];
+#[derive(Debug, Deserialize)]
+struct FeatureEntry {
+    key: String,
+    requires: Vec<String>,
+    own: Own,
+}
 
-/// Window decorations `{ surface: 'window', chrome }` may ask about.
-const WINDOW_CHROMES: &[&str] = &["system", "full"];
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum Own {
+    Always,
+    Control,
+    Terminal,
+    Autostart,
+    Notifications,
+    Banner,
+    Browser,
+    Proxy,
+    SelfUpdate,
+    Process,
+    AppUse,
+    ComputerUse,
+    BrowserUse,
+    MediaCapture,
+    Window,
+    FullChrome,
+}
 
-/// Declares the boolean capabilities: the JS key, the TS doc line, and the
-/// predicate that answers it.
-macro_rules! flag_capabilities {
-    ($( $(#[doc = $doc:literal])* $key:literal => $eval:expr );* $(;)?) => {
-        /// Every declared flag key, in union order.
-        const FLAG_KEYS: &[&str] = &[$($key),*];
+fn registry() -> &'static Result<Vec<FeatureEntry>, String> {
+    static REGISTRY: OnceLock<Result<Vec<FeatureEntry>, String>> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let entries: Vec<FeatureEntry> = serde_json::from_str(include_str!("features.json"))
+            .map_err(|error| error.to_string())?;
+        // Validate every dependency, including branches unsupported on this OS.
+        resolve(&entries, |_| true)?;
+        Ok(entries)
+    })
+}
 
-        fn flag_supported(key: &str, lxapp: &Arc<LxApp>) -> Option<bool> {
-            let _ = lxapp;
-            match key {
-                $($key => Some($eval(lxapp)),)*
-                _ => None,
-            }
+fn resolve(
+    entries: &[FeatureEntry],
+    own: impl Fn(Own) -> bool,
+) -> Result<BTreeSet<String>, String> {
+    let mut index = BTreeMap::new();
+    for entry in entries {
+        if index.insert(entry.key.as_str(), entry).is_some() {
+            return Err(format!("duplicate feature {}", entry.key));
         }
-    };
-}
-
-flag_capabilities! {
-    "control" => |lxapp: &Arc<LxApp>| lxapp.is_control_app();
-    "terminal" => |lxapp: &Arc<LxApp>| terminal_supported(lxapp);
-    "autostart" => |_: &Arc<LxApp>| autostart_supported();
-    "notifications" => |_: &Arc<LxApp>| notification_supported();
-    "banner" => |lxapp: &Arc<LxApp>| banner_supported(lxapp);
-    "browser" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser();
-    "proxy" => |_: &Arc<LxApp>| lingxia_app_context::capability::proxy();
-    "selfUpdate" => |lxapp: &Arc<LxApp>| self_update_supported(lxapp);
-    "process" => |lxapp: &Arc<LxApp>| lxapp.process_supported();
-    "appUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::app_use();
-    "computerUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::computer_use();
-    "browserUse" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser_use();
-    "mediaCapture" => |_: &Arc<LxApp>| lingxia_app_context::capability::media_capture();
-}
-
-/// `lx.app.control`'s presence check, so the two can never disagree. The
-/// session class is assigned natively when the session is created; nothing a
-/// caller says reaches it.
-pub(crate) fn is_control_app(ctx: &rong::JSContext) -> bool {
-    LxApp::from_ctx(ctx).is_ok_and(|lxapp| lxapp.is_control_app())
-}
-
-/// `lx.terminal`'s presence check, so the two can never disagree.
-fn terminal_supported(lxapp: &Arc<LxApp>) -> bool {
-    #[cfg(feature = "terminal")]
-    {
-        crate::terminal::eligible(lxapp)
     }
-    #[cfg(not(feature = "terminal"))]
+    fn visit<'a>(
+        key: &'a str,
+        index: &BTreeMap<&'a str, &'a FeatureEntry>,
+        visiting: &mut BTreeSet<&'a str>,
+        resolved: &mut BTreeMap<&'a str, bool>,
+        own: &impl Fn(Own) -> bool,
+    ) -> Result<bool, String> {
+        if let Some(value) = resolved.get(key) {
+            return Ok(*value);
+        }
+        let entry = index
+            .get(key)
+            .ok_or_else(|| format!("missing feature {key}"))?;
+        if !visiting.insert(key) {
+            return Err(format!("cyclic feature dependency at {key}"));
+        }
+        let mut supported = own(entry.own);
+        for dependency in &entry.requires {
+            supported &= visit(dependency, index, visiting, resolved, own)?;
+        }
+        visiting.remove(key);
+        resolved.insert(key, supported);
+        Ok(supported)
+    }
+    let mut resolved = BTreeMap::new();
+    for key in index.keys() {
+        visit(key, &index, &mut BTreeSet::new(), &mut resolved, &own)?;
+    }
+    Ok(resolved
+        .into_iter()
+        .filter(|(_, yes)| *yes)
+        .map(|(key, _)| key.to_string())
+        .collect())
+}
+
+struct FeatureSnapshot {
+    supported: BTreeSet<String>,
+    app: Weak<LxApp>,
+    context_id: String,
+}
+
+impl JSContextService for FeatureSnapshot {
+    fn on_shutdown(&self) {
+        if let Some(app) = self.app.upgrade() {
+            app.remove_logic_feature_snapshot(&self.context_id);
+        }
+    }
+}
+
+pub(crate) fn is_control_app(ctx: &JSContext) -> bool {
+    LxApp::from_ctx(ctx).is_ok_and(|app| app.is_control_app())
+}
+
+fn autostart_supported() -> bool {
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        let _ = lxapp;
+        lingxia_app_context::autostart_enabled() && lingxia_platform::autostart_supported()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
         false
     }
 }
 
-/// Whether this exact JS context is the focused, host-bundled Terminal
-/// Settings runtime. Terminal support on the ControlSurface class alone is not
-/// enough: its ordinary home context still exposes the full Logic surface.
-fn terminal_settings_context(ctx: &JSContext) -> JSResult<bool> {
-    #[cfg(feature = "terminal")]
-    {
-        crate::terminal::owns_context(ctx)
-    }
-    #[cfg(not(feature = "terminal"))]
-    {
-        let _ = ctx;
-        Ok(false)
-    }
-}
-
-/// `lx.app.autostart`'s presence check, so the two can never disagree. Fenced
-/// exactly like the member: `lingxia_platform::autostart_supported` only
-/// exists where a startup item can exist at all.
-#[cfg(any(target_os = "macos", target_os = "windows"))]
-fn autostart_supported() -> bool {
-    lingxia_app_context::autostart_enabled() && lingxia_platform::autostart_supported()
-}
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn autostart_supported() -> bool {
-    false
-}
-
-/// `lx.app.notification`'s presence check. Fenced like the member.
-fn notification_supported() -> bool {
-    lingxia_app_context::capability::notifications()
-}
-
-/// `lx.app.banner`'s presence check. Desktop Control app only.
-fn banner_supported(lxapp: &Arc<LxApp>) -> bool {
-    lxapp.is_control_app() && lingxia_platform::banner_supported()
-}
-
-fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
-    use lingxia_platform::traits::update::UpdateService;
-    lingxia_app_context::update::self_update_allowed(
-        lxapp.runtime.self_update_supported(),
-        lxapp.runtime.installed_from_store(),
-    )
-}
-
-/// Answers `{ capability: 'surface', value: … }`, optionally qualified by
-/// `chrome`. Only `aside` is width-dependent; `window` is a property of the
-/// host build and does not flicker as a window is resized.
-fn surface_supported(placement: &str, chrome: Option<&str>, lxapp: &Arc<LxApp>) -> bool {
-    if let Some(chrome) = chrome
-        && chrome == "full"
-        && !crate::surface::window_full_chrome_available()
-    {
-        return false;
-    }
-    match placement {
-        // Every host can put content in the main region or float it over one.
-        "main" | "float" => true,
-        "tab" => lingxia_app_context::capability::browser(),
-        "aside" => crate::surface::aside_dock_available(lxapp),
-        "window" => crate::surface::window_placement_available(),
-        // The caller rejects anything outside `SURFACE_PLACEMENTS` before
-        // reaching here. Answering false keeps an unlisted placement
-        // unadvertised rather than advertising it by falling through.
-        _ => false,
-    }
-}
-
-/// A focused runtime context registers only part of the Logic surface. It must
-/// not advertise the operations it left out, or the query would disagree with
-/// what is actually callable there.
-fn context_exposes_capability(key: &str, terminal_settings: bool) -> bool {
-    !terminal_settings || key == "terminal"
-}
-
-/// The catalog as an error message renders it. One spelling, so a caller who
-/// hits two different rejections does not see the same list two ways.
-fn capability_catalog() -> String {
-    let mut names = vec!["surface"];
-    names.extend_from_slice(FLAG_KEYS);
-    names.join(", ")
-}
-
-fn has_exact_keys(actual: &[String], expected: &[&str]) -> bool {
-    actual.len() == expected.len()
-        && expected
-            .iter()
-            .all(|expected| actual.iter().any(|actual| actual == expected))
-}
-
-/// Whether this host exposes a capability to this Logic context, right now.
-///
-/// Synchronous, because it is meant to be called from render paths. The answer
-/// is live and may be stale by the time you act on it — it is an affordance for
-/// deciding what to render, not a replacement for handling a rejection.
-/// `{ capability: 'surface', value: 'aside' }` in particular changes when a
-/// desktop window crosses the compact breakpoint; pair it with
-/// `lx.surface.onContext` instead of polling. The answer is per runtime context:
-/// a context that does not expose an API reports false for it.
-fn supports(ctx: JSContext, query: JSValue) -> JSResult<bool> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let terminal_settings = terminal_settings_context(&ctx)?;
-    // Taken as a value, not a `JSObject`: an untyped caller passing a string or
-    // null would otherwise be rejected by argument conversion, with a shape
-    // that does not match the invalid-parameter errors every other bad query
-    // reports.
-    let Some(query) = query.into_object() else {
-        return Err(js_invalid_parameter_error(format!(
-            "lx.supports requires a query object with a capability: {}",
-            capability_catalog()
-        )));
-    };
-    let keys = query.keys_as::<String>()?;
-    let capability = query.get::<_, String>("capability").map_err(|_| {
-        js_invalid_parameter_error(format!(
-            "lx.supports requires a string capability: {}",
-            capability_catalog()
-        ))
-    })?;
-
-    if capability == "surface" {
-        let chrome = query.get_opt::<_, String>("chrome")?;
-        let expected: &[&str] = if chrome.is_some() {
-            &["capability", "value", "chrome"]
-        } else {
-            &["capability", "value"]
-        };
-        if !has_exact_keys(&keys, expected) {
-            return Err(js_invalid_parameter_error(
-                "surface capability query requires `capability` and `value`, and accepts only `chrome` besides",
-            ));
-        }
-        let placement = query.get::<_, String>("value").map_err(|_| {
-            js_invalid_parameter_error("surface capability `value` must be a string")
-        })?;
-        if !SURFACE_PLACEMENTS.contains(&placement.as_str()) {
-            return Err(js_invalid_parameter_error(format!(
-                "unknown surface placement '{placement}'; expected {}",
-                SURFACE_PLACEMENTS.join(", ")
-            )));
-        }
-        if let Some(chrome) = chrome.as_deref() {
-            if !WINDOW_CHROMES.contains(&chrome) {
-                return Err(js_invalid_parameter_error(format!(
-                    "unknown window chrome '{chrome}'; expected {}",
-                    WINDOW_CHROMES.join(", ")
-                )));
-            }
-            // The type says the same thing; an untyped caller hears it here.
-            if placement != "window" {
-                return Err(js_invalid_parameter_error(
-                    "`chrome` qualifies `value: 'window'` and no other placement",
-                ));
-            }
-        }
-        if !context_exposes_capability(&capability, terminal_settings) {
-            return Ok(false);
-        }
-        return Ok(surface_supported(&placement, chrome.as_deref(), &lxapp));
-    }
-
-    if !FLAG_KEYS.contains(&capability.as_str()) {
-        return Err(js_invalid_parameter_error(format!(
-            "unknown capability '{capability}'; expected {}",
-            capability_catalog()
-        )));
-    }
-    if !has_exact_keys(&keys, &["capability"]) {
-        return Err(js_invalid_parameter_error(format!(
-            "capability '{capability}' does not accept additional options"
-        )));
-    }
-    if !context_exposes_capability(&capability, terminal_settings) {
-        return Ok(false);
-    }
-
-    // Membership was checked against FLAG_KEYS above, which is emitted by the
-    // same macro as this dispatch. Keep a hard tripwire instead of converting
-    // any future registry defect into an unsupported answer.
-    flag_supported(&capability, &lxapp).ok_or_else(|| {
-        js_internal_error(format!(
-            "capability registry has no predicate for declared key '{capability}'"
-        ))
-    })
-}
-
+/// Called before namespace injection and before any product Logic runs.
 pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
+    if ctx.get_service::<FeatureSnapshot>().is_some() {
+        return Ok(());
+    }
+    let app = LxApp::from_ctx(ctx)?;
+    #[cfg(feature = "terminal")]
+    let focused = crate::terminal::owns_context(ctx)?;
+    #[cfg(not(feature = "terminal"))]
+    let focused = false;
+    use lingxia_platform::traits::update::UpdateService;
+    let entries = registry().as_ref().map_err(js_internal_error)?;
+    let supported = resolve(entries, |own| {
+        if focused && own != Own::Terminal {
+            return false;
+        }
+        match own {
+            Own::Always => true,
+            Own::Control => app.is_control_app(),
+            Own::Terminal => focused,
+            Own::Autostart => autostart_supported(),
+            Own::Notifications => lingxia_app_context::capability::notifications(),
+            Own::Banner => app.is_control_app() && lingxia_platform::banner_supported(),
+            Own::Browser => lingxia_app_context::capability::browser(),
+            Own::Proxy => lingxia_app_context::capability::proxy(),
+            Own::SelfUpdate => lingxia_app_context::update::self_update_allowed(
+                app.runtime.self_update_supported(),
+                app.runtime.installed_from_store(),
+            ),
+            Own::Process => app.process_supported(),
+            Own::AppUse => lingxia_app_context::capability::app_use(),
+            Own::ComputerUse => lingxia_app_context::capability::computer_use(),
+            Own::BrowserUse => lingxia_app_context::capability::browser_use(),
+            Own::MediaCapture => lingxia_app_context::capability::media_capture(),
+            Own::Window => crate::surface::window_placement_available(),
+            Own::FullChrome => crate::surface::window_full_chrome_available(),
+        }
+    })
+    .map_err(js_internal_error)?;
+    let context_id = uuid::Uuid::new_v4().to_string();
+    app.record_logic_feature_snapshot(context_id.clone(), supported.iter().cloned().collect());
+    ctx.set_service(FeatureSnapshot {
+        supported,
+        app: Arc::downgrade(&app),
+        context_id,
+    });
     register_api(ctx)
+}
+
+pub(crate) fn exposes(ctx: &JSContext, key: &str) -> bool {
+    ctx.get_service::<FeatureSnapshot>()
+        .is_some_and(|snapshot| snapshot.supported.contains(key))
+}
+
+/// Frozen feature support, not permission or current layout. Unknown strings
+/// return false; non-strings throw TypeError. Required features also need an
+/// appropriate lxapp.json minRuntime. The string API requires 0.18.0 or later.
+fn supports(ctx: JSContext, feature: JSValue) -> JSResult<bool> {
+    if !feature.is_string() {
+        return Err(HostError::new(
+            rong::error::E_INVALID_ARG,
+            "lx.supports requires a feature string",
+        )
+        .with_name("TypeError")
+        .into());
+    }
+    Ok(exposes(&ctx, &feature.to_rust::<String>()?))
 }
 
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-
-        /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
-
-        /// Surface placements accepted by `lx.supports`.
-        type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;
-
-        /// One capability question per call. The catalog is closed, so
-        /// completion enumerates it and a typo is a type error. `capability`
-        /// is the discriminant; only the `surface` branch accepts a `value`.
-        ///
-        /// Two surface answers describe an *affordance*, not whether the call
-        /// succeeds: `tab` is "the host has an in-app browser" — without it a
-        /// url still opens, in the OS browser instead — and `aside` is "a
-        /// docked region exists right now", while a compact layout still opens
-        /// the url through the in-app browser's own chrome. Ask them to decide
-        /// what to render, not whether to call.
-        ///
-        /// `chrome` qualifies a window and only a window: it asks whether this
-        /// host can produce that decoration, not merely a window.
-        ///
-        type LxCapabilityQuery = r###"{
-    capability: 'surface';
-    value: 'window';
-    chrome?: WindowChrome;
-} | {
-    capability: 'surface';
-    value: Exclude<LxSurfaceCapability, 'window'>;
-} | {
-    capability: LxCapabilityFlag;
-}"###;
-
-        fn supports(
-            ts_params = "query: LxCapabilityQuery",
-            ts_return = "boolean"
-        ) = supports;
+        fn supports(ts_params = "feature: LxFeature", ts_return = "boolean") = supports;
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FLAG_KEYS, SURFACE_PLACEMENTS, context_exposes_capability, has_exact_keys};
+    use super::*;
 
-    /// `js_api!` needs type metadata as a string literal. Assert that its flag
-    /// and surface catalogs still match the runtime registry.
-    #[test]
-    fn declared_union_matches_the_registry() {
-        let source = include_str!("capability.rs");
-        let declared_flags = source
-            .split("type LxCapabilityFlag = r###\"")
-            .nth(1)
-            .and_then(|rest| rest.split("\"###").next())
-            .expect("LxCapabilityFlag literal");
-
-        let expected_flags = FLAG_KEYS
-            .iter()
-            .map(|value| format!("'{value}'"))
-            .collect::<Vec<_>>()
-            .join(" | ");
-        assert_eq!(declared_flags, expected_flags);
-
-        let declared_surfaces = source
-            .split("type LxSurfaceCapability = r###\"")
-            .nth(1)
-            .and_then(|rest| rest.split("\"###").next())
-            .expect("LxSurfaceCapability literal");
-        let expected_surfaces = SURFACE_PLACEMENTS
-            .iter()
-            .map(|value| format!("'{value}'"))
-            .collect::<Vec<_>>()
-            .join(" | ");
-        assert_eq!(declared_surfaces, expected_surfaces);
+    fn entries(json: &str) -> Vec<FeatureEntry> {
+        serde_json::from_str(json).unwrap()
     }
 
     #[test]
-    fn focused_terminal_context_advertises_only_its_registered_api() {
-        assert!(context_exposes_capability("terminal", true));
-        assert!(!context_exposes_capability("surface", true));
-        assert!(!context_exposes_capability("autostart", true));
-        assert!(context_exposes_capability("surface", false));
+    fn registry_is_valid_and_dependencies_are_derived() {
+        let entries = registry().as_ref().unwrap();
+        let supported = resolve(entries, |own| own != Own::Window).unwrap();
+        assert!(!supported.contains("surface.window.fullChrome"));
+        assert!(supported.contains("app.notification"));
+        assert!(!supported.contains("app.notification.routeTarget"));
     }
 
     #[test]
-    fn query_shape_requires_only_the_branch_fields() {
-        let surface = vec!["value".to_string(), "capability".to_string()];
-        let flag = vec!["capability".to_string()];
-        let extra = vec!["capability".to_string(), "value".to_string()];
+    fn invalid_graphs_fail_even_when_unsupported() {
+        for json in [
+            r#"[{"key":"a","requires":[],"own":"Always"},{"key":"a","requires":[],"own":"Always"}]"#,
+            r#"[{"key":"a","requires":["missing"],"own":"Always"}]"#,
+            r#"[{"key":"a","requires":["b"],"own":"Always"},{"key":"b","requires":["a"],"own":"Always"}]"#,
+        ] {
+            assert!(resolve(&entries(json), |_| false).is_err());
+        }
+    }
 
-        assert!(has_exact_keys(&surface, &["capability", "value"]));
-        assert!(has_exact_keys(&flag, &["capability"]));
-        assert!(!has_exact_keys(&extra, &["capability"]));
+    #[test]
+    fn focused_context_only_exposes_terminal() {
+        let snapshot = resolve(registry().as_ref().unwrap(), |own| own == Own::Terminal).unwrap();
+        assert_eq!(snapshot.into_iter().collect::<Vec<_>>(), vec!["terminal"]);
+    }
+
+    #[test]
+    fn snapshot_is_sorted_and_does_not_recompute() {
+        let enabled = std::cell::Cell::new(true);
+        let snapshot = resolve(registry().as_ref().unwrap(), |_| enabled.get()).unwrap();
+        enabled.set(false);
+        assert!(snapshot.contains("surface.window"));
+        assert!(!snapshot.contains(""));
+        assert!(!snapshot.contains("future.feature"));
+        let next = resolve(registry().as_ref().unwrap(), |_| enabled.get()).unwrap();
+        assert!(next.is_empty());
     }
 }

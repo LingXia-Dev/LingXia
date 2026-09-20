@@ -12,7 +12,7 @@ use crate::i18n::js_error_from_lxapp_error;
 /// ordinary lxapp clearing every other lxapp's cache is not a capability it
 /// should have.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !crate::capability::is_control_app(ctx) {
+    if !crate::capability::exposes(ctx, "app.cache") {
         return Ok(());
     }
     let cache = JSObject::new(ctx);

@@ -209,7 +209,7 @@ windowTest('open a page window with system chrome and with full chrome', {
   const platform = await desktopPlatform(t);
   const desktop = t.automation.desktop;
   const fullOffered = await app.eval({
-    script: `return !!lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })`,
+    script: `return !!lx.supports('surface.window.fullChrome')`,
   }) as boolean;
   expect(fullOffered).toBeTruthy();
 

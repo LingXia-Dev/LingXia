@@ -265,6 +265,11 @@ window and drives sidebar and aside arbitration:
 **Content size class** is computed per surface from its actual viewport width
 and is the only size class exposed on `lx.surface.onContext`:
 
+`SurfaceContext.aside` separately reports whether the host shell is Medium or
+Expanded (false before a layout is available). It is not inferred from the
+content size class. Host docking changes emit context events even when the
+content viewport dimensions have not changed.
+
 | Content size class | Available width |
 |---|---|
 | `compact` | `< 600 dp/pt` |

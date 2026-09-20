@@ -289,6 +289,7 @@ impl JSDeviceDriver {
             appearance,
             options.capsule,
         )
+        .await
         .map_err(auto_err)?;
         to_js(&ctx, &state)
     }

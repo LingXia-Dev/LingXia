@@ -563,9 +563,10 @@ fn install_runner_commands(home_app_id: String) {
             if command == ROTATE_COMMAND {
                 let index = CURRENT_DEVICE.load(Ordering::Acquire);
                 let landscape = !LANDSCAPE.load(Ordering::Acquire);
-                if let Err(err) = apply_device(index, landscape) {
-                    eprintln!("lingxia-runner: failed to rotate device: {err}");
-                }
+                lingxia::dev::request_device_set(
+                    presets()[index].id().to_string(),
+                    Some(landscape),
+                );
                 return;
             }
 
@@ -627,12 +628,10 @@ fn install_runner_commands(home_app_id: String) {
                 return;
             };
             // Tablets default to landscape, phones/desktops to portrait.
-            if let Err(err) = apply_device(index, is_tablet(index)) {
-                eprintln!(
-                    "lingxia-runner: failed to switch to {}: {err}",
-                    presets()[index].name
-                );
-            }
+            lingxia::dev::request_device_set(
+                presets()[index].id().to_string(),
+                Some(is_tablet(index)),
+            );
         },
     ));
 }
@@ -649,9 +648,10 @@ fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
             if command == ROTATE_COMMAND {
                 let index = CURRENT_DEVICE.load(Ordering::Acquire);
                 let landscape = !LANDSCAPE.load(Ordering::Acquire);
-                if let Err(error) = apply_device(index, landscape) {
-                    eprintln!("lingxia-runner: failed to rotate device: {error}");
-                }
+                lingxia::dev::request_device_set(
+                    presets()[index].id().to_string(),
+                    Some(landscape),
+                );
                 return;
             }
             if command == APPEARANCE_COMMAND {
@@ -665,12 +665,10 @@ fn install_browser_runner_commands(host: lingxia_windows_sdk::WindowsHost) {
             else {
                 return;
             };
-            if let Err(error) = apply_device(index, is_tablet(index)) {
-                eprintln!(
-                    "lingxia-runner: failed to switch to {}: {error}",
-                    presets()[index].name
-                );
-            }
+            lingxia::dev::request_device_set(
+                presets()[index].id().to_string(),
+                Some(is_tablet(index)),
+            );
         },
     ));
 }

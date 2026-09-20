@@ -7,7 +7,7 @@ use rong::{HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
 /// the host declared the `autostart` capability (and this module is compiled
 /// only for macOS/Windows), so JS gates on presence: `lx.app.autostart?.…`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
-    if !lingxia_app_context::autostart_enabled() || !lingxia_platform::autostart_supported() {
+    if !crate::capability::exposes(ctx, "app.autostart") {
         return Ok(());
     }
     let autostart = JSObject::new(ctx);

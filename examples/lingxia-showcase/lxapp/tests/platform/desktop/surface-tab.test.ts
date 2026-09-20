@@ -58,7 +58,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
     throw new Error(`browser tab surfaces require macOS or Windows; got ${platform || 'unknown'}`);
   }
   const browserOffered = await app.eval({
-    script: `return !!lx.supports({ capability: 'surface', value: 'tab' })`,
+    script: `return !!lx.supports('surface.tab')`,
   }) as boolean;
   expect(browserOffered).toBeTruthy();
 

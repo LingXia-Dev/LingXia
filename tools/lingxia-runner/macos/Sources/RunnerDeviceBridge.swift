@@ -66,7 +66,7 @@ private func setDevice(
         let orientation = landscape.map {
             $0 ? RunnerDeviceOrientation.landscape : .portrait
         }
-        RunnerApp.shared.setDeviceSize(device, orientation: orientation)
+        RunnerApp.shared.applyDeviceSize(device, orientation: orientation)
     } else if let landscape {
         RunnerApp.shared.setDeviceOrientation(landscape ? .landscape : .portrait)
     }

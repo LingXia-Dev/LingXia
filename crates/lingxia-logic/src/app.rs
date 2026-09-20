@@ -221,8 +221,8 @@ pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
 
 /// `lx.app.control` — the members that edit product-wide settings, and the one
 /// writer for each. Injected only into the ControlApp session, so
-/// `lx.app.control?.…` and `lx.supports({ capability: 'control' })` always
-/// agree. Every member behind it still authorizes on its own.
+/// `lx.app.control !== undefined` reports that identity. Every member
+/// behind it still authorizes on its own.
 fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::is_control_app(ctx) {
         return Ok(());

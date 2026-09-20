@@ -138,3 +138,15 @@ impl lingxia::HostAddon for RunnerDevtoolAddon {
 pub extern "C" fn lingxia_register_host_addon() {
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 }
+
+/// Schedule the shared transition without blocking the AppKit main thread.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn lingxia_runner_request_device(id: *const std::ffi::c_char) {
+    if id.is_null() {
+        return;
+    }
+    let id = unsafe { std::ffi::CStr::from_ptr(id) }
+        .to_string_lossy()
+        .into_owned();
+    lingxia::dev::request_device_set(id, None);
+}

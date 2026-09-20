@@ -604,6 +604,16 @@ impl LxApps {
         }
     }
 
+    pub(crate) fn live_logic_instances(&self) -> Vec<Arc<LxApp>> {
+        self.instances
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|app| *app.logic_contexts.borrow() != 0)
+            .cloned()
+            .collect()
+    }
+
     fn track_instance(&self, app: &Arc<LxApp>) {
         let _ = app.admission.set(self.admission.clone());
         let mut instances = self.instances.lock().unwrap();
@@ -935,6 +945,7 @@ pub enum AppSessionClass {
 }
 
 pub struct LxApp {
+    logic_feature_snapshots: Mutex<std::collections::BTreeMap<String, Vec<String>>>,
     // Immutable data - initialized once and never changed
     pub appid: String,
     pub runtime: Arc<Platform>,
@@ -1036,6 +1047,8 @@ pub(crate) struct LxAppSession {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LxAppRuntimeInfo {
+    /// Sorted supported features keyed by the owning Logic context id.
+    pub logic_features: std::collections::BTreeMap<String, Vec<String>>,
     pub appid: String,
     pub app_name: String,
     pub version: String,
@@ -1410,7 +1423,11 @@ impl LxApp {
     pub fn process_supported(&self) -> bool {
         #[cfg(feature = "process")]
         {
-            self.process_access_enabled()
+            let privilege = LxAppSecurityPrivilege::new("process")
+                .expect("process is a valid security privilege id");
+            self.is_control_app()
+                && lingxia_app_context::process_enabled()
+                && self.has_security_privilege(&privilege)
         }
         #[cfg(not(feature = "process"))]
         {
@@ -1418,15 +1435,18 @@ impl LxApp {
         }
     }
 
-    #[cfg(feature = "process")]
-    pub(crate) fn process_access_enabled(&self) -> bool {
-        if !self.is_home_lxapp || !lingxia_app_context::process_enabled() {
-            return false;
-        }
-        let privilege = LxAppSecurityPrivilege::new("process")
-            .expect("process is a valid security privilege id");
-        self.has_security_privilege(&privilege)
-            && self.has_resource_grant(crate::host::AppResourceGrant::Process)
+    /// Diagnostic copy only; the authoritative set is private to the JS context.
+    #[doc(hidden)]
+    pub fn record_logic_feature_snapshot(&self, context: String, features: Vec<String>) {
+        self.logic_feature_snapshots
+            .lock()
+            .unwrap()
+            .insert(context, features);
+    }
+
+    #[doc(hidden)]
+    pub fn remove_logic_feature_snapshot(&self, context: &str) {
+        self.logic_feature_snapshots.lock().unwrap().remove(context);
     }
 
     pub fn app_data_dir(&self) -> PathBuf {
@@ -1499,6 +1519,7 @@ impl LxApp {
             .map(|manager| manager.stack_contains(&self.appid))
             .unwrap_or(false);
         LxAppRuntimeInfo {
+            logic_features: self.logic_feature_snapshots.lock().unwrap().clone(),
             appid: self.appid.clone(),
             app_name: info.app_name,
             version: info.version,
@@ -2042,6 +2063,7 @@ impl LxApp {
             _ => release_type,
         };
         Self {
+            logic_feature_snapshots: Mutex::new(Default::default()),
             appid,
             runtime,
             lxapp_dir: PathBuf::new(),
@@ -3107,6 +3129,12 @@ impl LxApp {
         self.reload_manifest()?;
         self.refresh_live_page_config();
         self.sync_host_ui();
+        self.recreate_retained_page_services()
+    }
+
+    fn recreate_retained_page_services(
+        &self,
+    ) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
         let pages: Vec<PageInstance> = {
             let state = self
                 .state
@@ -3116,11 +3144,7 @@ impl LxApp {
                 .pages_by_id
                 .lock()
                 .map_err(|_| LxAppError::Runtime("page registry lock poisoned".to_string()))?;
-            pages_by_id
-                .values()
-                .filter(|page| !page.is_isolated())
-                .cloned()
-                .collect()
+            pages_by_id.values().cloned().collect()
         };
         let mut pending = Vec::with_capacity(pages.len());
         for page in pages {
@@ -3145,19 +3169,106 @@ impl LxApp {
     ) -> Result<(), LxAppError> {
         let mut pages = Vec::with_capacity(pending.len());
         for (page, ack_rx) in pending {
-            ack_rx
-                .await
+            let result = ack_rx.await;
+            let app = page.owning_lxapp();
+            if app.session.is_cancelled()
+                || app
+                    .get_page_by_instance_id_str(&page.instance_id_string())
+                    .is_none()
+            {
+                continue;
+            }
+            result
                 .map_err(|_| LxAppError::Runtime("page service restart cancelled".to_string()))?
                 .map_err(LxAppError::Runtime)?;
             pages.push(page);
         }
         for page in pages {
+            if page
+                .owning_lxapp()
+                .get_page_by_instance_id_str(&page.instance_id_string())
+                .is_none()
+                || page.webview_controller().is_none()
+                || page.document_is_departing()
+            {
+                continue;
+            }
             // These pages originate from loadHTMLString + a logical base URL.
             // WebView::reload would request that base URL's raw source and skip
             // generate_page_html, losing the bridge config and nonce.
             page.load_html()?;
         }
         Ok(())
+    }
+
+    /// Drain the old worker before the Runner publishes a different capability environment.
+    pub(crate) async fn quiesce_for_device_change(&self) -> Result<(), LxAppError> {
+        let mut contexts = self.logic_contexts.subscribe();
+        self.executor.terminate_app_svc(self.clone_arc())?;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while *contexts.borrow_and_update() != 0 {
+                contexts
+                    .changed()
+                    .await
+                    .map_err(|_| LxAppError::Runtime("Logic shutdown observer closed".into()))?;
+            }
+            Ok::<_, LxAppError>(())
+        })
+        .await
+        .map_err(|_| LxAppError::Runtime("timed out draining Logic for device change".into()))?
+    }
+
+    /// Recreate every retained PageSvc, including isolated surface pages.
+    pub(crate) async fn resume_after_device_change(&self) -> Result<(), LxAppError> {
+        if self.session.is_cancelled() {
+            return Ok(());
+        }
+        self.ensure_app_service_running()?;
+        self.app_launch_dispatched.store(false, Ordering::SeqCst);
+        self.ensure_app_launch_dispatched()?;
+        let pending = self.recreate_retained_page_services()?;
+        let pages = pending
+            .iter()
+            .map(|(page, _)| page.clone())
+            .collect::<Vec<_>>();
+        tokio::time::timeout(Duration::from_secs(30), async {
+            // Also acknowledge worker startup when this app has no page services.
+            self.executor
+                .eval_app_service(self.clone_arc(), "return true;".into(), false)
+                .await?;
+            Self::finish_in_place_restart(pending).await?;
+            loop {
+                if self.session.is_cancelled() {
+                    return Ok(());
+                }
+                let mut ready = true;
+                for page in &pages {
+                    // A surface closed during the transition has no document to await.
+                    if self
+                        .get_page_by_instance_id_str(&page.instance_id_string())
+                        .is_none()
+                        || page.webview_controller().is_none()
+                        || page.document_is_departing()
+                    {
+                        continue;
+                    }
+                    let state = page.automation_state();
+                    if let Some(error) = state.webview_error {
+                        return Err(LxAppError::Runtime(error));
+                    }
+                    // Hidden/preloaded documents cannot dispatch onReady until shown.
+                    ready &= state.webview_ready
+                        && state.bridge_ready
+                        && state.render_state == "finished";
+                }
+                if ready {
+                    return Ok(());
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .map_err(|_| LxAppError::Runtime("timed out restoring pages after device change".into()))?
     }
 
     /// Clears this lxapp's user cache directory, recreating it empty. Dev

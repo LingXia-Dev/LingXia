@@ -60,12 +60,12 @@ fn handle_runner_command_impl(handler: &str, args: Option<Value>) -> Result<Opti
                 .as_deref()
                 .map(str::parse::<lingxia::dev::Appearance>)
                 .transpose()?;
-            serde_json::to_value(lingxia::dev::device_set(
+            serde_json::to_value(crate::util::run_async(lingxia::dev::device_set(
                 parsed.id.as_deref(),
                 parsed.landscape,
                 appearance,
                 parsed.capsule,
-            )?)
+            ))?)
             .map(Some)
             .map_err(|err| err.to_string())
         }

@@ -348,7 +348,7 @@ Page({
 
     // Ask before offering: a window is a property of the host build, so this
     // answer is stable and does not need the error path to discover it.
-    if (verb === "window" && !lx.supports({ capability: "surface", value: "window" })) {
+    if (verb === "window" && !lx.supports('surface.window')) {
       this.setData({
         "surfaceDemo.message": "not supported",
         "surfaceDemo.active": false,
@@ -439,7 +439,7 @@ Page({
       // plus a runtime drag strip. `system` is the standard title bar. The
       // demo lets the caller pick; default to full when the host offers it.
       const wantsFull = cfg.chrome !== "system"
-        && lx.supports({ capability: "surface", value: "window", chrome: "full" });
+        && lx.supports('surface.window.fullChrome');
       const chrome = wantsFull ? ("full" as const) : ("system" as const);
       return lx.surface.openPage("surface", {
         as: "window",

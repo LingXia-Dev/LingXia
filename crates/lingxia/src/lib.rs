@@ -196,6 +196,7 @@ pub mod dev {
     pub use lingxia_platform::traits::mouse::{
         AppMouseAction, AppMouseButton, AppMouseRequest, AppMouseResult,
     };
+    pub use lxapp::device::request_device_set;
 }
 /// Device identity, screen geometry, vibration, and system-setting APIs.
 pub mod device;

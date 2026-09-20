@@ -905,7 +905,9 @@ impl PageInstance {
     pub(crate) fn prepare_for_service_restart(&self) {
         self.cancel_bridge_work();
         if let Ok(mut state) = self.inner.state.lock() {
+            let parked = state.document_is_departing();
             Self::reset_webview_lifecycle_state(&mut state);
+            state.parked = parked;
         }
     }
 

@@ -235,12 +235,16 @@ spec('subscribe to and release the display language listener', {
       first();
       second();
       first();
-      return { kinds: [typeof first, typeof second], distinct: first !== second };
+      return {
+        kinds: [typeof first, typeof second], distinct: first !== second,
+        aside: typeof context?.aside,
+      };
     `,
-  }) as { kinds: string[]; distinct: boolean };
+  }) as { kinds: string[]; distinct: boolean; aside: string };
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
+  expect(result.aside).toBe('boolean');
 });
 
 spec('request permission and replace local notifications by id', {
@@ -261,7 +265,7 @@ spec('request permission and replace local notifications by id', {
     script: `return !!(lx.app.notification && typeof lx.app.notification.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
-  const supported = await app.eval({ script: `return !!lx.supports({ capability: 'notifications' })` });
+  const supported = await app.eval({ script: `return !!lx.supports('app.notification')` });
   expect(supported).toBe(true);
 
   const result = await app.eval({
@@ -370,7 +374,7 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
     script: `return !!(lx.app.banner && typeof lx.app.banner.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
-  const supported = await app.eval({ script: `return !!lx.supports({ capability: 'banner' })` });
+  const supported = await app.eval({ script: `return !!lx.supports('app.banner')` });
   expect(supported).toBe(true);
 
   const result = await app.eval({
@@ -453,7 +457,7 @@ autostartSpec('report autostart state and accept an idempotent write', {
     script: `return !!(lx.app.autostart && typeof lx.app.autostart.isEnabled === 'function')`,
   }) as boolean;
   if (!offered) {
-    const supported = await app.eval({ script: `return !!lx.supports({ capability: 'autostart' })` });
+    const supported = await app.eval({ script: `return !!lx.supports('app.autostart')` });
     expect(supported).toBe(false);
     return;
   }
@@ -716,7 +720,8 @@ spec('subscribe to and release the surface context listener', {
 
   const result = await app.eval({
     script: `
-      const first = lx.surface.onContext(() => {});
+      let context;
+      const first = lx.surface.onContext(value => { context = value; });
       const second = lx.surface.onContext(() => {});
       first();
       second();
