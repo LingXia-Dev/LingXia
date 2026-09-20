@@ -1888,9 +1888,11 @@ true
         /// content at runtime.
         ///
         /// **Desktop only.** Mobile platforms have no tray, so every method here is a
-        /// no-op there (it never throws) — safe to call from portable code. For an
-        /// app-icon badge that *is* cross-platform (including mobile), use
-        /// `lx.app.setBadge`.
+        /// no-op there (it never throws) — safe to call from portable code.
+        ///
+        /// The tray belongs to the product, not to the lxapp that happens to be
+        /// running, so these are Control-app only: a guest lxapp calling one receives
+        /// a permission error.
         ///
         type TrayMenuItem = r###"{
     label: string;

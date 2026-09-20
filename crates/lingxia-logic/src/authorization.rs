@@ -28,6 +28,13 @@ pub(crate) enum LogicRoute {
     AppNotificationCancelAll,
     AppBannerShow,
     AppBannerDismiss,
+    TraySetBadge,
+    TraySetIcon,
+    TraySetTitle,
+    TraySetMenu,
+    TrayOnClick,
+    TrayShow,
+    TrayHide,
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
@@ -91,6 +98,13 @@ impl LogicRoute {
         Self::AppNotificationCancelAll,
         Self::AppBannerShow,
         Self::AppBannerDismiss,
+        Self::TraySetBadge,
+        Self::TraySetIcon,
+        Self::TraySetTitle,
+        Self::TraySetMenu,
+        Self::TrayOnClick,
+        Self::TrayShow,
+        Self::TrayHide,
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
@@ -160,6 +174,13 @@ impl LogicRoute {
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
             | Self::AppBannerDismiss
+            | Self::TraySetBadge
+            | Self::TraySetIcon
+            | Self::TraySetTitle
+            | Self::TraySetMenu
+            | Self::TrayOnClick
+            | Self::TrayShow
+            | Self::TrayHide
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
@@ -214,6 +235,13 @@ impl LogicRoute {
             Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
             Self::AppBannerShow => "lx.app.banner.show",
             Self::AppBannerDismiss => "lx.app.banner.dismiss",
+            Self::TraySetBadge => "lx.tray.setBadge",
+            Self::TraySetIcon => "lx.tray.setIcon",
+            Self::TraySetTitle => "lx.tray.setTitle",
+            Self::TraySetMenu => "lx.tray.setMenu",
+            Self::TrayOnClick => "lx.tray.onClick",
+            Self::TrayShow => "lx.tray.show",
+            Self::TrayHide => "lx.tray.hide",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
