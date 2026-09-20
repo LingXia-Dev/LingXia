@@ -39,6 +39,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.lang.ref.WeakReference
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import org.json.JSONObject
@@ -65,8 +66,11 @@ internal object UpdateManager {
     // remembered when the download finishes with no foreground activity. Shown
     // when an activity returns. Distinct from pendingInstallPath, which is the
     // post-permission-grant re-install that proceeds without re-prompting.
-    private val pendingReadyInstallPath = AtomicReference<String?>(null)
-    @Volatile private var pendingReadyInstallInfo: ReadyInfo = ReadyInfo.EMPTY
+    private data class ReadyUpdate(val apkPath: String, val info: ReadyInfo)
+    private val pendingReadyInstall = AtomicReference<ReadyUpdate?>(null)
+    private val stagedUpdate = AtomicReference<ReadyUpdate?>(null)
+    private val sessionUpdates = ConcurrentHashMap<Int, ReadyUpdate>()
+    private var readyDialog: WeakReference<Dialog>? = null
     @Volatile private var installReceiver: BroadcastReceiver? = null
 
     /** Version + release notes shown in the "ready to install" prompt. */
@@ -489,11 +493,13 @@ internal object UpdateManager {
     @JvmStatic
     fun installUpdate(apkPath: String, infoJson: String?): Boolean {
         val info = ReadyInfo.parse(infoJson)
+        val update = ReadyUpdate(apkPath, info)
+        stagedUpdate.set(update)
+        pendingReadyInstall.set(null)
         val activity = resolveActivity()
         if (activity == null) {
             Log.w(TAG, "No current activity; deferring ready-to-install prompt")
-            pendingReadyInstallPath.set(apkPath)
-            pendingReadyInstallInfo = info
+            pendingReadyInstall.set(update)
             return true
         }
         showReadyToInstallPrompt(activity, apkPath, info)
@@ -502,14 +508,10 @@ internal object UpdateManager {
 
     @JvmStatic
     fun tryShowPendingReadyInstall() {
-        val apkPath = pendingReadyInstallPath.getAndSet(null) ?: return
+        val update = pendingReadyInstall.get() ?: return
         val activity = resolveActivity()
-        if (activity == null) {
-            // No activity yet — keep it for the next onResume / init.
-            pendingReadyInstallPath.set(apkPath)
-            return
-        }
-        showReadyToInstallPrompt(activity, apkPath, pendingReadyInstallInfo)
+        if (activity == null || !pendingReadyInstall.compareAndSet(update, null)) return
+        showReadyToInstallPrompt(activity, update.apkPath, update.info)
     }
 
     private fun showReadyToInstallPrompt(
@@ -518,12 +520,27 @@ internal object UpdateManager {
         info: ReadyInfo
     ) {
         activity.runOnUiThread {
+            if (stagedUpdate.get() != ReadyUpdate(apkPath, info)) return@runOnUiThread
             if (activity.isFinishing || activity.isDestroyed) {
-                pendingReadyInstallPath.set(apkPath)
-                pendingReadyInstallInfo = info
+                pendingReadyInstall.set(ReadyUpdate(apkPath, info))
                 return@runOnUiThread
             }
-            createReadyToInstallDialog(activity, apkPath, info).show()
+            readyDialog?.get()?.dismiss()
+            val dialog = createReadyToInstallDialog(activity, apkPath, info)
+            readyDialog = WeakReference(dialog)
+            dialog.setOnDismissListener {
+                if (readyDialog?.get() === dialog) readyDialog = null
+            }
+            dialog.show()
+        }
+    }
+
+    private fun offerInstallRetry(update: ReadyUpdate) {
+        // Restore a user-controlled prompt, never automatically install again.
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            if (stagedUpdate.get() != update || !File(update.apkPath).isFile) return@post
+            pendingReadyInstall.set(update)
+            tryShowPendingReadyInstall()
         }
     }
 
@@ -584,7 +601,12 @@ internal object UpdateManager {
     // inline; run that path on a worker. Non-UI callers use launchInstaller()
     // directly so Rust can observe "request failed" vs "request launched".
     private fun startInstall(activity: Activity, apkPath: String) {
-        Thread({ launchInstaller(activity, apkPath) }, "LxUpdateInstaller").start()
+        val update = stagedUpdate.get()?.takeIf { it.apkPath == apkPath }
+        Thread({
+            if (!launchInstaller(activity, apkPath) && update != null) {
+                offerInstallRetry(update)
+            }
+        }, "LxUpdateInstaller").start()
     }
 
     private fun launchInstaller(activity: Activity, apkPath: String): Boolean {
@@ -617,7 +639,12 @@ internal object UpdateManager {
                 }
             }
 
-            // Primary path: PackageInstaller Session API.
+            if (useLegacyUpdateInstaller(Build.VERSION.SDK_INT, Build.MANUFACTURER, Build.MODEL, isTvUi(activity))) {
+                Log.i(TAG, "Using ACTION_VIEW installer on Android 5.x Mi TV")
+                return launchInstallerLegacy(activity, apkFile)
+            }
+
+            // Primary path on other devices: PackageInstaller Session API.
             // Reasons: surfaces failure status, works on Android TV / restricted devices
             // where PackageInstallerActivity may be absent, and on API 31+ enables silent
             // self-update when signatures match.
@@ -683,6 +710,7 @@ internal object UpdateManager {
     }
 
     private fun installViaSession(activity: Activity, apkFile: File): Boolean {
+        var createdSessionId: Int? = null
         return try {
             ensureInstallReceiver(activity.applicationContext)
             val packageInstaller = activity.packageManager.packageInstaller
@@ -698,6 +726,10 @@ internal object UpdateManager {
             }
 
             val sessionId = packageInstaller.createSession(params)
+            createdSessionId = sessionId
+            stagedUpdate.get()?.takeIf { it.apkPath == apkFile.path }?.let {
+                sessionUpdates[sessionId] = it
+            }
             packageInstaller.openSession(sessionId).use { session ->
                 FileInputStream(apkFile).use { input ->
                     session.openWrite(SESSION_WRITE_NAME, 0, apkFile.length()).use { out ->
@@ -723,11 +755,22 @@ internal object UpdateManager {
             Log.i(TAG, "PackageInstaller session committed: id=$sessionId, apk=${apkFile.path}")
             true
         } catch (e: SecurityException) {
+            createdSessionId?.let { abandonFailedSession(activity, it) }
             LxLog.e(TAG, "Session install denied by system", e)
             false
         } catch (e: Exception) {
+            createdSessionId?.let { abandonFailedSession(activity, it) }
             LxLog.e(TAG, "Session install failed", e)
             false
+        }
+    }
+
+    private fun abandonFailedSession(activity: Activity, sessionId: Int) {
+        sessionUpdates.remove(sessionId)
+        try {
+            activity.packageManager.packageInstaller.abandonSession(sessionId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not abandon failed install session $sessionId", e)
         }
     }
 
@@ -830,6 +873,7 @@ internal object UpdateManager {
     private fun handleInstallStatus(ctx: Context, intent: Intent) {
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""
+        val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 @Suppress("DEPRECATION")
@@ -860,11 +904,16 @@ internal object UpdateManager {
                 }
             }
             PackageInstaller.STATUS_SUCCESS -> {
+                sessionUpdates.remove(sessionId)?.let { stagedUpdate.compareAndSet(it, null) }
                 Log.i(TAG, "Install succeeded")
             }
             else -> {
                 LxLog.e(TAG, "Install failed: status=$status msg=\"$message\"")
-                showInstallErrorToast(ctx, humanInstallError(ctx, status))
+                showInstallErrorToast(ctx, ctx.getString(updateInstallErrorResource(status, message)))
+                val update = sessionUpdates.remove(sessionId)
+                if (update != null && status != PackageInstaller.STATUS_FAILURE_ABORTED) {
+                    offerInstallRetry(update)
+                }
             }
         }
     }
@@ -939,19 +988,6 @@ internal object UpdateManager {
             android.app.NotificationManager.IMPORTANCE_HIGH
         )
         nm.createNotificationChannel(channel)
-    }
-
-    private fun humanInstallError(context: Context, status: Int): String {
-        val labelRes = when (status) {
-            PackageInstaller.STATUS_FAILURE_ABORTED -> R.string.lx_update_install_aborted
-            PackageInstaller.STATUS_FAILURE_BLOCKED -> R.string.lx_update_install_blocked
-            PackageInstaller.STATUS_FAILURE_CONFLICT -> R.string.lx_update_install_conflict
-            PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> R.string.lx_update_install_incompatible
-            PackageInstaller.STATUS_FAILURE_INVALID -> R.string.lx_update_install_invalid
-            PackageInstaller.STATUS_FAILURE_STORAGE -> R.string.lx_update_install_storage
-            else -> R.string.lx_update_install_failure
-        }
-        return context.getString(labelRes)
     }
 
     private fun showInstallErrorToast(context: Context, message: String) {

@@ -165,7 +165,9 @@ pub mod host_app {
                         unsubscribe_auto_listener(&runtime_for_task);
                     }
                     Ok(Outcome::Installed { version }) => {
-                        log::info!("[lingxia] host app auto update: installed version {version}");
+                        log::info!(
+                            "[lingxia] host app auto update: installation handed off for version {version}"
+                        );
                         unsubscribe_auto_listener(&runtime_for_task);
                     }
                     Ok(Outcome::Deferred { version }) => {
