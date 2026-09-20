@@ -2,7 +2,7 @@
   "appId": "lingxia-chat",
   "appName": "LingXia Chat",
   "version": "1.0.12",
-  "minRuntime": "0.17.0",
+  "minRuntime": "0.18.0",
   "pages": [
     { "name": "chat", "path": "pages/chat/index" },
     { "name": "feedback", "path": "pages/feedback/index" }
