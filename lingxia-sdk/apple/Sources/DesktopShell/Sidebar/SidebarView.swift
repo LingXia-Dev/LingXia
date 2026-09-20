@@ -685,6 +685,8 @@ class SidebarView: NSView {
     private let footerSeparator = NSView()
     /// Footer height tracks the sidebar action row count (see renderPanelItems).
     private var footerHeightConstraint: NSLayoutConstraint?
+    /// Top of the action footer, for overlays that must sit above every action row.
+    var footerTopAnchor: NSLayoutYAxisAnchor { footerView.topAnchor }
     /// Adaptive flow that keeps short sidebar actions on the same visual row.
     private let panelFlow = SidebarActionFlowView()
     /// Caps the sidebar action area: rows beyond footerMaxRows scroll in here.

@@ -120,6 +120,6 @@ surface:
 
 # 商店渠道的宿主更新提示（自动流程 + Android SDK 弹窗）
 update:
-  open_store: "打开应用商店"
+  open_store: "打开商店"
   store_message: "有新版本可用，请前往商店更新。"
   store_title: "发现新版本"
