@@ -1968,17 +1968,24 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         contentView.addSubview(callout, positioned: .above, relativeTo: nil)
         updateReadyCallout = callout
 
-        // Float over the bottom-left, above the sidebar footer (which holds the
-        // terminal/AI-chat icons) so it never covers them, kept within the
-        // sidebar column so it never spills into the webview region, and on the
-        // top layer so it floats above any dock panel.
+        // Float over the bottom-left, above the sidebar footer so it never
+        // covers an action row (the footer grows with the row count), kept
+        // within the sidebar column so it never spills into the webview region,
+        // and on the top layer so it floats above any dock panel.
         let p = Layout.contentPanelPadding
-        let footerClearance: CGFloat = 48 + 6
+        let bottom: NSLayoutConstraint
+        if let sidebarView, sidebarView.isDescendant(of: contentView) {
+            bottom = callout.bottomAnchor.constraint(
+                equalTo: sidebarView.footerTopAnchor, constant: -6)
+        } else {
+            bottom = callout.bottomAnchor.constraint(
+                equalTo: contentView.bottomAnchor, constant: -(48 + 6))
+        }
         NSLayoutConstraint.activate([
             callout.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: p + 6),
             callout.trailingAnchor.constraint(
                 lessThanOrEqualTo: contentView.leadingAnchor, constant: Layout.sidebarWidth - p),
-            callout.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -footerClearance),
+            bottom,
         ])
     }
 
