@@ -31,42 +31,42 @@ code.
 ## Am I the Control app?
 
 ```ts
-const control = lx.app.control;
+const control = lx.host.control;
 if (!control) return;          // a guest — offer nothing that needs it
 await control.appearance.setPreference('dark');
 ```
 
-`lx.app.control !== undefined` identifies the Control app. Bind the member once
-at the top of a Settings screen rather than writing `lx.app.control!` at every call.
+`lx.host.control !== undefined` identifies the Control app. Bind the member once
+at the top of a Settings screen rather than writing `lx.host.control!` at every call.
 
 ## What only the Control app may call
 
 These act on the product, not on the lxapp that called them, which is why a
 guest cannot reach them:
 
-- `lx.app.exit()` — quits the product.
-- `lx.app.setBadge(value, options?)` — a count on the product's own chrome,
+- `lx.host.exit()` — quits the product.
+- `lx.host.setBadge(value, options?)` — a count on the product's own chrome,
   wherever this platform shows one. `lx.tray.*` is Control-app only for the
   same reason: the status item belongs to the product.
-- `lx.app.cache` — every lxapp the host has ever run. Injected only into the
-  Control app, same presence as `lx.app.control`; guests do not have the member.
-- `lx.app.checkUpdate()`, `lx.app.claimCustomUpdate()`, and
-  `lx.app.screenshot()` — the native host app, not your bundle. A check is a
+- `lx.host.cache` — every lxapp the host has ever run. Injected only into the
+  Control app, same presence as `lx.host.control`; guests do not have the member.
+- `lx.host.checkUpdate()`, `lx.host.claimCustomUpdate()`, and
+  `lx.host.screenshot()` — the native host app, not your bundle. A check is a
   query; claiming (or `update.apply()`) takes over the built-in auto-flow for
   the rest of the process. (Your own bundle's updates are
   `lx.getUpdateManager()`, which every lxapp has.)
-- `lx.app.autostart.*` — launch at login.
-- `lx.app.notification.*` — local banners that resume the product. Tap
+- `lx.host.autostart.*` — launch at login.
+- `lx.host.notification.*` — local banners that resume the product. Tap
   target is `page` / `app` / `route` / `appLink` / `activate`.
-- `lx.app.banner.*` — product-drawn top-right desktop card (inform or confirm).
-- `lx.app.control.displayLanguage` / `lx.app.control.appearance` — the writers
+- `lx.host.banner.*` — product-drawn top-right desktop card (inform or confirm).
+- `lx.host.control.displayLanguage` / `lx.host.control.appearance` — the writers
   behind the product's language and light/dark setting.
 - `lx.shell.*` mutations — sidebar actions, opening declared surfaces,
   reconfiguring the shell.
 
 Everything else on `lx.*` is available to any lxapp. Reading what those
-settings resolved to is not restricted either: `lx.app.displayLanguage.get()`
-and `lx.app.appearance.get()` are for everyone, and every lxapp should follow
+settings resolved to is not restricted either: `lx.host.displayLanguage.get()`
+and `lx.host.appearance.get()` are for everyone, and every lxapp should follow
 them rather than keeping a preference of its own.
 
 ## What only a control surface may call
@@ -82,7 +82,7 @@ A call you are not the right class for rejects with `E_PERMISSION_DENIED`, and
 the message names the class that would have been admitted:
 
 ```
-lx.app.setBadge is only available in the Control app
+lx.host.setBadge is only available in the Control app
 ```
 
 Treat that as a design signal, not something to retry or route around. If a
@@ -90,7 +90,7 @@ guest screen needs the product to do something, the Control app is what does
 it — ask it, don't impersonate it.
 
 Two things it never means: it is not the user declining (dismissable APIs
-resolve a `canceled` result instead), and it is not a missing capability
+resolve a `status: 'canceled'` result instead), and it is not a missing capability
 (`lx.supports()` answers that, and an absent namespace is simply absent).
 
 ## Privileges are grants, never claims

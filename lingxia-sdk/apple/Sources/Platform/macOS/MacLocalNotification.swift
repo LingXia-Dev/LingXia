@@ -7,7 +7,7 @@ import UIKit
 import Foundation
 import UserNotifications
 
-/// Local notifications for `lx.app.notification`. Does not request permission
+/// Local notifications for `lx.host.notification`. Does not request permission
 /// on install — that waits for `requestPermission` / first `show`.
 final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
     nonisolated(unsafe) static let shared = MacLocalNotification()

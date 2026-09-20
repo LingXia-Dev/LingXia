@@ -1563,24 +1563,24 @@ mod eval_script_shape_tests {
     #[test]
     fn await_without_semicolon_is_a_function_body() {
         assert!(script_looks_like_function_body(
-            r#"await lx.app.control.displayLanguage.setPreference("zh-CN")"#
+            r#"await lx.host.control.displayLanguage.setPreference("zh-CN")"#
         ));
         assert!(script_looks_like_function_body(
-            "await(lx.app.cache.clear())"
+            "await(lx.host.cache.clear())"
         ));
     }
 
     #[test]
     fn return_and_declarations_are_function_bodies() {
         assert!(script_looks_like_function_body(
-            "return lx.app.control.displayLanguage.getPreference()"
+            "return lx.host.control.displayLanguage.getPreference()"
         ));
         assert!(script_looks_like_function_body("const x = 1; return x"));
     }
 
     #[test]
     fn a_plain_expression_is_not_a_function_body() {
-        assert!(!script_looks_like_function_body("lx.app.getBaseInfo()"));
+        assert!(!script_looks_like_function_body("lx.host.getBaseInfo()"));
     }
 }
 

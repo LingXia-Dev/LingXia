@@ -29,7 +29,7 @@ struct JSShowOptions {
     silent: Option<bool>,
 }
 
-/// `lx.app.notification` — local banners as a resume affordance. Absent unless
+/// `lx.host.notification` — local banners as a resume affordance. Absent unless
 /// the host declared `capabilities.notifications`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.notification") {
@@ -112,7 +112,7 @@ async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
             let id = id.to_rust::<String>()?;
             if id.is_empty() {
                 return Err(js_invalid_parameter_error(
-                    "lx.app.notification.cancel id must not be empty",
+                    "lx.host.notification.cancel id must not be empty",
                 ));
             }
             Ok(id)
@@ -161,13 +161,13 @@ fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
     let parsed = options.to_rust::<JSShowOptions>()?;
     if parsed.applink.is_some() {
         return Err(js_invalid_parameter_error(
-            "lx.app.notification.show no longer takes applink; pass target: { kind: 'page', page } or { kind: 'appLink', url }",
+            "lx.host.notification.show no longer takes applink; pass target: { kind: 'page', page } or { kind: 'appLink', url }",
         ));
     }
     let title = parsed
         .title
         .filter(|title| !title.is_empty())
-        .ok_or_else(|| js_invalid_parameter_error("lx.app.notification.show title is required"))?;
+        .ok_or_else(|| js_invalid_parameter_error("lx.host.notification.show title is required"))?;
     let id = match parsed.id {
         Some(id) => validate_id(&id)?,
         None => uuid::Uuid::new_v4().to_string(),
@@ -193,11 +193,11 @@ fn decode_target(target: Option<JSObject>) -> JSResult<NavigationTarget> {
     };
     let json = object.to_json_string().map_err(|error| {
         js_invalid_parameter_error(format!(
-            "lx.app.notification.show target must be a plain object: {error}"
+            "lx.host.notification.show target must be a plain object: {error}"
         ))
     })?;
     let value = serde_json::from_str::<serde_json::Value>(&json).map_err(|error| {
-        js_invalid_parameter_error(format!("lx.app.notification.show target: {error}"))
+        js_invalid_parameter_error(format!("lx.host.notification.show target: {error}"))
     })?;
     decode_target_json(&value)
 }
@@ -212,7 +212,7 @@ fn decode_target_json(value: &serde_json::Value) -> JSResult<NavigationTarget> {
 fn navigation_error(error: NavigationError) -> RongJSError {
     match error {
         NavigationError::InvalidTarget(message) => {
-            js_invalid_parameter_error(format!("lx.app.notification.show {message}"))
+            js_invalid_parameter_error(format!("lx.host.notification.show {message}"))
         }
         NavigationError::Unavailable(message) | NavigationError::Internal(message) => {
             HostError::new(rong::error::E_INTERNAL, message).into()
@@ -223,7 +223,7 @@ fn navigation_error(error: NavigationError) -> RongJSError {
 fn validate_id(id: &str) -> JSResult<String> {
     if id.is_empty() || id.chars().count() > MAX_ID_CHARS {
         return Err(js_invalid_parameter_error(format!(
-            "lx.app.notification.show id must be 1–{MAX_ID_CHARS} characters"
+            "lx.host.notification.show id must be 1–{MAX_ID_CHARS} characters"
         )));
     }
     Ok(id.to_string())
@@ -236,14 +236,14 @@ fn schedule_at_ms(schedule: Option<JSSchedule>) -> JSResult<Option<u64>> {
     match (schedule.at, schedule.delay_ms) {
         (Some(at), None) if at >= 0.0 => Ok(Some(at as u64)),
         (Some(_), None) => Err(js_invalid_parameter_error(
-            "lx.app.notification.show schedule.at must be >= 0",
+            "lx.host.notification.show schedule.at must be >= 0",
         )),
         (None, Some(delay)) if delay >= 0.0 => Ok(Some(unix_now_ms().saturating_add(delay as u64))),
         (None, Some(_)) => Err(js_invalid_parameter_error(
-            "lx.app.notification.show schedule.delayMs must be >= 0",
+            "lx.host.notification.show schedule.delayMs must be >= 0",
         )),
         (Some(_), Some(_)) => Err(js_invalid_parameter_error(
-            "lx.app.notification.show schedule takes at or delayMs, not both",
+            "lx.host.notification.show schedule takes at or delayMs, not both",
         )),
         (None, None) => Ok(None),
     }

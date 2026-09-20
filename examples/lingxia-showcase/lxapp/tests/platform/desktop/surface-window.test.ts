@@ -45,7 +45,7 @@ async function closeKeyedSurface(app: TestApp, key: string): Promise<void> {
   await app.eval({
     timeoutMs: 15_000,
     script: `
-      const handle = lx.surface.get(${JSON.stringify(key)});
+      const handle = lx.surface.getByKey(${JSON.stringify(key)});
       if (handle) await handle.close();
     `,
   });
@@ -167,7 +167,7 @@ windowTest('native close disposes a secondary window in the dock and tray host',
   if (!window) throw new Error('secondary native window was not found');
   await app.eval({
     script: `
-      const handle = lx.surface.get(${JSON.stringify(key)});
+      const handle = lx.surface.getByKey(${JSON.stringify(key)});
       const state = { handle, closed: 0 };
       handle.onClose(() => state.closed++);
       globalThis[${JSON.stringify(stateKey)}] = state;
@@ -193,7 +193,7 @@ windowTest('open a page window with system chrome and with full chrome', {
   id: 'DESKTOP-SURFACE-WINDOW-001',
   covers: [
     'lx.surface.openPage',
-    'lx.surface.get',
+    'lx.surface.getByKey',
     'lx.supports',
     'PageSurface.kind',
     'PageSurface.realized',
@@ -255,7 +255,7 @@ windowTest('open a page window with system chrome and with full chrome', {
     await closeKeyedSurface(app, key);
     await eventually(
       () => app.eval({
-        script: `return lx.surface.get(${JSON.stringify(key)}) == null`,
+        script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
       }),
       (closed) => closed === true,
       { describe: `${chrome} chrome surface to close`, timeoutMs: 10_000 });
@@ -430,7 +430,7 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
 
     await app.eval({
       script: `
-        const handle = lx.surface.get(${JSON.stringify(key)});
+        const handle = lx.surface.getByKey(${JSON.stringify(key)});
         const state = { handle, closed: 0 };
         handle.onClose(() => state.closed++);
         globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}] = state;
@@ -484,7 +484,7 @@ windowTest('deliver a child page message to its opener before closing', {
 
   await app.eval({
     script: `
-      const handle = lx.surface.get(${JSON.stringify(key)});
+      const handle = lx.surface.getByKey(${JSON.stringify(key)});
       if (!handle) throw new Error('message surface was not registered');
       const state = { messages: [], off: null };
       state.off = handle.onMessage((message) => state.messages.push(message));
@@ -529,7 +529,7 @@ windowTest('deliver a child page message to its opener before closing', {
 
   await eventually(
     () => app.eval({
-      script: `return lx.surface.get(${JSON.stringify(key)}) == null`,
+      script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
     }),
     (closed) => closed === true,
     { describe: 'messaging surface to close itself', timeoutMs: 10_000 },
@@ -553,7 +553,7 @@ windowTest('push a message from the opener into its page window', {
 
   await app.eval({
     script: `
-      const handle = lx.surface.get(${JSON.stringify(key)});
+      const handle = lx.surface.getByKey(${JSON.stringify(key)});
       if (!handle) throw new Error('post surface was not registered');
       handle.postMessage({ ping: ${JSON.stringify(namespace)} });
     `,
@@ -578,7 +578,7 @@ windowTest('push a message from the opener into its page window', {
   await app.eval({
     timeoutMs: 15_000,
     script: `
-      const handle = lx.surface.get(${JSON.stringify(key)});
+      const handle = lx.surface.getByKey(${JSON.stringify(key)});
       const state = { handle, closed: [] };
       handle.onClose((event) => state.closed.push(event));
       globalThis[${JSON.stringify(stateKey)}] = state;

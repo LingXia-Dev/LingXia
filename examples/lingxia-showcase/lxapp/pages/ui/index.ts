@@ -44,7 +44,7 @@ const SURFACE_ERROR_CODES: readonly SurfaceErrorCode[] = [
 ];
 
 // One key names one live surface, so the page demo and the composed-lxapp demo
-// cannot share one — `lx.surface.get` would hand back whichever ran last.
+// cannot share one — `lx.surface.getByKey` would hand back whichever ran last.
 const DEMO_PAGE_SURFACE_KEY = "surface-demo-page";
 const DEMO_APP_SURFACE_KEY = "surface-demo-app";
 
@@ -211,8 +211,8 @@ Page({
     try {
       this.setData({
         appearance: {
-          preference: lx.app.control?.appearance.getPreference() ?? "auto",
-          resolved: lx.app.appearance.get(),
+          preference: lx.host.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.host.appearance.get(),
         },
       });
     } catch (error) {
@@ -223,7 +223,7 @@ Page({
   setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
     const preference = options.preference || "auto";
     const applied = await this._runChromeUpdate("Appearance update", () =>
-      lx.app.control!.appearance.setPreference(preference),
+      lx.host.control!.appearance.setPreference(preference),
     );
     this._syncAppearance();
     return applied;
@@ -255,7 +255,7 @@ Page({
     try {
       await lx.navigateTo({ page: "ui", query: { type: "navigation" } });
     } catch (err) {
-      lx.showToast({ title: "Page stack is full (10)", icon: "error", duration: 1800 });
+      lx.showToast({ title: "Page stack is full (10)", icon: "error", durationMs: 1800 });
       console.warn("[UI] navigateTo rejected", err);
     }
   },
@@ -286,7 +286,7 @@ Page({
     lx.showToast({
       title: params.title || "Hello Toast!",
       icon,
-      duration: params.duration || 2000,
+      durationMs: params.durationMs || 2000,
       position,
       mask: params.mask || false,
     });
@@ -295,26 +295,26 @@ Page({
   // Choose toast icon via action sheet
   chooseToastIcon: async function () {
     const result = await lx.showActionSheet({
-      itemList: this.data.toastIconOptions.map((option) => option.label),
+      items: this.data.toastIconOptions.map((option, index) => ({ id: String(index), label: option.label })),
       itemColor: "#007AFF",
     });
-    if (result.canceled) {
+    if (result.status === 'canceled') {
       return;
     }
-    const selected = this.data.toastIconOptions[result.index];
+    const selected = this.data.toastIconOptions[Number(result.id)];
     this.setData({ toastIcon: selected.value, toastIconLabel: selected.label });
   },
 
   // Choose toast position via action sheet
   chooseToastPosition: async function () {
     const result = await lx.showActionSheet({
-      itemList: this.data.toastPositionOptions.map((option) => option.label),
+      items: this.data.toastPositionOptions.map((option, index) => ({ id: String(index), label: option.label })),
       itemColor: "#007AFF",
     });
-    if (result.canceled) {
+    if (result.status === 'canceled') {
       return;
     }
-    const selected = this.data.toastPositionOptions[result.index];
+    const selected = this.data.toastPositionOptions[Number(result.id)];
     this.setData({ toastPosition: selected.value, toastPositionLabel: selected.label });
   },
 
@@ -326,14 +326,14 @@ Page({
   showDemoActionSheet: async function () {
     const items = ["View Details", "查看日志", "Send Email", "删除"];
     const result = await lx.showActionSheet({
-      itemList: items,
+      items: items.map((label, index) => ({ id: String(index), label })),
       itemColor: "#007AFF",
     });
-    if (result.canceled) {
+    if (result.status === 'canceled') {
       lx.showToast({ title: "Dismissed", icon: "none" });
       return;
     }
-    lx.showToast({ title: `Selected: ${items[result.index]}`, icon: "success" });
+    lx.showToast({ title: `Selected: ${items[Number(result.id)]}`, icon: "success" });
   },
 
   openSurfaceDemo: async function (config?: DemoSurfaceConfig) {
@@ -403,8 +403,8 @@ Page({
   // reusing a key without closing first leaves the old one on screen with
   // nothing pointing at it.
   _releaseDemoSurfaceKey: async function (key: string) {
-    const existing = lx.surface.get(key);
-    if (!existing) return;
+    const existing = lx.surface.getByKey(key);
+    if (!existing || !("close" in existing)) return;
     try {
       await existing.close();
     } catch (error) {
@@ -514,8 +514,8 @@ Page({
   },
 
   showActiveSurface: async function () {
-    // `lx.surface.get(key)` replaces caching the handle by hand.
-    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+    // `lx.surface.getByKey(key)` finds the live surface, so no handle is cached.
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
     // The demo only ever opens its own page as a surface.
     if (surface?.kind !== "page") {
       return;
@@ -536,7 +536,7 @@ Page({
   },
 
   hideActiveSurface: async function () {
-    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
     if (surface?.kind !== "page") {
       return;
     }
@@ -556,8 +556,8 @@ Page({
   },
 
   closeActiveSurface: async function () {
-    const surface = lx.surface.get(DEMO_PAGE_SURFACE_KEY);
-    if (!surface) {
+    const surface = lx.surface.getByKey(DEMO_PAGE_SURFACE_KEY);
+    if (!surface || !("close" in surface)) {
       return;
     }
     try {

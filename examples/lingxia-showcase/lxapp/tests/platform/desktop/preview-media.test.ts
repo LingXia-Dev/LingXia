@@ -91,14 +91,14 @@ previewSpec('present a local image and report it through the handle', {
   const started = await app.eval({
     timeoutMs: 20_000,
     script: `
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} });
-      const handle = lx.previewMedia({ path: png.tempFilePath, type: 'image' });
+      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
+      const handle = lx.previewMedia({ path: png.uri, type: 'image' });
       const state = { handle, presented: false, changes: 0, completed: null, off: null };
       globalThis[${JSON.stringify(stateKey)}] = state;
       state.off = handle.onChange(() => { state.changes += 1; });
-      handle.presented.then(() => { state.presented = true; });
+      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
       handle.completed.then((result) => { state.completed = { reason: result.reason, index: result.index }; });
-      return { path: png.tempFilePath, index: handle.current.index, sourcePath: handle.current.source.path };
+      return { path: png.uri, index: handle.current.index, sourcePath: handle.current.source.path };
     `,
   }) as { path: string; index: number; sourcePath: string };
   // `current` is synchronous and already describes the first source.
@@ -164,7 +164,7 @@ httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
       });
       const state = { handle, controller, presented: false, completed: null };
       globalThis[${JSON.stringify(stateKey)}] = state;
-      handle.presented.then(() => { state.presented = true; });
+      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
       handle.completed.then(
         (result) => { state.completed = result.reason; },
         () => { state.completed = 'rejected'; },

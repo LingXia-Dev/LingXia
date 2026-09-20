@@ -56,7 +56,7 @@ There is no `sidebar:` field. App-owned sidebar entries are runtime actions decl
 
 ## Size classes
 
-An lxapp receives its own surface viewport class through `lx.surface.onContext`:
+An lxapp receives its own surface viewport class through `lx.surface.watchContext`:
 
 | Size class | Viewport width |
 |---|---:|
@@ -85,7 +85,7 @@ lx.surface.openUrl('https://example.com', { as: 'aside' })
 lx.surface.openPage('inspector', { as: 'float' })
 lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 
-const unsubscribe = lx.surface.onContext((context) => {
+const unsubscribe = lx.surface.watchContext((context) => {
   this.setData({ surfaceContext: context })
 })
 ```
@@ -93,9 +93,9 @@ const unsubscribe = lx.surface.onContext((context) => {
 - `openDeclared(id)` opens content declared in `lingxia.yaml`; `id` is the declaration's content identity.
 - `openUrl(url)` opens a normal in-app browser tab; `{ as: 'aside' }` docks the browser aside.
 - `openPage(page)` opens one of **this** lxapp's pages as a chrome-less `float` or a desktop `window`. A page cannot become an `aside` — declare an lxapp surface for your own side panel.
-- Ask `lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })` before offering an edge-to-edge window. Pad custom chrome with `var(--lx-page-chrome-top-inset)`.
+- Ask `lx.supports('surface.window.fullChrome')` before offering an edge-to-edge window. Pad custom chrome with `var(--lx-page-chrome-top-inset)`.
 - `hide()` preserves state; `close()` destroys the surface. Page-overlay form is chosen when opened, while declared surfaces continue to adapt with the shell.
-- `lx.surface.get(key)` returns a handle only for surfaces this lxapp opened **with a `key`**.
+- `lx.surface.getByKey(key)` returns a handle only for surfaces this lxapp opened **with a `key`**.
 
 `lx.openSurface` and `lx.onSurfaceContext` no longer exist.
 

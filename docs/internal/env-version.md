@@ -140,7 +140,7 @@ lingxia publish --env prod --channel draft     # testers, same-version overwrite
 }
 ```
 
-JS: `lx.app.env` — `'dev' | 'prod'`, type `HostAppEnv`.
+JS: `lx.host.env` — `'dev' | 'prod'`, type `HostAppEnv`.
 Rust: `lingxia::app::env()` returns `AppEnv`.
 
 Opening an lxapp takes `channel` (not `envVersion`). App Links use
@@ -186,6 +186,6 @@ contract, not here.
 | Publish reads package `env` | `tools/lingxia-cli/src/commands/publish.rs::read_app_package_metadata` |
 | Runtime `AppEnv` | `crates/lingxia-app-context/src/lib.rs` |
 | Default lxapp channel | `crates/lingxia-update/src/lib.rs::default_channel` |
-| `lx.app.env` JS binding | `crates/lingxia-logic/src/app.rs` |
+| `lx.host.env` JS binding | `crates/lingxia-logic/src/app.rs` |
 | TS type metadata | `crates/lingxia-logic/src/public_types.rs::HostAppEnv` |
 | App Link `channel=` | `crates/lingxia-service/src/applink.rs` |

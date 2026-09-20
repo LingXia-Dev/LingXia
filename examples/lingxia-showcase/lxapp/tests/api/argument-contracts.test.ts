@@ -60,11 +60,12 @@ spec('reject malformed transfer arguments before touching the network', {
     { label: 'empty url', call: `lx.downloadFile({ url: '' })`, code: 'E_INVALID_ARG' },
     // Home has no provider, so public hosts are allowed. ftp is not a grant
     // question; the transfer client rejects the scheme as a network error.
-    { label: 'non-http scheme', call: `lx.downloadFile({ url: 'ftp://example.com/a' })`, code: 'E_NETWORK' },
+    // Transfer-time failures surface on `result`, not from the factory call.
+    { label: 'non-http scheme', call: `lx.downloadFile({ url: 'ftp://example.com/a' }).result`, code: 'E_NETWORK' },
     // A dev session unlocks loopback so the suite can reach a fixture. Port 1
     // answers nothing, so this fails at connect. A release build has no dev
     // session and denies loopback outright.
-    { label: 'trusted loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' })`, code: 'E_NETWORK' },
+    { label: 'trusted loopback', call: `lx.downloadFile({ url: 'http://127.0.0.1:1/a' }).result`, code: 'E_NETWORK' },
 
     // uploadFile rejects on shape before it opens the file, so these rows need
     // no fixture and no source file -- they hold on every platform.

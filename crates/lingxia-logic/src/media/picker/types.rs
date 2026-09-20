@@ -11,13 +11,13 @@ pub(super) struct JSChooseMediaOptions {
     #[js_name = "sourceType"]
     pub(super) source_type: Option<Vec<String>>,
     pub(super) camera: Option<String>,
-    #[js_name = "maxDuration"]
+    #[js_name = "maxDurationSeconds"]
     pub(super) max_duration: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub(super) struct ChosenMediaEntry {
-    #[serde(rename = "tempFilePath")]
+    #[serde(rename = "uri")]
     pub(super) path: String,
     #[serde(rename = "fileType")]
     pub(super) kind: String,

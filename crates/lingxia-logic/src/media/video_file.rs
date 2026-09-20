@@ -87,6 +87,7 @@ struct JSVideoThumbnailOptions {
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSCompressVideoOptions {
+    signal: Option<JSObject>,
     path: String,
     #[js_name = "outputPath"]
     output_path: Option<String>,
@@ -99,7 +100,7 @@ struct JSCompressVideoOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSVideoThumbnailResult {
-    #[js_name = "tempFilePath"]
+    #[js_name = "uri"]
     temp_file_path: String,
     width: u32,
     height: u32,
@@ -110,7 +111,7 @@ struct JSVideoThumbnailResult {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSCompressVideoResult {
-    #[js_name = "tempFilePath"]
+    #[js_name = "uri"]
     temp_file_path: String,
     width: u32,
     height: u32,
@@ -277,6 +278,7 @@ async fn extract_video_thumbnail_api(
 /// Returns a task handle synchronously, so progress and cancellation can be
 /// wired up before transcoding starts.
 fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResult<JSObject> {
+    crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let lxapp = LxApp::from_ctx(&ctx)?;
     let runtime = lxapp.runtime.clone();
 
@@ -327,10 +329,19 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
 
     let cancelled = Arc::new(AtomicBool::new(false));
 
+    let settled = cancelled.clone();
     let final_lxapp = lxapp.clone();
     let final_output_path = output_path.clone();
     let final_promise = Promise::from_future(&ctx, None, async move {
         let result = completion_rx.await;
+        if settled.swap(true, Ordering::SeqCst) {
+            remove_callback(progress_callback_id);
+            return Err(
+                HostError::new(rong::error::E_ABORT, "compressVideo canceled")
+                    .with_name("AbortError")
+                    .into(),
+            );
+        }
         // The transcode is over (or cancelled): close the progress stream so
         // `for await` loops over the task finish.
         remove_callback(progress_callback_id);
@@ -423,19 +434,24 @@ fn compress_video_api(ctx: JSContext, options: JSCompressVideoOptions) -> JSResu
     task.set(
         "cancel",
         JSFunc::new(&ctx, move || {
-            if cancelled.swap(true, Ordering::SeqCst) {
-                return Ok(());
+            let cancelled = cancelled.clone();
+            let runtime = runtime.clone();
+            let cancel_output_path = cancel_output_path.clone();
+            async move {
+                if cancelled.swap(true, Ordering::SeqCst) {
+                    return Ok(());
+                }
+                let _ = runtime.cancel_compress_video(callback_id);
+                remove_callback(progress_callback_id);
+                remove_callback(callback_id);
+                let _ = fs::remove_file(&cancel_output_path);
+                Ok(())
             }
-            let _ = runtime.cancel_compress_video(callback_id);
-            remove_callback(progress_callback_id);
-            remove_callback(callback_id);
-            let _ = fs::remove_file(&cancel_output_path);
-            Ok(())
         })?,
     )?;
 
-    crate::task_object::install_promise_methods(&ctx, &task, final_promise)?;
-    crate::task_object::install_async_iterator(&ctx, &task)?;
+    let task = crate::task_object::create_task(&ctx, task, final_promise, &["cancel"])?;
+    crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
     Ok(task)
 }
 

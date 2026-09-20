@@ -34,12 +34,12 @@ declare const files: FileSystemApi;
 declare const app: HostAppApi;
 declare const videoInfo: VideoInfo;
 
-const resolvedAppearance: ResolvedAppearance = lx.app.appearance.get();
-const appearanceUnwatch: () => void = lx.app.appearance.watch(() => {});
+const resolvedAppearance: ResolvedAppearance = lx.host.appearance.get();
+const appearanceUnwatch: () => void = lx.host.appearance.watch(() => {});
 const appearanceSetResult: Promise<void> | undefined =
-  lx.app.control?.appearance.setPreference("dark");
+  lx.host.control?.appearance.setPreference("dark");
 const appearancePreference: AppearancePreference | undefined =
-  lx.app.control?.appearance.getPreference();
+  lx.host.control?.appearance.getPreference();
 const navigationUpdateResult: Promise<void> = lx.navigationBar.update({ title: null });
 const tabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "auto" });
 const forcedTabBarUpdateResult: Promise<void> = lx.tabBar.update({ visibility: "visible" });
@@ -72,10 +72,10 @@ const screenshotResult: Promise<AppScreenshotResult> = app.screenshot();
 const clipboardWrite: Promise<void> = lx.clipboard.writeText("copied");
 const clipboardText: Promise<ClipboardTextResult> = lx.clipboard.readText();
 const clipboardTypes: Promise<ClipboardType[]> = lx.clipboard.types();
-const cacheSize: Promise<number> | undefined = lx.app.cache?.size();
+const cacheSize: Promise<number> | undefined = lx.host.cache?.size();
 // @ts-expect-error cache is Control-only; guests do not have the member
-lx.app.cache.size();
-const hostOs: HostOs = lx.app.getBaseInfo().os;
+lx.host.cache.size();
+const hostOs: HostOs = lx.host.getBaseInfo().os;
 const deviceOs: HostOs = lx.getDeviceInfo().osName;
 const applinkScene: AppLaunchScene = 8003;
 const launchOptions: AppLaunchOptions = { scene: applinkScene };

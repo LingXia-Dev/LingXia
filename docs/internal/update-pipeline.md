@@ -90,7 +90,7 @@ never snoozed.
 
 - The auto-flow runs once per process, on the first `isConnected: true`. A
   failed attempt re-arms on the next connect; a finished one does not.
-- `lx.app.checkUpdate()` **claims the process after a successful check**, for
+- `lx.host.checkUpdate()` **claims the process after a successful check**, for
   good. From then on the auto-flow neither prompts nor downloads — JS owns
   `apply()`. A failed check claims nothing. A claim does not cancel an
   auto-flow download already in flight.

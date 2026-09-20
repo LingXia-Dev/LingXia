@@ -263,7 +263,7 @@ window and drives sidebar and aside arbitration:
 | `expanded` | `> 840 dp/pt` |
 
 **Content size class** is computed per surface from its actual viewport width
-and is the only size class exposed on `lx.surface.onContext`:
+and is the only size class exposed on `lx.surface.watchContext`:
 
 `SurfaceContext.aside` separately reports whether the host shell is Medium or
 Expanded (false before a layout is available). It is not inferred from the
@@ -972,7 +972,7 @@ Shell chrome always has exactly one writer:
 - In compact shells writer declarations still validate for the current runtime
   but do not render.
 - Process/app-level capabilities (update, exit, badge, autostart, screenshot)
-  stay on `lx.app`; they never migrate into `lx.shell`.
+  stay on `lx.host`; they never migrate into `lx.shell`.
 
 ### 7.4 Launch screen (splash)
 

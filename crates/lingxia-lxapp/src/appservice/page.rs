@@ -73,6 +73,17 @@ struct PageSvcState {
     max_seen_session_work: Option<SessionWorkId>,
 }
 
+/// What a `_setData` callback reports back to `Page.js`. The callback fires on
+/// every terminal path, so the status is what separates "the View applied this"
+/// from "this write will never arrive" — `flush()` resolves only on the first
+/// two.
+const STATE_ACKED: &str = "acked";
+/// Pre-ready: the ops are dropped, but `this.data` already holds them and the
+/// bridge-ready snapshot serializes live data, so the View still gets them.
+const STATE_DEFERRED: &str = "deferred";
+/// Terminated, departing, superseded, cancelled, or refused by the view.
+const STATE_DROPPED: &str = "dropped";
+
 struct StateCallback {
     callback: JSFunc,
     work_id: Option<SessionWorkId>,
@@ -947,7 +958,10 @@ impl PageSvc {
         for callback in callbacks {
             super::context_lifecycle::spawn(&ctx, move |_ctx| {
                 with_document_callback_work(callback.work_id, callback.outbound, async move {
-                    let _ = callback.callback.call_async::<_, ()>(None, ()).await;
+                    let _ = callback
+                        .callback
+                        .call_async::<_, ()>(None, (STATE_DROPPED,))
+                        .await;
                 })
             });
         }
@@ -1013,7 +1027,9 @@ impl PageSvc {
         drop(state);
         if let Some(cb) = callback {
             let _ = with_document_callback_work(cb.work_id, cb.outbound, async move {
-                cb.callback.call_async::<_, ()>(None, ()).await
+                cb.callback
+                    .call_async::<_, ()>(None, (STATE_ACKED,))
+                    .await
             })
             .await;
         }
@@ -1119,7 +1135,7 @@ impl PageSvc {
             // that has already parked/reset this document, must not write
             // into the view a successor service now owns.
             if let Some(callback) = callback {
-                let _ = callback.call::<_, ()>(None, ());
+                let _ = callback.call::<_, ()>(None, (STATE_DROPPED,));
             }
             return Ok(());
         }
@@ -1128,7 +1144,7 @@ impl PageSvc {
         if work_id.is_none() || state.active_session_work != work_id {
             drop(state);
             if let Some(callback) = callback {
-                let _ = callback.call::<_, ()>(None, ());
+                let _ = callback.call::<_, ()>(None, (STATE_DROPPED,));
             }
             return Ok(());
         }
@@ -1139,7 +1155,7 @@ impl PageSvc {
             // loses nothing; erroring here would discard them permanently.
             drop(state);
             if let Some(callback) = callback {
-                let _ = callback.call::<_, ()>(None, ());
+                let _ = callback.call::<_, ()>(None, (STATE_DEFERRED,));
             }
             return Ok(());
         }
@@ -1193,7 +1209,7 @@ impl PageSvc {
             None => {
                 let callback = self.state.lock().await.state_callback.remove(&new_rev);
                 if let Some(callback) = callback {
-                    let _ = callback.callback.call::<_, ()>(None, ());
+                    let _ = callback.callback.call::<_, ()>(None, (STATE_DROPPED,));
                 }
                 Ok(())
             }

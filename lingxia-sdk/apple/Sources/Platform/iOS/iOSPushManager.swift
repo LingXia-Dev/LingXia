@@ -93,7 +93,7 @@ final class iOSPushManager: NSObject {
                 case .notDetermined:
                     // A device token needs no authorization, and declaring the
                     // capability must not prompt: the product asks through
-                    // `lx.app.notification.requestPermission()`.
+                    // `lx.host.notification.requestPermission()`.
                     UIApplication.shared.registerForRemoteNotifications()
                 case .denied:
                     os_log("Notification permission denied", log: Self.log, type: .info)

@@ -185,7 +185,7 @@ export class Lingxia {
     if ((Lingxia.capabilities & Lingxia.CAP_NOTIFICATIONS) !== 0) {
       try {
         // A push token needs no consent, and declaring the capability must
-        // not prompt: the product asks through `lx.app.notification`.
+        // not prompt: the product asks through `lx.host.notification`.
         LxAppPush.initToken();
       } catch (e) {
         LxLog.e(TAG, `Push init error: ${e}`);

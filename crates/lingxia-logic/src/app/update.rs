@@ -69,7 +69,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
+        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("host")?;
         fn checkUpdate(ts_return = "Promise<HostAppUpdateCheckResult>") = check_app_update;
         fn claimCustomUpdate(ts_return = "void") = claim_custom_update;
     }
@@ -214,9 +214,7 @@ fn create_apply_task(
         })?,
     )?;
 
-    crate::task_object::install_promise_methods(ctx, &iterator, final_promise)?;
-    crate::task_object::install_async_iterator(ctx, &iterator)?;
-    Ok(iterator)
+    crate::task_object::create_task(ctx, iterator, final_promise, &[])
 }
 
 async fn app_update_next_step(

@@ -143,9 +143,8 @@ Page({
     const lastUpdated = getCurrentTimestamp();
     console.log("[Todo] addTodo: Adding new todo:", newTodo);
 
-    await new Promise<void>((resolve) =>
-      this.setData({ todos: newTodos, lastUpdated }, resolve),
-    );
+    this.setData({ todos: newTodos, lastUpdated });
+    await this.flush();
     await this._saveToStorage({ todos: newTodos, lastUpdated });
 
     console.log(
@@ -169,9 +168,8 @@ Page({
     );
     const lastUpdated = new Date().toISOString();
 
-    await new Promise<void>((resolve) =>
-      this.setData({ todos: updatedTodos, lastUpdated }, resolve),
-    );
+    this.setData({ todos: updatedTodos, lastUpdated });
+    await this.flush();
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
 
     console.log("[Todo] toggleTodo: Todo toggled successfully");
@@ -190,9 +188,8 @@ Page({
     const updatedTodos = this.data.todos.filter((todo) => todo.id !== id);
     const lastUpdated = new Date().toISOString();
 
-    await new Promise<void>((resolve) =>
-      this.setData({ todos: updatedTodos, lastUpdated }, resolve),
-    );
+    this.setData({ todos: updatedTodos, lastUpdated });
+    await this.flush();
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
 
     console.log(
@@ -214,9 +211,8 @@ Page({
     const updatedTodos = this.data.todos.filter((todo) => !todo.completed);
     const lastUpdated = new Date().toISOString();
 
-    await new Promise<void>((resolve) =>
-      this.setData({ todos: updatedTodos, lastUpdated }, resolve),
-    );
+    this.setData({ todos: updatedTodos, lastUpdated });
+    await this.flush();
     await this._saveToStorage({ todos: updatedTodos, lastUpdated });
 
     console.log(
@@ -235,9 +231,8 @@ Page({
 
     console.log("[Todo] setFilter: Setting filter to:", filter);
     const lastUpdated = new Date().toISOString();
-    await new Promise<void>((resolve) =>
-      this.setData({ currentFilter: filter, lastUpdated }, resolve),
-    );
+    this.setData({ currentFilter: filter, lastUpdated });
+    await this.flush();
     await this._saveToStorage({ filter, lastUpdated });
 
     console.log("[Todo] setFilter: Filter set successfully");

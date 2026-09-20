@@ -66,8 +66,7 @@ function isCancelError(error: unknown) {
 }
 
 function downloadResultPath(result: DownloadResult | undefined) {
-  const paths = result as { filePath?: string; tempFilePath?: string } | undefined;
-  return paths?.filePath || paths?.tempFilePath || "";
+  return result?.uri || "";
 }
 
 function supportsDownloadProgress(task: unknown): task is DownloadTask {
@@ -75,8 +74,8 @@ function supportsDownloadProgress(task: unknown): task is DownloadTask {
   return !!(
     candidate &&
     typeof candidate === "object" &&
-    typeof candidate.next === "function" &&
-    typeof candidate[Symbol.asyncIterator] === "function"
+    candidate.progress &&
+    typeof candidate.progress[Symbol.asyncIterator] === "function"
   );
 }
 
@@ -127,7 +126,7 @@ function updatePdfPage(data: Record<string, unknown>) {
 
 async function observePdfTask(task: DownloadTask) {
   try {
-    for await (const event of task) {
+    for await (const event of task.progress) {
       if (event.kind === "progress") {
         const hasPreciseProgress =
           typeof event.progress === "number" &&
@@ -321,7 +320,7 @@ Page({
       if (canControlTransfer && shouldResumeExisting) {
         await task.resume();
       }
-      const result = await task;
+      const result = await task.result;
       if (runId !== pdfOpenRunId || pdfDownloadPage !== this) {
         return;
       }
@@ -410,7 +409,7 @@ Page({
       const result = await lx.chooseFile({
         defaultPath: this.data.chooseFileDefaultPath,
       });
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({
           chooseFileStatusText: "File selection canceled",
           chooseFileSelectedPath: "",

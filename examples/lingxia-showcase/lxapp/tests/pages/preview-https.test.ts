@@ -66,7 +66,7 @@ async function presentHttpsPreview(
       const handle = lx.previewMedia({ path: url, type: ${JSON.stringify(type)}, signal: controller.signal });
       const state = { handle, controller, presented: false, completed: null, completedError: null };
       globalThis[${JSON.stringify(stateKey)}] = state;
-      handle.presented.then(() => { state.presented = true; });
+      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
       handle.completed.then(
         (result) => { state.completed = { reason: result.reason, index: result.index }; },
         (error) => { state.completedError = { name: error && error.name, message: String(error && error.message || error) }; }

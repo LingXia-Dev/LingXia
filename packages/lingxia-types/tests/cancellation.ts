@@ -6,7 +6,7 @@ declare const lx: Lx;
 // every dismissable API.
 async function payloadNeedsTheCheck(): Promise<void> {
   // @ts-expect-error showActionSheet may have been dismissed
-  (await lx.showActionSheet({ itemList: ["a"] })).index;
+  (await lx.showActionSheet({ items: [{ id: "a", label: "A" }] })).id;
   // @ts-expect-error chooseFile may have been dismissed
   (await lx.chooseFile()).paths;
   // @ts-expect-error chooseDirectory may have been dismissed
@@ -17,29 +17,29 @@ async function payloadNeedsTheCheck(): Promise<void> {
   (await lx.scanCode()).scanResult;
 }
 
-// `canceled: false` narrows the payload with no cast and no non-null assertion.
+// `status: 'ok'` narrows the payload with no cast and no non-null assertion.
 async function checkedResultsNarrow(): Promise<string> {
-  const sheet = await lx.showActionSheet({ itemList: ["a", "b"] });
-  const index: number = sheet.canceled ? -1 : sheet.index;
+  const sheet = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
+  const index: string = (sheet.status === 'canceled') ? "" : sheet.id;
 
   const file = await lx.chooseFile();
-  const paths: string[] = file.canceled ? [] : file.paths;
-  const nonEmptyPaths: [string, ...string[]] | null = file.canceled ? null : file.paths;
+  const paths: string[] = (file.status === 'canceled') ? [] : file.paths;
+  const nonEmptyPaths: [string, ...string[]] | null = (file.status === 'canceled') ? null : file.paths;
 
   const directory = await lx.chooseDirectory();
-  const directoryPath: string = directory.canceled ? "" : directory.path;
+  const directoryPath: string = (directory.status === 'canceled') ? "" : directory.path;
 
   const media = await lx.chooseMedia();
-  const first: string = media.canceled ? "" : media.entries[0].tempFilePath;
-  const nonEmptyMedia: [ChosenMediaEntry, ...ChosenMediaEntry[]] | null = media.canceled
+  const first: string = (media.status === 'canceled') ? "" : media.entries[0].uri;
+  const nonEmptyMedia: [ChosenMediaEntry, ...ChosenMediaEntry[]] | null = (media.status === 'canceled')
     ? null
     : media.entries;
 
   const scan = await lx.scanCode();
-  const code: string = scan.canceled ? "" : scan.scanResult;
+  const code: string = (scan.status === 'canceled') ? "" : scan.scanResult;
 
   const modal = await lx.showModal({ content: "ok?" });
-  const confirmed = !modal.canceled;
+  const confirmed = modal.status !== 'canceled';
 
   return [
     index,
@@ -63,8 +63,8 @@ async function modalHasNoBooleanPair(): Promise<void> {
 }
 
 async function actionSheetHasNoSentinel(): Promise<void> {
-  const sheet = await lx.showActionSheet({ itemList: ["a"] });
-  // @ts-expect-error tapIndex is replaced by index on the non-canceled branch
+  const sheet = await lx.showActionSheet({ items: [{ id: "a", label: "A" }] });
+  // @ts-expect-error the successful branch carries `id`, not `tapIndex`
   sheet.tapIndex;
 }
 

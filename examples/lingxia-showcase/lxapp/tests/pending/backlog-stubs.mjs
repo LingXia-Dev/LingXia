@@ -24,8 +24,8 @@ export default [
     id: "PEND-DESTRUCTIVE-001",
     title: "exit and applyUpdate end the host process under test",
     mode: "planned",
-    covers: ["lx.app.exit", "UpdateManager.applyUpdate"],
-    reason: "lx.app.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
+    covers: ["lx.host.exit", "UpdateManager.applyUpdate"],
+    reason: "lx.host.exit exits the whole host (proven: calling it inside the bundled chat lxapp killed the dev session), so it needs an outer lane that owns the process, not an in-suite spec",
   },
   {
     id: "PEND-SHARE-001",
@@ -171,7 +171,7 @@ export default [
     id: "PEND-APP-LIFE-001",
     title: "App onLaunch, onShow, and onHide if declared",
     mode: "planned",
-    covers: ["lx.app.getBaseInfo"],
+    covers: ["lx.host.getBaseInfo"],
     reason: "App lifecycle hooks are not first-class covers yet",
   },
   {
@@ -206,7 +206,7 @@ export default [
     id: "PEND-PAGE-GLOBALS-001",
     title: "Page and App globals as first-class covers",
     mode: "planned",
-    covers: ["lx.app.getBaseInfo"],
+    covers: ["lx.host.getBaseInfo"],
     reason: "setData / getApp / this.route / this.surface are not owned yet",
   },
   {

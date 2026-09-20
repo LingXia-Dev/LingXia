@@ -1239,7 +1239,7 @@ mod tests {
                 full_name: "home".into(),
                 status: Some(TestCaseStatus::Passed),
                 duration_ms: 10,
-                covers: vec!["lx.app".into()],
+                covers: vec!["lx.host".into()],
                 steps: vec![json!({ "name": "greet", "path": "greet", "status": "passed" })],
             }],
         )
@@ -1249,7 +1249,7 @@ mod tests {
         assert_eq!(value["partial"], serde_json::json!(true));
         assert_eq!(value["total"], serde_json::json!(1));
         assert_eq!(value["passed"], serde_json::json!(1));
-        assert_eq!(value["cases"][0]["covers"][0], serde_json::json!("lx.app"));
+        assert_eq!(value["cases"][0]["covers"][0], serde_json::json!("lx.host"));
         // Same shape as the in-runtime reporter so one parser reads both paths.
         for key in [
             "meta",

@@ -122,10 +122,8 @@ rong::js_api! {
 
 /// Synchronously returns a JS handle so listeners can be attached before the
 /// first event fires:
-/// - `presented`: Promise, resolves with no value when the first pixel of the
-///   underlying media is composited to screen. Also resolves unconditionally
-///   once `completed` settles, so consumers can safely ignore it (it never
-///   rejects).
+/// - `presented`: resolves `{ status: 'presented' }` only after the first
+///   frame; otherwise `{ status: 'notPresented', reason }`. Never rejects.
 /// - `current`: `{ index, source }` snapshot of the item on screen, updated
 ///   live as the user swipes / the session auto-advances.
 /// - `onChange(listener)`: fires `{ index, source }` for every item change
@@ -242,13 +240,16 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     // even if native never fired the presented callback. Both futures run on
     // the same JS thread via Promise::from_future, so no Send bounds need to
     // be satisfied and we don't need an external executor.
-    let (presented_fallback_tx, presented_fallback_rx) = oneshot::channel::<()>();
+    let (presented_fallback_tx, presented_fallback_rx) = oneshot::channel::<&'static str>();
 
+    let presented_ctx = ctx.clone();
     let presented = Promise::from_future(&ctx, None, async move {
-        // Whichever arrives first — native callback or fallback — resolves
-        // the presented Promise. Drops the other receiver after the race.
-        let _ = select(presented_rx, presented_fallback_rx).await;
-        Ok::<(), RongJSError>(())
+        let reason = match select(presented_rx, presented_fallback_rx).await {
+            Either::Left((Ok(CallbackResult::Success(_)), _)) => None,
+            Either::Left((_, fallback)) => Some(fallback.await.unwrap_or("failed")),
+            Either::Right((reason, _)) => Some(reason.unwrap_or("failed")),
+        };
+        presentation_result(&presented_ctx, reason)
     })?;
 
     let lxapp_for_cancel = lxapp.clone();
@@ -269,6 +270,7 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             None => PreviewCompletion::Native(completed_rx.await),
         };
 
+        let aborted = matches!(&outcome, PreviewCompletion::Aborted);
         let result: JSResult<JSObject> = match outcome {
             PreviewCompletion::Native(cb) => cb
                 .map_err(|_| js_internal_error("previewMedia callback channel closed"))
@@ -304,7 +306,13 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         let _ = remove_callback(change_cb_id);
         // Always wake the presented Promise; if it already resolved via the
         // native callback, this sender just drops harmlessly.
-        let _ = presented_fallback_tx.send(());
+        let _ = presented_fallback_tx.send(if aborted {
+            "canceled"
+        } else if result.is_err() {
+            "failed"
+        } else {
+            "closed"
+        });
 
         result
     })?;
@@ -314,12 +322,31 @@ fn preview_media(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     Ok(handle)
 }
 
+fn presentation_result(ctx: &JSContext, reason: Option<&str>) -> JSResult<JSObject> {
+    let result = JSObject::new(ctx);
+    result.set(
+        "status",
+        if reason.is_some() {
+            "notPresented"
+        } else {
+            "presented"
+        },
+    )?;
+    if let Some(reason) = reason {
+        result.set("reason", reason)?;
+    }
+    Ok(result)
+}
+
 fn build_pre_aborted_handle(
     ctx: &JSContext,
     initial_index: u32,
     metas: &Rc<[SourceMeta]>,
 ) -> JSResult<JSObject> {
-    let presented = Promise::from_future(ctx, None, async { Ok::<(), RongJSError>(()) })?;
+    let presented_ctx = ctx.clone();
+    let presented = Promise::from_future(ctx, None, async move {
+        presentation_result(&presented_ctx, Some("canceled"))
+    })?;
     let completed = Promise::from_future(ctx, None, async {
         Err::<JSObject, RongJSError>(js_abort_error("previewMedia aborted"))
     })?;

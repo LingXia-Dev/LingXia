@@ -31,6 +31,14 @@ export interface RongSpawnOptionsWithCmd extends RongSpawnOptions {
   cmd: string[];
 }
 
+/** Synchronous spawning cannot deliver async callbacks or react to an AbortSignal. */
+export type RongSpawnSyncOptions = Omit<RongSpawnOptions, 'onExit' | 'signal' | 'killSignal'> & {
+  onExit?: never;
+  signal?: never;
+  killSignal?: never;
+};
+export type RongSpawnSyncOptionsWithCmd = RongSpawnSyncOptions & { cmd: string[] };
+
 export interface RongSyncSubprocess {
   readonly exitCode: number | null;
   readonly success: boolean;
@@ -96,8 +104,10 @@ export interface RongShellCommand extends PromiseLike<RongShellResult> {
 export interface RongShellTag {
   (strings: TemplateStringsArray, ...values: unknown[]): RongShellCommand;
   (command: string): RongShellCommand;
-  cwd(path?: string): string | RongShellTag | undefined;
-  env(values?: RongEnvMap): RongEnvMap | RongShellTag | undefined;
+  cwd(): string | undefined;
+  cwd(path: string): RongShellTag;
+  env(): RongEnvMap | undefined;
+  env(values: RongEnvMap): RongShellTag;
   throws(value?: boolean): RongShellTag;
   nothrow(): RongShellTag;
   quiet(): RongShellTag;
@@ -122,8 +132,8 @@ declare global {
     readonly stderr: RongOutputHandle;
     spawn(cmd: string[], options?: RongSpawnOptions): RongSubprocess;
     spawn(options: RongSpawnOptionsWithCmd): RongSubprocess;
-    spawnSync(cmd: string[], options?: RongSpawnOptions): RongSyncSubprocess;
-    spawnSync(options: RongSpawnOptionsWithCmd): RongSyncSubprocess;
+    spawnSync(cmd: string[], options?: RongSpawnSyncOptions): RongSyncSubprocess;
+    spawnSync(options: RongSpawnSyncOptionsWithCmd): RongSyncSubprocess;
     readonly $: RongShellTag;
     readonly ShellError: {
       new (message: string): RongShellError;

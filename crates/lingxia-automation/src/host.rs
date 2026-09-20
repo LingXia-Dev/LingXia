@@ -41,7 +41,7 @@ pub(crate) fn reject_self(ctx: &JSContext, target: &LxApp, verb: &str) -> JSResu
     if target.appid == caller.appid {
         return Err(auto_err(format!(
             "cannot {verb} the calling app from its own logic runtime; \
-             target a different app (self-exit: lx.app.exit())"
+             target a different app (self-exit: lx.host.exit())"
         )));
     }
     Ok(())

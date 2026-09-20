@@ -336,7 +336,7 @@
           </div>
           <div class="mx-1 mb-4 bg-surface rounded-xl shadow-sm border border-line-200 overflow-hidden">
             <div data-testid="toast-show" class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer border-b border-line-100"
-              @click="showToastWithParams({ title: toastTitle, icon: toastIcon, duration: toastDuration, position: toastPosition, mask: toastMask })">
+              @click="showToastWithParams({ title: toastTitle, icon: toastIcon, durationMs: toastDuration, position: toastPosition, mask: toastMask })">
               <div class="text-base text-blue-600 dark:text-blue-400 font-medium">Show Toast</div>
             </div>
             <div data-testid="toast-hide" class="flex items-center justify-center px-4 py-4 hover:bg-surface-50 cursor-pointer" @click="hideToast">
@@ -450,7 +450,7 @@
             <div class="px-4 py-3 border-b border-line-100">
               <h3 class="text-base font-medium text-gray-900">Light / Dark</h3>
               <p class="text-sm text-gray-500 mt-1">
-                <code class="text-xs">lx.app.control.appearance.setPreference()</code> sets the product&apos;s scheme
+                <code class="text-xs">lx.host.control.appearance.setPreference()</code> sets the product&apos;s scheme
                 independently of the host shell; the preference persists per lxapp.
               </p>
             </div>

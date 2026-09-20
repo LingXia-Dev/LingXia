@@ -667,12 +667,12 @@ PNG/JPEG/WebP keeps its colours and is center-cropped into the square icon slot.
 Use square raster artwork when cropping would remove meaningful content.
 
 ```ts
-const { tempFilePath } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
+const { uri } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
 lx.shell.sidebarActions.replace([
   {
     id: 'brand',
     placement: 'footer',
-    icon: tempFilePath,
+    icon: uri,
     label: activeBrand.shortName,
     onActivate: () => void openBrandPanel(),
   },

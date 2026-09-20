@@ -41,8 +41,8 @@ async function waitForTabBar(
 async function appearanceOf(app: TestApp): Promise<{ preference: string; resolved: string }> {
   return app.eval({
     script: `return {
-      preference: lx.app.control.appearance.getPreference(),
-      resolved: lx.app.appearance.get(),
+      preference: lx.host.control.appearance.getPreference(),
+      resolved: lx.host.appearance.get(),
     };`,
   }) as Promise<{ preference: string; resolved: string }>;
 }
@@ -145,18 +145,18 @@ spec("apply navigationBar title, colors, home button, and reset", {
 spec("round-trip appearance preference through the ui controls", {
   id: "UI-APPEARANCE-001",
   covers: [
-    'lx.app.control',
-    'lx.app.appearance.get',
-    'lx.app.appearance.watch',
-    'lx.app.control.appearance.getPreference',
-    'lx.app.control.appearance.setPreference',
+    'lx.host.control',
+    'lx.host.appearance.get',
+    'lx.host.appearance.watch',
+    'lx.host.control.appearance.getPreference',
+    'lx.host.control.appearance.setPreference',
   ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
   const { app, defer } = bindFixture(t, "UI-APPEARANCE-001");
   defer(async () => {
-    await app.eval({ script: `await lx.app.control.appearance.setPreference('auto');` })
+    await app.eval({ script: `await lx.host.control.appearance.setPreference('auto');` })
       .catch(() => undefined);
   });
 
@@ -188,7 +188,7 @@ spec("round-trip appearance preference through the ui controls", {
 
   await t.step('reject an invalid preference and keep the previous state', async () => {
     const before = await appearanceOf(app);
-    const rejected = await evalCaught(app, `await lx.app.control.appearance.setPreference('sepia');`);
+    const rejected = await evalCaught(app, `await lx.host.control.appearance.setPreference('sepia');`);
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_ARG');
     expect(await appearanceOf(app)).toEqual(before);
@@ -224,7 +224,7 @@ const OVERLAY_SURFACE: Record<string, 'dom' | 'native'> = {
 
 spec("show, hide, confirm, and cancel in-app feedback overlays", {
   id: "UI-FEEDBACK-001",
-  covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.showActionSheet'],
+  covers: ['lx.showToast', 'lx.hideToast', 'lx.showModal', 'lx.alert', 'lx.confirm', 'lx.showActionSheet'],
   app: SHOWCASE_APP_ID,
   reason: 'Mobile hosts render feedback through native overlays rather than DOM elements.',
   timeout: 60_000,
@@ -237,7 +237,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
     await app.nav.relaunch({ page: 'ui', query: { type: 'toast' } });
     await app.page.waitFor({ page: 'ui', css: '[data-testid="toast-show"]', state: 'visible' });
     await app.eval({
-      script: `await lx.showToast({ title: 'Coverage toast', icon: 'none', duration: 8000 });`,
+      script: `await lx.showToast({ title: 'Coverage toast', icon: 'none', durationMs: 8000 });`,
     });
     if (overlays === 'dom') {
       await app.page.waitFor({ page: 'ui', css: '.lx-toast-title', state: 'visible' });
@@ -276,21 +276,21 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
   await t.step('confirm and cancel a modal', async () => {
     const confirmed = app.eval({
       script: `return await lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' });`,
-    }) as Promise<{ canceled: boolean }>;
+    }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
     await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
-    expect((await confirmed).canceled).toBeFalsy();
+    expect((await confirmed).status === 'canceled').toBeFalsy();
 
     const canceled = app.eval({
       script: `return await lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true });`,
-    }) as Promise<{ canceled: boolean }>;
+    }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-cancel', state: 'visible' });
     await app.page.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
-    expect((await canceled).canceled).toBeTruthy();
+    expect((await canceled).status === 'canceled').toBeTruthy();
 
     const noCancel = app.eval({
       script: `return await lx.showModal({ content: 'No cancel', showCancel: false });`,
-    }) as Promise<{ canceled: boolean }>;
+    }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
     const cancelCount = await app.page.eval({
       page: 'ui',
@@ -298,29 +298,44 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
     });
     expect(cancelCount).toBe(0);
     await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
-    expect((await noCancel).canceled).toBeFalsy();
+    expect((await noCancel).status === 'canceled').toBeFalsy();
+  });
+
+  await t.step('use acknowledgement and boolean dialogs', async () => {
+    const alert = app.eval({ script: `await lx.alert({ title: 'Notice' }); return 'acknowledged';` });
+    await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
+    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    expect(await alert).toBe('acknowledged');
+    const confirmed = app.eval({ script: `return await lx.confirm({ title: 'Continue?' });` });
+    await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
+    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    expect(await confirmed).toBe(true);
+    const canceled = app.eval({ script: `return await lx.confirm({ title: 'Continue?' });` });
+    await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-cancel', state: 'visible' });
+    await app.page.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
+    expect(await canceled).toBe(false);
   });
 
   await t.step('pick and dismiss an action sheet', async () => {
     const picked = app.eval({
-      script: `return await lx.showActionSheet({ itemList: ['View Details', '查看日志', 'Send Email', '删除'] });`,
-    }) as Promise<{ canceled: boolean; index?: number }>;
+      script: `return await lx.showActionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) });`,
+    }) as Promise<{ status: 'ok' | 'canceled'; id?: string }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-item', state: 'visible' });
     await app.page.css('.lx-as-item', { page: 'ui', index: 1 }).click();
     const selected = await picked;
-    expect(selected.canceled).toBeFalsy();
-    expect(selected.index).toBe(1);
+    expect(selected.status === 'canceled').toBeFalsy();
+    expect(selected.id).toBe('查看日志');
 
     const dismissed = app.eval({
-      script: `return await lx.showActionSheet({ itemList: ['One', 'Two'] });`,
-    }) as Promise<{ canceled: boolean }>;
+      script: `return await lx.showActionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) });`,
+    }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-cancel-btn', state: 'visible' });
     await app.page.css('.lx-as-cancel-btn', { page: 'ui' }).click();
-    expect((await dismissed).canceled).toBeTruthy();
+    expect((await dismissed).status === 'canceled').toBeTruthy();
   });
 
   await t.step('reject an empty action sheet', async () => {
-    const rejected = await evalCaught(app, `await lx.showActionSheet({ itemList: [] });`);
+    const rejected = await evalCaught(app, `await lx.showActionSheet({ items: [].map((label) => ({ id: label, label })) });`);
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_ARG');
   });

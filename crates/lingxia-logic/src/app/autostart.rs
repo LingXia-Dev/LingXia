@@ -3,9 +3,9 @@ use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use rong::{HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
 
-/// `lx.app.autostart` — launch-at-startup control. The member is absent unless
+/// `lx.host.autostart` — launch-at-startup control. The member is absent unless
 /// the host declared the `autostart` capability (and this module is compiled
-/// only for macOS/Windows), so JS gates on presence: `lx.app.autostart?.…`.
+/// only for macOS/Windows), so JS gates on presence: `lx.host.autostart?.…`.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.autostart") {
         return Ok(());

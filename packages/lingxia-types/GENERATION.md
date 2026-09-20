@@ -14,11 +14,9 @@ directory on first use, then writes `src/generated/logic.ts` and the DOM-free
 `src/generated/logic-web.d.ts` runtime profile. Both outputs are committed so
 package consumers never need Rust.
 
-The generated module replaces all previous handwritten domain declaration
-files. Those files used to have matching package subpaths (`./app`, `./surface`,
-and so on); the subpaths were aliases of the same generated file and are gone.
-Import reusable shapes from `@lingxia/types`, and automation types from
-`@lingxia/types/automation`.
+The generated module is the only domain declaration file; there are no
+per-domain package subpaths. Import reusable shapes from `@lingxia/types`, and
+automation types from `@lingxia/types/automation`.
 
 Runtime-backed structs/classes come directly from their Rust bindings;
 semantic unions, callbacks, handles, and lifecycle contracts live as TS-only
@@ -32,9 +30,13 @@ input, not a second public declaration tree.
 
 `check:quality` verifies the complete legacy public-name manifest, critical
 documentation, branded paths, overload resolution, and representative complex
-return types. The old handwritten declarations and comparison fixture are not
-kept in the repository.
+return types.
 
 The same check also ties the generated Logic Web declarations (`fetch`, URL,
 encoding, abort, streams, timers, console, and related types) to the explicit
 `rong_modules::init` array used by the LingXia Logic runtime.
+
+`DirEntry` and `LxFile` are native handles, emitted as interfaces rather than
+JavaScript constructor exports. `scripts/refine-web-profile.mjs` refines the
+pinned Rong stream declarations with typed controllers and a discriminated
+reader result; remove the refinement when the upstream generator covers them.

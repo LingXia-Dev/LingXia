@@ -178,7 +178,7 @@ interface FormData {
 declare var FormData: { new (): FormData; prototype: FormData };
 
 interface ReadableStreamDefaultReader<R = any> {
-  read(): Promise<{ done: boolean; value: R }>;
+  read(): Promise<{ done: false; value: R } | { done: true; value?: undefined }>;
   releaseLock(): void;
   cancel(reason?: any): Promise<void>;
 }
@@ -188,7 +188,7 @@ interface ReadableStream<R = any> {
   pipeTo(destination: WritableStream<R>, options?: { preventClose?: boolean; preventAbort?: boolean; preventCancel?: boolean; signal?: AbortSignal }): Promise<void>;
   pipeThrough<T>(transform: { writable: WritableStream<R>; readable: ReadableStream<T> }): ReadableStream<T>;
 }
-declare var ReadableStream: { new <R = any>(underlyingSource?: any): ReadableStream<R>; prototype: ReadableStream };
+declare var ReadableStream: { new <R = any>(underlyingSource?: UnderlyingSource<R>): ReadableStream<R>; prototype: ReadableStream };
 
 interface WritableStreamDefaultWriter<W = any> {
   write(chunk?: W): Promise<void>;
@@ -200,7 +200,7 @@ interface WritableStream<W = any> {
   getWriter(): WritableStreamDefaultWriter<W>;
   abort(reason?: any): Promise<void>;
 }
-declare var WritableStream: { new <W = any>(underlyingSink?: any): WritableStream<W>; prototype: WritableStream };
+declare var WritableStream: { new <W = any>(underlyingSink?: UnderlyingSink<W>): WritableStream<W>; prototype: WritableStream };
 
 type CompressionFormat = 'gzip' | 'deflate' | 'deflate-raw';
 interface CompressionStream {
@@ -427,3 +427,24 @@ interface Console {
   clear(): void;
 }
 declare var console: Console;
+
+interface ReadableStreamDefaultController<R> {
+  readonly desiredSize: number | null;
+  enqueue(chunk: R): void;
+  close(): void;
+  error(reason?: unknown): void;
+}
+interface WritableStreamDefaultController {
+  error(reason?: unknown): void;
+}
+interface UnderlyingSource<R> {
+  start?(controller: ReadableStreamDefaultController<R>): unknown;
+  pull?(controller: ReadableStreamDefaultController<R>): void | PromiseLike<void>;
+  cancel?(reason: unknown): void | PromiseLike<void>;
+}
+interface UnderlyingSink<W> {
+  start?(controller: WritableStreamDefaultController): unknown;
+  write?(chunk: W, controller: WritableStreamDefaultController): void | PromiseLike<void>;
+  close?(): void | PromiseLike<void>;
+  abort?(reason: unknown): void | PromiseLike<void>;
+}

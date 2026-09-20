@@ -208,30 +208,34 @@ impl LogicRoute {
 
     pub(crate) const fn name(self) -> &'static str {
         match self {
-            Self::AppExit => "lx.app.exit",
-            Self::AppSetBadge => "lx.app.setBadge",
-            Self::AppCacheSize => "lx.app.cache.size",
-            Self::AppCacheClear => "lx.app.cache.clear",
-            Self::AppGetAppearancePreference => "lx.app.control.appearance.getPreference",
-            Self::AppSetAppearancePreference => "lx.app.control.appearance.setPreference",
-            Self::AppWatchAppearancePreference => "lx.app.control.appearance.watchPreference",
-            Self::AppGetDisplayLanguagePreference => "lx.app.control.displayLanguage.getPreference",
-            Self::AppSetDisplayLanguagePreference => "lx.app.control.displayLanguage.setPreference",
-            Self::AppWatchDisplayLanguagePreference => {
-                "lx.app.control.displayLanguage.watchPreference"
+            Self::AppExit => "lx.host.exit",
+            Self::AppSetBadge => "lx.host.setBadge",
+            Self::AppCacheSize => "lx.host.cache.size",
+            Self::AppCacheClear => "lx.host.cache.clear",
+            Self::AppGetAppearancePreference => "lx.host.control.appearance.getPreference",
+            Self::AppSetAppearancePreference => "lx.host.control.appearance.setPreference",
+            Self::AppWatchAppearancePreference => "lx.host.control.appearance.watchPreference",
+            Self::AppGetDisplayLanguagePreference => {
+                "lx.host.control.displayLanguage.getPreference"
             }
-            Self::AppCheckUpdate => "lx.app.checkUpdate",
-            Self::AppApplyUpdate => "lx.app.checkUpdate.apply",
-            Self::AppScreenshot => "lx.app.screenshot",
-            Self::AppAutostartIsEnabled => "lx.app.autostart.isEnabled",
-            Self::AppAutostartSetEnabled => "lx.app.autostart.setEnabled",
-            Self::AppNotificationGetPermission => "lx.app.notification.getPermission",
-            Self::AppNotificationRequestPermission => "lx.app.notification.requestPermission",
-            Self::AppNotificationShow => "lx.app.notification.show",
-            Self::AppNotificationCancel => "lx.app.notification.cancel",
-            Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
-            Self::AppBannerShow => "lx.app.banner.show",
-            Self::AppBannerDismiss => "lx.app.banner.dismiss",
+            Self::AppSetDisplayLanguagePreference => {
+                "lx.host.control.displayLanguage.setPreference"
+            }
+            Self::AppWatchDisplayLanguagePreference => {
+                "lx.host.control.displayLanguage.watchPreference"
+            }
+            Self::AppCheckUpdate => "lx.host.checkUpdate",
+            Self::AppApplyUpdate => "lx.host.checkUpdate.apply",
+            Self::AppScreenshot => "lx.host.screenshot",
+            Self::AppAutostartIsEnabled => "lx.host.autostart.isEnabled",
+            Self::AppAutostartSetEnabled => "lx.host.autostart.setEnabled",
+            Self::AppNotificationGetPermission => "lx.host.notification.getPermission",
+            Self::AppNotificationRequestPermission => "lx.host.notification.requestPermission",
+            Self::AppNotificationShow => "lx.host.notification.show",
+            Self::AppNotificationCancel => "lx.host.notification.cancel",
+            Self::AppNotificationCancelAll => "lx.host.notification.cancelAll",
+            Self::AppBannerShow => "lx.host.banner.show",
+            Self::AppBannerDismiss => "lx.host.banner.dismiss",
             Self::TraySetIcon => "lx.tray.setIcon",
             Self::TraySetTitle => "lx.tray.setTitle",
             Self::TraySetMenu => "lx.tray.setMenu",

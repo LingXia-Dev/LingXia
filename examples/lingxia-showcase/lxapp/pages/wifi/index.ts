@@ -152,7 +152,7 @@ Page({
   connectWifi: async function (options: ConnectWifiOptions) {
     try {
       await lx.connectWifi(options);
-      console.log("WiFi connection requested:", options?.SSID);
+      console.log("WiFi connection requested:", options?.ssid);
     } catch (error) {
       console.error("Failed to connect to WiFi:", error);
     }

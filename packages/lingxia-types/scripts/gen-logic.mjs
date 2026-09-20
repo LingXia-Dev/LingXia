@@ -3,6 +3,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { refineWebProfile } from "./refine-web-profile.mjs";
+
 const VERSION = "0.6.1";
 const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceDir = resolve(packageDir, "../..");
@@ -64,8 +66,11 @@ try {
   for (const path of outputs) {
     let source = readFileSync(path, "utf8").replace(UPSTREAM_HINT, REGEN_HINT);
     if (path.endsWith("logic.ts")) {
-      source = dropBindingClasses(source) + "\n" + featureDeclaration();
+      source = dropBindingClasses(source)
+        .replace(/export declare class (DirEntry|LxFile) \{\n  private constructor\(\);/g, 'export interface $1 {')
+        + "\n" + featureDeclaration();
     }
+    if (path.endsWith("logic-web.d.ts")) source = refineWebProfile(source);
     writeFileSync(path, source);
   }
 } catch (error) {

@@ -291,7 +291,7 @@ object Lingxia {
     @JvmStatic
     fun getLastResumedActivity(): Activity? = lastResumedActivity
 
-    /** JNI entry: terminate the host process. Called from Rust via lx.app.exit. */
+    /** JNI entry: terminate the host process. Called from Rust via lx.host.exit. */
     @JvmStatic
     fun exitApp(): Boolean {
         val activity = LxApp.getCurrentActivity() ?: (appContext as? Activity)

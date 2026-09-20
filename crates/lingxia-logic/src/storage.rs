@@ -2,7 +2,8 @@ use crate::i18n::js_service_unavailable_error;
 use lxapp::LxApp;
 use rong::function::{Optional, This};
 use rong::{
-    FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, Promise,
+    FromJSValue, IntoJSValue, JSContext, JSContextService, JSFunc, JSObject, JSResult, JSValue,
+    Promise,
 };
 use rong_storage::{Storage as RongStorage, StorageOptions};
 use std::cell::RefCell;
@@ -113,11 +114,38 @@ fn get_storage(ctx: JSContext) -> JSResult<JSObject> {
     expose_storage(&ctx, service)
 }
 
+fn install_decoder(ctx: &JSContext, storage: &JSObject) -> JSResult<()> {
+    let inner: JSFunc = storage.get("get")?;
+    storage.set(
+        "get",
+        JSFunc::new(
+            ctx,
+            move |this: This<JSObject>, key: String, decode: Optional<JSFunc>| {
+                let inner = inner.clone();
+                let target = (*this).clone();
+                async move {
+                    let pending: Promise = inner.call(Some(target), (key,))?;
+                    let value: JSValue = pending.into_future().await?;
+                    if value.is_undefined() {
+                        return Ok(value);
+                    }
+                    match decode.0 {
+                        Some(decode) => decode.call(None, (value,)),
+                        None => Ok(value),
+                    }
+                }
+            },
+        )?,
+    )?;
+    Ok(())
+}
+
 fn expose_storage(ctx: &JSContext, service: &LxStorageService) -> JSResult<JSObject> {
     if let Some(existing) = service.exposed.borrow().as_ref() {
         return Ok(existing.clone());
     }
     let object = JSObject::from_js_value(ctx, service.storage.clone().into_js_value(ctx))?;
+    install_decoder(ctx, &object)?;
     let native_list: JSFunc = object.get("list")?;
     install_list_array_shim(ctx, &object, native_list)?;
     *service.exposed.borrow_mut() = Some(object.clone());

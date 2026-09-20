@@ -16,7 +16,7 @@ mod update;
 
 /// Host app identity. Everything here is fixed for the life of the process;
 /// the language the app renders in is not, and lives on
-/// `lx.app.displayLanguage`.
+/// `lx.host.displayLanguage`.
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
@@ -27,7 +27,7 @@ struct AppBaseInfo {
     product_name: String,
     #[js_name = "version"]
     version: String,
-    #[js_name = "SDKVersion"]
+    #[js_name = "sdkVersion"]
     sdk_version: String,
 }
 
@@ -86,12 +86,12 @@ async fn set_app_badge(
     let lxapp = invocation.lxapp();
     let surface = badge_surface(options.0)?;
     let available = lingxia_platform::badge_surfaces();
-    let text = badge_text(value, "lx.app.setBadge")?;
+    let text = badge_text(value, "lx.host.setBadge")?;
     if available.numeric_only && !text.is_empty() && text.parse::<i64>().is_err() {
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
             format!(
-                "lx.app.setBadge on this platform paints a count, so {text:?} is not a badge it can draw; pass a number or null"
+                "lx.host.setBadge on this platform paints a count, so {text:?} is not a badge it can draw; pass a number or null"
             ),
         )
         .into());
@@ -126,7 +126,7 @@ where
         .map_err(|error| {
             rong::HostError::new(
                 rong::error::E_INTERNAL,
-                format!("lx.app.setBadge task failed: {error}"),
+                format!("lx.host.setBadge task failed: {error}"),
             )
         })?
         .map_err(|error| js_error_from_platform_error(&error))
@@ -152,7 +152,7 @@ fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
         "tray" => Ok(BadgeSurface::Tray),
         other => Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
-            format!("lx.app.setBadge surface must be auto, appIcon, or tray (received {other:?})"),
+            format!("lx.host.setBadge surface must be auto, appIcon, or tray (received {other:?})"),
         )
         .into()),
     }
@@ -180,11 +180,11 @@ pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
 /// The native host app around this lxapp — its identity, updates, and window.
 fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
-    match lx.get::<_, JSObject>("app") {
+    match lx.get::<_, JSObject>("host") {
         Ok(obj) => Ok(obj),
         Err(_) => {
             let obj = JSObject::new(ctx);
-            lx.set("app", obj.clone())?;
+            lx.set("host", obj.clone())?;
             Ok(obj)
         }
     }
@@ -209,7 +209,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 /// Register read-only host identity for every lxapp context, including focused
 /// system apps that intentionally do not receive the broader `lx.*` surface.
 ///
-/// `lx.app.displayLanguage` belongs here: rendering in the product's language
+/// `lx.host.displayLanguage` belongs here: rendering in the product's language
 /// is what every context does, control surfaces included.
 pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     register_app_property(ctx)?;
@@ -219,9 +219,9 @@ pub(crate) fn init_base(ctx: &JSContext) -> JSResult<()> {
     appearance::init_follower(ctx, &app)
 }
 
-/// `lx.app.control` — the members that edit product-wide settings, and the one
+/// `lx.host.control` — the members that edit product-wide settings, and the one
 /// writer for each. Injected only into the ControlApp session, so
-/// `lx.app.control !== undefined` reports that identity. Every member
+/// `lx.host.control !== undefined` reports that identity. Every member
 /// behind it still authorizes on its own.
 fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::is_control_app(ctx) {
@@ -237,7 +237,7 @@ fn init_control_namespace(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
 rong::js_api! {
     fn register_app_property(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
-        const app: "HostAppApi" = app_namespace(ctx)?;
+        const host: "HostAppApi" = app_namespace(ctx)?;
     }
 }
 

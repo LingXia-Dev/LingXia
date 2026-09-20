@@ -12,10 +12,7 @@ use lingxia_transfer::{
     upload_file_with_behavior,
 };
 use lxapp::LxApp;
-use rong::{
-    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise,
-    function::Optional,
-};
+use rong::{HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
@@ -196,118 +193,6 @@ fn progress_value(
     None
 }
 
-fn install_async_iterator(ctx: &JSContext, iterator: &JSObject) -> JSResult<()> {
-    let symbol = ctx
-        .global()
-        .get::<_, JSObject>("Symbol")?
-        .get::<_, rong::JSSymbol>("asyncIterator")?;
-    iterator.set(
-        symbol,
-        JSFunc::new(ctx, move |this: rong::function::This<JSObject>| {
-            (*this).clone()
-        })?,
-    )?;
-    Ok(())
-}
-
-fn bind_abort_signal_to_iterator(
-    ctx: &JSContext,
-    signal: Option<JSObject>,
-    iterator: &JSObject,
-) -> JSResult<()> {
-    let Some(signal) = signal else {
-        return Ok(());
-    };
-
-    let target = iterator.clone();
-    let cancel_fn = JSFunc::new(ctx, move || -> JSResult<()> {
-        if let Ok(cancel) = target.get::<_, JSFunc>("cancel") {
-            let _ = cancel.call::<_, JSObject>(Some(target.clone()), ());
-        }
-        Ok(())
-    })?;
-
-    if signal.get::<_, bool>("aborted").unwrap_or(false) {
-        cancel_fn.call::<_, ()>(None, ())?;
-        return Ok(());
-    }
-
-    let add_event_listener = signal
-        .get::<_, JSFunc>("addEventListener")
-        .map_err(|_| js_invalid_parameter_error("uploadFile signal must be an AbortSignal"))?;
-    let listener_opts = JSObject::new(ctx);
-    listener_opts.set("once", true)?;
-    add_event_listener.call::<_, ()>(Some(signal), ("abort", cancel_fn, listener_opts))?;
-    Ok(())
-}
-
-fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promise) -> JSResult<()> {
-    let then_promise = promise.clone();
-    let then_ctx = ctx.clone();
-    iterator.set(
-        "then",
-        JSFunc::new(
-            ctx,
-            move |on_fulfilled: Optional<JSValue>,
-                  on_rejected: Optional<JSValue>|
-                  -> JSResult<JSObject> {
-                let then = then_promise.then()?;
-                then.call(
-                    Some(then_promise.clone().into_object()),
-                    (
-                        on_fulfilled
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                        on_rejected
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                    ),
-                )
-            },
-        )?,
-    )?;
-
-    let catch_promise = promise.clone();
-    let catch_ctx = ctx.clone();
-    iterator.set(
-        "catch",
-        JSFunc::new(
-            ctx,
-            move |on_rejected: Optional<JSValue>| -> JSResult<JSObject> {
-                let catch_fn = catch_promise.catch()?;
-                catch_fn.call(
-                    Some(catch_promise.clone().into_object()),
-                    (on_rejected
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&catch_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let finally_promise = promise.clone();
-    let finally_ctx = ctx.clone();
-    iterator.set(
-        "finally",
-        JSFunc::new(
-            ctx,
-            move |on_finally: Optional<JSValue>| -> JSResult<JSObject> {
-                let finally_fn = finally_promise.get::<_, JSFunc>("finally")?;
-                finally_fn.call(
-                    Some(finally_promise.clone().into_object()),
-                    (on_finally
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&finally_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let wait_promise = promise;
-    iterator.set("wait", JSFunc::new(ctx, move || wait_promise.clone())?)?;
-    Ok(())
-}
-
 fn get_present_property(obj: &JSObject, field: &str) -> Option<JSValue> {
     obj.get::<_, JSValue>(field)
         .ok()
@@ -348,20 +233,20 @@ fn read_optional_string_field(
 }
 
 fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
-    let Some(value) = get_present_property(obj, "timeout") else {
+    let Some(value) = get_present_property(obj, "timeoutMs") else {
         return Ok(None);
     };
     if !value.is_number() {
         return Err(js_invalid_parameter_error(
-            "uploadFile timeout must be a positive number",
+            "uploadFile timeoutMs must be a positive number",
         ));
     }
-    let timeout = value
-        .to_rust::<f64>()
-        .map_err(|_| js_invalid_parameter_error("uploadFile timeout must be a positive number"))?;
+    let timeout = value.to_rust::<f64>().map_err(|_| {
+        js_invalid_parameter_error("uploadFile timeoutMs must be a positive number")
+    })?;
     if !timeout.is_finite() || timeout <= 0.0 {
         return Err(js_invalid_parameter_error(
-            "uploadFile timeout must be a positive number",
+            "uploadFile timeoutMs must be a positive number",
         ));
     }
     Ok(Some(timeout.round() as u64))
@@ -633,11 +518,12 @@ fn spawn_upload_worker(state: Arc<Mutex<UploadIteratorState>>) {
 /// body instead, which is what presigned object-storage URLs expect.
 ///
 /// Returns the task handle synchronously, before the transfer starts, so
-/// progress and cancellation can be wired up without racing it: the handle is
-/// awaitable for the final result, async-iterable for progress, and cancelable.
+/// progress and cancellation can be wired up without racing it: `result` settles
+/// once, `progress` streams to one consumer, and `cancel()` aborts.
 fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_upload_options(options)?;
+    crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let url = options.url.trim().to_string();
     if url.is_empty() {
         return Err(js_error_from_business_code_with_detail(
@@ -732,12 +618,11 @@ fn upload_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         })?,
     )?;
 
-    install_promise_methods(&ctx, &iterator, final_promise)?;
-    install_async_iterator(&ctx, &iterator)?;
-    bind_abort_signal_to_iterator(&ctx, options.signal, &iterator)?;
+    let task = crate::task_object::create_task(&ctx, iterator, final_promise, &["cancel"])?;
+    crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
 
     spawn_upload_worker(state);
-    Ok(iterator)
+    Ok(task)
 }
 
 async fn upload_next_step(
@@ -1068,19 +953,19 @@ mod tests {
         let (_runtime, ctx) = js_context();
 
         let value = number(&ctx, 1500.6);
-        let parsed = parse_upload_options(options(&ctx, &[("timeout", value)])).unwrap();
+        let parsed = parse_upload_options(options(&ctx, &[("timeoutMs", value)])).unwrap();
         assert_eq!(parsed.timeout_ms, Some(1501));
 
         for input in [0.0, -1.0, f64::NAN, f64::INFINITY] {
             let value = number(&ctx, input);
             assert!(
-                parse_upload_options(options(&ctx, &[("timeout", value)])).is_err(),
+                parse_upload_options(options(&ctx, &[("timeoutMs", value)])).is_err(),
                 "timeout {input} should be rejected"
             );
         }
 
         let value = string(&ctx, "3000");
-        assert!(parse_upload_options(options(&ctx, &[("timeout", value)])).is_err());
+        assert!(parse_upload_options(options(&ctx, &[("timeoutMs", value)])).is_err());
     }
 
     #[test]

@@ -3,7 +3,7 @@ import Foundation
 /// The two business codes the user-dismissable `lx.*` family speaks.
 ///
 /// `userDismissed` is the whole contract behind that family: the Logic layer
-/// turns it into `{ canceled: true }` and anything else into a rejection. An
+/// turns it into `{ status: 'canceled' }` and anything else into a rejection. An
 /// adapter that sends it for a real failure therefore reports a crash as "the
 /// user said no" — silently, and in the direction where the caller keeps going.
 /// Named here and in `crates/lingxia-logic/src/dismissal.rs` so both ends of

@@ -15,15 +15,15 @@ rong::js_api! {
         /// The user dismissed the operation. Never an error.
         ///
         type CanceledResult = r###"{
-    canceled: true;
+    status: 'canceled';
 }"###;
 
-        /// Result of `lx.showActionSheet`. Branch on `canceled` before reading
-        /// the selected item index.
+        /// Result of `lx.showActionSheet`. Branch on `status` before reading
+        /// the selected item id.
         type ActionSheetResult = r###"{
-    canceled: false;
-    /** Index of the tapped item in `itemList`. */
-    index: number;
+    status: 'ok';
+    /** Stable id of the selected action. */
+    id: string;
 } | CanceledResult"###;
 
         type AppConfig = r###"{
@@ -43,7 +43,7 @@ rong::js_api! {
     /**
      * Optional app-owned durable output path.
      *
-     * Omit `filePath` to receive a temporary result in `tempFilePath`. Relative
+     * Omit `filePath` to receive a temporary result in `uri`. Relative
      * paths resolve under user data. `lx://` paths must target `lx://userdata`;
      * `lx://usercache` is not accepted here.
      */
@@ -55,31 +55,22 @@ rong::js_api! {
 }"###;
 
         type AppDownloadResult = r###"{
-    /**
-     * Temporary result.
-     *
-     * Not durable; move or copy it to `lx://userdata` if you need to keep it.
-     *
-     * When `filePath` is omitted, the runtime must be able to infer a file
-     * type from the URL or the server's `Content-Type` header.
-     */
-    tempFilePath: string;
-    filePath?: never;
+    uri: AppDownloadFilePath;
+    storage: 'temp';
     mimeType?: string;
-    size: number;
+    sizeBytes: number;
 } | {
-    /** Durable destination under `lx://userdata`. */
-    filePath: AppDownloadFilePath;
-    tempFilePath?: never;
+    uri: AppDownloadFilePath;
+    storage: 'userdata';
     mimeType?: string;
-    size: number;
+    sizeBytes: number;
 }"###;
 
         type AppInstance = r###"AppConfig & {
     globalData: Record<string, unknown>;
 }"###;
 
-        /// Canonical platform-family label shared by `lx.app.getBaseInfo().os`
+        /// Canonical platform-family label shared by `lx.host.getBaseInfo().os`
         /// and `lx.getDeviceInfo().osName`. `"unknown"` is a non-product build.
         type HostOs = r###"'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'"###;
 
@@ -139,7 +130,7 @@ rong::js_api! {
 
         type AppScreenshotResult = r###"{
     /** `lx://` URI of the captured PNG in the lxapp temp directory. */
-    tempFilePath: string;
+    uri: string;
     /** Image width in pixels, when the runtime could read it from the PNG. */
     width?: number;
     /** Image height in pixels, when the runtime could read it from the PNG. */
@@ -289,8 +280,8 @@ rong::js_api! {
         /** Omit/`system` follows the OS. `light`/`dark` force chrome. `#RGB`/`#RRGGBB`/`#RRGGBBAA` is a solid fill. */
         background?: 'system' | 'light' | 'dark' | string;
     }): Promise<
-        | { canceled: false; id: string; action: string }
-        | { canceled: true; id: string; reason: 'dismissed' | 'timeout' | 'replaced' }
+        | { status: 'ok'; id: string; action: string }
+        | { status: 'canceled'; id: string; reason: 'dismissed' | 'timeout' | 'replaced' }
     >;
     /** Unknown ids are fine. */
     dismiss(id: string): Promise<void>;
@@ -317,7 +308,7 @@ rong::js_api! {
         ///
         /// App-scoped, not lxapp-scoped: the figure covers every lxapp the host
         /// has run. Injected only into the Control app, same gate as
-        /// `lx.app.control` — guests do not have the member.
+        /// `lx.host.control` — guests do not have the member.
         ///
         type AppCacheApi = r###"{
     /** Estimated reclaimable managed bytes; excludes live session storage and WebView cache. */
@@ -501,7 +492,7 @@ rong::js_api! {
         /// the system.
         type AppearancePreference = r###"'auto' | 'light' | 'dark'"###;
 
-        /// `lx.app.appearance` — the scheme this lxapp renders in.
+        /// `lx.host.appearance` — the scheme this lxapp renders in.
         type AppearanceApi = r###"{
     /**
      * The scheme this lxapp is rendering in. An lxapp that pinned one in its
@@ -517,7 +508,7 @@ rong::js_api! {
     watch(callback: (resolved: ResolvedAppearance) => void): () => void;
 }"###;
 
-        /// `lx.app.control.appearance` — the product's own light/dark setting.
+        /// `lx.host.control.appearance` — the product's own light/dark setting.
         type ControlAppearanceApi = r###"{
     /** What the user chose for the whole product. */
     getPreference(): AppearancePreference;
@@ -528,7 +519,7 @@ rong::js_api! {
     setPreference(preference: AppearancePreference): Promise<void>;
     /**
      * Follow the choice, not what it resolves to: a system flip under `'auto'`
-     * moves `lx.app.appearance.watch` and leaves this quiet. Starts with the
+     * moves `lx.host.appearance.watch` and leaves this quiet. Starts with the
      * current value; that first callback runs synchronously, before
      * `watchPreference` returns.
      */
@@ -539,7 +530,7 @@ rong::js_api! {
         /// autocomplete while still accepting a tag.
         type DisplayLanguagePreference = r###"'auto' | (string & {})"###;
 
-        /// `lx.app.displayLanguage` — the language this lxapp renders in.
+        /// `lx.host.displayLanguage` — the language this lxapp renders in.
         type DisplayLanguageApi = r###"{
     /**
      * The language in effect right now, as a canonical BCP-47 tag. Map it to
@@ -561,7 +552,7 @@ rong::js_api! {
     watch(callback: (language: string) => void): () => void;
 }"###;
 
-        /// `lx.app.control.displayLanguage` — the preference behind that
+        /// `lx.host.control.displayLanguage` — the preference behind that
         /// language, for the one surface that edits it.
         type ControlDisplayLanguageApi = r###"{
     /** What the user chose: `'auto'`, or a canonical BCP-47 tag. */
@@ -577,13 +568,13 @@ rong::js_api! {
     watchPreference(callback: (preference: DisplayLanguagePreference) => void): () => void;
 }"###;
 
-        /// `lx.app.control` — product-wide settings, and their single writer.
+        /// `lx.host.control` — product-wide settings, and their single writer.
         ///
         /// Present only in the Control app. Bind it once rather than repeating
-        /// `lx.app.control!`:
+        /// `lx.host.control!`:
         ///
         /// ```js
-        /// const control = lx.app.control;
+        /// const control = lx.host.control;
         /// if (!control) return; // not the Control app
         /// await control.appearance.setPreference('dark');
         /// ```
@@ -651,14 +642,16 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.chooseDirectory`. Branch on `canceled` before reading
+        /// Result of `lx.chooseDirectory`. Branch on `status` before reading
         /// the selected directory.
         type ChooseDirectoryResult = r###"{
-    canceled: false;
+    status: 'ok';
     /** Native-consumable directory reference (path or URI). */
     path: string;
 } | CanceledResult"###;
 
+        type PickFileOptions = r###"Omit<ChooseFileOptions, 'multiple'>"###;
+        type PickFileResult = r###"{ status: 'ok'; uri: string } | CanceledResult"###;
         type ChooseFileOptions = r###"{
     /** Allow selecting multiple files. Default: false */
     multiple?: boolean;
@@ -673,10 +666,10 @@ rong::js_api! {
     defaultPath?: string;
 }"###;
 
-        /// Result of `lx.chooseFile`. Branch on `canceled` before reading the
+        /// Result of `lx.chooseFile`. Branch on `status` before reading the
         /// selected paths.
         type ChooseFileResult = r###"{
-    canceled: false;
+    status: 'ok';
     /**
      * File paths returned by LingXia; always at least one. Values may be
      * app-local paths, `lx://...` paths, or platform system-picker references.
@@ -691,19 +684,19 @@ rong::js_api! {
     mediaType?: ('image' | 'video')[];
     sourceType?: ('album' | 'camera')[];
     camera?: 'back' | 'front';
-    maxDuration?: number;
+    maxDurationSeconds?: number;
 }"###;
 
-        /// Result of `lx.chooseMedia`. Branch on `canceled` before reading the
+        /// Result of `lx.chooseMedia`. Branch on `status` before reading the
         /// selected entries.
         type ChooseMediaResult = r###"{
-    canceled: false;
+    status: 'ok';
     /** Picked media; always at least one entry. */
     entries: [ChosenMediaEntry, ...ChosenMediaEntry[]];
 } | CanceledResult"###;
 
         type ChosenMediaEntry = r###"{
-    tempFilePath: string;
+    uri: string;
     fileType: 'image' | 'video';
     isOriginal: boolean;
 }"###;
@@ -732,28 +725,23 @@ rong::js_api! {
     type?: ClipboardType;
 }"###;
 
-        /// Result of `lx.clipboard.readText`. Branch on `canceled`, then on
-        /// `empty` — the same shape `read` uses. A copied empty string is
-        /// `{ empty: false, text: '' }`; an image-only clipboard is
-        /// `{ empty: true }`.
+        /// Result of `lx.clipboard.readText`. Branch on `status`.
+        /// A copied empty string is `{ status: 'ok', text: '' }`;
+        /// an image-only clipboard is `{ status: 'empty' }`.
         type ClipboardTextResult = r###"{
-    canceled: false;
-    empty: true;
+    status: 'empty';
 } | {
-    canceled: false;
-    empty: false;
+    status: 'ok';
     text: string;
 } | CanceledResult"###;
 
         /// Result of `lx.clipboard.read`. Omit `type` to receive every
         /// representation this host can surface. A requested type that is
-        /// absent is `{ empty: true }`, not an error.
+        /// absent is `{ status: 'empty' }`, not an error.
         type ClipboardReadResult = r###"{
-    canceled: false;
-    empty: true;
+    status: 'empty';
 } | {
-    canceled: false;
-    empty: false;
+    status: 'ok';
     items: ClipboardItem[];
 } | CanceledResult"###;
 
@@ -778,12 +766,13 @@ rong::js_api! {
 }"###;
 
         type CompressImageResult = r###"{
-    tempFilePath: string;
+    uri: string;
 }"###;
 
         type CompressVideoIteratorResult = r###"IteratorResult<CompressVideoProgressEvent, void>"###;
 
         type CompressVideoOptions = r###"{
+    signal?: AbortSignal;
     /**
      * Source video path or `lx://` URI.
      */
@@ -829,7 +818,7 @@ rong::js_api! {
 }"###;
 
         type CompressVideoResult = r###"{
-    tempFilePath: string;
+    uri: string;
     width: number;
     height: number;
     durationMs: number;
@@ -843,26 +832,14 @@ rong::js_api! {
 
         /// Handle returned by `lx.compressVideo`.
         ///
-        /// Awaiting the task resolves with the final {@link CompressVideoResult}.
-        /// Iterating it with `for await` yields {@link CompressVideoProgressEvent}s
+        /// Awaiting `task.result` resolves with the final {@link CompressVideoResult}.
+        /// Iterating `task.progress` with `for await` yields {@link CompressVideoProgressEvent}s
         /// while the transcode runs.
         ///
-        type CompressVideoTask = r###"PromiseLike<CompressVideoResult> & AsyncIterable<CompressVideoProgressEvent> & {
-    next(): Promise<CompressVideoIteratorResult>;
-    /** Stops iteration only. Does not cancel the compression. */
-    return(): Promise<CompressVideoIteratorResult>;
-    catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<CompressVideoResult | TResult>;
-    finally(onfinally?: (() => void) | null): Promise<CompressVideoResult>;
-    /**
-     * Cancels the transcode and deletes any partial output.
-     * The task promise rejects with an `AbortError` (`code: 'E_ABORT'`).
-     */
-    cancel(): void;
-    wait(): Promise<CompressVideoResult>;
-}"###;
+        type CompressVideoTask = r###"CancelableTask<CompressVideoResult, CompressVideoProgressEvent>"###;
 
         type ConnectWifiOptions = r###"{
-    SSID: string;
+    ssid: string;
     password?: string;
 }"###;
 
@@ -890,7 +867,7 @@ rong::js_api! {
      */
     headers?: Record<string, string>;
     /** Request timeout in milliseconds. */
-    timeout?: number;
+    timeoutMs?: number;
     /** Optional abort signal. */
     signal?: AbortSignal;
 }"###;
@@ -902,17 +879,17 @@ rong::js_api! {
      * Optional filename hint for the system Downloads destination.
      * This is not an app-owned `lx.fs` path.
      */
-    filePath?: string;
+    suggestedName?: string;
+    filePath?: never;
     /** Save into the user's system Downloads directory. */
     destination: 'downloads';
 }"###;
 
         type DownloadsDownloadResult = r###"{
-    /** Native system Downloads path. Do not pass this to `lx.fs`. */
-    filePath: SystemDownloadsPath;
-    tempFilePath?: never;
+    uri: SystemDownloadsPath;
+    storage: 'downloads';
     mimeType?: string;
-    size: number;
+    sizeBytes: number;
 }"###;
 
         type ExtractVideoThumbnailOptions = r###"{
@@ -949,7 +926,7 @@ rong::js_api! {
     /**
      * Generated thumbnail file path.
      */
-    tempFilePath: string;
+    uri: string;
     /**
      * Output image width in pixels.
      */
@@ -980,10 +957,10 @@ rong::js_api! {
         /// Location APIs.
         ///
         type GetLocationOptions = r###"{
-    type?: 'wgs84' | 'gcj02';
+    coordinateSystem?: 'wgs84' | 'gcj02';
     altitude?: boolean;
     isHighAccuracy?: boolean;
-    highAccuracyExpireTime?: number;
+    timeoutMs?: number;
 }"###;
 
         type GetVideoInfoOptions = r###"{
@@ -1046,8 +1023,8 @@ rong::js_api! {
      * host updates for the rest of this process, same as
      * {@link HostAppApi.claimCustomUpdate}.
      *
-     * The returned task can be awaited directly when progress is not needed, or
-     * consumed with `for await...of` to render progress.
+     * Await `task.result` when progress is not needed, or iterate
+     * `task.progress` to render it.
      *
      * On `direct`, downloads and hands off install. On `store`, opens the
      * platform store listing (no package is downloaded) and resolves
@@ -1063,14 +1040,7 @@ rong::js_api! {
     state: 'installRequested' | 'storeOpened';
 }"###;
 
-        type HostAppUpdateTask = r###"PromiseLike<HostAppUpdateResult> & AsyncIterable<HostAppUpdateEvent> & {
-    next(): Promise<HostAppUpdateIteratorResult>;
-    /** Stops iteration only. It does not cancel an app update already handed to the platform. */
-    return(): Promise<HostAppUpdateIteratorResult>;
-    catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<HostAppUpdateResult | TResult>;
-    finally(onfinally?: (() => void) | null): Promise<HostAppUpdateResult>;
-    wait(): Promise<HostAppUpdateResult>;
-}"###;
+        type HostAppUpdateTask = r###"Task<HostAppUpdateResult, HostAppUpdateEvent>"###;
 
         /// Input event APIs.
         ///
@@ -1110,11 +1080,11 @@ rong::js_api! {
     recursive?: boolean;
 }"###;
 
-        /// Result of `lx.showModal`. `canceled: false` means the user confirmed;
+        /// Result of `lx.showModal`. `status: 'ok'` means the user confirmed;
         /// there is no third resolved outcome. Presentation failures reject.
         ///
         type ModalResult = r###"{
-    canceled: false;
+    status: 'ok';
 } | CanceledResult"###;
 
         /// Options for `lx.navigateBack()`. Omit the object or `delta` to pop
@@ -1225,31 +1195,11 @@ rong::js_api! {
 
         type PreviewMediaCloseReason = r###"'manual' | 'completed' | 'interrupted' | 'error'"###;
 
-        /// Handle returned synchronously from `lx.previewMedia(...)` — synchronous so
-        /// listeners can be attached before the first event fires:
-        ///
-        /// - `presented` resolves once the first pixel of the underlying media has
-        ///   been composited to screen. Use this to time the hide of an overlay
-        ///   surface above the preview so the swap is seamless. Never rejects;
-        ///   resolves with no value when the first frame is up. Safe to ignore.
-        /// - `current` is a live `{ index, source }` snapshot of the item on screen,
-        ///   updated as the user swipes and as the session auto-advances.
-        /// - `onChange(listener)` fires for every item change. Returns an
-        ///   unsubscribe function.
-        /// - `completed` resolves `{ reason, index, source }` when the preview
-        ///   session ends (manual / auto / interrupted / error), or rejects on abort.
-        ///
-        /// If the call was aborted before any frame was presented, `presented` still
-        /// resolves (with no value) once the abort takes effect — it never rejects,
-        /// to keep fire-and-forget usage safe.
-        ///
-        /// @example
-        /// const preview = lx.previewMedia({ sources, startIndex: 2 });
-        /// preview.onChange(({ source }) => markAsViewed(source.path));
-        /// const { reason, source } = await preview.completed;
-        ///
+        /// A media session. `presented` distinguishes a rendered first frame from
+        /// an early close, cancellation, or failure. `completed` reports closure;
+        /// native playback errors may report reason `error`, while request failures reject.
         type PreviewMediaHandle = r###"{
-    readonly presented: Promise<void>;
+    readonly presented: Promise<{ status: 'presented' } | { status: 'notPresented'; reason: 'canceled' | 'failed' | 'closed' }>;
     readonly current: PreviewMediaChange;
     onChange(listener: (change: PreviewMediaChange) => void): () => void;
     readonly completed: Promise<PreviewMediaResult>;
@@ -1398,10 +1348,10 @@ rong::js_api! {
     scanType?: ('barCode' | 'qrCode' | 'datamatrix' | 'pdf417')[];
 }"###;
 
-        /// Result of `lx.scanCode`. Branch on `canceled` before reading the scan
+        /// Result of `lx.scanCode`. Branch on `status` before reading the scan
         /// payload.
         type ScanCodeResult = r###"{
-    canceled: false;
+    status: 'ok';
     scanResult: string;
     scanType: string;
 } | CanceledResult"###;
@@ -1501,8 +1451,17 @@ true
 }"###;
 
         type ShowActionSheetOptions = r###"{
-    itemList: string[];
+    items: readonly { id: string; label: string }[];
     itemColor?: string;
+}"###;
+
+        /// An acknowledgement dialog has no cancel button.
+        type AlertOptions = r###"Omit<ShowModalOptions, 'showCancel' | 'cancelText' | 'cancelColor'>"###;
+        /// A confirmation dialog always permits declining.
+        type ConfirmOptions = r###"Omit<ShowModalOptions, 'showCancel'>"###;
+        type ToastHandle = r###"{
+    /** Dismiss this toast only; harmless after a newer toast replaces it. */
+    dismiss(): Promise<void>;
 }"###;
 
         type ShowModalOptions = r###"{
@@ -1521,7 +1480,7 @@ true
     title: string;
     icon?: 'success' | 'error' | 'loading' | 'none';
     image?: string;
-    duration?: number;
+    durationMs?: number;
     mask?: boolean;
     position?: 'top' | 'center' | 'bottom';
 }"###;
@@ -1539,7 +1498,7 @@ true
      * shape, exactly like a `JSON.parse` boundary; a missing key resolves
      * `undefined`, which a stored `null` never does.
      */
-    get<T = unknown>(key: string): Promise<T | undefined>;
+    get<T = unknown>(key: string, decode?: (value: unknown) => T): Promise<T | undefined>;
     set(key: string, value: unknown): Promise<void>;
     /**
      * Resolves whether an exact key exists, without reading its value. Prefer
@@ -1565,7 +1524,7 @@ true
         type StreamSourceOptions = r###"{
     provider: string;
     isLive: boolean;
-    duration?: number;
+    durationSeconds?: number;
     params?: Record<string, unknown>;
 }"###;
 
@@ -1711,29 +1670,24 @@ true
 
         /// A host builtin page such as downloads. The shell owns
         /// its lifetime and its visibility, so this handle reports identity:
-        /// there is no `show` / `hide`, and the inherited `close()` rejects
-        /// with `unsupported_placement`.
+        /// there is no `show`, `hide`, `close`, or `onClose`.
         ///
-        type BuiltinSurface = r###"SurfaceBase & {
+        type BuiltinSurface = r###"Omit<SurfaceBase, 'close' | 'onClose'> & {
     readonly kind: 'builtin';
 }"###;
 
         /// External content in the in-app browser.
         ///
-        type TabSurface = r###"SurfaceBase & {
+        type TabSurface = r###"(SurfaceBase & {
     readonly kind: 'tab';
     readonly realized: 'tab' | 'aside';
-    /**
-     * `tab` when this handle owns exactly the tab it opened, and `close()` /
-     * `activate()` act on it. `group` when the browser chrome owns the tab
-     * strip: the content is open, but control belongs to that chrome, so both
-     * methods reject with `unsupported_placement`. Branch on this rather than
-     * on the old platform-dependent `null`.
-     */
-    readonly scope: 'tab' | 'group';
-    /** Bring this tab to the front of its browser. `scope: 'group'` rejects. */
+    readonly scope: 'tab';
     activate(): Promise<void>;
-}"###;
+}) | (Omit<SurfaceBase, 'close' | 'onClose'> & {
+    readonly kind: 'tab';
+    readonly realized: 'tab' | 'aside';
+    readonly scope: 'group';
+})"###;
 
         /// Every surface handle, narrowable by `kind`.
         ///
@@ -1748,7 +1702,7 @@ true
     size?: OverlaySurfaceSize;
     interaction?: SurfaceInteraction;
     query?: PageQuery;
-    /** Caller-owned identity, for `lx.surface.get(key)` later. */
+    /** Caller-owned identity, for `lx.surface.getByKey(key)` later. */
     key?: string;
 }"###;
 
@@ -1788,7 +1742,7 @@ true
     /** Preferred docking side when the realized placement is an aside. */
     edge?: SurfaceEdge;
     size?: OverlaySurfaceSize;
-    /** Stable identity for `lx.surface.get(key)`. */
+    /** Stable identity for `lx.surface.getByKey(key)`. */
     key?: string;
 }"###;
 
@@ -1801,7 +1755,7 @@ true
         ///
         type ShellOpenDeclaredOptions = r###"{
     /**
-     * Caller-owned identity, for `lx.surface.get(key)` later — the same key
+     * Caller-owned identity, for `lx.surface.getByKey(key)` later — the same key
      * every opener takes. It carries one extra power here: a declaration can
      * be opened more than once, and the key is which instance you mean, so a
      * new key creates one. 1 to 128 UTF-8 bytes. Declarations without
@@ -1836,7 +1790,7 @@ true
      */
     channel?: LxAppEnvVersion;
     targetVersion?: string;
-    /** Stable identity for `lx.surface.get(key)`. */
+    /** Stable identity for `lx.surface.getByKey(key)`. */
     key?: string;
 }"###;
 
@@ -1863,19 +1817,16 @@ true
      */
     openDeclared(id: string): Promise<DeclaredSurface>;
     /**
-     * The live handle for a surface this lxapp opened **with a `key`**, found
-     * by that key or by its `id`. Removes the need to cache handles in order
-     * to reuse or close them. A surface opened without a `key` is not
-     * addressable — nothing else refers to a runtime-assigned id, so nothing
-     * registers it. A key you chose wins over an id it happens to spell.
+     * Find a live surface by the explicit key passed when opening it.
+     * Runtime-assigned ids are not lookup keys.
      */
-    get(keyOrId: string): AnySurface | undefined;
+    getByKey(key: string): AnySurface | undefined;
     /**
      * Observe this presentation's viewport. Invoked immediately with the
      * current context, then again whenever it changes. Returns an unsubscribe
      * function.
      */
-    onContext(handler: (context: SurfaceContext) => void): () => void;
+    watchContext(handler: (context: SurfaceContext) => void): () => void;
 }"###;
 
         /// Surfaces (docked asides, floats, windows, browser tabs, declared surfaces)
@@ -1890,7 +1841,7 @@ true
  */
  | 'reclaimed' | 'unknown'"###;
 
-        /// The current surface viewport context, delivered to `lx.surface.onContext()`
+        /// The current surface viewport context, delivered to `lx.surface.watchContext()`
         /// so an lxapp can choose a compact or workspace View. Column count and
         /// spacing inside `regular` use CSS or the raw `width` / `height`.
         ///
@@ -1935,7 +1886,7 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
-        /// Where `lx.app.setBadge` paints.
+        /// Where `lx.host.setBadge` paints.
         ///
         /// `auto` (the default) marks every product-owned surface this platform
         /// has: the dock and the menu-bar item on macOS, the taskbar and the
@@ -1994,7 +1945,7 @@ true
 
         /// Callback-based updates for this lxapp's bundle. Available to every
         /// lxapp. To update the native host app, the Control app uses the
-        /// task-based `lx.app.checkUpdate()` API instead.
+        /// task-based `lx.host.checkUpdate()` API instead.
         ///
         /// Listeners are a set: later subscriptions do not replace earlier ones.
         /// The last pending ready/failed event is replayed to each new
@@ -2042,8 +1993,8 @@ true
         ///   bodyMode: 'raw',
         ///   mimeType: 'video/mp4',
         /// });
-        /// for await (const event of task) render(event.progress);
-        /// const { statusCode } = await task;
+        /// for await (const event of task.progress) render(event.progress);
+        /// const { statusCode } = await task.result;
         /// ```
         ///
         type UploadOptions = r###"{
@@ -2065,7 +2016,7 @@ true
      */
     headers?: Record<string, string>;
     /** Request timeout in milliseconds. */
-    timeout?: number;
+    timeoutMs?: number;
     /**
      * File MIME type. Types the file part under `multipart`; becomes the
      * request `Content-Type` under `raw`, where it defaults to
@@ -2123,15 +2074,7 @@ true
     data: string;
 }"###;
 
-        type UploadTask = r###"PromiseLike<UploadResult> & AsyncIterable<UploadProgressEvent> & {
-    next(): Promise<UploadIteratorResult>;
-    /** Stops iteration only. Does not cancel the underlying upload task. */
-    return(): Promise<UploadIteratorResult>;
-    catch<TResult = never>(onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null): Promise<UploadResult | TResult>;
-    finally(onfinally?: (() => void) | null): Promise<UploadResult>;
-    cancel(): Promise<void>;
-    wait(): Promise<UploadResult>;
-}"###;
+        type UploadTask = r###"CancelableTask<UploadResult, UploadProgressEvent>"###;
 
         type VideoCompressQuality = r###"'low' | 'medium' | 'high'"###;
 
@@ -2139,7 +2082,7 @@ true
     play(): void;
     pause(): void;
     stop(): void;
-    seek(position: number): void;
+    seek(positionSeconds: number): void;
     requestFullScreen(): void;
     exitFullScreen(): void;
     setStreamSource(options: StreamSourceOptions): void;

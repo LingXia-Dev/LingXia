@@ -71,7 +71,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
     await app.eval({
       timeoutMs: 15_000,
       script: `
-        const handle = lx.surface.get(${JSON.stringify(float.id)});
+        const handle = lx.surface.getByKey(${JSON.stringify(float.id)});
         if (handle) await handle.close();
       `,
     }).catch(() => undefined);

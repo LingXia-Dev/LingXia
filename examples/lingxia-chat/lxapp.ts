@@ -8,7 +8,7 @@ function moreFeedbackLabel(tag: string): string {
   return moreFeedbackByLanguage[language];
 }
 
-function applyMoreActions(tag = lx.app.displayLanguage.get()) {
+function applyMoreActions(tag = lx.host.displayLanguage.get()) {
   lx.setMoreActions([
     {
       icon: 'public/chat.png',
@@ -37,10 +37,10 @@ App({
   onLaunch() {
     console.log('LingXia Chat launched');
 
-    lx.app.displayLanguage.watch((tag) => {
+    lx.host.displayLanguage.watch((tag) => {
       applyMoreActions(tag);
     });
-    lx.app.control?.displayLanguage.watchPreference(() => {
+    lx.host.control?.displayLanguage.watchPreference(() => {
       applyMoreActions();
     });
 
@@ -53,7 +53,7 @@ App({
         cancelText: 'Later',
         confirmText: 'Apply',
       });
-      if (!applyNow.canceled) {
+      if (applyNow.status !== 'canceled') {
         um.applyUpdate();
       }
     });

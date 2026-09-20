@@ -42,7 +42,7 @@ spec('round-trip text, empty clipboard, and typed image items', {
         await lx.clipboard.write({ type: 'image', filePath: fixture });
         const imageTypes = await lx.clipboard.types();
         const imageRead = await lx.clipboard.read({ type: 'image' });
-        const imageItem = imageRead.empty ? null : imageRead.items.find((item) => item.type === 'image');
+        const imageItem = (imageRead.status === 'empty') ? null : imageRead.items.find((item) => item.type === 'image');
         const imageInfo = imageItem
           ? await lx.getImageInfo({ path: imageItem.filePath })
           : null;
@@ -53,22 +53,22 @@ spec('round-trip text, empty clipboard, and typed image items', {
         const emptyTypes = await lx.clipboard.types();
 
         return {
-          writtenCanceled: written.canceled,
-          writtenEmpty: written.canceled ? null : written.empty,
-          writtenText: !written.canceled && !written.empty ? written.text : null,
+          writtenCanceled: (written.status === 'canceled'),
+          writtenEmpty: (written.status === 'canceled') ? null : (written.status === 'empty'),
+          writtenText: written.status !== 'canceled' && !(written.status === 'empty') ? written.text : null,
           afterWriteTypes: afterWrite,
-          typedEmpty: typed.canceled ? true : typed.empty,
-          typedText: !typed.canceled && !typed.empty
+          typedEmpty: (typed.status === 'canceled') ? true : (typed.status === 'empty'),
+          typedText: typed.status !== 'canceled' && !(typed.status === 'empty')
             ? typed.items.find((item) => item.type === 'text')?.text
             : null,
-          emptyStringEmpty: emptyString.canceled ? null : emptyString.empty,
-          emptyStringText: !emptyString.canceled && !emptyString.empty ? emptyString.text : null,
+          emptyStringEmpty: (emptyString.status === 'canceled') ? null : (emptyString.status === 'empty'),
+          emptyStringText: emptyString.status !== 'canceled' && !(emptyString.status === 'empty') ? emptyString.text : null,
           imageTypes,
-          imageEmpty: imageRead.canceled ? true : imageRead.empty,
+          imageEmpty: (imageRead.status === 'canceled') ? true : (imageRead.status === 'empty'),
           imageWidth: imageInfo && imageInfo.width,
           imageHeight: imageInfo && imageInfo.height,
-          afterClearEmpty: afterClear.canceled ? null : afterClear.empty,
-          emptyRead: emptyRead.canceled ? false : emptyRead.empty,
+          afterClearEmpty: (afterClear.status === 'canceled') ? null : (afterClear.status === 'empty'),
+          emptyRead: (emptyRead.status === 'canceled') ? false : (emptyRead.status === 'empty'),
           emptyTypes,
         };
       } finally {
@@ -156,7 +156,7 @@ async function expectHarmonyReadsDenied(
           read,
           imageTypes,
           readImage,
-          afterClearEmpty: afterClear.canceled ? null : afterClear.empty,
+          afterClearEmpty: (afterClear.status === 'canceled') ? null : (afterClear.status === 'empty'),
           emptyTypes,
         };
       } finally {

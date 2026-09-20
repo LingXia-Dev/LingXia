@@ -14,16 +14,16 @@ use rong::{JSContext, JSObject, JSResult};
 /// (Android), and `USER_DISMISSED_CODE` (Harmony).
 pub(crate) const USER_DISMISSED: u32 = 2000;
 
-/// `{ canceled: true }` — the user dismissed the operation.
+/// `{ status: 'canceled' }` — the user dismissed the operation.
 pub(crate) fn canceled(ctx: &JSContext) -> JSResult<JSObject> {
     let result = JSObject::new(ctx);
-    result.set("canceled", true)?;
+    result.set("status", "canceled")?;
     Ok(result)
 }
 
-/// `{ canceled: false }` — set the payload fields on the returned object.
+/// `{ status: 'ok' }` — set the payload fields on the returned object.
 pub(crate) fn completed(ctx: &JSContext) -> JSResult<JSObject> {
     let result = JSObject::new(ctx);
-    result.set("canceled", false)?;
+    result.set("status", "ok")?;
     Ok(result)
 }

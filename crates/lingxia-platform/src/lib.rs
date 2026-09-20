@@ -63,7 +63,7 @@ pub mod desktop;
 
 /// Canonical platform-family label — the single source of truth for "which
 /// OS is this," shared by the WebView bridge config injection
-/// (`lingxia-lxapp`), `lx.app.getBaseInfo().os`, and `lx.getDeviceInfo().osName`
+/// (`lingxia-lxapp`), `lx.host.getBaseInfo().os`, and `lx.getDeviceInfo().osName`
 /// (`lingxia-logic`) so the three can never drift apart. Matches the values
 /// the View-side bridge already exposes via `usePlatform().os`.
 pub fn os_label() -> &'static str {
@@ -100,7 +100,7 @@ pub fn os_label() -> &'static str {
 }
 
 /// Local notifications are implemented on every LingXia host. Presence of
-/// `lx.app.notification` also requires the declared yaml capability.
+/// `lx.host.notification` also requires the declared yaml capability.
 #[cfg(any(
     target_os = "macos",
     target_os = "windows",
@@ -125,7 +125,7 @@ pub fn banner_supported() -> bool {
 
 /// The product-owned chrome this platform can actually paint a count on.
 ///
-/// `lx.app.setBadge` skips unsupported surfaces and returns `false` when
+/// `lx.host.setBadge` skips unsupported surfaces and returns `false` when
 /// none can be painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BadgeSurfaces {
@@ -193,7 +193,7 @@ pub fn badge_surfaces() -> BadgeSurfaces {
 
 /// Whether launch-at-startup can actually work on this host, probed at
 /// runtime. macOS builds target 12 but SMAppService needs 13+, so the
-/// `lx.app.autostart` member must not be registered from a compile-time
+/// `lx.host.autostart` member must not be registered from a compile-time
 /// gate alone — presence is the JS support contract.
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 pub fn autostart_supported() -> bool {

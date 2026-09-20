@@ -65,7 +65,7 @@ export function getAppMessages(displayLanguage: DisplayLanguage) {
 }
 
 export async function applyShowcaseTabBar(
-  tag = lx.app.displayLanguage.get(),
+  tag = lx.host.displayLanguage.get(),
 ): Promise<void> {
   const { t } = getAppMessages(resolveDisplayLanguage(tag));
   await lx.tabBar.update({

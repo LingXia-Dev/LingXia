@@ -417,10 +417,34 @@ fn selected_directory_path_to_uri(lxapp: &LxApp, raw_path: &str) -> JSResult<Str
     )))
 }
 
-/// Opens a file picker.
-///
-/// Resolves `{ canceled: true }` only when the user dismisses the picker. A
-/// completed selection resolves `{ canceled: false, paths }` with at least one
+/// Pick one file. A successful selection returns one opaque URI.
+async fn pick_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
+    let mut options = options.0.unwrap_or_default();
+    options.multiple = Some(false);
+    let result = choose_file(ctx, Optional(Some(options))).await?;
+    if result.get::<_, String>("status")? == "ok" {
+        let paths = result.get::<_, Vec<String>>("paths")?;
+        result.set(
+            "uri",
+            paths
+                .first()
+                .ok_or_else(|| js_internal_error("picker returned no file"))?
+                .as_str(),
+        )?;
+        result.delete("paths")?;
+    }
+    Ok(result)
+}
+
+/// Pick one or more files. Dismissal is a normal outcome.
+async fn pick_files(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
+    let mut options = options.0.unwrap_or_default();
+    options.multiple = Some(true);
+    choose_file(ctx, Optional(Some(options))).await
+}
+
+/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+/// completed selection resolves `{ status: 'ok', paths }` with at least one
 /// path. Rejects when the picker fails or returns an invalid payload.
 async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
@@ -483,8 +507,8 @@ async fn choose_file(ctx: JSContext, options: Optional<JSChooseFileOptions>) -> 
 
 /// Opens a directory picker.
 ///
-/// Resolves `{ canceled: true }` only when the user dismisses the picker. A
-/// completed selection resolves `{ canceled: false, path }`. Rejects when the
+/// Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+/// completed selection resolves `{ status: 'ok', path }`. Rejects when the
 /// picker fails or returns an invalid payload.
 async fn choose_directory(
     ctx: JSContext,
@@ -1386,6 +1410,8 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
         fn openFile(ts_params = "options: OpenFileOptions", ts_return = "void") = open_file;
         // Precise multiple-correlated overloads remain in the curated Lx augmentation.
+        fn pickFile(ts_params = "options?: PickFileOptions", ts_return = "Promise<PickFileResult>") = pick_file;
+        fn pickFiles(ts_params = "options?: PickFileOptions", ts_return = "Promise<ChooseFileResult>") = pick_files;
         fn chooseFile(ts_params = "options: never", ts_return = "never") = choose_file;
         fn chooseDirectory(
             ts_params = "options?: ChooseDirectoryOptions",
@@ -1404,26 +1430,26 @@ rong::js_api! {
 rong::js_api! {
     fn register_fs_api(ctx) {
         namespace FileSystemApi = fs_namespace(ctx)?;
-        fn file(ts_params = "path: string", ts_return = "LxFile") = fs_file;
-        fn exists(ts_params = "path: string") = fs_exists;
-        fn stat(ts_params = "path: string") = fs_stat;
+        fn file(ts_params = "path: ManagedPath", ts_return = "LxFile") = fs_file;
+        fn exists(ts_params = "path: ManagedPath") = fs_exists;
+        fn stat(ts_params = "path: ManagedPath") = fs_stat;
         fn readDir(
-            ts_params = "path: string",
+            ts_params = "path: ManagedPath",
             ts_return = "Promise<DirEntry[]>"
         ) = fs_read_dir;
-        fn mkdir(ts_params = "path: string, options?: FsMkdirOptions") = fs_mkdir;
+        fn mkdir(ts_params = "path: ManagedPath, options?: FsMkdirOptions") = fs_mkdir;
         // Text only here; the byte overload is merged in `lingxia-types`, where
         // a second signature can express that bytes take no `encoding`.
         fn write(
-            ts_params = "path: string, data: string, options?: FsWriteOptions"
+            ts_params = "path: ManagedPath, data: string, options?: FsWriteOptions"
         ) = fs_write;
         fn copy(
-            ts_params = "source: string, destination: string, options?: FsCopyOptions"
+            ts_params = "source: ManagedPath, destination: ManagedPath, options?: FsCopyOptions"
         ) = fs_copy;
         fn rename(
-            ts_params = "source: string, destination: string, options?: FsRenameOptions"
+            ts_params = "source: ManagedPath, destination: ManagedPath, options?: FsRenameOptions"
         ) = fs_rename;
-        fn remove(ts_params = "path: string, options?: FsRemoveOptions") = fs_remove;
+        fn remove(ts_params = "path: ManagedPath, options?: FsRemoveOptions") = fs_remove;
     }
 }
 

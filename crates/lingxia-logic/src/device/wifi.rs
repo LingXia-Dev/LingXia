@@ -62,7 +62,7 @@ fn normalize_wifi_connected_payload(payload: &str) -> Option<String> {
 
     // Build normalized payload
     let mut result = json!({
-        "SSID": ssid,
+        "ssid": ssid,
         "secure": secure,
         "signalStrength": signal_strength,
         "connected": connected,
@@ -70,7 +70,7 @@ fn normalize_wifi_connected_payload(payload: &str) -> Option<String> {
     });
 
     if let Some(bssid) = bssid {
-        result["BSSID"] = Value::String(bssid.to_string());
+        result["bssid"] = Value::String(bssid.to_string());
     }
     if let Some(freq) = frequency {
         result["frequency"] = Value::from(freq);
@@ -137,10 +137,10 @@ fn clear_wifi_connected_callback(ctx: &JSContext) -> JSResult<()> {
 #[derive(Debug, Clone, IntoJSObject)]
 pub struct WifiInfo {
     /// Service Set Identifier (network name)
-    #[js_name = "SSID"]
+    #[js_name = "ssid"]
     ssid: String,
     /// Basic Service Set Identifier (MAC address)
-    #[js_name = "BSSID"]
+    #[js_name = "bssid"]
     bssid: Option<String>,
     /// Whether the network is secure (requires password)
     secure: bool,
@@ -189,7 +189,7 @@ fn parse_wifi_info_from_json(item: &Value, default_signal: u8, default_secure: b
 #[ts_skip]
 struct JSConnectWifiOptions {
     /// SSID of the network to connect to
-    #[js_name = "SSID"]
+    #[js_name = "ssid"]
     ssid: String,
     /// Network password (omit for open networks)
     password: Option<String>,

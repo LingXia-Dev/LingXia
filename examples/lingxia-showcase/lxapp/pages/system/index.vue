@@ -50,7 +50,7 @@
               </div>
               <div class="flex justify-between items-center py-3">
                 <span class="text-sm text-gray-600">SDK Version</span>
-                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.SDKVersion || '--' }}</span>
+                <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ appBaseInfo.sdkVersion || '--' }}</span>
               </div>
             </div>
           </div>

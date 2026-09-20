@@ -21,7 +21,7 @@ Page({
     });
 
     try {
-      const location = await lx.getLocation({ highAccuracyExpireTime: 10_000 });
+      const location = await lx.getLocation({ timeoutMs: 10_000 });
 
       console.log("Location info:", location);
 

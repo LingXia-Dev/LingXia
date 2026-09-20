@@ -28,6 +28,7 @@ struct JSStreamSourceOptions {
     provider: String,
     #[js_name = "isLive"]
     is_live: bool,
+    #[js_name = "durationSeconds"]
     duration: Option<f64>,
     params: Option<JSObject>,
 }
@@ -193,7 +194,8 @@ impl JSVideoContext {
     }
 
     #[js_method]
-    fn seek(&self, position: f64) -> JSResult<()> {
+    fn seek(&self, position_seconds: f64) -> JSResult<()> {
+        let position = position_seconds;
         if self.has_stream_source()? {
             seek_stream_session_async_shared(&self.shared, &self.component_id, position);
         }

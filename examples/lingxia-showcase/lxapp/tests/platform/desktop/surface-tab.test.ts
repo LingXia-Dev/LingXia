@@ -36,7 +36,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   id: 'DESKTOP-SURFACE-TAB-001',
   covers: [
     'lx.surface.openUrl',
-    'lx.surface.get',
+    'lx.surface.getByKey',
     'TabSurface.kind',
     'TabSurface.realized',
     'TabSurface.scope',
@@ -77,7 +77,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
         alive: !!state?.tab.alive,
         visible: !!state?.tab.visible,
         closed: state?.closed ?? 0,
-        registered: lx.surface.get(${JSON.stringify(key)}) != null,
+        registered: lx.surface.getByKey(${JSON.stringify(key)}) != null,
       };
     `,
   }) as Promise<TabState>;
@@ -114,7 +114,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
       const state = { tab, closed: 0, off: null };
       state.off = tab.onClose(() => { state.closed += 1; });
       globalThis[${JSON.stringify(stateKey)}] = state;
-      const registered = lx.surface.get(${JSON.stringify(key)});
+      const registered = lx.surface.getByKey(${JSON.stringify(key)});
       return {
         kind: tab.kind,
         realized: tab.realized,

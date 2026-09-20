@@ -139,7 +139,7 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
 
 /// OS local notifications, for native hosts that have no JS Logic.
 ///
-/// The same contract `lx.app.notification` exposes: `id` is the replace key,
+/// The same contract `lx.host.notification` exposes: `id` is the replace key,
 /// and a tap resolves through [`crate::navigation`], so a native host can send
 /// the user to a native screen without inventing a product URL for it.
 pub mod notification {

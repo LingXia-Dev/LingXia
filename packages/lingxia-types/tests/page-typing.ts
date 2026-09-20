@@ -36,7 +36,8 @@ Page({
   },
 
   bump() {
-    this.setData({ count: this.data.count + 1 }, () => {});
+    this.setData({ count: this.data.count + 1 });
+    void this.flush();
   },
 });
 
