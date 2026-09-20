@@ -162,9 +162,13 @@ not say:
   marks the dock *and* the menu-bar item on macOS, the taskbar *and* the
   notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
   There is no separate tray badge call.
-- A platform with no such chrome is a no-op that returns `false`, never a
+- A platform with no such chrome is a no-op that resolves `false`, never a
   rejection — call it unconditionally from portable code and gate the UI on
   `lx.supports({ capability: 'badge' })`.
+- Unlike an optional namespace, the method is always there: `'setBadge' in
+  lx.app` is true everywhere, and `badge` says what it can *do*, not whether
+  it exists. Marking the product is decoration, so a platform that cannot is
+  a reason to hide your unread indicator, not to branch the call.
 - **Android returns `false`.** There is no cross-vendor launcher badge; what a
   launcher shows comes from active notifications, not from a standalone count.
 - **iOS needs notification permission** and only accepts a number. The
