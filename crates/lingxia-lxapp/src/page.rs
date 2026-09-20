@@ -810,7 +810,7 @@ impl PageInstance {
             .revoke_required_v3_document(native_authority, self, authority)
     }
 
-    fn owning_lxapp(&self) -> Arc<LxApp> {
+    pub(crate) fn owning_lxapp(&self) -> Arc<LxApp> {
         self.inner.bridge.lxapp()
     }
 
@@ -905,7 +905,9 @@ impl PageInstance {
     pub(crate) fn prepare_for_service_restart(&self) {
         self.cancel_bridge_work();
         if let Ok(mut state) = self.inner.state.lock() {
-            let parked = state.document_is_departing();
+            // reset_webview_lifecycle_state clears the flag, but a parked view
+            // stays parked across the restart.
+            let parked = state.parked;
             Self::reset_webview_lifecycle_state(&mut state);
             state.parked = parked;
         }

@@ -26,24 +26,8 @@ const BINDING_CLASS_BLOCK =
 
 function featureDeclaration() {
   const entries = JSON.parse(readFileSync(join(workspaceDir, "crates/lingxia-logic/src/features.json"), "utf8"));
-  const index = new Map();
-  for (const entry of entries) {
-    if (index.has(entry.key)) throw new Error(`duplicate feature ${entry.key}`);
-    index.set(entry.key, entry);
-  }
-  const visiting = new Set(), visited = new Set();
-  function visit(key) {
-    if (visited.has(key)) return;
-    if (visiting.has(key)) throw new Error(`cyclic feature ${key}`);
-    const entry = index.get(key);
-    if (!entry) throw new Error(`missing feature ${key}`);
-    visiting.add(key);
-    entry.requires.forEach(visit);
-    visiting.delete(key);
-    visited.add(key);
-  }
-  index.forEach((_, key) => visit(key));
-  return `/** Feature contracts generated from the runtime registry. */\nexport type LxFeature = ${[...index.keys()].sort().map(key => `'${key}'`).join(" | ")};\n`;
+  const keys = entries.map((entry) => entry.key).sort();
+  return `/** Feature contracts generated from the runtime registry. */\nexport type LxFeature = ${keys.map(key => `'${key}'`).join(" | ")};\n`;
 }
 
 function dropBindingClasses(source) {

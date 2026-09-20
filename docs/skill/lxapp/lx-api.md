@@ -134,6 +134,10 @@ use supports and a fallback. The string signature requires `minRuntime: "0.18.0"
 or later. Permissions, grants and resource failures are checked at the
 operation, so true is not permission or a promise of success.
 
+`process` is where that gap shows: `lx.supports('process')` is true and
+`lx.process` exists in a Control app that declared `capabilities.process`, but
+every call throws until the native host has granted the process resource.
+
 Optional namespaces and their base feature share the frozen set: `terminal`,
 `app.autostart`, `app.notification`, `app.banner`, `app.cache`. For Control app
 identity use `lx.app.control !== undefined`, not a feature key.
