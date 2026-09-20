@@ -89,11 +89,10 @@ Android hosts may replace the default ExoPlayer URL backend used by
 `lx.previewMedia` (and, opt-in, `<LxVideo>`) with their own engine — typically
 libmpv shipped in the **host** APK. The SDK does not vendor mpv.
 
-Register a process-level factory on the main thread. This is a field write: it
-is safe immediately before `quickStart`, or in the `quickStart` trailing lambda
-(still before any `LxMediaPlayer` is constructed). Load native `.so` files in
-`Application.onCreate` or **before** the setter; do not `loadLibrary` on the
-same line as the setter.
+Register a process-level factory on the main thread, before any `LxMediaPlayer`
+is constructed — immediately before `quickStart`, or in its trailing lambda.
+Load native `.so` files in `Application.onCreate` or before the setter; never on
+the same line as it.
 
 ```kotlin
 Lingxia.setUrlPlayerEngineFactory(object : UrlPlayerEngineFactory {
@@ -108,16 +107,16 @@ Lingxia.setUrlPlayerEngineFactory(object : UrlPlayerEngineFactory {
 Lingxia.quickStart(this) { registerHostAddon() }
 ```
 
-`create() == null` means “use the SDK ExoPlayer for this surface.” The
-recommended default is PREVIEW-only; INLINE (`<LxVideo>` / MediaSwiper) stays
-ExoPlayer unless the factory returns an engine for `INLINE` too. INLINE output
-is always `TextureView`. Each `LxMediaPlayer` snapshots the factory at
-construction; later setter calls do not hot-swap existing players.
-
-The engine must emit `FirstFrameRendered` only after a video frame has been
-submitted to the output surface (`file-loaded` is not enough). Loop-on `Ended`
-is dropped by the SDK adapter so preview does not treat a loop point as
-terminal. v1 does not pass HTTP headers into the engine.
+- `create() == null` means "use the SDK ExoPlayer for this surface". Keep the
+  recommended PREVIEW-only default; INLINE (`<LxVideo>` / MediaSwiper) stays on
+  ExoPlayer unless the factory answers for `INLINE` too, and INLINE output is
+  always `TextureView`.
+- Each `LxMediaPlayer` snapshots the factory at construction, so a later setter
+  call does not hot-swap live players.
+- Emit `FirstFrameRendered` only once a frame reached the output surface
+  (`file-loaded` is not enough). The adapter drops loop-on `Ended` so preview
+  does not treat a loop point as terminal. v1 passes no HTTP headers to the
+  engine.
 
 ---
 
@@ -164,7 +163,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `features` | Recommended | Native Rust compile-time feature switches |
 | `capabilities` | Recommended | Platform/runtime integrations that may initialize SDK capability flows |
 | `theme` | Optional | Application-wide semantic colors for host-owned native UI |
-| `settingsDestination` | Optional | Host-owned Settings 入口的静态目标 descriptor |
+| `settingsDestination` | Optional | Static target for the host-owned Settings entry |
 | `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
 | `splash` | Optional | Generated launch placeholder and first-frame cover |
 | `assets` | Optional | Raw host files packaged through each platform's asset pipeline |
@@ -182,7 +181,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 - `projectName` — technical id (paths, crate, artifacts)
 - `packageId` — required OS id for every platform. **Breaking:** a platform-only id is no longer enough; copy the reverse-DNS onto `app.packageId` yourself. Keep `android.packageId` / `ios.bundleId` / `macos.bundleId` / `windows.appId` / `harmony.bundleName` only when that store listing differs. Env suffix still applies.
 - `productName` — default display name (required). Fallback for any locale not in `productNames`.
-- `productNames` — optional locale → name map (`zh-CN: 我的应用`). Do not repeat `productName`. Launcher follows the **system** language; window title / tray / `lx.getAppBaseInfo().productName` follow `lx.app.displayLanguage` (`auto` = system).
+- `productNames` — optional locale → name map (`zh-CN: 我的应用`). Do not repeat `productName`. Launcher follows the **system** language; window title / tray / `lx.getAppBaseInfo().productName` follow `lx.host.displayLanguage` (`auto` = system).
 - `productVersion` — semver, stamped into every OS package
 - `platforms` — enabled set (`macos`, `windows`, `ios`, `android`, `harmony`)
 
@@ -205,13 +204,18 @@ three ids must line up or the wrong app launches, and the build enforces it:
 
 ## `settingsDestination` Section
 
-`settingsDestination` 在 `lingxia.yaml` 顶层声明产品的 Settings 入口应指向哪里。它是静态、纯数据的 descriptor；CLI 会原样写入生成的 `app.json`，不要直接修改生成文件。未配置时该字段完全省略，macOS/Windows shell 不显示 Settings 入口；显式调用 native resolver 会返回 `SettingsDestinationResolveError::NotConfigured`，不会回退到 home runtime 或 focus-only route。
+`settingsDestination` declares where the product's Settings entry leads. It is a
+static, data-only descriptor: the CLI copies it into the generated `app.json`
+unchanged (edit `lingxia.yaml`, never that file). Unconfigured, the key is
+omitted entirely, the macOS and Windows shells show no Settings entry, and the
+native resolver returns `SettingsDestinationResolveError::NotConfigured` rather
+than falling back to the home runtime or a focus-only route.
 
-三种 `kind` 互斥，只能选择一种：
+The three `kind`s are mutually exclusive — pick one:
 
-- `controlAppPage`：打开 control lxapp 的指定页面；必须提供非空的 `appId` 与 `page`。
-- `browserControlPage`：打开 browser control UI 的指定 route；必须提供非空的 `route`。
-- `nativeAction`：调用 Host 注册的 native action；必须提供非空的 `actionId`。
+- `controlAppPage` — a page of the control lxapp; `appId` and `page` required, both non-empty.
+- `browserControlPage` — a route of the browser control UI; `route` required, non-empty.
+- `nativeAction` — a native action the host registered; `actionId` required, non-empty.
 
 ```yaml
 settingsDestination:
@@ -223,16 +227,19 @@ settingsDestination:
     highlight: true
 ```
 
-前两种目标可以携带 `query`。每个 key 必须非空，value 只能是 JSON scalar（string、number、boolean）或 `null`；array 与 object 会在配置校验时被拒绝。Schema 使用严格 tagged union，拼错字段或混用其他 `kind` 的字段同样会报错。
+The first two may carry `query`. Every key must be non-empty, and every value
+must be a JSON scalar (string, number, boolean) or `null` — arrays and objects
+are rejected during config validation. The schema is a strict tagged union, so a
+misspelled field, or a field belonging to another `kind`, is an error too.
 
-Browser 与纯 native 产品的写法分别是：
+Browser and pure-native products look like this:
 
 ```yaml
 settingsDestination:
   kind: browserControlPage
   route: /settings/privacy
 
-# 或者
+# or
 settingsDestination:
   kind: nativeAction
   actionId: openPreferences
@@ -277,7 +284,7 @@ on Windows they are Fluent theme tokens, with system colors taking precedence
 in a contrast theme.
 
 `defaultAppearance` applies until the user picks a scheme through
-`lx.app.control?.appearance`; the saved choice, `auto` included, wins after
+`lx.host.control?.appearance`; the saved choice, `auto` included, wins after
 that. An lxapp's own `appearance` in `lxapp.json` overrides both. The launch
 screen follows the system.
 
@@ -287,14 +294,12 @@ other raised surfaces. Text, selection, accent, and structural dividers consume
 the correspondingly named roles. Other hosts can map the same semantic roles
 without adding platform-specific configuration.
 
-`pageBackgroundColor` is the odd one out: not a colour native UI paints
-itself, but the host declaring what colour the lxapp paints its page — no
-platform can ask a WebView for its document colour in time to paint a frame
-already on screen. Native chrome uses it wherever it borders the page (the
-strip a pull-to-refresh opens, the canvas behind navigation transitions).
-Set it to the page floor the lxapp's CSS uses, both schemes; unset, each
-platform keeps its system background, which reads as a pale seam on a
-tinted page.
+`pageBackgroundColor` is the odd one out: it tells native chrome what colour the
+lxapp's page will be, because no platform can ask a WebView for its document
+colour in time to paint a frame already on screen. Chrome uses it wherever it
+borders the page (the strip a pull-to-refresh opens, the canvas behind
+navigation transitions). Set it to the page floor your CSS uses, in both
+schemes; unset, the system background reads as a pale seam on a tinted page.
 
 Lxapp page content does not inherit these colors; it responds to the standard
 `prefers-color-scheme` surface and owns its CSS design.
@@ -319,11 +324,28 @@ update:
     windows: direct
 ```
 
-`direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.app.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports('app.selfUpdate')` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
+`direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.host.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports('app.selfUpdate')` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
 
 **Publish the feed package for a `store` platform only after the store listing is live.** The feed is what tells users a new version exists — if it lands while the listing is still in review, everyone is sent to a page with nothing to update.
 
-Reuse the existing store identity — no extra yaml and no country URL. Apple uses `ios.store.appId` / `macos.store.appId` (numeric Apple ID) as `itms-apps://apps.apple.com/app/id…` (HTTPS listing as fallback); the storefront follows the signed-in Apple ID. Android opens the listing in the store that installed the APK (Play / Huawei / Honor / Xiaomi / OPPO / vivo / Samsung / Amazon / Yingyongbao): it sends `market://details?id=` addressed to that store's package, then that store's own scheme, then an HTTPS page — the `android.*Store` blocks are publish identity, not a second listing URL. Harmony uses `appmarket://details?id=` with the bundle name and falls back to the AppGallery HTTPS page from `harmony.store.appId`. Windows uses `windows.store.appId`. These listing ids are baked into `app.json` as `storeListingIds`, and a `store` platform that needs one but has none warns at build time. Do not put a store URL in `appLinks.hosts`: those hosts open *this* app, so a tap would bounce back into the old binary instead of the marketplace.
+Reuse the existing store identity — no extra yaml, no country URL. The ids are
+baked into `app.json` as `storeListingIds`, and a `store` platform that needs one
+but has none warns at build time.
+
+- **Apple** — `ios.store.appId` / `macos.store.appId` (numeric Apple ID) open
+  `itms-apps://apps.apple.com/app/id…`, with the HTTPS listing as fallback; the
+  storefront follows the signed-in Apple ID.
+- **Android** — the listing opens in the store that installed the APK (Play /
+  Huawei / Honor / Xiaomi / OPPO / vivo / Samsung / Amazon / Yingyongbao):
+  `market://details?id=` addressed to that store's package, then that store's
+  own scheme, then an HTTPS page. The `android.*Store` blocks are publish
+  identity, not a second listing URL.
+- **Harmony** — `appmarket://details?id=` with the bundle name, falling back to
+  the AppGallery HTTPS page from `harmony.store.appId`.
+- **Windows** — `windows.store.appId`.
+
+Do not put a store URL in `appLinks.hosts`: those hosts open *this* app, so a tap
+would bounce back into the old binary instead of the marketplace.
 
 Omitted values keep today's defaults: iOS and HarmonyOS are `store`; Android, macOS, and Windows are `direct`.
 
@@ -376,7 +398,7 @@ Empty `lingxiaServer` is rejected. Per-env maps must set at least one of `dev` o
 
 ### Reading the env at runtime
 
-JS: `lx.app.env` — `'dev' | 'prod'`, fixed at boot.
+JS: `lx.host.env` — `'dev' | 'prod'`, fixed at boot.
 
 Rust: `lingxia::app::env()` returns `AppEnv`.
 
@@ -403,12 +425,12 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 `capabilities` is for platform/runtime integrations that must be predeclared before the SDK auto-enables them. Each one toggles the corresponding native runtime feature at build (all default off). Do not list ordinary SDK APIs such as camera here; those request permission only when called.
 
-- `notifications` — unlocks [`lx.app.notification`](../lxapp/lx-api.md#local-notifications) ([Control app](./control-app.md) only) and, on iOS/Harmony, push-token registration. Declaring it never prompts; the product asks.
+- `notifications` — unlocks [`lx.host.notification`](../lxapp/lx-api.md#local-notifications) ([Control app](./control-app.md) only) and, on iOS/Harmony, push-token registration. Declaring it never prompts; the product asks.
 - `browser` — the in-app browser (its newtab / settings / downloads pages and shell runtime). Cross-platform; bundles the browser webui, overridable via the [`browser`](#browser-section) section.
 - `terminal` — the built-in terminal runtime. Required before a `native: terminal` surface can be declared (desktop only).
 - `proxy` — the in-app browser's HTTP proxy (desktop). Requires `browser`.
 - `process` — OS process launch/management for trusted Agent-style products (macOS/Windows). Available only to the [Control app](./control-app.md) — the session created from `app.homeAppId` — and still needs a host privilege grant plus a native Process grant; adds `Rong.spawn`, `Rong.spawnSync`, and `Rong.$` plus the opt-in `@lingxia/types/process` declarations.
-- `autostart` — unlocks `lx.app.autostart` (launch at system startup; macOS/Windows, [Control app](./control-app.md) only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
+- `autostart` — unlocks `lx.host.autostart` (launch at system startup; macOS/Windows, [Control app](./control-app.md) only). Declaring it never registers the app by itself — enabling is a runtime user decision via the API.
 - `appUse` — lets a command line or agent skill on the same machine drive this product's own windows (screenshot, window list, mouse, keyboard), and turns the product's executable into its own command line. macOS/Windows. The local socket this needs is derived, not declared — which IPC carries it is plumbing. Declaring it ships the ability, not the decision: the endpoint stays closed until the user turns it on, the same way `autostart` works.
 - `computerUse` — extends that to the machine, and implies `appUse` because it already contains it (an agent that can drive any window can drive this product's): screenshots of any window, synthetic input, the accessibility tree. Named for what the user grants, because they will be asked — macOS prompts for Accessibility and Screen Recording, and the entry in System Settings is this product. Commands run inside the app rather than in the calling process, so that grant stays attached to the product no matter which terminal invoked it.
 - `browserUse` — extends it to the in-app browser. Requires `browser`.
@@ -467,29 +489,32 @@ The cache cap has the one non-obvious behavior worth knowing: cleanup triggers a
 
 ## `splash` Section
 
-Optional launch screen, generated per platform from a few fields — no hand-built launch UI. The launch experience is "tap the icon, see the art": `image` (PNG, full-screen aspect-fill) is the app's first frame on every cold start, held until the home page first renders, then fading into real content. Where the platform allows it the OS launch frame carries that same art — HarmonyOS's start window, a generated iOS launch storyboard — so the two frames are one picture and the handoff has nothing to change.
+Optional launch screen, generated per platform from a few fields — no
+hand-built launch UI. `image` (PNG, full-screen aspect-fill) is the app's first
+frame on every cold start, held until the home page first renders, then fading
+into content. Where the platform allows it, the OS launch frame carries the same
+art (HarmonyOS's start window, a generated iOS storyboard), so the two frames
+are one picture.
 
-Android is the exception: its 12+ system splash offers a colour and an icon slot and nothing else, so there the OS beat is `background` (required, `#RRGGBB`) and the art arrives on the app's first frame. Pick the art's own ground for `background` and that beat reads as the art's entrance rather than as a flash. On Android the icon slot follows from whether art is configured: with art it is blanked, since the art is the app's real first face and an icon before it would be a second one; without art the platform draws the real app icon, preserving the launcher's zoom morph. HarmonyOS follows the same rule with a generated transparent icon.
+- **Android** is the exception: its 12+ system splash offers only a colour and
+  an icon slot, so `background` (required, `#RRGGBB`) is the OS beat and the art
+  arrives on the app's first frame. Use the art's own ground colour. Configured
+  art blanks the icon slot; without art the platform draws the app icon and
+  keeps the launcher's zoom morph. HarmonyOS follows the same rule.
+- **One face, every appearance.** There is no dark counterpart. The OS composes
+  this frame from build-time resources, so an appearance pair could only follow
+  the *system*, never the product's own light/dark choice — and then disagree
+  with it at launch.
+- `mark` (PNG, authored at the pixels it occupies on screen) is what the OS
+  frame centers when no `image` is configured.
+- `minDuration` (ms, default 600) is measured from process start, not from first
+  paint. The maximum is a framework constant.
+- **iOS** needs the platform installed (`xcodebuild -downloadPlatform iOS`) to
+  compile its generated storyboard. Without it a dev build degrades to
+  `background` alone; a release build fails outright.
 
-**One face, every appearance.** The launch screen is a brand asset, not a UI surface that follows the system: it has to be identical to a frame the OS composed from build-time resources before the process existed, and one picture is the only thing that always is. There is deliberately no dark counterpart — an appearance pair can only ever follow the *system*, never an in-app appearance choice (HarmonyOS's colour mode does not survive process death and iOS has no such lever at all), so the pair's own halves are what end up disagreeing at launch.
-
-`mark` (PNG, authored at the pixels it should occupy on screen) is what the OS frame centers when no `image` is configured — the documented placeholder-only launch, which holds until the home page is ready.
-
-The launch face is this configured art and nothing else. A host's Rust addon can implement `select_campaign` to show a screen of its own *after* the launch face — its own art, a countdown, skippable — see [Launch Screen](../native/splash.md).
-
-`minDuration` (ms, default 600) is the minimum the launch face stays on screen, measured from process start — the OS frame is already showing the same art, so the user has been looking at it since before this process could count. The maximum is a framework constant.
-
-iOS composes its launch frame with a generated storyboard rather than the
-`UILaunchScreen` Info.plist dictionary. That dictionary has no content mode: it
-centres the image at its natural *point* size, so a full-screen cover lands
-oversized and the app's own first frame then snaps it back — one launch, two
-sizes of the same picture. A storyboard fills, exactly as the app's frame does.
-
-Compiling it needs the iOS platform installed (`xcodebuild -downloadPlatform
-iOS`), like the asset catalog. Without it a developer build degrades to the
-`background` alone, and the art arrives on the app's first frame — the Android
-beat — while a release build fails outright, since it would also ship with no
-app icon.
+A host's Rust addon can show a screen of its own *after* the launch face — its
+own art, a countdown, skippable: see [Launch Screen](../native/splash.md).
 
 ---
 
@@ -588,37 +613,43 @@ Each `lxapp` surface needs its assets bundled — list its appId in `resources.b
 
 ### How the desktop shell realizes surfaces
 
-On desktop the main window is a sidebar plus a main area plus docked asides, and the shell picks the realized form from the window width:
+On desktop the main window is a sidebar plus a main area plus docked asides.
 
-- An lxapp in `main` owns the primary content area and appears in the sidebar's main switcher. The content area itself has no tab strip.
-- An lxapp in `aside` occupies a companion region at the left, right, top, or bottom of the main and switches through that region's tab strip. It never appears in the sidebar's main switcher.
+- An lxapp in `main` owns the primary content area and appears in the sidebar's
+  main switcher. That area has no tab strip.
+- An lxapp in `aside` occupies a companion region at the left, right, top, or
+  bottom of the main and switches through that region's tab strip. It never
+  appears in the main switcher.
+- One lxapp holds one live role per window. Opening it under the other role
+  moves or reopens that same logical app; the Host never projects it as both.
 
-One lxapp has one live role in a window. Opening it under the other role must move or reopen that same logical app according to the entry point's contract; the Host must never project it as both main and aside.
+The shell picks the realized form from the window width:
 
-- **Wide**: full sidebar (pins, main tabs, activators) with up to three docked asides beside the main.
-- **Medium**: the sidebar collapses to an icon rail and at most one aside slot is admitted; an explicitly opened slot that cannot preserve the main minimum overlays the content pane.
-- **Narrow desktop**: the icon rail remains and `main` keeps its desktop
-  workspace; asides overlay the main when they cannot be admitted beside it.
-  Browser chrome keeps its top address toolbar; it may collapse secondary
-  actions, but never moves to the bottom or into the rail. A narrow desktop does
-  not restore an lxapp's mobile bottom tabbar.
-- **Mobile / phone Runner**: the sidebar disappears, `main` goes full screen,
-  and asides overlay the main full screen.
+| Width | What the shell does |
+|---|---|
+| Wide | full sidebar (pins, main tabs, activators), up to three docked asides |
+| Medium | sidebar collapses to an icon rail; at most one aside slot, overlaying the content pane when it cannot preserve the main's minimum |
+| Narrow desktop | icon rail stays and `main` keeps its desktop workspace; asides overlay it. Browser chrome keeps its top address toolbar, and no mobile bottom tab bar comes back |
+| Mobile / phone Runner | no sidebar; `main` is full screen and asides overlay it full screen |
 
-Asides group into per-engine slots (lxapp / browser / native), each with its own tab strip; switching tabs hides and shows content, and only an explicit close destroys it.
-When admission reprojects an aside as an overlay, it covers the main content pane inside the same host window; it is not a second workspace window and never enters the main switcher.
+Asides group into per-engine slots (lxapp / browser / native), each with its own
+tab strip: switching tabs hides and shows content, and only an explicit close
+destroys it. An aside reprojected as an overlay stays inside the same host
+window — never a second workspace window, never in the main switcher.
 
-Browser asides adapt their chrome with the slot. Desktop may show the current
-URL read-only, but never permits address editing or user-created tabs. On mobile
-and phone Runner, the aside is a full-screen browser with a single bottom row
-for page history, refresh, its own tab group, and dismissal; it has no address
-row or generic top-left Back. System Back, edge Back, and dismissal return to
-the main without destroying the aside tabs. The self browser keeps its editable
-URL field and a separate tab group; the field accepts URLs, not search queries.
+Browser asides adapt their chrome to the slot — a read-only URL at most on
+desktop, a single bottom row (history, refresh, tab group, dismissal) on mobile
+and phone Runner, and no user-created tabs anywhere. Only the self browser has
+an editable URL field, and it takes URLs, not search queries.
 
 Two sidebar regions have fixed ownership:
 
-- **Pins are the user's** — quick entries for lxapps and websites (eight at most), added and removed through context menus. An lxapp Pin always opens or focuses a main workspace. The Pin tile remains a shortcut while the open lxapp also gets an independent sidebar workspace row for switching and lifecycle controls; hovering the row reveals an explicit ellipsis for its provider-backed menu, and right-click opens the same menu. Unpinning does not close or remove that live row. Its content uses the same rectangle as the home lxapp, with the previous main hidden, no duplicate host window, and no content-area tab strip. It does not inherit a declared aside role. That restriction changes entry role only: a Pin must not add an inset, clip, navigation offset, or alternate content rectangle. Use a sidebar action plus `lx.surface.openDeclared(id)` for the aside entry. There is no production app API to write Pins.
+- **Pins are the user's** — up to eight shortcuts to lxapps and websites, added
+  and removed through context menus. An lxapp Pin opens or focuses a main
+  workspace in the same rectangle the home lxapp uses; it never inherits a
+  declared aside role and never changes insets, clipping, or the content
+  rectangle. For an aside entry, use a sidebar action plus
+  `lx.surface.openDeclared(id)`. There is no production API to write Pins.
 - **Sidebar actions are the control lxapp's** — when one is configured, it may
   declare runtime entries via `lx.shell.sidebarActions` (see the
   `@lingxia/types` declarations). Header actions are icon-only and limited to
@@ -636,7 +667,7 @@ PNG/JPEG/WebP keeps its colours and is center-cropped into the square icon slot.
 Use square raster artwork when cropping would remove meaningful content.
 
 ```ts
-const { tempFilePath } = await lx.downloadFile({ url: activeBrand.logoUrl });
+const { tempFilePath } = await lx.downloadFile({ url: activeBrand.logoUrl }).result;
 lx.shell.sidebarActions.replace([
   {
     id: 'brand',
@@ -653,19 +684,12 @@ download and `replace()` after every Logic launch; never persist a temp path for
 the next launch. Use `update(id, { icon })` for presentation-only changes to an
 existing action, or `replace()` when its placement or callback changes.
 
-The initial `main` is admitted first as the window's stable root and cannot be closed. Other
-main surfaces expose only the actions their content provider supports: browser
-and terminal surfaces may be closed or renamed, while a non-root lxapp
-workspace may be closed or restarted through its provider-backed sidebar menu
-but cannot be renamed. Closing an active non-root main selects another
-remaining main, so the product Host never enters a synthetic zero-main or
-empty-state mode.
-
-In a collapsed desktop rail, hovering the current switcher replaces its icon
-with a rounded, background-backed close `x` only when that main can be closed.
-Inactive switchers keep their icons and click to select; icon-only switchers and
-footer actions expose their labels through tooltip and accessibility text. A
-subtle divider separates Pins from live switchers when both sections exist.
+The initial `main` is the window's stable root and cannot be closed. Other main
+surfaces expose only the actions their content provider supports: browser and
+terminal surfaces may be closed or renamed, while a non-root lxapp workspace may
+be closed or restarted through its provider-backed sidebar menu but not renamed.
+Closing the active non-root main selects another, so the product Host never
+enters a zero-main empty state.
 
 When `homeAppId` is configured, that lxapp remains the trusted control app even
 when the visible desktop main is a URL or native surface. Its Logic worker still
@@ -698,7 +722,7 @@ surfaces:
 The tray's dynamic content is updated from page/app logic:
 
 - `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setMenu(items)` / `lx.tray.onClick(fn)` / `lx.tray.show()` / `lx.tray.hide()` — the status item's own appearance and behaviour.
-- `lx.app.setBadge(value, options?)` — the count, wherever this platform shows one: `surface: 'auto'` (the default) marks the dock *and* the menu-bar item on macOS, the taskbar on Windows, the home-screen icon on iOS and HarmonyOS. There is no separate tray badge call. Call it directly; it resolves whether anything was painted and returns `false` on Android.
+- `lx.host.setBadge(value, options?)` — the count, wherever this platform shows one: `surface: 'auto'` (the default) marks the dock *and* the menu-bar item on macOS, the taskbar *and* the notification-area item on Windows, the home-screen icon on iOS and HarmonyOS. There is no separate tray badge call. Call it directly; it resolves whether anything was painted and returns `false` on Android.
 
 All of these are the product's own chrome, not the calling lxapp's, so they are Control app only; a guest lxapp gets a permission error.
 
@@ -797,7 +821,7 @@ If `--skip-native` is used, SwiftPM links an existing Rust static library. That 
   products, not a way to bypass the control-app contract.
 - Declaring more than one `main` with `launch: true`, or `launch: true` on an `aside`.
 - An `aside` without an `edge`, or an `edge` on a `main`.
-- `native:` on anything but `terminal`, or a terminal surface without `capabilities.terminal: true`, or a terminal `edge` other than `top`/`bottom`.
+- `native:` on anything but `terminal` or `browser`, a built-in surface without its `capabilities` flag, or a terminal `edge` other than `top`/`bottom`.
 - Using `role: float` without a `tray:` — a float surface is only valid as a tray-anchored popover.
 - Reusing one lxapp `appId` across multiple surfaces.
 - Adding Settings or Downloads as their own surfaces — those are built-in browser pages, opened by built-in chrome when `capabilities.browser` is on.

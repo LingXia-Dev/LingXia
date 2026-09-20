@@ -73,9 +73,11 @@ the matching local-control request handler in `install_host_apis`; put neither
 half in `start_services`. See [Driving a Shipped Product](../app/agent-control.md)
 for the command and transport contract.
 
-`install_navigation_routes` registers `{ kind: 'route' }` locations only —
-native screens, not pages. A notification that opens a page uses
-`{ kind: 'page' }` / `{ kind: 'app' }` from JS and does not need a route here.
+`HostAddon::install_navigation_routes` registers `{ kind: 'route' }` locations
+only — native screens, not pages. The registry is sealed before the runtime
+starts, so nothing installed later and nothing a payload carries can add one. A
+notification that opens a page uses `{ kind: 'page' }` / `{ kind: 'app' }` from
+JS and needs no route here.
 
 Platform entrypoints call that registration function:
 
@@ -187,9 +189,11 @@ session's live `Process` grant. Closing, restarting, or replacing that session
 revokes its handles and terminates its running process trees; a successor with
 the same app id cannot control them.
 
-The callback runs while the session it describes is still being created, under
-that session's creation lock. Decide from the authority alone: opening,
-restarting, or closing an lxapp from inside it deadlocks.
+The callback runs once per session while that session is still being created —
+under its creation lock, or on the task that lands its permission snapshot.
+Decide from the authority alone: opening, restarting, or closing an lxapp from
+inside it deadlocks, and never prompt or block on a person there. Sealing a
+session the user already closed grants nothing.
 
 The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
 cannot be called from a route or populated from payload fields. Devtools builds
@@ -322,7 +326,7 @@ async fn export_pdf(
 ) -> lingxia::Result<()> {
     for progress in [25, 60, 100] {
         tokio::select! {
-            _ = stream.canceled() => return Ok(()),
+            _ = (stream.status === 'canceled')() => return Ok(()),
             _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
         }
 

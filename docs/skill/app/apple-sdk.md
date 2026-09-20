@@ -70,10 +70,13 @@ adaptive `surfaces:` list.
 Examples:
 
 - A normal window: a `role: main` surface (with `launch: true`).
-- A docked companion (sidebar/panel): a `role: aside` surface with an `edge` and a `sidebar:` entry.
+- A docked companion (sidebar/panel): a `role: aside` surface with an `edge`. (There is no `sidebar:` field — sidebar entries are declared at runtime through `lx.shell.sidebarActions`.)
 - A menu-bar app: a `role: main` surface with a `tray:` entry and no `launch: true` (starts hidden, opened from the tray).
 
-See [Surfaces (adaptive UI)](./project.md#surfaces-adaptive-ui) for the full configuration model.
+See [Surfaces (adaptive UI)](./project.md#surfaces-adaptive-ui) for the full
+configuration model. `LxAppShellConfiguration` and the other `LxAppShell*` types
+are the shell's own plumbing — `quickStart(configuration:)` is not a way to
+configure product UI.
 
 ## Advanced Embedding
 
@@ -153,31 +156,3 @@ Semantics the signatures can't convey:
   the locale supplied to the Rust runtime by `initializeRuntime()`. `L10n.string`
   resolves the SDK's `en` or `zh-Hans` resource bundle from this value instead
   of independently following the process locale.
-
-## Legacy Shell Override
-
-`LxAppShellConfiguration`, `LxAppShell`, `LxAppSidebarMode`, and
-`LxAppToolbarMode` remain available for migration and internal shell work.
-
-New host apps should not use them to configure product UI. Put product UI in
-`lingxia.yaml` instead.
-
-Legacy examples:
-
-```swift
-var config = LxAppShellConfiguration()
-config.sidebar = .hidden
-config.toolbar = .hidden
-_ = try Lingxia.quickStart(configuration: config)
-```
-
-Equivalent product configuration:
-
-```yaml
-surfaces:
-  - lxapp: myapp
-    role: main
-    launch: true
-```
-
-Prefer the YAML form for new apps. See [App Project Configuration → Surfaces](./project.md#surfaces-adaptive-ui) for the full schema.

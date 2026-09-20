@@ -61,18 +61,29 @@ lingxia new my-browser -t native-app -p windows --main browser --control lxapp -
 standalone `-t lxapp` projects. Native control with lxapp main is also rejected,
 because the visible main lxapp necessarily remains the host's control lxapp.
 
-Custom React template precedence is explicit `--template <path>`, then
-`~/.lingxia/templates/lxapp` when present, then the embedded template. The flag
-implies `--project-type lxapp`. A custom root must contain `package.json` and
-`lxapp.json`; it replaces the embedded template as one unit. Repository metadata
-and generated build directories are not copied, and standard `{{...}}` scaffold
-placeholders are expanded in text files.
+`--template <name>` scaffolds from an installed template provider instead of
+the embedded template, and implies `-t lxapp` (it is rejected for a native
+host). It names an installed template, not a directory — install one first with
+`lingxia template add`. With providers installed and no `--template`, an
+interactive `lingxia new` offers them next to the built-in template. Arguments
+after `--` are passed unchanged to that template's own create step:
 
 ```bash
-lingxia new my-lxapp --template ../my-lxapp-template --yes
+lingxia new my-lxapp --template acme-starter --yes -- --preset dashboard
 ```
 
 See `lingxia new --help` for the flags.
+
+### `lingxia template`
+
+Manage the Git-backed template providers `lingxia new` can scaffold from:
+`add <git-url|local-repo>`, `list`, `update [name]`, `remove <name>`. A provider
+is a repository carrying a `lingxia-template.json` manifest, and may ship
+project files, CLI commands, and skills as one unit.
+
+Installed templates refresh in the background, and the one being scaffolded
+from is always refreshed first — a generated project never starts from a stale
+template.
 
 ### `lingxia build`
 

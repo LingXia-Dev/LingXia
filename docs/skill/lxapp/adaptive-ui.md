@@ -10,12 +10,13 @@ The generated `@lingxia/types` declarations are authoritative:
 
 ```ts
 type SurfaceContext = {
+  aside: boolean;                    // does the host currently offer a docked aside
   sizeClass: 'compact' | 'regular';
   width: number;
   height: number;
 };
 
-lx.surface.onContext(
+lx.surface.watchContext(
   handler: (context: SurfaceContext) => void,
 ): () => void;
 ```
@@ -32,6 +33,9 @@ uses the following ranges with platform-managed hysteresis at 600:
 Content size class is scoped to the lxapp surface, not the host window: an
 aside inside a wide desktop shell can receive `compact`. The shell's own
 `medium` / `expanded` bands drive chrome admission and never reach content.
+`aside` is live host docking availability, decided by the shell rather than
+derived from the content viewport — this subscription is the only way to read
+it.
 
 `regular` is room, not desktop. Pair it with `usePlatform().isDesktop`;
 tablets and foldable phones are mobile, and unfolding a fold flips
@@ -98,7 +102,7 @@ Page({
   } as PageData,
 
   onLoad() {
-    const unsubscribe = lx.surface.onContext((surfaceContext) => {
+    const unsubscribe = lx.surface.watchContext((surfaceContext) => {
       this.setData({ surfaceContext });
     });
     subscriptions.set(this, unsubscribe);
@@ -171,13 +175,6 @@ real permissions.
 LingXia Runner device-frame changes report a new surface viewport. Exercise
 them in one session through automation:
 
-On macOS and Windows, changing between phone, tablet, and desktop presets also
-updates the embedded browser identity used by external websites. The Runner
-uses an engine-compatible synthetic UA (WebKit on macOS, Chromium/Android on
-Windows), not the literal branded device name shown by the frame. This browser
-emulation is for website compatibility only; lxapps must still use surface
-context for layout and interaction decisions.
-
 ```ts
 const auto = lx.automation();
 const app = auto.lxapp();
@@ -203,5 +200,9 @@ color scheme for dual-theme assertions.
 Assert that the old View is absent from the DOM and that Logic-owned state is
 still visible after each switch.
 
-`SurfaceContext.aside` reports live host docking availability. It is not derived
-from the content viewport’s `sizeClass`; use `lx.surface.onContext` to observe it.
+On macOS and Windows, switching between phone, tablet, and desktop presets also
+changes the embedded browser identity external websites see. The Runner sends an
+engine-compatible synthetic UA (WebKit on macOS, Chromium/Android on Windows),
+not the branded device name on the frame. That emulation is for website
+compatibility only — lxapps still decide layout and interaction from surface
+context.
