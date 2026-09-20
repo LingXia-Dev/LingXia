@@ -104,6 +104,19 @@ Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
 ## What you build (pick one shape)
 
+Every page is two layers over a bridge — the split every shape below inherits:
+
+```
+┌─────────────────────┐                          ┌──────────────────────┐
+│ View (WebView)      │ ◄── setData(patch) ───── │ Logic (JS runtime)   │
+│ React / Vue / HTML  │                          │ Page({}) instance    │
+│ renders `data`      │ ──── actions.foo() ────► │ owns state + `lx.*`  │
+└─────────────────────┘                          └──────────────────────┘
+```
+
+View never mutates `data`; it calls an action, and Logic answers with
+`setData`. Shape C swaps the JS Logic for Rust and keeps the same boundary.
+
 | Shape | What it is | Pick when |
 |---|---|---|
 | **A. Standalone lxapp** | Page-based mini-app that runs in any LingXia host (e.g. macOS Runner). | UI/page work, no native shell. |
