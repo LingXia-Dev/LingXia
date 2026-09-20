@@ -14,10 +14,14 @@ export interface QueryMatch {
   visible?: boolean;
   text?: string;
   value?: string | null;
+  enabled?: boolean;
+  editable?: boolean;
+  rect?: { left: number; top: number; width: number; height: number };
   items?: QueryMatch[];
 }
 
 export interface PageLike {
+  eval?(options: { script: string; timeoutMs?: number }): Promise<unknown>;
   query(options: {
     css: string;
     all?: boolean;
@@ -40,6 +44,9 @@ export interface LocatorResolve {
   text: string;
   value: string | null;
   index: number;
+  enabled?: boolean;
+  editable?: boolean;
+  rect?: QueryMatch["rect"];
   kind: "nothing" | "hidden" | "unique" | "many";
 }
 
@@ -105,6 +112,7 @@ export class PageLocator implements Locator {
         text: items[0]?.text ?? "",
         value: items[0]?.value ?? null,
         index: items[0]?.index ?? 0,
+        enabled: items[0]?.enabled, editable: items[0]?.editable,
         kind: "hidden",
       };
     }
@@ -129,6 +137,7 @@ export class PageLocator implements Locator {
       text: unique.text ?? "",
       value: unique.value ?? null,
       index: unique.index ?? items.indexOf(unique),
+      enabled: unique.enabled, editable: unique.editable, rect: unique.rect,
       kind: "unique",
     };
   }
@@ -146,6 +155,21 @@ export class PageLocator implements Locator {
     return `locator ${formatValue(this.selector)} resolved to a visible element`;
   }
 
+  private async actionability(index: number, verb: string): Promise<true | string> {
+    if (!this.page.eval) return true;
+    const result = await this.guard(() => this.page.eval!({ script: `(() => {
+      const el = document.querySelectorAll(${JSON.stringify(this.selector)})[${index}];
+      if (!el || !el.isConnected) return "element detached";
+      el.scrollIntoView({block:"center", inline:"center", behavior:"instant"});
+      if (el.matches(":disabled") || el.closest('[aria-disabled="true"]')) return "element is disabled";
+      if (${JSON.stringify(verb)} !== "click" && (el.readOnly || el.getAttribute("aria-readonly") === "true")) return "element is readonly";
+      const r = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return hit && (hit === el || el.contains(hit)) ? true : "element is obscured";
+    })()` }));
+    return result === true ? true : String(result ?? "invalid actionability response");
+  }
+
   private async act(
     verb: string,
     options: ExpectOptions | undefined,
@@ -153,32 +177,51 @@ export class PageLocator implements Locator {
   ): Promise<void> {
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
     const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-    const started = Date.now();
-    let last: LocatorResolve | undefined;
-    while (true) {
-      last = await this.resolve();
-      if (last.kind === "unique") {
-        await this.record(`page.${verb}`, this.selector, () =>
-          this.guard(() => run(this.selector, last!.index)),
-        );
-        return;
-      }
-      if (Date.now() - started >= timeout) break;
-      await sleep(interval);
+    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
+      throw new TypeError("Action timeout and interval must be positive finite numbers");
     }
-    const resolved = last ?? await this.resolve();
-    const duration = Date.now() - started;
-    const where = displayLocation(this.location.source, this.location.line, this.location.column);
-    throw new AssertionError(
-      verb,
-      resolved.kind,
-      "visible unique element",
-      [
-        `Timed out after ${duration}ms waiting to ${verb} ${formatValue(this.selector)}.`,
-        this.missText(resolved),
-        `at ${where}`,
-      ].join("\n"),
-    );
+    await this.record(`page.${verb}`, this.selector, async () => {
+      const started = Date.now();
+      let last: LocatorResolve | undefined;
+      let previousRect: string | undefined;
+      let reason = "not attached";
+      while (Date.now() - started < timeout) {
+        last = await this.resolve();
+        reason = this.missText(last);
+        if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
+          await this.guard(() => this.page.eval!({ script: `document.querySelectorAll(${JSON.stringify(this.selector)})[${last!.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})` }));
+        }
+        if (last.kind === "unique") {
+          const rect = JSON.stringify(last.rect);
+          const stable = last.rect === undefined || previousRect === rect;
+          previousRect = rect;
+          if (last.enabled === false) reason = "element is disabled";
+          else if (verb !== "click" && last.editable === false) reason = "element is not editable";
+          else if (!stable) reason = "element is moving";
+          else {
+            const check = await this.actionability(last.index, verb);
+            if (check === true) {
+              try {
+                await this.guard(() => run(this.selector, last!.index));
+                return;
+              } catch (error) {
+                // These native errors are raised before input dispatch. A transport
+                // failure is ambiguous and must never resubmit an action.
+                const message = error instanceof Error ? error.message : "";
+                if (!/^Element (?:not found|not interactable):/.test(message)) throw error;
+                reason = message;
+                previousRect = undefined;
+              }
+            }
+            if (check !== true) reason = check;
+          }
+        } else { previousRect = undefined; }
+        await sleep(Math.min(interval, Math.max(1, timeout - (Date.now() - started))));
+      }
+      const where = displayLocation(this.location.source, this.location.line, this.location.column);
+      throw new AssertionError(verb, reason, "stable, enabled, unobscured element",
+        `Timed out after ${Date.now() - started}ms waiting to ${verb} ${formatValue(this.selector)}.\n${reason}\nat ${where}`);
+    });
   }
 }
 

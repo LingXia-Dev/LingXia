@@ -19,7 +19,14 @@ pub fn execute_command(
     args: Option<Value>,
 ) -> Result<Option<Value>> {
     let handler = handler.into();
-    let timeout = command_timeout(args.as_ref());
+    let timeout = if matches!(
+        handler.as_str(),
+        "session.test.poll" | "session.test.cancel"
+    ) {
+        Duration::from_secs(5)
+    } else {
+        command_timeout(args.as_ref())
+    };
     let (mut websocket, _) =
         connect(ws_url).with_context(|| format!("Failed to connect dev websocket: {ws_url}"))?;
     configure_read_timeout(&mut websocket, timeout);

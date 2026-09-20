@@ -9,7 +9,7 @@ import {
 import { formatValue, truncate } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import { rememberInline } from "./report.js";
-import { callerLocation, displayLocation, parseFrames } from "./ids.js";
+import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
   sleep,
@@ -29,7 +29,6 @@ import type {
   RejectExpected,
   RetryMatchers,
   SourceLocation,
-  SpecStatus,
   StepRecord,
   TestApp,
   TestPage,
@@ -62,6 +61,7 @@ export class LiveFixture implements Fixture {
   readonly assertions: AssertionRecord[] = [];
   readonly attachments: AttachmentRef[] = [];
   readonly defers: Array<() => void | Promise<void>> = [];
+  private closed = false;
   aborted = false;
   abortError: Error | null = null;
   private actionSilence = 0;
@@ -349,6 +349,7 @@ export class LiveFixture implements Fixture {
     // body, so a record left at its optimistic default would serialise as an
     // instant success — the hung call rendered as the fastest one in the trace.
     this.openActions.add(record);
+    await this.host.emit({ type: "step_started", name, path: record.path });
     try {
       const result = await this.guard(op);
       record.duration_ms = Date.now() - started;
@@ -360,6 +361,9 @@ export class LiveFixture implements Fixture {
       record.error = toReportError(error, record.path);
       this.openActions.delete(record);
       throw error;
+    } finally {
+      await this.host.emit({ type: "step_finished", name, path: record.path,
+        status: record.status, duration_ms: record.duration_ms, error: record.error });
     }
   }
 
@@ -414,7 +418,10 @@ export class LiveFixture implements Fixture {
     (current ? current.assertions : this.assertions).push(record);
   }
 
+  close(): void { this.closed = true; }
+
   private assertRunnable(): void {
+    if (this.closed) throw new Error("Test fixture is closed");
     if (this.cleanupActive) {
       if (this.cleanupUntil > 0 && Date.now() > this.cleanupUntil) {
         throw new TimeoutError("fixture cleanup budget exceeded");
@@ -517,6 +524,11 @@ export class LiveFixture implements Fixture {
     const self = {
       toBeVisible: (options: ExpectOptions | undefined) =>
         this.retryLocator(locator, "toBeVisible", inverted, options, inverted ? "not visible" : "visible"),
+      toBeHidden: (options?: ExpectOptions) => this.retryLocator(locator, "toBeHidden", inverted, options, true),
+      toBeAttached: (options?: ExpectOptions) => this.retryLocator(locator, "toBeAttached", inverted, options, true),
+      toBeEnabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEnabled", inverted, options, true),
+      toBeDisabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeDisabled", inverted, options, true),
+      toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, options, true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, options, expected),
       toHaveCount: (expected: number, options?: ExpectOptions) =>
@@ -708,6 +720,11 @@ function resolveLocator(locator: Locator): Promise<LocatorResolve> {
 
 function locatorActual(matcher: string, resolved: LocatorResolve | undefined): unknown {
   if (!resolved) return undefined;
+  if (matcher === "toBeHidden") return !resolved.visible;
+  if (matcher === "toBeAttached") return resolved.attached;
+  if (matcher === "toBeEnabled") return resolved.enabled;
+  if (matcher === "toBeDisabled") return resolved.enabled === false;
+  if (matcher === "toBeEditable") return resolved.editable;
   if (matcher === "toHaveCount") return resolved.count;
   if (matcher === "toHaveText") return resolved.text;
   if (matcher === "toHaveValue") return resolved.value;
@@ -722,6 +739,13 @@ function matchLocator(
   expected: unknown,
   inverted: boolean,
 ): void {
+  if (["toBeHidden", "toBeAttached", "toBeEnabled", "toBeDisabled", "toBeEditable"].includes(matcher)) {
+    if (["toBeEnabled", "toBeDisabled", "toBeEditable"].includes(matcher) && resolved.count !== 1) {
+      throw new Error(`Expected one attached element, received ${resolved.count}`);
+    }
+    applyMatcher("toBe", locatorActual(matcher, resolved), true, inverted);
+    return;
+  }
   if (matcher === "toBeVisible") {
     const pass = resolved.visible && resolved.kind === "unique";
     if (pass === inverted) {
@@ -858,12 +882,7 @@ export function toReportError(error: unknown, step?: string): {
 }
 
 function firstLocation(stack: string | undefined): string | undefined {
-  const frame = parseFrames(stack)[0];
-  return frame ? `${frame.file}:${frame.line}:${frame.column}` : undefined;
-}
-
-export function protocolStatus(status: SpecStatus): "passed" | "failed" | "skipped" {
-  if (status === "skipped" || status === "xfail") return status === "skipped" ? "skipped" : "passed";
-  if (status === "passed") return "passed";
-  return "failed";
+  const frames = parseFrames(stack);
+  const frame = frames.length ? resolveOrigin(frames) : undefined;
+  return frame && !isFrameworkFrame(frame.file) ? `${frame.file}:${frame.line}:${frame.column}` : undefined;
 }

@@ -56,6 +56,13 @@ pub struct MappedPosition {
 }
 
 impl TestBundle {
+    pub fn source_content(&self, source: &str) -> Option<&str> {
+        self.map
+            .get_sources()
+            .zip(self.map.get_source_contents())
+            .find_map(|(name, content)| (name == source).then_some(content).flatten())
+    }
+
     /// Replace `<bundle_name>:line:column` occurrences with original
     /// positions. Returns the rewritten stack and the first mapped frame.
     pub fn remap_stack(&self, stack: &str) -> (String, Option<MappedPosition>) {

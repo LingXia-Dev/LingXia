@@ -11,5 +11,8 @@ export interface SpecApi {
   fixme(title: string, options: SpecOptions, body?: SpecBody): void;
   fail(title: string, body: SpecBody): void;
   fail(title: string, options: SpecOptions, body: SpecBody): void;
+  /** Restore product state before every attempt; required for retries. */
+  reset(fn: SpecBody): void;
   beforeEach(fn: SpecBody): void;
+  afterEach(fn: SpecBody): void;
 }

@@ -115,7 +115,7 @@ test("timeout aborts later fixture operations", async () => {
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   await zombie;
-  assert.equal(protocol.failed, 1);
+  assert.equal(protocol.timeout, 1);
   assert.ok(ops.includes("after-sleep"));
   assert.deepEqual(ops.filter((item) => item !== "after-sleep"), ["TimeoutError", "TimeoutError"]);
   assert.ok(!ops.includes("eval-ok"));

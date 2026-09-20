@@ -140,6 +140,7 @@ fn test_result(
                         Some(TestRunResult {
                             duration_ms,
                             error: Some(TestRunError {
+                                detail: Default::default(),
                                 name: "TestProtocolError".to_string(),
                                 message,
                                 stack: None,
@@ -150,7 +151,11 @@ fn test_result(
                     ));
                 }
             };
-            let state = if report.failed == 0 {
+            let state = if report.failed == 0
+                && report.timeout == 0
+                && report.xpass == 0
+                && report.detail.get("partial") != Some(&serde_json::json!(true))
+            {
                 TestRunState::Passed
             } else {
                 TestRunState::Failed
@@ -188,6 +193,7 @@ fn map_state(state: AutomationRunState) -> TestRunState {
 
 fn map_error(error: AutomationRunError) -> TestRunError {
     TestRunError {
+        detail: Default::default(),
         name: error.name,
         message: error.message,
         stack: error.stack,
@@ -197,12 +203,22 @@ fn map_error(error: AutomationRunError) -> TestRunError {
 
 #[derive(Deserialize)]
 struct FrameworkEvent {
+    id: Option<String>,
+    file: Option<String>,
+    line: Option<u64>,
+    total: Option<usize>,
+    #[serde(default)]
+    cases: Vec<Value>,
+    record: Option<Value>,
+    phase: Option<String>,
+    message: Option<String>,
     #[serde(rename = "type")]
     event_type: String,
     name: Option<String>,
     full_name: Option<String>,
     path: Option<String>,
     timeout_ms: Option<u64>,
+    watchdog_timeout_ms: Option<u64>,
     #[serde(default)]
     covers: Vec<String>,
     status: Option<String>,
@@ -215,6 +231,9 @@ fn parse_case_status(status: &str) -> Result<TestCaseStatus, String> {
         "passed" => Ok(TestCaseStatus::Passed),
         "failed" => Ok(TestCaseStatus::Failed),
         "skipped" => Ok(TestCaseStatus::Skipped),
+        "timeout" => Ok(TestCaseStatus::Timeout),
+        "xfail" => Ok(TestCaseStatus::Xfail),
+        "xpass" => Ok(TestCaseStatus::Xpass),
         other => Err(format!("unknown case status: {other}")),
     }
 }
@@ -226,13 +245,26 @@ fn framework_event(value: Value) -> Result<TestEventPayload, String> {
         value.ok_or_else(|| format!("@rongjs/test event is missing {field}"))
     };
     match event.event_type.as_str() {
+        "run_started" => Ok(TestEventPayload::RunStarted {
+            total: event.total.unwrap_or_default(),
+            cases: event.cases,
+        }),
+        "diagnostic" => Ok(TestEventPayload::Diagnostic {
+            phase: event.phase.unwrap_or_default(),
+            message: event.message.unwrap_or_default(),
+        }),
         "case_started" => Ok(TestEventPayload::CaseStarted {
+            id: event.id,
+            file: event.file,
+            line: event.line,
             name: required(event.name, "name")?,
             full_name: required(event.full_name, "full_name")?,
             timeout_ms: event.timeout_ms,
+            watchdog_timeout_ms: event.watchdog_timeout_ms,
             covers: event.covers,
         }),
         "case_finished" => Ok(TestEventPayload::CaseFinished {
+            record: event.record,
             name: required(event.name, "name")?,
             full_name: required(event.full_name, "full_name")?,
             status: parse_case_status(
@@ -270,11 +302,15 @@ fn validate_report(report: &TestReport) -> Result<(), String> {
     let counted_total = report
         .passed
         .checked_add(report.failed)
-        .and_then(|count| count.checked_add(report.skipped));
+        .and_then(|count| count.checked_add(report.skipped))
+        .and_then(|count| count.checked_add(report.timeout))
+        .and_then(|count| count.checked_add(report.xfail))
+        .and_then(|count| count.checked_add(report.xpass));
     if counted_total != Some(report.total) {
         return Err("@rongjs/test report counts do not add up to total".to_string());
     }
     let (mut passed, mut failed, mut skipped) = (0, 0, 0);
+    let (mut timeout, mut xfail, mut xpass) = (0, 0, 0);
     for case in &report.cases {
         match case.status {
             TestCaseStatus::Passed => {
@@ -283,8 +319,15 @@ fn validate_report(report: &TestReport) -> Result<(), String> {
                     return Err("@rongjs/test passed case contains an error".to_string());
                 }
             }
-            TestCaseStatus::Failed => {
-                failed += 1;
+            TestCaseStatus::Xfail => {
+                xfail += 1;
+            }
+            TestCaseStatus::Failed | TestCaseStatus::Timeout | TestCaseStatus::Xpass => {
+                match case.status {
+                    TestCaseStatus::Timeout => timeout += 1,
+                    TestCaseStatus::Xpass => xpass += 1,
+                    _ => failed += 1,
+                }
                 if case.error.is_none() {
                     return Err("@rongjs/test failed case is missing its error".to_string());
                 }
@@ -297,7 +340,16 @@ fn validate_report(report: &TestReport) -> Result<(), String> {
             }
         }
     }
-    if (passed, failed, skipped) != (report.passed, report.failed, report.skipped) {
+    if (passed, failed, skipped, timeout, xfail, xpass)
+        != (
+            report.passed,
+            report.failed,
+            report.skipped,
+            report.timeout,
+            report.xfail,
+            report.xpass,
+        )
+    {
         return Err("@rongjs/test report counts do not match case statuses".to_string());
     }
     Ok(())
@@ -320,6 +372,7 @@ mod tests {
 
     fn case(status: TestCaseStatus) -> TestCaseResult {
         TestCaseResult {
+            detail: Default::default(),
             name: "case".to_string(),
             full_name: "suite > case".to_string(),
             status,
@@ -331,6 +384,10 @@ mod tests {
     #[test]
     fn report_counts_must_match_cases() {
         let report = TestReport {
+            timeout: 0,
+            xfail: 0,
+            xpass: 0,
+            detail: Default::default(),
             total: 1,
             passed: 1,
             failed: 0,
@@ -344,6 +401,10 @@ mod tests {
     #[test]
     fn report_count_overflow_is_rejected() {
         let report = TestReport {
+            timeout: 0,
+            xfail: 0,
+            xpass: 0,
+            detail: Default::default(),
             total: 0,
             passed: usize::MAX,
             failed: 1,
@@ -419,5 +480,41 @@ mod tests {
 
         assert_eq!(state, TestRunState::InternalError);
         assert_eq!(result.unwrap().error.unwrap().name, "TestProtocolError");
+    }
+}
+
+#[cfg(test)]
+mod rich_report_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn six_statuses_and_diagnostics_survive_the_host_adapter() {
+        let cases = ["passed", "failed", "skipped", "timeout", "xfail", "xpass"].iter().map(|status| {
+            let mut case = json!({"id": status, "name": status, "full_name": status,
+                "status": status, "duration_ms": 1, "steps": [], "attachments": [], "file": "tests/a.test.ts"});
+            if matches!(*status, "failed" | "timeout" | "xfail" | "xpass") {
+                case["error"] = json!({"name": "AssertionError", "message": "different", "expected": "1", "actual": "2", "phase": "body"});
+            }
+            case
+        }).collect::<Vec<_>>();
+        let (state, result) = test_result(
+            AutomationRunState::Succeeded,
+            lingxia_automation::runtime::AutomationRunResult {
+                duration_ms: 6,
+                error: None,
+                output: Some(
+                    json!({"schema_version":1,"total":6,"passed":1,"failed":1,"skipped":1,
+                    "timeout":1,"xfail":1,"xpass":1,"duration_ms":6,"cases":cases}),
+                ),
+            },
+        )
+        .unwrap();
+        assert_eq!(state, TestRunState::Failed);
+        let value = serde_json::to_value(result.unwrap().report.unwrap()).unwrap();
+        assert_eq!(value["schema_version"], 1);
+        assert_eq!(value["cases"][3]["status"], "timeout");
+        assert_eq!(value["cases"][1]["error"]["expected"], "1");
+        assert_eq!(value["cases"][1]["file"], "tests/a.test.ts");
     }
 }

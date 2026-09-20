@@ -35,8 +35,9 @@ test("spec.fail inverts only a body assertion", async () => {
   assert.equal(report.cases[0].status, "xfail");
   assert.equal(report.cases[1].status, "xpass");
   assert.equal(report.cases[2].status, "timeout");
-  assert.equal(protocol.passed, 1);
-  assert.equal(protocol.failed, 2);
+  assert.equal(protocol.xfail, 1);
+  assert.equal(protocol.xpass, 1);
+  assert.equal(protocol.timeout, 1);
 });
 
 test("failed specs attach forensics and report.html stays a single inlined file", async () => {
@@ -53,17 +54,17 @@ test("failed specs attach forensics and report.html stays a single inlined file"
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   const failed = report.cases[0];
   const paths = failed.attachments.map((item) => item.path);
-  assert.ok(paths.includes("attachments/fails-for-forensics/failure.png"));
-  assert.ok(paths.includes("attachments/fails-for-forensics/forensics.json"));
-  assert.ok(paths.includes("attachments/fails-for-forensics/logs.txt"));
-  assert.ok(paths.includes("attachments/fails-for-forensics/note.txt"));
+  assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/failure.png"));
+  assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/forensics.json"));
+  assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/logs.txt"));
+  assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/note.txt"));
   assert.equal(report.partial, false);
 
   const html = decodeAttachment(attachments, "report.html");
   assert.match(html, /<!DOCTYPE html>/);
   assert.doesNotMatch(html, /cdn\.|unpkg|jsdelivr|https:\/\/fonts/);
   assert.match(html, /data:image\/png;base64,/);
-  assert.match(html, /attachments\/fails-for-forensics\/failure\.png/);
+  assert.match(html, /attachments\/fails-for-forensics\/attempt-0\/failure\.png/);
 });
 
 test("omits the log tail when the host has no ring", async () => {
@@ -550,7 +551,7 @@ test("a spec timeout marks the action that never returned", async () => {
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(protocol.cases[0].status, "failed");
+  assert.equal(protocol.cases[0].status, "timeout");
 
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   const action = report.cases[0].steps[0];
@@ -559,4 +560,13 @@ test("a spec timeout marks the action that never returned", async () => {
   // exists to prevent.
   assert.equal(action.status, "timeout");
   assert.ok(action.error, "the abandoned action needs its error");
+});
+
+
+test("partial reports cannot appear green in JUnit even with no failed cases", async () => {
+  const { renderJUnit } = await import("../dist/junit.js");
+  const xml = renderJUnit({ partial: true, total: 0, passed: 0, failed: 0, timeout: 0,
+    skipped: 0, xfail: 0, xpass: 0, duration_ms: 1, cases: [] });
+  assert.match(xml, /tests="1" failures="0" errors="1"/);
+  assert.match(xml, /<error message="The test run did not finish"/);
 });

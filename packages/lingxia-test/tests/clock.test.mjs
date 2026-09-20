@@ -188,7 +188,7 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(cleaned, ["healthy"]);
   assert.equal(protocol.cases[0].status, "passed");
-  assert.equal(protocol.cases[1].status, "failed");
+  assert.equal(protocol.cases[1].status, "timeout");
 });
 
 test("a cleanup failure after a timeout keeps the timeout verdict", async () => {

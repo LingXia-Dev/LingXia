@@ -72,7 +72,9 @@ enum SessionAction {
 
 fn main() {
     let args = std::env::args_os().collect::<Vec<_>>();
-    let json_errors = args.iter().any(|arg| arg == "--json" || arg == "--pretty");
+    let json_errors = args
+        .iter()
+        .any(|arg| arg == "--json" || arg == "--pretty" || arg == "--jsonl");
     let pretty_errors = args.iter().any(|arg| arg == "--pretty");
 
     if let Err(err) = run() {

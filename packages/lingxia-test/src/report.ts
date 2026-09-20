@@ -598,7 +598,7 @@ function renderCase(item: CaseRecord, suiteName: string): string {
   return `<details class="case ${tone(item.status)}" id="case-${escapeHtml(item.id)}"
     data-status="${escapeHtml(item.status)}" data-search="${escapeHtml(search)}"${open}>
     <summary>
-      <span class="badge ${tone(item.status)}">${escapeHtml(STATUS_LABEL[item.status] ?? item.status)}</span>
+      <span class="badge ${tone(item.status)}">${item.flaky ? "flaky" : escapeHtml(STATUS_LABEL[item.status] ?? item.status)}</span>
       <span class="case-title">${escapeHtml(item.title)}</span>
       <span class="case-time">${formatDuration(item.duration_ms)}</span>
     </summary>
@@ -607,6 +607,7 @@ function renderCase(item: CaseRecord, suiteName: string): string {
       ${covers}
       ${reason}
       ${error}
+      ${item.attempts && item.attempts.length > 1 ? `<details><summary>${item.attempts.length} attempts</summary>${item.attempts.map(attempt => `<section><h4>Attempt ${(attempt.attempt ?? 0) + 1}: ${escapeHtml(attempt.status)}</h4>${renderError(attempt)}${renderSteps(attempt.steps)}${renderAttachments(attempt)}</section>`).join("")}</details>` : ""}
       ${renderSteps(item.steps)}
       ${renderAssertions(item.assertions ?? [], "spec assertions")}
       ${empty}
@@ -662,7 +663,7 @@ function renderError(item: CaseRecord): string {
   return `<div class="failure">
     <h3>${escapeHtml(error.name)}${error.matcher ? ` &middot; <code>${escapeHtml(error.matcher)}</code>` : ""}</h3>
     <pre class="message">${escapeHtml(error.message)}</pre>
-    ${compare}${at}${inStep}${stack}
+    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${compare}${at}${inStep}${stack}
   </div>`;
 }
 
@@ -765,7 +766,7 @@ export function clearInline(): void {
 }
 
 function inlineFromAttachments(name: string, item: CaseRecord): Inlined | undefined {
-  return inlineStore.get(item.id)?.get(name);
+  return inlineStore.get(`${encodeURIComponent(item.id)}/attempt-${item.attempt ?? 0}`)?.get(name) ?? inlineStore.get(item.id)?.get(name);
 }
 
 export function dataUrl(mimeType: string, base64: string): string {
