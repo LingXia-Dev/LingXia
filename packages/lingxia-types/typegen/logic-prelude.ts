@@ -219,7 +219,7 @@ declare global {
     /**
      * Product-wide cache reporting and clearing for a settings screen.
      * Present only in the Control app; presence agrees with
-     * `lx.supports('app.cache')`.
+     * `lx.app.control !== undefined`.
      */
     cache?: AppCacheApi;
   }

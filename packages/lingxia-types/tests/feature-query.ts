@@ -19,6 +19,12 @@ lx.supports({ capability: 'terminal' });
 lx.supports('surface.aside');
 // @ts-expect-error control is identity, not a feature
 lx.supports('control');
+// @ts-expect-error cache access follows Control identity
+lx.supports('app.cache');
+// @ts-expect-error main is a baseline placement
+lx.supports('surface.main');
+// @ts-expect-error float is a baseline placement
+lx.supports('surface.float');
 // @ts-expect-error option key/value paths are not contracts
 lx.supports('surface.window.chrome.full');
 // @ts-expect-error no implicit coercion
