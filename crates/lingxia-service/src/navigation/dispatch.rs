@@ -10,6 +10,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use super::lxapp_page;
 use super::registry;
 use super::target::{NavigationError, NavigationTarget};
 
@@ -154,8 +155,8 @@ pub fn is_ready() -> bool {
 
 /// Validate and open, or queue until the host is ready.
 ///
-/// Validation runs here as well as at publish time: a route can be removed, or
-/// an App Link host allowlist tightened, between the two.
+/// Validation runs here as well as at publish time: a route can be removed, a
+/// page unpublished, or an App Link host allowlist tightened, between the two.
 pub fn dispatch(request: NavigationRequest) -> Result<(), NavigationError> {
     validate(&request.target)?;
     if !is_ready() {
@@ -169,6 +170,10 @@ pub fn validate(target: &NavigationTarget) -> Result<(), NavigationError> {
     target.check_shape()?;
     match target {
         NavigationTarget::Activate => Ok(()),
+        NavigationTarget::Page { page, .. } => {
+            lxapp_page::validate(lxapp_page::home_appid()?, Some(page))
+        }
+        NavigationTarget::App { appid, page, .. } => lxapp_page::validate(appid, page.as_deref()),
         NavigationTarget::Route { name, params } => registry::validate(name, params),
         NavigationTarget::AppLink { url } => match crate::applink::parse(url) {
             Ok(Some(_)) => Ok(()),
@@ -223,6 +228,14 @@ fn deliver(request: &NavigationRequest) -> Result<(), NavigationError> {
         NavigationTarget::Activate => {
             activate();
             Ok(())
+        }
+        NavigationTarget::Page { page, query } => {
+            let appid = lxapp_page::home_appid()
+                .map_err(|_| NavigationError::unavailable("this product has no home lxapp"))?;
+            lxapp_page::open(appid, Some(page), query)
+        }
+        NavigationTarget::App { appid, page, query } => {
+            lxapp_page::open(appid, page.as_deref(), query)
         }
         NavigationTarget::Route { name, .. } => registry::open(request, name),
         NavigationTarget::AppLink { url } => match crate::applink::deliver(url) {

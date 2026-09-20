@@ -8,6 +8,7 @@
 pub mod intent;
 
 mod dispatch;
+mod lxapp_page;
 mod registry;
 mod target;
 
@@ -15,6 +16,7 @@ pub use dispatch::{
     NavigationRequest, NavigationSource, activate, dispatch, install_activate_handler,
     install_feedback_handler, is_ready, mark_ready, report_unavailable, validate,
 };
+pub use lxapp_page::install as install_lxapp_page_handlers;
 pub use registry::{
     NavigationRoute, NavigationRoutes, RouteHandler, RouteParam, RouteParamKind, install,
     is_sealed, route_names,

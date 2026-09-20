@@ -189,17 +189,21 @@ rong::js_api! {
     | JsonValue[]
     | { [key: string]: JsonValue }"###;
 
-        /// Where a notification tap, a menu item, or an inbound link goes.
+        /// Where a notification tap, a menu item, or the tray goes.
         ///
-        /// `route` names a location the host registered at startup, so an
-        /// internal screen needs no product URL and no configured App Link
-        /// host. `appLink` is an `https://` product URL on a configured host.
-        /// `activate` just brings the product forward.
+        /// `page` and `app` are the same contract as `lx.navigateTo` /
+        /// `lx.navigateToApp`: a configured page name and a query, ordinary
+        /// scene. `route` is a host-registered location that is not a page.
+        /// `appLink` is an `https://` product URL that is also a real inbound
+        /// App Link (`scene === 8003`). `activate` just brings the product
+        /// forward.
         ///
         /// A branch carries its own fields and no others: a mixed target is a
         /// parameter error, not a best guess.
         type NavigationTarget = r###"
     | { kind: 'activate' }
+    | { kind: 'page'; page: ConfiguredPageName; query?: PageQuery }
+    | { kind: 'app'; appId: string; page?: ExternalPageName; query?: PageQuery }
     | { kind: 'route'; name: string; params?: Record<string, JsonValue> }
     | { kind: 'appLink'; url: string }"###;
 
@@ -224,13 +228,14 @@ rong::js_api! {
      *
      * `target` is where the tap goes, and an omitted one means
      * `{ kind: 'activate' }` — bring the product forward, nothing else.
-     * `{ kind: 'route' }` names a location the host registered at startup, so
-     * an internal screen needs no product URL; `params` is checked against
-     * that route's schema, and both the name and the params are checked again
-     * on tap. `{ kind: 'appLink' }` takes an `https://` URL on a configured
-     * App Link host and arrives as `scene === 8003`. An unknown route, a
-     * parameter the route did not declare, or a host that is not configured
-     * rejects here, before anything is posted.
+     * `{ kind: 'page' }` opens a page of this Control app the way
+     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * registered at startup that is not a page. `{ kind: 'appLink' }` takes
+     * an `https://` URL that is also a real inbound App Link
+     * (`scene === 8003`). An unknown page or route, a parameter the route
+     * did not declare, or a host that is not configured rejects here, before
+     * anything is posted.
      *
      * `status` says what happened: `'posted'` — the OS accepted it for
      * display now, which is not a receipt that anyone saw or read it;

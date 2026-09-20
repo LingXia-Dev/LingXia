@@ -46,94 +46,31 @@ export type NoLifecycleTypos<TCustom, TNames extends string> = {
 
 /**
  * A `setData` key that addresses inside `data` — `'a.b'` or `'rows[0].name'`.
- * Kept for documentation; nested writes go through `setPath` (checked) or
- * `setDataPath` (unchecked). `setData` no longer accepts these keys.
+ * Values behind a path stay `unknown`: the runtime resolves the path, so the
+ * type cannot.
  */
 export type PageDataPath = `${string}.${string}` | `${string}[${number}]${string}`;
 
 /**
- * @deprecated Page `data` is no longer widened for `null` / `[]` initializers.
- * Annotate the field (`null as Profile | null`) when a later fill should be
- * checked.
+ * A field initialized to `null` or `[]` states nothing about what will fill it
+ * later, so it stays open. Annotate it (`null as Profile | null`) to have the
+ * fill checked.
  */
-export type LazyInitField<T> = T;
-
-type PageReadonlyDepth = [never, 0, 1, 2, 3, 4, 5, 6];
-
-type PagePrimitive = string | number | boolean | bigint | symbol | null | undefined;
+export type LazyInitField<T> = [T] extends [null | undefined]
+  ? unknown
+  : [T] extends [never[]]
+    ? unknown[]
+    : T;
 
 /**
- * Deep readonly view of page `data`. Static only — the runtime object is not
- * frozen.
+ * Top-level keys are checked against `data`; only path-shaped keys stay open.
+ * A misspelled or wrongly typed top-level key is a compile error.
  */
-export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
-  ? T
-  : T extends PagePrimitive
-    ? T
-    : T extends Function
-      ? T
-      : T extends readonly (infer U)[]
-        ? ReadonlyArray<DeepReadonly<U, PageReadonlyDepth[D]>>
-        : T extends object
-          ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
-          : T;
-
-/**
- * Tuple path into `data`, depth-capped so large page states stay completable.
- */
-export type DataPath<T, D extends number = 5> = [D] extends [never]
-  ? never
-  : T extends readonly (infer U)[]
-    ? [number] | [number, ...DataPath<U, PageReadonlyDepth[D]>]
-    : T extends object
-      ? {
-          [K in keyof T & (string | number)]:
-            | [K]
-            | (DataPath<T[K], PageReadonlyDepth[D]> extends infer Rest
-                ? Rest extends readonly PropertyKey[]
-                  ? [K, ...Rest]
-                  : never
-                : never);
-        }[keyof T & (string | number)]
-      : never;
-
-export type DataPathValue<T, P extends readonly PropertyKey[]> = P extends readonly [
-  infer K,
-  ...infer Rest,
-]
-  ? Rest extends readonly PropertyKey[]
-    ? Rest['length'] extends 0
-      ? K extends keyof T
-        ? T[K]
-        : K extends number
-          ? T extends readonly (infer U)[]
-            ? U
-            : never
-          : never
-      : K extends keyof T
-        ? DataPathValue<T[K], Rest>
-        : K extends number
-          ? T extends readonly (infer U)[]
-            ? DataPathValue<U, Rest>
-            : never
-          : never
-    : never
-  : never;
-
-/**
- * Top-level keys are checked against `data`. Nested writes use `setPath` or
- * the unchecked `setDataPath`.
- */
-export type SetDataPatch<TData> = { [K in keyof TData]?: TData[K] };
-
-type SetDataValue<TData, K> = K extends PageDataPath
-  ? { "LingXia type error": "use setPath or setDataPath for nested writes" }
-  : K extends keyof TData
-    ? TData[K] | DeepReadonly<TData[K]>
-    : { "LingXia type error": "unknown data key" };
+export type SetDataPatch<TData> = { [K in keyof TData]?: LazyInitField<TData[K]> } &
+  Partial<Record<PageDataPath, unknown>>;
 
 export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
-  readonly data: { readonly [K in keyof TData]: DeepReadonly<TData[K]> };
+  data: TData;
   route: string;
   /**
    * Available when this page was opened as a surface via
@@ -144,17 +81,7 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
    * Available when this page was opened by `lx.navigateTo(...)`.
    */
   opener?: PageMessagePort;
-  setData<TPatch extends Record<string, unknown>>(
-    data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
-    callback?: () => void,
-  ): void;
-  setPath<const P extends DataPath<TData>>(
-    path: P,
-    value: DataPathValue<TData, P>,
-    callback?: () => void,
-  ): void;
-  /** Nested write by a runtime-resolved string path. The value is not checked. */
-  setDataPath(path: string, value: unknown, callback?: () => void): void;
+  setData(data: SetDataPatch<TData>, callback?: () => void): void;
 }
 
 /**
@@ -171,12 +98,6 @@ export interface StreamHandle<T = unknown> {
   end(result?: unknown): void;
   /** End the stream with an error. */
   error(code: string, message?: string): void;
-  /**
-   * Called once if View cancels before `end`/`error`. Returns unsubscribe.
-   * The generator form still observes cancel in `finally`; use this for the
-   * callback-based handle.
-   */
-  onCancel(handler: () => void): () => void;
 }
 
 /**
@@ -190,9 +111,9 @@ export interface ChannelHandle<TSend = unknown, TReceive = unknown> {
   send(payload: TSend): void;
   /** Close the channel from Logic side. */
   close(code?: string, reason?: string): void;
-  /** Register a listener for incoming events. Returns unsubscribe. */
-  on(event: 'data', handler: (payload: TReceive) => void): () => void;
-  on(event: 'close', handler: (info: { code: string; reason: string }) => void): () => void;
+  /** Register a listener for incoming events. */
+  on(event: 'data', handler: (payload: TReceive) => void): void;
+  on(event: 'close', handler: (info: { code: string; reason: string }) => void): void;
 }
 
 /**
@@ -211,38 +132,19 @@ export type DownloadOptions<TDestination extends DownloadDestination = DownloadD
 export type DownloadResultForDestination<TDestination extends DownloadDestination> =
   TDestination extends 'downloads' ? DownloadsDownloadResult : AppDownloadResult;
 
-export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> =
-  | {
-      kind: 'progress' | 'paused' | 'resumed';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      /** Present only when the total size is known. */
-      progress?: number;
-    }
-  | {
-      kind: 'canceled';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-    }
-  | {
-      kind: 'completed';
-      downloadedBytes?: number;
-      totalBytes?: number;
-      progress?: number;
-      result: TResult;
-    };
+export interface DownloadProgressEvent<TResult extends DownloadResult = DownloadResult> {
+  kind: 'progress' | 'paused' | 'resumed' | 'canceled' | 'completed';
+  downloadedBytes?: number;
+  totalBytes?: number;
+  /** Present only when the total size is known. */
+  progress?: number;
+  result?: TResult;
+}
 
-export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> =
-  IteratorResult<DownloadProgressEvent<TResult>, void>;
-
-export type AppTempDownloadResult = Extract<AppDownloadResult, { tempFilePath: string }>;
-export type AppPersistedDownloadResult = Extract<AppDownloadResult, { filePath: AppDownloadFilePath }>;
-
-export type ChooseFileSingleResult = {
-  canceled: false;
-  paths: [string];
-} | CanceledResult;
+export interface DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> {
+  done: boolean;
+  value?: DownloadProgressEvent<TResult>;
+}
 
 export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadResult>
   extends PromiseLike<TDownloadResult>,
@@ -286,20 +188,20 @@ declare global {
 
     /**
      * Launch-at-startup control. Absent where the host cannot register a
-     * startup item; its presence and `lx.supports('app.autostart')` always
+     * startup item; its presence and `lx.supports({ capability: 'autostart' })` always
      * agree, so `lx.app.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
 
     /**
      * Local notifications. Absent where the host cannot post them; its presence
-     * and `lx.supports('app.notification')` always agree.
+     * and `lx.supports({ capability: 'notifications' })` always agree.
      */
     notification?: NotificationApi;
 
     /**
      * Product-drawn desktop banner (top-right). Absent off desktop and in
-     * guest lxapps; its presence and `lx.supports('app.banner')`
+     * guest lxapps; its presence and `lx.supports({ capability: 'banner' })`
      * always agree.
      */
     banner?: BannerApi;
@@ -312,25 +214,19 @@ declare global {
 
     /**
      * Product-wide settings, and their single writer. Present only in the
-     * Control app the host sealed at build time. Use
-     * `lx.app.control !== undefined` to inspect that identity.
+     * Control app the host sealed at build time; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.control?.…` and the query are interchangeable.
      */
     readonly control?: ControlApi;
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
-     * Present only in the Control app; presence agrees with
-     * `lx.app.control !== undefined`.
+     * Present only in the Control app; its presence and
+     * `lx.supports({ capability: 'control' })` always agree, so
+     * `lx.app.cache?.…` and the query are interchangeable.
      */
     cache?: AppCacheApi;
-
-    /**
-     * Take over host updates for the rest of this process. Irreversible: the
-     * built-in auto-flow will not prompt or download again, including after
-     * the calling page unloads. Does not cancel an already-started update task.
-     * `update.apply()` claims as well. `checkUpdate()` does not.
-     */
-    claimCustomUpdate(): void;
   }
 
   /** Runtime environment constants backed by abstract `lx://` paths. */
@@ -340,36 +236,18 @@ declare global {
     /**
      * Terminal product settings. Present only in the host-bundled Terminal
      * Settings lxapp when the host declares `capabilities.terminal`; its
-     * presence and `lx.supports('terminal')` always agree.
+     * presence and `lx.supports({ capability: 'terminal' })` always agree.
      */
     readonly terminal?: TerminalApi;
 
     /** Download to the downloads directory. */
     downloadFile(options: DownloadsDownloadOptions): DownloadTask<DownloadsDownloadResult>;
-    /** Download to a durable app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath: string },
-    ): DownloadTask<AppPersistedDownloadResult>;
-    /** Download to a temporary app-owned path. */
-    downloadFile(
-      options: AppDownloadOptions & { filePath?: undefined },
-    ): DownloadTask<AppTempDownloadResult>;
     /** Download to the lxapp-managed app directory. */
     downloadFile(options: AppDownloadOptions): DownloadTask<AppDownloadResult>;
     /** Download with a destination-correlated result type. */
     downloadFile<TDestination extends DownloadDestination = "app">(
       options: DownloadOptions<TDestination>,
     ): DownloadTask<DownloadResultForDestination<TDestination>>;
-    /** Single-file picker: a completed selection is exactly one path. */
-    chooseFile(options: ChooseFileOptions & { multiple: false }): Promise<ChooseFileSingleResult>;
-    chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
-    /**
-     * Opens a file picker.
-     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
-     * completed selection resolves `{ canceled: false, paths }` with at least one
-     * path. Rejects when the picker fails or returns an invalid payload.
-     */
-    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
 
     /**
      * Open this lxapp's store with every key's shape pinned on the handle.
@@ -390,7 +268,7 @@ export type StorageSchema = object;
 
 type StorageKey<S extends object> = Extract<keyof S, string>;
 type StorageEntry<S extends object> = {
-  [K in StorageKey<S>]: [key: K, value: S[K] | DeepReadonly<S[K]>];
+  [K in StorageKey<S>]: [key: K, value: S[K]];
 }[StorageKey<S>];
 
 /**
@@ -602,7 +480,7 @@ export type AutostartApi = {
 /**
  * Product-drawn desktop banner, top-right. Not an OS notification and
  * not bound to App Link. Present only in the desktop Control app;
- * presence and `lx.supports('app.banner')` always agree.
+ * presence and `lx.supports({ capability: 'banner' })` always agree.
  * No buttons: an informational card that auto-dismisses (5s unless
  * `timeoutMs` is set). With buttons: a gate that waits for a choice,
  * dismiss, timeout, or replace. User outcomes resolve; presentation
@@ -800,7 +678,10 @@ export type CompressImageResult = {
     tempFilePath: string;
 };
 
-export type CompressVideoIteratorResult = IteratorResult<CompressVideoProgressEvent, void>;
+export type CompressVideoIteratorResult = {
+    done: boolean;
+    value?: CompressVideoProgressEvent;
+};
 
 export type CompressVideoOptions = {
     /**
@@ -808,22 +689,13 @@ export type CompressVideoOptions = {
      */
     path: string;
     /**
-     * Optional output path for compressed file.
-     */
-    outputPath?: string;
-} & (
-    | {
-    /**
+     * Cross-platform note: video compression parameters are best-effort and may map to
+     * native presets instead of exact encoder settings.
+     *
      * Compression quality preset.
-     * Mutually exclusive with `bitrate`, `fps`, and `resolution`.
+     * When provided, `bitrate`, `fps`, and `resolution` are ignored.
      */
-    quality: VideoCompressQuality;
-    bitrate?: never;
-    fps?: never;
-    resolution?: never;
-}
-    | {
-    quality?: never;
+    quality?: VideoCompressQuality;
     /**
      * Preferred target video bitrate in kbps.
      * May be adjusted or ignored by platform codec/runtime limitations.
@@ -839,8 +711,11 @@ export type CompressVideoOptions = {
      * May be approximated or ignored by platform transcoder capabilities.
      */
     resolution?: number;
-}
-);
+    /**
+     * Optional output path for compressed file.
+     */
+    outputPath?: string;
+};
 
 export type CompressVideoProgressEvent = {
     /** Transcode progress in percent, `0`-`100`. */
@@ -1180,16 +1055,14 @@ export type HostAppUpdateInfo = {
     releaseNotes?: string[];
     /**
      * How this update is applied. `store` opens the platform marketplace;
-     * `direct` downloads and self-installs. `lx.supports('app.selfUpdate')`
+     * `direct` downloads and self-installs. `lx.supports({ capability: 'selfUpdate' })`
      * is true only for `direct`.
      */
     channel: 'direct' | 'store';
     /**
      * Apply this checked update.
      *
-     * `apply()` is single-use for this update object. It also claims custom
-     * host updates for the rest of this process, same as
-     * {@link HostAppApi.claimCustomUpdate}.
+     * `apply()` is single-use for this update object.
      *
      * The returned task can be awaited directly when progress is not needed, or
      * consumed with `for await...of` to render progress.
@@ -1201,7 +1074,10 @@ export type HostAppUpdateInfo = {
     apply(): HostAppUpdateTask;
 };
 
-export type HostAppUpdateIteratorResult = IteratorResult<HostAppUpdateEvent, void>;
+export type HostAppUpdateIteratorResult = {
+    done: boolean;
+    value?: HostAppUpdateEvent;
+};
 
 export type HostAppUpdateResult = {
     /** `storeOpened` on a `store` channel: the listing opened, nothing was installed. */
@@ -1231,6 +1107,43 @@ export type InstalledTerminalFont = {
 };
 
 /**
+ * Launch-at-startup control for the host app.
+ * Absent (`undefined`) wherever the host cannot register a startup item.
+ * `lx.supports({ capability: 'autostart' })` and the member's presence always
+ * agree, so either gate works:
+ * ```ts
+ * if (lx.supports({ capability: 'autostart' })) {
+ * // render the "Launch at startup" toggle
+ * }
+ * ```
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+ * member is absent on all platforms. Declaring the capability never enables
+ * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * is called, so the decision stays with the user (typically a settings-page
+ * toggle, default off).
+ * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+ * are available only to the native-assigned Control app; other lxapps receive
+ * a permission error.
+ * Local notifications as a Control-app resume affordance.
+ * Absent unless the host declared `capabilities.notifications` and the
+ * platform implements the local API. Presence and
+ * `lx.supports({ capability: 'notifications' })` always agree.
+ * Declaring the capability never prompts; permission runs on
+ * `requestPermission()` or the first `show()` that reaches the OS.
+ * Control app only. Guest lxapps receive a permission error.
+ * A JSON value: what a navigation route parameter may hold. Not a way
+ * to smuggle a payload — every route declares its own parameter
+ * schema, and the framework caps size, count, and nesting.
+ */
+export type JsonValue = 
+    | null
+    | boolean
+    | number
+    | string
+    | JsonValue[]
+    | { [key: string]: JsonValue };
+
+/**
  * Input event APIs.
  * Platform support: Android only
  */
@@ -1253,7 +1166,37 @@ export type LxAppEnvVersion = 'release' | 'draft';
 /** LxApp metadata APIs. */
 export type LxAppReleaseType = 'release' | 'draft';
 
+/** Boolean capability names accepted by `lx.supports`. */
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+
+/**
+ * One capability question per call. The catalog is closed, so
+ * completion enumerates it and a typo is a type error. `capability`
+ * is the discriminant; only the `surface` branch accepts a `value`.
+ * Two surface answers describe an *affordance*, not whether the call
+ * succeeds: `tab` is "the host has an in-app browser" — without it a
+ * url still opens, in the OS browser instead — and `aside` is "a
+ * docked region exists right now", while a compact layout still opens
+ * the url through the in-app browser's own chrome. Ask them to decide
+ * what to render, not whether to call.
+ * `chrome` qualifies a window and only a window: it asks whether this
+ * host can produce that decoration, not merely a window.
+ */
+export type LxCapabilityQuery = {
+    capability: 'surface';
+    value: 'window';
+    chrome?: WindowChrome;
+} | {
+    capability: 'surface';
+    value: Exclude<LxSurfaceCapability, 'window'>;
+} | {
+    capability: LxCapabilityFlag;
+};
+
 export type LxEnv = globalThis.LxEnv;
+
+/** Surface placements accepted by `lx.supports`. */
+export type LxSurfaceCapability = 'main' | 'aside' | 'float' | 'window' | 'tab';
 
 /** Device action APIs. */
 export type MakePhoneCallOptions = {
@@ -1333,6 +1276,24 @@ export type NavigationBarStylePatch = {
     dividerColor?: string | null;
 };
 
+/**
+ * Where a notification tap, a menu item, or the tray goes.
+ * `page` and `app` are the same contract as `lx.navigateTo` /
+ * `lx.navigateToApp`: a configured page name and a query, ordinary
+ * scene. `route` is a host-registered location that is not a page.
+ * `appLink` is an `https://` product URL that is also a real inbound
+ * App Link (`scene === 8003`). `activate` just brings the product
+ * forward.
+ * A branch carries its own fields and no others: a mixed target is a
+ * parameter error, not a best guess.
+ */
+export type NavigationTarget = 
+    | { kind: 'activate' }
+    | { kind: 'page'; page: ConfiguredPageName; query?: PageQuery }
+    | { kind: 'app'; appId: string; page?: ExternalPageName; query?: PageQuery }
+    | { kind: 'route'; name: string; params?: Record<string, JsonValue> }
+    | { kind: 'appLink'; url: string };
+
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
 
 export type NetworkInfo = {
@@ -1345,32 +1306,6 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
-/**
- * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports('app.autostart')` and the member's presence always
- * agree, so either gate works:
- * ```ts
- * if (lx.supports('app.autostart')) {
- * // render the "Launch at startup" toggle
- * }
- * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
- * autostart by itself — the SDK registers the app only when `setEnabled(true)`
- * is called, so the decision stays with the user (typically a settings-page
- * toggle, default off).
- * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
- * are available only to the native-assigned Control app; other lxapps receive
- * a permission error.
- * Local notifications as a Control-app resume affordance.
- * Absent unless the host declared `capabilities.notifications` and the
- * platform implements the local API. Presence and
- * `lx.supports('app.notification')` always agree.
- * Declaring the capability never prompts; permission runs on
- * `requestPermission()` or the first `show()` that reaches the OS.
- * Control app only. Guest lxapps receive a permission error.
- */
 export type NotificationApi = {
     /**
      * Read the current permission without prompting. `'default'` means the
@@ -1385,28 +1320,47 @@ export type NotificationApi = {
     requestPermission(): Promise<'granted' | 'denied'>;
     /**
      * Post or replace a local notification. `id` is the replace key: anything
-     * pending or delivered under it is replaced, whatever `status` comes back.
-     * Omit `id` to get a generated one. `applink` is validated like App Link
-     * delivery (`https://`, configured host) and arrives as `scene === 8003`
-     * on tap. Omit `schedule`, or pass a time that is not in the future, to
-     * show now.
+     * pending or delivered under it is replaced, whatever `status` comes back,
+     * and its old tap target stops resolving. Omit `id` to get a generated
+     * one. Omit `schedule`, or pass a time that is not in the future, to post
+     * now.
      *
-     * `status` says what happened: `'shown'` — handed to the OS now;
-     * `'scheduled'` — queued for `schedule`; `'suppressed'` — an immediate
-     * show while the product is already frontmost, where nothing is posted
-     * and no permission is needed. A scheduled notification is presented even
-     * if the product is frontmost when it fires.
+     * `target` is where the tap goes, and an omitted one means
+     * `{ kind: 'activate' }` — bring the product forward, nothing else.
+     * `{ kind: 'page' }` opens a page of this Control app the way
+     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * registered at startup that is not a page. `{ kind: 'appLink' }` takes
+     * an `https://` URL that is also a real inbound App Link
+     * (`scene === 8003`). An unknown page or route, a parameter the route
+     * did not declare, or a host that is not configured rejects here, before
+     * anything is posted.
+     *
+     * `status` says what happened: `'posted'` — the OS accepted it for
+     * display now, which is not a receipt that anyone saw or read it;
+     * `'scheduled'` — queued with the OS for `schedule`; `'suppressed'` — an
+     * immediate post while the product is already frontmost, where nothing is
+     * posted and no permission is needed. A scheduled notification is
+     * presented even if the product is frontmost when it fires.
+     *
+     * A tap resolves through the host, so a target that is gone by then — a
+     * route the build no longer registers, a cancelled or replaced
+     * notification, cleared app data — brings the product forward and says it
+     * is unavailable rather than opening something else.
      */
     show(options: {
         id?: string;
         title: string;
         body?: string;
-        applink?: string;
+        target?: NavigationTarget;
         schedule?: { at: number } | { delayMs: number };
         /** No sound. The banner still appears. */
         silent?: boolean;
-    }): Promise<{ id: string; status: 'shown' | 'scheduled' | 'suppressed' }>;
-    /** Remove what is pending or delivered under `id`. Unknown ids are fine. */
+    }): Promise<{ id: string; status: 'posted' | 'scheduled' | 'suppressed' }>;
+    /**
+     * Remove what is pending or delivered under `id`, and retire its tap
+     * target. Unknown ids are fine.
+     */
     cancel(id: string): Promise<void>;
     /** Remove every local notification this API posted or scheduled. */
     cancelAll(): Promise<void>;
@@ -1711,33 +1665,6 @@ export type ScanCodeResult = {
     scanResult: string;
     scanType: string;
 } | CanceledResult;
-
-/**
- * Where `lx.app.setBadge` paints.
- * `auto` (the default) marks every product-owned surface this platform
- * has: the dock and the menu-bar item on macOS, the taskbar and the
- * notification-area item on Windows, the home-screen icon on iOS and
- * HarmonyOS. Name one only when that surface is the point.
- * Asynchronous because it reports what actually happened: a platform that
- * answers through its own callback has to be waited for to be believed.
- * A surface with nothing to paint on is reported, not raised: a macOS
- * status item exists from the moment a tray is declared but stays hidden
- * until `lx.tray.show()`, and a badge on a hidden item is not a badge
- * anyone can see. That resolves `false` whether you named the surface or
- * took `auto`; only a malfunction rejects.
- * Apple ties the badge to notification permission. On macOS the label
- * always reaches the system, but the Dock declines to draw it for an app
- * that is registered with Notification Center and not allowed — so a host
- * that declares `capabilities.notifications` and never got a yes resolves
- * `false` here. A host that never asks is unaffected.
- * On iOS the home-screen badge is drawn by the notification system, so
- * it needs notification permission and only accepts a number — that is
- * the OS's rule, not an API coupling. Android has no cross-vendor
- * launcher badge at all, so `setBadge` returns `false` there.
- */
-export type SetBadgeOptions = {
-    surface?: 'auto' | 'appIcon' | 'tray';
-};
 
 /** Share images, PDFs, or other files. */
 export type ShareFilesOptions = ShareTitleOptions & {
@@ -2134,8 +2061,6 @@ export type SurfaceClosedEvent = {
  * spacing inside `regular` use CSS or the raw `width` / `height`.
  */
 export type SurfaceContext = {
-    /** Whether the host layout currently offers a docked aside. */
-    aside: boolean;
     /** compact (<600) / regular (≥600). Shell medium/expanded are not distinct here. */
     sizeClass: 'compact' | 'regular';
     /** Actual surface viewport width in logical pixels. */
@@ -2455,10 +2380,9 @@ export type TrayApi = globalThis.TrayApi;
  * The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
  * content at runtime.
  * **Desktop only.** Mobile platforms have no tray, so every method here is a
- * no-op there (it never throws) — safe to call from portable code.
- * The tray belongs to the product, not to the lxapp that happens to be
- * running, so these are Control-app only: a guest lxapp calling one receives
- * a permission error.
+ * no-op there (it never throws) — safe to call from portable code. For an
+ * app-icon badge that *is* cross-platform (including mobile), use
+ * `lx.app.setBadge`.
  */
 export type TrayMenuItem = {
     label: string;
@@ -2480,9 +2404,6 @@ export type UpdateFailedInfo = UpdateReadyInfo & {
  * Callback-based updates for this lxapp's bundle. Available to every
  * lxapp. To update the native host app, the Control app uses the
  * task-based `lx.app.checkUpdate()` API instead.
- * Listeners are a set: later subscriptions do not replace earlier ones.
- * The last pending ready/failed event is replayed to each new
- * subscriber until a newer event replaces it.
  */
 export type UpdateManager = {
     applyUpdate(): void;
@@ -2497,7 +2418,10 @@ export type UpdateReadyInfo = {
     channel?: "release" | "draft" | string;
 };
 
-export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
+export type UploadIteratorResult = {
+    done: boolean;
+    value?: UploadProgressEvent;
+};
 
 /**
  * Upload options. The file streams from disk, so the size ceiling is
@@ -2507,12 +2431,12 @@ export type UploadIteratorResult = IteratorResult<UploadProgressEvent, void>;
  * - `multipart` (default) wraps the file in a `multipart/form-data`
  * envelope beside the `formData` text fields — what an ordinary form
  * endpoint parses. `name`, `fileName`, and `formData` describe that
- * envelope. `formData`, when present, must contain at least one field.
+ * envelope.
  * - `raw` sends the file bytes as the entire body. Presigned
  * object-storage URLs (S3, OSS, Azure Blob) need this: a multipart
  * envelope would be stored verbatim as the object's contents,
- * boundary lines and all. `name`, `formData`, and `fileName` are
- * then rejected rather than silently dropped.
+ * boundary lines and all. `name` and `formData` are then rejected
+ * rather than silently dropped, and `fileName` is ignored.
  * @example
  * ```ts
  * // A presigned URL is signed for one method and one Content-Type,
@@ -2539,6 +2463,14 @@ export type UploadOptions = {
      */
     method?: 'POST' | 'PUT' | 'PATCH';
     /**
+     * How the file bytes are framed. Default: `multipart`.
+     * `raw` sends them as the whole body under a `Content-Length` taken from
+     * the file itself, which is what presigned endpoints require.
+     */
+    bodyMode?: 'multipart' | 'raw';
+    /** Name of the multipart part carrying the file. Default: `file`. Multipart only. */
+    name?: string;
+    /**
      * Optional request headers.
      * Restricted headers such as `Referer` are ignored by the runtime.
      * `Content-Type` is yours to set only under `bodyMode: 'raw'`, where it
@@ -2546,8 +2478,12 @@ export type UploadOptions = {
      * carries the part boundary.
      */
     headers?: Record<string, string>;
+    /** Text fields sent alongside the file in the envelope. Multipart only. */
+    formData?: Record<string, string>;
     /** Request timeout in milliseconds. */
     timeout?: number;
+    /** Filename announced for the file part. Defaults to the file's own name. Multipart only. */
+    fileName?: string;
     /**
      * File MIME type. Types the file part under `multipart`; becomes the
      * request `Content-Type` under `raw`, where it defaults to
@@ -2556,30 +2492,11 @@ export type UploadOptions = {
     mimeType?: string;
     /** Optional abort signal. */
     signal?: AbortSignal;
-} & (
-    | {
-    /**
-     * How the file bytes are framed. Default: `multipart`.
-     */
-    bodyMode?: 'multipart';
-    /** Name of the multipart part carrying the file. Default: `file`. */
-    name?: string;
-    /** Text fields sent alongside the file. Must be non-empty when set. */
-    formData?: Record<string, string>;
-    /** Filename announced for the file part. Defaults to the file's own name. */
-    fileName?: string;
-}
-    | {
-    /** Send the file bytes as the whole body. Multipart fields are rejected. */
-    bodyMode: 'raw';
-    name?: never;
-    formData?: never;
-    fileName?: never;
-}
-);
+};
 
 export type UploadProgressEvent = {
-    kind: 'progress' | 'canceled';
+    /** `completed` and `canceled` are terminal; iteration ends after either. */
+    kind: 'progress' | 'canceled' | 'completed';
     /** Bytes handed to the socket so far, envelope included under `multipart`. */
     uploadedBytes?: number;
     /**
@@ -2590,12 +2507,8 @@ export type UploadProgressEvent = {
     totalBytes?: number;
     /** `uploadedBytes / totalBytes`, absent while the total is unknown or zero. */
     progress?: number;
-} | {
-    kind: 'completed';
-    uploadedBytes?: number;
-    totalBytes?: number;
-    progress?: number;
-    result: UploadResult;
+    /** Present on `completed` only. */
+    result?: UploadResult;
 };
 
 export type UploadResult = {
@@ -2952,22 +2865,15 @@ declare global {
      */
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
     /**
-     * Query whether the host app has an update.
-     * This host-level capability is restricted to the Control app. A successful
-     * check does **not** take over the built-in auto-flow — that is
-     * `claimCustomUpdate()` or `update.apply()`. Permission denial or a failed
-     * check claims nothing. Incompatible updates are hidden as
-     * `hasUpdate: false`. Store-channel hosts still surface a newer feed version;
-     * `apply()` opens the store listing instead of downloading.
+     * Check whether the host app has an update.
+     * This host-level capability is restricted to the Control app. Once a check
+     * succeeds it claims the process for good: the built-in auto-flow will not
+     * prompt or download, so JS owns `apply()`. A failed check claims nothing.
+     * Incompatible updates are hidden as `hasUpdate: false`. Store-channel hosts
+     * still surface a newer feed version; `apply()` opens the store listing
+     * instead of downloading.
      */
     checkUpdate(): Promise<HostAppUpdateCheckResult>;
-    /**
-     * Claim the process-lifetime custom host-update flow.
-     * Irreversible: the built-in auto-flow will not prompt or download again,
-     * including after the calling page unloads. Does not cancel an already-started
-     * update task. Later failed checks do not undo a claim already made.
-     */
-    claimCustomUpdate(): void;
     readonly env: HostAppEnv;
     /**
      * Read the host app's identity: OS, product name, product version, and SDK
@@ -2983,19 +2889,13 @@ declare global {
      */
     exit(): void;
     /**
-     * Mark the product in system chrome, for example with an unread count.
-     * One call, because "where the count goes" is the platform's answer, not the
-     * caller's: `auto` paints every product-owned surface this platform has — the
-     * dock and the menu-bar item on macOS, the taskbar and the notification-area
-     * item on Windows, the home-screen icon on iOS and HarmonyOS. Name a
-     * `surface` only when one of them is the point.
-     * It is the product's chrome, not the calling lxapp's, so it is Control app
-     * only. Null or an empty string clears it.
-     * Returns whether anything was actually painted. A platform with no such
-     * chrome is a no-op that returns `false` rather than an error — portable code
-     * can call this unconditionally.
+     * Set the app-icon badge, for example an unread count.
+     * This targets the dock on macOS, taskbar on Windows, and home/launcher icon
+     * on mobile — the product's own icon, not the calling lxapp's, so it is
+     * Control app only and other lxapps get a permission error. Null or an empty
+     * string clears it. Unsupported platforms treat the call as a no-op.
      */
-    setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
+    setBadge(value: string | number | null): void;
   }
 }
 
@@ -3003,11 +2903,16 @@ declare global {
   interface Lx {
     readonly app: HostAppApi;
     /**
-     * Frozen feature support, not permission or current layout. Unknown strings
-     * return false; non-strings throw TypeError. Required features also need an
-     * appropriate lxapp.json minRuntime.
+     * Whether this host exposes a capability to this Logic context, right now.
+     * Synchronous, because it is meant to be called from render paths. The answer
+     * is live and may be stale by the time you act on it — it is an affordance for
+     * deciding what to render, not a replacement for handling a rejection.
+     * `{ capability: 'surface', value: 'aside' }` in particular changes when a
+     * desktop window crosses the compact breakpoint; pair it with
+     * `lx.surface.onContext` instead of polling. The answer is per runtime context:
+     * a context that does not expose an API reports false for it.
      */
-    supports(feature: LxFeature): boolean;
+    supports(query: LxCapabilityQuery): boolean;
     readonly clipboard: ClipboardApi;
     /** Vibrate briefly, where the device has a vibrator. */
     vibrateShort(): boolean;
@@ -3071,7 +2976,7 @@ declare global {
      * completed selection resolves `{ canceled: false, paths }` with at least one
      * path. Rejects when the picker fails or returns an invalid payload.
      */
-    chooseFile(options: never): Promise<never>;
+    chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
     /**
      * Opens a directory picker.
      * Resolves `{ canceled: true }` only when the user dismisses the picker. A
@@ -3355,7 +3260,7 @@ declare global {
     /**
      * `lx.surface.onContext(handler)` — register a JS callback (scoped to this
      * lxapp's JS context), invoke it immediately, then again whenever that
-     * presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
+     * presentation's actual viewport changes. Returns an unsubscribe fn.
      */
     onContext(handler: (context: SurfaceContext) => void): () => void;
   }
@@ -3381,6 +3286,8 @@ declare global {
 
 declare global {
   interface TrayApi {
+    /** lx.tray.setBadge(value) — the menu-bar / system-tray badge. Null/empty clears it. */
+    setBadge(value: string | number | null): void;
     /** lx.tray.setIcon(icon) — replace the tray icon (a resource path). */
     setIcon(icon: string): void;
     /** lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */
@@ -3406,6 +3313,3 @@ declare global {
 }
 
 export {};
-
-/** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'process' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';

@@ -204,8 +204,8 @@
                 <h4 class="text-sm font-semibold text-gray-700">Tap target</h4>
               </div>
               <p class="text-xs text-gray-500 mb-3">
-                A route names a location the host registered at startup — no product URL
-                and no configured App Link host.
+                <code>page</code> is navigateTo. <code>route</code> is a host-registered
+                native location. Neither needs a product URL.
               </p>
               <div class="flex flex-wrap gap-2">
                 <button
@@ -484,7 +484,7 @@ const notificationTarget = computed(() => data.notificationTarget ?? 'activate')
 const notificationTargets = [
   { value: 'activate', label: 'activate' },
   { value: 'native', label: 'route → native' },
-  { value: 'lxapp', label: 'route → lxapp page' },
+  { value: 'page', label: 'page → this page' },
 ];
 const notificationError = computed(() => data.notificationError ?? '');
 const bannerSupported = computed(() => data.bannerSupported ?? false);

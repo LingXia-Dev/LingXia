@@ -73,6 +73,10 @@ the matching local-control request handler in `install_host_apis`; put neither
 half in `start_services`. See [Driving a Shipped Product](../app/agent-control.md)
 for the command and transport contract.
 
+`install_navigation_routes` registers `{ kind: 'route' }` locations only —
+native screens, not pages. A notification that opens a page uses
+`{ kind: 'page' }` / `{ kind: 'app' }` from JS and does not need a route here.
+
 Platform entrypoints call that registration function:
 
 ```rust

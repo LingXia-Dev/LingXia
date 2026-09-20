@@ -380,16 +380,15 @@ Page({
 });
 
 /**
- * The three target shapes. `route` names what the host registered at startup
- * (see the showcase's `install_navigation_routes`), so neither of these needs
- * a product URL or a configured App Link host.
+ * `page` is navigateTo. `route` is a host-registered native location.
+ * Neither needs a product URL.
  */
 function notificationTargetFor(choice: string): NavigationTarget {
   if (choice === 'native') {
     return { kind: 'route' as const, name: 'showcase.native.note', params: { text: 'from a notification' } };
   }
-  if (choice === 'lxapp') {
-    return { kind: 'route' as const, name: 'showcase.system', params: { focus: 'notification' } };
+  if (choice === 'page') {
+    return { kind: 'page' as const, page: 'system', query: { type: 'notification' } };
   }
   return { kind: 'activate' as const };
 }
@@ -398,8 +397,8 @@ function notificationBody(choice: string): string {
   if (choice === 'native') {
     return 'Tap opens a native route — no lxapp, no URL';
   }
-  if (choice === 'lxapp') {
-    return 'Tap opens the system page through an lxapp route';
+  if (choice === 'page') {
+    return 'Tap opens this page the way navigateTo does';
   }
   return 'Tap brings the showcase forward';
 }

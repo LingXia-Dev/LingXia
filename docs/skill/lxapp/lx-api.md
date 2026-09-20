@@ -226,14 +226,18 @@ not say:
   anyone saw, read, or acted on it.
 - `target` decides where a tap goes:
   - omitted, or `{ kind: 'activate' }` — bring the product forward, nothing else;
+  - `{ kind: 'page', page, query }` — a page of this Control app, same contract
+    as `lx.navigateTo`. Ordinary scene, not an App Link.
+  - `{ kind: 'app', appId, page, query }` — another lxapp, same contract as
+    `lx.navigateToApp`.
   - `{ kind: 'route', name, params }` — a location the host registered at
-    startup. No product URL, no configured App Link host. Ask the host which
-    names and parameters exist; an unknown name or an undeclared parameter
-    rejects at `show`, before anything is posted.
+    startup that is not a page. Ask the host which names and parameters exist;
+    an unknown name or an undeclared parameter rejects at `show`.
   - `{ kind: 'appLink', url }` — an `https://` URL on a configured
-    [App Link](../app/applinks.md) host, delivered as `scene === 8003`.
-- A tap resolves the target again when it happens. A route the build no longer
-  registers, a cancelled or replaced notification, or cleared app data brings
+    [App Link](../app/applinks.md) host, delivered as `scene === 8003`. Use this
+    only for a real inbound product URL, not as a stand-in for `page` / `app`.
+- A tap resolves the target again when it happens. A page or route the build no
+  longer has, a cancelled or replaced notification, or cleared app data brings
   the product forward and reports that it is unavailable — it never falls back
   to some other target.
 - Limits: Android battery saver can fire a schedule minutes late, and a reboot

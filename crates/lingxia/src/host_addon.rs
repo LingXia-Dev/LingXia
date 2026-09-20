@@ -27,8 +27,9 @@ pub trait HostAddon: Send + Sync {
     ) -> Result<(), String> {
         Ok(())
     }
-    /// Declares the internal navigation routes a notification, a menu item, or
-    /// the tray may name. The registry is sealed before the runtime starts, so
+    /// Declares host-registered `{ kind: 'route' }` locations a notification,
+    /// a menu item, or the tray may name. Page and app targets need no
+    /// registration. The registry is sealed before the runtime starts, so
     /// nothing installed later — and nothing a payload carries — can add one.
     fn install_navigation_routes(
         &self,

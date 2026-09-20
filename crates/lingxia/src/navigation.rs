@@ -25,13 +25,14 @@
 //!
 //! This is not the lxapp-facing page router. `lx.navigateTo` and friends move
 //! between pages of the lxapp that called them, and `lx.navigateToApp` moves
-//! between lxapps — both are in-process calls from a live lxapp, to a target
-//! that caller already names. A target here comes from outside the product
-//! entirely (an OS notification tap, a menu, the tray), has to survive the
-//! process exiting, and may only name what the host registered. What the two
-//! do share is what "a page of an lxapp" means: [`lxapp_page_route`] resolves
-//! a configured page name and appends the query exactly as `navigateToApp`
-//! does.
+//! between lxapps — both are in-process calls from a live lxapp. A target
+//! here comes from outside the product (an OS notification tap, a menu, the
+//! tray) and has to survive the process exiting. `{ kind: 'page' }` and
+//! `{ kind: 'app' }` use the same page-name + query contract as those APIs
+//! and need no host registration. `{ kind: 'route' }` names what the host
+//! registered: a location that is not a page. [`lxapp_page_route`] is the
+//! host-side helper when a product still wants a named, schema-checked
+//! route that happens to open a page.
 
 use lingxia_service::navigation as service;
 
@@ -86,36 +87,55 @@ pub fn lxapp_page_route(
         };
         let appid = appid.clone();
         let page = page.clone();
-        std::mem::drop(crate::task::spawn(async move {
-            if let Err(error) = open_lxapp_page(&appid, &page, &params).await {
-                log::warn!("navigation route could not open {appid}: {error}");
-                service::report_unavailable(&NavigationError::unavailable(error));
-            }
-        }));
-        Ok(())
+        spawn_open_lxapp_page(appid, Some(page), params).map_err(NavigationError::unavailable)
     })
 }
 
-/// Same steps `lx.navigateToApp` takes, minus the caller's lxapp: prepare the
-/// target, resolve the page *name*, append the query, open.
+fn spawn_open_lxapp_page(
+    appid: String,
+    page: Option<String>,
+    query: serde_json::Value,
+) -> Result<(), String> {
+    std::mem::drop(crate::task::spawn(async move {
+        if let Err(error) = open_lxapp_page(&appid, page.as_deref(), &query).await {
+            log::warn!("navigation could not open {appid}: {error}");
+            service::report_unavailable(&NavigationError::unavailable(error));
+        }
+    }));
+    Ok(())
+}
+
+/// Same steps `lx.navigateToApp` takes, minus the caller's lxapp.
 async fn open_lxapp_page(
     appid: &str,
-    page: &str,
-    params: &serde_json::Value,
+    page: Option<&str>,
+    query: &serde_json::Value,
 ) -> Result<(), String> {
     let release_type = lxapp::Channel::default();
     lxapp::prepare_lxapp_open(appid, release_type)
         .await
         .inspect_err(lxapp::notify_lxapp_open_blocked)
         .map_err(|error| error.to_string())?;
-    let target = lxapp::ensure_lxapp(appid, release_type).map_err(|error| error.to_string())?;
-    let path = target
-        .find_page_path_by_name(page)
-        .ok_or_else(|| format!("page name is not configured: {page}"))?;
-    let path = lxapp::append_page_query(path, params)?;
-    lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(&path))
+    let _ = lxapp::ensure_lxapp(appid, release_type).map_err(|error| error.to_string())?;
+    let options = lxapp::LxAppStartupOptions::for_page(page, Some(query))?;
+    lxapp::open_lxapp(appid, options)
         .map(|_| ())
         .map_err(|error| error.to_string())
+}
+
+fn validate_lxapp_page(appid: &str, page: Option<&str>) -> Result<(), NavigationError> {
+    let release_type = lxapp::Channel::default();
+    let target = lxapp::ensure_lxapp(appid, release_type).map_err(|error| {
+        NavigationError::invalid(format!("lxapp {appid} is not available: {error}"))
+    })?;
+    if let Some(page) = page.filter(|page| !page.is_empty())
+        && target.find_page_path_by_name(page).is_none()
+    {
+        return Err(NavigationError::invalid(format!(
+            "page name is not configured: {page}"
+        )));
+    }
+    Ok(())
 }
 
 /// Check a target without opening it. Same rules the dispatcher applies.
@@ -140,6 +160,14 @@ pub fn activate_notification(token: &str) -> i32 {
 /// Collect host routes, seal the registry, and point the intent store at the
 /// product's private state directory.
 pub(crate) fn install(state_dir: std::path::PathBuf) -> crate::Result<()> {
+    service::install_lxapp_page_handlers(validate_lxapp_page, |appid, page, query| {
+        spawn_open_lxapp_page(
+            appid.to_string(),
+            page.map(str::to_string),
+            serde_json::Value::Object(query.clone()),
+        )
+        .map_err(NavigationError::unavailable)
+    });
     service::intent::init(state_dir);
     service::intent::recover();
     let mut routes = NavigationRoutes::new();

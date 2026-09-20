@@ -161,7 +161,7 @@ fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
     let parsed = options.to_rust::<JSShowOptions>()?;
     if parsed.applink.is_some() {
         return Err(js_invalid_parameter_error(
-            "lx.app.notification.show no longer takes applink; pass target: { kind: 'appLink', url }",
+            "lx.app.notification.show no longer takes applink; pass target: { kind: 'page', page } or { kind: 'appLink', url }",
         ));
     }
     let title = parsed
@@ -282,7 +282,9 @@ mod tests {
 
     #[test]
     fn target_branches_do_not_mix() {
+        assert!(target(r#"{"kind":"page","page":"order"}"#).is_ok());
         assert!(target(r#"{"kind":"route","name":"a"}"#).is_ok());
+        assert!(target(r#"{"kind":"page","page":"/pages/order/index"}"#).is_err());
         assert!(target(r#"{"kind":"route","name":"a","url":"https://x.test/"}"#).is_err());
         assert!(target(r#"{"kind":"nope"}"#).is_err());
     }

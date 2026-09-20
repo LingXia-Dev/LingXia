@@ -56,7 +56,8 @@ guest cannot reach them:
   the rest of the process. (Your own bundle's updates are
   `lx.getUpdateManager()`, which every lxapp has.)
 - `lx.app.autostart.*` — launch at login.
-- `lx.app.notification.*` — local banners that resume the product via App Link.
+- `lx.app.notification.*` — local banners that resume the product. Tap
+  target is `page` / `app` / `route` / `appLink` / `activate`.
 - `lx.app.banner.*` — product-drawn top-right desktop card (inform or confirm).
 - `lx.app.control.displayLanguage` / `lx.app.control.appearance` — the writers
   behind the product's language and light/dark setting.
