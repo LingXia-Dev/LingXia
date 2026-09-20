@@ -137,6 +137,132 @@ pub fn state_file_for(app: &crate::LxApp, name: &str) -> crate::Result<PathBuf> 
     state_file_in(&app.user_data_dir, name)
 }
 
+/// OS local notifications, for native hosts that have no JS Logic.
+///
+/// The same contract `lx.app.notification` exposes: `id` is the replace key,
+/// and a tap resolves through [`crate::navigation`], so a native host can send
+/// the user to a native screen without inventing a product URL for it.
+pub mod notification {
+    pub use lingxia_platform::traits::app_runtime::LocalNotificationStatus;
+    use lingxia_platform::traits::app_runtime::{AppRuntime, LocalNotificationShow};
+    use lingxia_service::navigation::{self, NavigationTarget, intent};
+
+    /// One notification to post or replace.
+    pub struct Notification {
+        id: String,
+        title: String,
+        body: String,
+        target: NavigationTarget,
+        deliver_at_ms: Option<u64>,
+        silent: bool,
+    }
+
+    impl Notification {
+        /// `id` is the replace key: anything pending or delivered under it is
+        /// replaced, and its old target stops resolving.
+        pub fn new(id: impl Into<String>, title: impl Into<String>) -> Self {
+            Self {
+                id: id.into(),
+                title: title.into(),
+                body: String::new(),
+                target: NavigationTarget::Activate,
+                deliver_at_ms: None,
+                silent: false,
+            }
+        }
+
+        pub fn body(mut self, body: impl Into<String>) -> Self {
+            self.body = body.into();
+            self
+        }
+
+        /// Where the tap goes. Without one the product simply comes forward.
+        pub fn target(mut self, target: NavigationTarget) -> Self {
+            self.target = target;
+            self
+        }
+
+        /// Epoch milliseconds. A time that is not in the future means now.
+        pub fn deliver_at_ms(mut self, at_ms: u64) -> Self {
+            self.deliver_at_ms = Some(at_ms);
+            self
+        }
+
+        pub fn silent(mut self, silent: bool) -> Self {
+            self.silent = silent;
+            self
+        }
+    }
+
+    /// `"granted"`, `"denied"`, or `"default"`. Never prompts.
+    pub fn permission() -> crate::Result<String> {
+        crate::runtime::platform()?
+            .notification_permission()
+            .map_err(crate::Error::from)
+    }
+
+    /// Prompts where the OS has a prompt; otherwise reports the setting.
+    pub fn request_permission() -> crate::Result<String> {
+        crate::runtime::platform()?
+            .notification_request_permission()
+            .map_err(crate::Error::from)
+    }
+
+    /// Post or replace. The target is validated before anything is persisted
+    /// or handed to the OS, so an unknown route fails here rather than on tap.
+    pub fn show(request: Notification) -> crate::Result<LocalNotificationStatus> {
+        if request.id.trim().is_empty() {
+            return Err(crate::Error::invalid_request("notification id is empty"));
+        }
+        if request.title.trim().is_empty() {
+            return Err(crate::Error::invalid_request("notification title is empty"));
+        }
+        navigation::validate(&request.target)
+            .map_err(|error| crate::Error::invalid_request(error.to_string()))?;
+        let platform = crate::runtime::platform()?;
+        let staged = intent::stage(&request.id, &request.target)
+            .map_err(|error| crate::Error::internal(error.to_string()))?;
+        let outcome = platform.notification_show(&LocalNotificationShow {
+            id: request.id,
+            title: request.title,
+            body: request.body,
+            activation_token: staged.token.clone(),
+            deliver_at_ms: request.deliver_at_ms,
+            silent: request.silent,
+        });
+        match outcome {
+            // Suppressed posts nothing, so nothing may resolve this token.
+            Ok(LocalNotificationStatus::Suppressed) => {
+                intent::rollback(&staged);
+                Ok(LocalNotificationStatus::Suppressed)
+            }
+            Ok(status) => {
+                intent::commit(&staged);
+                Ok(status)
+            }
+            Err(error) => {
+                intent::rollback(&staged);
+                Err(crate::Error::from(error))
+            }
+        }
+    }
+
+    /// Remove what is pending or delivered under `id`, and retire its target.
+    pub fn cancel(id: &str) -> crate::Result<()> {
+        intent::invalidate(id);
+        crate::runtime::platform()?
+            .notification_cancel(id)
+            .map_err(crate::Error::from)
+    }
+
+    pub fn cancel_all() -> crate::Result<()> {
+        intent::invalidate_all();
+        crate::runtime::platform()?
+            .notification_cancel_all()
+            .map_err(crate::Error::from)
+    }
+}
+
 /// Product-drawn desktop banner (top-right). Not an OS notification.
 pub mod banner {
     use lingxia_platform::traits::app_runtime::AppRuntime;

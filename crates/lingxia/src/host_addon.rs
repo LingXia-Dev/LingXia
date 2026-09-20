@@ -27,6 +27,15 @@ pub trait HostAddon: Send + Sync {
     ) -> Result<(), String> {
         Ok(())
     }
+    /// Declares the internal navigation routes a notification, a menu item, or
+    /// the tray may name. The registry is sealed before the runtime starts, so
+    /// nothing installed later — and nothing a payload carries — can add one.
+    fn install_navigation_routes(
+        &self,
+        _routes: &mut crate::navigation::NavigationRoutes,
+    ) -> Result<(), String> {
+        Ok(())
+    }
     /// Registers JS logic extensions when the `standard` feature is enabled.
     #[cfg(feature = "standard")]
     fn install_logic_extensions(&self) {}
@@ -116,6 +125,16 @@ pub(crate) fn run_install_native_settings_actions(
     let installed = snapshot_host_addons();
     for addon in installed.iter() {
         addon.install_native_settings_actions(registrar)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn run_install_navigation_routes(
+    routes: &mut crate::navigation::NavigationRoutes,
+) -> Result<(), String> {
+    let installed = snapshot_host_addons();
+    for addon in installed.iter() {
+        addon.install_navigation_routes(routes)?;
     }
     Ok(())
 }

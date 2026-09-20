@@ -296,7 +296,7 @@ impl AppRuntime for Platform {
             &request.id,
             &request.title,
             &request.body,
-            request.applink.as_deref().unwrap_or(""),
+            &request.activation_token,
             request.deliver_at_ms.map(|ms| ms as i64).unwrap_or(-1),
             request.silent,
         ))?;

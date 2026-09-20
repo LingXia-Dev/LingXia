@@ -24,7 +24,11 @@ pub struct LocalNotificationShow {
     pub id: String,
     pub title: String,
     pub body: String,
-    pub applink: Option<String>,
+    /// Opaque single-use token the OS payload carries and hands back on tap.
+    /// The target itself lives in the host's intent store, so no platform's
+    /// payload limit constrains it and no business parameter reaches a launch
+    /// command line. Never empty — an `activate` target has one too.
+    pub activation_token: String,
     pub deliver_at_ms: Option<u64>,
     pub silent: bool,
 }
@@ -122,8 +126,8 @@ impl DesktopBannerOutcome {
 /// What `notification_show` did with the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalNotificationStatus {
-    /// Handed to the OS for display now.
-    Shown,
+    /// Handed to the OS for display now. Not a receipt that anyone read it.
+    Posted,
     /// Queued with the OS for `deliver_at_ms`.
     Scheduled,
     /// Immediate show while the product is frontmost: nothing was posted.
@@ -133,7 +137,7 @@ pub enum LocalNotificationStatus {
 impl LocalNotificationStatus {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Shown => "shown",
+            Self::Posted => "posted",
             Self::Scheduled => "scheduled",
             Self::Suppressed => "suppressed",
         }
@@ -142,7 +146,7 @@ impl LocalNotificationStatus {
     /// Parse the status word a native bridge returned.
     pub fn from_native(value: &str) -> Option<Self> {
         match value {
-            "shown" => Some(Self::Shown),
+            "posted" => Some(Self::Posted),
             "scheduled" => Some(Self::Scheduled),
             "suppressed" => Some(Self::Suppressed),
             _ => None,
@@ -383,6 +387,10 @@ pub trait AppRuntime:
     /// Upsert a local notification: anything pending or delivered under `id`
     /// is replaced first, on every path. `deliver_at_ms` is epoch
     /// milliseconds; `None` or a time that is not in the future means now.
+    ///
+    /// A deployment shape that cannot hand `activation_token` back on tap
+    /// fails here instead of posting a notification whose tap loses its
+    /// target.
     fn notification_show(
         &self,
         _request: &LocalNotificationShow,

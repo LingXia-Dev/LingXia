@@ -361,6 +361,10 @@ pub(crate) fn init_with_platform(
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();
+    crate::navigation::install_handlers();
+    // Routes are sealed before anything can dispatch: a payload may name
+    // a route, never install one.
+    crate::navigation::install(lingxia_app_context::app_state_dir(&runtime.app_data_dir()))?;
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     let app_grant_resolver: std::sync::Arc<AppResourceGrantResolver> =
@@ -431,6 +435,8 @@ pub(crate) fn init_with_platform(
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
+    // Last: a tap that arrived during startup is queued until here.
+    crate::navigation::mark_ready();
     Ok(crate::RuntimeInfo::new(home_app_id, terminal_authority))
 }
 
