@@ -96,7 +96,10 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
 
         let result = Box("")
         let semaphore = DispatchSemaphore(value: 0)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
+        // `.badge` is here for `lx.app.setBadge`: on iOS the home-screen badge
+        // is drawn by the notification system, so without it the badge is
+        // accepted and never appears.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) {
             granted, error in
             if let error {
                 setLastError(error.localizedDescription)

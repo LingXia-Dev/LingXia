@@ -657,6 +657,11 @@ impl AppRuntime for Platform {
             .ok_or_else(|| PlatformError::Platform(format!("unexpected show status: {status}")))
     }
 
+    fn set_app_badge(&self, text: &str) -> Result<(), PlatformError> {
+        // The home-screen badge takes a count; Logic rejected anything else.
+        notification_call("setAppBadge", &[text]).map(|_| ())
+    }
+
     fn notification_cancel(&self, id: &str) -> Result<(), PlatformError> {
         notification_call("notificationCancel", &[id]).map(|_| ())
     }

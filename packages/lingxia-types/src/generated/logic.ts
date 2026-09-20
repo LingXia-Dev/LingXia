@@ -1624,6 +1624,10 @@ export type ScanCodeResult = {
  * has: the dock and the menu-bar item on macOS, the taskbar and the
  * notification-area item on Windows, the home-screen icon on iOS and
  * HarmonyOS. Name one only when that surface is the point.
+ * Under `auto` a surface that is simply absent — a macOS product with no
+ * status item — is skipped, not an error; the return value says what was
+ * actually painted. Name a surface and its failure is reported, because
+ * that surface was the request.
  * On iOS the home-screen badge is drawn by the notification system, so
  * it needs notification permission and only accepts a number — that is
  * the OS's rule, not an API coupling. Android has no cross-vendor

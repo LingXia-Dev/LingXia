@@ -211,6 +211,23 @@ export class LxAppNotification {
       .catch((error: Object) => LxAppNotification.fail(callbackId, `show: ${describe(error)}`));
   }
 
+  /**
+   * `lx.app.setBadge` on the home-screen icon. An empty value clears it.
+   * Independent of any posted notification: nothing here publishes one.
+   */
+  public static setAppBadge(callbackId: string, text: string): void {
+    const trimmed = String(text ?? '').trim();
+    const count = trimmed.length === 0 ? 0 : Number(trimmed);
+    if (!Number.isFinite(count) || count < 0) {
+      LxAppNotification.fail(callbackId, `setAppBadge: ${trimmed} is not a count`);
+      return;
+    }
+    notificationManager.setBadgeNumber(Math.floor(count))
+      .then(() => LxAppNotification.done(callbackId, 'ok'))
+      .catch((error: Object) =>
+        LxAppNotification.fail(callbackId, `setAppBadge: ${describe(error)}`));
+  }
+
   public static cancel(callbackId: string, id: string): void {
     LxAppNotification.remove(id)
       .then(() => LxAppNotification.done(callbackId, 'ok'))

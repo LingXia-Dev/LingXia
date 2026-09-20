@@ -134,6 +134,9 @@ pub struct BadgeSurfaces {
     pub app_icon: bool,
     /// Menu-bar (macOS) / notification-area (Windows) status item.
     pub tray: bool,
+    /// The platform draws the badge itself and only understands a count, so a
+    /// non-numeric value is a parameter error rather than a silent clear.
+    pub numeric_only: bool,
 }
 
 impl BadgeSurfaces {
@@ -152,20 +155,28 @@ pub fn badge_surfaces() -> BadgeSurfaces {
         BadgeSurfaces {
             app_icon: true,
             tray: true,
+            numeric_only: false,
         }
     }
     #[cfg(target_os = "ios")]
     {
+        // The home-screen badge is drawn by the notification system: it takes
+        // a count, and only with notification permission.
         BadgeSurfaces {
             app_icon: true,
             tray: false,
+            numeric_only: true,
         }
     }
     #[cfg(target_os = "windows")]
     {
+        // Taskbar overlay only. The notify-area icon lives in the host SDK and
+        // would need its own compositing path; claiming it here before that
+        // exists is exactly the lie this type is for.
         BadgeSurfaces {
             app_icon: true,
-            tray: true,
+            tray: false,
+            numeric_only: true,
         }
     }
     #[cfg(target_env = "ohos")]
@@ -173,6 +184,7 @@ pub fn badge_surfaces() -> BadgeSurfaces {
         BadgeSurfaces {
             app_icon: true,
             tray: false,
+            numeric_only: true,
         }
     }
     #[cfg(not(any(

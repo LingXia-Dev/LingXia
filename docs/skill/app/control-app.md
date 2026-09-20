@@ -47,7 +47,9 @@ These act on the product, not on the lxapp that called them, which is why a
 guest cannot reach them:
 
 - `lx.app.exit()` — quits the product.
-- `lx.app.setBadge(value)` — the product's own dock / taskbar / launcher icon.
+- `lx.app.setBadge(value, options?)` — a count on the product's own chrome,
+  wherever this platform shows one. `lx.tray.*` is Control-app only for the
+  same reason: the status item belongs to the product.
 - `lx.app.cache` — every lxapp the host has ever run. Injected only into the
   Control app, same presence as `lx.app.control`; guests do not have the member.
 - `lx.app.checkUpdate()` and `lx.app.screenshot()` — the native host app,

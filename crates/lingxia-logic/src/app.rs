@@ -82,25 +82,48 @@ fn set_app_badge(ctx: JSContext, value: JSValue, options: Optional<JSObject>) ->
     let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
     let lxapp = invocation.lxapp();
     let surface = badge_surface(options.0)?;
-    let text = badge_text(value, "lx.app.setBadge")?;
     let available = lingxia_platform::badge_surfaces();
+    let text = badge_text(value, "lx.app.setBadge")?;
+    if available.numeric_only && !text.is_empty() && text.parse::<i64>().is_err() {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!(
+                "lx.app.setBadge on this platform draws a count, so {text:?} is not a badge it can                  paint; pass a number or null"
+            ),
+        )
+        .into());
+    }
 
+    // `auto` is best-effort decoration across whatever chrome exists: a
+    // product with no status item must not have its dock badge fail on the
+    // tray's account. A named surface is a specific request, so its failure is
+    // the caller's to see.
+    let strict = surface != BadgeSurface::Auto;
     let mut painted = false;
     if surface != BadgeSurface::Tray && available.app_icon {
-        lxapp
-            .runtime
-            .set_app_badge(&text)
-            .map_err(|e| js_error_from_platform_error(&e))?;
-        painted = true;
+        let outcome = lxapp.runtime.set_app_badge(&text);
+        painted |= record(outcome, "appIcon", strict)?;
     }
     if surface != BadgeSurface::AppIcon && available.tray {
-        lxapp
-            .runtime
-            .set_tray_badge(&text)
-            .map_err(|e| js_error_from_platform_error(&e))?;
-        painted = true;
+        let outcome = lxapp.runtime.set_tray_badge(&text);
+        painted |= record(outcome, "tray", strict)?;
     }
     Ok(painted)
+}
+
+fn record(
+    outcome: Result<(), lingxia_platform::error::PlatformError>,
+    surface: &str,
+    strict: bool,
+) -> JSResult<bool> {
+    match outcome {
+        Ok(()) => Ok(true),
+        Err(error) if strict => Err(js_error_from_platform_error(&error)),
+        Err(error) => {
+            log::debug!("lx.app.setBadge skipped the {surface} surface: {error}");
+            Ok(false)
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
