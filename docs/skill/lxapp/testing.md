@@ -125,3 +125,14 @@ Keep shared helpers alongside tests. Extend scaffold smoke checks with product
 states, required Views/languages, and business outcomes. Run focused specs while
 iterating and the applicable suite at handoff. Report exercised scenarios and
 integrations with logs/artifacts; review screenshots and interactions for UX.
+
+## Selection and CI
+
+- Empty selections fail; opt out with `--pass-with-no-tests`.
+- Use `--id ID`, `--last-failed report.json`, or `--shard 1/3`; shards need separate sessions and output directories.
+- `--retries N` requires file-scoped `spec.reset(async t => { ... })` before every attempt. Restore app/backend state there; `fresh` only relaunches a page. Reports retain attempts and flag flaky passes.
+- `spec.afterEach` precedes LIFO `t.defer`; `timeoutCleanup` bounds both. Unsettled work stops subsequent specs.
+- `--timeout-secs` defaults to 300 for the whole run; specs default to 30 seconds.
+- `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
+- JSON keeps `timeout`, `xfail`, and `xpass` distinct; unexpected passes fail the run.
+- Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.

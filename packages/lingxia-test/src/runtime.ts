@@ -1,5 +1,5 @@
 import { AssertionError, expect, setAssertionSink } from "./expect.js";
-import { LiveFixture, TimeoutError, protocolStatus, toReportError } from "./fixture.js";
+import { LiveFixture, TimeoutError, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
@@ -33,6 +33,7 @@ interface RegisteredSpec {
   id?: string;
   covers: string[];
   timeout: number;
+  timeoutCleanup?: number;
   fresh: boolean;
   app?: string;
   forensics: boolean;
@@ -50,6 +51,8 @@ interface Hook {
 
 const specs: RegisteredSpec[] = [];
 const hooks: Hook[] = [];
+const afterHooks: Hook[] = [];
+const resetHooks: Hook[] = [];
 const fileCounts = new Map<string, number>();
 let forceRelaunchNext = false;
 let trackSurface = false;
@@ -82,6 +85,9 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     throw new TypeError("spec() requires a non-empty title");
   }
   const { options, body } = parseArgs(optionsOrBody, maybeBody);
+  for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${name} must be a positive finite number`);
+  }
   // The bundle map is installed after the modules run, so keep the raw frames;
   // the authored file is only knowable once the run starts. `frames[0]` is a
   // frame inside this package, identical for every caller, so it can order
@@ -94,6 +100,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     id: options.id,
     covers: [...(options.covers ?? [])],
     timeout: options.timeout ?? DEFAULT_SPEC_TIMEOUT_MS,
+    timeoutCleanup: options.timeoutCleanup,
     fresh: options.fresh === true,
     app: options.app,
     forensics: options.forensics !== false,
@@ -125,6 +132,14 @@ const spec: SpecApi = Object.assign(
     },
     fail(title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
       register("fail", title, optionsOrBody, maybeBody);
+    },
+    reset(fn: SpecBody): void {
+      if (typeof fn !== "function") throw new TypeError("spec.reset() requires a function");
+      resetHooks.push({ frames: captureFrames(), fn });
+    },
+    afterEach(fn: SpecBody): void {
+      if (typeof fn !== "function") throw new TypeError("spec.afterEach() requires a function");
+      afterHooks.push({ frames: captureFrames(), fn });
     },
     beforeEach(fn: SpecBody): void {
       if (typeof fn !== "function") throw new TypeError("spec.beforeEach() requires a function");
@@ -189,34 +204,56 @@ async function run(): Promise<ProtocolReport> {
   }
 
   const grep = host.args.grep;
+  const pattern = grep ? new RegExp(grep) : undefined;
   const forbidOnly = host.args.forbidOnly === "1" || host.args["forbid-only"] === "1";
   const hasOnly = specs.some((item) => item.annotation === "only");
   if (hasOnly && forbidOnly) {
     throw new Error("spec.only is registered; lxdev test --forbid-only refuses to run");
   }
 
+  const retries = Number(host.args.retries ?? 0);
+  if (!Number.isInteger(retries) || retries < 0 || retries > 10) throw new Error("retries must be between 0 and 10");
+  const selectedIds: string[] | undefined = host.args.ids ? JSON.parse(host.args.ids) : undefined;
+  const shard = host.args.shard?.split("/").map(Number);
+  if (shard && (shard.length !== 2 || shard.some(n => !Number.isInteger(n) || n < 1) || shard[0]! > shard[1]!)) throw new Error("shard must be INDEX/TOTAL (1-based)");
   const selected = specs.filter((item) => {
     if (hasOnly && item.annotation !== "only") return false;
+    if (selectedIds && !selectedIds.includes(resolvedId(item))) return false;
+    if (shard && stableHash(resolvedId(item)) % shard[1]! !== shard[0]! - 1) return false;
+    if (host.args.id && resolvedId(item) !== host.args.id) return false;
     if (!grep) return true;
     const id = resolvedId(item);
-    try {
-      const pattern = new RegExp(grep);
-      return pattern.test(item.title) || pattern.test(id);
-    } catch {
-      return item.title.includes(grep) || id.includes(grep);
-    }
+    return pattern!.test(item.title) || pattern!.test(id);
   });
+
+  if (selected.length === 0 && host.args.passWithNoTests !== "1") {
+    throw new Error("No tests matched this selection. Check the entry and filters, or use --pass-with-no-tests.");
+  }
+  await host.emit({ type: "run_started", schema_version: 1, total: selected.length,
+    cases: selected.map(item => ({ id: resolvedId(item), title: item.title, name: item.title,
+      full_name: item.id ? `${item.id} | ${item.title}` : item.title, ...sourceOf(item),
+      suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers })) });
 
   // Resolve each hook's authored file once, so a `beforeEach` stays scoped to
   // the file that declared it rather than running for every spec in the run.
   const hookFiles = new Map<Hook, string>(
-    hooks.map((hook) => [hook, resolveOrigin(hook.frames).file] as const),
+    [...hooks, ...afterHooks, ...resetHooks].map((hook) => [hook, resolveOrigin(hook.frames).file] as const),
   );
+  if (retries > 0) {
+    for (const item of selected.filter(item => !["skip", "fixme"].includes(item.annotation))) {
+      if (!resetHooks.some(hook => hookFiles.get(hook) === sourceOf(item).file)) {
+        throw new Error(`Retries require spec.reset() in ${sourceOf(item).file}; relaunching a page does not reset app state.`);
+      }
+    }
+  }
   const subject = await describeSubject();
   const cases: CaseRecord[] = [];
   forceRelaunchNext = false;
+  let contaminated = false;
 
-  for (const item of selected) {
+  const queue = [...selected];
+  const attempts = new Map<string, CaseRecord[]>();
+  for (const item of queue) {
     const id = resolvedId(item);
     const timeout = item.timeout;
     const source = sourceOf(item);
@@ -235,18 +272,22 @@ async function run(): Promise<ProtocolReport> {
       assertions: [],
       attachments: [],
       timeout_ms: timeout,
+      attempt: attempts.get(id)?.length ?? 0,
       reason: item.reason,
     };
     await host.emit({
       type: "case_started",
+      id, file: source.file, line: source.line,
       name: record.name,
       full_name: record.full_name,
       timeout_ms: timeout,
+      watchdog_timeout_ms: timeout + (item.timeoutCleanup ?? MAX_DEFER_BUDGET_MS) + FORENSICS_BUDGET_MS + WEDGED_DEFER_BUDGET_MS,
       covers: record.covers,
     });
 
     const caseStarted = Date.now();
-    if (item.annotation === "skip" || item.annotation === "fixme") {
+    if (contaminated || item.annotation === "skip" || item.annotation === "fixme") {
+      if (contaminated) record.reason = "Not run: a previous spec left asynchronous work pending; restart the run.";
       record.status = "skipped";
       record.duration_ms = Date.now() - caseStarted;
       cases.push(record);
@@ -255,7 +296,7 @@ async function run(): Promise<ProtocolReport> {
     }
 
     const fixture = new LiveFixture(
-      id,
+      `${encodeURIComponent(id)}/attempt-${record.attempt}`,
       pinApp(item.app),
       host,
       host.args,
@@ -272,6 +313,7 @@ async function run(): Promise<ProtocolReport> {
     const bodyPromise = (async () => {
       if (shouldRelaunch) await relaunchHome(fixture.raw);
       phase = "beforeEach";
+      for (const hook of resetHooks) { if (hookFiles.get(hook) === source.file) await hook.fn(fixture); }
       for (const hook of hooks) {
         if (hookFiles.get(hook) === source.file) await hook.fn(fixture);
       }
@@ -285,6 +327,8 @@ async function run(): Promise<ProtocolReport> {
 
     const timeoutError = new TimeoutError(`spec timed out after ${timeout}ms`);
     let timedOut = false;
+    let bodySettled = false;
+    void bodyResult.then(() => { bodySettled = true; });
     let timerHandle: ReturnType<typeof setTimeout> | undefined;
     const timer = new Promise<"timeout">((resolve) => {
       timerHandle = setTimeout(() => {
@@ -301,12 +345,8 @@ async function run(): Promise<ProtocolReport> {
         error = timeoutError;
         phase = "timeout";
         forceRelaunchNext = true;
-        await Promise.race([
-          bodyResult,
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, WEDGED_DEFER_BUDGET_MS);
-          }),
-        ]);
+        try { await within(bodyResult, WEDGED_DEFER_BUDGET_MS, "body did not settle after timeout"); }
+        catch { contaminated = true; }
       } else if (!winner.ok) {
         if (timedOut || fixture.aborted) {
           status = "timeout";
@@ -323,46 +363,46 @@ async function run(): Promise<ProtocolReport> {
       if (timerHandle !== undefined) clearTimeout(timerHandle);
     }
 
-    if (status !== "passed" && item.forensics) {
-      phase = "forensics";
+    let evidenceCollected = false;
+    const collectEvidence = async () => {
+      if (evidenceCollected || !item.forensics) return;
+      evidenceCollected = true;
       try {
         // The whole point of the timeout path is that a wedged app does not
         // stall the run, and these calls bypass `guard` on the raw driver.
-        await Promise.race([
-          captureForensics(fixture),
-          new Promise<void>((resolve) => {
-            setTimeout(resolve, FORENSICS_BUDGET_MS);
-          }),
-        ]);
+        await within(captureForensics(fixture), FORENSICS_BUDGET_MS, "failure evidence timed out");
       } catch (forensicsError) {
-        if (status !== "timeout") {
-          status = "failed";
-          error = forensicsError;
-          fixture.failurePhase = "forensics";
-        }
+        // Evidence failures must never replace the product failure.
+        if (forensicsError instanceof TimeoutError) contaminated = true;
+        await host.emit({ type: "diagnostic", phase: "forensics", message: String(forensicsError) });
       }
-    }
+    };
+    if (status !== "passed") await collectEvidence();
 
     phase = "defer";
     const deferErrors: unknown[] = [];
-    // A wedged app must not stall the run, but a healthy one deserves the time
-    // its cleanup actually needs — a relaunch plus a page wait routinely
-    // outruns the post-timeout budget, and a cut-short cleanup leaks the
-    // fixture's state into every spec that follows.
-    if (fixture.defers.length > 0) {
-      // Cleanup is not spent from the spec's budget: a 3s spec whose defer
-      // relaunches a page would otherwise be failed for its own tidying.
-      fixture.allowCleanup(
-        status === "timeout" ? WEDGED_DEFER_BUDGET_MS : MAX_DEFER_BUDGET_MS,
-      );
+    const cleanupBudget = item.timeoutCleanup ?? (status === "timeout" ? WEDGED_DEFER_BUDGET_MS : MAX_DEFER_BUDGET_MS);
+    const afterEach = afterHooks.filter(hook => hookFiles.get(hook) === source.file);
+    const hasCleanup = afterEach.length > 0 || fixture.defers.length > 0;
+    function* cleanupTasks() {
+      for (const hook of afterEach) yield () => hook.fn(fixture);
+      while (fixture.defers.length > 0) yield fixture.defers.pop()!;
     }
-    for (let index = fixture.defers.length - 1; index >= 0; index -= 1) {
-      try {
-        await fixture.defers[index]!();
-      } catch (deferError) {
-        deferErrors.push(deferError);
+    // Never reopen a timed-out fixture while its body can still issue commands.
+    if (hasCleanup && bodySettled) {
+      fixture.allowCleanup(cleanupBudget);
+      const deadline = Date.now() + cleanupBudget;
+      for (const cleanup of cleanupTasks()) {
+        let settled = false;
+        const task = Promise.resolve().then(cleanup).finally(() => { settled = true; });
+        try { await within(task, Math.max(0, deadline - Date.now()), "fixture cleanup budget exceeded"); }
+        catch (err) { deferErrors.push(err); }
+        if (!settled) { contaminated = true; break; }
       }
+    } else if (hasCleanup) {
+      deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
     }
+    fixture.endCleanup();
 
     if (item.annotation === "fail") {
       const bodyAssertion =
@@ -374,10 +414,10 @@ async function run(): Promise<ProtocolReport> {
       } else if (status === "passed") {
         status = "xpass";
         error = new Error("spec.fail passed (xpass)");
+        fixture.failurePhase = "body";
       }
     }
 
-    if (fixture.defers.length > 0) fixture.endCleanup();
     if (deferErrors.length > 0) {
       // A spec that hung is reported as a timeout; cleanup that could not
       // finish afterwards is a consequence of the hang, not a different
@@ -396,6 +436,8 @@ async function run(): Promise<ProtocolReport> {
       }
     }
 
+    if (status !== "passed") await collectEvidence();
+    fixture.close();
     record.status = status;
     record.duration_ms = Date.now() - caseStarted;
     record.steps = fixture.steps;
@@ -403,18 +445,29 @@ async function run(): Promise<ProtocolReport> {
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
     record.attachments = fixture.attachments;
     setAssertionSink();
-    if (error && status !== "xfail") {
-      record.error = toReportError(error, fixture.currentStepPath());
-    } else if (status === "xfail" && error) {
-      record.error = toReportError(error, fixture.currentStepPath());
+    if (error) record.error = toReportError(error, fixture.currentStepPath());
+    if (record.error) {
+      record.error.phase = status === "timeout" ? "timeout" : fixture.failurePhase ?? phase;
+      // JSC tail calls can omit the authored assertion frame.
+      record.error.location ??= `${source.file}:${source.line}:1`;
     }
-    cases.push(record);
-    await finishCase(host, record);
+    const history = attempts.get(id) ?? [];
+    history.push(record);
+    attempts.set(id, history);
+    const finished = { ...record, attempts: history.map(attempt => ({ ...attempt })),
+      flaky: record.status === "passed" && history.length > 1 };
+    const previous = cases.findIndex(item => item.id === id);
+    if (previous >= 0) cases[previous] = finished; else cases.push(finished);
+    await finishCase(host, finished);
+    if (!contaminated && (status === "failed" || status === "timeout") && history.length <= retries) {
+      queue.splice(queue.indexOf(item) + 1, 0, { ...item });
+    }
   }
 
   const counts = countStatuses(cases);
   const duration_ms = Date.now() - started;
   const json: JsonReport = {
+    schema_version: 1,
     framework: { name: PACKAGE_NAME, version: VERSION },
     meta: {
       started_at: new Date(started).toISOString(),
@@ -425,8 +478,8 @@ async function run(): Promise<ProtocolReport> {
       subject,
       surface_coverage: trackSurface,
     },
-    partial: false,
-    filtered: Boolean(grep) || hasOnly,
+    partial: contaminated,
+    filtered: Boolean(grep || host.args.id || host.args.ids || shard) || hasOnly,
     duration_ms,
     ...counts,
     cases,
@@ -436,29 +489,7 @@ async function run(): Promise<ProtocolReport> {
   await attachText(host, "report.html", renderHtml(json), "text/html; charset=utf-8");
   await attachText(host, "junit.xml", renderJUnit(json), "application/xml; charset=utf-8");
 
-  const protocol: ProtocolReport = {
-    total: cases.length,
-    passed: cases.filter((item) => protocolStatus(item.status) === "passed").length,
-    failed: cases.filter((item) => protocolStatus(item.status) === "failed").length,
-    skipped: cases.filter((item) => protocolStatus(item.status) === "skipped").length,
-    duration_ms: json.duration_ms,
-    cases: cases.map((item) => ({
-      name: item.name,
-      full_name: item.full_name,
-      status: protocolStatus(item.status),
-      duration_ms: item.duration_ms,
-      error:
-        item.error && protocolStatus(item.status) === "failed"
-          ? {
-              name: item.error.name,
-              message: item.error.message,
-              stack: item.error.stack,
-              causes: [],
-            }
-          : undefined,
-    })),
-  };
-  return protocol;
+  return json;
 }
 
 async function finishCase(
@@ -469,12 +500,12 @@ async function finishCase(
     type: "case_finished",
     name: record.name,
     full_name: record.full_name,
-    status: protocolStatus(record.status),
+    status: record.status,
+    id: record.id,
     duration_ms: record.duration_ms,
-    error:
-      record.error && protocolStatus(record.status) === "failed"
-        ? record.error
-        : undefined,
+    error: record.error,
+    record,
+
   });
 }
 
@@ -549,6 +580,8 @@ function encodeScreenshot(shot: unknown): { mimeType: string; base64: string } |
 function reset(): void {
   specs.length = 0;
   hooks.length = 0;
+  afterHooks.length = 0;
+  resetHooks.length = 0;
   trackSurface = false;
   fileCounts.clear();
   forceRelaunchNext = false;
@@ -573,3 +606,18 @@ if (!globalThis.__LINGXIA_TEST__) {
 
 export { spec, expect, run, reset, resolvedId, trackPublicSurface };
 export type { SpecOptions, SpecBody, Fixture };
+
+async function within<T>(task: Promise<T>, ms: number, message: string): Promise<T> {
+  let handle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([task, new Promise<never>((_, reject) => {
+      handle = setTimeout(() => reject(new TimeoutError(message)), ms);
+    })]);
+  } finally { if (handle !== undefined) clearTimeout(handle); }
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i++) hash = Math.imul(hash ^ value.charCodeAt(i), 16777619);
+  return hash >>> 0;
+}

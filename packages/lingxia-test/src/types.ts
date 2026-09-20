@@ -19,6 +19,8 @@ export interface SpecOptions {
   timeout?: number;
   /** Relaunch the home page before the body. */
   fresh?: boolean;
+  /** Independent cleanup budget; a pending cleanup stops subsequent specs. */
+  timeoutCleanup?: number;
   /** Pin `t.app` to this lxapp id instead of the current one. */
   app?: string;
   /** Skip auto-attached failure forensics (only when capture itself would wedge). */
@@ -80,6 +82,11 @@ export interface RetryMatchers<T> {
 export interface LocatorMatchers {
   readonly not: LocatorMatchers;
   toBeVisible(options?: ExpectOptions): Promise<void>;
+  toBeHidden(options?: ExpectOptions): Promise<void>;
+  toBeAttached(options?: ExpectOptions): Promise<void>;
+  toBeEnabled(options?: ExpectOptions): Promise<void>;
+  toBeDisabled(options?: ExpectOptions): Promise<void>;
+  toBeEditable(options?: ExpectOptions): Promise<void>;
   toHaveText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
   toHaveCount(expected: number, options?: ExpectOptions): Promise<void>;
   toHaveValue(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
@@ -161,6 +168,7 @@ export interface AttachmentRef {
 }
 
 export interface ReportError {
+  phase?: string;
   name: string;
   message: string;
   stack?: string;
@@ -172,6 +180,9 @@ export interface ReportError {
 }
 
 export interface CaseRecord {
+  attempt?: number;
+  attempts?: CaseRecord[];
+  flaky?: boolean;
   id: string;
   title: string;
   name: string;
@@ -219,6 +230,7 @@ export interface RunMeta {
 }
 
 export interface JsonReport {
+  schema_version?: number;
   framework: { name: string; version: string };
   meta: RunMeta;
   partial: boolean;
@@ -234,27 +246,7 @@ export interface JsonReport {
   cases: CaseRecord[];
 }
 
-export interface ProtocolCase {
-  name: string;
-  full_name: string;
-  status: "passed" | "failed" | "skipped";
-  duration_ms: number;
-  error?: {
-    name: string;
-    message: string;
-    stack?: string;
-    causes?: unknown[];
-  };
-}
-
-export interface ProtocolReport {
-  total: number;
-  passed: number;
-  failed: number;
-  skipped: number;
-  duration_ms: number;
-  cases: ProtocolCase[];
-}
+export type ProtocolReport = JsonReport;
 
 export interface LingxiaTestController {
   run(): Promise<ProtocolReport>;

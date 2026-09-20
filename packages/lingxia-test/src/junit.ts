@@ -19,9 +19,13 @@ export function renderJUnit(report: JsonReport): string {
     .map(([name, cases]) => renderSuite(name, cases, timestamp))
     .join("");
   const failures = report.failed + report.timeout + report.xpass;
+  const errors = report.partial ? 1 : 0;
+  const interrupted = report.partial
+    ? '  <testsuite name="runner" tests="1" failures="0" errors="1"><testcase name="incomplete run"><error message="The test run did not finish"/></testcase></testsuite>\n'
+    : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
-<testsuites name="${attr(PACKAGE_NAME)}" tests="${report.total}" failures="${failures}" errors="0" skipped="${report.skipped}" time="${seconds(report.duration_ms)}">
-${body}</testsuites>
+<testsuites name="${attr(PACKAGE_NAME)}" tests="${report.total + errors}" failures="${failures}" errors="${errors}" skipped="${report.skipped}" time="${seconds(report.duration_ms)}">
+${body}${interrupted}</testsuites>
 `;
 }
 
@@ -56,6 +60,7 @@ function renderCase(item: CaseRecord, suite: string): string {
       `      <failure message="${attr(firstLine(error?.message ?? item.status))}" type="${attr(error?.name ?? "Error")}">${text(detail)}</failure>\n`,
     );
   }
+  if (item.flaky) { inner.push(`      <system-out>${text(`Flaky: passed after ${item.attempts?.length ?? 1} attempts`)}</system-out>\n`); }
   if (item.status === "xfail") {
     inner.push(`      <system-out>${text("spec.fail: failed as declared")}</system-out>\n`);
   }

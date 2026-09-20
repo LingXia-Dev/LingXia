@@ -1868,6 +1868,8 @@ impl WebView {
                 style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') !== 0; \
               if (!visible) return {{ ok:false, error:'not visible', interactable:false, count:els.length }}; \
               if (disabled) return {{ ok:false, error:'not enabled', interactable:false, count:els.length }}; \
+              const hit = document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2); \
+              if (!hit || !(hit === el || el.contains(hit))) return {{ ok:false, error:'element is obscured', interactable:false }}; \
               const tag = (el.tagName || '').toLowerCase(); \
               if (tag.indexOf('lx-') === 0) {{ \
                 el.setAttribute('focus', 'true'); \

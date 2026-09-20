@@ -63,3 +63,11 @@ test("the bundle source map moves a frame back to the authored file", async () =
     delete globalThis.__LINGXIA_TEST_SOURCE_MAP__;
   }
 });
+
+test('an already-mapped source location is never mapped a second time', () => {
+  globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { sources:['wrong.ts'], mappings:'AAGA' };
+  try {
+    const frame = {file:'/repo/tests/input.test.ts',line:1,column:1};
+    assert.deepEqual(resolveOrigin([frame]), frame);
+  } finally { delete globalThis.__LINGXIA_TEST_SOURCE_MAP__; }
+});

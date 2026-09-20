@@ -127,7 +127,7 @@ export function remapPosition(
   column: number,
 ): { file: string; line: number; column: number } {
   const map = bundleMap();
-  if (!map) return { file, line, column };
+  if (!map || !file.startsWith("lxdev-test://")) return { file, line, column };
   try {
     const table = buildTable(map);
     const mapped = lookup(table, map, line - 1, column - 1);

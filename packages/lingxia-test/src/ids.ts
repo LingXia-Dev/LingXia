@@ -54,7 +54,7 @@ export function parseFrames(stack: string | undefined): StackFrame[] {
 const UNKNOWN: StackFrame = { file: "unknown", line: 0, column: 0 };
 
 /** `@lingxia/test`'s own frames are never the interesting caller. */
-function isFrameworkFrame(file: string): boolean {
+export function isFrameworkFrame(file: string): boolean {
   const normalized = file.replace(/\\/g, "/");
   return (
     /(^|\/)lingxia-test\/(dist|src)\//.test(normalized) ||

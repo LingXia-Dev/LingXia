@@ -63,7 +63,7 @@ export function createWorld(options = {}) {
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
     },
     async eval() {
-      return null;
+      return true;
     },
   };
 
