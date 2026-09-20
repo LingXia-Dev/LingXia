@@ -1130,7 +1130,7 @@ export type LxAppEnvVersion = 'release' | 'draft';
 export type LxAppReleaseType = 'release' | 'draft';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'badge' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so
@@ -1617,6 +1617,22 @@ export type ScanCodeResult = {
     scanResult: string;
     scanType: string;
 } | CanceledResult;
+
+/**
+ * Where `lx.app.setBadge` paints.
+ * `auto` (the default) marks every product-owned surface this platform
+ * has: the dock and the menu-bar item on macOS, the taskbar and the
+ * notification-area item on Windows, the home-screen icon on iOS and
+ * HarmonyOS. Name one only when that surface is the point.
+ * On iOS the home-screen badge is drawn by the notification system, so
+ * it needs notification permission and only accepts a number — that is
+ * the OS's rule, not an API coupling. Android has no cross-vendor
+ * launcher badge at all: `lx.supports({ capability: 'badge' })` reports
+ * `false` there and `setBadge` returns `false`.
+ */
+export type SetBadgeOptions = {
+    surface?: 'auto' | 'appIcon' | 'tray';
+};
 
 /** Share images, PDFs, or other files. */
 export type ShareFilesOptions = ShareTitleOptions & {
@@ -2842,13 +2858,20 @@ declare global {
      */
     exit(): void;
     /**
-     * Set the app-icon badge, for example an unread count.
-     * This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-     * on mobile — the product's own icon, not the calling lxapp's, so it is
-     * Control app only and other lxapps get a permission error. Null or an empty
-     * string clears it. Unsupported platforms treat the call as a no-op.
+     * Mark the product in system chrome, for example with an unread count.
+     * One call, because "where the count goes" is the platform's answer, not the
+     * caller's: `auto` paints every product-owned surface this platform has — the
+     * dock and the menu-bar item on macOS, the taskbar and the notification-area
+     * item on Windows, the home-screen icon on iOS and HarmonyOS. Name a
+     * `surface` only when one of them is the point.
+     * It is the product's chrome, not the calling lxapp's, so it is Control app
+     * only. Null or an empty string clears it.
+     * Returns whether anything was actually painted. A platform with no such
+     * chrome is a no-op that returns `false` rather than an error — portable code
+     * can call this unconditionally — and
+     * `lx.supports({ capability: 'badge' })` answers the same question up front.
      */
-    setBadge(value: string | number | null): void;
+    setBadge(value: string | number | null, options?: SetBadgeOptions): boolean;
   }
 }
 
@@ -3239,8 +3262,6 @@ declare global {
 
 declare global {
   interface TrayApi {
-    /** lx.tray.setBadge(value) — the menu-bar / system-tray badge. Null/empty clears it. */
-    setBadge(value: string | number | null): void;
     /** lx.tray.setIcon(icon) — replace the tray icon (a resource path). */
     setIcon(icon: string): void;
     /** lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it. */

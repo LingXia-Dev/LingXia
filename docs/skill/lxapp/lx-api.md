@@ -152,6 +152,29 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 ---
 
+## Badges
+
+`lx.app.setBadge(value, options?)` — Control-app only, synchronous, returns
+whether anything was painted. Signatures are in `@lingxia/types`; what they do
+not say:
+
+- One call covers every product-owned surface. `surface: 'auto'` (the default)
+  marks the dock *and* the menu-bar item on macOS, the taskbar *and* the
+  notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
+  There is no separate tray badge call.
+- A platform with no such chrome is a no-op that returns `false`, never a
+  rejection — call it unconditionally from portable code and gate the UI on
+  `lx.supports({ capability: 'badge' })`.
+- **Android returns `false`.** There is no cross-vendor launcher badge; what a
+  launcher shows comes from active notifications, not from a standalone count.
+- **iOS needs notification permission** and only accepts a number. The
+  home-screen badge is drawn by the notification system, so a build that never
+  asked cannot paint one, and a non-numeric value is a parameter error rather
+  than a silent clear. That is the OS's rule; a badge is otherwise independent
+  of `lx.app.notification`, which never changes it.
+- A badge is decoration: it never prompts, never interrupts, and posting a
+  notification does not set one.
+
 ## Desktop banner
 
 `lx.app.banner` — Control-app only, desktop only (macOS / Windows). Not an OS

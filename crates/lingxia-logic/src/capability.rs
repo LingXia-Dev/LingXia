@@ -40,6 +40,7 @@ flag_capabilities! {
     "autostart" => |_: &Arc<LxApp>| autostart_supported();
     "notifications" => |_: &Arc<LxApp>| notification_supported();
     "banner" => |lxapp: &Arc<LxApp>| banner_supported(lxapp);
+    "badge" => |lxapp: &Arc<LxApp>| badge_supported(lxapp);
     "browser" => |_: &Arc<LxApp>| lingxia_app_context::capability::browser();
     "proxy" => |_: &Arc<LxApp>| lingxia_app_context::capability::proxy();
     "selfUpdate" => |lxapp: &Arc<LxApp>| self_update_supported(lxapp);
@@ -106,6 +107,13 @@ fn notification_supported() -> bool {
 /// `lx.app.banner`'s presence check. Desktop Control app only.
 fn banner_supported(lxapp: &Arc<LxApp>) -> bool {
     lxapp.is_control_app() && lingxia_platform::banner_supported()
+}
+
+/// `lx.app.setBadge`'s own answer, so the two can never disagree. Android has
+/// no cross-vendor launcher badge, so it reports `false` rather than accepting
+/// a count and dropping it.
+fn badge_supported(lxapp: &Arc<LxApp>) -> bool {
+    lxapp.is_control_app() && lingxia_platform::badge_surfaces().any()
 }
 
 fn self_update_supported(lxapp: &Arc<LxApp>) -> bool {
@@ -266,7 +274,7 @@ rong::js_api! {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
 
         /// Boolean capability names accepted by `lx.supports`.
-        type LxCapabilityFlag = r###"'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
+        type LxCapabilityFlag = r###"'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'badge' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture'"###;
 
         /// Surface placements accepted by `lx.supports`.
         type LxSurfaceCapability = r###"'main' | 'aside' | 'float' | 'window' | 'tab'"###;

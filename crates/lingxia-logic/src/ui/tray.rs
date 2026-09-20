@@ -1,9 +1,8 @@
-use crate::app::badge_text;
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
 use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
+use rong::{JSContext, JSFunc, JSObject, JSResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -30,17 +29,6 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
             Ok(obj)
         }
     }
-}
-
-/// lx.tray.setBadge(value) — the menu-bar / system-tray badge. Null/empty clears it.
-fn set_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
-    let invocation = authorization::require(&ctx, LogicRoute::TraySetBadge)?;
-    let lxapp = invocation.lxapp();
-    let text = badge_text(value, "lx.tray.setBadge")?;
-    lxapp
-        .runtime
-        .set_tray_badge(&text)
-        .map_err(|e| js_error_from_platform_error(&e))
 }
 
 /// lx.tray.setIcon(icon) — replace the tray icon (a resource path).
@@ -167,7 +155,6 @@ rong::js_api! {
 rong::js_api! {
     fn register_tray_api(ctx) {
         namespace TrayApi = tray_namespace(ctx)?;
-        fn setBadge(ts_params = "value: string | number | null") = set_badge;
         fn setIcon(ts_params = "icon: string") = set_icon;
         fn setTitle(ts_params = "text: string | null") = set_title;
         fn setMenu(ts_params = "items: Array<TrayMenuItem | TrayMenuSeparator>") = set_menu;

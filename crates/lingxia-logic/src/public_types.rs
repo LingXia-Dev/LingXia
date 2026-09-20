@@ -1883,6 +1883,22 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
+        /// Where `lx.app.setBadge` paints.
+        ///
+        /// `auto` (the default) marks every product-owned surface this platform
+        /// has: the dock and the menu-bar item on macOS, the taskbar and the
+        /// notification-area item on Windows, the home-screen icon on iOS and
+        /// HarmonyOS. Name one only when that surface is the point.
+        ///
+        /// On iOS the home-screen badge is drawn by the notification system, so
+        /// it needs notification permission and only accepts a number — that is
+        /// the OS's rule, not an API coupling. Android has no cross-vendor
+        /// launcher badge at all: `lx.supports({ capability: 'badge' })` reports
+        /// `false` there and `setBadge` returns `false`.
+        type SetBadgeOptions = r###"{
+    surface?: 'auto' | 'appIcon' | 'tray';
+}"###;
+
         /// Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
         /// The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
         /// content at runtime.

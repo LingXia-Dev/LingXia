@@ -28,7 +28,6 @@ pub(crate) enum LogicRoute {
     AppNotificationCancelAll,
     AppBannerShow,
     AppBannerDismiss,
-    TraySetBadge,
     TraySetIcon,
     TraySetTitle,
     TraySetMenu,
@@ -98,7 +97,6 @@ impl LogicRoute {
         Self::AppNotificationCancelAll,
         Self::AppBannerShow,
         Self::AppBannerDismiss,
-        Self::TraySetBadge,
         Self::TraySetIcon,
         Self::TraySetTitle,
         Self::TraySetMenu,
@@ -174,7 +172,6 @@ impl LogicRoute {
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
             | Self::AppBannerDismiss
-            | Self::TraySetBadge
             | Self::TraySetIcon
             | Self::TraySetTitle
             | Self::TraySetMenu
@@ -235,7 +232,6 @@ impl LogicRoute {
             Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
             Self::AppBannerShow => "lx.app.banner.show",
             Self::AppBannerDismiss => "lx.app.banner.dismiss",
-            Self::TraySetBadge => "lx.tray.setBadge",
             Self::TraySetIcon => "lx.tray.setIcon",
             Self::TraySetTitle => "lx.tray.setTitle",
             Self::TraySetMenu => "lx.tray.setMenu",
