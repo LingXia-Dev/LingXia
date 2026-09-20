@@ -235,16 +235,12 @@ spec('subscribe to and release the display language listener', {
       first();
       second();
       first();
-      return {
-        kinds: [typeof first, typeof second], distinct: first !== second,
-        aside: typeof context?.aside,
-      };
+      return { kinds: [typeof first, typeof second], distinct: first !== second };
     `,
-  }) as { kinds: string[]; distinct: boolean; aside: string };
+  }) as { kinds: string[]; distinct: boolean };
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
-  expect(result.aside).toBe('boolean');
 });
 
 spec('request permission and replace local notifications by id', {
@@ -727,10 +723,14 @@ spec('subscribe to and release the surface context listener', {
       second();
       // Releasing twice must stay inert rather than throwing.
       first();
-      return { kinds: [typeof first, typeof second], distinct: first !== second };
+      return {
+        kinds: [typeof first, typeof second], distinct: first !== second,
+        aside: typeof context?.aside,
+      };
     `,
-  }) as { kinds: string[]; distinct: boolean };
+  }) as { kinds: string[]; distinct: boolean; aside: string };
 
   expect(result.kinds).toEqual(['function', 'function']);
   expect(result.distinct).toBeTruthy();
+  expect(result.aside).toBe('boolean');
 });
