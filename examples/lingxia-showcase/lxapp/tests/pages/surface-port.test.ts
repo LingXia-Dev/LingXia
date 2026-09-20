@@ -52,7 +52,10 @@ spec('exchange messages over the port navigateTo returns', {
       return 'scheduled';
     `,
   });
-  await waitForCurrentPage(app, 'surface');
+  // Desktop only preloads the landing tab. This spec is the first visit to
+  // `surface`, and Windows CI has taken >10s to create that WebView and fire
+  // onReady (the page was already current). Match the other cold-nav specs.
+  await waitForCurrentPage(app, 'surface', 30_000);
   await app.page.waitFor({ page: 'surface', css: '[data-testid="surface-page"]', state: 'visible' });
   const port = await eventually(
     () => app.eval({
