@@ -231,7 +231,7 @@ mod bridge {
             id: &str,
             title: &str,
             body: &str,
-            applink: &str,
+            activation_token: &str,
             deliver_at_ms: i64,
             silent: bool,
         ) -> String;

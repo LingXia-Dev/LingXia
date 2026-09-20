@@ -26,6 +26,10 @@ lxapp:
   unavailable_maintain: "It's under maintenance. Try again later."
   unavailable_suspended: "It's no longer available."
 
+# A notification whose target was removed, replaced, or already opened
+notification:
+  target_unavailable: "This is no longer available."
+
 # Tab bar
 tabbar:
   more: "More"

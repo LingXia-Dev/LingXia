@@ -1,7 +1,8 @@
 use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_error_from_platform_error, js_invalid_parameter_error};
 use lingxia_platform::traits::app_runtime::{AppRuntime, LocalNotificationShow};
-use rong::{FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue};
+use lingxia_service::navigation::{self, NavigationError, NavigationTarget, intent};
+use rong::{FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MAX_ID_CHARS: usize = 64;
@@ -20,6 +21,9 @@ struct JSShowOptions {
     id: Option<String>,
     title: Option<String>,
     body: Option<String>,
+    target: Option<JSObject>,
+    /// Removed in favour of `target`. Decoded only so the old call reports a
+    /// parameter error instead of degrading into a bare activate.
     applink: Option<String>,
     schedule: Option<JSSchedule>,
     silent: Option<bool>,
@@ -69,11 +73,37 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
         })?;
     let runtime = invocation.lxapp().runtime.clone();
     let id = request.id.clone();
-    let status = spawn_blocking(move || runtime.notification_show(&request)).await?;
-    let result = JSObject::new(&ctx);
-    result.set("id", id)?;
-    result.set("status", status.as_str())?;
-    Ok(result)
+    // Persist the target before the OS is told anything, so a tap can never
+    // arrive ahead of the record that explains it.
+    let staged = intent::stage(&request.id, &request.target).map_err(navigation_error)?;
+    let platform_request = LocalNotificationShow {
+        id: request.id,
+        title: request.title,
+        body: request.body,
+        activation_token: staged.token.clone(),
+        deliver_at_ms: request.deliver_at_ms,
+        silent: request.silent,
+    };
+    let status = spawn_blocking(move || runtime.notification_show(&platform_request)).await;
+    match status {
+        Ok(status) => {
+            if status == lingxia_platform::traits::app_runtime::LocalNotificationStatus::Suppressed
+            {
+                // Nothing was posted, so nothing may resolve this token later.
+                intent::rollback(&staged);
+            } else {
+                intent::commit(&staged);
+            }
+            let result = JSObject::new(&ctx);
+            result.set("id", id)?;
+            result.set("status", status.as_str())?;
+            Ok(result)
+        }
+        Err(error) => {
+            intent::rollback(&staged);
+            Err(error)
+        }
+    }
 }
 
 async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
@@ -88,12 +118,16 @@ async fn cancel(ctx: JSContext, id: JSValue) -> JSResult<()> {
             Ok(id)
         })?;
     let runtime = invocation.lxapp().runtime.clone();
+    // Retire the target first: a banner the OS has not removed yet must not
+    // still navigate.
+    intent::invalidate(&id);
     spawn_blocking(move || runtime.notification_cancel(&id)).await
 }
 
 async fn cancel_all(ctx: JSContext) -> JSResult<()> {
     let invocation = authorization::require(&ctx, LogicRoute::AppNotificationCancelAll)?;
     let runtime = invocation.lxapp().runtime.clone();
+    intent::invalidate_all();
     spawn_blocking(move || runtime.notification_cancel_all()).await
 }
 
@@ -113,8 +147,23 @@ where
         .map_err(|error| js_error_from_platform_error(&error))
 }
 
-fn decode_show(options: JSValue) -> JSResult<LocalNotificationShow> {
+/// What `show` asked for, once the request itself is known to be valid.
+struct ShowRequest {
+    id: String,
+    title: String,
+    body: String,
+    target: NavigationTarget,
+    deliver_at_ms: Option<u64>,
+    silent: bool,
+}
+
+fn decode_show(options: JSValue) -> JSResult<ShowRequest> {
     let parsed = options.to_rust::<JSShowOptions>()?;
+    if parsed.applink.is_some() {
+        return Err(js_invalid_parameter_error(
+            "lx.app.notification.show no longer takes applink; pass target: { kind: 'page', page } or { kind: 'appLink', url }",
+        ));
+    }
     let title = parsed
         .title
         .filter(|title| !title.is_empty())
@@ -123,17 +172,52 @@ fn decode_show(options: JSValue) -> JSResult<LocalNotificationShow> {
         Some(id) => validate_id(&id)?,
         None => uuid::Uuid::new_v4().to_string(),
     };
-    if let Some(applink) = parsed.applink.as_deref() {
-        validate_applink(applink)?;
-    }
-    Ok(LocalNotificationShow {
+    let target = decode_target(parsed.target)?;
+    // The request is checked before the frontmost state is consulted, so an
+    // invalid target cannot be quietly accepted as a suppressed show.
+    navigation::validate(&target).map_err(navigation_error)?;
+    Ok(ShowRequest {
         id,
         title,
         body: parsed.body.unwrap_or_default(),
-        applink: parsed.applink.filter(|link| !link.is_empty()),
+        target,
         deliver_at_ms: schedule_at_ms(parsed.schedule)?,
         silent: parsed.silent.unwrap_or(false),
     })
+}
+
+/// An omitted target is `activate`: bring the product forward, nothing else.
+fn decode_target(target: Option<JSObject>) -> JSResult<NavigationTarget> {
+    let Some(object) = target else {
+        return Ok(NavigationTarget::Activate);
+    };
+    let json = object.to_json_string().map_err(|error| {
+        js_invalid_parameter_error(format!(
+            "lx.app.notification.show target must be a plain object: {error}"
+        ))
+    })?;
+    let value = serde_json::from_str::<serde_json::Value>(&json).map_err(|error| {
+        js_invalid_parameter_error(format!("lx.app.notification.show target: {error}"))
+    })?;
+    decode_target_json(&value)
+}
+
+fn decode_target_json(value: &serde_json::Value) -> JSResult<NavigationTarget> {
+    if value.is_null() {
+        return Ok(NavigationTarget::Activate);
+    }
+    NavigationTarget::from_json(value).map_err(navigation_error)
+}
+
+fn navigation_error(error: NavigationError) -> RongJSError {
+    match error {
+        NavigationError::InvalidTarget(message) => {
+            js_invalid_parameter_error(format!("lx.app.notification.show {message}"))
+        }
+        NavigationError::Unavailable(message) | NavigationError::Internal(message) => {
+            HostError::new(rong::error::E_INTERNAL, message).into()
+        }
+    }
 }
 
 fn validate_id(id: &str) -> JSResult<String> {
@@ -143,15 +227,6 @@ fn validate_id(id: &str) -> JSResult<String> {
         )));
     }
     Ok(id.to_string())
-}
-
-fn validate_applink(url: &str) -> JSResult<()> {
-    match lingxia_service::applink::parse(url) {
-        Ok(Some(_)) => Ok(()),
-        Ok(None) | Err(_) => Err(js_invalid_parameter_error(
-            "lx.app.notification.show applink must be an https URL on a configured host",
-        )),
-    }
 }
 
 fn schedule_at_ms(schedule: Option<JSSchedule>) -> JSResult<Option<u64>> {
@@ -183,7 +258,12 @@ fn unix_now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{JSSchedule, schedule_at_ms, validate_applink, validate_id};
+    use super::{JSSchedule, decode_target_json, schedule_at_ms, validate_id};
+    use lingxia_service::navigation::NavigationTarget;
+
+    fn target(text: &str) -> Result<NavigationTarget, ()> {
+        decode_target_json(&serde_json::from_str(text).unwrap()).map_err(|_| ())
+    }
 
     #[test]
     fn id_rejects_empty_and_overlong() {
@@ -193,9 +273,20 @@ mod tests {
     }
 
     #[test]
-    fn applink_rejects_non_https() {
-        assert!(validate_applink("http://example.com/x").is_err());
-        assert!(validate_applink("not-a-url").is_err());
+    fn an_omitted_target_activates() {
+        assert_eq!(
+            decode_target_json(&serde_json::Value::Null).unwrap(),
+            NavigationTarget::Activate
+        );
+    }
+
+    #[test]
+    fn target_branches_do_not_mix() {
+        assert!(target(r#"{"kind":"page","page":"order"}"#).is_ok());
+        assert!(target(r#"{"kind":"route","name":"a"}"#).is_ok());
+        assert!(target(r#"{"kind":"page","page":"/pages/order/index"}"#).is_err());
+        assert!(target(r#"{"kind":"route","name":"a","url":"https://x.test/"}"#).is_err());
+        assert!(target(r#"{"kind":"nope"}"#).is_err());
     }
 
     #[test]

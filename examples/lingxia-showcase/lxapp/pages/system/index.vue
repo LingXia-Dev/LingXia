@@ -198,6 +198,33 @@
           </div>
 
           <div class="p-5">
+            <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4 mb-4">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="w-1 h-4 bg-violet-500 rounded-full"></span>
+                <h4 class="text-sm font-semibold text-gray-700">Tap target</h4>
+              </div>
+              <p class="text-xs text-gray-500 mb-3">
+                <code>page</code> is navigateTo. <code>route</code> is a host-registered
+                native location. Neither needs a product URL.
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <button
+                  v-for="option in notificationTargets"
+                  :key="option.value"
+                  :data-testid="`system-notification-target-${option.value}`"
+                  @click="setNotificationTarget(option.value)"
+                  :class="[
+                    'px-3 py-1.5 text-xs font-medium rounded-lg transition-colors',
+                    notificationTarget === option.value
+                      ? 'bg-violet-500 text-white'
+                      : 'bg-surface-100 hover:bg-surface-200 text-gray-700',
+                  ]"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+
             <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
               <div class="flex items-center gap-2 mb-4">
                 <span class="w-1 h-4 bg-violet-500 rounded-full"></span>
@@ -430,6 +457,7 @@ const {
   refreshNotification,
   showNotification,
   cancelNotification,
+  setNotificationTarget,
   refreshBanner,
   setBannerBackground,
   showBannerToast,
@@ -452,6 +480,12 @@ const cacheError = computed(() => data.cacheError ?? '');
 const notificationSupported = computed(() => data.notificationSupported ?? false);
 const notificationPermission = computed(() => data.notificationPermission ?? '');
 const notificationLastId = computed(() => data.notificationLastId ?? '');
+const notificationTarget = computed(() => data.notificationTarget ?? 'activate');
+const notificationTargets = [
+  { value: 'activate', label: 'activate' },
+  { value: 'native', label: 'route → native' },
+  { value: 'page', label: 'page → this page' },
+];
 const notificationError = computed(() => data.notificationError ?? '');
 const bannerSupported = computed(() => data.bannerSupported ?? false);
 const bannerLast = computed(() => data.bannerLast ?? '');

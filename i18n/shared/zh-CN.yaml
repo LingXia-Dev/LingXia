@@ -26,6 +26,10 @@ lxapp:
   unavailable_maintain: "该小程序正在维护中，请稍后再试。"
   unavailable_suspended: "该小程序已停止提供服务。"
 
+# A notification whose target was removed, replaced, or already opened
+notification:
+  target_unavailable: "该内容已不可用。"
+
 # Tab bar
 tabbar:
   more: "更多"

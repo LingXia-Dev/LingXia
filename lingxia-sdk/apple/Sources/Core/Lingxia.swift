@@ -56,6 +56,24 @@ public enum Lingxia {
         return config
     }
 
+    /// Claim the notification-center delegate before the runtime exists.
+    ///
+    /// Call this from the host `App`'s `init()`. A notification tap that
+    /// launched the process is handed over right after `didFinishLaunching`,
+    /// and iOS discards it when nothing is listening yet — `quickStart()` from
+    /// a view's `onAppear` is already too late, so a cold-start tap would open
+    /// the product on its home page instead of the target it carried.
+    ///
+    /// Idempotent, cheap, and safe before `initializeRuntime()`: it wires one
+    /// callback and starts nothing.
+    public static func installNotificationDelegate() {
+        #if os(macOS)
+        MacLocalNotification.installDelegate()
+        #elseif os(iOS)
+        iOSPushManager.installDelegate()
+        #endif
+    }
+
     /// Initialize the LingXia runtime without touching the view layer.
     ///
     /// Use this entry point when building a custom integration around
@@ -64,9 +82,7 @@ public enum Lingxia {
     @discardableResult
     public static func initializeRuntime() throws -> LxAppRuntimeInfo {
         CrashBacktrace.install()
-        #if os(macOS)
-        MacLocalNotification.installDelegate()
-        #endif
+        installNotificationDelegate()
         do {
             return try LxAppRuntime.shared.initialize()
         } catch LxAppRuntimeError.alreadyInitialized {

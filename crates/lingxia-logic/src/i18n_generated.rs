@@ -132,6 +132,7 @@ pub enum I18nKey {
     LxappUnavailableMaintain,
     LxappUnavailableSuspended,
     LxappUnavailableTitle,
+    NotificationTargetUnavailable,
     PermissionLimitedAccessAddMoreMedia,
     PermissionLimitedAccessAddMorePhotos,
     PermissionLimitedAccessAddMoreVideos,
@@ -312,6 +313,7 @@ accessible videos",
             (I18nKey::LxappUnavailableMaintain, "en") => "It's under maintenance. Try again later.",
             (I18nKey::LxappUnavailableSuspended, "en") => "It's no longer available.",
             (I18nKey::LxappUnavailableTitle, "en") => "Can't open this mini app",
+            (I18nKey::NotificationTargetUnavailable, "en") => "This is no longer available.",
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "en") => "Add more
 accessible items",
             (I18nKey::PermissionLimitedAccessAddMorePhotos, "en") => "Add more
@@ -488,6 +490,7 @@ accessible videos",
             (I18nKey::LxappUnavailableMaintain, "zh") => "该小程序正在维护中，请稍后再试。",
             (I18nKey::LxappUnavailableSuspended, "zh") => "该小程序已停止提供服务。",
             (I18nKey::LxappUnavailableTitle, "zh") => "无法打开该小程序",
+            (I18nKey::NotificationTargetUnavailable, "zh") => "该内容已不可用。",
             (I18nKey::PermissionLimitedAccessAddMoreMedia, "zh") => "添加更多
 可访问内容",
             (I18nKey::PermissionLimitedAccessAddMorePhotos, "zh") => "添加更多

@@ -15,6 +15,7 @@ export default function SystemPage() {
     refreshNotification,
     showNotification,
     cancelNotification,
+    setNotificationTarget,
     refreshBanner,
     setBannerBackground,
     showBannerToast,
@@ -37,6 +38,7 @@ export default function SystemPage() {
     notificationSupported = false,
     notificationPermission = '',
     notificationLastId = '',
+    notificationTarget = 'activate',
     notificationError = '',
     bannerSupported = false,
     bannerLast = '',
@@ -227,6 +229,37 @@ export default function SystemPage() {
               </div>
 
               <div className="p-5">
+                <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4 mb-4">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-1 h-4 bg-violet-500 rounded-full"></span>
+                    <h4 className="text-sm font-semibold text-gray-700">Tap target</h4>
+                  </div>
+                  <p className="text-xs text-gray-500 mb-3">
+                    <code>page</code> is navigateTo. <code>route</code> is a host-registered
+                    native location. Neither needs a product URL.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { value: 'activate', label: 'activate' },
+                      { value: 'native', label: 'route → native' },
+                      { value: 'page', label: 'page → this page' },
+                    ].map((option) => (
+                      <button
+                        key={option.value}
+                        data-testid={`system-notification-target-${option.value}`}
+                        onClick={() => setNotificationTarget(option.value)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                          notificationTarget === option.value
+                            ? 'bg-violet-500 text-white'
+                            : 'bg-surface-100 hover:bg-surface-200 text-gray-700'
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-4">
                   <div className="flex items-center gap-2 mb-4">
                     <span className="w-1 h-4 bg-violet-500 rounded-full"></span>

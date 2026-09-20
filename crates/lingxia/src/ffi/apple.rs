@@ -594,6 +594,9 @@ mod bridge {
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
+        #[swift_bridge(swift_name = "onNotificationActivated")]
+        fn on_notification_activated(activation_token: &str) -> i32;
+
         #[swift_bridge(swift_name = "onDesktopBannerOutcome")]
         fn on_desktop_banner_outcome(id: &str, kind: i32, action: &str);
 
@@ -2377,6 +2380,12 @@ pub fn get_tab_bar_item(appid: &str, slot: i32) -> Option<self::bridge::TabBarIt
 /// Handle AppLink URL by processing the path (Universal Link)
 pub fn on_applink_received(url: &str) -> i32 {
     lingxia_service::applink::deliver(url)
+}
+
+/// A local notification was tapped. The token is opaque to the SDK; the host
+/// resolves it to the target it staged when the notification was published.
+pub fn on_notification_activated(activation_token: &str) -> i32 {
+    crate::navigation::activate_notification(activation_token)
 }
 
 /// Desktop banner button or dismiss. `kind`: 0 action, 1 dismissed.

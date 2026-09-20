@@ -214,6 +214,8 @@ pub mod location;
 mod logging;
 /// Media, camera, scanner, and media-preview helpers.
 pub mod media;
+/// Internal navigation routes and the target every entry point resolves to.
+pub mod navigation;
 /// Network status and change subscriptions.
 pub mod network;
 /// Provider traits and registration helpers.

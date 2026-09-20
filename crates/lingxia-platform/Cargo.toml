@@ -47,6 +47,9 @@ serde_json = { workspace = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 lingxia-windows-contract = { workspace = true }
+# The `implement` macro expands to `windows_core` paths, so the toast COM
+# activator needs the crate in scope by name.
+windows-core = { workspace = true }
 lingxia-webview = { workspace = true }
 windows = { workspace = true, features = [
     "ApplicationModel",

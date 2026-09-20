@@ -1,12 +1,17 @@
 //! Local toasts: replace-by-tag, skip the banner when this process is frontmost.
+//!
+//! Every tap — immediate, scheduled, or a notification-centre history item
+//! long after this process exited — arrives through the COM activator in
+//! [`super::toast_activator`], so the OS owns the schedule and the process
+//! never has to still be running for a tap to find its target.
 
 use super::app::Platform;
+use super::toast_activator;
 use crate::error::PlatformError;
 use crate::traits::app_runtime::{LocalNotificationShow, LocalNotificationStatus};
 use std::sync::Mutex;
 use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::DateTime;
-use windows::Foundation::TypedEventHandler;
 use windows::UI::Notifications::{
     NotificationSetting, ScheduledToastNotification, ToastNotification, ToastNotificationManager,
 };
@@ -32,11 +37,17 @@ pub fn set_toast_activate_handler(handler: ToastActivateHandler) {
     }
 }
 
-fn invoke_toast_activate(args: &str) {
-    if let Some(handler) = TOAST_ACTIVATE_HANDLER.lock().ok().and_then(|slot| *slot) {
-        handler(args);
-    }
+/// A toast was tapped. Brings the product forward first: a token that no
+/// longer resolves still has to land the user on a visible product.
+pub(super) fn on_toast_activated(args: &str) {
     activate_host_windows();
+    let Some(token) = toast_activator::token_from_launch(args) else {
+        log::debug!("ignoring a toast activation that is not ours: {args:?}");
+        return;
+    };
+    if let Some(handler) = TOAST_ACTIVATE_HANDLER.lock().ok().and_then(|slot| *slot) {
+        handler(token);
+    }
 }
 
 pub(super) fn aumid_from_identity(identity: &str) -> String {
@@ -86,11 +97,14 @@ pub(super) fn show(
             "notifications are disabled for this app in Windows Settings".into(),
         ));
     }
+    // Before anything is posted: a deployment that cannot take the tap back
+    // must fail here rather than show a toast whose tap loses its target.
+    toast_activator::ensure_registered(&aumid_from_identity(&platform.autostart_value_name()))?;
     cancel(platform, &id)?;
 
     let Some(at_ms) = scheduled else {
         show_now(platform, request)?;
-        return Ok(LocalNotificationStatus::Shown);
+        return Ok(LocalNotificationStatus::Posted);
     };
 
     let toast = ScheduledToastNotification::CreateScheduledToastNotification(
@@ -100,14 +114,16 @@ pub(super) fn show(
         },
     )
     .map_err(win_err)?;
-    let token = schedule_token();
     toast.SetTag(&HSTRING::from(&id)).map_err(win_err)?;
     toast
         .SetGroup(&HSTRING::from(TOAST_GROUP))
         .map_err(win_err)?;
-    toast.SetId(&HSTRING::from(&token)).map_err(win_err)?;
+    toast
+        .SetId(&HSTRING::from(schedule_id()))
+        .map_err(win_err)?;
+    // The OS owns the schedule from here: nothing takes it back early, so an
+    // exit before it is due no longer drops it.
     notifier(platform)?.AddToSchedule(&toast).map_err(win_err)?;
-    hand_over_when_due(platform.clone(), request.clone(), at_ms, token);
     Ok(LocalNotificationStatus::Scheduled)
 }
 
@@ -115,7 +131,7 @@ fn toast_document(request: &LocalNotificationShow) -> Result<XmlDocument, Platfo
     let xml = toast_xml(
         &request.title,
         &request.body,
-        request.applink.as_deref(),
+        &toast_activator::launch_payload(&request.activation_token),
         request.silent,
     );
     let document = XmlDocument::new().map_err(win_err)?;
@@ -130,74 +146,16 @@ fn show_now(platform: &Platform, request: &LocalNotificationShow) -> Result<(), 
     toast
         .SetGroup(&HSTRING::from(TOAST_GROUP))
         .map_err(win_err)?;
-    let applink = request.applink.clone().unwrap_or_default();
-    toast
-        .Activated(&TypedEventHandler::<ToastNotification, _>::new(
-            move |_, _| {
-                if !applink.is_empty() {
-                    invoke_toast_activate(&applink);
-                } else {
-                    activate_host_windows();
-                }
-                Ok(())
-            },
-        ))
-        .map_err(win_err)?;
+    // No in-process Activated handler: this toast outlives the process in the
+    // notification centre, and one activation path has to serve both.
     notifier(platform)?.Show(&toast).map_err(win_err)
 }
 
-/// A scheduled toast has no activation event, so a tap on one reaches nobody.
-/// The system schedule is what survives this process; while the process is
-/// still here at the due time, it takes the toast back and shows it itself,
-/// which is the only way its tap can carry the applink.
-fn hand_over_when_due(
-    platform: Platform,
-    request: LocalNotificationShow,
-    at_ms: u64,
-    token: String,
-) {
-    const LEAD_MS: u64 = 1_000;
-    std::thread::spawn(move || {
-        let wait = at_ms.saturating_sub(LEAD_MS).saturating_sub(unix_now_ms());
-        std::thread::sleep(std::time::Duration::from_millis(wait));
-        // Cancelled or replaced since: the token no longer matches anything.
-        if !take_scheduled(&platform, &request.id, &token) {
-            return;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(
-            at_ms.saturating_sub(unix_now_ms()),
-        ));
-        match show_now(&platform, &request) {
-            Ok(()) => log::info!("scheduled notification {} shown by the process", request.id),
-            Err(error) => log::warn!(
-                "scheduled notification {} was not shown: {error}",
-                request.id
-            ),
-        }
-    });
-}
-
-fn take_scheduled(platform: &Platform, id: &str, token: &str) -> bool {
-    let Ok(notifier) = notifier(platform) else {
-        return false;
-    };
-    let Ok(scheduled) = notifier.GetScheduledToastNotifications() else {
-        return false;
-    };
-    for index in 0..scheduled.Size().unwrap_or(0) {
-        if let Ok(toast) = scheduled.GetAt(index)
-            && toast.Tag().ok().map(|s| s.to_string()).as_deref() == Some(id)
-            && toast.Id().ok().map(|s| s.to_string()).as_deref() == Some(token)
-        {
-            return notifier.RemoveFromSchedule(&toast).is_ok();
-        }
-    }
-    false
-}
-
 /// `ScheduledToastNotification.Id` rejects 16 characters (0x803E0120); eight
-/// hex digits of a per-process counter are unique for as long as we run.
-fn schedule_token() -> String {
+/// hex digits of a per-process counter are unique for as long as we run. It
+/// only has to be unique among pending schedules — the tag is the replace key
+/// and the `launch` token is what a tap resolves.
+fn schedule_id() -> String {
     static NEXT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
     let sequence = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!(
@@ -265,14 +223,26 @@ fn ensure_start_menu_shortcut(platform: &Platform) {
     DONE.call_once(|| write_start_menu_shortcut(platform));
 }
 
-fn write_start_menu_shortcut(platform: &Platform) {
+/// Register the COM activator so a cold tap can reach this product.
+///
+/// Called from the host bootstrap when the product declared notifications:
+/// COM starts the exe for a tap and then waits for the class object, which a
+/// registration deferred to the first `show` would never reach.
+pub fn ensure_toast_activator(platform: &Platform) -> Result<(), PlatformError> {
+    ensure_start_menu_shortcut(platform);
+    toast_activator::ensure_registered(&aumid_from_identity(&platform.autostart_value_name()))
+}
+
+/// Remove this product's toast registration. For an uninstaller.
+pub fn remove_toast_registration(platform: &Platform) {
     let aumid = aumid_from_identity(&platform.autostart_value_name());
-    let Ok(exe) = std::env::current_exe() else {
-        return;
-    };
-    let Some(programs) = programs_folder() else {
-        return;
-    };
+    toast_activator::unregister_toast_activator(&aumid);
+    if let Some(link) = start_menu_link(platform) {
+        let _ = std::fs::remove_file(link);
+    }
+}
+
+fn start_menu_link(platform: &Platform) -> Option<std::path::PathBuf> {
     let stem: String = platform
         .product_name()
         .chars()
@@ -284,11 +254,21 @@ fn write_start_menu_shortcut(platform: &Platform) {
             }
         })
         .collect();
-    let link = programs.join(format!("{stem}.lnk"));
-    // An installer's shortcut already carries the identity; leave it alone.
-    if link.exists() {
+    Some(programs_folder()?.join(format!("{stem}.lnk")))
+}
+
+fn write_start_menu_shortcut(platform: &Platform) {
+    let aumid = aumid_from_identity(&platform.autostart_value_name());
+    let Ok(exe) = std::env::current_exe() else {
         return;
-    }
+    };
+    let Some(link) = start_menu_link(platform) else {
+        return;
+    };
+    // Rewritten every run, including over an installer's shortcut: the whole
+    // file is derived from the exe path, the AUMID and the activator CLSID, so
+    // this is how a shortcut written before the activator existed — or one
+    // left behind by a moved exe — gets fixed.
     if let Err(error) = write_aumid_shortcut(&link, &exe, &aumid) {
         log::warn!("failed to register toast Start Menu shortcut: {error}");
     }
@@ -315,15 +295,29 @@ fn write_aumid_shortcut(
     use std::os::windows::ffi::OsStrExt;
     use windows::Win32::Foundation::PROPERTYKEY;
     use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
-    use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance, IPersistFile};
+    use windows::Win32::System::Com::{
+        CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, CoCreateInstance, CoInitializeEx,
+        IPersistFile,
+    };
     use windows::Win32::UI::Shell::PropertiesSystem::IPropertyStore;
     use windows::Win32::UI::Shell::{IShellLinkW, ShellLink};
     use windows::core::{Interface, PCWSTR};
+
+    // IShellLink is STA. Bootstrap has not entered an apartment yet; without
+    // this the Start Menu link is never written and a cold toast tap has
+    // nowhere to go.
+    let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
 
     // {9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3}, 5
     const PKEY_APP_USER_MODEL_ID: PROPERTYKEY = PROPERTYKEY {
         fmtid: windows::core::GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
         pid: 5,
+    };
+    // Same fmtid, pid 26: System.AppUserModel.ToastActivatorCLSID. Without it
+    // the shell has no way to start us for a tap, and the toast is inert.
+    const PKEY_TOAST_ACTIVATOR_CLSID: PROPERTYKEY = PROPERTYKEY {
+        fmtid: windows::core::GUID::from_u128(0x9F4C2855_9F79_4B39_A8D0_E1D42DE1D5F3),
+        pid: 26,
     };
 
     let exe_wide: Vec<u16> = OsStrExt::encode_wide(exe.as_os_str())
@@ -349,6 +343,8 @@ fn write_aumid_shortcut(
         let store: IPropertyStore = shell.cast()?;
         let prop = PROPVARIANT::from(aumid);
         store.SetValue(&PKEY_APP_USER_MODEL_ID, &prop)?;
+        let activator = clsid_propvariant(toast_activator::clsid_for(aumid))?;
+        store.SetValue(&PKEY_TOAST_ACTIVATOR_CLSID, &activator)?;
         store.Commit()?;
         let persist: IPersistFile = shell.cast()?;
         persist.Save(PCWSTR(link_wide.as_ptr()), true)?;
@@ -356,8 +352,33 @@ fn write_aumid_shortcut(
     Ok(())
 }
 
-fn toast_xml(title: &str, body: &str, applink: Option<&str>, silent: bool) -> String {
-    let launch = applink.unwrap_or("");
+/// A `VT_CLSID` value. `propvarutil.h` spells this inline, so there is no
+/// exported helper to call: the GUID has to be task-allocated, because
+/// `PropVariantClear` frees it when the value drops.
+fn clsid_propvariant(
+    clsid: windows::core::GUID,
+) -> windows::core::Result<windows::Win32::System::Com::StructuredStorage::PROPVARIANT> {
+    use windows::Win32::Foundation::E_OUTOFMEMORY;
+    use windows::Win32::System::Com::CoTaskMemAlloc;
+    use windows::Win32::System::Com::StructuredStorage::PROPVARIANT;
+    use windows::Win32::System::Variant::VT_CLSID;
+
+    unsafe {
+        let slot = CoTaskMemAlloc(std::mem::size_of::<windows::core::GUID>())
+            .cast::<windows::core::GUID>();
+        if slot.is_null() {
+            return Err(E_OUTOFMEMORY.into());
+        }
+        slot.write(clsid);
+        let mut value = PROPVARIANT::default();
+        let inner = &mut *value.Anonymous.Anonymous;
+        inner.vt = VT_CLSID;
+        inner.Anonymous.puuid = slot;
+        Ok(value)
+    }
+}
+
+fn toast_xml(title: &str, body: &str, launch: &str, silent: bool) -> String {
     let audio = if silent {
         r#"<audio silent="true"/>"#
     } else {

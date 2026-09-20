@@ -36,11 +36,19 @@ internal object LxAppNotification {
     private const val PREFS = "lingxia.local.notifications"
     private const val PREF_SCHEDULED = "scheduled"
     private const val PREF_ASKED = "asked"
-    private const val SCHEME = "lxnotif"
+    /** Carries an alarm's public notification id. Not the tap envelope below. */
+    private const val ALARM_SCHEME = "lxalarm"
+    /**
+     * The activation envelope, as `ACTIVATION_ENVELOPE` in
+     * `crates/lingxia-platform/src/traits/app_runtime.rs` spells it. A tap
+     * Intent's data is the only slot that survives PendingIntent identity.
+     */
+    private const val ACTIVATION_SCHEME = "lxnotify"
+    private const val ACTIVATION_VERSION = "v1"
     const val EXTRA_LOCAL = "lingxia.local"
     const val EXTRA_TITLE = "lingxia.local.title"
     const val EXTRA_BODY = "lingxia.local.body"
-    const val EXTRA_APPLINK = "lingxia.local.applink"
+    const val EXTRA_TOKEN = "lingxia.local.token"
     const val EXTRA_SILENT = "lingxia.local.silent"
     private const val ACTION_FIRE = "com.lingxia.lxapp.LOCAL_NOTIFICATION_FIRE"
     private const val PROMPT_TIMEOUT_SECONDS = 60L
@@ -91,13 +99,13 @@ internal object LxAppNotification {
         return if (granted || notificationsEnabled(context)) "granted" else "denied"
     }
 
-    /** `shown` / `scheduled` / `suppressed`; empty on failure. */
+    /** `posted` / `scheduled` / `suppressed`; empty on failure. */
     @JvmStatic
     fun show(
         id: String,
         title: String,
         body: String,
-        applink: String,
+        activationToken: String,
         deliverAtMs: Long,
         silent: Boolean
     ): String {
@@ -119,11 +127,11 @@ internal object LxAppNotification {
         }
         cancel(id)
         if (scheduled) {
-            schedule(context, id, title, body, applink, deliverAtMs, silent)
+            schedule(context, id, title, body, activationToken, deliverAtMs, silent)
             return "scheduled"
         }
-        publishNow(context, id, title, body, applink, silent)
-        return "shown"
+        publishNow(context, id, title, body, activationToken, silent)
+        return "posted"
     }
 
     @JvmStatic
@@ -158,15 +166,17 @@ internal object LxAppNotification {
         id: String,
         title: String,
         body: String,
-        applink: String,
+        activationToken: String,
         silent: Boolean
     ) {
         forgetScheduled(context, id)
         ensureChannels(context)
-        // An https data URI is what the SDK's App Link path already delivers.
+        // The token lives in the data URI, not an extra: PendingIntent identity
+        // ignores extras, so a replacement would otherwise rewrite the banner
+        // that is already on screen and send an old tap to the new target.
         val tap = Intent(context, LxLocalNotificationTapActivity::class.java).apply {
             action = Intent.ACTION_VIEW
-            data = if (applink.isNotEmpty()) Uri.parse(applink) else idUri(id)
+            data = tokenUri(activationToken)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         val content = PendingIntent.getActivity(context, 0, tap, pendingFlags())
@@ -194,11 +204,24 @@ internal object LxAppNotification {
 
     fun idFromFireIntent(intent: Intent): String? {
         val data = intent.data ?: return null
-        if (data.scheme != SCHEME) return null
+        if (data.scheme != ALARM_SCHEME) return null
         return data.schemeSpecificPart?.takeIf { it.isNotEmpty() }
     }
 
-    private fun idUri(id: String): Uri = Uri.fromParts(SCHEME, id, null)
+    private fun idUri(id: String): Uri = Uri.fromParts(ALARM_SCHEME, id, null)
+
+    /** `lxnotify:v1:<token>` — the same envelope every other platform uses. */
+    private fun tokenUri(token: String): Uri =
+        Uri.fromParts(ACTIVATION_SCHEME, "$ACTIVATION_VERSION:$token", null)
+
+    fun tokenFromTapIntent(intent: Intent): String {
+        val data = intent.data ?: return ""
+        if (data.scheme != ACTIVATION_SCHEME) return ""
+        return data.schemeSpecificPart
+            ?.removePrefix("$ACTIVATION_VERSION:")
+            ?.takeIf { it.isNotEmpty() }
+            .orEmpty()
+    }
 
     /** Intent equality ignores extras, so the id has to live in the data. */
     private fun fireIntent(context: Context, id: String): Intent {
@@ -213,14 +236,17 @@ internal object LxAppNotification {
         id: String,
         title: String,
         body: String,
-        applink: String,
+        activationToken: String,
         deliverAtMs: Long,
         silent: Boolean
     ) {
+        // The fire Intent keys on the id, so FLAG_UPDATE_CURRENT replaces a
+        // pending alarm's extras with this generation's token — which is what
+        // replacing an id means.
         val intent = fireIntent(context, id).apply {
             putExtra(EXTRA_TITLE, title)
             putExtra(EXTRA_BODY, body)
-            putExtra(EXTRA_APPLINK, applink)
+            putExtra(EXTRA_TOKEN, activationToken)
             putExtra(EXTRA_SILENT, silent)
         }
         val pending = PendingIntent.getBroadcast(context, 0, intent, pendingFlags())
@@ -326,37 +352,50 @@ internal class LxLocalNotificationReceiver : BroadcastReceiver() {
             id,
             intent.getStringExtra(LxAppNotification.EXTRA_TITLE).orEmpty(),
             intent.getStringExtra(LxAppNotification.EXTRA_BODY).orEmpty(),
-            intent.getStringExtra(LxAppNotification.EXTRA_APPLINK).orEmpty(),
+            intent.getStringExtra(LxAppNotification.EXTRA_TOKEN).orEmpty(),
             intent.getBooleanExtra(LxAppNotification.EXTRA_SILENT, false)
         )
     }
 }
 
 /**
- * Tap target. Its Intent is `ACTION_VIEW` on the applink, so a running SDK
- * delivers it through the App Link path on creation like any other inbound link.
+ * Tap target. It brings the product forward first, then hands the activation
+ * token to the runtime — so a token that no longer resolves still lands the
+ * user on a visible product that can say why.
  */
 internal class LxLocalNotificationTapActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val token = intent?.let { LxAppNotification.tokenFromTapIntent(it) }.orEmpty()
         val launch = packageManager.getLaunchIntentForPackage(packageName)
-        val link = intent?.data?.takeIf { it.scheme == "https" }
+        val cold = Lingxia.applicationContext() == null
         if (launch != null) {
-            if (Lingxia.applicationContext() == null && link != null) {
-                // Cold start: nothing is listening yet, so the entry activity
-                // carries the link and the SDK delivers it once it is up.
-                startActivity(
-                    Intent(Intent.ACTION_VIEW, link)
-                        .setComponent(launch.component)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            } else {
-                // Same flags as a launcher icon tap: resume the task as it stands.
-                // Reordering the entry activity would cover the lxapp with the splash.
-                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+            if (cold) {
+                // Nothing is listening yet, so the entry Intent carries the
+                // token and the SDK delivers it once the runtime is up.
+                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                launch.putExtra(Lingxia.NOTIFICATION_TOKEN_EXTRA, token)
                 startActivity(launch)
+            } else {
+                // Reorder the live lxapp activity to the front rather than
+                // starting the launcher Intent. That Intent does not
+                // `filterEquals` the root this task was actually started with,
+                // so it builds a second entry activity whose `quickStart`
+                // reopens the home lxapp — burying the page this tap asked for.
+                val live = LxApp.getCurrentActivity()
+                if (live != null) {
+                    startActivity(Intent(this, live::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_NEW_TASK
+                    })
+                } else {
+                    launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(launch)
+                }
             }
+        }
+        if (!cold) {
+            Lingxia.deliverNotificationActivation(token)
         }
         finish()
     }

@@ -229,8 +229,9 @@ pub use harmony::Platform;
 #[cfg(target_os = "windows")]
 pub use windows::{
     Platform, WindowsMediaPreviewCancel, WindowsMediaPreviewOpen, WindowsUrlSurfaceWebTag,
-    WindowsVideoCommandDispatcher, apply_staged_windows_update, install_windows_aside_panel_bridge,
-    register_windows_media_preview_host, register_windows_video_command_dispatcher,
+    WindowsVideoCommandDispatcher, apply_staged_windows_update, ensure_toast_activator,
+    install_windows_aside_panel_bridge, register_windows_media_preview_host,
+    register_windows_video_command_dispatcher, remove_toast_registration,
     replay_windows_exclusive_update_ready, set_toast_activate_handler,
     set_windows_activate_browser_tab_handler, set_windows_app_exit_handler,
     set_windows_builtin_browser_downloads_handler, set_windows_capsule_rect_provider,

@@ -361,6 +361,17 @@ pub(crate) fn init_with_platform(
     crate::browser::register_bundled_app();
     crate::browser::register_builtin_runtime();
     crate::applink::install_handler();
+    crate::navigation::install_handlers();
+    // Routes and the intent store first: COM starts the exe for a cold toast
+    // tap and then waits for the class object, so a register-then-install
+    // order loses the token against an empty store.
+    crate::navigation::install(lingxia_app_context::app_state_dir(&runtime.app_data_dir()))?;
+    #[cfg(target_os = "windows")]
+    if lingxia_app_context::capability::notifications()
+        && let Err(error) = lingxia_platform::ensure_toast_activator(runtime.as_ref())
+    {
+        log::warn!("notification taps will not reach this build: {error}");
+    }
     #[cfg(feature = "standard")]
     lingxia_logic::register_logic_runtime();
     let app_grant_resolver: std::sync::Arc<AppResourceGrantResolver> =
@@ -431,6 +442,8 @@ pub(crate) fn init_with_platform(
     crate::task::release_deferred();
     crate::browser::warmup();
     crate::host_addon::run_start_services();
+    // Last: a tap that arrived during startup is queued until here.
+    crate::navigation::mark_ready();
     Ok(crate::RuntimeInfo::new(home_app_id, terminal_authority))
 }
 

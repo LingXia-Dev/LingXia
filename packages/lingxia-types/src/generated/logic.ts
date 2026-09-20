@@ -1231,6 +1231,43 @@ export type InstalledTerminalFont = {
 };
 
 /**
+ * Launch-at-startup control for the host app.
+ * Absent (`undefined`) wherever the host cannot register a startup item.
+ * `lx.supports('app.autostart')` and the member's presence always
+ * agree, so either gate works:
+ * ```ts
+ * if (lx.supports('app.autostart')) {
+ * // render the "Launch at startup" toggle
+ * }
+ * ```
+ * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
+ * member is absent on all platforms. Declaring the capability never enables
+ * autostart by itself — the SDK registers the app only when `setEnabled(true)`
+ * is called, so the decision stays with the user (typically a settings-page
+ * toggle, default off).
+ * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
+ * are available only to the native-assigned Control app; other lxapps receive
+ * a permission error.
+ * Local notifications as a Control-app resume affordance.
+ * Absent unless the host declared `capabilities.notifications` and the
+ * platform implements the local API. Presence and
+ * `lx.supports('app.notification')` always agree.
+ * Declaring the capability never prompts; permission runs on
+ * `requestPermission()` or the first `show()` that reaches the OS.
+ * Control app only. Guest lxapps receive a permission error.
+ * A JSON value: what a navigation route parameter may hold. Not a way
+ * to smuggle a payload — every route declares its own parameter
+ * schema, and the framework caps size, count, and nesting.
+ */
+export type JsonValue = 
+    | null
+    | boolean
+    | number
+    | string
+    | JsonValue[]
+    | { [key: string]: JsonValue };
+
+/**
  * Input event APIs.
  * Platform support: Android only
  */
@@ -1333,6 +1370,24 @@ export type NavigationBarStylePatch = {
     dividerColor?: string | null;
 };
 
+/**
+ * Where a notification tap, a menu item, or the tray goes.
+ * `page` and `app` are the same contract as `lx.navigateTo` /
+ * `lx.navigateToApp`: a configured page name and a query, ordinary
+ * scene. `route` is a host-registered location that is not a page.
+ * `appLink` is an `https://` product URL that is also a real inbound
+ * App Link (`scene === 8003`). `activate` just brings the product
+ * forward.
+ * A branch carries its own fields and no others: a mixed target is a
+ * parameter error, not a best guess.
+ */
+export type NavigationTarget = 
+    | { kind: 'activate' }
+    | { kind: 'page'; page: ConfiguredPageName; query?: PageQuery }
+    | { kind: 'app'; appId: string; page?: ExternalPageName; query?: PageQuery }
+    | { kind: 'route'; name: string; params?: Record<string, JsonValue> }
+    | { kind: 'appLink'; url: string };
+
 export type NetworkChangeCallback = (info: NetworkInfo) => void;
 
 export type NetworkInfo = {
@@ -1345,32 +1400,6 @@ export type NetworkInfo = {
 /** Network status APIs. */
 export type NetworkType = 'none' | 'unknown' | 'wifi' | '2g' | '3g' | '4g' | '5g' | 'ethernet';
 
-/**
- * Launch-at-startup control for the host app.
- * Absent (`undefined`) wherever the host cannot register a startup item.
- * `lx.supports('app.autostart')` and the member's presence always
- * agree, so either gate works:
- * ```ts
- * if (lx.supports('app.autostart')) {
- * // render the "Launch at startup" toggle
- * }
- * ```
- * Requires `capabilities.autostart: true` in `lingxia.yaml`; without it the
- * member is absent on all platforms. Declaring the capability never enables
- * autostart by itself — the SDK registers the app only when `setEnabled(true)`
- * is called, so the decision stays with the user (typically a settings-page
- * toggle, default off).
- * Host-app-level capability: like `checkUpdate` and `screenshot`, the methods
- * are available only to the native-assigned Control app; other lxapps receive
- * a permission error.
- * Local notifications as a Control-app resume affordance.
- * Absent unless the host declared `capabilities.notifications` and the
- * platform implements the local API. Presence and
- * `lx.supports('app.notification')` always agree.
- * Declaring the capability never prompts; permission runs on
- * `requestPermission()` or the first `show()` that reaches the OS.
- * Control app only. Guest lxapps receive a permission error.
- */
 export type NotificationApi = {
     /**
      * Read the current permission without prompting. `'default'` means the
@@ -1385,28 +1414,47 @@ export type NotificationApi = {
     requestPermission(): Promise<'granted' | 'denied'>;
     /**
      * Post or replace a local notification. `id` is the replace key: anything
-     * pending or delivered under it is replaced, whatever `status` comes back.
-     * Omit `id` to get a generated one. `applink` is validated like App Link
-     * delivery (`https://`, configured host) and arrives as `scene === 8003`
-     * on tap. Omit `schedule`, or pass a time that is not in the future, to
-     * show now.
+     * pending or delivered under it is replaced, whatever `status` comes back,
+     * and its old tap target stops resolving. Omit `id` to get a generated
+     * one. Omit `schedule`, or pass a time that is not in the future, to post
+     * now.
      *
-     * `status` says what happened: `'shown'` — handed to the OS now;
-     * `'scheduled'` — queued for `schedule`; `'suppressed'` — an immediate
-     * show while the product is already frontmost, where nothing is posted
-     * and no permission is needed. A scheduled notification is presented even
-     * if the product is frontmost when it fires.
+     * `target` is where the tap goes, and an omitted one means
+     * `{ kind: 'activate' }` — bring the product forward, nothing else.
+     * `{ kind: 'page' }` opens a page of this Control app the way
+     * `lx.navigateTo` does. `{ kind: 'app' }` opens another lxapp the way
+     * `lx.navigateToApp` does. `{ kind: 'route' }` names a location the host
+     * registered at startup that is not a page. `{ kind: 'appLink' }` takes
+     * an `https://` URL that is also a real inbound App Link
+     * (`scene === 8003`). An unknown page or route, a parameter the route
+     * did not declare, or a host that is not configured rejects here, before
+     * anything is posted.
+     *
+     * `status` says what happened: `'posted'` — the OS accepted it for
+     * display now, which is not a receipt that anyone saw or read it;
+     * `'scheduled'` — queued with the OS for `schedule`; `'suppressed'` — an
+     * immediate post while the product is already frontmost, where nothing is
+     * posted and no permission is needed. A scheduled notification is
+     * presented even if the product is frontmost when it fires.
+     *
+     * A tap resolves through the host, so a target that is gone by then — a
+     * route the build no longer registers, a cancelled or replaced
+     * notification, cleared app data — brings the product forward and says it
+     * is unavailable rather than opening something else.
      */
     show(options: {
         id?: string;
         title: string;
         body?: string;
-        applink?: string;
+        target?: NavigationTarget;
         schedule?: { at: number } | { delayMs: number };
         /** No sound. The banner still appears. */
         silent?: boolean;
-    }): Promise<{ id: string; status: 'shown' | 'scheduled' | 'suppressed' }>;
-    /** Remove what is pending or delivered under `id`. Unknown ids are fine. */
+    }): Promise<{ id: string; status: 'posted' | 'scheduled' | 'suppressed' }>;
+    /**
+     * Remove what is pending or delivered under `id`, and retire its tap
+     * target. Unknown ids are fine.
+     */
     cancel(id: string): Promise<void>;
     /** Remove every local notification this API posted or scheduled. */
     cancelAll(): Promise<void>;

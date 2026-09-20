@@ -315,6 +315,7 @@ spec('request permission and replace local notifications by id', {
         replaced,
         rejected: {
           http: await rejects({ title: 'bad', applink: 'http://example.com/x' }),
+          page: await rejects({ title: 'bad', target: { kind: 'page', page: '/pages/system/index' } }),
           title: await rejects({ body: 'no title' }),
           both: await rejects({ title: 'bad', schedule: { at: Date.now() + 1000, delayMs: 5 } }),
           emptyId: await rejects({ id: '', title: 'bad' }),
@@ -336,13 +337,13 @@ spec('request permission and replace local notifications by id', {
   }
   if (result.immediate) {
     expect(result.immediate.id).toBe('automation-local');
-    expect(['shown', 'suppressed']).toContain(result.immediate.status);
+    expect(['posted', 'suppressed']).toContain(result.immediate.status);
   }
   if (result.permission === 'granted') {
     expect(result.scheduled).toEqual({ id: 'automation-local', status: 'scheduled' });
     expect(result.replaced).toEqual({ id: 'automation-local', status: 'scheduled' });
   }
-  expect(result.rejected).toEqual({ http: true, title: true, both: true, emptyId: true });
+  expect(result.rejected).toEqual({ http: true, page: true, title: true, both: true, emptyId: true });
 });
 
 bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {

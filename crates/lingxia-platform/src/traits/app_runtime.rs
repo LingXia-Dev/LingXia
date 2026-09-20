@@ -18,13 +18,43 @@ use super::ui::{SurfacePresenter, UIUpdate, UserFeedback};
 use super::update::UpdateService;
 use super::wifi::Wifi;
 
+/// The envelope an activation token travels in when the OS gives us one
+/// opaque string and hands it back on tap: a Windows toast's `launch`, a
+/// HarmonyOS reminder's `uri`, an Android tap Intent's data. Apple needs none
+/// — a `userInfo` key is already unambiguous.
+///
+/// The prefix says "this payload is ours"; `v1` is what a later envelope
+/// change branches on. Deliberately not `https`, so it can never reach the
+/// App Link parser and demand a configured product host, and not a registered
+/// URL scheme — nothing outside this process routes on it.
+///
+/// The Kotlin and ArkTS SDKs spell this out again; this is the normative form.
+pub const ACTIVATION_ENVELOPE: &str = "lxnotify:v1:";
+
+/// Wrap a token for a payload slot that only takes a string.
+pub fn wrap_activation(token: &str) -> String {
+    format!("{ACTIVATION_ENVELOPE}{token}")
+}
+
+/// The token a payload carries, or `None` when the payload is not ours.
+pub fn unwrap_activation(payload: &str) -> Option<&str> {
+    payload
+        .trim()
+        .strip_prefix(ACTIVATION_ENVELOPE)
+        .filter(|token| !token.is_empty())
+}
+
 /// One local notification to post or replace.
 #[derive(Debug, Clone)]
 pub struct LocalNotificationShow {
     pub id: String,
     pub title: String,
     pub body: String,
-    pub applink: Option<String>,
+    /// Opaque single-use token the OS payload carries and hands back on tap.
+    /// The target itself lives in the host's intent store, so no platform's
+    /// payload limit constrains it and no business parameter reaches a launch
+    /// command line. Never empty — an `activate` target has one too.
+    pub activation_token: String,
     pub deliver_at_ms: Option<u64>,
     pub silent: bool,
 }
@@ -122,8 +152,8 @@ impl DesktopBannerOutcome {
 /// What `notification_show` did with the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalNotificationStatus {
-    /// Handed to the OS for display now.
-    Shown,
+    /// Handed to the OS for display now. Not a receipt that anyone read it.
+    Posted,
     /// Queued with the OS for `deliver_at_ms`.
     Scheduled,
     /// Immediate show while the product is frontmost: nothing was posted.
@@ -133,7 +163,7 @@ pub enum LocalNotificationStatus {
 impl LocalNotificationStatus {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Shown => "shown",
+            Self::Posted => "posted",
             Self::Scheduled => "scheduled",
             Self::Suppressed => "suppressed",
         }
@@ -142,7 +172,7 @@ impl LocalNotificationStatus {
     /// Parse the status word a native bridge returned.
     pub fn from_native(value: &str) -> Option<Self> {
         match value {
-            "shown" => Some(Self::Shown),
+            "posted" => Some(Self::Posted),
             "scheduled" => Some(Self::Scheduled),
             "suppressed" => Some(Self::Suppressed),
             _ => None,
@@ -383,6 +413,10 @@ pub trait AppRuntime:
     /// Upsert a local notification: anything pending or delivered under `id`
     /// is replaced first, on every path. `deliver_at_ms` is epoch
     /// milliseconds; `None` or a time that is not in the future means now.
+    ///
+    /// A deployment shape that cannot hand `activation_token` back on tap
+    /// fails here instead of posting a notification whose tap loses its
+    /// target.
     fn notification_show(
         &self,
         _request: &LocalNotificationShow,
@@ -462,6 +496,19 @@ pub trait AppRuntime:
         Err(PlatformError::NotSupported(
             "built-in browser pages".to_string(),
         ))
+    }
+}
+
+#[cfg(test)]
+mod envelope_tests {
+    use super::{ACTIVATION_ENVELOPE, unwrap_activation, wrap_activation};
+
+    #[test]
+    fn the_envelope_round_trips_and_rejects_anything_else() {
+        assert_eq!(unwrap_activation(&wrap_activation("abc")), Some("abc"));
+        assert_eq!(unwrap_activation("https://example.com/x"), None);
+        assert_eq!(unwrap_activation(ACTIVATION_ENVELOPE), None);
+        assert_eq!(unwrap_activation(""), None);
     }
 }
 

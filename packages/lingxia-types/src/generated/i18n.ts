@@ -130,6 +130,7 @@ export const I18N_KEYS = [
   "lxapp_unavailable_maintain",
   "lxapp_unavailable_suspended",
   "lxapp_unavailable_title",
+  "notification_target_unavailable",
   "permission_limited_access_add_more_media",
   "permission_limited_access_add_more_photos",
   "permission_limited_access_add_more_videos",

@@ -403,6 +403,14 @@ internal object NativeApi {
     external fun onAppLinkReceived(applinkUrl: String): Int
 
     /**
+     * Open what a local-notification tap was carrying.
+     * @param activationToken Opaque token from the notification payload
+     * @return 1 = dispatched, 0 = the token no longer resolves
+     */
+    @JvmStatic
+    external fun onNotificationActivated(activationToken: String): Int
+
+    /**
      * Get current active LxApp info from Rust stack
      * @return CurrentLxApp with appId, path and sessionId, or empty if no active LxApp
      */

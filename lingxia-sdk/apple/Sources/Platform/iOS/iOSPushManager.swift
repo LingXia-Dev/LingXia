@@ -61,6 +61,16 @@ final class iOSPushManager: NSObject {
         UserDefaults.standard.set(enabled, forKey: authorizationDefaultsKey)
     }
 
+    /// Claim the notification-center delegate, and nothing else.
+    ///
+    /// A tap that launched the process is delivered right after
+    /// `didFinishLaunching`, and iOS drops it when no delegate is set yet — so
+    /// this has to run before the runtime exists, and must not touch it.
+    /// `activate_notification` holds such a token until the intent store is up.
+    public static func installDelegate() {
+        UNUserNotificationCenter.current().delegate = shared
+    }
+
     /// Initialize push manager
     public func initialize() {
         UNUserNotificationCenter.current().delegate = self
@@ -170,10 +180,11 @@ extension iOSPushManager: UNUserNotificationCenterDelegate {
         os_log("User tapped notification: %{public}@", log: Self.log, type: .info, String(describing: userInfo))
 
         if userInfo[MacLocalNotification.localMarker] != nil {
-            if let applink = userInfo["applink"] as? String, !applink.isEmpty {
-                DispatchQueue.main.async {
-                    let _ = onApplinkReceived(applink)
-                }
+            let token = userInfo[MacLocalNotification.tokenKey] as? String ?? ""
+            DispatchQueue.main.async {
+                // Resolve even an empty token: the host still has to bring the
+                // product forward and say the target is gone.
+                let _ = onNotificationActivated(token)
             }
             completionHandler()
             return

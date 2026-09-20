@@ -513,10 +513,10 @@ class NativeBridge {
       id: string,
       title: string,
       body: string,
-      applink: string,
+      activationToken: string,
       deliverAtMs: string
     ): void => {
-      LxAppNotification.show(callbackId, id, title, body, applink, deliverAtMs);
+      LxAppNotification.show(callbackId, id, title, body, activationToken, deliverAtMs);
     });
 
     this.register('setAppBadge', (callbackId: string, text: string): void => {
