@@ -525,9 +525,16 @@ extension LxApp {
     nonisolated static func setAppBadge(text: RustStr) -> Bool {
         let value = text.toString()
         #if os(macOS)
-        // The dock tile is ours to draw: no permission, any label.
+        // Writing the label always succeeds and always reaches LaunchServices.
+        // Whether the Dock then draws it is a separate question the caller
+        // answers, because only it knows whether this host registered with
+        // Notification Center.
         return executeOnMain {
             NSApp.dockTile.badgeLabel = value.isEmpty ? nil : value
+            // The control-session indicator installs a custom `contentView`,
+            // and the Dock caches a tile that has one: without this the label
+            // changes and the picture does not.
+            NSApp.dockTile.display()
             return true
         }
         #elseif os(iOS)

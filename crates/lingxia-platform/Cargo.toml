@@ -21,6 +21,9 @@ apple-capture-provider = ["capture-contract"]
 harmony-capture-provider = ["capture-contract"]
 
 [dependencies]
+# The macOS badge has to know whether this host registered with
+# Notification Center, which is a declared capability.
+lingxia-app-context = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

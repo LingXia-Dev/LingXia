@@ -1899,11 +1899,16 @@ true
         /// anyone can see. That resolves `false` whether you named the surface or
         /// took `auto`; only a malfunction rejects.
         ///
+        /// Apple ties the badge to notification permission. On macOS the label
+        /// always reaches the system, but the Dock declines to draw it for an app
+        /// that is registered with Notification Center and not allowed — so a host
+        /// that declares `capabilities.notifications` and never got a yes resolves
+        /// `false` here. A host that never asks is unaffected.
+        ///
         /// On iOS the home-screen badge is drawn by the notification system, so
         /// it needs notification permission and only accepts a number — that is
         /// the OS's rule, not an API coupling. Android has no cross-vendor
-        /// launcher badge at all: `lx.supports({ capability: 'badge' })` reports
-        /// `false` there and `setBadge` returns `false`.
+        /// launcher badge at all, so `setBadge` returns `false` there.
         type SetBadgeOptions = r###"{
     surface?: 'auto' | 'appIcon' | 'tray';
 }"###;

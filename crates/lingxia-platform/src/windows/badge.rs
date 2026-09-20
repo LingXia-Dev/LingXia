@@ -11,7 +11,9 @@ use windows::Win32::Graphics::Gdi::{
     DeleteDC, DeleteObject, DrawTextW, FF_DONTCARE, FW_BOLD, GetDC, GetTextExtentPoint32W, HDC,
     HGDIOBJ, LOGFONTW, ReleaseDC, SelectObject, SetBkMode, SetTextColor, TRANSPARENT,
 };
-use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, CoCreateInstance};
+use windows::Win32::System::Com::{
+    CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoUninitialize,
+};
 use windows::Win32::UI::Shell::{ITaskbarList3, TaskbarList};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconIndirect, DestroyIcon, EnumWindows, GetWindowThreadProcessId, HICON, ICONINFO,
@@ -55,6 +57,11 @@ fn badge_label(text: &str) -> Option<String> {
 }
 
 fn apply_overlay(hwnd: HWND, label: Option<&str>) -> Result<(), PlatformError> {
+    // Tokio's blocking workers do not inherit the UI thread's COM apartment.
+    unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) }
+        .ok()
+        .map_err(|error| PlatformError::Platform(format!("badge COM initialization: {error}")))?;
+    let _com = ComApartment;
     let taskbar: ITaskbarList3 = unsafe {
         CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER)
     }
@@ -74,6 +81,14 @@ fn apply_overlay(hwnd: HWND, label: Option<&str>) -> Result<(), PlatformError> {
     // The shell copies the icon, so it is ours to release either way.
     let _ = unsafe { DestroyIcon(icon) };
     outcome.map_err(|error| PlatformError::Platform(format!("painting the badge: {error}")))
+}
+
+struct ComApartment;
+
+impl Drop for ComApartment {
+    fn drop(&mut self) {
+        unsafe { CoUninitialize() };
+    }
 }
 
 /// A filled circle with the count centred in it, on a 32×32 ARGB surface.

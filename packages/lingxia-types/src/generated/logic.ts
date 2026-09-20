@@ -1130,7 +1130,7 @@ export type LxAppEnvVersion = 'release' | 'draft';
 export type LxAppReleaseType = 'release' | 'draft';
 
 /** Boolean capability names accepted by `lx.supports`. */
-export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'badge' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
+export type LxCapabilityFlag = 'control' | 'terminal' | 'autostart' | 'notifications' | 'banner' | 'browser' | 'proxy' | 'selfUpdate' | 'process' | 'appUse' | 'computerUse' | 'browserUse' | 'mediaCapture';
 
 /**
  * One capability question per call. The catalog is closed, so
@@ -1631,11 +1631,15 @@ export type ScanCodeResult = {
  * until `lx.tray.show()`, and a badge on a hidden item is not a badge
  * anyone can see. That resolves `false` whether you named the surface or
  * took `auto`; only a malfunction rejects.
+ * Apple ties the badge to notification permission. On macOS the label
+ * always reaches the system, but the Dock declines to draw it for an app
+ * that is registered with Notification Center and not allowed — so a host
+ * that declares `capabilities.notifications` and never got a yes resolves
+ * `false` here. A host that never asks is unaffected.
  * On iOS the home-screen badge is drawn by the notification system, so
  * it needs notification permission and only accepts a number — that is
  * the OS's rule, not an API coupling. Android has no cross-vendor
- * launcher badge at all: `lx.supports({ capability: 'badge' })` reports
- * `false` there and `setBadge` returns `false`.
+ * launcher badge at all, so `setBadge` returns `false` there.
  */
 export type SetBadgeOptions = {
     surface?: 'auto' | 'appIcon' | 'tray';
@@ -2875,8 +2879,7 @@ declare global {
      * only. Null or an empty string clears it.
      * Returns whether anything was actually painted. A platform with no such
      * chrome is a no-op that returns `false` rather than an error — portable code
-     * can call this unconditionally — and
-     * `lx.supports({ capability: 'badge' })` answers the same question up front.
+     * can call this unconditionally.
      */
     setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
   }

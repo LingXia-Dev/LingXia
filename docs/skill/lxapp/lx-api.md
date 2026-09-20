@@ -163,15 +163,19 @@ not say:
   notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
   There is no separate tray badge call.
 - A surface with nothing to paint on resolves `false`, never a rejection —
-  no such chrome on this platform, or a macOS tray the product has not
-  `show()`n, which has a status item but nothing on screen — call it unconditionally from portable code and gate the UI on
-  `lx.supports({ capability: 'badge' })`.
-- Unlike an optional namespace, the method is always there: `'setBadge' in
-  lx.app` is true everywhere, and `badge` says what it can *do*, not whether
-  it exists. Marking the product is decoration, so a platform that cannot is
-  a reason to hide your unread indicator, not to branch the call.
+  no such chrome on this platform, or a macOS tray the product has not shown.
+- The method is always present. Call `await lx.app.setBadge(count)` directly;
+  use its boolean result if the product needs to know whether it painted.
+  There is no separate badge capability query.
 - **Android returns `false`.** There is no cross-vendor launcher badge; what a
   launcher shows comes from active notifications, not from a standalone count.
+- **Both Apple platforms tie the badge to notification permission**, in
+  different ways. On macOS the label always reaches the system, but the Dock
+  refuses to draw it for an app that is registered with Notification Center
+  and not allowed — so a host that declares `capabilities.notifications` and
+  whose user dismissed or denied the prompt gets `false` and no badge, while
+  a host that never asks is unaffected. Call
+  `lx.app.notification.requestPermission()` before you rely on a count.
 - **iOS needs notification permission** and only accepts a number. The
   home-screen badge is drawn by the notification system, so a build that never
   asked cannot paint one, and a non-numeric value is a parameter error rather

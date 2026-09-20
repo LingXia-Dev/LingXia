@@ -76,8 +76,7 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 ///
 /// Returns whether anything was actually painted. A platform with no such
 /// chrome is a no-op that returns `false` rather than an error — portable code
-/// can call this unconditionally — and
-/// `lx.supports({ capability: 'badge' })` answers the same question up front.
+/// can call this unconditionally.
 async fn set_app_badge(
     ctx: JSContext,
     value: JSValue,

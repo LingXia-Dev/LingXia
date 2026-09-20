@@ -257,7 +257,17 @@ impl AppRuntime for Platform {
 
     fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
         // iOS returns false when the notification system refuses the count.
-        Ok(ffi::set_app_badge(text))
+        let written = ffi::set_app_badge(text);
+        #[cfg(target_os = "macos")]
+        if written && lingxia_app_context::capability::notifications() {
+            // The label reaches LaunchServices either way, but the Dock will
+            // not draw one for an app that is registered with Notification
+            // Center and not allowed — the same state that hides every other
+            // app's count. A host that never declared notifications is not
+            // registered, so its badge is unaffected and this check is skipped.
+            return Ok(notification_word(ffi::notification_permission())? == "granted");
+        }
+        Ok(written)
     }
 
     fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {

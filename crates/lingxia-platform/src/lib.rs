@@ -125,9 +125,8 @@ pub fn banner_supported() -> bool {
 
 /// The product-owned chrome this platform can actually paint a count on.
 ///
-/// `lx.supports({ capability: 'badge' })` answers from this, so a platform
-/// that has no such chrome says so instead of accepting a call and doing
-/// nothing.
+/// `lx.app.setBadge` skips unsupported surfaces and returns `false` when
+/// none can be painted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BadgeSurfaces {
     /// Dock (macOS), taskbar (Windows), home-screen icon (iOS, HarmonyOS).
@@ -137,12 +136,6 @@ pub struct BadgeSurfaces {
     /// The platform draws the badge itself and only understands a count, so a
     /// non-numeric value is a parameter error rather than a silent clear.
     pub numeric_only: bool,
-}
-
-impl BadgeSurfaces {
-    pub const fn any(self) -> bool {
-        self.app_icon || self.tray
-    }
 }
 
 /// Android is deliberately absent: there is no cross-vendor launcher badge.
