@@ -191,11 +191,12 @@ pub(crate) fn mark_ready() {
 /// already activates the host before it hands the token back, so a tap that
 /// resolves to nothing still lands on a visible product.
 pub(crate) fn install_handlers() {
-    service::install_feedback_handler(|error| report_unavailable(error.message()));
+    service::install_feedback_handler(|error| show_unavailable(error.message()));
 }
 
-fn report_unavailable(detail: &str) {
-    log::warn!("navigation target unavailable: {detail}");
+/// The feedback handler: `lingxia_service` has already logged the reason, so
+/// this only has to put it in front of the user.
+fn show_unavailable(_detail: &str) {
     let Ok(platform) = crate::runtime::platform() else {
         return;
     };
@@ -204,7 +205,7 @@ fn report_unavailable(detail: &str) {
         title: unavailable_message(),
         icon: ToastIcon::Error,
         image: None,
-        duration: 2500.0,
+        duration: 2.5,
         mask: false,
         position: ToastPosition::Center,
     });

@@ -78,10 +78,8 @@ fn open_resolved_token(token: &str) -> i32 {
         resolved.id,
     )) {
         Ok(()) => 1,
-        Err(error) => {
-            report_unavailable(&error);
-            0
-        }
+        // Already reported inside `dispatch`.
+        Err(_) => 0,
     }
 }
 

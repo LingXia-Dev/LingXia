@@ -145,6 +145,10 @@ pub fn mark_ready() {
             );
             continue;
         }
+        if let Err(error) = validate(&request.target) {
+            report_unavailable(&error);
+            continue;
+        }
         let _ = deliver(&request);
     }
 }
@@ -158,10 +162,16 @@ pub fn is_ready() -> bool {
 /// Validation runs here as well as at publish time: a route can be removed, a
 /// page unpublished, or an App Link host allowlist tightened, between the two.
 pub fn dispatch(request: NavigationRequest) -> Result<(), NavigationError> {
-    validate(&request.target)?;
+    // Readiness first: before the host is up there is no lxapp registry to
+    // check a page against, so validating here would reject a good target for
+    // the sole reason that it arrived early — which is what a cold-start tap
+    // always does. The drain in `mark_ready` validates once it can.
     if !is_ready() {
-        return enqueue(request);
+        return enqueue(request).inspect_err(report_unavailable);
     }
+    validate(&request.target).inspect_err(report_unavailable)?;
+    // `deliver` reports its own failure, so every path out of here has already
+    // told the user — a caller that reports again would stack two messages.
     deliver(&request)
 }
 
