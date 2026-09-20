@@ -21,7 +21,11 @@ public struct ContentView: View {
 
 @main
 public struct LxAppApp: App {
-    public init() { }
+    public init() {
+        // Before the first view appears: iOS hands a cold-start notification
+        // tap over right after launch and drops it if nothing is listening.
+        Lingxia.installNotificationDelegate()
+    }
 
     public var body: some Scene {
         WindowGroup {
