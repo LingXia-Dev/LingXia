@@ -222,7 +222,7 @@ declare global {
     /**
      * Product-wide cache reporting and clearing for a settings screen.
      * Present only in the Control app; presence agrees with
-     * `lx.supports('app.cache')`.
+     * `lx.app.control !== undefined`.
      */
     cache?: AppCacheApi;
   }
@@ -3232,4 +3232,4 @@ declare global {
 export {};
 
 /** Feature contracts generated from the runtime registry. */
-export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.cache' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'process' | 'surface.float' | 'surface.main' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';
+export type LxFeature = 'app.appUse' | 'app.autostart' | 'app.banner' | 'app.browser' | 'app.browserUse' | 'app.computerUse' | 'app.mediaCapture' | 'app.notification' | 'app.proxy' | 'app.selfUpdate' | 'process' | 'surface.tab' | 'surface.window' | 'surface.window.fullChrome' | 'terminal';

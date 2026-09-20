@@ -138,8 +138,11 @@ operation, so true is not permission or a promise of success.
 every call throws until the native host has granted the process resource.
 
 Optional namespaces and their base feature share the frozen set: `terminal`,
-`app.autostart`, `app.notification`, `app.banner`, `app.cache`. For Control app
-identity use `lx.app.control !== undefined`, not a feature key.
+`app.autostart`, `app.notification`, `app.banner`. For Control app identity
+and its product-wide cache API use `lx.app.control !== undefined`, not a
+feature key. `main` and `float` are baseline surface placements in ordinary
+lxapp Logic; use them directly without a supports query. Focused Terminal
+Settings contexts still omit the general app and surface APIs.
 
 `lx.app.control` holds the product-wide settings and their single writer. It is
 injected only into the app the host sealed as its Control app at build time, so

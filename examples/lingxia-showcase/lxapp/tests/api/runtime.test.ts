@@ -99,11 +99,12 @@ spec("answer capability questions consistently with the optional members", { id:
       };
       return {
         terminalAgrees, autostartAgrees, notificationAgrees, bannerAgrees,
-        unknownFalse: ['', 'future.feature', 'not a key', 'surface.aside', 'control']
+        unknownFalse: ['', 'future.feature', 'not a key', 'surface.aside', 'control',
+          'app.cache', 'surface.main', 'surface.float']
           .every(key => lx.supports(key) === false),
         typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-        main: lx.supports('surface.main'),
-        float: lx.supports('surface.float'),
+        cacheIsControl: !!lx.app.cache === (lx.app.control !== undefined),
+        surfaceAvailable: typeof lx.surface.openPage === 'function',
         dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
       };
     `,
@@ -116,8 +117,8 @@ spec("answer capability questions consistently with the optional members", { id:
     bannerAgrees: true,
     unknownFalse: true,
     typeErrors: true,
-    main: true,
-    float: true,
+    cacheIsControl: true,
+    surfaceAvailable: true,
     dependency: true,
   });
 });

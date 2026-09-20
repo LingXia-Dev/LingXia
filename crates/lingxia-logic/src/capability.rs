@@ -11,14 +11,14 @@ use std::sync::{Arc, OnceLock, Weak};
 #[derive(Debug, Deserialize)]
 struct FeatureEntry {
     key: String,
+    #[serde(default)]
     requires: Vec<String>,
-    own: Own,
+    predicate: Predicate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-enum Own {
+enum Predicate {
     Always,
-    Control,
     Terminal,
     Autostart,
     Notifications,
@@ -48,7 +48,7 @@ fn registry() -> &'static Result<Vec<FeatureEntry>, String> {
 
 fn resolve(
     entries: &[FeatureEntry],
-    own: impl Fn(Own) -> bool,
+    evaluate: impl Fn(Predicate) -> bool,
 ) -> Result<BTreeSet<String>, String> {
     let mut index = BTreeMap::new();
     for entry in entries {
@@ -61,7 +61,7 @@ fn resolve(
         index: &BTreeMap<&'a str, &'a FeatureEntry>,
         visiting: &mut BTreeSet<&'a str>,
         resolved: &mut BTreeMap<&'a str, bool>,
-        own: &impl Fn(Own) -> bool,
+        evaluate: &impl Fn(Predicate) -> bool,
     ) -> Result<bool, String> {
         if let Some(value) = resolved.get(key) {
             return Ok(*value);
@@ -72,9 +72,9 @@ fn resolve(
         if !visiting.insert(key) {
             return Err(format!("cyclic feature dependency at {key}"));
         }
-        let mut supported = own(entry.own);
+        let mut supported = evaluate(entry.predicate);
         for dependency in &entry.requires {
-            supported &= visit(dependency, index, visiting, resolved, own)?;
+            supported &= visit(dependency, index, visiting, resolved, evaluate)?;
         }
         visiting.remove(key);
         resolved.insert(key, supported);
@@ -82,7 +82,7 @@ fn resolve(
     }
     let mut resolved = BTreeMap::new();
     for key in index.keys() {
-        visit(key, &index, &mut BTreeSet::new(), &mut resolved, &own)?;
+        visit(key, &index, &mut BTreeSet::new(), &mut resolved, &evaluate)?;
     }
     Ok(resolved
         .into_iter()
@@ -132,30 +132,29 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     let focused = false;
     use lingxia_platform::traits::update::UpdateService;
     let entries = registry().as_ref().map_err(js_internal_error)?;
-    let supported = resolve(entries, |own| {
-        if focused && own != Own::Terminal {
+    let supported = resolve(entries, |predicate| {
+        if focused && predicate != Predicate::Terminal {
             return false;
         }
-        match own {
-            Own::Always => true,
-            Own::Control => app.is_control_app(),
-            Own::Terminal => focused,
-            Own::Autostart => autostart_supported(),
-            Own::Notifications => lingxia_app_context::capability::notifications(),
-            Own::Banner => app.is_control_app() && lingxia_platform::banner_supported(),
-            Own::Browser => lingxia_app_context::capability::browser(),
-            Own::Proxy => lingxia_app_context::capability::proxy(),
-            Own::SelfUpdate => lingxia_app_context::update::self_update_allowed(
+        match predicate {
+            Predicate::Always => true,
+            Predicate::Terminal => focused,
+            Predicate::Autostart => autostart_supported(),
+            Predicate::Notifications => lingxia_app_context::capability::notifications(),
+            Predicate::Banner => app.is_control_app() && lingxia_platform::banner_supported(),
+            Predicate::Browser => lingxia_app_context::capability::browser(),
+            Predicate::Proxy => lingxia_app_context::capability::proxy(),
+            Predicate::SelfUpdate => lingxia_app_context::update::self_update_allowed(
                 app.runtime.self_update_supported(),
                 app.runtime.installed_from_store(),
             ),
-            Own::Process => app.process_supported(),
-            Own::AppUse => lingxia_app_context::capability::app_use(),
-            Own::ComputerUse => lingxia_app_context::capability::computer_use(),
-            Own::BrowserUse => lingxia_app_context::capability::browser_use(),
-            Own::MediaCapture => lingxia_app_context::capability::media_capture(),
-            Own::Window => crate::surface::window_placement_available(),
-            Own::FullChrome => crate::surface::window_full_chrome_available(),
+            Predicate::Process => app.process_supported(),
+            Predicate::AppUse => lingxia_app_context::capability::app_use(),
+            Predicate::ComputerUse => lingxia_app_context::capability::computer_use(),
+            Predicate::BrowserUse => lingxia_app_context::capability::browser_use(),
+            Predicate::MediaCapture => lingxia_app_context::capability::media_capture(),
+            Predicate::Window => crate::surface::window_placement_available(),
+            Predicate::FullChrome => crate::surface::window_full_chrome_available(),
         }
     })
     .map_err(js_internal_error)?;
@@ -209,17 +208,21 @@ mod tests {
     #[test]
     fn registry_is_valid_and_dependencies_are_derived() {
         let entries = registry().as_ref().unwrap();
-        let supported = resolve(entries, |own| own != Own::Window).unwrap();
+        let supported = resolve(entries, |predicate| predicate != Predicate::Window).unwrap();
         assert!(!supported.contains("surface.window.fullChrome"));
         assert!(supported.contains("app.notification"));
+        let without_browser =
+            resolve(entries, |predicate| predicate != Predicate::Browser).unwrap();
+        assert!(!without_browser.contains("app.browser"));
+        assert!(!without_browser.contains("surface.tab"));
     }
 
     #[test]
     fn invalid_graphs_fail_even_when_unsupported() {
         for json in [
-            r#"[{"key":"a","requires":[],"own":"Always"},{"key":"a","requires":[],"own":"Always"}]"#,
-            r#"[{"key":"a","requires":["missing"],"own":"Always"}]"#,
-            r#"[{"key":"a","requires":["b"],"own":"Always"},{"key":"b","requires":["a"],"own":"Always"}]"#,
+            r#"[{"key":"a","requires":[],"predicate":"Always"},{"key":"a","requires":[],"predicate":"Always"}]"#,
+            r#"[{"key":"a","requires":["missing"],"predicate":"Always"}]"#,
+            r#"[{"key":"a","requires":["b"],"predicate":"Always"},{"key":"b","requires":["a"],"predicate":"Always"}]"#,
         ] {
             assert!(resolve(&entries(json), |_| false).is_err());
         }
@@ -227,7 +230,10 @@ mod tests {
 
     #[test]
     fn focused_context_only_exposes_terminal() {
-        let snapshot = resolve(registry().as_ref().unwrap(), |own| own == Own::Terminal).unwrap();
+        let snapshot = resolve(registry().as_ref().unwrap(), |predicate| {
+            predicate == Predicate::Terminal
+        })
+        .unwrap();
         assert_eq!(snapshot.into_iter().collect::<Vec<_>>(), vec!["terminal"]);
     }
 
@@ -238,11 +244,16 @@ mod tests {
         assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
         assert!(!all.contains(""));
         assert!(!all.contains("future.feature"));
+        for baseline in ["app.cache", "surface.main", "surface.float"] {
+            assert!(!all.contains(baseline));
+        }
         assert!(all.contains("surface.window"));
         assert!(all.contains("surface.window.fullChrome"));
 
-        let without_window =
-            resolve(registry().as_ref().unwrap(), |own| own != Own::Window).unwrap();
+        let without_window = resolve(registry().as_ref().unwrap(), |predicate| {
+            predicate != Predicate::Window
+        })
+        .unwrap();
         assert!(!without_window.contains("surface.window"));
         assert!(!without_window.contains("surface.window.fullChrome"));
     }
