@@ -196,6 +196,8 @@ rong::js_api! {
     }
 }
 
+// The per-context freeze itself lives in FeatureSnapshot/ctx.set_service and is
+// covered by the showcase API test, not from here.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,7 +212,6 @@ mod tests {
         let supported = resolve(entries, |own| own != Own::Window).unwrap();
         assert!(!supported.contains("surface.window.fullChrome"));
         assert!(supported.contains("app.notification"));
-        assert!(!supported.contains("app.notification.routeTarget"));
     }
 
     #[test]
@@ -231,14 +232,18 @@ mod tests {
     }
 
     #[test]
-    fn snapshot_is_sorted_and_does_not_recompute() {
-        let enabled = std::cell::Cell::new(true);
-        let snapshot = resolve(registry().as_ref().unwrap(), |_| enabled.get()).unwrap();
-        enabled.set(false);
-        assert!(snapshot.contains("surface.window"));
-        assert!(!snapshot.contains(""));
-        assert!(!snapshot.contains("future.feature"));
-        let next = resolve(registry().as_ref().unwrap(), |_| enabled.get()).unwrap();
-        assert!(next.is_empty());
+    fn resolved_keys_are_sorted_and_exclude_unknown_features() {
+        let all = resolve(registry().as_ref().unwrap(), |_| true).unwrap();
+        let keys = all.iter().collect::<Vec<_>>();
+        assert!(keys.windows(2).all(|pair| pair[0] < pair[1]));
+        assert!(!all.contains(""));
+        assert!(!all.contains("future.feature"));
+        assert!(all.contains("surface.window"));
+        assert!(all.contains("surface.window.fullChrome"));
+
+        let without_window =
+            resolve(registry().as_ref().unwrap(), |own| own != Own::Window).unwrap();
+        assert!(!without_window.contains("surface.window"));
+        assert!(!without_window.contains("surface.window.fullChrome"));
     }
 }

@@ -109,7 +109,17 @@ spec("answer capability questions consistently with the optional members", { id:
     `,
   }) as Record<string, boolean>;
 
-  for (const value of Object.values(result)) expect(value).toBeTruthy();
+  expect(result).toEqual({
+    terminalAgrees: true,
+    autostartAgrees: true,
+    notificationAgrees: true,
+    bannerAgrees: true,
+    unknownFalse: true,
+    typeErrors: true,
+    main: true,
+    float: true,
+    dependency: true,
+  });
 });
 
 spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {

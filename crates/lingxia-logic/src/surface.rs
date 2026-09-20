@@ -373,8 +373,7 @@ async fn open_page(
         "lx.surface.openPage",
     )?;
     let realized = resolve_placement(&ctx, &options, &["float", "window"], "float", |placement| {
-        placement != "window"
-            || (crate::capability::exposes(&ctx, "surface.window") && window_placement_available())
+        placement != "window" || crate::capability::exposes(&ctx, "surface.window")
     })?;
 
     let asked_one_placement = get_property(&options, "as")
@@ -1450,9 +1449,7 @@ async fn open_page_spec(ctx: JSContext, spec: &JSObject) -> JSResult<JSObject> {
             }
             #[cfg(not(any(target_os = "ios", target_os = "android", target_env = "ohos")))]
             {
-                if !crate::capability::exposes(&ctx, "surface.window")
-                    || !window_placement_available()
-                {
+                if !crate::capability::exposes(&ctx, "surface.window") {
                     return Err(surface_error(
                         SurfaceErrorCode::UnsupportedPlacement,
                         "as: 'window' opens a separate desktop window, which this host build cannot do; check lx.supports('surface.window') first",

@@ -945,7 +945,6 @@ pub enum AppSessionClass {
 }
 
 pub struct LxApp {
-    logic_feature_snapshots: Mutex<std::collections::BTreeMap<String, Vec<String>>>,
     // Immutable data - initialized once and never changed
     pub appid: String,
     pub runtime: Arc<Platform>,
@@ -977,6 +976,8 @@ pub struct LxApp {
     /// Session being torn down for a restart, or 0. Page instances must not be
     /// (re)created on it; the recreated instance starts fresh at 0.
     restart_closing_session: AtomicU64,
+    /// Feature support frozen per live Logic context, keyed by context id.
+    logic_feature_snapshots: Mutex<std::collections::BTreeMap<String, Vec<String>>>,
 
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
@@ -1047,8 +1048,6 @@ pub(crate) struct LxAppSession {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LxAppRuntimeInfo {
-    /// Sorted supported features keyed by the owning Logic context id.
-    pub logic_features: std::collections::BTreeMap<String, Vec<String>>,
     pub appid: String,
     pub app_name: String,
     pub version: String,
@@ -1070,6 +1069,8 @@ pub struct LxAppRuntimeInfo {
     pub lxapp_dir: String,
     pub data_dir: String,
     pub cache_dir: String,
+    /// Sorted supported features keyed by the owning Logic context id.
+    pub logic_features: std::collections::BTreeMap<String, Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1519,7 +1520,6 @@ impl LxApp {
             .map(|manager| manager.stack_contains(&self.appid))
             .unwrap_or(false);
         LxAppRuntimeInfo {
-            logic_features: self.logic_feature_snapshots.lock().unwrap().clone(),
             appid: self.appid.clone(),
             app_name: info.app_name,
             version: info.version,
@@ -1538,6 +1538,7 @@ impl LxApp {
             lxapp_dir: self.lxapp_dir.to_string_lossy().into_owned(),
             data_dir: self.user_data_dir.to_string_lossy().into_owned(),
             cache_dir: self.user_cache_dir.to_string_lossy().into_owned(),
+            logic_features: self.logic_feature_snapshots.lock().unwrap().clone(),
         }
     }
 
@@ -2063,7 +2064,6 @@ impl LxApp {
             _ => release_type,
         };
         Self {
-            logic_feature_snapshots: Mutex::new(Default::default()),
             appid,
             runtime,
             lxapp_dir: PathBuf::new(),
@@ -2087,6 +2087,7 @@ impl LxApp {
             shown: AtomicBool::new(true),
             hidden_since: Mutex::new(None),
             restart_closing_session: AtomicU64::new(0),
+            logic_feature_snapshots: Mutex::new(Default::default()),
             session,
             logic_contexts: tokio::sync::watch::channel(0).0,
             admission: OnceLock::new(),
@@ -3129,11 +3130,12 @@ impl LxApp {
         self.reload_manifest()?;
         self.refresh_live_page_config();
         self.sync_host_ui();
-        self.recreate_retained_page_services()
+        self.recreate_retained_page_services(false)
     }
 
     fn recreate_retained_page_services(
         &self,
+        include_isolated: bool,
     ) -> Result<Vec<PendingPageServiceRestart>, LxAppError> {
         let pages: Vec<PageInstance> = {
             let state = self
@@ -3148,6 +3150,9 @@ impl LxApp {
         };
         let mut pending = Vec::with_capacity(pages.len());
         for page in pages {
+            if !include_isolated && page.is_isolated() {
+                continue;
+            }
             {
                 let _transition = page.reset_transition_guard();
                 page.prepare_for_service_restart();
@@ -3226,7 +3231,8 @@ impl LxApp {
         self.ensure_app_service_running()?;
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
         self.ensure_app_launch_dispatched()?;
-        let pending = self.recreate_retained_page_services()?;
+        // A device transition must rebuild isolated surface pages too.
+        let pending = self.recreate_retained_page_services(true)?;
         let pages = pending
             .iter()
             .map(|(page, _)| page.clone())
