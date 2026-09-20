@@ -35,7 +35,7 @@ may change between releases.
 Without `filePath`, the result is temp:
 
 ```ts
-const result = await lx.downloadFile({ url, headers, timeout, signal });
+const result = await lx.downloadFile({ url, headers, timeout, signal }).result;
 result.tempFilePath; // lx://temp/<opaque_id>
 ```
 
@@ -45,7 +45,7 @@ With `filePath`, the destination must be relative or `lx://userdata/...`:
 const result = await lx.downloadFile({
   url,
   filePath: "videos/video.mp4",
-});
+}).result;
 result.filePath; // lx://userdata/videos/video.mp4
 ```
 
@@ -120,7 +120,7 @@ await lx.fs.rename(
 
 Rules:
 
-- `copyFile` copies from temp, userdata, or usercache into userdata or usercache
+- `copy` copies from temp, userdata, or usercache into userdata or usercache
 - `rename` moves from temp, userdata, or usercache into userdata or usercache
 - relative destinations resolve under userdata
 - explicit `lx://` destinations may target `lx://userdata` or `lx://usercache`
@@ -172,10 +172,10 @@ const task = lx.uploadFile({
   bodyMode: 'raw',
   mimeType: contentType,
 });
-for await (const event of task) {
+for await (const event of task.progress) {
   if (event.kind === 'progress') updateProgress(event.progress ?? 0);
 }
-const { statusCode, data } = await task.wait();
+const { statusCode, data } = await task.result;
 ```
 
 The task is awaitable and async-iterable. `cancel()` cancels the transfer;
@@ -190,8 +190,8 @@ skill rather than treating them as interchangeable with `lx.uploadFile`.
 ### Media APIs
 
 `chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs
-return temp outputs by default. Use `copyFile` to keep a copy, or `rename` to
-move it into userdata or usercache.
+return temp outputs by default. Use `lx.fs.copy` to keep a copy, or
+`lx.fs.rename` to move it into userdata or usercache.
 
 ## `lingxia.yaml` Storage Configuration
 
@@ -240,7 +240,7 @@ start.
 
 **User data** is never auto-cleaned to satisfy quota. It is deleted only by
 explicit delete APIs, lxapp uninstall, or the user clearing app data — notably
-*not* by `lx.app.cache.clear()`, which is a cache control and never touches
+*not* by `lx.host.cache.clear()`, which is a cache control and never touches
 userdata. Writes
 that would exceed `dataMaxSizeMB` fail with `USERDATA_QUOTA_EXCEEDED`; writes
 that would exceed `appStorageMaxSizeMB` first trigger usercache cleanup, then
@@ -255,11 +255,11 @@ error surfaces to the caller and the lxapp should tell the user.
 
 ## Clearing the product's cache
 
-`lx.app.cache` is a host-wide API injected only into the Control app, same
-gate as `lx.app.control`. Guests do not have the member.
+`lx.host.cache` is a host-wide API injected only into the Control app, same
+gate as `lx.host.control`. Guests do not have the member.
 
 ```ts
-const cache = lx.app.cache;
+const cache = lx.host.cache;
 if (!cache) return; // not the Control app
 const reclaimableBytes = await cache.size();
 const result = await cache.clear();
@@ -314,5 +314,5 @@ usercache     -> lx://usercache/<path>
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
 - Do not store business-critical references to `tempFilePath`.
-- Use `lx.app.cache` from the Control app for a product-wide "clear cache"
+- Use `lx.host.cache` from the Control app for a product-wide "clear cache"
   control; guests do not have the member.

@@ -65,20 +65,9 @@ once per platform (Android consumes IME insets; Harmony sets the Web
 component's `RESIZE_CONTENT` keyboard-avoid mode; iOS WKWebView handles it
 natively). `position: fixed` inputs are the one edge case to test.
 
-**Mini-program attribute mapping** (for code ported from WeChat-style
-`<input>`):
-
-| Mini-program | Plain web equivalent |
-|---|---|
-| `bindinput` / `bindconfirm` | `onInput` / `onKeyDown` + `key === 'Enter'` |
-| `confirm-type` | `enterkeyhint` attribute |
-| `type="digit"` | `type="text" inputMode="decimal"` |
-| `type="number"` | `type="number"` (or `inputMode="numeric"`) |
-| `maxlength` | `maxLength` |
-| `placeholder-style` | CSS `::placeholder` |
-| `focus` (programmatic) | `ref.focus()` / `ref.blur()` driven by Logic state |
-| `auto-height` (textarea) | CSS `field-sizing: content`, or on input: `el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'` |
-| `bindlinechange` (textarea) | derive from `scrollHeight / lineHeight` in the same handler |
+Mini-program input attributes have no LingXia equivalent — write the web ones
+(`onInput`, `enterkeyhint`, `inputMode`, `maxLength`, `::placeholder`,
+`ref.focus()`, `field-sizing: content`).
 
 **Soft-keyboard height** (rarely needed — e.g. pinning a toolbar above the
 IME): derive it from `visualViewport`:
@@ -212,35 +201,6 @@ optional React `fallback` prop / Vue `#fallback` slot supplies ordinary DOM for
 initialization or failure; it never switches playback to a Web video element.
 Shown fallback content is accessible, and becomes hidden when the Root is ready.
 
-### Migrating existing video pages
-
-1. Wrap each formerly bare `LxVideo` in `LxNativeRoot`, keeping the video as a
-   direct child. Give the player an explicit size/aspect ratio. Put native
-   overlays in a sibling `LxNativeCover`; keep ordinary DOM outside the Root.
-2. Change React/Vue callbacks from `event.detail.currentTime` to
-   `payload.currentTime`. HTML listeners continue to receive `CustomEvent`.
-   Import `LxVideoEventPayloads` from your framework package for named handlers.
-3. Use `payload.fullscreen` in View callbacks; the element normalizes the
-   platform's `fullScreen` alias. Video errors always provide `code` and
-   `message`; `recoverable` is optional. Metadata dimensions are optional when
-   a backend only supplies duration. `onVolumeChange` receives `{ volume, muted? }`.
-4. Ensure the host grants guest access to media hosts. Protocol-relative
-   URLs and unsupported URL schemes are rejected. `lx.createVideoContext(id)`
-   remains the imperative control API.
-
-```tsx
-import { LxNativeRoot, LxVideo, type LxVideoEventPayloads } from '@lingxia/react';
-
-const onProgress = ({ currentTime }: LxVideoEventPayloads['onTimeUpdate']) => {
-  console.log(currentTime);
-};
-
-<LxNativeRoot style={{ aspectRatio: '16 / 9' }}>
-  <LxVideo id="hero" src={src} controls
-    style={{ width: '100%', height: '100%' }} onTimeUpdate={onProgress} />
-</LxNativeRoot>
-```
-
 ## `LxVideo`
 
 Native video player with quality/rate switching, fullscreen, and live mode. Always wrap it in `LxNativeRoot`.
@@ -253,17 +213,20 @@ is outside the contract as well. Live or pushed streams stay native-side through
 available yet.
 
 The full attribute list (`src`, `poster`, `objectFit`, `controls`, `qualities`,
-`playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`;
-every remote media URL (`src`, `poster`, watermark/quality URLs, and
-`setStreamSource`) must be allowed by the host-granted network policy. Two pieces of
+`playbackRates`, …) is the exported `LxVideoAttributes` from `@lingxia/elements`.
+Every remote media URL (`src`, `poster`, watermark/quality URLs, and
+`setStreamSource`) must be allowed by the host-granted network policy;
+protocol-relative URLs and unsupported schemes are rejected. Two pieces of
 behavior are doc-only: event reshaping and imperative control.
 
 **Events** — React/Vue handlers receive the **payload** (`onTimeUpdate` →
 `{ currentTime }`, `onError` → `{ code, message, recoverable? }`,
-`onLoadedMetadata` → `{ duration, width?, height? }`, `onFullscreenChange` →
-`{ fullscreen }`). HTML still reads `CustomEvent.detail`. Lifecycle events
-(`onPlayRequest`, `onPlay`, `onPlaying`, `onPause`, `onStop`, `onEnded`,
-`onWaiting`) carry `{}`.
+`onLoadedMetadata` → `{ duration, width?, height? }`, `onVolumeChange` →
+`{ volume, muted? }`, `onFullscreenChange` → `{ fullscreen }`, normalizing the
+platform's `fullScreen` alias). HTML still reads `CustomEvent.detail`. Lifecycle
+events (`onPlayRequest`, `onPlay`, `onPlaying`, `onPause`, `onStop`, `onEnded`,
+`onWaiting`) carry `{}`. Type a named handler with `LxVideoEventPayloads` from
+your framework package.
 
 ```tsx
 <LxNativeRoot>

@@ -110,17 +110,15 @@ Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 | **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Windows/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
 | **C. Host app + native Rust control** | Either an HTML control lxapp with `logic: false`, or a macOS/Windows terminal/browser main with no bundled lxapp. | Rust-controlled utilities and products whose main experience is a built-in native capability. |
 
-C sets `features.appService: false` and puts control in Rust. It may retain a
-`logic: false` HTML view, or omit the control lxapp for a desktop native main.
-You can also mix: a JS-Logic lxapp that **calls** Rust routes via
-`#[lingxia::native]` is still B, with native Rust as an API surface rather than
-the control layer.
+A JS-Logic lxapp that **calls** Rust routes via `#[lingxia::native]` is still B:
+native Rust is an API surface there, not the control layer. Each shape's actual
+setup — which flags, which files — is in "See a real layout" below.
 
 ---
 
 ## `@lingxia/*` npm packages at a glance
 
-Every published package and what to import from each. Don't guess imports from the package name — use this table.
+What an lxapp or host author imports, and from where. Don't guess an import from the package name — use this table.
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
@@ -133,7 +131,9 @@ Every published package and what to import from each. Don't guess imports from t
 | `@lingxia/bridge` | Bridge runtime + low-level invocation helpers | rarely direct (advanced) | only when bypassing the framework wrappers |
 | `@lingxia/native` | Virtual module — points at the **CLI-generated** native client (`#[lingxia::native]` routes) | lxapp View | `import { native } from '@lingxia/native'` — only after a native build runs |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
-| — | This skill itself | ships in the CLI; written and kept current by any `lingxia` command | not imported in code |
+
+`@lingxia/polyfills` and `@lingxia/terminal-settings` are published too, but the
+CLI and the host ship them for you — never add either to a project.
 
 **Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Runtime boundaries and typing setup: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
 
@@ -172,9 +172,9 @@ lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # S
 
 The output is the authoritative layout for the `lingxia` on your `PATH`; it can't drift the way a hand-written sample does. What to look at per shape:
 
-- **A — standalone lxapp** (JS). `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, runs in the JS runtime), `index.tsx` is **View** (React + `useLxPage`, runs in the WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**. A `_`-prefixed method stays private to Logic. Network hosts and privilege classes are host grants, not `lxapp.json` fields; with no provider they default to allow. See [permissions](./native/permissions.md).
-- **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`. The launch `main` surface's `lxapp:` content key is the appId it renders, so point it at that same home app. View talks to Logic via `actions.foo()` from `useLxPage()`.
-- **C — host + Rust control.** With an embedded HTML control lxapp, use `features.appService: false`, `lxapp.json` `"logic": false`, `window.native.*`, and `#[lingxia::native]` routes. A macOS/Windows `native: terminal|browser` main may instead omit the control lxapp, `homeAppId`, and resources entirely: `lingxia new … --main terminal|browser --control native`. Runtime/downloaded lxapps remain guest workspaces, not the trusted control app. Flip `appService` and embedded `logic` together; don't add `@lingxia/react|vue|html` to a logic-disabled view.
+- **A — standalone lxapp** (JS). In `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, JS runtime), `index.tsx` is **View** (React + `useLxPage`, WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**; a `_`-prefixed method stays private to Logic. Network hosts and privilege classes are [host grants](./native/permissions.md), not `lxapp.json` fields.
+- **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`, and the launch `main` surface's `lxapp:` key names that same app. View calls Logic through `actions.foo()` from `useLxPage()`.
+- **C — host + Rust control.** An embedded HTML control lxapp uses `features.appService: false`, `lxapp.json` `"logic": false`, `window.native.*`, and `#[lingxia::native]` routes — flip `appService` and `logic` together, and never add `@lingxia/react|vue|html` to a logic-disabled view. A macOS/Windows `native: terminal|browser` main can omit the control lxapp, `homeAppId`, and resources entirely (`lingxia new … --main terminal|browser --control native`). Downloaded lxapps stay guest workspaces, never the control app.
 
 Run any shape with `lingxia dev`. Full recipes: [LxApp page](./lxapp/guide.md#logic-layer--page) · [host `lingxia.yaml`](./app/project.md#minimal-macos-example) · [Rust route](./native/development.md#native-routes).
 

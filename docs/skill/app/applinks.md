@@ -15,7 +15,7 @@ Inbound links reach Logic from:
 - browser handoff into the app
 - push notification links
 - a tap on a local notification posted with
-  `lx.app.notification.show({ target: { kind: 'appLink', url } })`
+  `lx.host.notification.show({ target: { kind: 'appLink', url } })`
 
 QR and barcode scans are the exception: `scanCode` auto-opens **only** the
 `/lxapp/` namespace. A product URL that merely shares a configured host is
@@ -80,7 +80,6 @@ Examples:
 ```text
 https://app.example.com/lxapp/open?appId=shop
 https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&id=42
-https://app.example.com/lxapp/open?appId=shop&path=pages%2Fdetail%2Findex.html&channel=draft&id=42
 ```
 
 Only in this namespace are routing parameters consumed, and only here is a
@@ -96,14 +95,8 @@ malformed URL rejected. Do not mint product links under `/lxapp/`.
 
 All query keys and values should be URL encoded. Routing parameters are consumed
 by the SDK and are not forwarded to the page. Other query parameters are
-forwarded to the target page.
-
-| Link value | Channel |
-|---|---|
-| `channel=release` | `release` |
-| `channel=draft` | `draft` |
-
-No aliases. Invalid `channel` values are rejected.
+forwarded to the target page. `channel` takes `release` or `draft` — no
+aliases, and any other value is rejected.
 
 Example:
 

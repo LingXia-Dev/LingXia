@@ -55,7 +55,7 @@ editor applies the correct environment to each file.
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 
 Most methods are flat on `lx`. Related capabilities use typed namespaces such
-as `lx.env`, `lx.app`, `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`,
+as `lx.env`, `lx.host`, `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`,
 `lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
 map. Page Chrome geometry is a View concern exposed through the framework
 page-chrome helpers and the low-level `window.lxPageChrome` snapshot.
@@ -94,15 +94,15 @@ the user: shipping catalogs for two languages and falling back for the rest, or
 declaring in `lxapp.json` that this lxapp's UI only works in dark. Those are
 static properties of your code, not preferences someone chose.
 
-So each of these reads the same way: a pair on `lx.app` that every lxapp
-follows, and a writer behind `lx.app.control` that only the Control app has.
+So each of these reads the same way: a pair on `lx.host` that every lxapp
+follows, and a writer behind `lx.host.control` that only the Control app has.
 
 ```ts
-lx.app.displayLanguage.get();        lx.app.displayLanguage.watch(cb);
-lx.app.appearance.get();             lx.app.appearance.watch(cb);
+lx.host.displayLanguage.get();        lx.host.displayLanguage.watch(cb);
+lx.host.appearance.get();             lx.host.appearance.watch(cb);
 
-lx.app.control?.displayLanguage.setPreference('zh-CN');
-lx.app.control?.appearance.setPreference('dark');
+lx.host.control?.displayLanguage.setPreference('zh-CN');
+lx.host.control?.appearance.setPreference('dark');
 ```
 
 `get`/`watch` answer what is in effect. `getPreference`/`setPreference`/
@@ -122,7 +122,7 @@ Use `lx.supports(feature)` for optional feature contracts:
 if (lx.supports('surface.window.fullChrome')) {
   // offer a window with full chrome
 }
-lx.surface.onContext(({ aside }) => {
+lx.surface.watchContext(({ aside }) => {
   // aside is live host docking availability, independent of viewport sizeClass
 });
 ```
@@ -139,15 +139,15 @@ every call throws until the native host has granted the process resource.
 
 Optional namespaces and their base feature share the frozen set: `terminal`,
 `app.autostart`, `app.notification`, `app.banner`. For Control app identity
-and its product-wide cache API use `lx.app.control !== undefined`, not a
+and its product-wide cache API use `lx.host.control !== undefined`, not a
 feature key. `main` and `float` are baseline surface placements in ordinary
 lxapp Logic; use them directly without a supports query. Focused Terminal
 Settings contexts still omit the general app and surface APIs.
 
-`lx.app.control` holds the product-wide settings and their single writer. It is
+`lx.host.control` holds the product-wide settings and their single writer. It is
 injected only into the app the host sealed as its Control app at build time, so
 the same lxapp opened as a guest elsewhere simply does not have it. Write
-`lx.app.control?.…`.
+`lx.host.control?.…`.
 
 `lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
 are additionally restricted to the host-bundled Terminal Settings session the
@@ -161,7 +161,7 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 ## Badges
 
-`lx.app.setBadge(value, options?)` — Control-app only, resolves whether
+`lx.host.setBadge(value, options?)` — Control-app only, resolves whether
 anything was painted. Signatures are in `@lingxia/types`; what they do
 not say:
 
@@ -171,7 +171,7 @@ not say:
   There is no separate tray badge call.
 - A surface with nothing to paint on resolves `false`, never a rejection —
   no such chrome on this platform, or a macOS tray the product has not shown.
-- The method is always present. Call `await lx.app.setBadge(count)` directly;
+- The method is always present. Call `await lx.host.setBadge(count)` directly;
   use its boolean result if the product needs to know whether it painted.
   There is no separate badge capability query.
 - **Android returns `false`.** There is no cross-vendor launcher badge; what a
@@ -182,24 +182,24 @@ not say:
   and not allowed — so a host that declares `capabilities.notifications` and
   whose user dismissed or denied the prompt gets `false` and no badge, while
   a host that never asks is unaffected. Call
-  `lx.app.notification.requestPermission()` before you rely on a count.
+  `lx.host.notification.requestPermission()` before you rely on a count.
 - **iOS needs notification permission** and only accepts a number. The
   home-screen badge is drawn by the notification system, so a build that never
   asked cannot paint one, and a non-numeric value is a parameter error rather
   than a silent clear. That is the OS's rule; a badge is otherwise independent
-  of `lx.app.notification`, which never changes it.
+  of `lx.host.notification`, which never changes it.
 - A badge is decoration: it never prompts, never interrupts, and posting a
   notification does not set one.
 
 ## Desktop banner
 
-`lx.app.banner` — Control-app only, desktop only (macOS / Windows). Not an OS
+`lx.host.banner` — Control-app only, desktop only (macOS / Windows). Not an OS
 notification and not bound to App Link. Presence and
 `lx.supports('app.banner')` always agree; guests and mobile builds
 do not have the member. No yaml capability: this is product-drawn chrome.
 
 - No `actions`: informational card, auto-dismisses in 5s unless `timeoutMs` is
-  set. The close control resolves `{ canceled: true, reason: 'dismissed' }`.
+  set. The close control resolves `{ status: 'canceled', reason: 'dismissed' }`.
 - With `actions` (at most two): a gate. No close control. Resolves the chosen
   `action` id, or `canceled` on timeout / replace. Failures to present reject.
 - Same `id` replaces the current card (`reason: 'replaced'`). Different ids
@@ -213,7 +213,7 @@ do not have the member. No yaml capability: this is product-drawn chrome.
 
 ## Local notifications
 
-`lx.app.notification` — Control-app only, absent without
+`lx.host.notification` — Control-app only, absent without
 `capabilities.notifications`. Signatures are in `@lingxia/types`; what they do
 not say:
 
@@ -249,19 +249,21 @@ not say:
 
 ## Handling errors
 
-A rejection means the operation failed. It never means the user said no: the
+A rejection means the operation failed. It never means the user said no. The
 dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
 `chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
-(`readText` and `read`, where iOS 16+ / macOS 15.4+ may show a paste prompt)
-— resolve a result discriminated
-on `canceled`, so dismissal is a branch rather than an error path. (`lx.share` stands apart: some
-platforms only observe that the system sheet opened and closed, so it reports a
-three-state `outcome` — `'completed' | 'dismissed' | 'unknown'` — rather than
-claiming a certainty it does not have.)
+`readText` / `read` (iOS 16+ and macOS 15.4+ may show a paste prompt) — resolve
+a result discriminated on `canceled`, so dismissal is a branch, not an error
+path.
+
+`lx.share` is the exception: some platforms only observe that the system sheet
+opened and closed, so it reports a three-state `outcome` —
+`'completed' | 'dismissed' | 'unknown'` — rather than claiming a certainty it
+does not have.
 
 ```ts
 const scan = await lx.scanCode()
-if (scan.canceled) return                   // the user backed out
+if ((scan.status === 'canceled')) return                   // the user backed out
 lx.showToast({ title: scan.scanResult })    // narrowed: the payload is present
 ```
 

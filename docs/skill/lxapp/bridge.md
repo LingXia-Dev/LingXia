@@ -8,15 +8,6 @@ For a broad introduction to the View/Logic split, see [LxApp Development Guide](
 
 ## The Bridge Model
 
-Every lxapp page has two layers:
-
-```
-┌─────────────────────────────┐                ┌──────────────────────────────┐
-│        View (WebView)       │                │    Logic (Native JS Runtime) │
-│   React / Vue component     │ ◄──── bridge ──► Page({}) instance            │
-└─────────────────────────────┘                └──────────────────────────────┘
-```
-
 **Logic** owns all business state and operations. It runs in a native JS runtime, not in the WebView. **View** renders UI and reacts to user input. It runs in the WebView and has no direct access to Logic's data.
 
 The bridge is the only path between them. It carries three categories of data:
@@ -68,17 +59,9 @@ Rules:
 
 ### How replication works
 
-Under the hood, `setData` produces a JSON Patch diff and delivers it to View via `state.patch` frames. View applies the patch and triggers a re-render. This diff-based approach is efficient for low-frequency state transitions, but it is not designed for high-frequency payloads — for that, use stream.
-
-```
-Logic: this.setData({ count: 1 })
-  │
-  ▼  (JSON Patch diff computed)
-Bridge: state.patch { ops: [{ op:"replace", path:"/count", value:1 }] }
-  │
-  ▼
-View: data.count === 1 → re-render
-```
+`setData` sends a JSON Patch diff, which View applies before re-rendering. That
+is efficient for low-frequency state transitions and wrong for hot-path payloads
+— use a stream for those.
 
 ### When to use `setData`
 
@@ -178,7 +161,9 @@ Page({
 
 The explicit handle exposes `onCancel(handler)` (returns unsubscribe). When the View cancels, the runtime invokes that handler, then resolves the call with `BRIDGE_CANCELED`. The generator form still observes cancel in `finally`; use `onCancel` when your source is callback-based.
 
-The runtime distinguishes the two forms automatically — you never declare them by hand. At build time the CLI classifies each page action into a `BridgeMode` (`"notify" | "call" | "stream"`) and emits a `__modes` map onto `window.__pageBridge`; a method that returns an `AsyncGenerator` (or takes the injected handle) is tagged `"stream"`, everything else falls through. There is no author-facing metadata field to maintain.
+The runtime classifies each action from its shape at build time — a method
+returning an `AsyncGenerator`, or taking the injected handle, is a stream. There
+is no metadata field to declare.
 
 ### View side
 
@@ -252,38 +237,11 @@ Both can push data to View, but they are for different things:
 
 **Rule of thumb**: `yield` every chunk. Use `setData` for state transitions that should persist after the stream ends — saving the final message, clearing a loading flag.
 
-### Data flow
-
-```
-View: chat.start() → actions.onSend({ text })
-  │
-  ▼  (req frame)
-Bridge → Logic: invoke async generator
-  │
-  ▼  generator yields { type:'token', token:'H' }
-Bridge: event frame { seq:0, payload:{ type:'token', token:'H' } }
-  │
-  ▼
-View: reduce(acc, chunk) → chat.data.text = 'H' → re-render
-
-  ... more yields ...
-
-  generator returns
-  │
-  ▼  (res frame, ok:true)
-View: chat.streaming = false
-
-  (if View cancels)
-View: chat.cancel() → cancel frame
-  │
-  ▼
-Logic: generator.return() → finally block executes
-  │
-  ▼  (res frame, ok:false, BRIDGE_CANCELED)
-View: chat.streaming = false, chat.error set
-```
-
-Chunks carry a per-`yield` sequence number, so delivery order is guaranteed regardless of async timing. An unhandled exception in the generator terminates the stream with an error result (surfaced on `chat.error`).
+Chunks carry a per-`yield` sequence number, so delivery order is guaranteed
+regardless of async timing. An unhandled exception in the generator terminates
+the stream with an error result (surfaced on `chat.error`). `chat.cancel()`
+returns the generator — the `finally` block runs — and settles the call with
+`BRIDGE_CANCELED`.
 
 ---
 
@@ -396,27 +354,6 @@ ch.send({ type: 'error',  reason });
 
 On the View side, switch on `msg.type` to route each frame.
 
-### Channel lifecycle
-
-```
-View: useLxChannel opens
-  │
-  ▼  ch.open frame
-Bridge → Logic: invoke syncSession(params, ch)
-  │
-  ▼  ch.ack { ok: true }
-View: session.connected = true
-  │
-  ┌─────────────────────────────────┐
-  │  bidirectional data exchange    │
-  │  ch.data (both directions)      │
-  └─────────────────────────────────┘
-  │
-  ▼  ch.close (either side)
-View: session.connected = false
-Logic: ch.on('close') listener fires → cleanup
-```
-
 ---
 
 ## Choosing the Right Primitive
@@ -461,7 +398,7 @@ Two different questions, answered separately:
 - **Which machine is this?** `isMobile()` / `isDesktop()` — the form factor. Branch on these for anything a phone should not show at all.
 - **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform.
 
-Neither is a size class. `lx.surface.onContext` answers "how much room is there"; a narrowed desktop window is still a desktop. An unfolded fold is still a phone: `regular` + mobile, not a desktop workspace. Combine the two; do not invent a third size class.
+Neither is a size class. `lx.surface.watchContext` answers "how much room is there"; a narrowed desktop window is still a desktop. An unfolded fold is still a phone: `regular` + mobile, not a desktop workspace. Combine the two; do not invent a third size class.
 
 - **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isMobile, isDesktop, isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isRunner, os }` (typed, sync).
 - **View (any framework)**: `window.LingXiaBridge.platform` — `isMobile()`, `isDesktop()`, `isApple()`, `isIOS()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
@@ -472,16 +409,18 @@ All of these are fixed for the life of a page, so they resolve once. In the `lin
 
 ## Display Language
 
-The product has one language. Follow it; never keep a second preference of your
-own, and never offer the user a language picker inside a screen — the one that
-edits the setting is the product's Settings surface.
+One product, one language, one writer — the rule, and the
+`lx.host.control.displayLanguage` writer behind it, are in
+[Logic runtime and typings](./lx-api.md#the-product-owns-its-settings). Read the
+effective language here; never keep a second preference of your own, and never
+offer a language picker inside a page.
 
 - **View**: `useDisplayLanguage()` in React/Vue; `getDisplayLanguage()` and
   `subscribeDisplayLanguage(cb)` in `@lingxia/html`. A plain-HTML page that
   bundles nothing reads `window.LingXiaBridge.displayLanguage.get()` and
   `.subscribe(cb)`.
-- **Logic**: `lx.app.displayLanguage.get()` returns the tag in effect;
-  `lx.app.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
+- **Logic**: `lx.host.displayLanguage.get()` returns the tag in effect;
+  `lx.host.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
   Logic needs the second one because the strings it hands to native chrome —
   navigation bar titles, tab bar labels, modal text — are yours, and nothing
   re-renders them for you.
@@ -495,20 +434,6 @@ so the unsubscribe it returns is not yet bound inside it.
 Narrowing the tag to the catalogs you ship is yours to do, and is not a
 language setting: `ja-JP` with only `en`/`zh` shipped renders `en`, while the
 product stays in `ja-JP`.
-
-The Settings surface — the Control app, or the host's browser-form settings —
-additionally gets `lx.app.control.displayLanguage`:
-
-```ts
-lx.app.control?.displayLanguage.getPreference()          // 'auto' | BCP-47 tag
-await lx.app.control?.displayLanguage.setPreference('zh-CN')
-lx.app.control?.displayLanguage.watchPreference((p) => …)
-```
-
-`lx.app.control` is present only in that app; test `lx.app.control !== undefined`
-when identity matters. `watchPreference` tracks
-what the user chose, so a system locale change under `'auto'` moves
-`displayLanguage.watch` without waking it.
 
 A `lingxia dev --display-language` session shadows the *effective* language
 without touching the preference. Inside that session `get()` and

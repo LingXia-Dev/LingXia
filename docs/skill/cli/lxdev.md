@@ -42,6 +42,10 @@ websocket is not a remote machine-management API.
 - `page back` — pop the page stack
 - `page screenshot` — PNG of one page's WebView
 
+`info` also carries `logic_features`: a read-only snapshot keyed by Logic context
+id, with sorted feature names. Runner desktop/handheld preset changes recreate
+Logic contexts; rotation and resizing keep the existing feature set.
+
 `lxapp` deliberately has no window selector: a page is the core automation target, independent of how the host embeds it.
 
 **`runner`** — the simulated environment (Runner sessions only): device preset, orientation, appearance:
@@ -88,6 +92,21 @@ follow a later session's new log file — start `lxdev logs -f` again.
 with the owner CLI: use `lingxia dev stop` from that session's project rather
 than stopping it through `lxdev`.
 
+**`desktop`** — local desktop inspection and automation, independent of a dev
+session. It covers windows, screenshots, accessibility, pixels, clipboard,
+pointer, and keyboard. Destructive actions (closing a window, quitting an app,
+killing a process, clearing the clipboard) require `--allow-destructive`.
+
+On Windows, pointer and key input use foreground-only `SendInput`. A `--window`
+target is activated first; `--pid` requires exactly one visible window. True
+background input is not implemented by the current backend. Without a target,
+input goes to the foreground app. Window screenshots remain
+occlusion-independent, but separate native popups may require their own capture.
+
+Prefer `browser` or `lxapp page` for WebView content, `app` for the selected
+session's native host surface, and `desktop` for arbitrary local OS chrome.
+Owner-drawn Win32 controls may not expose accessibility nodes.
+
 ## The three JS contexts — don't conflate them
 
 | Command | Runs in | Sees |
@@ -105,21 +124,6 @@ under test is a user interaction, trigger it through `lxapp page click`. The JS
 navigation APIs take a configured page name in `{ page }`; route paths are not
 accepted.
 
-**`desktop`** — local desktop inspection and automation, independent of a dev
-session. It covers windows, screenshots, accessibility, pixels, clipboard,
-pointer, and keyboard. Destructive actions (closing a window, quitting an app,
-killing a process, clearing the clipboard) require `--allow-destructive`.
-
-On Windows, pointer and key input use foreground-only `SendInput`. A `--window`
-target is activated first; `--pid` requires exactly one visible window. True
-background input is not implemented by the current backend. Without a target,
-input goes to the foreground app. Window screenshots remain
-occlusion-independent, but separate native popups may require their own capture.
-
-Prefer `browser` or `lxapp page` for WebView content, `app` for the selected
-session's native host surface, and `desktop` for arbitrary local OS chrome.
-Owner-drawn Win32 controls may not expose accessibility nodes.
-
 ## Output contract
 
 - Default is human-readable text; `--json` gives compact machine output, `--pretty` indented JSON.
@@ -135,7 +139,3 @@ Owner-drawn Win32 controls may not expose accessibility nodes.
 | `Multiple LingXia dev sessions are live` | Add `--session <id-prefix\|target>`. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
 | Commands connect but hang | Host app lost its bridge — use `lingxia dev stop` from the project, then start `lingxia dev` again. |
-
-`lxdev lxapp info` includes `logic_features`: a read-only snapshot keyed by Logic
-context id, with sorted feature names. Runner desktop/handheld preset changes
-recreate Logic contexts; rotation and resizing keep the existing feature set.
