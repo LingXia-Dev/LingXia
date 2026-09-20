@@ -377,11 +377,21 @@ internal class LxLocalNotificationTapActivity : Activity() {
                 launch.putExtra(Lingxia.NOTIFICATION_TOKEN_EXTRA, token)
                 startActivity(launch)
             } else {
-                // Same flags as a launcher icon tap: resume the task as it stands.
-                // Reordering the entry activity would cover the lxapp with the splash.
-                launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
-                startActivity(launch)
+                // Reorder the live lxapp activity to the front rather than
+                // starting the launcher Intent. That Intent does not
+                // `filterEquals` the root this task was actually started with,
+                // so it builds a second entry activity whose `quickStart`
+                // reopens the home lxapp — burying the page this tap asked for.
+                val live = LxApp.getCurrentActivity()
+                if (live != null) {
+                    startActivity(Intent(this, live::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                            Intent.FLAG_ACTIVITY_NEW_TASK
+                    })
+                } else {
+                    launch.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    startActivity(launch)
+                }
             }
         }
         if (!cold) {
