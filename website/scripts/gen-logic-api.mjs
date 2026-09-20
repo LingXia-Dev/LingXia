@@ -70,14 +70,14 @@ const GROUPS = [
     slug: 'feedback',
     title: 'Dialogs and feedback',
     summary: 'Ask the user something, or report what just happened.',
-    members: ['showModal', 'showActionSheet', 'showToast', 'hideToast', 'share'],
+    members: ['alert', 'confirm', 'showModal', 'showActionSheet', 'showToast', 'hideToast', 'share'],
   },
   {
     slug: 'files',
     title: 'Files and storage',
     summary: 'Managed files, the system picker, transfers, and key-value storage.',
     members: [
-      'fs', 'openFile', 'chooseFile', 'chooseDirectory',
+      'fs', 'openFile', 'pickFile', 'pickFiles', 'chooseFile', 'chooseDirectory',
       'uploadFile', 'downloadFile', 'getStorage',
     ],
   },
@@ -118,7 +118,7 @@ const GROUPS = [
     title: 'Host app and runtime',
     summary: 'The host app around this lxapp, its environment, updates, and automation.',
     members: [
-      'app', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
+      'host', 'env', 'getLxAppInfo', 'getUpdateManager', 'openExternal',
       'supports', 'terminal',
     ],
   },
