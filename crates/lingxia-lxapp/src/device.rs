@@ -286,17 +286,16 @@ async fn change_device(
         return Err(failures.join("; "));
     }
     let applied = apply_device(id, landscape, appearance, capsule).await;
-    if applied.is_err() {
-        if let Err(error) = apply_device(
+    if applied.is_err()
+        && let Err(error) = apply_device(
             Some(previous.id),
             Some(previous.landscape),
             Some(previous.appearance),
             Some(previous.capsule),
         )
         .await
-        {
-            failures.push(format!("device rollback failed: {error}"));
-        }
+    {
+        failures.push(format!("device rollback failed: {error}"));
     }
     // Every old context has terminated, and the selected environment is now
     // published. New admissions and replacement contexts may observe it.

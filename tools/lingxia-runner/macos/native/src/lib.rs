@@ -140,6 +140,9 @@ pub extern "C" fn lingxia_register_host_addon() {
 }
 
 /// Schedule the shared transition without blocking the AppKit main thread.
+///
+/// # Safety
+/// `id` must be null or a NUL-terminated C string that stays valid for this call.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn lingxia_runner_request_device(id: *const std::ffi::c_char) {
     if id.is_null() {
