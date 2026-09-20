@@ -22,6 +22,7 @@ import {
   onHostAppearanceChanged,
   onHostLocaleChanged,
   onApplinkReceived,
+  onNotificationActivated,
   CurrentLxApp
 } from 'liblingxia.so';
 
@@ -39,6 +40,10 @@ const TAG = 'LingXia.Lingxia';
 export class Lingxia {
   // Host capabilities, resolved from the native runtime during initializeRuntime.
   public static capabilities: number = 0;
+  /** Want key and URI scheme a local-notification tap carries its token in. */
+  public static readonly NOTIFICATION_TOKEN_KEY: string = 'lingxia.notification.token';
+  public static readonly NOTIFICATION_TOKEN_SCHEME: string = 'lxnotify://';
+
   public static readonly CAP_BROWSER: number = 0x1;
   public static readonly CAP_NOTIFICATIONS: number = 0x2;
   public static readonly CAP_TERMINAL: number = 0x4;
@@ -322,6 +327,43 @@ export class Lingxia {
     } catch (error) {
       LxLog.e(TAG, `Error processing AppLink: ${url}, error: ${JSON.stringify(error)}`);
     }
+  }
+
+  /**
+   * Opens what a local-notification tap was carrying, on cold start and on
+   * re-entry alike. Not gated by App Link delivery: the token is the SDK's
+   * own, never an inbound link, and it never reaches the App Link parser.
+   * @param want The Want the system delivered for the tap
+   */
+  public static handleNotificationWant(want: Want): void {
+    try {
+      if (!want) { return; }
+      const token: string = Lingxia.notificationTokenFrom(want);
+      if (!token) { return; }
+      const result: number = onNotificationActivated(token);
+      hilog.info(DOMAIN, TAG, `Notification activation processed with result: ${result}`);
+    } catch (e) {
+      const err: Error = e as Error;
+      LxLog.e(TAG, `handleNotificationWant error: ${JSON.stringify(err)}`);
+    }
+  }
+
+  /**
+   * A reminder's WantAgent does not always preserve `parameters`, so the token
+   * also rides an SDK-private URI scheme. It is not https and never reaches
+   * the App Link parser, so it needs no configured product host.
+   */
+  private static notificationTokenFrom(want: Want): string {
+    const parameters = want.parameters as Record<string, Object> | undefined;
+    const carried = parameters?.[Lingxia.NOTIFICATION_TOKEN_KEY];
+    if (typeof carried === 'string' && carried.length > 0) {
+      return carried;
+    }
+    const uri = want.uri;
+    if (typeof uri === 'string' && uri.startsWith(Lingxia.NOTIFICATION_TOKEN_SCHEME)) {
+      return uri.substring(Lingxia.NOTIFICATION_TOKEN_SCHEME.length);
+    }
+    return '';
   }
 
   /**

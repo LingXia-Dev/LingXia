@@ -116,7 +116,7 @@ export class LxAppNotification {
     id: string,
     title: string,
     body: string,
-    applink: string,
+    activationToken: string,
     deliverAtMs: number
   ): Promise<string> {
     const ctx = Lingxia.context;
@@ -146,10 +146,14 @@ export class LxAppNotification {
         content: body,
         notificationId: numericId(id),
         slotType: notificationManager.SlotType.SOCIAL_COMMUNICATION,
+        // Both carriers: `parameters` is what the Want normally keeps, and
+        // the SDK-private scheme survives the reminder agent when it does not.
+        // Neither is https, so neither reaches the App Link parser.
         wantAgent: {
           pkgName: ctx.abilityInfo.bundleName,
           abilityName: ctx.abilityInfo.name,
-          uri: applink.startsWith('https://') ? applink : undefined
+          uri: Lingxia.NOTIFICATION_TOKEN_SCHEME + activationToken,
+          parameters: LxAppNotification.tokenParameters(activationToken)
         }
       };
       let reminderId = -1;
@@ -171,11 +175,10 @@ export class LxAppNotification {
 
     const want: Want = {
       bundleName: ctx.abilityInfo.bundleName,
-      abilityName: ctx.abilityInfo.name
+      abilityName: ctx.abilityInfo.name,
+      uri: Lingxia.NOTIFICATION_TOKEN_SCHEME + activationToken,
+      parameters: LxAppNotification.tokenParameters(activationToken)
     };
-    if (applink.startsWith('https://')) {
-      want.uri = applink;
-    }
     const request: notificationManager.NotificationRequest = {
       id: numericId(id),
       label: LABEL_PREFIX + id,
@@ -195,7 +198,13 @@ export class LxAppNotification {
       })
     };
     await notificationManager.publish(request);
-    return 'shown';
+    return 'posted';
+  }
+
+  private static tokenParameters(activationToken: string): Record<string, Object> {
+    const parameters: Record<string, Object> = {};
+    parameters[Lingxia.NOTIFICATION_TOKEN_KEY] = activationToken;
+    return parameters;
   }
 
   public static show(
@@ -203,10 +212,10 @@ export class LxAppNotification {
     id: string,
     title: string,
     body: string,
-    applink: string,
+    activationToken: string,
     deliverAtMs: string
   ): void {
-    LxAppNotification.post(id, title, body, String(applink ?? '').trim(), Number(deliverAtMs))
+    LxAppNotification.post(id, title, body, String(activationToken ?? '').trim(), Number(deliverAtMs))
       .then((word: string) => LxAppNotification.done(callbackId, word))
       .catch((error: Object) => LxAppNotification.fail(callbackId, `show: ${describe(error)}`));
   }

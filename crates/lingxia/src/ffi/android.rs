@@ -1121,6 +1121,21 @@ pub extern "system" fn Java_com_lingxia_app_NativeApi_onAppLinkReceived(
     .resolve::<ThrowRuntimeExAndDefault>()
 }
 
+/// A local notification was tapped. The token is opaque to the SDK; the host
+/// resolves it to the target it staged when the notification was published.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_app_NativeApi_onNotificationActivated(
+    mut env: EnvUnowned,
+    _class: JClass,
+    activation_token: JString,
+) -> jint {
+    env.with_env(|env| -> Result<jint, jni::errors::Error> {
+        let token: String = activation_token.try_to_string(env)?;
+        Ok(crate::navigation::activate_notification(&token) as jint)
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
 /// Get current active LxApp ID and path from Rust stack
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_lingxia_app_NativeApi_getCurrentLxApp<'a>(

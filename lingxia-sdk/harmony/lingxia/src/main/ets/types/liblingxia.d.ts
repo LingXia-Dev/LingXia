@@ -325,6 +325,13 @@ declare module 'liblingxia.so' {
   export function onApplinkReceived(applinkUrl: string): number;
 
   /**
+   * Open what a local-notification tap was carrying
+   * @param activationToken - Opaque token from the notification payload
+   * @returns 1 = dispatched, 0 = the token no longer resolves
+   */
+  export function onNotificationActivated(activationToken: string): number;
+
+  /**
    * Handle UI events from ArkTS
    * @param appid - LxApp ID
    * @param eventType - UI event type enum

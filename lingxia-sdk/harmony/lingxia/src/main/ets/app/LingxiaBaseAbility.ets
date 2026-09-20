@@ -428,6 +428,7 @@ export class LingxiaBaseAbility extends UIAbility {
     if (this.deliverAppLinks()) {
       Lingxia.handleWant(want);
     }
+    Lingxia.handleNotificationWant(want);
   }
 
   onNewWant(want: Want, launchParam: AbilityConstant.LaunchParam): void {
@@ -435,6 +436,7 @@ export class LingxiaBaseAbility extends UIAbility {
     if (this.deliverAppLinks()) {
       Lingxia.handleWant(want);
     }
+    Lingxia.handleNotificationWant(want);
   }
 
   onDestroy(): void {

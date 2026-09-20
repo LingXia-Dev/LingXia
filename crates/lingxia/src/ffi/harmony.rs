@@ -767,6 +767,13 @@ pub fn on_applink_received(applink_url: String) -> i32 {
     lingxia_service::applink::deliver(&applink_url)
 }
 
+/// A local notification was tapped. The token is opaque to the SDK; the host
+/// resolves it to the target it staged when the notification was published.
+#[napi]
+pub fn on_notification_activated(activation_token: String) -> i32 {
+    crate::navigation::activate_notification(&activation_token)
+}
+
 /// Push: device token from ArkTS
 #[napi]
 pub fn on_push_token_received(token: String) -> i32 {

@@ -615,7 +615,7 @@ extension LxApp {
         id: RustStr,
         title: RustStr,
         body: RustStr,
-        applink: RustStr,
+        activation_token: RustStr,
         deliver_at_ms: Int64,
         silent: Bool
     ) -> String {
@@ -623,7 +623,7 @@ extension LxApp {
             id: id.toString(),
             title: title.toString(),
             body: body.toString(),
-            applink: applink.toString(),
+            activationToken: activation_token.toString(),
             deliverAtMs: deliver_at_ms,
             silent: silent
         )

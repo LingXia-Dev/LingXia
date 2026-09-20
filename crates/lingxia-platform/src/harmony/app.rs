@@ -649,7 +649,7 @@ impl AppRuntime for Platform {
                 &request.id,
                 &request.title,
                 &request.body,
-                request.applink.as_deref().unwrap_or_default(),
+                &request.activation_token,
                 &deliver_at,
             ],
         )?;

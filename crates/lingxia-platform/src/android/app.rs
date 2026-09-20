@@ -659,7 +659,7 @@ impl AppRuntime for Platform {
             let id = env.new_string(&request.id)?;
             let title = env.new_string(&request.title)?;
             let body = env.new_string(&request.body)?;
-            let applink = env.new_string(request.applink.as_deref().unwrap_or_default())?;
+            let token = env.new_string(&request.activation_token)?;
             let result = env.call_static_method(
                 class,
                 jni_str!("show"),
@@ -670,7 +670,7 @@ impl AppRuntime for Platform {
                     JValue::Object(&id),
                     JValue::Object(&title),
                     JValue::Object(&body),
-                    JValue::Object(&applink),
+                    JValue::Object(&token),
                     JValue::Long(request.deliver_at_ms.unwrap_or(0) as i64),
                     JValue::Bool(request.silent),
                 ],

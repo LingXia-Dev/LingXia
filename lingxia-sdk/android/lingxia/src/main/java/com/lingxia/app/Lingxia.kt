@@ -69,6 +69,9 @@ object Lingxia {
     // Marks an Intent the runtime accepted, so the cold-start dispatch and the
     // lifecycle callback cannot deliver the same tap twice.
     private const val APPLINK_CONSUMED_EXTRA = "com.lingxia.app.APPLINK_CONSUMED"
+    /** Set by the notification tap activity on a cold-start entry Intent. */
+    const val NOTIFICATION_TOKEN_EXTRA = "com.lingxia.app.NOTIFICATION_TOKEN"
+    private const val NOTIFICATION_CONSUMED_EXTRA = "com.lingxia.app.NOTIFICATION_CONSUMED"
 
     @Volatile
     private var appLinkDeliveryEnabled: Boolean = true
@@ -206,6 +209,7 @@ object Lingxia {
                 // fails, and this activity's creation callback has already passed.
                 if (context is Activity) {
                     handleAppLink(context.intent)
+                    handleNotificationActivation(context.intent)
                 }
             } else {
                 LxLog.e(TAG, "Failed to get home app details from native init.")
@@ -483,11 +487,35 @@ object Lingxia {
         }
     }
 
+    /**
+     * Hands a cold-start notification tap to the runtime.
+     *
+     * The tap activity puts the token on the entry Intent when nothing is running yet. Marked
+     * consumed on the Intent so a later lifecycle callback over the same Intent does not replay
+     * it; the token itself is single-use in the host store either way.
+     */
+    @JvmStatic
+    fun handleNotificationActivation(intent: Intent?) {
+        val token = intent?.getStringExtra(NOTIFICATION_TOKEN_EXTRA)
+            ?.takeIf { it.isNotEmpty() } ?: return
+        if (intent.getBooleanExtra(NOTIFICATION_CONSUMED_EXTRA, false)) return
+        intent.putExtra(NOTIFICATION_CONSUMED_EXTRA, true)
+        NativeApi.onNotificationActivated(token)
+    }
+
+    /** A notification tap while the runtime is already up. */
+    @JvmStatic
+    fun deliverNotificationActivation(token: String) {
+        if (token.isEmpty()) return
+        NativeApi.onNotificationActivated(token)
+    }
+
     private fun registerActivityLifecycleCallbacks(context: Context): Boolean {
         val application = context.applicationContext as? Application
         application?.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
                 handleAppLink(activity.intent)
+                handleNotificationActivation(activity.intent)
                 if (activity is LxAppActivity) {
                     LxApp.setCurrentActivity(activity)
                 }

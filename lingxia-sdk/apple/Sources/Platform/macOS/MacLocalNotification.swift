@@ -14,6 +14,8 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var lastError = ""
     static let localMarker = "lx.local"
+    /// Opaque token the host resolves to the staged navigation target.
+    static let tokenKey = "lx.token"
 
     /// A delegate the host installed first keeps everything that is not ours.
     nonisolated(unsafe) private static weak var hostDelegate: UNUserNotificationCenterDelegate?
@@ -113,12 +115,12 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
         return result.value
     }
 
-    /// `shown` / `scheduled` / `suppressed`. Empty on failure.
+    /// `posted` / `scheduled` / `suppressed`. Empty on failure.
     static func show(
         id: String,
         title: String,
         body: String,
-        applink: String,
+        activationToken: String,
         deliverAtMs: Int64,
         silent: Bool
     ) -> String {
@@ -149,11 +151,7 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
-        var userInfo: [String: Any] = [localMarker: true]
-        if !applink.isEmpty {
-            userInfo["applink"] = applink
-        }
-        content.userInfo = userInfo
+        content.userInfo = [localMarker: true, tokenKey: activationToken]
         content.sound = silent ? nil : .default
 
         // A delivered copy is not replaced by a pending request with the same id.
@@ -173,7 +171,7 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
             setLastError(message)
             return ""
         }
-        return trigger == nil ? "shown" : "scheduled"
+        return trigger == nil ? "posted" : "scheduled"
     }
 
     static func cancel(id: String) -> Bool {
@@ -250,14 +248,14 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
             completionHandler()
             return
         }
-        let applink = userInfo["applink"] as? String ?? ""
+        let token = userInfo[MacLocalNotification.tokenKey] as? String ?? ""
         DispatchQueue.main.async {
-            if !applink.isEmpty {
-                _ = onApplinkReceived(applink)
-            }
+            // Activate first: a token that no longer resolves still has to
+            // land the user on a visible product that can say why.
             #if os(macOS)
             NSApp.activate(ignoringOtherApps: true)
             #endif
+            _ = onNotificationActivated(token)
         }
         completionHandler()
     }
