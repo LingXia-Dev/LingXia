@@ -250,13 +250,24 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
       }, 'dark-slot color schemes');
     }
 
-    const target = cards.find((card) => !card.pressed)?.name;
-    if (!target) throw new Error('terminal settings did not publish two color schemes');
+    initial = await terminal.snapshot({ surface: refs.terminal });
+    // Imported aliases can have the same palette as an unselected built-in.
+    // Choose a visibly different background: identical colors do not repaint.
+    const target = await page.eval<string | null>({
+      script: `(() => {
+        const current = document.createElement('span');
+        current.style.backgroundColor = ${JSON.stringify(initial.chrome.surface)};
+        const card = Array.from(document.querySelectorAll('button[data-theme]')).find(el =>
+          el.getAttribute('aria-pressed') !== 'true'
+          && el.style.backgroundColor !== current.style.backgroundColor);
+        return card?.dataset.theme ?? null;
+      })()`,
+    });
+    if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
     const slot = await settingsApp.eval({
       script: `return (await lx.terminal.settings.get()).effective.appearance`,
     }) as 'light' | 'dark';
 
-    initial = await terminal.snapshot({ surface: refs.terminal });
     // Click through the settings document: an OS pointer click can miss the
     // aside WebView even when the card is in the page DOM.
     const clicked = await page.eval({
