@@ -1,5 +1,5 @@
 import { waitForCurrentPage } from '../../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
@@ -141,11 +141,12 @@ async function clickStaticSettings(
 }
 
 async function openHostSettings(
+  t: Fixture,
   app: LxAppDriver,
   platform: string,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
-  await clickStaticSettings(app, platform, lx.automation().desktop, actions);
+  await clickStaticSettings(app, platform, t.automation.desktop, actions);
 }
 
 async function restoreShowcaseSidebarActions(app: LxAppDriver): Promise<void> {
@@ -188,7 +189,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
-    const browser = lx.automation().browser;
+    const browser = t.automation.browser;
     const platform = await runtimePlatform(app);
     const renderedBodyLength = async (): Promise<number> => Number(await app.page.eval({
       page: 'home',
@@ -223,7 +224,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     // Three runtime footer items beside the separately typed static item.
     // Presentation strings may match, but the static click must never
     // dispatch their callbacks.
-    await openHostSettings(app, platform, { header: 0, footer: 3 });
+    await openHostSettings(t, app, platform, { header: 0, footer: 3 });
     const settings = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
@@ -237,7 +238,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       tab: settings.tab_id,
       js: `globalThis.__staticSettingsReloadProbe = 'stale'`,
     });
-    await openHostSettings(app, platform);
+    await openHostSettings(t, app, platform);
     await eventually(
       () => browser.eval({
         tab: settings.tab_id,
@@ -254,7 +255,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       (tab) => tab?.current_url === 'about:blank',
       { describe: 'external navigation away from Settings', timeoutMs: 15_000 },
     );
-    await openHostSettings(app, platform);
+    await openHostSettings(t, app, platform);
     const restored = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),

@@ -25,7 +25,7 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
-  const auto = lx.automation();
+  const auto = t.automation;
   const { app, namespace } = bindFixture(t, 'DESKTOP-CLIPBOARD-001');
   const platform = await runtimePlatform(app);
   if (platform !== 'macos' && platform !== 'windows') {

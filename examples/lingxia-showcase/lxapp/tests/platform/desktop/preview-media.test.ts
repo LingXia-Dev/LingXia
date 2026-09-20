@@ -55,7 +55,7 @@ previewSpec('present a local image and report it through the handle', {
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`native preview requires macOS or Windows; got ${platform || 'unknown'}`);
   }
-  const desktop = lx.automation().desktop;
+  const desktop = t.automation.desktop;
   const stateKey = `__lingxiaPreview_${namespace.replace(/-/g, '_')}`;
   const readState = () => app.eval({
     script: `
@@ -72,7 +72,7 @@ previewSpec('present a local image and report it through the handle', {
 
   // Best effort only: leaving the panel up would sit on the developer's screen,
   // but failing to take it down is not this case's contract.
-  const appWindows = await lx.automation().lxapps.windows();
+  const appWindows = await t.automation.lxapps.windows();
   const hostWindowId = (appWindows.find((window) => window.main) ?? appWindows[0])?.id;
   const hostPid = (await desktop.windows()).find((window) => window.id === hostWindowId)?.pid;
   const before = new Set((await desktop.windows())

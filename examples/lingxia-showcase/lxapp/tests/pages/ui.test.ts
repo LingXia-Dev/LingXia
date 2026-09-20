@@ -2,7 +2,7 @@ import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
 import { waitForElementAttribute, waitForCurrentPage } from '../helpers/page.js';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
-import { showcaseApp, SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", covers: ['lx.navigateTo', 'lx.navigateBack', 'lx.redirectTo', 'lx.switchTab'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "UI-NAV-001");
@@ -10,7 +10,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   await app.nav.relaunch({ page: 'ui', query: { type: 'navigation' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]', state: 'visible' });
 
-  await app.page.click({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
+  await app.page.testId("ui-navigate-to", { page: 'ui' }).click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 2, {
     describe: 'UI navigateTo to push a second page instance',
   });
@@ -18,7 +18,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
   // The push created a fresh instance of this same route; wait for its
   // document before driving the next control.
   await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-back"]', state: 'visible' });
-  await app.page.click({ page: 'ui', css: '[data-testid="ui-navigate-back"]' });
+  await app.page.testId("ui-navigate-back", { page: 'ui' }).click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1, {
     describe: 'UI navigateBack to pop the page instance',
   });
@@ -46,7 +46,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
       page.data.events = [];
     `,
   });
-  await app.page.click({ page: 'ui', css: '[data-testid="ui-redirect-to"]' });
+  await app.page.testId("ui-redirect-to", { page: 'ui' }).click();
   await eventually(() => app.nav.stack(), (stack) => stack.length === 1 && stack[0]?.name === 'ui', {
     describe: 'UI redirectTo to replace the current page',
   });
@@ -66,7 +66,7 @@ spec("run navigation APIs from the rendered UI controls", { id: "UI-NAV-001", co
     redirected.instanceTag,
   );
 
-  await app.page.click({ page: 'ui', css: '[data-testid="ui-switch-tab"]' });
+  await app.page.testId("ui-switch-tab", { page: 'ui' }).click();
   await waitForCurrentPage(app, 'home');
   expect((await app.nav.stack()).map(({ name }) => name)).toEqual(['home']);
 });
@@ -113,7 +113,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   );
   expect(automaticDetail.selected_index).toBe(-1);
 
-  await app.page.click({ page: 'ui', css: '[data-testid="tabbar-show"]' });
+  await app.page.testId("tabbar-show", { page: 'ui' }).click();
   const forced = await waitForTabBar(
     ({ visibility, route_visible, effective_visible }) => (
       visibility === 'visible' && !route_visible && effective_visible
@@ -167,7 +167,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     'TabBar badge replacement by a red dot',
   );
 
-  await app.page.click({ page: 'ui', css: '[data-testid="tabbar-hide"]' });
+  await app.page.testId("tabbar-hide", { page: 'ui' }).click();
   await waitForTabBar(
     ({ visibility, effective_visible }) => visibility === 'hidden' && !effective_visible,
     'explicitly hidden TabBar',
@@ -217,17 +217,17 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 
 spec('rejects invalid native-surface dimensions before opening a host surface', {
   timeout: 60_000,
-}, async () => {
-  const app = showcaseApp();
+}, async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="open-surface"]' });
   await app.page.scrollTo({ page: 'ui', css: '[data-testid="open-surface"]' });
 
-  await app.page.fill({ page: 'ui', css: 'input[placeholder="width (px or %)"]', text: 'invalid' });
-  await app.page.fill({ page: 'ui', css: 'input[placeholder="height (px or %)"]', text: '50%' });
+  await app.page.css('input[placeholder="width (px or %)"]', { page: 'ui' }).fill('invalid');
+  await app.page.css('input[placeholder="height (px or %)"]', { page: 'ui' }).fill('50%');
   await waitForElementAttribute(app, 'ui', '[data-testid="open-surface"]', 'data-surface-width', 'invalid');
   await waitForElementAttribute(app, 'ui', '[data-testid="open-surface"]', 'data-surface-height', '50%');
-  await app.page.click({ page: 'ui', css: '[data-testid="open-surface"]' });
+  await app.page.testId("open-surface", { page: 'ui' }).click();
   await app.page.waitFor({ page: 'ui', css: '[data-testid="size-error"]' });
 
   const error = await app.page.query({ page: 'ui', css: '[data-testid="size-error"]', full: true });

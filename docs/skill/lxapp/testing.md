@@ -46,10 +46,10 @@ for flags and the [development loop](../SKILL.md#the-development-loop) for reloa
 | App Logic state or `lx.*` calls | `t.app.eval({ script: '...' })` |
 | Page DOM inspection | `t.app.page.eval({ script: '...' })` |
 | Another running lxapp | `t.apps.lxapp(appId)` |
-| App lifecycle and inbound links | `lx.automation().lxapps` |
-| External web pages, auth/payment callback tabs | `lx.automation().browser` |
-| Runner presets/appearance | `lx.automation().device`; [adaptive testing](adaptive-ui.md#test-runtime-switching) |
-| Host shell, terminal, or local OS integration | `lx.automation().shell`, `.terminal`, `.desktop` where supported |
+| App lifecycle and inbound links | `t.automation.lxapps` |
+| External web pages, auth/payment callback tabs | `t.automation.browser` |
+| Runner presets/appearance | `t.automation.device`; [adaptive testing](adaptive-ui.md#test-runtime-switching) |
+| Host shell, terminal, or local OS integration | `t.automation.shell`, `.terminal`, `.desktop` where supported |
 | External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
 
 The automation root is typed by `@lingxia/types/automation`; platform support
@@ -73,7 +73,10 @@ requests retain their own [network grants](../native/permissions.md).
 
 `t.expect(locator)` retries UI assertions; `t.expect.poll(read)` retries an
 observable result; imported `expect(value)` checks once. Await actions and
-retrying assertions. Poll reads, not mutations. `t.step` groups the trace,
+retrying assertions. Locators accept `{ page, index }` or `.nth(index)`; omitted
+`page` follows the current page. `.query()` reads once. Use `t.automation` for
+fixture-guarded host actions; raw `lx.automation()` bypasses test tracing and guards.
+Poll reads, not mutations. `t.step` groups the trace,
 `t.attach` adds evidence, and `t.defer` registers cleanup on success or failure.
 Trigger the behavior under test through UI actions; setup/eval/backend calls
 do not replace that product path.
@@ -108,8 +111,8 @@ spec('submission reaches the external service', async (t) => {
 });
 ```
 
-For redirects, drive `lx.automation().browser` and assert the resulting app
-state. For inbound links, call `lx.automation().lxapps.applink({ url })`, then
+For redirects, drive `t.automation.browser` and assert the resulting app
+state. For inbound links, call `t.automation.lxapps.applink({ url })`, then
 wait for the page outcome; acceptance does not mean navigation completed.
 Fixture services and backend mock selection belong to the product/backend,
 which can reuse the same UI journey across mock and real implementations.

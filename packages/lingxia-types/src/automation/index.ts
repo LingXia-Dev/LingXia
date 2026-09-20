@@ -174,7 +174,7 @@ export interface ShellDriver {
 
 /** Fields common to every page action; `page` defaults to the current page. */
 export interface PageTarget {
-  /** Configured page name (from lxapp.json); defaults to the current page. */
+  /** Configured page name or live instance_id; defaults to the current page. */
   page?: string;
 }
 
@@ -320,12 +320,13 @@ export interface Screenshot {
 
 /** Element-level automation of the selected lxapp's page WebViews. */
 export interface PageDriver {
-  /** Evaluate JavaScript in the page WebView; resolves to the returned value. */
-  eval(options: PageEvalOptions): Promise<unknown>;
+  /** Evaluate in the page WebView. T describes the expected JSON result; it is not runtime validation. */
+  eval<T = unknown>(options: PageEvalOptions): Promise<T>;
   /** Query one element's info. */
   query(options: PageQueryOptions & { all?: false }): Promise<PageQueryResult>;
   /** Query every matching element. */
   query(options: PageQueryOptions & { all: true }): Promise<PageQueryAll>;
+  /** Single dispatch; test locators provide actionability waiting. */
   click(options: PageSelectorOptions): Promise<void>;
   /** Type text into an element without clearing existing content. */
   type(options: PageTypeOptions): Promise<void>;
@@ -529,7 +530,7 @@ export interface LxAppDriver {
   /** Authoritative host surface render plan, for end-to-end assertions. */
   surfaceLayout(): Promise<SurfaceLayoutSnapshot>;
   /** Logic-runtime eval; self-eval from that Logic runtime is rejected. */
-  eval(options: LxAppEvalOptions): Promise<unknown>;
+  eval<T = unknown>(options: LxAppEvalOptions): Promise<T>;
 }
 
 // ======================= lxapp manager (host) =======================
@@ -764,9 +765,9 @@ export interface BrowserScrollOptions extends BrowserTabRef {
  * A browser wait condition — pass **exactly one** of the condition fields.
  * `navigation` may add `complete` to wait for load completion.
  */
-export interface BrowserWaitOptions extends BrowserTabRef {
+interface BrowserWaitFields extends BrowserTabRef {
   /** Wait for page load. */
-  loaded?: boolean;
+  loaded?: true;
   /** Wait for a selector to exist. */
   exists?: string;
   /** Wait for a selector to be visible. */
@@ -782,7 +783,7 @@ export interface BrowserWaitOptions extends BrowserTabRef {
   /** Wait for the URL to contain this. */
   urlContains?: string;
   /** Wait for a navigation. */
-  navigation?: boolean;
+  navigation?: true;
   /** With `navigation`: baseline URL to detect a change from (default: any
    *  navigation satisfies it). */
   fromUrl?: string;
@@ -790,6 +791,39 @@ export interface BrowserWaitOptions extends BrowserTabRef {
   complete?: boolean;
   /** Timeout in ms (default 10000, capped at 60000). */
   timeoutMs?: number;
+}
+
+type BrowserWaitConditionKey = 'loaded' | 'exists' | 'visible' | 'hidden' | 'editable' | 'js' | 'url' | 'urlContains' | 'navigation';
+
+/** Exactly one condition; ambiguous and empty waits are rejected by the runtime. */
+export type BrowserWaitOptions = Pick<BrowserWaitFields, 'tab' | 'timeoutMs' | 'fromUrl' | 'complete'> & {
+  [K in BrowserWaitConditionKey]: Required<Pick<BrowserWaitFields, K>> &
+    Partial<Record<Exclude<BrowserWaitConditionKey, K>, never>>;
+}[BrowserWaitConditionKey];
+
+/** Browser query payload; it does not carry lxapp-only identity/index fields. */
+export interface BrowserElementInfo {
+  exists: boolean;
+  visible: boolean;
+  enabled: boolean;
+  editable: boolean;
+  text?: string;
+  text_truncated?: boolean;
+  value?: string;
+  value_truncated?: boolean;
+  rect?: ElementRect;
+}
+
+export interface BrowserWaitResult {
+  elapsed_ms: number;
+  current_url?: string;
+  element?: BrowserElementInfo;
+  value?: unknown;
+}
+
+export interface BrowserEvalResult<T = unknown> {
+  value: T;
+  navigation: BrowserWaitResult;
 }
 
 export interface BrowserTab {
@@ -865,10 +899,12 @@ export interface BrowserDriver {
   back(options?: BrowserTabRef): Promise<void>;
   forward(options?: BrowserTabRef): Promise<void>;
   /** Evaluate JS; with `waitNavigation` resolves to `{ value, navigation }`. */
-  eval(options: BrowserEvalOptions): Promise<unknown>;
-  query(options: BrowserQueryOptions): Promise<PageElement | PageElementMiss>;
+  eval<T = unknown>(options: BrowserEvalOptions & {waitNavigation: true}): Promise<BrowserEvalResult<T>>;
+  eval<T = unknown>(options: BrowserEvalOptions & {waitNavigation?: false}): Promise<T>;
+  eval<T = unknown>(options: BrowserEvalOptions): Promise<T | BrowserEvalResult<T>>;
+  query(options: BrowserQueryOptions): Promise<BrowserElementInfo>;
   /** Wait for a condition (pass exactly one condition field). */
-  wait(options: BrowserWaitOptions): Promise<unknown>;
+  wait(options: BrowserWaitOptions): Promise<BrowserWaitResult>;
   /** Click; with `waitNavigation` resolves to the navigation payload else `null`. */
   click(options: BrowserClickOptions): Promise<unknown>;
   type(options: BrowserTypeOptions): Promise<void>;

@@ -1,6 +1,6 @@
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import type { LxAppDriver } from '@lingxia/types/automation';
-import { showcaseApp } from '../helpers/app.js';
 import { waitForCurrentPage } from '../helpers/page.js';
 import { attachShot, eventually } from '../helpers/poll.js';
 import {
@@ -66,8 +66,8 @@ async function waitForRenderedFeature(
   return state;
 }
 
-spec('page manifest matches the running lxapp', async () => {
-  const pages = await showcaseApp().pages();
+spec('page manifest matches the running lxapp', async (t) => {
+  const pages = await t.apps.lxapp(SHOWCASE_APP_ID).pages();
   expect(pages.map((page) => page.name)).toEqual([...SHOWCASE_PAGES]);
   expect(pages.every((page) => (
     page.path.toLowerCase().includes(`pages/${page.name.toLowerCase()}/index.`)
@@ -76,7 +76,7 @@ spec('page manifest matches the running lxapp', async () => {
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
   spec(`renders showcase feature: ${expectation.page}`, async (t) => {
-    const app = showcaseApp();
+    const app = t.apps.lxapp(SHOWCASE_APP_ID);
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
       expect(landed.name).toBe(expectation.page);

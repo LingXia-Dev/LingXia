@@ -84,7 +84,7 @@ locationTest('handles the macOS location permission sheet when it appears', {
   id: 'MACOS-LOCATION-001',
   covers: ['lx.getLocation', 'DesktopDriver.windows', 'DesktopAx.query', 'DesktopAx.invoke'],
 }, async (t) => {
-  const auto = lx.automation();
+  const auto = t.automation;
   const app = auto.lxapp();
   // This case claims lx.getLocation; a silent pass elsewhere would credit it falsely.
   const platform = await runtimePlatform(app);
@@ -94,7 +94,7 @@ locationTest('handles the macOS location permission sheet when it appears', {
 
   await app.nav.relaunch({ page: 'location' });
   await app.page.waitFor({ page: 'location', css: 'button', state: 'visible' });
-  await app.page.click({ page: 'location', css: 'button', index: 0 });
+  await app.page.css('button', { page: 'location', index: 0 }).click();
 
   // Budget: CoreLocation may only settle via its own ~10s timeout on hosts
   // with no position fix, and a settled request still holds a 5s window for

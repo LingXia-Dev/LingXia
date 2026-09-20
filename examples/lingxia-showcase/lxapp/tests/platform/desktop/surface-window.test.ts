@@ -1,9 +1,9 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, spec, type Fixture, type TestApp } from '@lingxia/test';
 import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
-import { showcaseApp, SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();
@@ -27,8 +27,8 @@ interface SurfacePageSnapshot {
   showCount: number;
 }
 
-async function desktopPlatform(): Promise<string> {
-  const app = showcaseApp();
+async function desktopPlatform(t: Fixture): Promise<string> {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
@@ -41,7 +41,7 @@ async function desktopPlatform(): Promise<string> {
   return actual;
 }
 
-async function closeKeyedSurface(app: ReturnType<typeof showcaseApp>, key: string): Promise<void> {
+async function closeKeyedSurface(app: TestApp, key: string): Promise<void> {
   await app.eval({
     timeoutMs: 15_000,
     script: `
@@ -52,7 +52,7 @@ async function closeKeyedSurface(app: ReturnType<typeof showcaseApp>, key: strin
 }
 
 async function openWindow(
-  app: ReturnType<typeof showcaseApp>,
+  app: TestApp,
   chrome: 'system' | 'full',
   key: string,
 ): Promise<OpenedWindow> {
@@ -80,7 +80,7 @@ async function openWindow(
 }
 
 async function waitForSurfacePage(
-  app: ReturnType<typeof showcaseApp>,
+  app: TestApp,
   fixture: string,
   expectedTopInset: number,
 ): Promise<SurfacePageSnapshot> {
@@ -148,8 +148,8 @@ windowTest('native close disposes a secondary window in the dock and tray host',
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-NATIVE-CLOSE-001');
-  await desktopPlatform();
-  const desktop = lx.automation().desktop;
+  await desktopPlatform(t);
+  const desktop = t.automation.desktop;
   const key = `${namespace}-native-close`;
   const stateKey = `__surfaceNativeClose_${namespace.replace(/-/g, '_')}`;
   defer(() => closeKeyedSurface(app, key));
@@ -206,8 +206,8 @@ windowTest('open a page window with system chrome and with full chrome', {
   timeout: 90_000,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-001');
-  const platform = await desktopPlatform();
-  const desktop = lx.automation().desktop;
+  const platform = await desktopPlatform(t);
+  const desktop = t.automation.desktop;
   const fullOffered = await app.eval({
     script: `return !!lx.supports({ capability: 'surface', value: 'window', chrome: 'full' })`,
   }) as boolean;
@@ -363,8 +363,8 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
   timeout: 120_000,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-CHROME-001');
-  const platform = await desktopPlatform();
-  const desktop = lx.automation().desktop;
+  const platform = await desktopPlatform(t);
+  const desktop = t.automation.desktop;
   const chromes: Array<'system' | 'full'> = ['system', 'full'];
 
   for (const chrome of chromes) {
@@ -462,7 +462,7 @@ windowTest('deliver a child page message to its opener before closing', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-MESSAGE-001');
-  await desktopPlatform();
+  await desktopPlatform(t);
   const key = `${namespace}-message`;
   const stateKey = `__lingxiaSurfaceMessage_${namespace.replace(/-/g, '_')}`;
   const marker = `surface-message-${namespace}`;
@@ -515,10 +515,7 @@ windowTest('deliver a child page message to its opener before closing', {
     'data-controlled-value',
     marker,
   );
-  await app.page.click({
-    page: 'surface',
-    css: '[data-testid="surface-send-message"]',
-  });
+  await app.page.testId("surface-send-message", { page: 'surface' }).click();
 
   const messages = await eventually(
     () => app.eval({
@@ -545,7 +542,7 @@ windowTest('push a message from the opener into its page window', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-POST-001');
-  await desktopPlatform();
+  await desktopPlatform(t);
   const key = `${namespace}-post`;
   const stateKey = `__lingxiaSurfacePost_${namespace.replace(/-/g, '_')}`;
   defer(() => closeKeyedSurface(app, key));

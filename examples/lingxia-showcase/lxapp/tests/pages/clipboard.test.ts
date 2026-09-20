@@ -22,7 +22,7 @@ spec('open the clipboard demo from the API menu and round-trip text', {
     css: '[data-testid="api-device-section"]',
     state: 'visible',
   });
-  await app.page.click({ page: 'api', css: '[data-testid="api-device-section"]' });
+  await app.page.testId("api-device-section", { page: 'api' }).click();
   // Clipboard sits at the end of the long Device list, below the fold.
   await app.page.waitFor({ page: 'api', css: '[data-testid="api-clipboard"]', state: 'attached' });
   await app.page.eval({
@@ -34,14 +34,14 @@ spec('open the clipboard demo from the API menu and round-trip text', {
     css: '[data-testid="api-clipboard"]',
     state: 'visible',
   });
-  await app.page.click({ page: 'api', css: '[data-testid="api-clipboard"]' });
+  await app.page.testId("api-clipboard", { page: 'api' }).click();
   await app.page.waitFor({
     page: 'clipboard',
     css: '[data-testid="clipboard-status"]',
     state: 'visible',
   });
 
-  await app.page.click({ page: 'clipboard', css: '[data-testid="clipboard-write-text"]' });
+  await app.page.testId("clipboard-write-text", { page: 'clipboard' }).click();
   await waitForElementText(
     app,
     'clipboard',
@@ -52,7 +52,7 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   // HarmonyOS denies the read without READ_PASTEBOARD (see LOGIC-CLIPBOARD-001);
   // the page must say so instead of claiming the clipboard is empty.
   const readsDenied = await runtimePlatform(app) === 'harmony';
-  await app.page.click({ page: 'clipboard', css: '[data-testid="clipboard-read-text"]' });
+  await app.page.testId("clipboard-read-text", { page: 'clipboard' }).click();
   const readStatus = await waitForElementText(
     app,
     'clipboard',
@@ -63,7 +63,7 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   );
   if (readsDenied) expect(readStatus).not.toContain('No text on clipboard');
 
-  await app.page.click({ page: 'clipboard', css: '[data-testid="clipboard-clear"]' });
+  await app.page.testId("clipboard-clear", { page: 'clipboard' }).click();
   const cleared = await waitForElementText(
     app,
     'clipboard',

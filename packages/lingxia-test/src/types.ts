@@ -1,4 +1,4 @@
-import type { LxAppDriver, PageDriver } from "@lingxia/types/automation";
+import type { Automation, LxAppDriver, PageDriver, PageQueryResult, PageTarget } from "@lingxia/types/automation";
 
 export type SpecStatus =
   | "passed"
@@ -41,21 +41,34 @@ export interface RejectExpected {
   message?: string | RegExp;
 }
 
+export interface LocatorOptions extends PageTarget {
+  /** Zero-based match index; omit to require a unique match. */
+  index?: number;
+}
+
 export interface Locator {
   readonly selector: string;
   click(options?: ExpectOptions): Promise<void>;
   fill(text: string, options?: ExpectOptions): Promise<void>;
   type(text: string, options?: ExpectOptions): Promise<void>;
-  query(options?: ExpectOptions): Promise<unknown>;
+  press(key: string, options?: ExpectOptions): Promise<void>;
+  nth(index: number): Locator;
+  /** Read once; use t.expect for retrying assertions. */
+  query(): Promise<PageQueryResult>;
 }
 
 export interface TestPage extends PageDriver {
-  testId(id: string): Locator;
-  css(selector: string): Locator;
+  testId(id: string, options?: LocatorOptions): Locator;
+  css(selector: string, options?: LocatorOptions): Locator;
 }
 
 export interface TestApp extends LxAppDriver {
   readonly page: TestPage;
+}
+
+export interface TestAutomation extends Omit<Automation, "lxapp"> {
+  lxapp(): TestApp;
+  lxapp(appId: string): TestApp;
 }
 
 export interface Apps {
@@ -98,6 +111,8 @@ export interface FixtureExpect {
 }
 
 export interface Fixture {
+  /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
+  readonly automation: TestAutomation;
   readonly app: TestApp;
   readonly apps: Apps;
   readonly args: Record<string, string>;
@@ -168,6 +183,8 @@ export interface AttachmentRef {
 }
 
 export interface ReportError {
+  code?: string;
+  data?: unknown;
   phase?: string;
   name: string;
   message: string;

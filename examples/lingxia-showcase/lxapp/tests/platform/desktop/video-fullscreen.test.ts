@@ -36,7 +36,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
   reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DESKTOP-VIDEO-FULLSCREEN-001');
-  const desktop = lx.automation().desktop;
+  const desktop = t.automation.desktop;
   const command = (body: string) => app.eval({
     script: `lx.createVideoContext(${JSON.stringify(VIDEO_ID)}).${body}; return true;`,
   });

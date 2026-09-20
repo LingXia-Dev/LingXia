@@ -279,7 +279,7 @@ function Invoke-ShowcaseSuite {
   # stdout would come back joined to the exit code -- one warning line was
   # enough to fail a suite that had passed. Send the output to the host.
   $testArguments = Get-LxdevArguments @(
-    'test', 'tests/entries/windows.test.ts',
+    'test', 'tests/entries/windows.test.ts', '--forbid-only',
     '--timeout-secs', $TimeoutSeconds.ToString(),
     '--arg', 'platform=windows',
     '--arg', "framework=$Framework",

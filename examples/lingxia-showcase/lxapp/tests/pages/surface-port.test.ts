@@ -90,9 +90,9 @@ spec('exchange messages over the port navigateTo returns', {
   });
 
   await t.step('page → opener, then the page pops itself', async () => {
-    await app.page.fill({ page: 'surface', css: MESSAGE_INPUT, text: outbound });
+    await app.page.css(MESSAGE_INPUT, { page: 'surface' }).fill(outbound);
     await waitForElementAttribute(app, 'surface', MESSAGE_INPUT, 'data-controlled-value', outbound);
-    await app.page.click({ page: 'surface', css: '[data-testid="surface-send-message"]' });
+    await app.page.testId("surface-send-message", { page: 'surface' }).click();
 
     const messages = await eventually(
       () => app.eval({

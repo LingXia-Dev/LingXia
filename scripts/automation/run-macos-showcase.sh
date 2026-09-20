@@ -73,7 +73,7 @@ for framework_index in "${!frameworks[@]}"; do
   set +e
   (
     cd "$lxapp_root"
-    "$lxdev" test tests/entries/macos.test.ts \
+    "$lxdev" test tests/entries/macos.test.ts --forbid-only \
       --timeout-secs "$timeout_seconds" \
       --arg platform=macos \
       --arg "framework=$current_framework" \

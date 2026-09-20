@@ -1,10 +1,10 @@
+import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver } from '@lingxia/types/automation';
 import { waitForElementAttribute } from '../helpers/page.js';
 import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Promise<number> {
+async function waitForTodo(app: TestApp, text: string, present: boolean): Promise<number> {
   return eventually(
     async () => {
       const labels = await app.page.query({
@@ -20,7 +20,7 @@ async function waitForTodo(app: LxAppDriver, text: string, present: boolean): Pr
 }
 
 async function waitForStoredTodo(
-  app: LxAppDriver,
+  app: TestApp,
   text: string,
   present: boolean,
 ): Promise<void> {
@@ -36,7 +36,7 @@ async function waitForStoredTodo(
 }
 
 async function waitForStoredCompleted(
-  app: LxAppDriver,
+  app: TestApp,
   text: string,
   completed: boolean,
 ): Promise<void> {
@@ -52,7 +52,7 @@ async function waitForStoredCompleted(
     { describe: `persisted todo completion=${completed}: ${text}`, timeoutMs: 30_000 });
 }
 
-async function cleanupStoredTodo(app: LxAppDriver, text: string): Promise<void> {
+async function cleanupStoredTodo(app: TestApp, text: string): Promise<void> {
   await app.eval({
     script: `
       const storage = lx.getStorage();
@@ -64,26 +64,33 @@ async function cleanupStoredTodo(app: LxAppDriver, text: string): Promise<void> 
   });
 }
 
-async function clickTodoToggle(app: LxAppDriver, index: number): Promise<void> {
-  await app.page.click({
-    page: 'todo',
-    css: '[data-testid="todo-label"]',
-    index,
-  });
+async function clickTodoToggle(app: TestApp, index: number): Promise<void> {
+  await app.page.testId("todo-label", { page: 'todo', index: index }).click();
 }
+
+let pendingTodo: string | undefined;
+
+spec.reset(async t => {
+  if (pendingTodo) await cleanupStoredTodo(t.app, pendingTodo);
+  await t.app.nav.relaunch({ page: 'todo' });
+});
 
 spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
 
-  await app.nav.relaunch({ page: 'todo' });
   await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-page"]' });
 
   const text = `automation todo ${Date.now()}`;
+  pendingTodo = text;
+  t.defer(async () => {
+    await cleanupStoredTodo(app, text);
+    pendingTodo = undefined;
+  });
   const input = '[data-testid="todo-input"]';
   try {
-    await app.page.fill({ page: 'todo', css: input, text });
+    await app.page.css(input, { page: 'todo' }).fill(text);
     await waitForElementAttribute(app, 'todo', input, 'data-controlled-value', text);
-    await app.page.press({ page: 'todo', css: input, key: 'Enter' });
+    await app.page.css(input, { page: 'todo' }).press('Enter');
     await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-item"]' });
 
     const index = await waitForTodo(app, text, true);
@@ -93,11 +100,11 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await clickTodoToggle(app, index);
     await waitForStoredCompleted(app, text, true);
 
-    await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-completed"]' });
+    await app.page.testId("todo-filter-completed", { page: 'todo' }).click();
     expect(await waitForTodo(app, text, true)).toBeGreaterThanOrEqual(0);
-    await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-active"]' });
+    await app.page.testId("todo-filter-active", { page: 'todo' }).click();
     expect(await waitForTodo(app, text, false)).toBe(-1);
-    await app.page.click({ page: 'todo', css: '[data-testid="todo-filter-all"]' });
+    await app.page.testId("todo-filter-all", { page: 'todo' }).click();
 
     const completedIndex = await waitForTodo(app, text, true);
     await clickTodoToggle(app, completedIndex);
@@ -110,11 +117,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     });
 
     const activeIndex = await waitForTodo(app, text, true);
-    await app.page.click({
-      page: 'todo',
-      css: '[data-testid="todo-delete"]',
-      index: activeIndex,
-    });
+    await app.page.testId("todo-delete", { page: 'todo', index: activeIndex }).click();
     expect(await waitForTodo(app, text, false)).toBe(-1);
     await waitForStoredTodo(app, text, false);
   } catch (error) {
@@ -128,7 +131,5 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
       // Preserve the todo failure when screenshot capture also fails.
     }
     throw error;
-  } finally {
-    await cleanupStoredTodo(app, text);
   }
 });

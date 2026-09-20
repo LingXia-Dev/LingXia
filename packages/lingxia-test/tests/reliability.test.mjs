@@ -153,3 +153,87 @@ test('a native pre-dispatch rejection is retried safely', async () => {
   assert.equal((await run()).passed, 1);
   assert.equal(element.clicked, 1);
 });
+
+test('page-scoped indexed locators preserve target on every read and input', async () => {
+  const world = createWorld();
+  world.add({testId:'field', visible:true, enabled:true, editable:true});
+  world.add({testId:'field', visible:true, enabled:true, editable:true});
+  const calls = [];
+  for (const key of ['query','eval','click','fill','type']) {
+    const original = world.app.page[key];
+    world.app.page[key] = async options => { calls.push([key, options]); return original(options); };
+  }
+  world.app.page.press = async options => { calls.push(['press', options]); };
+  installFakeHost(world);
+  spec('scoped input', async t => {
+    const input = t.app.page.testId('field', {page:'editor-instance'}).nth(1);
+    await input.fill('hello');
+    await input.press('Enter');
+    const result = await input.query();
+    expect(result.index).toBe(1);
+    await t.expect(input).toHaveValue('hello');
+  });
+  const report = await run();
+  assert.equal(report.failed,0);
+  assert.ok(calls.length > 4);
+  assert.ok(calls.every(([, options]) => options.page === 'editor-instance'));
+  assert.equal(calls.find(([key]) => key === 'press')[1].index,1);
+  assert.match(report.cases[0].steps[0].detail, /editor-instance.*\[1\]/);
+});
+
+test('hidden duplicates remain ambiguous and invalid indexes fail early', async () => {
+  const world=createWorld();
+  world.add({testId:'duplicate',visible:true});
+  world.add({testId:'duplicate',visible:false});
+  installFakeHost(world);
+  spec('strict selection',{forensics:false},async t => {
+    assert.throws(() => t.app.page.css('button').nth(-1), /non-negative integer/);
+    await assert.rejects(t.app.page.testId('duplicate').click({timeout:20,interval:2}), /2 matches/);
+  });
+  assert.equal((await run()).failed,0);
+});
+
+test('host drivers are traced and retained references stop with the fixture', async () => {
+  const world=createWorld();
+  installFakeHost(world);
+  const root=globalThis.lx.automation();
+  let calls=0, retained, fixture;
+  root.browser={tabs:async()=>{calls++;return [];}};
+  globalThis.lx.automation=()=>root;
+  spec('host trace', async t => {
+    fixture=t;
+    retained=t.automation.browser;
+    await retained.tabs();
+    await t.automation.lxapp('another').info();
+  });
+  const report=await run();
+  assert.equal(report.failed,0);
+  assert.ok(report.cases[0].steps.some(step=>step.name==='browser.tabs'));
+  await assert.rejects(retained.tabs(), /closed/);
+  assert.throws(()=>fixture.automation.lxapp(), /closed/);
+  assert.equal(calls,1);
+});
+
+test('automation error codes and JSON data survive into reports', async () => {
+  const world=createWorld();
+  world.app.page.click=async()=>{throw Object.assign(new Error('permission denied'), {code:'E_DENIED', data:{target:'page'}});};
+  installFakeHost(world);
+  spec('structured failure',{forensics:false},async t=>{await t.app.page.click({css:'button'});});
+  const error=(await run()).cases[0].error;
+  assert.equal(error.code,'E_DENIED');
+  assert.deepEqual(error.data,{target:'page'});
+});
+
+test('fixture proxies keep the native receiver for branded getters', async () => {
+  const world=createWorld();
+  installFakeHost(world);
+  class NativeRoot {
+    #browser = Object.assign(function nativeDriver() {}, { tabs: async () => ['tab'] });
+    get browser() { return this.#browser; }
+    lxapp() { return world.app; }
+  }
+  const native=new NativeRoot();
+  globalThis.lx.automation=()=>native;
+  spec('native getter',async t=>{expect(await t.automation.browser.tabs()).toEqual(['tab']);});
+  assert.equal((await run()).failed,0);
+});

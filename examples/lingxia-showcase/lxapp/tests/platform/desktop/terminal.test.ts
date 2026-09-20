@@ -1,3 +1,4 @@
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import type {
   PageDriver,
@@ -5,7 +6,6 @@ import type {
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
 } from '@lingxia/types/automation';
-import { showcaseApp } from '../../helpers/app.js';
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
 const desktopTerminalTest =
@@ -44,8 +44,8 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   id: 'DESKTOP-TERMINAL-001',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.terminal'],
-}, async () => {
-  const app = showcaseApp();
+}, async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const surfaceId = await app.eval({
     timeoutMs: 20_000,
@@ -59,7 +59,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
     `,
   }) as string;
 
-  const terminal = lx.automation().terminal;
+  const terminal = t.automation.terminal;
   try {
     const initial = await terminal.snapshot({ surface: surfaceId });
     expect(initial.presentation).toBe('main');
@@ -111,8 +111,8 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   id: 'DESKTOP-TERMINAL-002',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared'],
-}, async () => {
-  const app = showcaseApp();
+}, async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
@@ -129,7 +129,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
     `,
   }) as string;
 
-  const terminal = lx.automation().terminal;
+  const terminal = t.automation.terminal;
   try {
     const docked = await terminal.snapshot({ surface: surfaceId });
     expect(docked.maximized).toBe(false);
@@ -162,8 +162,8 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   id: 'DESKTOP-TERMINAL-003',
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],
-}, async () => {
-  const app = showcaseApp();
+}, async (t) => {
+  const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // One surface per eval. Opening both in a single script reports only that
   // "eval timed out", which says nothing about which surface never settled —
@@ -193,8 +193,8 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     `,
   }) as string;
   const refs = { terminal: terminalId, settings: settingsId };
-  const terminal = lx.automation().terminal;
-  const settingsApp = lx.automation().lxapp('app.lingxia.terminal-settings');
+  const terminal = t.automation.terminal;
+  const settingsApp = t.automation.lxapp('app.lingxia.terminal-settings');
   const page = settingsApp.page;
   let initial: TerminalWorkspaceSnapshot | undefined;
   const previousAppearance = await app.eval({
