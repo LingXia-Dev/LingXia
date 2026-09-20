@@ -93,8 +93,8 @@ spec('set and clear the host app badge without leaving one behind', {
   });
 
   // Support does not guarantee painting: permission and visible chrome vary.
-  expect(painted).toHaveLength(4);
-  for (const result of painted as boolean[]) {
+  expect((painted as unknown[]).length).toBe(4);
+  for (const result of painted as unknown[]) {
     expect(typeof result).toBe('boolean');
   }
 });
