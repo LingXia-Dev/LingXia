@@ -208,6 +208,26 @@ impl LxAppDelegate for LxApp {
                 .map(|d| d.as_secs() as i64)
                 .unwrap_or_default();
             let _ = lxapp::metadata::touch_last_open(&self.appid, self.release_type, now);
+        } else if self.peek_current_page_path().as_deref() != Some(resolved_path.as_str()) {
+            // Reopening a live instance *at a named page* — a notification
+            // target, an App Link, a host route. A reopen that names no page
+            // never reaches here (it returns through `reenter_from_link`), so
+            // the landing page has to join the stack the way a push does.
+            // Without this the page renders while `getCurrentPages()` still
+            // reports the old top, and back leaves from the wrong entry.
+            let page = self.get_or_create_page(&resolved_path);
+            // The query rides the startup options for a named page; only a
+            // link-shaped target carries its own on the resolved route.
+            let query = resolved
+                .query
+                .clone()
+                .unwrap_or_else(|| self.state.lock().unwrap().startup_options.query.clone());
+            page.set_query(query);
+            let _ = self.push_to_page_stack(&page);
+            // Entering the page is what starts it. Without this the instance
+            // sits `unstarted` behind an attached but empty WebView — onLoad
+            // is allowed to repeat for a re-navigation carrying new params.
+            page.dispatch_lifecycle_event(PageLifecycleEvent::OnLoad);
         }
 
         // Ensure status reflects opened (both first open and reopen)
