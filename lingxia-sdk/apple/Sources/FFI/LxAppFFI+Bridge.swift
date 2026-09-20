@@ -535,7 +535,7 @@ extension LxApp {
         // non-numeric value before we get here; an empty string clears.
         guard let count = value.isEmpty ? 0 : Int(value) else { return false }
         if #available(iOS 17.0, *) {
-            return LxAppFFI.setNotificationBadgeCount(count)
+            return setNotificationBadgeCount(count)
         }
         return executeOnMain {
             UIApplication.shared.applicationIconBadgeNumber = count
