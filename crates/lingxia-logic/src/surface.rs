@@ -228,11 +228,11 @@ rong::js_api! {
             ts_params = "id: string",
             ts_return = "Promise<DeclaredSurface>"
         ) = open_declared;
-        fn get(
-            ts_params = "keyOrId: string",
+        fn getByKey(
+            ts_params = "key: string",
             ts_return = "AnySurface | undefined"
         ) = get_surface;
-        fn onContext(
+        fn watchContext(
             ts_params = "handler: (context: SurfaceContext) => void",
             ts_return = "() => void"
         ) = surface_on_change;
@@ -290,7 +290,7 @@ fn shell_namespace(ctx: &JSContext) -> JSResult<JSObject> {
 /// Event name on the per-app bus carrying `{ sizeClass, width, height, aside }`.
 const SURFACE_CONTEXT_EVENT: &str = "SurfaceContextChange";
 
-/// `lx.surface.onContext(handler)` — register a JS callback (scoped to this
+/// `lx.surface.watchContext(handler)` — register a JS callback (scoped to this
 /// lxapp's JS context), invoke it immediately, then again whenever that
 /// presentation's viewport or host docking availability changes. Returns an unsubscribe fn.
 fn surface_on_change(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
@@ -479,43 +479,24 @@ async fn open_declared(
     finish_handle(&ctx, &handle, "declared", &realized, None, None)
 }
 
-/// `lx.surface.get(keyOrId)` — the live handle for a surface this lxapp opened
-/// **with a `key`**, so no caller has to cache one in order to reuse or close
-/// it. An unkeyed surface is not addressable: nothing registers it, because
-/// holding one for the session costs its closures and its message port and
-/// nobody can look up a uuid they never chose.
-///
-/// A `key` you chose wins over a runtime-assigned `id`, so a key that happens
-/// to spell another surface's id still finds yours.
-fn get_surface(ctx: JSContext, key_or_id: String) -> JSResult<JSValue> {
+/// Find a live surface by its explicit caller-owned key. Runtime ids are not keys.
+fn get_surface(ctx: JSContext, key: String) -> JSResult<JSValue> {
     let registry = surface_registry(&ctx)?;
-    // Drop anything already closed, so a dead handle is never handed back and
-    // the registry cannot grow across a session of opens and closes.
-    let mut by_id = None;
-    let mut by_key = None;
+    // Release closed handles even when the caller looks up a different key.
     for entry_key in registry.keys_as::<String>()? {
-        let Ok(handle) = registry.get::<_, JSObject>(entry_key.as_str()) else {
-            continue;
-        };
-        if !handle.get::<_, bool>("alive").unwrap_or(false) {
-            let _ = registry.delete(entry_key.as_str());
-            continue;
-        }
-        if entry_key == key_or_id {
-            by_key = Some(handle);
-        } else if handle
-            .get::<_, String>("id")
-            .is_ok_and(|id| id == key_or_id)
+        if let Ok(handle) = registry.get::<_, JSObject>(entry_key.as_str())
+            && !handle.get::<_, bool>("alive").unwrap_or(false)
         {
-            by_id = Some(handle);
+            registry.delete(entry_key.as_str())?;
         }
     }
-    // A caller-chosen key wins over a runtime-assigned id. Both can name a
-    // surface and nothing stops one lxapp's key from spelling another
-    // surface's id, so the tie has to resolve the same way every time — and
-    // the name the caller chose is the one they meant.
-    let found = by_key.or(by_id);
-    Ok(found.map_or_else(|| JSValue::undefined(&ctx), JSObject::into_js_value))
+    if let Ok(handle) = registry.get::<_, JSObject>(key.as_str()) {
+        if handle.get::<_, bool>("alive").unwrap_or(false) {
+            return Ok(handle.into_js_value());
+        }
+        registry.delete(key.as_str())?;
+    }
+    Ok(JSValue::undefined(&ctx))
 }
 
 /// `lx.shell.openApp(appId, options)` — compose another lxapp into a shell
@@ -775,7 +756,7 @@ fn surface_registry(ctx: &JSContext) -> JSResult<JSObject> {
 const SURFACE_REGISTRY_SLOT: &str = "__lxSurfaces";
 
 /// Stamps the content-keyed fields onto a handle and records it for
-/// `lx.surface.get`.
+/// `lx.surface.getByKey`.
 fn finish_handle(
     ctx: &JSContext,
     handle: &JSObject,
@@ -831,7 +812,7 @@ fn browser_tab_handle(
             return owned_browser_tab_handle(ctx, tab_id, realized, key);
         }
         // A docked aside owns its surface, so `activate` is "bring it
-        // forward" — the type promises the method on every TabSurface.
+        // forward" — the owned `scope: 'tab'` branch promises the method.
         let show_handle = handle.clone();
         handle.set(
             "activate",
@@ -858,50 +839,7 @@ fn browser_tab_handle(
     handle.set("id", format!("browser-group:{}", lxapp.appid))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    attach_browser_group_methods(ctx, &handle)?;
     finish_handle(ctx, &handle, "tab", realized, key, Some("group"))
-}
-
-/// Lifetime methods for a handle that does not own its content. `reason` names
-/// the owner, so the rejection points at the field or the concept the caller
-/// can actually branch on rather than at a member this shape may not carry.
-fn attach_unowned_lifetime_methods(
-    ctx: &JSContext,
-    handle: &JSObject,
-    methods: &[&str],
-    reason: &'static str,
-) -> JSResult<()> {
-    for owned_elsewhere in methods {
-        handle.set(
-            *owned_elsewhere,
-            JSFunc::new(ctx, move |ctx: JSContext| {
-                Promise::from_future(&ctx, None, async move {
-                    Err::<(), _>(surface_error(
-                        SurfaceErrorCode::UnsupportedPlacement,
-                        reason,
-                    ))
-                })
-            })?,
-        )?;
-    }
-    handle.set(
-        "onClose",
-        JSFunc::new(ctx, |ctx: JSContext, _handler: JSFunc| {
-            // The owner does not publish a close event, so there is nothing to
-            // subscribe to; the unsubscribe fn keeps the signature honest.
-            JSFunc::new(&ctx, || {})
-        })?,
-    )?;
-    Ok(())
-}
-
-fn attach_browser_group_methods(ctx: &JSContext, handle: &JSObject) -> JSResult<()> {
-    attach_unowned_lifetime_methods(
-        ctx,
-        handle,
-        &["close", "activate"],
-        "the browser chrome owns this group; check `scope` before calling",
-    )
 }
 
 /// A `TabSurface` that owns exactly the tab `open_url` named.
@@ -1063,12 +1001,6 @@ fn builtin_surface_handle(ctx: &JSContext, page: &str) -> JSResult<JSObject> {
     handle.set("id", format!("builtin:{page}"))?;
     handle.set("alive", true)?;
     handle.set("visible", true)?;
-    attach_unowned_lifetime_methods(
-        ctx,
-        &handle,
-        &["close"],
-        "the shell owns this builtin page; it closes with the shell",
-    )?;
     finish_handle(ctx, &handle, "builtin", "main", None, None)
 }
 

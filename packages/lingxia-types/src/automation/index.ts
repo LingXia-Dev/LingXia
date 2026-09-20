@@ -326,6 +326,7 @@ export interface PageDriver {
   query(options: PageQueryOptions & { all?: false }): Promise<PageQueryResult>;
   /** Query every matching element. */
   query(options: PageQueryOptions & { all: true }): Promise<PageQueryAll>;
+  query(options: PageQueryOptions): Promise<PageQueryResult | PageQueryAll>;
   /** Single dispatch; test locators provide actionability waiting. */
   click(options: PageSelectorOptions): Promise<void>;
   /** Type text into an element without clearing existing content. */
@@ -406,6 +407,12 @@ export interface LxAppPageConfig {
   path: string;
 }
 
+export interface LxAppEvalTrace<T = unknown> {
+  __lxEval: 1;
+  value: T;
+  calls: string[];
+}
+
 export interface LxAppEvalOptions {
   /** JavaScript expression or function body run in the selected Logic runtime. */
   script: string;
@@ -421,7 +428,7 @@ export interface LxAppEvalOptions {
   captureCalls?: boolean;
 }
 
-/** Shell admission class. Content `lx.surface.onContext` uses `compact` | `regular`. */
+/** Shell admission class. Content `lx.surface.watchContext` uses `compact` | `regular`. */
 export type SurfaceLayoutSizeClass = 'compact' | 'medium' | 'expanded';
 export type SurfaceLayoutSwitcherForm = 'none' | 'sidebar' | 'rail';
 export type SurfaceLayoutSplitForm = 'none' | 'split' | 'collapsible' | 'fullScreen';
@@ -530,7 +537,9 @@ export interface LxAppDriver {
   /** Authoritative host surface render plan, for end-to-end assertions. */
   surfaceLayout(): Promise<SurfaceLayoutSnapshot>;
   /** Logic-runtime eval; self-eval from that Logic runtime is rejected. */
-  eval<T = unknown>(options: LxAppEvalOptions): Promise<T>;
+  eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
+  eval<T = unknown>(options: LxAppEvalOptions & { captureCalls?: false }): Promise<T>;
+  eval<T = unknown>(options: LxAppEvalOptions): Promise<T | LxAppEvalTrace<T>>;
 }
 
 // ======================= lxapp manager (host) =======================
@@ -624,7 +633,7 @@ export interface ApplinkResult {
  * Cross-lxapp lifecycle and host-window access. Requires `host` outside dev.
  *
  * `close`, `restart`, and `uninstall` reject when they target the calling app
- * itself. Use `lx.app.exit()` to self-exit.
+ * itself. Use `lx.host.exit()` to self-exit.
  */
 export interface LxAppManager {
   list(): Promise<LxAppRuntimeInfo[]>;
@@ -906,11 +915,15 @@ export interface BrowserDriver {
   /** Wait for a condition (pass exactly one condition field). */
   wait(options: BrowserWaitOptions): Promise<BrowserWaitResult>;
   /** Click; with `waitNavigation` resolves to the navigation payload else `null`. */
-  click(options: BrowserClickOptions): Promise<unknown>;
+  click(options: BrowserClickOptions & { waitNavigation: true }): Promise<BrowserWaitResult>;
+  click(options: BrowserClickOptions & { waitNavigation?: false }): Promise<null>;
+  click(options: BrowserClickOptions): Promise<BrowserWaitResult | null>;
   type(options: BrowserTypeOptions): Promise<void>;
   fill(options: BrowserTypeOptions): Promise<void>;
   /** Press; with `waitNavigation` resolves to the navigation payload else `null`. */
-  press(options: BrowserPressOptions): Promise<unknown>;
+  press(options: BrowserPressOptions & { waitNavigation: true }): Promise<BrowserWaitResult>;
+  press(options: BrowserPressOptions & { waitNavigation?: false }): Promise<null>;
+  press(options: BrowserPressOptions): Promise<BrowserWaitResult | null>;
   scroll(options: BrowserScrollOptions): Promise<void>;
   scrollTo(options: BrowserSelectorOptions): Promise<void>;
   screenshot(options?: BrowserTabRef): Promise<Screenshot>;
@@ -1148,10 +1161,9 @@ export interface DesktopLaunchResult {
  * `match` (query `text | title: | class: | process: | pid:`, must resolve to
  * exactly one window).
  */
-export interface DesktopWindowSel {
-  window?: string;
-  match?: string;
-}
+export type DesktopWindowSel =
+  | { window: string; match?: never }
+  | { window?: never; match: string };
 
 export interface DesktopWindowsOptions {
   /** Match query (`text | title: | class: | process: | pid:`). */
@@ -1242,24 +1254,24 @@ export interface DesktopKey {
   up(options: DesktopKeyNameOptions): Promise<DesktopAck>;
 }
 
-export interface DesktopWindowMoveOptions extends DesktopWindowSel {
+export type DesktopWindowMoveOptions = DesktopWindowSel & {
   /** Target position as `[x, y]` in desktop coordinates. */
   to: Point;
-}
+};
 
-export interface DesktopWindowResizeOptions extends DesktopWindowSel {
+export type DesktopWindowResizeOptions = DesktopWindowSel & {
   width: number;
   height: number;
-}
+};
 
-export interface DesktopWindowMoveDisplayOptions extends DesktopWindowSel {
+export type DesktopWindowMoveDisplayOptions = DesktopWindowSel & {
   /** Display id from `displays()`. */
   display: string;
-}
+};
 
-export interface DesktopWindowAlwaysOnTopOptions extends DesktopWindowSel {
+export type DesktopWindowAlwaysOnTopOptions = DesktopWindowSel & {
   on: boolean;
-}
+};
 
 /** Window management; every verb resolves to the resulting window state. */
 export interface DesktopWindowDriver {
@@ -1373,10 +1385,11 @@ export interface DesktopAppLaunchOptions {
 }
 
 /** Quit target — exactly one of `match` / `pid` / `window`. */
-export interface DesktopAppQuitOptions {
-  match?: string;
-  pid?: number;
-  window?: string;
+export type DesktopAppQuitOptions = (
+  | { match: string; pid?: never; window?: never }
+  | { match?: never; pid: number; window?: never }
+  | { match?: never; pid?: never; window: string }
+) & {
   /** Terminate instead of a graceful close. */
   force?: boolean;
 }

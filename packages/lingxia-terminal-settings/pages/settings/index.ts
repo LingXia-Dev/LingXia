@@ -92,7 +92,7 @@ Page({
   loadTerminalSettings() {
     return action(async () => {
       const api = terminal();
-      const isWindows = lx.app.getBaseInfo().os === 'Windows';
+      const isWindows = lx.host.getBaseInfo().os === 'Windows';
       const [snapshot, themes, fonts, windowsInlineImages] = await Promise.all([
         api.settings.get(),
         api.colorSchemes.list(),
@@ -118,7 +118,7 @@ Page({
       const task = lx.downloadFile({ url: current.package.url });
       conptyDownload = task;
       try {
-        for await (const event of task) {
+        for await (const event of task.progress) {
           if (event.kind === 'progress') {
             this.setData({
               windowsInlineImageProgress: {
@@ -129,8 +129,8 @@ Page({
             });
           }
         }
-        const result = await task;
-        return await api.install({ path: result.tempFilePath });
+        const result = await task.result;
+        return await api.install({ path: result.uri });
       } finally {
         if (conptyDownload === task) conptyDownload = null;
         this.setData({ windowsInlineImageProgress: null });

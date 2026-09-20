@@ -24,7 +24,7 @@ struct JSAppScreenshotOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSAppScreenshotResult {
-    #[js_name = "tempFilePath"]
+    #[js_name = "uri"]
     temp_file_path: String,
     width: Option<u32>,
     height: Option<u32>,
@@ -36,7 +36,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 
 rong::js_api! {
     fn register_api(ctx) {
-        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("app")?;
+        namespace HostAppApi = ctx.global().get::<_, rong::JSObject>("lx")?.get::<_, rong::JSObject>("host")?;
         fn screenshot(
             ts_params = "options?: AppScreenshotOptions",
             ts_return = "Promise<AppScreenshotResult>"
@@ -44,13 +44,13 @@ rong::js_api! {
     }
 }
 
-/// `lx.app.screenshot(options?)` — capture the host app's window as a PNG.
+/// `lx.host.screenshot(options?)` — capture the host app's window as a PNG.
 ///
 /// App-level semantics, one level above any page/WebView capture: the image
 /// is what the user sees of the whole app — host-drawn navigation chrome,
 /// native overlays, and every composited WebView, not just this lxapp's web
 /// content. Because that view can include other lxapps' UI, the API is
-/// restricted to the Control app, like the other host-level APIs on `lx.app`.
+/// restricted to the Control app, like the other host-level APIs on `lx.host`.
 async fn app_screenshot(
     ctx: JSContext,
     options: Optional<JSValue>,

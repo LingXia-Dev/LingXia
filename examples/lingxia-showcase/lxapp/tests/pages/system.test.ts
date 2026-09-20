@@ -48,7 +48,7 @@ async function waitForSystemState(
   });
 }
 
-spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.app.getBaseInfo', 'lx.app.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("render host app and system information through page actions", { id: "SYSTEM-001", covers: ['lx.host.getBaseInfo', 'lx.host.displayLanguage.get', 'lx.getSystemSetting'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "SYSTEM-001");
 
 
@@ -137,7 +137,7 @@ async function bannerPageState(app: TestApp): Promise<BannerPageState> {
 
 bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page', {
   id: 'SYSTEM-BANNER-001',
-  covers: ['lx.app.banner', 'lx.app.banner.show', 'lx.app.banner.dismiss'],
+  covers: ['lx.host.banner', 'lx.host.banner.show', 'lx.host.banner.dismiss'],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
   reason: 'Desktop banner is Control-app / macOS / Windows only.',
@@ -146,8 +146,8 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
   t.defer(async () => {
     await app.eval({
       script: `try {
-        await lx.app.banner.dismiss('showcase-banner-toast');
-        await lx.app.banner.dismiss('showcase-banner-prompt');
+        await lx.host.banner.dismiss('showcase-banner-toast');
+        await lx.host.banner.dismiss('showcase-banner-prompt');
       } catch {}
       return true;`,
     });

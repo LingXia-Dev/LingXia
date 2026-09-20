@@ -6,8 +6,8 @@ const known: boolean = lx.supports(feature);
 const window: boolean = lx.supports('surface.window');
 const fullChrome: boolean = lx.supports('surface.window.fullChrome');
 const notifications: boolean = lx.supports('app.notification');
-const control: boolean = lx.app.control !== undefined;
-lx.surface.onContext((context: SurfaceContext) => {
+const control: boolean = lx.host.control !== undefined;
+lx.surface.watchContext((context: SurfaceContext) => {
   const docked: boolean = context.aside;
   void docked;
 });

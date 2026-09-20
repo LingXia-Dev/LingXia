@@ -56,7 +56,7 @@ struct ViewModalResult {
 
 /// Shows a confirmation modal.
 ///
-/// Resolves `{ canceled: false }` when the user confirms and `{ canceled: true }`
+/// Resolves `{ status: 'ok' }` when the user confirms and `{ status: 'canceled' }`
 /// only when the user dismisses or cancels the modal. Rejects when presentation
 /// fails or the host returns an invalid payload.
 async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObject> {
@@ -74,6 +74,20 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObjec
     } else {
         canceled(&ctx)
     }
+}
+
+/// Acknowledgement-only dialog. Resolves when the user dismisses it.
+async fn alert(ctx: JSContext, mut options: JSModalOptions) -> JSResult<()> {
+    options.show_cancel = Some(false);
+    show_modal(ctx, options).await?;
+    Ok(())
+}
+
+/// Ask a yes/no question. Dismissal resolves false; presentation failure rejects.
+async fn confirm(ctx: JSContext, mut options: JSModalOptions) -> JSResult<bool> {
+    options.show_cancel = Some(true);
+    let result = show_modal(ctx, options).await?;
+    Ok(result.get::<_, String>("status")? == "ok")
 }
 
 /// Resolves true when the user confirmed.
@@ -140,6 +154,8 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 rong::js_api! {
     fn register_api(ctx) {
         namespace Lx = ctx.global().get::<_, rong::JSObject>("lx")?;
+        fn alert(ts_params = "options: AlertOptions", ts_return = "Promise<void>") = alert;
+        fn confirm(ts_params = "options: ConfirmOptions", ts_return = "Promise<boolean>") = confirm;
         fn showModal(
             ts_params = "options: ShowModalOptions",
             ts_return = "Promise<ModalResult>"

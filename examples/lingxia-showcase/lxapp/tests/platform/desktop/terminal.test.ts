@@ -198,7 +198,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   const page = settingsApp.page;
   let initial: TerminalWorkspaceSnapshot | undefined;
   const previousAppearance = await app.eval({
-    script: 'return lx.app.control.appearance.getPreference()',
+    script: 'return lx.host.control.appearance.getPreference()',
   }) as string;
 
   try {
@@ -242,7 +242,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     let cards = await themeCards();
     if (cards.length < 2) {
       await app.eval({
-        script: `await lx.app.control.appearance.setPreference('dark'); return true;`,
+        script: `await lx.host.control.appearance.setPreference('dark'); return true;`,
       });
       cards = await waitFor(async () => {
         const next = await themeCards();
@@ -316,7 +316,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
     await app.eval({
-      script: `await lx.app.control.appearance.setPreference(${JSON.stringify(previousAppearance)}); return true;`,
+      script: `await lx.host.control.appearance.setPreference(${JSON.stringify(previousAppearance)}); return true;`,
     }).catch(() => undefined);
     if (initial) {
       await settingsApp.eval({

@@ -50,7 +50,7 @@ fn badge_label(text: &str) -> Option<String> {
         Ok(count) if count > 99 => Some("99+".to_string()),
         Ok(count) if count < 0 => Some("0".to_string()),
         Ok(count) => Some(count.to_string()),
-        // Not reachable through `lx.app.setBadge` (Logic rejects it), but a
+        // Not reachable through `lx.host.setBadge` (Logic rejects it), but a
         // truncated label beats a panic if some other caller appears.
         Err(_) => Some(text.chars().take(MAX_GLYPHS).collect()),
     }

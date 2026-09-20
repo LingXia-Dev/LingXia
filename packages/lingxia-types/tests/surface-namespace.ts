@@ -41,8 +41,10 @@ function narrowsByKind(surface: AnySurface): string {
 // Probe 4: a url open returns a handle that can close what it opened.
 async function urlResultCloses(): Promise<void> {
   const tab = await lx.surface.openUrl("https://example.com");
-  await tab.close();
-  await tab.activate();
+  if (tab.scope === "tab") {
+    await tab.close();
+    await tab.activate();
+  }
 }
 
 // An ordered preference must not be defeated by an option that applies to only
@@ -95,7 +97,7 @@ async function orderedPreference(): Promise<"window" | "float"> {
 // Identity replaces caller-side bookkeeping.
 async function identityReplacesCaching(): Promise<boolean> {
   await lx.surface.openPage("inspector", { as: "float", key: "inspector" });
-  const live = lx.surface.get("inspector");
+  const live = lx.surface.getByKey("inspector");
   return live?.alive ?? false;
 }
 
@@ -132,10 +134,10 @@ lx.surface.openBuiltin;
 // The retired API is gone.
 // @ts-expect-error openSurface no longer exists
 lx.openSurface;
-// @ts-expect-error onSurfaceContext moved to lx.surface.onContext
+// @ts-expect-error onSurfaceContext moved to lx.surface.watchContext
 lx.onSurfaceContext;
 
-const unsubscribeContext: () => void = lx.surface.onContext(() => {});
+const unsubscribeContext: () => void = lx.surface.watchContext(() => {});
 
 export type SurfaceNamespaceGate = [
   typeof preferenceKeepsPerPlacementOptions,

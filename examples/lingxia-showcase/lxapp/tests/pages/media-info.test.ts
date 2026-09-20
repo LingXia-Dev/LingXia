@@ -20,9 +20,9 @@ interface MediaResult {
   caught: string | null;
   returnedDone: boolean;
   video: { width: number; height: number; durationMs: number; size: number; type: string };
-  thumb: { tempFilePath: string; width: number; height: number };
-  compressedImage: { tempFilePath: string };
-  compressedVideo: { tempFilePath: string; size: number };
+  thumb: { uri: string; width: number; height: number };
+  compressedImage: { uri: string };
+  compressedVideo: { uri: string; size: number };
 }
 
 mediaSpec('read info, thumbnail, and compress local media', {
@@ -32,12 +32,8 @@ mediaSpec('read info, thumbnail, and compress local media', {
     'lx.extractVideoThumbnail',
     'lx.compressImage',
     'lx.compressVideo',
-    'CompressVideoTask.wait',
-    'CompressVideoTask.next',
-    'CompressVideoTask.return',
-    'CompressVideoTask.then',
-    'CompressVideoTask.catch',
-    'CompressVideoTask.finally',
+    'CompressVideoTask.result',
+    'CompressVideoTask.progress',
     'lx.downloadFile',
   ],
   app: SHOWCASE_APP_ID,
@@ -49,31 +45,35 @@ mediaSpec('read info, thumbnail, and compress local media', {
   const result = await app.eval({
     timeoutMs: 45_000,
     script: `
-      const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} });
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} });
-      const video = await lx.getVideoInfo({ path: vid.tempFilePath });
-      const thumb = await lx.extractVideoThumbnail({ path: vid.tempFilePath, timeMs: 500 });
-      const compressedImage = await lx.compressImage({ path: png.tempFilePath, quality: 60 });
-      const compressedVideo = await lx.compressVideo({ path: vid.tempFilePath, quality: 'low' }).wait();
-      // The task is also an async iterator of progress; drain it to prove next().
+      const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
+      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
+      const video = await lx.getVideoInfo({ path: vid.uri });
+      const thumb = await lx.extractVideoThumbnail({ path: vid.uri, timeMs: 500 });
+      const compressedImage = await lx.compressImage({ path: png.uri, quality: 60 });
+      const compressedVideo = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result;
+      // Drain task.progress to prove progress events flow before the result settles.
       let lastProgress = -1;
       let progressTicks = 0;
-      for await (const tick of lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })) {
+      const progressTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
+      for await (const tick of progressTask.progress) {
         if (typeof tick.progress === 'number') { lastProgress = tick.progress; progressTicks += 1; }
       }
-      // The task is a thenable too: then/finally on success, catch on a bad
+      await progressTask.result;
+      // The result Promise supports: then/finally on success, catch on a bad
       // path, and an early iterator return leaves nothing dangling.
       let finallyRan = false;
-      const viaThen = await lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })
+      const viaThen = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result
         .then((r) => r.size)
         .finally(() => { finallyRan = true; });
       // A missing source throws synchronously; an aborted task rejects, which
       // is the path .catch() is for.
-      const cancelled = lx.compressVideo({ path: vid.tempFilePath, quality: 'high' });
+      const cancelled = lx.compressVideo({ path: vid.uri, quality: 'high' });
       cancelled.cancel();
-      const caught = await cancelled.then(() => null).catch((error) => error && error.code);
-      const iterator = lx.compressVideo({ path: vid.tempFilePath, quality: 'low' })[Symbol.asyncIterator]();
+      const caught = await cancelled.result.then(() => null).catch((error) => error && error.code);
+      const earlyTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
+      const iterator = earlyTask.progress[Symbol.asyncIterator]();
       const returned = await iterator.return();
+      await earlyTask.result;
       return {
         lastProgress,
         progressTicks,
@@ -82,9 +82,9 @@ mediaSpec('read info, thumbnail, and compress local media', {
         caught,
         returnedDone: returned.done === true,
         video: { width: video.width, height: video.height, durationMs: video.durationMs, size: video.size, type: video.type },
-        thumb: { tempFilePath: thumb.tempFilePath, width: thumb.width, height: thumb.height },
-        compressedImage: { tempFilePath: compressedImage.tempFilePath },
-        compressedVideo: { tempFilePath: compressedVideo.tempFilePath, size: compressedVideo.size },
+        thumb: { uri: thumb.uri, width: thumb.width, height: thumb.height },
+        compressedImage: { uri: compressedImage.uri },
+        compressedVideo: { uri: compressedVideo.uri, size: compressedVideo.size },
       };
     `,
   }) as MediaResult;
@@ -109,21 +109,21 @@ mediaSpec('read info, thumbnail, and compress local media', {
   expect(result.returnedDone).toBe(true);
 
   // A thumbnail is a real image the lxapp can read back.
-  expect(result.thumb.tempFilePath.startsWith('lx://')).toBeTruthy();
+  expect(result.thumb.uri.startsWith('lx://')).toBeTruthy();
   expect(result.thumb.width).toBeGreaterThan(0);
   expect(result.thumb.height).toBeGreaterThan(0);
 
-  expect(result.compressedImage.tempFilePath.startsWith('lx://')).toBeTruthy();
-  expect(result.compressedVideo.tempFilePath.startsWith('lx://')).toBeTruthy();
+  expect(result.compressedImage.uri.startsWith('lx://')).toBeTruthy();
+  expect(result.compressedVideo.uri.startsWith('lx://')).toBeTruthy();
   // Re-encoding at low quality yields a real, non-empty output file.
   expect(result.compressedVideo.size).toBeGreaterThan(0);
 
   // A compressed output the lxapp cannot read back is not an output.
   const sizes = await app.eval({
     script: `
-      const image = await lx.fs.stat(${JSON.stringify(result.compressedImage.tempFilePath)});
-      const video = await lx.fs.stat(${JSON.stringify(result.compressedVideo.tempFilePath)});
-      const thumb = await lx.fs.stat(${JSON.stringify(result.thumb.tempFilePath)});
+      const image = await lx.fs.stat(${JSON.stringify(result.compressedImage.uri)});
+      const video = await lx.fs.stat(${JSON.stringify(result.compressedVideo.uri)});
+      const thumb = await lx.fs.stat(${JSON.stringify(result.thumb.uri)});
       return { image: image.size, video: video.size, thumb: thumb.size };
     `,
   }) as { image: number; video: number; thumb: number };
@@ -142,10 +142,10 @@ mediaSpec('cancel an in-flight compressVideo and reject with E_ABORT', {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-CANCEL-001');
 
   const outcome = await evalCaught(app, `
-    const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} });
-    const task = lx.compressVideo({ path: vid.tempFilePath, quality: 'high' });
+    const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
+    const task = lx.compressVideo({ path: vid.uri, quality: 'high' });
     task.cancel();
-    return await task;
+    return await task.result;
   `);
 
   expect(outcome.ok).toBeFalsy();

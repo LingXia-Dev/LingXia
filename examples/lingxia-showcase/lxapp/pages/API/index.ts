@@ -128,18 +128,18 @@ Page({
     const targets: Array<"self" | "aside" | "external"> = ["self", "aside", "external"];
 
     const choice = await lx.showActionSheet({
-      itemList: targets,
+      items: targets.map((id) => ({ id, label: id })),
       itemColor: "#007AFF",
     });
-    if (choice.canceled) {
+    if (choice.status === 'canceled') {
       return;
     }
 
     try {
       const url = "https://www.deepseek.com/";
-      if (targets[choice.index] === "external") {
+      if (choice.id === "external") {
         lx.openExternal(url);
-      } else if (targets[choice.index] === "aside") {
+      } else if (choice.id === "aside") {
         await lx.surface.openUrl(url, { as: "aside" });
       } else {
         await lx.surface.openUrl(url);
@@ -164,12 +164,12 @@ Page({
   exitApp: async function() {
     const result = await lx.showModal({
       title: "Exit App",
-      content: "lx.app.exit() exits immediately. Close the host app now?",
+      content: "lx.host.exit() exits immediately. Close the host app now?",
       confirmText: "Exit",
       cancelText: "Cancel",
     });
-    if (!result.canceled) {
-      lx.app.exit();
+    if (result.status !== 'canceled') {
+      lx.host.exit();
     }
   },
 

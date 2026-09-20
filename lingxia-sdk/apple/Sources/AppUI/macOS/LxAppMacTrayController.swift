@@ -201,7 +201,7 @@ final class LxAppMacTrayController: NSObject {
 
     /// Reports whether a status item actually took the value. A product whose
     /// tray never materialised has nothing to badge, and saying otherwise is
-    /// what `lx.app.setBadge`'s return value exists to stop.
+    /// what `lx.host.setBadge`'s return value exists to stop.
     @discardableResult
     func setBadge(_ text: String?) -> Bool {
         trayBadge = (text?.isEmpty ?? true) ? nil : text

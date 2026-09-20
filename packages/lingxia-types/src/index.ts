@@ -18,7 +18,9 @@ import type {
   AppLifecycleName,
   BinaryFileData,
   FsWriteOptions,
+  ManagedPath,
   NoLifecycleTypos,
+  NoReservedPageMembers,
   PageConfig,
   PageInstance,
   PageLifecycleName,
@@ -36,9 +38,9 @@ declare global {
      * signature above covers the string case.
      */
     write(
-      path: string,
+      path: ManagedPath,
       data: BinaryFileData,
-      options?: Omit<FsWriteOptions, 'encoding'>
+      options?: Omit<FsWriteOptions, 'encoding'> & { encoding?: never }
     ): Promise<void>;
   }
 
@@ -72,10 +74,11 @@ declare global {
    * `this.data` is a readonly view of that type, `this.myMethod()` resolves,
    * and `setData` checks top-level keys against `data`.
    */
-  function Page<TData extends Record<string, unknown>, TCustom>(
+  function Page<TData extends object, TCustom>(
     config: PageConfig<TData> &
       TCustom &
       NoLifecycleTypos<TCustom, PageLifecycleName> &
+      NoReservedPageMembers<TCustom> &
       ThisType<PageInstance<TData> & Omit<TCustom, keyof PageInstance>>
   ): void;
   function getCurrentPages<T extends PageInstance = PageInstance>(): T[];

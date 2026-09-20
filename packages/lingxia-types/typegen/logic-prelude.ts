@@ -2,9 +2,21 @@
 // by external Rong modules in this generated prelude.
 declare const appDownloadPathBrand: unique symbol;
 declare const systemDownloadsPathBrand: unique symbol;
+/** Managed paths and relative userdata paths; system Downloads references are excluded. */
+export type ManagedPath = string & { readonly [systemDownloadsPathBrand]?: never };
 
-export interface PageConfig<TData extends Record<string, unknown> = Record<string, unknown>> {
-  data?: TData;
+/** JSON-shaped state; undefined removes a property in setData. */
+export type PageDataValue<T> = unknown extends T ? T : T extends string | number | boolean | null | undefined ? T
+  : T extends (...args: never[]) => unknown ? never
+  : T extends object ? { [K in keyof T]: PageDataValue<T[K]> } : never;
+
+export type NoReservedPageMembers<T> = {
+  [K in keyof T]: K extends 'data' ? T[K]
+    : K extends keyof PageInstance | '_setData' | '_cancelPendingSetData' ? never : T[K];
+};
+
+export interface PageConfig<TData extends object = Record<string, unknown>> {
+  data?: TData & PageDataValue<TData>;
   onLoad?: (options?: PageLoadOptions) => void | Promise<void>;
   onShow?: () => void | Promise<void>;
   onReady?: () => void | Promise<void>;
@@ -69,8 +81,8 @@ export type DeepReadonly<T, D extends number = 6> = [D] extends [never]
     ? T
     : T extends Function
       ? T
-      : T extends readonly (infer U)[]
-        ? ReadonlyArray<DeepReadonly<U, PageReadonlyDepth[D]>>
+      : T extends readonly unknown[]
+        ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
         : T extends object
           ? { readonly [K in keyof T]: DeepReadonly<T[K], PageReadonlyDepth[D]> }
           : T;
@@ -94,7 +106,10 @@ export type DataPath<T, D extends number = 5> = [D] extends [never]
         }[keyof T & (string | number)]
       : never;
 
-export type DataPathValue<T, P extends readonly PropertyKey[]> = P extends readonly [
+export type DataPathValue<T, P extends readonly PropertyKey[]> = T extends null | undefined
+  ? never
+  : T extends unknown
+  ? P extends readonly [
   infer K,
   ...infer Rest,
 ]
@@ -115,6 +130,7 @@ export type DataPathValue<T, P extends readonly PropertyKey[]> = P extends reado
             : never
           : never
     : never
+  : never
   : never;
 
 /**
@@ -129,7 +145,7 @@ type SetDataValue<TData, K> = K extends PageDataPath
     ? TData[K] | DeepReadonly<TData[K]>
     : { "LingXia type error": "unknown data key" };
 
-export interface PageInstance<TData extends Record<string, unknown> = Record<string, unknown>> {
+export interface PageInstance<TData extends object = Record<string, unknown>> {
   readonly data: { readonly [K in keyof TData]: DeepReadonly<TData[K]> };
   route: string;
   /**
@@ -143,15 +159,15 @@ export interface PageInstance<TData extends Record<string, unknown> = Record<str
   opener?: PageMessagePort;
   setData<TPatch extends Record<string, unknown>>(
     data: TPatch & { [K in keyof TPatch]: SetDataValue<TData, K> },
-    callback?: () => void,
   ): void;
   setPath<const P extends DataPath<TData>>(
     path: P,
     value: DataPathValue<TData, P>,
-    callback?: () => void,
   ): void;
-  /** Nested write by a runtime-resolved string path. The value is not checked. */
-  setDataPath(path: string, value: unknown, callback?: () => void): void;
+  /** Nested write by a runtime-resolved string path. JSON shape is checked; the path/value relationship is not. */
+  setDataPath(path: string, value: JsonValue | undefined): void;
+  /** Drain pending state writes; an attached View acknowledges application, not paint. Rejects on unload. */
+  flush(): Promise<void>;
 }
 
 /**
@@ -233,30 +249,29 @@ export type DownloadProgressEvent<TResult extends DownloadResult = DownloadResul
 export type DownloadIteratorResult<TResult extends DownloadResult = DownloadResult> =
   IteratorResult<DownloadProgressEvent<TResult>, void>;
 
-export type AppTempDownloadResult = Extract<AppDownloadResult, { tempFilePath: string }>;
-export type AppPersistedDownloadResult = Extract<AppDownloadResult, { filePath: AppDownloadFilePath }>;
+export type AppTempDownloadResult = Extract<AppDownloadResult, { storage: 'temp' }>;
+export type AppPersistedDownloadResult = Extract<AppDownloadResult, { storage: 'userdata' }>;
 
 export type ChooseFileSingleResult = {
-  canceled: false;
+  status: 'ok';
   paths: [string];
 } | CanceledResult;
 
-export interface DownloadTask<TDownloadResult extends DownloadResult = DownloadResult>
-  extends PromiseLike<TDownloadResult>,
-    AsyncIterable<DownloadProgressEvent<TDownloadResult>> {
-  next(): Promise<DownloadIteratorResult<TDownloadResult>>;
-  /** Stops iteration only. Does not cancel the underlying download task. */
-  return(): Promise<DownloadIteratorResult<TDownloadResult>>;
-  catch<TRejected = never>(
-    onrejected?: ((reason: unknown) => TRejected | PromiseLike<TRejected>) | null,
-  ): Promise<TDownloadResult | TRejected>;
-  finally(onfinally?: (() => void) | null): Promise<TDownloadResult>;
+/** A running operation. Progress has one consumer; stopping observation does not cancel it. */
+export interface Task<TResult, TProgress> {
+  readonly result: Promise<TResult>;
+  readonly progress: AsyncIterable<TProgress>;
+}
+
+export interface CancelableTask<TResult, TProgress> extends Task<TResult, TProgress> {
+  /** Requests cancellation. Await result to observe the terminal outcome. */
+  cancel(): Promise<void>;
+}
+
+export interface DownloadTask<TResult extends DownloadResult = DownloadResult>
+  extends CancelableTask<TResult, DownloadProgressEvent<TResult>> {
   pause(): Promise<void>;
   resume(): Promise<void>;
-  cancel(): Promise<void>;
-  /** Alias for cancel(), matching browser/mini-program abort naming. */
-  abort(): Promise<void>;
-  wait(): Promise<TDownloadResult>;
 }
 
 declare global {
@@ -284,7 +299,7 @@ declare global {
     /**
      * Launch-at-startup control. Absent where the host cannot register a
      * startup item; its presence and `lx.supports('app.autostart')` always
-     * agree, so `lx.app.autostart?.…` and the query are interchangeable.
+     * agree, so `lx.host.autostart?.…` and the query are interchangeable.
      */
     autostart?: AutostartApi;
 
@@ -310,14 +325,14 @@ declare global {
     /**
      * Product-wide settings, and their single writer. Present only in the
      * Control app the host sealed at build time. Use
-     * `lx.app.control !== undefined` to inspect that identity.
+     * `lx.host.control !== undefined` to inspect that identity.
      */
     readonly control?: ControlApi;
 
     /**
      * Product-wide cache reporting and clearing for a settings screen.
      * Present only in the Control app; presence agrees with
-     * `lx.app.control !== undefined`.
+     * `lx.host.control !== undefined`.
      */
     cache?: AppCacheApi;
 
@@ -362,8 +377,8 @@ declare global {
     chooseFile(options: ChooseFileOptions & { multiple: true }): Promise<ChooseFileResult>;
     /**
      * Opens a file picker.
-     * Resolves `{ canceled: true }` only when the user dismisses the picker. A
-     * completed selection resolves `{ canceled: false, paths }` with at least one
+     * Resolves `{ status: 'canceled' }` only when the user dismisses the picker. A
+     * completed selection resolves `{ status: 'ok', paths }` with at least one
      * path. Rejects when the picker fails or returns an invalid payload.
      */
     chooseFile(options?: ChooseFileOptions): Promise<ChooseFileResult>;
@@ -401,7 +416,7 @@ type StorageEntry<S extends object> = {
  * unchecked assertion this type exists to remove from `get<T>()`.
  */
 export type TypedStorage<S extends object> = {
-  get<K extends StorageKey<S>>(key: K): Promise<S[K] | undefined>;
+  get<K extends StorageKey<S>>(key: K, decode?: (value: unknown) => S[K]): Promise<S[K] | undefined>;
   set(...entry: StorageEntry<S>): Promise<void>;
   has(key: StorageKey<S>): Promise<boolean>;
   delete(key: StorageKey<S>): Promise<void>;

@@ -51,7 +51,7 @@ Rules:
   compile error.
 - Nested writes use `setPath(['profile', 'name'], value)` (checked) or
   `setDataPath('profile.name', value)` (unchecked string path).
-- The call is synchronous on the Logic side. Replication to View is asynchronous.
+- The call is synchronous on the Logic side. Replication to View is asynchronous; `await this.flush()` waits for the View to acknowledge everything written so far, and rejects if a write was discarded instead — a page the runtime has already parked or cancelled.
 
 ### View side
 

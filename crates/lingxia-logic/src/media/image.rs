@@ -39,7 +39,7 @@ struct JSCompressImageOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSCompressImageResult {
-    #[js_name = "tempFilePath"]
+    #[js_name = "uri"]
     temp_file_path: String,
 }
 

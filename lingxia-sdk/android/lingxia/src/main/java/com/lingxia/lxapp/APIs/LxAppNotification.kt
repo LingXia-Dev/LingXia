@@ -21,7 +21,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Local notifications for `lx.app.notification`. Permission is requested on
+ * Local notifications for `lx.host.notification`. Permission is requested on
  * `requestPermission` / the first `show` that reaches the OS, never at start.
  *
  * Nothing here is keyed by a hash of the id: a posted notification uses the id

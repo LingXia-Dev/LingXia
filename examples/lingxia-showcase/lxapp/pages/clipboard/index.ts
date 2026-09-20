@@ -6,8 +6,8 @@ const SAMPLE_PNG =
 function mediaPath(entry: unknown): string {
   if (!entry) return "";
   if (typeof entry === "string") return entry;
-  const media = entry as { tempFilePath?: string; path?: string; filePath?: string };
-  return media.tempFilePath || media.path || media.filePath || "";
+  const media = entry as { uri?: string; path?: string; filePath?: string };
+  return media.uri || media.path || media.filePath || "";
 }
 
 Page({
@@ -57,12 +57,12 @@ Page({
   readText: async function () {
     try {
       const result = await lx.clipboard.readText();
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({ statusText: "Read canceled", readTextValue: "" });
         await this._showTypesAfterRead();
         return;
       }
-      if (result.empty) {
+      if (result.status === 'empty') {
         this.setData({ statusText: "No text on clipboard", readTextValue: "" });
         await this._showTypesAfterRead();
         return;
@@ -110,7 +110,7 @@ Page({
         mediaType: ["image"],
         sourceType: ["album", "camera"],
       });
-      if (picked.canceled) {
+      if (picked.status === 'canceled') {
         this.setData({ statusText: "Image picker canceled" });
         return;
       }
@@ -126,12 +126,12 @@ Page({
   readAll: async function () {
     try {
       const result = await lx.clipboard.read();
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({ statusText: "Read canceled" });
         await this._showTypesAfterRead();
         return;
       }
-      if (result.empty) {
+      if (result.status === 'empty') {
         this.setData({
           statusText: "Clipboard empty",
           readTextValue: "",

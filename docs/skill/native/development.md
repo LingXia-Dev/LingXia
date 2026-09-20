@@ -326,7 +326,7 @@ async fn export_pdf(
 ) -> lingxia::Result<()> {
     for progress in [25, 60, 100] {
         tokio::select! {
-            _ = (stream.status === 'canceled')() => return Ok(()),
+            _ = stream.canceled() => return Ok(()),
             _ = tokio::time::sleep(std::time::Duration::from_millis(250)) => {}
         }
 

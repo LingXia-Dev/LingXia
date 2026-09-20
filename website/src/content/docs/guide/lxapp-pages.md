@@ -94,7 +94,7 @@ Use the generated [Components reference](../../reference/components/) for attrib
 
 ## Adapt to the surface
 
-Use CSS or container queries for spacing and column changes. When the interaction model changes, subscribe in Logic with `lx.surface.onContext`, replicate the serializable context through `setData`, and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
+Use CSS or container queries for spacing and column changes. When the interaction model changes, subscribe in Logic with `lx.surface.watchContext`, replicate the serializable context through `setData`, and select Compact versus Workspace with `sizeClass` **and** `isDesktop()` — `regular` is not desktop. See [Adaptive surfaces](../adaptive-surfaces/).
 
 ## Develop and verify
 

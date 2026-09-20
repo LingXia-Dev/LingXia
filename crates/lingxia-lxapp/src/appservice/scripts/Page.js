@@ -7,6 +7,12 @@
       throw new Error("setData: Invalid page configuration");
     }
 
+    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'surface', 'opener', '_cancelPendingSetData', '_setData']) {
+      if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
+        throw new TypeError(`Page member '${key}' is reserved by the runtime`);
+      }
+    }
+    assertPageData(pageConfig.data || {});
     const pageSvc = new PageSvc(
       pageConfig,
       pagePath,
@@ -34,10 +40,17 @@
     const pendingOps = new Map();
     let pendingCallbacks = [];
     let disposed = false;
+    let submitted = Promise.resolve();
+    const flushWaiters = new Set();
+    const rejectFlushes = (error) => {
+      for (const waiter of flushWaiters) waiter.reject(error);
+      flushWaiters.clear();
+    };
     const DEBOUNCE_WAIT = 16;
 
     pageSvc._cancelPendingSetData = function () {
       disposed = true;
+      rejectFlushes(new Error("Page unloaded before its state was flushed"));
       clearTimeout(updateTimer);
       updateTimer = null;
       pendingBaseState.clear();
@@ -45,7 +58,7 @@
       pendingCallbacks = [];
     };
 
-    pageSvc.setData = function (updates, callback) {
+    pageSvc.setData = function (updates) {
       if (disposed) {
         return;
       }
@@ -53,6 +66,7 @@
         throw new Error("setData: Invalid updates");
       }
 
+      assertPageData(updates);
       const self = this;
 
       try {
@@ -60,63 +74,78 @@
           applyUpdate(self.data, pendingBaseState, pendingOps, path, value);
         }
       } catch (err) {
-        console.error("Error in setData:", err);
-        return;
-      }
-
-      if (typeof callback === "function") {
-        pendingCallbacks.push(callback);
+        throw err;
       }
 
       clearTimeout(updateTimer);
-      updateTimer = setTimeout(() => {
-        if (disposed) {
-          return;
-        }
-        const ops = Array.from(pendingOps.values()).map(toJsonPatchOp);
-        const callbacks = pendingCallbacks;
+      updateTimer = setTimeout(submitPending, DEBOUNCE_WAIT);
+    };
 
-        pendingBaseState.clear();
-        pendingOps.clear();
-        pendingCallbacks = [];
+    function submitPending() {
+      updateTimer = null;
+      if (disposed) {
+        return;
+      }
+      const ops = Array.from(pendingOps.values()).map(toJsonPatchOp);
+      const callbacks = pendingCallbacks;
 
+      pendingBaseState.clear();
+      pendingOps.clear();
+      pendingCallbacks = [];
+
+      // Every flush includes earlier batches, including batches already in flight.
+      // A failed batch has already rejected its waiters; later batches stand alone.
+      const previous = submitted.catch(() => {});
+      // Native reports one of "acked" | "deferred" | "dropped". It calls back on
+      // every terminal path, so only the status tells an acknowledgement apart
+      // from a write the View will never see.
+      const current = ops.length === 0 ? Promise.resolve("acked") : new Promise((resolve, reject) => {
         try {
-          if (ops.length === 0) {
-            callbacks.forEach((cb) => cb());
+          Promise.resolve(pageSvc._setData(JSON.stringify(ops), resolve)).catch(reject);
+        } catch (error) {
+          reject(error);
+        }
+      });
+      submitted = Promise.all([previous, current]).then(([, status]) => {
+        callbacks.forEach((cb) => cb(status));
+      });
+      submitted.catch((error) => {
+        rejectFlushes(error);
+        console.error("Error in setData:", error);
+      });
+    }
+
+    pageSvc.flush = function () {
+      if (disposed) return Promise.reject(new Error("Cannot flush an unloaded page"));
+      return new Promise((resolve, reject) => {
+        const waiter = { reject };
+        flushWaiters.add(waiter);
+        pendingCallbacks.push((status) => {
+          flushWaiters.delete(waiter);
+          // "deferred" still reaches the View, through the bridge-ready
+          // snapshot rather than this patch. "dropped" never does.
+          if (status === "dropped") {
+            reject(new Error("Page state was discarded before the View received it"));
             return;
           }
-
-          const combinedCallback =
-            callbacks.length === 0
-              ? undefined
-              : callbacks.length === 1
-                ? callbacks[0]
-                : () => callbacks.forEach((cb) => cb());
-
-          const maybePromise = combinedCallback
-            ? self._setData(JSON.stringify(ops), combinedCallback)
-            : self._setData(JSON.stringify(ops));
-
-          if (maybePromise && typeof maybePromise.then === "function") {
-            maybePromise.catch((err) => {
-              console.error("Error in setData:", err);
-            });
-          }
-        } catch (err) {
-          console.error("Error in setData:", err);
-        }
-      }, DEBOUNCE_WAIT);
+          resolve();
+        });
+        // Submit now: a steady setData stream would otherwise re-arm the
+        // debounce and starve the flush.
+        clearTimeout(updateTimer);
+        submitPending();
+      });
     };
 
-    pageSvc.setPath = function (path, value, callback) {
-      return pageSvc.setData({ [pathSegmentsToKey(path)]: value }, callback);
+    pageSvc.setPath = function (path, value) {
+      return pageSvc.setData({ [pathSegmentsToKey(path)]: value });
     };
 
-    pageSvc.setDataPath = function (path, value, callback) {
+    pageSvc.setDataPath = function (path, value) {
       if (typeof path !== "string" || !path) {
         throw new Error("setDataPath: Invalid path");
       }
-      return pageSvc.setData({ [path]: value }, callback);
+      return pageSvc.setData({ [path]: value });
     };
 
     return pageSvc;
@@ -471,4 +500,19 @@ function isDeepEqual(a, b) {
   }
 
   return true;
+}
+
+// Undefined remains the explicit remove operation; other values must survive JSON transport.
+function assertPageData(value, seen = new Set()) {
+  if (value === null || value === undefined || typeof value === 'string' || typeof value === 'boolean') return;
+  if (typeof value === 'number' && Number.isFinite(value)) return;
+  if (typeof value !== 'object' || seen.has(value)) throw new TypeError('Page data must be acyclic JSON values');
+  const proto = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && proto !== Object.prototype && proto !== null) {
+    throw new TypeError('Page data cannot contain class instances');
+  }
+  if (Object.getOwnPropertySymbols(value).length) throw new TypeError('Page data cannot contain symbol keys');
+  seen.add(value);
+  for (const item of Object.values(value)) assertPageData(item, seen);
+  seen.delete(value);
 }

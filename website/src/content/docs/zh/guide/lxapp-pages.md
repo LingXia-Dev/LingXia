@@ -94,7 +94,7 @@ import { LxNativeRoot, LxVideo, LxPicker } from '@lingxia/react'
 
 ## 适配 surface
 
-间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.surface.onContext`，通过 `setData` 复制可序列化 context，再用 `sizeClass` **和** `isDesktop()` 选择 Compact 或 Workspace——`regular` 不是桌面。详见[自适应 surfaces](../adaptive-surfaces/)。
+间距与列数变化使用 CSS 或 container query；交互模型发生变化时，在 Logic 中订阅 `lx.surface.watchContext`，通过 `setData` 复制可序列化 context，再用 `sizeClass` **和** `isDesktop()` 选择 Compact 或 Workspace——`regular` 不是桌面。详见[自适应 surfaces](../adaptive-surfaces/)。
 
 ## 开发与验证
 

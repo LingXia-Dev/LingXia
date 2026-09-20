@@ -81,36 +81,24 @@ async function downloadCorrelation(): Promise<void> {
       url: "https://example.com/a.bin",
       filePath: "lx://userdata/a.bin",
     })
-    .wait();
-  const filePath: AppDownloadFilePath = persisted.filePath;
+    .result;
+  const filePath: AppDownloadFilePath = persisted.uri;
   void filePath;
   const persistedResult: AppPersistedDownloadResult = persisted;
   void persistedResult;
-  type PersistedIsDurable = Assert<
-    typeof persisted extends { filePath: AppDownloadFilePath }
-      ? typeof persisted extends { tempFilePath: string }
-        ? false
-        : true
-      : false
-  >;
+  type PersistedIsDurable = Assert<typeof persisted extends { storage: 'userdata' } ? true : false>;
 
-  const temporary = await lx.downloadFile({ url: "https://example.com/a.bin" }).wait();
-  const tempFilePath: string = temporary.tempFilePath;
-  void tempFilePath;
+  const temporary = await lx.downloadFile({ url: "https://example.com/a.bin" }).result;
+  const uri: string = temporary.uri;
+  void uri;
   const tempResult: AppTempDownloadResult = temporary;
   void tempResult;
-  type TemporaryIsEphemeral = Assert<
-    typeof temporary extends { tempFilePath: string }
-      ? typeof temporary extends { filePath: AppDownloadFilePath }
-        ? false
-        : true
-      : false
-  >;
+  type TemporaryIsEphemeral = Assert<typeof temporary extends { storage: 'temp' } ? true : false>;
 }
 
 async function chooseFileLiteral(): Promise<void> {
   const single = await lx.chooseFile({ multiple: false });
-  if (!single.canceled) {
+  if (single.status !== 'canceled') {
     const only: string = single.paths[0];
     void only;
     const onlyPath: [string] = single.paths;
@@ -118,7 +106,7 @@ async function chooseFileLiteral(): Promise<void> {
   }
 
   const many = await lx.chooseFile({ multiple: true });
-  if (!many.canceled) {
+  if (many.status !== 'canceled') {
     const first: string = many.paths[0];
     const rest: string[] = many.paths.slice(1);
     void first;
@@ -131,7 +119,7 @@ function progressEvents(
   upload: UploadProgressEvent,
 ): void {
   if (download.kind === "completed") {
-    const size: number = download.result.size;
+    const size: number = download.result.sizeBytes;
     void size;
   } else {
     // @ts-expect-error result is only on completed

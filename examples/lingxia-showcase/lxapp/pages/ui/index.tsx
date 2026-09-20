@@ -516,7 +516,7 @@ export default function UIPage() {
                 onClick={() => showToastWithParams({
                   title: toastTitle,
                   icon: toastIcon,
-                  duration: toastDuration,
+                  durationMs: toastDuration,
                   position: toastPosition,
                   mask: toastMask
                 })}
@@ -967,7 +967,7 @@ export default function UIPage() {
               <div className="px-4 py-3 border-b border-line-100">
                 <h3 className="text-base font-medium text-gray-900">Light / Dark</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  <code className="text-xs">lx.app.control.appearance.setPreference()</code> sets the product&apos;s scheme
+                  <code className="text-xs">lx.host.control.appearance.setPreference()</code> sets the product&apos;s scheme
                   independently of the host shell; the preference persists per lxapp.
                 </p>
               </div>
@@ -1037,7 +1037,7 @@ export default function UIPage() {
                       const result = await revealTabBar();
                       console.log('Show TabBar:', result);
                       // Toast at resolve time: the bar must already be visible.
-                      showToastWithParams({ title: 'shown', icon: 'success', duration: 800 });
+                      showToastWithParams({ title: 'shown', icon: 'success', durationMs: 800 });
                     }}
                     className="flex-1 bg-green-500 hover:bg-green-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >
@@ -1049,7 +1049,7 @@ export default function UIPage() {
                       const result = await concealTabBar();
                       console.log('Hide TabBar:', result);
                       // Toast at resolve time: the bar must already be gone.
-                      showToastWithParams({ title: 'hidden', icon: 'success', duration: 800 });
+                      showToastWithParams({ title: 'hidden', icon: 'success', durationMs: 800 });
                     }}
                     className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 px-4 rounded-lg text-sm font-medium transition-colors"
                   >

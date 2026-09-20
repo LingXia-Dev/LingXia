@@ -3,8 +3,8 @@ import { errorMessage } from "../../shared/lib/errors";
 function mediaPath(entry: unknown): string {
   if (!entry) return "";
   if (typeof entry === "string") return entry;
-  const media = entry as { tempFilePath?: string; path?: string; filePath?: string };
-  return media.tempFilePath || media.path || media.filePath || "";
+  const media = entry as { uri?: string; path?: string; filePath?: string };
+  return media.uri || media.path || media.filePath || "";
 }
 
 Page({
@@ -58,7 +58,7 @@ Page({
         mediaType: ["image"],
         sourceType: ["album", "camera"],
       });
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({ statusText: "No image selected" });
         return;
       }
@@ -89,8 +89,8 @@ Page({
     try {
       const result = await lx.chooseFile({ multiple: false });
       this.setData({
-        selectedFilePath: result.canceled ? "" : result.paths[0],
-        statusText: result.canceled ? "File selection canceled" : "File selected",
+        selectedFilePath: (result.status === 'canceled') ? "" : result.paths[0],
+        statusText: (result.status === 'canceled') ? "File selection canceled" : "File selected",
       });
     } catch (error) {
       const message = errorMessage(error, "chooseFile failed");

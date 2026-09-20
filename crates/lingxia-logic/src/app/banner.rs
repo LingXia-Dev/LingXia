@@ -29,7 +29,7 @@ struct JSShowOptions {
     background: Option<String>,
 }
 
-/// `lx.app.banner` — Control-app desktop overlay. Absent on guests and
+/// `lx.host.banner` — Control-app desktop overlay. Absent on guests and
 /// off desktop, so presence and `lx.supports('app.banner')` agree.
 pub(super) fn init(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     if !crate::capability::exposes(ctx, "app.banner") {
@@ -58,7 +58,7 @@ async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
             let id = id.to_rust::<String>()?;
             if id.is_empty() {
                 return Err(js_invalid_parameter_error(
-                    "lx.app.banner.dismiss id must not be empty",
+                    "lx.host.banner.dismiss id must not be empty",
                 ));
             }
             Ok(id)
@@ -88,7 +88,7 @@ fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
     let title = parsed
         .title
         .filter(|title| !title.is_empty())
-        .ok_or_else(|| js_invalid_parameter_error("lx.app.banner.show title is required"))?;
+        .ok_or_else(|| js_invalid_parameter_error("lx.host.banner.show title is required"))?;
     let id = match parsed.id {
         Some(id) => validate_id(&id)?,
         None => uuid::Uuid::new_v4().to_string(),
@@ -99,7 +99,7 @@ fn decode_show(options: JSValue) -> JSResult<DesktopBannerShow> {
         Some(ms) if ms >= 0.0 => Some(ms as u64),
         Some(_) => {
             return Err(js_invalid_parameter_error(
-                "lx.app.banner.show timeoutMs must be >= 0",
+                "lx.host.banner.show timeoutMs must be >= 0",
             ));
         }
     };
@@ -125,7 +125,7 @@ fn decode_actions(actions: Option<Vec<JSAction>>) -> JSResult<Vec<DesktopBannerA
     };
     if actions.len() > MAX_ACTIONS {
         return Err(js_invalid_parameter_error(
-            "lx.app.banner.show accepts at most two actions",
+            "lx.host.banner.show accepts at most two actions",
         ));
     }
     actions
@@ -157,7 +157,7 @@ fn decode_actions(actions: Option<Vec<JSAction>>) -> JSResult<Vec<DesktopBannerA
 fn validate_id(id: &str) -> JSResult<String> {
     if id.is_empty() || id.chars().count() > MAX_ID_CHARS {
         return Err(js_invalid_parameter_error(format!(
-            "lx.app.banner.show id must be 1–{MAX_ID_CHARS} characters"
+            "lx.host.banner.show id must be 1–{MAX_ID_CHARS} characters"
         )));
     }
     Ok(id.to_string())
@@ -168,11 +168,11 @@ fn encode_outcome(ctx: &JSContext, outcome: DesktopBannerOutcome) -> JSResult<JS
     result.set("id", outcome.id())?;
     match outcome {
         DesktopBannerOutcome::Action { action, .. } => {
-            result.set("canceled", false)?;
+            result.set("status", "ok")?;
             result.set("action", action)?;
         }
         other => {
-            result.set("canceled", true)?;
+            result.set("status", "canceled")?;
             result.set("reason", other.reason().unwrap_or("dismissed"))?;
         }
     }

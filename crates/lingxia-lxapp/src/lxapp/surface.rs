@@ -2524,7 +2524,7 @@ impl LxApp {
 
     /// Report this lxapp presentation's actual viewport. Unlike shell width,
     /// this is measured after sidebar/navbar/aside layout and therefore drives
-    /// the content-facing `lx.surface.onContext` size class (`compact` |
+    /// the content-facing `lx.surface.watchContext` size class (`compact` |
     /// `regular`).
     pub fn set_surface_viewport(&self, width: f64, height: f64) -> bool {
         if !width.is_finite() || !height.is_finite() || width <= 0.0 || height <= 0.0 {

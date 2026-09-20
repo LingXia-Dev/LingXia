@@ -44,7 +44,7 @@ spec('greets through real page input and the Logic bridge', async (t) => {
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   await eventually(
-    () => app.eval({ script: 'return typeof lx.app.displayLanguage.get' }),
+    () => app.eval({ script: 'return typeof lx.host.displayLanguage.get' }),
     (kind) => kind === 'function',
     { describe: 'home Logic runtime', timeoutMs: 20_000, retryIf: () => true },
   );
@@ -73,10 +73,10 @@ spec('greets through real page input and the Logic bridge', async (t) => {
 spec('switches display language from the home control', {
   id: 'UI-LANGUAGE-001',
   covers: [
-    'lx.app.displayLanguage.watch',
-    'lx.app.control.displayLanguage.getPreference',
-    'lx.app.control.displayLanguage.setPreference',
-    'lx.app.control.displayLanguage.watchPreference',
+    'lx.host.displayLanguage.watch',
+    'lx.host.control.displayLanguage.getPreference',
+    'lx.host.control.displayLanguage.setPreference',
+    'lx.host.control.displayLanguage.watchPreference',
   ],
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
@@ -85,13 +85,13 @@ spec('switches display language from the home control', {
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(
-    () => app.eval({ script: 'return typeof lx.app.control?.displayLanguage?.setPreference' }),
+    () => app.eval({ script: 'return typeof lx.host.control?.displayLanguage?.setPreference' }),
     (kind) => kind === 'function',
     { describe: 'home Logic displayLanguage control', timeoutMs: 20_000, retryIf: () => true },
   );
 
   const original = await app.eval({
-    script: 'return lx.app.control.displayLanguage.getPreference()',
+    script: 'return lx.host.control.displayLanguage.getPreference()',
   }) as string;
 
   try {
@@ -99,7 +99,7 @@ spec('switches display language from the home control', {
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-zh-CN"]');
     await app.page.testId('home-language-zh-CN', { page: 'home' }).click();
     await eventually(
-      () => app.eval({ script: 'return lx.app.control.displayLanguage.getPreference()' }),
+      () => app.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'zh-CN',
       {
         describe: 'home language control to set zh-CN',
@@ -135,7 +135,7 @@ spec('switches display language from the home control', {
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-en-US"]');
     await app.page.testId('home-language-en-US', { page: 'home' }).click();
     await eventually(
-      () => app.eval({ script: 'return lx.app.control.displayLanguage.getPreference()' }),
+      () => app.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'en-US',
       {
         describe: 'home language control to set en-US',
@@ -168,7 +168,7 @@ spec('switches display language from the home control', {
     );
   } finally {
     await app.eval({
-      script: `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(original)})`,
+      script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(original)})`,
     });
   }
 });

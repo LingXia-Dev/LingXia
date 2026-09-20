@@ -69,11 +69,11 @@
             </div>
             <div class="flex justify-between items-center py-3 border-b border-line-200">
               <span class="text-sm text-gray-600">SSID</span>
-              <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ connectedWifi.SSID ?? connectedWifi.ssid ?? '--' }}</span>
+              <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ connectedWifi.ssid ?? '--' }}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-line-200">
               <span class="text-sm text-gray-600">BSSID</span>
-              <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ connectedWifi.BSSID ?? connectedWifi.bssid ?? '--' }}</span>
+              <span class="text-sm font-semibold text-gray-800 px-3 py-1 bg-blue-50 rounded-lg">{{ connectedWifi.bssid ?? '--' }}</span>
             </div>
             <div class="flex justify-between items-center py-3 border-b border-line-200">
               <span class="text-sm text-gray-600">Secure</span>
@@ -186,17 +186,17 @@
               <div
                 v-for="(wifi, index) in wifiList"
                 :key="index"
-                @click="wifiSsid = (wifi.SSID ?? wifi.ssid ?? '').toString()"
+                @click="wifiSsid = (wifi.ssid ?? '').toString()"
                 class="p-3 bg-surface rounded-lg border border-line-200 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors"
               >
                 <div class="flex items-center justify-between mb-2">
-                  <span class="text-sm font-semibold text-gray-800">{{ wifi.SSID ?? wifi.ssid }}</span>
+                  <span class="text-sm font-semibold text-gray-800">{{ wifi.ssid }}</span>
                   <span class="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 dark:text-blue-400">
                     {{ typeof wifi.signalStrength === 'number' ? `${wifi.signalStrength}%` : '--' }}
                   </span>
                 </div>
                 <div class="text-xs text-gray-500 space-y-1">
-                  <div v-if="wifi.BSSID ?? wifi.bssid">BSSID: {{ wifi.BSSID ?? wifi.bssid }}</div>
+                  <div v-if="wifi.bssid">BSSID: {{ wifi.bssid }}</div>
                   <div v-if="typeof wifi.frequency === 'number'">Frequency: {{ wifi.frequency }} MHz</div>
                   <div>Security: {{ wifi.secure ? '🔒 Secured' : '🔓 Open' }}</div>
                 </div>
@@ -251,9 +251,7 @@ import { useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type WifiInfo = {
-  SSID?: string;
   ssid?: string;
-  BSSID?: string;
   bssid?: string;
   secure?: boolean;
   signalStrength?: number;
@@ -311,7 +309,7 @@ function handleConnectWifi() {
     window.alert?.('Please enter SSID');
     return;
   }
-  connectWifi({ SSID: ssid, password: password || undefined });
+  connectWifi({ ssid: ssid, password: password || undefined });
 }
 
 function handleStartWifiConnected() {

@@ -41,17 +41,17 @@ spec('publish the lxapp sandbox roots through lx.env', {
 
 spec('capture a host app screenshot into the lxapp sandbox', {
   id: 'HOSTAPP-SHOT-001',
-  covers: ['lx.app', 'lx.app.screenshot'],
+  covers: ['lx.host', 'lx.host.screenshot'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SHOT-001');
 
   const shot = await app.eval({
     script: `
-      const result = await lx.app.screenshot();
-      const stat = await lx.fs.stat(result.tempFilePath);
+      const result = await lx.host.screenshot();
+      const stat = await lx.fs.stat(result.uri);
       return {
-        path: result.tempFilePath,
+        path: result.uri,
         width: result.width,
         height: result.height,
         bytes: stat.size,
@@ -73,21 +73,21 @@ spec('capture a host app screenshot into the lxapp sandbox', {
 
 spec('set and clear the host app badge without leaving one behind', {
   id: 'HOSTAPP-BADGE-001',
-  covers: ['lx.app.setBadge'],
+  covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
   const painted = await app.eval({
     script: `
-      const first = await lx.app.setBadge(12);
-      const cleared = await lx.app.setBadge(null);
+      const first = await lx.host.setBadge(12);
+      const cleared = await lx.host.setBadge(null);
       // Clearing an already-clear badge must stay a no-op, not an error.
-      const clearedAgain = await lx.app.setBadge(null);
-      const empty = await lx.app.setBadge('');
+      const clearedAgain = await lx.host.setBadge(null);
+      const empty = await lx.host.setBadge('');
       return [first, cleared, clearedAgain, empty];
     `,
   });
@@ -101,23 +101,23 @@ spec('set and clear the host app badge without leaving one behind', {
 
 spec('tell a hidden tray from a shown one in what setBadge reports', {
   id: 'HOSTAPP-BADGE-004',
-  covers: ['lx.app.setBadge', 'lx.tray.show', 'lx.tray.hide'],
+  covers: ['lx.host.setBadge', 'lx.tray.show', 'lx.tray.hide'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
     await app.eval({
-      script: `try { await lx.app.setBadge(null); lx.tray.hide(); } catch {} return true;`,
+      script: `try { await lx.host.setBadge(null); lx.tray.hide(); } catch {} return true;`,
     });
   });
 
   // A declared tray has a status item from the start but stays hidden until
   // `show()`, so "the item took the value" is not "the user can see it".
   const hidden = await app.eval({
-    script: `try { lx.tray.hide(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+    script: `try { lx.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });`,
   });
   const shown = await app.eval({
-    script: `try { lx.tray.show(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+    script: `try { lx.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });`,
   });
 
   // A hidden item is never a painted badge, whatever the platform. `shown` is
@@ -129,39 +129,39 @@ spec('tell a hidden tray from a shown one in what setBadge reports', {
 
 spec('report a surface this platform does not have instead of failing', {
   id: 'HOSTAPP-BADGE-003',
-  covers: ['lx.app.setBadge'],
+  covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
   // A named surface that is absent resolves false; it never rejects, so
   // portable code can ask for one without guarding the call.
-  const outcome = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'tray' });`);
+  const outcome = await evalCaught(app, `return await lx.host.setBadge(2, { surface: 'tray' });`);
   expect(outcome.ok).toBeTruthy();
   expect(typeof outcome.value).toBe('boolean');
 
-  const bad = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'dock' });`);
+  const bad = await evalCaught(app, `return await lx.host.setBadge(2, { surface: 'dock' });`);
   expect(bad.ok).toBeFalsy();
   expect(bad.code).toBe('E_INVALID_ARG');
 });
 
 spec('reject a badge value that is neither a string, a number, nor null', {
   id: 'HOSTAPP-BADGE-002',
-  covers: ['lx.app.setBadge'],
+  covers: ['lx.host.setBadge'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
   // Coercing these would paint "[object Object]" on the dock instead of failing.
   for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
-    await t.step(`lx.app.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `await lx.app.setBadge(${literal}); return 'accepted';`);
+    await t.step(`lx.host.setBadge(${literal})`, async () => {
+      const outcome = await evalCaught(app, `await lx.host.setBadge(${literal}); return 'accepted';`);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_INVALID_ARG');
     });
@@ -170,14 +170,14 @@ spec('reject a badge value that is neither a string, a number, nor null', {
 
 spec('answer checkUpdate with a decision instead of throwing', {
   id: 'HOSTAPP-UPDATE-001',
-  covers: ['lx.app.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
+  covers: ['lx.host.checkUpdate', 'lx.getUpdateManager', 'UpdateManager.onUpdateReady', 'UpdateManager.onUpdateFailed'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-UPDATE-001');
 
   const result = await app.eval({
     script: `
-      const decision = await lx.app.checkUpdate();
+      const decision = await lx.host.checkUpdate();
       const manager = lx.getUpdateManager();
       const ready = manager.onUpdateReady(() => {});
       const failed = manager.onUpdateFailed(() => {});
@@ -201,20 +201,20 @@ spec('answer checkUpdate with a decision instead of throwing', {
 
 spec('reject an invalid host display language', {
   id: 'HOSTAPP-LANG-002',
-  covers: ['lx.app.control.displayLanguage.setPreference'],
+  covers: ['lx.host.control.displayLanguage.setPreference'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
   const offered = await app.eval({
-    script: `return typeof lx.app.control?.displayLanguage?.setPreference`,
+    script: `return typeof lx.host.control?.displayLanguage?.setPreference`,
   }) as string;
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await evalCaught(
       app,
-      `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
+      `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
     );
     expect(rejected.ok).toBe(false);
     expect(String(rejected.code)).toBe('E_INVALID_ARG');
@@ -223,15 +223,15 @@ spec('reject an invalid host display language', {
 
 spec('subscribe to and release the display language listener', {
   id: 'HOSTAPP-LANG-001',
-  covers: ['lx.app.displayLanguage.watch'],
+  covers: ['lx.host.displayLanguage.watch'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-001');
 
   const result = await app.eval({
     script: `
-      const first = lx.app.displayLanguage.watch(() => {});
-      const second = lx.app.displayLanguage.watch(() => {});
+      const first = lx.host.displayLanguage.watch(() => {});
+      const second = lx.host.displayLanguage.watch(() => {});
       first();
       second();
       first();
@@ -246,19 +246,19 @@ spec('subscribe to and release the display language listener', {
 spec('request permission and replace local notifications by id', {
   id: 'HOSTAPP-NOTIFICATION-001',
   covers: [
-    'lx.app.notification',
-    'lx.app.notification.getPermission',
-    'lx.app.notification.requestPermission',
-    'lx.app.notification.show',
-    'lx.app.notification.cancel',
-    'lx.app.notification.cancelAll',
+    'lx.host.notification',
+    'lx.host.notification.getPermission',
+    'lx.host.notification.requestPermission',
+    'lx.host.notification.show',
+    'lx.host.notification.cancel',
+    'lx.host.notification.cancelAll',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
   const offered = await app.eval({
-    script: `return !!(lx.app.notification && typeof lx.app.notification.show === 'function')`,
+    script: `return !!(lx.host.notification && typeof lx.host.notification.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
   const supported = await app.eval({ script: `return !!lx.supports('app.notification')` });
@@ -267,7 +267,7 @@ spec('request permission and replace local notifications by id', {
   const result = await app.eval({
     timeoutMs: 30_000,
     script: `
-      const n = lx.app.notification;
+      const n = lx.host.notification;
       const permission = await n.getPermission();
       // A pending OS prompt has nobody to answer it here, so only ask when
       // the answer is already known.
@@ -349,9 +349,9 @@ spec('request permission and replace local notifications by id', {
 bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
   id: 'HOSTAPP-BANNER-001',
   covers: [
-    'lx.app.banner',
-    'lx.app.banner.show',
-    'lx.app.banner.dismiss',
+    'lx.host.banner',
+    'lx.host.banner.show',
+    'lx.host.banner.dismiss',
   ],
   app: SHOWCASE_APP_ID,
   reason: 'Desktop banner is Control-app / macOS / Windows only.',
@@ -360,15 +360,15 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
   t.defer(async () => {
     await app.eval({
       script: `try {
-        await lx.app.banner.dismiss('automation-banner-toast');
-        await lx.app.banner.dismiss('automation-banner-prompt');
+        await lx.host.banner.dismiss('automation-banner-toast');
+        await lx.host.banner.dismiss('automation-banner-prompt');
       } catch {}
       return true;`,
     });
   });
 
   const offered = await app.eval({
-    script: `return !!(lx.app.banner && typeof lx.app.banner.show === 'function')`,
+    script: `return !!(lx.host.banner && typeof lx.host.banner.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
   const supported = await app.eval({ script: `return !!lx.supports('app.banner')` });
@@ -377,7 +377,7 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
   const result = await app.eval({
     timeoutMs: 20_000,
     script: `
-      const banner = lx.app.banner;
+      const banner = lx.host.banner;
       const toast = await banner.show({
         id: 'automation-banner-toast',
         title: 'LingXia automation',
@@ -419,19 +419,19 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
       };
     `,
   }) as {
-    toast: { id: string; canceled: boolean; reason?: string; action?: string };
-    prompt: { id: string; canceled: boolean; reason?: string; action?: string };
+    toast: { id: string; status: 'ok' | 'canceled'; reason?: string; action?: string };
+    prompt: { id: string; status: 'ok' | 'canceled'; reason?: string; action?: string };
     rejected: Record<string, boolean>;
   };
 
   expect(result.toast).toEqual({
     id: 'automation-banner-toast',
-    canceled: true,
+    status: 'canceled',
     reason: 'timeout',
   });
   expect(result.prompt).toEqual({
     id: 'automation-banner-prompt',
-    canceled: true,
+    status: 'canceled',
     reason: 'dismissed',
   });
   expect(result.rejected).toEqual({ title: true, emptyId: true, tooMany: true, background: true });
@@ -439,7 +439,7 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
 
 autostartSpec('report autostart state and accept an idempotent write', {
   id: 'HOSTAPP-AUTOSTART-001',
-  covers: ['lx.app.autostart', 'lx.app.autostart.isEnabled', 'lx.app.autostart.setEnabled'],
+  covers: ['lx.host.autostart', 'lx.host.autostart.isEnabled', 'lx.host.autostart.setEnabled'],
   app: SHOWCASE_APP_ID,
   reason: 'Autostart is intentionally absent on mobile hosts.',
   // `SMAppService.mainApp.status` costs ~6s per call on macOS; the spec pays
@@ -451,7 +451,7 @@ autostartSpec('report autostart state and accept an idempotent write', {
   // Autostart is a login-item concept the inventory marks optional; a phone
   // host does not build it, and asking is how a caller finds out.
   const offered = await app.eval({
-    script: `return !!(lx.app.autostart && typeof lx.app.autostart.isEnabled === 'function')`,
+    script: `return !!(lx.host.autostart && typeof lx.host.autostart.isEnabled === 'function')`,
   }) as boolean;
   if (!offered) {
     const supported = await app.eval({ script: `return !!lx.supports('app.autostart')` });
@@ -465,9 +465,9 @@ autostartSpec('report autostart state and accept an idempotent write', {
     // The macOS login-item service answers well past the 5s eval default.
     timeoutMs: 45_000,
     script: `
-      const before = await lx.app.autostart.isEnabled();
-      await lx.app.autostart.setEnabled(before);
-      const after = await lx.app.autostart.isEnabled();
+      const before = await lx.host.autostart.isEnabled();
+      await lx.host.autostart.setEnabled(before);
+      const after = await lx.host.autostart.isEnabled();
       return { before, after };
     `,
   }) as { before: boolean; after: boolean };
@@ -478,7 +478,7 @@ autostartSpec('report autostart state and accept an idempotent write', {
 
 spec('clear product caches while preserving live app storage', {
   id: 'HOSTAPP-CACHE-001',
-  covers: ['lx.app.cache', 'lx.app.cache.size', 'lx.app.cache.clear'],
+  covers: ['lx.host.cache', 'lx.host.cache.size', 'lx.host.cache.clear'],
   app: SHOWCASE_APP_ID,
   // A clear walks every lxapp's storage and asks the WebView store to drop its
   // cache; both are slower than a plain property read.
@@ -496,9 +496,9 @@ spec('clear product caches while preserving live app storage', {
       await lx.fs.write(durable, payload, { overwrite: true });
 
       await lx.getStorage().set('automation-cache-probe', 'keep');
-      const before = await lx.app.cache.size();
-      const report = await lx.app.cache.clear();
-      const after = await lx.app.cache.size();
+      const before = await lx.host.cache.size();
+      const report = await lx.host.cache.clear();
+      const after = await lx.host.cache.size();
 
       const cachedSurvived = await lx.fs.exists(cached);
       const durableSurvived = await lx.fs.exists(durable);
@@ -617,10 +617,10 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
 
   await t.step('accept a runtime-managed raster icon', async () => {
     const result = await evalCaught(app, `
-      const shot = await lx.app.screenshot();
-      globalThis.__sidebarProbeIcon = shot.tempFilePath;
-      lx.shell.sidebarActions.update('probe-footer', { icon: shot.tempFilePath });
-      return shot.tempFilePath;
+      const shot = await lx.host.screenshot();
+      globalThis.__sidebarProbeIcon = shot.uri;
+      lx.shell.sidebarActions.update('probe-footer', { icon: shot.uri });
+      return shot.uri;
     `);
     expect(result.ok).toBeTruthy();
     expect(result.value).toMatch(/^lx:\/\//);
@@ -710,7 +710,7 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
 
 spec('subscribe to and release the surface context listener', {
   id: 'HOSTAPP-SURFACE-CTX-001',
-  covers: ['lx.surface', 'lx.surface.onContext'],
+  covers: ['lx.surface', 'lx.surface.watchContext'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
@@ -718,8 +718,8 @@ spec('subscribe to and release the surface context listener', {
   const result = await app.eval({
     script: `
       let context;
-      const first = lx.surface.onContext(value => { context = value; });
-      const second = lx.surface.onContext(() => {});
+      const first = lx.surface.watchContext(value => { context = value; });
+      const second = lx.surface.watchContext(() => {});
       first();
       second();
       // Releasing twice must stay inert rather than throwing.

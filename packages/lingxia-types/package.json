@@ -53,7 +53,7 @@
     "check:quality": "node scripts/check-generated-quality.mjs",
     "check:esm": "node scripts/check-esm-exports.mjs",
     "test:types": "tsc -p tests/tsconfig.json",
-    "test:runtime": "npm run build && node tests/error-runtime.mjs && npm run check:esm",
+    "test:runtime": "npm run build && node tests/error-runtime.mjs && node tests/page-runtime.mjs && npm run check:esm",
     "build": "tsc && tsc -p tsconfig.esm.json && node scripts/copy-static-types.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\"",
     "prepublishOnly": "npm run clean && npm run build"

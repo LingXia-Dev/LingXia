@@ -387,7 +387,7 @@ pub trait AppRuntime:
     }
 
     /// Whether the app is registered to launch at system startup. Only reached
-    /// on macOS/Windows — `lx.app.autostart` is not registered elsewhere — so
+    /// on macOS/Windows — `lx.host.autostart` is not registered elsewhere — so
     /// the default is an error, not a no-op: a false answer here would be a lie.
     fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
         Err(PlatformError::NotSupported("autostart".to_string()))

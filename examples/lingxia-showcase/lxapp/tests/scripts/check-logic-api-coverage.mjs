@@ -190,7 +190,7 @@ function scanReturnedObjects() {
         }
         if (ts.isCallExpression(node)) {
           const direct = directLxPath(node.expression);
-          if (direct === 'lx.surface.onContext') {
+          if (direct === 'lx.surface.watchContext') {
             const callback = node.arguments[0];
             if ((ts.isArrowFunction(callback) || ts.isFunctionExpression(callback)) && callback.parameters[0]) {
               aliases.set(callback.parameters[0].name.getText(ast), [

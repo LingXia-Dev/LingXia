@@ -250,10 +250,10 @@ not say:
 ## Handling errors
 
 A rejection means the operation failed. It never means the user said no. The
-dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`,
-`chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
+dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`, `pickFile`,
+`pickFiles`, `chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
 `readText` / `read` (iOS 16+ and macOS 15.4+ may show a paste prompt) — resolve
-a result discriminated on `canceled`, so dismissal is a branch, not an error
+a result discriminated on `status`, so dismissal is a branch, not an error
 path.
 
 `lx.share` is the exception: some platforms only observe that the system sheet
@@ -263,7 +263,7 @@ does not have.
 
 ```ts
 const scan = await lx.scanCode()
-if ((scan.status === 'canceled')) return                   // the user backed out
+if (scan.status === 'canceled') return                   // the user backed out
 lx.showToast({ title: scan.scanResult })    // narrowed: the payload is present
 ```
 

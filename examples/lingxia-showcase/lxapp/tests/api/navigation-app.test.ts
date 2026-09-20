@@ -104,7 +104,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
       describe: 'chat Logic runtime to answer for cache presence',
       retryIf: () => true,
     });
-    const present = await chat.eval({ script: `return 'cache' in lx.app;` });
+    const present = await chat.eval({ script: `return 'cache' in lx.host;` });
     expect(present).toBe(false);
   });
 

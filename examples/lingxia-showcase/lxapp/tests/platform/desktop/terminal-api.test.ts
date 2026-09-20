@@ -93,12 +93,12 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   await t.step('the ControlSurface follows host language updates', async () => {
     await terminal.page.waitFor({ page: 'settings', css: 'body', state: 'visible' });
     const preference = await app.eval({
-      script: 'return lx.app.control.displayLanguage.getPreference()',
+      script: 'return lx.host.control.displayLanguage.getPreference()',
     }) as string;
     try {
       for (const language of ['zh-CN', 'en-US']) {
         await app.eval({
-          script: `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
+          script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
         });
         await eventually(
           () => terminal.page.eval({
@@ -114,7 +114,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
       }
     } finally {
       await app.eval({
-        script: `await lx.app.control.displayLanguage.setPreference(${JSON.stringify(preference)})`,
+        script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(preference)})`,
       });
     }
   });

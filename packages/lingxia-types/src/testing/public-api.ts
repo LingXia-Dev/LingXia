@@ -60,8 +60,12 @@ import type {
 } from '../generated/logic.js';
 
 export const LX_API_NAMES = [
-  'app',
+  'host',
   'automation',
+  'alert',
+  'confirm',
+  'pickFile',
+  'pickFiles',
   'chooseDirectory',
   'chooseFile',
   'chooseMedia',
@@ -145,7 +149,7 @@ const HOST_APP_API = [
   'setBadge',
 ] as const;
 // `autostart`, `banner`, `control`, `cache`, and `notification` are injected
-// only where they apply, so a runtime walk of `lx.app` must not require them.
+// only where they apply, so a runtime walk of `lx.host` must not require them.
 const HOST_APP_RUNTIME_API = HOST_APP_API.filter(
   (name) =>
     name !== 'autostart' &&
@@ -186,7 +190,7 @@ const TERMINAL_FONTS_API = ['list'] as const;
 const TERMINAL_PREVIEW_API = ['clear', 'close', 'show'] as const;
 const WINDOWS_TERMINAL_API = ['install', 'setEnabled', 'status'] as const;
 const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
-const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', 'openUrl'] as const;
+const SURFACE_NAMESPACE_API = ['getByKey', 'watchContext', 'openDeclared', 'openPage', 'openUrl'] as const;
 const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
 const TRAY_API = ['hide', 'onClick', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
@@ -354,10 +358,10 @@ export const LX_RUNTIME_SURFACES = [
     members: LX_API_NAMES,
     optionalMembers: ['terminal'],
     properties: [
-      'app',
       'clipboard',
       'env',
       'fs',
+      'host',
       'navigationBar',
       'shell',
       'surface',
@@ -367,71 +371,71 @@ export const LX_RUNTIME_SURFACES = [
     ],
   },
   {
-    name: 'lx.app',
+    name: 'lx.host',
     layer: 'logic',
-    expression: 'lx.app',
+    expression: 'lx.host',
     members: HOST_APP_RUNTIME_API,
     properties: ['appearance', 'displayLanguage', 'env'],
   },
   {
-    name: 'lx.app.autostart',
+    name: 'lx.host.autostart',
     layer: 'logic',
-    expression: 'lx.app.autostart',
+    expression: 'lx.host.autostart',
     members: AUTOSTART_API,
     optional: true,
   },
   {
-    name: 'lx.app.banner',
+    name: 'lx.host.banner',
     layer: 'logic',
-    expression: 'lx.app.banner',
+    expression: 'lx.host.banner',
     members: BANNER_API,
     optional: true,
   },
   {
-    name: 'lx.app.notification',
+    name: 'lx.host.notification',
     layer: 'logic',
-    expression: 'lx.app.notification',
+    expression: 'lx.host.notification',
     members: NOTIFICATION_API,
     optional: true,
   },
   {
-    name: 'lx.app.cache',
+    name: 'lx.host.cache',
     layer: 'logic',
-    expression: 'lx.app.cache',
+    expression: 'lx.host.cache',
     members: APP_CACHE_API,
     optional: true,
   },
   {
-    name: 'lx.app.displayLanguage',
+    name: 'lx.host.displayLanguage',
     layer: 'logic',
-    expression: 'lx.app.displayLanguage',
+    expression: 'lx.host.displayLanguage',
     members: DISPLAY_LANGUAGE_API,
   },
   {
-    name: 'lx.app.control',
+    name: 'lx.host.control',
     layer: 'logic',
-    expression: 'lx.app.control',
+    expression: 'lx.host.control',
     members: CONTROL_API,
     properties: CONTROL_API,
     optional: true,
   },
   {
-    name: 'lx.app.control.displayLanguage',
+    name: 'lx.host.control.displayLanguage',
     layer: 'logic',
-    expression: 'lx.app.control?.displayLanguage',
+    expression: 'lx.host.control?.displayLanguage',
     members: CONTROL_DISPLAY_LANGUAGE_API,
     optional: true,
   },
   {
-    name: 'lx.app.appearance',
+    name: 'lx.host.appearance',
     layer: 'logic',
-    expression: 'lx.app.appearance',
+    expression: 'lx.host.appearance',
     members: APPEARANCE_API,
   },
   {
-    name: 'lx.app.control.appearance',
+    name: 'lx.host.control.appearance',
     layer: 'logic',
-    expression: 'lx.app.control?.appearance',
+    expression: 'lx.host.control?.appearance',
     members: CONTROL_APPEARANCE_API,
     optional: true,
   },
@@ -586,22 +590,11 @@ export const LX_RUNTIME_CAPABILITY_NAMES = LX_RUNTIME_SURFACES.flatMap(({ name, 
 /** Canonical identifiers used by runtime shape automation coverage. */
 export const LX_RUNTIME_SHAPE_NAMES = LX_RUNTIME_CAPABILITY_NAMES.map((name) => `shape:${name}`);
 
-const DOWNLOAD_TASK_API = [
-  'abort',
-  'cancel',
-  'catch',
-  'finally',
-  'next',
-  'pause',
-  'resume',
-  'return',
-  'then',
-  'wait',
-] as const;
-const UPLOAD_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
-const COMPRESS_VIDEO_TASK_API = ['cancel', 'catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
+const DOWNLOAD_TASK_API = ["result", "progress", "pause", "resume", "cancel"] as const;
+const UPLOAD_TASK_API = ["result", "progress", "cancel"] as const;
+const COMPRESS_VIDEO_TASK_API = ["result", "progress", "cancel"] as const;
 const HOST_UPDATE_INFO_API = ['apply', 'channel', 'releaseNotes', 'size', 'version'] as const;
-const HOST_UPDATE_TASK_API = ['catch', 'finally', 'next', 'return', 'then', 'wait'] as const;
+const HOST_UPDATE_TASK_API = ["result", "progress"] as const;
 const PREVIEW_MEDIA_API = ['completed', 'current', 'onChange', 'presented'] as const;
 const PAGE_SURFACE_API = [
   'alive',
@@ -653,7 +646,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'DownloadTask',
     members: DOWNLOAD_TASK_API,
-    properties: [],
+    properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'lx.downloadFile',
@@ -661,7 +654,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'UploadTask',
     members: UPLOAD_TASK_API,
-    properties: [],
+    properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'lx.uploadFile',
@@ -669,7 +662,7 @@ export const LX_RETURNED_OBJECT_SURFACES = [
   {
     name: 'CompressVideoTask',
     members: COMPRESS_VIDEO_TASK_API,
-    properties: [],
+    properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-media',
     factory: 'lx.compressVideo',
@@ -680,12 +673,12 @@ export const LX_RETURNED_OBJECT_SURFACES = [
     properties: ['channel', 'releaseNotes', 'size', 'version'],
     optionalProperties: ['releaseNotes', 'size'],
     fixture: 'external-service',
-    factory: 'lx.app.checkUpdate().update',
+    factory: 'lx.host.checkUpdate().update',
   },
   {
     name: 'HostAppUpdateTask',
     members: HOST_UPDATE_TASK_API,
-    properties: [],
+    properties: ['result', 'progress'],
     optionalProperties: [],
     fixture: 'external-service',
     factory: 'HostAppUpdateInfo.apply',
@@ -822,6 +815,6 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PreviewMediaHandle, typeof PREVIEW_MEDIA_API>>,
   AssertTrue<Exact<SurfaceApi, typeof SURFACE_NAMESPACE_API>>,
   AssertTrue<Exact<PageSurface, typeof PAGE_SURFACE_API>>,
-  AssertTrue<Exact<TabSurface, typeof TAB_SURFACE_API>>,
+  AssertTrue<Exact<Extract<TabSurface, { scope: 'tab' }>, typeof TAB_SURFACE_API>>,
   AssertTrue<Exact<PageMessagePort, typeof PAGE_MESSAGE_PORT_API>>,
 ];

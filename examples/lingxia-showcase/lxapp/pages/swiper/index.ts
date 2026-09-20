@@ -52,16 +52,16 @@ Page({
         sourceType: ["album", "camera"],
         count,
         camera: "back",
-        maxDuration: 60,
+        maxDurationSeconds: 60,
       });
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({ busy: false });
         return;
       }
       const picked = result.entries.map((entry) => ({
         id: makeId(),
         type: entry.fileType,
-        src: entry.tempFilePath,
+        src: entry.uri,
       }));
       const merged = [...(this.data.items || []), ...picked];
       this.setData({

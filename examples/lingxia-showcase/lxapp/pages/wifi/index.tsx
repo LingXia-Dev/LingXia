@@ -3,9 +3,7 @@ import { useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 type WifiInfo = {
-  SSID?: string;
   ssid?: string;
-  BSSID?: string;
   bssid?: string;
   secure?: boolean;
   signalStrength?: number;
@@ -39,7 +37,7 @@ type PageActions = {
   stopWifi(): void | Promise<unknown>;
   getWifiList(): void | Promise<unknown>;
   getConnectedWifi(): void | Promise<unknown>;
-  connectWifi(options: { SSID: string; password?: string }): void | Promise<unknown>;
+  connectWifi(options: { ssid: string; password?: string }): void | Promise<unknown>;
   onWifiConnected(): void | Promise<unknown>;
   offWifiConnected(): void | Promise<unknown>;
   clearWifiConnectedEvents(): void | Promise<unknown>;
@@ -101,7 +99,7 @@ export default function WifiPage() {
 
     try {
       await connectWifi({
-        SSID: ssid,
+        ssid: ssid,
         password: password || undefined,
       });
       console.log('WiFi connection requested:', ssid);
@@ -232,8 +230,8 @@ export default function WifiPage() {
                     <h4 className="text-sm font-semibold text-gray-700">Connected Network</h4>
                   </div>
                   <div className="space-y-0">
-                    <InfoRow label="SSID" value={connectedWifi.SSID ?? connectedWifi.ssid} />
-                    <InfoRow label="BSSID" value={connectedWifi.BSSID ?? connectedWifi.bssid} />
+                    <InfoRow label="SSID" value={connectedWifi.ssid} />
+                    <InfoRow label="BSSID" value={connectedWifi.bssid} />
                     <InfoRow label="Secure" value={connectedWifi.secure ? 'Yes' : 'No'} />
                     <InfoRow label="Signal" value={connectedWifi.signalStrength} suffix="%" />
                     <InfoRow label="Frequency" value={connectedWifi.frequency} suffix=" MHz" />
@@ -366,21 +364,21 @@ export default function WifiPage() {
                       <div
                         key={index}
                         onClick={() => {
-                          setWifiSsid((wifi.SSID ?? wifi.ssid ?? '').toString());
+                          setWifiSsid((wifi.ssid ?? '').toString());
                         }}
                         className="p-3 bg-surface rounded-lg border border-line-200 cursor-pointer hover:border-emerald-200 hover:bg-emerald-50/30 transition-colors"
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-semibold text-gray-800">
-                            {wifi.SSID ?? wifi.ssid}
+                            {wifi.ssid}
                           </span>
                           <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-600 dark:text-blue-400">
                             {typeof wifi.signalStrength === 'number' ? `${wifi.signalStrength}%` : '--'}
                           </span>
                         </div>
                         <div className="text-xs text-gray-500 space-y-1">
-                          {(wifi.BSSID ?? wifi.bssid) && (
-                            <div>BSSID: {wifi.BSSID ?? wifi.bssid}</div>
+                          {wifi.bssid && (
+                            <div>BSSID: {wifi.bssid}</div>
                           )}
                           {typeof wifi.frequency === 'number' && (
                             <div>Frequency: {wifi.frequency} MHz</div>

@@ -4,7 +4,7 @@ import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 
-spec("match the aggregate entry to the running platform and framework", { id: "TARGET-001", covers: ['lx.app.getBaseInfo', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
+spec("match the aggregate entry to the running platform and framework", { id: "TARGET-001", covers: ['lx.host.getBaseInfo', 'LxAppDriver.pages'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TARGET-001");
 
   const expectedPlatform = args.platform?.toLocaleLowerCase();
@@ -17,7 +17,7 @@ spec("match the aggregate entry to the running platform and framework", { id: "T
   }
 
   const actualPlatform = await app.eval({
-    script: 'return String(lx.app.getBaseInfo().os || "").toLowerCase()',
+    script: 'return String(lx.host.getBaseInfo().os || "").toLowerCase()',
   });
   expect(actualPlatform).toBe(expectedPlatform);
 

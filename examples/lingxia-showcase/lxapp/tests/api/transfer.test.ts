@@ -15,7 +15,7 @@ const pending = {
 
 transferSpec('download a body and read the bytes back out of the sandbox', {
   id: 'TRANSFER-DOWNLOAD-001',
-  covers: ['lx.downloadFile', 'DownloadTask.then', 'DownloadTask.wait'],
+  covers: ['lx.downloadFile', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -24,21 +24,31 @@ transferSpec('download a body and read the bytes back out of the sandbox', {
   const result = await app.eval({
     timeoutMs: 30_000,
     script: `
-      const awaited = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/a.bin?size=4096`)} });
-      // wait() and await must describe the same completed transfer.
-      const waited = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/b.bin?size=4096`)} }).wait();
-      const stat = await lx.fs.stat(awaited.tempFilePath);
+      const task = lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/a.bin?size=4096`)} });
+      const awaited = await task.result;
+      // task.result settles once, so a second await observes that same
+      // transfer rather than starting or re-reporting another one.
+      const reawaited = await task.result;
+      const stat = await lx.fs.stat(awaited.uri);
       return {
-        awaitedSize: awaited.size,
-        waitedSize: waited.size,
+        awaitedSize: awaited.sizeBytes,
+        reawaitedSize: reawaited.sizeBytes,
+        sameUri: reawaited.uri === awaited.uri,
         onDisk: stat.size,
-        managed: awaited.tempFilePath.startsWith('lx://'),
+        managed: awaited.uri.startsWith('lx://'),
       };
     `,
-  }) as { awaitedSize: number; waitedSize: number; onDisk: number; managed: boolean };
+  }) as {
+    awaitedSize: number;
+    reawaitedSize: number;
+    sameUri: boolean;
+    onDisk: number;
+    managed: boolean;
+  };
 
   expect(result.awaitedSize).toBe(4096);
-  expect(result.waitedSize).toBe(4096);
+  expect(result.reawaitedSize).toBe(4096);
+  expect(result.sameUri).toBeTruthy();
   // A download the lxapp cannot read back is not a download.
   expect(result.onDisk).toBe(4096);
   expect(result.managed).toBeTruthy();
@@ -46,7 +56,7 @@ transferSpec('download a body and read the bytes back out of the sandbox', {
 
 transferSpec('abort an in-flight download and reject with E_ABORT', {
   id: 'TRANSFER-ABORT-001',
-  covers: ['DownloadTask.abort'],
+  covers: ['DownloadTask.cancel'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -56,8 +66,8 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
     const task = lx.downloadFile({
       url: ${JSON.stringify(`${httpBase}/slow?size=400000&chunks=40&delayMs=100`)},
     });
-    setTimeout(() => task.abort(), 300);
-    return await task;
+    setTimeout(() => task.cancel(), 300);
+    return await task.result;
   `);
 
   expect(outcome.ok).toBeFalsy();
@@ -66,7 +76,7 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
 
 transferSpec('stream monotonic download progress across pause and resume', {
   id: 'TRANSFER-PROGRESS-001',
-  covers: ['DownloadTask.next', 'DownloadTask.pause', 'DownloadTask.resume'],
+  covers: ['DownloadTask.progress', 'DownloadTask.pause', 'DownloadTask.resume'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -80,8 +90,9 @@ transferSpec('stream monotonic download progress across pause and resume', {
       let pauseRequested = false;
       let resumeRequested = false;
 
+      const progress = task.progress[Symbol.asyncIterator]();
       while (true) {
-        const step = await task.next();
+        const step = await progress.next();
         if (step.done) break;
         const event = step.value;
         events.push({
@@ -89,7 +100,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
           downloaded: event.downloadedBytes ?? null,
           total: event.totalBytes ?? null,
           progress: event.progress ?? null,
-          resultSize: event.result?.size ?? null,
+          resultSize: event.result?.sizeBytes ?? null,
         });
 
         if (event.kind === 'progress' && !pauseRequested) {
@@ -104,8 +115,8 @@ transferSpec('stream monotonic download progress across pause and resume', {
         }
       }
 
-      const waited = await task.wait();
-      return { events, waitedSize: waited.size };
+      const waited = await task.result;
+      return { events, waitedSize: waited.sizeBytes };
   `);
   if (!outcome.ok) {
     throw new Error(`download progress failed: ${JSON.stringify(outcome)}`);
@@ -148,7 +159,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
 
 transferSpec('stop download iteration without canceling the transfer promise', {
   id: 'TRANSFER-RETURN-001',
-  covers: ['DownloadTask.next', 'DownloadTask.return', 'DownloadTask.finally'],
+  covers: ['DownloadTask.progress', 'DownloadTask.progress', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -158,16 +169,17 @@ transferSpec('stop download iteration without canceling the transfer promise', {
       const task = lx.downloadFile({
         url: ${JSON.stringify(`${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`)},
       });
-      const first = await task.next();
-      const returned = await task.return();
-      const afterReturn = await task.next();
+      const progress = task.progress[Symbol.asyncIterator]();
+      const first = await progress.next();
+      const returned = await progress.return();
+      const afterReturn = await progress.next();
       let finallyCount = 0;
-      const completed = await task.finally(() => { finallyCount += 1; });
+      const completed = await task.result.finally(() => { finallyCount += 1; });
       return {
         firstKind: first.value?.kind ?? null,
         returnedDone: returned.done,
         afterReturnDone: afterReturn.done,
-        completedSize: completed.size,
+        completedSize: completed.sizeBytes,
         finallyCount,
       };
   `);
@@ -191,7 +203,7 @@ transferSpec('stop download iteration without canceling the transfer promise', {
 
 transferSpec('cancel a download through its promise helpers', {
   id: 'TRANSFER-CANCEL-001',
-  covers: ['DownloadTask.cancel', 'DownloadTask.catch', 'DownloadTask.finally'],
+  covers: ['DownloadTask.cancel', 'DownloadTask.result', 'DownloadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -204,9 +216,9 @@ transferSpec('cancel a download through its promise helpers', {
         url: ${JSON.stringify(`${httpBase}/slow.bin?size=400000&chunks=40&delayMs=100&case=${encodeURIComponent(namespace)}`)},
       });
       let finallyCount = 0;
-      const finalized = task.finally(() => { finallyCount += 1; }).catch(() => undefined);
+      const finalized = task.result.finally(() => { finallyCount += 1; }).catch(() => undefined);
       setTimeout(() => task.cancel(), 300);
-      const caught = await task.catch((error) => ({
+      const caught = await task.result.catch((error) => ({
         code: String(error?.code || ''),
         message: String(error?.message || error),
       }));
@@ -236,7 +248,7 @@ transferSpec('report the server status a failed download saw', {
       const outcome = await evalCaught(app, `
         return await lx.downloadFile({
           url: ${JSON.stringify(`${httpBase}/status?code=`)} + ${status},
-        });
+        }).result;
       `);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_NETWORK');
@@ -249,7 +261,7 @@ transferSpec('report the server status a failed download saw', {
 
 transferSpec('upload a managed file as multipart and read the server echo', {
   id: 'TRANSFER-UPLOAD-001',
-  covers: ['lx.uploadFile', 'UploadTask.then', 'UploadTask.wait'],
+  covers: ['lx.uploadFile', 'UploadTask.result', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -258,15 +270,15 @@ transferSpec('upload a managed file as multipart and read the server echo', {
   const result = await app.eval({
     timeoutMs: 30_000,
     script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/up.bin?size=1024`)} });
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/up.bin?size=1024`)} }).result;
       const response = await lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         name: 'asset',
         fileName: 'up.bin',
         formData: { note: 'spec' },
         headers: { 'x-lx-test': 'echo' },
-      });
+      }).result;
       return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
     `,
   }) as {
@@ -300,20 +312,20 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
   const result = await app.eval({
     timeoutMs: 30_000,
     script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/env.bin?size=512`)} });
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/env.bin?size=512`)} }).result;
       // Content-Type carries the boundary the server parses by, so a caller
       // header must not reach it -- unlike bodyMode 'raw', where it must.
       // user-agent is the runtime's to state, and content-length is derived.
       const response = await lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         method: 'PUT',
         headers: {
           'Content-Type': 'text/plain',
           'User-Agent': 'spoofed/1.0',
           'Content-Length': '1',
         },
-      });
+      }).result;
       return JSON.parse(response.data);
     `,
   }) as {
@@ -337,7 +349,7 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
 
 transferSpec('stream upload progress that ends on a completed event', {
   id: 'TRANSFER-UPLOAD-PROGRESS-001',
-  covers: ['lx.uploadFile', 'UploadTask.next'],
+  covers: ['lx.uploadFile', 'UploadTask.progress'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -348,23 +360,25 @@ transferSpec('stream upload progress that ends on a completed event', {
     script: `
       const collect = async (options) => {
         const events = [];
-        for await (const event of lx.uploadFile(options)) {
+        const task = lx.uploadFile(options);
+        for await (const event of task.progress) {
           events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
         }
+        await task.result;
         return events;
       };
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/prog.bin?size=1500000`)} });
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/prog.bin?size=1500000`)} }).result;
       const raw = await collect({
         url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         method: 'PUT',
         bodyMode: 'raw',
       });
       const multipart = await collect({
         url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
       });
-      return { raw, multipart, size: source.size };
+      return { raw, multipart, size: source.sizeBytes };
     `,
   }) as {
     raw: { kind: string; uploaded: number; total: number }[];
@@ -393,7 +407,7 @@ transferSpec('stream upload progress that ends on a completed event', {
 
 transferSpec('stop upload iteration and observe rejected promise helpers', {
   id: 'TRANSFER-UPLOAD-HELPERS-001',
-  covers: ['UploadTask.return', 'UploadTask.catch', 'UploadTask.finally'],
+  covers: ['UploadTask.progress', 'UploadTask.result', 'UploadTask.result'],
   app: SHOWCASE_APP_ID,
   ...pending,
 }, async (t) => {
@@ -404,29 +418,30 @@ transferSpec('stop upload iteration and observe rejected promise helpers', {
     script: `
       const source = await lx.downloadFile({
         url: ${JSON.stringify(`${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`)},
-      });
+      }).result;
 
       const completing = lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
       });
-      const first = await completing.next();
-      const returned = await completing.return();
-      const afterReturn = await completing.next();
+      const completingProgress = completing.progress[Symbol.asyncIterator]();
+      const first = await completingProgress.next();
+      const returned = await completingProgress.return();
+      const afterReturn = await completingProgress.next();
       let successFinallyCount = 0;
-      const completed = await completing.finally(() => { successFinallyCount += 1; });
+      const completed = await completing.result.finally(() => { successFinallyCount += 1; });
 
       const rejecting = lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         method: 'PUT',
         bodyMode: 'raw',
       });
       let rejectFinallyCount = 0;
-      const finalized = rejecting
+      const finalized = rejecting.result
         .finally(() => { rejectFinallyCount += 1; })
         .catch(() => undefined);
-      const caught = await rejecting.catch((error) => ({
+      const caught = await rejecting.result.catch((error) => ({
         code: String(error?.code || ''),
         detail: String(error?.data?.detail || ''),
       }));
@@ -473,25 +488,25 @@ transferSpec('upload a raw body with PUT for presigned endpoints', {
   const result = await app.eval({
     timeoutMs: 30_000,
     script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=2048`)} });
+      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=2048`)} }).result;
       const response = await lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         method: 'PUT',
         bodyMode: 'raw',
         mimeType: 'application/x-lingxia-test',
         headers: { 'x-lx-test': 'echo' },
-      });
+      }).result;
       // A presigned signature covers Content-Type, so an explicit header has
       // to win over mimeType rather than be rewritten by the runtime.
       const overridden = await lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.tempFilePath,
+        filePath: source.uri,
         method: 'PUT',
         bodyMode: 'raw',
         mimeType: 'application/x-lingxia-test',
         headers: { 'Content-Type': 'image/avif' },
-      });
+      }).result;
       return {
         statusCode: response.statusCode,
         echo: JSON.parse(response.data),
@@ -535,24 +550,24 @@ transferSpec('reject multipart-only options when the body is raw', {
 
   // Dropping these silently would leave the lxapp believing they were sent.
   const rejectedFormData = await evalCaught(app, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} });
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-      filePath: source.tempFilePath,
+      filePath: source.uri,
       method: 'PUT',
       bodyMode: 'raw',
       formData: { note: 'spec' },
-    });
+    }).result;
   `);
   const rejectedName = await evalCaught(app, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} });
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-      filePath: source.tempFilePath,
+      filePath: source.uri,
       method: 'PUT',
       bodyMode: 'raw',
       name: 'asset',
-    });
+    }).result;
   `);
 
   expect(rejectedFormData.ok).toBeFalsy();
@@ -573,13 +588,13 @@ transferSpec('report the refusing status when a raw upload is rejected mid-body'
   // body is done. The status has to survive that, or the lxapp cannot tell a
   // rejected signature from a flaky network.
   const outcome = await evalCaught(app, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/reject.bin?size=8000000`)} });
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/reject.bin?size=8000000`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403`)},
-      filePath: source.tempFilePath,
+      filePath: source.uri,
       method: 'PUT',
       bodyMode: 'raw',
-    });
+    }).result;
   `);
 
   expect(outcome.ok).toBeFalsy();
@@ -599,13 +614,13 @@ transferSpec('accept PATCH and an empty file as a raw body', {
     script: `
       // Zero bytes is only reachable with a raw body -- multipart always has an
       // envelope -- and it must still be a well-formed request, not a hang.
-      const empty = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/empty.bin?size=0`)} });
+      const empty = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/empty.bin?size=0`)} }).result;
       const response = await lx.uploadFile({
         url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: empty.tempFilePath,
+        filePath: empty.uri,
         method: 'PATCH',
         bodyMode: 'raw',
-      });
+      }).result;
       return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
     `,
   }) as {
@@ -632,13 +647,13 @@ transferSpec('deny an upload to a host the lxapp never trusted', {
   // The host network grant governs uploads exactly as it governs downloads,
   // and the file resolving first must not be mistaken for permission to send it.
   const outcome = await evalCaught(app, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} });
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: 'https://not-trusted.example/upload',
-      filePath: source.tempFilePath,
+      filePath: source.uri,
       method: 'PUT',
       bodyMode: 'raw',
-    });
+    }).result;
   `);
 
   expect(outcome.ok).toBeFalsy();
@@ -654,14 +669,14 @@ transferSpec('cancel an upload and reject rather than resolve', {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-CANCEL-001');
 
   const outcome = await evalCaught(app, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/big.bin?size=2000000`)} });
+    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/big.bin?size=2000000`)} }).result;
     // holdMs keeps the request open long enough for a cancel to be meaningful.
     const task = lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload?holdMs=3000`)},
-      filePath: source.tempFilePath,
+      filePath: source.uri,
     });
     setTimeout(() => task.cancel(), 200);
-    return await task;
+    return await task.result;
   `);
 
   expect(outcome.ok).toBeFalsy();

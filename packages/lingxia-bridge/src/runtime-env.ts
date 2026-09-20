@@ -80,7 +80,7 @@ export function getDisplayLanguage(): string {
  *
  * Change-only, so that this composes with `useSyncExternalStore`: the listener
  * runs when the language changes, never on subscribe. Read the current value
- * with `getDisplayLanguage()`. Logic's `lx.app.displayLanguage.watch` differs
+ * with `getDisplayLanguage()`. Logic's `lx.host.displayLanguage.watch` differs
  * deliberately — it has no render loop to feed, so it delivers immediately.
  */
 export function subscribeDisplayLanguage(

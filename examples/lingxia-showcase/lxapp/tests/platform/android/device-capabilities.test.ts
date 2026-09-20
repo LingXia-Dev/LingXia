@@ -54,11 +54,11 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
         started: true,
         list: {
           count: list.length,
-          named: list.filter((entry) => typeof entry.SSID === 'string').length,
-          sample: list[0] ? String(list[0].SSID) : '',
+          named: list.filter((entry) => typeof entry.ssid === 'string').length,
+          sample: list[0] ? String(list[0].ssid) : '',
         },
         connected: {
-          ssid: String(connected.SSID ?? ''),
+          ssid: String(connected.ssid ?? ''),
           frequency: Number(connected.frequency ?? 0),
           signal: Number(connected.signalStrength ?? -1),
         },
@@ -94,11 +94,11 @@ androidMediaSpec('save an image and a video into the photo library', {
   const saved = await app.eval({
     timeoutMs: 40_000,
     script: `
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} });
-      const mp4 = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} });
-      await lx.saveImageToPhotosAlbum({ filePath: png.tempFilePath });
-      await lx.saveVideoToPhotosAlbum({ filePath: mp4.tempFilePath });
-      return { image: png.size, video: mp4.size };
+      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
+      const mp4 = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
+      await lx.saveImageToPhotosAlbum({ filePath: png.uri });
+      await lx.saveVideoToPhotosAlbum({ filePath: mp4.uri });
+      return { image: png.sizeBytes, video: mp4.sizeBytes };
     `,
   }) as { image: number; video: number };
   expect(saved.image).toBeGreaterThan(0);

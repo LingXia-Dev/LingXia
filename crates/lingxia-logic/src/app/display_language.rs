@@ -28,8 +28,8 @@ struct StateEvent {
     state: IncomingState,
 }
 
-/// `lx.app.displayLanguage` — the language this lxapp renders in. Every context
-/// gets it, including the control surfaces that have no other `lx.app` members:
+/// `lx.host.displayLanguage` — the language this lxapp renders in. Every context
+/// gets it, including the control surfaces that have no other `lx.host` members:
 /// following the product is not a privilege.
 pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
@@ -39,7 +39,7 @@ pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-/// `lx.app.control.displayLanguage` — the preference behind that language.
+/// `lx.host.control.displayLanguage` — the preference behind that language.
 pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set(

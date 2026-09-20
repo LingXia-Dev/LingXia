@@ -50,14 +50,14 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
       const read = await lx.clipboard.readText();
       const types = await lx.clipboard.types();
       return {
-        canceled: read.canceled,
-        empty: read.canceled ? null : read.empty,
-        text: !read.canceled && !read.empty ? read.text : null,
+        status: read.status,
+        empty: (read.status === 'canceled') ? null : (read.status === 'empty'),
+        text: read.status !== 'canceled' && !(read.status === 'empty') ? read.text : null,
         types,
       };
     `,
-  }) as { canceled: boolean; empty: boolean | null; text: string | null; types: string[] };
-  expect(seen.canceled).toBe(false);
+  }) as { status: 'ok' | 'canceled' | 'empty'; empty: boolean | null; text: string | null; types: string[] };
+  expect(seen.status === 'canceled').toBe(false);
   expect(seen.empty).toBe(false);
   expect(seen.text).toBe(fromOs);
   expect(seen.types).toContain('text');

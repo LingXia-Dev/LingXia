@@ -284,9 +284,9 @@ function isCameraOnlySource(sourceOption: MediaOption | undefined) {
   return sources.includes("camera") && !sources.includes("album");
 }
 
-function mapChosenMedia(results: { tempFilePath: string; fileType: string }[]): ChosenMedia[] {
+function mapChosenMedia(results: { uri: string; fileType: string }[]): ChosenMedia[] {
   return results.map((item) => ({
-    path: item.tempFilePath,
+    path: item.uri,
     type: item.fileType,
   }));
 }
@@ -313,9 +313,9 @@ async function enrichVideoItemsWithMetadata(items: ChosenMedia[]): Promise<Chose
 
 async function pickOption(options: MediaOption[], currentKey?: string) {
   const result = await lx.showActionSheet({
-    itemList: options.map((option) => option.label),
+    items: options.map((option, index) => ({ id: String(index), label: option.label })),
   });
-  return result.canceled ? null : options[result.index] || null;
+  return (result.status === 'canceled') ? null : options[Number(result.id)] || null;
 }
 
 function createState(modeKey: unknown) {
@@ -394,7 +394,7 @@ function createState(modeKey: unknown) {
     thumbnailMaxHeight: "",
     thumbnailTimeMs: defaults.thumbnailTimeMs || "0",
     thumbnailBusy: false,
-    thumbnailResult: null as { tempFilePath?: string } | null,
+    thumbnailResult: null as { uri?: string } | null,
     thumbnailError: "",
     saveToAlbumBusy: false,
     videoCompressQuality: "medium",
@@ -403,7 +403,7 @@ function createState(modeKey: unknown) {
     videoCompressResolution: "0.8",
     videoCompressBusy: false,
     videoCompressProgress: null as number | null,
-    videoCompressResult: null as { tempFilePath?: string } | null,
+    videoCompressResult: null as { uri?: string } | null,
     videoCompressError: "",
     previewRotateKey: "meta",
     previewObjectFitKey: "default",
@@ -603,8 +603,8 @@ Page({
       request.count = countLimit;
     }
     if (this.data.mediaType === "video") {
-      const maxDuration = parsePositiveInt(this.data.durationValue);
-      if (maxDuration) request.maxDuration = maxDuration;
+      const maxDurationSeconds = parsePositiveInt(this.data.durationValue);
+      if (maxDurationSeconds) request.maxDurationSeconds = maxDurationSeconds;
       if (this.data.cameraKey) request.camera = this.data.cameraKey as ChooseMediaOptions["camera"];
     }
 
@@ -612,7 +612,7 @@ Page({
 
     try {
       const picked = await lx.chooseMedia(request);
-      if (picked.canceled) {
+      if (picked.status === 'canceled') {
         return;
       }
       const mapped = mapChosenMedia(picked.entries);
@@ -645,7 +645,7 @@ Page({
         payload.scanType = [scanTypeKey as NonNullable<ScanCodeOptions["scanType"]>[number]];
       }
       const result = await lx.scanCode(payload);
-      if (result.canceled) {
+      if (result.status === 'canceled') {
         this.setData({ scanBusy: false });
         return;
       }
@@ -751,7 +751,8 @@ Page({
       // Telemetry: log first-paint latency. The showcase doesn't have an
       // underlying overlay to hide, so we just observe and log.
       const startedAt = Date.now();
-      handle.presented.then(() => {
+      handle.presented.then((outcome) => {
+        if (outcome.status !== "presented") return;
         const ms = Date.now() - startedAt;
         console.log("[media-demo] presented:", { latencyMs: ms });
       });
@@ -924,7 +925,7 @@ Page({
   },
 
   previewVideoThumbnail: async function () {
-    const path = this.data.thumbnailResult?.tempFilePath;
+    const path = this.data.thumbnailResult?.uri;
     if (!path) {
       lx.showToast({
         title: "No thumbnail to preview",
@@ -993,10 +994,10 @@ Page({
     const task = lx.compressVideo(payload);
     this._compressVideoTask = task;
     try {
-      for await (const { progress } of task) {
+      for await (const { progress } of task.progress) {
         this.setData({ videoCompressProgress: progress });
       }
-      const result = await task.wait();
+      const result = await task.result;
       this.setData({
         videoCompressResult: result,
         videoCompressBusy: false,
@@ -1026,7 +1027,7 @@ Page({
   },
 
   previewCompressedVideo: async function () {
-    const path = this.data.videoCompressResult?.tempFilePath;
+    const path = this.data.videoCompressResult?.uri;
     if (!path) {
       lx.showToast({ title: "No compressed video to preview", icon: "none" });
       return;
@@ -1094,7 +1095,7 @@ Page({
 
     try {
       const result = await lx.compressImage(payload);
-      const resultPath = result.tempFilePath;
+      const resultPath = result.uri;
       const info = await lx.getImageInfo({ path: resultPath });
       const size = await this._getFileSize(resultPath);
       this.setData({
@@ -1150,7 +1151,7 @@ Page({
         sourceType: ["album", "camera"],
         camera: "back",
       });
-      return result.canceled ? null : result.entries[0].tempFilePath;
+      return (result.status === 'canceled') ? null : result.entries[0].uri;
     } catch (error) {
       console.error("[media-demo] pickSingleMedia failed:", error);
       lx.showToast({ title: errorMessage(error, "chooseMedia failed"), icon: "none" });
@@ -1165,8 +1166,8 @@ Page({
       const result = await lx.chooseMedia({
         count: 1, mediaType: ["image"], sourceType: ["camera"], camera: "back",
       });
-      if (result.canceled) return;
-      await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
+      if (result.status === 'canceled') return;
+      await lx.saveImageToPhotosAlbum({ filePath: result.entries[0].uri });
       lx.showToast({ title: "Image saved to album", icon: "success" });
     } catch (error) {
       lx.showToast({ title: errorMessage(error, "Failed to save image"), icon: "none" });
@@ -1180,10 +1181,10 @@ Page({
     this.setData({ saveToAlbumBusy: true });
     try {
       const result = await lx.chooseMedia({
-        count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDuration: 60,
+        count: 1, mediaType: ["video"], sourceType: ["camera"], camera: "back", maxDurationSeconds: 60,
       });
-      if (result.canceled) return;
-      await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].tempFilePath });
+      if (result.status === 'canceled') return;
+      await lx.saveVideoToPhotosAlbum({ filePath: result.entries[0].uri });
       lx.showToast({ title: "Video saved to album", icon: "success" });
     } catch (error) {
       lx.showToast({ title: errorMessage(error, "Failed to save video"), icon: "none" });

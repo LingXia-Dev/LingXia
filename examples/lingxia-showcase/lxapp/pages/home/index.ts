@@ -40,8 +40,8 @@ Page({
     try {
       this.setData({
         appearance: {
-          preference: lx.app.control?.appearance.getPreference() ?? "auto",
-          resolved: lx.app.appearance.get(),
+          preference: lx.host.control?.appearance.getPreference() ?? "auto",
+          resolved: lx.host.appearance.get(),
         },
       });
     } catch (error) {
@@ -51,7 +51,7 @@ Page({
 
   _syncLanguage: function () {
     try {
-      const resolved = lx.app.displayLanguage.get();
+      const resolved = lx.host.displayLanguage.get();
       const patch: {
         displayLanguage: {
           preference: DisplayLanguagePreference;
@@ -61,7 +61,7 @@ Page({
       } = {
         displayLanguage: {
           preference: resolveDisplayLanguagePreference(
-            lx.app.control?.displayLanguage.getPreference(),
+            lx.host.control?.displayLanguage.getPreference(),
           ),
           resolved,
         },
@@ -78,10 +78,10 @@ Page({
   setAppearance: async function (options: { preference?: "auto" | "light" | "dark" } = {}) {
     const preference = options.preference || "auto";
     try {
-      await lx.app.control?.appearance.setPreference(preference);
+      await lx.host.control?.appearance.setPreference(preference);
     } catch (error) {
       console.warn("[Home] Failed to set appearance:", error);
-      const { t } = getMessages(resolveDisplayLanguage(lx.app.displayLanguage.get()));
+      const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       lx.showToast({ title: t("appearanceUnavailable"), icon: "none" });
     }
     this._syncAppearance();
@@ -94,10 +94,10 @@ Page({
   ) {
     const preference = options.preference || "auto";
     try {
-      await lx.app.control?.displayLanguage.setPreference(preference);
+      await lx.host.control?.displayLanguage.setPreference(preference);
     } catch (error) {
       console.warn("[Home] Failed to set display language:", error);
-      const { t } = getMessages(resolveDisplayLanguage(lx.app.displayLanguage.get()));
+      const { t } = getMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       lx.showToast({ title: t("languageUnavailable"), icon: "none" });
     }
     this._syncLanguage();
@@ -143,10 +143,10 @@ Page({
     console.log("[Home] Page loaded");
     this._syncAppearance();
     this._syncLanguage();
-    this.stopWatchingAppearance = lx.app.appearance.watch(() => this._syncAppearance());
-    this.stopWatchingLanguage = lx.app.displayLanguage.watch(() => this._syncLanguage());
+    this.stopWatchingAppearance = lx.host.appearance.watch(() => this._syncAppearance());
+    this.stopWatchingLanguage = lx.host.displayLanguage.watch(() => this._syncLanguage());
     this.stopWatchingLanguagePreference =
-      lx.app.control?.displayLanguage.watchPreference(() => this._syncLanguage()) ?? null;
+      lx.host.control?.displayLanguage.watchPreference(() => this._syncLanguage()) ?? null;
     try {
       const info = lx.getLxAppInfo();
       const suffix =
@@ -184,22 +184,18 @@ Page({
     this._syncLanguage();
   },
 
-  greet: function (option: { name?: string } = {}) {
-
+  greet: async function (option: { name?: string } = {}) {
     const name = typeof option.name === "string" && option.name ? option.name : "LingXia";
     const count = this.data.greetCount + 1;
-    this.setData(
-      {
-        greeting: formatHomeGreeting(
-          resolveDisplayLanguage(lx.app.displayLanguage.get()),
-          name,
-          count,
-        ),
-        greetCount: count,
-      },
-      () => {
-        console.log("setData callback");
-      },
-    );
+    this.setData({
+      greeting: formatHomeGreeting(
+        resolveDisplayLanguage(lx.host.displayLanguage.get()),
+        name,
+        count,
+      ),
+      greetCount: count,
+    });
+    await this.flush();
+    console.log("[Home] greeting acknowledged by the View");
   },
 });

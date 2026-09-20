@@ -443,7 +443,7 @@ pub struct CapabilitiesConfig {
     /// lxapp must also declare the `process` security privilege.
     #[serde(default)]
     pub process: bool,
-    /// Unlocks `lx.app.autostart` (launch at system startup). macOS/Windows
+    /// Unlocks `lx.host.autostart` (launch at system startup). macOS/Windows
     /// only; enabling is always a runtime user decision, never automatic.
     #[serde(default)]
     pub autostart: bool,
@@ -1054,7 +1054,7 @@ pub mod capability {
             super::super::host_build().proxy
         }
 
-        /// Local notification API (`lx.app.notification`). Every host that
+        /// Local notification API (`lx.host.notification`). Every host that
         /// implements the trait; iOS/Harmony still also use the yaml flag for
         /// their existing remote-push bootstrap.
         pub fn notifications() -> bool {

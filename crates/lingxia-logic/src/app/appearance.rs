@@ -23,7 +23,7 @@ struct PreferenceEvent {
     preference: String,
 }
 
-/// `lx.app.appearance` — the light/dark scheme this lxapp renders in. An lxapp
+/// `lx.host.appearance` — the light/dark scheme this lxapp renders in. An lxapp
 /// that pinned one in its manifest reports that; the rest follow the product.
 pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
@@ -33,7 +33,7 @@ pub(super) fn init_follower(ctx: &JSContext, app: &JSObject) -> JSResult<()> {
     Ok(())
 }
 
-/// `lx.app.control.appearance` — the product's own light/dark preference.
+/// `lx.host.control.appearance` — the product's own light/dark preference.
 pub(super) fn init_control(ctx: &JSContext, control: &JSObject) -> JSResult<()> {
     let namespace = JSObject::new(ctx);
     namespace.set(
@@ -113,7 +113,7 @@ async fn set_preference(ctx: JSContext, preference: JSValue) -> JSResult<()> {
 }
 
 /// Follow the choice, not what it resolves to: a system flip under `'auto'`
-/// moves `lx.app.appearance.watch` and leaves this quiet.
+/// moves `lx.host.appearance.watch` and leaves this quiet.
 fn watch_preference(ctx: JSContext, callback: JSValue) -> JSResult<JSFunc> {
     let (_, callback) = authorization::require_before_decode(
         &ctx,

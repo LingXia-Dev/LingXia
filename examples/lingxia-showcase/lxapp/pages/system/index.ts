@@ -71,13 +71,13 @@ Page({
 
   getBaseInfo: async function () {
     try {
-      const info = lx.app.getBaseInfo();
+      const info = lx.host.getBaseInfo();
       console.log('App base info:', info);
       this.setData({
         appBaseInfo: info,
         // Identity is fixed for the process; the language is not, so it comes
         // from its own namespace rather than the identity snapshot.
-        displayLanguage: lx.app.displayLanguage.get()
+        displayLanguage: lx.host.displayLanguage.get()
       });
     } catch (error) {
       console.error('Failed to get app base info:', error);
@@ -88,10 +88,10 @@ Page({
     }
   },
 
-  // lx.app.autostart is absent off macOS/Windows or without the capability,
+  // lx.host.autostart is absent off macOS/Windows or without the capability,
   // so presence of the member is the support check.
   refreshAutostart: async function () {
-    const autostart = lx.app.autostart;
+    const autostart = lx.host.autostart;
     if (!autostart) {
       this.setData({ autostartSupported: false, autostartEnabled: null });
       return;
@@ -108,11 +108,11 @@ Page({
     }
   },
 
-  // `lx.app.cache` is the whole product's cache, not this lxapp's, which is why
+  // `lx.host.cache` is the whole product's cache, not this lxapp's, which is why
   // it is injected only into the Control app. The showcase *is* the Control
   // app, so the member is present here; a guest does not have it.
   refreshCacheSize: async function () {
-    const cache = lx.app.cache;
+    const cache = lx.host.cache;
     if (!cache) {
       this.setData({ cacheBytes: null, cacheError: 'Cache APIs are Control-app only' });
       return;
@@ -132,7 +132,7 @@ Page({
       return;
     }
     this.setData({ cacheBusy: true, cacheError: '', cacheNotice: '' });
-    const cache = lx.app.cache;
+    const cache = lx.host.cache;
     if (!cache) {
       this.setData({ cacheBusy: false, cacheError: 'Cache APIs are Control-app only' });
       return;
@@ -162,7 +162,7 @@ Page({
   // Presence of the member is the support check — same latch as
   // `lx.supports('app.notification')`.
   refreshNotification: async function () {
-    const notification = lx.app.notification;
+    const notification = lx.host.notification;
     if (!notification) {
       this.setData({
         notificationSupported: false,
@@ -194,7 +194,7 @@ Page({
   },
 
   showNotification: async function () {
-    const notification = lx.app.notification;
+    const notification = lx.host.notification;
     if (!notification) {
       this.setData({ notificationError: 'Notifications are absent on this host' });
       return;
@@ -216,7 +216,7 @@ Page({
   },
 
   cancelNotification: async function () {
-    const notification = lx.app.notification;
+    const notification = lx.host.notification;
     if (!notification) {
       return;
     }
@@ -234,7 +234,7 @@ Page({
   },
 
   refreshBanner: function () {
-    const banner = lx.app.banner;
+    const banner = lx.host.banner;
     const supported = !!(banner && typeof banner.show === 'function');
     this.setData({
       bannerSupported: supported,
@@ -247,7 +247,7 @@ Page({
   },
 
   showBannerToast: async function () {
-    const banner = lx.app.banner;
+    const banner = lx.host.banner;
     if (!banner) {
       this.setData({ bannerError: 'Desktop banner is absent on this host' });
       return;
@@ -271,7 +271,7 @@ Page({
       });
       this.setData({
         bannerBusy: false,
-        bannerLast: result.canceled
+        bannerLast: (result.status === 'canceled')
           ? `${result.reason}`
           : `action:${result.action}`,
       });
@@ -282,7 +282,7 @@ Page({
   },
 
   showBannerPrompt: async function () {
-    const banner = lx.app.banner;
+    const banner = lx.host.banner;
     if (!banner) {
       this.setData({ bannerError: 'Desktop banner is absent on this host' });
       return;
@@ -310,7 +310,7 @@ Page({
       });
       this.setData({
         bannerBusy: false,
-        bannerLast: result.canceled
+        bannerLast: (result.status === 'canceled')
           ? `${result.reason}`
           : `action:${result.action}`,
       });
@@ -321,7 +321,7 @@ Page({
   },
 
   dismissBanner: async function () {
-    const banner = lx.app.banner;
+    const banner = lx.host.banner;
     if (!banner) {
       return;
     }
@@ -341,7 +341,7 @@ Page({
   },
 
   toggleAutostart: async function () {
-    const autostart = lx.app.autostart;
+    const autostart = lx.host.autostart;
     if (!autostart) {
       return;
     }

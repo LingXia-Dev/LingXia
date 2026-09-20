@@ -30,13 +30,15 @@ may change between releases.
 ### `downloadFile`
 
 `downloadFile` defaults to app-owned output. Final output depends on
-`destination` and `filePath`.
+`destination` and `filePath`. The result reports which one applies as
+`storage` (`temp` | `userdata` | `downloads`); a `downloads` uri is opaque to
+`lx.fs`.
 
 Without `filePath`, the result is temp:
 
 ```ts
-const result = await lx.downloadFile({ url, headers, timeout, signal }).result;
-result.tempFilePath; // lx://temp/<opaque_id>
+const result = await lx.downloadFile({ url, headers, timeoutMs, signal }).result;
+result.uri; // lx://temp/<opaque_id>
 ```
 
 With `filePath`, the destination must be relative or `lx://userdata/...`:
@@ -46,11 +48,11 @@ const result = await lx.downloadFile({
   url,
   filePath: "videos/video.mp4",
 }).result;
-result.filePath; // lx://userdata/videos/video.mp4
+result.uri; // lx://userdata/videos/video.mp4
 ```
 
 With `destination: "downloads"`, the file is saved into the user's Downloads
-directory and appears in the built-in downloads page. `filePath` is treated as
+directory and appears in the built-in downloads page. `suggestedName` is treated as
 a filename or relative-name hint only; the runtime sanitizes it, prevents
 directory traversal, and avoids overwriting existing files.
 
@@ -58,7 +60,7 @@ directory traversal, and avoids overwriting existing files.
 const task = lx.downloadFile({
   url,
   destination: "downloads",
-  filePath: "video.mp4",
+  suggestedName: "video.mp4",
 });
 ```
 
@@ -108,12 +110,12 @@ Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and
 
 ```ts
 await lx.fs.copy(
-  result.tempFilePath,
+  result.uri,
   "media/video.mp4",                    // relative → lx://userdata/media/video.mp4
 );
 
 await lx.fs.rename(
-  result.tempFilePath,
+  result.uri,
   `${lx.env.USER_CACHE_PATH}/previews/video.mp4`,
 );
 ```
@@ -178,11 +180,12 @@ for await (const event of task.progress) {
 const { statusCode, data } = await task.result;
 ```
 
-The task is awaitable and async-iterable. `cancel()` cancels the transfer;
-`return()` or breaking iteration stops progress consumption without canceling
-the upload. The result contains HTTP `statusCode` and response text `data`;
-validate both against the endpoint contract before claiming business success.
-`signal` and `timeout` are available. Keep the managed source file alive until
+`task.result` settles once; `task.progress` has one consumer, and breaking
+out of iteration only detaches it. Attach a rejection handler to `result` when
+observing progress separately. `cancel()` cancels the transfer. The result
+contains HTTP `statusCode` and response text `data`; validate both against the
+endpoint contract before claiming business success.
+`signal` and `timeoutMs` are available. Keep the managed source file alive until
 the transfer finishes. Network grants follow [permissions](../native/permissions.md).
 Cloud/provider upload wrappers define their own protocol; consult their owning
 skill rather than treating them as interchangeable with `lx.uploadFile`.
@@ -295,14 +298,14 @@ skipped/failed work and must not promise that all caches were cleared.
 ## Storage Summary
 
 ```text
-tempFilePath  -> lx://temp/<opaque_id>
-                 short-lived, session/size scoped
+storage: temp      -> lx://temp/<opaque_id>
+                      short-lived, session/size scoped
 
-filePath      -> lx://userdata/<path>
-                 durable owner-private data
+storage: userdata  -> lx://userdata/<path>
+                      durable owner-private data
 
-usercache     -> lx://usercache/<path>
-                 regenerable cache, LRU-evicted under capacity pressure
+usercache          -> lx://usercache/<path>
+                      regenerable cache, LRU-evicted under capacity pressure
 ```
 
 ## Rules for Developers
@@ -310,9 +313,10 @@ usercache     -> lx://usercache/<path>
 - Use temp files for immediate preview, upload, transform, or save flows.
 - Use `lx.fs.write(lx.env.USER_CACHE_PATH + "/...", data)` for developer-generated regenerable files.
 - Use `lx.fs.copy(source, destination)` when a temp file must be copied into userdata or usercache.
-- Use `lx.fs.rename(tempFilePath, "lx://usercache/...")` when a temp file should become auto-cleaned cache without a second copy.
+- Use `lx.fs.rename(uri, "lx://usercache/...")` when a temp file should become auto-cleaned cache without a second copy.
 - Use `downloadFile({ filePath })` only for durable userdata destinations.
 - Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
-- Do not store business-critical references to `tempFilePath`.
+- Do not store business-critical references to a `storage: 'temp'` uri; copy it
+  into userdata first.
 - Use `lx.host.cache` from the Control app for a product-wide "clear cache"
   control; guests do not have the member.

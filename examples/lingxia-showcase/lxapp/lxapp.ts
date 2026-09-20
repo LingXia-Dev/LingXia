@@ -127,8 +127,8 @@ async function applyHostChrome(os: string, tag: string) {
 App({
   onLaunch: async function (this: ShowcaseAppInstance, options?: AppLaunchOptions) {
     routeFromAppLink(options);
-    const { os } = lx.app.getBaseInfo();
-    const applyChrome = (tag = lx.app.displayLanguage.get()) => {
+    const { os } = lx.host.getBaseInfo();
+    const applyChrome = (tag = lx.host.displayLanguage.get()) => {
       void applyHostChrome(os, tag).catch((error) =>
         console.warn("host chrome language update failed", error),
       );
@@ -136,17 +136,17 @@ App({
     // Preference clicks always move this event. Effective-tag `watch` can
     // miss a Harmony dispatch, which left tab labels on the previous language
     // while page copy and host "More" followed.
-    lx.app.displayLanguage.watch((tag) => {
+    lx.host.displayLanguage.watch((tag) => {
       applyChrome(tag);
     });
-    lx.app.control?.displayLanguage.watchPreference(() => {
+    lx.host.control?.displayLanguage.watchPreference(() => {
       applyChrome();
     });
 
     const um = lx.getUpdateManager();
     um.onUpdateReady(async () => {
       console.log("Update ready; asking user to apply...");
-      const { t } = getAppMessages(resolveDisplayLanguage(lx.app.displayLanguage.get()));
+      const { t } = getAppMessages(resolveDisplayLanguage(lx.host.displayLanguage.get()));
       const applyNow = await lx.showModal({
         title: t("updateTitle"),
         content: t("updateBody"),
@@ -154,7 +154,7 @@ App({
         cancelText: t("updateLater"),
         confirmText: t("updateApply"),
       });
-      if (!applyNow.canceled) {
+      if (applyNow.status !== 'canceled') {
         um.applyUpdate();
       }
     });

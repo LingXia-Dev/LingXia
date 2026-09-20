@@ -78,12 +78,12 @@ fn transform_lng(lng: f64, lat: f64) -> f64 {
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSLocationOptions {
-    #[js_name = "type"]
+    #[js_name = "coordinateSystem"]
     coordinate_type: Option<String>,
     altitude: Option<bool>,
     #[js_name = "isHighAccuracy"]
     is_high_accuracy: Option<bool>,
-    #[js_name = "highAccuracyExpireTime"]
+    #[js_name = "timeoutMs"]
     high_accuracy_expire_time: Option<u32>,
 }
 
@@ -149,7 +149,7 @@ async fn get_location(
         .unwrap_or("wgs84");
     if requested_type != "wgs84" && requested_type != "gcj02" {
         return Err(js_invalid_parameter_error(format!(
-            "getLocation invalid type: {}",
+            "getLocation invalid coordinateSystem: {}",
             requested_type
         )));
     }

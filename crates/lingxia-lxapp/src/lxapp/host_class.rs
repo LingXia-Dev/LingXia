@@ -16,7 +16,7 @@ pub enum HostClass {
 }
 
 impl HostClass {
-    /// The wire value shared by the bridge config, `lx.app.getBaseInfo()` and
+    /// The wire value shared by the bridge config, `lx.host.getBaseInfo()` and
     /// the tab-bar `showOn` list, so the three can never disagree.
     pub const fn as_str(self) -> &'static str {
         match self {

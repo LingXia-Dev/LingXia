@@ -414,7 +414,7 @@
                 <span>{{ thumbnailError }}</span>
               </div>
 
-              <div v-if="thumbnailResult?.tempFilePath" class="space-y-4">
+              <div v-if="thumbnailResult?.uri" class="space-y-4">
                 <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                   <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                     <span class="w-1 h-4 bg-blue-500 rounded-full"></span>
@@ -436,12 +436,12 @@
                   </div>
                   <div class="space-y-2">
                     <img
-                      :src="thumbnailResult.tempFilePath"
+                      :src="thumbnailResult.uri"
                       alt="thumbnail"
                       class="w-full rounded-lg border border-line-200 bg-surface-100"
                     />
                     <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
-                      {{ thumbnailResult.tempFilePath }}
+                      {{ thumbnailResult.uri }}
                     </div>
                   </div>
                 </div>
@@ -542,7 +542,7 @@
                   <span>{{ videoCompressError }}</span>
                 </div>
 
-                <div v-if="videoCompressResult?.tempFilePath" class="space-y-3">
+                <div v-if="videoCompressResult?.uri" class="space-y-3">
                   <div class="rounded-xl border border-line-200 bg-linear-to-br from-surface-50 to-surface p-5 space-y-4">
                     <h3 class="text-sm font-semibold text-gray-700 flex items-center gap-2">
                       <span class="w-1 h-4 bg-green-500 rounded-full"></span>
@@ -567,7 +567,7 @@
                       </div>
                     </div>
                     <div class="text-[11px] text-gray-500 break-all bg-surface-100 px-3 py-2 rounded-lg">
-                      {{ videoCompressResult.tempFilePath }}
+                      {{ videoCompressResult.uri }}
                     </div>
                   </div>
 
@@ -935,13 +935,13 @@ type VideoThumbnailSourceInfo = {
   type?: string;
 };
 type VideoThumbnailResult = {
-  tempFilePath?: string;
+  uri?: string;
   width?: number;
   height?: number;
   type?: string;
 };
 type CompressVideoResult = {
-  tempFilePath?: string;
+  uri?: string;
   width?: number;
   height?: number;
   durationMs?: number;

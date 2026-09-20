@@ -1096,7 +1096,7 @@ mod tests {
                 return lx.navigationBar.update(options);
               },
               chooseToastIcon: async function () {
-                const result = await lx.showActionSheet({ itemList: ["a", "b"] });
+                const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
                 return result;
               },
               directArrow: (payload) => lx.callSomething(payload)
@@ -1141,7 +1141,7 @@ mod tests {
             }
 
             const chooseToastIcon = async () => {
-              const result = await lx.showActionSheet({ itemList: ["a", "b"] });
+              const result = await lx.showActionSheet({ items: [{ id: "a", label: "A" }, { id: "b", label: "B" }] });
               return result;
             };
 

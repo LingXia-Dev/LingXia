@@ -78,7 +78,7 @@ class LxAppActionSheet {
 
     /// A dismissal is business code 2000; everything that merely *failed* —
     /// no presenter, serialization — reports the generic failure code, so
-    /// `canceled: true` on the JS side can only ever mean the user said no.
+    /// `status: 'canceled'` on the JS side can only ever mean the user said no.
     private static let actionSheetFailureCode = LxAppDismissal.failureCode
 
     internal static func sendResult(callback_id: UInt64, tapIndex: Int) {

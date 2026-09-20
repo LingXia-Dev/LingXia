@@ -12,7 +12,7 @@ App({
         cancelText: "Later",
         confirmText: "Apply",
       });
-      if (!applyNow.canceled) {
+      if (applyNow.status !== 'canceled') {
         um.applyUpdate();
       }
     });

@@ -9,8 +9,8 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
     'lx.getScreenInfo',
     'lx.getNetworkInfo',
     'lx.getSystemSetting',
-    'lx.app.getBaseInfo',
-    'lx.app.env',
+    'lx.host.getBaseInfo',
+    'lx.host.env',
   ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
@@ -21,7 +21,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
       const screen = lx.getScreenInfo();
       const network = await lx.getNetworkInfo();
       const system = lx.getSystemSetting();
-      const host = lx.app.getBaseInfo();
+      const host = lx.host.getBaseInfo();
       return {
         appId: app.appId,
         device: !!device.osName,
@@ -29,7 +29,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
         network: typeof network.isConnected === 'boolean' && !!network.networkType,
         system: typeof system.wifiEnabled === 'boolean',
         host: !!host.os && !!host.productName,
-        env: lx.app.env,
+        env: lx.host.env,
       };
     `,
   }) as {
@@ -90,9 +90,9 @@ spec("answer capability questions consistently with the optional members", { id:
   const result = await app.eval({
     script: `
       const terminalAgrees = ('terminal' in lx) === lx.supports('terminal');
-      const autostartAgrees = !!lx.app.autostart === lx.supports('app.autostart');
-      const notificationAgrees = !!lx.app.notification === lx.supports('app.notification');
-      const bannerAgrees = !!lx.app.banner === lx.supports('app.banner');
+      const autostartAgrees = !!lx.host.autostart === lx.supports('app.autostart');
+      const notificationAgrees = !!lx.host.notification === lx.supports('app.notification');
+      const bannerAgrees = !!lx.host.banner === lx.supports('app.banner');
       const rejects = (value) => {
         try { lx.supports(value); return false; }
         catch (error) { return error instanceof TypeError; }
@@ -103,7 +103,7 @@ spec("answer capability questions consistently with the optional members", { id:
           'app.cache', 'surface.main', 'surface.float']
           .every(key => lx.supports(key) === false),
         typeErrors: [{}, null, 42, undefined, { capability: 'terminal' }].every(rejects),
-        cacheIsControl: !!lx.app.cache === (lx.app.control !== undefined),
+        cacheIsControl: !!lx.host.cache === (lx.host.control !== undefined),
         surfaceAvailable: typeof lx.surface.openPage === 'function',
         dependency: !lx.supports('surface.window.fullChrome') || lx.supports('surface.window'),
       };

@@ -18,10 +18,16 @@ use std::sync::Arc;
 #[derive(FromJSObject)]
 #[ts_skip]
 struct JSActionSheetOptions {
-    #[js_name = "itemList"]
-    item_list: Vec<String>,
+    items: Vec<JSActionItem>,
     #[js_name = "itemColor"]
     item_color: Option<String>,
+}
+
+#[derive(FromJSObject)]
+#[ts_skip]
+struct JSActionItem {
+    id: String,
+    label: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,7 +58,7 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
     })?;
     if index >= item_len {
         return Err(js_internal_error(format!(
-            "ActionSheet callback invalid payload: tapIndex {index} is outside itemList length {item_len}"
+            "ActionSheet callback invalid payload: tapIndex {index} is outside items length {item_len}"
         )));
     }
 
@@ -61,18 +67,23 @@ fn classify_action_sheet_index(index: i64, item_len: usize) -> Result<Option<usi
 
 /// Shows a list of actions.
 ///
-/// Resolves `{ canceled: false, index }` when the user selects an item; `index`
-/// points into `options.itemList`. Resolves `{ canceled: true }` only when the
+/// Resolves `{ status: 'ok', id }` when the user selects an item; `id` identifies the selected item. Resolves `{ status: 'canceled' }` only when the
 /// user dismisses the sheet. Rejects when presentation fails or the host returns
 /// an invalid selection.
 async fn show_action_sheet(
     ctx: JSContext,
     options: JSActionSheetOptions,
 ) -> Result<JSObject, RongJSError> {
-    let JSActionSheetOptions {
-        item_list,
-        item_color,
-    } = options;
+    let JSActionSheetOptions { items, item_color } = options;
+    let mut ids = std::collections::HashSet::new();
+    for item in &items {
+        if item.id.is_empty() || item.label.is_empty() || !ids.insert(item.id.as_str()) {
+            return Err(js_invalid_parameter_error(
+                "Action items need unique non-empty ids and non-empty labels",
+            ));
+        }
+    }
+    let item_list = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
 
     let Some(index) = present_action_sheet(&lxapp, item_list, None, item_color).await? else {
@@ -80,7 +91,7 @@ async fn show_action_sheet(
     };
 
     let result = completed(&ctx)?;
-    result.set("index", index as u32)?;
+    result.set("id", items[index].id.as_str())?;
     Ok(result)
 }
 
@@ -96,7 +107,7 @@ pub(crate) async fn present_action_sheet(
         ));
     }
     if item_list.is_empty() {
-        return Err(js_invalid_parameter_error("itemList cannot be empty"));
+        return Err(js_invalid_parameter_error("items cannot be empty"));
     }
 
     let cancel_text = cancel_text.unwrap_or_else(|| t(I18nKey::CommonCancel));

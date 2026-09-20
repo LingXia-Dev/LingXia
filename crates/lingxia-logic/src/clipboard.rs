@@ -43,10 +43,10 @@ async fn write_text(ctx: JSContext, text: String) -> JSResult<()> {
 
 /// Read Unicode text.
 ///
-/// Resolves `{ canceled: true }` only when the user dismisses the OS paste
+/// Resolves `{ status: 'canceled' }` only when the user dismisses the OS paste
 /// prompt (iOS 16+, macOS 15.4+). No text representation (empty clipboard, or
-/// image-only) resolves `{ canceled: false, empty: true }`. A copied empty
-/// string resolves `{ canceled: false, empty: false, text: '' }`.
+/// image-only) resolves `{ status: 'empty' }`. A copied empty
+/// string resolves `{ status: 'ok', text: '' }`.
 ///
 /// Rejects `E_PERMISSION_DENIED` when the host denies clipboard access
 /// outright: a macOS "never allow" setting, or HarmonyOS without
@@ -61,11 +61,10 @@ async fn read_text(ctx: JSContext) -> JSResult<JSObject> {
     let result = completed(&ctx)?;
     match contents.text {
         Some(text) => {
-            result.set("empty", false)?;
             result.set("text", text)?;
         }
         None => {
-            result.set("empty", true)?;
+            result.set("status", "empty")?;
         }
     }
     Ok(result)
@@ -85,7 +84,7 @@ async fn write(ctx: JSContext, item: JSValue) -> JSResult<()> {
 ///
 /// Omit `type` to receive every representation this host can surface.
 /// Pass `type` to request one; if that representation is absent, the
-/// completed result is `{ empty: true }` rather than a mismatch error.
+/// completed result is `{ status: 'empty' }` rather than a mismatch error.
 /// Images arrive as a temporary PNG under `lx://temp`. Dismissal and
 /// permission behave as in `readText`.
 async fn read(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObject> {
@@ -171,10 +170,10 @@ fn contents_to_read_result(ctx: &JSContext, contents: ClipboardContents) -> JSRe
     }
     let result = completed(ctx)?;
     if contents.is_empty() {
-        result.set("empty", true)?;
+        result.set("status", "empty")?;
         return Ok(result);
     }
-    result.set("empty", false)?;
+
     let items = rong::JSArray::new(ctx)?;
     if let Some(text) = contents.text {
         let item = JSObject::new(ctx);
@@ -306,7 +305,7 @@ fn to_managed_uri(lxapp: &LxApp, path: &Path) -> JSResult<String> {
 
 fn map_platform_error(error: PlatformError) -> rong::RongJSError {
     match error {
-        // Reads map dismissal to `{ canceled: true }` before reaching here.
+        // Reads map dismissal to `{ status: 'canceled' }` before reaching here.
         // Writes, clear and the type peek have no prompt to dismiss, so a host
         // sending 2000 for one is a real failure — never "the user said no".
         PlatformError::BusinessError(USER_DISMISSED) => js_error_from_platform_error(

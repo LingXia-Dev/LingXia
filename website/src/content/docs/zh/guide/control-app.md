@@ -20,22 +20,22 @@ sidebar:
 ## 提供产品级界面前先检查
 
 ```ts
-const control = lx.app.control
+const control = lx.host.control
 if (!control) return
 await control.appearance.setPreference('dark')
 ```
 
-`lx.app.control` 只存在于 Control app。同一答案也是 `lx.supports({ capability: 'control' })`。在 Settings 页顶部绑定一次，不要到处写 `lx.app.control!`。
+`lx.host.control` 只存在于 Control app，因此 `lx.host.control !== undefined` 即可识别它。在 Settings 页顶部绑定一次，不要到处写 `lx.host.control!`。
 
 ## 只有 Control app 能调用的接口
 
 这些作用于产品本身，而不是调用方 lxapp：
 
-- `lx.app.exit()`、`lx.app.setBadge()`、`lx.app.cache`、`lx.app.checkUpdate()`、`lx.app.claimCustomUpdate()`、`lx.app.screenshot()`、`lx.app.autostart.*`
-- `lx.app.control.displayLanguage` / `lx.app.control.appearance`（写入）
+- `lx.host.exit()`、`lx.host.setBadge()`、`lx.host.cache`、`lx.host.checkUpdate()`、`lx.host.claimCustomUpdate()`、`lx.host.screenshot()`、`lx.host.autostart.*`
+- `lx.host.control.displayLanguage` / `lx.host.control.appearance`（写入）
 - `lx.shell.*` 的变更 —— `sidebarActions`、打开或重配已声明 surface
 
-每个 lxapp 仍可**读取** `lx.app.displayLanguage.get()` 与 `lx.app.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.getUpdateManager()`。
+每个 lxapp 仍可**读取** `lx.host.displayLanguage.get()` 与 `lx.host.appearance.get()`，并应跟随这些值。本 lxapp 自己的包更新走 `lx.getUpdateManager()`。
 
 拒绝结果是 `E_PERMISSION_DENIED`，并会点名本该被允许的 class。把它当成设计信号：让 Control app 去做产品级工作，不要冒充它。这不是用户关掉对话框，也不是缺少 capability（那个由 `lx.supports()` 回答）。
 

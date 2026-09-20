@@ -14,10 +14,7 @@ use lingxia_transfer::user_cache::{
     DownloadFailureKind,
 };
 use lxapp::{LxApp, LxAppSecurityPrivilege};
-use rong::{
-    HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSSymbol, JSValue, Promise,
-    function::Optional,
-};
+use rong::{HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue, Promise};
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 use std::path::{Path, PathBuf};
@@ -38,12 +35,11 @@ struct ParsedDownloadOptions {
 #[derive(Debug, Clone, IntoJSObject)]
 #[ts_skip]
 struct JSDownloadResult {
-    #[js_name = "tempFilePath"]
-    temp_file_path: Option<String>,
-    #[js_name = "filePath"]
-    file_path: Option<String>,
+    uri: String,
+    storage: String,
     #[js_name = "mimeType"]
     mime_type: Option<String>,
+    #[js_name = "sizeBytes"]
     size: u64,
 }
 
@@ -385,51 +381,6 @@ fn progress_value(
     None
 }
 
-fn install_async_iterator(ctx: &JSContext, iterator: &JSObject) -> JSResult<()> {
-    let symbol = ctx
-        .global()
-        .get::<_, JSObject>("Symbol")?
-        .get::<_, JSSymbol>("asyncIterator")?;
-    iterator.set(
-        symbol,
-        JSFunc::new(ctx, move |this: rong::function::This<JSObject>| {
-            (*this).clone()
-        })?,
-    )?;
-    Ok(())
-}
-
-fn bind_abort_signal_to_iterator(
-    ctx: &JSContext,
-    signal: Option<JSObject>,
-    iterator: &JSObject,
-) -> JSResult<()> {
-    let Some(signal) = signal else {
-        return Ok(());
-    };
-
-    let target = iterator.clone();
-    let cancel_fn = JSFunc::new(ctx, move || -> JSResult<()> {
-        if let Ok(cancel) = target.get::<_, JSFunc>("cancel") {
-            let _ = cancel.call::<_, JSObject>(Some(target.clone()), ());
-        }
-        Ok(())
-    })?;
-
-    if signal.get::<_, bool>("aborted").unwrap_or(false) {
-        cancel_fn.call::<_, ()>(None, ())?;
-        return Ok(());
-    }
-
-    let add_event_listener = signal
-        .get::<_, JSFunc>("addEventListener")
-        .map_err(|_| js_invalid_parameter_error("downloadFile signal must be an AbortSignal"))?;
-    let listener_opts = JSObject::new(ctx);
-    listener_opts.set("once", true)?;
-    add_event_listener.call::<_, ()>(Some(signal), ("abort", cancel_fn, listener_opts))?;
-    Ok(())
-}
-
 fn path_to_result_string(lxapp: &LxApp, path: &Path) -> String {
     lxapp
         .to_uri(path)
@@ -443,13 +394,14 @@ fn to_js_download_result(
 ) -> JSResult<JSDownloadResult> {
     let lxapp = LxApp::from_ctx(ctx)?;
     let path = path_to_result_string(&lxapp, &result.path);
-    let (temp_file_path, file_path) = match result.path_kind {
-        DownloadPathKind::Temp => (Some(path), None),
-        DownloadPathKind::UserData | DownloadPathKind::Downloads => (None, Some(path)),
+    let storage = match result.path_kind {
+        DownloadPathKind::Temp => "temp",
+        DownloadPathKind::UserData => "userdata",
+        DownloadPathKind::Downloads => "downloads",
     };
     Ok(JSDownloadResult {
-        temp_file_path,
-        file_path,
+        uri: path,
+        storage: storage.to_string(),
         mime_type: result.mime_type.clone(),
         size: result.size,
     })
@@ -511,20 +463,20 @@ fn read_optional_string_field(
 }
 
 fn read_optional_timeout_field(obj: &JSObject) -> JSResult<Option<u64>> {
-    let Some(value) = get_present_property(obj, "timeout") else {
+    let Some(value) = get_present_property(obj, "timeoutMs") else {
         return Ok(None);
     };
     if !value.is_number() {
         return Err(js_invalid_parameter_error(
-            "downloadFile timeout must be a positive number",
+            "downloadFile timeoutMs must be a positive number",
         ));
     }
     let timeout = value.to_rust::<f64>().map_err(|_| {
-        js_invalid_parameter_error("downloadFile timeout must be a positive number")
+        js_invalid_parameter_error("downloadFile timeoutMs must be a positive number")
     })?;
     if !timeout.is_finite() || timeout <= 0.0 {
         return Err(js_invalid_parameter_error(
-            "downloadFile timeout must be a positive number",
+            "downloadFile timeoutMs must be a positive number",
         ));
     }
     Ok(Some(timeout.round() as u64))
@@ -599,12 +551,28 @@ fn parse_download_options(options: JSValue) -> JSResult<ParsedDownloadOptions> {
             "downloadFile expects an options object",
         ));
     };
+    let destination = read_optional_destination(&obj)?;
+    let field = if destination == DownloadDestination::Downloads {
+        "suggestedName"
+    } else {
+        "filePath"
+    };
+    let forbidden = if destination == DownloadDestination::Downloads {
+        "filePath"
+    } else {
+        "suggestedName"
+    };
+    if get_present_property(&obj, forbidden).is_some() {
+        return Err(js_invalid_parameter_error(format!(
+            "downloadFile use {field} for this destination"
+        )));
+    }
     Ok(ParsedDownloadOptions {
         url: read_required_string_field(&obj, "url", "downloadFile")?,
         headers: read_header_entries(&obj, "headers")?,
         timeout_ms: read_optional_timeout_field(&obj)?,
-        file_path: read_optional_string_field(&obj, "filePath", "downloadFile")?,
-        destination: read_optional_destination(&obj)?,
+        file_path: read_optional_string_field(&obj, field, "downloadFile")?,
+        destination,
         signal: read_optional_signal(&obj)?,
     })
 }
@@ -1235,76 +1203,10 @@ fn spawn_download_worker(state: Arc<Mutex<DownloadIteratorState>>) {
     }));
 }
 
-fn install_promise_methods(ctx: &JSContext, iterator: &JSObject, promise: Promise) -> JSResult<()> {
-    let then_promise = promise.clone();
-    let then_ctx = ctx.clone();
-    iterator.set(
-        "then",
-        JSFunc::new(
-            ctx,
-            move |on_fulfilled: Optional<JSValue>,
-                  on_rejected: Optional<JSValue>|
-                  -> JSResult<JSObject> {
-                let then = then_promise.then()?;
-                then.call(
-                    Some(then_promise.clone().into_object()),
-                    (
-                        on_fulfilled
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                        on_rejected
-                            .0
-                            .unwrap_or_else(|| JSValue::undefined(&then_ctx)),
-                    ),
-                )
-            },
-        )?,
-    )?;
-
-    let catch_promise = promise.clone();
-    let catch_ctx = ctx.clone();
-    iterator.set(
-        "catch",
-        JSFunc::new(
-            ctx,
-            move |on_rejected: Optional<JSValue>| -> JSResult<JSObject> {
-                let catch_fn = catch_promise.catch()?;
-                catch_fn.call(
-                    Some(catch_promise.clone().into_object()),
-                    (on_rejected
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&catch_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let finally_promise = promise.clone();
-    let finally_ctx = ctx.clone();
-    iterator.set(
-        "finally",
-        JSFunc::new(
-            ctx,
-            move |on_finally: Optional<JSValue>| -> JSResult<JSObject> {
-                let finally_fn = finally_promise.get::<_, JSFunc>("finally")?;
-                finally_fn.call(
-                    Some(finally_promise.clone().into_object()),
-                    (on_finally
-                        .0
-                        .unwrap_or_else(|| JSValue::undefined(&finally_ctx)),),
-                )
-            },
-        )?,
-    )?;
-
-    let wait_promise = promise;
-    iterator.set("wait", JSFunc::new(ctx, move || wait_promise.clone())?)?;
-    Ok(())
-}
-
 fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     let lxapp = LxApp::from_ctx(&ctx)?;
     let options = parse_download_options(options)?;
+    crate::task_object::validate_abort_signal(options.signal.as_ref())?;
     let url = options.url.trim().to_string();
     if url.is_empty() {
         return Err(js_error_from_business_code_with_detail(
@@ -1453,22 +1355,17 @@ fn download_file(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
     })?;
     iterator.set("cancel", cancel_fn)?;
 
-    let abort_state = state.clone();
-    iterator.set(
-        "abort",
-        JSFunc::new(&ctx, move || {
-            let state = abort_state.clone();
-            async move { download_cancel_task(&state).await }
-        })?,
+    let task = crate::task_object::create_task(
+        &ctx,
+        iterator,
+        final_promise,
+        &["pause", "resume", "cancel"],
     )?;
-
-    install_promise_methods(&ctx, &iterator, final_promise)?;
-    install_async_iterator(&ctx, &iterator)?;
-    bind_abort_signal_to_iterator(&ctx, options.signal, &iterator)?;
+    crate::task_object::bind_abort_signal(&ctx, options.signal, &task)?;
 
     spawn_download_worker(state.clone());
 
-    Ok(iterator)
+    Ok(task)
 }
 
 async fn download_next_step(
@@ -1663,8 +1560,10 @@ async fn download_cancel_task(state: &Arc<Mutex<DownloadIteratorState>>) -> JSRe
         )
     };
 
+    // `ResourceNotFound` means the cancel outran the worker's registration:
+    // settle locally, and the worker discards its output on the terminal status.
     match lingxia_service::downloads::cancel(&app_data_dir, &task_id) {
-        Ok(()) => {
+        Ok(()) | Err(lingxia_service::downloads::DownloadsError::ResourceNotFound(_)) => {
             let completion = {
                 let mut guard = state.lock().await;
                 if guard.status.is_terminal() {

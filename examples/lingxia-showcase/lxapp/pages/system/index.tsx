@@ -86,7 +86,7 @@ export default function SystemPage() {
                     <InfoRow label="OS" value={appBaseInfo.os} />
                     <InfoRow label="Product Name" value={appBaseInfo.productName} />
                     <InfoRow label="Product Version" value={appBaseInfo.version} />
-                    <InfoRow label="SDK Version" value={appBaseInfo.SDKVersion} />
+                    <InfoRow label="SDK Version" value={appBaseInfo.sdkVersion} />
                   </div>
                 </div>
               )}

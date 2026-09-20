@@ -174,6 +174,7 @@ Page({
 | --- | --- |
 | `this.data` | Current page state. A readonly view — use `setData()` / `setPath()` to change. |
 | `this.setData(patch)` | Merge a top-level partial into `data` and replicate to View. Nested writes use `setPath` (checked) or `setDataPath` (unchecked). |
+| `await this.flush()` | Resolves once every `setData` issued so far is acknowledged by the View; rejects if the page unloads first, or if the runtime discarded a write before the View could receive it. |
 | `this.yourMethod()` | Anything else you declare beside the hooks is a page method, reachable through `this`. A name that differs from a lifecycle hook only in case (`onload`) is rejected, because the runtime would never call it. |
 | `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
 
@@ -625,9 +626,9 @@ In `lxapp.json`, `iconPath` is a bundled project-relative path. A runtime
 a remote logo first and pass the returned logical path:
 
 ```ts
-const { tempFilePath } = await lx.downloadFile({ url: brand.logoUrl }).result;
+const { uri } = await lx.downloadFile({ url: brand.logoUrl }).result;
 await lx.tabBar.update({
-  items: [{ index: 0, text: brand.shortName, iconPath: tempFilePath }],
+  items: [{ index: 0, text: brand.shortName, iconPath: uri }],
 });
 ```
 
