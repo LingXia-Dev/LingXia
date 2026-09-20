@@ -78,7 +78,11 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
 /// chrome is a no-op that returns `false` rather than an error — portable code
 /// can call this unconditionally — and
 /// `lx.supports({ capability: 'badge' })` answers the same question up front.
-fn set_app_badge(ctx: JSContext, value: JSValue, options: Optional<JSObject>) -> JSResult<bool> {
+async fn set_app_badge(
+    ctx: JSContext,
+    value: JSValue,
+    options: Optional<JSObject>,
+) -> JSResult<bool> {
     let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
     let lxapp = invocation.lxapp();
     let surface = badge_surface(options.0)?;
@@ -88,7 +92,7 @@ fn set_app_badge(ctx: JSContext, value: JSValue, options: Optional<JSObject>) ->
         return Err(rong::HostError::new(
             rong::error::E_INVALID_ARG,
             format!(
-                "lx.app.setBadge on this platform draws a count, so {text:?} is not a badge it can                  paint; pass a number or null"
+                "lx.app.setBadge on this platform paints a count, so {text:?} is not a badge it can draw; pass a number or null"
             ),
         )
         .into());
@@ -100,15 +104,36 @@ fn set_app_badge(ctx: JSContext, value: JSValue, options: Optional<JSObject>) ->
     // the caller's to see.
     let strict = surface != BadgeSurface::Auto;
     let mut painted = false;
+    // Off the JS thread: a platform may block, and HarmonyOS answers through a
+    // callback it can only wait for inside the async runtime.
     if surface != BadgeSurface::Tray && available.app_icon {
-        let outcome = lxapp.runtime.set_app_badge(&text);
+        let runtime = lxapp.runtime.clone();
+        let text = text.clone();
+        let outcome = blocking(move || runtime.set_app_badge(&text)).await?;
         painted |= record(outcome, "appIcon", strict)?;
     }
     if surface != BadgeSurface::AppIcon && available.tray {
-        let outcome = lxapp.runtime.set_tray_badge(&text);
+        let runtime = lxapp.runtime.clone();
+        let text = text.clone();
+        let outcome = blocking(move || runtime.set_tray_badge(&text)).await?;
         painted |= record(outcome, "tray", strict)?;
     }
     Ok(painted)
+}
+
+/// Runs a platform call off the JS thread and hands back whatever it returned,
+/// so the caller decides whether a failure is worth reporting.
+async fn blocking<F>(work: F) -> JSResult<Result<(), lingxia_platform::error::PlatformError>>
+where
+    F: FnOnce() -> Result<(), lingxia_platform::error::PlatformError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work).await.map_err(|error| {
+        rong::HostError::new(
+            rong::error::E_INTERNAL,
+            format!("lx.app.setBadge task failed: {error}"),
+        )
+        .into()
+    })
 }
 
 fn record(
@@ -249,7 +274,7 @@ rong::js_api! {
         fn exit = exit_app;
         fn setBadge(
             ts_params = "value: string | number | null, options?: SetBadgeOptions",
-            ts_return = "boolean"
+            ts_return = "Promise<boolean>"
         ) = set_app_badge;
     }
 }

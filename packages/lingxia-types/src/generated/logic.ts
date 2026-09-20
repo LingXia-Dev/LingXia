@@ -1624,6 +1624,8 @@ export type ScanCodeResult = {
  * has: the dock and the menu-bar item on macOS, the taskbar and the
  * notification-area item on Windows, the home-screen icon on iOS and
  * HarmonyOS. Name one only when that surface is the point.
+ * Asynchronous because it reports what actually happened: a platform that
+ * answers through its own callback has to be waited for to be believed.
  * Under `auto` a surface that is simply absent — a macOS product with no
  * status item — is skipped, not an error; the return value says what was
  * actually painted. Name a surface and its failure is reported, because
@@ -2875,7 +2877,7 @@ declare global {
      * can call this unconditionally — and
      * `lx.supports({ capability: 'badge' })` answers the same question up front.
      */
-    setBadge(value: string | number | null, options?: SetBadgeOptions): boolean;
+    setBadge(value: string | number | null, options?: SetBadgeOptions): Promise<boolean>;
   }
 }
 

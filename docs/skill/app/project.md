@@ -698,7 +698,7 @@ surfaces:
 The tray's dynamic content is updated from page/app logic:
 
 - `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setMenu(items)` / `lx.tray.onClick(fn)` / `lx.tray.show()` / `lx.tray.hide()` — the status item's own appearance and behaviour.
-- `lx.app.setBadge(value, options?)` — the count, wherever this platform shows one: `surface: 'auto'` (the default) marks the dock *and* the menu-bar item on macOS, the taskbar on Windows, the home-screen icon on iOS and HarmonyOS. There is no separate tray badge call. Returns whether anything was painted; `lx.supports({ capability: 'badge' })` answers the same question up front, and reports `false` on Android.
+- `lx.app.setBadge(value, options?)` — the count, wherever this platform shows one: `surface: 'auto'` (the default) marks the dock *and* the menu-bar item on macOS, the taskbar on Windows, the home-screen icon on iOS and HarmonyOS. There is no separate tray badge call. Resolves whether anything was painted; `lx.supports({ capability: 'badge' })` answers the same question up front, and reports `false` on Android.
 
 All of these are the product's own chrome, not the calling lxapp's, so they are Control app only; a guest lxapp gets a permission error.
 

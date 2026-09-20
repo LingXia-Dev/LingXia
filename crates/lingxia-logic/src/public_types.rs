@@ -1890,6 +1890,9 @@ true
         /// notification-area item on Windows, the home-screen icon on iOS and
         /// HarmonyOS. Name one only when that surface is the point.
         ///
+        /// Asynchronous because it reports what actually happened: a platform that
+        /// answers through its own callback has to be waited for to be believed.
+        ///
         /// Under `auto` a surface that is simply absent — a macOS product with no
         /// status item — is skipped, not an error; the return value says what was
         /// actually painted. Name a surface and its failure is reported, because

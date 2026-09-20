@@ -154,8 +154,8 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 ## Badges
 
-`lx.app.setBadge(value, options?)` — Control-app only, synchronous, returns
-whether anything was painted. Signatures are in `@lingxia/types`; what they do
+`lx.app.setBadge(value, options?)` — Control-app only, resolves whether
+anything was painted. Signatures are in `@lingxia/types`; what they do
 not say:
 
 - One call covers every product-owned surface. `surface: 'auto'` (the default)
