@@ -420,9 +420,10 @@ extension LxApp {
         let value = text.toString()
         return executeOnMain {
             #if os(macOS)
+            // A host whose tray never materialised has nothing to badge, so the
+            // controller's answer is the one that travels back.
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setTrayBadge(value.isEmpty ? nil : value)
-            return true
+            return runtime.setTrayBadge(value.isEmpty ? nil : value)
             #else
             return true
             #endif
