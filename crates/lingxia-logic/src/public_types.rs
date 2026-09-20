@@ -1883,14 +1883,46 @@ true
     readonly [systemDownloadsPathBrand]: 'system-downloads-path';
 }"###;
 
+        /// Where `lx.app.setBadge` paints.
+        ///
+        /// `auto` (the default) marks every product-owned surface this platform
+        /// has: the dock and the menu-bar item on macOS, the taskbar and the
+        /// notification-area item on Windows, the home-screen icon on iOS and
+        /// HarmonyOS. Name one only when that surface is the point.
+        ///
+        /// Asynchronous because it reports what actually happened: a platform that
+        /// answers through its own callback has to be waited for to be believed.
+        ///
+        /// A surface with nothing to paint on is reported, not raised: a macOS
+        /// status item exists from the moment a tray is declared but stays hidden
+        /// until `lx.tray.show()`, and a badge on a hidden item is not a badge
+        /// anyone can see. That resolves `false` whether you named the surface or
+        /// took `auto`; only a malfunction rejects.
+        ///
+        /// Apple ties the badge to notification permission. On macOS the label
+        /// always reaches the system, but the Dock declines to draw it for an app
+        /// that is registered with Notification Center and not allowed — so a host
+        /// that declares `capabilities.notifications` and never got a yes resolves
+        /// `false` here. A host that never asks is unaffected.
+        ///
+        /// On iOS the home-screen badge is drawn by the notification system, so
+        /// it needs notification permission and only accepts a number — that is
+        /// the OS's rule, not an API coupling. Android has no cross-vendor
+        /// launcher badge at all, so `setBadge` returns `false` there.
+        type SetBadgeOptions = r###"{
+    surface?: 'auto' | 'appIcon' | 'tray';
+}"###;
+
         /// Runtime control of the menu-bar (macOS) / system-tray (Windows) status item.
         /// The tray is declared in `lingxia.yaml` (`tray:`); these update its dynamic
         /// content at runtime.
         ///
         /// **Desktop only.** Mobile platforms have no tray, so every method here is a
-        /// no-op there (it never throws) — safe to call from portable code. For an
-        /// app-icon badge that *is* cross-platform (including mobile), use
-        /// `lx.app.setBadge`.
+        /// no-op there (it never throws) — safe to call from portable code.
+        ///
+        /// The tray belongs to the product, not to the lxapp that happens to be
+        /// running, so these are Control-app only: a guest lxapp calling one receives
+        /// a permission error.
         ///
         type TrayMenuItem = r###"{
     label: string;

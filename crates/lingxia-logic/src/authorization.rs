@@ -28,6 +28,12 @@ pub(crate) enum LogicRoute {
     AppNotificationCancelAll,
     AppBannerShow,
     AppBannerDismiss,
+    TraySetIcon,
+    TraySetTitle,
+    TraySetMenu,
+    TrayOnClick,
+    TrayShow,
+    TrayHide,
     ShellSidebarReplace,
     ShellSidebarUpdate,
     ShellSidebarRemove,
@@ -91,6 +97,12 @@ impl LogicRoute {
         Self::AppNotificationCancelAll,
         Self::AppBannerShow,
         Self::AppBannerDismiss,
+        Self::TraySetIcon,
+        Self::TraySetTitle,
+        Self::TraySetMenu,
+        Self::TrayOnClick,
+        Self::TrayShow,
+        Self::TrayHide,
         Self::ShellSidebarReplace,
         Self::ShellSidebarUpdate,
         Self::ShellSidebarRemove,
@@ -160,6 +172,12 @@ impl LogicRoute {
             | Self::AppNotificationCancelAll
             | Self::AppBannerShow
             | Self::AppBannerDismiss
+            | Self::TraySetIcon
+            | Self::TraySetTitle
+            | Self::TraySetMenu
+            | Self::TrayOnClick
+            | Self::TrayShow
+            | Self::TrayHide
             | Self::ShellSidebarReplace
             | Self::ShellSidebarUpdate
             | Self::ShellSidebarRemove
@@ -214,6 +232,12 @@ impl LogicRoute {
             Self::AppNotificationCancelAll => "lx.app.notification.cancelAll",
             Self::AppBannerShow => "lx.app.banner.show",
             Self::AppBannerDismiss => "lx.app.banner.dismiss",
+            Self::TraySetIcon => "lx.tray.setIcon",
+            Self::TraySetTitle => "lx.tray.setTitle",
+            Self::TraySetMenu => "lx.tray.setMenu",
+            Self::TrayOnClick => "lx.tray.onClick",
+            Self::TrayShow => "lx.tray.show",
+            Self::TrayHide => "lx.tray.hide",
             Self::ShellSidebarReplace => "lx.shell.sidebarActions.replace",
             Self::ShellSidebarUpdate => "lx.shell.sidebarActions.update",
             Self::ShellSidebarRemove => "lx.shell.sidebarActions.remove",
@@ -363,6 +387,43 @@ fn authorize_caller_then<T>(
 ) -> Result<T, LogicAuthorizationDenied> {
     authorize_caller(caller, route)?;
     Ok(action())
+}
+
+#[cfg(test)]
+mod audience_tests {
+    use super::LogicRoute;
+    use lxapp::host::RouteAudience;
+
+    /// The status item belongs to the product, not to whichever lxapp is
+    /// running. Adding a `lx.tray.*` method without a gate is the regression
+    /// this catches — the audience arm is exhaustive, so a new route cannot
+    /// compile without choosing one, but it can still choose wrong.
+    #[test]
+    fn every_tray_route_is_control_app_only() {
+        let tray: Vec<LogicRoute> = LogicRoute::ALL
+            .iter()
+            .copied()
+            .filter(|route| route.name().starts_with("lx.tray."))
+            .collect();
+        assert!(!tray.is_empty(), "lx.tray has routes to gate");
+        for route in tray {
+            assert_eq!(
+                route.audience(),
+                RouteAudience::ControlAppOnly,
+                "{} must stay Control-app only",
+                route.name()
+            );
+        }
+    }
+
+    /// The badge paints the same product chrome, so it answers to the same gate.
+    #[test]
+    fn the_badge_route_is_control_app_only() {
+        assert_eq!(
+            LogicRoute::AppSetBadge.audience(),
+            RouteAudience::ControlAppOnly
+        );
+    }
 }
 
 #[cfg(test)]

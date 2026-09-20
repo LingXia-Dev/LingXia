@@ -697,8 +697,10 @@ surfaces:
 
 The tray's dynamic content is updated from page/app logic:
 
-- `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setBadge(value)` — update the status item's icon, its text (macOS), and a badge (e.g. an unread count).
-- `lx.app.setBadge(value)` — the dock (macOS) / taskbar (Windows) badge. This is the product's own icon, so it is Control app only; other lxapps get a permission error.
+- `lx.tray.setIcon(path)` / `lx.tray.setTitle(text)` / `lx.tray.setMenu(items)` / `lx.tray.onClick(fn)` / `lx.tray.show()` / `lx.tray.hide()` — the status item's own appearance and behaviour.
+- `lx.app.setBadge(value, options?)` — the count, wherever this platform shows one: `surface: 'auto'` (the default) marks the dock *and* the menu-bar item on macOS, the taskbar on Windows, the home-screen icon on iOS and HarmonyOS. There is no separate tray badge call. Call it directly; it resolves whether anything was painted and returns `false` on Android.
+
+All of these are the product's own chrome, not the calling lxapp's, so they are Control app only; a guest lxapp gets a permission error.
 
 Pass `null` / empty to clear a badge or title. The tray *shape* is declared in `lingxia.yaml`; these APIs only change its runtime content.
 

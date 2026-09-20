@@ -152,6 +152,38 @@ refusal reads like: [The Control app](../app/control-app.md).
 
 ---
 
+## Badges
+
+`lx.app.setBadge(value, options?)` — Control-app only, resolves whether
+anything was painted. Signatures are in `@lingxia/types`; what they do
+not say:
+
+- One call covers every product-owned surface. `surface: 'auto'` (the default)
+  marks the dock *and* the menu-bar item on macOS, the taskbar *and* the
+  notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
+  There is no separate tray badge call.
+- A surface with nothing to paint on resolves `false`, never a rejection —
+  no such chrome on this platform, or a macOS tray the product has not shown.
+- The method is always present. Call `await lx.app.setBadge(count)` directly;
+  use its boolean result if the product needs to know whether it painted.
+  There is no separate badge capability query.
+- **Android returns `false`.** There is no cross-vendor launcher badge; what a
+  launcher shows comes from active notifications, not from a standalone count.
+- **Both Apple platforms tie the badge to notification permission**, in
+  different ways. On macOS the label always reaches the system, but the Dock
+  refuses to draw it for an app that is registered with Notification Center
+  and not allowed — so a host that declares `capabilities.notifications` and
+  whose user dismissed or denied the prompt gets `false` and no badge, while
+  a host that never asks is unaffected. Call
+  `lx.app.notification.requestPermission()` before you rely on a count.
+- **iOS needs notification permission** and only accepts a number. The
+  home-screen badge is drawn by the notification system, so a build that never
+  asked cannot paint one, and a non-numeric value is a parameter error rather
+  than a silent clear. That is the OS's rule; a badge is otherwise independent
+  of `lx.app.notification`, which never changes it.
+- A badge is decoration: it never prompts, never interrupts, and posting a
+  notification does not set one.
+
 ## Desktop banner
 
 `lx.app.banner` — Control-app only, desktop only (macOS / Windows). Not an OS

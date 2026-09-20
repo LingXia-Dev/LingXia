@@ -300,7 +300,7 @@ final class LxAppMacAppUIRuntime: NSObject {
 
     // MARK: - Tray runtime updates (lx.tray.*)
 
-    func setTrayBadge(_ text: String?) { trayController.setBadge(text) }
+    func setTrayBadge(_ text: String?) -> Bool { trayController.setBadge(text) }
     func setTrayIcon(_ icon: String) { trayController.setIcon(icon) }
     func setTrayTitle(_ text: String?) { trayController.setTitle(text) }
     func setTrayMenu(_ json: String) { trayController.setMenu(json) }

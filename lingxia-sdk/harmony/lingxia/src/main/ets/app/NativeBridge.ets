@@ -519,6 +519,10 @@ class NativeBridge {
       LxAppNotification.show(callbackId, id, title, body, applink, deliverAtMs);
     });
 
+    this.register('setAppBadge', (callbackId: string, text: string): void => {
+      LxAppNotification.setAppBadge(callbackId, text);
+    });
+
     this.register('notificationCancel', (callbackId: string, id: string): void => {
       LxAppNotification.cancel(callbackId, id);
     });

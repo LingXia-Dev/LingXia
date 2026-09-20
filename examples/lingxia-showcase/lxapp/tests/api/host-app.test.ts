@@ -78,43 +78,90 @@ spec('set and clear the host app badge without leaving one behind', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
   t.defer(async () => {
-    await app.eval({ script: `try { lx.app.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
   });
 
-  const result = await app.eval({
+  const painted = await app.eval({
     script: `
-      lx.app.setBadge('7');
-      lx.app.setBadge(12);
-      lx.app.setBadge(null);
+      const first = await lx.app.setBadge(12);
+      const cleared = await lx.app.setBadge(null);
       // Clearing an already-clear badge must stay a no-op, not an error.
-      lx.app.setBadge(null);
-      lx.app.setBadge('');
-      return 'ok';
+      const clearedAgain = await lx.app.setBadge(null);
+      const empty = await lx.app.setBadge('');
+      return [first, cleared, clearedAgain, empty];
     `,
   });
 
-  expect(result).toBe('ok');
+  // Support does not guarantee painting: permission and visible chrome vary.
+  expect((painted as unknown[]).length).toBe(4);
+  for (const result of painted as unknown[]) {
+    expect(typeof result).toBe('boolean');
+  }
+});
+
+spec('tell a hidden tray from a shown one in what setBadge reports', {
+  id: 'HOSTAPP-BADGE-004',
+  covers: ['lx.app.setBadge', 'lx.tray.show', 'lx.tray.hide'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
+  t.defer(async () => {
+    await app.eval({
+      script: `try { await lx.app.setBadge(null); lx.tray.hide(); } catch {} return true;`,
+    });
+  });
+
+  // A declared tray has a status item from the start but stays hidden until
+  // `show()`, so "the item took the value" is not "the user can see it".
+  const hidden = await app.eval({
+    script: `try { lx.tray.hide(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+  });
+  const shown = await app.eval({
+    script: `try { lx.tray.show(); } catch {} return await lx.app.setBadge(4, { surface: 'tray' });`,
+  });
+
+  // A hidden item is never a painted badge, whatever the platform. `shown` is
+  // true only where there is a tray at all, so showing may leave it false --
+  // but it can never go the other way.
+  expect(hidden).toBe(false);
+  expect(shown === true || shown === false).toBe(true);
+});
+
+spec('report a surface this platform does not have instead of failing', {
+  id: 'HOSTAPP-BADGE-003',
+  covers: ['lx.app.setBadge'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
+  t.defer(async () => {
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
+  });
+
+  // A named surface that is absent resolves false; it never rejects, so
+  // portable code can ask for one without guarding the call.
+  const outcome = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'tray' });`);
+  expect(outcome.ok).toBeTruthy();
+  expect(typeof outcome.value).toBe('boolean');
+
+  const bad = await evalCaught(app, `return await lx.app.setBadge(2, { surface: 'dock' });`);
+  expect(bad.ok).toBeFalsy();
+  expect(bad.code).toBe('E_INVALID_ARG');
 });
 
 spec('reject a badge value that is neither a string, a number, nor null', {
   id: 'HOSTAPP-BADGE-002',
-  covers: ['lx.app.setBadge', 'lx.tray.setBadge'],
+  covers: ['lx.app.setBadge'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
-    await app.eval({ script: `try { lx.app.setBadge(null); lx.tray.setBadge(null); } catch {} return true;` });
+    await app.eval({ script: `try { await lx.app.setBadge(null); } catch {} return true;` });
   });
 
   // Coercing these would paint "[object Object]" on the dock instead of failing.
   for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
     await t.step(`lx.app.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `lx.app.setBadge(${literal}); return 'accepted';`);
-      expect(outcome.ok).toBeFalsy();
-      expect(outcome.code).toBe('E_INVALID_ARG');
-    });
-    await t.step(`lx.tray.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `lx.tray.setBadge(${literal}); return 'accepted';`);
+      const outcome = await evalCaught(app, `await lx.app.setBadge(${literal}); return 'accepted';`);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_INVALID_ARG');
     });
@@ -487,7 +534,6 @@ spec('show, label, and retract the host tray item', {
     'lx.tray.show',
     'lx.tray.hide',
     'lx.tray.setTitle',
-    'lx.tray.setBadge',
     'lx.tray.setMenu',
     'lx.tray.setIcon',
     'lx.tray.onClick',
@@ -504,7 +550,6 @@ spec('show, label, and retract the host tray item', {
       lx.tray.show();
       lx.tray.setTitle('LX');
       lx.tray.setIcon('public/showcase-icon.svg');
-      lx.tray.setBadge('3');
       lx.tray.setMenu([
         { label: 'Open Showcase', onClick: () => {} },
         { separator: true },
@@ -512,7 +557,6 @@ spec('show, label, and retract the host tray item', {
       ]);
       const off = lx.tray.onClick(() => {});
       off();
-      lx.tray.setBadge(null);
       lx.tray.setTitle(null);
       lx.tray.hide();
       // Hiding a hidden tray stays a no-op.

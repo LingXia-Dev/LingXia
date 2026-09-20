@@ -188,7 +188,7 @@ const ENV_API = ['USER_CACHE_PATH', 'USER_DATA_PATH'] as const;
 const SURFACE_NAMESPACE_API = ['get', 'onContext', 'openDeclared', 'openPage', 'openUrl'] as const;
 const SHELL_API = ['openApp', 'openBuiltin', 'openDeclared', 'reconfigure', 'sidebarActions'] as const;
 const SHELL_SIDEBAR_ACTIONS_API = ['clear', 'remove', 'replace', 'update'] as const;
-const TRAY_API = ['hide', 'onClick', 'setBadge', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
+const TRAY_API = ['hide', 'onClick', 'setIcon', 'setMenu', 'setTitle', 'show'] as const;
 const CLIPBOARD_API = ['clear', 'read', 'readText', 'types', 'write', 'writeText'] as const;
 const FILE_SYSTEM_API = [
   'copy',

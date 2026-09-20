@@ -632,6 +632,10 @@ impl AppRuntime for Platform {
     // SDK registers handlers we forward to. No registered handler => no-op,
     // honoring the "tray APIs never throw off-support" contract.
 
+    fn set_app_badge(&self, text: &str) -> Result<bool, PlatformError> {
+        super::badge::set_app_badge(text)
+    }
+
     fn set_tray_menu(&self, items_json: &str) -> Result<(), PlatformError> {
         invoke_windows_tray_menu_handler(items_json);
         Ok(())

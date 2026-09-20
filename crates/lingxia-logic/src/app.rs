@@ -2,7 +2,7 @@ use crate::authorization::{self, LogicRoute};
 use crate::i18n::{js_error_from_platform_error, js_service_unavailable_error};
 use lingxia_app_context::{app_config, env};
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue};
+use rong::{IntoJSObject, JSContext, JSObject, JSResult, JSValue, function::Optional};
 
 mod appearance;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -63,20 +63,99 @@ fn exit_app(ctx: JSContext) -> JSResult<()> {
         .map_err(|e| js_error_from_platform_error(&e))
 }
 
-/// Set the app-icon badge, for example an unread count.
+/// Mark the product in system chrome, for example with an unread count.
 ///
-/// This targets the dock on macOS, taskbar on Windows, and home/launcher icon
-/// on mobile — the product's own icon, not the calling lxapp's, so it is
-/// Control app only and other lxapps get a permission error. Null or an empty
-/// string clears it. Unsupported platforms treat the call as a no-op.
-fn set_app_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
+/// One call, because "where the count goes" is the platform's answer, not the
+/// caller's: `auto` paints every product-owned surface this platform has — the
+/// dock and the menu-bar item on macOS, the taskbar and the notification-area
+/// item on Windows, the home-screen icon on iOS and HarmonyOS. Name a
+/// `surface` only when one of them is the point.
+///
+/// It is the product's chrome, not the calling lxapp's, so it is Control app
+/// only. Null or an empty string clears it.
+///
+/// Returns whether anything was actually painted. A platform with no such
+/// chrome is a no-op that returns `false` rather than an error — portable code
+/// can call this unconditionally.
+async fn set_app_badge(
+    ctx: JSContext,
+    value: JSValue,
+    options: Optional<JSObject>,
+) -> JSResult<bool> {
     let invocation = authorization::require(&ctx, LogicRoute::AppSetBadge)?;
     let lxapp = invocation.lxapp();
+    let surface = badge_surface(options.0)?;
+    let available = lingxia_platform::badge_surfaces();
     let text = badge_text(value, "lx.app.setBadge")?;
-    lxapp
-        .runtime
-        .set_app_badge(&text)
-        .map_err(|e| js_error_from_platform_error(&e))
+    if available.numeric_only && !text.is_empty() && text.parse::<i64>().is_err() {
+        return Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!(
+                "lx.app.setBadge on this platform paints a count, so {text:?} is not a badge it can draw; pass a number or null"
+            ),
+        )
+        .into());
+    }
+
+    // The platform answers "painted" as a value, so a surface that has no
+    // chrome to paint on — a macOS status item the product never showed — is
+    // reported, not raised. Only a malfunction rejects, and it does so whether
+    // the caller named a surface or took `auto`.
+    let mut painted = false;
+    // Off the JS thread: a platform may block, and HarmonyOS answers through a
+    // callback it can only wait for inside the async runtime.
+    if surface != BadgeSurface::Tray && available.app_icon {
+        let runtime = lxapp.runtime.clone();
+        let text = text.clone();
+        painted |= blocking(move || runtime.set_app_badge(&text)).await?;
+    }
+    if surface != BadgeSurface::AppIcon && available.tray {
+        let runtime = lxapp.runtime.clone();
+        let text = text.clone();
+        painted |= blocking(move || runtime.set_tray_badge(&text)).await?;
+    }
+    Ok(painted)
+}
+
+async fn blocking<F>(work: F) -> JSResult<bool>
+where
+    F: FnOnce() -> Result<bool, lingxia_platform::error::PlatformError> + Send + 'static,
+{
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|error| {
+            rong::HostError::new(
+                rong::error::E_INTERNAL,
+                format!("lx.app.setBadge task failed: {error}"),
+            )
+        })?
+        .map_err(|error| js_error_from_platform_error(&error))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BadgeSurface {
+    Auto,
+    AppIcon,
+    Tray,
+}
+
+fn badge_surface(options: Option<JSObject>) -> JSResult<BadgeSurface> {
+    let Some(options) = options else {
+        return Ok(BadgeSurface::Auto);
+    };
+    let Ok(surface) = options.get::<_, String>("surface") else {
+        return Ok(BadgeSurface::Auto);
+    };
+    match surface.as_str() {
+        "auto" => Ok(BadgeSurface::Auto),
+        "appIcon" => Ok(BadgeSurface::AppIcon),
+        "tray" => Ok(BadgeSurface::Tray),
+        other => Err(rong::HostError::new(
+            rong::error::E_INVALID_ARG,
+            format!("lx.app.setBadge surface must be auto, appIcon, or tray (received {other:?})"),
+        )
+        .into()),
+    }
 }
 
 /// A badge is `string | number | null`. Coercing anything else would paint
@@ -174,6 +253,9 @@ rong::js_api! {
     fn register_app_controls(ctx) {
         namespace HostAppApi = app_namespace(ctx)?;
         fn exit = exit_app;
-        fn setBadge(ts_params = "value: string | number | null") = set_app_badge;
+        fn setBadge(
+            ts_params = "value: string | number | null, options?: SetBadgeOptions",
+            ts_return = "Promise<boolean>"
+        ) = set_app_badge;
     }
 }

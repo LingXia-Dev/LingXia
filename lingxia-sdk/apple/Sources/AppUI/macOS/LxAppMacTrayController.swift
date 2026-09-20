@@ -199,9 +199,13 @@ final class LxAppMacTrayController: NSObject {
         onUpdateReady?()
     }
 
-    func setBadge(_ text: String?) {
+    /// Reports whether a status item actually took the value. A product whose
+    /// tray never materialised has nothing to badge, and saying otherwise is
+    /// what `lx.app.setBadge`'s return value exists to stop.
+    @discardableResult
+    func setBadge(_ text: String?) -> Bool {
         trayBadge = (text?.isEmpty ?? true) ? nil : text
-        refreshTrayText()
+        return refreshTrayText()
     }
 
     func setTitle(_ text: String?) {
@@ -221,9 +225,14 @@ final class LxAppMacTrayController: NSObject {
 
     /// macOS status items have no native count badge, so the title and badge are
     /// composited as text beside the icon (idiomatic, like the menu-bar clock).
-    private func refreshTrayText() {
+    /// Reports whether the text is actually on screen. A status item exists
+    /// from the moment the tray is declared but stays hidden until
+    /// `lx.tray.show()`, so "the item took the value" and "the user can see
+    /// it" are different answers and only the second one is worth returning.
+    @discardableResult
+    private func refreshTrayText() -> Bool {
         guard let id = defaultActivatorID, let item = statusItems[id], let button = item.button else {
-            return
+            return false
         }
         let marker = (updateReady && trayTitle == nil && trayBadge == nil) ? "●" : nil
         let text = [trayTitle, trayBadge, marker].compactMap { $0 }.joined(separator: " ")
@@ -243,6 +252,7 @@ final class LxAppMacTrayController: NSObject {
         } else {
             button.toolTip = baseToolTip
         }
+        return item.isVisible
     }
 
     func anyButtonContains(screenPoint point: NSPoint) -> Bool {

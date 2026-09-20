@@ -3718,6 +3718,7 @@ dependencies = [
  "imagesize 0.15.0",
  "jni",
  "libc",
+ "lingxia-app-context",
  "lingxia-messaging",
  "lingxia-shell",
  "lingxia-surface",

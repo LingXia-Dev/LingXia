@@ -7,6 +7,7 @@ import CLingXiaSwiftAPI
 
 #if os(iOS)
 import UIKit
+import UserNotifications
 #elseif os(macOS)
 import AppKit
 import ServiceManagement
@@ -419,9 +420,10 @@ extension LxApp {
         let value = text.toString()
         return executeOnMain {
             #if os(macOS)
+            // A host whose tray never materialised has nothing to badge, so the
+            // controller's answer is the one that travels back.
             guard let runtime = LxAppMacAppUIRuntime.active else { return false }
-            runtime.setTrayBadge(value.isEmpty ? nil : value)
-            return true
+            return runtime.setTrayBadge(value.isEmpty ? nil : value)
             #else
             return true
             #endif
@@ -522,18 +524,58 @@ extension LxApp {
 
     nonisolated static func setAppBadge(text: RustStr) -> Bool {
         let value = text.toString()
+        #if os(macOS)
+        // Writing the label always succeeds and always reaches LaunchServices.
+        // Whether the Dock then draws it is a separate question the caller
+        // answers, because only it knows whether this host registered with
+        // Notification Center.
         return executeOnMain {
-            #if os(macOS)
             NSApp.dockTile.badgeLabel = value.isEmpty ? nil : value
+            // The control-session indicator installs a custom `contentView`,
+            // and the Dock caches a tile that has one: without this the label
+            // changes and the picture does not.
+            NSApp.dockTile.display()
             return true
-            #elseif os(iOS)
-            UIApplication.shared.applicationIconBadgeNumber = Int(value) ?? 0
-            return true
-            #else
-            return false
-            #endif
         }
+        #elseif os(iOS)
+        // The home-screen badge belongs to the notification system, so it
+        // takes a count and only with `.badge` authorization. Rust rejects a
+        // non-numeric value before we get here; an empty string clears.
+        guard let count = value.isEmpty ? 0 : Int(value) else { return false }
+        if #available(iOS 17.0, *) {
+            return setNotificationBadgeCount(count)
+        }
+        return executeOnMain {
+            UIApplication.shared.applicationIconBadgeNumber = count
+            return true
+        }
+        #else
+        return false
+        #endif
     }
+
+    #if os(iOS)
+    /// `setBadgeCount` reports refusal through its completion handler, which is
+    /// the only way to tell "painted" from "never authorised".
+    @available(iOS 17.0, *)
+    nonisolated private static func setNotificationBadgeCount(_ count: Int) -> Bool {
+        let failed = NSLock()
+        nonisolated(unsafe) var rejected = false
+        let semaphore = DispatchSemaphore(value: 0)
+        UNUserNotificationCenter.current().setBadgeCount(count) { error in
+            failed.lock()
+            rejected = error != nil
+            failed.unlock()
+            semaphore.signal()
+        }
+        if semaphore.wait(timeout: .now() + 5) == .timedOut {
+            return false
+        }
+        failed.lock()
+        defer { failed.unlock() }
+        return !rejected
+    }
+    #endif
 
     // Launch-at-startup via the login-item registration of the main app
     // bundle. SMAppService is macOS 13+; older shells report unsupported (-1 /

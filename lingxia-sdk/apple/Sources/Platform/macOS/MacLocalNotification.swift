@@ -92,11 +92,13 @@ final class MacLocalNotification: NSObject, UNUserNotificationCenterDelegate {
     /// `granted` / `denied`. Empty when the prompt is left unanswered.
     static func requestPermission() -> String {
         let current = permission()
-        guard current == "default" else { return current }
+        guard current == "default" || current == "granted" else { return current }
 
         let result = Box("")
         let semaphore = DispatchSemaphore(value: 0)
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) {
+        // Repeat the request for authorized installs too: older versions only
+        // requested alerts and sounds, so their authorization omitted badges.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) {
             granted, error in
             if let error {
                 setLastError(error.localizedDescription)

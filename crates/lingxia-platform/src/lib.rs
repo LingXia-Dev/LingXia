@@ -123,6 +123,74 @@ pub fn banner_supported() -> bool {
     false
 }
 
+/// The product-owned chrome this platform can actually paint a count on.
+///
+/// `lx.app.setBadge` skips unsupported surfaces and returns `false` when
+/// none can be painted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct BadgeSurfaces {
+    /// Dock (macOS), taskbar (Windows), home-screen icon (iOS, HarmonyOS).
+    pub app_icon: bool,
+    /// Menu-bar (macOS) / notification-area (Windows) status item.
+    pub tray: bool,
+    /// The platform draws the badge itself and only understands a count, so a
+    /// non-numeric value is a parameter error rather than a silent clear.
+    pub numeric_only: bool,
+}
+
+/// Android is deliberately absent: there is no cross-vendor launcher badge.
+/// What a launcher shows comes from active notifications, so a standalone
+/// count is not something the platform can honour — and claiming it, then
+/// no-opping, is what this reports instead of.
+pub fn badge_surfaces() -> BadgeSurfaces {
+    #[cfg(target_os = "macos")]
+    {
+        BadgeSurfaces {
+            app_icon: true,
+            tray: true,
+            numeric_only: false,
+        }
+    }
+    #[cfg(target_os = "ios")]
+    {
+        // The home-screen badge is drawn by the notification system: it takes
+        // a count, and only with notification permission.
+        BadgeSurfaces {
+            app_icon: true,
+            tray: false,
+            numeric_only: true,
+        }
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // Taskbar overlay only. The notify-area icon lives in the host SDK and
+        // would need its own compositing path; claiming it here before that
+        // exists is exactly the lie this type is for.
+        BadgeSurfaces {
+            app_icon: true,
+            tray: false,
+            numeric_only: true,
+        }
+    }
+    #[cfg(target_env = "ohos")]
+    {
+        BadgeSurfaces {
+            app_icon: true,
+            tray: false,
+            numeric_only: true,
+        }
+    }
+    #[cfg(not(any(
+        target_os = "macos",
+        target_os = "ios",
+        target_os = "windows",
+        target_env = "ohos"
+    )))]
+    {
+        BadgeSurfaces::default()
+    }
+}
+
 /// Whether launch-at-startup can actually work on this host, probed at
 /// runtime. macOS builds target 12 but SMAppService needs 13+, so the
 /// `lx.app.autostart` member must not be registered from a compile-time

@@ -1,8 +1,8 @@
-use crate::app::badge_text;
+use crate::authorization::{self, LogicRoute};
 use crate::i18n::js_error_from_platform_error;
 use lingxia_platform::traits::app_runtime::AppRuntime;
-use lxapp::{LxApp, app_handler_unsub, register_app_handler, unregister_app_handler};
-use rong::{JSContext, JSFunc, JSObject, JSResult, JSValue};
+use lxapp::{app_handler_unsub, register_app_handler, unregister_app_handler};
+use rong::{JSContext, JSFunc, JSObject, JSResult};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -31,19 +31,10 @@ fn tray_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     }
 }
 
-/// lx.tray.setBadge(value) — the menu-bar / system-tray badge. Null/empty clears it.
-fn set_badge(ctx: JSContext, value: JSValue) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
-    let text = badge_text(value, "lx.tray.setBadge")?;
-    lxapp
-        .runtime
-        .set_tray_badge(&text)
-        .map_err(|e| js_error_from_platform_error(&e))
-}
-
 /// lx.tray.setIcon(icon) — replace the tray icon (a resource path).
 fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TraySetIcon)?;
+    let lxapp = invocation.lxapp();
     lxapp
         .runtime
         .set_tray_icon(&icon)
@@ -52,7 +43,8 @@ fn set_icon(ctx: JSContext, icon: String) -> JSResult<()> {
 
 /// lx.tray.setTitle(text) — text shown beside the icon (macOS). Empty clears it.
 fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TraySetTitle)?;
+    let lxapp = invocation.lxapp();
     lxapp
         .runtime
         .set_tray_title(text.as_deref().unwrap_or(""))
@@ -61,7 +53,8 @@ fn set_title(ctx: JSContext, text: Option<String>) -> JSResult<()> {
 
 /// lx.tray.show() — show the tray status item.
 fn show(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TrayShow)?;
+    let lxapp = invocation.lxapp();
     lxapp
         .runtime
         .set_tray_visible(true)
@@ -70,7 +63,8 @@ fn show(ctx: JSContext) -> JSResult<()> {
 
 /// lx.tray.hide() — hide the tray status item.
 fn hide(ctx: JSContext) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TrayHide)?;
+    let lxapp = invocation.lxapp();
     lxapp
         .runtime
         .set_tray_visible(false)
@@ -81,7 +75,8 @@ fn hide(ctx: JSContext) -> JSResult<()> {
 /// handler is registered, the left-click runs only the handler(s); the tray's
 /// configured surface action is suppressed. Returns an unsubscribe function.
 fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TrayOnClick)?;
+    let lxapp = invocation.lxapp();
     let token = register_app_handler(&ctx, "lx.tray.click", handler)?;
     if CLICK_HANDLERS.fetch_add(1, Ordering::SeqCst) == 0 {
         let _ = lxapp.runtime.set_tray_click_intercept(true);
@@ -107,7 +102,8 @@ fn on_click(ctx: JSContext, handler: JSFunc) -> JSResult<JSFunc> {
 /// menu is built from labels; clicks are routed back to each item's `onClick` by
 /// index over the app event bus.
 fn set_menu(ctx: JSContext, items: Vec<JSObject>) -> JSResult<()> {
-    let lxapp = LxApp::from_ctx(&ctx)?;
+    let invocation = authorization::require(&ctx, LogicRoute::TraySetMenu)?;
+    let lxapp = invocation.lxapp();
     let appid = lxapp.appid.clone();
 
     // Drop the previous menu's per-index click handlers.
@@ -159,7 +155,6 @@ rong::js_api! {
 rong::js_api! {
     fn register_tray_api(ctx) {
         namespace TrayApi = tray_namespace(ctx)?;
-        fn setBadge(ts_params = "value: string | number | null") = set_badge;
         fn setIcon(ts_params = "icon: string") = set_icon;
         fn setTitle(ts_params = "text: string | null") = set_title;
         fn setMenu(ts_params = "items: Array<TrayMenuItem | TrayMenuSeparator>") = set_menu;
