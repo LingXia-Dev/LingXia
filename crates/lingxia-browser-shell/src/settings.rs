@@ -42,7 +42,15 @@ fn download_settings_result(app: &LxApp) -> HostResult<DownloadSettingsResult> {
 #[lingxia::framework_native("app.getInfo", audience = "browser-control-only")]
 fn get_app_info(_app: Arc<LxApp>) -> HostResult<AppInfo> {
     let (product_name, version) = match app_config() {
-        Some(cfg) => (cfg.product_name.clone(), cfg.product_version.clone()),
+        // About is user-facing, so the name follows the display language the
+        // same way the launcher entry does. `productName` is the fallback
+        // inside `productNames`, not the string to show.
+        Some(cfg) => (
+            lingxia_app_context::product_name()
+                .unwrap_or(cfg.product_name.as_str())
+                .to_string(),
+            cfg.product_version.clone(),
+        ),
         None => (String::new(), String::new()),
     };
     Ok(AppInfo {
