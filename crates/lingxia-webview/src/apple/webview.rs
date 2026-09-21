@@ -36,8 +36,8 @@ use objc2_core_foundation::{CFRetained, CGPoint, CGRect};
 use objc2_foundation::{
     NSArray, NSDate, NSDictionary, NSError, NSHTTPCookie, NSHTTPCookieDomain, NSHTTPCookieExpires,
     NSHTTPCookieName, NSHTTPCookieOriginURL, NSHTTPCookiePath, NSHTTPCookiePropertyKey,
-    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSObjectProtocol, NSPoint,
-    NSRect, NSSize, NSString, NSURL, NSURLRequest,
+    NSHTTPCookieSameSitePolicy, NSHTTPCookieSecure, NSHTTPCookieValue, NSNumber, NSObjectProtocol,
+    NSPoint, NSRect, NSSize, NSString, NSURL, NSURLRequest,
 };
 use objc2_web_kit::{
     WKAudiovisualMediaTypes, WKContentWorld, WKNavigation, WKNavigationDelegate, WKNavigationType,
@@ -783,7 +783,7 @@ fn submit_navigation_failure(
     navigation: *mut AnyObject,
     error: *mut NSError,
 ) {
-    let key = (!navigation.is_null()).then_some(navigation as usize as u64);
+    let key = unsafe { navigation.as_ref() }.map(apple_navigation_object_key);
     let result = match unsafe { ns_error_to_navigation_failure(error) } {
         AppleNavigationFailure::Cancelled { description } => {
             log::debug!("Cancelled navigation webtag={webtag} error={description}");
@@ -971,7 +971,7 @@ define_class!(
                 webtag,
                 self.ivars().native_view_id,
                 NativeSignal::NavigationStarted {
-                    key: Some(navigation as *const WKNavigation as usize as u64),
+                    key: Some(apple_navigation_object_key(navigation)),
                     url,
                 },
             );
@@ -984,7 +984,7 @@ define_class!(
                 &self.ivars().webtag,
                 self.ivars().native_view_id,
                 NativeSignal::DocumentCommitted {
-                    key: Some(navigation as *const WKNavigation as usize as u64),
+                    key: Some(apple_navigation_object_key(navigation)),
                 },
             );
         }
@@ -1000,7 +1000,7 @@ define_class!(
                 webtag,
                 self.ivars().native_view_id,
                 NativeSignal::NavigationFinished {
-                    key: (!navigation.is_null()).then_some(navigation as usize as u64),
+                    key: unsafe { navigation.as_ref() }.map(apple_navigation_object_key),
                     result: NativeNavigationResult::Succeeded { final_url },
                 },
             );
@@ -4295,13 +4295,46 @@ impl WebViewInner {
     }
 }
 
-fn apple_navigation_key(navigation: *mut WKNavigation) -> Result<NativeKey, WebViewError> {
-    if navigation.is_null() {
-        return Err(WebViewError::WebView(
-            "WKWebView did not return a navigation for trusted data load".to_string(),
-        ));
+// Associated storage dies with WKNavigation, so allocator address reuse cannot
+// alias the normalizer's active or recently completed navigation evidence.
+static APPLE_NAVIGATION_KEY_ASSOCIATION: u8 = 0;
+static NEXT_APPLE_NAVIGATION_KEY: Mutex<NativeKey> = Mutex::new(1);
+
+fn apple_navigation_object_key(navigation: &AnyObject) -> NativeKey {
+    // Serialize lookup + assignment too: two observations of one object must
+    // never mint different keys. No delegate/normalizer calls run under this lock.
+    let mut next = NEXT_APPLE_NAVIGATION_KEY
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    let association = std::ptr::addr_of!(APPLE_NAVIGATION_KEY_ASSOCIATION).cast();
+    unsafe {
+        let existing = objc2::ffi::objc_getAssociatedObject(navigation, association);
+        if !existing.is_null() {
+            return msg_send![existing, unsignedLongLongValue];
+        }
+        let key = *next;
+        *next = next
+            .checked_add(1)
+            .expect("Apple navigation key space exhausted");
+        let value = NSNumber::numberWithUnsignedLongLong(key);
+        objc2::ffi::objc_setAssociatedObject(
+            (navigation as *const AnyObject).cast_mut(),
+            association,
+            Retained::as_ptr(&value).cast_mut().cast(),
+            objc2::ffi::OBJC_ASSOCIATION_RETAIN_NONATOMIC,
+        );
+        key
     }
-    Ok(navigation as usize as NativeKey)
+}
+
+// SAFETY: a non-null pointer must refer to a live WKNavigation.
+unsafe fn apple_navigation_key(navigation: *mut WKNavigation) -> Result<NativeKey, WebViewError> {
+    let navigation = unsafe { navigation.as_ref() }.ok_or_else(|| {
+        WebViewError::WebView(
+            "WKWebView did not return a navigation for trusted data load".to_string(),
+        )
+    })?;
+    Ok(apple_navigation_object_key(navigation))
 }
 
 unsafe fn load_trusted_html_with_navigation(
@@ -4318,7 +4351,7 @@ unsafe fn load_trusted_html_with_navigation(
     };
     let navigation: *mut WKNavigation =
         unsafe { msg_send![webview, loadHTMLString: &*data, baseURL: &*base_url] };
-    apple_navigation_key(navigation)
+    unsafe { apple_navigation_key(navigation) }
 }
 
 impl Drop for WebViewInner {
@@ -4736,12 +4769,24 @@ mod tests {
 
     #[test]
     fn trusted_html_requires_a_non_null_navigation_key() {
-        assert!(apple_navigation_key(std::ptr::null_mut()).is_err());
-        let navigation = std::ptr::NonNull::<WKNavigation>::dangling().as_ptr();
-        assert_eq!(
-            apple_navigation_key(navigation).expect("non-null navigation key"),
-            navigation as usize as NativeKey
-        );
+        assert!(unsafe { apple_navigation_key(std::ptr::null_mut()) }.is_err());
+    }
+
+    #[test]
+    fn navigation_keys_follow_object_lifetimes_not_addresses() {
+        let mut keys = std::collections::HashSet::new();
+        for _ in 0..1024 {
+            // NSObject exercises the same associated-object lifetime as
+            // WKNavigation, without constructing a WebView on the UI thread.
+            let navigation = NSObject::new();
+            let key = apple_navigation_object_key(&navigation);
+            assert_ne!(key, 0);
+            assert_eq!(apple_navigation_object_key(&navigation), key);
+            assert!(
+                keys.insert(key),
+                "a new object reused retired navigation evidence"
+            );
+        }
     }
 
     #[test]
