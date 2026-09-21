@@ -1,11 +1,12 @@
 //! Cross-platform host-env icon badge drawing.
 //!
 //! Dev builds get a small `D` badge composited onto the launcher icon so they
-//! can be distinguished from prod. This module only owns the shared badge
-//! appearance; platform modules decide which icon copy to badge and where to
-//! stage it.
+//! can be distinguished from prod. Appearance matches the Android adaptive
+//! overlay: a red circle, white ring, and the same even-odd vector letter.
+//! This module only owns that shared badge; platform modules decide which
+//! icon copy to badge and where to stage it.
 
-use image::{Rgba, RgbaImage};
+use image::{RgbaImage, imageops};
 
 use crate::config::AppEnv;
 
@@ -18,39 +19,46 @@ pub fn env_badge(version: AppEnv) -> Option<(char, [u8; 4])> {
     }
 }
 
-/// Where the badge sits on the icon plate.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum BadgePlacement {
-    /// Wholly inside the plate. For OS-masked full-bleed icons (iOS), whose
-    /// corners the system cuts away.
-    Inside,
-    /// Tucked into the plate's bottom-right rounded corner, close to both
-    /// edges but never past them. For desktop plates the shell does not mask.
-    Corner,
+/// Android adaptive overlay: 20dp circle, 18dp from the 108dp canvas edges.
+/// Seats the badge on the typical 72dp launcher-mask edge.
+pub const ANDROID_CANVAS_DP: f32 = 108.0;
+pub const ANDROID_BADGE_DP: f32 = 20.0;
+pub const ANDROID_BADGE_INSET_DP: f32 = 18.0;
+
+/// Vector path data shared with the Android `<vector>` overlay (42×42 viewport).
+pub fn badge_letter_path(letter: char) -> Option<&'static str> {
+    match letter {
+        'D' => Some(
+            "M12,10 L22,10 C29,10 34,15 34,21 C34,27 29,32 22,32 L12,32 Z M18,16 L18,26 L22,26 C25.5,26 28,24 28,21 C28,18 25.5,16 22,16 Z",
+        ),
+        'P' => Some(
+            "M13,10 L25,10 C30,10 34,14 34,19 C34,24 30,28 25,28 L19,28 L19,32 L13,32 Z M19,16 L19,22 L24,22 C26.5,22 28,20.8 28,19 C28,17.2 26.5,16 24,16 Z",
+        ),
+        _ => None,
+    }
 }
 
-/// Composite a circular badge with a hand-rolled bitmap letter at the
-/// bottom-right of an artwork rect inset from the canvas by `margin_frac` per
-/// side. Sized relative to the icon so it stays readable from 60x60
-/// home-screen icons up to the 1024x1024 marketing icon.
-pub fn composite_badge_inset(
-    img: &mut RgbaImage,
-    letter: char,
-    accent: [u8; 4],
-    margin_frac: f32,
-    placement: BadgePlacement,
-) {
-    let (w, h) = img.dimensions();
-    let margin = ((w.min(h) as f32) * margin_frac).round() as i32;
-    let side = (w.min(h) as i32 - 2 * margin).max(1);
-    composite_badge_in_plate(img, letter, accent, (margin, margin, side, side), placement);
-}
-
-/// Badge a desktop icon on the corner of its visible plate, measured from
-/// alpha so it follows whatever margin the icon pipeline left.
+/// Badge a desktop (or iOS full-bleed) icon on the corner of its visible
+/// plate, measured from alpha so it follows whatever margin the icon
+/// pipeline left.
 pub fn composite_corner_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
     let plate = opaque_plate(img).unwrap_or((0, 0, img.width() as i32, img.height() as i32));
-    composite_badge_in_plate(img, letter, accent, plate, BadgePlacement::Corner);
+    composite_badge_in_plate(img, letter, accent, plate);
+}
+
+/// Badge a layered-icon canvas the way Android's overlay does: 20/108 of
+/// the canvas, 18/108 in from the edges, so the circle sits on the launcher
+/// mask rather than dominating the 108-style plate.
+pub fn composite_android_canvas_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
+    let (w, h) = img.dimensions();
+    let canvas = w.min(h) as f32;
+    let diameter = (canvas * ANDROID_BADGE_DP / ANDROID_CANVAS_DP)
+        .round()
+        .max(1.0) as i32;
+    let inset = (canvas * ANDROID_BADGE_INSET_DP / ANDROID_CANVAS_DP).round() as i32;
+    let center_x = w as i32 - inset - diameter / 2;
+    let center_y = h as i32 - inset - diameter / 2;
+    blit_badge(img, letter, accent, diameter, center_x, center_y);
 }
 
 /// Bounding rect of the pixels that are clearly part of the plate.
@@ -76,135 +84,91 @@ fn opaque_plate(img: &RgbaImage) -> Option<(i32, i32, i32, i32)> {
 }
 
 /// Badge anchored to an explicit plate rect `(left, top, width, height)`.
-pub fn composite_badge_in_plate(
+///
+/// Sits just inside the plate's 22% corner arc (tangent from within, plus a
+/// hairline gap so the white ring never meets the edge). iOS squircles this
+/// same corner, so the badge lands on the mask the way Android's 20dp/18dp
+/// overlay sits on the adaptive mask.
+fn composite_badge_in_plate(
     img: &mut RgbaImage,
     letter: char,
     accent: [u8; 4],
     plate: (i32, i32, i32, i32),
-    placement: BadgePlacement,
 ) {
-    let (w, h) = img.dimensions();
     let (left, top, plate_w, plate_h) = plate;
     let artwork = plate_w.min(plate_h).max(1);
     let badge_diameter = ((artwork as f32) * 0.30).round() as i32;
-    let (right_to_center, bottom_to_center) = match placement {
-        // ~0.4·diameter of corner clearance keeps the whole circle clear of
-        // a rounded corner the OS will mask.
-        BadgePlacement::Inside => {
-            let edge = badge_diameter / 2 + ((badge_diameter as f32 * 0.4).round() as i32).max(2);
-            (edge, edge)
-        }
-        // Just inside the plate's 22% corner arc: tangent to it from within,
-        // plus a hairline gap so the white ring never meets the edge.
-        BadgePlacement::Corner => {
-            let corner_r = artwork as f32 * 0.22;
-            let badge_r = badge_diameter as f32 / 2.0;
-            let gap = (artwork as f32 * 0.012).max(1.0);
-            let edge = corner_r - (corner_r - badge_r - gap) / std::f32::consts::SQRT_2;
-            let edge = edge.round() as i32;
-            (edge, edge)
-        }
+    let corner_r = artwork as f32 * 0.22;
+    let badge_r = badge_diameter as f32 / 2.0;
+    let gap = (artwork as f32 * 0.012).max(1.0);
+    let edge = corner_r - (corner_r - badge_r - gap) / std::f32::consts::SQRT_2;
+    let edge = edge.round() as i32;
+    let center_x = left + plate_w - edge;
+    let center_y = top + plate_h - edge;
+    blit_badge(img, letter, accent, badge_diameter, center_x, center_y);
+}
+
+fn blit_badge(
+    img: &mut RgbaImage,
+    letter: char,
+    accent: [u8; 4],
+    diameter: i32,
+    center_x: i32,
+    center_y: i32,
+) {
+    let diameter = diameter.max(1) as u32;
+    let sprite = render_badge_sprite(letter, accent, diameter);
+    let left = center_x - sprite.width() as i32 / 2;
+    let top = center_y - sprite.height() as i32 / 2;
+    imageops::overlay(img, &sprite, left as i64, top as i64);
+}
+
+/// Rasterize the Android vector badge. Small diameters render at 2× and
+/// downscale so the letter stays smooth on 60pt home-screen tiles.
+fn render_badge_sprite(letter: char, accent: [u8; 4], diameter: u32) -> RgbaImage {
+    let render_d = if diameter < 64 {
+        diameter.saturating_mul(2).max(1)
+    } else {
+        diameter
     };
-    let center_x = left + plate_w - right_to_center;
-    let center_y = top + plate_h - bottom_to_center;
-    let outer_r = badge_diameter / 2;
-    let border_w = (badge_diameter / 16).max(2);
-    let inner_r = (outer_r - border_w).max(1);
-
-    let accent_color = Rgba(accent);
-    let white = Rgba([0xFF, 0xFF, 0xFF, 0xFF]);
-
-    for dy in -outer_r..=outer_r {
-        for dx in -outer_r..=outer_r {
-            let dist_sq = dx * dx + dy * dy;
-            if dist_sq > outer_r * outer_r {
-                continue;
-            }
-            let x = center_x + dx;
-            let y = center_y + dy;
-            if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
-                continue;
-            }
-            let pixel = if dist_sq <= inner_r * inner_r {
-                accent_color
-            } else {
-                white
-            };
-            img.put_pixel(x as u32, y as u32, pixel);
-        }
-    }
-
-    draw_letter(img, letter, center_x, center_y, inner_r, white);
-}
-
-/// Render a 5x7 bitmap letter centered at `(cx, cy)`, scaled to fit inside
-/// `inner_r` (the inner accent circle's radius). Pixels are drawn directly.
-fn draw_letter(img: &mut RgbaImage, letter: char, cx: i32, cy: i32, inner_r: i32, fg: Rgba<u8>) {
-    let glyph = letter_glyph(letter);
-    if glyph.is_empty() {
-        return;
-    }
-    let (w, h) = img.dimensions();
-    let glyph_w = 5_i32;
-    let glyph_h = glyph.len() as i32;
-    // Fit inside ~70% of the inner circle so the letter doesn't bleed onto
-    // the white border ring.
-    let max_height = (inner_r * 2 * 7 / 10).max(7);
-    let scale = (max_height / glyph_h).max(1);
-    let actual_w = glyph_w * scale;
-    let actual_h = glyph_h * scale;
-    let origin_x = cx - actual_w / 2;
-    let origin_y = cy - actual_h / 2;
-
-    for (gy, row) in glyph.iter().enumerate() {
-        for gx in 0..glyph_w {
-            let bit = (row >> (glyph_w - 1 - gx)) & 1;
-            if bit == 0 {
-                continue;
-            }
-            for sy in 0..scale {
-                for sx in 0..scale {
-                    let x = origin_x + gx * scale + sx;
-                    let y = origin_y + gy as i32 * scale + sy;
-                    if x < 0 || y < 0 || x >= w as i32 || y >= h as i32 {
-                        continue;
-                    }
-                    img.put_pixel(x as u32, y as u32, fg);
-                }
-            }
-        }
+    let svg = badge_svg(letter, accent);
+    let png = crate::r#gen::icons::svg_to_png_bytes(&svg, render_d)
+        .expect("static env-badge SVG must render");
+    let sprite = image::load_from_memory(&png)
+        .expect("resvg PNG must decode")
+        .to_rgba8();
+    if render_d == diameter {
+        sprite
+    } else {
+        imageops::resize(&sprite, diameter, diameter, imageops::FilterType::Lanczos3)
     }
 }
 
-/// 5x7 bitmap glyph rows (MSB-first within each 5-bit row).
-fn letter_glyph(letter: char) -> &'static [u8] {
-    match letter {
-        'D' => &[
-            0b11110, // ####.
-            0b10001, // #...#
-            0b10001, // #...#
-            0b10001, // #...#
-            0b10001, // #...#
-            0b10001, // #...#
-            0b11110, // ####.
-        ],
-        'P' => &[
-            0b11110, // ####.
-            0b10001, // #...#
-            0b10001, // #...#
-            0b11110, // ####.
-            0b10000, // #....
-            0b10000, // #....
-            0b10000, // #....
-        ],
-        _ => &[],
-    }
+fn badge_svg(letter: char, accent: [u8; 4]) -> String {
+    let path = badge_letter_path(letter).unwrap_or("");
+    // 20×20 matches the Android overlay item. The circle's 2-unit centered
+    // stroke is the same 2dp white ring; the letter lives in the 42-unit
+    // vector viewport and is scaled onto that 20×20 plate.
+    format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20">
+  <circle cx="10" cy="10" r="9" fill="#{r:02X}{g:02X}{b:02X}" stroke="#FFFFFF" stroke-width="2"/>
+  <g transform="scale({scale})">
+    <path fill="#FFFFFF" fill-rule="evenodd" d="{path}"/>
+  </g>
+</svg>"##,
+        r = accent[0],
+        g = accent[1],
+        b = accent[2],
+        scale = 20.0 / 42.0,
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        BadgePlacement, composite_badge_inset, composite_corner_badge, env_badge, letter_glyph,
+        ANDROID_BADGE_DP, ANDROID_BADGE_INSET_DP, ANDROID_CANVAS_DP, badge_letter_path,
+        composite_android_canvas_badge, composite_badge_in_plate, composite_corner_badge,
+        env_badge, render_badge_sprite,
     };
     use crate::config::AppEnv;
     use image::{Rgba, RgbaImage};
@@ -216,25 +180,45 @@ mod tests {
     }
 
     #[test]
-    fn glyph_table_covers_required_letters() {
-        assert!(!letter_glyph('D').is_empty());
-        assert!(!letter_glyph('P').is_empty());
-        assert!(letter_glyph('X').is_empty());
+    fn path_table_covers_required_letters() {
+        assert!(badge_letter_path('D').is_some());
+        assert!(badge_letter_path('P').is_some());
+        assert!(badge_letter_path('X').is_none());
+    }
+
+    #[test]
+    fn sprite_is_a_smooth_circle_with_the_android_letter() {
+        let sprite = render_badge_sprite('D', [0xD3, 0x2F, 0x2F, 0xFF], 80);
+        assert_eq!(sprite.dimensions(), (80, 80));
+        // Corners of the sprite square stay empty — it's a circle, not a disc tile.
+        assert_eq!(sprite.get_pixel(0, 0).0[3], 0);
+        assert_eq!(sprite.get_pixel(79, 0).0[3], 0);
+        // Center is the accent fill (inside the D's bowl / the circle).
+        let center = sprite.get_pixel(40, 40).0;
+        assert!(
+            center[0] > 0xA0,
+            "center should be the red accent, got {center:?}"
+        );
+        assert!(center[3] > 0xF0);
+        // White ink exists (ring and/or the D) and is not a 5×7 block grid:
+        // a curved letter produces more than a handful of near-white pixels.
+        let white = sprite
+            .pixels()
+            .filter(|p| p.0[0] > 0xE0 && p.0[1] > 0xE0 && p.0[2] > 0xE0 && p.0[3] > 0xE0)
+            .count();
+        assert!(
+            white > 80,
+            "expected a filled vector D + ring, got {white} white pixels"
+        );
     }
 
     #[test]
     fn composite_badge_modifies_bottom_right_pixels() {
         let mut img = RgbaImage::from_pixel(120, 120, Rgba([0, 0, 0, 0xFF]));
-        composite_badge_inset(
-            &mut img,
-            'D',
-            [0xD3, 0x2F, 0x2F, 0xFF],
-            0.0,
-            BadgePlacement::Inside,
-        );
+        composite_badge_in_plate(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF], (0, 0, 120, 120));
         // Pixel at the badge center should now be the accent color rather than
         // the original black.
-        let center = *img.get_pixel(95, 95);
+        let center = *img.get_pixel(100, 100);
         assert_ne!(center, Rgba([0, 0, 0, 0xFF]));
         // Upper-left should be untouched.
         assert_eq!(*img.get_pixel(10, 10), Rgba([0, 0, 0, 0xFF]));
@@ -269,5 +253,41 @@ mod tests {
         // The rounded corner itself stays plate.
         assert_eq!(*img.get_pixel(118, 118), plate);
         assert_eq!(*img.get_pixel(40, 40), plate);
+    }
+
+    #[test]
+    fn ios_full_bleed_corner_sits_on_the_squircle_not_inward() {
+        // 180px = iPhone home-screen @3x. Inside placement used to park the
+        // badge ~12% in from the edge; Corner should put the outer ring
+        // within a few percent of the 22% squircle.
+        let mut img = RgbaImage::from_pixel(180, 180, Rgba([20, 40, 80, 0xFF]));
+        composite_corner_badge(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF]);
+        let plate = Rgba([20, 40, 80, 0xFF]);
+        // Extreme corner stays plate (the squircle cuts this away anyway).
+        assert_eq!(*img.get_pixel(178, 178), plate);
+        // Ring reaches the lower-right quadrant near the edge.
+        let near_edge = *img.get_pixel(168, 150);
+        assert_ne!(
+            near_edge, plate,
+            "badge should sit on the iOS corner, got {near_edge:?}"
+        );
+    }
+
+    #[test]
+    fn android_canvas_badge_uses_the_20_over_108_overlay() {
+        let mut img = RgbaImage::from_pixel(108, 108, Rgba([10, 10, 10, 0xFF]));
+        composite_android_canvas_badge(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF]);
+        let diameter = (108.0 * ANDROID_BADGE_DP / ANDROID_CANVAS_DP).round() as i32;
+        let inset = (108.0 * ANDROID_BADGE_INSET_DP / ANDROID_CANVAS_DP).round() as i32;
+        assert_eq!(diameter, 20);
+        assert_eq!(inset, 18);
+        let cx = (108 - inset - diameter / 2) as u32;
+        let cy = cx;
+        let center = img.get_pixel(cx, cy).0;
+        assert!(
+            center[0] > 0xA0,
+            "badge center should be accent red, got {center:?}"
+        );
+        assert_eq!(*img.get_pixel(4, 4), Rgba([10, 10, 10, 0xFF]));
     }
 }

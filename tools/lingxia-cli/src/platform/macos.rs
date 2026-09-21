@@ -501,13 +501,12 @@ impl Platform for MacosPlatform {
         }
 
         // Mirror the iOS env-icon overlay so a `dev` macOS build also
-        // gets the D badge on the dock icon. macOS icon artwork sits inside
-        // a ~10% transparent canvas margin — anchor the badge to the artwork.
+        // gets the D badge on the dock icon. macOS plates already carry
+        // their margin in alpha; the shared corner seat follows that plate.
         let resources_for_compile = match apple::env_icon::prepare_overlay_resources_dir(
             &resolve_lingxia_target_dir(&config.project_root).join("macos"),
             &resources_dir,
             config.resolved_env.version,
-            0.10,
             false,
         ) {
             Ok(Some(staging)) => staging,
