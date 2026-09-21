@@ -1027,9 +1027,7 @@ impl PageSvc {
         drop(state);
         if let Some(cb) = callback {
             let _ = with_document_callback_work(cb.work_id, cb.outbound, async move {
-                cb.callback
-                    .call_async::<_, ()>(None, (STATE_ACKED,))
-                    .await
+                cb.callback.call_async::<_, ()>(None, (STATE_ACKED,)).await
             })
             .await;
         }
