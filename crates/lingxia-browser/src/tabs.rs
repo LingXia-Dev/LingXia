@@ -328,6 +328,29 @@ pub(crate) enum BrowserTabScope<'a> {
     },
 }
 
+/// Which scope a tab opened for `url` belongs to.
+///
+/// A registered control page is one surface, not one per session. The host
+/// reaches its Settings through `settingsDestination`, which is global, and the
+/// browser reaches the same page from its own chrome, which is owned — scoping
+/// it both ways gives one page two tab identities, and the two WebViews then
+/// contend for a single page binding. The one that loses it never completes its
+/// bridge handshake, so that page reports the failure or sits on its skeleton.
+/// Control pages therefore resolve the same way whoever asks for them.
+fn internal_tab_scope<'a>(
+    url: &str,
+    owner_appid: &'a str,
+    owner_session_id: u64,
+) -> BrowserTabScope<'a> {
+    match registered_control_page_route(url) {
+        Some(_) => BrowserTabScope::Global,
+        None => BrowserTabScope::OwnerSession {
+            owner_appid,
+            owner_session_id,
+        },
+    }
+}
+
 fn generate_tab_id() -> String {
     loop {
         let candidate = format!(
@@ -1093,10 +1116,7 @@ pub(crate) fn open_internal_browser_tab_for_owner(
     open_internal_browser_tab_with_scope(
         url,
         tab_id,
-        BrowserTabScope::OwnerSession {
-            owner_appid,
-            owner_session_id,
-        },
+        internal_tab_scope(url, owner_appid, owner_session_id),
         standalone,
         aside,
         data_mode,
@@ -1482,6 +1502,33 @@ pub fn reopen_closed(id: Option<&str>) -> Result<String, LxAppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_control_page_gets_one_identity_whoever_opens_it() {
+        let _ = crate::internal_pages::register_browser_internal_page(
+            "settings",
+            "pages/settings/index.html",
+        );
+        // The browser's own chrome opens this owned, and the host's settings
+        // destination opens it globally. One page, one tab, either way.
+        assert!(matches!(
+            internal_tab_scope("lingxia://settings", "app.example", 7),
+            BrowserTabScope::Global
+        ));
+        assert!(matches!(
+            internal_tab_scope("lingxia://settings#agent", "app.example", 7),
+            BrowserTabScope::Global
+        ));
+        // Everything else stays with the session that opened it.
+        assert!(matches!(
+            internal_tab_scope("https://example.test/", "app.example", 7),
+            BrowserTabScope::OwnerSession { .. }
+        ));
+        assert!(matches!(
+            internal_tab_scope("lingxia://newtab", "app.example", 7),
+            BrowserTabScope::OwnerSession { .. }
+        ));
+    }
 
     #[test]
     fn recently_closed_only_records_normal_website_tabs_with_owner() {
