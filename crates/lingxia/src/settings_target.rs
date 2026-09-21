@@ -569,6 +569,7 @@ mod tests {
             app_links: None,
             theme: None,
             settings_destination: destination,
+            browser: Default::default(),
             capabilities: Some(CapabilitiesConfig {
                 browser: true,
                 ..CapabilitiesConfig::default()

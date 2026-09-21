@@ -12,6 +12,8 @@ keywords = ["lingxia", "browser", "lxapp", "webview"]
 categories = ["web-programming", "api-bindings"]
 
 [dependencies]
+url = "2"
+lingxia-service = { workspace = true }
 lxapp = { workspace = true, default-features = false }
 lingxia-log = { workspace = true }
 lingxia-transfer = { workspace = true }
@@ -28,6 +30,7 @@ uuid = { version = "1.26", features = ["v4"] }
 ring = "0.17.14"
 
 [dev-dependencies]
+tempfile = "3"
 lingxia-webview = { workspace = true, features = ["test-support"] }
 lxapp = { workspace = true, default-features = false, features = ["test-utils"] }
 

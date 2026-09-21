@@ -377,6 +377,9 @@ pub struct AppConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<CapabilitiesConfig>,
 
+    #[serde(default)]
+    pub browser: BrowserChromeConfig,
+
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panels: Option<PanelsConfig>,
 
@@ -1242,6 +1245,37 @@ fn panel_position_name(position: PanelPosition) -> &'static str {
     }
 }
 
+/// Browser chrome preferences, independent of capability grants.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrowserChromeConfig {
+    #[serde(default = "bookmarks_default")]
+    pub bookmarks: bool,
+}
+fn bookmarks_default() -> bool {
+    true
+}
+impl Default for BrowserChromeConfig {
+    fn default() -> Self {
+        Self { bookmarks: true }
+    }
+}
+pub fn browser_bookmarks_enabled() -> bool {
+    app_config().is_none_or(|config| config.browser.bookmarks)
+}
+
+#[cfg(test)]
+mod browser_chrome_tests {
+    use super::*;
+    #[test]
+    fn bookmarks_default_on_and_explicit_false_roundtrips() {
+        let default: BrowserChromeConfig = serde_json::from_str("{}").unwrap();
+        assert!(default.bookmarks);
+        let disabled: BrowserChromeConfig = serde_json::from_str(r#"{"bookmarks":false}"#).unwrap();
+        assert!(!disabled.bookmarks);
+        assert_eq!(serde_json::to_value(disabled).unwrap()["bookmarks"], false);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1268,6 +1302,7 @@ mod tests {
             app_links: None,
             theme: None,
             settings_destination: None,
+            browser: Default::default(),
             capabilities: None,
             panels: None,
             update_trusted_public_keys: Vec::new(),

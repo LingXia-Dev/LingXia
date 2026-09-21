@@ -75,6 +75,12 @@ pub(super) fn build_app_json_from_config(
             serde_json::json!(home_bundle.version.as_str()),
         );
     }
+    if let Some(browser) = config.browser.as_ref() {
+        obj.insert(
+            "browser".to_string(),
+            serde_json::json!({ "bookmarks": browser.bookmarks }),
+        );
+    }
     if let Some(storage) = config.storage.as_ref() {
         obj.insert("storage".to_string(), serde_json::to_value(storage)?);
     }

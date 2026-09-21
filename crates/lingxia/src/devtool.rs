@@ -206,6 +206,7 @@ fn build_default_host_app_config(
         app_links: None,
         theme: None,
         settings_destination: None,
+        browser: Default::default(),
         capabilities: None,
         panels: None,
         update_trusted_public_keys: Vec::new(),

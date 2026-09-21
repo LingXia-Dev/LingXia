@@ -20,8 +20,9 @@ pub use manager::{ShellManager, ShellSnapshot};
 pub use pin::{MAX_SHELL_PINS, PinCollection, PinMutation, ShellPin, ShellPinTarget};
 pub use runtime::{
     ShellHost, SidebarActionIntent, activate_sidebar_action, apply_current_pins,
-    apply_current_sidebar_actions, initialize, is_pinned, manager, pins, resolved_sidebar_actions,
-    set_pinned, set_sidebar_chrome, set_window_frame, sidebar_chrome, window_frame,
+    apply_current_sidebar_actions, initialize, is_pinned, manager, pins, reorder_pins,
+    resolved_sidebar_actions, set_pinned, set_sidebar_chrome, set_window_frame, sidebar_chrome,
+    window_frame,
 };
 pub use sidebar_action::{
     MAX_HEADER_SIDEBAR_ACTIONS, ResolvedShellSidebarAction, ShellSidebarAction,

@@ -21,6 +21,7 @@ browser:
   page_menu: "更多"
   pin_to_sidebar: "固定到侧栏"
   unpin: "取消固定"
+  manage_pinned_sites: "管理固定的站点…"
   manage_bookmarks: "管理书签…"
   settings: "设置"
 

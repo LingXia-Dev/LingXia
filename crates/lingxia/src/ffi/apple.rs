@@ -538,6 +538,12 @@ mod bridge {
         #[swift_bridge(swift_name = "browserBookmarkStatus")]
         fn browser_bookmark_status(url: &str) -> bool;
 
+        #[swift_bridge(swift_name = "browserBookmarksEnabled")]
+        fn browser_bookmarks_enabled() -> bool;
+
+        #[swift_bridge(swift_name = "browserReopenClosedTab")]
+        fn browser_reopen_closed_tab() -> String;
+
         // Bookmark state bitmask for `url`: bit 0 = bookmarked, bit 1 = pinned.
         #[swift_bridge(swift_name = "browserBookmarkState")]
         fn browser_bookmark_state(url: &str) -> u32;
@@ -2923,6 +2929,19 @@ pub fn terminal_session_close(id: u64) {
     {
         let _ = id;
     }
+}
+
+pub fn browser_bookmarks_enabled() -> bool {
+    lingxia_app_context::browser_bookmarks_enabled()
+}
+
+pub fn browser_reopen_closed_tab() -> String {
+    #[cfg(feature = "browser-runtime")]
+    return ffi_catch_unwind!("browser_reopen_closed_tab", String::new(), || {
+        lingxia_browser::reopen_closed(None).unwrap_or_default()
+    });
+    #[cfg(not(feature = "browser-runtime"))]
+    String::new()
 }
 
 #[cfg(test)]

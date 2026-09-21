@@ -1234,7 +1234,7 @@ final class BrowserTabCoordinator: NSObject {
             pinButton.isHidden = true
             return
         }
-        starButton.isHidden = false
+        starButton.isHidden = !browserBookmarksEnabled()
         pinButton.isHidden = false
         // One O(1)-ish FFI call (bit 0 = bookmarked, bit 1 = pinned) instead of
         // decoding a full snapshot on every URL change.
@@ -1273,9 +1273,9 @@ final class BrowserTabCoordinator: NSObject {
 
     func setPageActionsVisible(_ visible: Bool) {
         pageActionsVisible = visible
-        starButton.isHidden = !visible
+        starButton.isHidden = !visible || !browserBookmarksEnabled()
         pinButton.isHidden = !visible
-        bookmarksButton.isHidden = !visible
+        bookmarksButton.isHidden = !visible || !browserBookmarksEnabled()
         menuButton.isHidden = !visible
     }
 
@@ -1351,10 +1351,13 @@ final class BrowserTabCoordinator: NSObject {
     /// Browser-scope keyboard shortcuts (active only while a browser tab is
     /// frontmost): ⌘D toggles bookmark, ⌘Y opens history, ⇧⌘C copies the link.
     private func handleShortcut(_ event: NSEvent) -> Bool {
-        guard activeTabId != nil else { return false }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let key = event.charactersIgnoringModifiers?.lowercased()
-        if flags == [.command], key == "d" {
+        if flags == [.command, .shift], key == "t" {
+            return !browserReopenClosedTab().toString().isEmpty
+        }
+        guard activeTabId != nil else { return false }
+        if flags == [.command], key == "d", browserBookmarksEnabled() {
             toggleActiveBookmark()
             return true
         }
@@ -1510,7 +1513,7 @@ final class BrowserTabCoordinator: NSObject {
         bookmarksButton.toolTip = L10n.string("lx_browser_manage_bookmarks")
         bookmarksButton.setAccessibilityLabel(bookmarksButton.toolTip ?? "")
         toolbar.addSubview(bookmarksButton)
-        bookmarksButton.isHidden = !pageActionsVisible
+        bookmarksButton.isHidden = !pageActionsVisible || !browserBookmarksEnabled()
 
         configureButton(menuButton, iconName: "icon_page_menu", action: #selector(menuClicked))
         menuButton.toolTip = L10n.string("lx_browser_page_menu")
@@ -1586,11 +1589,11 @@ final class BrowserTabCoordinator: NSObject {
 
             bookmarksButton.trailingAnchor.constraint(
                 equalTo: menuButton.leadingAnchor,
-                constant: pageActionsVisible ? -4 : 0
+                constant: pageActionsVisible && browserBookmarksEnabled() ? -4 : 0
             ),
             bookmarksCenterY,
             bookmarksButton.widthAnchor.constraint(
-                equalToConstant: pageActionsVisible ? Layout.buttonSize : 0
+                equalToConstant: pageActionsVisible && browserBookmarksEnabled() ? Layout.buttonSize : 0
             ),
             bookmarksButton.heightAnchor.constraint(equalToConstant: Layout.buttonSize),
 
@@ -1607,10 +1610,10 @@ final class BrowserTabCoordinator: NSObject {
 
             starButton.trailingAnchor.constraint(
                 equalTo: pinButton.leadingAnchor,
-                constant: pageActionsVisible ? -2 : 0
+                constant: pageActionsVisible && browserBookmarksEnabled() ? -2 : 0
             ),
             starButton.centerYAnchor.constraint(equalTo: addressBarContainer.centerYAnchor),
-            starButton.widthAnchor.constraint(equalToConstant: pageActionsVisible ? 20 : 0),
+            starButton.widthAnchor.constraint(equalToConstant: pageActionsVisible && browserBookmarksEnabled() ? 20 : 0),
             starButton.heightAnchor.constraint(equalToConstant: 20),
 
             pinButton.trailingAnchor.constraint(equalTo: addressBarContainer.trailingAnchor, constant: -5),

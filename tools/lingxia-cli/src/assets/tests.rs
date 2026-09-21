@@ -125,6 +125,28 @@ fn update_table_requires_one_or_two_keys() {
 }
 
 #[test]
+fn browser_bookmarks_survives_yaml_to_runtime_config() {
+    let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
+    for bookmarks in [true, false] {
+        config.browser = Some(crate::config::BrowserConfig {
+            bookmarks,
+            webui: None,
+        });
+        let json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+        let runtime = lingxia_app_context::AppConfig::parse_and_validate(&json).unwrap();
+        assert_eq!(runtime.browser.bookmarks, bookmarks);
+    }
+    config.browser = None;
+    let json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    assert!(
+        lingxia_app_context::AppConfig::parse_and_validate(&json)
+            .unwrap()
+            .browser
+            .bookmarks
+    );
+}
+
+#[test]
 fn generated_app_json_embeds_update_trusted_public_keys() {
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     config.update = Some(UpdateSigningConfig {

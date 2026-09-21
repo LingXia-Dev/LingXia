@@ -2201,7 +2201,8 @@ fn build_address_bar_layout() -> Option<WindowsShellAddressBarLayout> {
         can_go_forward: tab.can_go_forward,
         bookmarked,
         pinned,
-        show_bookmark: cfg!(feature = "browser-shell"),
+        show_bookmark: cfg!(feature = "browser-shell")
+            && lingxia_app_context::browser_bookmarks_enabled(),
         show_pin: cfg!(feature = "browser-shell"),
         show_page_menu: cfg!(feature = "browser-shell"),
         web,
@@ -4838,7 +4839,11 @@ fn show_pinned_bookmark_context_menu(appid: &str, row_id: &str, screen_x: i32, s
     };
     let items = vec![
         lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserUnpin),
-        lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
+        lingxia_logic::i18n::t(if lingxia_app_context::browser_bookmarks_enabled() {
+            lingxia_logic::I18nKey::BrowserManageBookmarks
+        } else {
+            lingxia_logic::I18nKey::BrowserManagePinnedSites
+        }),
     ];
     let appid = appid.to_string();
     super::context_menu::show_context_menu_checked(
@@ -6614,6 +6619,27 @@ fn toggle_presented_tab_pin(_appid: &str) {}
 fn toggle_presented_tab_bookmark(_appid: &str) {}
 
 #[cfg(feature = "browser-shell")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BrowserPageMenuAction {
+    ToggleBookmark,
+    TogglePin,
+    CopyLink,
+    OpenExternal,
+    Separator,
+    ManageBookmarks,
+    History,
+    Settings,
+    ClearSiteData,
+}
+
+#[cfg(feature = "browser-shell")]
+impl BrowserPageMenuAction {
+    fn is_visible(self, bookmarks_enabled: bool) -> bool {
+        bookmarks_enabled || !matches!(self, Self::ToggleBookmark | Self::ManageBookmarks)
+    }
+}
+
+#[cfg(feature = "browser-shell")]
 fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
     let Some(tab_id) = presented_browser_tab() else {
         return;
@@ -6632,82 +6658,117 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
     use crate::WindowsDesignIcon;
     let page_actionable = !url.trim().is_empty() && !lingxia_browser_shell::should_hide_url(&url);
     let items = vec![
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(if bookmarked {
-                lingxia_logic::I18nKey::BrowserRemoveBookmark
-            } else {
-                lingxia_logic::I18nKey::BrowserAddBookmark
-            }),
-            is_web_url,
-            if bookmarked {
-                WindowsDesignIcon::BookmarkFilled
-            } else {
-                WindowsDesignIcon::Bookmark
-            },
+        (
+            BrowserPageMenuAction::ToggleBookmark,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(if bookmarked {
+                    lingxia_logic::I18nKey::BrowserRemoveBookmark
+                } else {
+                    lingxia_logic::I18nKey::BrowserAddBookmark
+                }),
+                is_web_url,
+                if bookmarked {
+                    WindowsDesignIcon::BookmarkFilled
+                } else {
+                    WindowsDesignIcon::Bookmark
+                },
+            ),
         ),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(if pinned_id.is_some() {
-                lingxia_logic::I18nKey::BrowserUnpin
-            } else {
-                lingxia_logic::I18nKey::BrowserPinToSidebar
-            }),
-            is_web_url,
-            if pinned_id.is_some() {
-                WindowsDesignIcon::Unpin
-            } else {
-                WindowsDesignIcon::Pin
-            },
+        (
+            BrowserPageMenuAction::TogglePin,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(if pinned_id.is_some() {
+                    lingxia_logic::I18nKey::BrowserUnpin
+                } else {
+                    lingxia_logic::I18nKey::BrowserPinToSidebar
+                }),
+                is_web_url,
+                if pinned_id.is_some() {
+                    WindowsDesignIcon::Unpin
+                } else {
+                    WindowsDesignIcon::Pin
+                },
+            ),
         ),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserCopyLink),
-            page_actionable,
-            WindowsDesignIcon::Link,
+        (
+            BrowserPageMenuAction::CopyLink,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserCopyLink),
+                page_actionable,
+                WindowsDesignIcon::Link,
+            ),
         ),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserOpenInSystemBrowser),
-            is_web_url,
-            WindowsDesignIcon::External,
+        (
+            BrowserPageMenuAction::OpenExternal,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserOpenInSystemBrowser),
+                is_web_url,
+                WindowsDesignIcon::External,
+            ),
         ),
-        ContextMenuEntry::separator(),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
-            true,
-            WindowsDesignIcon::Bookmarks,
+        (
+            BrowserPageMenuAction::Separator,
+            ContextMenuEntry::separator(),
         ),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserHistory),
-            true,
-            WindowsDesignIcon::History,
+        (
+            BrowserPageMenuAction::ManageBookmarks,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserManageBookmarks),
+                true,
+                WindowsDesignIcon::Bookmarks,
+            ),
         ),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserSettings),
-            true,
-            WindowsDesignIcon::BrowserSettings,
+        (
+            BrowserPageMenuAction::History,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserHistory),
+                true,
+                WindowsDesignIcon::History,
+            ),
         ),
-        ContextMenuEntry::separator(),
-        ContextMenuEntry::item(
-            lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearSiteData),
-            is_web_url,
-            WindowsDesignIcon::ClearData,
+        (
+            BrowserPageMenuAction::Settings,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserSettings),
+                true,
+                WindowsDesignIcon::BrowserSettings,
+            ),
+        ),
+        (
+            BrowserPageMenuAction::Separator,
+            ContextMenuEntry::separator(),
+        ),
+        (
+            BrowserPageMenuAction::ClearSiteData,
+            ContextMenuEntry::item(
+                lingxia_logic::i18n::t(lingxia_logic::I18nKey::BrowserClearSiteData),
+                is_web_url,
+                WindowsDesignIcon::ClearData,
+            ),
         ),
     ];
+    let bookmarks_enabled = lingxia_app_context::browser_bookmarks_enabled();
+    let (actions, items): (Vec<_>, Vec<_>) = items
+        .into_iter()
+        .filter(|(action, _)| action.is_visible(bookmarks_enabled))
+        .unzip();
     let appid = appid.to_string();
     let title = browser_tab_display_title(&tab);
     super::context_menu::show_context_menu_entries(
         window,
         (screen_x, screen_y),
         items,
-        Arc::new(move |index| match index {
-            0 if is_web_url => {
+        Arc::new(move |index| match actions[index] {
+            BrowserPageMenuAction::ToggleBookmark if is_web_url => {
                 let _ = lingxia_browser_shell::toggle_bookmark(&url, &title);
             }
-            1 if is_web_url => {
+            BrowserPageMenuAction::TogglePin if is_web_url => {
                 toggle_browser_tab_pin(&appid, &tab);
             }
-            2 if page_actionable => {
+            BrowserPageMenuAction::CopyLink if page_actionable => {
                 let _ = super::clipboard::set_clipboard_text(&url);
             }
-            3 if is_web_url => {
+            BrowserPageMenuAction::OpenExternal if is_web_url => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     let _ = app.runtime.open_url(OpenUrlRequest {
                         owner_appid: appid.clone(),
@@ -6718,7 +6779,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     });
                 }
             }
-            5 => {
+            BrowserPageMenuAction::ManageBookmarks => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     open_or_present_trusted_browser_page(
                         &appid,
@@ -6727,7 +6788,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     );
                 }
             }
-            6 => {
+            BrowserPageMenuAction::History => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     open_or_present_trusted_browser_page(
                         &appid,
@@ -6736,7 +6797,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     );
                 }
             }
-            7 => {
+            BrowserPageMenuAction::Settings => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     open_or_present_browser_local_page(
                         &appid,
@@ -6745,7 +6806,7 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     );
                 }
             }
-            9 if is_web_url => {
+            BrowserPageMenuAction::ClearSiteData if is_web_url => {
                 if let Some(app) = lxapp::try_get(&appid) {
                     open_or_present_browser_local_page(
                         &appid,
@@ -6756,7 +6817,12 @@ fn show_browser_page_menu(appid: &str, screen_x: i32, screen_y: i32) {
                     );
                 }
             }
-            _ => {}
+            BrowserPageMenuAction::ToggleBookmark
+            | BrowserPageMenuAction::TogglePin
+            | BrowserPageMenuAction::CopyLink
+            | BrowserPageMenuAction::OpenExternal
+            | BrowserPageMenuAction::ClearSiteData
+            | BrowserPageMenuAction::Separator => {}
         }),
     );
 }

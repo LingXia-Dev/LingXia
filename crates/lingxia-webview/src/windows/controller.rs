@@ -1064,6 +1064,29 @@ pub(crate) fn run_ui_thread_inner(
                 .map_err(|err| WebViewError::WebView(format!("SetBounds failed: {err}")))?;
         }
         configure_controller(&controller)?;
+        let accelerator_tag = webtag.clone();
+        unsafe {
+            let mut token = 0;
+            controller
+                .add_AcceleratorKeyPressed(
+                    &AcceleratorKeyPressedEventHandler::create(Box::new(move |_, args| {
+                        if let Some(args) = args {
+                            let mut kind = COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN;
+                            args.KeyEventKind(&mut kind)?;
+                            if kind == COREWEBVIEW2_KEY_EVENT_KIND_KEY_DOWN {
+                                let mut key = 0;
+                                args.VirtualKey(&mut key)?;
+                                if handle_host_accelerator(&accelerator_tag, key) {
+                                    args.SetHandled(true)?;
+                                }
+                            }
+                        }
+                        Ok(())
+                    })),
+                    &mut token,
+                )
+                .map_err(|error| WebViewError::WebView(format!("register accelerator: {error}")))?;
+        }
         configure_settings(&webview, &effective_options)?;
         let menu_appid = webtag.extract_appid();
         let menu_path = webtag.extract_parts().1;

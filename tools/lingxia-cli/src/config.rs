@@ -178,6 +178,8 @@ pub(crate) const BROWSER_CONTROL_PROTOCOL_VERSION: u32 = 3;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserConfig {
+    #[serde(default = "default_true")]
+    pub bookmarks: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub webui: Option<BrowserWebUiConfig>,
 }
@@ -3222,6 +3224,15 @@ route: /wrong
             msg.contains("app.lingxia.browser") && msg.contains("browser.webui"),
             "error must point at the new customization API; got: {msg}"
         );
+    }
+
+    #[test]
+    fn browser_bookmarks_is_default_on_and_independent_of_webui() {
+        let default: BrowserConfig = serde_yaml_ng::from_str("{}").unwrap();
+        assert!(default.bookmarks);
+        let disabled: BrowserConfig = serde_yaml_ng::from_str("bookmarks: false").unwrap();
+        assert!(!disabled.bookmarks);
+        assert!(disabled.webui.is_none());
     }
 
     #[test]

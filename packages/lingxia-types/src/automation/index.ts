@@ -162,6 +162,8 @@ export type SetAutomationShellPinOptions = AutomationShellPin & {
 export interface ShellDriver {
   /** Ordered shortcuts exactly as projected into the host sidebar. */
   pins(): Promise<AutomationShellPin[]>;
+  /** Submit every current Pin exactly once, in the desired mixed order. */
+  reorderPins(items: AutomationShellPin[]): Promise<AutomationShellPin[]>;
   /**
    * Idempotently persist or remove one shortcut. New Pins append to the
    * existing order; adding beyond the host limit rejects without mutation.
