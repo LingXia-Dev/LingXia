@@ -437,6 +437,17 @@ fn resolve_browser_tab_id(
     }
 }
 
+fn resolve_internal_browser_tab_id(
+    url: &str,
+    requested_tab_key: Option<&str>,
+    scope: BrowserTabScope<'_>,
+) -> Result<String, LxAppError> {
+    let route = registered_control_page_route(url);
+    // Native callers may pass an existing runtime id to navigate in place.
+    // Only default a missing key, including on the global Windows entrypoint.
+    resolve_browser_tab_id(requested_tab_key.or(route.as_deref()), scope)
+}
+
 fn next_browser_create_token() -> u64 {
     BROWSER_CREATE_TOKEN.fetch_add(1, Ordering::Relaxed)
 }
@@ -892,7 +903,7 @@ fn open_internal_browser_tab_with_scope(
             owner_session_id,
         } => (Some(owner_appid.to_string()), Some(owner_session_id)),
     };
-    let tab_id = resolve_browser_tab_id(requested_tab_key, scope)?;
+    let tab_id = resolve_internal_browser_tab_id(url, requested_tab_key, scope)?;
     let path = browser_tab_path_for_runtime_id(&tab_id);
     let session_id = browser_session_id;
     let mut create_token: Option<u64> = None;
@@ -1528,6 +1539,48 @@ mod tests {
             internal_tab_scope("lingxia://newtab", "app.example", 7),
             BrowserTabScope::OwnerSession { .. }
         ));
+    }
+
+    #[test]
+    fn control_page_without_a_key_reuses_the_host_settings_identity() {
+        crate::internal_pages::register_browser_internal_page(
+            "settings",
+            "pages/settings/index.html",
+        )
+        .unwrap();
+        let host = resolve_internal_browser_tab_id(
+            "lingxia://settings",
+            Some("settings"),
+            BrowserTabScope::Global,
+        )
+        .unwrap();
+        for url in ["lingxia://settings", "lingxia://settings#clear-site-data"] {
+            for scope in [
+                BrowserTabScope::Global,
+                internal_tab_scope(url, "app.example", 7),
+            ] {
+                assert_eq!(
+                    resolve_internal_browser_tab_id(url, None, scope).unwrap(),
+                    host
+                );
+            }
+        }
+        assert_eq!(
+            resolve_internal_browser_tab_id(
+                "lingxia://settings#clear-site-data",
+                Some("tab-42"),
+                BrowserTabScope::Global,
+            )
+            .unwrap(),
+            "tab-42"
+        );
+        for url in ["https://example.test/", "lingxia://newtab"] {
+            let first =
+                resolve_internal_browser_tab_id(url, None, BrowserTabScope::Global).unwrap();
+            let second =
+                resolve_internal_browser_tab_id(url, None, BrowserTabScope::Global).unwrap();
+            assert_ne!(first, second);
+        }
     }
 
     #[test]
