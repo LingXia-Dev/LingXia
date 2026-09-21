@@ -15,6 +15,11 @@ pub trait WindowsWebViewNativeViewHost: Send + Sync {
     fn create_webview_parent(&self, webtag: &WebTag) -> StdResult<WindowsWebViewNativeView>;
     fn destroy_webview_parent(&self, webtag_key: &str, view: WindowsWebViewNativeView);
 
+    /// Return true only after scheduling a consumed native keyboard shortcut.
+    fn handle_accelerator(&self, _webtag: &WebTag, _virtual_key: u32) -> bool {
+        false
+    }
+
     fn webview_parent_bounds(&self, view: WindowsWebViewNativeView) -> StdResult<RECT> {
         let hwnd = hwnd_from_handle(view.window);
         let mut rect = RECT::default();
@@ -246,4 +251,10 @@ pub(crate) fn webview_parent_bounds(view: WindowsWebViewNativeView) -> StdResult
 
 pub(crate) fn hwnd_from_handle(handle: isize) -> HWND {
     HWND(handle as *mut c_void)
+}
+
+pub(crate) fn handle_host_accelerator(webtag: &WebTag, virtual_key: u32) -> bool {
+    NATIVE_VIEW_HOST
+        .get()
+        .is_some_and(|host| host.handle_accelerator(webtag, virtual_key))
 }

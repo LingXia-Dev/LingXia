@@ -259,9 +259,11 @@ final class SidebarPinTileView: NSView {
         menu.addItem(tileItem("lx_browser_copy_link", iconName: "icon_link", action: #selector(copyLinkClicked)))
         menu.addItem(tileItem(
             "lx_browser_open_in_system_browser", iconName: "icon_external", action: #selector(openExternalClicked)))
-        menu.addItem(.separator())
-        menu.addItem(tileItem(
-            "lx_browser_remove_bookmark", iconName: "icon_bookmark_filled", action: #selector(removeClicked)))
+        if browserBookmarksEnabled() {
+            menu.addItem(.separator())
+            menu.addItem(tileItem(
+                "lx_browser_remove_bookmark", iconName: "icon_bookmark_filled", action: #selector(removeClicked)))
+        }
         if onCloseTab != nil {
             menu.addItem(.separator())
             menu.addItem(tileItem("lx_common_close", iconName: "icon_close_x", action: #selector(closeTabClicked)))
@@ -278,7 +280,8 @@ final class SidebarPinTileView: NSView {
         }
         menu.addItem(.separator())
         menu.addItem(tileItem(
-            "lx_browser_manage_bookmarks", iconName: "icon_bookmarks", action: #selector(manageClicked)))
+            browserBookmarksEnabled() ? "lx_browser_manage_bookmarks" : "lx_browser_manage_pinned_sites",
+            iconName: "icon_bookmarks", action: #selector(manageClicked)))
 
         return menu
     }

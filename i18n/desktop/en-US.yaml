@@ -21,6 +21,7 @@ browser:
   page_menu: "More"
   pin_to_sidebar: "Pin to Sidebar"
   unpin: "Unpin"
+  manage_pinned_sites: "Manage Pinned Sites…"
   manage_bookmarks: "Manage Bookmarks…"
   settings: "Settings"
 

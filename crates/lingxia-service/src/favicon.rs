@@ -272,6 +272,39 @@ fn replace_cache_file(temporary: &Path, path: &Path) -> Result<(), String> {
     Ok(())
 }
 
+/// Read only: a scheme request must not trigger network access to a supplied URL.
+pub fn cached(cache_root: &Path, page_url: &str) -> Option<PathBuf> {
+    find_cached(cache_root, &cache_key(&normalized_origin(page_url)?))
+}
+
+pub fn clear_since(cache_root: &Path, since_ms: Option<u64>) -> std::io::Result<()> {
+    let directory = cache_directory(cache_root);
+    let entries = match std::fs::read_dir(&directory) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    for entry in entries {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if !metadata.is_file() {
+            continue;
+        }
+        let modified = metadata
+            .modified()?
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        if since_ms.is_none_or(|since| modified >= u128::from(since)) {
+            std::fs::remove_file(entry.path())?;
+        }
+    }
+    if let Ok(mut state) = request_state().lock() {
+        state.failed_at.clear();
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,6 +352,19 @@ mod tests {
         let cached = find_cached(directory.path(), "key").unwrap();
         assert!(cached.ends_with("key.png"));
         assert!(!cache_directory(directory.path()).join("key.ico").exists());
+    }
+
+    #[test]
+    fn clear_respects_time_range_and_preserves_other_caches() {
+        let directory = tempfile::tempdir().unwrap();
+        let png = b"\x89PNG\r\n\x1a\ncontent";
+        store_for_url(directory.path(), "https://example.com", png).unwrap();
+        std::fs::write(directory.path().join("other-cache"), b"keep").unwrap();
+        clear_since(directory.path(), Some(u64::MAX)).unwrap();
+        assert!(cached(directory.path(), "https://example.com").is_some());
+        clear_since(directory.path(), None).unwrap();
+        assert!(cached(directory.path(), "https://example.com").is_none());
+        assert!(directory.path().join("other-cache").exists());
     }
 
     #[test]

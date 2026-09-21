@@ -9,6 +9,7 @@ use crate::webview::{
     browser_create_webview, browser_destroy_webview_if_matches, browser_find_webview,
     browser_load_url,
 };
+use lingxia_platform::traits::app_runtime::AppRuntime;
 use lingxia_webview::{WebView, WebViewDataMode};
 use lxapp::{LxApp, LxAppError};
 use std::collections::HashMap;
@@ -136,6 +137,7 @@ fn browser_find_webview_for_generation(
 pub(crate) struct BrowserState {
     // tab_id -> tab lifecycle state (single WebView lifecycle per tab_id)
     pub(crate) tabs: HashMap<String, BrowserTabState>,
+    recently_closed: Vec<ClosedBrowserTab>,
     /// Complete browser-session user-agent override. WebView creation reads it
     /// before the first load, including for tabs created or restored later.
     pub(crate) user_agent_override: Option<String>,
@@ -279,6 +281,7 @@ pub(crate) fn lock_state() -> MutexGuard<'static, BrowserState> {
         .get_or_init(|| {
             Mutex::new(BrowserState {
                 tabs: HashMap::new(),
+                recently_closed: Vec::new(),
                 user_agent_override: None,
             })
         })
@@ -689,7 +692,8 @@ pub(crate) fn browser_update_tab_favicon(tab_id: &str, png_bytes: Vec<u8>) -> bo
     } else {
         Some(Arc::new(png_bytes))
     };
-    let changed = {
+    let cache_bytes = value.clone();
+    let (changed, url) = {
         let mut state = lock_state();
         let Some(tab) = state.tabs.get_mut(&normalized) else {
             return false;
@@ -702,9 +706,17 @@ pub(crate) fn browser_update_tab_favicon(tab_id: &str, png_bytes: Vec<u8>) -> bo
         if !same {
             tab.favicon_png = value;
         }
-        !same
+        (
+            !same,
+            (tab.data_mode != WebViewDataMode::Ephemeral)
+                .then(|| tab.current_url.clone())
+                .flatten(),
+        )
     };
     if changed {
+        if let (Some(url), Some(bytes), Some(runtime)) = (url, cache_bytes, lxapp::get_platform()) {
+            lingxia_service::favicon::store_for_url(&runtime.app_cache_dir(), &url, &bytes);
+        }
         notify_tabs_changed();
     }
     true
@@ -1135,6 +1147,10 @@ pub fn browser_tab_exists(tab_id: &str) -> bool {
 }
 
 pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
+    close_browser_tab_inner(tab_id, true)
+}
+
+fn close_browser_tab_inner(tab_id: &str, remember: bool) -> Result<(), LxAppError> {
     let normalized = normalize_runtime_tab_id(tab_id).ok_or_else(|| {
         LxAppError::InvalidParameter("tab_id must be a valid runtime browser tab id".to_string())
     })?;
@@ -1155,7 +1171,17 @@ pub(crate) fn close_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     });
     let removed = {
         let mut state = lock_state();
-        state.tabs.remove(&normalized)
+        let removed = state.tabs.remove(&normalized);
+        if remember
+            && let Some(tab) = removed.as_ref()
+            && let Some(entry) = ClosedBrowserTab::from_tab(tab)
+        {
+            state.recently_closed.push(entry);
+            if state.recently_closed.len() > 25 {
+                state.recently_closed.remove(0);
+            }
+        }
+        removed
     };
     let removed_any = removed.is_some();
     if let Some(tab) = removed {
@@ -1215,8 +1241,12 @@ pub(crate) fn prune_stale_owner_tabs(owner_appid: &str, current_session_id: u64)
             .collect::<Vec<_>>()
     };
     for tab_id in &stale_ids {
-        let _ = close_browser_tab(tab_id);
+        let _ = close_browser_tab_inner(tab_id, false);
     }
+    lock_state().recently_closed.retain(|entry| {
+        entry.owner_appid.as_deref() != Some(owner_appid)
+            || entry.owner_session_id == Some(current_session_id)
+    });
     stale_ids.len()
 }
 
@@ -1375,9 +1405,123 @@ pub(crate) fn reactivate_browser_tab(tab_id: &str) -> Result<(), LxAppError> {
     Ok(())
 }
 
+/// Session-only restore metadata. Private/aside tabs never enter this stack.
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClosedBrowserTab {
+    pub id: String,
+    pub url: String,
+    pub title: String,
+    #[serde(skip)]
+    owner_appid: Option<String>,
+    #[serde(skip)]
+    owner_session_id: Option<u64>,
+}
+
+impl ClosedBrowserTab {
+    fn from_tab(tab: &BrowserTabState) -> Option<Self> {
+        if tab.standalone || tab.aside || tab.data_mode == WebViewDataMode::Ephemeral {
+            return None;
+        }
+        let url = tab
+            .current_url
+            .clone()
+            .or_else(|| tab.pending_url.clone())?;
+        // Restore website tabs only; internal pages require a fresh native trusted load.
+        if !matches!(
+            crate::policy::extract_url_scheme(&url).as_deref(),
+            Some("http" | "https")
+        ) {
+            return None;
+        }
+        Some(Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            url,
+            title: tab.title.clone().unwrap_or_default(),
+            owner_appid: tab.owner_appid.clone(),
+            owner_session_id: tab.owner_session_id,
+        })
+    }
+}
+
+pub fn recently_closed() -> Vec<ClosedBrowserTab> {
+    lock_state().recently_closed.iter().rev().cloned().collect()
+}
+
+pub fn reopen_closed(id: Option<&str>) -> Result<String, LxAppError> {
+    let entry = {
+        let mut state = lock_state();
+        let index = state
+            .recently_closed
+            .iter()
+            .rposition(|entry| id.is_none_or(|id| entry.id == id))
+            .ok_or_else(|| LxAppError::ResourceNotFound("no recently closed tab".to_string()))?;
+        state.recently_closed.remove(index)
+    };
+    let result = match (&entry.owner_appid, entry.owner_session_id) {
+        (Some(appid), Some(session_id)) => crate::open_for_app(appid, session_id, &entry.url, None),
+        _ => crate::open(&entry.url, None),
+    };
+    match result {
+        Ok(tab_id) => {
+            browser_update_tab_info(&tab_id, None, Some(&entry.title));
+            let _ = crate::present(&tab_id);
+            Ok(tab_id)
+        }
+        Err(error) => {
+            let mut state = lock_state();
+            state.recently_closed.push(entry);
+            if state.recently_closed.len() > 25 {
+                state.recently_closed.remove(0);
+            }
+            Err(error)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recently_closed_only_records_normal_website_tabs_with_owner() {
+        let mut tab = BrowserTabState {
+            session_id: 1,
+            created_order: 1,
+            create_token: 1,
+            create_in_flight: false,
+            pending_url: None,
+            initial_url: None,
+            current_url: Some("https://example.test/".into()),
+            title: Some("Example".into()),
+            title_url: None,
+            favicon_png: None,
+            can_go_back: false,
+            can_go_forward: false,
+            discarded: false,
+            data_mode: WebViewDataMode::ProfileDefault,
+            url_callback: Arc::new(AtomicBool::new(false)),
+            standalone: false,
+            aside: false,
+            owner_appid: Some("owner".into()),
+            owner_session_id: Some(42),
+        };
+        let entry = ClosedBrowserTab::from_tab(&tab).unwrap();
+        assert_eq!(entry.url, "https://example.test/");
+        assert_eq!(entry.owner_session_id, Some(42));
+        assert_eq!(entry.title, "Example");
+        tab.data_mode = WebViewDataMode::Ephemeral;
+        assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+        tab.data_mode = WebViewDataMode::ProfileDefault;
+        tab.aside = true;
+        assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+        tab.aside = false;
+        tab.standalone = true;
+        assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+        tab.standalone = false;
+        tab.current_url = Some("lingxia://settings".into());
+        assert!(ClosedBrowserTab::from_tab(&tab).is_none());
+    }
 
     #[test]
     fn webview_creation_receives_the_browser_user_agent_override() {

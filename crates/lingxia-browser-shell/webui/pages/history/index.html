@@ -252,7 +252,7 @@
             // Escape for the JS string inside onerror, then for the HTML attribute.
             var onerrorAttr = escapeHtml("this.outerHTML='" + fallbackIcon.replace(/\\/g, '\\\\') + "'");
             var icon = origin
-              ? '<img src="' + escapeHtml(origin) + '/favicon.ico" alt="" loading="lazy" onerror="' + onerrorAttr + '">'
+              ? '<img src="lingxia://favicon?url=' + escapeHtml(encodeURIComponent(entry.url)) + '" alt="" loading="lazy" onerror="' + onerrorAttr + '">'
               : fallbackIcon;
             var time = new Date(entry.visitedAtMs).toLocaleTimeString(i18n.locale, { hour: 'numeric', minute: '2-digit' });
             var titleHtml = escapeHtml(entry.title || hostOf(entry.url));

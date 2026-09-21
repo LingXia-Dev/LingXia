@@ -562,3 +562,5 @@ mod authority_tests {
         );
     }
 }
+
+pub use tabs::{ClosedBrowserTab, recently_closed, reopen_closed};

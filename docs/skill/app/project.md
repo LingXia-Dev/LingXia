@@ -167,7 +167,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 | `resources` | Conditional | Bundle asset sources; omit when no control/product lxapp is bundled |
 | `splash` | Optional | Generated launch placeholder and first-frame cover |
 | `assets` | Optional | Raw host files packaged through each platform's asset pipeline |
-| `browser` | Optional | Override the in-app browser webui (only used when `capabilities.browser: true`) |
+| `browser` | Optional | Browser chrome preferences and webui override (used when `capabilities.browser: true`) |
 | `appLinks` | Optional | Universal-link / app-link hosts (see [App Links](./applinks.md)) |
 | `storage` | Recommended | Explicit host temp/cache/data size limits |
 | `update` | Optional | In-app update keys (1–2 `trustedPublicKeys`) and per-platform channel. See [`update`](#update). |
@@ -439,6 +439,12 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 ---
 
 ## `browser` Section
+
+`browser.bookmarks` defaults to `true`. Set it to `false` to hide bookmark chrome; pin context menus offer “Manage Pinned Sites” at `lingxia://bookmarks`. That route, the store, and full `bookmarks.list/watch` results remain available so the frontend can migrate legacy bookmarks.
+
+Trusted browser webui calls `shell.pins` to read the ordered `{kind: "lxapp" | "bookmark", key}` list, then `shell.reorderPins({items})` with every current item exactly once. `bookmarks.reorder` only orders the bookmark manager. Control apps may also call these shell routes.
+
+`tabs.recentlyClosed` lists up to 25 normal website tabs, newest first, for this process. `tabs.reopen({id?})` restores one (latest if omitted); private tabs and aside/standalone surfaces are excluded. Desktop shortcuts are ⌘⇧T / Ctrl+Shift+T.
 
 `browser` overrides the in-app browser webui, used only when `capabilities.browser: true`. Normal apps omit it and use the SDK default. Set exactly one source under `webui`: a project-relative `path:` to a browser-shell webui lxapp source tree (the CLI builds it — for developing a custom webui alongside the app), or a `package:` npm name shipping a prebuilt `lxapp.json` + `dist/` (with an optional `version:`; the CLI version is used when omitted). Setting both is rejected. Protocol version is declared on the webui `lxapp.json` (`controlProtocolVersion` equal to the current runtime constant — wire `v` for BrowserControl documents), not in `lingxia.yaml`. Missing, older, and unknown future values fail the build. The SDK's built-in catalog is native code already on that protocol, so a host that does not replace the webui has nothing to pin.
 

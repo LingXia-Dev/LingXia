@@ -2399,6 +2399,7 @@ dependencies = [
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
+ "lingxia-service",
  "lingxia-settings",
  "lingxia-transfer",
  "lingxia-webview",
@@ -2408,6 +2409,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.20",
  "tokio",
+ "url",
  "uuid",
 ]
 

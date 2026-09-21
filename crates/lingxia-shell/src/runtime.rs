@@ -137,6 +137,29 @@ pub fn set_pinned(target: ShellPinTarget, pinned: bool) -> ShellResult<crate::Pi
     })
 }
 
+pub fn reorder_pins(items: Vec<ShellPin>) -> ShellResult<crate::PinMutation> {
+    let _mutation = pin_mutation_lock()
+        .lock()
+        .map_err(|_| ShellError::Host("shell Pin mutation state is poisoned".to_string()))?;
+    with_active(|active| {
+        let previous = active.manager.snapshot().pins;
+        let mut next = previous.clone();
+        let mutation = next.reorder(items)?;
+        if mutation == crate::PinMutation::Unchanged {
+            return Ok(mutation);
+        }
+        let snapshot = active.manager.commit_pins(&previous, next)?;
+        if let Err(error) = active.host.apply_pins(&snapshot.pins.items) {
+            active
+                .manager
+                .commit_pins(&snapshot.pins, previous.clone())?;
+            let _ = active.host.apply_pins(&previous.items);
+            return Err(error);
+        }
+        Ok(mutation)
+    })
+}
+
 fn pin_mutation_lock() -> &'static Mutex<()> {
     static MUTATION: OnceLock<Mutex<()>> = OnceLock::new();
     MUTATION.get_or_init(|| Mutex::new(()))
@@ -459,6 +482,40 @@ mod tests {
             })
         );
         assert_eq!(host.applied_pins.lock().unwrap().len(), 8);
+    }
+
+    #[test]
+    fn reorder_persists_mixed_order_and_rolls_back_rejected_projection() {
+        let _guard = test_guard();
+        reset_for_test();
+        let dir = tempfile::tempdir().unwrap();
+        let host = Arc::new(TestHost::default());
+        initialize(dir.path(), host.clone()).unwrap();
+        set_pinned(ShellPinTarget::Lxapp { key: "chat".into() }, true).unwrap();
+        set_pinned(ShellPinTarget::Bookmark { key: "site".into() }, true).unwrap();
+        let original = pins().unwrap();
+        let reversed: Vec<_> = original.iter().rev().cloned().collect();
+        reorder_pins(reversed.clone()).unwrap();
+        assert_eq!(pins().unwrap(), reversed);
+        assert_eq!(
+            ShellManager::open(dir.path())
+                .unwrap()
+                .snapshot()
+                .pins
+                .items,
+            reversed
+        );
+        host.reject_pins.store(true, Ordering::Relaxed);
+        assert!(reorder_pins(original).is_err());
+        assert_eq!(pins().unwrap(), reversed);
+        assert_eq!(
+            ShellManager::open(dir.path())
+                .unwrap()
+                .snapshot()
+                .pins
+                .items,
+            reversed
+        );
     }
 
     #[test]

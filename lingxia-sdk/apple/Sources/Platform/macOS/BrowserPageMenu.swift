@@ -41,18 +41,20 @@ enum BrowserPageMenu {
         let pageActionable = isPageActionable(context.url)
 
         let bookmarkActionable = isBookmarkActionable(context.url)
-        let bookmarked = bookmarkActionable && browserBookmarkStatus(context.url)
-        let bookmarkItem = actionItem(
-            title: L10n.string(bookmarked ? "lx_browser_remove_bookmark" : "lx_browser_add_bookmark"),
-            iconName: bookmarked ? "icon_bookmark_filled" : "icon_bookmark",
-            key: "d",
-            modifiers: [.command]
-        ) { [url = context.url, title = context.title] in
-            let nowBookmarked = browserBookmarkToggle(url, title)
-            context.onBookmarkChanged?(nowBookmarked)
+        if browserBookmarksEnabled() {
+            let bookmarked = bookmarkActionable && browserBookmarkStatus(context.url)
+            let bookmarkItem = actionItem(
+                title: L10n.string(bookmarked ? "lx_browser_remove_bookmark" : "lx_browser_add_bookmark"),
+                iconName: bookmarked ? "icon_bookmark_filled" : "icon_bookmark",
+                key: "d",
+                modifiers: [.command]
+            ) { [url = context.url, title = context.title] in
+                let nowBookmarked = browserBookmarkToggle(url, title)
+                context.onBookmarkChanged?(nowBookmarked)
+            }
+            bookmarkItem.isEnabled = bookmarkActionable
+            menu.addItem(bookmarkItem)
         }
-        bookmarkItem.isEnabled = bookmarkActionable
-        menu.addItem(bookmarkItem)
 
         let pinnedEntry: SidebarBookmarksSnapshot.Entry?
         if bookmarkActionable {
@@ -105,7 +107,7 @@ enum BrowserPageMenu {
             || context.onClearSiteData != nil
         {
             menu.addItem(.separator())
-            if let onOpenBookmarks = context.onOpenBookmarks {
+            if browserBookmarksEnabled(), let onOpenBookmarks = context.onOpenBookmarks {
                 menu.addItem(actionItem(
                     title: L10n.string("lx_browser_manage_bookmarks"),
                     iconName: "icon_bookmarks",

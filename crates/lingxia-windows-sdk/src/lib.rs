@@ -737,6 +737,10 @@ pub fn run_message_loop() -> i32 {
                 return msg.wParam.0 as i32;
             }
             _ => unsafe {
+                #[cfg(feature = "browser-runtime")]
+                if browser_reopen_shortcut(&msg) {
+                    continue;
+                }
                 let _ = TranslateMessage(&msg);
                 DispatchMessageW(&msg);
             },
@@ -1099,6 +1103,37 @@ fn register_generated_native_asides(asset_dir: &Path, owner_app_id: &str) -> Res
         app.register_host_native_aside_declaration(id, capability, edge);
     }
     Ok(())
+}
+
+#[cfg(all(target_os = "windows", feature = "browser-runtime"))]
+fn browser_reopen_shortcut(msg: &windows::Win32::UI::WindowsAndMessaging::MSG) -> bool {
+    msg.message == windows::Win32::UI::WindowsAndMessaging::WM_KEYDOWN
+        && browser_reopen_key(msg.wParam.0 as u32)
+}
+
+#[cfg(all(target_os = "windows", feature = "browser-runtime"))]
+fn browser_reopen_key(key: u32) -> bool {
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, VK_CONTROL, VK_MENU, VK_SHIFT};
+    if key != 0x54 {
+        return false;
+    }
+    let modifiers = unsafe {
+        GetKeyState(VK_CONTROL.0 as i32) < 0
+            && GetKeyState(VK_SHIFT.0 as i32) < 0
+            && GetKeyState(VK_MENU.0 as i32) >= 0
+    };
+    if !modifiers || lingxia_browser::recently_closed().is_empty() {
+        return false;
+    }
+    // WebView2 accelerator callbacks are synchronous; do not create a controller in one.
+    std::thread::Builder::new()
+        .name("browser-reopen".into())
+        .spawn(|| {
+            if let Err(error) = lingxia_browser::reopen_closed(None) {
+                log::warn!("reopen tab: {error}");
+            }
+        })
+        .is_ok()
 }
 
 #[cfg(all(test, target_os = "windows", feature = "runtime"))]

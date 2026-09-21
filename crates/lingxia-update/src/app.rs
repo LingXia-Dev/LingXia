@@ -364,6 +364,7 @@ mod tests {
             app_links: None,
             theme: None,
             settings_destination: None,
+            browser: Default::default(),
             capabilities: None,
             panels: None,
             update_trusted_public_keys: vec![public_key_base64url(&SEED)],

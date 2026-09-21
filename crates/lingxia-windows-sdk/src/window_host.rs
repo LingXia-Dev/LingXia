@@ -399,6 +399,16 @@ struct HostChromeSnapshot {
 struct PlatformNativeViewHost;
 
 impl WindowsWebViewNativeViewHost for PlatformNativeViewHost {
+    fn handle_accelerator(&self, _webtag: &WebTag, virtual_key: u32) -> bool {
+        #[cfg(feature = "browser-runtime")]
+        return crate::browser_reopen_key(virtual_key);
+        #[cfg(not(feature = "browser-runtime"))]
+        {
+            let _ = virtual_key;
+            false
+        }
+    }
+
     fn create_webview_parent(&self, webtag: &WebTag) -> StdResult<WindowsWebViewNativeView> {
         create_webview_parent_window(webtag)
     }

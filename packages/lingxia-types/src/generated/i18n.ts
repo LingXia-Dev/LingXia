@@ -22,6 +22,7 @@ export const I18N_KEYS = [
   "browser_label",
   "browser_link_copied",
   "browser_manage_bookmarks",
+  "browser_manage_pinned_sites",
   "browser_new_tab",
   "browser_open_in_system_browser",
   "browser_page_menu",

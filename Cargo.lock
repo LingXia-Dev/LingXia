@@ -3356,6 +3356,7 @@ dependencies = [
  "lingxia-log",
  "lingxia-lxapp",
  "lingxia-platform",
+ "lingxia-service",
  "lingxia-settings",
  "lingxia-transfer",
  "lingxia-webview",
@@ -3364,8 +3365,10 @@ dependencies = [
  "serde",
  "serde_json",
  "swift-bridge",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
+ "url",
  "uuid",
 ]
 

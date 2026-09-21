@@ -408,6 +408,9 @@ pub(crate) async fn handle_browser_lingxia_scheme(
 ) -> Option<WebResourceResponse> {
     // Map `lingxia://` hosts to browser internal pages.
     let host = req.uri().host().unwrap_or("").to_ascii_lowercase();
+    if host == "favicon" {
+        return favicon_response(req.uri());
+    }
     if is_browser_lingxia_asset_host(&host) {
         let page = match bound_internal_tab_page(&ctx.tab_path, ctx.session_id) {
             Ok(page) => page,
@@ -639,6 +642,54 @@ pub(crate) fn warmup_builtin_browser_runtime() -> Result<(), LxAppError> {
     Ok(())
 }
 
+fn favicon_response(uri: &Uri) -> Option<WebResourceResponse> {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+    let url = uri.query().and_then(|query| {
+        url::form_urlencoded::parse(query.as_bytes())
+            .find(|(key, _)| key == "url")
+            .map(|(_, value)| value.into_owned())
+    });
+    let cached = url.and_then(|url| {
+        let runtime = lxapp::get_platform()?;
+        lingxia_service::favicon::cached(&runtime.app_cache_dir(), &url)
+    });
+    favicon_file_response(cached.as_deref())
+}
+
+fn favicon_file_response(cached: Option<&std::path::Path>) -> Option<WebResourceResponse> {
+    let (status, mime, bytes) = cached
+        .and_then(|path| {
+            let mime = match path.extension()?.to_str()? {
+                "png" => "image/png",
+                "ico" => "image/x-icon",
+                "jpg" => "image/jpeg",
+                "gif" => "image/gif",
+                "webp" => "image/webp",
+                "svg" => "image/svg+xml",
+                _ => return None,
+            };
+            Some((StatusCode::OK, mime, std::fs::read(path).ok()?))
+        })
+        .unwrap_or((StatusCode::NOT_FOUND, "text/plain", Vec::new()));
+    let response = Response::builder()
+        .status(status)
+        .header("Content-Type", mime)
+        .header(
+            "Cache-Control",
+            if status == StatusCode::OK {
+                "private, max-age=300"
+            } else {
+                // A later WebView event may populate an icon that is missing now.
+                "no-store"
+            },
+        )
+        .header("X-Content-Type-Options", "nosniff")
+        .header("Content-Security-Policy", "default-src 'none'; sandbox")
+        .body(())
+        .ok()?;
+    Some((response.into_parts().0, bytes).into())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -651,6 +702,39 @@ mod tests {
             register_browser_internal_page("downloads", "pages/downloads/index.html").unwrap();
             register_browser_internal_page("settings", "pages/settings/index.html").unwrap();
         });
+    }
+
+    #[test]
+    fn favicon_hit_is_cached_but_deleted_file_is_not() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = lingxia_service::favicon::store_for_url(
+            directory.path(),
+            "https://example.test/",
+            b"\x89PNG\r\n\x1a\ncontent",
+        )
+        .unwrap();
+        let hit = favicon_file_response(Some(&path)).unwrap();
+        assert_eq!(hit.parts().status, StatusCode::OK);
+        assert_eq!(hit.parts().headers["Content-Type"], "image/png");
+        assert_eq!(hit.parts().headers["Cache-Control"], "private, max-age=300");
+
+        lingxia_service::favicon::clear_since(directory.path(), None).unwrap();
+        let miss = favicon_file_response(Some(&path)).unwrap();
+        assert_eq!(miss.parts().status, StatusCode::NOT_FOUND);
+        assert_eq!(miss.parts().headers["Cache-Control"], "no-store");
+    }
+
+    #[test]
+    fn favicon_scheme_returns_explicit_non_cacheable_miss_for_invalid_urls() {
+        for url in [
+            "lingxia://favicon",
+            "lingxia://favicon?url=file%3A%2F%2F%2Fetc%2Fpasswd",
+            "lingxia://favicon?url=javascript%3Aalert(1)",
+        ] {
+            let response = favicon_response(&url.parse().unwrap()).unwrap();
+            assert_eq!(response.parts().status, StatusCode::NOT_FOUND);
+            assert_eq!(response.parts().headers["Cache-Control"], "no-store");
+        }
     }
 
     #[test]

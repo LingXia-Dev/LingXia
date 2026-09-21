@@ -15,6 +15,12 @@ impl JSShellDriver {
 }
 
 #[derive(FromJSObject)]
+struct PinInput {
+    kind: String,
+    key: String,
+}
+
+#[derive(FromJSObject)]
 struct SetPinOptions {
     kind: String,
     key: String,
@@ -52,6 +58,18 @@ impl JSShellDriver {
     #[js_method]
     async fn pins(&self, ctx: JSContext) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
+        pins_to_js(&ctx)
+    }
+
+    /// Commit a complete permutation of the current mixed list.
+    #[js_method(rename = "reorderPins")]
+    async fn reorder_pins(&self, ctx: JSContext, items: Vec<PinInput>) -> JSResult<JSValue> {
+        require_host_context(&ctx)?;
+        let items = items
+            .into_iter()
+            .map(|item| pin_target(&item.kind, item.key).map(lingxia_shell::ShellPin))
+            .collect::<JSResult<Vec<_>>>()?;
+        lingxia_shell::reorder_pins(items).map_err(|error| auto_err(error.to_string()))?;
         pins_to_js(&ctx)
     }
 

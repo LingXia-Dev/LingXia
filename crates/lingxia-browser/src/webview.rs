@@ -461,6 +461,13 @@ impl WebViewDelegate for BrowserTabDelegate {
                 }
             }
             WebViewStateChange::Favicon { png_bytes } => {
+                if !crate::tabs::browser_tab_generation_matches(
+                    &self.tab_id,
+                    self.session_id,
+                    self.create_token,
+                ) {
+                    return;
+                }
                 // Empty bytes are the tab-state clearing convention; the
                 // persisted site favicon cache is deliberately untouched.
                 let _ = crate::tabs::browser_update_tab_favicon(

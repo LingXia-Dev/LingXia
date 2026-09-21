@@ -106,6 +106,27 @@ impl PinCollection {
         }
     }
 
+    /// Accept only a permutation of the current mixed list.
+    pub fn reorder(&mut self, items: Vec<ShellPin>) -> ShellResult<PinMutation> {
+        let next = Self {
+            version: self.version,
+            items,
+        }
+        .restore()?;
+        if next.items.len() != self.items.len()
+            || next.items.iter().any(|pin| !self.items.contains(pin))
+        {
+            return Err(ShellError::InvalidState(
+                "reorder requires every current Pin exactly once".to_string(),
+            ));
+        }
+        if next == *self {
+            return Ok(PinMutation::Unchanged);
+        }
+        *self = next;
+        Ok(PinMutation::Changed)
+    }
+
     pub fn is_pinned(&self, target: &ShellPinTarget) -> bool {
         self.items.iter().any(|pin| &pin.0 == target)
     }
@@ -134,6 +155,27 @@ mod tests {
         assert!(matches!(pins.items[0].0, ShellPinTarget::Lxapp { .. }));
         assert!(matches!(pins.items[1].0, ShellPinTarget::Bookmark { .. }));
         assert!(matches!(pins.items[2].0, ShellPinTarget::Lxapp { .. }));
+    }
+
+    #[test]
+    fn reorder_rejects_non_permutations_without_mutating() {
+        let mut pins = PinCollection::default();
+        pins.pin(lxapp(1)).unwrap();
+        pins.pin(ShellPinTarget::Bookmark { key: "site".into() })
+            .unwrap();
+        let before = pins.clone();
+        for invalid in [
+            vec![],
+            vec![before.items[0].clone(); 2],
+            vec![before.items[0].clone(), ShellPin(lxapp(9))],
+        ] {
+            assert!(pins.reorder(invalid).is_err());
+            assert_eq!(pins, before);
+        }
+        let reversed = before.items.iter().rev().cloned().collect();
+        assert_eq!(pins.reorder(reversed), Ok(PinMutation::Changed));
+        assert_eq!(pins.items[0], before.items[1]);
+        assert_eq!(pins.reorder(pins.items.clone()), Ok(PinMutation::Unchanged));
     }
 
     #[test]

@@ -24,6 +24,7 @@ mod proxy;
 #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]
 mod proxy_settings;
 mod settings;
+mod shell;
 mod url_match;
 
 pub use address_bar::{resolve_input, resolve_input_json};
@@ -148,6 +149,7 @@ pub fn register_route_inventory() {
     REGISTERED.get_or_init(|| {
         downloads::register();
         bookmarks::register();
+        shell::register();
         history::register();
         privacy::register();
         #[cfg(all(any(target_os = "macos", target_os = "windows"), feature = "proxy"))]

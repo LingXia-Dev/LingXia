@@ -173,7 +173,7 @@
       var origin = originOf(shortcut.url);
       if (origin) {
         var icon = document.createElement('img');
-        icon.src = origin + '/favicon.ico';
+        icon.src = 'lingxia://favicon?url=' + encodeURIComponent(shortcut.url);
         icon.alt = '';
         icon.loading = 'lazy';
         icon.addEventListener('error', function () { mark.textContent = letter; });

@@ -129,6 +129,7 @@ async fn get_privacy_usage(app: Arc<LxApp>) -> HostResult<PrivacyUsage> {
 
 #[lingxia::framework_native("privacy.clearCache", audience = "browser-control-only")]
 async fn clear_cache(_app: Arc<LxApp>) -> HostResult<()> {
+    clear_favicons(None)?;
     lingxia_webview::data_store::clear_cache(None)
         .await
         .map_err(|e| map_webview_error("privacy.clearCache", e))
@@ -172,6 +173,7 @@ async fn clear_browsing_data(
                     map_webview_error("privacy.clearBrowsingData.cache", error),
                 )
             })?;
+        clear_favicons(since_ms).map_err(|error| with_progress(&cleared, error))?;
         cleared.push("cache");
     }
     if input.site_data {
@@ -289,4 +291,13 @@ mod tests {
             );
         }
     }
+}
+
+fn clear_favicons(since_ms: Option<u64>) -> HostResult<()> {
+    use lingxia_platform::traits::app_runtime::AppRuntime;
+    if let Some(runtime) = lxapp::get_platform() {
+        lingxia_service::favicon::clear_since(&runtime.app_cache_dir(), since_ms)
+            .map_err(|error| LxAppError::Runtime(format!("clear favicon cache: {error}")))?;
+    }
+    Ok(())
 }
