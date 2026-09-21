@@ -19,12 +19,6 @@ pub fn env_badge(version: AppEnv) -> Option<(char, [u8; 4])> {
     }
 }
 
-/// Android adaptive overlay: 20dp circle, 18dp from the 108dp canvas edges.
-/// Seats the badge on the typical 72dp launcher-mask edge.
-pub const ANDROID_CANVAS_DP: f32 = 108.0;
-pub const ANDROID_BADGE_DP: f32 = 20.0;
-pub const ANDROID_BADGE_INSET_DP: f32 = 18.0;
-
 /// Vector path data shared with the Android `<vector>` overlay (42×42 viewport).
 pub fn badge_letter_path(letter: char) -> Option<&'static str> {
     match letter {
@@ -46,19 +40,11 @@ pub fn composite_corner_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]
     composite_badge_in_plate(img, letter, accent, plate);
 }
 
-/// Badge a layered-icon canvas the way Android's overlay does: 20/108 of
-/// the canvas, 18/108 in from the edges, so the circle sits on the launcher
-/// mask rather than dominating the 108-style plate.
-pub fn composite_android_canvas_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
-    let (w, h) = img.dimensions();
-    let canvas = w.min(h) as f32;
-    let diameter = (canvas * ANDROID_BADGE_DP / ANDROID_CANVAS_DP)
-        .round()
-        .max(1.0) as i32;
-    let inset = (canvas * ANDROID_BADGE_INSET_DP / ANDROID_CANVAS_DP).round() as i32;
-    let center_x = w as i32 - inset - diameter / 2;
-    let center_y = h as i32 - inset - diameter / 2;
-    blit_badge(img, letter, accent, diameter, center_x, center_y);
+/// Badge a full-canvas icon tile. Layered foreground alpha describes the
+/// artwork, not the launcher tile, so it must not determine the badge anchor.
+pub fn composite_canvas_corner_badge(img: &mut RgbaImage, letter: char, accent: [u8; 4]) {
+    let plate = (0, 0, img.width() as i32, img.height() as i32);
+    composite_badge_in_plate(img, letter, accent, plate);
 }
 
 /// Bounding rect of the pixels that are clearly part of the plate.
@@ -166,9 +152,8 @@ fn badge_svg(letter: char, accent: [u8; 4]) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        ANDROID_BADGE_DP, ANDROID_BADGE_INSET_DP, ANDROID_CANVAS_DP, badge_letter_path,
-        composite_android_canvas_badge, composite_badge_in_plate, composite_corner_badge,
-        env_badge, render_badge_sprite,
+        badge_letter_path, composite_badge_in_plate, composite_corner_badge, env_badge,
+        render_badge_sprite,
     };
     use crate::config::AppEnv;
     use image::{Rgba, RgbaImage};
@@ -271,23 +256,5 @@ mod tests {
             near_edge, plate,
             "badge should sit on the iOS corner, got {near_edge:?}"
         );
-    }
-
-    #[test]
-    fn android_canvas_badge_uses_the_20_over_108_overlay() {
-        let mut img = RgbaImage::from_pixel(108, 108, Rgba([10, 10, 10, 0xFF]));
-        composite_android_canvas_badge(&mut img, 'D', [0xD3, 0x2F, 0x2F, 0xFF]);
-        let diameter = (108.0 * ANDROID_BADGE_DP / ANDROID_CANVAS_DP).round() as i32;
-        let inset = (108.0 * ANDROID_BADGE_INSET_DP / ANDROID_CANVAS_DP).round() as i32;
-        assert_eq!(diameter, 20);
-        assert_eq!(inset, 18);
-        let cx = (108 - inset - diameter / 2) as u32;
-        let cy = cx;
-        let center = img.get_pixel(cx, cy).0;
-        assert!(
-            center[0] > 0xA0,
-            "badge center should be accent red, got {center:?}"
-        );
-        assert_eq!(*img.get_pixel(4, 4), Rgba([10, 10, 10, 0xFF]));
     }
 }
