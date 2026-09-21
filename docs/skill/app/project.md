@@ -355,7 +355,7 @@ The value is baked into **this build**. Changing yaml and shipping a new package
 
 ## Environment
 
-A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env <env>`. Default: `dev` for `build`/`dev`, `prod` for `package`. This is **not** the lxapp channel (`release` | `draft`) and not the `--release` compiler profile.
+A host build is `dev` or `prod`, selected via `lingxia {build,dev,package} --env <env>`. Default: `dev` for `build`/`dev`, `prod` for `package`. This is **not** the lxapp channel (`release` | `draft`) and not the `--release` compiler profile. `developer` / `preview` are not env names; `envVersion` is not a field.
 
 **What each env produces:**
 
