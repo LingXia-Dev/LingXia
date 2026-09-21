@@ -3,10 +3,11 @@
 //! Mirrors the Android `prepare_res_overlay` flow: when the active
 //! env is `dev`, build a parallel `Assets.xcassets` under
 //! `<target>/lingxia/<platform>/overlay/<env>/Resources/` whose `AppIcon.appiconset`
-//! has each PNG composited with a small accent badge (filled circle + bitmap
-//! "D"). The build then points `actool` at the staging resources dir so
-//! the source asset catalog is never mutated and dev/prod can be installed
-//! side by side and visually distinguished on the home screen.
+//! has each PNG composited with the shared Android-matching badge (filled
+//! circle + vector "D"). The build then points `actool` at the staging
+//! resources dir so the source asset catalog is never mutated and
+//! dev/prod can be installed side by side and visually distinguished
+//! on the home screen.
 
 use anyhow::{Context, Result};
 use image::ImageFormat;
@@ -14,28 +15,21 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::AppEnv;
-use crate::platform::env_badge::{
-    BadgePlacement, composite_badge_inset, composite_corner_badge, env_badge,
-};
+use crate::platform::env_badge::{composite_corner_badge, env_badge};
 
 /// If the active env needs a badge, stage a copy of `Assets.xcassets` with a
 /// badged `AppIcon.appiconset` and return the staging *resources_dir*; the
 /// caller should pass that to `compile_asset_catalog` instead of the source
 /// dir. Returns `None` when no badge applies (release, or no source catalog).
 ///
-/// `icon_margin_frac`: transparent canvas margin per side around the icon
-/// artwork — 0.0 for full-bleed iOS icons, ~0.10 for macOS (Apple's grid puts
-/// the rounded square at 824/1024), so the badge lands ON the icon.
-///
 /// `opaque`: iOS icons are square and must carry no alpha; macOS icons are
 /// the rounded square itself and must keep it, or the corners come out black.
-/// It also picks the badge placement: an opaque (OS-masked) icon keeps the
-/// badge inside, a macOS plate carries it on its corner.
+/// Placement is the shared corner seat on the visible plate — iOS's full-bleed
+/// square uses the 22% squircle corner, macOS uses the artwork's alpha plate.
 pub fn prepare_overlay_resources_dir(
     staging_base: &Path,
     resources_dir: &Path,
     env: AppEnv,
-    icon_margin_frac: f32,
     opaque: bool,
 ) -> Result<Option<PathBuf>> {
     let Some((letter, accent)) = env_badge(env) else {
@@ -57,7 +51,7 @@ pub fn prepare_overlay_resources_dir(
     copy_dir_recursive(&original_xcassets, &staging_xcassets)?;
 
     let staging_appicon = staging_xcassets.join("AppIcon.appiconset");
-    badge_appiconset(&staging_appicon, letter, accent, icon_margin_frac, opaque)?;
+    badge_appiconset(&staging_appicon, letter, accent, opaque)?;
 
     Ok(Some(staging_resources))
 }
@@ -79,13 +73,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
     Ok(())
 }
 
-fn badge_appiconset(
-    dir: &Path,
-    letter: char,
-    accent: [u8; 4],
-    margin_frac: f32,
-    opaque: bool,
-) -> Result<()> {
+fn badge_appiconset(dir: &Path, letter: char, accent: [u8; 4], opaque: bool) -> Result<()> {
     for entry in fs::read_dir(dir).with_context(|| format!("Failed to read {}", dir.display()))? {
         let entry = entry?;
         let path = entry.path();
@@ -100,17 +88,10 @@ fn badge_appiconset(
         if rgba.width() < 60 {
             continue;
         }
-        if opaque {
-            composite_badge_inset(
-                &mut rgba,
-                letter,
-                accent,
-                margin_frac,
-                BadgePlacement::Inside,
-            );
-        } else {
-            composite_corner_badge(&mut rgba, letter, accent);
-        }
+        // Seat on the visible plate's 22% corner — iOS squircles that
+        // corner, macOS already drew it in alpha. The previous Inside
+        // inset floated the badge off the mask and looked unlike Android.
+        composite_corner_badge(&mut rgba, letter, accent);
         // iOS app icons must be opaque: an alpha channel — even a fully
         // opaque one — makes the home screen composite the icon over black,
         // which reads as a ghosted tile. macOS is the opposite: the icon is

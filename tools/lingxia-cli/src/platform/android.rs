@@ -1035,20 +1035,18 @@ fn android_env_icon_foreground_xml(foreground: &str, accent: &str, badge: &str) 
     )
 }
 
-fn android_env_icon_badge_path(badge: &str) -> &'static str {
-    match badge {
-        "D" => {
-            r##"<path
+fn android_env_icon_badge_path(badge: &str) -> String {
+    let Some(letter) = badge.chars().next() else {
+        return String::new();
+    };
+    let Some(d) = crate::platform::env_badge::badge_letter_path(letter) else {
+        return String::new();
+    };
+    format!(
+        r##"<path
                 android:fillColor="#FFFFFFFF"
-                android:pathData="M12,10 L22,10 C29,10 34,15 34,21 C34,27 29,32 22,32 L12,32 Z M18,16 L18,26 L22,26 C25.5,26 28,24 28,21 C28,18 25.5,16 22,16 Z" />"##
-        }
-        "P" => {
-            r##"<path
-                android:fillColor="#FFFFFFFF"
-                android:pathData="M13,10 L25,10 C30,10 34,14 34,19 C34,24 30,28 25,28 L19,28 L19,32 L13,32 Z M19,16 L19,22 L24,22 C26.5,22 28,20.8 28,19 C28,17.2 26.5,16 24,16 Z" />"##
-        }
-        _ => "",
-    }
+                android:pathData="{d}" />"##
+    )
 }
 
 fn install_with_adb(

@@ -182,6 +182,8 @@ contract, not here.
 | Android launcher-icon badge overlay | `tools/lingxia-cli/src/platform/android.rs::prepare_launcher_icon_overlay` |
 | iOS/macOS bundle-id suffix | `tools/lingxia-cli/src/platform/{ios,macos}.rs` |
 | iOS/macOS icon badge overlay | `tools/lingxia-cli/src/platform/apple/env_icon.rs` |
+| Harmony launcher-icon badge overlay | `tools/lingxia-cli/src/platform/harmony/env_icon.rs` |
+| Shared badge drawing | `tools/lingxia-cli/src/platform/env_badge.rs` |
 | Harmony staging mirror | `tools/lingxia-cli/src/platform/harmony/build.rs::prepare_harmony_staging` |
 | Publish reads package `env` | `tools/lingxia-cli/src/commands/publish.rs::read_app_package_metadata` |
 | Runtime `AppEnv` | `crates/lingxia-app-context/src/lib.rs` |

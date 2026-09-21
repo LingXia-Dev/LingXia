@@ -6,6 +6,7 @@ mod build;
 mod capabilities;
 mod deploy;
 mod doctor;
+mod env_icon;
 mod project;
 
 mod agc;

@@ -343,7 +343,6 @@ impl Platform for IosPlatform {
             &staging_base,
             &resources_dir,
             config.resolved_env.version,
-            0.0,
             true,
         ) {
             Ok(staged) => staged,

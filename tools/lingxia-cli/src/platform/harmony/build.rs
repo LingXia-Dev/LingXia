@@ -338,6 +338,13 @@ fn prepare_harmony_staging(source: &Path, config: &BuildConfig) -> Result<PathBu
     if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
         crate::product_i18n::write_harmony_product_name_strings(&staging, app.display_name())?;
     }
+    if let Err(err) = super::env_icon::badge_staged_icons(&staging, config.resolved_env.version) {
+        eprintln!(
+            "  {} Skipping env app-icon overlay: {}",
+            "Warning:".yellow(),
+            err
+        );
+    }
     Ok(staging)
 }
 
