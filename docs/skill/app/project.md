@@ -442,7 +442,7 @@ The browser, terminal, and HTTP-proxy runtime features are **not** set here — 
 
 `browser.bookmarks` defaults to `true`. Set it to `false` to hide bookmark chrome; pin context menus offer “Manage Pinned Sites” at `lingxia://bookmarks`. That route, the store, and full `bookmarks.list/watch` results remain available so the frontend can migrate legacy bookmarks.
 
-Trusted browser webui calls `shell.pins` to read the ordered `{kind: "lxapp" | "bookmark", key}` list, then `shell.reorderPins({items})` with every current item exactly once. `bookmarks.reorder` only orders the bookmark manager. Control apps may also call these shell routes. Automation callers use `lx.automation().shell.reorderPins({items})` with the complete list from `lx.automation().shell.pins()`.
+Trusted browser webui calls `shell.pins` for `{items, max}` — the ordered `{kind: "lxapp" | "bookmark", key}` list, and how many Pins the sidebar holds in total — then `shell.reorderPins({items})` with every current item exactly once, which returns the same shape. The budget covers pinned lxapps as well, so read `max` instead of counting your own rows. Pinning past it rejects with code `SHELL_PIN_LIMIT` and `data.max`, so a caller writes that message in its own language rather than matching the host's. `bookmarks.reorder` only orders the bookmark manager. Control apps may also call these shell routes. Automation callers use `lx.automation().shell.reorderPins({items})` with the complete list from `lx.automation().shell.pins()`.
 
 `tabs.recentlyClosed` lists up to 25 normal website tabs, newest first, for this process. `tabs.reopen({id?})` restores one (latest if omitted); private tabs and aside/standalone surfaces are excluded. Desktop shortcuts are ⌘⇧T / Ctrl+Shift+T.
 
