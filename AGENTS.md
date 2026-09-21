@@ -1,4 +1,4 @@
-LingXia is a cross-platform app runtime monorepo: Rust crates (`crates/`), npm packages (`packages/`), platform SDKs (`lingxia-sdk/`), and the `lingxia`/`lxdev` CLIs (`tools/`). See `Readme.md` for the full repository layout. (`CLAUDE.md` is just an `@AGENTS.md` import — edit this file, not that one.)
+LingXia is a cross-platform app runtime monorepo: Rust crates (`crates/`), npm packages (`packages/`), platform SDKs (`lingxia-sdk/`), and the `lingxia`/`lxdev` CLIs (`tools/`). See `Readme.md` for the full repository layout.
 
 ## Docs skill
 
