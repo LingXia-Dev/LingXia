@@ -454,7 +454,7 @@ fn set_bookmark_pinned(id: &str, pinned: bool) -> Result<(), LxAppError> {
         },
         pinned,
     )
-    .map_err(|error| LxAppError::InvalidParameter(error.to_string()))?;
+    .map_err(crate::shell::map_pin_error)?;
     if let Some(dir) = runtime_data_dir() {
         let snapshot = {
             let _guard = store_lock()
