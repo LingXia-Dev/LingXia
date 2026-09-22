@@ -2,7 +2,7 @@
 //! session in an isolated automation runtime, stream console output, download
 //! artifacts, and report one terminal summary.
 
-use crate::client::{CommandTimeout, execute_command};
+use crate::client::{CommandTimeout, execute_command, execute_command_until, max_poll_wait};
 use crate::project::SessionInfo;
 use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
 use anyhow::{Context, Result, anyhow, bail};
@@ -19,7 +19,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const POLL_INTERVAL: Duration = Duration::from_millis(250);
 /// After a cancel is sent, wait this long for the terminal state.
@@ -462,6 +462,120 @@ struct Outcome {
     streamed: Vec<StreamedCase>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PollDeadlineStop {
+    Cancelled,
+    RunDeadline,
+    Watchdog,
+}
+
+/// A quiet poll is not a reason to stop. These are: the user already asked to
+/// cancel and the grace has passed, the run budget is over, or the hang
+/// watchdog has seen no event. Cancel grace wins, then the run budget, then
+/// the watchdog.
+fn poll_deadline_stop(
+    now: Instant,
+    cancel_deadline: Option<Instant>,
+    poll_deadline: Instant,
+    watchdog_at: Instant,
+) -> Option<PollDeadlineStop> {
+    if cancel_deadline.is_some_and(|deadline| now > deadline) {
+        return Some(PollDeadlineStop::Cancelled);
+    }
+    if now > poll_deadline {
+        return Some(PollDeadlineStop::RunDeadline);
+    }
+    if now > watchdog_at {
+        return Some(PollDeadlineStop::Watchdog);
+    }
+    None
+}
+
+fn soonest_poll_deadline(
+    cancel_deadline: Option<Instant>,
+    poll_deadline: Instant,
+    watchdog_at: Instant,
+) -> Instant {
+    let until = poll_deadline.min(watchdog_at);
+    cancel_deadline.map_or(until, |deadline| until.min(deadline))
+}
+
+/// One status read waits until the next deadline, capped so it returns before
+/// the dev server abandons the forward and a second connection piles up
+/// behind that lock.
+fn poll_wait(now: Instant, until: Instant) -> Duration {
+    until
+        .saturating_duration_since(now)
+        .min(max_poll_wait())
+        .max(Duration::from_millis(1))
+}
+
+fn execute_poll(
+    ws_url: &str,
+    args: &TestPollArgs,
+    timeout: Duration,
+    stop: &dyn Fn() -> bool,
+) -> Result<TestPollResponse> {
+    let encoded = serde_json::to_value(args).context("failed to encode devtool command args")?;
+    let response = execute_command_until(
+        ws_url,
+        methods::session::test::POLL,
+        Some(encoded),
+        Some(timeout),
+        stop,
+    )?
+    .ok_or_else(|| anyhow!("session.test.poll returned no data"))?;
+    serde_json::from_value(response).context("invalid session.test.poll response")
+}
+
+fn finish_poll_deadline(
+    stop: PollDeadlineStop,
+    info: &SessionInfo,
+    run_id: &str,
+    elapsed: Duration,
+    console: Vec<(String, String)>,
+    artifacts: Vec<(String, PathBuf, usize)>,
+    streamed: Vec<StreamedCase>,
+) -> Outcome {
+    let (state, message, reason) = match stop {
+        PollDeadlineStop::Cancelled => (
+            TestRunState::Cancelled,
+            "Cancellation deadline exceeded",
+            None,
+        ),
+        PollDeadlineStop::RunDeadline => (
+            TestRunState::TimedOut,
+            "Run deadline exceeded",
+            Some("run_deadline"),
+        ),
+        PollDeadlineStop::Watchdog => (
+            TestRunState::TimedOut,
+            "No test event before the lxdev hang watchdog fired",
+            Some("hang_watchdog"),
+        ),
+    };
+    // Leaving a run active here is how the next `lxdev test` gets stranded
+    // on automation_run_in_progress. Cancel was already sent for the grace path.
+    if let Some(reason) = reason {
+        let _ = execute_typed::<_, TestCancelResponse>(
+            &info.ws_url,
+            methods::session::test::CANCEL,
+            &TestCancelArgs {
+                run_id: run_id.to_string(),
+                reason: Some(reason.to_string()),
+            },
+        );
+    }
+    interrupted_outcome(
+        state,
+        message.to_string(),
+        elapsed,
+        console,
+        artifacts,
+        streamed,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn poll_until_terminal(
     info: &SessionInfo,
@@ -507,13 +621,31 @@ fn poll_until_terminal(
             );
         }
 
-        let polled: Result<TestPollResponse> = execute_typed(
+        let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
+        let now = Instant::now();
+        if let Some(stop) = poll_deadline_stop(now, cancel_deadline, poll_deadline, watchdog_at) {
+            return Ok(finish_poll_deadline(
+                stop,
+                info,
+                run_id,
+                run_started.elapsed(),
+                console,
+                artifacts,
+                streamed,
+            ));
+        }
+
+        let polled = execute_poll(
             &info.ws_url,
-            methods::session::test::POLL,
             &TestPollArgs {
                 run_id: run_id.to_string(),
                 after_seq,
             },
+            poll_wait(
+                now,
+                soonest_poll_deadline(cancel_deadline, poll_deadline, watchdog_at),
+            ),
+            &|| interrupts.load(Ordering::SeqCst) > 0 && !cancel_sent,
         );
         let poll = match polled {
             Ok(poll) => {
@@ -521,25 +653,39 @@ fn poll_until_terminal(
                 poll
             }
             Err(err) => {
-                /* A poll that times out has not told us anything is wrong: the
-                 * runtime answers it between spec steps, so a spec doing real
-                 * network work keeps it quiet for as long as that work takes.
-                 * Counting those as failures ended live runs after three of
-                 * them, well before the run's own budget or the watchdog had
-                 * any say — a busy session reported as a lost one. Only a
-                 * transport error still counts. */
-                if err.downcast_ref::<CommandTimeout>().is_none() {
+                /* A poll that times out has not told us the session is gone:
+                 * the runtime answers it between spec steps, so a spec doing
+                 * real network work keeps it quiet for as long as that work
+                 * takes. Only a transport error counts toward giving up. A
+                 * quiet poll that has reached a deadline stops as that
+                 * deadline — timeout or cancellation — and cancels the run,
+                 * so the next `lxdev test` is not stranded on the lock. */
+                let quiet = err.downcast_ref::<CommandTimeout>().is_some();
+                if !quiet {
                     poll_failures += 1;
                 }
-                let now = std::time::Instant::now();
-                if poll_failures < 3
-                    && now < poll_deadline
-                    && cancel_deadline.is_none_or(|deadline| now < deadline)
+                let now = Instant::now();
+                let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
+                if let Some(stop) =
+                    poll_deadline_stop(now, cancel_deadline, poll_deadline, watchdog_at)
                 {
-                    if !machine && verbose {
-                        eprintln!("Retrying test status request: {err:#}");
+                    return Ok(finish_poll_deadline(
+                        stop,
+                        info,
+                        run_id,
+                        run_started.elapsed(),
+                        console,
+                        artifacts,
+                        streamed,
+                    ));
+                }
+                if quiet || poll_failures < 3 {
+                    if !quiet {
+                        if !machine && verbose {
+                            eprintln!("Retrying test status request: {err:#}");
+                        }
+                        std::thread::sleep(POLL_INTERVAL);
                     }
-                    std::thread::sleep(POLL_INTERVAL);
                     continue;
                 }
                 return Ok(interrupted_outcome(
@@ -763,40 +909,14 @@ fn poll_until_terminal(
                 streamed,
             });
         }
-        if last_event_at.elapsed() > case_budget + WATCHDOG_GRACE {
-            let _ = execute_typed::<_, TestCancelResponse>(
-                &info.ws_url,
-                methods::session::test::CANCEL,
-                &TestCancelArgs {
-                    run_id: run_id.to_string(),
-                    reason: Some("hang_watchdog".to_string()),
-                },
-            );
-            return Ok(interrupted_outcome(
-                TestRunState::TimedOut,
-                "No test event before the lxdev hang watchdog fired".into(),
-                run_started.elapsed(),
-                console,
-                artifacts,
-                streamed,
-            ));
-        }
-        if let Some(deadline) = cancel_deadline
-            && std::time::Instant::now() > deadline
+        let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
+        if let Some(stop) =
+            poll_deadline_stop(Instant::now(), cancel_deadline, poll_deadline, watchdog_at)
         {
-            return Ok(interrupted_outcome(
-                TestRunState::Cancelled,
-                "Cancellation deadline exceeded".into(),
-                run_started.elapsed(),
-                console,
-                artifacts,
-                streamed,
-            ));
-        }
-        if std::time::Instant::now() > poll_deadline {
-            return Ok(interrupted_outcome(
-                TestRunState::TimedOut,
-                "Run deadline exceeded".into(),
+            return Ok(finish_poll_deadline(
+                stop,
+                info,
+                run_id,
                 run_started.elapsed(),
                 console,
                 artifacts,
@@ -1300,6 +1420,38 @@ mod tests {
         );
         assert!(active_run_id("automation_runtime_unhealthy: restart the host").is_none());
         assert!(active_run_id("").is_none());
+    }
+
+    #[test]
+    fn a_quiet_poll_stops_as_the_deadline_it_reached() {
+        let now = Instant::now();
+        let later = now + Duration::from_secs(30);
+        assert_eq!(
+            poll_deadline_stop(now, Some(now - Duration::from_millis(1)), later, later),
+            Some(PollDeadlineStop::Cancelled)
+        );
+        assert_eq!(
+            poll_deadline_stop(now, None, now - Duration::from_millis(1), later),
+            Some(PollDeadlineStop::RunDeadline)
+        );
+        assert_eq!(
+            poll_deadline_stop(now, None, later, now - Duration::from_millis(1)),
+            Some(PollDeadlineStop::Watchdog)
+        );
+        assert!(poll_deadline_stop(now, None, later, later).is_none());
+    }
+
+    #[test]
+    fn a_poll_waits_until_the_next_deadline_on_one_socket() {
+        let now = Instant::now();
+        let soon = now + Duration::from_secs(20);
+        let later = now + Duration::from_secs(600);
+        assert_eq!(
+            soonest_poll_deadline(None, later, soon).saturating_duration_since(now),
+            Duration::from_secs(20)
+        );
+        assert_eq!(poll_wait(now, later), max_poll_wait());
+        assert!(poll_wait(now, soon) < max_poll_wait());
     }
 
     #[test]
