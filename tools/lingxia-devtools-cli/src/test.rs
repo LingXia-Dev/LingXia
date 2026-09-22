@@ -40,7 +40,7 @@ pub struct TestOptions {
     pub entry: PathBuf,
 
     /// Whole-run budget in seconds
-    #[arg(long, default_value_t = 300, value_parser = clap::value_parser!(u64).range(1..=3600))]
+    #[arg(long, default_value_t = 300, value_parser = parse_timeout_secs)]
     timeout_secs: u64,
 
     /// Key=value string exposed as test.args (repeatable)
@@ -66,6 +66,11 @@ pub struct TestOptions {
     /// Rerun failed ids from an earlier report.json
     #[arg(long, value_name = "REPORT")]
     last_failed: Option<PathBuf>,
+
+    /// Cancel an automation run left active by an earlier `lxdev test`, then
+    /// start. Only needed when a previous run's client died mid-run.
+    #[arg(long)]
+    cancel_active: bool,
 
     /// Allow a selection with no matching specs
     #[arg(long)]
@@ -95,6 +100,29 @@ pub struct TestOptions {
     /// Emit one final pretty JSON object instead of live output
     #[arg(long, conflicts_with = "json")]
     pretty: bool,
+}
+
+/// The ceiling is the automation runtime's own run budget
+/// (`MAX_TIMEOUT_MS`), not a CLI preference, so say what to do instead of
+/// only naming the range: a suite too big for one budget is what `--shard`
+/// is for.
+const MAX_TIMEOUT_SECS: u64 = 3600;
+
+fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
+    let secs: u64 = raw
+        .parse()
+        .map_err(|_| format!("`{raw}` is not a whole number of seconds"))?;
+    if secs == 0 {
+        return Err("a run needs at least 1 second".to_string());
+    }
+    if secs > MAX_TIMEOUT_SECS {
+        return Err(format!(
+            "{secs}s exceeds the {MAX_TIMEOUT_SECS}s run budget the automation runtime allows. \
+             Split the suite across sessions with `--shard INDEX/TOTAL`, or run fewer files per \
+             invocation."
+        ));
+    }
+    Ok(secs)
 }
 
 fn parse_key_value(raw: &str) -> Result<(String, String), String> {
@@ -182,16 +210,14 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         args.insert("forbidOnly".to_string(), "1".to_string());
     }
 
-    let start: TestStartResponse = execute_typed(
-        &info.ws_url,
-        methods::session::test::START,
-        &TestStartArgs {
-            source: bundle.code.clone(),
-            source_name: Some(bundle.bundle_name.clone()),
-            timeout_ms: Some(options.timeout_secs * 1000),
-            args: args.clone(),
-        },
-    )?;
+    let start_args = TestStartArgs {
+        source: bundle.code.clone(),
+        source_name: Some(bundle.bundle_name.clone()),
+        timeout_ms: Some(options.timeout_secs * 1000),
+        args: args.clone(),
+    };
+    let start: TestStartResponse =
+        start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
     let run_id = start.run_id;
     if !machine {
         eprintln!(
@@ -323,6 +349,70 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         _ => 1,
     };
     std::process::exit(exit_code);
+}
+
+/// The host refuses a second run while one is active, which is what keeps a
+/// dead run's actions from landing in a live fixture. But a client that dies
+/// mid-run leaves that run active with nobody polling it, and it then holds the
+/// session for the rest of its own budget — an hour, for a long suite. Recover
+/// deliberately rather than silently: name the stuck run, and cancel it only
+/// when asked to.
+fn start_run(
+    ws_url: &str,
+    args: &TestStartArgs,
+    cancel_active: bool,
+    machine: bool,
+) -> Result<TestStartResponse> {
+    let first = execute_typed::<_, TestStartResponse>(ws_url, methods::session::test::START, args);
+    let Err(error) = first else {
+        return first;
+    };
+    let message = error.to_string();
+    let Some(active) = active_run_id(&message) else {
+        return Err(error);
+    };
+    if !cancel_active {
+        return Err(anyhow!(
+            "{message}\n\
+             A run stays active until it ends or its budget expires, so an earlier \
+             `lxdev test` whose client died still holds this session. Re-run with \
+             `--cancel-active` to cancel run {active} and start, or restart the dev session."
+        ));
+    }
+    if !machine {
+        eprintln!("{} cancelling abandoned run {active}…", "test".cyan());
+    }
+    let _ = execute_typed::<_, TestCancelResponse>(
+        ws_url,
+        methods::session::test::CANCEL,
+        &TestCancelArgs {
+            run_id: active.clone(),
+            reason: Some("superseded_by_new_run".to_string()),
+        },
+    );
+    // The host retires a cancelled run once it reaches a terminal state, so the
+    // next start has to wait for that rather than race it.
+    let deadline = std::time::Instant::now() + CANCEL_GRACE;
+    loop {
+        match execute_typed::<_, TestStartResponse>(ws_url, methods::session::test::START, args) {
+            Ok(started) => return Ok(started),
+            Err(retry) => {
+                if active_run_id(&retry.to_string()).is_none()
+                    || std::time::Instant::now() >= deadline
+                {
+                    return Err(retry);
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            }
+        }
+    }
+}
+
+/// `automation_run_in_progress: run <id> is active`
+fn active_run_id(message: &str) -> Option<String> {
+    let rest = message.strip_prefix("automation_run_in_progress: run ")?;
+    let id = rest.split_whitespace().next()?;
+    (!id.is_empty()).then(|| id.to_string())
 }
 
 fn warn_package_version(entry: &Path, machine: bool) {
@@ -1191,6 +1281,28 @@ fn human_bytes(len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn recognises_an_active_run_and_ignores_other_failures() {
+        assert_eq!(
+            active_run_id("automation_run_in_progress: run 6c72fda1-58ed-4f9c is active")
+                .as_deref(),
+            Some("6c72fda1-58ed-4f9c")
+        );
+        assert!(active_run_id("automation_runtime_unhealthy: restart the host").is_none());
+        assert!(active_run_id("").is_none());
+    }
+
+    #[test]
+    fn a_budget_over_the_runtime_ceiling_names_the_way_out() {
+        let error = parse_timeout_secs("5400").unwrap_err();
+
+        // The old message only printed the range, which left the caller of a
+        // long suite with nowhere to go.
+        assert!(error.contains("--shard"), "{error}");
+        assert_eq!(parse_timeout_secs("3600").unwrap(), 3600);
+        assert!(parse_timeout_secs("0").is_err());
+    }
 
     #[test]
     fn artifact_size_uses_decoded_bytes() {
