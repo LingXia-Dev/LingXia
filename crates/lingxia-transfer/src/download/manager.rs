@@ -322,13 +322,13 @@ fn default_download_root(app_data_dir: &Path) -> PathBuf {
 fn system_downloads_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        return std::env::var_os("HOME")
+        std::env::var_os("HOME")
             .filter(|home| !home.is_empty())
-            .map(|home| PathBuf::from(home).join("Downloads"));
+            .map(|home| PathBuf::from(home).join("Downloads"))
     }
     #[cfg(windows)]
     {
-        return windows_known_downloads_dir().or_else(windows_profile_downloads_dir);
+        windows_known_downloads_dir().or_else(windows_profile_downloads_dir)
     }
     #[cfg(not(any(target_os = "macos", windows)))]
     {
