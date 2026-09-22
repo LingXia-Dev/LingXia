@@ -13,8 +13,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+pub mod distribution;
 pub mod env_icon;
 pub mod msix;
+mod nsis;
 pub mod signing;
 
 pub struct WindowsPlatform;

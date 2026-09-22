@@ -637,6 +637,23 @@ jobs:
         shell: bash
         run: cargo clippy -p lingxia-windows-sdk --no-default-features --features browser-shell -- -D warnings -A clippy::let_underscore_future
 
+      - name: Install NSIS for Windows packaging tests
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "${env:ProgramFiles(x86)}/NSIS/makensis.exe")) {
+            choco install nsis --yes --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS installation failed' }
+          }
+
+      - name: Test Windows distribution and updates
+        shell: pwsh
+        run: |
+          cargo test -p lingxia-platform --lib registrations_never_use_extracted_portable_path
+          if ($LASTEXITCODE -ne 0) { throw 'Windows launch path tests failed' }
+          cargo test -p lingxia-platform --lib windows::update
+          if ($LASTEXITCODE -ne 0) { throw 'Windows update helper tests failed' }
+          ./scripts/ci/windows-package-smoke.ps1
+
       - name: Test Windows media metadata mappings
         shell: bash
         run: cargo test -p lingxia-platform codec_subtypes_use_stable_mime_names

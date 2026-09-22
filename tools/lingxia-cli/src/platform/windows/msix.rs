@@ -1,15 +1,10 @@
 //! MSIX packaging for Windows host apps.
 //!
-//! Packs the assembled `target/lingxia/windows/dist/<ProjectName>/` payload (the exe next
-//! to the runtime `assets/`) into an installable `.msix` at
-//! `<project>/dist/windows/<ProjectName>.msix` — the Windows counterpart of how
-//! macOS packages its `.app` into `dist/macos/<ProjectName>.dmg`.
-//!
-//! The package is produced **unsigned**. Windows refuses to install an unsigned
-//! MSIX, so the caller must sign it (`signtool`) before installation; the CLI
-//! prints the command. Built-in signing can be layered on later.
+//! Packs the shared runnable payload into a versioned, architecture-specific
+//! package. Local self-signing is handled here; production Authenticode signing
+//! and final artifact publication are handled by `distribution`.
 
-use std::ffi::OsString;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -28,13 +23,13 @@ const LOGOS: &[(&str, u32)] = &[
     ("StoreLogo.png", 50),
 ];
 
-/// Pack the assembled `dist_dir` (`target/lingxia/windows/dist/<ProjectName>/`) into an
-/// unsigned `<project>/dist/windows/<ProjectName>.msix`. Returns the `.msix` path.
+/// Pack the assembled payload at `msix_path`, optionally self-signing for local use.
 pub fn package(
-    project_root: &Path,
     config: &LingXiaConfig,
     dist_dir: &Path,
+    exe_name: &OsStr,
     signing: super::signing::WindowsSigning,
+    msix_path: &Path,
 ) -> Result<PathBuf> {
     let makeappx = find_makeappx()?;
 
@@ -43,10 +38,9 @@ pub fn package(
         .as_ref()
         .ok_or_else(|| anyhow!("Missing [app] config for MSIX packaging"))?;
     let product_name = app.product_name.trim();
-    let project_name = app.project_name.trim();
     let windows_cfg = config.windows.as_ref();
 
-    let exe_name = dist_exe_name(dist_dir)?;
+    let architecture = super::distribution::pe_architecture(&dist_dir.join(exe_name))?;
     let identity = sanitize_identity(&config.resolved_package_id("windows")?);
     // The Identity Publisher must match the eventual signing cert's subject.
     // Default to a readable `CN=<product>`; override with `windows.publisher`.
@@ -60,20 +54,9 @@ pub fn package(
 
     // Stage a copy of the payload, then add `Images/` logos + the manifest.
     // (Staging keeps the runnable dist folder clean of MSIX-only files.)
-    let lingxia_dir = dist_dir
-        .parent()
-        .and_then(Path::parent)
-        .ok_or_else(|| anyhow!("unexpected dist path: {}", dist_dir.display()))?;
-    let staging = lingxia_dir.join("msix-staging");
-    if staging.exists() {
-        std::fs::remove_dir_all(&staging)
-            .with_context(|| format!("Failed to clear {}", staging.display()))?;
-    }
+    let temp = tempfile::tempdir_in(dist_dir.parent().context("Invalid Windows payload path")?)?;
+    let staging = temp.path().join("msix");
     crate::platform::apple::copy_dir_recursive(dist_dir, &staging)?;
-    // Drop any nested `.lingxia/` dirs that rode along inside lxapp bundles
-    // (e.g. a dev-runner mirror) so the shipped package isn't bloated with
-    // duplicated dev cruft — matching what the build-script asset copy skips.
-    prune_nested_lingxia(&staging)?;
 
     generate_logos(&staging.join("Images"), &dist_dir.join("assets"))?;
 
@@ -83,20 +66,16 @@ pub fn package(
         &version,
         product_name,
         &exe_name.to_string_lossy(),
+        architecture,
     );
     std::fs::write(staging.join("AppxManifest.xml"), manifest)
         .context("Failed to write AppxManifest.xml")?;
-
-    let out_dir = project_root.join("dist").join("windows");
-    std::fs::create_dir_all(&out_dir)
-        .with_context(|| format!("Failed to create {}", out_dir.display()))?;
-    let msix_path = out_dir.join(format!("{project_name}.msix"));
 
     let status = Command::new(&makeappx)
         .args(["pack", "/d"])
         .arg(&staging)
         .arg("/p")
-        .arg(&msix_path)
+        .arg(msix_path)
         .arg("/o")
         .status()
         .with_context(|| format!("Failed to run {}", makeappx.display()))?;
@@ -104,27 +83,20 @@ pub fn package(
         bail!("makeappx pack failed");
     }
 
-    println!(
-        "{} Packed MSIX → {}",
-        "[Windows]".cyan(),
-        msix_path.display()
-    );
-
-    if matches!(signing, super::signing::WindowsSigning::None) {
+    if matches!(signing, super::signing::WindowsSigning::SelfSigned) {
+        super::signing::sign_msix(msix_path, &publisher, signing)?;
+    } else if !super::signing::release_signing_enabled()? {
         println!(
-            "  {} unsigned — Windows won't install it until signed, e.g.\n     signtool sign /fd SHA256 /a /f <cert.pfx> /p <password> \"{}\"\n     (or pass --self-signed to sign + trust automatically)",
-            "note:".yellow(),
-            msix_path.display()
+            "  {} MSIX is unsigned; sign the final artifact or use --self-signed for local testing",
+            "note:".yellow()
         );
-    } else {
-        super::signing::sign_msix(&msix_path, &publisher, signing)?;
     }
-    Ok(msix_path)
+    Ok(msix_path.to_path_buf())
 }
 
 /// Locate `makeappx.exe` from the Windows SDK (newest version, x64), or an
 /// explicit `LINGXIA_MAKEAPPX` override.
-fn find_makeappx() -> Result<PathBuf> {
+pub(super) fn find_makeappx() -> Result<PathBuf> {
     if let Some(path) = std::env::var_os("LINGXIA_MAKEAPPX").map(PathBuf::from)
         && path.is_file()
     {
@@ -149,46 +121,6 @@ fn find_makeappx() -> Result<PathBuf> {
     })
 }
 
-/// Recursively remove any directory named `.lingxia` under `dir` (generated
-/// dev artifacts that shouldn't ship inside the package).
-fn prune_nested_lingxia(dir: &Path) -> Result<()> {
-    for entry in std::fs::read_dir(dir)
-        .with_context(|| format!("Failed to read {}", dir.display()))?
-        .flatten()
-    {
-        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
-            continue;
-        }
-        let path = entry.path();
-        if entry.file_name() == ".lingxia" {
-            std::fs::remove_dir_all(&path)
-                .with_context(|| format!("Failed to remove {}", path.display()))?;
-        } else {
-            prune_nested_lingxia(&path)?;
-        }
-    }
-    Ok(())
-}
-
-fn dist_exe_name(dist_dir: &Path) -> Result<OsString> {
-    for entry in std::fs::read_dir(dist_dir)
-        .with_context(|| format!("Failed to read {}", dist_dir.display()))?
-    {
-        let entry = entry?;
-        let path = entry.path();
-        if path
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("exe"))
-        {
-            return Ok(entry.file_name());
-        }
-    }
-    Err(anyhow!("no .exe found in {}", dist_dir.display()))
-}
-
-/// The runtime icon the SDK loads: `<assets>/AppIcon.png` (host icon) first,
-/// then `<assets>/<app>/public/AppIcon.png`.
 fn resolve_icon(assets: &Path) -> Option<PathBuf> {
     let root = assets.join("AppIcon.png");
     if root.is_file() {
@@ -291,6 +223,7 @@ fn render_manifest(
     version: &str,
     display_name: &str,
     executable: &str,
+    architecture: &str,
 ) -> String {
     let display = xml_escape(display_name);
     format!(
@@ -299,7 +232,7 @@ fn render_manifest(
     xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
     xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
     xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
-  <Identity Name="{identity}" Publisher="{publisher}" Version="{version}" ProcessorArchitecture="x64" />
+  <Identity Name="{identity}" Publisher="{publisher}" Version="{version}" ProcessorArchitecture="{architecture}" />
   <Properties>
     <DisplayName>{display}</DisplayName>
     <PublisherDisplayName>{display}</PublisherDisplayName>

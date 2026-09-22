@@ -43,6 +43,22 @@ without platform services.
 
 ## Host updates
 
+### Windows distributions
+
+Preserve the `*-windows.zip` feed archive: a runnable root payload for legacy
+directory installs plus `.lingxia-update/{manifest.json,setup.exe,portable.exe}`
+for the selected direct formats. The manifest binds schema version, app id,
+version, PE architecture, and executable name to the running installation and
+verified feed version. Package from a private copy of the build payload; sign
+before hashing. Generated `assets/app.json` supplies the env-specific identity.
+
+NSIS updates run Setup against the owned install root and retain user data and
+the previous payload on a failed swap. Portable updates wait for both host and
+launcher, then replace the outer EXE with a backup. Helpers must start outside
+the application directory so they cannot block replacement or extraction
+cleanup. Legacy directory updates exclude `.lingxia-update`; Store and sideloaded
+MSIX updates stay OS-managed. Never mirror into an extracted portable directory.
+
 ### Channel and version signal
 
 Effective channel precedence is: detected store installation, per-platform

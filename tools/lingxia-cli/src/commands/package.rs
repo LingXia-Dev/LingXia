@@ -1,4 +1,5 @@
 use crate::commands::build::{self, BuildExecuteOptions};
+use crate::platform::windows::distribution::WindowsPackageFormat;
 use anyhow::Result;
 use clap::Args;
 
@@ -60,6 +61,10 @@ pub struct PackageOptions {
     #[arg(long, value_parser = ["sideload", "play"])]
     pub dist: Option<String>,
 
+    /// Windows formats (comma-separated or repeated): nsis (default), portable, msix, zip.
+    #[arg(long = "format", value_enum, value_delimiter = ',')]
+    pub formats: Vec<WindowsPackageFormat>,
+
     /// Package Windows build as an (unsigned) MSIX installer.
     #[arg(long)]
     pub msix: bool,
@@ -84,6 +89,7 @@ pub struct PackageExecuteOptions {
     pub android_dist: Option<String>,
     pub msix: bool,
     pub self_signed: bool,
+    pub formats: Vec<WindowsPackageFormat>,
 }
 
 pub fn execute(options: PackageExecuteOptions) -> Result<()> {
@@ -106,6 +112,7 @@ pub fn execute(options: PackageExecuteOptions) -> Result<()> {
         msix: options.msix || options.self_signed,
         self_signed: options.self_signed,
         package: true,
+        windows_formats: options.formats,
         // Packaging needs the full platform artifact, not just the native lib.
         native_only: false,
         env_version,

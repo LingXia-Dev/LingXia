@@ -144,6 +144,25 @@ inject native features / a provider crate; publishable Android artifacts are
 staged under `dist/android/` and macOS update zips under `dist/macos/`. Use it
 when you want the staged, distributable outputs rather than a plain build.
 
+Windows defaults to NSIS Setup.exe. Install NSIS 3 (`winget install NSIS.NSIS`)
+or set `LINGXIA_MAKENSIS`; MSIX needs the Windows SDK. Select multiple formats
+in one build so the update archive supports every direct distribution you ship:
+
+```bash
+lingxia package -p windows                         # NSIS + update ZIP
+lingxia package -p windows --format nsis,portable,zip
+lingxia package -p windows --format msix             # OS-managed distribution
+lingxia package -p windows --msix --self-signed      # local MSIX testing
+```
+
+`--format` is Windows-only; `--msix` remains an additive alias for `--format msix`.
+Outputs in `dist/windows/` include version and PE architecture. `*-portable.zip`
+is a runnable folder archive; `*-windows.zip` is the signed-feed update payload
+for `lingxia publish` (contains the selected installers as well as the legacy
+runnable payload). `*-artifacts.json` records filenames, sizes, and SHA-256.
+MSIX-only builds produce no direct-update ZIP. `build -p windows --release`
+continues to produce a runnable `exe + assets/` directory without requiring NSIS.
+
 See `lingxia package --help` for the flags.
 
 ### `lingxia dev`

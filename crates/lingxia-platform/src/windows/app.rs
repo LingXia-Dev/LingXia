@@ -569,7 +569,7 @@ impl AppRuntime for Platform {
     }
 
     fn autostart_is_enabled(&self) -> Result<bool, PlatformError> {
-        let exe = std::env::current_exe().map_err(|err| {
+        let exe = launch_executable().map_err(|err| {
             PlatformError::Platform(format!("cannot resolve app executable: {err}"))
         })?;
         // Enabled means the entry points at *this* executable: after a
@@ -618,7 +618,7 @@ impl AppRuntime for Platform {
     fn autostart_set_enabled(&self, enabled: bool) -> Result<(), PlatformError> {
         let name = self.autostart_value_name();
         if enabled {
-            let exe = std::env::current_exe().map_err(|err| {
+            let exe = launch_executable().map_err(|err| {
                 PlatformError::Platform(format!("cannot resolve app executable: {err}"))
             })?;
             write_autostart_run_entry(&name, &exe)
@@ -894,6 +894,43 @@ fn state_root_for_product(product_name: &str) -> PathBuf {
     })
 }
 
+/// Persist registrations against the portable launcher, never its extracted host.
+pub(super) fn launch_executable() -> std::io::Result<PathBuf> {
+    let exe = std::env::current_exe()?;
+    let portable = exe.parent().is_some_and(|dir| {
+        fs::read_to_string(dir.join(".lingxia-distribution"))
+            .ok()
+            .as_deref()
+            == Some("portable")
+    });
+    resolve_launch_executable(
+        &exe,
+        portable,
+        std::env::var_os("LINGXIA_PORTABLE_EXECUTABLE")
+            .map(PathBuf::from)
+            .as_deref(),
+    )
+}
+
+fn resolve_launch_executable(
+    exe: &Path,
+    portable: bool,
+    launcher: Option<&Path>,
+) -> std::io::Result<PathBuf> {
+    if !portable {
+        return Ok(exe.to_path_buf());
+    }
+    launcher
+        .filter(|path| path.is_absolute() && path.is_file())
+        .map(Path::to_path_buf)
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "Portable launcher path is unavailable",
+            )
+        })
+}
+
 fn default_asset_dir() -> PathBuf {
     std::env::current_exe()
         .ok()
@@ -950,6 +987,25 @@ impl GeneratedAppConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registrations_never_use_extracted_portable_path() {
+        let current = std::env::current_exe().unwrap();
+        assert_eq!(launch_executable().unwrap(), current);
+        let extracted = Path::new("extracted/app.exe");
+        assert_eq!(
+            resolve_launch_executable(extracted, true, Some(&current)).unwrap(),
+            current
+        );
+        assert!(resolve_launch_executable(extracted, true, None).is_err());
+        assert!(
+            resolve_launch_executable(extracted, true, Some(Path::new("relative.exe"))).is_err()
+        );
+        assert_eq!(
+            resolve_launch_executable(extracted, false, Some(&current)).unwrap(),
+            extracted
+        );
+    }
 
     #[test]
     fn windows_builtin_browser_handler_is_downloads_only() {

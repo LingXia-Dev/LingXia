@@ -30,6 +30,7 @@ pub struct BuildExecuteOptions {
     /// Self-sign the Windows MSIX (generate/reuse a self-signed cert, sign + trust).
     pub self_signed: bool,
     pub package: bool,
+    pub windows_formats: Vec<crate::platform::windows::distribution::WindowsPackageFormat>,
     /// Build only the native library, skipping platform packaging (harmony
     /// stops after the `.so`, no ohpm/hvigor).
     pub native_only: bool,
@@ -82,6 +83,7 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
         msix,
         self_signed,
         package,
+        windows_formats,
         native_only,
         env_version,
         extra_native_features,
@@ -104,6 +106,12 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     // LxApp or LxPlugin project (no host config)
     if (lxapp_json_exists || lxplugin_json_exists) && !host_config_exists {
         validate_platform_target_options(false, false, &android_abis, macos_arch.as_deref())?;
+        crate::platform::windows::distribution::validate_selection(
+            false,
+            &windows_formats,
+            msix,
+            self_signed,
+        )?;
         if package && !release {
             return Err(anyhow!(
                 "Packaging requires a release build for LxApp/LxPlugin projects."
@@ -212,6 +220,12 @@ pub fn execute(options: BuildExecuteOptions) -> Result<()> {
     }
 
     if standalone_apple_swift_package {
+        crate::platform::windows::distribution::validate_selection(
+            false,
+            &windows_formats,
+            msix,
+            self_signed,
+        )?;
         validate_platform_target_options(
             false,
             inferred_platform_from_subdir == Some(PlatformType::MacOs),
@@ -308,6 +322,28 @@ Configured platforms: {}",
 Specify one with `--platform <name>` or build all with `--all-platforms`."
             ));
         };
+
+    if native_only && (!windows_formats.is_empty() || msix || self_signed) {
+        return Err(anyhow!(
+            "Windows packaging cannot be combined with --native-only"
+        ));
+    }
+    let has_windows = platforms_to_build.contains(&PlatformType::Windows);
+    crate::platform::windows::distribution::validate_selection(
+        has_windows,
+        &windows_formats,
+        msix,
+        self_signed,
+    )?;
+    let windows_formats = crate::platform::windows::distribution::resolve_formats(
+        &windows_formats,
+        package,
+        msix,
+        self_signed,
+    );
+    if has_windows {
+        crate::platform::windows::distribution::preflight(&windows_formats)?;
+    }
 
     // If the user explicitly asked to build iOS/macOS, fail fast on non-macOS hosts
     // (Apple tooling requires macOS).
@@ -486,18 +522,14 @@ Specify one with `--platform <name>` or build all with `--all-platforms`."
         if should_assemble_windows_dist {
             artifacts =
                 assemble_windows_dist(&project_root, &config, resolved_env.version, artifacts)?;
-            if msix && let Some(dist_dir) = artifacts.path().parent() {
-                let signing = if self_signed {
-                    crate::platform::windows::signing::WindowsSigning::SelfSigned
-                } else {
-                    crate::platform::windows::signing::WindowsSigning::None
-                };
-                crate::platform::windows::msix::package(&project_root, &config, dist_dir, signing)?;
-            }
-            // Portable zip (runnable, no signing) for non-MSIX distribution.
-            if package && let Some(dist_dir) = artifacts.path().parent() {
-                let zip = create_windows_zip(&project_root, &config, dist_dir)?;
-                println!("{} package → {}", "✓".green(), zip.display());
+            if !windows_formats.is_empty() {
+                crate::platform::windows::distribution::package(
+                    &project_root,
+                    &config,
+                    artifacts.path(),
+                    &windows_formats,
+                    self_signed,
+                )?;
             }
         }
         if package {
@@ -663,6 +695,46 @@ fn assemble_windows_dist(
         }
     }
 
+    // Cargo and native dependencies may place loader DLLs beside the binary.
+    if let Some(binary_dir) = exe_path.parent() {
+        for entry in fs::read_dir(binary_dir)? {
+            let entry = entry?;
+            if entry.file_type()?.is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(|s| s.to_str())
+                    .is_some_and(|s| s.eq_ignore_ascii_case("dll"))
+            {
+                fs::copy(entry.path(), dist_dir.join(entry.file_name()))?;
+            }
+        }
+    }
+    let icon = crate::platform::windows::resolve_windows_dir(project_root)?.join("AppIcon.ico");
+    if icon.is_file() {
+        fs::copy(icon, dist_dir.join("AppIcon.ico"))?;
+    }
+    if let Some(windows) = &config.windows {
+        for file in &windows.extra_files {
+            let source = project_root.join(file);
+            let name = source
+                .file_name()
+                .ok_or_else(|| anyhow!("Invalid windows.extraFiles path: {file}"))?;
+            let dest = dist_dir.join(name);
+            if dest.exists() {
+                return Err(anyhow!(
+                    "windows.extraFiles collides with generated payload: {}",
+                    dest.display()
+                ));
+            }
+            if source.is_dir() {
+                crate::platform::apple::copy_dir_recursive(&source, &dest)?;
+            } else {
+                fs::copy(&source, &dest)
+                    .with_context(|| format!("Failed to copy windows.extraFiles {file}"))?;
+            }
+        }
+    }
     Ok(BuildArtifacts::Windows { exe_path: dist_exe })
 }
 
@@ -713,37 +785,7 @@ fn stage_package_artifact(
     Ok(Some(dest))
 }
 
-/// Zip the assembled Windows app into `dist/windows/<Project>-<version>-windows.zip`
-/// — the runnable, no-signing artifact for non-MSIX distribution.
-fn create_windows_zip(
-    project_root: &Path,
-    config: &LingXiaConfig,
-    dist_dir: &Path,
-) -> Result<PathBuf> {
-    let app = config
-        .app
-        .as_ref()
-        .ok_or_else(|| anyhow!("Missing [app] config for Windows packaging"))?;
-    let project = app.project_name.trim();
-    let version = app.product_version.trim();
-    let out_dir = project_root.join("dist").join("windows");
-    fs::create_dir_all(&out_dir)
-        .with_context(|| format!("Failed to create {}", out_dir.display()))?;
-    let zip_path = out_dir.join(format!("{project}-{version}-windows.zip"));
-    if zip_path.exists() {
-        fs::remove_file(&zip_path)?;
-    }
-    let file = fs::File::create(&zip_path)
-        .with_context(|| format!("Failed to create {}", zip_path.display()))?;
-    let mut writer = zip::ZipWriter::new(file);
-    let options = zip::write::SimpleFileOptions::default()
-        .compression_method(zip::CompressionMethod::Deflated);
-    add_zip_dir(&mut writer, dist_dir, "", options)?;
-    writer.finish().context("Failed to finalize Windows zip")?;
-    Ok(zip_path)
-}
-
-fn add_zip_dir<W: std::io::Write + std::io::Seek>(
+pub(crate) fn add_zip_dir<W: std::io::Write + std::io::Seek>(
     writer: &mut zip::ZipWriter<W>,
     src_root: &Path,
     rel: &str,

@@ -1608,9 +1608,15 @@ pub struct AppGalleryConfig {
     pub app_id: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowsConfig {
+    /// Keep portable user data beside the launcher under data/<appId>.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub portable_data: bool,
+    /// Additional runtime files/directories copied beside the host executable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub extra_files: Vec<String>,
     /// Windows host application identifier. Env suffixes are applied the same
     /// way as package/bundle identifiers on other platforms.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -223,6 +223,8 @@ mod tests {
                 store: None,
             }),
             windows: Some(WindowsConfig {
+                portable_data: false,
+                extra_files: Vec::new(),
                 app_id: Some("app.example.demo.windows".into()),
                 executable_name: Some("Demo".into()),
                 publisher: None,

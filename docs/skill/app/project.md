@@ -548,6 +548,13 @@ and served by the runtime, none of which applies to these raw files.
 
 `windows:` packaging: `executableName` (`windows/Cargo.toml` binary), `publisher` (MSIX `Publisher`, default `CN=<productName>`), optional `appId` override of `app.packageId`, optional `store:` Partner Center id for `lingxia store`.
 
+`windows.extraFiles: [path, ...]` copies project-relative files/directories beside
+the executable (basename preserved; collisions fail). Sibling Cargo-output DLLs
+are included automatically. `windows.portableData: true` stores portable data
+under `<launcher-dir>/data/<appId>`; default `false` uses the normal per-user
+state location. Portable always extracts program resources to a temporary
+folder and cleans them after exit. User data must never live in that folder.
+
 ---
 
 ## Surfaces (adaptive UI)

@@ -184,13 +184,44 @@ re-signs with the app signing key it holds.
 
 **Verify:** `apksigner verify --print-certs <apk>`.
 
-### Windows / Harmony
+### Windows
 
-`lingxia build --platform windows --msix --self-signed` signs an MSIX with a
-generated self-signed cert (trusted locally) — enough to install and test;
-store distribution needs a real code-signing certificate. Harmony builds resolve
-AGC credentials and manage the signing key, certificate, and profile; release
-builds request release signing material.
+NSIS is the default website distribution; `--format portable` builds a
+self-extracting launcher, and `--format msix` keeps OS-managed deployment.
+NSIS installs per-user under `%LOCALAPPDATA%/Programs/<appId>/app`, registers
+Start Menu/desktop shortcuts and an uninstaller, and preserves user data.
+NSIS/portable detect WebView2; if missing, they offer to download Microsoft's
+bootstrapper and verify its Microsoft Authenticode signature before running it.
+The first installation therefore needs internet when WebView2 is absent.
+
+For production Authenticode signing, provision a certificate in the current
+user's Windows certificate store and set `LINGXIA_WINDOWS_CERT_SHA1` to its
+40-character thumbprint. `LINGXIA_WINDOWS_REQUIRE_SIGNING=1` makes missing
+credentials fatal. Optional `LINGXIA_SIGNTOOL` selects signtool and
+`LINGXIA_WINDOWS_TIMESTAMP_URL` selects the RFC 3161 server. Payload EXEs/DLLs,
+NSIS uninstallers, final Setup/Portable EXEs and MSIX are signed; artifact
+checksums are computed afterwards. MSIX `windows.publisher` must match the
+certificate subject. Authenticode is separate from LingXia feed signatures.
+
+`--msix --self-signed` retains local MSIX certificate generation and trust.
+Without signing configured, artifacts remain unsigned (unsigned MSIX cannot
+be installed normally). Store delivery uses the Store signing/deployment flow.
+
+Publish `*-windows.zip` for direct host updates. Always build all supported
+direct formats together, e.g. `--format nsis,portable,zip`: the single Windows
+feed archive carries the matching installers. NSIS hosts update through Setup;
+Portable replaces its outer launcher; legacy ZIP installations update their
+runnable directory. MSIX hosts never overwrite their package directory: use
+Store or configure App Installer delivery separately. Packaging does not host
+an `.appinstaller` feed. Artifact architecture is recorded and checked for new
+installed/portable updates; the existing feed still has one entry per platform,
+so separate architecture-specific feeds/identities are needed when distributing
+more than one Windows architecture.
+
+### Harmony
+
+Harmony builds resolve AGC credentials and manage the signing key, certificate,
+and profile; release builds request release signing material.
 
 ## `lingxia auth`
 

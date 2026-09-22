@@ -254,12 +254,21 @@ fn start_menu_link(platform: &Platform) -> Option<std::path::PathBuf> {
             }
         })
         .collect();
+    let packaged = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(std::path::PathBuf::from))
+        .is_some_and(|dir| dir.join(".lingxia-distribution").is_file());
+    let stem = if packaged {
+        format!("{stem} ({})", platform.app_identifier())
+    } else {
+        stem
+    };
     Some(programs_folder()?.join(format!("{stem}.lnk")))
 }
 
 fn write_start_menu_shortcut(platform: &Platform) {
     let aumid = aumid_from_identity(&platform.autostart_value_name());
-    let Ok(exe) = std::env::current_exe() else {
+    let Ok(exe) = super::app::launch_executable() else {
         return;
     };
     let Some(link) = start_menu_link(platform) else {
