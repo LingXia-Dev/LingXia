@@ -313,17 +313,52 @@ fn resolve_download_root(app_data_dir: &Path, default_root: impl Into<PathBuf>) 
 }
 
 fn default_download_root(app_data_dir: &Path) -> PathBuf {
+    system_downloads_dir().unwrap_or_else(|| app_data_dir.join("downloads"))
+}
+
+/// Browser "Save files to" default: the user's system Downloads folder.
+/// macOS is `~/Downloads`. Windows is Explorer's Downloads known folder
+/// (`FOLDERID_Downloads`), not `%USERPROFILE%\Downloads` and not app data.
+fn system_downloads_dir() -> Option<PathBuf> {
     #[cfg(target_os = "macos")]
     {
-        if let Some(home) = std::env::var_os("HOME") {
-            let candidate = PathBuf::from(home).join("Downloads");
-            if !candidate.as_os_str().is_empty() {
-                return candidate;
-            }
-        }
+        return std::env::var_os("HOME")
+            .filter(|home| !home.is_empty())
+            .map(|home| PathBuf::from(home).join("Downloads"));
     }
+    #[cfg(windows)]
+    {
+        return windows_known_downloads_dir().or_else(windows_profile_downloads_dir);
+    }
+    #[cfg(not(any(target_os = "macos", windows)))]
+    {
+        None
+    }
+}
 
-    app_data_dir.join("downloads")
+#[cfg(windows)]
+fn windows_known_downloads_dir() -> Option<PathBuf> {
+    use windows::Win32::System::Com::CoTaskMemFree;
+    use windows::Win32::UI::Shell::{FOLDERID_Downloads, KF_FLAG_DEFAULT, SHGetKnownFolderPath};
+    use windows::core::PWSTR;
+
+    unsafe {
+        let pwstr: PWSTR = SHGetKnownFolderPath(&FOLDERID_Downloads, KF_FLAG_DEFAULT, None).ok()?;
+        let path = pwstr
+            .to_string()
+            .ok()
+            .map(PathBuf::from)
+            .filter(|path| !path.as_os_str().is_empty());
+        CoTaskMemFree(Some(pwstr.0.cast()));
+        path
+    }
+}
+
+#[cfg(windows)]
+fn windows_profile_downloads_dir() -> Option<PathBuf> {
+    std::env::var_os("USERPROFILE")
+        .filter(|profile| !profile.is_empty())
+        .map(|profile| PathBuf::from(profile).join("Downloads"))
 }
 
 pub(crate) fn download_root(app_data_dir: &Path) -> PathBuf {
