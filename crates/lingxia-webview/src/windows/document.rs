@@ -46,6 +46,10 @@ pub(super) enum TrustedNavigationStart {
         intent: TrustedLoadIntent,
         navigation_key: NativeKey,
     },
+    /// Redirect restart of the already-attested host load (same native key).
+    Coalesced(TrustedLoadIntent),
+    /// A different start must pass policy before it may retire this load.
+    Competing(TrustedLoadIntent),
     /// Another top-level navigation won the linearization point.
     Revoke(TrustedLoadIntent),
     /// No trusted native load was pending.
@@ -59,7 +63,10 @@ pub(super) enum TrustedNavigationStart {
 fn trusted_navigation_urls_match(expected: &str, actual: &str) -> bool {
     fn canonical(url: &str) -> String {
         let without_fragment = url.split_once('#').map(|(head, _)| head).unwrap_or(url);
-        super::scheme::normalize_memory_page_url(without_fragment).to_ascii_lowercase()
+        without_fragment
+            .trim()
+            .trim_end_matches('/')
+            .to_ascii_lowercase()
     }
     canonical(expected) == canonical(actual)
 }
@@ -127,11 +134,60 @@ impl WindowsDocumentAuthority {
                     expected_url,
                     navigation_key,
                 });
-                TrustedNavigationStart::Untrusted
+                TrustedNavigationStart::Coalesced(intent)
+            }
+            Some(TrustedLoadCorrelation::Pending {
+                intent,
+                expected_url,
+            }) if navigation_key != 0 => {
+                // In-document clicks (Settings ↔ Downloads) start an unrelated
+                // navigation. Stealing the armed token made the host Navigate
+                // land untrusted; the page then sat on its skeleton until
+                // "Bridge handshake failed".
+                *correlation = Some(TrustedLoadCorrelation::Pending {
+                    intent,
+                    expected_url,
+                });
+                TrustedNavigationStart::Competing(intent)
+            }
+            Some(TrustedLoadCorrelation::Attested {
+                intent,
+                expected_url,
+                navigation_key: attested_key,
+            }) if navigation_key != 0 && attested_key != navigation_key => {
+                *correlation = Some(TrustedLoadCorrelation::Attested {
+                    intent,
+                    expected_url,
+                    navigation_key: attested_key,
+                });
+                TrustedNavigationStart::Competing(intent)
             }
             Some(correlation) => TrustedNavigationStart::Revoke(correlation.intent()),
             None => TrustedNavigationStart::Untrusted,
         }
+    }
+
+    /// Resolve against the same intent observed before policy called host code.
+    /// A cancelled competing click leaves the loader armed; an accepted one
+    /// supersedes it in both this correlation and the shared normalizer.
+    pub(super) fn resolve_policy(
+        &self,
+        start: TrustedNavigationStart,
+        allowed: bool,
+    ) -> Option<TrustedLoadIntent> {
+        let intent = match start {
+            TrustedNavigationStart::Revoke(intent) => intent,
+            TrustedNavigationStart::Competing(intent) if allowed => intent,
+            TrustedNavigationStart::Attest { intent, .. }
+            | TrustedNavigationStart::Coalesced(intent)
+                if !allowed =>
+            {
+                intent
+            }
+            _ => return None,
+        };
+        self.revoke_if_matches(intent);
+        Some(intent)
     }
 
     pub(super) fn navigation_finished(&self, navigation_key: NativeKey) {
@@ -224,7 +280,7 @@ mod tests {
         ));
         assert!(matches!(
             authority.navigation_start("lingxia://settings", 41),
-            TrustedNavigationStart::Untrusted
+            TrustedNavigationStart::Coalesced(_)
         ));
         authority.navigation_finished(41);
         assert!(authority.revoke_pending().is_none());
@@ -246,19 +302,85 @@ mod tests {
     }
 
     #[test]
-    fn external_or_keyless_navigation_revokes_the_pending_intent() {
+    fn competing_top_level_start_does_not_steal_a_pending_trusted_load() {
         let authority = WindowsDocumentAuthority::default();
         authority.arm(intent(2), "lingxia://settings".into());
         assert!(matches!(
-            authority.navigation_start("https://example.test/", 42),
-            TrustedNavigationStart::Revoke(revoked) if revoked == intent(2)
+            authority.navigation_start("lingxia://downloads", 42),
+            TrustedNavigationStart::Competing(_)
         ));
+        assert!(matches!(
+            authority.navigation_start("lingxia://settings/", 41),
+            TrustedNavigationStart::Attest {
+                intent: bound,
+                navigation_key: 41,
+            } if bound == intent(2)
+        ));
+    }
 
+    #[test]
+    fn competing_top_level_start_does_not_steal_an_attested_trusted_load() {
+        let authority = WindowsDocumentAuthority::default();
+        authority.arm(intent(7), "lingxia://downloads".into());
+        assert!(matches!(
+            authority.navigation_start("lingxia://downloads", 51),
+            TrustedNavigationStart::Attest { .. }
+        ));
+        assert!(matches!(
+            authority.navigation_start("lingxia://settings#downloads", 52),
+            TrustedNavigationStart::Competing(_)
+        ));
+        assert!(matches!(
+            authority.navigation_start("lingxia://downloads", 51),
+            TrustedNavigationStart::Coalesced(_)
+        ));
+    }
+
+    #[test]
+    fn keyless_navigation_still_revokes_the_pending_intent() {
+        let authority = WindowsDocumentAuthority::default();
         authority.arm(intent(3), "lingxia://settings".into());
         assert!(matches!(
             authority.navigation_start("lingxia://settings", 0),
             TrustedNavigationStart::Revoke(revoked) if revoked == intent(3)
         ));
+    }
+
+    #[test]
+    fn keyless_start_revokes_an_already_attested_load() {
+        let authority = WindowsDocumentAuthority::default();
+        authority.arm(intent(8), "lingxia://settings".into());
+        authority.navigation_start("lingxia://settings", 81);
+        let start = authority.navigation_start("lingxia://settings", 0);
+        assert!(matches!(start, TrustedNavigationStart::Revoke(value) if value == intent(8)));
+        assert!(authority.resolve_policy(start, false) == Some(intent(8)));
+        assert!(matches!(
+            authority.navigation_start("lingxia://settings", 81),
+            TrustedNavigationStart::Untrusted
+        ));
+    }
+
+    #[test]
+    fn cancelling_a_coalesced_start_retires_its_attestation() {
+        let authority = WindowsDocumentAuthority::default();
+        authority.arm(intent(9), "lingxia://settings".into());
+        authority.navigation_start("lingxia://settings", 91);
+        let start = authority.navigation_start("lingxia://settings", 91);
+        assert!(authority.resolve_policy(start, false) == Some(intent(9)));
+        assert!(authority.revoke_pending().is_none());
+    }
+
+    #[test]
+    fn policy_resolution_cannot_revoke_a_reentrant_replacement() {
+        let authority = WindowsDocumentAuthority::default();
+        authority.arm(intent(10), "lingxia://settings".into());
+        let start = authority.navigation_start("https://example.test/", 101);
+        authority.arm(intent(11), "lingxia://downloads".into());
+        assert!(authority.resolve_policy(start, true) == Some(intent(10)));
+        assert!(
+            matches!(authority.navigation_start("lingxia://downloads", 102),
+            TrustedNavigationStart::Attest { intent: value, .. } if value == intent(11))
+        );
     }
 
     #[test]

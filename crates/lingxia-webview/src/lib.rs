@@ -107,6 +107,10 @@ mod harmony_document;
 #[cfg(target_os = "windows")]
 mod windows;
 
+#[cfg(any(target_os = "windows", test))]
+#[path = "windows/document.rs"]
+mod windows_document;
+
 // Public exports
 // WebViewError and LogLevel are defined above
 pub use error_page::{LoadErrorPage, render_load_error_page};

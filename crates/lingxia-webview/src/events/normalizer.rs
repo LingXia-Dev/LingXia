@@ -787,6 +787,28 @@ pub(crate) fn issue_trusted_load(
     Some(state.trusted_load.issue())
 }
 
+/// WebView2 discloses the trusted key inside NavigationStarting. Publish that
+/// start before attestation so an unfinished preceding document cannot reject
+/// the new key. Keep late-attestation rejection strict for other callbacks.
+#[cfg(any(target_os = "windows", test))]
+pub(crate) fn start_trusted_navigation(
+    webtag: &WebTag,
+    native_view_id: NativeWebViewId,
+    intent: TrustedLoadIntent,
+    key: NativeKey,
+    url: String,
+) -> bool {
+    submit(
+        webtag,
+        native_view_id,
+        NativeSignal::NavigationStarted {
+            key: Some(key),
+            url,
+        },
+    );
+    attest_trusted_load(webtag, native_view_id, intent, key)
+}
+
 /// Bind a just-issued token to the exact platform navigation key returned by
 /// the direct native load. It is valid whether the platform start callback
 /// arrived immediately before or after this function.
@@ -1459,6 +1481,195 @@ mod tests {
         assert!(committed.iter().any(|output| {
             matches!(output, Output::TrustedDocumentAdmitted(admission) if admission.intent() == intent)
         }));
+    }
+
+    #[test]
+    fn windows_competing_start_resolves_local_and_shared_authority_together() {
+        use crate::windows_document::{TrustedNavigationStart, WindowsDocumentAuthority};
+        for attested in [false, true] {
+            for allowed in [false, true] {
+                let webtag = tag(&format!("windows-policy-{attested}-{allowed}"));
+                begin(&webtag);
+                let native_view = test_native_view_id(&webtag);
+                let authority = WindowsDocumentAuthority::default();
+                let intent = issue_trusted_load(&webtag, native_view).unwrap();
+                authority.arm(intent, "lingxia://settings".into());
+                if attested {
+                    assert!(matches!(
+                        authority.navigation_start("lingxia://settings", 801),
+                        TrustedNavigationStart::Attest { .. }
+                    ));
+                    assert!(start_trusted_navigation(
+                        &webtag,
+                        native_view,
+                        intent,
+                        801,
+                        "lingxia://settings".into()
+                    ));
+                }
+                let competing = authority.navigation_start("https://example.test/", 802);
+                assert!(matches!(competing, TrustedNavigationStart::Competing(_)));
+                if let Some(revoked) = authority.resolve_policy(competing, allowed) {
+                    revoke_trusted_load(&webtag, native_view, revoked);
+                }
+                if allowed {
+                    submit(
+                        &webtag,
+                        NativeSignal::NavigationStarted {
+                            key: Some(802),
+                            url: "https://example.test/".into(),
+                        },
+                    );
+                    assert!(matches!(
+                        authority.navigation_start("lingxia://settings", 801),
+                        TrustedNavigationStart::Untrusted
+                    ));
+                } else {
+                    submit(
+                        &webtag,
+                        NativeSignal::NavigationSuppressed { key: Some(802) },
+                    );
+                    submit(
+                        &webtag,
+                        NativeSignal::NavigationFinished {
+                            key: Some(802),
+                            result: NativeNavigationResult::Cancelled(None),
+                        },
+                    );
+                    match authority.navigation_start("lingxia://settings", 801) {
+                        TrustedNavigationStart::Attest { .. } => {
+                            assert!(start_trusted_navigation(
+                                &webtag,
+                                native_view,
+                                intent,
+                                801,
+                                "lingxia://settings".into()
+                            ));
+                        }
+                        TrustedNavigationStart::Coalesced(_) => assert!(attested),
+                        _ => panic!("cancelled competing start must preserve the host load"),
+                    }
+                }
+                let normalizer = normalizer_for(&webtag).unwrap();
+                let mut state = normalizer.state.lock().unwrap();
+                let outputs =
+                    document_committed_outputs(&webtag, native_view, &mut state, Some(801));
+                assert_eq!(
+                    outputs.iter().any(|output| matches!(output,
+                    Output::TrustedDocumentAdmitted(admission) if admission.intent() == intent)),
+                    !allowed
+                );
+                if allowed {
+                    assert!(
+                        !document_committed_outputs(&webtag, native_view, &mut state, Some(802))
+                            .iter()
+                            .any(|output| matches!(output, Output::TrustedDocumentAdmitted(_)))
+                    );
+                }
+                drop(state);
+                destroy(&webtag);
+            }
+        }
+    }
+
+    #[test]
+    fn windows_trusted_start_supersedes_an_unfinished_navigation() {
+        for previous_committed in [false, true] {
+            let webtag = tag(if previous_committed {
+                "windows-switch-after-content-loading"
+            } else {
+                "windows-switch-before-content-loading"
+            });
+            begin(&webtag);
+            let native_view = test_native_view_id(&webtag);
+            submit(
+                &webtag,
+                NativeSignal::NavigationStarted {
+                    key: Some(501),
+                    url: "lingxia://downloads/".into(),
+                },
+            );
+            if previous_committed {
+                submit(&webtag, NativeSignal::DocumentCommitted { key: Some(501) });
+            }
+            let intent = issue_trusted_load(&webtag, native_view).unwrap();
+            // The previous Windows callback order rejects this fresh key.
+            assert!(!attest_trusted_load(&webtag, native_view, intent, 502));
+            assert!(start_trusted_navigation(
+                &webtag,
+                native_view,
+                intent,
+                502,
+                "lingxia://settings/".into(),
+            ));
+            // A superseded navigation may finish after the replacement starts.
+            submit(
+                &webtag,
+                NativeSignal::NavigationFinished {
+                    key: Some(501),
+                    result: NativeNavigationResult::Succeeded {
+                        final_url: "lingxia://downloads/".into(),
+                    },
+                },
+            );
+            let normalizer = normalizer_for(&webtag).unwrap();
+            let mut state = normalizer.state.lock().unwrap();
+            let committed = document_committed_outputs(&webtag, native_view, &mut state, Some(502));
+            assert!(committed.iter().any(|output| {
+                matches!(output, Output::TrustedDocumentAdmitted(admission) if admission.intent() == intent)
+            }));
+            assert!(
+                !document_committed_outputs(&webtag, native_view, &mut state, Some(501))
+                    .iter()
+                    .any(|output| matches!(output, Output::TrustedDocumentAdmitted(_)))
+            );
+            drop(state);
+            destroy(&webtag);
+        }
+    }
+
+    #[test]
+    fn windows_trusted_start_cannot_attest_after_a_reentrant_replacement() {
+        let webtag = tag("windows-reentrant-replacement");
+        begin(&webtag);
+        let native_view = test_native_view_id(&webtag);
+        let callback_tag = webtag.clone();
+        add_observer(
+            &webtag,
+            Arc::new(move |event| {
+                if matches!(event, WebViewObservedEvent::Navigation(
+                NavigationEvent::Started { requested_url, .. }
+            ) if requested_url == "lingxia://settings/")
+                {
+                    submit(
+                        &callback_tag,
+                        NativeSignal::NavigationStarted {
+                            key: Some(602),
+                            url: "https://example.test/".into(),
+                        },
+                    );
+                }
+            }),
+        );
+        let intent = issue_trusted_load(&webtag, native_view).unwrap();
+        assert!(!start_trusted_navigation(
+            &webtag,
+            native_view,
+            intent,
+            601,
+            "lingxia://settings/".into(),
+        ));
+        let normalizer = normalizer_for(&webtag).unwrap();
+        let mut state = normalizer.state.lock().unwrap();
+        for key in [601, 602] {
+            assert!(
+                !document_committed_outputs(&webtag, native_view, &mut state, Some(key))
+                    .iter()
+                    .any(|output| matches!(output, Output::TrustedDocumentAdmitted(_)))
+            );
+        }
+        drop(state);
+        destroy(&webtag);
     }
 
     #[test]
