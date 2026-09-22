@@ -959,6 +959,18 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
         cleanItem.target = self
         menu.addItem(cleanItem)
 
+        if !isHome {
+            menu.addItem(NSMenuItem.separator())
+            let uninstallItem = NSMenuItem(
+                title: L10n.string("lx_capsule_uninstall"),
+                action: #selector(contextMenuUninstall),
+                keyEquivalent: ""
+            )
+            uninstallItem.image = LxIcon.menuSymbol("icon_uninstall")
+            uninstallItem.target = self
+            menu.addItem(uninstallItem)
+        }
+
         let snapshot = LxAppMoreActionSnapshot.load(appId: providerAppId)
         if !snapshot.items.isEmpty {
             menu.addItem(NSMenuItem.separator())
@@ -998,6 +1010,11 @@ class SidebarGroupView: NSView, NSTextFieldDelegate {
 
     @objc private func contextMenuCleanCache() {
         _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "clean_cache_restart_in_place")
+    }
+
+    @objc private func contextMenuUninstall() {
+        guard !LxAppCore.isHomeLxApp(providerAppId) else { return }
+        _ = onLxappEvent(providerAppId, LxAppEvent.capsuleClick, "uninstall")
     }
 
     @objc private func contextMenuMoreAction(_ sender: NSMenuItem) {
