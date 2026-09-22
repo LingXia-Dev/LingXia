@@ -2,7 +2,7 @@
 //! session in an isolated automation runtime, stream console output, download
 //! artifacts, and report one terminal summary.
 
-use crate::client::execute_command;
+use crate::client::{CommandTimeout, execute_command};
 use crate::project::SessionInfo;
 use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
 use anyhow::{Context, Result, anyhow, bail};
@@ -521,7 +521,16 @@ fn poll_until_terminal(
                 poll
             }
             Err(err) => {
-                poll_failures += 1;
+                /* A poll that times out has not told us anything is wrong: the
+                 * runtime answers it between spec steps, so a spec doing real
+                 * network work keeps it quiet for as long as that work takes.
+                 * Counting those as failures ended live runs after three of
+                 * them, well before the run's own budget or the watchdog had
+                 * any say — a busy session reported as a lost one. Only a
+                 * transport error still counts. */
+                if err.downcast_ref::<CommandTimeout>().is_none() {
+                    poll_failures += 1;
+                }
                 let now = std::time::Instant::now();
                 if poll_failures < 3
                     && now < poll_deadline

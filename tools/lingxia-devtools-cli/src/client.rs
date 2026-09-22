@@ -14,6 +14,29 @@ use tungstenite::protocol::Message;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{WebSocket, connect};
 
+/// A command that ran out of time without an answer. Distinct from a transport
+/// error because the two mean opposite things about the runtime: a silent
+/// runtime is usually one busy inside a long spec, while a broken socket is one
+/// that is gone. Callers that poll need to tell them apart to know whether
+/// waiting longer is worth anything.
+#[derive(Debug)]
+pub struct CommandTimeout {
+    pub handler: String,
+    pub waited: Duration,
+}
+
+impl std::fmt::Display for CommandTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Timed out after {:?} waiting for a dev websocket response to {}",
+            self.waited, self.handler
+        )
+    }
+}
+
+impl std::error::Error for CommandTimeout {}
+
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 /// How long a single read may block. The command's own deadline is enforced by
@@ -79,10 +102,11 @@ pub fn execute_command(
                 ) =>
             {
                 if Instant::now() >= deadline {
-                    return Err(anyhow!(
-                        "Timed out after {:?} waiting for a dev websocket response to {handler}",
-                        timeout
-                    ));
+                    return Err(CommandTimeout {
+                        handler: handler.clone(),
+                        waited: timeout,
+                    }
+                    .into());
                 }
                 continue;
             }
@@ -194,6 +218,29 @@ mod large_frame_tests {
             .unwrap();
         assert_eq!(result.as_str().unwrap().len(), bytes);
         server.join().unwrap();
+    }
+
+    /// A server that never answers must surface a `CommandTimeout`, not a bare
+    /// error: the test run loop waits through a timeout and only gives up on a
+    /// transport failure, so the two have to stay distinguishable.
+    #[test]
+    fn a_silent_server_reports_a_timeout_not_a_transport_error() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut socket = tungstenite::accept(stream).unwrap();
+            // Read the request, then answer nothing until the client gives up.
+            let _ = socket.read();
+            std::thread::sleep(Duration::from_secs(7));
+        });
+        let err = execute_command(&format!("ws://{address}"), "session.test.poll", None)
+            .expect_err("a server that never answers must time out");
+        assert!(
+            err.downcast_ref::<CommandTimeout>().is_some(),
+            "expected a CommandTimeout, got: {err:#}"
+        );
+        drop(server);
     }
 
     /// A server that stays silent past one read timeout and only then answers.
