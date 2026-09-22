@@ -5084,6 +5084,10 @@ fn surface_menu_entry(
                 lingxia_logic::i18n::t(I18nKey::CapsuleCleanCache),
                 Some(crate::WindowsDesignIcon::CleanCache),
             ),
+            LxappSurfaceMenuAction::Uninstall => (
+                lingxia_logic::i18n::t(I18nKey::CapsuleUninstall),
+                Some(crate::WindowsDesignIcon::Uninstall),
+            ),
         },
         SurfaceMenuAction::Switcher { action } => match action {
             SurfaceMenuBuiltinAction::Rename => {
@@ -5563,6 +5567,7 @@ enum LxappContextMenuAction {
     TogglePin,
     Restart,
     CleanCacheRestart,
+    Uninstall,
     More { token: String },
 }
 
@@ -5610,6 +5615,15 @@ fn build_lxapp_context_menu(
         lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleCleanCache),
         Some(LxappContextMenuAction::CleanCacheRestart),
     );
+    if !is_home {
+        push_lxapp_context_menu_item(&mut items, &mut actions, String::new(), None);
+        push_lxapp_context_menu_item(
+            &mut items,
+            &mut actions,
+            lingxia_logic::i18n::t(lingxia_logic::I18nKey::CapsuleUninstall),
+            Some(LxappContextMenuAction::Uninstall),
+        );
+    }
     (items, actions)
 }
 
@@ -5714,6 +5728,9 @@ fn show_lxapp_auxiliary_context_menu(
             Some(LxappContextMenuAction::CleanCacheRestart) => {
                 schedule_lxapp_restart_in_place(target_appid.clone(), true);
             }
+            Some(LxappContextMenuAction::Uninstall) => {
+                schedule_lxapp_capsule_action(target_appid.clone(), "uninstall");
+            }
             Some(LxappContextMenuAction::More { token }) => {
                 if let Some(target) = lxapp::try_get(&target_appid) {
                     let _ = target.on_lxapp_event(LxAppUiEventType::CapsuleClick, token);
@@ -5785,6 +5802,22 @@ fn set_device_frame_status_bar_style(
     _background: u32,
     _transparent: bool,
 ) {
+}
+
+fn schedule_lxapp_capsule_action(appid: String, action: &'static str) {
+    std::mem::drop(lingxia::task::spawn_blocking_handle(move || {
+        let Some(app) = lxapp::try_get(&appid) else {
+            log::warn!("failed to {action} sidebar lxapp {appid}: lxapp is not active");
+            return;
+        };
+        if action == "uninstall" && is_home_lxapp(&appid) {
+            log::warn!("ignoring Uninstall request for home lxapp '{appid}'");
+            return;
+        }
+        if !app.on_lxapp_event(LxAppUiEventType::CapsuleClick, action.to_string()) {
+            log::warn!("failed to {action} sidebar lxapp {appid}");
+        }
+    }));
 }
 
 fn schedule_lxapp_restart_in_place(appid: String, clear_cache: bool) {
@@ -7891,10 +7924,12 @@ mod tests {
         let (_, home_actions) =
             build_lxapp_context_menu(true, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(!home_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(!home_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
 
         let (_, app_actions) =
             build_lxapp_context_menu(false, false, "Showcase · 1.0.0 [DEV]".to_string());
         assert!(app_actions.contains(&Some(LxappContextMenuAction::TogglePin)));
+        assert!(app_actions.contains(&Some(LxappContextMenuAction::Uninstall)));
     }
 
     #[test]

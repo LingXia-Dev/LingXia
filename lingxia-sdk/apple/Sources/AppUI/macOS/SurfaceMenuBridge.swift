@@ -174,6 +174,7 @@ final class SurfaceMenuPresenter: NSObject {
         case "closeAfter": L10n.string("lx_surface_close_after")
         case "restart": L10n.string("lx_capsule_restart")
         case "cleanCacheRestart": L10n.string("lx_capsule_clean_cache")
+        case "uninstall": L10n.string("lx_capsule_uninstall")
         default: nil
         }
     }
@@ -190,6 +191,8 @@ final class SurfaceMenuPresenter: NSObject {
             return LxIcon.menuSymbol("icon_restart")
         case ("lxapp", "cleanCacheRestart"):
             return LxIcon.menuSymbol("icon_clean_cache")
+        case ("lxapp", "uninstall"):
+            return LxIcon.menuSymbol("icon_uninstall")
         case ("switcher", "close"):
             return LxIcon.menuSymbol("icon_close_x")
         case ("switcher", "closeOthers"):

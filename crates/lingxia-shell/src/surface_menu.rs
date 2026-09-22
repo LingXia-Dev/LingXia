@@ -21,6 +21,7 @@ pub enum SurfaceMenuBuiltinAction {
 pub enum LxappSurfaceMenuAction {
     Restart,
     CleanCacheRestart,
+    Uninstall,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
