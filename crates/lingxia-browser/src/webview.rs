@@ -756,7 +756,7 @@ pub(crate) fn browser_create_webview(
             if callback_policy_blocks_file_navigation(&url_callback_for_navigation, url) {
                 return NavigationPolicy::Cancel;
             }
-            if cfg!(target_os = "windows")
+            if cfg!(any(target_os = "windows", target_os = "android"))
                 && request.is_main_frame
                 && !request.host_issued_trusted
                 && registered_control_page_route(url).is_some()

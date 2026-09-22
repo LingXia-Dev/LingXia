@@ -95,6 +95,9 @@ mod webview;
 #[cfg(target_os = "android")]
 mod android;
 
+#[cfg(any(target_os = "android", test))]
+mod android_document;
+
 #[cfg(any(target_os = "ios", target_os = "macos"))]
 mod apple;
 

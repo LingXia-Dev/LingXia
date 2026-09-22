@@ -338,6 +338,21 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaWebView_onPageStarted(
         } else {
             url
         };
+        let Some(webview) = find_webview_by_native_view_id(&webtag, native_view_id) else {
+            return Ok(0);
+        };
+        if let Some(intent) = webview.inner.trusted_load.take(load_token as u64) {
+            if !normalizer::start_trusted_navigation(
+                &webtag,
+                native_view_id,
+                intent,
+                load_token as u64,
+                url,
+            ) {
+                normalizer::revoke_trusted_load(&webtag, native_view_id, intent);
+            }
+            return Ok(0);
+        }
         normalizer::submit(
             &webtag,
             native_view_id,

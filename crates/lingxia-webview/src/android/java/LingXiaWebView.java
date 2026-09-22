@@ -1414,9 +1414,12 @@ public class LingXiaWebView extends WebView {
         });
     }
 
-    /** Start one host-attested direct HTML load and return its opaque callback key. */
-    public long loadTrustedHtmlData(String data, String baseUrl, String historyUrl) {
-        final long loadToken = AndroidDocumentBridgeState.nextLoadToken();
+    public long allocateNavigationLoadToken() {
+        return AndroidDocumentBridgeState.nextLoadToken();
+    }
+
+    /** Rust arms this exact token before UI work can emit onPageStarted. */
+    public void loadTrustedHtmlData(long loadToken, String data, String baseUrl, String historyUrl) {
         ensureMainThread(new Runnable() {
             @Override
             public void run() {
@@ -1425,7 +1428,6 @@ public class LingXiaWebView extends WebView {
                 loadDataWithBaseURL(baseUrl, data, "text/html", "UTF-8", historyUrl);
             }
         });
-        return loadToken;
     }
 
     public void resetViewport() {

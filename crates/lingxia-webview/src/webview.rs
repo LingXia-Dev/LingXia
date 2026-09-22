@@ -1186,9 +1186,13 @@ pub struct TrustedDataLoadReservation<'a> {
 }
 
 enum TrustedDataLoadEvidence {
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     NativeKey(crate::events::normalizer::NativeKey),
-    #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
+    #[cfg(any(
+        target_os = "android",
+        target_os = "windows",
+        all(target_os = "linux", target_env = "ohos")
+    ))]
     PlatformAttested,
 }
 
@@ -1226,7 +1230,7 @@ impl TrustedDataLoadReservation<'_> {
         };
 
         let attested = match evidence {
-            #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+            #[cfg(any(target_os = "ios", target_os = "macos"))]
             TrustedDataLoadEvidence::NativeKey(key) => {
                 crate::events::normalizer::attest_trusted_load(
                     &self.webtag,
@@ -1235,7 +1239,11 @@ impl TrustedDataLoadReservation<'_> {
                     key,
                 )
             }
-            #[cfg(any(target_os = "windows", all(target_os = "linux", target_env = "ohos")))]
+            #[cfg(any(
+                target_os = "android",
+                target_os = "windows",
+                all(target_os = "linux", target_env = "ohos")
+            ))]
             TrustedDataLoadEvidence::PlatformAttested => true,
         };
         if attested {
@@ -1400,7 +1408,7 @@ impl WebView {
         })
     }
 
-    #[cfg(any(target_os = "ios", target_os = "macos", target_os = "android"))]
+    #[cfg(any(target_os = "ios", target_os = "macos"))]
     fn load_trusted_data_on_platform(
         &self,
         _intent: TrustedLoadIntent,
@@ -1409,6 +1417,16 @@ impl WebView {
         self.inner
             .load_trusted_data(request)
             .map(TrustedDataLoadEvidence::NativeKey)
+    }
+
+    #[cfg(target_os = "android")]
+    fn load_trusted_data_on_platform(
+        &self,
+        intent: TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<TrustedDataLoadEvidence, WebViewError> {
+        self.inner.load_trusted_data(intent, request)?;
+        Ok(TrustedDataLoadEvidence::PlatformAttested)
     }
 
     #[cfg(target_os = "windows")]
