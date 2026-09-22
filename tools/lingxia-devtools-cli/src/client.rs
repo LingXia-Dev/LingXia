@@ -39,24 +39,41 @@ impl std::error::Error for CommandTimeout {}
 
 const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
+const SHORT_COMMAND_TIMEOUT: Duration = Duration::from_secs(5);
 /// How long a single read may block. The command's own deadline is enforced by
 /// the read loop, so this only decides how often that deadline is rechecked.
 const READ_POLL_INTERVAL: Duration = Duration::from_millis(500);
+
+/// Longest a status poll should sit on one socket. The dev server abandons a
+/// forward at [`DEFAULT_COMMAND_TIMEOUT`]; returning slightly earlier lets the
+/// caller decide on its own clock instead of opening another connection while
+/// that forward still holds the command lock.
+pub(crate) fn max_poll_wait() -> Duration {
+    DEFAULT_COMMAND_TIMEOUT.saturating_sub(COMMAND_TIMEOUT_BUFFER)
+}
 
 pub fn execute_command(
     ws_url: &str,
     handler: impl Into<String>,
     args: Option<Value>,
 ) -> Result<Option<Value>> {
+    execute_command_until(ws_url, handler, args, None, &|| false)
+}
+
+/// Like [`execute_command`], with an explicit wait and a chance to return
+/// early. `stop` is checked each time a read comes back empty, so a caller
+/// can notice Ctrl-C without tearing the socket down on a timer of its own.
+/// A `None` timeout keeps the handler's usual budget.
+pub(crate) fn execute_command_until(
+    ws_url: &str,
+    handler: impl Into<String>,
+    args: Option<Value>,
+    timeout_override: Option<Duration>,
+    stop: &dyn Fn() -> bool,
+) -> Result<Option<Value>> {
     let handler = handler.into();
-    let timeout = if matches!(
-        handler.as_str(),
-        "session.test.poll" | "session.test.cancel"
-    ) {
-        Duration::from_secs(5)
-    } else {
-        command_timeout(args.as_ref())
-    };
+    let timeout =
+        timeout_override.unwrap_or_else(|| default_command_timeout(&handler, args.as_ref()));
     let (mut websocket, _) =
         connect(ws_url).with_context(|| format!("Failed to connect dev websocket: {ws_url}"))?;
     configure_read_timeout(&mut websocket, READ_POLL_INTERVAL.min(timeout));
@@ -84,8 +101,16 @@ pub fn execute_command(
         }),
     )?;
 
-    let deadline = Instant::now() + timeout;
+    let started = Instant::now();
+    let deadline = started + timeout;
     loop {
+        if stop() || Instant::now() >= deadline {
+            return Err(CommandTimeout {
+                handler: handler.clone(),
+                waited: started.elapsed(),
+            }
+            .into());
+        }
         let message = match websocket.read() {
             Ok(message) => message,
             /* A quiet socket is not a lost one. The read timeout above bounds
@@ -93,23 +118,11 @@ pub fn execute_command(
              * `WouldBlock` (EAGAIN) — indistinguishable, as an io::Error, from
              * a real transport failure. Reporting it as one ended whole test
              * runs that were merely between events. EINTR is never a failure
-             * either. tungstenite keeps its partial frame across both, so
-             * resuming the read is safe. */
-            Err(tungstenite::Error::Io(err))
-                if matches!(
-                    err.kind(),
-                    ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
-                ) =>
-            {
-                if Instant::now() >= deadline {
-                    return Err(CommandTimeout {
-                        handler: handler.clone(),
-                        waited: timeout,
-                    }
-                    .into());
-                }
-                continue;
-            }
+             * either, and a timed read on Windows can surface as
+             * ERROR_IO_PENDING (997) with neither of those kinds. tungstenite
+             * keeps its partial frame across all of them, so resuming the
+             * read is safe. */
+            Err(tungstenite::Error::Io(err)) if is_quiet_read(&err) => continue,
             Err(err) => return Err(err).context("Failed to read dev websocket response"),
         };
         let Message::Text(text) = message else {
@@ -144,6 +157,31 @@ fn configure_read_timeout(websocket: &mut WebSocket<MaybeTlsStream<TcpStream>>, 
     if let MaybeTlsStream::Plain(stream) = websocket.get_mut() {
         let _ = stream.set_read_timeout(Some(timeout));
     }
+}
+
+fn default_command_timeout(handler: &str, args: Option<&Value>) -> Duration {
+    if matches!(handler, "session.test.poll" | "session.test.cancel") {
+        SHORT_COMMAND_TIMEOUT
+    } else {
+        command_timeout(args)
+    }
+}
+
+/// A read that only means "nothing yet". Same set the dev-session bridge
+/// already retries, plus `Interrupted`: the host learned that Windows timed
+/// reads can arrive as os error 997 rather than `WouldBlock` or `TimedOut`.
+fn is_quiet_read(err: &std::io::Error) -> bool {
+    if matches!(
+        err.kind(),
+        ErrorKind::WouldBlock | ErrorKind::TimedOut | ErrorKind::Interrupted
+    ) {
+        return true;
+    }
+    #[cfg(windows)]
+    if err.raw_os_error() == Some(997) {
+        return true;
+    }
+    false
 }
 
 fn command_timeout(args: Option<&Value>) -> Duration {
@@ -279,5 +317,25 @@ mod large_frame_tests {
             .unwrap();
         assert_eq!(result.as_str().unwrap(), "late");
         server.join().unwrap();
+    }
+
+    #[test]
+    fn a_quiet_read_is_not_a_transport_failure() {
+        for kind in [
+            ErrorKind::WouldBlock,
+            ErrorKind::TimedOut,
+            ErrorKind::Interrupted,
+        ] {
+            assert!(is_quiet_read(&std::io::Error::from(kind)));
+        }
+        assert!(!is_quiet_read(&std::io::Error::from(
+            ErrorKind::ConnectionReset
+        )));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_pending_windows_read_is_quiet() {
+        assert!(is_quiet_read(&std::io::Error::from_raw_os_error(997)));
     }
 }
