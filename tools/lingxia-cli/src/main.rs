@@ -322,6 +322,7 @@ enum Commands {
         /// Platforms to build (comma-separated).
         #[arg(
             long,
+            short = 'p',
             value_delimiter = ',',
             long_help = "Platforms to build (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)"
         )]
@@ -371,6 +372,7 @@ enum Commands {
         /// Platforms to package (comma-separated).
         #[arg(
             long,
+            short = 'p',
             value_delimiter = ',',
             long_help = "Platforms to package (comma-separated).\n\nSupported values:\n  - android\n  - ios\n  - macos (aliases: mac, osx, macosx)\n  - harmony (alias: harmonyos)\n  - windows"
         )]
@@ -948,6 +950,7 @@ fn main() -> Result<()> {
                 msix: msix || self_signed,
                 self_signed,
                 package: false,
+                windows_formats: Vec::new(),
                 native_only,
                 env_version: build_options.env_version,
                 extra_native_features: build_options.native_features,
@@ -976,6 +979,7 @@ fn main() -> Result<()> {
                 with_provider: package_options.with_provider,
                 provider_path: package_options.provider_path,
                 android_dist: package_options.dist,
+                formats: package_options.formats,
                 msix: package_options.msix,
                 self_signed: package_options.self_signed,
             })?;
@@ -1485,6 +1489,30 @@ mod cli_tests {
     fn dev_does_not_accept_distribution_target_options() {
         assert!(Cli::try_parse_from(["lingxia", "dev", "--android-abis", "all"]).is_err());
         assert!(Cli::try_parse_from(["lingxia", "dev", "--macos-arch", "arm64"]).is_err());
+    }
+
+    #[test]
+    fn package_accepts_multiple_windows_formats() {
+        use crate::platform::windows::distribution::WindowsPackageFormat::*;
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "package",
+            "-p",
+            "windows",
+            "--format",
+            "nsis,portable",
+            "--format",
+            "zip",
+        ])
+        .unwrap();
+        let Commands::Package {
+            package_options, ..
+        } = cli.command
+        else {
+            panic!("expected package");
+        };
+        assert_eq!(package_options.formats, [Nsis, Portable, Zip]);
+        assert!(Cli::try_parse_from(["lingxia", "package", "--format", "exe"]).is_err());
     }
 
     #[test]

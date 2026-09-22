@@ -168,7 +168,7 @@ fn clsid_key_path(clsid: &GUID) -> String {
 }
 
 fn write_local_server(clsid: &GUID) -> Result<(), PlatformError> {
-    let exe = std::env::current_exe()
+    let exe = super::app::launch_executable()
         .map_err(|error| PlatformError::Platform(format!("current exe: {error}")))?;
     let command = format!("\"{}\"", exe.display());
     let key_path = wide(&clsid_key_path(clsid));

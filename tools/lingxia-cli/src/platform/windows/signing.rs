@@ -1,11 +1,11 @@
-//! Code signing for Windows MSIX packages.
+//! Authenticode signing for Windows payloads, installers and MSIX packages.
 //!
 //! Windows refuses to install an unsigned MSIX. For local / dev / internal use a
 //! self-signed certificate is enough: we generate one **once** (subject == the
 //! package Identity `Publisher`), persist the `.pfx` under `~/.lingxia/windows/`
 //! and reuse it on every build, sign with `signtool`, and trust the public cert
-//! so `lingxia install` works. A real CA cert / Azure Trusted Signing can layer
-//! onto the same `sign_msix` seam later.
+//! so `lingxia install` works. Production signing uses an existing certificate
+//! in the user certificate store, selected by thumbprint.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -178,4 +178,102 @@ fn sanitize_file_stem(publisher: &str) -> String {
 /// Escape a value for a PowerShell single-quoted string (double any quotes).
 fn ps_single_quote(value: &str) -> String {
     value.replace('\'', "''")
+}
+
+/// Production signing uses a certificate already provisioned in the Windows
+/// user certificate store (including hardware-backed keys). No PFX password is
+/// persisted in configuration, scripts, or build output.
+fn release_certificate() -> Result<Option<String>> {
+    let cert = std::env::var("LINGXIA_WINDOWS_CERT_SHA1")
+        .ok()
+        .filter(|s| !s.is_empty());
+    if let Some(cert) = &cert
+        && (cert.len() != 40 || !cert.bytes().all(|b| b.is_ascii_hexdigit()))
+    {
+        bail!("LINGXIA_WINDOWS_CERT_SHA1 must be a 40-digit certificate thumbprint");
+    }
+    if cert.is_none() && std::env::var("LINGXIA_WINDOWS_REQUIRE_SIGNING").as_deref() == Ok("1") {
+        bail!("Windows signing is required; set LINGXIA_WINDOWS_CERT_SHA1");
+    }
+    Ok(cert)
+}
+
+fn timestamp_url() -> Result<String> {
+    let value = std::env::var("LINGXIA_WINDOWS_TIMESTAMP_URL")
+        .unwrap_or_else(|_| "http://timestamp.digicert.com".into());
+    // Also embedded in NSIS's compile-time command, where shell metacharacters
+    // and percent expansion must not be accepted.
+    let parsed = url::Url::parse(&value).context("Invalid Windows timestamp URL")?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || value
+            .chars()
+            .any(|c| c.is_whitespace() || "\"'&|<>^%$`".contains(c))
+    {
+        bail!("Invalid Windows timestamp URL");
+    }
+    Ok(value)
+}
+
+pub fn release_signing_enabled() -> Result<bool> {
+    Ok(release_certificate()?.is_some())
+}
+
+pub fn preflight_release_signing() -> Result<()> {
+    if release_certificate()?.is_some() {
+        find_signtool()?;
+        timestamp_url()?;
+    }
+    Ok(())
+}
+
+pub fn sign_release_artifact(path: &Path) -> Result<()> {
+    let Some(cert) = release_certificate()? else {
+        return Ok(());
+    };
+    let tool = find_signtool()?;
+    let status = Command::new(&tool)
+        .args([
+            "sign",
+            "/sha1",
+            &cert,
+            "/fd",
+            "SHA256",
+            "/tr",
+            &timestamp_url()?,
+            "/td",
+            "SHA256",
+        ])
+        .arg(path)
+        .status()?;
+    if !status.success() {
+        bail!("Windows signing failed for {}", path.display());
+    }
+    let status = Command::new(tool)
+        .args(["verify", "/pa"])
+        .arg(path)
+        .status()?;
+    if !status.success() {
+        bail!(
+            "Windows signature verification failed for {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+pub fn nsis_uninstaller_signing() -> Result<String> {
+    let Some(cert) = release_certificate()? else {
+        return Ok(String::new());
+    };
+    let tool = find_signtool()?.to_string_lossy().into_owned();
+    if tool
+        .chars()
+        .any(|c| c.is_control() || "\"'&|<>^%$`".contains(c))
+    {
+        bail!("signtool path cannot contain shell metacharacters");
+    }
+    Ok(format!(
+        "!uninstfinalize '\"{tool}\" sign /sha1 {cert} /fd SHA256 /tr {} /td SHA256 \"%1\"' = 0\n",
+        timestamp_url()?
+    ))
 }

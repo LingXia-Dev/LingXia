@@ -107,9 +107,10 @@ and the developer Runner used by `lingxia dev` for standalone lxapps.
 - The Windows Runner zip intentionally contains only `lingxia-runner.exe` and
   `VERSION`. `lingxia dev` generates temporary host assets from the installed
   CLI and the current lxapp, then launches the runner with `--asset-dir`.
-- A normal Windows host app is different: distribution must be either an MSIX
-  or a portable bundle with the `.exe` next to its `assets/` directory. A bare
-  host-app `.exe` is not a runnable distribution.
+- A normal Windows host app uses one runnable payload (`.exe` + `assets/` +
+  dependencies), packaged as NSIS Setup, a portable self-extracting EXE, MSIX,
+  or ZIP. A bare host executable remains a build artifact, not a distribution.
+  See [Windows distribution](../skill/cli/distribution.md#windows).
 
 ## Suggested CI release grouping
 

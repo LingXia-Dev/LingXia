@@ -5,10 +5,12 @@
 //! which stages the new build and hands off to a detached helper that waits for
 //! this process to exit, swaps the install directory, and relaunches the app.
 //!
-//! Windows host apps run *unpackaged*: a `.exe` with an `assets/` folder beside
-//! it (see [`super::app`]). So the update package is a zip of that install
-//! directory, and the swap is a `robocopy /MIR` of the new tree over the old
-//! one — the analogue of the macOS `.app` bundle replacement.
+//! The signed feed archive contains the runnable payload plus optional NSIS /
+//! portable installers. Installed hosts run Setup; portable hosts replace the
+//! outer launcher. Legacy directory installs mirror the payload. MSIX stays
+//! under OS deployment control.
+
+mod installer;
 
 use std::fs;
 use std::os::windows::process::CommandExt;
@@ -37,8 +39,8 @@ fn windows_installed_from_store() -> bool {
 
 impl UpdateService for Platform {
     fn self_update_supported(&self) -> bool {
-        // Unpackaged Windows hosts swap their own install in place.
-        true
+        // Store and sideloaded MSIX packages are both OS-managed.
+        windows::ApplicationModel::Package::Current().is_err()
     }
 
     fn installed_from_store(&self) -> bool {
@@ -131,6 +133,11 @@ fn install_update_on_windows(
     package_path: &Path,
     info_json: &str,
 ) -> Result<(), PlatformError> {
+    if windows::ApplicationModel::Package::Current().is_ok() {
+        return Err(PlatformError::NotSupported(
+            "MSIX updates must use Microsoft Store or App Installer".into(),
+        ));
+    }
     if !package_path.exists() {
         return Err(PlatformError::InvalidParameter(format!(
             "Update package does not exist: {}",
@@ -152,7 +159,24 @@ fn install_update_on_windows(
         .to_path_buf();
 
     let prepared = prepare_windows_update_source(platform, package_path, &current_exe)?;
-    let helper = write_windows_update_helper(platform, &install_dir, &current_exe, &prepared)?;
+    let helper = match fs::read_to_string(install_dir.join(".lingxia-distribution")) {
+        Ok(kind) if matches!(kind.as_str(), "nsis" | "portable") => {
+            write_packaged_update_helper(platform, &kind, &current_exe, &prepared, info_json)?
+        }
+        Ok(_) => {
+            return Err(PlatformError::InvalidParameter(
+                "Unknown Windows distribution kind".into(),
+            ));
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            write_windows_update_helper(platform, &install_dir, &current_exe, &prepared)?
+        }
+        Err(e) => {
+            return Err(PlatformError::Platform(format!(
+                "Failed to read distribution marker: {e}"
+            )));
+        }
+    };
     let staged = StagedWindowsUpdate { helper };
 
     if let Ok(mut slot) = staged_windows_update_slot().lock() {
@@ -372,6 +396,11 @@ fn find_install_root(
     }
 
     if let Some(dir) = preferred {
+        if !dir.join("assets/app.json").is_file() {
+            return Err(PlatformError::InvalidParameter(
+                "Update payload is missing assets/app.json".into(),
+            ));
+        }
         return Ok(dir);
     }
     exe_dirs.sort();
@@ -491,7 +520,7 @@ if (-not $canWrite -and $args[0] -ne '--elevated') {{
 # detached, console-less helper can't reliably Start-Process a console app).
 # robocopy exit codes 0-7 are success.
 L "robocopy start: $source -> $target"
-& robocopy.exe $source $target /MIR /R:3 /W:1 /NJH /NJS /NP /NDL /NFL /NC *>$null
+& robocopy.exe $source $target /MIR /XD .lingxia-update /R:3 /W:1 /NJH /NJS /NP /NDL /NFL /NC *>$null
 $rc = $LASTEXITCODE
 L "robocopy exit=$rc"
 if ($rc -ge 8) {{ L "robocopy FAILED"; exit 1 }}
@@ -506,7 +535,7 @@ if ($rc -ge 8) {{ L "robocopy FAILED"; exit 1 }}
     // Appended as a raw string so the C# `Add-Type` block's braces don't need
     // `format!` escaping. It references PowerShell vars set in `head`.
     head.push_str(RELAUNCH_AND_PROMOTE);
-    head
+    format!("\u{feff}{head}")
 }
 
 /// PowerShell appended to the swap helper: relaunch the updated app. A
@@ -548,9 +577,7 @@ fn spawn_windows_update_helper(helper: &WindowsUpdateHelper) -> Result<(), Platf
         // `CREATE_NO_WINDOW` runs the helper as a hidden background console
         // process that survives this app's exit. (Do NOT use DETACHED_PROCESS:
         // a console-less PowerShell here failed to execute the `-File` script.)
-        Command::new("powershell.exe")
-            .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
-            .arg(&helper.script_path)
+        installer::command(&helper.script_path)
             .stdin(Stdio::null())
             .stdout(Stdio::from(log))
             .stderr(Stdio::from(log_err))
@@ -584,4 +611,147 @@ fn unique_update_stamp() -> String {
 /// Escapes a string for a PowerShell single-quoted literal (double the quote).
 fn ps_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
+}
+
+fn write_packaged_update_helper(
+    platform: &Platform,
+    kind: &str,
+    current_exe: &Path,
+    prepared: &PreparedWindowsUpdate,
+    info_json: &str,
+) -> Result<WindowsUpdateHelper, PlatformError> {
+    use self::installer::Installer;
+    let fail = |message: String| PlatformError::InvalidParameter(message);
+    let update_dir = prepared.source_dir.join(".lingxia-update");
+    let metadata = fs::read(update_dir.join("manifest.json"))
+        .map_err(|e| fail(format!("Update has no distribution manifest: {e}. Publish a package built with --format {kind}.")))?;
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata)
+        .map_err(|e| fail(format!("Invalid distribution manifest: {e}")))?;
+    let architecture = match std::env::consts::ARCH {
+        "x86_64" => "x64",
+        "aarch64" => "arm64",
+        arch => arch,
+    };
+    let info: serde_json::Value =
+        serde_json::from_str(info_json).map_err(|e| fail(e.to_string()))?;
+    validate_update_manifest(
+        &metadata,
+        platform.app_identifier(),
+        architecture,
+        current_exe
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| fail("Invalid executable name".into()))?,
+        info["version"]
+            .as_str()
+            .ok_or_else(|| fail("Missing verified update version".into()))?,
+    )
+    .map_err(fail)?;
+    let package = update_dir.join(if kind == "nsis" {
+        "setup.exe"
+    } else {
+        "portable.exe"
+    });
+    if !package.is_file() {
+        return Err(fail(format!(
+            "Update does not include {kind}; publish all supported formats together"
+        )));
+    }
+    let helper_dir = update_root(platform).join("helper");
+    fs::create_dir_all(&helper_dir).map_err(|e| fail(e.to_string()))?;
+    let stamp = unique_update_stamp();
+    let script_path = helper_dir.join(format!("apply-windows-update-{stamp}.ps1"));
+    let log_path = helper_dir.join(format!("apply-windows-update-{stamp}.log"));
+    let cleanup = prepared
+        .cleanup_path
+        .as_deref()
+        .ok_or_else(|| fail("Packaged updates require a staged archive".into()))?;
+    let install_root;
+    let launcher;
+    let installer = if kind == "nsis" {
+        install_root = current_exe
+            .parent()
+            .and_then(Path::parent)
+            .ok_or_else(|| fail("Invalid NSIS install root".into()))?
+            .to_path_buf();
+        let owner = fs::read_to_string(install_root.join(".lingxia-install-id"))
+            .map_err(|e| fail(e.to_string()))?;
+        if owner != platform.app_identifier() {
+            return Err(fail(
+                "NSIS install owner does not match app identity".into(),
+            ));
+        }
+        Installer::Nsis {
+            setup: &package,
+            install_root: &install_root,
+            executable: current_exe,
+        }
+    } else {
+        launcher = std::env::var_os("LINGXIA_PORTABLE_EXECUTABLE")
+            .map(PathBuf::from)
+            .filter(|path| path.is_absolute() && path.is_file())
+            .ok_or_else(|| fail("Portable launcher path is unavailable".into()))?;
+        let launcher_pid = std::env::var("LINGXIA_PORTABLE_LAUNCHER_PID")
+            .ok()
+            .and_then(|s| s.parse::<u32>().ok())
+            .filter(|pid| *pid > 0 && *pid != std::process::id())
+            .ok_or_else(|| fail("Portable launcher process is unavailable".into()))?;
+        Installer::Portable {
+            source: &package,
+            launcher: &launcher,
+            launcher_pid,
+        }
+    };
+    let script = installer::render(std::process::id(), installer, cleanup, &script_path);
+    fs::write(&script_path, script).map_err(|e| fail(e.to_string()))?;
+    Ok(WindowsUpdateHelper {
+        script_path,
+        log_path,
+    })
+}
+
+/// Bind the signed archive's installer to this installation and verified feed version.
+fn validate_update_manifest(
+    value: &serde_json::Value,
+    identity: &str,
+    architecture: &str,
+    executable: &str,
+    version: &str,
+) -> Result<(), String> {
+    if value["schemaVersion"].as_u64() != Some(1)
+        || value["appId"].as_str() != Some(identity)
+        || value["architecture"].as_str() != Some(architecture)
+        || value["executable"].as_str() != Some(executable)
+        || value["version"].as_str() != Some(version)
+    {
+        return Err("Windows update identity, architecture, executable or version does not match this installation/update".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reject_wrong_installer_target_or_feed_version() {
+        let manifest = serde_json::json!({"schemaVersion": 1, "appId": "com.example.app", "architecture": "x64", "executable": "demo.exe", "version": "2.0.0"});
+        let validate = |value: &serde_json::Value| {
+            validate_update_manifest(value, "com.example.app", "x64", "demo.exe", "2.0.0")
+        };
+        assert!(validate(&manifest).is_ok());
+        for (field, replacement) in [
+            ("appId", "other.app"),
+            ("architecture", "arm64"),
+            ("executable", "other.exe"),
+            ("version", "1.0.0"),
+        ] {
+            let mut value = manifest.clone();
+            value[field] = replacement.into();
+            assert!(validate(&value).is_err(), "{field}");
+        }
+        let mut newer_schema = manifest;
+        newer_schema["schemaVersion"] = 2.into();
+        assert!(validate(&newer_schema).is_err());
+    }
 }

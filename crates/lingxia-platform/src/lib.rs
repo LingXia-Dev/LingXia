@@ -262,3 +262,7 @@ pub mod error;
 pub use error::*;
 
 pub mod i18n;
+
+#[cfg(all(test, not(windows)))]
+#[path = "windows/update/installer.rs"]
+mod windows_update_installer_tests;
