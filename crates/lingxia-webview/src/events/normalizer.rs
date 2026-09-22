@@ -787,10 +787,10 @@ pub(crate) fn issue_trusted_load(
     Some(state.trusted_load.issue())
 }
 
-/// WebView2 discloses the trusted key inside NavigationStarting. Publish that
+/// Android and WebView2 attest inside the navigation-start callback. Publish that
 /// start before attestation so an unfinished preceding document cannot reject
 /// the new key. Keep late-attestation rejection strict for other callbacks.
-#[cfg(any(target_os = "windows", test))]
+#[cfg(any(target_os = "android", target_os = "windows", test))]
 pub(crate) fn start_trusted_navigation(
     webtag: &WebTag,
     native_view_id: NativeWebViewId,
@@ -1570,6 +1570,45 @@ mod tests {
                 destroy(&webtag);
             }
         }
+    }
+
+    #[test]
+    fn android_queued_load_waits_for_its_exact_start_before_attestation() {
+        let webtag = tag("android-queued-trusted-load");
+        begin(&webtag);
+        let native_view = test_native_view_id(&webtag);
+        submit(
+            &webtag,
+            NativeSignal::NavigationStarted {
+                key: Some(701),
+                url: "lingxia://downloads/".into(),
+            },
+        );
+        submit(&webtag, NativeSignal::DocumentCommitted { key: Some(701) });
+        let intent = issue_trusted_load(&webtag, native_view).unwrap();
+        let pending = crate::android_document::AndroidTrustedLoad::default();
+        pending.arm(702, intent);
+        // Queueing Java work must not attest against the preceding document.
+        assert!(!attest_trusted_load(&webtag, native_view, intent, 702));
+        assert!(pending.take(701).is_none());
+        let callback_intent = pending
+            .take(702)
+            .expect("exact queued load owns the intent");
+        assert!(start_trusted_navigation(
+            &webtag,
+            native_view,
+            callback_intent,
+            702,
+            "lingxia://settings/".into()
+        ));
+        assert!(pending.take(702).is_none());
+        let normalizer = normalizer_for(&webtag).unwrap();
+        let mut state = normalizer.state.lock().unwrap();
+        let committed = document_committed_outputs(&webtag, native_view, &mut state, Some(702));
+        assert!(committed.iter().any(|output| matches!(output,
+            Output::TrustedDocumentAdmitted(admission) if admission.intent() == intent)));
+        drop(state);
+        destroy(&webtag);
     }
 
     #[test]
