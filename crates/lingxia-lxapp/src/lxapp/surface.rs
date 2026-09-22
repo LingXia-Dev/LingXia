@@ -2229,49 +2229,73 @@ impl LxApp {
                     }
                     _ => None,
                 });
-            let accepted = target.is_some_and(|app| match action {
-                lingxia_shell::LxappSurfaceMenuAction::Uninstall => {
-                    if app.is_home_lxapp {
-                        return false;
+            let Some(app) = target else {
+                return Some(HostSurfaceMenuExecution {
+                    accepted: false,
+                    removed_surface_ids: Vec::new(),
+                    snapshot,
+                });
+            };
+            if matches!(action, lingxia_shell::LxappSurfaceMenuAction::Uninstall) {
+                if app.is_home_lxapp {
+                    return Some(HostSurfaceMenuExecution {
+                        accepted: false,
+                        removed_surface_ids: Vec::new(),
+                        snapshot,
+                    });
+                }
+                // Drop the switcher row before the runtime goes away. Shutdown
+                // alone leaves the surface active, and the shell then tries to
+                // present an lxapp that is no longer ready.
+                let removed = self
+                    .close_main_surface_deferred(&intent.surface_id, "uninstall")
+                    .into_removed();
+                let snapshot = self.surface_switcher_snapshot();
+                if removed.is_empty() {
+                    return Some(HostSurfaceMenuExecution {
+                        accepted: false,
+                        removed_surface_ids: removed,
+                        snapshot,
+                    });
+                }
+                let app_id = app.appid.clone();
+                let accepted = std::thread::Builder::new()
+                    .name(format!("lingxia-lxapp-uninstall-{app_id}"))
+                    .spawn(move || {
+                        if !app.on_lxapp_event(
+                            crate::LxAppUiEventType::CapsuleClick,
+                            "uninstall".to_string(),
+                        ) {
+                            warn!("Failed to uninstall lxapp from the sidebar").with_appid(app_id);
+                        }
+                    })
+                    .is_ok();
+                return Some(HostSurfaceMenuExecution {
+                    accepted,
+                    removed_surface_ids: removed,
+                    snapshot,
+                });
+            }
+            let clear_cache = matches!(
+                action,
+                lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart
+            );
+            let app_id = app.appid.clone();
+            let accepted = std::thread::Builder::new()
+                .name(format!("lingxia-lxapp-restart-{app_id}"))
+                .spawn(move || {
+                    let result = (|| {
+                        if clear_cache {
+                            app.clear_user_cache()?;
+                        }
+                        app.restart_in_place()
+                    })();
+                    if let Err(error) = result {
+                        warn!("Failed to run lxapp surface maintenance: {error}")
+                            .with_appid(app_id);
                     }
-                    let app_id = app.appid.clone();
-                    std::thread::Builder::new()
-                        .name(format!("lingxia-lxapp-uninstall-{app_id}"))
-                        .spawn(move || {
-                            if !app.on_lxapp_event(
-                                crate::LxAppUiEventType::CapsuleClick,
-                                "uninstall".to_string(),
-                            ) {
-                                warn!("Failed to uninstall lxapp from the sidebar")
-                                    .with_appid(app_id);
-                            }
-                        })
-                        .is_ok()
-                }
-                lingxia_shell::LxappSurfaceMenuAction::Restart
-                | lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart => {
-                    let clear_cache = matches!(
-                        action,
-                        lingxia_shell::LxappSurfaceMenuAction::CleanCacheRestart
-                    );
-                    let app_id = app.appid.clone();
-                    std::thread::Builder::new()
-                        .name(format!("lingxia-lxapp-restart-{app_id}"))
-                        .spawn(move || {
-                            let result = (|| {
-                                if clear_cache {
-                                    app.clear_user_cache()?;
-                                }
-                                app.restart_in_place()
-                            })();
-                            if let Err(error) = result {
-                                warn!("Failed to run lxapp surface maintenance: {error}")
-                                    .with_appid(app_id);
-                            }
-                        })
-                        .is_ok()
-                }
-            });
+                })
+                .is_ok();
             return Some(HostSurfaceMenuExecution {
                 accepted,
                 removed_surface_ids: Vec::new(),
