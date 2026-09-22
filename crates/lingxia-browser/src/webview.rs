@@ -13,6 +13,7 @@ use crate::internal_pages::{
     LingxiaSchemeContext, browser_attach_tab_page, browser_document_scripts_snapshot,
     browser_load_internal_document, browser_resolve_delegate_context,
     browser_resolve_delegate_page, ensure_browser_startup_page, handle_browser_lingxia_scheme,
+    registered_control_page_route,
 };
 use crate::policy::{
     BrowserNavigationPolicySession, LINGXIA_SCHEME, extract_url_scheme,
@@ -725,6 +726,7 @@ pub(crate) fn browser_create_webview(
         inbound_diagnostics: BrowserInboundDiagnostics::default(),
         console_rate_limiter: std::sync::Mutex::new(ConsoleRateLimiter::default()),
     });
+    let delegate_for_navigation = delegate.clone();
     let session = WebViewBuilder::browser(webtag)
         .data_mode(data_mode)
         .delegate(delegate.clone())
@@ -752,6 +754,15 @@ pub(crate) fn browser_create_webview(
         .on_navigation(move |request| {
             let url = request.url.as_str();
             if callback_policy_blocks_file_navigation(&url_callback_for_navigation, url) {
+                return NavigationPolicy::Cancel;
+            }
+            if cfg!(target_os = "windows")
+                && request.is_main_frame
+                && !request.host_issued_trusted
+                && registered_control_page_route(url).is_some()
+            {
+                delegate_for_navigation
+                    .schedule_trusted_internal_reload(url.to_string(), "in-document control page");
                 return NavigationPolicy::Cancel;
             }
             let policy_request = BrowserNavigationPolicyRequest {

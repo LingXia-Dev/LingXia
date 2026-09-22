@@ -107,28 +107,33 @@ pub(crate) fn register_event_handlers(
 
                     let trusted_start =
                         started_document_authority.navigation_start(&uri, navigation_id);
+                    let host_issued_trusted = matches!(
+                        trusted_start,
+                        document::TrustedNavigationStart::Attest { .. }
+                            | document::TrustedNavigationStart::Coalesced(_)
+                    );
 
-                    if let Some(webview) =
+                    let cancelled =
                         current_native_callback_webview(&started_tag, started_native_view_id)
-                        && matches!(
-                            webview.handle_navigation(&crate::NavigationRequest::new(
-                                uri.clone(),
-                                false,
-                                true,
-                            )),
-                            NavigationPolicy::Cancel
-                        )
+                            .is_some_and(|webview| {
+                                matches!(
+                                    webview.handle_navigation(
+                                        &crate::NavigationRequest::new(uri.clone(), false, true)
+                                            .with_host_issued_trusted(host_issued_trusted),
+                                    ),
+                                    NavigationPolicy::Cancel
+                                )
+                            });
+                    if let Some(intent) =
+                        started_document_authority.resolve_policy(trusted_start, !cancelled)
                     {
-                        if let document::TrustedNavigationStart::Attest { intent, .. }
-                        | document::TrustedNavigationStart::Revoke(intent) = trusted_start
-                        {
-                            started_document_authority.revoke_if_matches(intent);
-                            normalizer::revoke_trusted_load(
-                                &started_tag,
-                                started_native_view_id,
-                                intent,
-                            );
-                        }
+                        normalizer::revoke_trusted_load(
+                            &started_tag,
+                            started_native_view_id,
+                            intent,
+                        );
+                    }
+                    if cancelled {
                         // Policy rejected before loading: the follow-up
                         // completion for this key is expected and consumed.
                         normalizer::submit(
@@ -147,11 +152,12 @@ pub(crate) fn register_event_handlers(
                             intent,
                             navigation_key,
                         } => {
-                            if !normalizer::attest_trusted_load(
+                            if !normalizer::start_trusted_navigation(
                                 &started_tag,
                                 started_native_view_id,
                                 intent,
                                 navigation_key,
+                                uri.clone(),
                             ) {
                                 started_document_authority.revoke_if_matches(intent);
                                 normalizer::revoke_trusted_load(
@@ -161,26 +167,28 @@ pub(crate) fn register_event_handlers(
                                 );
                             }
                         }
-                        document::TrustedNavigationStart::Revoke(intent) => {
-                            normalizer::revoke_trusted_load(
-                                &started_tag,
-                                started_native_view_id,
-                                intent,
-                            );
-                        }
-                        document::TrustedNavigationStart::Untrusted => {}
+                        document::TrustedNavigationStart::Revoke(_)
+                        | document::TrustedNavigationStart::Competing(_)
+                        | document::TrustedNavigationStart::Coalesced(_)
+                        | document::TrustedNavigationStart::Untrusted => {}
                     }
 
                     // Redirect restarts reuse the native id; the tracker
                     // coalesces them into one attempt.
-                    normalizer::submit(
-                        &started_tag,
-                        started_native_view_id,
-                        NativeSignal::NavigationStarted {
-                            key: Some(navigation_id),
-                            url: uri,
-                        },
-                    );
+                    if !matches!(
+                        trusted_start,
+                        document::TrustedNavigationStart::Attest { .. }
+                            | document::TrustedNavigationStart::Coalesced(_)
+                    ) {
+                        normalizer::submit(
+                            &started_tag,
+                            started_native_view_id,
+                            NativeSignal::NavigationStarted {
+                                key: Some(navigation_id),
+                                url: uri,
+                            },
+                        );
+                    }
                     Ok(())
                 })),
                 &mut token,

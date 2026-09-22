@@ -365,6 +365,10 @@ pub struct NavigationRequest {
     pub url: String,
     pub has_user_gesture: bool,
     pub is_main_frame: bool,
+    /// True when this start is the host-issued trusted load (or its redirect
+    /// restart). In-document `lingxia://` clicks are false so the browser can
+    /// cancel them and reload through the trusted path.
+    pub host_issued_trusted: bool,
 }
 
 impl NavigationRequest {
@@ -373,7 +377,13 @@ impl NavigationRequest {
             url: url.into(),
             has_user_gesture,
             is_main_frame,
+            host_issued_trusted: false,
         }
+    }
+
+    pub fn with_host_issued_trusted(mut self, host_issued_trusted: bool) -> Self {
+        self.host_issued_trusted = host_issued_trusted;
+        self
     }
 }
 
