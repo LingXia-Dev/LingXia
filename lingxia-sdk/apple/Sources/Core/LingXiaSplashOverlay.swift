@@ -331,15 +331,347 @@ extension UIColor {
 }
 
 #else
+import AppKit
+import QuartzCore
 
-/// The splash overlay is a mobile concern — desktop shells present native
-/// chrome immediately, so both runtime signals are no-ops here. They still
-/// have to exist: the FFI bridge is one file for every Apple platform, and a
-/// signal the runtime can send is a signal this side must be able to receive.
+private let splashLog = OSLog(subsystem: "LingXia", category: "Splash")
+
+/// Launch cover for the macOS runner's phone frame. Desktop and pad shells
+/// never call `armIfConfigured`, so both runtime signals stay no-ops there:
+/// marking a face that has no cover would hold home-ready for `minDuration`
+/// with nothing on screen.
+///
+/// The runner has no OS launch frame. The CLI passes the host `splash:`
+/// through the environment; a bundled `LingXiaSplashBackground` is only the
+/// fallback for a host that installed its own art.
 @MainActor
 enum LingXiaSplashOverlay {
-    static func notifyHomeReady() {}
-    static func showCampaign(path: String, durationMs: UInt32) {}
+    private static let timeoutSeconds: TimeInterval = 6
+    private static let liftSeconds: TimeInterval = 0.3
+    private static let campaignFadeSeconds: TimeInterval = 0.2
+
+    private static var coverView: NSView?
+    private static var armed = false
+    private static var shownThisProcess = false
+    private static var homeReadySeen = false
+    private static var shownAt: CFAbsoluteTime = 0
+    private static var campaignActive = false
+
+    /// Remember that a cover will be shown, and tell the runtime which
+    /// appearance it is. No view yet: the phone window does not exist until
+    /// the home app opens.
+    static func armIfConfigured() {
+        guard !homeReadySeen, !shownThisProcess, !armed else { return }
+        guard resolveBackground() != nil else { return }
+        armed = true
+        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        splashMarkLaunchFace(dark)
+    }
+
+    /// Full-bleed cover over `host`. A home-ready that already fired must not
+    /// flash a cover onto a page that is already on screen.
+    static func attach(to host: NSView) {
+        guard armed, !shownThisProcess, !homeReadySeen else { return }
+        guard let background = resolveBackground() else { return }
+
+        let cover = SplashCoverView()
+        cover.wantsLayer = true
+        cover.layer?.backgroundColor = background.cgColor
+        pin(cover, to: host)
+
+        if let image = resolveCover(), let cgImage = cgImage(of: image) {
+            let art = NSView()
+            art.wantsLayer = true
+            art.layer?.contents = cgImage
+            art.layer?.contentsGravity = .resizeAspectFill
+            pin(art, to: cover)
+        } else if let mark = resolveMark() {
+            // The authored mark is 3x, matching the iOS catalog entry.
+            let size = NSSize(width: mark.size.width / 3, height: mark.size.height / 3)
+            let art = NSImageView()
+            art.image = mark
+            art.imageScaling = .scaleProportionallyUpOrDown
+            art.translatesAutoresizingMaskIntoConstraints = false
+            cover.addSubview(art)
+            NSLayoutConstraint.activate([
+                art.centerXAnchor.constraint(equalTo: cover.centerXAnchor),
+                art.centerYAnchor.constraint(equalTo: cover.centerYAnchor),
+                art.widthAnchor.constraint(equalToConstant: size.width),
+                art.heightAnchor.constraint(equalToConstant: size.height),
+            ])
+        }
+
+        coverView = cover
+        shownThisProcess = true
+        shownAt = CFAbsoluteTimeGetCurrent()
+        host.layoutSubtreeIfNeeded()
+        os_log("splash shown", log: splashLog, type: .info)
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
+            guard !campaignActive, coverView != nil else { return }
+            os_log("splash dismissed by timeout", log: splashLog, type: .error)
+            dismiss()
+        }
+    }
+
+    /// Status and nav bars are added after the cover, as later siblings.
+    static func bringToFront() {
+        guard let cover = coverView, let host = cover.superview else { return }
+        host.addSubview(cover, positioned: .above, relativeTo: nil)
+    }
+
+    static func notifyHomeReady() {
+        homeReadySeen = true
+        dismiss()
+    }
+
+    static func showCampaign(path: String, durationMs: UInt32) {
+        homeReadySeen = true
+        guard let cover = coverView, let art = NSImage(contentsOfFile: path),
+              let cgImage = cgImage(of: art)
+        else {
+            dismiss()
+            return
+        }
+
+        let view = NSView()
+        view.wantsLayer = true
+        view.layer?.contents = cgImage
+        view.layer?.contentsGravity = .resizeAspectFill
+        view.alphaValue = 0
+        pin(view, to: cover)
+
+        let skip = SplashSkipControl(seconds: Int(ceil(Double(durationMs) / 1000)))
+        skip.alphaValue = 0
+        skip.onTap = { dismiss() }
+        skip.pin(toTopTrailingOf: cover)
+        fadeIn(view)
+        fadeIn(skip)
+
+        campaignActive = true
+        scheduleCampaignTick(skip)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(durationMs) * 1_000_000)
+            guard campaignActive else { return }
+            dismiss()
+        }
+    }
+
+    private static func scheduleCampaignTick(_ skip: SplashSkipControl) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard campaignActive else { return }
+            if skip.seconds > 1 {
+                skip.tick()
+                scheduleCampaignTick(skip)
+            }
+        }
+    }
+
+    private static func dismiss() {
+        campaignActive = false
+        guard let cover = coverView else { return }
+        coverView = nil
+        os_log(
+            "splash dismissed after %{public}.2fs",
+            log: splashLog,
+            type: .info,
+            CFAbsoluteTimeGetCurrent() - shownAt
+        )
+        lift(cover)
+    }
+
+    private static func lift(_ cover: NSView) {
+        guard let layer = cover.layer, cover.bounds.width > 0 else {
+            cover.removeFromSuperview()
+            return
+        }
+        let anchor = CGPoint(x: 0.5, y: 0.5)
+        let bounds = cover.bounds
+        let newPoint = CGPoint(x: bounds.width * anchor.x, y: bounds.height * anchor.y)
+        let oldPoint = CGPoint(
+            x: bounds.width * layer.anchorPoint.x,
+            y: bounds.height * layer.anchorPoint.y
+        )
+        var position = layer.position
+        position.x += newPoint.x - oldPoint.x
+        position.y += newPoint.y - oldPoint.y
+        layer.anchorPoint = anchor
+        layer.position = position
+
+        let group = CAAnimationGroup()
+        group.duration = liftSeconds
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        group.fillMode = .forwards
+        group.isRemovedOnCompletion = false
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        let scale = CABasicAnimation(keyPath: "transform.scale")
+        scale.fromValue = 1
+        scale.toValue = 1.06
+        group.animations = [fade, scale]
+        layer.add(group, forKey: "lift")
+
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(liftSeconds * 1_000_000_000))
+            cover.removeFromSuperview()
+        }
+    }
+
+    private static func fadeIn(_ view: NSView) {
+        view.wantsLayer = true
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = campaignFadeSeconds
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        fade.fillMode = .forwards
+        fade.isRemovedOnCompletion = false
+        view.layer?.add(fade, forKey: "fade")
+        view.alphaValue = 1
+    }
+
+    private static func pin(_ child: NSView, to parent: NSView) {
+        child.translatesAutoresizingMaskIntoConstraints = false
+        parent.addSubview(child)
+        NSLayoutConstraint.activate([
+            child.topAnchor.constraint(equalTo: parent.topAnchor),
+            child.leadingAnchor.constraint(equalTo: parent.leadingAnchor),
+            child.trailingAnchor.constraint(equalTo: parent.trailingAnchor),
+            child.bottomAnchor.constraint(equalTo: parent.bottomAnchor),
+        ])
+    }
+
+    private static func cgImage(of image: NSImage) -> CGImage? {
+        var rect = CGRect(origin: .zero, size: image.size)
+        return image.cgImage(forProposedRect: &rect, context: nil, hints: nil)
+    }
+
+    private static func bundleImage(_ name: String) -> NSImage? {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "png") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }
+
+    private static func resolveCover() -> NSImage? {
+        if let path = envPath("LINGXIA_RUNNER_SPLASH_IMAGE"),
+           let image = NSImage(contentsOfFile: path) {
+            return image
+        }
+        return bundleImage("LingXiaSplash")
+    }
+
+    private static func resolveMark() -> NSImage? {
+        if let path = envPath("LINGXIA_RUNNER_SPLASH_MARK"),
+           let image = NSImage(contentsOfFile: path) {
+            return image
+        }
+        return bundleImage("LingXiaSplashMark")
+    }
+
+    /// Environment wins: `lingxia dev` points at the host project, whose art
+    /// is not copied into the generic Runner bundle.
+    private static func resolveBackground() -> NSColor? {
+        if let hex = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_SPLASH_BACKGROUND"]?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !hex.isEmpty {
+            return NSColor(lingXiaHex: hex)
+        }
+        if let hex = Bundle.main.object(forInfoDictionaryKey: "LingXiaSplashBackground") as? String,
+           let color = NSColor(lingXiaHex: hex) {
+            return color
+        }
+        return NSColor(named: "LingXiaSplashBackground")
+    }
+
+    private static func envPath(_ key: String) -> String? {
+        let value = ProcessInfo.processInfo.environment[key]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value, !value.isEmpty else { return nil }
+        return value
+    }
+}
+
+/// Opaque cover. An ordinary `NSView` does not swallow every pointing event.
+@MainActor
+private final class SplashCoverView: NSView {
+    override func mouseDown(with event: NSEvent) {}
+    override func rightMouseDown(with event: NSEvent) {}
+    override func otherMouseDown(with event: NSEvent) {}
+    override func scrollWheel(with event: NSEvent) {}
+}
+
+@MainActor
+private final class SplashSkipControl: NSView {
+    private(set) var seconds: Int
+    private let label = NSTextField(labelWithString: "")
+    var onTap: (() -> Void)?
+
+    init(seconds: Int) {
+        self.seconds = max(1, seconds)
+        super.init(frame: .zero)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor(white: 0, alpha: 0.4).cgColor
+        layer?.cornerRadius = 14
+        label.textColor = .white
+        label.font = .systemFont(ofSize: 13)
+        label.alignment = .center
+        label.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 12),
+            label.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -12),
+            label.topAnchor.constraint(equalTo: topAnchor, constant: 6),
+            label.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -6),
+        ])
+        render()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    func tick() {
+        seconds -= 1
+        render()
+    }
+
+    private func render() {
+        label.stringValue = "\(L10n.string("lx_splash_skip")) \(max(0, seconds))"
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        bounds.contains(convert(point, from: superview)) ? self : nil
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        onTap?()
+    }
+
+    func pin(toTopTrailingOf parent: NSView) {
+        translatesAutoresizingMaskIntoConstraints = false
+        parent.addSubview(self)
+        NSLayoutConstraint.activate([
+            trailingAnchor.constraint(equalTo: parent.trailingAnchor, constant: -16),
+            topAnchor.constraint(equalTo: parent.topAnchor, constant: 12),
+        ])
+    }
+}
+
+extension NSColor {
+    convenience init?(lingXiaHex hex: String) {
+        var value = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.hasPrefix("#") { value.removeFirst() }
+        guard value.count == 6, let rgb = UInt32(value, radix: 16) else { return nil }
+        self.init(
+            srgbRed: CGFloat((rgb >> 16) & 0xFF) / 255,
+            green: CGFloat((rgb >> 8) & 0xFF) / 255,
+            blue: CGFloat(rgb & 0xFF) / 255,
+            alpha: 1
+        )
+    }
 }
 
 #endif

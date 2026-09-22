@@ -80,6 +80,11 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
                 }
                 return
             }
+            // Phone only. Pad and desktop shells take no launch overlay, and
+            // marking a face that is never shown holds home-ready anyway.
+            if RunnerApp.shared.selectedDeviceSize.usesPhoneChrome {
+                RunnerSupport.Splash.armIfConfigured()
+            }
             _ = try? await controller.openHomeApp()
         }
     }

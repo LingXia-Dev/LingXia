@@ -457,9 +457,12 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
             vc.view.trailingAnchor.constraint(equalTo: phoneContent.trailingAnchor),
             vc.view.bottomAnchor.constraint(equalTo: phoneContent.bottomAnchor)
         ])
-        
-        // Phone UI overlay (status bar, nav bar, floating buttons) — phone only
+
+        // Phone UI overlay (status bar, nav bar, floating buttons) — phone only.
+        // The cover is a sibling above the page, so it hides the tab bar too.
+        // The bars below are added on a later turn and would paint over it.
         if Self.currentDeviceSize.usesPhoneChrome {
+            RunnerSupport.Splash.attach(to: phoneContent)
             Task { @MainActor [weak self] in
                 self?.setupPhoneUIOverlay()
             }
@@ -506,6 +509,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         // exists. Apply the current page config now that the navbar view is
         // available, so the first screen does not wait for a later notification.
         applyInitialNavigationConfiguration()
+        RunnerSupport.Splash.bringToFront()
     }
 
     private func setupWebStatusBar() {

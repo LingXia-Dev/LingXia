@@ -310,4 +310,19 @@ enum RunnerSupport {
             LingxiaRunnerSPI.SurfaceShell.presentBrowserTab(shell, tabId: tabId)
         }
     }
+
+    @MainActor
+    enum Splash {
+        static func armIfConfigured() {
+            LingxiaRunnerSPI.Splash.armIfConfigured()
+        }
+
+        static func attach(to host: NSView) {
+            LingxiaRunnerSPI.Splash.attach(to: host)
+        }
+
+        static func bringToFront() {
+            LingxiaRunnerSPI.Splash.bringToFront()
+        }
+    }
 }

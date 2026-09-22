@@ -31,6 +31,11 @@ const RUNNER_PID_FILE_ENV: &str = "LINGXIA_RUNNER_PID_FILE";
 /// Stable-per-project id that isolates each Runner instance's on-disk state
 /// (metadata DB, caches, WebView data) so parallel Runners don't collide.
 const RUNNER_INSTANCE_ENV: &str = "LINGXIA_RUNNER_INSTANCE";
+/// Host `splash.background`. The generic Runner bundle has no launch art, so
+/// the phone cover reads these instead of `LingXiaSplashBackground`.
+const RUNNER_SPLASH_BACKGROUND_ENV: &str = "LINGXIA_RUNNER_SPLASH_BACKGROUND";
+const RUNNER_SPLASH_IMAGE_ENV: &str = "LINGXIA_RUNNER_SPLASH_IMAGE";
+const RUNNER_SPLASH_MARK_ENV: &str = "LINGXIA_RUNNER_SPLASH_MARK";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Windows runner: standalone executable installed by
@@ -412,6 +417,87 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
+#[derive(Debug, serde::Deserialize)]
+struct RunnerSplashFile {
+    #[serde(default)]
+    splash: Option<RunnerSplashFields>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct RunnerSplashFields {
+    background: String,
+    #[serde(default)]
+    image: Option<String>,
+    #[serde(default)]
+    mark: Option<String>,
+}
+
+struct RunnerSplashLaunch {
+    background: String,
+    image: Option<PathBuf>,
+    mark: Option<PathBuf>,
+}
+
+/// `splash:` from the nearest ancestor `lingxia.yaml`, without loading the
+/// rest of the host config. A partial or unrelated file must not fail launch.
+fn runner_splash_env(lxapp_path: &Path) -> Option<RunnerSplashLaunch> {
+    let host = lxapp_path
+        .ancestors()
+        .find(|dir| dir.join(crate::config::HOST_CONFIG_FILE).is_file())?;
+    let text = fs::read_to_string(host.join(crate::config::HOST_CONFIG_FILE)).ok()?;
+    let file: RunnerSplashFile = serde_yaml_ng::from_str(&text).ok()?;
+    let splash = file.splash?;
+    let background = splash.background.trim();
+    if !is_splash_hex(background) {
+        return None;
+    }
+    Some(RunnerSplashLaunch {
+        background: background.to_string(),
+        image: splash
+            .image
+            .as_deref()
+            .and_then(|raw| splash_asset(host, raw)),
+        mark: splash
+            .mark
+            .as_deref()
+            .and_then(|raw| splash_asset(host, raw)),
+    })
+}
+
+fn is_splash_hex(value: &str) -> bool {
+    let Some(rest) = value.strip_prefix('#') else {
+        return false;
+    };
+    rest.len() == 6 && rest.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+fn splash_asset(root: &Path, raw: &str) -> Option<PathBuf> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = Path::new(trimmed);
+    let absolute = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        root.join(path)
+    };
+    absolute.is_file().then_some(absolute)
+}
+
+fn apply_runner_splash_env(command: &mut Command, lxapp_path: &Path) {
+    let Some(splash) = runner_splash_env(lxapp_path) else {
+        return;
+    };
+    command.env(RUNNER_SPLASH_BACKGROUND_ENV, splash.background);
+    if let Some(image) = splash.image {
+        command.env(RUNNER_SPLASH_IMAGE_ENV, image);
+    }
+    if let Some(mark) = splash.mark {
+        command.env(RUNNER_SPLASH_MARK_ENV, mark);
+    }
+}
+
 fn launch_runner_for_lxapp(
     lxapp_path: &Path,
     session_root: &Path,
@@ -457,6 +543,7 @@ fn launch_runner_for_lxapp(
     if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
         command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
     }
+    apply_runner_splash_env(&mut command, lxapp_path);
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
@@ -1471,12 +1558,53 @@ mod tests {
     use super::{
         RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
         lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
-        render_runner_devices, resolve_dev_target, windows_runner_launch_args,
+        render_runner_devices, resolve_dev_target, runner_splash_env, windows_runner_launch_args,
         windows_runner_ui_json, windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn runner_splash_env_reads_host_yaml_above_the_lxapp() {
+        let temp = tempdir().unwrap();
+        let host = temp.path();
+        fs::write(host.join("art.png"), b"png").unwrap();
+        fs::write(
+            host.join("lingxia.yaml"),
+            "splash:\n  background: \"#112233\"\n  image: art.png\n  mark: missing.png\n",
+        )
+        .unwrap();
+        let lxapp = host.join("lxapps").join("demo");
+        fs::create_dir_all(&lxapp).unwrap();
+
+        let splash = runner_splash_env(&lxapp).unwrap();
+        assert_eq!(splash.background, "#112233");
+        assert_eq!(splash.image.unwrap(), host.join("art.png"));
+        assert!(splash.mark.is_none());
+    }
+
+    #[test]
+    fn runner_splash_env_is_absent_without_a_splash_block() {
+        let temp = tempdir().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            "app:\n  projectName: demo\n",
+        )
+        .unwrap();
+        assert!(runner_splash_env(temp.path()).is_none());
+    }
+
+    #[test]
+    fn runner_splash_env_rejects_a_bad_background() {
+        let temp = tempdir().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            "splash:\n  background: red\n",
+        )
+        .unwrap();
+        assert!(runner_splash_env(temp.path()).is_none());
+    }
 
     #[test]
     fn standalone_lxapp_project_is_detected() {

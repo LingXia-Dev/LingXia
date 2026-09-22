@@ -370,6 +370,23 @@ import WebKit
             RunnerBridge.presentBrowserTabInSurfaceShell(shell, tabId: tabId)
         }
     }
+
+    /// Phone-frame launch cover. Pad and desktop shells must not arm it: a
+    /// mark with no cover holds the home-ready signal for `minDuration`.
+    @MainActor
+    public enum Splash {
+        public static func armIfConfigured() {
+            LingXiaSplashOverlay.armIfConfigured()
+        }
+
+        public static func attach(to host: NSView) {
+            LingXiaSplashOverlay.attach(to: host)
+        }
+
+        public static func bringToFront() {
+            LingXiaSplashOverlay.bringToFront()
+        }
+    }
 }
 
 #else
