@@ -31,6 +31,19 @@ pub struct AutomationStartArgs {
     /// String inputs exposed as `__LINGXIA_AUTOMATION_HOST__.args`.
     #[serde(default)]
     pub args: HashMap<String, String>,
+    /// Caller controls exposed as `__LINGXIA_AUTOMATION_HOST__.control`,
+    /// separate from `args`.
+    #[serde(default)]
+    pub control: HashMap<String, String>,
+}
+
+/// The run holding the runtime's single slot.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct AutomationActiveRun {
+    pub run_id: String,
+    pub age_ms: u64,
+    /// `None` when the run was never polled.
+    pub since_last_poll_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

@@ -79,6 +79,8 @@ pub mod methods {
             pub const START: &str = "session.test.start";
             pub const POLL: &str = "session.test.poll";
             pub const CANCEL: &str = "session.test.cancel";
+            /// Which run, if any, holds the session's automation slot.
+            pub const ACTIVE: &str = "session.test.active";
         }
     }
 

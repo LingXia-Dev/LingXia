@@ -24,6 +24,7 @@ struct RunRequest {
     source: String,
     source_name: String,
     args: HashMap<String, String>,
+    control: HashMap<String, String>,
 }
 
 struct RuntimeState {
@@ -116,6 +117,7 @@ impl AutomationRuntime {
                 .source_name
                 .unwrap_or_else(|| "lingxia-automation".to_string()),
             args: args.args,
+            control: args.control,
         };
         self.inner
             .sender
@@ -169,6 +171,23 @@ impl AutomationRuntime {
             .cloned()
             .ok_or_else(|| format!("unknown automation run: {run_id}"))
     }
+
+    /// The run holding the slot, if any. Read-only: a caller deciding whether
+    /// to cancel it can see how long it has run and whether anyone still polls.
+    pub fn active(&self) -> Option<AutomationActiveRun> {
+        let mut state = self.inner.state.lock().unwrap();
+        retire_completed(&mut state);
+        let run = state.active.as_ref()?;
+        Some(AutomationActiveRun {
+            run_id: run.run_id.clone(),
+            age_ms: duration_ms(run.started_at.elapsed()),
+            since_last_poll_ms: run.since_last_poll().map(duration_ms),
+        })
+    }
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn retire_completed(state: &mut RuntimeState) {
@@ -398,7 +417,9 @@ async fn run_on_worker(runtime: Arc<RuntimeInner>, js_runtime: JSRuntime, reques
     let mut cancel_rx = shared.cancel_receiver();
     let ctx = js_runtime.context();
 
-    if let Err(err) = context::init_automation_context(&ctx, &shared, &request.args) {
+    if let Err(err) =
+        context::init_automation_context(&ctx, &shared, &request.args, &request.control)
+    {
         shared.finalize(
             AutomationRunState::InternalError,
             Some(internal_error(format!(
@@ -546,6 +567,7 @@ mod tests {
                 source_name: Some("fixture.ts".to_string()),
                 timeout_ms: Some(timeout_ms),
                 args: HashMap::new(),
+                control: HashMap::new(),
             })
             .expect("start automation run")
     }
@@ -616,9 +638,21 @@ mod tests {
                 source_name: None,
                 timeout_ms: Some(5_000),
                 args: HashMap::new(),
+                control: HashMap::new(),
             })
             .expect_err("concurrent run must be rejected");
         assert!(error.contains("automation_run_in_progress"));
+        let active = runtime.active().expect("an active run");
+        assert_eq!(active.run_id, first.run_id);
+        assert_eq!(active.since_last_poll_ms, None);
+        runtime
+            .poll(AutomationPollArgs {
+                run_id: first.run_id.clone(),
+                after_seq: 0,
+            })
+            .expect("poll first run");
+        let polled = runtime.active().expect("still active");
+        assert!(polled.since_last_poll_ms.is_some_and(|ms| ms < 5_000));
         runtime
             .cancel(AutomationCancelArgs {
                 run_id: first.run_id.clone(),
@@ -629,6 +663,7 @@ mod tests {
             wait_for_terminal(&runtime, &first.run_id).state,
             AutomationRunState::Cancelled
         );
+        assert!(runtime.active().is_none(), "a finished run frees the slot");
     }
 
     #[test]

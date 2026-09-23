@@ -8,8 +8,34 @@ pub struct TestStartArgs {
     pub source: String,
     pub source_name: Option<String>,
     pub timeout_ms: Option<u64>,
+    /// User `--arg`/`--secret-arg` values: the spec's `t.args`.
     #[serde(default)]
     pub args: HashMap<String, String>,
+    /// lxdev's run controls (grep, ids, shard, retries, …), kept apart from
+    /// `args` so a user arg can never steer the run. A host that predates the
+    /// field ignores it.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub control: HashMap<String, String>,
+}
+
+/// Error code of a `session.test.start` refused because another run holds the
+/// session; the error's `data` is a [`TestActiveRun`].
+pub const RUN_IN_PROGRESS: &str = "automation_run_in_progress";
+
+/// The run currently holding the session's automation slot.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TestActiveRun {
+    pub run_id: String,
+    /// Time since the run started.
+    pub age_ms: u64,
+    /// Time since a client last polled it; `None` when nobody ever has.
+    pub since_last_poll_ms: Option<u64>,
+}
+
+/// `session.test.active`: `run` is `None` when the session is free.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TestActiveResponse {
+    pub run: Option<TestActiveRun>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -89,6 +115,10 @@ pub enum TestEventPayload {
         total: usize,
         #[serde(default)]
         cases: Vec<serde_json::Value>,
+        /// The run's args as reports show them (secrets masked), when the
+        /// framework says.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        args: Option<HashMap<String, String>>,
     },
     Diagnostic {
         phase: String,

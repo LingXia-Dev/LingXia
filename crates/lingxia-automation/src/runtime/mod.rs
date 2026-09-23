@@ -15,7 +15,7 @@ mod run;
 
 pub use manager::AutomationRuntime;
 pub use protocol::{
-    AutomationCancelArgs, AutomationCancelResponse, AutomationEvent, AutomationEventPayload,
-    AutomationPollArgs, AutomationPollResponse, AutomationRunError, AutomationRunResult,
-    AutomationRunState, AutomationStartArgs, AutomationStartResponse,
+    AutomationActiveRun, AutomationCancelArgs, AutomationCancelResponse, AutomationEvent,
+    AutomationEventPayload, AutomationPollArgs, AutomationPollResponse, AutomationRunError,
+    AutomationRunResult, AutomationRunState, AutomationStartArgs, AutomationStartResponse,
 };

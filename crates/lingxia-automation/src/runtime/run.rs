@@ -42,6 +42,9 @@ struct RunInner {
     attachment_names: HashSet<String>,
     result: Option<AutomationRunResult>,
     completed_at: Option<Instant>,
+    /// Last `poll`, so a caller can tell a run someone is still reading from
+    /// one whose client is gone.
+    last_poll_at: Option<Instant>,
 }
 
 impl RunShared {
@@ -66,6 +69,7 @@ impl RunShared {
                 attachment_names: HashSet::new(),
                 result: None,
                 completed_at: None,
+                last_poll_at: None,
             }),
         }
     }
@@ -242,8 +246,18 @@ impl RunShared {
 
     /// Events after `after_seq`; delivering also releases everything at or
     /// below it (the client acknowledged them by asking for later ones).
+    /// Time since the last `poll`; `None` when nobody has polled.
+    pub fn since_last_poll(&self) -> Option<Duration> {
+        self.inner
+            .lock()
+            .unwrap()
+            .last_poll_at
+            .map(|at| at.elapsed())
+    }
+
     pub fn poll(&self, after_seq: u64) -> AutomationPollResponse {
         let mut inner = self.inner.lock().unwrap();
+        inner.last_poll_at = Some(Instant::now());
         let mut released = 0usize;
         inner.events.retain(|event| {
             let keep = event.seq > after_seq;
