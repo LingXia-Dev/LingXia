@@ -91,6 +91,14 @@ export function createWorld(options = {}) {
     },
     async eval({ script }) {
       if (pageGlobals) return evaluate(pageGlobals, script);
+      // The locator's read-only attribute probe.
+      const probe = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*for \(const name of (\[.*?\])\)/);
+      if (probe) {
+        const element = queryAll(JSON.parse(probe[1]))[Number(probe[2])];
+        const out = {};
+        for (const name of JSON.parse(probe[3])) out[name] = element?.attributes?.[name] ?? null;
+        return out;
+      }
       // The locator's actionability probe: an element outside the viewport
       // fails the hit test, as a real page would.
       const actionability = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*elementFromPoint/);

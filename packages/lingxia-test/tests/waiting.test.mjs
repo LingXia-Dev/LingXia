@@ -260,7 +260,7 @@ test("click({ force }) skips the viewport and hit-test waits but not enabled", a
 test("filter, first and last narrow the matches and act on the right DOM node", async () => {
   const world = createWorld();
   const items = ["Apple", "Banana split", "Cherry", "banana bread"].map((text) =>
-    world.add({ css: "li", text }));
+    world.add({ css: "li", text, attributes: { "data-kind": text.split(" ")[0].toLowerCase() } }));
   const { events } = installFakeHost(world);
 
   spec("narrowed", async (t) => {
@@ -272,11 +272,34 @@ test("filter, first and last narrow the matches and act on the right DOM node", 
     await rows.first().click();
     await rows.last().click();
     await t.expect(rows.filter({ hasText: "banana" }).first()).toHaveText("Banana split");
+    await t.expect(rows.filter({ hasText: "banana" }).nth(1)).toContainText("bread");
+    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", "cherry");
+    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", /^ch/);
+    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind");
+    await t.expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("aria-busy");
+    await t.expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("data-kind", "apple");
+    await t.expect(rows.first()).not.toContainText("Banana");
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0, JSON.stringify(events.filter((event) => event.type === "case_finished").map((event) => event.error)));
   assert.deepEqual(items.map((item) => item.clicked ?? 0), [1, 0, 0, 2]);
+});
+
+test("toHaveAttribute and toContainText failures name what was found", async () => {
+  const world = createWorld();
+  world.add({ testId: "badge", text: "3 unread", attributes: { "aria-label": "Inbox" } });
+  const { attachments } = installFakeHost(world);
+
+  spec("attribute miss", async (t) => {
+    await t.expect(t.app.page.testId("badge")).toContainText("unread", { timeout: 80 });
+    await t.expect(t.app.page.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const message = failedMessage(attachments);
+  assert.match(message, /aria-label="Outbox"/);
+  assert.match(message, /aria-label="Inbox"/);
 });
 
 test("fixture nav waits for the landed page unless the caller picks waitUntil", async () => {

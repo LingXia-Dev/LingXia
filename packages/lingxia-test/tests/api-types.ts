@@ -20,6 +20,19 @@ spec('typed test boundary', async t => {
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
   await app.nav.to({page:'editor', waitFor:'ready'});
   await input.waitFor({state:'attached'});
+  await input.waitFor({state:'inViewport'});
+  const rows = app.page.css('li').filter({hasText:/ready/i});
+  await rows.first().click({force:true, timeout:1_000});
+  await rows.last().fill('x', {force:true});
+  await t.expect(rows.nth(1)).toBeInViewport();
+  await t.expect(rows.first()).toContainText('ready');
+  await t.expect(rows.first()).toHaveAttribute('aria-selected', 'true');
+  await t.expect(rows.first()).not.toHaveAttribute('disabled');
+  await app.page.click({css:'#save', force:true});
+  // @ts-expect-error `type` has no forced mode.
+  await input.type('x', {force:true});
+  // @ts-expect-error filter needs hasText.
+  app.page.css('li').filter({});
   if (!state.ready) t.skip('not ready');
   // @ts-expect-error Test context has no DOM.
   document.querySelector('button');

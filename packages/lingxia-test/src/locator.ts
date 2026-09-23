@@ -73,6 +73,8 @@ export interface LocatorResolve {
   enabled?: boolean;
   editable?: boolean;
   rect?: QueryMatch["rect"];
+  /** Attribute values read for the single match, by name (`null`: absent). */
+  attributes?: Record<string, string | null>;
   kind: "nothing" | "hidden" | "unique" | "many";
 }
 
@@ -209,7 +211,7 @@ export class PageLocator implements Locator {
    * One read of the locator's matches. With a deadline the query is raced
    * against what is left of it, so a query that never returns fails `verb`.
    */
-  async resolve(deadline?: ActionDeadline, verb = "resolve"): Promise<LocatorResolve> {
+  async resolve(deadline?: ActionDeadline, verb = "resolve", attributes: readonly string[] = []): Promise<LocatorResolve> {
     const query = () => this.page.query({ page: this.options.page, css: this.selector, all: true });
     const all = await this.guard(() =>
       deadline ? deadline.call("page.query", query, () => this.callContext(verb)) : query(),
@@ -269,7 +271,33 @@ export class PageLocator implements Locator {
         kind: "unique",
       };
     }
+    if (attributes.length > 0 && count === 1) {
+      resolved.attributes = await this.readAttributes(resolved.index, attributes, deadline, verb);
+    }
     return resolved;
+  }
+
+  /** A read-only look at the single match's attributes. */
+  private async readAttributes(
+    index: number,
+    names: readonly string[],
+    deadline: ActionDeadline | undefined,
+    verb: string,
+  ): Promise<Record<string, string | null>> {
+    if (!this.page.eval) throw new Error("This page driver cannot read attributes");
+    const script = `(() => {
+      const el = document.querySelectorAll(${JSON.stringify(this.selector)})[${index}];
+      const out = {};
+      for (const name of ${JSON.stringify(names)}) out[name] = el ? el.getAttribute(name) : null;
+      return out;
+    })()`;
+    const read = () => this.page.eval!({ page: this.options.page, script });
+    const value = await this.guard(() =>
+      deadline ? deadline.call("page.eval (attributes)", read, () => this.callContext(verb)) : read());
+    const out: Record<string, string | null> = {};
+    const record = value && typeof value === "object" ? value as Record<string, unknown> : {};
+    for (const name of names) out[name] = typeof record[name] === "string" ? record[name] as string : null;
+    return out;
   }
 
   missText(resolved: LocatorResolve): string {

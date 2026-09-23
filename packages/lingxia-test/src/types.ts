@@ -266,6 +266,13 @@ export interface LocatorMatchers {
   toBeDisabled(options?: ExpectOptions): Promise<void>;
   toBeEditable(options?: ExpectOptions): Promise<void>;
   toHaveText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
+  /** The text contains `expected` (exact substring) or matches the RegExp. */
+  toContainText(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
+  /**
+   * The single match has attribute `name`; with `value`, equal to it (or
+   * matching the RegExp). `not.toHaveAttribute(name)` passes when it is absent.
+   */
+  toHaveAttribute(name: string, value?: string | RegExp, options?: ExpectOptions): Promise<void>;
   toHaveCount(expected: number, options?: ExpectOptions): Promise<void>;
   toHaveValue(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
 }
