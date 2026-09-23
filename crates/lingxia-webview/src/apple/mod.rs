@@ -3,6 +3,7 @@ pub(crate) mod data_store;
 mod schemehandler;
 mod webview;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::{UserAgentOverride, WebViewController, WebViewError};
@@ -12,6 +13,21 @@ pub(crate) use webview::apply_http_proxy;
 
 pub const BRIDGE_DOWNSTREAM_CSP_SOURCE: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_CSP_SOURCE;
 pub const BRIDGE_DOWNSTREAM_URL: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_URL;
+
+static KEEP_RENDERING_WHEN_OCCLUDED: AtomicBool = AtomicBool::new(false);
+
+/// Keep future WebViews rendering while their window is occluded. WebKit
+/// otherwise stops `requestAnimationFrame` and CSS transitions for a covered
+/// window, so a page under automation (e.g. a sheet mid-animation) freezes in
+/// a state its clicks cannot hit. Call before the first WebView is created;
+/// intended for development hosts such as the Runner. No-op on iOS.
+pub fn keep_rendering_when_occluded() {
+    KEEP_RENDERING_WHEN_OCCLUDED.store(true, Ordering::Release);
+}
+
+pub(crate) fn keeps_rendering_when_occluded() -> bool {
+    KEEP_RENDERING_WHEN_OCCLUDED.load(Ordering::Acquire)
+}
 
 static USER_AGENT_OVERRIDE_FOR_NEW_WEBVIEWS: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
