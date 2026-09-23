@@ -92,26 +92,37 @@ fetch wrappers.
 spec('rename shows the not-implemented error', async (t) => {
   const patch = await t.app.network.route(
     { url: '**/v1/devices/*', method: 'PATCH', times: 1 },
-    { status: 501, json: { error: 'not_implemented' } },
+    { status: 501, json: { error: 'not_implemented' }, delay: 300 },
   );
   await t.app.network.route('**/v1/clients', { abort: 'failed' });
+  await t.app.page.testId('rename-input').fill('Office');
   await t.app.page.testId('rename-save').click();
+  await t.expect(t.app.page.testId('rename-saving')).toBeVisible();
   await t.expect(t.app.page.testId('rename-error')).toBeVisible();
-  await t.expect.poll(async () => (await patch.requests()).length).toBe(1);
+  const [sent] = await patch.requests();
+  expect(JSON.parse(sent.body ?? '{}')).toEqual({ name: 'Office' });
 });
 ```
 
 - Pattern: a glob over the whole URL (`**` any, `*` no `/`, `{a,b}`; `?` is
   literal), a `RegExp` without lookaround or backreferences, or
   `{ url, method?, times? }`. The newest matching route wins.
-- Handler: `{ status?, statusText?, headers?, body?, json?, contentType? }`
-  fulfills (non-string `body` is JSON); `{ abort: 'failed' }` rejects like a
-  transport failure (`TypeError: fetch failed`); `{ continue: true }` passes
-  through.
+- Handler, exactly one of:
+  - fulfill: `{ status?, statusText?, headers?, contentType?, delay? }` plus
+    either `body` (string, `ArrayBuffer`, or `Uint8Array`, sent verbatim) or
+    `json` (serialized, `content-type: application/json`). `delay` holds the
+    response up to 30000 ms to show loading states.
+  - `{ abort: 'failed' }`: rejects like a transport failure
+    (`TypeError: fetch failed`).
+  - `{ continue: true }`: passes through.
 - `route()` returns `{ id, pattern, unroute(), requests() }`;
-  `t.app.network.unrouteAll()` and `.requests()` cover the whole app. Requests
-  report `{ method, url, action, status }` for this spec's routes only.
-- Routes last until the spec ends; they exist only in a `lxdev test` run.
+  `t.app.network.unrouteAll()` removes all of them.
+- Requests report `{ method, url, headers, body, bodyTruncated, action, status }`.
+  `body` is the request text cut to 64 KiB, or `null` for streams, `Blob`,
+  `FormData`, and a `Request` object's own body.
+- `t.app.network.requests()` is spec-scoped: it lists only this spec's routes.
+- Routes last until the spec ends; they work only in a `lxdev test` run, and
+  every call rejects anywhere else.
 - Only Logic `fetch` is routed, not WebView page requests. A host outside the
   app's [network grants](../native/permissions.md) is never faked; the request
   fails with the policy error as usual.
