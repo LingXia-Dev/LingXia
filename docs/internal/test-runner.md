@@ -22,7 +22,12 @@ received artifacts. Keep the following invariants when changing these layers:
   not an alternate result model.
 - A Runner-side run holds the single automation slot. The run manager cancels
   a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
-  poll gap) through the normal cancel path.
+  poll gap) through the normal cancel path. `lingxia dev` likewise defers
+  file-watch reloads while it relays an unfinished run.
+- The spec timeout is a timer on the test JS worker; it cannot fire while a
+  driver call blocks that thread in native code. The manager's run deadline and
+  lease run off-worker and interrupt JS, and a worker still stuck after the
+  grace period is declared wedged.
 - Check actionability before dispatch. Never retry an ambiguous input transport
   failure: the original click may already have had its side effect.
 
