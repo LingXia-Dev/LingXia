@@ -3,12 +3,13 @@
 //! so results match the devtool (`lxdev lxapp page …`) exactly.
 
 use crate::auto_err;
+use crate::error::{E_EVAL_TIMEOUT, code_for, eval_code_for, page_error};
 use crate::resolve::{json_to_js, upgrade_authorized};
 use base64::{Engine as _, engine::general_purpose};
 use lxapp::{LxApp, automation as auto};
 use rong::{
     Class, FromJSObject, HostError, IntoJSObject, JSContext, JSObject, JSResult, JSValue,
-    function::Optional, js_class, js_method,
+    RongJSError, function::Optional, js_class, js_method,
 };
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
@@ -37,12 +38,23 @@ pub(crate) struct JSPageDriver {
 }
 
 impl JSPageDriver {
-    pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
-        Self {
-            lxapp: Arc::downgrade(lxapp),
-            appid: Arc::from(lxapp.appid.as_str()),
-        }
+    pub(crate) fn new(lxapp: Weak<LxApp>, appid: Arc<str>) -> Self {
+        Self { lxapp, appid }
     }
+}
+
+/// Map a lower-half failure on `page` to its coded, page-annotated error.
+fn fail<'a>(app: &'a Arc<LxApp>, page: Option<&'a str>) -> impl Fn(String) -> RongJSError + 'a {
+    move |message| page_error(app, page, code_for(&message), message)
+}
+
+/// [`fail`] for an evaluation, which separates a throwing script and a
+/// timeout from the other failures.
+fn eval_fail<'a>(
+    app: &'a Arc<LxApp>,
+    page: Option<&'a str>,
+) -> impl Fn(String) -> RongJSError + 'a {
+    move |message| page_error(app, page, eval_code_for(&message), message)
 }
 
 #[derive(FromJSObject)]
@@ -168,8 +180,15 @@ impl JSPageDriver {
             auto::page_eval(&app, options.page.as_deref(), &options.script),
         )
         .await
-        .map_err(|_| auto_err("page eval timed out"))?
-        .map_err(auto_err)?;
+        .map_err(|_| {
+            page_error(
+                &app,
+                options.page.as_deref(),
+                E_EVAL_TIMEOUT,
+                "page eval timed out",
+            )
+        })?
+        .map_err(eval_fail(&app, options.page.as_deref()))?;
         json_to_js(&ctx, &value)
     }
 
@@ -195,7 +214,7 @@ impl JSPageDriver {
             max_text,
         )
         .await
-        .map_err(auto_err)?;
+        .map_err(fail(&app, options.page.as_deref()))?;
         json_to_js(&ctx, &value)
     }
 
@@ -204,7 +223,7 @@ impl JSPageDriver {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_click(&app, options.page.as_deref(), &options.css, options.index)
             .await
-            .map_err(auto_err)
+            .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method(rename = "type")]
@@ -218,7 +237,7 @@ impl JSPageDriver {
             &options.text,
         )
         .await
-        .map_err(auto_err)
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method]
@@ -232,7 +251,7 @@ impl JSPageDriver {
             &options.text,
         )
         .await
-        .map_err(auto_err)
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method]
@@ -246,7 +265,7 @@ impl JSPageDriver {
             options.index,
         )
         .await
-        .map_err(auto_err)
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method(rename = "scrollTo")]
@@ -254,7 +273,7 @@ impl JSPageDriver {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         auto::page_scroll_to(&app, options.page.as_deref(), &options.css)
             .await
-            .map_err(auto_err)
+            .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method]
@@ -268,13 +287,12 @@ impl JSPageDriver {
             options.dy.unwrap_or(0.0),
         )
         .await
-        .map_err(auto_err)
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     /// App-window pointer input at page coordinates (`lxdev lxapp page pointer`).
     #[js_method(getter, enumerable)]
     fn pointer(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let _ = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(Class::lookup::<crate::input::JSPagePointer>(&ctx)?
             .instance(crate::input::JSPagePointer::new(self.appid.clone())))
     }
@@ -282,7 +300,6 @@ impl JSPageDriver {
     /// App-window keyboard input (`lxdev lxapp page key`).
     #[js_method(getter, enumerable)]
     fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let _ = upgrade_authorized(&ctx, &self.lxapp)?;
         Ok(
             Class::lookup::<crate::input::JSPageKey>(&ctx)?
                 .instance(crate::input::JSPageKey::new()),
@@ -342,7 +359,7 @@ impl JSPageDriver {
                         return Ok(());
                     }
                     if started.elapsed() >= timeout {
-                        return Err(auto_err(format!(
+                        return Err(fail(&app, options.page.as_deref())(format!(
                             "E_TIMEOUT: waitFor '{}' ({state}): {}",
                             options.css, err
                         )));
@@ -350,14 +367,14 @@ impl JSPageDriver {
                     tokio::time::sleep(Duration::from_millis(WAIT_POLL_MS)).await;
                     continue;
                 }
-                Err(err) => return Err(auto_err(err)),
+                Err(err) => return Err(fail(&app, options.page.as_deref())(err)),
             };
             let satisfied = wait_state_satisfied(state, &probe);
             if satisfied {
                 return Ok(());
             }
             if started.elapsed() >= timeout {
-                return Err(auto_err(format!(
+                return Err(fail(&app, options.page.as_deref())(format!(
                     "E_TIMEOUT: waitFor '{}' ({state})",
                     options.css
                 )));
@@ -376,7 +393,7 @@ impl JSPageDriver {
         let options = options.0.unwrap_or_default();
         let bytes = auto::page_screenshot(&app, options.page.as_deref())
             .await
-            .map_err(auto_err)?;
+            .map_err(fail(&app, options.page.as_deref()))?;
         let (width, height) = png_dimensions(&bytes).unwrap_or((0, 0));
         Ok(JSScreenshot {
             format: "png".to_string(),

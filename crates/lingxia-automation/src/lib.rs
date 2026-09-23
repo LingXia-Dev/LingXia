@@ -6,6 +6,7 @@
 
 #[cfg(feature = "desktop")]
 mod desktop;
+mod error;
 mod host;
 mod info;
 mod input;
@@ -37,9 +38,11 @@ const PRIV_AUTOMATION: &str = "automation";
 /// Cross-lxapp, browser, and host-window input.
 const PRIV_HOST: &str = "host";
 
-/// Build a JS-facing automation error.
+/// Build a JS-facing automation error. The message is kept as is (older
+/// clients parse it); its stable code comes from [`error::code_for`].
 pub(crate) fn auto_err(msg: impl AsRef<str>) -> RongJSError {
-    HostError::new("E_AUTOMATION", msg.as_ref()).into()
+    let msg = msg.as_ref();
+    error::coded(error::code_for(msg), msg).into()
 }
 
 fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
@@ -51,9 +54,13 @@ fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
     if app.has_resource_grant(grant) {
         Ok(())
     } else {
-        Err(auto_err(format!(
-            "{id}_privilege_required: requires a host privilege grant and a sealed native grant"
-        )))
+        Err(error::coded(
+            error::E_AUTOMATION_PRIVILEGE,
+            format!(
+                "{id}_privilege_required: requires a host privilege grant and a sealed native grant"
+            ),
+        )
+        .into())
     }
 }
 
@@ -112,7 +119,7 @@ pub(crate) fn host_automation_authority(ctx: &JSContext) -> Option<&HostAutomati
 }
 
 /// The stable root returned by `lx.automation()`. It carries no authority by
-/// itself; each selector checks the privilege for the capability it returns.
+/// itself; each driver method checks the privilege for the capability it uses.
 #[js_class(clone)]
 pub(crate) struct JSAutomation {
     lxapp: Weak<LxApp>,
@@ -142,6 +149,11 @@ impl JSAutomation {
         resolve::upgrade(&self.lxapp)
     }
 
+    /// Checked by `lxapp(appid)`. The host-tier properties below do not call
+    /// it: reading them always returns the driver, and each driver method
+    /// re-checks the calling context and rejects with
+    /// `E_AUTOMATION_PRIVILEGE`, so enumerating or logging the root never
+    /// throws.
     fn require_host(&self) -> JSResult<()> {
         if self.host_runtime {
             return Ok(());
@@ -181,13 +193,11 @@ impl JSAutomation {
     /// [`JSAutomation::lxapp`].
     #[js_method(getter, enumerable)]
     fn lxapps(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         Ok(Class::lookup::<host::JSLxAppManager>(&ctx)?.instance(host::JSLxAppManager::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn browser(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         Ok(Class::lookup::<host::JSBrowserDriver>(&ctx)?.instance(host::JSBrowserDriver::new()))
     }
 
@@ -195,7 +205,6 @@ impl JSAutomation {
     /// not an lxapp-facing shell customization API.
     #[js_method(getter, enumerable)]
     fn shell(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         Ok(Class::lookup::<shell::JSShellDriver>(&ctx)?.instance(shell::JSShellDriver::new()))
     }
 
@@ -204,7 +213,6 @@ impl JSAutomation {
     /// trusted host automation runtime or an explicitly enabled dev host.
     #[js_method(getter, enumerable)]
     fn desktop(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         #[cfg(feature = "desktop")]
         {
             Ok(Class::lookup::<desktop::JSDesktopDriver>(&ctx)?
@@ -222,14 +230,12 @@ impl JSAutomation {
     /// terminal settings API.
     #[js_method(getter, enumerable)]
     fn terminal(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         Ok(Class::lookup::<terminal::JSTerminalDriver>(&ctx)?
             .instance(terminal::JSTerminalDriver::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn device(&self, ctx: JSContext) -> JSResult<JSObject> {
-        self.require_host()?;
         Ok(Class::lookup::<host::JSDeviceDriver>(&ctx)?.instance(host::JSDeviceDriver::new()))
     }
 }

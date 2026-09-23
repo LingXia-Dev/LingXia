@@ -114,7 +114,8 @@ impl JSLxAppManager {
     /// Inject an App Link (`lxdev app applink`). Resolves when accepted, not
     /// when navigation finishes.
     #[js_method]
-    async fn applink(&self, _ctx: JSContext, options: ApplinkOpt) -> JSResult<JSApplinkResult> {
+    async fn applink(&self, ctx: JSContext, options: ApplinkOpt) -> JSResult<JSApplinkResult> {
+        require_host_context(&ctx)?;
         let url = options.url.trim();
         if url.is_empty() {
             return Err(auto_err("url must not be empty"));
@@ -603,8 +604,11 @@ impl JSBrowserDriver {
             lingxia_browser::evaluate_javascript(&tab, &options.js),
         )
         .await
-        .map_err(|_| auto_err("browser eval timed out"))?
-        .map_err(|err| auto_err(err.to_string()))?;
+        .map_err(|_| crate::error::coded(crate::error::E_EVAL_TIMEOUT, "browser eval timed out"))?
+        .map_err(|err| {
+            let message = err.to_string();
+            crate::error::coded(crate::error::eval_code_for(&message), message)
+        })?;
         match browser_wait_after_action(&tab, armed, options.complete.unwrap_or(false), timeout)
             .await?
         {
@@ -750,7 +754,6 @@ impl JSBrowserDriver {
 
     #[js_method(getter, enumerable)]
     fn cookies(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSBrowserCookies>(&ctx)?.instance(JSBrowserCookies::new()))
     }
 }

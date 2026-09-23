@@ -38,13 +38,26 @@ fn normalize_surface_layout_keys(value: &mut serde_json::Value) {
 #[js_class(clone)]
 pub(crate) struct JSLxAppDriver {
     lxapp: Weak<LxApp>,
+    appid: Arc<str>,
 }
 
 impl JSLxAppDriver {
     pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
         Self {
             lxapp: Arc::downgrade(lxapp),
+            appid: Arc::from(lxapp.appid.as_str()),
         }
+    }
+}
+
+/// The code for a failed Logic evaluation: a script that threw is
+/// `E_EVAL_SCRIPT`; a runtime that could not run it keeps its own code.
+fn logic_eval_code(err: &lxapp::LxAppError) -> &'static str {
+    match err {
+        lxapp::LxAppError::RongJS(_) | lxapp::LxAppError::RongJSHost { .. } => {
+            crate::error::E_EVAL_SCRIPT
+        }
+        other => crate::error::code_for(&other.to_string()),
     }
 }
 
@@ -77,16 +90,23 @@ impl JSLxAppDriver {
         .into())
     }
 
+    /// Reading `page`/`nav` never throws; their methods check the calling
+    /// context and reject with `E_AUTOMATION_PRIVILEGE` when it may not drive
+    /// this lxapp.
     #[js_method(getter, enumerable)]
     fn page(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        Ok(Class::lookup::<page::JSPageDriver>(&ctx)?.instance(page::JSPageDriver::new(&app)))
+        Ok(
+            Class::lookup::<page::JSPageDriver>(&ctx)?.instance(page::JSPageDriver::new(
+                self.lxapp.clone(),
+                self.appid.clone(),
+            )),
+        )
     }
 
     #[js_method(getter, enumerable)]
     fn nav(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        Ok(Class::lookup::<nav::JSNavDriver>(&ctx)?.instance(nav::JSNavDriver::new(&app)))
+        Ok(Class::lookup::<nav::JSNavDriver>(&ctx)?
+            .instance(nav::JSNavDriver::new(self.lxapp.clone())))
     }
 
     /// Test-only routing of this lxapp's Logic `fetch`, scoped to the host
@@ -156,8 +176,8 @@ impl JSLxAppDriver {
         };
         let value = tokio::time::timeout(timeout, evaluation)
             .await
-            .map_err(|_| crate::auto_err("lxapp eval timed out"))?
-            .map_err(|err| crate::auto_err(err.to_string()))?;
+            .map_err(|_| crate::error::coded(crate::error::E_EVAL_TIMEOUT, "lxapp eval timed out"))?
+            .map_err(|err| crate::error::coded(logic_eval_code(&err), err.to_string()))?;
         json_to_js(&ctx, &value)
     }
 }
