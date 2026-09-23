@@ -84,8 +84,11 @@ windows:
     Assert ((Read-Report) -contains 'ARGS=hello|two words') 'App arguments changed'
     $registry = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\$identity"
     Assert ((Get-ItemProperty $registry).DisplayVersion -eq '1.0.0') 'Uninstall registration missing'
-    $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) "LingXia Packaging Smoke ($identity).lnk"
+    # Shortcuts carry the bare product name; the installer records it for upgrades.
+    $shortcut = Join-Path ([Environment]::GetFolderPath('Programs')) 'LingXia Packaging Smoke.lnk'
     Assert (Test-Path $shortcut) 'Start Menu shortcut missing'
+    Assert (-not (Test-Path (Join-Path ([Environment]::GetFolderPath('Programs')) "LingXia Packaging Smoke ($identity).lnk"))) 'Legacy suffixed shortcut was created'
+    Assert ((Get-ItemProperty "HKCU:\Software\LingXia\Installations\$identity").ShortcutName -eq 'LingXia Packaging Smoke') 'Shortcut name was not recorded'
 
     # A live image must block replacement before staging starts.
     $env:LINGXIA_SMOKE_WAIT_MS = '30000'
