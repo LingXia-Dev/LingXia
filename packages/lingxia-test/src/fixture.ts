@@ -9,6 +9,7 @@ import {
 import { formatValue, truncate } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import { rememberInline } from "./report.js";
+import { NetworkScope, wrapNetwork } from "./network.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
@@ -79,6 +80,7 @@ export class LiveFixture implements Fixture {
   failurePhase: FailurePhase | null = null;
   private readonly stepStack: StepRecord[] = [];
   private rawApp: LxAppDriver;
+  private readonly networkScope = new NetworkScope();
 
   constructor(
     readonly specId: string,
@@ -448,10 +450,13 @@ export class LiveFixture implements Fixture {
   }
 
   private wrapApp(driver: LxAppDriver): TestApp {
+    const fixture = this;
     const page = this.wrapPage(driver.page);
     return {
       page,
       nav: guardObject(landingNav(driver.nav), this, "nav."),
+      // Lazy: a host without test routing must not break `t.app` itself.
+      get network() { return wrapNetwork(driver.network, fixture, fixture.networkScope); },
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),

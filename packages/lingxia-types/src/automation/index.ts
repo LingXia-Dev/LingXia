@@ -556,10 +556,96 @@ export interface SurfaceLayoutSnapshot {
   tree?: SurfaceLayoutTree;
 }
 
+// ======================= test network routing =======================
+
+/**
+ * Which Logic `fetch` requests a route handles: a URL glob over the whole URL
+ * (`**` any characters, `*` any except `/`, `{a,b}` alternatives; `?` is
+ * literal), a `RegExp` searched like `RegExp.test` (Rust regex syntax: no
+ * lookaround or backreferences), or either plus a method and a match budget.
+ */
+export type NetworkRoutePattern =
+  | string
+  | RegExp
+  | {
+    url: string | RegExp;
+    /** Case-insensitive HTTP method; omit or `'*'` for any. */
+    method?: string;
+    /** Remove the route after this many matched requests. */
+    times?: number;
+  };
+
+/** Answer the request without touching the network. */
+export interface NetworkRouteFulfill {
+  /** 200..=599. Default 200. */
+  status?: number;
+  statusText?: string;
+  headers?: Record<string, string>;
+  /** A string is sent verbatim; any other JSON value is serialized as JSON. */
+  body?: unknown;
+  /** Serialized as the JSON body; implies `content-type: application/json`. */
+  json?: unknown;
+  contentType?: string;
+}
+
+/** Reject the `fetch` like a transport failure (`TypeError: fetch failed`). */
+export interface NetworkRouteAbort {
+  /** Reason recorded in the error's `data.detail`, e.g. `'failed'`. */
+  abort: string | true;
+}
+
+/** Let the request reach the network, shadowing older matching routes. */
+export interface NetworkRouteContinue {
+  continue: true;
+}
+
+export type NetworkRouteHandler = NetworkRouteFulfill | NetworkRouteAbort | NetworkRouteContinue;
+
+/** One request a route handled. */
+export interface NetworkRouteRequest {
+  routeId: number;
+  /** The route's glob or `/source/flags`. */
+  pattern: string;
+  /** Upper-case method. */
+  method: string;
+  url: string;
+  action: 'fulfill' | 'abort' | 'continue';
+  /** Fulfilled status; `null` for abort/continue. */
+  status: number | null;
+  /** Epoch milliseconds. */
+  timestamp: number;
+}
+
+export interface NetworkRoute {
+  readonly id: number;
+  readonly pattern: string;
+  /** Resolves `false` when the route already expired or was removed. */
+  unroute(): Promise<boolean>;
+  requests(): Promise<NetworkRouteRequest[]>;
+}
+
+/**
+ * Test-only routing of the selected lxapp's Logic `fetch`. Available only in
+ * a host automation run (`lxdev test`); every route is removed when that run
+ * ends. The newest matching route handles a request; unmatched requests are
+ * untouched. A fulfillment never answers a host the app's network policy
+ * refuses — the request goes to the real `fetch`, which rejects it.
+ * WebView page requests are not routed.
+ */
+export interface NetworkDriver {
+  route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<NetworkRoute>;
+  /** Remove every route this run installed for the app; resolves the count. */
+  unrouteAll(): Promise<number>;
+  /** Requests this run's routes handled for the app, oldest first. */
+  requests(): Promise<NetworkRouteRequest[]>;
+}
+
 /** Capability for one selected running lxapp. */
 export interface LxAppDriver {
   readonly page: PageDriver;
   readonly nav: NavDriver;
+  /** Test-only Logic `fetch` routing, scoped to the running automation. */
+  readonly network: NetworkDriver;
   /** Complete runtime snapshot of the selected lxapp. */
   info(): Promise<LxAppRuntimeInfo>;
   /** Configured pages of the selected lxapp. */
