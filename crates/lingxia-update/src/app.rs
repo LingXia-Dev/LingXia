@@ -353,6 +353,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: Some(TARGET_ID.to_string()),
             lingxia_server: None,
+            lingxia_servers: Default::default(),
             env: AppEnv::Prod,
             home_app_id: String::new(),
             home_app_version: String::new(),

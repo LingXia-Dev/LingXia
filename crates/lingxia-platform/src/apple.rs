@@ -6,6 +6,8 @@ mod app;
 #[cfg(all(target_os = "macos", not(test)))]
 pub(crate) mod banner;
 mod clipboard;
+#[cfg(any(target_os = "ios", target_os = "macos"))]
+mod dev_service_mark;
 mod device;
 mod ffi;
 

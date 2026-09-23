@@ -347,6 +347,12 @@ declare module 'liblingxia.so' {
   export function getCurrentLxapp(): CurrentLxApp;
 
   /**
+   * True only when this process is a prod build talking to the dev service.
+   * Hosts draw a non-interactive status-bar label from this.
+   */
+  export function devServiceBanner(): boolean;
+
+  /**
    * Get runtime session id for a specific LxApp.
    * Returns 0 when not available.
    */

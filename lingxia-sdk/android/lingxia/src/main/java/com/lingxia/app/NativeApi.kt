@@ -116,6 +116,13 @@ internal object NativeApi {
     external fun splashMinDurationMs(): Long
 
     /**
+     * True only when this process is a prod build whose service env is dev.
+     * The shell uses it to draw the DEV chip. A dev build is always false.
+     */
+    @JvmStatic
+    external fun devServiceBanner(): Boolean
+
+    /**
      * The host-declared page floor for one appearance, as `#RRGGBB`, or an
      * empty string when the host declared none. This is the colour the lxapp's
      * own CSS paints its page with; native chrome that borders the page has to

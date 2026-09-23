@@ -1,4 +1,5 @@
 import { hilog } from '@kit.PerformanceAnalysisKit';
+import { DevServiceMarkWindow } from './DevServiceMarkWindow';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { image } from '@kit.ImageKit';
 import { LxLog } from '../app/LxLog';
@@ -7,7 +8,7 @@ import { LxApp } from './LxApp';
 import { LxAppContainer } from './LxAppContainer';
 import { SplashResources } from './SplashOverlay';
 import { pauseAllComponentsByAppId } from './WebViewBridge';
-import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace } from 'liblingxia.so';
+import { onLxappOpened, onLxappClosed, getTabBar, TabBarItem, TabBarState, getCurrentLxapp, CurrentLxApp, onLxappEvent, UiEventType, splashMarkLaunchFace, devServiceBanner } from 'liblingxia.so';
 import { ToastManager } from './APIs/LxAppToast';
 import { ModalManager } from './APIs/LxAppModal';
 import { PickerManager } from './APIs/LxAppPicker';
@@ -60,6 +61,8 @@ export struct LxAppNavigation {
   @State homeAppId: string = ''
   @State homeAppPath: string = ''
   @State errorMessage: string = ''
+  // Prod build on the dev service. A corner chip, never a control.
+  @State private devServiceMark: boolean = false
 
   // Splash: the launch face. Rendered as this component's very first frame —
   // before the runtime boots — so the OS start window exits straight onto
@@ -350,6 +353,7 @@ export struct LxAppNavigation {
   }
 
   private async initializeLxApp(): Promise<void> {
+    this.refreshDevServiceMark();
     try {
       const instance = LxApp.getInstance();
       const homeAppId = instance.getHomeAppId();
@@ -375,6 +379,19 @@ export struct LxAppNavigation {
     } catch (error) {
       this.errorMessage = `Initialization error: ${error}`;
       LxLog.e(TAG, `Initialization error: ${error}`);
+    }
+  }
+
+  private refreshDevServiceMark(): void {
+    try {
+      this.devServiceMark = devServiceBanner();
+    } catch (error) {
+      this.devServiceMark = false;
+      LxLog.e(TAG, `dev service mark failed: ${error}`);
+      return;
+    }
+    if (this.devServiceMark) {
+      DevServiceMarkWindow.open();
     }
   }
 
@@ -720,6 +737,7 @@ export struct LxAppNavigation {
         .expandSafeArea([SafeAreaType.SYSTEM, SafeAreaType.CUTOUT], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .zIndex(20000)
       }
+
     }
     .width('100%')
     .height('100%')

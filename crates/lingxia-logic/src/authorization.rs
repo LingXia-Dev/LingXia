@@ -7,6 +7,8 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum LogicRoute {
     AppExit,
+    AppGetServiceEnv,
+    AppToggleServiceEnv,
     AppSetBadge,
     AppCacheSize,
     AppCacheClear,
@@ -76,6 +78,8 @@ pub(crate) enum LogicRoute {
 impl LogicRoute {
     pub(crate) const ALL: &'static [Self] = &[
         Self::AppExit,
+        Self::AppGetServiceEnv,
+        Self::AppToggleServiceEnv,
         Self::AppSetBadge,
         Self::AppCacheSize,
         Self::AppCacheClear,
@@ -151,6 +155,8 @@ impl LogicRoute {
     pub(crate) const fn audience(self) -> RouteAudience {
         match self {
             Self::AppExit
+            | Self::AppGetServiceEnv
+            | Self::AppToggleServiceEnv
             | Self::AppSetBadge
             | Self::AppCacheSize
             | Self::AppCacheClear
@@ -209,6 +215,8 @@ impl LogicRoute {
     pub(crate) const fn name(self) -> &'static str {
         match self {
             Self::AppExit => "lx.host.exit",
+            Self::AppGetServiceEnv => "lx.host.getServiceEnv",
+            Self::AppToggleServiceEnv => "lx.host.toggleServiceEnv",
             Self::AppSetBadge => "lx.host.setBadge",
             Self::AppCacheSize => "lx.host.cache.size",
             Self::AppCacheClear => "lx.host.cache.clear",

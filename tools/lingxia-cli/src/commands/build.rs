@@ -835,7 +835,15 @@ pub(crate) fn resolve_build_env(
         .map(crate::config::AppEnv::parse_cli)
         .transpose()?
         .unwrap_or(crate::config::AppEnv::Dev);
-    config.resolve_env(version)
+    let resolved = config.resolve_env(version)?;
+    if resolved.lingxia_server.trim().is_empty() {
+        return Err(anyhow!(
+            "app.lingxiaServer must configure a {} URL to build --env {}",
+            version.as_str(),
+            version.as_str()
+        ));
+    }
+    Ok(resolved)
 }
 
 /// The single Rust crate directly under a standalone SPM project (the native
@@ -1102,6 +1110,36 @@ mod tests {
         assert_eq!(prod.effective_package_id_suffix(), None);
         assert!(resolve_build_env(&config, Some("release")).is_err());
         assert!(resolve_build_env(&config, Some("preview")).is_err());
+    }
+
+    #[test]
+    fn build_requires_a_server_for_the_selected_env() {
+        use crate::config::{LingxiaServer, PerEnvServer};
+
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.app.as_mut().unwrap().lingxia_server = Some(LingxiaServer::PerEnv(PerEnvServer {
+            dev: Some("https://dev.example.com".into()),
+            prod: None,
+        }));
+        assert!(resolve_build_env(&config, Some("dev")).is_ok());
+        let error = resolve_build_env(&config, Some("prod"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("prod URL"), "{error}");
+
+        config.app.as_mut().unwrap().lingxia_server = Some(LingxiaServer::PerEnv(PerEnvServer {
+            dev: None,
+            prod: Some("https://prod.example.com".into()),
+        }));
+        assert!(resolve_build_env(&config, Some("prod")).is_ok());
+        let error = resolve_build_env(&config, Some("dev"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("dev URL"), "{error}");
+
+        config.app.as_mut().unwrap().lingxia_server = None;
+        assert!(resolve_build_env(&config, Some("dev")).is_err());
+        assert!(resolve_build_env(&config, Some("prod")).is_err());
     }
 
     #[test]

@@ -797,6 +797,12 @@ pub fn on_pushlink_received(url: String, trigger: i32) -> i32 {
     lingxia_service::applink::deliver(&url)
 }
 
+/// Prod build running the dev service. The host draws a non-interactive label.
+#[napi]
+pub fn dev_service_banner() -> bool {
+    lingxia_app_context::dev_service_banner()
+}
+
 /// Get current active LxApp ID and path from Rust stack
 #[napi]
 fn get_current_lxapp() -> CurrentLxApp {

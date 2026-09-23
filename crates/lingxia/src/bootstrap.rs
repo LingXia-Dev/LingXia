@@ -318,6 +318,11 @@ pub(crate) fn init_with_platform(
     // Global runtime state begins only after static validation succeeds.
     crate::runtime::set_platform(runtime.clone());
     crate::app::set_data_dir(runtime.app_data_dir());
+    if let Err(err) =
+        lingxia_app_context::service_env::install(&runtime.app_data_dir(), &app_config)
+    {
+        log::warn!("service env resolution failed ({err}); using build env");
+    }
     seed_display_language(&runtime.app_data_dir(), runtime.get_system_locale());
     // Before any lxapp exists: the home app resolves `auto` once while loading
     // its config and bakes the answer into its document-start script, so a

@@ -144,9 +144,11 @@ const HOST_APP_API = [
   'env',
   'exit',
   'getBaseInfo',
+  'getServiceEnv',
   'notification',
   'screenshot',
   'setBadge',
+  'toggleServiceEnv',
 ] as const;
 // `autostart`, `banner`, `control`, `cache`, and `notification` are injected
 // only where they apply, so a runtime walk of `lx.host` must not require them.

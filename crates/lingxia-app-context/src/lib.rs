@@ -9,7 +9,14 @@ use thiserror::Error;
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 const APP_STATE_DIR: &str = "app_state";
 
+pub mod service_env;
 pub mod update;
+pub use service_env::{
+    ServiceEnvError, ServiceEnvSnapshot, ServiceEnvSwitch, build_lingxia_server,
+    can_toggle_service_env, dev_service_banner, prepare_restore, prepare_switch, prepare_toggle,
+    service_app_link_hosts, service_env, service_lingxia_server, snapshot as service_env_snapshot,
+    toggle_target,
+};
 pub use update::UpdateChannel;
 
 #[derive(Debug, Error)]
@@ -43,6 +50,15 @@ impl AppEnv {
         match self {
             Self::Dev => "dev",
             Self::Prod => "prod",
+        }
+    }
+
+    /// Parse a host env name. Unknown values are `None`.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim() {
+            "dev" => Some(Self::Dev),
+            "prod" => Some(Self::Prod),
+            _ => None,
         }
     }
 
@@ -323,6 +339,15 @@ pub struct AppConfig {
     #[serde(rename = "lingxiaServer", default)]
     pub lingxia_server: Option<String>,
 
+    /// Switchable service endpoints retained in every build. Keys are `dev` /
+    /// `prod`. The build-selected default stays in [`Self::lingxia_server`].
+    #[serde(
+        rename = "lingxiaServers",
+        default,
+        skip_serializing_if = "LingxiaServers::is_empty"
+    )]
+    pub lingxia_servers: LingxiaServers,
+
     /// The environment this build was produced for. Defaults to [`AppEnv::Prod`]
     /// when the field is missing.
     #[serde(rename = "env", default)]
@@ -420,6 +445,37 @@ pub struct AppConfig {
         skip_serializing_if = "BTreeMap::is_empty"
     )]
     pub store_listing_ids: BTreeMap<String, String>,
+}
+
+/// Host-configured service addresses that a prod build may switch between.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct LingxiaServers {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dev: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prod: Option<String>,
+}
+
+impl LingxiaServers {
+    pub fn is_empty(&self) -> bool {
+        self.get(AppEnv::Dev).is_none() && self.get(AppEnv::Prod).is_none()
+    }
+
+    pub fn get(&self, env: AppEnv) -> Option<&str> {
+        let raw = match env {
+            AppEnv::Dev => self.dev.as_deref(),
+            AppEnv::Prod => self.prod.as_deref(),
+        }?;
+        let trimmed = raw.trim();
+        (!trimmed.is_empty()).then_some(trimmed)
+    }
+
+    pub fn available(&self) -> Vec<AppEnv> {
+        [AppEnv::Dev, AppEnv::Prod]
+            .into_iter()
+            .filter(|env| self.get(*env).is_some())
+            .collect()
+    }
 }
 
 /// The `capabilities:` section, shared verbatim between the CLI (parsing
@@ -523,10 +579,41 @@ impl CapabilitiesConfig {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, Default)]
 pub struct AppLinksConfig {
+    /// Build-env hosts. Install-time signing reads this list.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hosts: Vec<String>,
+    /// Every configured env, so the next launch can follow the service env.
+    /// Absent on packages built before the map existed; those keep [`Self::hosts`].
+    #[serde(
+        default,
+        rename = "hostsByEnv",
+        skip_serializing_if = "AppLinkHostsByEnv::is_empty"
+    )]
+    pub hosts_by_env: AppLinkHostsByEnv,
+}
+
+/// Per-env App Link hosts retained in the package, same shape as [`LingxiaServers`].
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub struct AppLinkHostsByEnv {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dev: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prod: Option<Vec<String>>,
+}
+
+impl AppLinkHostsByEnv {
+    pub fn is_empty(&self) -> bool {
+        self.dev.as_ref().is_none_or(Vec::is_empty) && self.prod.as_ref().is_none_or(Vec::is_empty)
+    }
+
+    pub fn get(&self, env: AppEnv) -> Option<&[String]> {
+        match env {
+            AppEnv::Dev => self.dev.as_deref(),
+            AppEnv::Prod => self.prod.as_deref(),
+        }
+    }
 }
 
 /// Runtime half of `splash:`. Images and colors are platform resources; only
@@ -1291,6 +1378,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: Some("lingxia".to_string()),
             lingxia_server: None,
+            lingxia_servers: Default::default(),
             env: super::AppEnv::Prod,
             home_app_id: "home".to_string(),
             home_app_version: "1.0.0".to_string(),
@@ -1319,6 +1407,36 @@ mod tests {
         assert!(set_app_config(cfg).is_ok());
         let err = set_app_config(test_config("Other")).unwrap_err();
         assert!(matches!(err, AppContextError::InvalidConfig(_)));
+    }
+
+    #[test]
+    fn parse_and_validate_reads_lingxia_servers() {
+        let config = AppConfig::parse_and_validate(
+            r#"{
+                "productName": "Demo",
+                "productVersion": "1.0.0",
+                "env": "prod",
+                "lingxiaServer": "https://prod.example",
+                "lingxiaServers": {
+                    "dev": "https://dev.example",
+                    "prod": "https://prod.example"
+                }
+            }"#,
+        )
+        .expect("app.json with lingxiaServers");
+        assert_eq!(config.env, super::AppEnv::Prod);
+        assert_eq!(
+            config.lingxia_server.as_deref(),
+            Some("https://prod.example")
+        );
+        assert_eq!(
+            config.lingxia_servers.get(super::AppEnv::Dev),
+            Some("https://dev.example")
+        );
+        assert_eq!(
+            config.lingxia_servers.get(super::AppEnv::Prod),
+            Some("https://prod.example")
+        );
     }
 
     #[test]

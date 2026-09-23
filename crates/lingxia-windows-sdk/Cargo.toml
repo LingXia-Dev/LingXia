@@ -41,6 +41,7 @@ components = [
 runtime = [
     "components",
     "dep:lingxia",
+    "dep:lingxia-app-context",
     "dep:lingxia-surface",
     "dep:resvg",
     "dep:tiny-skia",

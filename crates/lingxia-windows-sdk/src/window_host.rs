@@ -1172,6 +1172,10 @@ pub fn present_webview_as_overlay(
         let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
         let _ = WindowsAndMessaging::SetForegroundWindow(hwnd);
     }
+    #[cfg(feature = "runtime")]
+    if let Some(owner) = owner {
+        crate::dev_service_mark::raise(owner);
+    }
     handler.set_content_visible(true)?;
     set_window_handle(webtag.key(), hwnd);
     set_host_active_webtag(hwnd, webtag.key());
@@ -1688,6 +1692,8 @@ fn raise_floating_overlays(owner: HWND) {
             }
         }
     }
+    #[cfg(feature = "runtime")]
+    crate::dev_service_mark::raise(owner);
 }
 
 /// Compact-width breakpoint below which page surfaces drill in full-screen.
@@ -1753,6 +1759,8 @@ fn present_webview_fullscreen_drill(
         .map_err(|err| WebViewError::WebView(format!("SetWindowPos failed: {err}")))?;
         let _ = WindowsAndMessaging::BringWindowToTop(hwnd);
     }
+    #[cfg(feature = "runtime")]
+    crate::dev_service_mark::raise(owner);
     handler.set_content_visible(true)?;
     set_window_handle(webtag.key(), hwnd);
     set_host_active_webtag(hwnd, webtag.key());
@@ -9323,6 +9331,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 #[cfg(feature = "shell-chrome")]
                 sync_chrome_overlays(hwnd, active_webtag_key_for_window(hwnd).as_deref());
+                #[cfg(feature = "runtime")]
+                crate::dev_service_mark::sync(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ACTIVATE => {
@@ -9387,6 +9397,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 }
                 #[cfg(feature = "shell-chrome")]
                 sync_chrome_overlays(hwnd, active_webtag_key_for_window(hwnd).as_deref());
+                #[cfg(feature = "runtime")]
+                crate::dev_service_mark::sync(hwnd);
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
@@ -9605,6 +9617,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_DESTROY => {
+                #[cfg(feature = "runtime")]
+                crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]
@@ -9619,6 +9633,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
             }
             WindowsAndMessaging::WM_NCDESTROY => {
                 let _ = end_window_resize_drag(hwnd, false);
+                #[cfg(feature = "runtime")]
+                crate::dev_service_mark::destroy(hwnd);
                 #[cfg(feature = "shell-chrome")]
                 destroy_transparent_tabbar_overlay(hwnd);
                 #[cfg(feature = "shell-chrome")]

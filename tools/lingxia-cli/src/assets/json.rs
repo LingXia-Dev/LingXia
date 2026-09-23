@@ -11,11 +11,13 @@ use super::ui::effective_ui_config;
 
 /// Build the runtime `app.json` for the host app.
 ///
-/// `resolved_env` is the single source of truth for the active environment:
-/// - `lingxiaServer` is taken from the resolved environment.
+/// `resolved_env` is the build environment:
+/// - `lingxiaServer` is the build-selected default URL.
+/// - `lingxiaServers` retains every configured env so a prod build can switch.
 /// - `lingxiaId` is emitted verbatim (env-independent).
 /// - `env` is always emitted (defaults to `prod`).
-/// - `appLinks.hosts` is the resolved list for this env (omitted when empty).
+/// - `appLinks.hosts` is the build-env list. Signing reads this list.
+/// - `appLinks.hostsByEnv` retains every configured env, like `lingxiaServers`.
 pub(super) fn build_app_json_from_config(
     config: &LingXiaConfig,
     home_bundle: Option<&PreparedResourceBundle>,
@@ -49,6 +51,9 @@ pub(super) fn build_app_json_from_config(
             "lingxiaServer".to_string(),
             serde_json::json!(lingxia_server),
         );
+    }
+    if let Some(servers) = switchable_lingxia_servers(config) {
+        obj.insert("lingxiaServers".to_string(), servers);
     }
     if let Some(lingxia_id) = app.lingxia_id.as_deref().filter(|s| !s.is_empty()) {
         // Verbatim: the env suffix is package-id only, never lingxiaId.
@@ -93,11 +98,8 @@ pub(super) fn build_app_json_from_config(
             );
         }
     }
-    if !resolved_env.app_link_hosts.is_empty() {
-        obj.insert(
-            "appLinks".to_string(),
-            serde_json::json!({ "hosts": resolved_env.app_link_hosts }),
-        );
+    if let Some(app_links) = app_links_json(config, resolved_env) {
+        obj.insert("appLinks".to_string(), app_links);
     }
     if let Some(capabilities) = config.capabilities.as_ref() {
         obj.insert(
@@ -154,6 +156,79 @@ pub(super) fn build_app_json_from_config(
     Ok(serde_json::to_string_pretty(&serde_json::Value::Object(
         obj,
     ))?)
+}
+
+fn app_links_json(config: &LingXiaConfig, resolved_env: &ResolvedEnv) -> Option<serde_json::Value> {
+    use crate::config::AppLinkHosts;
+
+    let hosts = &config.app_links.as_ref()?.hosts;
+    let mut by_env = serde_json::Map::new();
+    let mut insert = |key: &str, list: &[String]| {
+        let list: Vec<&str> = list
+            .iter()
+            .map(|host| host.trim())
+            .filter(|host| !host.is_empty())
+            .collect();
+        if !list.is_empty() {
+            by_env.insert(key.to_string(), serde_json::json!(list));
+        }
+    };
+    match hosts {
+        AppLinkHosts::Single(list) => {
+            insert("dev", list);
+            insert("prod", list);
+        }
+        AppLinkHosts::PerEnv(per) => {
+            if let Some(dev) = per.dev.as_deref() {
+                insert("dev", dev);
+            }
+            if let Some(prod) = per.prod.as_deref() {
+                insert("prod", prod);
+            }
+        }
+    }
+    if resolved_env.app_link_hosts.is_empty() && by_env.is_empty() {
+        return None;
+    }
+    let mut links = serde_json::Map::new();
+    if !resolved_env.app_link_hosts.is_empty() {
+        links.insert(
+            "hosts".to_string(),
+            serde_json::json!(resolved_env.app_link_hosts),
+        );
+    }
+    if !by_env.is_empty() {
+        links.insert("hostsByEnv".to_string(), serde_json::Value::Object(by_env));
+    }
+    Some(serde_json::Value::Object(links))
+}
+
+fn switchable_lingxia_servers(config: &LingXiaConfig) -> Option<serde_json::Value> {
+    use crate::config::LingxiaServer;
+
+    let server = config.app.as_ref()?.lingxia_server.as_ref()?;
+    let mut map = serde_json::Map::new();
+    let mut insert = |key: &str, url: &str| {
+        let url = url.trim();
+        if !url.is_empty() {
+            map.insert(key.to_string(), serde_json::json!(url));
+        }
+    };
+    match server {
+        LingxiaServer::Single(url) => {
+            insert("dev", url);
+            insert("prod", url);
+        }
+        LingxiaServer::PerEnv(per) => {
+            if let Some(dev) = per.dev.as_deref() {
+                insert("dev", dev);
+            }
+            if let Some(prod) = per.prod.as_deref() {
+                insert("prod", prod);
+            }
+        }
+    }
+    (!map.is_empty()).then_some(serde_json::Value::Object(map))
 }
 
 /// Platforms whose store listing cannot be opened at runtime: the channel

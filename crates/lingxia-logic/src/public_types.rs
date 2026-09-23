@@ -975,8 +975,11 @@ rong::js_api! {
         /// Surfaced via {@link HostAppApi.env}. Taken from the `env` field in
         /// the generated `app.json`. Missing `env` is treated as `'prod'`.
         ///
-        /// This is the host build axis: which server, package-id suffix, publish
-        /// token, and self-update endpoint the host uses. It is **not** the
+        /// This is the immutable host build axis: package-id suffix, publish
+        /// token, signed App Link entitlements, and self-update channel.
+        /// In-app App Link hosts follow {@link HostAppApi.getServiceEnv} on
+        /// the next launch. The mutable service environment is
+        /// {@link HostAppApi.toggleServiceEnv}. It is **not** the
         /// lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
         /// `'release' | 'draft'`). Default channel is derived
         /// from env (`dev` → `draft`, `prod` → `release`) and can be

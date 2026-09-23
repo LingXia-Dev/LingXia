@@ -254,6 +254,7 @@ final class UpdateAvailableCard: NSObject {
             // Attach as a child window so the card follows the app on drag and
             // hides/miniaturizes with it instead of floating free.
             window.addChildWindow(panel, ordered: .above)
+            DevServiceMarkWindow.noteChildWindow(of: window)
         } else {
             panel.center()
             panel.level = .floating

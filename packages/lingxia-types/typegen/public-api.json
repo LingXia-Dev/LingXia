@@ -81,6 +81,8 @@
     "GetVideoInfoOptions",
     "HostAppApi",
     "HostAppEnv",
+    "HostServiceEnvState",
+    "HostServiceEnvSwitchResult",
     "HostAppUpdateApplyStage",
     "HostAppUpdateCheckResult",
     "HostAppUpdateEvent",

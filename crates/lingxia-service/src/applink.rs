@@ -198,18 +198,11 @@ fn runner_process() -> bool {
 }
 
 fn host_allowed(host: &str) -> bool {
-    let Some(config) = lingxia_app_context::app_config() else {
+    if lingxia_app_context::app_config().is_none() {
         return true;
-    };
-    host_allowed_for(
-        host,
-        config
-            .app_links
-            .as_ref()
-            .map(|links| links.hosts.as_slice())
-            .unwrap_or(&[]),
-        runner_process(),
-    )
+    }
+    let hosts = lingxia_app_context::service_app_link_hosts();
+    host_allowed_for(host, &hosts, runner_process())
 }
 
 /// Product hosts must match `appLinks.hosts`. The Runner is not a product and
