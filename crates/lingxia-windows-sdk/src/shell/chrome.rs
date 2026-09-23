@@ -5,6 +5,7 @@
 //! file is pure product policy registered through the
 //! [`WindowsChromeRenderer`] seam.
 
+use crate::dpi::px;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -1472,11 +1473,12 @@ pub(crate) fn collapsed_sidebar_tooltip(
         w if w > 0 => w,
         _ => text
             .chars()
-            .map(|ch| if ch.is_ascii() { 8 } else { 16 })
+            .map(|ch| if ch.is_ascii() { px(8) } else { px(16) })
             .sum::<i32>(),
     };
-    let max_width = (client.right - client.left - sidebar_rail_tooltip_gap() * 2).clamp(72, 480);
-    let width = (text_width + sidebar_rail_tooltip_padding() * 2 + 4).clamp(72, max_width);
+    let max_width =
+        (client.right - client.left - sidebar_rail_tooltip_gap() * 2).clamp(px(72), px(480));
+    let width = (text_width + sidebar_rail_tooltip_padding() * 2 + px(4)).clamp(px(72), max_width);
     let height = sidebar_rail_tooltip_height();
     let desired_left = match tabbar.position {
         WindowsShellTabBarPosition::Left => tabbar_rect.right + sidebar_rail_tooltip_gap(),

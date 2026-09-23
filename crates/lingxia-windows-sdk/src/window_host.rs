@@ -131,9 +131,15 @@ const PULL_REFRESH_TIMER_ID: usize = 0x5A17;
 #[cfg(feature = "components")]
 const NAV_SLIDE_DURATION_MS: f64 = 300.0;
 const PULL_REFRESH_TIMER_MS: u32 = 120;
-const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
-const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
-const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
+fn pull_refresh_slot_height() -> i32 {
+    crate::dpi::px(42)
+}
+fn pull_refresh_indicator_width() -> i32 {
+    crate::dpi::px(64)
+}
+fn pull_refresh_indicator_height() -> i32 {
+    crate::dpi::px(32)
+}
 fn overlay_margin() -> i32 {
     crate::dpi::px(24)
 }
@@ -780,7 +786,7 @@ fn show_webview_as_attached_panel(
         unsafe {
             let _ = WindowsAndMessaging::GetClientRect(host, &mut client);
         }
-        if client.right - client.left > 0 && client.right - client.left < PHONE_DRILL_MAX_WIDTH {
+        if client.right - client.left > 0 && client.right - client.left < phone_drill_max_width() {
             return present_webview_fullscreen_drill(webtag, &handler, excluded, host);
         }
     }
@@ -1719,7 +1725,9 @@ fn raise_floating_overlays(owner: HWND) {
 }
 
 /// Compact-width breakpoint below which page surfaces drill in full-screen.
-const PHONE_DRILL_MAX_WIDTH: i32 = 600;
+fn phone_drill_max_width() -> i32 {
+    crate::dpi::px(600)
+}
 
 /// Full-screen drill surfaces per host window (`owner -> surface webtag`),
 /// so the transparent tab bar hides underneath them.
@@ -1807,8 +1815,12 @@ fn present_webview_fullscreen_drill(
     Ok(())
 }
 
-const DRILL_BACK_SIZE: i32 = 28;
-const DRILL_BACK_MARGIN: i32 = 12;
+fn drill_back_size() -> i32 {
+    crate::dpi::px(28)
+}
+fn drill_back_margin() -> i32 {
+    crate::dpi::px(12)
+}
 
 /// Floating drill-in back affordance pinned to the surface's top-left, the
 /// phone gesture to dismiss a full-screen surface (macOS runner parity).
@@ -1825,8 +1837,8 @@ fn show_drill_back_button(drill: HWND, webtag_key: String) {
             WS_POPUP,
             0,
             0,
-            DRILL_BACK_SIZE,
-            DRILL_BACK_SIZE,
+            drill_back_size(),
+            drill_back_size(),
             Some(drill),
             None,
             LibraryLoader::GetModuleHandleW(None)
@@ -1844,10 +1856,10 @@ fn show_drill_back_button(drill: HWND, webtag_key: String) {
         let _ = WindowsAndMessaging::SetWindowPos(
             button,
             Some(WindowsAndMessaging::HWND_TOP),
-            rect.left + DRILL_BACK_MARGIN,
-            rect.top + DRILL_BACK_MARGIN,
-            DRILL_BACK_SIZE,
-            DRILL_BACK_SIZE,
+            rect.left + drill_back_margin(),
+            rect.top + drill_back_margin(),
+            drill_back_size(),
+            drill_back_size(),
             WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
@@ -1929,7 +1941,7 @@ unsafe extern "system" fn drill_back_proc(
 
 /// Uploads the back button: a 35%-black circle with a white chevron.
 fn upload_drill_back_button(hwnd: HWND) {
-    let size = DRILL_BACK_SIZE;
+    let size = drill_back_size();
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -2040,8 +2052,12 @@ fn apply_circular_button_alpha(pixels: &mut [u32], size: i32, dim: u32) {
     }
 }
 
-const SURFACE_CLOSE_SIZE: i32 = 32;
-const SURFACE_CLOSE_MARGIN: i32 = 12;
+fn surface_close_size() -> i32 {
+    crate::dpi::px(32)
+}
+fn surface_close_margin() -> i32 {
+    crate::dpi::px(12)
+}
 
 fn show_surface_close_button(surface: HWND, webtag_key: String) {
     if let Some(existing) = SURFACE_CLOSE_BUTTONS
@@ -2066,8 +2082,8 @@ fn show_surface_close_button(surface: HWND, webtag_key: String) {
             WS_POPUP,
             0,
             0,
-            SURFACE_CLOSE_SIZE,
-            SURFACE_CLOSE_SIZE,
+            surface_close_size(),
+            surface_close_size(),
             Some(surface),
             None,
             LibraryLoader::GetModuleHandleW(None)
@@ -2109,10 +2125,10 @@ fn sync_surface_close_button(surface: HWND, button: HWND) {
         let _ = WindowsAndMessaging::SetWindowPos(
             button,
             Some(WindowsAndMessaging::HWND_TOP),
-            rect.right - SURFACE_CLOSE_MARGIN - SURFACE_CLOSE_SIZE,
-            rect.top + SURFACE_CLOSE_MARGIN,
-            SURFACE_CLOSE_SIZE,
-            SURFACE_CLOSE_SIZE,
+            rect.right - surface_close_margin() - surface_close_size(),
+            rect.top + surface_close_margin(),
+            surface_close_size(),
+            surface_close_size(),
             WindowsAndMessaging::SWP_NOACTIVATE | WindowsAndMessaging::SWP_SHOWWINDOW,
         );
     }
@@ -2181,7 +2197,7 @@ fn surface_close_class() -> PCWSTR {
 }
 
 fn upload_surface_close_button(hwnd: HWND) {
-    let size = SURFACE_CLOSE_SIZE;
+    let size = surface_close_size();
     unsafe {
         let screen = GetDC(None);
         if screen.is_invalid() {
@@ -2821,8 +2837,10 @@ fn base_content_rect_for_window(hwnd: HWND, webtag_key: &str) -> RECT {
 }
 
 fn refresh_adjusted_content_rect(webtag_key: &str, mut rect: RECT) -> RECT {
-    if is_pull_refreshing(webtag_key) && rect.bottom - rect.top > PULL_REFRESH_SLOT_HEIGHT + 80 {
-        rect.top = (rect.top + PULL_REFRESH_SLOT_HEIGHT).min(rect.bottom);
+    if is_pull_refreshing(webtag_key)
+        && rect.bottom - rect.top > pull_refresh_slot_height() + crate::dpi::px(80)
+    {
+        rect.top = (rect.top + pull_refresh_slot_height()).min(rect.bottom);
     }
     normalize_rect(rect)
 }
@@ -5275,15 +5293,15 @@ fn paint_pull_refresh_indicator(hdc: HDC, hwnd: HWND, webtag_key: &str) {
 fn pull_refresh_indicator_rect(hwnd: HWND, webtag_key: &str) -> RECT {
     let content = base_content_rect_for_window(hwnd, webtag_key);
     let slot_top = content.top;
-    let slot_bottom = (slot_top + PULL_REFRESH_SLOT_HEIGHT).min(content.bottom);
+    let slot_bottom = (slot_top + pull_refresh_slot_height()).min(content.bottom);
     let center_x = content.left + (content.right - content.left) / 2;
     normalize_rect(RECT {
-        left: center_x - PULL_REFRESH_INDICATOR_WIDTH / 2,
-        top: slot_top + ((slot_bottom - slot_top) - PULL_REFRESH_INDICATOR_HEIGHT) / 2,
-        right: center_x + PULL_REFRESH_INDICATOR_WIDTH / 2,
+        left: center_x - pull_refresh_indicator_width() / 2,
+        top: slot_top + ((slot_bottom - slot_top) - pull_refresh_indicator_height()) / 2,
+        right: center_x + pull_refresh_indicator_width() / 2,
         bottom: slot_top
-            + ((slot_bottom - slot_top) - PULL_REFRESH_INDICATOR_HEIGHT) / 2
-            + PULL_REFRESH_INDICATOR_HEIGHT,
+            + ((slot_bottom - slot_top) - pull_refresh_indicator_height()) / 2
+            + pull_refresh_indicator_height(),
     })
 }
 
@@ -9277,9 +9295,10 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
-        if is_top_level_window(hwnd) {
-            crate::dpi::sync_chrome_scale(hwnd);
-        }
+        // Child windows (drill back, surface close, popups) lay out at their
+        // root's DPI.
+        let root = unsafe { WindowsAndMessaging::GetAncestor(hwnd, WindowsAndMessaging::GA_ROOT) };
+        let _scale = crate::dpi::enter_window_message(if root.0.is_null() { hwnd } else { root });
         match msg {
             WindowsAndMessaging::WM_DPICHANGED => {
                 // The suggested rect keeps the window the same logical size on
@@ -9299,9 +9318,8 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                         )
                     };
                 }
-                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
-                    clear_webtag_content_bounds(&webtag_key);
-                }
+                // The new scale is part of each webtag's bounds key, so the
+                // layout sync re-applies rasterization to every surface.
                 sync_window_layout(hwnd);
                 invalidate_window(hwnd);
                 LRESULT(0)
