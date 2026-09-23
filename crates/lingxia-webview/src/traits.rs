@@ -897,6 +897,11 @@ pub struct NetworkCaptureSnapshot {
 pub struct ClickOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<usize>,
+    /// Dispatch to the element itself, skipping the in-viewport and hit-test
+    /// checks (the element must still exist and be enabled). For content a
+    /// scroll cannot bring under the pointer, such as an overflowing sheet.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -911,6 +916,10 @@ pub struct TypeOptions {
 pub struct FillOptions {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub index: Option<usize>,
+    /// Write through the DOM without the in-viewport check; see
+    /// [`ClickOptions::force`].
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub force: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

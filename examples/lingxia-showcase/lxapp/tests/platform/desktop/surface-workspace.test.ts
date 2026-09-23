@@ -1807,7 +1807,8 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
           page: 'chat',
           css: 'textarea[placeholder="Message..."]',
         });
-        return candidate.exists && candidate.visible && candidate.editable
+        return candidate.exists && candidate.visible && candidate.in_viewport !== false
+          && candidate.editable
           ? candidate
           : undefined;
       } catch (error) {

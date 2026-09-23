@@ -719,6 +719,8 @@ export class LiveFixture implements Fixture {
     const self = {
       toBeVisible: (options: ExpectOptions | undefined) =>
         this.retryLocator(locator, "toBeVisible", inverted, options, inverted ? "not visible" : "visible"),
+      toBeInViewport: (options?: ExpectOptions) =>
+        this.retryLocator(locator, "toBeInViewport", inverted, options, inverted ? "not in viewport" : "in viewport"),
       toBeHidden: (options?: ExpectOptions) => this.retryLocator(locator, "toBeHidden", inverted, options, true),
       toBeAttached: (options?: ExpectOptions) => this.retryLocator(locator, "toBeAttached", inverted, options, true),
       toBeEnabled: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEnabled", inverted, options, true),
@@ -995,6 +997,9 @@ function resolveLocator(locator: Locator, deadline: ActionDeadline, context: () 
 
 function locatorActual(matcher: string, resolved: LocatorResolve | undefined): unknown {
   if (!resolved) return undefined;
+  if (matcher === "toBeInViewport") {
+    return resolved.kind === "unique" ? (resolved.inViewport ? "in viewport" : "outside viewport") : resolved.kind;
+  }
   if (matcher === "toBeHidden") return !resolved.visible;
   if (matcher === "toBeAttached") return resolved.attached;
   if (matcher === "toBeEnabled") return resolved.enabled;
@@ -1031,6 +1036,21 @@ function matchLocator(
         resolved.kind,
         inverted ? "not visible" : "visible",
         `${detail}\nExpected: ${inverted ? "not " : ""}visible\nReceived: ${formatValue(resolved.kind)}`,
+      );
+    }
+    return;
+  }
+  if (matcher === "toBeInViewport") {
+    const pass = resolved.kind === "unique" && resolved.inViewport;
+    if (pass === inverted) {
+      const detail =
+        locator instanceof PageLocator ? locator.missText(resolved) : `resolved to ${resolved.kind}`;
+      const actual = String(locatorActual(matcher, resolved));
+      throw new AssertionError(
+        inverted ? "not.toBeInViewport" : "toBeInViewport",
+        actual,
+        inverted ? "not in viewport" : "in viewport",
+        `${detail}\nExpected: ${inverted ? "not " : ""}in viewport\nReceived: ${formatValue(actual)}`,
       );
     }
     return;

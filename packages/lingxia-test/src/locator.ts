@@ -4,8 +4,10 @@ import { cssEscape, formatValue } from "./format.js";
 import { ActionDeadline, errorCode, isElementRefusal, isPreDispatchPageError, isTransientPageError } from "./deadline.js";
 import { displayLocation } from "./ids.js";
 import type {
+  ActionOptions,
   ExpectOptions,
   Locator,
+  LocatorFilterOptions,
   LocatorOptions,
   LocatorState,
   LocatorWaitOptions,
@@ -21,11 +23,20 @@ export interface QueryMatch {
   count: number;
   index?: number;
   visible?: boolean;
+  /** Rendered and intersecting the viewport; absent from an older runtime. */
+  in_viewport?: boolean;
   text?: string;
   value?: string | null;
   enabled?: boolean;
   editable?: boolean;
-  rect?: { left: number; top: number; width: number; height: number };
+  rect?: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+    viewport_width?: number;
+    viewport_height?: number;
+  };
   items?: QueryMatch[];
 }
 
@@ -37,8 +48,8 @@ export interface PageLike {
     all?: boolean;
     index?: number;
   }): Promise<QueryMatch>;
-  click(options: { css: string; page?: string; index?: number }): Promise<void>;
-  fill(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
+  click(options: { css: string; page?: string; index?: number; force?: boolean }): Promise<void>;
+  fill(options: { css: string; text: string; page?: string; index?: number; force?: boolean }): Promise<void>;
   press?(options: { css: string; key: string; page?: string; index?: number }): Promise<void>;
   type(options: { css: string; text: string; page?: string; index?: number }): Promise<void>;
 }
@@ -54,6 +65,8 @@ export interface LocatorResolve {
   visibleCount: number;
   attached: boolean;
   visible: boolean;
+  /** The unique match is rendered and intersects the viewport. */
+  inViewport: boolean;
   text: string;
   value: string | null;
   index: number;
@@ -61,6 +74,13 @@ export interface LocatorResolve {
   editable?: boolean;
   rect?: QueryMatch["rect"];
   kind: "nothing" | "hidden" | "unique" | "many";
+}
+
+/** Narrowing applied to the raw matches before `nth`/`first`/`last` picks one. */
+export interface LocatorRefine {
+  hasText?: string | RegExp;
+  /** Pick the last match (`.last()`); `LocatorOptions.index` picks from the start. */
+  last?: boolean;
 }
 
 export function testIdSelector(id: string): string {
@@ -78,9 +98,11 @@ export class PageLocator implements Locator {
     private readonly location: SourceLocation,
     private readonly options: LocatorOptions = {},
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
+    private readonly refine: LocatorRefine = {},
   ) {
     this.selector = selector;
     this.options = { ...options };
+    this.refine = { ...refine };
     if (!selector.trim()) throw new TypeError("Locator selector must not be empty");
     if (options.index !== undefined && (!Number.isInteger(options.index) || options.index < 0)) {
       throw new TypeError("Locator index must be a non-negative integer");
@@ -88,29 +110,53 @@ export class PageLocator implements Locator {
   }
 
   nth(index: number): Locator {
-    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location, { ...this.options, index }, this.room);
+    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
+      { ...this.options, index }, this.room, { ...this.refine, last: false });
+  }
+
+  first(): Locator {
+    return this.nth(0);
+  }
+
+  last(): Locator {
+    const { index: _index, ...options } = this.options;
+    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
+      options, this.room, { ...this.refine, last: true });
+  }
+
+  filter(options: LocatorFilterOptions): Locator {
+    const hasText = options?.hasText;
+    if (typeof hasText !== "string" && !(hasText instanceof RegExp)) {
+      throw new TypeError("filter() needs { hasText: string | RegExp }");
+    }
+    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
+      this.options, this.room, { ...this.refine, hasText });
   }
 
   async press(key: string, options?: ExpectOptions): Promise<void> {
     if (!this.page.press) throw new Error("This page driver does not support press");
-    await this.act("press", options, (css, index) => this.page.press!({ ...this.options, css, index, key }));
+    await this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }));
   }
 
-  async click(options?: ExpectOptions): Promise<void> {
-    await this.act("click", options, (css, index) => this.page.click({ ...this.options, css, index }));
+  async click(options?: ActionOptions): Promise<void> {
+    const force = options?.force === true;
+    await this.act("click", options, (css, index) =>
+      this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
   }
 
-  async fill(text: string, options?: ExpectOptions): Promise<void> {
-    await this.act("fill", options, (css, index) => this.page.fill({ ...this.options, css, text, index }));
+  async fill(text: string, options?: ActionOptions): Promise<void> {
+    const force = options?.force === true;
+    await this.act("fill", options, (css, index) =>
+      this.page.fill({ page: this.options.page, css, text, index, ...(force ? { force } : {}) }));
   }
 
   async type(text: string, options?: ExpectOptions): Promise<void> {
-    await this.act("type", options, (css, index) => this.page.type({ ...this.options, css, text, index }));
+    await this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }));
   }
 
   async waitFor(options?: LocatorWaitOptions): Promise<void> {
     const state: LocatorState = options?.state ?? "visible";
-    if (!["attached", "detached", "visible", "hidden"].includes(state)) {
+    if (!["attached", "detached", "visible", "hidden", "inViewport"].includes(state)) {
       throw new TypeError(`Unknown locator state: ${String(state)}`);
     }
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
@@ -144,7 +190,19 @@ export class PageLocator implements Locator {
   }
 
   async query(): Promise<PageQueryResult> {
+    if (this.refined()) {
+      // The driver indexes raw DOM matches; read the narrowed pick's own index.
+      const resolved = await this.resolve();
+      if (resolved.kind === "nothing" || resolved.kind === "many") {
+        return { exists: false, index: 0, count: resolved.count, visible: false, enabled: false, editable: false } as PageQueryResult;
+      }
+      return this.guard(() => this.page.query({ page: this.options.page, css: this.selector, index: resolved.index })) as Promise<PageQueryResult>;
+    }
     return this.guard(() => this.page.query({ ...this.options, css: this.selector })) as Promise<PageQueryResult>;
+  }
+
+  private refined(): boolean {
+    return this.refine.hasText !== undefined || this.refine.last === true;
   }
 
   /**
@@ -156,56 +214,68 @@ export class PageLocator implements Locator {
     const all = await this.guard(() =>
       deadline ? deadline.call("page.query", query, () => this.callContext(verb)) : query(),
     );
-    const matches = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
-    const selected = this.options.index === undefined ? undefined : matches[this.options.index];
-    const items: QueryMatch[] = this.options.index === undefined ? matches : selected ? [{ ...selected, index: this.options.index }] : [];
-    const count = this.options.index === undefined ? (all.count ?? items.length) : items.length;
+    const raw = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
+    // Every match keeps its DOM index: the driver addresses `css` + index.
+    const indexed = raw.map((item, position) => ({ ...item, index: item.index ?? position }));
+    const hasText = this.refine.hasText;
+    const matches = hasText === undefined ? indexed : indexed.filter((item) => textMatches(item.text ?? "", hasText));
+    const pick = this.refine.last ? matches.length - 1 : this.options.index;
+    const picked = pick === undefined ? undefined : matches[pick];
+    const items: QueryMatch[] = pick === undefined ? matches : picked ? [picked] : [];
+    const count = pick !== undefined ? items.length : hasText === undefined ? (all.count ?? items.length) : items.length;
     const visibleItems = items.filter((item) => item.visible);
     const visibleCount = visibleItems.length;
+    let resolved: LocatorResolve;
     if (count === 0) {
-      return {
+      resolved = {
         count: 0,
         visibleCount: 0,
         attached: false,
         visible: false,
+        inViewport: false,
         text: "",
         value: null,
         index: 0,
         kind: "nothing",
       };
-    }
-    if (count > 1) {
-      return { count, visibleCount, attached: true, visible: visibleCount > 0,
+    } else if (count > 1) {
+      resolved = { count, visibleCount, attached: true, visible: visibleCount > 0, inViewport: false,
         text: items.map(item => item.text ?? "").join("\n"), value: null, index: 0, kind: "many" };
-    }
-    if (visibleCount === 0) {
-      return {
+    } else if (visibleCount === 0) {
+      resolved = {
         count,
         visibleCount: 0,
         attached: true,
         visible: false,
+        inViewport: false,
         text: items[0]?.text ?? "",
         value: items[0]?.value ?? null,
         index: items[0]?.index ?? 0,
         enabled: items[0]?.enabled, editable: items[0]?.editable,
         kind: "hidden",
       };
+    } else {
+      const unique = visibleItems[0]!;
+      resolved = {
+        count,
+        visibleCount: 1,
+        attached: true,
+        visible: true,
+        inViewport: inViewport(unique),
+        text: unique.text ?? "",
+        value: unique.value ?? null,
+        index: unique.index ?? items.indexOf(unique),
+        enabled: unique.enabled, editable: unique.editable, rect: unique.rect,
+        kind: "unique",
+      };
     }
-    const unique = visibleItems[0]!;
-    return {
-      count,
-      visibleCount: 1,
-      attached: true,
-      visible: true,
-      text: unique.text ?? "",
-      value: unique.value ?? null,
-      index: unique.index ?? items.indexOf(unique),
-      enabled: unique.enabled, editable: unique.editable, rect: unique.rect,
-      kind: "unique",
-    };
+    return resolved;
   }
 
   missText(resolved: LocatorResolve): string {
+    if (resolved.kind === "unique" && !resolved.inViewport) {
+      return `locator ${formatValue(this.selector)} resolved to a visible element outside the viewport`;
+    }
     if (resolved.kind === "nothing") {
       return `locator ${formatValue(this.selector)} resolved to nothing`;
     }
@@ -219,7 +289,9 @@ export class PageLocator implements Locator {
   }
 
   private target(): string {
-    return `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`;
+    const filter = this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`;
+    const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
+    return `${this.options.page ? this.options.page + " " : ""}${this.selector}${filter}${pick}`;
   }
 
   private where(): string {
@@ -249,9 +321,10 @@ export class PageLocator implements Locator {
 
   private async act(
     verb: string,
-    options: ExpectOptions | undefined,
+    options: ActionOptions | undefined,
     run: (css: string, index: number) => Promise<void>,
   ): Promise<void> {
+    const force = options?.force === true;
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
     const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
@@ -272,12 +345,25 @@ export class PageLocator implements Locator {
           last = await this.resolve(deadline, verb);
           reason = this.missText(last);
           cause = undefined;
-          if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
-            const script = `document.querySelectorAll(${JSON.stringify(this.selector)})[${last.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})`;
-            await this.guard(() => deadline.call("page.eval (scrollIntoView)",
-              () => this.page.eval!({ page: this.options.page, script }), context));
-          }
-          if (last.kind === "unique") {
+          if (force && last.count === 1) {
+            // Forced: attached and enabled are enough; no viewport, stability
+            // or hit-test wait.
+            if (last.enabled === false) reason = "element is disabled";
+            else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
+            else {
+              try {
+                const index = last.index;
+                await this.guard(() => deadline.call(`page.${verb}`, () => run(this.selector, index), context));
+                return;
+              } catch (error) {
+                if (!isElementRefusal(error) && !isPreDispatchPageError(error)) {
+                  throw new DispatchFailure(error);
+                }
+                reason = error instanceof Error ? error.message : String(error);
+                cause = error;
+              }
+            }
+          } else if (last.kind === "unique") {
             const rect = JSON.stringify(last.rect);
             const stable = last.rect === undefined || previousRect === rect;
             previousRect = rect;
@@ -316,7 +402,7 @@ export class PageLocator implements Locator {
         }
         await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
-      throw withCause(new AssertionError(verb, reason, "stable, enabled, unobscured element", [
+      throw withCause(new AssertionError(verb, reason, force ? "attached, enabled element" : "stable, enabled, unobscured element", [
         `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
         reason,
         deadline.clampNote(),
@@ -354,7 +440,28 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
       return resolved.visibleCount === 0;
     case "detached":
       return resolved.kind === "nothing";
+    case "inViewport":
+      return resolved.kind === "unique" && resolved.inViewport;
   }
+}
+
+/** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
+export function textMatches(text: string, expected: string | RegExp): boolean {
+  if (expected instanceof RegExp) {
+    expected.lastIndex = 0;
+    return expected.test(text);
+  }
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalize(text).includes(normalize(expected));
+}
+
+/**
+ * The runtime's `in_viewport`; an older runtime has none, and its `visible`
+ * was already viewport-aware.
+ */
+function inViewport(item: QueryMatch): boolean {
+  if (typeof item.in_viewport === "boolean") return item.in_viewport;
+  return item.visible === true;
 }
 
 export function sleep(ms: number): Promise<void> {

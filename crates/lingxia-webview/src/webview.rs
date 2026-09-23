@@ -1830,7 +1830,10 @@ impl WebView {
     #[cfg(any(
         target_os = "ios",
         target_os = "android",
-        all(feature = "webview-input", target_os = "macos"),
+        all(
+            feature = "webview-input",
+            any(target_os = "macos", target_os = "windows")
+        ),
         all(target_os = "linux", target_env = "ohos")
     ))]
     async fn run_js_action(&self, script: &str) -> Result<(), WebViewInputError> {
@@ -1859,21 +1862,30 @@ impl WebView {
     /// iOS (no `UITouch` synthesis), OpenHarmony, and macOS when the WebView is
     /// detached (AppUI renders pages off-surface). `lx-` custom elements proxy
     /// focus to their native overlay instead of receiving mouse events.
+    ///
+    /// `force` is every platform's forced click: the events go to the element
+    /// itself, so it needs neither the viewport nor the hit test — only an
+    /// existing, enabled element.
     #[cfg(any(
         target_os = "ios",
-        all(feature = "webview-input", target_os = "macos"),
+        target_os = "android",
+        all(
+            feature = "webview-input",
+            any(target_os = "macos", target_os = "windows")
+        ),
         all(target_os = "linux", target_env = "ohos")
     ))]
     pub(crate) async fn click_via_js(
         &self,
         selector: &str,
         index: Option<usize>,
+        force: bool,
     ) -> Result<(), WebViewInputError> {
         let selector_json = serde_json::to_string(selector)
             .map_err(|err| WebViewInputError::Platform(format!("Invalid selector: {err}")))?;
         let idx = index.unwrap_or(0);
         let script = format!(
-            "((sel, i) => {{ \
+            "((sel, i, force) => {{ \
               const els = document.querySelectorAll(sel); \
               if (!els.length || i < 0 || i >= els.length) return {{ ok:false, error:'no match', count:els.length }}; \
               const el = els[i]; \
@@ -1884,9 +1896,9 @@ impl WebView {
               const visible = rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && \
                 rect.top < window.innerHeight && rect.left < window.innerWidth && \
                 style.visibility !== 'hidden' && style.display !== 'none' && Number(style.opacity || '1') !== 0; \
-              if (!visible) return {{ ok:false, error:'not visible', interactable:false, count:els.length }}; \
+              if (!force && !visible) return {{ ok:false, error:'not visible', interactable:false, count:els.length }}; \
               if (disabled) return {{ ok:false, error:'not enabled', interactable:false, count:els.length }}; \
-              const hit = document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2); \
+              const hit = force ? el : document.elementFromPoint(rect.left + rect.width/2, rect.top + rect.height/2); \
               if (!hit || !(hit === el || el.contains(hit))) return {{ ok:false, error:'element is obscured', interactable:false }}; \
               const tag = (el.tagName || '').toLowerCase(); \
               if (tag.indexOf('lx-') === 0) {{ \
@@ -1902,7 +1914,7 @@ impl WebView {
               try {{ el.dispatchEvent(new MouseEvent('mouseup', opts)); }} catch(_e) {{}} \
               try {{ el.dispatchEvent(new MouseEvent('click', opts)); }} catch(_e) {{}} \
               return {{ ok:true, count:els.length }}; \
-            }})({selector_json}, {idx})"
+            }})({selector_json}, {idx}, {force})"
         );
         self.run_js_action(&script).await
     }
@@ -1913,7 +1925,10 @@ impl WebView {
     #[cfg(any(
         target_os = "ios",
         target_os = "android",
-        all(feature = "webview-input", target_os = "macos"),
+        all(
+            feature = "webview-input",
+            any(target_os = "macos", target_os = "windows")
+        ),
         all(target_os = "linux", target_env = "ohos")
     ))]
     pub(crate) async fn type_via_js(
@@ -2314,10 +2329,24 @@ impl WebViewInputController for WebView {
         // a reliable permission-free way to update WKWebView hit testing from
         // an in-process NSEvent. Text and key input still use native WebKit
         // editing paths below. iOS/OpenHarmony likewise have no native touch
-        // synthesis.
+        // synthesis. A forced click goes to the element on every platform.
+        #[cfg(any(
+            target_os = "ios",
+            target_os = "android",
+            all(
+                feature = "webview-input",
+                any(target_os = "macos", target_os = "windows")
+            ),
+            all(target_os = "linux", target_env = "ohos")
+        ))]
+        {
+            if _options.force {
+                return self.click_via_js(_selector, _options.index, true).await;
+            }
+        }
         #[cfg(all(feature = "webview-input", target_os = "macos"))]
         {
-            return self.click_via_js(_selector, _options.index).await;
+            return self.click_via_js(_selector, _options.index, false).await;
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
@@ -2329,7 +2358,7 @@ impl WebViewInputController for WebView {
         }
         #[cfg(any(target_os = "ios", all(target_os = "linux", target_env = "ohos")))]
         {
-            return self.click_via_js(_selector, _options.index).await;
+            return self.click_via_js(_selector, _options.index, false).await;
         }
         #[allow(unreachable_code)]
         Err(WebViewInputError::Unsupported(
@@ -2390,6 +2419,13 @@ impl WebViewInputController for WebView {
         }
         #[cfg(all(feature = "webview-input", target_os = "windows"))]
         {
+            // The native path types through a click at the element's center,
+            // which a forced fill must not depend on.
+            if _options.force {
+                return self
+                    .type_via_js(_selector, _options.index, _text, true)
+                    .await;
+            }
             return self
                 .inner
                 .type_text_inner(
