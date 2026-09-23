@@ -9,6 +9,8 @@ spec('typed test boundary', async t => {
   if (element.exists) element.rect.width.toFixed();
   const state = await app.eval<{ready:boolean}>({script:'return {ready:true}'});
   state.ready.valueOf();
+  // @ts-expect-error The fixture unwraps the call trace; specs do not opt in.
+  await app.eval({script:'1', captureCalls:true});
   await t.automation.browser.tabs();
   const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
   landed.webviewAttached.valueOf();
