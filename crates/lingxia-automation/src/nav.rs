@@ -3,6 +3,9 @@
 //! take a configured page name (+ optional `query`); reads are `current` /
 //! `stack`; `back` pops. Semantics come from the shared `lxapp::automation`
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.
+//!
+//! Actions resolve once the page stack changed. `waitFor: 'ready'` (host
+//! automation runs only) also waits for the landed page's `onReady`.
 
 use crate::auto_err;
 use crate::resolve::{js_object_to_json, upgrade_authorized};
@@ -12,6 +15,10 @@ use rong::{
     js_class, js_method,
 };
 use std::sync::{Arc, Weak};
+use std::time::Duration;
+
+/// Upper bound accepted for `timeoutMs` on a ready wait.
+const MAX_READY_TIMEOUT_MS: f64 = 300_000.0;
 
 #[js_class(clone)]
 pub(crate) struct JSNavDriver {
@@ -29,12 +36,59 @@ impl JSNavDriver {
 #[derive(FromJSObject)]
 struct JSBackOptions {
     delta: Option<u32>,
+    #[js_name = "waitFor"]
+    wait_for: Option<String>,
+    #[js_name = "timeoutMs"]
+    timeout_ms: Option<f64>,
 }
 
 #[derive(FromJSObject)]
 struct JSNavOptions {
     page: String,
     query: Option<JSObject>,
+    #[js_name = "waitFor"]
+    wait_for: Option<String>,
+    #[js_name = "timeoutMs"]
+    timeout_ms: Option<f64>,
+}
+
+/// Validate `waitFor` / `timeoutMs`; `None` keeps the default fire-and-forget
+/// behavior.
+fn ready_wait(
+    ctx: &JSContext,
+    wait_for: Option<&str>,
+    timeout_ms: Option<f64>,
+) -> JSResult<Option<Duration>> {
+    let Some(wait_for) = wait_for else {
+        if timeout_ms.is_some() {
+            return Err(auto_err("timeoutMs requires waitFor: 'ready'"));
+        }
+        return Ok(None);
+    };
+    if wait_for != "ready" {
+        return Err(auto_err(format!(
+            "unsupported waitFor '{wait_for}'; expected 'ready'"
+        )));
+    }
+    // onReady is signalled from the app's Logic thread; lx.automation() in
+    // that same Logic must not await it (see `lxapp::automation::navigate`).
+    if crate::host_automation_authority(ctx).is_none() {
+        return Err(auto_err(
+            "waitFor: 'ready' is only available in host automation runs",
+        ));
+    }
+    let timeout = match timeout_ms {
+        None => auto::PAGE_READY_TIMEOUT,
+        Some(ms) if ms.is_finite() && ms > 0.0 && ms <= MAX_READY_TIMEOUT_MS => {
+            Duration::from_millis(ms as u64)
+        }
+        Some(ms) => {
+            return Err(auto_err(format!(
+                "timeoutMs {ms} out of range (1-{MAX_READY_TIMEOUT_MS})"
+            )));
+        }
+    };
+    Ok(Some(timeout))
 }
 
 #[derive(FromJSObject, Default)]
@@ -72,12 +126,27 @@ impl JSNavDriver {
         kind: NavigationType,
     ) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(ctx, &self.lxapp)?;
+        let wait = ready_wait(ctx, options.wait_for.as_deref(), options.timeout_ms)?;
         let query = options.query.as_ref().map(js_object_to_json).transpose()?;
         let (page, name) = auto::navigate(&app, &options.page, query.as_ref(), kind, false)
             .await
             .map_err(auto_err)?;
-        Ok(auto::page_status(&app, &page, name.as_deref()).into())
+        landed(&app, page, name, wait).await
     }
+}
+
+async fn landed(
+    app: &Arc<LxApp>,
+    page: lxapp::PageInstance,
+    name: Option<String>,
+    wait: Option<Duration>,
+) -> JSResult<JSPageInfo> {
+    if let Some(timeout) = wait {
+        auto::wait_page_runtime_ready(app, &page, timeout)
+            .await
+            .map_err(auto_err)?;
+    }
+    Ok(auto::page_status(app, &page, name.as_deref()).into())
 }
 
 #[js_class(rename = "NavDriver")]
@@ -111,11 +180,17 @@ impl JSNavDriver {
     #[js_method]
     async fn back(&self, ctx: JSContext, options: Optional<JSBackOptions>) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        let delta = options.0.and_then(|o| o.delta).unwrap_or(1);
+        let options = options.0;
+        let wait = ready_wait(
+            &ctx,
+            options.as_ref().and_then(|o| o.wait_for.as_deref()),
+            options.as_ref().and_then(|o| o.timeout_ms),
+        )?;
+        let delta = options.and_then(|o| o.delta).unwrap_or(1);
         let (page, name) = auto::navigate_back(&app, delta, false)
             .await
             .map_err(auto_err)?;
-        Ok(auto::page_status(&app, &page, name.as_deref()).into())
+        landed(&app, page, name, wait).await
     }
 
     #[js_method]

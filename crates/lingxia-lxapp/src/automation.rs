@@ -12,6 +12,10 @@ use crate::{NavigationType, PageInstance};
 use lingxia_webview::WebView;
 use serde_json::Value;
 use std::sync::Arc;
+use std::time::Duration;
+
+/// Default bound for [`wait_page_runtime_ready`].
+pub const PAGE_READY_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Snapshot of one page's runtime state, shared by both front-ends.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -344,6 +348,53 @@ pub async fn navigate_back(
             .map_err(|err| err.to_string())?;
     }
     Ok((page, name))
+}
+
+/// Wait until `page` has dispatched `onReady`, bounded by `timeout`.
+///
+/// Fails when the page WebView reports an error, or when the instance is
+/// disposed first — e.g. the app's own pending `lx.reLaunch` replaced it. Only
+/// an off-Logic-thread caller may await this; see [`navigate`].
+pub async fn wait_page_runtime_ready(
+    app: &Arc<LxApp>,
+    page: &PageInstance,
+    timeout: Duration,
+) -> Result<(), String> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let instance_id = page.instance_id_string();
+    loop {
+        let state = page.automation_state();
+        if let Some(error) = state.webview_error {
+            return Err(format!(
+                "page WebView failed before runtime became ready: {error}"
+            ));
+        }
+        if state.ready {
+            return Ok(());
+        }
+        if app.get_page_by_instance_id_str(&instance_id).is_none() {
+            let current = app
+                .peek_current_page_path()
+                .unwrap_or_else(|| "none".to_string());
+            return Err(format!(
+                "page instance {instance_id} ({}) was disposed before runtime became ready; \
+                 current page is {current}",
+                page.path()
+            ));
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out after {}ms waiting for page {instance_id} to become ready",
+                timeout.as_millis()
+            ));
+        }
+        tokio::time::sleep(std::cmp::min(
+            Duration::from_millis(50),
+            deadline.saturating_duration_since(now),
+        ))
+        .await;
+    }
 }
 
 // ===================== page WebView actions =====================

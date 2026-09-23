@@ -907,37 +907,8 @@ async fn wait_dev_page_runtime_ready(
     page: &lxapp::PageInstance,
     name: Option<&str>,
 ) -> Result<LxAppDevPageInfo, String> {
-    let timeout = std::time::Duration::from_secs(15);
-    let deadline = tokio::time::Instant::now() + timeout;
-    let instance_id = page.instance_id_string();
-    loop {
-        let state = page.automation_state();
-        if let Some(error) = state.webview_error {
-            return Err(format!(
-                "page WebView failed before runtime became ready: {error}"
-            ));
-        }
-        if state.ready {
-            return Ok(dev_page_info(app, page, name));
-        }
-        if app.get_page_by_instance_id_str(&instance_id).is_none() {
-            return Err(format!(
-                "page instance {instance_id} was disposed before runtime became ready"
-            ));
-        }
-        let now = tokio::time::Instant::now();
-        if now >= deadline {
-            return Err(format!(
-                "timed out after {}ms waiting for page {instance_id} to become ready",
-                timeout.as_millis()
-            ));
-        }
-        tokio::time::sleep(std::cmp::min(
-            std::time::Duration::from_millis(50),
-            deadline.saturating_duration_since(now),
-        ))
-        .await;
-    }
+    auto::wait_page_runtime_ready(app, page, auto::PAGE_READY_TIMEOUT).await?;
+    Ok(dev_page_info(app, page, name))
 }
 
 fn resolve_dev_lxapp(raw: &str) -> Result<std::sync::Arc<lxapp::LxApp>, String> {

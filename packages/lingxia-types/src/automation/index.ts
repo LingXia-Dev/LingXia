@@ -351,14 +351,26 @@ export interface PageDriver {
 
 // ============================ nav tier ============================
 
-export interface NavOptions {
+/**
+ * Opt-in wait for the landed page. `'ready'` resolves after its `onReady` and
+ * rejects if the page is disposed or replaced first (e.g. by the app's own
+ * `lx.reLaunch`). Host automation runs only; Logic-side `lx.automation()`
+ * rejects it.
+ */
+export interface NavWaitOptions {
+  waitFor?: 'ready';
+  /** Bound for `waitFor` in ms (default 15000). */
+  timeoutMs?: number;
+}
+
+export interface NavOptions extends NavWaitOptions {
   /** Configured page name (from lxapp.json). */
   page: string;
   /** Query forwarded to the destination page. */
   query?: Record<string, unknown>;
 }
 
-export interface NavBackOptions {
+export interface NavBackOptions extends NavWaitOptions {
   /** Number of pages to pop (default 1). */
   delta?: number;
 }
@@ -377,9 +389,9 @@ export interface PageInfo {
 /**
  * Page-stack navigation for the selected lxapp. Action verbs take a configured
  * page name (`redirect` rejects a tab-bar page); `back` pops; `current`/`stack`
- * read. Unlike the JS `lx.navigateTo` family this returns the landed page, but
- * like it does not wait for the destination WebView (awaiting in-process would
- * deadlock the logic thread).
+ * read. Unlike the JS `lx.navigateTo` family this returns the landed page. By
+ * default it resolves once the stack changed, before the destination is ready;
+ * pass `waitFor: 'ready'` from a test run to also wait for `onReady`.
  */
 export interface NavDriver {
   /** Push a page onto the stack. */
