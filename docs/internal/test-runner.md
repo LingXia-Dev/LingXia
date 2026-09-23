@@ -121,6 +121,21 @@ received artifacts. Keep the following invariants when changing these layers:
   survive remounts; an instance id targets one live instance. Omitted page targets
   follow the current page on every operation.
 - `eval<T>` declares the caller's expected result, not runtime validation.
+- Function-form eval (`t.app.eval(fn, ...args)`, `t.app.page.eval(fn, ...)`,
+  and `pageData`/`callPage`, built on it) lives in `@lingxia/test`
+  (`remote.ts`); the drivers still receive `{ script }`. The script is one
+  call expression, `((__lxFn, __lxArgs) => __lxFn(scope, ...__lxArgs))(<fn
+  source>, <JSON args>)`, so the Logic expression-first eval and the WebView
+  `await (expr)` path read it the same way and neither body heuristic
+  applies. The Logic scope names `lx` unqualified, so the runtime's local
+  recording `lx` still observes coverage. Methods and bound/native functions
+  are rejected before sending (their source is not an expression). A remote
+  `ReferenceError` is rethrown named `ReferenceError`, with its code/data and
+  a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
+- `t.waitFor` records one `waitFor` action and silences the reads inside it,
+  like `t.expect.poll`. Its timeout is clamped to the spec budget left since
+  the fixture was built, minus a 100 ms margin, so its own error (last
+  value/error) wins over the bare spec timeout.
   Browser navigation eval returns `{ value, navigation }`; waits require exactly
   one condition. Preserve automation error codes and JSON data in test reports.
 - `LxAppDriver.network` routes are owned by one host run: installation needs
