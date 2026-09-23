@@ -32,6 +32,43 @@ test("spec.fail treats a body rejection as the declared failure", async () => {
   assert.equal(protocol.failed, 0);
 });
 
+test("t.skip stops the spec and reports it skipped with its reason", async () => {
+  const world = createWorld();
+  const { attachments, events } = installFakeHost(world);
+  let after = false, cleaned = false;
+  spec("no offline client", { forensics: false }, async (t) => {
+    t.defer(() => { cleaned = true; });
+    t.skip("this account has no offline client");
+    after = true;
+  });
+  spec("skip inside a step", { forensics: false }, async (t) => {
+    await t.step("find client", () => t.skip("none found"));
+  });
+  spec.fail("skip wins over spec.fail", async (t) => {
+    t.skip("not applicable");
+  });
+  spec("swallowed skip is still a skip", async (t) => {
+    try { t.skip("caught"); } catch { /* the author swallowed it */ }
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(after, false);
+  assert.equal(cleaned, true);
+  assert.deepEqual(report.cases.map((c) => c.status), ["skipped", "skipped", "skipped", "skipped"]);
+  assert.deepEqual(report.cases.map((c) => c.reason),
+    ["this account has no offline client", "none found", "not applicable", "caught"]);
+  assert.equal(report.cases[0].error, undefined);
+  assert.equal(report.cases[1].steps[0].status, "skipped");
+  assert.equal(report.cases[0].attachments.length, 0, "a skip collects no failure forensics");
+  assert.equal(protocol.skipped, 4);
+  assert.equal(protocol.failed, 0);
+  const finished = events.filter((e) => e.type === "case_finished");
+  assert.equal(finished[0].status, "skipped");
+  assert.match(decodeAttachment(attachments, "report.html"), /this account has no offline client/);
+  assert.match(decodeAttachment(attachments, "junit.xml"), /<skipped message="none found"\/>/);
+});
+
 test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);

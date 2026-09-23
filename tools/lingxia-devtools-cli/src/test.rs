@@ -845,7 +845,18 @@ fn poll_until_terminal(
                                 *duration_ms as f64 / 1000.0
                             );
                         } else {
-                            print_case_finished(name, full_name, *status, *duration_ms, None);
+                            let reason = record
+                                .as_ref()
+                                .and_then(|r| r["reason"].as_str())
+                                .filter(|_| *status == TestCaseStatus::Skipped);
+                            print_case_finished(
+                                name,
+                                full_name,
+                                *status,
+                                *duration_ms,
+                                None,
+                                reason,
+                            );
                         }
                     }
                 }
@@ -1251,9 +1262,14 @@ fn print_case_finished(
                 format!("✓ {}", status.as_str()).green()
             )
         }
-        TestCaseStatus::Skipped => {
-            eprintln!("{} {display_name}", "-".yellow())
-        }
+        TestCaseStatus::Skipped => match reason {
+            Some(reason) => eprintln!(
+                "{} {display_name} {}",
+                "- skipped".yellow(),
+                format!("({reason})").dimmed()
+            ),
+            None => eprintln!("{} {display_name}", "-".yellow()),
+        },
         TestCaseStatus::Failed | TestCaseStatus::Timeout | TestCaseStatus::Xpass => {
             eprintln!(
                 "{} {display_name} ({seconds:.2}s)",
@@ -1512,6 +1528,7 @@ mod tests {
                 full_name: "home".into(),
                 status: Some(TestCaseStatus::Passed),
                 duration_ms: 10,
+    reason: Option<&str>,
                 covers: vec!["lx.host".into()],
                 steps: vec![json!({ "name": "greet", "path": "greet", "status": "passed" })],
             }],

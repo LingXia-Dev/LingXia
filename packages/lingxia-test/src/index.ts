@@ -1,6 +1,6 @@
 export { spec, expect, run, reset, trackPublicSurface } from "./runtime.js";
 export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
-export { TimeoutError } from "./fixture.js";
+export { SkipSignal, TimeoutError } from "./fixture.js";
 export { renderJUnit } from "./junit.js";
 export { PUBLIC_CAPABILITIES } from "./inventory.js";
 export type { Capability, CapabilityLayer } from "./inventory.js";

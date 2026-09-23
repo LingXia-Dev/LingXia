@@ -1,5 +1,5 @@
 import { expect, setAssertionSink } from "./expect.js";
-import { LiveFixture, TimeoutError, toReportError } from "./fixture.js";
+import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
@@ -359,11 +359,16 @@ async function run(): Promise<ProtocolReport> {
           error = timeoutError;
           phase = "timeout";
           forceRelaunchNext = true;
+        } else if (winner.err instanceof SkipSignal) {
+          status = "skipped";
         } else {
           status = "failed";
           error = winner.err;
           fixture.failurePhase = phase;
         }
+      } else if (fixture.skipReason !== undefined) {
+        // The body caught the signal; the skip was still requested.
+        status = "skipped";
       }
     } finally {
       if (timerHandle !== undefined) clearTimeout(timerHandle);
@@ -383,7 +388,7 @@ async function run(): Promise<ProtocolReport> {
         await host.emit({ type: "diagnostic", phase: "forensics", message: String(forensicsError) });
       }
     };
-    if (status !== "passed") await collectEvidence();
+    if (status !== "passed" && status !== "skipped") await collectEvidence();
 
     phase = "defer";
     const deferErrors: unknown[] = [];
@@ -441,7 +446,8 @@ async function run(): Promise<ProtocolReport> {
       }
     }
 
-    if (status !== "passed") await collectEvidence();
+    if (status !== "passed" && status !== "skipped") await collectEvidence();
+    if (status === "skipped") record.reason = fixture.skipReason ?? record.reason;
     fixture.close();
     record.status = status;
     record.duration_ms = Date.now() - caseStarted;
