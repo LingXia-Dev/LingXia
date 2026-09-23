@@ -418,23 +418,6 @@ fn ensure_valid_lxapp_dir(path: &Path) -> Result<()> {
     ))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct RunnerSplashFile {
-    #[serde(default)]
-    splash: Option<RunnerSplashFields>,
-}
-
-#[derive(Debug, serde::Deserialize)]
-struct RunnerSplashFields {
-    background: String,
-    #[serde(default)]
-    image: Option<String>,
-    #[serde(default)]
-    mark: Option<String>,
-    #[serde(default, rename = "minDuration")]
-    min_duration: Option<u32>,
-}
-
 struct RunnerSplashLaunch {
     background: String,
     image: Option<PathBuf>,
@@ -442,15 +425,14 @@ struct RunnerSplashLaunch {
     min_duration_ms: u32,
 }
 
-/// `splash:` from the nearest ancestor `lingxia.yaml`, without loading the
-/// rest of the host config. A partial or unrelated file must not fail launch.
+/// `splash:` of the host project above the lxapp. A host config that fails to
+/// load only costs the cover, never the launch.
 fn runner_splash_env(lxapp_path: &Path) -> Option<RunnerSplashLaunch> {
     let host = lxapp_path
         .ancestors()
+        .skip(1)
         .find(|dir| dir.join(crate::config::HOST_CONFIG_FILE).is_file())?;
-    let text = fs::read_to_string(host.join(crate::config::HOST_CONFIG_FILE)).ok()?;
-    let file: RunnerSplashFile = serde_yaml_ng::from_str(&text).ok()?;
-    let splash = file.splash?;
+    let splash = LingXiaConfig::load(host).ok()?.splash?;
     let background = crate::splash::normalize_hex_rgb(&splash.background).ok()?;
     Some(RunnerSplashLaunch {
         background,
@@ -1568,18 +1550,22 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    /// A host project whose `lingxia.yaml` is `yaml`, and an lxapp dir below it.
+    fn splash_host(yaml: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let temp = tempdir().unwrap();
+        fs::write(temp.path().join(HOST_CONFIG_FILE), yaml).unwrap();
+        let lxapp = temp.path().join("lxapps").join("demo");
+        fs::create_dir_all(&lxapp).unwrap();
+        (temp, lxapp)
+    }
+
     #[test]
     fn runner_splash_env_reads_host_yaml_above_the_lxapp() {
-        let temp = tempdir().unwrap();
+        let (temp, lxapp) = splash_host(
+            "splash:\n  background: \"#112233\"\n  image: art.png\n  mark: missing.png\n  minDuration: 1200\n",
+        );
         let host = temp.path();
         fs::write(host.join("art.png"), b"png").unwrap();
-        fs::write(
-            host.join("lingxia.yaml"),
-            "splash:\n  background: \"#112233\"\n  image: art.png\n  mark: missing.png\n  minDuration: 1200\n",
-        )
-        .unwrap();
-        let lxapp = host.join("lxapps").join("demo");
-        fs::create_dir_all(&lxapp).unwrap();
 
         let splash = runner_splash_env(&lxapp).unwrap();
         assert_eq!(splash.background, "#112233");
@@ -1600,41 +1586,40 @@ mod tests {
     }
 
     #[test]
+    fn runner_splash_env_caps_min_duration() {
+        let (_temp, lxapp) =
+            splash_host("splash:\n  background: \"#112233\"\n  minDuration: 60000\n");
+        assert_eq!(
+            runner_splash_env(&lxapp).unwrap().min_duration_ms,
+            lingxia_app_context::MAX_SPLASH_MIN_DURATION_MS
+        );
+    }
+
+    #[test]
     fn runner_splash_env_is_absent_without_a_splash_block() {
-        let temp = tempdir().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            "app:\n  projectName: demo\n",
-        )
-        .unwrap();
-        assert!(runner_splash_env(temp.path()).is_none());
+        let (_temp, lxapp) = splash_host("{}\n");
+        assert!(runner_splash_env(&lxapp).is_none());
     }
 
     #[test]
     fn runner_splash_env_rejects_a_bad_background() {
-        let temp = tempdir().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            "splash:\n  background: red\n",
-        )
-        .unwrap();
-        assert!(runner_splash_env(temp.path()).is_none());
+        let (_temp, lxapp) = splash_host("splash:\n  background: red\n");
+        assert!(runner_splash_env(&lxapp).is_none());
+    }
+
+    #[test]
+    fn runner_splash_env_rejects_fields_host_builds_reject() {
+        let (_temp, lxapp) = splash_host("splash:\n  background: \"#112233\"\n  duration: 900\n");
+        assert!(runner_splash_env(&lxapp).is_none());
     }
 
     #[test]
     fn runner_splash_env_expands_short_background_like_host_builds() {
-        let temp = tempdir().unwrap();
-        fs::write(
-            temp.path().join("lingxia.yaml"),
-            "splash:\n  background: \"#a2f\"\n",
-        )
-        .unwrap();
+        let (_temp, lxapp) = splash_host("splash:\n  background: \"#a2f\"\n");
+        let splash = runner_splash_env(&lxapp).unwrap();
+        assert_eq!(splash.background, "#AA22FF");
         assert_eq!(
-            runner_splash_env(temp.path()).unwrap().background,
-            "#AA22FF"
-        );
-        assert_eq!(
-            runner_splash_env(temp.path()).unwrap().min_duration_ms,
+            splash.min_duration_ms,
             lingxia_app_context::DEFAULT_SPLASH_MIN_DURATION_MS
         );
     }

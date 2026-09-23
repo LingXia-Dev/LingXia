@@ -349,7 +349,6 @@ enum LingXiaSplashOverlay {
     private static let timeoutSeconds: TimeInterval = 6
     private static let liftSeconds: TimeInterval = 0.3
     private static let campaignFadeSeconds: TimeInterval = 0.2
-    private static let defaultMinimumSeconds: TimeInterval = 0.6
 
     private static var coverView: NSView?
     private static var armed = false
@@ -387,8 +386,12 @@ enum LingXiaSplashOverlay {
             art.layer?.contentsGravity = .resizeAspectFill
             pin(art, to: cover)
         } else if let mark = resolveMark() {
-            // The authored mark is 3x, matching the iOS catalog entry.
-            let size = NSSize(width: mark.size.width / 3, height: mark.size.height / 3)
+            // The authored mark is 3x, matching the iOS catalog entry. Pixels,
+            // not `NSImage.size`, which follows the PNG's DPI and UIKit ignores.
+            let pixels = mark.representations.first
+                .flatMap { $0.pixelsWide > 0 ? NSSize(width: $0.pixelsWide, height: $0.pixelsHigh) : nil }
+                ?? mark.size
+            let size = NSSize(width: pixels.width / 3, height: pixels.height / 3)
             let art = NSImageView()
             art.image = mark
             art.imageScaling = .scaleProportionallyUpOrDown
@@ -417,9 +420,12 @@ enum LingXiaSplashOverlay {
     }
 
     /// Status and nav bars are added after the cover, as later siblings.
+    /// Re-adding drops the edge constraints, so pin again.
     static func bringToFront() {
-        guard let cover = coverView, let host = cover.superview else { return }
-        host.addSubview(cover, positioned: .above, relativeTo: nil)
+        guard let cover = coverView, let host = cover.superview,
+              host.subviews.last !== cover else { return }
+        cover.removeFromSuperview()
+        pin(cover, to: host)
     }
 
     static func notifyHomeReady() {
@@ -447,12 +453,13 @@ enum LingXiaSplashOverlay {
         }
     }
 
+    /// `lingxia dev` passes the host's hold, already defaulted and capped;
+    /// otherwise the runtime's own config answers.
     private static var minimumVisibleSeconds: TimeInterval {
-        guard let raw = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS"],
-              let milliseconds = Double(raw), milliseconds.isFinite else {
-            return defaultMinimumSeconds
-        }
-        return min(max(milliseconds, 0), 6_000) / 1_000
+        let milliseconds = ProcessInfo.processInfo
+            .environment["LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS"]
+            .flatMap(UInt32.init) ?? splashMinDurationMs()
+        return TimeInterval(milliseconds) / 1_000
     }
 
     private static func showCampaignNow(path: String, durationMs: UInt32) {
@@ -624,9 +631,12 @@ enum LingXiaSplashOverlay {
 }
 
 /// Opaque cover. An ordinary `NSView` does not swallow every pointing event.
+/// A press still drags the borderless phone window, as its status bar would.
 @MainActor
 private final class SplashCoverView: NSView {
-    override func mouseDown(with event: NSEvent) {}
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
     override func rightMouseDown(with event: NSEvent) {}
     override func otherMouseDown(with event: NSEvent) {}
     override func scrollWheel(with event: NSEvent) {}

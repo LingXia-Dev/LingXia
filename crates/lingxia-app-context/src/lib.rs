@@ -783,17 +783,10 @@ pub const MAX_SPLASH_MIN_DURATION_MS: u32 = 6_000;
 
 /// How long the splash must stay up before a ready signal may dismiss it.
 pub fn splash_min_duration() -> std::time::Duration {
-    let runner_override = (std::env::var("LINGXIA_RUNNER").ok().as_deref() == Some("1"))
-        .then(|| std::env::var("LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS").ok())
-        .flatten()
-        .and_then(|value| value.parse::<u32>().ok());
-    let ms = runner_override
-        .or_else(|| {
-            APP_CONFIG
-                .get()
-                .and_then(|config| config.splash.as_ref())
-                .and_then(|splash| splash.min_duration)
-        })
+    let ms = APP_CONFIG
+        .get()
+        .and_then(|config| config.splash.as_ref())
+        .and_then(|splash| splash.min_duration)
         .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS)
         // Config used to reach the platforms only through this crate's own
         // hold, which the dismissal timeout bounded anyway; now a platform can

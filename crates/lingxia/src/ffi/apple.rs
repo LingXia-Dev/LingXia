@@ -217,6 +217,9 @@ mod bridge {
         #[swift_bridge(swift_name = "splashMarkLaunchFace")]
         fn splash_mark_launch_face(dark: bool);
 
+        #[swift_bridge(swift_name = "splashMinDurationMs")]
+        fn splash_min_duration_ms() -> u32;
+
         #[swift_bridge(swift_name = "pageBackgroundColor")]
         fn page_background_color(dark: bool) -> String;
 
@@ -958,6 +961,12 @@ fn present_settings_destination_resolution(
 /// resolved. Runs before runtime initialization on iOS.
 pub fn splash_mark_launch_face(dark: bool) {
     crate::splash::mark_launch_face(dark)
+}
+
+/// The configured splash hold, already capped. The macOS phone Runner has no
+/// OS frame, so it measures this from its own cover appearing.
+pub fn splash_min_duration_ms() -> u32 {
+    u32::try_from(lingxia_app_context::splash_min_duration().as_millis()).unwrap_or(u32::MAX)
 }
 
 /// The host-declared page floor for one appearance, as `#RRGGBB`.
