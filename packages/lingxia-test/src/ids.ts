@@ -78,13 +78,36 @@ export function resolveOrigin(frames: StackFrame[]): StackFrame {
   return firstMapped ?? frames[0] ?? UNKNOWN;
 }
 
+/**
+ * The spec file a hook belongs to: the nearest authored frame in one of
+ * `specFiles`, so a hook registered by a shared helper is scoped to the spec
+ * file that called the helper, not to the helper's own file. Falls back to
+ * the first authored frame when no spec file is on the stack.
+ */
+export function resolveOwner(frames: StackFrame[], specFiles: ReadonlySet<string>): StackFrame {
+  for (const frame of frames) {
+    const mapped = remapPosition(frame.file, frame.line, frame.column);
+    if (!isFrameworkFrame(mapped.file) && specFiles.has(mapped.file)) return mapped;
+  }
+  return resolveOrigin(frames);
+}
+
 export function callerLocation(): StackFrame {
   return resolveOrigin(parseFrames(new Error().stack));
 }
 
 /** Raw frames for a location that can only be resolved once the map exists. */
 export function captureFrames(): StackFrame[] {
-  return parseFrames(new Error().stack);
+  // V8 keeps 10 frames by default; a hook registered through a helper or two
+  // needs the spec file's frame further down to find its owner.
+  const errorCtor = Error as { stackTraceLimit?: number };
+  const limit = errorCtor.stackTraceLimit;
+  if (typeof limit === "number" && limit < 50) errorCtor.stackTraceLimit = 50;
+  try {
+    return parseFrames(new Error().stack);
+  } finally {
+    if (typeof limit === "number" && limit < 50) errorCtor.stackTraceLimit = limit;
+  }
 }
 
 export function stripFileUrl(path: string): string {

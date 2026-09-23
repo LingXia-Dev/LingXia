@@ -11,3 +11,11 @@ export function registerOtherFileHook(ran) {
     ran.push("other-file-hook");
   });
 }
+
+/** A spec file that also exports a hook helper keeps the hook for itself. */
+export function registerOtherFileSpecWithHook(title, ran) {
+  spec.beforeEach(async () => {
+    ran.push("other-file-hook");
+  });
+  spec(title, async () => {});
+}
