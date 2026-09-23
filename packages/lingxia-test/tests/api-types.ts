@@ -16,6 +16,7 @@ spec('typed test boundary', async t => {
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
   await app.nav.to({page:'editor', waitFor:'ready'});
   await input.waitFor({state:'attached'});
+  if (!state.ready) t.skip('not ready');
   // @ts-expect-error Test context has no DOM.
   document.querySelector('button');
   // @ts-expect-error Queries read once; they do not accept ignored retry options.

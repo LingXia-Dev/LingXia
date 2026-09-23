@@ -51,6 +51,17 @@ export class TimeoutError extends Error {
   override readonly name = "TimeoutError";
 }
 
+/**
+ * Thrown by `t.skip()`. It unwinds the spec like any throw, but the runtime
+ * grades it `skipped`, never `failed` — and not `xfail` under `spec.fail`.
+ */
+export class SkipSignal extends Error {
+  override readonly name = "SkipSignal";
+  constructor(readonly reason: string) {
+    super(`skipped: ${reason}`);
+  }
+}
+
 export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout";
 
 export class LiveFixture implements Fixture {
@@ -78,6 +89,8 @@ export class LiveFixture implements Fixture {
   cleanupActive = false;
   lastStepPath: string | undefined;
   failurePhase: FailurePhase | null = null;
+  /** Set by `t.skip()`; survives a body that catches the signal. */
+  skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
   private rawApp: LxAppDriver;
   private readonly networkScope = new NetworkScope();
@@ -146,6 +159,17 @@ export class LiveFixture implements Fixture {
         return result;
       } catch (error) {
         record.duration_ms = Date.now() - started;
+        if (error instanceof SkipSignal) {
+          record.status = "skipped";
+          await this.host.emit({
+            type: "step_finished",
+            name,
+            path: record.path,
+            status: record.status,
+            duration_ms: record.duration_ms,
+          });
+          throw error;
+        }
         record.status = error instanceof TimeoutError ? "timeout" : "failed";
         record.error = toReportError(error, record.path);
         this.lastStepPath = record.path;
@@ -244,6 +268,12 @@ export class LiveFixture implements Fixture {
 
   defer(cleanup: () => void | Promise<void>): void {
     this.defers.push(cleanup);
+  }
+
+  skip(reason: string): never {
+    const text = typeof reason === "string" && reason.trim().length > 0 ? reason : "skipped at runtime";
+    this.skipReason ??= text;
+    throw new SkipSignal(text);
   }
 
   async attach(name: string, data: unknown): Promise<void> {

@@ -15,7 +15,7 @@ export type SpecStatus =
   | "xfail"
   | "xpass";
 
-export type StepStatus = "passed" | "failed" | "timeout";
+export type StepStatus = "passed" | "failed" | "timeout" | "skipped";
 
 export interface SpecOptions {
   /** Stable id. ASCII titles slug by default; non-ASCII titles need this or become `file-n`. */
@@ -32,7 +32,7 @@ export interface SpecOptions {
   app?: string;
   /** Skip auto-attached failure forensics (only when capture itself would wedge). */
   forensics?: boolean;
-  /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report. */
+  /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report; `t.skip(reason)` overrides it. */
   reason?: string;
 }
 
@@ -156,6 +156,11 @@ export interface Fixture {
   ): Promise<unknown>;
   defer(cleanup: () => void | Promise<void>): void;
   attach(name: string, data: unknown): Promise<void>;
+  /**
+   * Stop this spec and report it `skipped` with `reason`, for a precondition
+   * only knowable at run time. Throws; deferred cleanup still runs.
+   */
+  skip(reason: string): never;
 }
 
 export interface Matchers<T> {
