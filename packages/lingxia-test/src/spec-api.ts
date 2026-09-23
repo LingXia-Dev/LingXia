@@ -1,4 +1,4 @@
-import type { SpecBody, SpecOptions } from "./types.js";
+import type { FailOptions, SpecBody, SpecOptions } from "./types.js";
 
 export interface SpecApi {
   (title: string, body: SpecBody): void;
@@ -10,7 +10,7 @@ export interface SpecApi {
   fixme(title: string, body?: SpecBody): void;
   fixme(title: string, options: SpecOptions, body?: SpecBody): void;
   fail(title: string, body: SpecBody): void;
-  fail(title: string, options: SpecOptions, body: SpecBody): void;
+  fail(title: string, options: FailOptions, body: SpecBody): void;
   /** Restore product state before every attempt; required for retries. */
   reset(fn: SpecBody): void;
   beforeEach(fn: SpecBody): void;

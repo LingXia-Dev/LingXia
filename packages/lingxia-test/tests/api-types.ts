@@ -53,3 +53,7 @@ async function browserElement() {
   void text;
 }
 void browserElement;
+
+spec.fail('known quota failure', { expected: { code: 'E_QUOTA', message: /quota/ } }, async () => {});
+// @ts-expect-error `expected` belongs to spec.fail only.
+spec('plain spec', { expected: { code: 'E_QUOTA' } }, async () => {});

@@ -3,7 +3,13 @@ import { PACKAGE_NAME, VERSION } from "./version.js";
 import type { AutomationHost } from "./types.js";
 
 export interface ResolvedHost {
+  /** User `--arg`/`--secret-arg` values: what the spec sees as `t.args`. */
   args: Record<string, string>;
+  /**
+   * lxdev's run controls (grep, ids, shard, retries, …). `undefined` when the
+   * host predates the split and still sends them inside `args`.
+   */
+  control: Record<string, string> | undefined;
   attach(
     name: string,
     artifact: { mimeType: string; base64: string },
@@ -26,8 +32,10 @@ export function resolveHost(): ResolvedHost {
   const automation = globalThis.__LINGXIA_AUTOMATION_HOST__;
   const rong = globalThis.__RONG_TEST_HOST__;
   const raw: AutomationHost | undefined = automation ?? rong;
+  const control = automation?.control ?? rong?.control;
   return {
     args: asArgs(raw?.args),
+    control: control && typeof control === "object" ? asArgs(control) : undefined,
     async attach(name, artifact) {
       if (!raw?.attach) return;
       await raw.attach(name, artifact);
