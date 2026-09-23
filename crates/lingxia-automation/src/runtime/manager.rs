@@ -12,6 +12,12 @@ use std::time::{Duration, Instant};
 const TEARDOWN_GRACE: Duration = Duration::from_secs(10);
 const COMPLETED_RETENTION: Duration = Duration::from_secs(300);
 const COMPLETED_RETAINED: usize = 2;
+/// A run nobody has polled for this long is cancelled: its controller is gone
+/// and the run would otherwise hold the single automation slot until its whole
+/// timeout. Must exceed the longest gap between two polls of a live client,
+/// which is bounded by lxdev's max poll wait (the 120s dev-server forward
+/// timeout minus a 5s buffer) plus its retry sleeps.
+const CONTROLLER_LEASE: Duration = Duration::from_secs(180);
 
 struct RunRequest {
     shared: Arc<RunShared>,
@@ -30,6 +36,7 @@ struct RuntimeState {
 struct RuntimeInner {
     state: Mutex<RuntimeState>,
     sender: mpsc::Sender<RunRequest>,
+    lease: Duration,
 }
 
 /// Reusable host-owned automation executor.
@@ -43,6 +50,10 @@ pub struct AutomationRuntime {
 
 impl AutomationRuntime {
     pub fn new() -> Result<Self, String> {
+        Self::with_controller_lease(CONTROLLER_LEASE)
+    }
+
+    fn with_controller_lease(lease: Duration) -> Result<Self, String> {
         let (sender, receiver) = mpsc::channel::<RunRequest>();
         let inner = Arc::new(RuntimeInner {
             state: Mutex::new(RuntimeState {
@@ -52,6 +63,7 @@ impl AutomationRuntime {
                 interrupt: None,
             }),
             sender,
+            lease,
         });
         let runtime = Arc::downgrade(&inner);
         std::thread::Builder::new()
@@ -118,11 +130,13 @@ impl AutomationRuntime {
 
     pub fn poll(&self, args: AutomationPollArgs) -> Result<AutomationPollResponse, String> {
         let run = self.find_run(&args.run_id)?;
+        run.touch();
         Ok(run.poll(args.after_seq))
     }
 
     pub fn cancel(&self, args: AutomationCancelArgs) -> Result<AutomationCancelResponse, String> {
         let run = self.find_run(&args.run_id)?;
+        run.touch();
         if !run.state().is_terminal() {
             run.request_cancel();
             let state = self.inner.state.lock().unwrap();
@@ -298,14 +312,29 @@ async fn execute_run(
 
     let join = handle.join();
     tokio::pin!(join);
-    match tokio::time::timeout(shared.remaining(), &mut join).await {
-        Ok(Ok(_)) => return,
-        Ok(Err(err)) => {
-            finalize_worker_join_failure(&shared, format!("{err:?}"));
-            note_worker_recovered(&runtime);
-            return;
+    // The watchdog runs here, off the JS worker, so the run deadline and the
+    // controller lease still fire while the worker is stuck in native code.
+    loop {
+        let wait = shared
+            .remaining()
+            .min(runtime.lease.saturating_sub(shared.idle_for()));
+        match tokio::time::timeout(wait, &mut join).await {
+            Ok(Ok(_)) => return,
+            Ok(Err(err)) => {
+                finalize_worker_join_failure(&shared, format!("{err:?}"));
+                note_worker_recovered(&runtime);
+                return;
+            }
+            Err(_) => {}
         }
-        Err(_) => {}
+        if shared.remaining().is_zero() {
+            break;
+        }
+        if let Some(error) = lease_expired_error(&shared, runtime.lease) {
+            warn!("automation run {}: {}", shared.run_id, error.message);
+            shared.request_cancel_with_error(error);
+            break;
+        }
     }
 
     shared.request_preemption();
@@ -340,6 +369,20 @@ async fn execute_run(
     }
 }
 
+fn lease_expired_error(shared: &RunShared, lease: Duration) -> Option<AutomationRunError> {
+    let idle = shared.idle_for();
+    (idle >= lease).then(|| AutomationRunError {
+        name: "ControllerLost".to_string(),
+        message: format!(
+            "no controller polled this run for {}s (lease {}s); cancelling it",
+            idle.as_secs(),
+            lease.as_secs()
+        ),
+        stack: None,
+        causes: Vec::new(),
+    })
+}
+
 fn finalize_worker_join_failure(shared: &RunShared, detail: String) {
     shared.finalize(
         AutomationRunState::InternalError,
@@ -372,7 +415,7 @@ async fn run_on_worker(runtime: Arc<RuntimeInner>, js_runtime: JSRuntime, reques
     let outcome = tokio::select! {
         biased;
         _ = cancel_rx.wait_for(|cancelled| *cancelled) => {
-            (AutomationRunState::Cancelled, None, None)
+            (AutomationRunState::Cancelled, shared.take_cancel_error(), None)
         },
         result = tokio::time::timeout(shared.remaining(), ctx.eval_async::<JSValue>(source)) => {
             match result {
@@ -392,12 +435,11 @@ async fn run_on_worker(runtime: Arc<RuntimeInner>, js_runtime: JSRuntime, reques
                 },
                 Ok(Err(err)) => {
                     if shared.preemption_requested() {
-                        let state = if shared.cancel_requested() {
-                            AutomationRunState::Cancelled
+                        if shared.cancel_requested() {
+                            (AutomationRunState::Cancelled, shared.take_cancel_error(), None)
                         } else {
-                            AutomationRunState::TimedOut
-                        };
-                        (state, None, None)
+                            (AutomationRunState::TimedOut, None, None)
+                        }
                     } else {
                         (
                             AutomationRunState::Failed,
@@ -678,6 +720,67 @@ mod tests {
                 .state,
             AutomationRunState::Cancelled
         );
+    }
+
+    fn poll_once(runtime: &AutomationRuntime, run_id: &str) -> AutomationPollResponse {
+        runtime
+            .poll(AutomationPollArgs {
+                run_id: run_id.to_string(),
+                after_seq: 0,
+            })
+            .expect("poll automation run")
+    }
+
+    const SLOW_PROGRAM: &str =
+        "(async () => { await new Promise(resolve => setTimeout(resolve, 20000)); })()";
+
+    #[test]
+    fn unpolled_run_is_cancelled_when_its_lease_expires() {
+        let runtime =
+            AutomationRuntime::with_controller_lease(Duration::from_millis(500)).expect("runtime");
+        let started = start(&runtime, SLOW_PROGRAM, 30_000);
+
+        std::thread::sleep(Duration::from_millis(1_500));
+        let response = poll_once(&runtime, &started.run_id);
+        assert_eq!(response.state, AutomationRunState::Cancelled);
+        let error = response
+            .result
+            .expect("terminal result")
+            .error
+            .expect("lease error");
+        assert_eq!(error.name, "ControllerLost");
+
+        // The slot is free again.
+        let next = start(&runtime, "true", 5_000);
+        assert_eq!(
+            wait_for_terminal(&runtime, &next.run_id).state,
+            AutomationRunState::Succeeded
+        );
+    }
+
+    #[test]
+    fn polling_keeps_the_lease_alive() {
+        let runtime =
+            AutomationRuntime::with_controller_lease(Duration::from_millis(500)).expect("runtime");
+        let started = start(&runtime, SLOW_PROGRAM, 30_000);
+
+        let until = Instant::now() + Duration::from_millis(1_500);
+        while Instant::now() < until {
+            assert_eq!(
+                poll_once(&runtime, &started.run_id).state,
+                AutomationRunState::Running
+            );
+            std::thread::sleep(Duration::from_millis(100));
+        }
+        runtime
+            .cancel(AutomationCancelArgs {
+                run_id: started.run_id.clone(),
+                reason: None,
+            })
+            .expect("cancel run");
+        let response = wait_for_terminal(&runtime, &started.run_id);
+        assert_eq!(response.state, AutomationRunState::Cancelled);
+        assert!(response.result.expect("result").error.is_none());
     }
 
     #[test]
