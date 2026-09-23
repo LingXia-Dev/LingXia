@@ -17,7 +17,17 @@ foreach ($key in @('LINGXIA_STATE_ROOT', 'LINGXIA_SMOKE_REPORT', 'LINGXIA_SMOKE_
 }
 $env:LINGXIA_STATE_ROOT = $state
 $env:LINGXIA_SMOKE_REPORT = Join-Path $Root 'report.txt'
-$env:LINGXIA_MAKENSIS = Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'
+$makensisCandidates = @(
+    (Join-Path ${env:ProgramFiles(x86)} 'NSIS\makensis.exe'),
+    (Join-Path $env:ProgramFiles 'NSIS\makensis.exe')
+)
+$makensis = $makensisCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+if (-not $makensis) {
+    $fromPath = Get-Command makensis -ErrorAction SilentlyContinue
+    if ($fromPath) { $makensis = $fromPath.Source }
+}
+if (-not $makensis) { throw 'makensis.exe not found. Install NSIS 3 before the packaging smoke test.' }
+$env:LINGXIA_MAKENSIS = $makensis
 function Assert($Condition, [string]$Message) { if (-not $Condition) { throw $Message } }
 function Run-Exe([string]$File, [string]$Arguments = '', [int]$ExpectedExit = 0) {
     $params = @{ FilePath = $File; PassThru = $true }

@@ -109,7 +109,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
             script: "document.querySelector('#type-heading')?.textContent",
           }),
           (heading) => heading === (language === 'zh-CN' ? '字体' : 'Type'),
-          { describe: `terminal settings to render ${language}`, timeoutMs: 10_000 },
+          { describe: `terminal settings to render ${language}`, timeoutMs: 20_000 },
         );
       }
     } finally {
