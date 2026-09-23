@@ -24,6 +24,12 @@ enum LxAppShellPersistence {
         let y: Double
         let width: Double
         let height: Double
+        let maximized: Bool?
+    }
+
+    private struct InitialWindowSize: Decodable {
+        let width: Double
+        let height: Double
     }
 
     static var sidebarState: (mode: SidebarMode, expandedWidth: CGFloat)? {
@@ -40,7 +46,20 @@ enum LxAppShellPersistence {
         _ = shellSetSidebarChrome(mode == .expanded, Double(expandedWidth))
     }
 
-    static func restoredWindowFrame(minSize: CGSize) -> NSRect? {
+    /// First-launch content size fitted to the main screen's work area.
+    static func initialWindowSize(default fallback: CGSize) -> CGSize {
+        guard let visible = NSScreen.main?.visibleFrame else { return fallback }
+        let raw = shellInitialMainWindowSize(
+            Double(visible.width), Double(visible.height)
+        ).toString()
+        guard let data = raw.data(using: .utf8),
+              let size = try? JSONDecoder().decode(InitialWindowSize.self, from: data),
+              size.width.isFinite, size.height.isFinite,
+              size.width > 0, size.height > 0 else { return fallback }
+        return CGSize(width: size.width, height: size.height)
+    }
+
+    static func restoredWindowFrame(minSize: CGSize) -> (frame: NSRect, maximized: Bool)? {
         let raw = shellWindowFrame().toString()
         guard let data = raw.data(using: .utf8),
               let saved = try? JSONDecoder().decode(PersistedWindowFrame.self, from: data),
@@ -67,16 +86,17 @@ enum LxAppShellPersistence {
         } else {
             screen = NSScreen.main
         }
-        guard let visible = screen?.visibleFrame else { return proposed }
+        let maximized = saved.maximized ?? false
+        guard let visible = screen?.visibleFrame else { return (proposed, maximized) }
 
         let width = min(max(proposed.width, minSize.width), visible.width)
         let height = min(max(proposed.height, minSize.height), visible.height)
         let x = min(max(proposed.minX, visible.minX), visible.maxX - width)
         let y = min(max(proposed.minY, visible.minY), visible.maxY - height)
-        return NSRect(x: x, y: y, width: width, height: height)
+        return (NSRect(x: x, y: y, width: width, height: height), maximized)
     }
 
-    static func setWindowFrame(_ frame: NSRect) {
+    static func setWindowFrame(_ frame: NSRect, maximized: Bool) {
         guard frame.origin.x.isFinite, frame.origin.y.isFinite,
               frame.width.isFinite, frame.height.isFinite,
               frame.width > 0, frame.height > 0 else { return }
@@ -84,7 +104,8 @@ enum LxAppShellPersistence {
             Double(frame.origin.x),
             Double(frame.origin.y),
             Double(frame.width),
-            Double(frame.height)
+            Double(frame.height),
+            maximized
         )
     }
 
