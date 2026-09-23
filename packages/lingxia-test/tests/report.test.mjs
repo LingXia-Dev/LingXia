@@ -15,7 +15,24 @@ function decodeAttachment(attachments, name) {
   return Buffer.from(artifact.base64, "base64").toString("utf8");
 }
 
-test("spec.fail inverts only a body assertion", async () => {
+test("spec.fail treats a body rejection as the declared failure", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  class ApiError extends Error {}
+  spec.fail("product rejects", async () => {
+    throw new ApiError("upstream 500");
+  });
+  spec.fail("rejected promise", () => Promise.reject(new Error("nope")));
+  spec.beforeEach(() => {});
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "xfail"]);
+  assert.equal(report.cases[0].error.message, "upstream 500");
+  assert.equal(protocol.failed, 0);
+});
+
+test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
 
