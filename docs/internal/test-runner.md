@@ -105,6 +105,30 @@ received artifacts. Keep the following invariants when changing these layers:
   page-resolution subset (`isPreDispatchPageError`): the WebView2 code can come
   from a script that already ran. Keep the list in step with the Rust helper.
 
+## Execution and bundling
+
+```text
+Development machine: lxdev collects/bundles specs → sends them over dev websocket
+Target App/Runner:   test JS worker → automation → Logic / WebViews / host / HTTP
+Development machine: lxdev receives progress, results, and artifacts
+```
+
+- The CLI never executes spec bodies. On a phone, specs and their `fetch` run
+  on the phone; with a desktop Runner, in that Runner on the PC.
+- The host reuses one automation worker and creates a fresh JS context per
+  run. Specs execute sequentially and await async hooks and bodies.
+- Directory input collects `*.test.ts` recursively, follows static imports, and
+  strips TypeScript types into one JS script with a source map, reading sources
+  without writing a temporary entry into the project.
+- Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
+  bounds both.
+- Locator actions wait for a unique match, enabled/editable state, stable
+  geometry, and an unobscured hit point (after `scrollIntoView`), retrying
+  while a navigation is still replacing the page.
+- `PageInfo.ready` means `onReady` ran; `webviewAttached` means the page has a
+  WebView. `fresh` relaunches wait for ready but accept a home page that hands
+  off to another page.
+
 ## Automation JS boundary
 
 - `@lingxia/types/automation` describes the raw host drivers. Keep Logic eval,
