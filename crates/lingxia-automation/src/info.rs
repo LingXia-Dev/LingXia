@@ -90,22 +90,13 @@ impl JSLxAppDriver {
     }
 
     /// Test-only routing of this lxapp's Logic `fetch`, scoped to the host
-    /// automation run that installs the routes.
+    /// automation run that installs the routes. Reading the property never
+    /// throws; calls outside a host run (or in a build without the automation
+    /// runtime) reject.
     #[js_method(getter, enumerable)]
     fn network(&self, ctx: JSContext) -> JSResult<JSObject> {
-        let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        #[cfg(feature = "runtime")]
-        {
-            Ok(Class::lookup::<crate::network::JSNetworkDriver>(&ctx)?
-                .instance(crate::network::JSNetworkDriver::new(&app)))
-        }
-        #[cfg(not(feature = "runtime"))]
-        {
-            let _ = (ctx, app);
-            Err(crate::auto_err(
-                "network routing is not built into this host (no automation runtime)",
-            ))
-        }
+        Ok(Class::lookup::<crate::network::JSNetworkDriver>(&ctx)?
+            .instance(crate::network::JSNetworkDriver::new(self.lxapp.clone())))
     }
 
     #[js_method]

@@ -10,8 +10,12 @@ mod host;
 mod info;
 mod input;
 mod nav;
-// Test network routes need a host run to own them.
+// Test network routes need a host run to own them; without the runtime the
+// driver exists but every call rejects.
 #[cfg(feature = "runtime")]
+mod network;
+#[cfg(not(feature = "runtime"))]
+#[path = "network/unavailable.rs"]
 mod network;
 mod page;
 mod resolve;
@@ -259,11 +263,9 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<input::JSPagePointer>()?;
     ctx.register_hidden_class::<input::JSPageKey>()?;
     ctx.register_hidden_class::<nav::JSNavDriver>()?;
+    ctx.register_hidden_class::<network::JSNetworkDriver>()?;
     #[cfg(feature = "runtime")]
-    {
-        ctx.register_hidden_class::<network::JSNetworkDriver>()?;
-        ctx.register_hidden_class::<network::JSNetworkRoute>()?;
-    }
+    ctx.register_hidden_class::<network::JSNetworkRoute>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
     ctx.register_hidden_class::<host::JSLxAppManager>()?;
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;

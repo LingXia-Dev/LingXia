@@ -575,33 +575,57 @@ export type NetworkRoutePattern =
     times?: number;
   };
 
-/** Answer the request without touching the network. */
-export interface NetworkRouteFulfill {
+type NetworkRouteFulfillKey =
+  | 'status'
+  | 'statusText'
+  | 'headers'
+  | 'contentType'
+  | 'body'
+  | 'json'
+  | 'delay';
+type NetworkRouteForbid<K extends string> = Partial<Record<K, never>>;
+
+interface NetworkRouteFulfillFields {
   /** 200..=599. Default 200. */
   status?: number;
   statusText?: string;
   headers?: Record<string, string>;
-  /** A string is sent verbatim; any other JSON value is serialized as JSON. */
-  body?: unknown;
-  /** Serialized as the JSON body; implies `content-type: application/json`. */
-  json?: unknown;
+  /** Sets `content-type` unless `headers` already has one. */
   contentType?: string;
+  /**
+   * Milliseconds to wait before the response resolves, 0..=30000; an
+   * `AbortSignal` passed to `fetch` still rejects it early.
+   */
+  delay?: number;
 }
 
-/** Reject the `fetch` like a transport failure (`TypeError: fetch failed`). */
-export interface NetworkRouteAbort {
-  /** Reason recorded in the error's `data.detail`, e.g. `'failed'`. */
-  abort: string | true;
-}
+/**
+ * Answer the request without touching the network. The body is either `body`
+ * (text or bytes, sent verbatim) or `json` (serialized, implies
+ * `content-type: application/json`), never both.
+ */
+export type NetworkRouteFulfill = NetworkRouteFulfillFields &
+  NetworkRouteForbid<'abort' | 'continue'> &
+  (
+    | { body?: string | ArrayBuffer | Uint8Array; json?: never }
+    | { json: unknown; body?: never }
+  );
+
+/**
+ * Reject the `fetch` like a transport failure (`TypeError: fetch failed`).
+ * `'failed'` is the only failure the wrapper emulates.
+ */
+export type NetworkRouteAbort = { abort: 'failed' } &
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'continue'>;
 
 /** Let the request reach the network, shadowing older matching routes. */
-export interface NetworkRouteContinue {
-  continue: true;
-}
+export type NetworkRouteContinue = { continue: true } &
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort'>;
 
+/** Exactly one of fulfill, abort, or continue. */
 export type NetworkRouteHandler = NetworkRouteFulfill | NetworkRouteAbort | NetworkRouteContinue;
 
-/** One request a route handled. */
+/** One request a route handled, as the app sent it. */
 export interface NetworkRouteRequest {
   routeId: number;
   /** The route's glob or `/source/flags`. */
@@ -609,6 +633,16 @@ export interface NetworkRouteRequest {
   /** Upper-case method. */
   method: string;
   url: string;
+  /** Request headers with lower-case names. */
+  headers: Record<string, string>;
+  /**
+   * Request body as UTF-8 text, cut to 64 KiB. `null` when there is none or
+   * it cannot be read without consuming it: a stream, `Blob`, `FormData`, or
+   * the body of a `Request` object passed as `fetch`'s first argument.
+   */
+  body: string | null;
+  /** `body` was cut to the 64 KiB (65536-byte) limit. */
+  bodyTruncated: boolean;
   action: 'fulfill' | 'abort' | 'continue';
   /** Fulfilled status; `null` for abort/continue. */
   status: number | null;
@@ -621,6 +655,7 @@ export interface NetworkRoute {
   readonly pattern: string;
   /** Resolves `false` when the route already expired or was removed. */
   unroute(): Promise<boolean>;
+  /** Requests this route handled, oldest first. */
   requests(): Promise<NetworkRouteRequest[]>;
 }
 
@@ -636,7 +671,11 @@ export interface NetworkDriver {
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<NetworkRoute>;
   /** Remove every route this run installed for the app; resolves the count. */
   unrouteAll(): Promise<number>;
-  /** Requests this run's routes handled for the app, oldest first. */
+  /**
+   * Run-scoped: requests any route of this automation run handled for the
+   * app, oldest first, across every spec. `t.app.network.requests()` narrows
+   * this to the current spec.
+   */
   requests(): Promise<NetworkRouteRequest[]>;
 }
 
@@ -644,7 +683,13 @@ export interface NetworkDriver {
 export interface LxAppDriver {
   readonly page: PageDriver;
   readonly nav: NavDriver;
-  /** Test-only Logic `fetch` routing, scoped to the running automation. */
+  /**
+   * Test-only Logic `fetch` routing, scoped to the host automation run.
+   *
+   * @remarks Reading the property always works, but every call rejects with
+   * `E_AUTOMATION` outside a host test run (`lxdev test`) — from app Logic,
+   * or in a host built without the automation runtime.
+   */
   readonly network: NetworkDriver;
   /** Complete runtime snapshot of the selected lxapp. */
   info(): Promise<LxAppRuntimeInfo>;
