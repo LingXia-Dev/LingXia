@@ -728,6 +728,12 @@ export class LiveFixture implements Fixture {
       toBeEditable: (options?: ExpectOptions) => this.retryLocator(locator, "toBeEditable", inverted, options, true),
       toHaveText: (expected: string | RegExp, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveText", inverted, options, expected),
+      toContainText: (expected: string | RegExp, options?: ExpectOptions) =>
+        this.retryLocator(locator, "toContainText", inverted, options, expected),
+      toHaveAttribute: (name: string, value?: string | RegExp, options?: ExpectOptions) => {
+        if (typeof name !== "string" || !name) throw new TypeError("toHaveAttribute needs an attribute name");
+        return this.retryLocator(locator, "toHaveAttribute", inverted, options, new AttributeExpectation(name, value));
+      },
       toHaveCount: (expected: number, options?: ExpectOptions) =>
         this.retryLocator(locator, "toHaveCount", inverted, options, expected),
       toHaveValue: (expected: string | RegExp, options?: ExpectOptions) =>
@@ -788,12 +794,13 @@ export class LiveFixture implements Fixture {
       try {
         while (!deadline.expired()) {
           try {
-            lastResolved = await resolveLocator(locator, deadline, context);
+            lastResolved = await resolveLocator(locator, deadline, context,
+              expected instanceof AttributeExpectation ? [expected.name] : []);
             matchLocator(locator, lastResolved, matcher, expected, inverted);
             this.noteAssertion({
               matcher: inverted ? `not.${matcher}` : matcher,
               expected: formatValue(expected),
-              actual: formatValue(locatorActual(matcher, lastResolved)),
+              actual: formatValue(locatorActual(matcher, lastResolved, expected)),
               passed: true,
             });
             return;
@@ -814,7 +821,7 @@ export class LiveFixture implements Fixture {
         clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
         expected,
-        actual: locatorActual(matcher, lastResolved),
+        actual: locatorActual(matcher, lastResolved, expected),
         duration,
         location,
         lastError,
@@ -990,15 +997,37 @@ async function callPageMethod(scope: LogicScope, method: string, args: unknown[]
   return await member.apply(page, args);
 }
 
-function resolveLocator(locator: Locator, deadline: ActionDeadline, context: () => string): Promise<LocatorResolve> {
-  if (locator instanceof PageLocator) return deadline.call("locator read", () => locator.resolve(), context);
+function resolveLocator(
+  locator: Locator,
+  deadline: ActionDeadline,
+  context: () => string,
+  attributes: readonly string[] = [],
+): Promise<LocatorResolve> {
+  if (locator instanceof PageLocator) {
+    return deadline.call("locator read", () => locator.resolve(undefined, "resolve", attributes), context);
+  }
   throw new Error("t.expect() requires a locator from page.testId() or page.css()");
 }
 
-function locatorActual(matcher: string, resolved: LocatorResolve | undefined): unknown {
+/** `toHaveAttribute`'s expectation; formats as the report shows it. */
+class AttributeExpectation {
+  constructor(readonly name: string, readonly value: string | RegExp | undefined) {}
+  toString(): string {
+    return this.value === undefined ? `attribute ${this.name}` : `${this.name}=${formatValue(this.value)}`;
+  }
+  toJSON(): string {
+    return this.toString();
+  }
+}
+
+function locatorActual(matcher: string, resolved: LocatorResolve | undefined, expected?: unknown): unknown {
   if (!resolved) return undefined;
   if (matcher === "toBeInViewport") {
     return resolved.kind === "unique" ? (resolved.inViewport ? "in viewport" : "outside viewport") : resolved.kind;
+  }
+  if (matcher === "toContainText") return resolved.text;
+  if (matcher === "toHaveAttribute") {
+    return expected instanceof AttributeExpectation ? resolved.attributes?.[expected.name] ?? null : undefined;
   }
   if (matcher === "toBeHidden") return !resolved.visible;
   if (matcher === "toBeAttached") return resolved.attached;
@@ -1052,6 +1081,25 @@ function matchLocator(
         inverted ? "not in viewport" : "in viewport",
         `${detail}\nExpected: ${inverted ? "not " : ""}in viewport\nReceived: ${formatValue(actual)}`,
       );
+    }
+    return;
+  }
+  if (matcher === "toContainText") {
+    if (expected instanceof RegExp) applyMatcher("toMatch", resolved.text, expected, inverted);
+    else applyMatcher("toContain", resolved.text, expected, inverted);
+    return;
+  }
+  if (matcher === "toHaveAttribute" && expected instanceof AttributeExpectation) {
+    if (resolved.count !== 1) throw new Error(`Expected one attached element, received ${resolved.count}`);
+    const actual = resolved.attributes?.[expected.name] ?? null;
+    const pass = actual !== null && (
+      expected.value === undefined ? true
+        : expected.value instanceof RegExp ? (expected.value.lastIndex = 0, expected.value.test(actual))
+          : actual === expected.value);
+    if (pass === inverted) {
+      const name = inverted ? "not.toHaveAttribute" : "toHaveAttribute";
+      throw new AssertionError(name, formatValue(actual), `${inverted ? "not " : ""}${expected}`,
+        `Expected: ${inverted ? "not " : ""}${expected}\nReceived: ${actual === null ? `no ${expected.name} attribute` : `${expected.name}=${formatValue(actual)}`}`);
     }
     return;
   }
