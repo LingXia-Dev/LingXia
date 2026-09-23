@@ -15,33 +15,18 @@ pub fn configure_windows_app_with_manifest(manifest: impl AsRef<Path>) {
     let manifest = manifest.as_ref();
     let manifest_path = resolve_manifest_path(manifest);
 
-    // When the CLI staged an `.exe` icon next to the prepared assets, embed it
-    // (with the manifest) via the resource compiler; otherwise embed just the
-    // manifest via linker args. winresource owns the manifest in the icon path,
-    // so the two manifest mechanisms never both run (no double-manifest).
-    match prepared_app_icon() {
-        Some(icon_path) => embed_icon_and_manifest(&manifest_path, &icon_path),
-        None => {
-            println!("cargo:rustc-link-arg-bins=/MANIFEST:EMBED");
-            println!(
-                "cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}",
-                manifest_path.display()
-            );
-        }
-    }
-
+    // The resource compiler owns the manifest (never also pass `/MANIFEST`
+    // linker args: two manifests collide) so the version resource is embedded
+    // whether or not the project ships an `AppIcon.ico`.
+    embed_resources(&manifest_path, prepared_app_icon().as_deref());
     emit_gui_subsystem_args();
     println!("cargo:rerun-if-changed={}", manifest.display());
     configure_local_debug_assets();
 }
 
-/// Like [`configure_windows_app`], but also compiles an `.exe` ICON resource so
-/// the binary shows its icon in Explorer / taskbar / Alt-Tab *before any code
-/// runs* (the dev runner ships as a loose exe; a packaged app ships in a zip).
-///
-/// Unlike [`configure_windows_app`], the manifest is embedded by the resource
-/// compiler (`winresource`) alongside the icon and version info, so we must NOT
-/// also inject `/MANIFEST` linker args — two manifests would collide.
+/// Like [`configure_windows_app`], with an explicit `.ico` so the binary shows
+/// its icon in Explorer / taskbar / Alt-Tab *before any code runs* (the dev
+/// runner ships as a loose exe; a packaged app ships in a zip).
 pub fn configure_windows_app_with_icon(manifest: impl AsRef<Path>, icon: impl AsRef<Path>) {
     if !is_windows_target() {
         return;
@@ -49,7 +34,7 @@ pub fn configure_windows_app_with_icon(manifest: impl AsRef<Path>, icon: impl As
 
     let manifest_path = resolve_manifest_path(manifest.as_ref());
     let icon_path = resolve_manifest_path(icon.as_ref());
-    embed_icon_and_manifest(&manifest_path, &icon_path);
+    embed_resources(&manifest_path, Some(&icon_path));
     emit_gui_subsystem_args();
     configure_local_debug_assets();
 }
@@ -63,16 +48,18 @@ fn prepared_app_icon() -> Option<PathBuf> {
     icon.is_file().then_some(icon)
 }
 
-/// Compile an `.ico` + manifest (+ version info) into the binary via the resource
-/// compiler. winresource emits its own link directives and owns the manifest, so
-/// callers must NOT also inject `/MANIFEST` args.
-fn embed_icon_and_manifest(manifest_path: &Path, icon_path: &Path) {
+/// Compile the manifest, version info and optional `.ico` into the binary via
+/// the resource compiler. winresource emits its own link directives.
+fn embed_resources(manifest_path: &Path, icon_path: Option<&Path>) {
     let mut res = winresource::WindowsResource::new();
-    res.set_icon(
-        icon_path
-            .to_str()
-            .expect("Windows icon path is not valid UTF-8"),
-    );
+    if let Some(icon_path) = icon_path {
+        res.set_icon(
+            icon_path
+                .to_str()
+                .expect("Windows icon path is not valid UTF-8"),
+        );
+        println!("cargo:rerun-if-changed={}", icon_path.display());
+    }
     res.set_manifest_file(
         manifest_path
             .to_str()
@@ -80,9 +67,8 @@ fn embed_icon_and_manifest(manifest_path: &Path, icon_path: &Path) {
     );
     set_product_version_info(&mut res);
     res.compile()
-        .expect("failed to compile Windows .exe resources (icon/manifest)");
+        .expect("failed to compile Windows .exe resources (icon/manifest/version)");
     println!("cargo:rerun-if-changed={}", manifest_path.display());
-    println!("cargo:rerun-if-changed={}", icon_path.display());
 }
 
 /// Explorer, Task Manager and taskbar pins read the exe's version resource;
