@@ -3,6 +3,7 @@ import type {
   AssertionRecord,
   CaseRecord,
   JsonReport,
+  ReportError,
   SpecStatus,
   StepRecord,
 } from "./types.js";
@@ -657,14 +658,32 @@ function renderError(item: CaseRecord): string {
     : "";
   const at = error.location ? `<p class="at">at ${escapeHtml(error.location)}</p>` : "";
   const inStep = error.step ? `<p class="at">in step <code>${escapeHtml(error.step)}</code></p>` : "";
+  const failed = failedAt(error);
   const stack = error.stack
     ? `<details class="stack"><summary>stack</summary><pre>${escapeHtml(error.stack)}</pre></details>`
     : "";
   return `<div class="failure">
     <h3>${escapeHtml(error.name)}${error.matcher ? ` &middot; <code>${escapeHtml(error.matcher)}</code>` : ""}</h3>
     <pre class="message">${escapeHtml(error.message)}</pre>
-    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${compare}${at}${inStep}${stack}
+    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}
   </div>`;
+}
+
+/**
+ * One line naming the failed action, the page that was current and the code,
+ * e.g. `failed at page.click [data-testid=save] on page "devices" (#a1b2) — E_PAGE_NOT_ACTIVE`.
+ * `undefined` when the failure names neither an action nor a page.
+ */
+export function failedAt(error: Pick<ReportError, "code" | "failedAction" | "page">): string | undefined {
+  if (!error.failedAction && !error.page) return undefined;
+  let line = error.failedAction ? `failed at ${error.failedAction}` : "failed";
+  if (error.page) {
+    if (error.page.name) line += ` on page ${JSON.stringify(error.page.name)}`;
+    else line += " on page";
+    if (error.page.instanceId) line += ` (#${error.page.instanceId})`;
+  }
+  if (error.code) line += ` — ${error.code}`;
+  return line;
 }
 
 function renderSteps(steps: StepRecord[]): string {

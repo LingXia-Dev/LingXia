@@ -1,6 +1,7 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 import type {
   Automation,
+  AutomationErrorCode,
   LogicLxAppEvalOptions,
   LxAppDriver,
   NetworkDriver,
@@ -57,7 +58,12 @@ export interface ExpectOptions {
 }
 
 export interface RejectExpected {
-  code?: string;
+  /**
+   * The rejection's `code`: an automation driver code (`E_PAGE_NOT_ACTIVE`,
+   * `E_ELEMENT_NOT_FOUND`, …; see `AUTOMATION_ERROR_CODES`) or any other
+   * string code the operation rejects with.
+   */
+  code?: AutomationErrorCode | (string & {});
   message?: string | RegExp;
 }
 
@@ -350,10 +356,20 @@ export interface AttachmentRef {
   mimeType: string;
 }
 
+/** A page instance, as a failure names it. */
+export interface FailurePage {
+  name: string | null;
+  instanceId: string | null;
+}
+
 export interface ReportError {
   code?: string;
   data?: unknown;
   phase?: string;
+  /** The recorded driver action that failed, e.g. `page.click [data-testid=save]`. */
+  failedAction?: string;
+  /** The page that was current when the spec failed. */
+  page?: FailurePage;
   name: string;
   message: string;
   stack?: string;
@@ -417,6 +433,21 @@ export interface RunMeta {
   surface_coverage?: boolean;
 }
 
+/** One failed case, flat, for tools that only need what broke and where. */
+export interface FailureRecord {
+  id: string;
+  title: string;
+  file?: string;
+  line?: number;
+  phase?: string;
+  code?: string;
+  message: string;
+  failedAction?: string;
+  page?: FailurePage;
+  /** Report-relative path of the failure screenshot, when one was captured. */
+  screenshot?: string;
+}
+
 export interface JsonReport {
   schema_version?: number;
   framework: { name: string; version: string };
@@ -432,6 +463,8 @@ export interface JsonReport {
   timeout: number;
   duration_ms: number;
   cases: CaseRecord[];
+  /** Every failed, timed-out or xpass case, flattened from `cases`. */
+  failures?: FailureRecord[];
 }
 
 export type ProtocolReport = JsonReport;
