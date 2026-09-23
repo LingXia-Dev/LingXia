@@ -83,6 +83,9 @@ pub use lingxia_update::{
     Channel, RuntimeCompatibilityError, SemanticVersion, Version, VersionError,
 };
 pub use lingxia_webview::url_callback;
+/// Host-owned data-root override for isolated test runs. Not an lxapp API.
+#[doc(hidden)]
+pub use lxapp::data_profile;
 pub use lxapp::set_num_workers;
 pub use lxapp::{
     AppSessionClass, CloseReason, CreatePageInstanceRequest, CreatedPageInstance,

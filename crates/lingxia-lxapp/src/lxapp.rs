@@ -34,6 +34,8 @@ use crate::update::UpdateManager;
 use crate::{debug, error, info, warn};
 
 pub mod config;
+#[doc(hidden)]
+pub mod data_profile;
 pub mod host_class;
 use config::{LxAppConfig, LxAppLogicEntry, LxAppPageEntry};
 mod content;
@@ -2266,13 +2268,20 @@ impl LxApp {
             }
         }
 
+        // A host test run may have pointed this app's data at an isolated
+        // profile. The app itself cannot tell: only the roots move.
+        let profile = data_profile::paths_for(&self.appid);
+
         // Compute storage file path: <data>/lingxia/storage/<fingermark>.redb
-        self.storage_file_path = self
-            .runtime
-            .app_data_dir()
-            .join(LINGXIA_DIR)
-            .join(STORAGE_DIR)
-            .join(format!("{}.redb", self.fingermark));
+        self.storage_file_path = match &profile {
+            Some(profile) => profile.storage_file.clone(),
+            None => self
+                .runtime
+                .app_data_dir()
+                .join(LINGXIA_DIR)
+                .join(STORAGE_DIR)
+                .join(format!("{}.redb", self.fingermark)),
+        };
 
         // Set up userdata directory
         let userdata_base_dir = self
@@ -2281,7 +2290,10 @@ impl LxApp {
             .join(LINGXIA_DIR)
             .join(USER_DATA_DIR);
 
-        self.user_data_dir = userdata_base_dir.join(&dir_name);
+        self.user_data_dir = match &profile {
+            Some(profile) => profile.user_data.clone(),
+            None => userdata_base_dir.join(&dir_name),
+        };
         if !self.user_data_dir.exists() {
             std::fs::create_dir_all(&self.user_data_dir).map_err(|e| {
                 LxAppError::IoError(format!("Failed to create user data directory: {}", e))
@@ -2296,7 +2308,10 @@ impl LxApp {
             .join(LINGXIA_DIR)
             .join(USER_CACHE_DIR);
 
-        self.user_cache_dir = cache_base_dir.join(&dir_name);
+        self.user_cache_dir = match &profile {
+            Some(profile) => profile.user_cache.clone(),
+            None => cache_base_dir.join(&dir_name),
+        };
         // Claim before creating the directory, under the same lock as cleanup.
         self.usercache_cleanup_protection = Some(crate::cache::protect_from_cleanup([self
             .user_cache_dir
@@ -2307,13 +2322,16 @@ impl LxApp {
             })?;
         }
 
-        let temp_base_dir = self
-            .runtime
-            .app_cache_dir()
-            .join(LINGXIA_DIR)
-            .join(LXAPPS_DIR)
-            .join(TEMP_DIR)
-            .join(&dir_name);
+        let temp_base_dir = match &profile {
+            Some(profile) => profile.temp_base.clone(),
+            None => self
+                .runtime
+                .app_cache_dir()
+                .join(LINGXIA_DIR)
+                .join(LXAPPS_DIR)
+                .join(TEMP_DIR)
+                .join(&dir_name),
+        };
         let _ = std::fs::create_dir_all(&temp_base_dir);
         if let Ok(entries) = std::fs::read_dir(&temp_base_dir) {
             for entry in entries.flatten() {

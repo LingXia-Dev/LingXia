@@ -21,6 +21,9 @@ fn prepare_directory_structure(runtime: Arc<Platform>) -> Result<(), LxAppError>
     for dir in &dirs {
         fs::create_dir_all(dir)?;
     }
+    // Profile overrides live only in memory, so any profile directory left on
+    // disk belongs to a run this process never saw end (a crash, a kill).
+    super::data_profile::sweep_stale(&super::data_profile::profiles_base(&data_dir));
 
     let metadata_path = data_dir.join(LINGXIA_DIR).join(LXAPPS_DB_FILE);
     metadata::init(metadata_path)
