@@ -226,6 +226,10 @@ struct SdkLogger;
 
 impl Log for SdkLogger {
     fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        #[cfg(feature = "servo")]
+        if metadata.level() > Level::Info && is_servo_engine_target(metadata.target()) {
+            return false;
+        }
         metadata.level() <= Level::Trace
     }
 
@@ -250,6 +254,48 @@ impl Log for SdkLogger {
             logger.flush();
         }
     }
+}
+
+/// Servo's engine crates log every parse and layout step at debug level —
+/// thousands of records a second that bury the app's own dev-session logs.
+#[cfg(feature = "servo")]
+fn is_servo_engine_target(target: &str) -> bool {
+    const ENGINE_ROOTS: &[&str] = &[
+        "background_hang_monitor",
+        "canvas",
+        "devtools",
+        "embedder_traits",
+        "fonts",
+        "glow",
+        "html5ever",
+        "ipc_channel",
+        "layout",
+        "markup5ever",
+        "media",
+        "mozangle",
+        "mozjs",
+        "net",
+        "paint",
+        "profile",
+        "script",
+        "script_bindings",
+        "selectors",
+        "servo",
+        "storage",
+        "style",
+        "surfman",
+        "tendril",
+        "timers",
+        "webgl",
+        "webrender",
+        "wr_glyph_rasterizer",
+        "xml5ever",
+    ];
+    let root = target.split("::").next().unwrap_or(target);
+    ENGINE_ROOTS.contains(&root)
+        || root.starts_with("servo_")
+        || root.starts_with("stylo_")
+        || root.starts_with("webrender_")
 }
 
 fn map_level(level: Level) -> LxLogLevel {
