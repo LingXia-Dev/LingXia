@@ -1,6 +1,7 @@
 //! Sidebar and tab bar chrome.
 
 use crate::WindowsDesignIcon;
+use crate::dpi::px;
 
 use super::*;
 
@@ -10,13 +11,23 @@ pub(super) use auxiliary::*;
 pub(super) use footer_action::*;
 
 /// Phone bottom tab bar: 49px item strip plus a lower safe-area hit region.
-const BOTTOM_TAB_ICON_SIZE: i32 = 22;
-const BOTTOM_TAB_ITEM_HEIGHT: i32 = 49;
-const BOTTOM_TAB_ICON_TOP: i32 = 6;
-const BOTTOM_TAB_LABEL_TOP_GAP: i32 = 1;
+fn bottom_tab_icon_size() -> i32 {
+    crate::dpi::px(22)
+}
+fn bottom_tab_item_height() -> i32 {
+    crate::dpi::px(49)
+}
+fn bottom_tab_icon_top() -> i32 {
+    crate::dpi::px(6)
+}
+fn bottom_tab_label_top_gap() -> i32 {
+    crate::dpi::px(1)
+}
 /// Circle behind a selected single-icon tab, standing in for the selected
 /// artwork it does not have. Matches the mobile hosts.
-const ACTIVE_INDICATOR_SIZE: i32 = 32;
+fn active_indicator_size() -> i32 {
+    crate::dpi::px(32)
+}
 /// How far the indicator sits from the bar toward the selected colour. GDI has
 /// no alpha here, so the tint is mixed against the plate instead.
 const ACTIVE_INDICATOR_MIX_PERCENT: u32 = 20;
@@ -117,14 +128,14 @@ fn draw_tab_bar_inner(
         };
 
         let item_top = item_rect.top;
-        let item_bottom = (item_rect.top + BOTTOM_TAB_ITEM_HEIGHT).min(item_rect.bottom);
+        let item_bottom = (item_rect.top + bottom_tab_item_height()).min(item_rect.bottom);
         let center_x = (item_rect.left + item_rect.right) / 2;
-        let icon_top = item_top + BOTTOM_TAB_ICON_TOP;
+        let icon_top = item_top + bottom_tab_icon_top();
         let icon_rect = RECT {
-            left: center_x - BOTTOM_TAB_ICON_SIZE / 2,
+            left: center_x - bottom_tab_icon_size() / 2,
             top: icon_top,
-            right: center_x + BOTTOM_TAB_ICON_SIZE / 2,
-            bottom: icon_top + BOTTOM_TAB_ICON_SIZE,
+            right: center_x + bottom_tab_icon_size() / 2,
+            bottom: icon_top + bottom_tab_icon_size(),
         };
 
         // The indicator belongs to the bar, not to an item's artwork, so every
@@ -142,7 +153,7 @@ fn draw_tab_bar_inner(
                 icon_rect,
                 WindowsDesignIcon::PageMenu,
                 color,
-                BOTTOM_TAB_ICON_SIZE,
+                bottom_tab_icon_size(),
             );
             true
         } else {
@@ -151,7 +162,7 @@ fn draw_tab_bar_inner(
             // both centered.
             let icon_path = item.icon_path.as_str();
             !icon_path.trim().is_empty()
-                && draw_icon_from_path(hdc, icon_path, icon_rect, BOTTOM_TAB_ICON_SIZE as u32)
+                && draw_icon_from_path(hdc, icon_path, icon_rect, bottom_tab_icon_size() as u32)
         };
 
         let label = if is_more {
@@ -168,12 +179,12 @@ fn draw_tab_bar_inner(
         let label_rect = RECT {
             left: item_rect.left,
             top: if drew_icon {
-                icon_rect.bottom + BOTTOM_TAB_LABEL_TOP_GAP
+                icon_rect.bottom + bottom_tab_label_top_gap()
             } else {
-                item_top + 6
+                item_top + px(6)
             },
             right: item_rect.right,
-            bottom: item_bottom - 2,
+            bottom: item_bottom - px(2),
         };
         if tabbar.background_transparent {
             if let Some(text_runs) = text_runs.as_deref_mut() {
@@ -213,10 +224,10 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
     let center_x = (icon_rect.left + icon_rect.right) / 2;
     let center_y = (icon_rect.top + icon_rect.bottom) / 2;
     let plate = RECT {
-        left: center_x - ACTIVE_INDICATOR_SIZE / 2,
-        top: center_y - ACTIVE_INDICATOR_SIZE / 2,
-        right: center_x + ACTIVE_INDICATOR_SIZE / 2,
-        bottom: center_y + ACTIVE_INDICATOR_SIZE / 2,
+        left: center_x - active_indicator_size() / 2,
+        top: center_y - active_indicator_size() / 2,
+        right: center_x + active_indicator_size() / 2,
+        bottom: center_y + active_indicator_size() / 2,
     };
     // An immersive bar paints no plate of its own, so mix against the shell.
     let behind = if tabbar.background_transparent {
@@ -227,7 +238,7 @@ fn draw_active_indicator(hdc: HDC, icon_rect: RECT, tabbar: &WindowsShellTabBarL
     fill_round_rect_aa(
         hdc,
         plate,
-        ACTIVE_INDICATOR_SIZE / 2,
+        active_indicator_size() / 2,
         blend_rgb(tabbar.selected_color, behind, ACTIVE_INDICATOR_MIX_PERCENT),
     );
 }
@@ -258,7 +269,7 @@ pub(super) fn draw_sidebar_tab_bar(
         let _ = IntersectClipRect(
             hdc,
             rect.left,
-            rect.top + SHELL_TOP_BAR_HEIGHT,
+            rect.top + shell_top_bar_height(),
             rect.right,
             viewport_bottom,
         );
@@ -282,12 +293,12 @@ pub(super) fn draw_sidebar_tab_bar(
         draw_hover_wash(hdc, group_rect, 6, cursor);
     }
     // The lxapp's own icon (via the app-info API) leads the group header.
-    let icon_rect = sidebar_top_level_icon_rect(group_rect, SIDEBAR_ICON_SIZE);
+    let icon_rect = sidebar_top_level_icon_rect(group_rect, sidebar_icon_size());
     draw_icon_or_default(
         hdc,
         &tabbar.app_icon_path,
         icon_rect,
-        SIDEBAR_ICON_SIZE as u32,
+        sidebar_icon_size() as u32,
     );
     let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
     let header_rect = sidebar_group_title_rect(rect, tabbar, scroll_offset);
@@ -348,9 +359,9 @@ pub(super) fn draw_sidebar_tab_bar(
         draw_top_border(
             hdc,
             RECT {
-                left: rect.left + SIDEBAR_ITEM_INSET,
+                left: rect.left + sidebar_item_inset(),
                 top: footer_top,
-                right: rect.right - SIDEBAR_ITEM_INSET,
+                right: rect.right - sidebar_item_inset(),
                 bottom: rect.bottom,
             },
             shell_palette().divider,
@@ -367,8 +378,8 @@ pub(super) fn draw_sidebar_tab_bar(
         if !action.disabled {
             draw_hover_wash(hdc, action_rect, 6, cursor);
         }
-        let icon_rect = centered_icon_rect(action_rect, 16);
-        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, 16);
+        let icon_rect = centered_icon_rect(action_rect, px(16));
+        let _ = draw_icon_from_path(hdc, &action.icon_path, icon_rect, px(16) as u32);
     }
 }
 
@@ -378,9 +389,9 @@ pub(super) fn draw_sidebar_tab_bar(
 pub(super) fn sidebar_top_level_icon_rect(item_rect: RECT, icon_size: i32) -> RECT {
     let top = item_rect.top + (rect_height(&item_rect) - icon_size).max(0) / 2;
     normalize_rect(RECT {
-        left: item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET,
+        left: item_rect.left + sidebar_top_level_icon_inset(),
         top,
-        right: item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET + icon_size,
+        right: item_rect.left + sidebar_top_level_icon_inset() + icon_size,
         bottom: top + icon_size,
     })
 }
@@ -400,9 +411,9 @@ pub(super) fn draw_sidebar_items(
         fill_round_rect_aa(
             hdc,
             RECT {
-                left: rect.left + SIDEBAR_ITEM_INSET,
+                left: rect.left + sidebar_item_inset(),
                 top: sidebar_group_bottom(rect, tabbar, scroll_offset),
-                right: rect.right - SIDEBAR_ITEM_INSET,
+                right: rect.right - sidebar_item_inset(),
                 bottom: last.bottom,
             },
             6,
@@ -413,14 +424,14 @@ pub(super) fn draw_sidebar_items(
     if !tabbar.items.is_empty() {
         let last = sidebar_item_rect(rect, tabbar, tabbar.items.len() - 1, scroll_offset);
         // Same 12pt attribution axis as macOS (group inset + 12).
-        let guide_x = rect.left + SIDEBAR_ITEM_INSET + 12;
+        let guide_x = rect.left + sidebar_item_inset() + 12;
         fill_rect(
             hdc,
             RECT {
                 left: guide_x,
-                top: sidebar_group_bottom(rect, tabbar, scroll_offset) - 2,
-                right: guide_x + 1,
-                bottom: (last.bottom - 7)
+                top: sidebar_group_bottom(rect, tabbar, scroll_offset) - px(2),
+                right: guide_x + px(1),
+                bottom: (last.bottom - px(7))
                     .max(sidebar_group_bottom(rect, tabbar, scroll_offset) - 2),
             },
             shell_palette().divider,
@@ -435,14 +446,14 @@ pub(super) fn draw_sidebar_items(
             // especially visible while the old and new rows repainted during
             // tab switches. The accent guide already carries active emphasis.
             fill_round_rect_aa(hdc, item_rect, 5, shell_palette().selection_background);
-            let guide_x = rect.left + SIDEBAR_ITEM_INSET + 12;
+            let guide_x = rect.left + sidebar_item_inset() + 12;
             fill_round_rect_aa(
                 hdc,
                 RECT {
-                    left: guide_x - 1,
-                    top: item_rect.top + 6,
-                    right: guide_x + 2,
-                    bottom: item_rect.bottom - 6,
+                    left: guide_x - px(1),
+                    top: item_rect.top + px(6),
+                    right: guide_x + px(2),
+                    bottom: item_rect.bottom - px(6),
                 },
                 2,
                 tabbar.selected_color,
@@ -452,9 +463,9 @@ pub(super) fn draw_sidebar_items(
         }
 
         let label_rect = RECT {
-            left: item_rect.left + 32,
+            left: item_rect.left + px(32),
             top: item_rect.top,
-            right: item_rect.right - 8,
+            right: item_rect.right - px(8),
             bottom: item_rect.bottom,
         };
         let text_color = if selected {
@@ -465,14 +476,14 @@ pub(super) fn draw_sidebar_items(
         let icon_path = &item.icon_path;
         let icon_rect = centered_icon_rect(
             RECT {
-                left: item_rect.left + 8,
+                left: item_rect.left + px(8),
                 top: item_rect.top,
-                right: item_rect.left + 8 + SIDEBAR_ICON_SIZE,
+                right: item_rect.left + px(8) + sidebar_icon_size(),
                 bottom: item_rect.bottom,
             },
-            SIDEBAR_ICON_SIZE,
+            sidebar_icon_size(),
         );
-        draw_icon_or_default(hdc, icon_path, icon_rect, SIDEBAR_ICON_SIZE as u32);
+        draw_icon_or_default(hdc, icon_path, icon_rect, sidebar_icon_size() as u32);
         draw_text(hdc, &item.text, label_rect, text_color, DT_LEFT);
 
         if let Some(badge) = item.badge.as_ref().filter(|badge| !badge.is_empty()) {
@@ -496,7 +507,7 @@ fn draw_sidebar_rail(
         let _ = IntersectClipRect(
             hdc,
             rect.left,
-            rect.top + SHELL_TOP_BAR_HEIGHT,
+            rect.top + shell_top_bar_height(),
             rect.right,
             viewport_bottom,
         );
@@ -509,12 +520,12 @@ fn draw_sidebar_rail(
         fill_round_rect_aa(hdc, app_rect, 6, shell_palette().selection_background);
     }
     draw_hover_wash(hdc, app_rect, 6, cursor);
-    let app_icon_rect = centered_icon_rect(app_rect, SIDEBAR_RAIL_ICON_SIZE);
+    let app_icon_rect = centered_icon_rect(app_rect, sidebar_rail_icon_size());
     draw_icon_or_default(
         hdc,
         &tabbar.app_icon_path,
         app_icon_rect,
-        SIDEBAR_RAIL_ICON_SIZE as u32,
+        sidebar_rail_icon_size() as u32,
     );
     if tabbar.group_active
         && tabbar.group_closable
@@ -533,14 +544,14 @@ fn draw_sidebar_rail(
             fill_round_rect_aa(hdc, item_rect, 6, shell_palette().selection_background);
         }
         draw_hover_wash(hdc, item_rect, 6, cursor);
-        let icon_rect = centered_icon_rect(item_rect, SIDEBAR_RAIL_ICON_SIZE);
+        let icon_rect = centered_icon_rect(item_rect, sidebar_rail_icon_size());
         let drew = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
             None => draw_icon_or_default(
                 hdc,
                 &item.icon_path,
                 icon_rect,
-                SIDEBAR_RAIL_ICON_SIZE as u32,
+                sidebar_rail_icon_size() as u32,
             ),
         };
         if !drew {
@@ -634,15 +645,15 @@ pub(super) fn sidebar_rail_pinned_divider_rect(
         left,
         top,
         right: left + width,
-        bottom: top + 1,
+        bottom: top + px(1),
     }))
 }
 
 /// The collapse/expand toggle cell, pinned to the bottom of an icon rail.
 pub(super) fn sidebar_rail_expand_rect(rect: RECT) -> RECT {
-    let cell = SIDEBAR_RAIL_ITEM_SIZE;
+    let cell = sidebar_rail_item_size();
     let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
-    let bottom = rect.bottom - SIDEBAR_ITEM_GAP;
+    let bottom = rect.bottom - sidebar_item_gap();
     normalize_rect(RECT {
         left,
         top: bottom - cell,
@@ -681,11 +692,11 @@ pub(super) fn sidebar_auxiliary_rail_index(
 }
 
 pub(super) fn sidebar_rail_item_rect(rect: RECT, index: usize, scroll_offset: i32) -> RECT {
-    let cell = SIDEBAR_RAIL_ITEM_SIZE;
+    let cell = sidebar_rail_item_size();
     let top = rect.top
-        + SHELL_TOP_BAR_HEIGHT
-        + SIDEBAR_ITEM_GAP
-        + index as i32 * (cell + SIDEBAR_ITEM_GAP)
+        + shell_top_bar_height()
+        + sidebar_item_gap()
+        + index as i32 * (cell + sidebar_item_gap())
         - scroll_offset;
     let left = rect.left + (rect_width(&rect) - cell).max(0) / 2;
     normalize_rect(RECT {
@@ -702,9 +713,10 @@ fn sidebar_group_top(rect: RECT, tabbar: &WindowsShellTabBarLayout, scroll_offse
     let pinned = sidebar_pinned_count(tabbar);
     let unpinned = tabbar.auxiliary_items.len().saturating_sub(pinned);
     rect.top
-        + SHELL_TOP_BAR_HEIGHT
+        + shell_top_bar_height()
         + sidebar_pinned_grid_height(rect, tabbar)
-        + tabbar.group_order_index.min(unpinned) as i32 * (SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP)
+        + tabbar.group_order_index.min(unpinned) as i32
+            * (sidebar_item_height() + sidebar_item_gap())
         - scroll_offset
 }
 
@@ -713,7 +725,7 @@ pub(in crate::shell::chrome) fn sidebar_group_bottom(
     tabbar: &WindowsShellTabBarLayout,
     scroll_offset: i32,
 ) -> i32 {
-    sidebar_group_top(rect, tabbar, scroll_offset) + SIDEBAR_ITEM_HEIGHT
+    sidebar_group_top(rect, tabbar, scroll_offset) + sidebar_item_height()
 }
 
 pub(super) fn sidebar_group_rect(
@@ -722,9 +734,9 @@ pub(super) fn sidebar_group_rect(
     scroll_offset: i32,
 ) -> RECT {
     normalize_rect(RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET,
+        left: rect.left + sidebar_item_inset(),
         top: sidebar_group_top(rect, tabbar, scroll_offset),
-        right: rect.right - SIDEBAR_ITEM_INSET,
+        right: rect.right - sidebar_item_inset(),
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
     })
 }
@@ -735,17 +747,17 @@ pub(in crate::shell::chrome) fn sidebar_group_title_rect(
     scroll_offset: i32,
 ) -> RECT {
     let group_rect = sidebar_group_rect(rect, tabbar, scroll_offset);
-    let icon_rect = sidebar_top_level_icon_rect(group_rect, SIDEBAR_ICON_SIZE);
+    let icon_rect = sidebar_top_level_icon_rect(group_rect, sidebar_icon_size());
     let show_chevron = !tabbar.items_api_hidden && !tabbar.items.is_empty();
     let right = if tabbar.group_closable {
-        sidebar_group_close_rect(rect, tabbar, scroll_offset).left - 4
+        sidebar_group_close_rect(rect, tabbar, scroll_offset).left - px(4)
     } else if show_chevron {
-        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left - 4
+        sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left - px(4)
     } else {
-        rect.right - SIDEBAR_ITEM_INSET
+        rect.right - sidebar_item_inset()
     };
     normalize_rect(RECT {
-        left: icon_rect.right + 8,
+        left: icon_rect.right + px(8),
         top: group_rect.top,
         right,
         bottom: group_rect.bottom,
@@ -759,12 +771,12 @@ pub(super) fn sidebar_group_chevron_rect(
 ) -> RECT {
     let group_top = sidebar_group_top(rect, tabbar, scroll_offset);
     let group_bottom = sidebar_group_bottom(rect, tabbar, scroll_offset);
-    let top = group_top + (group_bottom - group_top - SIDEBAR_CHEVRON_SIZE).max(0) / 2;
+    let top = group_top + (group_bottom - group_top - sidebar_chevron_size()).max(0) / 2;
     normalize_rect(RECT {
-        left: rect.right - SIDEBAR_ITEM_INSET - SIDEBAR_CHEVRON_SIZE,
+        left: rect.right - sidebar_item_inset() - sidebar_chevron_size(),
         top,
-        right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: top + SIDEBAR_CHEVRON_SIZE,
+        right: rect.right - sidebar_item_inset(),
+        bottom: top + sidebar_chevron_size(),
     })
 }
 
@@ -775,7 +787,7 @@ pub(super) fn sidebar_group_close_rect(
 ) -> RECT {
     let chevron = sidebar_group_chevron_rect(rect, tabbar, scroll_offset);
     normalize_rect(RECT {
-        left: chevron.left - SIDEBAR_BROWSER_CLOSE_SIZE,
+        left: chevron.left - sidebar_browser_close_size(),
         top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: chevron.left,
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
@@ -793,7 +805,7 @@ pub(super) fn sidebar_group_menu_rect(
         sidebar_group_chevron_rect(rect, tabbar, scroll_offset).left
     };
     normalize_rect(RECT {
-        left: trailing - SIDEBAR_BROWSER_CLOSE_SIZE,
+        left: trailing - sidebar_browser_close_size(),
         top: sidebar_group_top(rect, tabbar, scroll_offset),
         right: trailing,
         bottom: sidebar_group_bottom(rect, tabbar, scroll_offset),
@@ -809,24 +821,24 @@ pub(super) fn sidebar_group_menu_rect(
 /// then refuses to use.
 fn header_leading_reserve() -> i32 {
     let app_menu = if cfg!(feature = "browser-shell") {
-        TOP_BAR_BUTTON_SIZE
+        top_bar_button_size()
     } else {
         0
     };
-    TOP_BAR_PADDING + app_menu + SIDEBAR_HEADER_ACTION_GAP
+    top_bar_padding() + app_menu + sidebar_header_action_gap()
 }
 
 /// The collapse toggle: the header's trailing slot, flush with the chevron
 /// column below and centered on the same axis as the header actions, so the
 /// strip reads window menu leading, sidebar controls trailing (macOS order).
 pub(super) fn sidebar_header_toggle_rect(sidebar_rect: RECT) -> RECT {
-    let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
-    let right = sidebar_rect.right - SIDEBAR_ITEM_INSET;
+    let top = sidebar_rect.top + (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
+    let right = sidebar_rect.right - sidebar_item_inset();
     normalize_rect(RECT {
-        left: right - SIDEBAR_HEADER_ACTION_SIZE,
+        left: right - sidebar_header_action_size(),
         top,
         right,
-        bottom: top + SIDEBAR_HEADER_ACTION_SIZE,
+        bottom: top + sidebar_header_action_size(),
     })
 }
 
@@ -835,15 +847,15 @@ pub(super) fn sidebar_header_toggle_rect(sidebar_rect: RECT) -> RECT {
 ///
 /// `lingxia_shell::MAX_HEADER_SIDEBAR_ACTIONS` is the contract an lxapp is held
 /// to at declaration time; this is what the window can actually show right now.
-/// At `SHELL_SIDEBAR_WIDTH` the two agree — widening the buttons or the leading
+/// At `shell_sidebar_width()` the two agree — widening the buttons or the leading
 /// controls without revisiting the limit would let an app declare an action
 /// that never draws.
 fn header_action_capacity(available: i32) -> usize {
-    if available < SIDEBAR_HEADER_ACTION_SIZE {
+    if available < sidebar_header_action_size() {
         return 0;
     }
-    let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
-    ((available + SIDEBAR_HEADER_ACTION_GAP) / stride).max(0) as usize
+    let stride = sidebar_header_action_size() + sidebar_header_action_gap();
+    ((available + sidebar_header_action_gap()) / stride).max(0) as usize
 }
 
 /// Sidebar action buttons in the top caption strip,
@@ -858,9 +870,9 @@ pub(super) fn sidebar_header_action_rects(
     if tabbar.header_actions.is_empty() || tabbar.collapsed {
         return Vec::new();
     }
-    let top = sidebar_rect.top + (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
+    let top = sidebar_rect.top + (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
     let leading_limit = sidebar_rect.left + header_leading_reserve();
-    let mut right = sidebar_header_toggle_rect(sidebar_rect).left - SIDEBAR_HEADER_ACTION_GAP;
+    let mut right = sidebar_header_toggle_rect(sidebar_rect).left - sidebar_header_action_gap();
     // Draw the ones that fit rather than measuring the whole set and giving up
     // on it: a sidebar one icon too narrow would otherwise lose the buttons
     // that did fit, which reads as the header having lost them all.
@@ -875,17 +887,17 @@ pub(super) fn sidebar_header_action_rects(
     // Reverse order from the trailing edge keeps the declared left-to-right
     // reading order; an overflow drops the last declared, not the first.
     for action in tabbar.header_actions[..shown].iter().rev() {
-        let left = right - SIDEBAR_HEADER_ACTION_SIZE;
+        let left = right - sidebar_header_action_size();
         out.push((
             action.id.clone(),
             normalize_rect(RECT {
                 left,
                 top,
                 right,
-                bottom: top + SIDEBAR_HEADER_ACTION_SIZE,
+                bottom: top + sidebar_header_action_size(),
             }),
         ));
-        right = left - SIDEBAR_HEADER_ACTION_GAP;
+        right = left - sidebar_header_action_gap();
     }
     out
 }
@@ -945,14 +957,14 @@ pub(super) fn sidebar_item_rect(
     scroll_offset: i32,
 ) -> RECT {
     let top = sidebar_group_top(rect, tabbar, scroll_offset)
-        + SIDEBAR_ITEM_HEIGHT
-        + SIDEBAR_PARENT_CHILD_GAP
-        + index as i32 * (SIDEBAR_CHILD_ITEM_HEIGHT + SIDEBAR_CHILD_ITEM_GAP);
+        + sidebar_item_height()
+        + sidebar_parent_child_gap()
+        + index as i32 * (sidebar_child_item_height() + sidebar_child_item_gap());
     normalize_rect(RECT {
-        left: rect.left + SIDEBAR_ITEM_INSET + SIDEBAR_CHILD_INDENT,
+        left: rect.left + sidebar_item_inset() + sidebar_child_indent(),
         top,
-        right: rect.right - SIDEBAR_ITEM_INSET,
-        bottom: top + SIDEBAR_CHILD_ITEM_HEIGHT,
+        right: rect.right - sidebar_item_inset(),
+        bottom: top + sidebar_child_item_height(),
     })
 }
 
@@ -965,9 +977,9 @@ mod tests {
     /// collapse toggle took theirs.
     fn available_at(sidebar_width: i32) -> i32 {
         sidebar_width
-            - SIDEBAR_ITEM_INSET
-            - SIDEBAR_HEADER_ACTION_SIZE
-            - SIDEBAR_HEADER_ACTION_GAP
+            - sidebar_item_inset()
+            - sidebar_header_action_size()
+            - sidebar_header_action_gap()
             - header_leading_reserve()
     }
 
@@ -978,7 +990,8 @@ mod tests {
     #[test]
     fn the_contract_limit_fits_the_standard_sidebar() {
         assert!(
-            header_action_capacity(available_at(SHELL_SIDEBAR_WIDTH)) >= MAX_HEADER_SIDEBAR_ACTIONS,
+            header_action_capacity(available_at(shell_sidebar_width()))
+                >= MAX_HEADER_SIDEBAR_ACTIONS,
             "the standard sidebar must seat every action the contract allows"
         );
     }
@@ -988,9 +1001,9 @@ mod tests {
     #[test]
     fn the_reserve_tracks_the_buttons_that_exist() {
         let expected = if cfg!(feature = "browser-shell") {
-            TOP_BAR_PADDING + TOP_BAR_BUTTON_SIZE + SIDEBAR_HEADER_ACTION_GAP
+            top_bar_padding() + top_bar_button_size() + sidebar_header_action_gap()
         } else {
-            TOP_BAR_PADDING + SIDEBAR_HEADER_ACTION_GAP
+            top_bar_padding() + sidebar_header_action_gap()
         };
         assert_eq!(header_leading_reserve(), expected);
     }
@@ -1000,24 +1013,24 @@ mod tests {
         let sidebar = RECT {
             left: 0,
             top: 0,
-            right: SHELL_SIDEBAR_WIDTH,
+            right: shell_sidebar_width(),
             bottom: 600,
         };
         let toggle = sidebar_header_toggle_rect(sidebar);
-        assert_eq!(toggle.right, SHELL_SIDEBAR_WIDTH - SIDEBAR_ITEM_INSET);
-        assert_eq!(toggle.right - toggle.left, SIDEBAR_HEADER_ACTION_SIZE);
+        assert_eq!(toggle.right, shell_sidebar_width() - sidebar_item_inset());
+        assert_eq!(toggle.right - toggle.left, sidebar_header_action_size());
         // Same vertical axis as the actions it sits beside.
-        let top = (SHELL_TOP_BAR_HEIGHT - SIDEBAR_HEADER_ACTION_SIZE).max(0) / 2;
+        let top = (shell_top_bar_height() - sidebar_header_action_size()).max(0) / 2;
         assert_eq!(toggle.top, top);
     }
 
     #[test]
     fn capacity_counts_one_action_at_a_time() {
-        let stride = SIDEBAR_HEADER_ACTION_SIZE + SIDEBAR_HEADER_ACTION_GAP;
-        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE - 1), 0);
-        assert_eq!(header_action_capacity(SIDEBAR_HEADER_ACTION_SIZE), 1);
+        let stride = sidebar_header_action_size() + sidebar_header_action_gap();
+        assert_eq!(header_action_capacity(sidebar_header_action_size() - 1), 0);
+        assert_eq!(header_action_capacity(sidebar_header_action_size()), 1);
         assert_eq!(
-            header_action_capacity(stride + SIDEBAR_HEADER_ACTION_SIZE),
+            header_action_capacity(stride + sidebar_header_action_size()),
             2
         );
     }
@@ -1028,7 +1041,7 @@ mod tests {
     fn a_narrow_strip_still_seats_what_it_can() {
         // One button's worth, so the strip is short of the contract limit
         // however that limit is later set.
-        let narrow = SIDEBAR_HEADER_ACTION_SIZE;
+        let narrow = sidebar_header_action_size();
         assert_eq!(header_action_capacity(narrow), 1);
         assert!(header_action_capacity(narrow) < MAX_HEADER_SIDEBAR_ACTIONS);
         assert_eq!(header_action_capacity(0), 0);
@@ -1038,13 +1051,13 @@ mod tests {
     fn selected_indicator_fits_inside_the_49px_strip() {
         // iOS UIKit draws a 32pt plate on a 32pt icon well. A 36px plate at
         // icon_top=5 sat at y=-2 and the overlay clipped its top.
-        let center_y = BOTTOM_TAB_ICON_TOP + BOTTOM_TAB_ICON_SIZE / 2;
-        let plate_top = center_y - ACTIVE_INDICATOR_SIZE / 2;
-        let plate_bottom = center_y + ACTIVE_INDICATOR_SIZE / 2;
+        let center_y = bottom_tab_icon_top() + bottom_tab_icon_size() / 2;
+        let plate_top = center_y - active_indicator_size() / 2;
+        let plate_bottom = center_y + active_indicator_size() / 2;
         assert!(
             plate_top >= 0,
             "indicator top {plate_top} clips the overlay"
         );
-        assert!(plate_bottom <= BOTTOM_TAB_ITEM_HEIGHT);
+        assert!(plate_bottom <= bottom_tab_item_height());
     }
 }

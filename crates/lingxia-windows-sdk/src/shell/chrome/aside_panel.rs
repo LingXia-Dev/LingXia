@@ -2,9 +2,12 @@
 //! smart navigation, address capsule) and its hit-testing.
 
 use super::*;
+use crate::dpi::px;
 
 /// Toolbar height of a browser aside panel (matches the macOS DockedBrowser).
-pub(super) const ASIDE_PANEL_TOOLBAR_HEIGHT: i32 = 38;
+pub(super) fn aside_panel_toolbar_height() -> i32 {
+    crate::dpi::px(38)
+}
 
 /// The toolbar row at a browser aside panel's top edge; the webview fills
 /// the panel below it.
@@ -13,7 +16,7 @@ pub(super) fn aside_panel_toolbar_rect(panel_rect: RECT) -> RECT {
         left: panel_rect.left,
         top: panel_rect.top,
         right: panel_rect.right,
-        bottom: (panel_rect.top + ASIDE_PANEL_TOOLBAR_HEIGHT).min(panel_rect.bottom),
+        bottom: (panel_rect.top + aside_panel_toolbar_height()).min(panel_rect.bottom),
     })
 }
 
@@ -123,11 +126,11 @@ pub(super) fn browser_panel_header_rect(panel: &WindowsChromePanel) -> RECT {
 pub(super) fn browser_panel_close_rect(panel: &WindowsChromePanel) -> RECT {
     let header = browser_panel_header_rect(panel);
     normalize_rect(RECT {
-        left: (header.right - BROWSER_PANEL_BUTTON_SIZE - BROWSER_PANEL_HEADER_PADDING)
+        left: (header.right - browser_panel_button_size() - browser_panel_header_padding())
             .max(header.left),
-        top: header.top + (rect_height(&header) - BROWSER_PANEL_BUTTON_SIZE) / 2,
-        right: header.right - BROWSER_PANEL_HEADER_PADDING,
-        bottom: header.top + (rect_height(&header) + BROWSER_PANEL_BUTTON_SIZE) / 2,
+        top: header.top + (rect_height(&header) - browser_panel_button_size()) / 2,
+        right: header.right - browser_panel_header_padding(),
+        bottom: header.top + (rect_height(&header) + browser_panel_button_size()) / 2,
     })
 }
 
@@ -135,16 +138,16 @@ pub(super) fn browser_panel_nav_button_rects(
     panel: &WindowsChromePanel,
 ) -> [(&'static str, RECT); 3] {
     let header = browser_panel_header_rect(panel);
-    let top = header.top + (rect_height(&header) - BROWSER_PANEL_BUTTON_SIZE) / 2;
-    let mut left = header.left + BROWSER_PANEL_HEADER_PADDING;
+    let top = header.top + (rect_height(&header) - browser_panel_button_size()) / 2;
+    let mut left = header.left + browser_panel_header_padding();
     let mut next = || {
         let rect = normalize_rect(RECT {
             left,
             top,
-            right: left + BROWSER_PANEL_BUTTON_SIZE,
-            bottom: top + BROWSER_PANEL_BUTTON_SIZE,
+            right: left + browser_panel_button_size(),
+            bottom: top + browser_panel_button_size(),
         });
-        left += BROWSER_PANEL_BUTTON_SIZE + BROWSER_PANEL_BUTTON_GAP;
+        left += browser_panel_button_size() + browser_panel_button_gap();
         rect
     };
     [
@@ -167,20 +170,36 @@ pub(super) fn aside_panel_nav_button_rects(
     ]
 }
 
-const ASIDE_PANEL_TAB_MAX_WIDTH: i32 = 190;
-const ASIDE_PANEL_TAB_MIN_WIDTH: i32 = 44;
+fn aside_panel_tab_max_width() -> i32 {
+    crate::dpi::px(190)
+}
+fn aside_panel_tab_min_width() -> i32 {
+    crate::dpi::px(44)
+}
 /// Horizontal air around a tab title inside its shape.
-const ASIDE_PANEL_TAB_TEXT_PADDING: i32 = 14;
-const ASIDE_PANEL_TAB_GAP: i32 = 4;
+fn aside_panel_tab_text_padding() -> i32 {
+    crate::dpi::px(14)
+}
+fn aside_panel_tab_gap() -> i32 {
+    crate::dpi::px(4)
+}
 /// Air above the tabs; they run flush to the toolbar's bottom edge so the
 /// active tab merges into the content below (Chrome style).
-const ASIDE_PANEL_TAB_TOP_INSET: i32 = 6;
+fn aside_panel_tab_top_inset() -> i32 {
+    crate::dpi::px(6)
+}
 /// Upper-corner radius of the active tab shape.
-const ASIDE_PANEL_TAB_RADIUS: i32 = 8;
-const ASIDE_PANEL_TAB_CLOSE_SIZE: i32 = 16;
+fn aside_panel_tab_radius() -> i32 {
+    crate::dpi::px(8)
+}
+fn aside_panel_tab_close_size() -> i32 {
+    crate::dpi::px(16)
+}
 /// Below this the tab has no room for a title next to the close glyph, so the
 /// glyph is dropped and the tab is closed from its neighbours or the slot.
-const ASIDE_PANEL_TAB_CLOSE_MIN_TAB_WIDTH: i32 = 76;
+fn aside_panel_tab_close_min_tab_width() -> i32 {
+    crate::dpi::px(76)
+}
 
 /// Tab rects of the aside panel's strip, index-aligned with the registered
 /// tabs: each fitted to its title (capped), shrunk proportionally when the
@@ -194,20 +213,20 @@ pub(super) fn aside_panel_tab_rects(
     }
     let header = browser_panel_header_rect(panel);
     let left_edge = if panel.panel_id == lingxia_windows_contract::ASIDE_BROWSER_PANEL_ID {
-        aside_panel_nav_button_rects(panel)[2].1.right + BROWSER_PANEL_HEADER_PADDING
+        aside_panel_nav_button_rects(panel)[2].1.right + browser_panel_header_padding()
     } else {
-        header.left + BROWSER_PANEL_HEADER_PADDING
+        header.left + browser_panel_header_padding()
     };
-    let right_edge = browser_panel_close_rect(panel).left - BROWSER_PANEL_HEADER_PADDING;
+    let right_edge = browser_panel_close_rect(panel).left - browser_panel_header_padding();
     let count = tabs.len() as i32;
-    let avail = (right_edge - left_edge - (count - 1) * ASIDE_PANEL_TAB_GAP).max(0);
+    let avail = (right_edge - left_edge - (count - 1) * aside_panel_tab_gap()).max(0);
     let mut widths = tabs
         .iter()
         .map(|tab| {
             (measure_chrome_text_width(&tab.title)
-                + 2 * ASIDE_PANEL_TAB_TEXT_PADDING
-                + ASIDE_PANEL_TAB_CLOSE_SIZE)
-                .clamp(ASIDE_PANEL_TAB_MIN_WIDTH, ASIDE_PANEL_TAB_MAX_WIDTH)
+                + 2 * aside_panel_tab_text_padding()
+                + aside_panel_tab_close_size())
+            .clamp(aside_panel_tab_min_width(), aside_panel_tab_max_width())
         })
         .collect::<Vec<_>>();
     let total: i32 = widths.iter().sum();
@@ -221,11 +240,11 @@ pub(super) fn aside_panel_tab_rects(
     for width in widths {
         out.push(normalize_rect(RECT {
             left,
-            top: header.top + ASIDE_PANEL_TAB_TOP_INSET,
+            top: header.top + aside_panel_tab_top_inset(),
             right: (left + width).min(right_edge),
             bottom: header.bottom,
         }));
-        left += width + ASIDE_PANEL_TAB_GAP;
+        left += width + aside_panel_tab_gap();
     }
     out
 }
@@ -233,15 +252,15 @@ pub(super) fn aside_panel_tab_rects(
 /// Close-glyph rect at a tab's trailing edge; dropped on tabs too narrow to
 /// keep a readable title next to it.
 pub(super) fn aside_panel_tab_close_rect(tab: RECT) -> Option<RECT> {
-    if rect_width(&tab) < ASIDE_PANEL_TAB_CLOSE_MIN_TAB_WIDTH {
+    if rect_width(&tab) < aside_panel_tab_close_min_tab_width() {
         return None;
     }
-    let top = tab.top + (rect_height(&tab) - ASIDE_PANEL_TAB_CLOSE_SIZE) / 2;
+    let top = tab.top + (rect_height(&tab) - aside_panel_tab_close_size()) / 2;
     Some(normalize_rect(RECT {
-        left: tab.right - ASIDE_PANEL_TAB_CLOSE_SIZE - 6,
+        left: tab.right - aside_panel_tab_close_size() - px(6),
         top,
-        right: tab.right - 6,
-        bottom: top + ASIDE_PANEL_TAB_CLOSE_SIZE,
+        right: tab.right - px(6),
+        bottom: top + aside_panel_tab_close_size(),
     }))
 }
 
@@ -253,13 +272,13 @@ pub(super) fn browser_panel_address_rect(panel: &WindowsChromePanel) -> RECT {
     let close = browser_panel_close_rect(panel);
     let address_left = browser_panel_nav_button_rects(panel)
         .last()
-        .map(|(_, rect)| rect.right + BROWSER_PANEL_HEADER_PADDING)
-        .unwrap_or(header.left + BROWSER_PANEL_HEADER_PADDING);
+        .map(|(_, rect)| rect.right + browser_panel_header_padding())
+        .unwrap_or(header.left + browser_panel_header_padding());
     normalize_rect(RECT {
         left: address_left,
-        top: header.top + 8,
-        right: close.left - BROWSER_PANEL_HEADER_PADDING,
-        bottom: header.bottom - 8,
+        top: header.top + px(8),
+        right: close.left - browser_panel_header_padding(),
+        bottom: header.bottom - px(8),
     })
 }
 
@@ -301,7 +320,7 @@ pub(super) fn draw_browser_panel_header(
             _ => WindowsDesignIcon::BrowserRefresh,
         };
         draw_hover_wash(hdc, rect, 5, cursor);
-        draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, 16);
+        draw_design_icon_button(hdc, rect, icon, pal.frame_button_icon, px(16));
     }
 
     let address = browser_panel_address_rect(panel);
@@ -369,7 +388,7 @@ pub(super) fn draw_aside_panel_header(
             } else {
                 pal.text_muted
             };
-            draw_design_icon_button(hdc, rect, icon, color, 16);
+            draw_design_icon_button(hdc, rect, icon, color, px(16));
         }
     }
 
@@ -377,12 +396,12 @@ pub(super) fn draw_aside_panel_header(
     for (index, (tab, rect)) in tabs.iter().zip(rects.iter().copied()).enumerate() {
         if tab.active {
             // Rounded top, flush bottom: the tab joins the web content.
-            fill_round_rect_aa(hdc, rect, ASIDE_PANEL_TAB_RADIUS, pal.panel_background);
+            fill_round_rect_aa(hdc, rect, aside_panel_tab_radius(), pal.panel_background);
             fill_rect(
                 hdc,
                 RECT {
                     left: rect.left,
-                    top: (rect.bottom - ASIDE_PANEL_TAB_RADIUS).max(rect.top),
+                    top: (rect.bottom - aside_panel_tab_radius()).max(rect.top),
                     right: rect.right,
                     bottom: rect.bottom,
                 },
@@ -390,26 +409,26 @@ pub(super) fn draw_aside_panel_header(
             );
         } else if index > 0 && !tabs[index - 1].active {
             // Chrome hides the separator next to the active tab.
-            let x = rect.left - (ASIDE_PANEL_TAB_GAP + 1) / 2;
+            let x = rect.left - (aside_panel_tab_gap() + 1) / 2;
             fill_rect(
                 hdc,
                 RECT {
                     left: x,
-                    top: rect.top + 8,
+                    top: rect.top + px(8),
                     right: x + 1,
-                    bottom: rect.bottom - 8,
+                    bottom: rect.bottom - px(8),
                 },
                 pal.divider,
             );
         }
         if !tab.active {
-            draw_hover_wash(hdc, rect, ASIDE_PANEL_TAB_RADIUS, cursor);
+            draw_hover_wash(hdc, rect, aside_panel_tab_radius(), cursor);
         }
         let close = aside_panel_tab_close_rect(rect);
         let title_rect = normalize_rect(RECT {
-            left: rect.left + 10,
+            left: rect.left + px(10),
             top: rect.top,
-            right: close.map(|close| close.left).unwrap_or(rect.right - 6),
+            right: close.map(|close| close.left).unwrap_or(rect.right - px(6)),
             bottom: rect.bottom,
         });
         let text_color = if tab.active {

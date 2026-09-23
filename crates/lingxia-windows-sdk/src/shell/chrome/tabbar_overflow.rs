@@ -3,15 +3,33 @@
 use super::*;
 
 const OVERFLOW_COLUMNS: usize = 5;
-const OVERFLOW_PANEL_RADIUS: i32 = 16;
-const OVERFLOW_PANEL_PADDING: i32 = 8;
-const OVERFLOW_HORIZONTAL_INSET: i32 = 12;
-const OVERFLOW_BOTTOM_GAP: i32 = 8;
-const OVERFLOW_CELL_HEIGHT: i32 = 64;
-const OVERFLOW_ICON_SIZE: i32 = 24;
-const OVERFLOW_ICON_CONTAINER: i32 = 32;
-const OVERFLOW_ICON_TEXT_GAP: i32 = 4;
-const OVERFLOW_INDICATOR_SIZE: i32 = 32;
+fn overflow_panel_radius() -> i32 {
+    crate::dpi::px(16)
+}
+fn overflow_panel_padding() -> i32 {
+    crate::dpi::px(8)
+}
+fn overflow_horizontal_inset() -> i32 {
+    crate::dpi::px(12)
+}
+fn overflow_bottom_gap() -> i32 {
+    crate::dpi::px(8)
+}
+fn overflow_cell_height() -> i32 {
+    crate::dpi::px(64)
+}
+fn overflow_icon_size() -> i32 {
+    crate::dpi::px(24)
+}
+fn overflow_icon_container() -> i32 {
+    crate::dpi::px(32)
+}
+fn overflow_icon_text_gap() -> i32 {
+    crate::dpi::px(4)
+}
+fn overflow_indicator_size() -> i32 {
+    crate::dpi::px(32)
+}
 const OVERFLOW_INDICATOR_MIX_PERCENT: u32 = 20;
 /// Matches iOS/macOS overflow labels (`UIFont.systemFont(ofSize: 10, weight: .medium)`).
 const OVERFLOW_LABEL_POINT_SIZE: i32 = 10;
@@ -44,7 +62,9 @@ pub(crate) enum TabbarOverflowHit {
     Dismiss,
 }
 
-pub(crate) const TABBAR_OVERFLOW_PANEL_RADIUS: i32 = OVERFLOW_PANEL_RADIUS;
+pub(crate) fn tabbar_overflow_panel_radius() -> i32 {
+    overflow_panel_radius()
+}
 
 /// Places the folded items in a five-column grid immediately above the compact
 /// strip. The full layout keeps the overlay inside the simulated screen; the
@@ -62,18 +82,18 @@ pub(crate) fn tabbar_overflow_layout(
     }
 
     let rows = folded.div_ceil(OVERFLOW_COLUMNS) as i32;
-    let panel_height = OVERFLOW_PANEL_PADDING * 2 + rows * OVERFLOW_CELL_HEIGHT;
+    let panel_height = overflow_panel_padding() * 2 + rows * overflow_cell_height();
     let strip_top = strip_top.clamp(0, height);
-    let bottom = (strip_top - OVERFLOW_BOTTOM_GAP).clamp(0, height);
-    let inset = OVERFLOW_HORIZONTAL_INSET.min(width / 2);
+    let bottom = (strip_top - overflow_bottom_gap()).clamp(0, height);
+    let inset = overflow_horizontal_inset().min(width / 2);
     let sheet = normalize_rect(RECT {
         left: inset,
         top: (bottom - panel_height).max(0),
         right: width - inset,
         bottom,
     });
-    let inner_left = sheet.left + OVERFLOW_PANEL_PADDING;
-    let inner_right = sheet.right - OVERFLOW_PANEL_PADDING;
+    let inner_left = sheet.left + overflow_panel_padding();
+    let inner_right = sheet.right - overflow_panel_padding();
     let inner_width = (inner_right - inner_left).max(0);
     let column_width = inner_width / OVERFLOW_COLUMNS as i32;
     let mut cells = Vec::with_capacity(folded);
@@ -88,24 +108,26 @@ pub(crate) fn tabbar_overflow_layout(
         };
         let rect = normalize_rect(RECT {
             left,
-            top: sheet.top + OVERFLOW_PANEL_PADDING + row as i32 * OVERFLOW_CELL_HEIGHT,
+            top: sheet.top + overflow_panel_padding() + row as i32 * overflow_cell_height(),
             right,
-            bottom: sheet.top + OVERFLOW_PANEL_PADDING + (row as i32 + 1) * OVERFLOW_CELL_HEIGHT,
+            bottom: sheet.top
+                + overflow_panel_padding()
+                + (row as i32 + 1) * overflow_cell_height(),
         });
         let center_x = (rect.left + rect.right) / 2;
         // iOS: 32pt well + 24pt icon, so the 32pt selection plate sits fully
         // inside the cell instead of being clipped at the card's top edge.
-        let icon_box_top = rect.top + OVERFLOW_PANEL_PADDING;
-        let icon_inset = (OVERFLOW_ICON_CONTAINER - OVERFLOW_ICON_SIZE) / 2;
+        let icon_box_top = rect.top + overflow_panel_padding();
+        let icon_inset = (overflow_icon_container() - overflow_icon_size()) / 2;
         let icon = normalize_rect(RECT {
-            left: center_x - OVERFLOW_ICON_SIZE / 2,
+            left: center_x - overflow_icon_size() / 2,
             top: icon_box_top + icon_inset,
-            right: center_x + OVERFLOW_ICON_SIZE / 2,
-            bottom: icon_box_top + icon_inset + OVERFLOW_ICON_SIZE,
+            right: center_x + overflow_icon_size() / 2,
+            bottom: icon_box_top + icon_inset + overflow_icon_size(),
         });
         let label = normalize_rect(RECT {
             left: rect.left + 4,
-            top: icon.bottom + OVERFLOW_ICON_TEXT_GAP,
+            top: icon.bottom + overflow_icon_text_gap(),
             right: rect.right - 4,
             bottom: rect.bottom - 2,
         });
@@ -195,7 +217,7 @@ pub(crate) fn paint_tabbar_overflow(
     } else {
         layout.tabbar.background_color
     };
-    fill_round_rect_aa_corners(hdc, sheet, [OVERFLOW_PANEL_RADIUS; 4], surface);
+    fill_round_rect_aa_corners(hdc, sheet, [overflow_panel_radius(); 4], surface);
 
     let font_height = logical_font_height(hdc, OVERFLOW_LABEL_POINT_SIZE);
     let mut text_runs = Vec::with_capacity(layout.cells.len());
@@ -216,12 +238,12 @@ pub(crate) fn paint_tabbar_overflow(
             fill_round_rect_aa(
                 hdc,
                 RECT {
-                    left: center_x - OVERFLOW_INDICATOR_SIZE / 2,
-                    top: center_y - OVERFLOW_INDICATOR_SIZE / 2,
-                    right: center_x + OVERFLOW_INDICATOR_SIZE / 2,
-                    bottom: center_y + OVERFLOW_INDICATOR_SIZE / 2,
+                    left: center_x - overflow_indicator_size() / 2,
+                    top: center_y - overflow_indicator_size() / 2,
+                    right: center_x + overflow_indicator_size() / 2,
+                    bottom: center_y + overflow_indicator_size() / 2,
                 },
-                OVERFLOW_INDICATOR_SIZE / 2,
+                overflow_indicator_size() / 2,
                 blend_rgb(
                     layout.tabbar.selected_color,
                     surface,
@@ -230,9 +252,9 @@ pub(crate) fn paint_tabbar_overflow(
             );
         }
         let drew_icon = !item.icon_path.trim().is_empty()
-            && draw_icon_from_path(hdc, &item.icon_path, icon, OVERFLOW_ICON_SIZE as u32);
+            && draw_icon_from_path(hdc, &item.icon_path, icon, overflow_icon_size() as u32);
         if !drew_icon {
-            fill_round_rect_aa(hdc, icon, OVERFLOW_ICON_SIZE / 2, color);
+            fill_round_rect_aa(hdc, icon, overflow_icon_size() / 2, color);
         }
         if let Some(badge) = item.badge.as_deref().filter(|badge| !badge.is_empty()) {
             draw_badge(hdc, icon, badge);
@@ -395,8 +417,8 @@ mod tests {
         let layout = tabbar_overflow_layout(393, 852, 803, tabbar(6, 4)).unwrap();
         let cell = &layout.cells[0];
         let center_y = (cell.icon.top + cell.icon.bottom) / 2;
-        let plate_top = center_y - OVERFLOW_INDICATOR_SIZE / 2;
-        let plate_bottom = center_y + OVERFLOW_INDICATOR_SIZE / 2;
+        let plate_top = center_y - overflow_indicator_size() / 2;
+        let plate_bottom = center_y + overflow_indicator_size() / 2;
         assert!(
             plate_top >= layout.sheet.top,
             "plate top {plate_top} clips sheet top {}",

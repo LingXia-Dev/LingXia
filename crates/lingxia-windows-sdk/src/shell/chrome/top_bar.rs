@@ -1,5 +1,6 @@
 //! Shell top bar, address capsule, navigation bar, and caption buttons.
 
+use crate::dpi::px;
 use std::collections::HashMap;
 #[cfg(feature = "browser-runtime")]
 use std::ffi::c_void;
@@ -62,13 +63,13 @@ pub(super) fn top_bar_controls(
     top_bar: RECT,
     layout: &WindowsShellWindowLayout,
 ) -> TopBarControls {
-    let button_top = top_bar.top + (rect_height(&top_bar) - TOP_BAR_BUTTON_SIZE).max(0) / 2;
+    let button_top = top_bar.top + (rect_height(&top_bar) - top_bar_button_size()).max(0) / 2;
     let square_button = |left: i32| {
         normalize_rect(RECT {
             left,
             top: button_top,
-            right: left + TOP_BAR_BUTTON_SIZE,
-            bottom: button_top + TOP_BAR_BUTTON_SIZE,
+            right: left + top_bar_button_size(),
+            bottom: button_top + top_bar_button_size(),
         })
     };
 
@@ -91,9 +92,9 @@ pub(super) fn top_bar_controls(
     // build would offer a lone "Exit" that just duplicates the window close,
     // so it gets no button at all.
     let app_icon_left = if has_sidebar_toggle {
-        client.left + TOP_BAR_PADDING
+        client.left + top_bar_padding()
     } else {
-        top_bar.left + TOP_BAR_PADDING
+        top_bar.left + top_bar_padding()
     };
     let app_icon =
         (cfg!(feature = "browser-shell") && !compact_sidebar).then(|| square_button(app_icon_left));
@@ -123,14 +124,14 @@ pub(super) fn top_bar_controls(
             };
             super::sidebar_header_toggle_rect(sidebar_rect)
         });
-    let mut left_edge = top_bar.left + TOP_BAR_PADDING;
+    let mut left_edge = top_bar.left + top_bar_padding();
     // The app-menu slot is skipped on a device-framed screen (the icon is not
     // drawn there — its menu lives on the frame's capsule), freeing the
     // leading edge for the browser controls.
     if !layout.suppress_window_controls
         && let Some(app_icon) = app_icon
     {
-        left_edge = left_edge.max(app_icon.right + TOP_BAR_BUTTON_GAP);
+        left_edge = left_edge.max(app_icon.right + top_bar_button_gap());
     }
 
     let mut controls = TopBarControls {
@@ -153,8 +154,8 @@ pub(super) fn top_bar_controls(
 
     // The frame buttons own the client's trailing edge; everything between
     // the toggle and them is available to the address section.
-    let mut right_edge = (client.right - window_frame_buttons_width() - TOP_BAR_PADDING)
-        .min(top_bar.right - TOP_BAR_PADDING);
+    let mut right_edge = (client.right - window_frame_buttons_width() - top_bar_padding())
+        .min(top_bar.right - top_bar_padding());
     // A device-framed screen has no caption buttons: the presented browser
     // leads with a close button instead (Safari-view style), and the trailing
     // edge stays clear of the floating device capsule.
@@ -166,9 +167,9 @@ pub(super) fn top_bar_controls(
         if dismissible {
             let close = square_button(left_edge);
             controls.browser_close = Some(close);
-            left_edge = close.right + TOP_BAR_BUTTON_GAP;
+            left_edge = close.right + top_bar_button_gap();
         }
-        right_edge = top_bar.right - TOP_BAR_PADDING - device_capsule_reserve();
+        right_edge = top_bar.right - top_bar_padding() - device_capsule_reserve();
     }
     let aside = layout
         .address_bar
@@ -182,13 +183,13 @@ pub(super) fn top_bar_controls(
     // page controls with the address bar, not the window edge); reserve its
     // slot here, place the button once the capsule rect is known.
     if !aside && show_page_menu {
-        right_edge -= TOP_BAR_BUTTON_SIZE + ADDRESS_CAPSULE_NAV_GAP;
+        right_edge -= top_bar_button_size() + address_capsule_nav_gap();
     }
-    let nav_width = 3 * TOP_BAR_BUTTON_SIZE + 2 * TOP_BAR_BUTTON_GAP;
-    let capsule_space = right_edge - left_edge - nav_width - ADDRESS_CAPSULE_NAV_GAP;
+    let nav_width = 3 * top_bar_button_size() + 2 * top_bar_button_gap();
+    let capsule_space = right_edge - left_edge - nav_width - address_capsule_nav_gap();
     if capsule_space < 48 {
         if !aside && show_page_menu {
-            controls.page_menu = Some(square_button(right_edge + ADDRESS_CAPSULE_NAV_GAP));
+            controls.page_menu = Some(square_button(right_edge + address_capsule_nav_gap()));
         }
         return controls;
     }
@@ -198,18 +199,18 @@ pub(super) fn top_bar_controls(
     let nav_left = left_edge;
     controls.nav_back = Some(square_button(nav_left));
     controls.nav_forward = Some(square_button(
-        nav_left + TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP,
+        nav_left + top_bar_button_size() + top_bar_button_gap(),
     ));
     controls.nav_reload = Some(square_button(
-        nav_left + 2 * (TOP_BAR_BUTTON_SIZE + TOP_BAR_BUTTON_GAP),
+        nav_left + 2 * (top_bar_button_size() + top_bar_button_gap()),
     ));
 
     // The capsule sits right after the nav cluster, keeping the reload
     // button and the address text together. It remains visible but read-only
     // for API-managed aside tabs.
-    let capsule_left = nav_left + nav_width + ADDRESS_CAPSULE_NAV_GAP;
-    let capsule_width = capsule_space.min(ADDRESS_CAPSULE_MAX_WIDTH);
-    let capsule_height = ADDRESS_CAPSULE_HEIGHT.min(rect_height(&top_bar));
+    let capsule_left = nav_left + nav_width + address_capsule_nav_gap();
+    let capsule_width = capsule_space.min(address_capsule_max_width());
+    let capsule_height = address_capsule_height().min(rect_height(&top_bar));
     let capsule_top = top_bar.top + (rect_height(&top_bar) - capsule_height).max(0) / 2;
     let capsule = normalize_rect(RECT {
         left: capsule_left,
@@ -219,7 +220,7 @@ pub(super) fn top_bar_controls(
     });
     controls.address = Some(capsule);
     if !aside && show_page_menu {
-        controls.page_menu = Some(square_button(capsule.right + ADDRESS_CAPSULE_NAV_GAP));
+        controls.page_menu = Some(square_button(capsule.right + address_capsule_nav_gap()));
     }
     // Star/pin live inside the capsule's trailing edge, like the macOS
     // address bar; internal pages have neither (they cannot be bookmarked).
@@ -238,23 +239,23 @@ pub(super) fn top_bar_controls(
     if !aside
         && web
         && (show_bookmark || show_pin)
-        && rect_width(&capsule) >= 3 * ADDRESS_CAPSULE_BUTTON_SIZE
+        && rect_width(&capsule) >= 3 * address_capsule_button_size()
     {
         let button_top =
-            capsule.top + (rect_height(&capsule) - ADDRESS_CAPSULE_BUTTON_SIZE).max(0) / 2;
+            capsule.top + (rect_height(&capsule) - address_capsule_button_size()).max(0) / 2;
         let capsule_button = |right: i32| RECT {
-            left: right - ADDRESS_CAPSULE_BUTTON_SIZE,
+            left: right - address_capsule_button_size(),
             top: button_top,
             right,
-            bottom: button_top + ADDRESS_CAPSULE_BUTTON_SIZE,
+            bottom: button_top + address_capsule_button_size(),
         };
-        let trailing = capsule_button(capsule.right - 5);
+        let trailing = capsule_button(capsule.right - px(5));
         if show_pin {
             controls.pin = Some(trailing);
         }
         if show_bookmark {
             controls.bookmark = Some(if show_pin {
-                capsule_button(trailing.left - 2)
+                capsule_button(trailing.left - px(2))
             } else {
                 trailing
             });
@@ -326,12 +327,14 @@ pub fn begin_address_edit(
 /// the custom-painted `DT_VCENTER` text and visibly jump after submission.
 fn address_editor_rect(capsule: RECT) -> RECT {
     let available_height = rect_height(&capsule);
-    let editor_height = (ADDRESS_CAPSULE_HEIGHT - 8).min(available_height).max(0);
+    let editor_height = (address_capsule_height() - px(8))
+        .min(available_height)
+        .max(0);
     let top = capsule.top + (available_height - editor_height).max(0) / 2;
     normalize_rect(RECT {
-        left: capsule.left + 12,
+        left: capsule.left + px(12),
         top,
-        right: capsule.right - 12,
+        right: capsule.right - px(12),
         bottom: top + editor_height,
     })
 }
@@ -376,7 +379,7 @@ pub(super) fn draw_top_bar_controls(
         // not a primary caption button.
         // Same wash as the header actions it now sits beside.
         draw_hover_wash(hdc, toggle, 6, cursor);
-        draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, 18);
+        draw_design_icon_button(hdc, toggle, icon, shell_palette().text_muted, px(18));
     }
     // Back/forward dim while the presented tab has no history in that
     // direction (smart nav, mirroring the macOS browser chrome).
@@ -392,7 +395,7 @@ pub(super) fn draw_top_bar_controls(
         } else {
             shell_palette().text_muted
         };
-        draw_design_icon_button(hdc, back, WindowsDesignIcon::Back, color, 18);
+        draw_design_icon_button(hdc, back, WindowsDesignIcon::Back, color, px(18));
     }
     if let Some(forward) = controls.nav_forward {
         draw_hover_wash(hdc, forward, 5, cursor);
@@ -401,7 +404,7 @@ pub(super) fn draw_top_bar_controls(
         } else {
             shell_palette().text_muted
         };
-        draw_design_icon_button(hdc, forward, WindowsDesignIcon::Forward, color, 18);
+        draw_design_icon_button(hdc, forward, WindowsDesignIcon::Forward, color, px(18));
     }
     if let Some(reload) = controls.nav_reload {
         draw_hover_wash(hdc, reload, 5, cursor);
@@ -434,13 +437,13 @@ pub(super) fn draw_top_bar_controls(
         // text yields to the trailing star/pin buttons when present.
         let text_right = controls
             .bookmark
-            .map(|bookmark| bookmark.left - 4)
-            .unwrap_or(address.right - 12);
+            .map(|bookmark| bookmark.left - px(4))
+            .unwrap_or(address.right - px(12));
         draw_text(
             hdc,
             text,
             normalize_rect(RECT {
-                left: address.left + 12,
+                left: address.left + px(12),
                 top: address.top,
                 right: text_right,
                 bottom: address.bottom,
@@ -509,7 +512,7 @@ pub(super) fn draw_top_bar_controls(
     // trailing star/pin buttons.
     let edit_rect = controls.address.map(|address| match controls.bookmark {
         Some(bookmark) => RECT {
-            right: bookmark.left - 4,
+            right: bookmark.left - px(4),
             ..address
         },
         None => address,
@@ -522,10 +525,14 @@ pub(super) fn draw_top_bar_controls(
 }
 
 /// Rendered size of the back/home navigation glyphs.
-const NAV_ICON_SIZE: i32 = 22;
+fn nav_icon_size() -> i32 {
+    crate::dpi::px(22)
+}
 
 /// Leading inset of the navigation bar's back/home button from the screen edge.
-const NAV_LEADING_MARGIN: i32 = 8;
+fn nav_leading_margin() -> i32 {
+    crate::dpi::px(8)
+}
 
 pub(super) fn draw_navigation_bar(
     hdc: HDC,
@@ -561,7 +568,7 @@ pub(super) fn draw_navigation_bar(
             slot,
             WindowsDesignIcon::Back,
             text_color,
-            NAV_ICON_SIZE,
+            nav_icon_size(),
         );
         left_controls_width = back_rect.right - rect.left;
     }
@@ -580,13 +587,13 @@ pub(super) fn draw_navigation_bar(
             slot,
             WindowsDesignIcon::Home,
             text_color,
-            NAV_ICON_SIZE,
+            nav_icon_size(),
         );
         left_controls_width = home_rect.right - rect.left;
     }
 
     if !navbar.title.trim().is_empty() {
-        let title_inset = left_controls_width + 8;
+        let title_inset = left_controls_width + px(8);
         let title_rect = normalize_rect(RECT {
             left: rect.left + title_inset,
             top: rect.top,
@@ -601,7 +608,7 @@ pub(super) fn draw_navigation_bar(
 /// navigation icon's wider tap-target rect, so the chevron sits right at the
 /// screen edge rather than floating in the middle of the 44px button.
 fn leading_icon_slot(button: RECT) -> RECT {
-    let slot = NAV_ICON_SIZE;
+    let slot = nav_icon_size();
     normalize_rect(RECT {
         left: button.left,
         top: button.top,
@@ -613,7 +620,7 @@ fn leading_icon_slot(button: RECT) -> RECT {
 /// The hover wash square for a navbar button: sized like a top-bar button,
 /// centered on the drawn glyph slot rather than the wider tap target.
 fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
-    let size = TOP_BAR_BUTTON_SIZE;
+    let size = top_bar_button_size();
     let center_x = (slot.left + slot.right) / 2;
     let center_y = (button.top + button.bottom) / 2;
     normalize_rect(RECT {
@@ -628,7 +635,9 @@ fn nav_hover_rect(slot: RECT, button: RECT) -> RECT {
 /// 16px full-bleed; this slot sits next to 18px design glyphs (gear /
 /// sidebar toggle) whose SVGs already carry padding. 14px matches that
 /// optical weight and the macOS header-action size.
-const APP_MENU_ICON_SIZE: i32 = 14;
+fn app_menu_icon_size() -> i32 {
+    crate::dpi::px(14)
+}
 
 /// Draws the app-menu button at the window's leading edge. Uses the host
 /// product icon (About/Exit entry) so chrome matches the running app; the
@@ -636,7 +645,7 @@ const APP_MENU_ICON_SIZE: i32 = 14;
 /// Falls back to a subtle monochrome glyph before any icon path is known.
 /// Clicking the button opens the About/Exit menu.
 fn draw_app_menu_icon(hdc: HDC, rect: RECT) {
-    let icon_rect = centered_square(rect, APP_MENU_ICON_SIZE);
+    let icon_rect = centered_square(rect, app_menu_icon_size());
     if draw_default_app_icon(hdc, icon_rect) {
         return;
     }
@@ -857,26 +866,26 @@ fn create_caption_icon_font(hdc: HDC, height: i32, quality: FONT_QUALITY) -> HFO
 }
 
 pub(super) fn window_frame_buttons_width() -> i32 {
-    WINDOW_BUTTON_WIDTH * 3
+    window_button_width() * 3
 }
 
 pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, RECT); 3] {
     let top = client.top;
-    let bottom = (client.top + SHELL_TOP_BAR_HEIGHT).min(client.bottom);
+    let bottom = (client.top + shell_top_bar_height()).min(client.bottom);
     let close = RECT {
-        left: client.right - WINDOW_BUTTON_WIDTH,
+        left: client.right - window_button_width(),
         top,
         right: client.right,
         bottom,
     };
     let maximize = RECT {
-        left: close.left - WINDOW_BUTTON_WIDTH,
+        left: close.left - window_button_width(),
         top,
         right: close.left,
         bottom,
     };
     let minimize = RECT {
-        left: maximize.left - WINDOW_BUTTON_WIDTH,
+        left: maximize.left - window_button_width(),
         top,
         right: maximize.left,
         bottom,
@@ -890,7 +899,7 @@ pub(super) fn window_frame_button_rects(client: RECT) -> [(WindowsFrameButton, R
 
 /// Leading x of the main-owned navigation bar's back/home buttons.
 pub(super) fn navbar_buttons_left(navbar_rect: RECT) -> i32 {
-    navbar_rect.left + NAV_LEADING_MARGIN
+    navbar_rect.left + nav_leading_margin()
 }
 
 pub(super) fn nav_button_rect(navbar: RECT, buttons_left: i32, index: i32) -> RECT {

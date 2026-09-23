@@ -1,5 +1,6 @@
 //! Low-level GDI/GDI+ drawing helpers for shell chrome.
 
+use crate::dpi::px;
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::sync::{Mutex, OnceLock};
@@ -202,10 +203,10 @@ pub(in crate::shell) fn logical_font_height(hdc: HDC, point_size: i32) -> i32 {
 
 pub(in crate::shell) fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
     let badge_rect = RECT {
-        left: item_rect.right - 30,
-        top: item_rect.top + 7,
-        right: item_rect.right - 8,
-        bottom: item_rect.top + 25,
+        left: item_rect.right - px(30),
+        top: item_rect.top + px(7),
+        right: item_rect.right - px(8),
+        bottom: item_rect.top + px(25),
     };
     fill_rect(hdc, badge_rect, SHELL_BADGE_RED);
     draw_text(hdc, badge, badge_rect, 0xffffff, DT_CENTER);
@@ -213,10 +214,10 @@ pub(in crate::shell) fn draw_badge(hdc: HDC, item_rect: RECT, badge: &str) {
 
 pub(in crate::shell) fn draw_red_dot(hdc: HDC, item_rect: RECT) {
     let dot_rect = RECT {
-        left: item_rect.right - 18,
-        top: item_rect.top + 9,
-        right: item_rect.right - 10,
-        bottom: item_rect.top + 17,
+        left: item_rect.right - px(18),
+        top: item_rect.top + px(9),
+        right: item_rect.right - px(10),
+        bottom: item_rect.top + px(17),
     };
     fill_rect(hdc, dot_rect, SHELL_BADGE_RED);
 }

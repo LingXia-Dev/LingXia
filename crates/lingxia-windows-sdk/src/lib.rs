@@ -54,6 +54,8 @@ mod design_icons;
 mod dev_service_mark;
 #[cfg(all(target_os = "windows", feature = "device-frame"))]
 mod device_frame;
+#[cfg(target_os = "windows")]
+pub(crate) mod dpi;
 #[cfg(all(
     target_os = "windows",
     any(

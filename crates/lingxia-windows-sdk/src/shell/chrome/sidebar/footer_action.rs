@@ -4,16 +4,27 @@ use std::ops::Range;
 
 use super::*;
 
-const FOOTER_ACTION_CELL_MIN_WIDTH: i32 = 72;
-const FOOTER_ACTION_CELL_PADDING: i32 = 8;
-const FOOTER_ACTION_ICON_TEXT_GAP: i32 = 8;
-const FOOTER_ACTION_SEPARATOR_HEIGHT: i32 = 1;
+fn footer_action_cell_min_width() -> i32 {
+    crate::dpi::px(72)
+}
+fn footer_action_cell_padding() -> i32 {
+    crate::dpi::px(8)
+}
+fn footer_action_icon_text_gap() -> i32 {
+    crate::dpi::px(8)
+}
+fn footer_action_separator_height() -> i32 {
+    crate::dpi::px(1)
+}
 
 fn preferred_cell_width(label: &str, available: i32) -> i32 {
     let text = measure_chrome_text_width(label);
-    (2 * FOOTER_ACTION_CELL_PADDING + FOOTER_ACTION_ICON_SIZE + FOOTER_ACTION_ICON_TEXT_GAP + text)
+    (2 * footer_action_cell_padding()
+        + footer_action_icon_size()
+        + footer_action_icon_text_gap()
+        + text)
         .clamp(
-            FOOTER_ACTION_CELL_MIN_WIDTH.min(available),
+            footer_action_cell_min_width().min(available),
             available.max(1),
         )
 }
@@ -22,8 +33,8 @@ fn footer_action_rows(
     width: i32,
     footer_actions: &[WindowsShellFooterActionLayout],
 ) -> Vec<Range<usize>> {
-    let available = (width - 2 * FOOTER_ACTION_MARGIN).max(1);
-    let minimum = FOOTER_ACTION_CELL_MIN_WIDTH.min(available);
+    let available = (width - 2 * footer_action_margin()).max(1);
+    let minimum = footer_action_cell_min_width().min(available);
     let mut rows = Vec::new();
     let mut row_start = 0;
     let mut used = 0;
@@ -31,7 +42,7 @@ fn footer_action_rows(
         let next = if index == row_start {
             minimum
         } else {
-            used + FOOTER_ACTION_GAP + minimum
+            used + footer_action_gap() + minimum
         };
         if index > row_start && next > available {
             rows.push(row_start..index);
@@ -53,9 +64,9 @@ fn fitted_cell_widths(preferred: &[i32], available: i32) -> Vec<i32> {
     }
 
     let count = preferred.len() as i32;
-    let gaps = (count - 1) * FOOTER_ACTION_GAP;
+    let gaps = (count - 1) * footer_action_gap();
     let target = (available - gaps).max(count);
-    let minimum = FOOTER_ACTION_CELL_MIN_WIDTH.min(target / count).max(1);
+    let minimum = footer_action_cell_min_width().min(target / count).max(1);
     let mut widths = preferred
         .iter()
         .map(|width| (*width).clamp(minimum, target))
@@ -107,10 +118,10 @@ pub(in crate::shell::chrome) fn panel_footer_action_height_for_width(
     if rows == 0 {
         0
     } else {
-        FOOTER_ACTION_SEPARATOR_HEIGHT
-            + 2 * FOOTER_ACTION_MARGIN
-            + rows * FOOTER_ACTION_SIZE
-            + (rows - 1) * FOOTER_ACTION_GAP
+        footer_action_separator_height()
+            + 2 * footer_action_margin()
+            + rows * footer_action_size()
+            + (rows - 1) * footer_action_gap()
     }
 }
 
@@ -122,8 +133,8 @@ fn expanded_footer_action_rects(
 ) -> Vec<(String, RECT)> {
     let rows = footer_action_rows(rect_width(&tabbar_rect), footer_actions);
     let footer_top = tabbar_rect.bottom - footer_action_height;
-    let available = (rect_width(&tabbar_rect) - 2 * FOOTER_ACTION_MARGIN).max(1);
-    let mut top = footer_top + FOOTER_ACTION_SEPARATOR_HEIGHT + FOOTER_ACTION_MARGIN;
+    let available = (rect_width(&tabbar_rect) - 2 * footer_action_margin()).max(1);
+    let mut top = footer_top + footer_action_separator_height() + footer_action_margin();
     let mut out = Vec::with_capacity(footer_actions.len());
 
     let visible_rows = capped_row_window(rows.len(), footer_action_scroll_row);
@@ -134,8 +145,8 @@ fn expanded_footer_action_rects(
             .map(|item| preferred_cell_width(&item.label, available))
             .collect::<Vec<_>>();
         let widths = fitted_cell_widths(&preferred, available);
-        let mut left = tabbar_rect.left + FOOTER_ACTION_MARGIN;
-        let row_right = tabbar_rect.right - FOOTER_ACTION_MARGIN;
+        let mut left = tabbar_rect.left + footer_action_margin();
+        let row_right = tabbar_rect.right - footer_action_margin();
         for (offset, item) in items.iter().enumerate() {
             let is_last = offset + 1 == items.len();
             let right = if is_last {
@@ -149,12 +160,12 @@ fn expanded_footer_action_rects(
                     left,
                     top,
                     right,
-                    bottom: top + FOOTER_ACTION_SIZE,
+                    bottom: top + footer_action_size(),
                 }),
             ));
-            left = right + FOOTER_ACTION_GAP;
+            left = right + footer_action_gap();
         }
-        top += FOOTER_ACTION_SIZE + FOOTER_ACTION_GAP;
+        top += footer_action_size() + footer_action_gap();
     }
     out
 }
@@ -171,10 +182,10 @@ fn rail_footer_action_rects(
     }
     let expand = sidebar_rail_expand_rect(tabbar_rect);
     let total =
-        count as i32 * FOOTER_ACTION_SIZE + count.saturating_sub(1) as i32 * FOOTER_ACTION_GAP;
+        count as i32 * footer_action_size() + count.saturating_sub(1) as i32 * footer_action_gap();
     let mut top =
-        (expand.top - FOOTER_ACTION_MARGIN - total).max(tabbar_rect.top + SHELL_TOP_BAR_HEIGHT);
-    let left = tabbar_rect.left + (rect_width(&tabbar_rect) - FOOTER_ACTION_SIZE) / 2;
+        (expand.top - footer_action_margin() - total).max(tabbar_rect.top + shell_top_bar_height());
+    let left = tabbar_rect.left + (rect_width(&tabbar_rect) - footer_action_size()) / 2;
     footer_actions
         .iter()
         .skip(visible.start)
@@ -183,10 +194,10 @@ fn rail_footer_action_rects(
             let rect = normalize_rect(RECT {
                 left,
                 top,
-                right: left + FOOTER_ACTION_SIZE,
-                bottom: top + FOOTER_ACTION_SIZE,
+                right: left + footer_action_size(),
+                bottom: top + footer_action_size(),
             });
-            top = rect.bottom + FOOTER_ACTION_GAP;
+            top = rect.bottom + footer_action_gap();
             (footer_action.id.clone(), rect)
         })
         .collect()
@@ -222,12 +233,12 @@ pub(in crate::shell::chrome) fn footer_action_rects(
         .tab_bar
         .map(|tabbar| tabbar.top)
         .unwrap_or(client.bottom);
-    let left = rects.panel.left + FOOTER_ACTION_MARGIN;
-    let mut bottom = bottom_limit - FOOTER_ACTION_MARGIN;
+    let left = rects.panel.left + footer_action_margin();
+    let mut bottom = bottom_limit - footer_action_margin();
     let mut out = Vec::new();
     for footer_action in &layout.footer_actions {
-        let top = bottom - FOOTER_ACTION_SIZE;
-        if top < client.top + FOOTER_ACTION_MARGIN {
+        let top = bottom - footer_action_size();
+        if top < client.top + footer_action_margin() {
             break;
         }
         out.push((
@@ -235,11 +246,11 @@ pub(in crate::shell::chrome) fn footer_action_rects(
             normalize_rect(RECT {
                 left,
                 top,
-                right: left + FOOTER_ACTION_SIZE,
+                right: left + footer_action_size(),
                 bottom,
             }),
         ));
-        bottom = top - FOOTER_ACTION_GAP;
+        bottom = top - footer_action_gap();
     }
     out
 }
@@ -265,8 +276,8 @@ pub(in crate::shell::chrome) fn sidebar_navigation_viewport_bottom(
     if tabbar.collapsed || tabbar.icon_rail {
         return rail_footer_action_rects(tabbar_rect, tabbar, footer_actions)
             .first()
-            .map(|(_, rect)| rect.top - FOOTER_ACTION_MARGIN)
-            .unwrap_or_else(|| sidebar_rail_expand_rect(tabbar_rect).top - FOOTER_ACTION_MARGIN);
+            .map(|(_, rect)| rect.top - footer_action_margin())
+            .unwrap_or_else(|| sidebar_rail_expand_rect(tabbar_rect).top - footer_action_margin());
     }
     tabbar_rect.bottom - tabbar.footer_action_height
 }
@@ -301,28 +312,28 @@ pub(in crate::shell::chrome) fn draw_footer_actions(
         }
 
         let icon_rect = if icon_only {
-            centered_icon_rect(rect, FOOTER_ACTION_ICON_SIZE)
+            centered_icon_rect(rect, footer_action_icon_size())
         } else {
-            let top = rect.top + (rect_height(&rect) - FOOTER_ACTION_ICON_SIZE) / 2;
+            let top = rect.top + (rect_height(&rect) - footer_action_icon_size()) / 2;
             RECT {
-                left: rect.left + FOOTER_ACTION_CELL_PADDING,
+                left: rect.left + footer_action_cell_padding(),
                 top,
-                right: rect.left + FOOTER_ACTION_CELL_PADDING + FOOTER_ACTION_ICON_SIZE,
-                bottom: top + FOOTER_ACTION_ICON_SIZE,
+                right: rect.left + footer_action_cell_padding() + footer_action_icon_size(),
+                bottom: top + footer_action_icon_size(),
             }
         };
         let icon_path = footer_action
             .map(|item| item.icon_path.as_str())
             .unwrap_or_default();
-        let _ = draw_icon_from_path(hdc, icon_path, icon_rect, FOOTER_ACTION_ICON_SIZE as u32);
+        let _ = draw_icon_from_path(hdc, icon_path, icon_rect, footer_action_icon_size() as u32);
         if !icon_only {
             draw_text(
                 hdc,
                 label,
                 RECT {
-                    left: icon_rect.right + FOOTER_ACTION_ICON_TEXT_GAP,
+                    left: icon_rect.right + footer_action_icon_text_gap(),
                     top: rect.top,
-                    right: rect.right - FOOTER_ACTION_CELL_PADDING,
+                    right: rect.right - footer_action_cell_padding(),
                     bottom: rect.bottom,
                 },
                 text_color,
@@ -364,12 +375,12 @@ mod tests {
 
     #[test]
     fn fitted_widths_preserve_minimums_across_font_metric_ranges() {
-        let available = 184 - 2 * FOOTER_ACTION_MARGIN;
+        let available = 184 - 2 * footer_action_margin();
         for preferred in [vec![72, 86], vec![92, 126], vec![available, available]] {
             let widths = fitted_cell_widths(&preferred, available);
             assert_eq!(widths.len(), 2);
             assert!(widths.iter().all(|width| *width >= 72));
-            assert_eq!(widths.iter().sum::<i32>() + FOOTER_ACTION_GAP, available);
+            assert_eq!(widths.iter().sum::<i32>() + footer_action_gap(), available);
         }
     }
 
@@ -392,10 +403,10 @@ mod tests {
         assert_eq!(footer_action_rows(184, &items), vec![0..2, 2..3]);
         assert_eq!(
             height,
-            FOOTER_ACTION_SEPARATOR_HEIGHT
-                + 2 * FOOTER_ACTION_MARGIN
-                + 2 * FOOTER_ACTION_SIZE
-                + FOOTER_ACTION_GAP
+            footer_action_separator_height()
+                + 2 * footer_action_margin()
+                + 2 * footer_action_size()
+                + footer_action_gap()
         );
         assert_eq!(
             rects.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
@@ -406,15 +417,15 @@ mod tests {
         let terminal = rects[1].1;
         let ping = rects[2].1;
         assert_eq!(chat.top, terminal.top);
-        assert_eq!(chat.right + FOOTER_ACTION_GAP, terminal.left);
-        assert!(rect_width(&chat) >= FOOTER_ACTION_CELL_MIN_WIDTH);
-        assert!(rect_width(&terminal) >= FOOTER_ACTION_CELL_MIN_WIDTH);
-        assert_eq!(chat.left, tabbar_rect.left + FOOTER_ACTION_MARGIN);
-        assert_eq!(terminal.right, tabbar_rect.right - FOOTER_ACTION_MARGIN);
-        assert_eq!(ping.top, chat.bottom + FOOTER_ACTION_GAP);
-        assert_eq!(ping.left, tabbar_rect.left + FOOTER_ACTION_MARGIN);
-        assert_eq!(ping.right, tabbar_rect.right - FOOTER_ACTION_MARGIN);
-        assert_eq!(ping.bottom, tabbar_rect.bottom - FOOTER_ACTION_MARGIN);
+        assert_eq!(chat.right + footer_action_gap(), terminal.left);
+        assert!(rect_width(&chat) >= footer_action_cell_min_width());
+        assert!(rect_width(&terminal) >= footer_action_cell_min_width());
+        assert_eq!(chat.left, tabbar_rect.left + footer_action_margin());
+        assert_eq!(terminal.right, tabbar_rect.right - footer_action_margin());
+        assert_eq!(ping.top, chat.bottom + footer_action_gap());
+        assert_eq!(ping.left, tabbar_rect.left + footer_action_margin());
+        assert_eq!(ping.right, tabbar_rect.right - footer_action_margin());
+        assert_eq!(ping.bottom, tabbar_rect.bottom - footer_action_margin());
     }
 
     #[test]
