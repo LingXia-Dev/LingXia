@@ -731,6 +731,28 @@ suppressed in strict, allowed in browser.
 - LxApp pages are attached by `LxAppActivity`; browser tabs by
   `LxAppBrowserOverlay`.
 
+The `servo` feature swaps the renderer for `LingXiaServoView`, driven by one
+process-wide Servo engine thread (`android/servo.rs`):
+
+- Rust passes the native view identity into Java at creation. Every Java
+  callback and every Servo delegate callback carries `(WebTag,
+  NativeWebViewId)`, and the engine drops commands for any other instance, so
+  a same-tag successor never receives a predecessor's surface or events.
+- Servo reports one top-level load at a time without an attempt id. The
+  adapter starts and commits a keyed load on `LoadStatus::Started` (on
+  `HeadParsed` for a view's first document and for reloads, which report no
+  `Started`) and finishes it on `Complete`, so generations mint exactly as for
+  a keyed backend. The `about:blank` a view is built with emits nothing.
+- A navigation that fails in the network layer is recorded by the vendored
+  `servo-net` navigation observer before Servo commits its error document;
+  that load terminates `Failed` and its error document never binds.
+- `load_data` stamps `__lxdoc=N` into the document URL: Servo ignores a load
+  of the current URL, and a parked page reloads under its old base URL.
+- A trusted load is attested when the first document at its stamped URL
+  appears, as Android matches its load token at page start; with no
+  document-bound transport, BrowserControl stays unavailable (see
+  bridge-protocol §5.6).
+
 ## Teardown Paths
 
 There are several teardown actions; they are **not** interchangeable. This table
