@@ -10,6 +10,7 @@ mod screenshot;
 mod sessions;
 mod test;
 mod test_bundle;
+mod test_secrets;
 
 use project::SessionSelector;
 

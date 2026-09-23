@@ -361,7 +361,7 @@ fn assemble(modules: Vec<CompiledModule>, bundle_name: String) -> TestBundle {
 const __lx_automation_host = globalThis.__LINGXIA_AUTOMATION_HOST__;\n\
 globalThis.__LINGXIA_CLI_VERSION__ = {};\n\
 globalThis.__RONG_TEST_HOST__ = {{\n\
-  args: __lx_automation_host.args,\n\
+  args: Object.assign({{}}, __lx_automation_host.args, __lx_automation_host.control),\n\
   attach: __lx_automation_host.attach,\n\
   report: (event) => __lx_automation_host.emit(event),\n\
 }};\n",
