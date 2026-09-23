@@ -2,9 +2,11 @@
 //! session in an isolated automation runtime, stream console output, download
 //! artifacts, and report one terminal summary.
 
+use crate::client::CommandError;
 use crate::client::{CommandTimeout, execute_command, execute_command_until, max_poll_wait};
 use crate::project::SessionInfo;
 use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
+use crate::test_secrets::{RunSecrets, SECRET_ARGS_KEY};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -46,13 +48,14 @@ pub struct TestOptions {
     #[arg(long, default_value_t = 300, value_parser = parse_timeout_secs)]
     timeout_secs: u64,
 
-    /// Key=value string exposed as test.args (repeatable). Keys that look
-    /// like credentials (password, secret, token, api key) are written to
-    /// reports as `***`.
+    /// Key=value string exposed as test.args (repeatable). Keys named like
+    /// credentials (password, secret, token, api key) show as `***` in the
+    /// report's arg list.
     #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     args: Vec<(String, String)>,
 
-    /// Like `--arg`, but the value is always written to reports as `***`
+    /// Like `--arg`, for a secret: its value is replaced by `***` wherever
+    /// it would appear in reports, events and attachments
     #[arg(long = "secret-arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     secret_args: Vec<(String, String)>,
 
@@ -199,54 +202,16 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         );
     }
 
-    let mut args = options.args.iter().cloned().collect::<HashMap<_, _>>();
-    let secret_keys = secret_keys(&options);
-    args.extend(options.secret_args.iter().cloned());
-    if !options.secret_args.is_empty() {
-        let mut keys = options
-            .secret_args
-            .iter()
-            .map(|(key, _)| key.clone())
-            .collect::<Vec<_>>();
-        keys.sort();
-        keys.dedup();
-        args.insert(SECRET_ARGS_KEY.into(), serde_json::to_string(&keys)?);
-    }
-    args.entry("platform".into())
-        .or_insert_with(|| info.target.clone());
-    if let Some(grep) = &options.grep {
-        args.insert("grep".to_string(), grep.clone());
-    }
-    args.insert("retries".into(), options.retries.to_string());
-    if let Some(shard) = &options.shard {
-        args.insert("shard".into(), shard.clone());
-    }
-    if let Some(path) = &options.last_failed {
-        let previous: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        let ids = previous["cases"]
-            .as_array()
-            .ok_or_else(|| anyhow!("{} has no cases", path.display()))?
-            .iter()
-            .filter(|c| matches!(c["status"].as_str(), Some("failed" | "timeout" | "xpass")))
-            .filter_map(|c| c["id"].as_str())
-            .collect::<Vec<_>>();
-        args.insert("ids".into(), serde_json::to_string(&ids)?);
-    }
-    if options.pass_with_no_tests {
-        args.insert("passWithNoTests".into(), "1".into());
-    }
-    if let Some(id) = &options.id {
-        args.insert("id".into(), id.clone());
-    }
-    if options.forbid_only {
-        args.insert("forbidOnly".to_string(), "1".to_string());
-    }
+    let secrets = RunSecrets::new(&options.args, &options.secret_args);
+    let args = secrets.spec_args();
+    let control = run_control(&options, &info.target, &secrets)?;
 
     let start_args = TestStartArgs {
         source: bundle.code.clone(),
         source_name: Some(bundle.bundle_name.clone()),
         timeout_ms: Some(options.timeout_secs * 1000),
-        args: args.clone(),
+        args,
+        control: control.clone(),
     };
     let start: TestStartResponse =
         start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
@@ -297,6 +262,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         options.jsonl,
         &interrupts,
         Duration::from_secs(options.timeout_secs),
+        &secrets,
     );
     // Cancel (once) unless the host already finished the run.
     drop(active_run);
@@ -325,7 +291,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             let mut value = report_value(framework, &bundle);
             value["schema_version"] = json!(1);
             value["partial"] = json!(outcome.partial);
-            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": redacted_args(&args, &secret_keys)});
+            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": secrets.meta_args(), "run": control});
             value["framework"] = json!({"name":"test framework", "version":"unknown"});
             if let Some(cases) = value["cases"].as_array_mut() {
                 for case in cases {
@@ -351,7 +317,8 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             write_partial_report(
                 &output_dir,
                 &run_id,
-                &redacted_args(&args, &secret_keys),
+                &secrets.meta_args(),
+                &control,
                 &started_at,
                 outcome
                     .result
@@ -362,15 +329,14 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             )?;
         }
     }
+    // A report page lxdev withheld for carrying a secret is missing here too.
     if outcome.partial
-        || !outcome
-            .artifacts
+        || ["report.html", "junit.xml"]
             .iter()
-            .any(|(name, _, _)| name == "report.html")
+            .any(|page| !outcome.artifacts.iter().any(|(name, _, _)| name == page))
     {
         complete_client_reports(&output_dir, &run_id, &outcome)?;
     }
-    scrub_secret_values(&output_dir, &secret_values(&args, &secret_keys));
     for name in ["report.json", "report.html", "junit.xml"] {
         let path = output_dir.join(name);
         if path.exists() && !outcome.artifacts.iter().any(|(n, _, _)| n == name) {
@@ -386,6 +352,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &options,
         &entry,
         &info.session_id,
+        &secrets,
     );
 
     let exit_code = match outcome.state {
@@ -396,12 +363,133 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     std::process::exit(exit_code);
 }
 
+/// lxdev's run controls, sent apart from the spec's args so a user `--arg`
+/// can never steer the run.
+fn run_control(
+    options: &TestOptions,
+    target: &str,
+    secrets: &RunSecrets,
+) -> Result<HashMap<String, String>> {
+    let mut control = HashMap::new();
+    control.insert("platform".to_string(), target.to_string());
+    control.insert("retries".to_string(), options.retries.to_string());
+    if let Some(keys) = secrets.secret_keys_json() {
+        control.insert(SECRET_ARGS_KEY.to_string(), keys);
+    }
+    if let Some(grep) = &options.grep {
+        control.insert("grep".to_string(), grep.clone());
+    }
+    if let Some(shard) = &options.shard {
+        control.insert("shard".to_string(), shard.clone());
+    }
+    if let Some(path) = &options.last_failed {
+        let previous: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+        let ids = previous["cases"]
+            .as_array()
+            .ok_or_else(|| anyhow!("{} has no cases", path.display()))?
+            .iter()
+            .filter(|c| matches!(c["status"].as_str(), Some("failed" | "timeout" | "xpass")))
+            .filter_map(|c| c["id"].as_str())
+            .collect::<Vec<_>>();
+        control.insert("ids".to_string(), serde_json::to_string(&ids)?);
+    }
+    if options.pass_with_no_tests {
+        control.insert("passWithNoTests".to_string(), "1".to_string());
+    }
+    if let Some(id) = &options.id {
+        control.insert("id".to_string(), id.clone());
+    }
+    if options.forbid_only {
+        control.insert("forbidOnly".to_string(), "1".to_string());
+    }
+    Ok(control)
+}
+
+/// A run polled this recently still has a client reading it.
+const LIVE_CLIENT_WINDOW: Duration = Duration::from_secs(15);
+
+/// The run holding the session, as the host describes it. `detail` is `None`
+/// for a host that only names the run in its refusal message.
+struct HeldRun {
+    run_id: String,
+    detail: Option<TestActiveRun>,
+}
+
+impl HeldRun {
+    fn describe(&self) -> String {
+        match &self.detail {
+            None => format!("run {}", self.run_id),
+            Some(detail) => {
+                let polled = match detail.since_last_poll_ms {
+                    Some(ms) => format!("last polled {} ago", human_age(ms)),
+                    None => "never polled".to_string(),
+                };
+                format!(
+                    "run {} (started {} ago, {polled})",
+                    self.run_id,
+                    human_age(detail.age_ms)
+                )
+            }
+        }
+    }
+
+    /// A client is still polling it: cancelling would pull the run out from
+    /// under a live `lxdev test`.
+    fn owned_by_live_client(&self) -> bool {
+        self.detail
+            .as_ref()
+            .and_then(|detail| detail.since_last_poll_ms)
+            .is_some_and(|ms| Duration::from_millis(ms) < LIVE_CLIENT_WINDOW)
+    }
+
+    fn refuse_if_live(&self) -> Result<()> {
+        if self.owned_by_live_client() {
+            bail!(
+                "{} is still being polled, so the `lxdev test` that started it is running. \
+                 Stop that client instead (Ctrl-C cancels its run), or wait for it to finish.",
+                self.describe()
+            );
+        }
+        Ok(())
+    }
+}
+
+fn human_age(ms: u64) -> String {
+    let secs = ms / 1000;
+    match secs {
+        0..60 => format!("{secs}s"),
+        60..3600 => format!("{}m {}s", secs / 60, secs % 60),
+        _ => format!("{}h {}m", secs / 3600, (secs % 3600) / 60),
+    }
+}
+
+/// The run a refused `session.test.start` names: from the error's data, or
+/// from its message for a host that predates the data.
+fn held_run(error: &anyhow::Error) -> Option<HeldRun> {
+    if let Some(command) = error.downcast_ref::<CommandError>()
+        && command.code == RUN_IN_PROGRESS
+        && let Some(detail) = command
+            .data
+            .clone()
+            .and_then(|data| serde_json::from_value::<TestActiveRun>(data).ok())
+    {
+        return Some(HeldRun {
+            run_id: detail.run_id.clone(),
+            detail: Some(detail),
+        });
+    }
+    active_run_id(&error.to_string()).map(|run_id| HeldRun {
+        run_id,
+        detail: None,
+    })
+}
+
 /// The host refuses a second run while one is active, which is what keeps a
 /// dead run's actions from landing in a live fixture. But a client that dies
 /// mid-run leaves that run active with nobody polling it, and it then holds the
-/// session for the rest of its own budget — an hour, for a long suite. Recover
-/// deliberately rather than silently: name the stuck run, and cancel it only
-/// when asked to.
+/// session for the rest of its own budget. Recover deliberately rather than
+/// silently: name the stuck run, and cancel it only when asked to — and never
+/// one a live client is still polling.
 fn start_run(
     ws_url: &str,
     args: &TestStartArgs,
@@ -412,22 +500,26 @@ fn start_run(
     let Err(error) = first else {
         return first;
     };
-    let message = error.to_string();
-    let Some(active) = active_run_id(&message) else {
+    let Some(held) = held_run(&error) else {
         return Err(error);
     };
     if !cancel_active {
         return Err(anyhow!(
-            "{message}\n\
-             A run stays active until it ends or its budget expires, so an earlier \
-             `lxdev test` whose client died still holds this session. Re-run with \
-             `--cancel-active` to cancel run {active} and start, or restart the dev session."
+            "{} holds this session. A run stays active until it ends or its budget expires, \
+             so an earlier `lxdev test` whose client died can still hold it. Re-run with \
+             `--cancel-active` to cancel it and start, or restart the dev session.",
+            held.describe()
         ));
     }
+    held.refuse_if_live()?;
     if !machine {
-        eprintln!("{} cancelling abandoned run {active}…", "test".cyan());
+        eprintln!(
+            "{} cancelling abandoned {}…",
+            "test".cyan(),
+            held.describe()
+        );
     }
-    send_cancel(ws_url, &active, "superseded_by_new_run");
+    send_cancel(ws_url, &held.run_id, "superseded_by_new_run");
     // The host retires a cancelled run once it reaches a terminal state, so the
     // next start has to wait for that rather than race it.
     let deadline = std::time::Instant::now() + CANCEL_GRACE;
@@ -435,9 +527,7 @@ fn start_run(
         match execute_typed::<_, TestStartResponse>(ws_url, methods::session::test::START, args) {
             Ok(started) => return Ok(started),
             Err(retry) => {
-                if active_run_id(&retry.to_string()).is_none()
-                    || std::time::Instant::now() >= deadline
-                {
+                if held_run(&retry).is_none() || std::time::Instant::now() >= deadline {
                     return Err(retry);
                 }
                 std::thread::sleep(POLL_INTERVAL);
@@ -446,7 +536,8 @@ fn start_run(
     }
 }
 
-/// `automation_run_in_progress: run <id> is active`
+/// `automation_run_in_progress: run <id> is active`, the refusal text of a
+/// host that predates the structured error.
 fn active_run_id(message: &str) -> Option<String> {
     let rest = message.strip_prefix("automation_run_in_progress: run ")?;
     let id = rest.split_whitespace().next()?;
@@ -521,60 +612,67 @@ impl Drop for ActiveRun {
     }
 }
 
-/// `lxdev test --cancel-active` with no entry. The protocol has no "which run
-/// is active" query, so ask by starting an empty probe: the host refuses it
-/// with the active run's id, or — when nothing was active — the probe itself
-/// starts and is retired at once.
+/// `lxdev test --cancel-active` with no entry: ask the host which run holds
+/// the session, and cancel it unless a live client is still polling it.
 fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
     let machine = options.json || options.pretty || options.jsonl;
-    let probe = TestStartArgs {
-        source: "/* lxdev test --cancel-active probe */ void 0;".to_string(),
-        source_name: Some("lxdev-cancel-active-probe".to_string()),
-        timeout_ms: Some(1000),
-        args: HashMap::new(),
-    };
-    let (cancelled, state) = match execute_typed::<_, TestStartResponse>(
-        &info.ws_url,
-        methods::session::test::START,
-        &probe,
-    ) {
-        Ok(started) => {
-            send_cancel(&info.ws_url, &started.run_id, "cancel_active_probe");
-            wait_until_terminal(&info.ws_url, &started.run_id, CANCEL_GRACE);
-            (None, None)
-        }
-        Err(error) => {
-            let Some(active) = active_run_id(&error.to_string()) else {
-                return Err(error);
-            };
-            send_cancel(&info.ws_url, &active, "cancel_active");
-            let state = wait_until_terminal(&info.ws_url, &active, CANCEL_GRACE);
-            (Some(active), state)
+    let active: TestActiveResponse =
+        execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({})).map_err(
+            |error| {
+                if error.to_string().contains("unknown session.test handler") {
+                    anyhow!(
+                        "this host cannot report its active run (it predates \
+                         `session.test.active`). Run `lxdev test <entry> --cancel-active` to \
+                         cancel the run it refuses with, or restart the dev session."
+                    )
+                } else {
+                    error
+                }
+            },
+        )?;
+    let held = active.run.map(|detail| HeldRun {
+        run_id: detail.run_id.clone(),
+        detail: Some(detail),
+    });
+    let state = match &held {
+        None => None,
+        Some(held) => {
+            held.refuse_if_live()?;
+            if !machine {
+                eprintln!("{} cancelling {}…", "test".cyan(), held.describe());
+            }
+            send_cancel(&info.ws_url, &held.run_id, "cancel_active");
+            wait_until_terminal(&info.ws_url, &held.run_id, CANCEL_GRACE)
         }
     };
     if machine {
+        let detail = held.as_ref().and_then(|held| held.detail.as_ref());
         let value = json!({
             "schema_version": 1,
             "kind": "cancel_active",
-            "cancelled_run_id": cancelled,
+            "cancelled_run_id": held.as_ref().map(|held| held.run_id.as_str()),
+            "age_ms": detail.map(|detail| detail.age_ms),
+            "since_last_poll_ms": detail.and_then(|detail| detail.since_last_poll_ms),
             "state": state.map(TestRunState::as_str),
         });
         println!("{value}");
         return Ok(());
     }
-    match (&cancelled, state) {
+    match (&held, state) {
         (None, _) => eprintln!("{} no automation run was active", "test".cyan()),
-        (Some(run_id), Some(state)) => {
+        (Some(held), Some(state)) => {
             eprintln!(
-                "{} cancelled run {run_id} ({})",
+                "{} cancelled {} ({})",
                 "test".cyan(),
+                held.describe(),
                 state.as_str()
             )
         }
-        (Some(run_id), None) => eprintln!(
-            "{} cancel sent to run {run_id}; it has not stopped yet. It is released once its \
+        (Some(held), None) => eprintln!(
+            "{} cancel sent to {}; it has not stopped yet. It is released once its \
              current step returns or its budget expires.",
-            "test".yellow()
+            "test".yellow(),
+            held.describe()
         ),
     }
     Ok(())
@@ -606,108 +704,6 @@ fn wait_until_terminal(ws_url: &str, run_id: &str, grace: Duration) -> Option<Te
             return None;
         }
         std::thread::sleep(POLL_INTERVAL);
-    }
-}
-
-/// Reserved arg naming the `--secret-arg` keys, so `@lingxia/test` redacts
-/// them in the reports it renders.
-const SECRET_ARGS_KEY: &str = "secretArgs";
-const REDACTED: &str = "***";
-/// Shorter values are too likely to collide with ordinary report text.
-const MIN_SCRUB_LENGTH: usize = 4;
-
-/// Mirrors `@lingxia/test`: /pass(word)?|secret|token|api[_-]?key|credential/i.
-fn looks_secret(key: &str) -> bool {
-    let key = key.to_ascii_lowercase();
-    [
-        "pass",
-        "secret",
-        "token",
-        "apikey",
-        "api_key",
-        "api-key",
-        "credential",
-    ]
-    .iter()
-    .any(|needle| key.contains(needle))
-}
-
-fn secret_keys(options: &TestOptions) -> std::collections::HashSet<String> {
-    options
-        .args
-        .iter()
-        .map(|(key, _)| key)
-        .filter(|key| looks_secret(key))
-        .chain(options.secret_args.iter().map(|(key, _)| key))
-        .cloned()
-        .collect()
-}
-
-fn is_secret(key: &str, secret_keys: &std::collections::HashSet<String>) -> bool {
-    key != SECRET_ARGS_KEY && (secret_keys.contains(key) || looks_secret(key))
-}
-
-fn redacted_args(
-    args: &HashMap<String, String>,
-    secret_keys: &std::collections::HashSet<String>,
-) -> HashMap<String, String> {
-    args.iter()
-        .map(|(key, value)| {
-            let value = if is_secret(key, secret_keys) {
-                REDACTED.to_string()
-            } else {
-                value.clone()
-            };
-            (key.clone(), value)
-        })
-        .collect()
-}
-
-fn secret_values(
-    args: &HashMap<String, String>,
-    secret_keys: &std::collections::HashSet<String>,
-) -> Vec<String> {
-    let mut values = args
-        .iter()
-        .filter(|(key, value)| is_secret(key, secret_keys) && value.len() >= MIN_SCRUB_LENGTH)
-        .map(|(_, value)| value.clone())
-        .collect::<Vec<_>>();
-    values.sort_by_key(|value| std::cmp::Reverse(value.len()));
-    values
-}
-
-/// The runtime already redacts; this also covers an older `@lingxia/test`
-/// and anything else that echoed a secret into a report or the journal.
-fn scrub_secret_values(output_dir: &Path, values: &[String]) {
-    if values.is_empty() {
-        return;
-    }
-    let forms = values
-        .iter()
-        .flat_map(|value| {
-            let json = serde_json::to_string(value).unwrap_or_default();
-            let json = json
-                .get(1..json.len().saturating_sub(1))
-                .unwrap_or_default()
-                .to_string();
-            [value.clone(), json, escape_markup(value)]
-        })
-        .filter(|form| form.len() >= MIN_SCRUB_LENGTH)
-        .collect::<Vec<_>>();
-    for name in ["report.json", "report.html", "junit.xml", "events.jsonl"] {
-        let path = output_dir.join(name);
-        let Ok(text) = std::fs::read_to_string(&path) else {
-            continue;
-        };
-        let mut scrubbed = text.clone();
-        for form in &forms {
-            if scrubbed.contains(form.as_str()) {
-                scrubbed = scrubbed.replace(form.as_str(), REDACTED);
-            }
-        }
-        if scrubbed != text {
-            let _ = std::fs::write(&path, scrubbed);
-        }
     }
 }
 
@@ -874,6 +870,7 @@ fn poll_until_terminal(
     jsonl: bool,
     interrupts: &AtomicUsize,
     run_timeout: Duration,
+    secrets: &RunSecrets,
 ) -> Result<Outcome> {
     let run_id = run.run_id();
     let run_started = std::time::Instant::now();
@@ -978,6 +975,16 @@ fn poll_until_terminal(
             }
         };
 
+        // Scrubbed before anything is journaled, printed or saved.
+        let poll = TestPollResponse {
+            events: poll
+                .events
+                .into_iter()
+                .map(|event| secrets.scrub_event(event))
+                .collect(),
+            result: poll.result.map(|result| secrets.scrub(result)),
+            ..poll
+        };
         for event in &poll.events {
             let mut logged = serde_json::to_value(event)?;
             logged["schema_version"] = json!(1);
@@ -993,7 +1000,9 @@ fn poll_until_terminal(
                 TestEventPayload::RunStarted {
                     total: count,
                     cases,
+                    args,
                 } => {
+                    secrets.note_run_started(args.as_ref());
                     total = Some(*count);
                     for record in cases {
                         streamed.push(StreamedCase {
@@ -1225,6 +1234,7 @@ fn report(
     options: &TestOptions,
     entry: &Path,
     session_id: &str,
+    secrets: &RunSecrets,
 ) {
     let machine = options.json || options.pretty || options.jsonl;
     let duration_ms = outcome
@@ -1389,7 +1399,7 @@ fn report(
                     shell_quote(id),
                     options.timeout_secs
                 );
-                command.push_str(&rerun_args(options));
+                command.push_str(&secrets.rerun_flags(shell_quote));
                 eprintln!("  Rerun: {command}");
             }
             if options.verbose
@@ -1558,35 +1568,6 @@ fn print_case_finished(
     }
 }
 
-/// `--arg`/`--secret-arg` flags for a rerun hint. Terminal scrollback is a
-/// report too, so secret values stay masked; the caller re-supplies them.
-fn rerun_args(options: &TestOptions) -> String {
-    let explicit = options
-        .secret_args
-        .iter()
-        .map(|(key, _)| key.as_str())
-        .collect::<std::collections::HashSet<_>>();
-    let mut out = String::new();
-    for (key, value) in &options.args {
-        let value = if looks_secret(key) || explicit.contains(key.as_str()) {
-            REDACTED
-        } else {
-            value.as_str()
-        };
-        out.push_str(&format!(
-            " --arg {}",
-            shell_quote(&format!("{key}={value}"))
-        ));
-    }
-    for (key, _) in &options.secret_args {
-        out.push_str(&format!(
-            " --secret-arg {}",
-            shell_quote(&format!("{key}={REDACTED}"))
-        ));
-    }
-    out
-}
-
 fn print_console(level: &str, message: &str) {
     let tag = match level {
         "error" => format!("[{}]", "error".red()),
@@ -1604,6 +1585,7 @@ fn write_partial_report(
     output_dir: &Path,
     run_id: &str,
     args: &HashMap<String, String>,
+    control: &HashMap<String, String>,
     started_at: &str,
     duration_ms: u64,
     streamed: &[StreamedCase],
@@ -1659,12 +1641,13 @@ fn write_partial_report(
             "started_at": started_at,
             "duration_ms": duration_ms,
             "args": args,
-            "platform": args.get("platform"),
+            "run": control,
+            "platform": control.get("platform"),
             "framework": args.get("framework"),
             "run_id": run_id,
         },
         "partial": true,
-        "filtered": (["grep", "id", "ids", "shard"].iter().any(|key| args.contains_key(*key))),
+        "filtered": (["grep", "id", "ids", "shard"].iter().any(|key| control.contains_key(*key))),
         "run_id": run_id,
         "total": cases.len(),
         "passed": count("passed"),
@@ -1824,6 +1807,7 @@ mod tests {
         write_partial_report(
             dir.path(),
             "run-1",
+            &HashMap::new(),
             &HashMap::new(),
             "2026-01-01T00:00:00Z",
             1234,
@@ -2074,6 +2058,7 @@ mod recovery_tests {
             dir.path(),
             "run",
             &HashMap::new(),
+            &HashMap::new(),
             "2026-01-01T00:00:00Z",
             1400,
             &outcome.streamed,
@@ -2148,6 +2133,7 @@ mod recovery_tests {
             false,
             &AtomicUsize::new(0),
             Duration::from_secs(1),
+            &RunSecrets::new(&[], &[]),
         )
         .unwrap();
         // The host reported the run over; dropping must not cancel it.
@@ -2285,49 +2271,62 @@ mod lifecycle_tests {
     }
 
     #[test]
-    fn credential_args_are_redacted_in_reports_and_rerun_hints() {
+    fn controls_travel_apart_from_user_args() {
         let parsed = options(&[
             "tests/",
             "--arg",
-            "user=alice",
-            "--arg",
-            "PASSWORD=hunter22",
-            "--arg",
-            "apiKey=k-123456",
-            "--arg",
-            "auth_token=t-999999",
+            "id=user-value",
             "--secret-arg",
             "pin=4711-9",
+            "--id",
+            "home",
+            "--grep",
+            "home",
+            "--pass-with-no-tests",
         ]);
-        let keys = secret_keys(&parsed);
-        let mut args = parsed.args.iter().cloned().collect::<HashMap<_, _>>();
-        args.extend(parsed.secret_args.iter().cloned());
-        let redacted = redacted_args(&args, &keys);
-        assert_eq!(redacted["user"], "alice");
-        for key in ["PASSWORD", "apiKey", "auth_token", "pin"] {
-            assert_eq!(redacted[key], REDACTED, "{key}");
-        }
-        let hint = rerun_args(&parsed);
-        assert!(hint.contains("user=alice"));
-        for secret in ["hunter22", "k-123456", "t-999999", "4711-9"] {
-            assert!(!hint.contains(secret), "{hint}");
-        }
-        assert!(hint.contains("--secret-arg 'pin=***'"));
+        let secrets = RunSecrets::new(&parsed.args, &parsed.secret_args);
+        let args = secrets.spec_args();
+        let control = run_control(&parsed, "macos", &secrets).unwrap();
+        assert_eq!(args.len(), 2);
+        assert_eq!(args["id"], "user-value");
+        assert_eq!(args["pin"], "4711-9");
+        assert_eq!(control["id"], "home");
+        assert_eq!(control["grep"], "home");
+        assert_eq!(control["platform"], "macos");
+        assert_eq!(control["passWithNoTests"], "1");
+        assert_eq!(control["retries"], "0");
+        assert_eq!(control[SECRET_ARGS_KEY], r#"["pin"]"#);
+    }
 
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::write(
-            dir.path().join("report.json"),
-            serde_json::to_vec(&json!({"meta":{"args":args}, "note":"pw hunter22"})).unwrap(),
-        )
+    #[test]
+    fn a_refused_start_names_the_holding_run_from_data_or_text() {
+        let structured = anyhow::Error::from(CommandError {
+            code: RUN_IN_PROGRESS.to_string(),
+            message: "automation_run_in_progress: run abc is active".to_string(),
+            data: Some(json!({"run_id": "abc", "age_ms": 125_000, "since_last_poll_ms": 60_000})),
+        });
+        let held = held_run(&structured).unwrap();
+        assert_eq!(held.run_id, "abc");
+        assert_eq!(
+            held.describe(),
+            "run abc (started 2m 5s ago, last polled 1m 0s ago)"
+        );
+        assert!(!held.owned_by_live_client());
+        assert!(held.refuse_if_live().is_ok());
+
+        let live = held_run(&anyhow::Error::from(CommandError {
+            code: RUN_IN_PROGRESS.to_string(),
+            message: String::new(),
+            data: Some(json!({"run_id": "abc", "age_ms": 5_000, "since_last_poll_ms": 300})),
+        }))
         .unwrap();
-        std::fs::write(dir.path().join("report.html"), "<td>4711-9</td>").unwrap();
-        scrub_secret_values(dir.path(), &secret_values(&args, &keys));
-        let json = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
-        let html = std::fs::read_to_string(dir.path().join("report.html")).unwrap();
-        for secret in ["hunter22", "k-123456", "t-999999", "4711-9"] {
-            assert!(!json.contains(secret) && !html.contains(secret));
-        }
-        assert!(json.contains("alice"));
+        assert!(live.owned_by_live_client());
+        assert!(format!("{:#}", live.refuse_if_live().unwrap_err()).contains("Ctrl-C"));
+
+        let legacy = held_run(&anyhow!("automation_run_in_progress: run old-1 is active")).unwrap();
+        assert_eq!(legacy.run_id, "old-1");
+        assert!(legacy.detail.is_none() && !legacy.owned_by_live_client());
+        assert!(held_run(&anyhow!("automation_runtime_unhealthy: restart")).is_none());
     }
 }
 

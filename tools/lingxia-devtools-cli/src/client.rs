@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Context, Result};
 use lingxia_control_protocol::{
     ControlRequest,
     dev_session::{
@@ -51,6 +51,23 @@ const READ_POLL_INTERVAL: Duration = Duration::from_millis(500);
 pub(crate) fn max_poll_wait() -> Duration {
     DEFAULT_COMMAND_TIMEOUT.saturating_sub(COMMAND_TIMEOUT_BUFFER)
 }
+
+/// A request the host answered with an error. Displays as the host's message,
+/// as a plain error did; callers that need the code or data downcast to it.
+#[derive(Debug)]
+pub struct CommandError {
+    pub code: String,
+    pub message: String,
+    pub data: Option<Value>,
+}
+
+impl std::fmt::Display for CommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CommandError {}
 
 pub fn execute_command(
     ws_url: &str,
@@ -137,7 +154,12 @@ pub(crate) fn execute_command_until(
             continue;
         }
         if let Some(error) = response.error {
-            return Err(anyhow!("{}", error.message));
+            return Err(CommandError {
+                code: error.code,
+                message: error.message,
+                data: error.data,
+            }
+            .into());
         }
         return Ok(response.result);
     }
