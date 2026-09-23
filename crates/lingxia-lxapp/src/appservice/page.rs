@@ -24,6 +24,28 @@ use tokio::sync::{Mutex, oneshot, watch};
 const ASYNC_ITERATOR_RETURN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(1);
 
 type LifecycleQueue = Rc<RefCell<std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>>>;
+
+/// What a retired service still owes its page: the `onUnload` queued just
+/// before retirement. Navigation queues it and terminates in the same turn,
+/// ahead of the pump, and pages rely on it to stop their polls and timers.
+fn retain_owed_unload(
+    queue: &mut std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>,
+) {
+    queue.retain(|(event, _)| *event == PageLifecycleEvent::OnUnload);
+    queue.truncate(1);
+}
+
+/// The event the lifecycle pump runs next, or `None` when it should stop.
+fn next_lifecycle_event(
+    queue: &mut std::collections::VecDeque<(PageLifecycleEvent, Option<String>)>,
+    terminated: bool,
+) -> Option<(PageLifecycleEvent, Option<String>)> {
+    if terminated {
+        retain_owed_unload(queue);
+    }
+    queue.pop_front()
+}
+
 type CreatedStreamHandle = (
     JSObject,
     oneshot::Receiver<Result<String, RpcError>>,
@@ -1696,22 +1718,22 @@ impl PageSvc {
         )))
     }
 
+    /// Retire the service: queued lifecycle events other than `onUnload` are
+    /// dropped and in-flight handlers lose their write path back to the page.
+    pub(crate) fn mark_terminated(&self) {
+        self.terminated.set(true);
+        retain_owed_unload(&mut self.lifecycle_queue.borrow_mut());
+        if let Ok(cancel) = self.this.get::<_, JSFunc>("_cancelPendingSetData") {
+            let _ = cancel.call::<_, ()>(Some(self.this.clone()), ());
+        }
+    }
+
     /// Queue a lifecycle event and run the queue FIFO off the worker pump.
     ///
     /// One spawned task per event would let the executor reorder them — an
     /// `onReady` handler observably ran before the same entry's `onLoad`. The
     /// queue keeps the pump unblocked while a single drainer preserves the
     /// dispatch order per page service.
-    /// Retire the service: queued lifecycle events are dropped and in-flight
-    /// handlers lose their write path back to the page.
-    pub(crate) fn mark_terminated(&self) {
-        self.terminated.set(true);
-        self.lifecycle_queue.borrow_mut().clear();
-        if let Ok(cancel) = self.this.get::<_, JSFunc>("_cancelPendingSetData") {
-            let _ = cancel.call::<_, ()>(Some(self.this.clone()), ());
-        }
-    }
-
     pub(crate) fn enqueue_lifecycle_event(
         &self,
         ctx: &JSContext,
@@ -1729,12 +1751,10 @@ impl PageSvc {
         let page_svc = self.clone();
         super::context_lifecycle::spawn(ctx, move |ctx| async move {
             loop {
-                if page_svc.terminated.get() {
-                    page_svc.lifecycle_queue.borrow_mut().clear();
-                    page_svc.lifecycle_pump_running.set(false);
-                    break;
-                }
-                let next = page_svc.lifecycle_queue.borrow_mut().pop_front();
+                let next = next_lifecycle_event(
+                    &mut page_svc.lifecycle_queue.borrow_mut(),
+                    page_svc.terminated.get(),
+                );
                 let Some((event, args)) = next else {
                     page_svc.lifecycle_pump_running.set(false);
                     break;
@@ -2052,6 +2072,47 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pump_still_delivers_the_unload_queued_before_retirement() {
+        use PageLifecycleEvent::*;
+        // reLaunch: onUnload queued, then TerminatePage before the pump runs.
+        let mut queue = std::collections::VecDeque::from([
+            (OnHide, None),
+            (OnUnload, None),
+            (OnShow, None),
+            (OnUnload, None),
+        ]);
+        retain_owed_unload(&mut queue);
+        assert_eq!(
+            next_lifecycle_event(&mut queue, true),
+            Some((OnUnload, None))
+        );
+        assert_eq!(next_lifecycle_event(&mut queue, true), None);
+
+        // Retired while a handler was mid-await: the next turn prunes too.
+        let mut queue = std::collections::VecDeque::from([(OnReady, None), (OnUnload, None)]);
+        assert_eq!(
+            next_lifecycle_event(&mut queue, true),
+            Some((OnUnload, None))
+        );
+        assert_eq!(next_lifecycle_event(&mut queue, true), None);
+
+        // Nothing owed: a retired page runs nothing.
+        let mut queue = std::collections::VecDeque::from([(OnShow, None)]);
+        assert_eq!(next_lifecycle_event(&mut queue, true), None);
+
+        // A live service keeps FIFO order.
+        let mut queue = std::collections::VecDeque::from([(OnLoad, None), (OnShow, None)]);
+        assert_eq!(
+            next_lifecycle_event(&mut queue, false),
+            Some((OnLoad, None))
+        );
+        assert_eq!(
+            next_lifecycle_event(&mut queue, false),
+            Some((OnShow, None))
+        );
+    }
 
     #[tokio::test]
     async fn pending_js_call_is_interrupted_by_request_cancellation() {
