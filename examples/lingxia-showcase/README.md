@@ -26,6 +26,9 @@ show both views exist.
 > several times larger than release ones, and skipping the debug profile
 > keeps `target/` much smaller.
 
+Add `--native-feature servo` to an Android build to run the showcase on the
+experimental Servo WebView backend instead of the system WebView.
+
 `lingxia doctor` checks platform toolchains. Once a dev session is live, drive
 it with `lxdev` (tabs, eval, screenshots, logs) — see the skill's
 `cli/lxdev.md`.
