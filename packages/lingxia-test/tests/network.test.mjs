@@ -18,7 +18,12 @@ function fakeNetwork() {
     routes,
     hit(url) {
       const route = [...routes.values()].reverse().find((r) => url.includes(r.pattern));
-      if (route) log.push({ routeId: route.id, pattern: route.pattern, method: "GET", url, action: "fulfill", status: 200, timestamp: 0 });
+      if (route) {
+        log.push({
+          routeId: route.id, pattern: route.pattern, method: "GET", url, headers: {}, body: null,
+          bodyTruncated: false, action: "fulfill", status: 200, timestamp: 0,
+        });
+      }
     },
     async route(pattern, handler) {
       const id = ++nextId;
@@ -61,6 +66,7 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
   spec("second", async (t) => {
     seenAfterFirst = network.routes.size;
     await t.app.network.route("/v1/clients", { abort: "failed" });
+    await t.app.network.route("/v1/slow", { status: 202, delay: 300 });
     network.hit("https://h/v1/clients");
     // The run-wide host log holds both specs' hits; the fixture shows only this spec's.
     const own = await t.app.network.requests();
@@ -76,7 +82,32 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
   assert.ok(routeStep, JSON.stringify(steps));
   assert.equal(routeStep.detail, "PATCH /v1/devices → 501");
   assert.ok(steps.some((step) => step.name === "network.requests"));
-  assert.equal(report.cases[1].steps.find((step) => step.name === "network.route").detail, "/v1/clients → abort failed");
+  const secondRoutes = report.cases[1].steps.filter((step) => step.name === "network.route");
+  assert.deepEqual(secondRoutes.map((step) => step.detail), ["/v1/clients → abort failed", "/v1/slow → 202 after 300ms"]);
+});
+
+test("reading t.app.network never throws; a host without routing fails the call", async () => {
+  const world = createWorld();
+  Object.defineProperty(world.app, "network", {
+    configurable: true,
+    get() { throw new Error("network routing is not built into this host"); },
+  });
+  installFakeHost(world);
+  let read;
+  let rejected;
+
+  spec("unsupported host", async (t) => {
+    read = typeof t.app.network.route;
+    try {
+      await t.app.network.route("**", { status: 200 });
+    } catch (error) {
+      rejected = error.message;
+    }
+  });
+
+  await run();
+  assert.equal(read, "function");
+  assert.match(rejected ?? "", /not built into this host/);
 });
 
 test("a host without test routing does not break t.app", async () => {

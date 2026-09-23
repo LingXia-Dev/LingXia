@@ -36,7 +36,16 @@ export class NetworkScope {
   }
 }
 
-export function wrapNetwork(driver: NetworkDriver, host: NetworkHost, scope: NetworkScope): NetworkDriver {
+/**
+ * `resolve` reads the raw driver lazily, inside each traced call: a host
+ * without test routing then fails that call, never the `t.app.network` read.
+ */
+export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: NetworkHost, scope: NetworkScope): NetworkDriver {
+  const driver = (): NetworkDriver => {
+    const network = resolve();
+    if (!network) throw new Error("t.app.network is not supported by this host");
+    return network;
+  };
   const wrapRoute = (route: NetworkRoute): NetworkRoute => ({
     get id() { return route.id; },
     get pattern() { return route.pattern; },
@@ -46,15 +55,15 @@ export function wrapNetwork(driver: NetworkDriver, host: NetworkHost, scope: Net
   return {
     route: (pattern: NetworkRoutePattern, handler: NetworkRouteHandler) =>
       host.act("network.route", describeRoute(pattern, handler), async () => {
-        const route = await driver.route(pattern, handler);
+        const route = await driver().route(pattern, handler);
         scope.track(host, route);
         return wrapRoute(route);
       }),
-    unrouteAll: () => host.act("network.unrouteAll", "", () => driver.unrouteAll()),
-    // Only this spec's routes: the host log spans the whole run.
+    unrouteAll: () => host.act("network.unrouteAll", "", () => driver().unrouteAll()),
+    // Spec-scoped: the host log spans the whole run.
     requests: () =>
       host.act("network.requests", "", async () =>
-        (await driver.requests()).filter((entry: NetworkRouteRequest) => scope.routes.has(entry.routeId))),
+        (await driver().requests()).filter((entry: NetworkRouteRequest) => scope.routes.has(entry.routeId))),
   };
 }
 
@@ -66,10 +75,10 @@ function describePattern(pattern: NetworkRoutePattern): string {
 }
 
 function describeHandler(handler: NetworkRouteHandler): string {
-  if ("abort" in handler && handler.abort) return `abort ${handler.abort === true ? "failed" : handler.abort}`;
-  if ("continue" in handler && handler.continue) return "continue";
-  const status = (handler as { status?: number }).status ?? 200;
-  return String(status);
+  if (handler.abort !== undefined) return `abort ${String(handler.abort)}`;
+  if (handler.continue !== undefined) return "continue";
+  const status = String(handler.status ?? 200);
+  return handler.delay ? `${status} after ${handler.delay}ms` : status;
 }
 
 function describeRoute(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): string {
