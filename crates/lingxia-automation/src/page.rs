@@ -82,6 +82,8 @@ struct JSClickOptions {
     css: String,
     index: Option<usize>,
     page: Option<String>,
+    /// Skip the in-viewport and hit-test checks (attached + enabled only).
+    force: Option<bool>,
 }
 
 #[derive(FromJSObject)]
@@ -90,6 +92,8 @@ struct JSTypeOptions {
     text: String,
     index: Option<usize>,
     page: Option<String>,
+    /// `fill` only: skip the in-viewport check.
+    force: Option<bool>,
 }
 
 #[derive(FromJSObject)]
@@ -140,7 +144,8 @@ struct WaitProbe {
 }
 
 /// Raw `waitFor` states, evaluated on the first match (the `lxdev lxapp page
-/// wait` contract): `hidden` needs an existing, non-visible match, so "no match"
+/// wait` contract). `visible` means rendered, wherever the match is scrolled.
+/// `hidden` needs an existing, non-rendered match, so "no match"
 /// satisfies only `detached`. `@lingxia/test` locators layer stricter,
 /// uniqueness-aware states on top and treat "no match" as hidden.
 fn wait_state_satisfied(state: &str, probe: &WaitProbe) -> bool {
@@ -221,9 +226,15 @@ impl JSPageDriver {
     #[js_method]
     async fn click(&self, ctx: JSContext, options: JSClickOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_click(&app, options.page.as_deref(), &options.css, options.index)
-            .await
-            .map_err(fail(&app, options.page.as_deref()))
+        auto::page_click_with(
+            &app,
+            options.page.as_deref(),
+            &options.css,
+            options.index,
+            options.force.unwrap_or(false),
+        )
+        .await
+        .map_err(fail(&app, options.page.as_deref()))
     }
 
     #[js_method(rename = "type")]
@@ -243,12 +254,13 @@ impl JSPageDriver {
     #[js_method]
     async fn fill(&self, ctx: JSContext, options: JSTypeOptions) -> JSResult<()> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        auto::page_fill(
+        auto::page_fill_with(
             &app,
             options.page.as_deref(),
             &options.css,
             options.index,
             &options.text,
+            options.force.unwrap_or(false),
         )
         .await
         .map_err(fail(&app, options.page.as_deref()))

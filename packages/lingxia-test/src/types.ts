@@ -57,6 +57,27 @@ export interface ExpectOptions {
   interval?: number;
 }
 
+/** `click` / `fill` options. */
+export interface ActionOptions extends ExpectOptions {
+  /**
+   * Skip the in-viewport, stability and hit-test waits and dispatch to the
+   * element itself; it must still be attached (one match) and enabled. Use it
+   * for an element no scroll can bring under the pointer, such as the lower
+   * part of an overflowing sheet. The action then proves less about what a
+   * user can reach, so prefer the default wherever it works.
+   */
+  force?: boolean;
+}
+
+/** `locator.filter()` options. */
+export interface LocatorFilterOptions {
+  /**
+   * Keep matches whose text contains this string (case-insensitive,
+   * whitespace-normalized) or matches this RegExp.
+   */
+  hasText: string | RegExp;
+}
+
 export interface RejectExpected {
   /**
    * The rejection's `code`: an automation driver code (`E_PAGE_NOT_ACTIVE`,
@@ -73,16 +94,20 @@ export interface LocatorOptions extends PageTarget {
 }
 
 /**
- * Locator states are strict about ambiguity (narrow with `.nth()`):
- * - `attached`: exactly one match in the DOM, in the viewport or not (content
- *   of a sheet or long page that overflows the Runner viewport).
- * - `visible`: exactly one match, and it intersects the viewport.
+ * Locator states are strict about ambiguity (narrow with `.nth()`,
+ * `.first()`, `.last()` or `.filter()`):
+ * - `attached`: exactly one match in the DOM, rendered or not.
+ * - `visible`: exactly one match, and it is rendered — a non-empty box, not
+ *   `display:none`, `visibility:hidden` or `opacity:0` — whether or not it is
+ *   scrolled into the viewport (content below the fold or in an overflowing
+ *   sheet is visible).
+ * - `inViewport`: exactly one visible match that intersects the viewport.
  * - `hidden`: no visible match, including no match at all.
  * - `detached`: no match.
  * Several matches satisfy only `hidden` (when none is visible). The raw
  * `page.waitFor` driver checks the first match instead; see `PageWaitState`.
  */
-export type LocatorState = "attached" | "detached" | "visible" | "hidden";
+export type LocatorState = "attached" | "detached" | "visible" | "hidden" | "inViewport";
 
 export interface LocatorWaitOptions extends ExpectOptions {
   /** Defaults to `visible`. */
@@ -93,11 +118,16 @@ export interface Locator {
   readonly selector: string;
   /** Wait until the locator reaches `state`; rejects at the timeout. */
   waitFor(options?: LocatorWaitOptions): Promise<void>;
-  click(options?: ExpectOptions): Promise<void>;
-  fill(text: string, options?: ExpectOptions): Promise<void>;
+  click(options?: ActionOptions): Promise<void>;
+  fill(text: string, options?: ActionOptions): Promise<void>;
   type(text: string, options?: ExpectOptions): Promise<void>;
   press(key: string, options?: ExpectOptions): Promise<void>;
+  /** Pick the match at `index` (of the filtered matches, after `.filter()`). */
   nth(index: number): Locator;
+  first(): Locator;
+  last(): Locator;
+  /** Narrow the matches; `nth`/`first`/`last` then pick among what is left. */
+  filter(options: LocatorFilterOptions): Locator;
   /** Read once; use t.expect for retrying assertions. */
   query(): Promise<PageQueryResult>;
 }
@@ -226,7 +256,10 @@ export interface RetryMatchers<T> {
 
 export interface LocatorMatchers {
   readonly not: LocatorMatchers;
+  /** One rendered match, in the viewport or scrolled out of it. */
   toBeVisible(options?: ExpectOptions): Promise<void>;
+  /** One rendered match that intersects the viewport. */
+  toBeInViewport(options?: ExpectOptions): Promise<void>;
   toBeHidden(options?: ExpectOptions): Promise<void>;
   toBeAttached(options?: ExpectOptions): Promise<void>;
   toBeEnabled(options?: ExpectOptions): Promise<void>;

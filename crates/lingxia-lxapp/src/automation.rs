@@ -437,8 +437,19 @@ pub async fn page_click(
     selector: &str,
     index: Option<usize>,
 ) -> Result<(), String> {
+    page_click_with(app, page_name, selector, index, false).await
+}
+
+/// [`page_click`], optionally forced: see `ClickOptions::force`.
+pub async fn page_click_with(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    force: bool,
+) -> Result<(), String> {
     resolve_webview(app, page_name)?
-        .click(selector, lingxia_webview::ClickOptions { index })
+        .click(selector, lingxia_webview::ClickOptions { index, force })
         .await
         .map_err(|err| err.to_string())
 }
@@ -472,8 +483,24 @@ pub async fn page_fill(
     index: Option<usize>,
     text: &str,
 ) -> Result<(), String> {
+    page_fill_with(app, page_name, selector, index, text, false).await
+}
+
+/// [`page_fill`], optionally forced: see `FillOptions::force`.
+pub async fn page_fill_with(
+    app: &Arc<LxApp>,
+    page_name: Option<&str>,
+    selector: &str,
+    index: Option<usize>,
+    text: &str,
+    force: bool,
+) -> Result<(), String> {
     resolve_webview(app, page_name)?
-        .fill(selector, text, lingxia_webview::FillOptions { index })
+        .fill(
+            selector,
+            text,
+            lingxia_webview::FillOptions { index, force },
+        )
         .await
         .map_err(|err| err.to_string())
 }
@@ -536,8 +563,11 @@ pub async fn page_scroll_to(
 /// Build the DOM query IIFE shared by every automation front-end.
 ///
 /// Single-node mode returns the `describe` payload below (`{ exists, index,
-/// count, tag, visible, enabled, editable, text, value, rect, … }`); `all`
-/// mode returns `{ count, items: [...] }`. `visible` is viewport-aware.
+/// count, tag, visible, in_viewport, enabled, editable, text, value, rect, … }`);
+/// `all` mode returns `{ count, items: [...] }`. `visible` means rendered — a
+/// non-empty box that is not `display:none`, `visibility:hidden` or
+/// `opacity:0` — wherever it is scrolled; `in_viewport` says whether that box
+/// also intersects the viewport.
 pub fn build_query_script(
     selector: &str,
     index: Option<usize>,
@@ -588,13 +618,14 @@ pub fn build_query_script(
       (tag === "input" && !disabled && !el.readOnly && !blockedInputTypes.has(inputType));
     const visible = rect.width > 0 &&
       rect.height > 0 &&
-      rect.bottom > 0 &&
-      rect.right > 0 &&
-      rect.top < window.innerHeight &&
-      rect.left < window.innerWidth &&
       style.visibility !== "hidden" &&
       style.display !== "none" &&
       Number(style.opacity || "1") !== 0;
+    const inViewport = visible &&
+      rect.bottom > 0 &&
+      rect.right > 0 &&
+      rect.top < window.innerHeight &&
+      rect.left < window.innerWidth;
     const hasValue = "value" in el;
     const text = truncate(el.innerText || el.textContent || "");
     const value = hasValue ? truncate(el.value ?? "") : null;
@@ -610,6 +641,7 @@ pub fn build_query_script(
       aria_label: el.getAttribute("aria-label"),
       placeholder: el.getAttribute("placeholder"),
       visible,
+      in_viewport: inViewport,
       enabled: !disabled,
       editable,
       text: text.value,
@@ -642,6 +674,7 @@ pub fn build_query_script(
       index,
       count,
       visible: false,
+      in_viewport: false,
       enabled: false,
       editable: false
     }};
@@ -655,6 +688,30 @@ pub fn build_query_script(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_visibility_is_rendered_and_viewport_is_separate() {
+        let script = build_query_script("[data-testid=x]", None, true, None).unwrap();
+        let visible = script
+            .split("const visible =")
+            .nth(1)
+            .and_then(|rest| rest.split(';').next())
+            .expect("visible expression");
+        assert!(visible.contains("display"), "{visible}");
+        assert!(
+            !visible.contains("innerHeight") && !visible.contains("innerWidth"),
+            "rendered-ness must not depend on the viewport: {visible}"
+        );
+        let in_viewport = script
+            .split("const inViewport =")
+            .nth(1)
+            .and_then(|rest| rest.split(';').next())
+            .expect("inViewport expression");
+        assert!(in_viewport.starts_with(" visible &&"), "{in_viewport}");
+        assert!(in_viewport.contains("window.innerHeight"), "{in_viewport}");
+        assert!(script.contains("in_viewport: inViewport"));
+        assert!(script.contains("in_viewport: false"));
+    }
 
     fn runtime_page(
         instance_id: &str,

@@ -11,6 +11,7 @@ export {
   DEFAULT_SPEC_TIMEOUT_MS,
 } from "./version.js";
 export type {
+  ActionOptions,
   Apps,
   ArgOptions,
   AssertionRecord,
@@ -34,6 +35,7 @@ export type {
   RunMeta,
   LingxiaTestController,
   Locator,
+  LocatorFilterOptions,
   LocatorMatchers,
   LocatorOptions,
   LocatorState,

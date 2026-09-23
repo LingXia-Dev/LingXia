@@ -287,6 +287,20 @@ export interface PageTypeOptions extends PageSelectorOptions {
   text: string;
 }
 
+export interface PageClickOptions extends PageSelectorOptions {
+  /**
+   * Dispatch to the element itself, without the in-viewport and hit-test
+   * checks; it must still exist and be enabled. For content no scroll can
+   * bring under the pointer, such as the lower part of an overflowing sheet.
+   */
+  force?: boolean;
+}
+
+export interface PageFillOptions extends PageTypeOptions {
+  /** Write without the in-viewport check; see `PageClickOptions.force`. */
+  force?: boolean;
+}
+
 export interface PagePressOptions extends PageTarget {
   /** Key name, e.g. `Enter`, `Escape`, `Tab`. */
   key: string;
@@ -312,9 +326,11 @@ export interface PageScrollToOptions extends PageTarget {
  * Raw `page.waitFor` states check the first match of `css`:
  * - `attached`: at least one match.
  * - `detached`: no match (also while the page is not yet active).
- * - `visible`: the first match intersects the viewport.
- * - `hidden`: the first match exists and does not intersect the viewport; no
- *   match does not satisfy it (wait for `detached`).
+ * - `visible`: the first match is rendered (a non-empty box, not
+ *   `display:none`, `visibility:hidden` or `opacity:0`), in the viewport or
+ *   scrolled out of it.
+ * - `hidden`: the first match exists and is not rendered; no match does not
+ *   satisfy it (wait for `detached`).
  * - `enabled` / `editable`: the first match exists and is enabled / editable.
  * `@lingxia/test` locators apply stricter, uniqueness-aware states.
  */
@@ -371,8 +387,16 @@ export interface PageElement {
   role: string | null;
   aria_label: string | null;
   placeholder: string | null;
-  /** Viewport-aware visibility (size, style, and in-viewport). */
+  /**
+   * Rendered: a non-empty box that is not `display:none`,
+   * `visibility:hidden` or `opacity:0`, wherever it is scrolled.
+   */
   visible: boolean;
+  /**
+   * Rendered and intersecting the viewport. Absent from a runtime that
+   * predates it.
+   */
+  in_viewport?: boolean;
   enabled: boolean;
   editable: boolean;
   text: string;
@@ -388,6 +412,7 @@ export interface PageElementMiss {
   index: number;
   count: number;
   visible: false;
+  in_viewport?: false;
   enabled: false;
   editable: false;
 }
@@ -418,11 +443,11 @@ export interface PageDriver {
   query(options: PageQueryOptions & { all: true }): Promise<PageQueryAll>;
   query(options: PageQueryOptions): Promise<PageQueryResult | PageQueryAll>;
   /** Single dispatch; test locators provide actionability waiting. */
-  click(options: PageSelectorOptions): Promise<void>;
+  click(options: PageClickOptions): Promise<void>;
   /** Type text into an element without clearing existing content. */
   type(options: PageTypeOptions): Promise<void>;
   /** Replace an element's current value. */
-  fill(options: PageTypeOptions): Promise<void>;
+  fill(options: PageFillOptions): Promise<void>;
   press(options: PagePressOptions): Promise<void>;
   /** Scroll the first matching element into view. */
   scrollTo(options: PageScrollToOptions): Promise<void>;

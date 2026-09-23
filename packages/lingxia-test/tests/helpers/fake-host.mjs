@@ -66,20 +66,22 @@ export function createWorld(options = {}) {
       }
       return serialize(element, index, found.length);
     },
-    async click({ css, index }) {
+    async click({ css, index, force }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
       const found = queryAll(css);
       const target = typeof index === "number" ? found[index] : found.find((element) => element.visible !== false);
-      if (!target || target.visible === false) throw new Error(`click missed ${css}`);
+      if (!target || (target.visible === false && !force)) throw new Error(`click missed ${css}`);
       target.clicked = (target.clicked ?? 0) + 1;
+      target.forced = force === true;
       if (typeof target.onClick === "function") target.onClick(target);
     },
-    async fill({ css, text, index }) {
+    async fill({ css, text, index, force }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
       const found = queryAll(css);
       const target = typeof index === "number" ? found[index] : found.find((element) => element.visible !== false);
-      if (!target || target.visible === false) throw new Error(`fill missed ${css}`);
+      if (!target || (target.visible === false && !force)) throw new Error(`fill missed ${css}`);
       target.value = text;
+      target.forced = force === true;
     },
     async type({ css, text }) {
       return page.fill({ css, text });
@@ -89,6 +91,13 @@ export function createWorld(options = {}) {
     },
     async eval({ script }) {
       if (pageGlobals) return evaluate(pageGlobals, script);
+      // The locator's actionability probe: an element outside the viewport
+      // fails the hit test, as a real page would.
+      const actionability = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*elementFromPoint/);
+      if (actionability) {
+        const element = queryAll(JSON.parse(actionability[1]))[Number(actionability[2])];
+        if (element?.inViewport === false) return "element is obscured";
+      }
       return true;
     },
   };
@@ -181,6 +190,7 @@ export function createWorld(options = {}) {
       aria_label: null,
       placeholder: null,
       visible: element.visible !== false,
+      in_viewport: element.visible !== false && element.inViewport !== false,
       enabled: element.enabled !== false,
       editable: element.editable !== false,
       text: element.text ?? "",

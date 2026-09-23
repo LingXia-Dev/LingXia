@@ -193,24 +193,90 @@ test("wrapping the page driver never writes back onto the driver", async () => {
   assert.equal(driver.page.css, original.css);
 });
 
-test("locator waitFor attached accepts an out-of-viewport match that visible rejects", async () => {
+test("visible means rendered: an out-of-viewport match is visible, not in the viewport, not hidden", async () => {
   const world = createWorld();
-  world.add({ testId: "sheet-confirm", visible: false, text: "Confirm" });
+  world.add({ testId: "sheet-confirm", inViewport: false, text: "Confirm" });
+  world.add({ testId: "collapsed", visible: false, text: "" });
   const { attachments } = installFakeHost(world);
 
-  spec("attached, not visible", async (t) => {
+  spec("below the fold", async (t) => {
     const confirm = t.app.page.testId("sheet-confirm");
     await confirm.waitFor({ state: "attached", timeout: 80 });
-    await confirm.waitFor({ state: "hidden", timeout: 80 });
+    await confirm.waitFor({ state: "visible", timeout: 80 });
+    await t.expect(confirm).toBeVisible({ timeout: 80 });
+    await t.expect(confirm).not.toBeHidden({ timeout: 80 });
+    await t.expect(confirm).not.toBeInViewport({ timeout: 80 });
+    await t.expect(t.app.page.testId("collapsed")).toBeHidden({ timeout: 80 });
     await t.expect(t.app.page.testId("missing")).toHaveCount(0);
     await t.app.page.testId("missing").waitFor({ state: "detached", timeout: 80 });
-    await confirm.waitFor({ timeout: 80 });
+    await confirm.waitFor({ state: "inViewport", timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
   const message = failedMessage(attachments);
-  assert.match(message, /to be visible/);
-  assert.match(message, /resolved to hidden/);
+  assert.match(message, /to be inViewport/);
+  assert.match(message, /visible element outside the viewport/);
+});
+
+test("toBeInViewport passes once the match scrolls into the viewport", async () => {
+  const world = createWorld();
+  const row = world.add({ testId: "row", inViewport: false, text: "Row" });
+  const { events } = installFakeHost(world);
+
+  spec("scrolls in", async (t) => {
+    setTimeout(() => { row.inViewport = true; }, 40);
+    await t.expect(t.app.page.testId("row")).toBeInViewport({ timeout: 1_000 });
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, JSON.stringify(events.filter((event) => event.type === "case_finished")));
+});
+
+test("click({ force }) skips the viewport and hit-test waits but not enabled", async () => {
+  const world = createWorld();
+  const confirm = world.add({ testId: "sheet-confirm", inViewport: false, text: "Confirm" });
+  const locked = world.add({ testId: "sheet-locked", inViewport: false, enabled: false, text: "Locked" });
+  const field = world.add({ testId: "sheet-note", inViewport: false, value: "" });
+  const { attachments } = installFakeHost(world);
+
+  spec("forced", async (t) => {
+    await t.reject(() => t.app.page.testId("sheet-confirm").click({ timeout: 120 }), { message: /obscured/ });
+    assert.equal(confirm.clicked, undefined);
+    await t.app.page.testId("sheet-confirm").click({ force: true, timeout: 500 });
+    assert.equal(confirm.clicked, 1);
+    assert.equal(confirm.forced, true);
+    await t.app.page.testId("sheet-note").fill("hello", { force: true, timeout: 500 });
+    assert.equal(field.value, "hello");
+    assert.equal(field.forced, true);
+    await t.app.page.testId("sheet-locked").click({ force: true, timeout: 120 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(locked.clicked, undefined);
+  const message = failedMessage(attachments);
+  assert.match(message, /element is disabled/);
+});
+
+test("filter, first and last narrow the matches and act on the right DOM node", async () => {
+  const world = createWorld();
+  const items = ["Apple", "Banana split", "Cherry", "banana bread"].map((text) =>
+    world.add({ css: "li", text }));
+  const { events } = installFakeHost(world);
+
+  spec("narrowed", async (t) => {
+    const rows = t.app.page.css("li");
+    await t.expect(rows).toHaveCount(4);
+    await t.expect(rows.filter({ hasText: "BANANA" })).toHaveCount(2);
+    await t.expect(rows.filter({ hasText: /^Cherry$/ })).toHaveCount(1);
+    await rows.filter({ hasText: "banana" }).last().click();
+    await rows.first().click();
+    await rows.last().click();
+    await t.expect(rows.filter({ hasText: "banana" }).first()).toHaveText("Banana split");
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.failed, 0, JSON.stringify(events.filter((event) => event.type === "case_finished").map((event) => event.error)));
+  assert.deepEqual(items.map((item) => item.clicked ?? 0), [1, 0, 0, 2]);
 });
 
 test("fixture nav waits for the landed page unless the caller picks waitUntil", async () => {
