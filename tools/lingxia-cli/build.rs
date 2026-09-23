@@ -304,6 +304,37 @@ fn emit_build_metadata_env(repo_root: &Path) {
         git_output(repo_root, &["show", "-s", "--format=%cs", "HEAD"])
             .unwrap_or_else(|| "unknown".to_string())
     );
+    let dirty = git_tree_dirty(repo_root);
+    println!(
+        "cargo:rustc-env=LINGXIA_COMMIT_DIRTY={}",
+        if dirty { "1" } else { "" }
+    );
+    // `lingxia --version` / `lingxia version`: the release version alone cannot
+    // tell two builds apart, so stamp the commit (and `-dirty`) it came from.
+    let version = env::var("CARGO_PKG_VERSION").unwrap_or_default();
+    let stamp = match (
+        git_output(repo_root, &["rev-parse", "--short=9", "HEAD"]),
+        git_output(repo_root, &["show", "-s", "--format=%cs", "HEAD"]),
+    ) {
+        (Some(hash), Some(date)) => {
+            format!(
+                "{version} ({hash}{} {date})",
+                if dirty { "-dirty" } else { "" }
+            )
+        }
+        _ => version,
+    };
+    println!("cargo:rustc-env=LINGXIA_BUILD_VERSION={stamp}");
+}
+
+fn git_tree_dirty(repo_root: &Path) -> bool {
+    Command::new("git")
+        .args(["status", "--porcelain", "--untracked-files=no"])
+        .current_dir(repo_root)
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .is_some_and(|output| !output.stdout.iter().all(u8::is_ascii_whitespace))
 }
 
 fn git_output(repo_root: &Path, args: &[&str]) -> Option<String> {
@@ -424,18 +455,27 @@ fn emit_rerun_markers(
     // or removing one does not re-expand the macro -- the binary would keep
     // shipping the previous file list.
     emit_rerun_for_dir(&repo_root.join("docs").join("skill"))?;
-    let git_head = repo_root.join(".git").join("HEAD");
-    if git_head.exists() {
-        println!("cargo:rerun-if-changed={}", git_head.display());
-        if let Ok(head) = fs::read_to_string(&git_head)
-            && let Some(reference) = head.trim().strip_prefix("ref: ")
-        {
-            let git_ref = repo_root.join(".git").join(reference);
-            if git_ref.exists() {
-                println!("cargo:rerun-if-changed={}", git_ref.display());
-            }
+    // A worktree's `.git` is a file, so ask git where HEAD, the branch ref and
+    // the index live. Source directories are watched so an unstaged edit
+    // refreshes the `-dirty` stamp in the version line.
+    for name in ["HEAD", "index", "packed-refs"] {
+        if let Some(path) = git_output(repo_root, &["rev-parse", "--git-path", name]) {
+            println!("cargo:rerun-if-changed={}", repo_root.join(path).display());
         }
     }
+    if let Some(reference) = git_output(repo_root, &["symbolic-ref", "-q", "HEAD"])
+        && let Some(path) = git_output(repo_root, &["rev-parse", "--git-path", &reference])
+    {
+        println!("cargo:rerun-if-changed={}", repo_root.join(path).display());
+    }
+    println!(
+        "cargo:rerun-if-changed={}",
+        manifest_dir.join("src").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        repo_root.join("crates").display()
+    );
 
     for path in [
         bridge_dir.join("package.json"),
