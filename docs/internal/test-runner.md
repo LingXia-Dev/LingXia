@@ -86,6 +86,24 @@ received artifacts. Keep the following invariants when changing these layers:
   at run start once files are known. `n` used to be a run-wide counter over
   every spec, so ids from older reports can differ for suites with several
   files or with ASCII specs before a non-ASCII one.
+- Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
+  press/waitFor`, locator matchers and `t.expect.poll` clamp their timeout to
+  `LiveFixture.budgetRoom()` — the spec deadline less a reporting margin
+  (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
+  clamp in the failure message. Every driver call in those loops (query,
+  actionability eval, dispatch, the poll `read`) is raced against the rest of
+  the action budget and rejects with a `TimeoutError` naming the call, the
+  action and its location, so the action fails before the spec timer. Raw
+  driver calls (`t.app.eval`, nav) carry their own driver timeouts instead.
+  The race only stops waiting: a native call that blocks the JS thread cannot
+  be preempted from JS, and an abandoned call may still complete in the app.
+- Transient page errors (`isTransientPageError`, mirroring
+  `is_transient_page_error` in `lingxia-automation/src/page.rs`: `page is not
+  active:`, `page WebView is not ready`, `WebView not ready`, `no current page`,
+  WebView2 `0x8007139F`) are retried by locator actions and `waitFor` until the
+  action budget ends; other errors fail at once. Dispatch retries only the
+  page-resolution subset (`isPreDispatchPageError`): the WebView2 code can come
+  from a script that already ran. Keep the list in step with the Rust helper.
 
 ## Automation JS boundary
 

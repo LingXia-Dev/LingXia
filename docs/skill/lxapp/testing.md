@@ -193,7 +193,8 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - `spec.skip`/`spec.fixme` skip at registration; `t.skip(reason)` skips from the body or `beforeEach` when only the run can tell (not from cleanup).
 - `spec.fail`: any body failure is `xfail`; a completed body is `xpass`. Pin the known failure with `spec.fail(title, { expected: { code, message } }, body)` so any other failure stays `failed`.
 - `lxdev test --cancel-active` cancels a run left active by a client that exited (`automation_run_in_progress`). It prints the run's age and last poll, and refuses a run a live client still polls.
-- Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.
+- Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target, retrying while a navigation is still replacing the page.
+  An action or assertion `timeout` never outlives the spec: a longer one is clamped to the time left, and the error says so.
   `locator.waitFor({ state })` waits for `visible` (default: exactly one match, in the viewport),
   `attached` (exactly one match, even outside the viewport, e.g. an overflowing sheet), `hidden`
   (no visible match, including none), or `detached` (no match). Narrow multiple matches with `.nth()`.

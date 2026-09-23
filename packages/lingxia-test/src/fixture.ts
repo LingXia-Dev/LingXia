@@ -11,6 +11,7 @@ import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
+import { ActionDeadline, TimeoutError } from "./deadline.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
@@ -48,9 +49,7 @@ import {
 } from "./version.js";
 import type { Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver } from "@lingxia/types/automation";
 
-export class TimeoutError extends Error {
-  override readonly name = "TimeoutError";
-}
+export { TimeoutError };
 
 /**
  * Thrown by `t.skip()`. It unwinds the spec like any throw, but the runtime
@@ -96,6 +95,8 @@ export class LiveFixture implements Fixture {
   private readonly stepStack: StepRecord[] = [];
   private rawApp: LxAppDriver;
   private readonly networkScope = new NetworkScope();
+  /** When the spec's own timer fires; see `budgetRoom()`. */
+  private readonly specDeadline: number;
 
   constructor(
     readonly specId: string,
@@ -108,6 +109,7 @@ export class LiveFixture implements Fixture {
   ) {
     this.rawApp = rawApp;
     this.args = args;
+    this.specDeadline = Date.now() + specBudgetMs;
     setAssertionSink((entry) => this.noteAssertion(entry));
     const root = guardObject(automation, this, "", ["lxapp"]);
     this.automation = new Proxy(root, {
@@ -455,6 +457,18 @@ export class LiveFixture implements Fixture {
     return result;
   }
 
+  /**
+   * Milliseconds an action or assertion may still take. Short of the spec's
+   * own deadline by a margin, so the action fails first and names its step
+   * instead of losing the race to the anonymous spec timeout. During cleanup
+   * the cleanup budget bounds it instead.
+   */
+  budgetRoom(): number {
+    if (this.cleanupActive) return this.cleanupUntil > 0 ? this.cleanupUntil - Date.now() : Number.POSITIVE_INFINITY;
+    const margin = Math.min(250, Math.floor(this.specBudgetMs / 20));
+    return this.specDeadline - margin - Date.now();
+  }
+
   currentStepPath(): string | undefined {
     const current = this.stepStack[this.stepStack.length - 1];
     return current?.path ?? this.lastStepPath;
@@ -575,6 +589,7 @@ export class LiveFixture implements Fixture {
       selector,
       location,
       options,
+      () => this.budgetRoom(),
     );
   }
 
@@ -639,17 +654,17 @@ export class LiveFixture implements Fixture {
     await this.guard(async () => {
       const frame = callerLocation();
       const location = { source: frame.file, line: frame.line, column: frame.column };
-      const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+      const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
       const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-      const started = Date.now();
+      const context = () => this.deadlineContext(inverted ? `not.${matcher}` : matcher, location);
       let lastResolved: LocatorResolve | undefined;
       let lastError: unknown;
       pushAssertionSilence();
       this.silenceActions();
       try {
-        while (Date.now() - started < timeout) {
+        while (!deadline.expired()) {
           try {
-            lastResolved = await resolveLocator(locator);
+            lastResolved = await resolveLocator(locator, deadline, context);
             matchLocator(locator, lastResolved, matcher, expected, inverted);
             this.noteAssertion({
               matcher: inverted ? `not.${matcher}` : matcher,
@@ -662,16 +677,17 @@ export class LiveFixture implements Fixture {
             if (error instanceof TimeoutError || this.aborted) throw error;
             lastError = error;
           }
-          if (Date.now() - started >= timeout) break;
-          await sleep(interval);
+          if (deadline.expired()) break;
+          await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
           if (this.aborted && this.abortError) throw this.abortError;
         }
       } finally {
         popAssertionSilence();
         this.resumeActions();
       }
-      const duration = Date.now() - started;
+      const duration = deadline.elapsed();
       throw this.retryFailure({
+        clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
         expected,
         actual: locatorActual(matcher, lastResolved),
@@ -693,17 +709,17 @@ export class LiveFixture implements Fixture {
     await this.guard(async () => {
       const frame = callerLocation();
       const location = { source: frame.file, line: frame.line, column: frame.column };
-      const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+      const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
       const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-      const started = Date.now();
+      const context = () => this.deadlineContext(`poll ${inverted ? "not." : ""}${matcher}`, location);
       let lastActual: unknown;
       let lastError: unknown;
       pushAssertionSilence();
       this.silenceActions();
       try {
-        while (Date.now() - started < timeout) {
+        while (!deadline.expired()) {
           try {
-            lastActual = await read();
+            lastActual = await deadline.call("t.expect.poll read", read, context);
             applyMatcher(matcher, lastActual, expected, inverted);
             this.noteAssertion({
               matcher: inverted ? `not.${matcher}` : matcher,
@@ -716,8 +732,8 @@ export class LiveFixture implements Fixture {
             if (error instanceof TimeoutError || this.aborted) throw error;
             lastError = error;
           }
-          if (Date.now() - started >= timeout) break;
-          await sleep(interval);
+          if (deadline.expired()) break;
+          await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
           if (this.aborted && this.abortError) throw this.abortError;
         }
       } finally {
@@ -725,14 +741,23 @@ export class LiveFixture implements Fixture {
         this.resumeActions();
       }
       throw this.retryFailure({
+        clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
         expected,
         actual: lastActual,
-        duration: Date.now() - started,
+        duration: deadline.elapsed(),
         location,
         lastError,
       });
     });
+  }
+
+  private deadlineContext(matcher: string, location: SourceLocation): string {
+    return [
+      `while retrying ${matcher}`,
+      `at ${displayLocation(location.source, location.line, location.column)}`,
+      this.stepPathLine(),
+    ].filter(Boolean).join("\n");
   }
 
   private retryFailure(input: {
@@ -743,6 +768,7 @@ export class LiveFixture implements Fixture {
     location: SourceLocation;
     lastError: unknown;
     extra?: string;
+    clampNote?: string;
   }): AssertionError {
     const where = displayLocation(input.location.source, input.location.line, input.location.column);
     const last =
@@ -757,6 +783,7 @@ export class LiveFixture implements Fixture {
       `Expected: ${formatValue(input.expected)}`,
       `Received: ${formatValue(input.actual)}`,
       `Retried for ${input.duration}ms`,
+      input.clampNote,
       `at ${where}`,
       this.stepPathLine(),
       last && last !== `Expected: ${formatValue(input.expected)}` ? last : undefined,
@@ -771,8 +798,8 @@ export class LiveFixture implements Fixture {
   }
 }
 
-function resolveLocator(locator: Locator): Promise<LocatorResolve> {
-  if (locator instanceof PageLocator) return locator.resolve();
+function resolveLocator(locator: Locator, deadline: ActionDeadline, context: () => string): Promise<LocatorResolve> {
+  if (locator instanceof PageLocator) return deadline.call("locator read", () => locator.resolve(), context);
   throw new Error("t.expect() requires a locator from page.testId() or page.css()");
 }
 
