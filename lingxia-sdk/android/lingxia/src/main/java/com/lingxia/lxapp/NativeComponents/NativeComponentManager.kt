@@ -734,8 +734,8 @@ internal class NativeComponentManager(
 
     private fun contentRectToScreenRect(contentRect: RectF): RectF {
         val webView = webViewRef?.get()
-        val scrollX = (webView?.hostView?.scrollX ?: 0).toFloat()
-        val scrollY = (webView?.hostView?.scrollY ?: 0).toFloat()
+        val scrollX = (webView?.contentScrollX ?: 0).toFloat()
+        val scrollY = (webView?.contentScrollY ?: 0).toFloat()
         return RectF(
             contentRect.left - scrollX,
             contentRect.top - scrollY,
@@ -746,8 +746,8 @@ internal class NativeComponentManager(
 
     private fun updateScreenRect(screenRect: RectF, contentRect: RectF) {
         val webView = webViewRef?.get()
-        val scrollX = (webView?.hostView?.scrollX ?: 0).toFloat()
-        val scrollY = (webView?.hostView?.scrollY ?: 0).toFloat()
+        val scrollX = (webView?.contentScrollX ?: 0).toFloat()
+        val scrollY = (webView?.contentScrollY ?: 0).toFloat()
         screenRect.set(
             contentRect.left - scrollX,
             contentRect.top - scrollY,

@@ -1,8 +1,13 @@
 package com.lingxia.webview;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.ContextWrapper;
+import android.graphics.Bitmap;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.SurfaceTexture;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.Editable;
@@ -13,6 +18,7 @@ import android.util.DisplayMetrics;
 import android.view.Choreographer;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
+import android.view.PixelCopy;
 import android.view.Surface;
 import android.view.TextureView;
 import android.view.View;
@@ -23,9 +29,11 @@ import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.ValueCallback;
 import android.widget.FrameLayout;
+import java.io.ByteArrayOutputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.concurrent.ConcurrentHashMap;
+import org.json.JSONObject;
 
 /** Android view host for Servo's Rust embedding API. */
 public final class LingXiaServoView extends FrameLayout implements LingXiaWebViewHost,
@@ -41,10 +49,35 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         void onDestroyed();
     }
 
+    /** Sees each touch before Servo; returning true takes the rest of the gesture. */
+    public interface TouchInterceptor {
+        boolean onTouch(MotionEvent event);
+    }
+
     private static final int MAX_PENDING_COMPONENT_MESSAGES = 128;
     private static final String TAG = "LingXiaServoView";
     private static final ConcurrentHashMap<String, WeakReference<LingXiaServoView>> sViews =
             new ConcurrentHashMap<>();
+    private static final java.util.concurrent.atomic.AtomicLong sWindowReleaseSeq =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** Surfaces Servo may still render into, freed once it unbinds them. */
+    private static final ConcurrentHashMap<Long, PendingWindowRelease> sPendingWindowReleases =
+            new ConcurrentHashMap<>();
+
+    private static final class PendingWindowRelease {
+        final Surface surface;
+        final SurfaceTexture texture;
+
+        PendingWindowRelease(Surface surface, SurfaceTexture texture) {
+            this.surface = surface;
+            this.texture = texture;
+        }
+
+        void release() {
+            if (surface != null) surface.release();
+            if (texture != null) texture.release();
+        }
+    }
     private final TextureView servoSurface;
     private final Editable editable = new SpannableStringBuilder();
     private final ServoInputConnection inputConnection;
@@ -53,17 +86,31 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     private String appId;
     private String currentPath;
     private long sessionId;
+    private long nativeViewId;
     private boolean strictSecurityProfile = true;
+    /** Servo renders into a window made from {@link #retainedTexture}. */
     private boolean attached;
+    /**
+     * The texture Servo renders into. It is kept across detach from the window:
+     * rebinding it on reattach keeps the EGL surface, and the document with it.
+     */
+    private SurfaceTexture retainedTexture;
+    /** The retained texture is on screen, so frames may be produced. */
+    private boolean textureShown;
+    private boolean destroyed;
     private boolean frameScheduled;
     private boolean paused;
     private boolean composing;
+    private boolean touchIntercepted;
+    private int contentScrollX;
+    private int contentScrollY;
     private String composingText = "";
     private int editorInputType = InputType.TYPE_CLASS_TEXT;
     private int editorImeOptions = EditorInfo.IME_ACTION_DONE;
     private final ArrayDeque<String> pendingComponentMessages = new ArrayDeque<>();
     private NativeComponentMessageHandler nativeComponentMessageHandler;
     private EmbedderControlHandler embedderControlHandler;
+    private TouchInterceptor touchInterceptor;
 
     public LingXiaServoView(Context context) {
         super(context);
@@ -80,27 +127,100 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
                 ViewGroup.LayoutParams.MATCH_PARENT));
     }
 
-    void initialize(String appId, String path, long sessionId, boolean strictSecurityProfile) {
+    void initialize(
+            String appId,
+            String path,
+            long sessionId,
+            long nativeViewId,
+            boolean strictSecurityProfile) {
+        if (nativeViewId <= 0) {
+            throw new IllegalArgumentException("nativeViewId must be positive");
+        }
         this.appId = appId;
         this.currentPath = path;
         this.sessionId = sessionId;
+        this.nativeViewId = nativeViewId;
         this.strictSecurityProfile = strictSecurityProfile;
         servoWebTag = appId + ":" + path + (sessionId > 0 ? "#" + sessionId : "");
         sViews.put(servoWebTag, new WeakReference<>(this));
         SurfaceTexture texture = servoSurface.getSurfaceTexture();
-        android.util.Log.d(TAG, "bind tag=" + servoWebTag + " valid="
-                + (servoSurface.isAvailable() && texture != null) + " size="
-                + servoSurface.getWidth() + "x" + servoSurface.getHeight());
         if (servoSurface.isAvailable() && texture != null
                 && servoSurface.getWidth() > 0 && servoSurface.getHeight() > 0) {
             attachNativeSurface(texture, servoSurface.getWidth(), servoSurface.getHeight());
         }
     }
 
+    /** Rust binds every ready WebView; a Servo view already carries its identity. */
+    public void setNativeViewId(long nativeViewId) {
+        if (nativeViewId != this.nativeViewId) {
+            throw new IllegalStateException("nativeViewId is immutable for this WebView");
+        }
+    }
+
+    @Override
+    public long getNativeViewId() {
+        return nativeViewId;
+    }
+
+    private boolean bound() {
+        return servoWebTag != null && nativeViewId > 0;
+    }
+
     private void attachNativeSurface(SurfaceTexture texture, int width, int height) {
-        if (nativeSurface != null) nativeSurface.release();
-        nativeSurface = new Surface(texture);
+        if (retainedTexture != null && retainedTexture != texture) {
+            // The view lost the retained texture; Servo rebinds to the new one.
+            releaseNativeSurface(true);
+        }
+        retainedTexture = texture;
+        if (nativeSurface != null && !attached) {
+            nativeSurface.release();
+            nativeSurface = null;
+        }
+        if (nativeSurface == null) nativeSurface = new Surface(texture);
+        textureShown = true;
         createNativeSurface(nativeSurface, width, height);
+    }
+
+    /**
+     * Hand the window to Servo for unbinding. Its buffers stay alive until the
+     * engine confirms it stopped rendering into them, never by a UI timeout.
+     */
+    private void releaseNativeSurface(boolean releaseTexture) {
+        PendingWindowRelease release = new PendingWindowRelease(
+                nativeSurface, releaseTexture ? retainedTexture : null);
+        nativeSurface = null;
+        if (releaseTexture) retainedTexture = null;
+        boolean deferred = false;
+        if (attached && bound()) {
+            long token = sWindowReleaseSeq.incrementAndGet();
+            sPendingWindowReleases.put(token, release);
+            deferred = nativeSurfaceDestroyed(servoWebTag, nativeViewId, token);
+            if (!deferred) sPendingWindowReleases.remove(token);
+        }
+        attached = false;
+        frameScheduled = false;
+        if (!deferred) release.release();
+    }
+
+    /** Called by the engine once it no longer renders into the window. */
+    static void onWindowReleased(final long token) {
+        runOnMainThread(() -> {
+            PendingWindowRelease release = sPendingWindowReleases.remove(token);
+            if (release != null) release.release();
+        });
+    }
+
+    @Override
+    protected void onAttachedToWindow() {
+        super.onAttachedToWindow();
+        if (retainedTexture != null && servoSurface.getSurfaceTexture() != retainedTexture) {
+            servoSurface.setSurfaceTexture(retainedTexture);
+        }
+        if (retainedTexture != null && !textureShown) {
+            textureShown = true;
+            if (bound() && attached) nativeSetSurfaceShown(servoWebTag, nativeViewId, true);
+            scheduleFrame();
+        }
     }
 
     private float density() {
@@ -109,16 +229,14 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     private void createNativeSurface(Surface surface, int width, int height) {
-        if (servoWebTag == null || attached) return;
-        android.util.Log.d(TAG, "create native surface tag=" + servoWebTag + " size="
-                + width + "x" + height + " valid=" + surface.isValid());
-        nativeSurfaceCreated(servoWebTag, surface, width, height, density());
+        if (!bound() || attached) return;
+        nativeSurfaceCreated(servoWebTag, nativeViewId, surface, width, height, density());
         attached = true;
         scheduleFrame();
     }
 
     private void scheduleFrame() {
-        if (!frameScheduled && attached && !paused) {
+        if (!frameScheduled && attached && textureShown && !paused) {
             frameScheduled = true;
             Choreographer.getInstance().postFrameCallback(this);
         }
@@ -126,27 +244,38 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public void onSurfaceTextureAvailable(SurfaceTexture texture, int width, int height) {
-        android.util.Log.d(TAG, "surface available tag=" + servoWebTag + " size="
-                + width + "x" + height);
         attachNativeSurface(texture, width, height);
     }
 
     @Override
     public void onSurfaceTextureSizeChanged(SurfaceTexture texture, int width, int height) {
-        if (servoWebTag != null && attached) nativeSurfaceChanged(servoWebTag, width, height);
+        if (bound() && attached) nativeSurfaceChanged(servoWebTag, nativeViewId, width, height);
     }
 
     @Override
     public boolean onSurfaceTextureDestroyed(SurfaceTexture texture) {
-        android.util.Log.d(TAG, "surface destroyed tag=" + servoWebTag);
-        if (servoWebTag != null && attached) nativeSurfaceDestroyed(servoWebTag);
-        attached = false;
-        frameScheduled = false;
-        if (nativeSurface != null) {
-            nativeSurface.release();
-            nativeSurface = null;
+        if (texture != retainedTexture) {
+            // Already handed to the engine for release, or never ours.
+            return !isPendingRelease(texture);
         }
-        return true;
+        if (!destroyed) {
+            // Detached from the window only: keep the texture for reattach and
+            // stop producing frames nobody can consume.
+            textureShown = false;
+            if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
+            frameScheduled = false;
+            if (bound() && attached) nativeSetSurfaceShown(servoWebTag, nativeViewId, false);
+            return false;
+        }
+        releaseNativeSurface(true);
+        return false;
+    }
+
+    private static boolean isPendingRelease(SurfaceTexture texture) {
+        for (PendingWindowRelease release : sPendingWindowReleases.values()) {
+            if (release.texture == texture) return true;
+        }
+        return false;
     }
 
     @Override
@@ -155,7 +284,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     @Override
     public void doFrame(long frameTimeNanos) {
         frameScheduled = false;
-        if (servoWebTag != null && attached) nativeFrame(servoWebTag);
+        if (bound() && attached && textureShown) nativeFrame(servoWebTag, nativeViewId);
         scheduleFrame();
     }
 
@@ -181,22 +310,22 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public String getUrl() {
-        return servoWebTag != null ? nativeGetUrl(servoWebTag) : "";
+        return bound() ? nativeGetUrl(servoWebTag, nativeViewId) : "";
     }
 
     @Override
     public String getTitle() {
-        return servoWebTag != null ? nativeGetTitle(servoWebTag) : "";
+        return bound() ? nativeGetTitle(servoWebTag, nativeViewId) : "";
     }
 
     @Override
     public boolean canGoBack() {
-        return servoWebTag != null && nativeCanGoBack(servoWebTag);
+        return bound() && nativeCanGoBack(servoWebTag, nativeViewId);
     }
 
     @Override
     public boolean canGoForward() {
-        return servoWebTag != null && nativeCanGoForward(servoWebTag);
+        return bound() && nativeCanGoForward(servoWebTag, nativeViewId);
     }
 
     @Override
@@ -209,39 +338,81 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         return true;
     }
 
+    /** Document scroll lives inside Servo; overlays follow the reported offset. */
+    @Override
+    public int getContentScrollX() {
+        return contentScrollX;
+    }
+
+    @Override
+    public int getContentScrollY() {
+        return contentScrollY;
+    }
+
+    @Override
+    public boolean canScrollVertically(int direction) {
+        return direction < 0 ? contentScrollY > 0 : super.canScrollVertically(direction);
+    }
+
     @Override
     public void reload() {
-        if (servoWebTag != null) nativeNavigate(servoWebTag, 0);
+        if (bound()) nativeNavigate(servoWebTag, nativeViewId, 0);
     }
 
     @Override
     public void goBack() {
-        if (servoWebTag != null) nativeNavigate(servoWebTag, 1);
+        if (bound()) nativeNavigate(servoWebTag, nativeViewId, 1);
     }
 
     @Override
     public void goForward() {
-        if (servoWebTag != null) nativeNavigate(servoWebTag, 2);
+        if (bound()) nativeNavigate(servoWebTag, nativeViewId, 2);
     }
 
     @Override
     public void evaluateJavascript(String script, ValueCallback<String> callback) {
-        if (servoWebTag == null) {
+        if (!bound()) {
             if (callback != null) callback.onReceiveValue("null");
             return;
         }
         long requestId = LingXiaWebView.registerServoEvaluation(servoWebTag, callback);
-        nativeEvaluate(servoWebTag, requestId, script);
+        nativeEvaluate(servoWebTag, nativeViewId, requestId, script);
+    }
+
+    public void setTouchInterceptor(TouchInterceptor interceptor) {
+        touchInterceptor = interceptor;
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (servoWebTag == null) return false;
-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) requestFocus();
+        if (!bound()) return false;
+        int action = event.getActionMasked();
+        if (action == MotionEvent.ACTION_DOWN) {
+            touchIntercepted = false;
+            requestFocus();
+        }
+        TouchInterceptor interceptor = touchInterceptor;
+        if (interceptor != null && interceptor.onTouch(event)) {
+            if (!touchIntercepted) {
+                // Servo already saw this gesture begin; end it there.
+                touchIntercepted = true;
+                int index = event.getActionIndex();
+                nativeTouch(servoWebTag, nativeViewId, MotionEvent.ACTION_CANCEL,
+                        event.getPointerId(index), event.getX(index), event.getY(index));
+            }
+            return true;
+        }
+        if (touchIntercepted) {
+            if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                touchIntercepted = false;
+            }
+            return true;
+        }
         int index = event.getActionIndex();
         nativeTouch(
                 servoWebTag,
-                event.getActionMasked(),
+                nativeViewId,
+                action,
                 event.getPointerId(index),
                 event.getX(index),
                 event.getY(index));
@@ -269,20 +440,20 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (servoWebTag != null && forwardKeyEvent(event)) return true;
+        if (bound() && forwardKeyEvent(event)) return true;
         return super.dispatchKeyEvent(event);
     }
 
     @Override
     public void dispatchClickAt(float x, float y) {
-        if (servoWebTag == null) return;
-        nativeTouch(servoWebTag, MotionEvent.ACTION_DOWN, 0, x, y);
-        nativeTouch(servoWebTag, MotionEvent.ACTION_UP, 0, x, y);
+        if (!bound()) return;
+        nativeTouch(servoWebTag, nativeViewId, MotionEvent.ACTION_DOWN, 0, x, y);
+        nativeTouch(servoWebTag, nativeViewId, MotionEvent.ACTION_UP, 0, x, y);
     }
 
     @Override
     public void scrollByPixels(int dx, int dy) {
-        if (servoWebTag != null) nativeWheel(servoWebTag, dx, dy);
+        if (bound()) nativeWheel(servoWebTag, nativeViewId, dx, dy);
     }
 
     @Override
@@ -290,12 +461,77 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         paused = true;
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
         frameScheduled = false;
+        if (bound()) nativeSetThrottled(servoWebTag, nativeViewId, true);
     }
 
     @Override
     public void resume() {
         paused = false;
+        if (bound()) nativeSetThrottled(servoWebTag, nativeViewId, false);
         scheduleFrame();
+    }
+
+    /** Capture what is on screen, native overlays included, like the Chromium host. */
+    public void captureScreenshot(final long requestId) {
+        runOnMainThread(() -> {
+            int width = getWidth();
+            int height = getHeight();
+            if (width <= 0 || height <= 0) {
+                nativeScreenshotResult(requestId, new byte[0], "WebView has zero size; cannot capture");
+                return;
+            }
+            Activity activity = findActivity(getContext());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    && activity != null && activity.getWindow() != null) {
+                Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                int[] location = new int[2];
+                getLocationInWindow(location);
+                Rect source = new Rect(location[0], location[1],
+                        location[0] + width, location[1] + height);
+                try {
+                    PixelCopy.request(activity.getWindow(), source, bitmap, result -> {
+                        if (result == PixelCopy.SUCCESS) {
+                            deliverScreenshot(requestId, bitmap);
+                        } else {
+                            bitmap.recycle();
+                            captureSurfaceBitmap(requestId);
+                        }
+                    }, new Handler(Looper.getMainLooper()));
+                    return;
+                } catch (Throwable error) {
+                    bitmap.recycle();
+                    android.util.Log.w(TAG, "PixelCopy screenshot threw", error);
+                }
+            }
+            captureSurfaceBitmap(requestId);
+        });
+    }
+
+    private void captureSurfaceBitmap(long requestId) {
+        Bitmap bitmap = servoSurface.isAvailable() ? servoSurface.getBitmap() : null;
+        if (bitmap == null) {
+            nativeScreenshotResult(requestId, new byte[0], "Servo surface is not ready");
+            return;
+        }
+        deliverScreenshot(requestId, bitmap);
+    }
+
+    private void deliverScreenshot(long requestId, Bitmap bitmap) {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream(
+                Math.max(64 * 1024, bitmap.getWidth() * bitmap.getHeight() / 4));
+        boolean ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        bitmap.recycle();
+        nativeScreenshotResult(requestId, ok ? stream.toByteArray() : new byte[0],
+                ok ? "" : "Bitmap.compress(PNG) returned false");
+    }
+
+    private static Activity findActivity(Context context) {
+        Context current = context;
+        while (current instanceof ContextWrapper) {
+            if (current instanceof Activity) return (Activity) current;
+            current = ((ContextWrapper) current).getBaseContext();
+        }
+        return null;
     }
 
     @Override
@@ -304,21 +540,15 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     private void destroyOnMainThread() {
-        android.util.Log.d(TAG, "destroy tag=" + servoWebTag + " attached=" + attached);
+        destroyed = true;
         if (frameScheduled) Choreographer.getInstance().removeFrameCallback(this);
-        if (attached && servoWebTag != null) nativeSurfaceDestroyed(servoWebTag);
+        releaseNativeSurface(true);
         if (servoWebTag != null) {
             LingXiaWebView.cancelServoEvaluations(servoWebTag);
             WeakReference<LingXiaServoView> reference = sViews.get(servoWebTag);
             if (reference != null && reference.get() == this) sViews.remove(servoWebTag, reference);
         }
-        attached = false;
-        frameScheduled = false;
-        servoSurface.setSurfaceTextureListener(null);
-        if (nativeSurface != null) {
-            nativeSurface.release();
-            nativeSurface = null;
-        }
+        touchInterceptor = null;
         NativeComponentMessageHandler handler = nativeComponentMessageHandler;
         nativeComponentMessageHandler = null;
         pendingComponentMessages.clear();
@@ -357,9 +587,10 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     public void completeEmbedderControl(long requestId, boolean confirm, String value) {
-        if (servoWebTag == null) return;
+        if (!bound()) return;
         boolean queued = nativeCompleteEmbedderControl(
                 servoWebTag,
+                nativeViewId,
                 requestId,
                 confirm ? "confirm" : "cancel",
                 value != null ? value : "");
@@ -370,11 +601,12 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
 
     static void showEmbedderControl(
             final String webTag,
+            final long nativeViewId,
             final long requestId,
             final String kind,
             final String payload) {
         runOnMainThread(() -> {
-            LingXiaServoView view = findView(webTag);
+            LingXiaServoView view = findView(webTag, nativeViewId);
             if (view == null) return;
             EmbedderControlHandler handler = view.embedderControlHandler;
             if (handler != null) handler.show(requestId, kind, payload);
@@ -382,18 +614,20 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         });
     }
 
-    static void hideEmbedderControl(final String webTag, final long requestId) {
+    static void hideEmbedderControl(
+            final String webTag, final long nativeViewId, final long requestId) {
         runOnMainThread(() -> {
-            LingXiaServoView view = findView(webTag);
+            LingXiaServoView view = findView(webTag, nativeViewId);
             if (view != null && view.embedderControlHandler != null) {
                 view.embedderControlHandler.hide(requestId);
             }
         });
     }
 
-    static void dispatchNativeComponentMessage(final String webTag, final String message) {
+    static void dispatchNativeComponentMessage(
+            final String webTag, final long nativeViewId, final String message) {
         runOnMainThread(() -> {
-            LingXiaServoView view = findView(webTag);
+            LingXiaServoView view = findView(webTag, nativeViewId);
             if (view == null || !view.strictSecurityProfile) return;
             NativeComponentMessageHandler handler = view.nativeComponentMessageHandler;
             if (handler != null) {
@@ -407,15 +641,34 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         });
     }
 
+    static void dispatchScroll(final String webTag, final long nativeViewId, final String message) {
+        runOnMainThread(() -> {
+            LingXiaServoView view = findView(webTag, nativeViewId);
+            if (view == null) return;
+            try {
+                JSONObject scroll = new JSONObject(message);
+                double dpr = scroll.optDouble("dpr", 1.0);
+                if (!(dpr > 0)) dpr = 1.0;
+                view.contentScrollX = (int) Math.round(scroll.optDouble("x", 0) * dpr);
+                view.contentScrollY = (int) Math.round(scroll.optDouble("y", 0) * dpr);
+                // Overlay sync runs in pre-draw listeners on this view.
+                view.invalidate();
+            } catch (Exception error) {
+                android.util.Log.w(TAG, "Dropped malformed Servo scroll report", error);
+            }
+        });
+    }
+
     static void showInputMethod(
             final String webTag,
+            final long nativeViewId,
             final int type,
             final String text,
             final int insertionPoint,
             final boolean multiline,
             final boolean allowVirtualKeyboard) {
         runOnMainThread(() -> {
-            LingXiaServoView view = findView(webTag);
+            LingXiaServoView view = findView(webTag, nativeViewId);
             if (view == null) return;
             view.editorInputType = androidInputType(type, multiline);
             view.editorImeOptions = multiline
@@ -437,9 +690,9 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         });
     }
 
-    static void hideInputMethod(final String webTag) {
+    static void hideInputMethod(final String webTag, final long nativeViewId) {
         runOnMainThread(() -> {
-            LingXiaServoView view = findView(webTag);
+            LingXiaServoView view = findView(webTag, nativeViewId);
             if (view == null) return;
             if (view.composing) view.finishComposition();
             InputMethodManager manager = (InputMethodManager) view.getContext()
@@ -448,11 +701,11 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         });
     }
 
-    private static LingXiaServoView findView(String webTag) {
+    private static LingXiaServoView findView(String webTag, long nativeViewId) {
         WeakReference<LingXiaServoView> reference = sViews.get(webTag);
         LingXiaServoView view = reference != null ? reference.get() : null;
         if (view == null && reference != null) sViews.remove(webTag, reference);
-        return view;
+        return view != null && view.nativeViewId == nativeViewId ? view : null;
     }
 
     private static void runOnMainThread(Runnable action) {
@@ -507,6 +760,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         if (!isSupportedKey(event)) return false;
         nativeKey(
                 servoWebTag,
+                nativeViewId,
                 event.getAction(),
                 event.getKeyCode(),
                 event.getUnicodeChar(),
@@ -538,14 +792,14 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     private void startComposition() {
-        if (composing || servoWebTag == null) return;
-        nativeIme(servoWebTag, 0, "");
+        if (composing || !bound()) return;
+        nativeIme(servoWebTag, nativeViewId, 0, "");
         composing = true;
     }
 
     private void finishComposition() {
-        if (!composing || servoWebTag == null) return;
-        nativeIme(servoWebTag, 2, composingText);
+        if (!composing || !bound()) return;
+        nativeIme(servoWebTag, nativeViewId, 2, composingText);
         composing = false;
         composingText = "";
     }
@@ -564,7 +818,7 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
         public boolean setComposingText(CharSequence text, int newCursorPosition) {
             startComposition();
             composingText = text != null ? text.toString() : "";
-            if (servoWebTag != null) nativeIme(servoWebTag, 1, composingText);
+            if (bound()) nativeIme(servoWebTag, nativeViewId, 1, composingText);
             return super.setComposingText(text, newCursorPosition);
         }
 
@@ -617,21 +871,32 @@ public final class LingXiaServoView extends FrameLayout implements LingXiaWebVie
     }
 
     private native void nativeSurfaceCreated(
-            String webTag, Surface surface, int width, int height, float density);
-    private native void nativeSurfaceChanged(String webTag, int width, int height);
-    private native void nativeSurfaceDestroyed(String webTag);
+            String webTag, long nativeViewId, Surface surface, int width, int height, float density);
+    private native void nativeSurfaceChanged(String webTag, long nativeViewId, int width, int height);
+    private native boolean nativeSurfaceDestroyed(String webTag, long nativeViewId, long releaseToken);
     private native boolean nativeCompleteEmbedderControl(
-            String webTag, long requestId, String action, String value);
-    private native void nativeFrame(String webTag);
-    private native void nativeTouch(String webTag, int action, int pointerId, float x, float y);
-    private native void nativeWheel(String webTag, double dx, double dy);
-    private native void nativeIme(String webTag, int state, String text);
+            String webTag, long nativeViewId, long requestId, String action, String value);
+    private native void nativeFrame(String webTag, long nativeViewId);
+    private native void nativeSetThrottled(String webTag, long nativeViewId, boolean throttled);
+    private native void nativeSetSurfaceShown(String webTag, long nativeViewId, boolean shown);
+    private native void nativeTouch(
+            String webTag, long nativeViewId, int action, int pointerId, float x, float y);
+    private native void nativeWheel(String webTag, long nativeViewId, double dx, double dy);
+    private native void nativeIme(String webTag, long nativeViewId, int state, String text);
     private native void nativeKey(
-            String webTag, int action, int keyCode, int unicodeCodePoint, int metaState, int repeatCount);
-    private native String nativeGetUrl(String webTag);
-    private native String nativeGetTitle(String webTag);
-    private native boolean nativeCanGoBack(String webTag);
-    private native boolean nativeCanGoForward(String webTag);
-    private native void nativeNavigate(String webTag, int action);
-    private native void nativeEvaluate(String webTag, long requestId, String script);
+            String webTag,
+            long nativeViewId,
+            int action,
+            int keyCode,
+            int unicodeCodePoint,
+            int metaState,
+            int repeatCount);
+    private native String nativeGetUrl(String webTag, long nativeViewId);
+    private native String nativeGetTitle(String webTag, long nativeViewId);
+    private native boolean nativeCanGoBack(String webTag, long nativeViewId);
+    private native boolean nativeCanGoForward(String webTag, long nativeViewId);
+    private native void nativeNavigate(String webTag, long nativeViewId, int action);
+    private native void nativeEvaluate(
+            String webTag, long nativeViewId, long requestId, String script);
+    private native void nativeScreenshotResult(long requestId, byte[] pngBytes, String error);
 }

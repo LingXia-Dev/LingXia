@@ -61,8 +61,8 @@ internal class NativeBridge private constructor(
         preDrawListener = ViewTreeObserver.OnPreDrawListener {
             val wv = webViewRef.get()
             if (wv != null) {
-                val scrollX = wv.hostView.scrollX
-                val scrollY = wv.hostView.scrollY
+                val scrollX = wv.contentScrollX
+                val scrollY = wv.contentScrollY
                 // Only update if scroll position changed to avoid redundant work
                 if (scrollX != lastSyncedScrollX || scrollY != lastSyncedScrollY) {
                     lastSyncedScrollX = scrollX

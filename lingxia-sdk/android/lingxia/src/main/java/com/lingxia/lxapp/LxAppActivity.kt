@@ -1331,7 +1331,7 @@ class LxAppActivity : AppCompatActivity() {
             return "null"
         }
 
-        val page = currentWebView ?: return "null"
+        val page = currentWebView?.hostView ?: return "null"
         if (page.width <= 0 || page.height <= 0) {
             return "null"
         }

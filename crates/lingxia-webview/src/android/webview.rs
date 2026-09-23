@@ -5,13 +5,13 @@ use crate::input_helper::{build_async_eval_body, new_eval_token, parse_wrapped_e
 #[cfg(not(feature = "servo"))]
 use crate::webview::ProxyActivation;
 use crate::webview::{
-    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, SecurityProfile, WebTag,
-    WebViewCreateSender, WebViewCreateStage,
+    EffectiveWebViewCreateOptions, ProxyApplyReport, ProxyConfig, WebTag, WebViewCreateSender,
+    WebViewCreateStage,
 };
 use crate::{
     ClearSiteDataOptions, ClearSiteDataResult, DocumentGeneration, DocumentOutboundGate,
-    LoadDataRequest, NativeWebViewId, NetworkCaptureSnapshot, UserAgentOverride,
-    WebViewController, WebViewCookie, WebViewCookieSetRequest, WebViewError, WebViewScriptError,
+    LoadDataRequest, NativeWebViewId, NetworkCaptureSnapshot, UserAgentOverride, WebViewController,
+    WebViewCookie, WebViewCookieSetRequest, WebViewError, WebViewScriptError,
 };
 use async_trait::async_trait;
 #[cfg(not(feature = "servo"))]
@@ -50,6 +50,8 @@ enum PendingEvalResponse {
     Success(String),
     Failure(String),
     Destroyed,
+    #[cfg_attr(not(feature = "servo"), allow(dead_code))]
+    NavigationChanged,
 }
 
 struct PendingEvalEntry {
@@ -58,7 +60,6 @@ struct PendingEvalEntry {
     sender: oneshot::Sender<PendingEvalResponse>,
 }
 
-#[cfg_attr(feature = "servo", allow(dead_code))]
 enum PendingScreenshotResponse {
     Success(Vec<u8>),
     Failure(String),
@@ -83,13 +84,12 @@ static NEXT_CREATE_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PENDING_EVAL_REQUESTS: OnceLock<PendingEvalRequests> = OnceLock::new();
 static PENDING_SCREENSHOT_REQUESTS: OnceLock<PendingScreenshotRequests> = OnceLock::new();
 static NEXT_EVAL_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
-#[cfg(not(feature = "servo"))]
 static NEXT_SCREENSHOT_REQUEST_ID: AtomicU64 = AtomicU64::new(1);
 static PENDING_DOCUMENT_MESSAGES: OnceLock<PendingDocumentMessages> = OnceLock::new();
+#[cfg(not(feature = "servo"))]
 static NEXT_DOCUMENT_MESSAGE_ID: AtomicU64 = AtomicU64::new(1);
 const EVAL_TIMEOUT: Duration = Duration::from_secs(10);
 const EVAL_PARSE_GUARD_MS: u64 = 1000;
-#[cfg(not(feature = "servo"))]
 const SCREENSHOT_TIMEOUT: Duration = Duration::from_secs(5);
 
 fn pending_eval_requests() -> &'static PendingEvalRequests {
@@ -131,6 +131,25 @@ fn fail_pending_eval_requests_for_webtag(webtag: &WebTag) {
     }
 }
 
+/// A replaced document can never answer the evaluations sent to it; fail
+/// them now so callers retry against the new one instead of timing out.
+#[cfg(feature = "servo")]
+pub(crate) fn fail_pending_eval_requests_after_navigation(webtag: &WebTag) {
+    if let Ok(mut pending) = pending_eval_requests().lock() {
+        let replaced = pending
+            .iter()
+            .filter_map(|(request_id, entry)| {
+                (entry.webtag == webtag.as_str()).then_some(*request_id)
+            })
+            .collect::<Vec<_>>();
+        for request_id in replaced {
+            if let Some(entry) = pending.remove(&request_id) {
+                let _ = entry.sender.send(PendingEvalResponse::NavigationChanged);
+            }
+        }
+    }
+}
+
 fn pending_screenshot_requests() -> &'static PendingScreenshotRequests {
     PENDING_SCREENSHOT_REQUESTS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
@@ -143,6 +162,7 @@ fn pending_document_messages() -> &'static PendingDocumentMessages {
     PENDING_DOCUMENT_MESSAGES.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
+#[cfg(not(feature = "servo"))]
 fn next_document_message_id() -> Result<u64, WebViewError> {
     NEXT_DOCUMENT_MESSAGE_ID
         .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
@@ -273,10 +293,19 @@ impl WebViewInner {
         // Store sender in global map for callback
         let request_id = NEXT_CREATE_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         #[cfg(feature = "servo")]
-        super::servo::register(
-            &WebTag::new(appid, path, session_id),
-            effective_options.profile == SecurityProfile::StrictDefault,
-        );
+        let native_view_id = sender.native_view_id();
+        #[cfg(feature = "servo")]
+        {
+            if let Err(error) = super::servo::validate_create_options(&effective_options) {
+                sender.fail(WebViewCreateStage::Requested, error);
+                return;
+            }
+            super::servo::register(
+                &WebTag::new(appid, path, session_id),
+                native_view_id,
+                super::servo::ServoPolicy::from_options(&effective_options),
+            );
+        }
         let senders = WEBVIEW_SENDERS.get_or_init(|| Arc::new(Mutex::new(HashMap::new())));
 
         if let Ok(mut senders_map) = senders.lock() {
@@ -342,13 +371,14 @@ impl WebViewInner {
             env.call_static_method(
                 webview_class,
                 jni_str!("requestServoWebView"),
-                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JJLjava/lang/String;)V"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;JJLjava/lang/String;J)V"),
                 &[
                     (&appid_jstring).into(),
                     (&path_jstring).into(),
                     session.into(),
                     (request_id as i64).into(),
                     (&options_jstring).into(),
+                    (native_view_id.raw() as i64).into(),
                 ],
             )?;
 
@@ -386,6 +416,25 @@ impl WebViewInner {
             .expect("Android WebView global reference is missing")
     }
 
+    /// The load itself is attested, but Servo offers no document-scoped
+    /// transport, so like API 21/22 the document never gains BrowserControl.
+    #[cfg(feature = "servo")]
+    pub(crate) fn load_trusted_data(
+        &self,
+        intent: crate::TrustedLoadIntent,
+        request: LoadDataRequest<'_>,
+    ) -> Result<(), WebViewError> {
+        super::servo::report_browser_control_degraded();
+        super::servo::load_trusted_data(
+            &self.webtag,
+            self.native_view_id,
+            intent,
+            request.data,
+            request.base_url,
+        )
+    }
+
+    #[cfg(not(feature = "servo"))]
     pub(crate) fn load_trusted_data(
         &self,
         intent: crate::TrustedLoadIntent,
@@ -445,7 +494,7 @@ impl Drop for WebViewInner {
         fail_pending_screenshot_requests_for_webtag(&self.webtag);
         clear_pending_document_messages_for_instance(self.native_view_id);
         #[cfg(feature = "servo")]
-        super::servo::unregister(&self.webtag);
+        super::servo::unregister(&self.webtag, self.native_view_id);
         let Some(java_webview) = self.java_webview.take() else {
             return;
         };
@@ -675,7 +724,7 @@ impl WebViewController for WebViewInner {
     fn load_url(&self, url: &str) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::load_url(&self.webtag, url)
+            super::servo::load_url(&self.webtag, self.native_view_id, url)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -696,7 +745,12 @@ impl WebViewController for WebViewInner {
     fn load_data(&self, request: LoadDataRequest<'_>) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::load_data(&self.webtag, request.data, request.base_url)
+            super::servo::load_data(
+                &self.webtag,
+                self.native_view_id,
+                request.data,
+                request.base_url,
+            )
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -727,7 +781,7 @@ impl WebViewController for WebViewInner {
     fn exec_js(&self, js: &str) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::exec_js(&self.webtag, js)
+            super::servo::exec_js(&self.webtag, self.native_view_id, js)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -807,6 +861,15 @@ impl WebViewController for WebViewInner {
         );
 
         {
+            #[cfg(feature = "servo")]
+            let dispatch_result = super::servo::evaluate(
+                &self.webtag,
+                self.native_view_id,
+                request_id,
+                &token,
+                [parse_guard_script, script],
+            );
+            #[cfg(not(feature = "servo"))]
             let dispatch_result = self
                 .exec_js(&parse_guard_script)
                 .and_then(|_| self.exec_js(&script));
@@ -826,6 +889,9 @@ impl WebViewController for WebViewInner {
             Ok(Ok(PendingEvalResponse::Success(envelope))) => parse_wrapped_eval_result(&envelope),
             Ok(Ok(PendingEvalResponse::Failure(err))) => Err(WebViewScriptError::Platform(err)),
             Ok(Ok(PendingEvalResponse::Destroyed)) => Err(WebViewScriptError::Destroyed),
+            Ok(Ok(PendingEvalResponse::NavigationChanged)) => {
+                Err(WebViewScriptError::NavigationChanged)
+            }
             Ok(Err(_)) => Err(WebViewScriptError::Destroyed),
             Err(_) => {
                 if let Ok(mut pending) = pending_eval_requests().lock() {
@@ -839,7 +905,7 @@ impl WebViewController for WebViewInner {
     async fn current_url(&self) -> Result<Option<String>, WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::current_url(&self.webtag).await
+            super::servo::current_url(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -866,7 +932,7 @@ impl WebViewController for WebViewInner {
     fn clear_browsing_data(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::clear_browsing_data(&self.webtag)
+            super::servo::clear_browsing_data(&self.webtag, self.native_view_id)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -886,7 +952,7 @@ impl WebViewController for WebViewInner {
     fn post_message(&self, message: &str) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::post_message(&self.webtag, message)
+            super::servo::post_message(&self.webtag, self.native_view_id, message)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -911,44 +977,56 @@ impl WebViewController for WebViewInner {
         gate: Arc<dyn DocumentOutboundGate>,
         message: &str,
     ) -> Result<(), WebViewError> {
-        let request_id = next_document_message_id()?;
-        pending_document_messages()
-            .lock()
-            .map_err(|_| {
-                WebViewError::WebView("Android document message queue poisoned".to_string())
-            })?
-            .insert(
-                request_id,
-                PendingDocumentMessage {
-                    native_view_id: self.native_view_id,
-                    generation: expected_generation,
-                    gate,
-                    message: message.to_string(),
-                },
-            );
-
-        let scheduled = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-            env.call_method(
-                self.get_java_webview(),
-                jni_str!("scheduleDocumentMessage"),
-                jni_sig!("(J)V"),
-                &[(request_id as i64).into()],
-            )?;
-            Ok(())
-        });
-        if let Err(error) = scheduled {
-            let _ = take_pending_document_message(request_id);
-            return Err(WebViewError::WebView(format!(
-                "Failed to schedule Android document message: {error:?}"
-            )));
+        // No Servo document is ever admitted, and a bound frame must never
+        // degrade to a script evaluation.
+        #[cfg(feature = "servo")]
+        {
+            let _ = (expected_generation, gate, message);
+            Err(WebViewError::Unsupported(
+                "Document-bound messaging on the Servo backend".to_string(),
+            ))
         }
-        Ok(())
+        #[cfg(not(feature = "servo"))]
+        {
+            let request_id = next_document_message_id()?;
+            pending_document_messages()
+                .lock()
+                .map_err(|_| {
+                    WebViewError::WebView("Android document message queue poisoned".to_string())
+                })?
+                .insert(
+                    request_id,
+                    PendingDocumentMessage {
+                        native_view_id: self.native_view_id,
+                        generation: expected_generation,
+                        gate,
+                        message: message.to_string(),
+                    },
+                );
+
+            let scheduled = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                env.call_method(
+                    self.get_java_webview(),
+                    jni_str!("scheduleDocumentMessage"),
+                    jni_sig!("(J)V"),
+                    &[(request_id as i64).into()],
+                )?;
+                Ok(())
+            });
+            if let Err(error) = scheduled {
+                let _ = take_pending_document_message(request_id);
+                return Err(WebViewError::WebView(format!(
+                    "Failed to schedule Android document message: {error:?}"
+                )));
+            }
+            Ok(())
+        }
     }
 
     fn set_user_agent_override(&self, user_agent: UserAgentOverride) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::set_user_agent(&self.webtag, user_agent)
+            super::servo::set_user_agent(&self.webtag, self.native_view_id, user_agent)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -974,7 +1052,7 @@ impl WebViewController for WebViewInner {
     fn reload(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::reload(&self.webtag)
+            super::servo::reload(&self.webtag, self.native_view_id)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -985,7 +1063,7 @@ impl WebViewController for WebViewInner {
     fn go_back(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::go_back(&self.webtag)
+            super::servo::go_back(&self.webtag, self.native_view_id)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -996,7 +1074,7 @@ impl WebViewController for WebViewInner {
     fn go_forward(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::go_forward(&self.webtag)
+            super::servo::go_forward(&self.webtag, self.native_view_id)
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1007,7 +1085,7 @@ impl WebViewController for WebViewInner {
     async fn list_cookies(&self) -> Result<Vec<WebViewCookie>, WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::list_cookies(&self.webtag).await
+            super::servo::list_cookies(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1020,7 +1098,7 @@ impl WebViewController for WebViewInner {
     async fn set_cookie(&self, request: WebViewCookieSetRequest) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::set_cookie(&self.webtag, request).await
+            super::servo::set_cookie(&self.webtag, self.native_view_id, request).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1039,7 +1117,7 @@ impl WebViewController for WebViewInner {
     ) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::delete_cookie(&self.webtag, name, domain, path).await
+            super::servo::delete_cookie(&self.webtag, self.native_view_id, name, domain, path).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1053,7 +1131,7 @@ impl WebViewController for WebViewInner {
     async fn clear_cookies(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::clear_cookies(&self.webtag).await
+            super::servo::clear_cookies(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1070,7 +1148,7 @@ impl WebViewController for WebViewInner {
     ) -> Result<ClearSiteDataResult, WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::clear_site_data(&self.webtag, url, options).await
+            super::servo::clear_site_data(&self.webtag, self.native_view_id, url, options).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1082,65 +1160,58 @@ impl WebViewController for WebViewInner {
     }
 
     async fn take_screenshot(&self) -> Result<Vec<u8>, WebViewError> {
-        #[cfg(feature = "servo")]
+        let request_id = NEXT_SCREENSHOT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
+        let (tx, rx) = oneshot::channel();
+
+        pending_screenshot_requests()
+            .lock()
+            .map_err(|_| {
+                WebViewError::WebView("Android pending screenshot map poisoned".to_string())
+            })?
+            .insert(
+                request_id,
+                PendingScreenshotEntry {
+                    webtag: self.webtag.to_string(),
+                    sender: tx,
+                },
+            );
+
         {
-            return super::servo::take_screenshot(&self.webtag).await;
-        }
-        #[cfg(not(feature = "servo"))]
-        {
-            let request_id = NEXT_SCREENSHOT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
-            let (tx, rx) = oneshot::channel();
+            let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+                env.call_method(
+                    &*self.get_java_webview(),
+                    jni_str!("captureScreenshot"),
+                    jni_sig!("(J)V"),
+                    &[(request_id as i64).into()],
+                )?;
+                Ok(())
+            });
 
-            pending_screenshot_requests()
-                .lock()
-                .map_err(|_| {
-                    WebViewError::WebView("Android pending screenshot map poisoned".to_string())
-                })?
-                .insert(
-                    request_id,
-                    PendingScreenshotEntry {
-                        webtag: self.webtag.to_string(),
-                        sender: tx,
-                    },
-                );
-
-            {
-                let dispatch_result = with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
-                    env.call_method(
-                        &*self.get_java_webview(),
-                        jni_str!("captureScreenshot"),
-                        jni_sig!("(J)V"),
-                        &[(request_id as i64).into()],
-                    )?;
-                    Ok(())
-                });
-
-                if let Err(err) = dispatch_result {
-                    if let Ok(mut pending) = pending_screenshot_requests().lock() {
-                        pending.remove(&request_id);
-                    }
-                    return Err(WebViewError::WebView(format!(
-                        "Failed to dispatch Android captureScreenshot: {:?}",
-                        err
-                    )));
+            if let Err(err) = dispatch_result {
+                if let Ok(mut pending) = pending_screenshot_requests().lock() {
+                    pending.remove(&request_id);
                 }
+                return Err(WebViewError::WebView(format!(
+                    "Failed to dispatch Android captureScreenshot: {:?}",
+                    err
+                )));
             }
+        }
 
-            match timeout(SCREENSHOT_TIMEOUT, rx).await {
-                Ok(Ok(PendingScreenshotResponse::Success(bytes))) => Ok(bytes),
-                Ok(Ok(PendingScreenshotResponse::Failure(err))) => Err(WebViewError::WebView(err)),
-                Ok(Ok(PendingScreenshotResponse::Destroyed)) => Err(WebViewError::WebView(
-                    "WebView was destroyed before screenshot completed".to_string(),
-                )),
-                Ok(Err(_)) => Err(WebViewError::WebView(
-                    "screenshot request was canceled".to_string(),
-                )),
-                Err(_) => {
-                    if let Ok(mut pending) = pending_screenshot_requests().lock() {
-                        pending.remove(&request_id);
-                    }
-                    Err(WebViewError::WebView("screenshot timed out".to_string()))
+        match timeout(SCREENSHOT_TIMEOUT, rx).await {
+            Ok(Ok(PendingScreenshotResponse::Success(bytes))) => Ok(bytes),
+            Ok(Ok(PendingScreenshotResponse::Failure(err))) => Err(WebViewError::WebView(err)),
+            Ok(Ok(PendingScreenshotResponse::Destroyed)) => Err(WebViewError::WebView(
+                "WebView was destroyed before screenshot completed".to_string(),
+            )),
+            Ok(Err(_)) => Err(WebViewError::WebView(
+                "screenshot request was canceled".to_string(),
+            )),
+            Err(_) => {
+                if let Ok(mut pending) = pending_screenshot_requests().lock() {
+                    pending.remove(&request_id);
                 }
+                Err(WebViewError::WebView("screenshot timed out".to_string()))
             }
         }
     }
@@ -1148,7 +1219,7 @@ impl WebViewController for WebViewInner {
     async fn start_network_capture(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::start_network_capture(&self.webtag).await
+            super::servo::start_network_capture(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1161,7 +1232,7 @@ impl WebViewController for WebViewInner {
     async fn stop_network_capture(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::stop_network_capture(&self.webtag).await
+            super::servo::stop_network_capture(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1174,7 +1245,7 @@ impl WebViewController for WebViewInner {
     async fn network_entries(&self) -> Result<NetworkCaptureSnapshot, WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::network_entries(&self.webtag).await
+            super::servo::network_entries(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {
@@ -1187,7 +1258,7 @@ impl WebViewController for WebViewInner {
     async fn clear_network_capture(&self) -> Result<(), WebViewError> {
         #[cfg(feature = "servo")]
         {
-            super::servo::clear_network_capture(&self.webtag).await
+            super::servo::clear_network_capture(&self.webtag, self.native_view_id).await
         }
         #[cfg(not(feature = "servo"))]
         {

@@ -128,30 +128,40 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
 
     public static void showServoInputMethod(
             String webTag,
+            long nativeViewId,
             int type,
             String text,
             int insertionPoint,
             boolean multiline,
             boolean allowVirtualKeyboard) {
         LingXiaServoView.showInputMethod(
-                webTag, type, text, insertionPoint, multiline, allowVirtualKeyboard);
+                webTag, nativeViewId, type, text, insertionPoint, multiline, allowVirtualKeyboard);
     }
 
-    public static void hideServoInputMethod(String webTag) {
-        LingXiaServoView.hideInputMethod(webTag);
+    public static void hideServoInputMethod(String webTag, long nativeViewId) {
+        LingXiaServoView.hideInputMethod(webTag, nativeViewId);
     }
 
-    public static void dispatchServoNativeComponentMessage(String webTag, String message) {
-        LingXiaServoView.dispatchNativeComponentMessage(webTag, message);
+    public static void dispatchServoNativeComponentMessage(
+            String webTag, long nativeViewId, String message) {
+        LingXiaServoView.dispatchNativeComponentMessage(webTag, nativeViewId, message);
+    }
+
+    public static void servoWindowReleased(long releaseToken) {
+        LingXiaServoView.onWindowReleased(releaseToken);
+    }
+
+    public static void dispatchServoScroll(String webTag, long nativeViewId, String message) {
+        LingXiaServoView.dispatchScroll(webTag, nativeViewId, message);
     }
 
     public static void showServoEmbedderControl(
-            String webTag, long requestId, String kind, String payload) {
-        LingXiaServoView.showEmbedderControl(webTag, requestId, kind, payload);
+            String webTag, long nativeViewId, long requestId, String kind, String payload) {
+        LingXiaServoView.showEmbedderControl(webTag, nativeViewId, requestId, kind, payload);
     }
 
-    public static void hideServoEmbedderControl(String webTag, long requestId) {
-        LingXiaServoView.hideEmbedderControl(webTag, requestId);
+    public static void hideServoEmbedderControl(String webTag, long nativeViewId, long requestId) {
+        LingXiaServoView.hideEmbedderControl(webTag, nativeViewId, requestId);
     }
 
     static void cancelServoEvaluations(final String webTag) {
@@ -383,7 +393,7 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     }
 
     /** Create the API-embedded Servo backend while preserving the SDK's WebView host contract. */
-    public static void requestServoWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken) {
+    public static void requestServoWebView(final String appId, final String path, final long sessionId, final long requestId, final String optionsToken, final long nativeViewId) {
         ensureMainThreadStatic(new Runnable() {
             @Override
             public void run() {
@@ -397,6 +407,7 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
                             appId,
                             path,
                             sessionId,
+                            nativeViewId,
                             "strict_default".equals(options.profile));
                     notifyWebViewReady(appId, path, sessionId, requestId, servoView);
                 } catch (Throwable e) {
@@ -436,6 +447,16 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
     @Override
     public boolean retainsSurfaceWhenHidden() {
         return false;
+    }
+
+    @Override
+    public int getContentScrollX() {
+        return getScrollX();
+    }
+
+    @Override
+    public int getContentScrollY() {
+        return getScrollY();
     }
 
     private boolean hasDownloadHandler() {
@@ -1066,7 +1087,8 @@ public class LingXiaWebView extends WebView implements LingXiaWebViewHost {
         nativeViewIdBinding.assign(nativeViewId);
     }
 
-    long getNativeViewId() {
+    @Override
+    public long getNativeViewId() {
         return nativeViewIdBinding.current();
     }
 
