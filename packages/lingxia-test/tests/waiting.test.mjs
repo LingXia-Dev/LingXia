@@ -212,3 +212,53 @@ test("locator waitFor attached accepts an out-of-viewport match that visible rej
   assert.match(message, /to be visible/);
   assert.match(message, /resolved to hidden/);
 });
+
+test("fixture nav waits for the landed page unless the caller picks waitUntil", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+
+  spec("navigates", async (t) => {
+    await t.app.nav.to({ page: "detail" });
+    await t.app.nav.to({ page: "other", waitUntil: "commit" });
+    await t.app.nav.to({ page: "slow", timeoutMs: 20_000 });
+    await t.app.nav.back();
+    const current = await t.app.nav.current();
+    assert.equal(current.name, "detail");
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(world.navCalls, [
+    ["to", { page: "detail", waitUntil: "ready" }],
+    ["to", { page: "other", waitUntil: "commit" }],
+    ["to", { page: "slow", timeoutMs: 20_000, waitUntil: "ready" }],
+    ["back", { waitUntil: "ready" }],
+  ]);
+});
+
+test("a fresh spec relaunches home and waits for it to be ready", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  spec("fresh", { fresh: true }, async () => {});
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(world.navCalls, [["relaunch", { page: "home", waitUntil: "ready" }]]);
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(report.cases[0].status, "passed");
+});
+
+test("a fresh relaunch tolerates the home page handing off, not a timeout", async () => {
+  for (const [message, expected] of [
+    ["page instance 7 (pages/home/index) was disposed before runtime became ready; current page is pages/login/index", "passed"],
+    ["timed out after 15000ms waiting for page 7 to become ready", "failed"],
+  ]) {
+    reset();
+    const world = createWorld();
+    world.failRelaunch(new Error(message));
+    const { attachments } = installFakeHost(world);
+    spec("fresh", { fresh: true }, async () => {});
+    await globalThis.__LINGXIA_TEST__.run();
+    const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+    assert.equal(report.cases[0].status, expected, message);
+  }
+});

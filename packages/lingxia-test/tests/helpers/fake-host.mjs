@@ -10,8 +10,13 @@ export function createWorld(options = {}) {
   const elements = options.elements ? [...options.elements] : [];
   const evalResults = new Map();
   const evalCalls = new Map();
-  let currentPage = { name: "home", path: "pages/home/index", current: true, inStack: true, ready: true };
+  const landedPage = (name) =>
+    ({ name, path: `pages/${name}/index`, current: true, inStack: true, ready: true, webviewAttached: true });
+  let currentPage = landedPage("home");
   const stack = [currentPage];
+  /** Every nav action as `[method, options]`, to check what the fixture sent. */
+  const navCalls = [];
+  let relaunchError;
   let blocked = false;
 
   function matches(element, css) {
@@ -68,18 +73,27 @@ export function createWorld(options = {}) {
   };
 
   const nav = {
-    async relaunch({ page: name }) {
+    async relaunch(options) {
+      navCalls.push(["relaunch", options]);
       if (blocked) throw new Error("fixture should not reach the app after abort");
-      currentPage = { name, path: `pages/${name}/index`, current: true, inStack: true, ready: true };
+      if (relaunchError) throw relaunchError;
+      currentPage = landedPage(options.page);
       stack.splice(0, stack.length, currentPage);
       return currentPage;
     },
     async current() {
       return currentPage;
     },
-    async to({ page: name }) {
-      currentPage = { name, path: `pages/${name}/index`, current: true, inStack: true, ready: true };
+    async to(options) {
+      navCalls.push(["to", options]);
+      currentPage = landedPage(options.page);
       stack.push(currentPage);
+      return currentPage;
+    },
+    async back(options) {
+      navCalls.push(["back", options]);
+      if (stack.length > 1) stack.pop();
+      currentPage = stack[stack.length - 1];
       return currentPage;
     },
   };
@@ -159,6 +173,11 @@ export function createWorld(options = {}) {
     TINY_PNG,
     elements,
     app,
+    navCalls,
+    /** Make the next relaunches reject with `error` (undefined restores). */
+    failRelaunch(error) {
+      relaunchError = error;
+    },
     add(element) {
       elements.push({ attached: true, visible: true, ...element });
       return elements[elements.length - 1];
