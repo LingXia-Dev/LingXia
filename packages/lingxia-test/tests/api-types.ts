@@ -1,5 +1,5 @@
 import { spec, type TestApp } from '../dist/index.js';
-import type { Automation, PageQueryResult } from '@lingxia/types/automation';
+import type { Automation, LxAppDriver, PageDriver, PageQueryResult } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
@@ -57,3 +57,67 @@ void browserElement;
 spec.fail('known quota failure', { expected: { code: 'E_QUOTA', message: /quota/ } }, async () => {});
 // @ts-expect-error `expected` belongs to spec.fail only.
 spec('plain spec', { expected: { code: 'E_QUOTA' } }, async () => {});
+
+spec('typed Logic access', async t => {
+  // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
+  const count: number = await t.app.eval(({ getCurrentPages }) => getCurrentPages().length);
+  count.toFixed();
+  const route: string = await t.app.eval(async ({ getCurrentPages }, index: number) => {
+    const pages = getCurrentPages();
+    return pages[pages.length - 1 - index].route;
+  }, 0);
+  route.toUpperCase();
+  const envPath = await t.app.eval(({ lx }) => lx.env.USER_DATA_PATH);
+  envPath.valueOf();
+  // @ts-expect-error Logic API members are checked against the published `lx`.
+  await t.app.eval(({ lx }) => lx.noSuchApi());
+  // @ts-expect-error Arguments must be JSON values; functions do not cross the boundary.
+  await t.app.eval((_scope, callback: () => void) => callback(), () => {});
+  // @ts-expect-error Arguments are checked against the function's parameters.
+  await t.app.eval((_scope, id: string) => id, 42);
+  // The string form still works and keeps its declared result type.
+  const ready = await t.app.eval<boolean>({ script: 'return true' });
+  ready.valueOf();
+
+  // Page (WebView) eval: without the DOM lib, `document` is unknown and needs a cast.
+  const title = await t.app.page.eval(({ document }) => (document as { title: string }).title);
+  title.toUpperCase();
+  // @ts-expect-error Without the DOM lib, `document` is unknown.
+  await t.app.page.eval(({ document }) => document.title);
+  const raw = await t.app.page.eval<number>({ script: '1 + 1' });
+  raw.toFixed();
+
+  interface Devices { devices: { id: string }[] }
+  const data = await t.app.pageData<Devices>({ page: 'devices' });
+  data.devices[0].id.toUpperCase();
+  const renamed = await t.app.callPage<boolean>('rename', 'dev-1', { name: 'Office' });
+  renamed.valueOf();
+  // @ts-expect-error callPage arguments must be JSON values.
+  await t.app.callPage('rename', undefined);
+
+  // waitFor resolves to the accepted value.
+  const loaded: Devices = await t.waitFor(() => t.app.pageData<Devices>(), (d) => d.devices.length > 0, { timeout: 2_000 });
+  loaded.devices.length.toFixed();
+  const truthy: string = await t.waitFor(async () => 'ok');
+  truthy.toUpperCase();
+  // @ts-expect-error accept receives the read value.
+  await t.waitFor(() => 1, (value: string) => value.length > 0);
+
+  // Args may be missing; t.arg narrows or throws.
+  // @ts-expect-error A missing arg is undefined, not a string.
+  const unchecked: string = t.args.baseUrl;
+  void unchecked;
+  const baseUrl: string = t.arg('baseUrl');
+  const mode: string = t.arg('mode', { default: 'mock' });
+  const optional = t.arg('token', { required: false });
+  // @ts-expect-error An optional arg may be undefined.
+  optional.toUpperCase();
+  void baseUrl; void mode;
+});
+
+// Fixture drivers stay assignable to the raw drivers, so shared helpers typed
+// against `@lingxia/types/automation` keep accepting them.
+declare const fixtureApp: TestApp;
+const asRawApp: LxAppDriver = fixtureApp;
+const asRawPage: PageDriver = fixtureApp.page;
+void asRawApp; void asRawPage;

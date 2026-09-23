@@ -18,6 +18,26 @@ export function createWorld(options = {}) {
   const navCalls = [];
   let relaunchError;
   let blocked = false;
+  /** Globals a script sees in Logic / the WebView; unset, scripts echo back. */
+  let logicGlobals;
+  let pageGlobals;
+  const evaluated = [];
+
+  // Mirror the targets: a script is evaluated as JS against the given
+  // globals, and a thrown error reaches the test context as a plain Error
+  // whose message carries the remote name, as the host's eval error does.
+  async function evaluate(globals, script) {
+    evaluated.push(script);
+    const names = Object.keys(globals);
+    try {
+      const run = new Function(...names, `return eval(${JSON.stringify(script)});`);
+      return await run(...names.map((name) => globals[name]));
+    } catch (error) {
+      const remote = new Error(`${error?.name ?? "Error"}: ${error?.message ?? error}`);
+      remote.code = "E_EVAL";
+      throw remote;
+    }
+  }
 
   function matches(element, css) {
     const testId = testIdFromCss(css);
@@ -67,7 +87,8 @@ export function createWorld(options = {}) {
     async screenshot() {
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
     },
-    async eval() {
+    async eval({ script }) {
+      if (pageGlobals) return evaluate(pageGlobals, script);
       return true;
     },
   };
@@ -130,6 +151,7 @@ export function createWorld(options = {}) {
     async eval({ script, captureCalls }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
       let value = script;
+      if (logicGlobals && !evalResults.has(script)) value = await evaluate(logicGlobals, script);
       if (evalResults.has(script)) {
         value = evalResults.get(script);
         if (value instanceof Error) throw value;
@@ -192,6 +214,16 @@ export function createWorld(options = {}) {
     block() {
       blocked = true;
     },
+    /** Evaluate Logic scripts against these globals (`lx`, `getCurrentPages`, …). */
+    useLogic(globals) {
+      logicGlobals = globals;
+    },
+    /** Evaluate page scripts against these globals (`document`, `window`). */
+    usePage(globals) {
+      pageGlobals = globals;
+    },
+    /** Every script actually evaluated, in order. */
+    evaluated,
     unblock() {
       blocked = false;
     },

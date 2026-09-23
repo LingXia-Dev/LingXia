@@ -12,6 +12,7 @@ import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { ActionDeadline, TimeoutError } from "./deadline.js";
+import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
@@ -22,6 +23,7 @@ import {
 } from "./locator.js";
 import type {
   Apps,
+  ArgOptions,
   AttachmentRef,
   ExpectOptions,
   Fixture,
@@ -38,6 +40,10 @@ import type {
   StepRecord,
   TestApp,
   TestPage,
+  JsonValue,
+  LogicScope,
+  PageDataOptions,
+  WaitForOptions,
 } from "./types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
@@ -68,7 +74,7 @@ export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "time
 export class LiveFixture implements Fixture {
   readonly apps: Apps;
   readonly automation: TestAutomation;
-  readonly args: Record<string, string>;
+  readonly args: Readonly<Record<string, string | undefined>>;
   readonly steps: StepRecord[] = [];
   /**
    * `lx.*` members this spec's evals actually reached. Collected so the report
@@ -94,6 +100,8 @@ export class LiveFixture implements Fixture {
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
   private rawApp: LxAppDriver;
+  /** When this spec's budget started; the runtime arms its timer right after construction. */
+  private readonly startedAt: number;
   private readonly networkScope = new NetworkScope();
   /** When the spec's own timer fires; see `budgetRoom()`. */
   private readonly specDeadline: number;
@@ -108,6 +116,7 @@ export class LiveFixture implements Fixture {
     private readonly redactor?: Redactor,
   ) {
     this.rawApp = rawApp;
+    this.startedAt = Date.now();
     this.args = args;
     this.specDeadline = Date.now() + specBudgetMs;
     setAssertionSink((entry) => this.noteAssertion(entry));
@@ -273,6 +282,78 @@ export class LiveFixture implements Fixture {
 
   defer(cleanup: () => void | Promise<void>): void {
     this.defers.push(cleanup);
+  }
+
+  arg(name: string, options: { required: false; default?: undefined }): string | undefined;
+  arg(name: string, options?: ArgOptions): string;
+  arg(name: string, options: ArgOptions = {}): string | undefined {
+    const value = this.args[name];
+    if (value !== undefined) return value;
+    if (options.default !== undefined) return options.default;
+    if (options.required === false) return undefined;
+    throw new Error(
+      `Missing test arg "${name}": pass --arg ${name}=<value> ` +
+        `(or --secret-arg ${name}=<value>) to lxdev test`,
+    );
+  }
+
+  waitFor<T>(
+    read: () => T | Promise<T>,
+    accept: (value: T) => boolean = Boolean,
+    options: WaitForOptions = {},
+  ): Promise<T> {
+    const location = callerLocation();
+    const requested = options.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+    // Past the spec budget the spec timer fires first and reports a bare
+    // timeout; ending a little earlier keeps the last value in the error.
+    const remaining = this.specBudgetMs - (Date.now() - this.startedAt) - WAIT_FOR_MARGIN_MS;
+    const timeout = Math.max(0, Math.min(requested, remaining));
+    const interval = options.interval ?? DEFAULT_POLL_INTERVAL_MS;
+    const retryIf = options.retryIf ?? isRetryableReadError;
+    const detail = truncate(read.name || functionDetail(read), 80);
+    return this.act("waitFor", detail, async () => {
+      const started = Date.now();
+      let attempts = 0;
+      let hasValue = false;
+      let lastValue: T | undefined;
+      let lastError: unknown;
+      this.silenceActions();
+      try {
+        for (;;) {
+          attempts += 1;
+          try {
+            const value = await read();
+            lastValue = value;
+            hasValue = true;
+            lastError = undefined;
+            if (accept(value)) return value;
+          } catch (error) {
+            if (error instanceof TimeoutError || error instanceof SkipSignal || this.aborted) throw error;
+            if (!retryIf(error)) throw error;
+            lastError = error;
+          }
+          if (Date.now() - started + interval > timeout) break;
+          await sleep(interval);
+          if (this.aborted && this.abortError) throw this.abortError;
+        }
+      } finally {
+        this.resumeActions();
+      }
+      const last = lastError !== undefined
+        ? `Last error: ${errorLine(lastError)}`
+        : hasValue
+          ? `Last value: ${formatValue(lastValue)}${accept === Boolean ? " (waiting for a truthy value)" : " (rejected by accept)"}`
+          : "No read completed.";
+      throw new Error(
+        [
+          `t.waitFor timed out after ${Date.now() - started}ms (${attempts} ${attempts === 1 ? "read" : "reads"}).`,
+          last,
+          timeout < requested ? `Clamped from ${requested}ms to the spec's remaining budget.` : undefined,
+          `at ${displayLocation(location.file, location.line, location.column)}`,
+          this.stepPathLine(),
+        ].filter(Boolean).join("\n"),
+      );
+    });
   }
 
   skip(reason: string): never {
@@ -515,32 +596,56 @@ export class LiveFixture implements Fixture {
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
-      eval: (options) =>
-        this.act("app.eval", summarise(options), async () => {
-          // Ask the runtime which `lx.*` the script reached, and hand the
-          // caller only the value — the observation is the report's business,
-          // not the spec author's, and specs must not have to opt in for their
-          // coverage to be measured.
-          const result = (await driver.eval({
-            ...this.withEvalBudget(options),
-            captureCalls: true,
-          })) as unknown;
-          // The marker, not the shape, identifies the envelope: a script that
-          // returns undefined loses its `value` key on the wire, and sniffing
-          // for that key handed the envelope itself back as the result.
-          if (result && typeof result === "object" && (result as { __lxEval?: unknown }).__lxEval === 1) {
-            const { calls, value } = result as { calls?: unknown; value?: unknown };
-            if (Array.isArray(calls)) {
-              for (const call of calls) {
-                if (typeof call === "string") this.observed.add(call);
-              }
-            }
-            return value;
-          }
-          // An older runtime ignores `captureCalls` and returns the bare value.
-          return result;
+      eval: (options: unknown, ...args: unknown[]) => {
+        if (typeof options === "function") {
+          const script = logicScript(options, args);
+          return this.act("app.eval", summarise(functionDetail(options)), () =>
+            remote("t.app.eval", "logic", () => this.evalLogic(driver, { script })));
+        }
+        return this.act("app.eval", summarise(options), () =>
+          this.evalLogic(driver, options as { script: string; timeoutMs?: number }));
+      },
+      pageData: (options?: PageDataOptions) => {
+        const target = options?.page;
+        return this.act("app.pageData", target ?? "", async () => {
+          const path = target === undefined ? undefined : await pagePath(driver, target);
+          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.pageData");
+          return remote("t.app.pageData", "logic", () => this.evalLogic(driver, { script }));
+        });
+      },
+      callPage: (method: string, ...args: JsonValue[]) =>
+        this.act("app.callPage", method, () => {
+          const script = logicScript(callPageMethod, [method, args], "t.app.callPage");
+          return remote("t.app.callPage", "logic", () => this.evalLogic(driver, { script }));
         }),
     } as TestApp;
+  }
+
+  /**
+   * Logic eval that asks the runtime which `lx.*` the script reached and
+   * hands the caller only the value — the observation is the report's
+   * business, not the spec author's, and specs must not have to opt in for
+   * their coverage to be measured.
+   */
+  private async evalLogic(driver: LxAppDriver, options: { script: string; timeoutMs?: number }): Promise<unknown> {
+    const result = (await driver.eval({
+      ...this.withEvalBudget(options),
+      captureCalls: true,
+    })) as unknown;
+    // The marker, not the shape, identifies the envelope: a script that
+    // returns undefined loses its `value` key on the wire, and sniffing
+    // for that key handed the envelope itself back as the result.
+    if (result && typeof result === "object" && (result as { __lxEval?: unknown }).__lxEval === 1) {
+      const { calls, value } = result as { calls?: unknown; value?: unknown };
+      if (Array.isArray(calls)) {
+        for (const call of calls) {
+          if (typeof call === "string") this.observed.add(call);
+        }
+      }
+      return value;
+    }
+    // An older runtime ignores `captureCalls` and returns the bare value.
+    return result;
   }
 
   /**
@@ -569,8 +674,15 @@ export class LiveFixture implements Fixture {
     const overrides: Record<string, unknown> = {
       testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
       css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
-      eval: (options: { script: string; timeoutMs?: number }) =>
-        this.act("page.eval", summarise(options), () => page.eval(this.withEvalBudget(options))),
+      eval: (options: unknown, ...args: unknown[]) => {
+        if (typeof options === "function") {
+          const script = pageScript(options, args);
+          return this.act("page.eval", summarise(functionDetail(options)), () =>
+            remote("t.app.page.eval", "page", () => page.eval(this.withEvalBudget<{ script: string; timeoutMs?: number }>({ script }))));
+        }
+        return this.act("page.eval", summarise(options), () =>
+          page.eval(this.withEvalBudget(options as { script: string; timeoutMs?: number })));
+      },
     };
     const guarded = guardObject(page, this, "page.", Object.keys(overrides));
     return new Proxy(guarded, {
@@ -796,6 +908,74 @@ export class LiveFixture implements Fixture {
     });
     return new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"));
   }
+}
+
+/** Room left before the spec timer, so `t.waitFor` reports its own failure. */
+const WAIT_FOR_MARGIN_MS = 100;
+
+/**
+ * `t.waitFor` retries a read that says "not yet" by throwing, but not one
+ * that is simply wrong: a TypeError, ReferenceError or SyntaxError will not
+ * fix itself, and retrying it only hides the bug behind a timeout.
+ */
+function isRetryableReadError(error: unknown): boolean {
+  if (error instanceof AssertionError) return true;
+  const name = error instanceof Error ? error.name : undefined;
+  return name !== "TypeError" && name !== "ReferenceError" && name !== "SyntaxError";
+}
+
+function errorLine(error: unknown): string {
+  return error instanceof Error ? `${error.name}: ${error.message}` : formatValue(error);
+}
+
+async function remote<T>(api: string, target: RemoteTarget, op: () => Promise<T>): Promise<T> {
+  try {
+    return await op();
+  } catch (error) {
+    throw explainRemoteError(error, api, target);
+  }
+}
+
+/** A configured page name to its path, so Logic can match `page.route`. */
+async function pagePath(driver: LxAppDriver, page: string): Promise<string | undefined> {
+  try {
+    const pages = await driver.pages();
+    return pages.find((entry) => entry.name === page)?.path;
+  } catch {
+    return undefined;
+  }
+}
+
+// The two functions below are sent to app Logic as source text: they must
+// stay self-contained.
+
+function readPageData(scope: LogicScope, name: string | null, path: string | null): unknown {
+  const pages = scope.getCurrentPages();
+  const norm = (route: string) => String(route).replace(/^\/+/, "").split("?")[0];
+  const page = name === null
+    ? pages[pages.length - 1]
+    : pages.slice().reverse().find((candidate) => {
+      const route = norm(candidate.route);
+      return route === norm(name) || (path !== null && route === norm(path));
+    });
+  if (!page) {
+    const open = pages.map((candidate) => candidate.route).join(", ") || "none";
+    throw new Error(name === null
+      ? "t.app.pageData: no page is open"
+      : `t.app.pageData: page ${JSON.stringify(name)} is not in the page stack (open: ${open})`);
+  }
+  return page.data;
+}
+
+async function callPageMethod(scope: LogicScope, method: string, args: unknown[]): Promise<unknown> {
+  const pages = scope.getCurrentPages();
+  const page = pages[pages.length - 1];
+  if (!page) throw new Error("t.app.callPage: no page is open");
+  const member = page[method];
+  if (typeof member !== "function") {
+    throw new Error(`t.app.callPage: page ${JSON.stringify(page.route)} has no method ${JSON.stringify(method)}`);
+  }
+  return await member.apply(page, args);
 }
 
 function resolveLocator(locator: Locator, deadline: ActionDeadline, context: () => string): Promise<LocatorResolve> {
