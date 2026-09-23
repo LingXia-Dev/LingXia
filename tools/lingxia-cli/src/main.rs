@@ -552,12 +552,6 @@ struct PublishArgs {
     #[arg(long)]
     lingxia_server: Option<String>,
 
-    /// Product (`lingxiaId`) the package is published to. Defaults to
-    /// `app.lingxiaId` in `lingxia.yaml`; a standalone lxapp or plugin
-    /// project must pass it.
-    #[arg(long)]
-    lingxia_id: Option<String>,
-
     /// Path to the package archive (app only)
     #[arg(long = "package-path")]
     package_path: Option<String>,
@@ -1246,7 +1240,6 @@ fn main() -> Result<()> {
             commands::publish::execute(commands::publish::PublishOptions {
                 token: args.token,
                 lingxia_server: args.lingxia_server,
-                lingxia_id: args.lingxia_id,
                 package: args.package_path,
                 platform: args.platform,
                 env: args.env,
