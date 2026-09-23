@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { spec, expect, reset, trackPublicSurface } from "../dist/index.js";
+import { looksSecretKey } from "../dist/redact.js";
 
 afterEach(() => {
   reset();
@@ -69,34 +70,156 @@ test("t.skip stops the spec and reports it skipped with its reason", async () =>
   assert.match(decodeAttachment(attachments, "junit.xml"), /<skipped message="none found"\/>/);
 });
 
-test("secret args are masked in every report output but reach the spec", async () => {
+test("declared secret args are masked everywhere but reach the spec", async () => {
   const world = createWorld();
   const { attachments, events } = installFakeHost(world, {
-    args: { password: "hunter22", API_KEY: "k-123456", pin: "4711-9", user: "alice", secretArgs: JSON.stringify(["pin"]) },
+    args: { password: "hunter22", pin: "4711-9", user: "alice" },
+    control: { secretArgs: JSON.stringify(["password", "pin"]) },
+    logs: "login with hunter22 ok",
   });
   let seen;
-  spec("logs in", { forensics: false }, async (t) => {
+  spec("logs in", async (t) => {
     seen = { ...t.args };
+    await t.attach("note.txt", `typed ${t.args.password}`);
+    await t.attach("form.json", { pin: t.args.pin, nested: [`pw:${t.args.password}`] });
+    await t.attach("raw.txt", { mimeType: "text/plain", base64: Buffer.from(`pin=${t.args.pin}`).toString("base64") });
     expect(`pw=${t.args.password} pin=${t.args.pin}`).toBe("x");
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(seen.password, "hunter22");
   assert.equal(seen.pin, "4711-9");
-  for (const name of ["report.json", "report.html", "junit.xml"]) {
-    const text = decodeAttachment(attachments, name);
-    for (const secret of ["hunter22", "k-123456", "4711-9"]) {
+  const texts = [...attachments.keys()].map((name) => [name, decodeAttachment(attachments, name)]);
+  assert.ok(texts.some(([name]) => name.endsWith("/logs.txt")), "forensics attached logs.txt");
+  for (const [name, text] of texts) {
+    for (const secret of ["hunter22", "4711-9"]) {
       assert.ok(!text.includes(secret), `${name} leaks ${secret}`);
     }
   }
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.equal(report.meta.args.password, "***");
-  assert.equal(report.meta.args.API_KEY, "***");
   assert.equal(report.meta.args.pin, "***");
   assert.equal(report.meta.args.user, "alice");
   assert.match(report.cases[0].error.message, /pw=\*\*\* pin=\*\*\*/);
   assert.ok(!JSON.stringify(events).includes("hunter22"), "events leak the secret");
+  assert.equal(events.find((e) => e.type === "run_started").args.password, "***");
   assert.equal(protocol.meta.args.password, "***");
+});
+
+test("a credential-named --arg is masked in meta.args only", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, {
+    args: { apiKey: "k-123456", maxTokens: "1000", passWithNoTests: "yes" },
+    control: {},
+  });
+  spec("echoes", { forensics: false }, async (t) => {
+    expect(`${t.args.apiKey}/${t.args.maxTokens}`).toBe("x");
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.meta.args, { apiKey: "***", maxTokens: "1000", passWithNoTests: "yes" });
+  // A guess from the name never blanks the value elsewhere.
+  assert.match(report.cases[0].error.message, /k-123456\/1000/);
+});
+
+test("report.html stays well-formed when a secret overlaps markup", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, {
+    args: { token: "</script>" },
+    control: { secretArgs: '["token"]' },
+  });
+  spec("echoes", { forensics: false }, async (t) => {
+    expect(`x${t.args.token}`).toBe("y");
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const html = decodeAttachment(attachments, "report.html");
+  assert.equal(html.match(/<\/script>/g)?.length, html.match(/<script\b/g)?.length);
+  assert.doesNotMatch(JSON.parse(decodeAttachment(attachments, "report.json")).cases[0].error.message, /<\/script>/);
+});
+
+test("run controls stay out of t.args and a user arg never filters the run", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, {
+    args: { id: "user-value", grep: "nothing-matches" },
+    control: { id: "second", platform: "ios" },
+  });
+  let seen;
+  spec("first", () => {});
+  spec("second", (t) => { seen = { ...t.args }; });
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(protocol.cases.map((c) => c.id), ["second"]);
+  assert.deepEqual(seen, { id: "user-value", grep: "nothing-matches" });
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.meta.run, { id: "second", platform: "ios" });
+  assert.equal(report.meta.platform, "ios");
+  assert.equal(report.meta.args.id, "user-value");
+});
+
+test("an older host's controls inside args still select, and leave t.args", async () => {
+  const world = createWorld();
+  installFakeHost(world, { args: { id: "second", baseUrl: "http://fixture" } });
+  let seen;
+  spec("first", () => {});
+  spec("second", (t) => { seen = { ...t.args }; });
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(protocol.cases.map((c) => c.id), ["second"]);
+  assert.deepEqual(seen, { baseUrl: "http://fixture" });
+});
+
+test("credential names match whole trailing words, not substrings", () => {
+  for (const key of ["password", "PASSWORD", "DB_PASSWORD", "userPasswd", "pwd", "clientSecret",
+    "authToken", "refresh_token", "x-api-key", "apiKey", "APIKey", "API_KEY", "apikey",
+    "credentials", "gcpCredential", "PRIVATE_KEY", "passphrase"]) {
+    assert.equal(looksSecretKey(key), true, key);
+  }
+  for (const key of ["passWithNoTests", "bypassCache", "maxTokens", "tokenCount", "passport",
+    "secretName", "user", "baseUrl", "keyboard", "pass", "compass", "tokenizer"]) {
+    assert.equal(looksSecretKey(key), false, key);
+  }
+});
+
+test("spec.fail with expected grades only the matching failure xfail", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  class ApiError extends Error {
+    constructor(code, message) { super(message); this.code = code; }
+  }
+  spec.fail("known code", { expected: { code: "E_QUOTA" } }, async () => {
+    throw new ApiError("E_QUOTA", "quota exceeded");
+  });
+  spec.fail("known message regex", { expected: { message: /quota/ } }, async () => {
+    throw new Error("quota exceeded");
+  });
+  spec.fail("other failure", { expected: { code: "E_QUOTA", message: "quota" } }, async (t) => {
+    await t.app.page.testId("mistyped").click({ timeout: 20, interval: 5 });
+  });
+  spec.fail("known but passes", { expected: { code: "E_QUOTA" } }, async () => {});
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "xfail", "failed", "xpass"]);
+  assert.match(report.cases[2].error.message,
+    /spec\.fail expected a failure with code "E_QUOTA", got undefined and a message containing "quota"; the body failed differently/);
+  assert.throws(() => spec("not fail", { expected: { code: "X" } }, () => {}), /only meaningful for spec\.fail/);
+  assert.throws(() => spec.fail("empty", { expected: {} }, () => {}), /needs a code or a message/);
+});
+
+test("t.skip rejects during cleanup", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+  spec("skip in defer", { forensics: false }, async (t) => {
+    t.defer(() => t.skip("too late"));
+  });
+  spec.afterEach((t) => t.skip("also too late"));
+  spec("skip in afterEach", { forensics: false }, async () => {});
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  for (const item of report.cases) {
+    assert.equal(item.status, "failed");
+    assert.equal(item.error.phase, "defer");
+    assert.match(item.error.message, /t\.skip cannot be called during cleanup/);
+  }
 });
 
 test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
@@ -192,7 +315,7 @@ test("report json and html include run metadata, steps, expected/actual, and no 
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.equal(report.meta.platform, "windows");
   assert.equal(report.meta.framework, "react");
-  assert.equal(report.meta.args.platform, "windows");
+  assert.equal(report.meta.run.platform, "windows");
   assert.ok(typeof report.meta.started_at === "string" && report.meta.started_at.includes("T"));
   assert.equal(report.cases[0].id, "UNIT-REPORT-001");
   assert.equal(report.cases[0].steps.length, 1);

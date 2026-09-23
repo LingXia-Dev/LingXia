@@ -36,6 +36,16 @@ export interface SpecOptions {
   reason?: string;
 }
 
+/** `spec.fail` options. */
+export interface FailOptions extends SpecOptions {
+  /**
+   * The failure this spec is known to produce. When set, only a body failure
+   * matching it grades `xfail`; any other failure grades `failed`. Omit it to
+   * accept any body failure.
+   */
+  expected?: RejectExpected;
+}
+
 export type SpecBody = (t: Fixture) => void | Promise<void>;
 
 export interface ExpectOptions {
@@ -158,7 +168,8 @@ export interface Fixture {
   attach(name: string, data: unknown): Promise<void>;
   /**
    * Stop this spec and report it `skipped` with `reason`, for a precondition
-   * only knowable at run time. Throws; deferred cleanup still runs.
+   * only knowable at run time. Throws; deferred cleanup still runs. Call it
+   * from the body or `beforeEach`; it rejects during cleanup.
    */
   skip(reason: string): never;
 }
@@ -275,7 +286,10 @@ export interface RunSubject {
 export interface RunMeta {
   started_at: string;
   duration_ms: number;
+  /** User args; declared secrets and credential-named keys are `***`. */
   args: Record<string, string>;
+  /** lxdev's run controls (grep, ids, shard, retries, …). */
+  run?: Record<string, string>;
   platform?: string;
   framework?: string;
   subject?: RunSubject;
@@ -311,6 +325,8 @@ export interface LingxiaTestController {
 
 export interface AutomationHost {
   args?: Record<string, string>;
+  /** lxdev run controls, kept apart from the user's `args`. */
+  control?: Record<string, string>;
   attach?: (
     name: string,
     artifact: { mimeType: string; base64: string },

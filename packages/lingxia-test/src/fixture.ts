@@ -8,6 +8,7 @@ import {
 } from "./expect.js";
 import { formatValue, truncate } from "./format.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
+import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
@@ -54,6 +55,7 @@ export class TimeoutError extends Error {
 /**
  * Thrown by `t.skip()`. It unwinds the spec like any throw, but the runtime
  * grades it `skipped`, never `failed` — and not `xfail` under `spec.fail`.
+ * Internal: a spec never needs to name it.
  */
 export class SkipSignal extends Error {
   override readonly name = "SkipSignal";
@@ -102,6 +104,7 @@ export class LiveFixture implements Fixture {
     args: Record<string, string>,
     automation: Automation,
     private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
+    private readonly redactor?: Redactor,
   ) {
     this.rawApp = rawApp;
     this.args = args;
@@ -271,6 +274,8 @@ export class LiveFixture implements Fixture {
   }
 
   skip(reason: string): never {
+    // Cleanup runs after the verdict; a skip there cannot mean anything.
+    if (this.cleanupActive) throw new Error("t.skip cannot be called during cleanup (t.defer or afterEach)");
     const text = typeof reason === "string" && reason.trim().length > 0 ? reason : "skipped at runtime";
     this.skipReason ??= text;
     throw new SkipSignal(text);
@@ -282,7 +287,10 @@ export class LiveFixture implements Fixture {
     });
   }
 
-  async attachRaw(name: string, data: unknown): Promise<AttachmentRef> {
+  async attachRaw(name: string, input: unknown): Promise<AttachmentRef> {
+    // Declared secrets are masked in the data itself, before it is encoded
+    // or previewed, so neither the file nor the report carries them.
+    const data = this.redactor ? this.redactor.attachment(input) : input;
     const payload = encodeAttachPayload(data);
     if (typeof data === "object" && data && "base64" in data && !("mimeType" in (data as object))) {
       if (name.endsWith(".png")) payload.mimeType = "image/png";

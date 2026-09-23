@@ -202,10 +202,13 @@ export function installFakeHost(world, options = {}) {
   const events = [];
   const attachments = new Map();
   const args = { ...(options.args ?? {}) };
+  // Omitted, the host predates the control channel and controls ride in args.
+  const control = options.control === undefined ? undefined : { ...options.control };
   const logs = options.logs;
 
   globalThis.__LINGXIA_AUTOMATION_HOST__ = {
     args,
+    ...(control ? { control } : {}),
     async attach(name, artifact) {
       attachments.set(name, artifact);
     },
@@ -228,5 +231,5 @@ export function installFakeHost(world, options = {}) {
     },
   };
 
-  return { events, attachments, args };
+  return { events, attachments, args, control };
 }

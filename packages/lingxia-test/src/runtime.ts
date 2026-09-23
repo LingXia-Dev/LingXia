@@ -1,6 +1,7 @@
 import { expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
-import { attachText, resolveHost, warnVersionSkew } from "./host.js";
+import { formatValue } from "./format.js";
+import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
 import { createRedactor } from "./redact.js";
@@ -8,10 +9,12 @@ import { clearInline, countStatuses, renderHtml } from "./report.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
   CaseRecord,
+  FailOptions,
   Fixture,
   JsonReport,
   LingxiaTestController,
   ProtocolReport,
+  RejectExpected,
   RunSubject,
   SpecBody,
   SpecOptions,
@@ -39,6 +42,8 @@ interface RegisteredSpec {
   app?: string;
   forensics: boolean;
   reason?: string;
+  /** `spec.fail` only: the failure the body is expected to produce. */
+  expected?: RejectExpected;
   annotation: Annotation;
   body: SpecBody;
   frames: StackFrame[];
@@ -86,6 +91,14 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     throw new TypeError("spec() requires a non-empty title");
   }
   const { options, body } = parseArgs(optionsOrBody, maybeBody);
+  const expected = (options as FailOptions).expected;
+  if (expected !== undefined) {
+    if (annotation !== "fail") throw new TypeError("`expected` is only meaningful for spec.fail()");
+    if (!expected || typeof expected !== "object") throw new TypeError("spec.fail `expected` must be an object");
+    if (expected.code === undefined && expected.message === undefined) {
+      throw new TypeError("spec.fail `expected` needs a code or a message");
+    }
+  }
   for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
     if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${name} must be a positive finite number`);
   }
@@ -106,6 +119,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     app: options.app,
     forensics: options.forensics !== false,
     reason: options.reason,
+    expected,
     annotation,
     body,
     frames,
@@ -131,7 +145,7 @@ const spec: SpecApi = Object.assign(
       const options = typeof optionsOrBody === "function" || optionsOrBody === undefined ? {} : optionsOrBody;
       register("fixme", title, options, body);
     },
-    fail(title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
+    fail(title: string, optionsOrBody: FailOptions | SpecBody, maybeBody?: SpecBody): void {
       register("fail", title, optionsOrBody, maybeBody);
     },
     reset(fn: SpecBody): void {
@@ -194,13 +208,47 @@ async function relaunchHome(app: LxAppDriver): Promise<void> {
   }
 }
 
+/**
+ * Controls lxdev sent inside `args` before it had a channel of its own. Only
+ * read from `args` when the host has no `control`; a current host keeps them
+ * apart so a user's `--arg id=…` is just an arg.
+ */
+const LEGACY_CONTROL_KEYS = new Set([
+  "grep", "retries", "shard", "ids", "id", "passWithNoTests", "forbidOnly", "forbid-only",
+  "platform", "secretArgs",
+]);
+
+function splitControl(host: ResolvedHost): { args: Record<string, string>; control: Record<string, string> } {
+  if (host.control) return { args: host.args, control: host.control };
+  const args: Record<string, string> = {};
+  const control: Record<string, string> = {};
+  for (const [key, value] of Object.entries(host.args)) {
+    (LEGACY_CONTROL_KEYS.has(key) ? control : args)[key] = value;
+  }
+  return { args, control };
+}
+
+/** `secretArgs` is a JSON list of `--secret-arg` keys (older lxdev: comma list). */
+function secretKeys(listed: string | undefined): string[] {
+  if (!listed) return [];
+  try {
+    const parsed: unknown = JSON.parse(listed);
+    if (Array.isArray(parsed)) return parsed.filter((key): key is string => typeof key === "string");
+  } catch {
+    // fall through to the comma form
+  }
+  return listed.split(",").map((key) => key.trim()).filter(Boolean);
+}
+
 async function run(): Promise<ProtocolReport> {
   warnVersionSkew();
   const rawHost = resolveHost();
+  const { args, control } = splitControl(rawHost);
   // Secret args reach the spec through `t.args` but never an event or report.
-  const redact = createRedactor(rawHost.args);
-  const host: ReturnType<typeof resolveHost> = {
+  const redact = createRedactor(args, secretKeys(control.secretArgs));
+  const host: ResolvedHost = {
     ...rawHost,
+    args,
     emit: (event) => rawHost.emit(redact.deep(event)),
   };
   const started = Date.now();
@@ -216,33 +264,35 @@ async function run(): Promise<ProtocolReport> {
     ids.set(id, item.title);
   }
 
-  const grep = host.args.grep;
+  const grep = control.grep;
   const pattern = grep ? new RegExp(grep) : undefined;
-  const forbidOnly = host.args.forbidOnly === "1" || host.args["forbid-only"] === "1";
+  const forbidOnly = control.forbidOnly === "1" || control["forbid-only"] === "1";
   const hasOnly = specs.some((item) => item.annotation === "only");
   if (hasOnly && forbidOnly) {
     throw new Error("spec.only is registered; lxdev test --forbid-only refuses to run");
   }
 
-  const retries = Number(host.args.retries ?? 0);
+  const retries = Number(control.retries ?? 0);
   if (!Number.isInteger(retries) || retries < 0 || retries > 10) throw new Error("retries must be between 0 and 10");
-  const selectedIds: string[] | undefined = host.args.ids ? JSON.parse(host.args.ids) : undefined;
-  const shard = host.args.shard?.split("/").map(Number);
+  const selectedIds: string[] | undefined = control.ids ? JSON.parse(control.ids) : undefined;
+  const shard = control.shard?.split("/").map(Number);
   if (shard && (shard.length !== 2 || shard.some(n => !Number.isInteger(n) || n < 1) || shard[0]! > shard[1]!)) throw new Error("shard must be INDEX/TOTAL (1-based)");
   const selected = specs.filter((item) => {
     if (hasOnly && item.annotation !== "only") return false;
     if (selectedIds && !selectedIds.includes(resolvedId(item))) return false;
     if (shard && stableHash(resolvedId(item)) % shard[1]! !== shard[0]! - 1) return false;
-    if (host.args.id && resolvedId(item) !== host.args.id) return false;
+    if (control.id && resolvedId(item) !== control.id) return false;
     if (!grep) return true;
     const id = resolvedId(item);
     return pattern!.test(item.title) || pattern!.test(id);
   });
 
-  if (selected.length === 0 && host.args.passWithNoTests !== "1") {
+  if (selected.length === 0 && control.passWithNoTests !== "1") {
     throw new Error("No tests matched this selection. Check the entry and filters, or use --pass-with-no-tests.");
   }
-  await host.emit({ type: "run_started", schema_version: 1, total: selected.length,
+  // `args` is the masked view, so lxdev can write the same one into any
+  // report it has to complete itself.
+  await host.emit({ type: "run_started", schema_version: 1, total: selected.length, args: redact.args(args),
     cases: selected.map(item => ({ id: resolvedId(item), title: item.title, name: item.title,
       full_name: item.id ? `${item.id} | ${item.title}` : item.title, ...sourceOf(item),
       suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers })) });
@@ -312,9 +362,10 @@ async function run(): Promise<ProtocolReport> {
       `${encodeURIComponent(id)}/attempt-${record.attempt}`,
       pinApp(item.app),
       host,
-      host.args,
+      args,
       automationRoot(),
       timeout,
+      redact,
     );
 
     let status: SpecStatus = "passed";
@@ -423,11 +474,15 @@ async function run(): Promise<ProtocolReport> {
     fixture.endCleanup();
 
     if (item.annotation === "fail") {
-      // The declared failure is whatever the body does to fail: a product
-      // rejection counts as much as an assertion. Setup failures, skips and
-      // timeouts keep their own verdicts.
+      // Without `expected`, the declared failure is whatever the body does to
+      // fail: a product rejection counts as much as an assertion. With it,
+      // only a matching failure is the known one; anything else — a mistyped
+      // selector, a dead fixture server — is a real failure. Setup failures,
+      // skips and timeouts keep their own verdicts.
       if (status === "failed" && fixture.failurePhase === "body") {
-        status = "xfail";
+        const mismatch = item.expected ? expectedMismatch(error, item.expected) : undefined;
+        if (mismatch === undefined) status = "xfail";
+        else error = mismatch;
       } else if (status === "passed") {
         status = "xpass";
         error = new Error("spec.fail passed (xpass)");
@@ -490,14 +545,15 @@ async function run(): Promise<ProtocolReport> {
     meta: {
       started_at: new Date(started).toISOString(),
       duration_ms,
-      args: redact.args(host.args),
-      platform: host.args.platform,
-      framework: host.args.framework,
+      args: redact.args(args),
+      run: redact.deep(control),
+      platform: control.platform,
+      framework: args.framework,
       subject,
       surface_coverage: trackSurface,
     },
     partial: contaminated,
-    filtered: Boolean(grep || host.args.id || host.args.ids || shard) || hasOnly,
+    filtered: Boolean(grep || control.id || control.ids || shard) || hasOnly,
     duration_ms,
     ...counts,
     cases: redact.deep(cases),
@@ -510,8 +566,35 @@ async function run(): Promise<ProtocolReport> {
   return json;
 }
 
+/**
+ * `undefined` when `error` is the failure `spec.fail` declared; otherwise the
+ * error to report, saying what was expected instead.
+ */
+function expectedMismatch(error: unknown, expected: RejectExpected): Error | undefined {
+  const record = (error && typeof error === "object" ? error : {}) as { code?: unknown; message?: unknown };
+  const message = error instanceof Error ? error.message : typeof record.message === "string" ? record.message : String(error);
+  const problems: string[] = [];
+  if (expected.code !== undefined && record.code !== expected.code) {
+    problems.push(`code ${formatValue(expected.code)}, got ${formatValue(record.code)}`);
+  }
+  if (typeof expected.message === "string" && !message.includes(expected.message)) {
+    problems.push(`a message containing ${formatValue(expected.message)}`);
+  }
+  if (expected.message instanceof RegExp) {
+    expected.message.lastIndex = 0;
+    if (!expected.message.test(message)) problems.push(`a message matching ${String(expected.message)}`);
+  }
+  if (problems.length === 0) return undefined;
+  const header = `spec.fail expected a failure with ${problems.join(" and ")}; the body failed differently:`;
+  if (error instanceof Error) {
+    error.message = `${header}\n${error.message}`;
+    return error;
+  }
+  return new Error(`${header}\n${message}`);
+}
+
 async function finishCase(
-  host: ReturnType<typeof resolveHost>,
+  host: ResolvedHost,
   record: CaseRecord,
 ): Promise<void> {
   await host.emit({
