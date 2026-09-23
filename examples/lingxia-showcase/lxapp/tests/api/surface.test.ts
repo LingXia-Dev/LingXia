@@ -26,6 +26,7 @@ function automationSurface(name: string): unknown {
       case 'PagePointer': return automation.lxapp(SHOWCASE_APP_ID).page.pointer;
       case 'PageKey': return automation.lxapp(SHOWCASE_APP_ID).page.key;
       case 'NavDriver': return automation.lxapp(SHOWCASE_APP_ID).nav;
+      case 'NetworkDriver': return automation.lxapp(SHOWCASE_APP_ID).network;
       case 'LxAppManager': return automation.lxapps;
       case 'DeviceDriver': return automation.device;
       case 'BrowserDriver': return automation.browser;
