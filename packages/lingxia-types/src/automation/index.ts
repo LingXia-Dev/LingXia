@@ -24,16 +24,51 @@ import type { TerminalSettingsValue } from '../generated/logic.js';
 
 // ============================ factory ============================
 
+// ============================ errors ============================
+
+/**
+ * Stable `code`s of automation driver rejections. Anything without a more
+ * specific code rejects with `E_AUTOMATION`; desktop automation uses its own
+ * `E_DESKTOP_<CODE>` family. Messages are unchanged, so match on the code.
+ */
+export const AUTOMATION_ERROR_CODES = [
+  /** Fallback for a failure with no more specific code. */
+  'E_AUTOMATION',
+  /** The caller lacks the `automation`/`host` privilege the call needs. */
+  'E_AUTOMATION_PRIVILEGE',
+  /** The target page is not the active instance: not open, or replaced. `data: { page, instanceId?, current? }`. */
+  'E_PAGE_NOT_ACTIVE',
+  /** The page has no WebView or current page to act on yet. */
+  'E_PAGE_NOT_READY',
+  /** No element matched the selector at dispatch. */
+  'E_ELEMENT_NOT_FOUND',
+  /** The element matched but cannot take the input (disabled, not editable, …). */
+  'E_ELEMENT_NOT_INTERACTABLE',
+  /** A driver wait (`waitFor`, `waitUntil: 'ready'`, …) ran out of time. */
+  'E_AUTOMATION_TIMEOUT',
+  /** The evaluated script threw. */
+  'E_EVAL_SCRIPT',
+  /** The evaluation did not settle within its `timeoutMs`. */
+  'E_EVAL_TIMEOUT',
+] as const;
+
+export type AutomationErrorCode = (typeof AUTOMATION_ERROR_CODES)[number];
+
+/** A page as automation error `data` names it. */
+export interface AutomationPageRef {
+  /** Configured page name, else its path. */
+  page?: string;
+  /** The page instance the call resolved to, when it still resolves. */
+  instanceId?: string;
+  /** The page that was current when the call failed. */
+  current?: { name: string | null; path: string; instanceId: string };
+}
+
 /**
  * Automation root as app Logic sees it (`lx.automation()` in Logic). It grants
- * no capability until one is selected.
- *
- * @remarks The host-tier getters (`lxapps`, `browser`, `shell`, `device`,
- * `desktop`, `terminal`) check the `host` privilege when the property is
- * read, and reading one without it throws `E_AUTOMATION`. Enumerating,
- * spreading, or logging the root therefore throws in a session without
- * `host`; read only the members you use. Every method on a returned driver
- * checks the privilege again when called.
+ * no capability until one is selected. Reading a driver property never throws:
+ * each driver method checks the caller and rejects with
+ * `E_AUTOMATION_PRIVILEGE` when it is not allowed.
  */
 export interface Automation {
   /**
@@ -448,6 +483,12 @@ export interface PageInfo {
   path: string;
   /** Configured page name, if the path maps to one. */
   name: string | null;
+  /**
+   * The page instance. Navigation that replaces a page (even with the same
+   * path) gives it a new id. `null` when no live instance backs a stack
+   * entry; absent on hosts that predate it.
+   */
+  instanceId?: string | null;
   current: boolean;
   inStack: boolean;
   /** Whether the page has dispatched `onReady` (what `waitUntil: 'ready'` awaits). */

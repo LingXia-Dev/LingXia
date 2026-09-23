@@ -28,10 +28,8 @@ pub(crate) struct JSNavDriver {
 }
 
 impl JSNavDriver {
-    pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
-        Self {
-            lxapp: Arc::downgrade(lxapp),
-        }
+    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+        Self { lxapp }
     }
 }
 
@@ -106,6 +104,10 @@ struct JSPageRef {
 struct JSPageInfo {
     path: String,
     name: Option<String>,
+    /// The page instance: a page replaced by navigation (even to the same
+    /// path) gets a new id.
+    #[js_name = "instanceId"]
+    instance_id: Option<String>,
     current: bool,
     #[js_name = "inStack"]
     in_stack: bool,
@@ -115,11 +117,21 @@ struct JSPageInfo {
     webview_attached: bool,
 }
 
+impl JSPageInfo {
+    fn of(status: auto::PageStatus, page: &lxapp::PageInstance) -> Self {
+        Self {
+            instance_id: Some(page.instance_id_string()),
+            ..status.into()
+        }
+    }
+}
+
 impl From<auto::PageStatus> for JSPageInfo {
     fn from(status: auto::PageStatus) -> Self {
         Self {
             path: status.path,
             name: status.name,
+            instance_id: None,
             current: status.current,
             in_stack: status.in_stack,
             ready: status.ready,
@@ -154,9 +166,20 @@ async fn landed(
     if let Some(timeout) = wait {
         auto::wait_page_runtime_ready(app, &page, timeout)
             .await
-            .map_err(auto_err)?;
+            .map_err(|message| {
+                crate::error::instance_error(
+                    app,
+                    &page,
+                    name.as_deref(),
+                    crate::error::code_for(&message),
+                    message,
+                )
+            })?;
     }
-    Ok(auto::page_status(app, &page, name.as_deref()).into())
+    Ok(JSPageInfo::of(
+        auto::page_status(app, &page, name.as_deref()),
+        &page,
+    ))
 }
 
 #[js_class(rename = "NavDriver")]
@@ -207,7 +230,10 @@ impl JSNavDriver {
     async fn current(&self, ctx: JSContext) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let (page, name) = auto::resolve_page(&app, None).map_err(auto_err)?;
-        Ok(auto::page_status(&app, &page, name.as_deref()).into())
+        Ok(JSPageInfo::of(
+            auto::page_status(&app, &page, name.as_deref()),
+            &page,
+        ))
     }
 
     /// Status of a configured page by name (`lxdev lxapp page info --page`);
@@ -216,8 +242,19 @@ impl JSNavDriver {
     async fn info(&self, ctx: JSContext, options: Optional<JSPageRef>) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let options = options.0.unwrap_or_default();
-        let (page, name) = auto::resolve_page(&app, options.page.as_deref()).map_err(auto_err)?;
-        Ok(auto::page_status(&app, &page, name.as_deref()).into())
+        let (page, name) =
+            auto::resolve_page(&app, options.page.as_deref()).map_err(|message| {
+                crate::error::page_error(
+                    &app,
+                    options.page.as_deref(),
+                    crate::error::code_for(&message),
+                    message,
+                )
+            })?;
+        Ok(JSPageInfo::of(
+            auto::page_status(&app, &page, name.as_deref()),
+            &page,
+        ))
     }
 
     #[js_method]
@@ -229,9 +266,11 @@ impl JSNavDriver {
             .page_stack
             .iter()
             .map(|path| {
-                let state = app.get_page(path).map(|p| p.automation_state());
+                let page = app.get_page(path);
+                let state = page.as_ref().map(|p| p.automation_state());
                 JSPageInfo {
                     name: auto::page_name_for_path(&app, path),
+                    instance_id: page.as_ref().map(|p| p.instance_id_string()),
                     current: current
                         .as_deref()
                         .is_some_and(|c| auto::page_paths_match(c, path)),

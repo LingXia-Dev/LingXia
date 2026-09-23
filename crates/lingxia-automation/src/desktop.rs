@@ -345,49 +345,41 @@ impl JSDesktopDriver {
 
     #[js_method(getter, enumerable)]
     fn window(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopWindow>(&ctx)?.instance(JSDesktopWindow::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn pointer(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopPointer>(&ctx)?.instance(JSDesktopPointer::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn key(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopKey>(&ctx)?.instance(JSDesktopKey::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn clipboard(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopClipboard>(&ctx)?.instance(JSDesktopClipboard::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn ax(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopAx>(&ctx)?.instance(JSDesktopAx::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn wait(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopWait>(&ctx)?.instance(JSDesktopWait::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn app(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopApp>(&ctx)?.instance(JSDesktopApp::new()))
     }
 
     #[js_method(getter, enumerable)]
     fn process(&self, ctx: JSContext) -> JSResult<JSObject> {
-        require_host_context(&ctx)?;
         Ok(Class::lookup::<JSDesktopProcess>(&ctx)?.instance(JSDesktopProcess::new()))
     }
 }
