@@ -1,8 +1,12 @@
+/// <reference types="@lingxia/types/testing" preserve="true" />
 import type {
   Automation,
   LxAppDriver,
+  LxAppEvalOptions,
+  LxAppEvalTrace,
   NetworkDriver,
   PageDriver,
+  PageEvalOptions,
   PageQueryResult,
   PageTarget,
 } from "@lingxia/types/automation";
@@ -93,12 +97,82 @@ export interface Locator {
   query(): Promise<PageQueryResult>;
 }
 
-export interface TestPage extends PageDriver {
-  testId(id: string, options?: LocatorOptions): Locator;
-  css(selector: string, options?: LocatorOptions): Locator;
+/** A value that crosses the eval boundary unchanged. */
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+/** A page instance as app Logic sees it (`getCurrentPages()` entries). */
+export interface LogicPage<TData = Record<string, unknown>> {
+  readonly route: string;
+  readonly data: TData;
+  setData(patch: Record<string, unknown>): void;
+  /** Resolves once pending `setData` writes reached the View. */
+  flush(): Promise<void>;
+  /** Page methods declared in `Page({...})`. */
+  readonly [member: string]: unknown;
 }
 
-export interface TestApp extends LxAppDriver {
+/** The app instance as app Logic sees it (`getApp()`). */
+export interface LogicApp {
+  readonly [member: string]: unknown;
+}
+
+/**
+ * What a function passed to `t.app.eval(fn)` receives. It runs inside the
+ * app's Logic runtime, so these are the app's own `lx`, `getApp` and
+ * `getCurrentPages` — not globals of the test context.
+ */
+export interface LogicScope {
+  readonly lx: Lx & { automation(): Automation };
+  getApp<T extends LogicApp = LogicApp>(): T | null;
+  getCurrentPages<T extends LogicPage<any> = LogicPage>(): T[];
+}
+
+type PageGlobal<K extends string> = typeof globalThis extends { [P in K]: infer V } ? V : unknown;
+
+/**
+ * What a function passed to `t.app.page.eval(fn)` receives: the page
+ * WebView's `document` and `window`. The recommended test tsconfig has no DOM
+ * library, so both are `unknown` there; cast to the shape you read.
+ */
+export interface PageScope {
+  readonly document: PageGlobal<"document">;
+  readonly window: PageGlobal<"window">;
+}
+
+/**
+ * A function evaluated in the app's Logic runtime. It is sent as source text
+ * (`fn.toString()`), so it must be self-contained: no variables, imports or
+ * helpers from the spec. Pass values as JSON arguments instead.
+ */
+export type LogicFunction<R, A extends JsonValue[]> = (scope: LogicScope, ...args: A) => R | Promise<R>;
+
+/** A function evaluated in the page WebView; self-contained like `LogicFunction`. */
+export type PageFunction<R, A extends JsonValue[]> = (scope: PageScope, ...args: A) => R | Promise<R>;
+
+export interface TestPage extends Omit<PageDriver, "eval"> {
+  testId(id: string, options?: LocatorOptions): Locator;
+  css(selector: string, options?: LocatorOptions): Locator;
+  /** Evaluate a script string in the page WebView. `T` is not validated. */
+  eval<T = unknown>(options: PageEvalOptions): Promise<T>;
+  /**
+   * Run `fn` in the current page's WebView with JSON `args` and resolve to
+   * its JSON result. `fn` must be self-contained (see `PageFunction`).
+   */
+  eval<R, A extends JsonValue[]>(fn: PageFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+}
+
+export interface PageDataOptions {
+  /** Configured page name or route; defaults to the current page. */
+  page?: string;
+}
+
+export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
   readonly page: TestPage;
   /**
    * Spec-scoped: routes are removed when the spec ends, and `requests()`
@@ -106,6 +180,21 @@ export interface TestApp extends LxAppDriver {
    * spans the whole run).
    */
   readonly network: NetworkDriver;
+  /**
+   * Evaluate a script string in app Logic and resolve to its value (the
+   * fixture unwraps the call trace). `T` is not validated.
+   */
+  eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
+  eval<T = unknown>(options: LxAppEvalOptions): Promise<T>;
+  /**
+   * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
+   * JSON result. `fn` must be self-contained (see `LogicFunction`).
+   */
+  eval<R, A extends JsonValue[]>(fn: LogicFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  /** Read the current (or named) page's Logic `data`. `T` is not validated. */
+  pageData<T = Record<string, unknown>>(options?: PageDataOptions): Promise<T>;
+  /** Call a method of the current page's Logic instance and resolve to its JSON result. */
+  callPage<R = unknown>(method: string, ...args: JsonValue[]): Promise<Awaited<R>>;
 }
 
 export interface TestAutomation extends Omit<Automation, "lxapp"> {
@@ -152,18 +241,54 @@ export interface FixtureExpect {
   poll<T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<T>;
 }
 
+export interface WaitForOptions {
+  /** Default: the action timeout (5000 ms), clamped to the spec's remaining budget. */
+  timeout?: number;
+  interval?: number;
+  /**
+   * Whether an error thrown by `read` means "not yet". Default: retry any
+   * error except `TypeError`, `ReferenceError` and `SyntaxError`, which are
+   * programming mistakes and fail at once.
+   */
+  retryIf?: (error: unknown) => boolean;
+}
+
+export interface ArgOptions {
+  /** Throw when the arg is missing. Default: true unless `default` is given. */
+  required?: boolean;
+  /** Value used when the arg is missing. */
+  default?: string;
+}
+
 export interface Fixture {
   /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
   readonly automation: TestAutomation;
   readonly app: TestApp;
   readonly apps: Apps;
-  readonly args: Record<string, string>;
+  /** `--arg` / `--secret-arg` values; a missing key is `undefined`. */
+  readonly args: Readonly<Record<string, string | undefined>>;
+  /**
+   * Read one `--arg` value. Missing, it throws naming the `--arg` to pass,
+   * unless `default` is given or `required` is false.
+   */
+  arg(name: string, options: { required: false; default?: undefined }): string | undefined;
+  arg(name: string, options?: ArgOptions): string;
   step<T>(name: string, body: () => T | Promise<T>): Promise<T>;
   expect: FixtureExpect;
   reject(
     operation: () => unknown | Promise<unknown>,
     expected?: RejectExpected,
   ): Promise<unknown>;
+  /**
+   * Call `read` until `accept` (default: truthy) passes and resolve to that
+   * value. A thrown error retries only when `retryIf` allows it (see
+   * `WaitForOptions`); on timeout the error names the last value or error.
+   */
+  waitFor<T>(
+    read: () => T | Promise<T>,
+    accept?: (value: T) => boolean,
+    options?: WaitForOptions,
+  ): Promise<T>;
   defer(cleanup: () => void | Promise<void>): void;
   attach(name: string, data: unknown): Promise<void>;
   /**

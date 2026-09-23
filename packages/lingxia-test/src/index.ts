@@ -12,6 +12,7 @@ export {
 } from "./version.js";
 export type {
   Apps,
+  ArgOptions,
   AssertionRecord,
   AttachmentRef,
   CaseRecord,
@@ -20,6 +21,14 @@ export type {
   Fixture,
   FixtureExpect,
   JsonReport,
+  JsonValue,
+  LogicApp,
+  LogicFunction,
+  LogicPage,
+  LogicScope,
+  PageDataOptions,
+  PageFunction,
+  PageScope,
   RunMeta,
   LingxiaTestController,
   Locator,
@@ -38,4 +47,5 @@ export type {
   TestApp,
   TestAutomation,
   TestPage,
+  WaitForOptions,
 } from "./types.js";
