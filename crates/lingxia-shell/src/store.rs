@@ -185,7 +185,7 @@ mod tests {
         let store = ShellStore::new(dir.path());
         let state = ShellWindowState {
             sidebar: crate::SidebarChrome::with_expanded(false, 260.0),
-            window: crate::WindowFrame::new(20.0, 30.0, 1280.0, 720.0),
+            window: crate::WindowFrame::new(20.0, 30.0, 1280.0, 720.0, false),
         };
 
         store.save_window_state(&state).unwrap();

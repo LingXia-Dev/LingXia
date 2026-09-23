@@ -29,7 +29,8 @@ pub use sidebar_action::{
     ShellSidebarActionUpdate, SidebarActionCollection, SidebarActionPlacement,
 };
 pub use sidebar_chrome::{
-    DEFAULT_EXPANDED_SIDEBAR_WIDTH, ShellWindowState, SidebarChrome, WindowFrame,
+    DEFAULT_EXPANDED_SIDEBAR_WIDTH, DEFAULT_MAIN_WINDOW_SIZE, MIN_MAIN_WINDOW_SIZE,
+    ShellWindowState, SidebarChrome, WindowFrame, initial_main_window_size,
 };
 pub use store::{PIN_STORE_FILE, SHELL_WINDOW_FILE, ShellStore};
 pub use surface_menu::{
