@@ -284,7 +284,7 @@ mod tests {
         let Commands::Test(options) = cli.command else {
             panic!("expected test command");
         };
-        assert_eq!(options.entry, std::path::PathBuf::from("tests/"));
+        assert_eq!(options.entry, Some(std::path::PathBuf::from("tests/")));
         assert_eq!(options.grep.as_deref(), Some("home"));
         assert!(options.forbid_only);
     }
