@@ -731,7 +731,13 @@ pub fn set_default_window_size(width: i32, height: i32) {
 }
 
 pub fn default_window_size() -> (i32, i32) {
-    DEFAULT_WINDOW_SIZE.get().copied().unwrap_or((1024, 768))
+    default_window_size_override().unwrap_or((1024, 768))
+}
+
+/// The logical size a host set explicitly, if any; without one the host
+/// window fits its first-launch size to the monitor it opens on.
+pub fn default_window_size_override() -> Option<(i32, i32)> {
+    DEFAULT_WINDOW_SIZE.get().copied()
 }
 
 pub fn set_windows_chrome_renderer(renderer: Arc<dyn WindowsChromeRenderer>) {
