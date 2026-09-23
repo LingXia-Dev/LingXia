@@ -30,8 +30,10 @@ pub struct PageStatus {
     pub current: bool,
     /// Whether this page is in the navigation stack.
     pub in_stack: bool,
-    /// Whether the page currently has an attached WebView.
+    /// Whether the page has dispatched `onReady`.
     pub ready: bool,
+    /// Whether the page currently has an attached WebView.
+    pub webview_attached: bool,
 }
 
 /// Resolve a running lxapp by id; empty or "current" means the active app.
@@ -208,8 +210,10 @@ pub fn page_status(app: &Arc<LxApp>, page: &PageInstance, name: Option<&str>) ->
             current: runtime_page.current,
             in_stack: runtime_page.stack_index.is_some(),
             ready: runtime_page.state.ready,
+            webview_attached: runtime_page.state.webview_attached,
         };
     }
+    let state = page.automation_state();
     PageStatus {
         appid: info.appid,
         name: name.map(str::to_string),
@@ -221,7 +225,8 @@ pub fn page_status(app: &Arc<LxApp>, page: &PageInstance, name: Option<&str>) ->
             .page_stack
             .iter()
             .any(|stack_page| page_paths_match(stack_page, &path)),
-        ready: page.webview().is_some(),
+        ready: state.ready,
+        webview_attached: state.webview_attached,
         path,
     }
 }
@@ -241,6 +246,7 @@ pub fn list_page_statuses(app: &Arc<LxApp>) -> Vec<PageStatus> {
                 current: runtime_page.is_some_and(|page| page.current),
                 in_stack: runtime_page.is_some_and(|page| page.stack_index.is_some()),
                 ready: runtime_page.is_some_and(|page| page.state.ready),
+                webview_attached: runtime_page.is_some_and(|page| page.state.webview_attached),
             }
         })
         .collect()

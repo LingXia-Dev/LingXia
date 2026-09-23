@@ -127,6 +127,10 @@ struct WaitProbe {
     editable: bool,
 }
 
+/// Raw `waitFor` states, evaluated on the first match (the `lxdev lxapp page
+/// wait` contract): `hidden` needs an existing, non-visible match, so "no match"
+/// satisfies only `detached`. `@lingxia/test` locators layer stricter,
+/// uniqueness-aware states on top and treat "no match" as hidden.
 fn wait_state_satisfied(state: &str, probe: &WaitProbe) -> bool {
     match state {
         "attached" | "exists" => probe.exists,
