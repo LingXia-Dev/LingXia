@@ -225,6 +225,8 @@ object Lingxia {
                     handleAppLink(context.intent)
                     handleNotificationActivation(context.intent)
                 }
+                val host = (context as? Activity) ?: lastResumedActivity
+                host?.let { com.lingxia.lxapp.DevServiceMark.attach(it) }
             } else {
                 LxLog.e(TAG, "Failed to get home app details from native init.")
             }
@@ -544,8 +546,10 @@ object Lingxia {
                 if (activity is LxAppActivity) {
                     LxApp.setCurrentActivity(activity)
                 }
+                com.lingxia.lxapp.DevServiceMark.attach(activity)
             }
             override fun onActivityDestroyed(activity: Activity) {
+                com.lingxia.lxapp.DevServiceMark.detach(activity)
                 if (lastResumedActivity === activity) lastResumedActivity = null
                 if (activity is LxAppActivity) LxApp.clearCurrentActivity(activity)
             }

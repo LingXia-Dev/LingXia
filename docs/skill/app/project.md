@@ -185,7 +185,7 @@ The authoritative, version-matched field list is a freshly scaffolded `lingxia.y
 - `productVersion` — semver, stamped into every OS package
 - `platforms` — enabled set (`macos`, `windows`, `ios`, `android`, `harmony`)
 
-Optional `lingxiaId` / `lingxiaServer`: [Environment](#environment).
+`lingxiaServer` and optional `lingxiaId`: [Environment](#environment).
 
 `homeAppId` is optional only for a macOS/Windows native-main host with
 `features.appService: false`. Such a host still declares exactly one launch
@@ -394,13 +394,18 @@ appLinks:
 
 Omit an env → no App Links for that build. See [App Links](./applinks.md).
 
-Empty `lingxiaServer` is rejected. Per-env maps must set at least one of `dev` or `prod`. Unknown keys are YAML parse errors.
+Each build requires a server URL for its selected `--env`. A single URL applies
+to both; a per-env map may omit an env, but that env cannot be built. Empty
+URLs and unknown keys are rejected.
+
+A prod build can switch between configured service servers at runtime. The
+package ID, installed icon, and signed App Link hosts stay with the build env.
 
 ### Reading the env at runtime
 
-JS: `lx.host.env` — `'dev' | 'prod'`, fixed at boot.
+JS: `lx.host.env` — `'dev' | 'prod'`, the build env, fixed at boot.
 
-Rust: `lingxia::app::env()` returns `AppEnv`.
+Rust: `lingxia::app::env()` returns that same `AppEnv`.
 
 The build-time plumbing per platform is internal — app authors don't touch it.
 

@@ -195,6 +195,7 @@ fn build_default_host_app_config(
         product_version: env!("CARGO_PKG_VERSION").to_string(),
         lingxia_id: None,
         lingxia_server: None,
+        lingxia_servers: Default::default(),
         env: lingxia_app_context::AppEnv::Dev,
         home_app_id,
         home_app_version,

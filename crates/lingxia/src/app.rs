@@ -17,7 +17,7 @@ use std::sync::OnceLock;
 
 use lingxia_platform::traits::app_runtime::AppRuntime;
 
-pub use lingxia_app_context::AppEnv;
+pub use lingxia_app_context::{AppEnv, ServiceEnvSnapshot as ServiceEnvState};
 pub use lxapp::{
     DisplayLanguageEffectiveSource, DisplayLanguagePreference, DisplayLanguageState, LanguageTag,
 };
@@ -41,6 +41,50 @@ pub fn product_version() -> Option<&'static str> {
 /// Returns the host deployment environment baked into the running product.
 pub fn env() -> AppEnv {
     lingxia_app_context::env()
+}
+
+/// Effective service environment for this process (override or build env).
+pub fn service_env() -> AppEnv {
+    lingxia_app_context::service_env()
+}
+
+/// Current and next-launch service environments, with available targets.
+pub fn service_env_state() -> ServiceEnvState {
+    lingxia_app_context::service_env_snapshot()
+}
+
+/// The environment is saved for the next launch even if requesting exit fails.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ToggleServiceEnvResult {
+    pub state: ServiceEnvState,
+    pub exit_requested: bool,
+    /// When present, ask the user to close and reopen the app manually.
+    pub exit_error: Option<String>,
+}
+
+/// Save the other service environment and request exit. A dev build cannot switch.
+/// Retrying after an exit failure keeps the same target until the next launch.
+/// Inspect `exit_error` to offer a manual restart when the platform cannot exit.
+pub fn toggle_service_env() -> crate::Result<ToggleServiceEnvResult> {
+    let state = lingxia_app_context::prepare_toggle().map_err(service_env_error)?;
+    let exit_error = exit().err().map(|err| err.to_string());
+    Ok(ToggleServiceEnvResult {
+        state,
+        exit_requested: exit_error.is_none(),
+        exit_error,
+    })
+}
+
+fn service_env_error(error: lingxia_app_context::ServiceEnvError) -> crate::Error {
+    match error {
+        lingxia_app_context::ServiceEnvError::NotInitialized => {
+            crate::Error::internal(error.to_string())
+        }
+        lingxia_app_context::ServiceEnvError::Invalid(detail) => {
+            crate::Error::invalid_request(detail)
+        }
+        lingxia_app_context::ServiceEnvError::Persist(detail) => crate::Error::internal(detail),
+    }
 }
 
 /// Returns the configured home LxApp id from the initialized app config.

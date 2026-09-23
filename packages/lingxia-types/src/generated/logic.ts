@@ -1138,8 +1138,11 @@ export type HostAppApi = globalThis.HostAppApi;
  * Build-time deployment environment of the host app (`dev` | `prod`).
  * Surfaced via {@link HostAppApi.env}. Taken from the `env` field in
  * the generated `app.json`. Missing `env` is treated as `'prod'`.
- * This is the host build axis: which server, package-id suffix, publish
- * token, and self-update endpoint the host uses. It is **not** the
+ * This is the immutable host build axis: package-id suffix, publish
+ * token, signed App Link entitlements, and self-update channel.
+ * In-app App Link hosts follow {@link HostAppApi.getServiceEnv} on
+ * the next launch. The mutable service environment is
+ * {@link HostAppApi.toggleServiceEnv}. It is **not** the
  * lxapp publish channel (`LxAppEnvVersion` / `LxAppReleaseType`:
  * `'release' | 'draft'`). Default channel is derived
  * from env (`dev` → `draft`, `prod` → `release`) and can be
@@ -2784,6 +2787,23 @@ export interface FileStats {
   createTime?: number;
 }
 
+export interface HostServiceEnvState {
+  buildEnv: HostAppEnv;
+  /** Environment this process is running; unchanged until the app restarts. */
+  serviceEnv: HostAppEnv;
+  /** Environment that will be used after closing and reopening the app. */
+  nextLaunchEnv: HostAppEnv;
+  available: HostAppEnv[];
+  canToggle: boolean;
+}
+
+export interface HostServiceEnvSwitchResult {
+  state: HostServiceEnvState;
+  exitRequested: boolean;
+  /** If present, the environment was saved; close and reopen the app manually. */
+  exitError?: string;
+}
+
 export interface ImageInfo {
   width: number;
   height: number;
@@ -2963,6 +2983,15 @@ declare global {
      * restricted to the Control app, like the other host-level APIs on `lx.host`.
      */
     screenshot(options?: AppScreenshotOptions): Promise<AppScreenshotResult>;
+    /** Query the running and next-launch service environments. Control app only. */
+    getServiceEnv(): HostServiceEnvState;
+    /**
+     * Save the other service environment for next launch and request exit.
+     * A dev build cannot switch. Control app only. Save failures throw before exit.
+     * If exitRequested is false, ask the user to close and reopen the app manually.
+     * Retrying before restart keeps the same target environment.
+     */
+    toggleServiceEnv(): HostServiceEnvSwitchResult;
     /**
      * Query whether the host app has an update.
      * This host-level capability is restricted to the Control app. A successful

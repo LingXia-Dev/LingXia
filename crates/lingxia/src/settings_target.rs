@@ -558,6 +558,7 @@ mod tests {
             product_version: "1.0.0".to_string(),
             lingxia_id: None,
             lingxia_server: None,
+            lingxia_servers: Default::default(),
             env: AppEnv::Prod,
             home_app_id: "control".to_string(),
             home_app_version: "1.0.0".to_string(),

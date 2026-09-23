@@ -5,8 +5,8 @@ use super::{
 };
 use crate::config::{
     AppEnv, AppLinkHosts, AppLinksConfig, AppStoreConfig, HostAppConfig, IosConfig, LingXiaConfig,
-    LingxiaServer, MacosConfig, PerEnvHosts, ResolvedEnv, SettingsDestination, ThemeConfig,
-    UpdateSigningConfig,
+    LingxiaServer, MacosConfig, PerEnvHosts, PerEnvServer, ResolvedEnv, SettingsDestination,
+    ThemeConfig, UpdateSigningConfig,
 };
 use lingxia_app_context::{ThemeColor, ThemeStyle};
 use std::fs;
@@ -474,6 +474,11 @@ fn generated_app_json_includes_app_link_hosts() {
     let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
 
     assert_eq!(value["appLinks"]["hosts"][0], "www.example.com");
+    assert_eq!(value["appLinks"]["hostsByEnv"]["dev"][0], "www.example.com");
+    assert_eq!(
+        value["appLinks"]["hostsByEnv"]["prod"][0],
+        "www.example.com"
+    );
 }
 
 #[test]
@@ -522,12 +527,85 @@ fn generated_app_json_selects_per_env_app_link_hosts() {
             .unwrap();
     assert_eq!(value["appLinks"]["hosts"][0], "app-dev.example.com");
     assert_eq!(value["appLinks"]["hosts"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        value["appLinks"]["hostsByEnv"]["dev"][0],
+        "app-dev.example.com"
+    );
+    assert_eq!(
+        value["appLinks"]["hostsByEnv"]["prod"][0],
+        "app.example.com"
+    );
 
     let prod = config.resolve_env(AppEnv::Prod).unwrap();
     let value: serde_json::Value =
         serde_json::from_str(&build_app_json_from_config(&config, None, None, &prod).unwrap())
             .unwrap();
     assert_eq!(value["appLinks"]["hosts"][0], "app.example.com");
+    assert_eq!(
+        value["appLinks"]["hostsByEnv"]["dev"][0],
+        "app-dev.example.com"
+    );
+    assert_eq!(
+        value["appLinks"]["hostsByEnv"]["prod"][0],
+        "app.example.com"
+    );
+}
+
+#[test]
+fn generated_app_json_keeps_both_lingxia_servers() {
+    let mut config = LingXiaConfig {
+        app: Some(HostAppConfig {
+            project_name: "demo".into(),
+            rust_lib_dir: None,
+            package_id: "com.example.demo".into(),
+            product_name: "Demo".into(),
+            product_names: Default::default(),
+            product_version: "1.2.3".into(),
+            lingxia_server: Some(LingxiaServer::PerEnv(PerEnvServer {
+                dev: Some("https://dev.example".into()),
+                prod: Some("https://prod.example".into()),
+            })),
+            lingxia_id: None,
+            platforms: vec!["macos".into()],
+            home_app_id: Some("demo-home".into()),
+        }),
+        android: None,
+        ios: None,
+        macos: None,
+        harmony: None,
+        windows: None,
+        features: None,
+        capabilities: None,
+        theme: None,
+        settings_destination: None,
+        browser: None,
+        generated_ui: None,
+        surfaces: None,
+        app_links: None,
+        storage: None,
+        resources: None,
+        splash: None,
+        assets: None,
+        update: None,
+    };
+
+    let prod = config.resolve_env(AppEnv::Prod).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &prod).unwrap())
+            .unwrap();
+    assert_eq!(value["env"], "prod");
+    assert_eq!(value["lingxiaServer"], "https://prod.example");
+    assert_eq!(value["lingxiaServers"]["dev"], "https://dev.example");
+    assert_eq!(value["lingxiaServers"]["prod"], "https://prod.example");
+
+    config.app.as_mut().unwrap().lingxia_server =
+        Some(LingxiaServer::Single("https://shared.example".into()));
+    let dev = config.resolve_env(AppEnv::Dev).unwrap();
+    let value: serde_json::Value =
+        serde_json::from_str(&build_app_json_from_config(&config, None, None, &dev).unwrap())
+            .unwrap();
+    assert_eq!(value["lingxiaServers"]["dev"], "https://shared.example");
+    assert_eq!(value["lingxiaServers"]["prod"], "https://shared.example");
 }
 
 #[test]

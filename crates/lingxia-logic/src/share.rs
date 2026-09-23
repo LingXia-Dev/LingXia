@@ -243,14 +243,11 @@ fn app_link_channel(lxapp: &LxApp) -> Option<&'static str> {
 }
 
 fn first_app_link_host() -> JSResult<String> {
-    let config = lingxia_app_context::app_config().ok_or_else(share_page_unsupported_error)?;
-    let host = config
-        .app_links
-        .as_ref()
-        .and_then(|links| links.hosts.iter().find(|host| !host.trim().is_empty()))
-        .map(|host| host.trim().to_string())
-        .ok_or_else(share_page_unsupported_error)?;
-    Ok(host)
+    let _ = lingxia_app_context::app_config().ok_or_else(share_page_unsupported_error)?;
+    lingxia_app_context::service_app_link_hosts()
+        .into_iter()
+        .find(|host| !host.is_empty())
+        .ok_or_else(share_page_unsupported_error)
 }
 
 fn share_page_unsupported_error() -> rong::RongJSError {

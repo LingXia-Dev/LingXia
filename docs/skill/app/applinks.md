@@ -129,11 +129,14 @@ appLinks:
 #   prod: [app.example.com]
 ```
 
-`lingxia build --env` writes that env's hosts into `app.json` and platform
-association files. Share URLs use the first host of the running build.
-`lingxia new -t native-app` leaves this off. Envs use different package ids
-(`.dev` on `dev`, none on `prod`); each host's `.well-known` file should list
-the matching id. Open URLs carry `channel=` (`release` | `draft`)
+`lingxia build --env` writes that env's hosts into the platform association
+files. That OS association stays fixed after installation. If a prod build
+switches its service env, share URLs and in-app host checks use the new env's
+hosts on the next launch.
+
+`lingxia new -t native-app` leaves App Links off. Envs use different package
+ids (`.dev` on `dev`, none on `prod`); each host's `.well-known` file should
+list the matching id. Open URLs carry `channel=` (`release` | `draft`)
 when they target a non-default lxapp line.
 
 ## Well-Known Verification Files

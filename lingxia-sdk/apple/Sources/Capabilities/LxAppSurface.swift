@@ -610,6 +610,7 @@ enum LxAppSurface {
 
         if kind != kindWindow, let parentWindow = context.parentWindow, let window {
             parentWindow.addChildWindow(window, ordered: .above)
+            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
         }
         LxAppMacAppUIRuntime.dismissIndependentPanelsForSurfaceWindow()
         window?.makeKeyAndOrderFront(nil)
@@ -722,6 +723,7 @@ enum LxAppSurface {
         )
         if let parentWindow = context.parentWindow {
             parentWindow.addChildWindow(window, ordered: .above)
+            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
         }
         window.makeKeyAndOrderFront(nil)
         return true
@@ -1123,6 +1125,7 @@ enum LxAppSurface {
         if window.isVisible { return true }
         if let parentWindow = entry.parentWindow, window.parent == nil {
             parentWindow.addChildWindow(window, ordered: .above)
+            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
         }
         window.makeKeyAndOrderFront(nil)
         // Wake any native overlay components on this page (video player,
@@ -1199,6 +1202,7 @@ enum LxAppSurface {
         if window.isVisible { return true }
         if let parentWindow = entry.parentWindow, window.parent == nil {
             parentWindow.addChildWindow(window, ordered: .above)
+            DevServiceMarkWindow.noteChildWindow(of: parentWindow)
         }
         window.makeKeyAndOrderFront(nil)
         return true

@@ -84,9 +84,12 @@ public enum Lingxia {
         CrashBacktrace.install()
         installNotificationDelegate()
         do {
-            return try LxAppRuntime.shared.initialize()
+            let info = try LxAppRuntime.shared.initialize()
+            DevServiceMarkWindow.attachIfNeeded()
+            return info
         } catch LxAppRuntimeError.alreadyInitialized {
             if let info = LxAppRuntime.shared.info {
+                DevServiceMarkWindow.attachIfNeeded()
                 return info
             }
             throw LxAppRuntimeError.initializationFailed(
@@ -101,6 +104,7 @@ public enum Lingxia {
     @MainActor
     public static func activate(controller: LxAppController) {
         LxAppActiveHost.activate(controller: controller)
+        DevServiceMarkWindow.attachIfNeeded()
     }
 
     public static func enableWebViewDebugging() {
@@ -181,6 +185,7 @@ public enum Lingxia {
         )
         shell.retainAppUIRuntime(hostRuntime)
         try hostRuntime.start()
+        DevServiceMarkWindow.attachIfNeeded()
         return shell
     }
     #else
@@ -224,6 +229,9 @@ public enum Lingxia {
         }
 
         let info = try initializeRuntime()
+        #if os(iOS)
+        DevServiceMarkWindow.attachIfNeeded()
+        #endif
         let controller = LxAppController()
         let config = resolvedShellConfiguration(
             from: configuration,
@@ -233,6 +241,9 @@ public enum Lingxia {
 
         let shell = LxAppShell(controller: controller, configuration: config)
         shell.show()
+        #if os(macOS)
+        DevServiceMarkWindow.attachIfNeeded()
+        #endif
         return shell
     }
 }

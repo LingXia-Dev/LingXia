@@ -12,6 +12,7 @@ mod cache;
 mod display_language;
 mod notification;
 mod screenshot;
+mod service_env;
 mod update;
 
 /// Host app identity. Everything here is fixed for the life of the process;
@@ -178,7 +179,7 @@ pub(crate) fn badge_text(value: JSValue, api: &str) -> JSResult<String> {
 }
 
 /// The native host app around this lxapp — its identity, updates, and window.
-fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
+pub(crate) fn app_namespace(ctx: &JSContext) -> JSResult<JSObject> {
     let lx = ctx.global().get::<_, JSObject>("lx")?;
     match lx.get::<_, JSObject>("host") {
         Ok(obj) => Ok(obj),
@@ -202,6 +203,7 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     cache::init(ctx, &app)?;
     screenshot::init(ctx)?;
     update::init(ctx)?;
+    service_env::init(ctx)?;
 
     Ok(())
 }
