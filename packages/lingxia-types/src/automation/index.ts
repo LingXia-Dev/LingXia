@@ -230,6 +230,16 @@ export interface PageScrollToOptions extends PageTarget {
   css: string;
 }
 
+/**
+ * Raw `page.waitFor` states check the first match of `css`:
+ * - `attached`: at least one match.
+ * - `detached`: no match (also while the page is not yet active).
+ * - `visible`: the first match intersects the viewport.
+ * - `hidden`: the first match exists and does not intersect the viewport; no
+ *   match does not satisfy it (wait for `detached`).
+ * - `enabled` / `editable`: the first match exists and is enabled / editable.
+ * `@lingxia/test` locators apply stricter, uniqueness-aware states.
+ */
 export type PageWaitState =
   | 'attached'
   | 'detached'
@@ -246,7 +256,7 @@ export interface PageWaitForOptions extends PageTarget {
   css: string;
   /** Condition to await (default `visible`). */
   state?: PageWaitState;
-  /** Timeout in ms (default 10000, capped at 60000). */
+  /** Timeout in ms (default 30000, capped at 60000). */
   timeoutMs?: number;
 }
 
@@ -352,14 +362,18 @@ export interface PageDriver {
 // ============================ nav tier ============================
 
 /**
- * Opt-in wait for the landed page. `'ready'` resolves after its `onReady` and
- * rejects if the page is disposed or replaced first (e.g. by the app's own
- * `lx.reLaunch`). Host automation runs only; Logic-side `lx.automation()`
- * rejects it.
+ * When a nav action resolves. `'commit'` (default) resolves once the page
+ * stack changed, before the landed page is ready. `'ready'` also waits for its
+ * `onReady` and rejects if the page is disposed or replaced first (e.g. by the
+ * app's own `lx.reLaunch`); host automation runs only, Logic-side
+ * `lx.automation()` rejects it. The `@lingxia/test` fixture's `t.app.nav`
+ * defaults to `'ready'`.
  */
+export type NavWaitUntil = 'commit' | 'ready';
+
 export interface NavWaitOptions {
-  waitFor?: 'ready';
-  /** Bound for `waitFor` in ms (default 15000). */
+  waitUntil?: NavWaitUntil;
+  /** Bound for `waitUntil: 'ready'` in ms (default 15000, capped at 60000). */
   timeoutMs?: number;
 }
 
@@ -382,8 +396,10 @@ export interface PageInfo {
   name: string | null;
   current: boolean;
   inStack: boolean;
-  /** Whether the page has an attached WebView. */
+  /** Whether the page has dispatched `onReady` (what `waitUntil: 'ready'` awaits). */
   ready: boolean;
+  /** Whether the page currently has an attached WebView; precedes `ready`. */
+  webviewAttached: boolean;
 }
 
 /**
@@ -391,7 +407,7 @@ export interface PageInfo {
  * page name (`redirect` rejects a tab-bar page); `back` pops; `current`/`stack`
  * read. Unlike the JS `lx.navigateTo` family this returns the landed page. By
  * default it resolves once the stack changed, before the destination is ready;
- * pass `waitFor: 'ready'` from a test run to also wait for `onReady`.
+ * pass `waitUntil: 'ready'` from a test run to also wait for `onReady`.
  */
 export interface NavDriver {
   /** Push a page onto the stack. */

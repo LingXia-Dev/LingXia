@@ -4,8 +4,9 @@
 //! `stack`; `back` pops. Semantics come from the shared `lxapp::automation`
 //! lower half (tab-bar guard included), matching `lxdev lxapp nav`.
 //!
-//! Actions resolve once the page stack changed. `waitFor: 'ready'` (host
-//! automation runs only) also waits for the landed page's `onReady`.
+//! Actions resolve once the page stack changed (`waitUntil: 'commit'`, the
+//! default). `waitUntil: 'ready'` (host automation runs only) also waits for
+//! the landed page's `onReady`.
 
 use crate::auto_err;
 use crate::resolve::{js_object_to_json, upgrade_authorized};
@@ -17,8 +18,9 @@ use rong::{
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 
-/// Upper bound accepted for `timeoutMs` on a ready wait.
-const MAX_READY_TIMEOUT_MS: f64 = 300_000.0;
+/// Cap for `timeoutMs` on a ready wait; larger values clamp, like the other
+/// automation waits.
+const MAX_READY_TIMEOUT_MS: f64 = 60_000.0;
 
 #[js_class(clone)]
 pub(crate) struct JSNavDriver {
@@ -36,8 +38,8 @@ impl JSNavDriver {
 #[derive(FromJSObject)]
 struct JSBackOptions {
     delta: Option<u32>,
-    #[js_name = "waitFor"]
-    wait_for: Option<String>,
+    #[js_name = "waitUntil"]
+    wait_until: Option<String>,
     #[js_name = "timeoutMs"]
     timeout_ms: Option<f64>,
 }
@@ -46,49 +48,53 @@ struct JSBackOptions {
 struct JSNavOptions {
     page: String,
     query: Option<JSObject>,
-    #[js_name = "waitFor"]
-    wait_for: Option<String>,
+    #[js_name = "waitUntil"]
+    wait_until: Option<String>,
     #[js_name = "timeoutMs"]
     timeout_ms: Option<f64>,
 }
 
-/// Validate `waitFor` / `timeoutMs`; `None` keeps the default fire-and-forget
-/// behavior.
+/// Parse `waitUntil` / `timeoutMs`. `None` means resolve on commit (the stack
+/// changed); `Some` bounds the wait for the landed page's `onReady`.
+fn parse_wait_until(
+    wait_until: Option<&str>,
+    timeout_ms: Option<f64>,
+) -> Result<Option<Duration>, String> {
+    match wait_until {
+        None | Some("commit") => {
+            if timeout_ms.is_some() {
+                return Err("timeoutMs requires waitUntil: 'ready'".to_string());
+            }
+            Ok(None)
+        }
+        Some("ready") => match timeout_ms {
+            None => Ok(Some(auto::PAGE_READY_TIMEOUT)),
+            Some(ms) if ms.is_finite() && ms > 0.0 => Ok(Some(Duration::from_millis(
+                ms.min(MAX_READY_TIMEOUT_MS) as u64,
+            ))),
+            Some(ms) => Err(format!("timeoutMs must be a positive number, got {ms}")),
+        },
+        Some(other) => Err(format!(
+            "unsupported waitUntil '{other}'; expected 'commit' or 'ready'"
+        )),
+    }
+}
+
+/// [`parse_wait_until`] plus the host-only guard for a ready wait.
 fn ready_wait(
     ctx: &JSContext,
-    wait_for: Option<&str>,
+    wait_until: Option<&str>,
     timeout_ms: Option<f64>,
 ) -> JSResult<Option<Duration>> {
-    let Some(wait_for) = wait_for else {
-        if timeout_ms.is_some() {
-            return Err(auto_err("timeoutMs requires waitFor: 'ready'"));
-        }
-        return Ok(None);
-    };
-    if wait_for != "ready" {
-        return Err(auto_err(format!(
-            "unsupported waitFor '{wait_for}'; expected 'ready'"
-        )));
-    }
+    let wait = parse_wait_until(wait_until, timeout_ms).map_err(auto_err)?;
     // onReady is signalled from the app's Logic thread; lx.automation() in
     // that same Logic must not await it (see `lxapp::automation::navigate`).
-    if crate::host_automation_authority(ctx).is_none() {
+    if wait.is_some() && crate::host_automation_authority(ctx).is_none() {
         return Err(auto_err(
-            "waitFor: 'ready' is only available in host automation runs",
+            "waitUntil: 'ready' is only available in host automation runs",
         ));
     }
-    let timeout = match timeout_ms {
-        None => auto::PAGE_READY_TIMEOUT,
-        Some(ms) if ms.is_finite() && ms > 0.0 && ms <= MAX_READY_TIMEOUT_MS => {
-            Duration::from_millis(ms as u64)
-        }
-        Some(ms) => {
-            return Err(auto_err(format!(
-                "timeoutMs {ms} out of range (1-{MAX_READY_TIMEOUT_MS})"
-            )));
-        }
-    };
-    Ok(Some(timeout))
+    Ok(wait)
 }
 
 #[derive(FromJSObject, Default)]
@@ -103,7 +109,10 @@ struct JSPageInfo {
     current: bool,
     #[js_name = "inStack"]
     in_stack: bool,
+    /// `onReady` has been dispatched.
     ready: bool,
+    #[js_name = "webviewAttached"]
+    webview_attached: bool,
 }
 
 impl From<auto::PageStatus> for JSPageInfo {
@@ -114,6 +123,7 @@ impl From<auto::PageStatus> for JSPageInfo {
             current: status.current,
             in_stack: status.in_stack,
             ready: status.ready,
+            webview_attached: status.webview_attached,
         }
     }
 }
@@ -126,7 +136,7 @@ impl JSNavDriver {
         kind: NavigationType,
     ) -> JSResult<JSPageInfo> {
         let app = upgrade_authorized(ctx, &self.lxapp)?;
-        let wait = ready_wait(ctx, options.wait_for.as_deref(), options.timeout_ms)?;
+        let wait = ready_wait(ctx, options.wait_until.as_deref(), options.timeout_ms)?;
         let query = options.query.as_ref().map(js_object_to_json).transpose()?;
         let (page, name) = auto::navigate(&app, &options.page, query.as_ref(), kind, false)
             .await
@@ -183,7 +193,7 @@ impl JSNavDriver {
         let options = options.0;
         let wait = ready_wait(
             &ctx,
-            options.as_ref().and_then(|o| o.wait_for.as_deref()),
+            options.as_ref().and_then(|o| o.wait_until.as_deref()),
             options.as_ref().and_then(|o| o.timeout_ms),
         )?;
         let delta = options.and_then(|o| o.delta).unwrap_or(1);
@@ -218,16 +228,48 @@ impl JSNavDriver {
         let stack = info
             .page_stack
             .iter()
-            .map(|path| JSPageInfo {
-                name: auto::page_name_for_path(&app, path),
-                current: current
-                    .as_deref()
-                    .is_some_and(|c| auto::page_paths_match(c, path)),
-                in_stack: true,
-                ready: app.get_page(path).and_then(|p| p.webview()).is_some(),
-                path: path.clone(),
+            .map(|path| {
+                let state = app.get_page(path).map(|p| p.automation_state());
+                JSPageInfo {
+                    name: auto::page_name_for_path(&app, path),
+                    current: current
+                        .as_deref()
+                        .is_some_and(|c| auto::page_paths_match(c, path)),
+                    in_stack: true,
+                    ready: state.as_ref().is_some_and(|s| s.ready),
+                    webview_attached: state.as_ref().is_some_and(|s| s.webview_attached),
+                    path: path.clone(),
+                }
             })
             .collect();
         Ok(stack)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wait_until_defaults_to_commit_and_bounds_ready() {
+        assert_eq!(parse_wait_until(None, None), Ok(None));
+        assert_eq!(parse_wait_until(Some("commit"), None), Ok(None));
+        assert_eq!(
+            parse_wait_until(Some("ready"), None),
+            Ok(Some(auto::PAGE_READY_TIMEOUT))
+        );
+        assert_eq!(
+            parse_wait_until(Some("ready"), Some(60_000.0)),
+            Ok(Some(Duration::from_secs(60)))
+        );
+        assert_eq!(
+            parse_wait_until(Some("ready"), Some(300_000.0)),
+            Ok(Some(Duration::from_secs(60)))
+        );
+        assert!(parse_wait_until(Some("ready"), Some(0.0)).is_err());
+        assert!(parse_wait_until(Some("ready"), Some(f64::NAN)).is_err());
+        assert!(parse_wait_until(None, Some(1_000.0)).is_err());
+        assert!(parse_wait_until(Some("commit"), Some(1_000.0)).is_err());
+        assert!(parse_wait_until(Some("load"), None).is_err());
     }
 }
