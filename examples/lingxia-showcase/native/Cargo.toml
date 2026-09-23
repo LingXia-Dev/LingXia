@@ -102,8 +102,10 @@ lingxia-update = { path = "../../../crates/lingxia-update" }
 lingxia-webview = { path = "../../../crates/lingxia-webview" }
 lingxia-windows-sdk = { path = "../../../crates/lingxia-windows-sdk" }
 
-# Servo 0.5 compatibility fixes needed when cross-compiling Android from Windows.
+# Servo 0.5 patches for the optional Android Servo backend (Windows
+# cross-builds, Android fonts, navigation hooks); keep in sync with the root.
 servo-allocator = { path = "../../../crates/lingxia-webview/vendor/servo-allocator" }
+servo-fonts = { path = "../../../crates/lingxia-webview/vendor/servo-fonts" }
 servo-net = { path = "../../../crates/lingxia-webview/vendor/servo-net" }
 servo-storage = { path = "../../../crates/lingxia-webview/vendor/servo-storage" }
 sea-query-rusqlite = { path = "../../../crates/lingxia-webview/vendor/sea-query-rusqlite" }

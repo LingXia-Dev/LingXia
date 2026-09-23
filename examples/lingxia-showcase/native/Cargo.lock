@@ -8382,8 +8382,6 @@ dependencies = [
 [[package]]
 name = "servo-fonts"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6c277c0c2f24758455fd3aea4138938c699f70614c11e31ed7320c3329d9e99"
 dependencies = [
  "app_units",
  "atomic_refcell",
