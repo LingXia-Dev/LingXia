@@ -1,7 +1,7 @@
 import type { PageQueryResult } from "@lingxia/types/automation";
 import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
-import { ActionDeadline, isPreDispatchPageError, isTransientPageError } from "./deadline.js";
+import { ActionDeadline, errorCode, isElementRefusal, isPreDispatchPageError, isTransientPageError } from "./deadline.js";
 import { displayLocation } from "./ids.js";
 import type {
   ExpectOptions,
@@ -263,10 +263,15 @@ export class PageLocator implements Locator {
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
       let reason = "not attached";
+      // The coded driver rejection behind `reason`, if one is: a timeout it
+      // caused reports its code, so `spec.fail({ expected: { code } })` and
+      // the failure line can name it.
+      let cause: unknown;
       while (!deadline.expired()) {
         try {
           last = await this.resolve(deadline, verb);
           reason = this.missText(last);
+          cause = undefined;
           if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
             const script = `document.querySelectorAll(${JSON.stringify(this.selector)})[${last.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})`;
             await this.guard(() => deadline.call("page.eval (scrollIntoView)",
@@ -289,11 +294,11 @@ export class PageLocator implements Locator {
                 } catch (error) {
                   // These native errors are raised before input dispatch. A transport
                   // failure is ambiguous and must never resubmit an action.
-                  const message = error instanceof Error ? error.message : "";
-                  if (!/^Element (?:not found|not interactable):/.test(message) && !isPreDispatchPageError(error)) {
+                  if (!isElementRefusal(error) && !isPreDispatchPageError(error)) {
                     throw new DispatchFailure(error);
                   }
-                  reason = message;
+                  reason = error instanceof Error ? error.message : String(error);
+                  cause = error;
                   previousRect = undefined;
                 }
               }
@@ -306,18 +311,27 @@ export class PageLocator implements Locator {
           if (error instanceof DispatchFailure) throw error.error;
           if (!isTransientPageError(error)) throw error;
           reason = transientReason(error);
+          cause = error;
           previousRect = undefined;
         }
         await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
-      throw new AssertionError(verb, reason, "stable, enabled, unobscured element", [
+      throw withCause(new AssertionError(verb, reason, "stable, enabled, unobscured element", [
         `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
         reason,
         deadline.clampNote(),
         `at ${this.where()}`,
-      ].filter(Boolean).join("\n"));
+      ].filter(Boolean).join("\n")), cause);
     });
   }
+}
+
+/** Carry the `code`/`data` of the driver rejection that kept an action from running. */
+function withCause(error: AssertionError, cause: unknown): AssertionError {
+  const code = errorCode(cause);
+  if (code === undefined) return error;
+  const data = (cause as { data?: unknown }).data;
+  return Object.assign(error, { code, ...(data === undefined ? {} : { data }) });
 }
 
 /** A dispatch error that must propagate as is, never be retried. */

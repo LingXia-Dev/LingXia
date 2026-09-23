@@ -18,6 +18,8 @@ export type {
   CaseRecord,
   ExpectOptions,
   FailOptions,
+  FailurePage,
+  FailureRecord,
   Fixture,
   FixtureExpect,
   JsonReport,
@@ -49,3 +51,4 @@ export type {
   TestPage,
   WaitForOptions,
 } from "./types.js";
+export type { AutomationErrorCode } from "@lingxia/types/automation";

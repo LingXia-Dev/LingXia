@@ -70,14 +70,26 @@ export class ActionDeadline {
   }
 }
 
+/** The stable `code` of a driver rejection, when it carries one. */
+export function errorCode(error: unknown): string | undefined {
+  const code = error && typeof error === "object" ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" ? code : undefined;
+}
+
+/** Page-readiness codes: the target was not reached, so a retry is safe. */
+const PAGE_NOT_READY_CODES = new Set(["E_PAGE_NOT_ACTIVE", "E_PAGE_NOT_READY"]);
+
 /**
  * Errors the page drivers raise while a page is being replaced: the target is
  * not the active instance yet, or its WebView is not attached. They occur
- * before anything reaches the page, so retrying them is safe. Mirrors
- * `is_transient_page_error` in `lingxia-automation` (`page.rs`) plus the
- * `LxAppError::WebView` form other paths surface.
+ * before anything reaches the page, so retrying them is safe. Matched by code
+ * (`E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`); a host that predates the codes
+ * rejects with `E_AUTOMATION`, so the message forms of `is_transient_page_error`
+ * in `lingxia-automation` (`page.rs`) remain the fallback.
  */
 export function isTransientPageError(error: unknown): boolean {
+  const code = errorCode(error);
+  if (code !== undefined && PAGE_NOT_READY_CODES.has(code)) return true;
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
   if (!message) return false;
   const lower = message.toLowerCase();
@@ -97,5 +109,18 @@ export function isTransientPageError(error: unknown): boolean {
  * ambiguous (the input may have landed), so it is not in this set.
  */
 export function isPreDispatchPageError(error: unknown): boolean {
+  const code = errorCode(error);
+  if (code !== undefined && PAGE_NOT_READY_CODES.has(code)) return true;
   return isTransientPageError(error) && !/0x8007139f/i.test(error instanceof Error ? error.message : String(error));
+}
+
+/**
+ * The element was missing or not interactable at dispatch: the native side
+ * refused before any input reached the page, so a retry is safe.
+ */
+export function isElementRefusal(error: unknown): boolean {
+  const code = errorCode(error);
+  if (code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE") return true;
+  const message = error instanceof Error ? error.message : "";
+  return /^Element (?:not found|not interactable):/.test(message);
 }

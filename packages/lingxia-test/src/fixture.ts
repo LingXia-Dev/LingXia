@@ -96,6 +96,8 @@ export class LiveFixture implements Fixture {
   cleanupActive = false;
   lastStepPath: string | undefined;
   failurePhase: FailurePhase | null = null;
+  /** The last recorded action that failed, and the error it failed with. */
+  failedAction: { action: string; error: unknown } | undefined;
   /** Set by `t.skip()`; survives a body that catches the signal. */
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
@@ -400,6 +402,7 @@ export class LiveFixture implements Fixture {
     for (const record of this.openActions) {
       record.status = "timeout";
       record.error = toReportError(reason, record.path);
+      this.noteFailedAction(record.name, record.detail, reason);
     }
     this.openActions.clear();
   }
@@ -427,6 +430,7 @@ export class LiveFixture implements Fixture {
         return await this.guard(op);
       } catch (error) {
         this.recordFailedAction(name, detail, error, 0);
+        this.noteFailedAction(name, detail, error);
         throw error;
       }
     }
@@ -462,6 +466,7 @@ export class LiveFixture implements Fixture {
           error: toReportError(error, previous.path),
         };
         siblings.push(failed);
+        this.noteFailedAction(name, detail, error);
         throw error;
       }
     }
@@ -494,11 +499,16 @@ export class LiveFixture implements Fixture {
       record.status = error instanceof TimeoutError ? "timeout" : "failed";
       record.error = toReportError(error, record.path);
       this.openActions.delete(record);
+      this.noteFailedAction(name, detail, error);
       throw error;
     } finally {
       await this.host.emit({ type: "step_finished", name, path: record.path,
         status: record.status, duration_ms: record.duration_ms, error: record.error });
     }
+  }
+
+  private noteFailedAction(name: string, detail: string | undefined, error: unknown): void {
+    this.failedAction = { action: detail ? `${name} ${detail}` : name, error };
   }
 
   private recordFailedAction(
@@ -1145,7 +1155,10 @@ function safeJson(data: unknown): string {
 export function toReportError(error: unknown, step?: string): ReportError {
   if (error instanceof AssertionError) {
     const stack = remapStack(error.stack);
+    const cause = error as AssertionError & { code?: unknown; data?: unknown };
     return {
+      code: typeof cause.code === "string" ? cause.code : undefined,
+      data: jsonData(cause.data),
       name: error.name,
       message: error.message,
       stack,
@@ -1159,11 +1172,9 @@ export function toReportError(error: unknown, step?: string): ReportError {
   if (error instanceof Error) {
     const stack = remapStack(error.stack);
     const details = error as Error & { code?: unknown; data?: unknown };
-    let data: unknown;
-    try { if (details.data !== undefined) data = JSON.parse(JSON.stringify(details.data)); } catch { /* Non-JSON diagnostic data must not break reporting. */ }
     return {
       code: typeof details.code === "string" ? details.code : undefined,
-      data,
+      data: jsonData(details.data),
       name: error.name,
       message: error.message,
       stack,
@@ -1172,6 +1183,15 @@ export function toReportError(error: unknown, step?: string): ReportError {
     };
   }
   return { name: "Error", message: String(error), step };
+}
+
+function jsonData(data: unknown): unknown {
+  try {
+    return data === undefined ? undefined : JSON.parse(JSON.stringify(data));
+  } catch {
+    // Non-JSON diagnostic data must not break reporting.
+    return undefined;
+  }
 }
 
 function firstLocation(stack: string | undefined): string | undefined {

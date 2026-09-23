@@ -1,5 +1,5 @@
-import { spec, type TestApp } from '../dist/index.js';
-import type { Automation, LxAppDriver, PageDriver, PageQueryResult } from '@lingxia/types/automation';
+import { spec, type AutomationErrorCode, type FailureRecord, type TestApp } from '../dist/index.js';
+import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
@@ -14,6 +14,8 @@ spec('typed test boundary', async t => {
   await t.automation.browser.tabs();
   const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
   landed.webviewAttached.valueOf();
+  landed.instanceId?.toUpperCase();
+  await t.reject(() => app.page.click({css:'#save', page:'devices'}), {code:'E_PAGE_NOT_ACTIVE'});
   await app.nav.back({waitUntil:'ready', timeoutMs:5_000});
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
   await app.nav.to({page:'editor', waitFor:'ready'});
@@ -123,3 +125,10 @@ declare const fixtureApp: TestApp;
 const asRawApp: LxAppDriver = fixtureApp;
 const asRawPage: PageDriver = fixtureApp.page;
 void asRawApp; void asRawPage;
+
+spec.fail('known inactive page', { expected: { code: 'E_PAGE_NOT_ACTIVE' } }, async () => {});
+const knownCode: AutomationErrorCode = AUTOMATION_ERROR_CODES[0];
+// @ts-expect-error Automation codes are a closed union.
+const mistypedCode: AutomationErrorCode = 'E_PAGE_INACTIVE';
+declare const failure: FailureRecord;
+failure.page?.instanceId?.toUpperCase();

@@ -1362,6 +1362,9 @@ fn report(
                 case.status.as_str(),
                 error.message
             );
+            if let Some(line) = failed_at(&error.detail) {
+                eprintln!("  {line}");
+            }
             for field in ["code", "phase", "step", "location", "expected", "actual"] {
                 if let Some(value) = error.detail.get(field).and_then(|v| v.as_str()) {
                     match field {
@@ -1513,6 +1516,91 @@ fn mapped_error_value(
     value
 }
 
+/// One line naming the failed action, the page that was current and the
+/// code, e.g. `failed at page.click [data-testid=save] on page "devices"
+/// (#a1b2) — E_PAGE_NOT_ACTIVE`. Mirrors `failedAt` in `@lingxia/test`;
+/// `None` when the failure names neither an action nor a page.
+fn failed_at(detail: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+    let action = detail.get("failedAction").and_then(|v| v.as_str());
+    let page = detail.get("page").filter(|page| page.is_object());
+    if action.is_none() && page.is_none() {
+        return None;
+    }
+    let mut line = match action {
+        Some(action) => format!("failed at {action}"),
+        None => "failed".to_string(),
+    };
+    if let Some(page) = page {
+        match page.get("name").and_then(|v| v.as_str()) {
+            Some(name) => line.push_str(&format!(" on page {}", json!(name))),
+            None => line.push_str(" on page"),
+        }
+        if let Some(id) = page.get("instanceId").and_then(|v| v.as_str()) {
+            line.push_str(&format!(" (#{id})"));
+        }
+    }
+    if let Some(code) = detail.get("code").and_then(|v| v.as_str()) {
+        line.push_str(&format!(" — {code}"));
+    }
+    Some(line)
+}
+
+/// `failures[]`: every failed, timed-out or xpass case, flat, with what failed
+/// and where. Same shape as the one `@lingxia/test` writes.
+fn failure_records(cases: &[serde_json::Value]) -> serde_json::Value {
+    let failures = cases
+        .iter()
+        .filter(|case| {
+            matches!(
+                case["status"].as_str(),
+                Some("failed" | "timeout" | "xpass")
+            )
+        })
+        .map(|case| {
+            let error = &case["error"];
+            let screenshot = case["attachments"].as_array().and_then(|attachments| {
+                attachments
+                    .iter()
+                    .find(|attachment| attachment["name"] == "failure.png")
+                    .and_then(|attachment| attachment["path"].as_str())
+            });
+            let mut record = serde_json::Map::new();
+            record.insert("id".into(), case["id"].clone());
+            record.insert("title".into(), case["title"].clone());
+            for (key, value) in [
+                ("file", &case["file"]),
+                ("line", &case["line"]),
+                ("phase", &error["phase"]),
+                ("code", &error["code"]),
+            ] {
+                if !value.is_null() {
+                    record.insert(key.into(), value.clone());
+                }
+            }
+            record.insert(
+                "message".into(),
+                error["message"]
+                    .as_str()
+                    .map(|message| json!(message))
+                    .unwrap_or_else(|| case["status"].clone()),
+            );
+            for (key, value) in [
+                ("failedAction", &error["failedAction"]),
+                ("page", &error["page"]),
+            ] {
+                if !value.is_null() {
+                    record.insert(key.into(), value.clone());
+                }
+            }
+            if let Some(screenshot) = screenshot {
+                record.insert("screenshot".into(), json!(screenshot));
+            }
+            serde_json::Value::Object(record)
+        })
+        .collect::<Vec<_>>();
+    serde_json::Value::Array(failures)
+}
+
 fn print_error_causes(causes: &[TestRunError], bundle: &TestBundle, depth: usize) {
     let indent = "  ".repeat(depth);
     for cause in causes {
@@ -1563,6 +1651,9 @@ fn print_case_finished(
             );
             if let Some(error) = error {
                 eprintln!("  {}: {}", error.name.red(), error.message);
+                if let Some(line) = failed_at(&error.detail) {
+                    eprintln!("  {line}");
+                }
             }
         }
     }
@@ -1657,6 +1748,7 @@ fn write_partial_report(
         "xpass": count("xpass"),
         "timeout": count("timeout"),
         "duration_ms": duration_ms,
+        "failures": failure_records(&cases),
         "cases": cases,
     });
     let path = output_dir.join("report.json");
@@ -1802,6 +1894,69 @@ mod tests {
     }
 
     #[test]
+    fn a_failure_line_names_the_action_page_instance_and_code() {
+        let detail = |value: serde_json::Value| value.as_object().unwrap().clone();
+        assert_eq!(
+            failed_at(&detail(json!({
+                "code": "E_PAGE_NOT_ACTIVE",
+                "failedAction": "page.click [data-testid=save]",
+                "page": { "name": "devices", "instanceId": "a1b2" },
+            })))
+            .as_deref(),
+            Some(
+                r#"failed at page.click [data-testid=save] on page "devices" (#a1b2) — E_PAGE_NOT_ACTIVE"#
+            )
+        );
+        assert_eq!(
+            failed_at(&detail(
+                json!({ "page": { "name": null, "instanceId": "c3d4" } })
+            ))
+            .as_deref(),
+            Some("failed on page (#c3d4)")
+        );
+        assert_eq!(
+            failed_at(&detail(json!({ "failedAction": "page.eval" }))).as_deref(),
+            Some("failed at page.eval")
+        );
+        // Code alone is already printed as its own field.
+        assert_eq!(failed_at(&detail(json!({ "code": "E_EVAL_SCRIPT" }))), None);
+    }
+
+    #[test]
+    fn failures_flatten_only_failing_cases() {
+        let cases = vec![
+            json!({ "id": "ok", "title": "ok", "status": "passed" }),
+            json!({
+                "id": "save", "title": "save", "file": "specs/save.ts", "line": 3,
+                "status": "failed",
+                "attachments": [
+                    { "name": "forensics.json", "path": "attachments/save/attempt-1/forensics.json" },
+                    { "name": "failure.png", "path": "attachments/save/attempt-1/failure.png" },
+                ],
+                "error": {
+                    "phase": "body", "code": "E_PAGE_NOT_ACTIVE", "message": "page is not active: devices",
+                    "failedAction": "page.click [data-testid=save]",
+                    "page": { "name": "home", "instanceId": "a1b2" },
+                },
+            }),
+            json!({ "id": "hung", "title": "hung", "status": "timeout" }),
+        ];
+        assert_eq!(
+            failure_records(&cases),
+            json!([
+                {
+                    "id": "save", "title": "save", "file": "specs/save.ts", "line": 3,
+                    "phase": "body", "code": "E_PAGE_NOT_ACTIVE", "message": "page is not active: devices",
+                    "failedAction": "page.click [data-testid=save]",
+                    "page": { "name": "home", "instanceId": "a1b2" },
+                    "screenshot": "attachments/save/attempt-1/failure.png",
+                },
+                { "id": "hung", "title": "hung", "message": "timeout" },
+            ])
+        );
+    }
+
+    #[test]
     fn partial_report_preserves_json_fields() {
         let dir = tempfile::tempdir().unwrap();
         write_partial_report(
@@ -1836,6 +1991,7 @@ mod tests {
             "skipped",
             "timeout",
             "duration_ms",
+            "failures",
         ] {
             assert!(value.get(key).is_some(), "partial report is missing {key}");
         }
@@ -1913,6 +2069,8 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
     for status in ["passed", "failed", "skipped", "timeout", "xfail", "xpass"] {
         report[status] = json!(cases.iter().filter(|c| c["status"] == status).count());
     }
+    // Interruption can regrade cases, so derive the flat list from the result.
+    report["failures"] = failure_records(&cases);
     let title = if outcome.partial {
         "Incomplete test run"
     } else {

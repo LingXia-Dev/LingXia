@@ -10,6 +10,8 @@ import type { SpecApi } from "./spec-api.js";
 import type {
   CaseRecord,
   FailOptions,
+  FailurePage,
+  FailureRecord,
   Fixture,
   JsonReport,
   LingxiaTestController,
@@ -466,13 +468,14 @@ async function run(): Promise<ProtocolReport> {
     }
 
     let evidenceCollected = false;
+    let failurePage: FailurePage | undefined;
     const collectEvidence = async () => {
       if (evidenceCollected || !item.forensics) return;
       evidenceCollected = true;
       try {
         // The whole point of the timeout path is that a wedged app does not
         // stall the run, and these calls bypass `guard` on the raw driver.
-        await within(captureForensics(fixture), FORENSICS_BUDGET_MS, "failure evidence timed out");
+        failurePage = await within(captureForensics(fixture), FORENSICS_BUDGET_MS, "failure evidence timed out");
       } catch (forensicsError) {
         // Evidence failures must never replace the product failure.
         if (forensicsError instanceof TimeoutError) contaminated = true;
@@ -556,6 +559,13 @@ async function run(): Promise<ProtocolReport> {
       record.error.phase = status === "timeout" ? "timeout" : fixture.failurePhase ?? phase;
       // JSC tail calls can omit the authored assertion frame.
       record.error.location ??= `${source.file}:${source.line}:1`;
+      // Only the action that produced this very error explains it: an action
+      // the spec expected to fail (`t.reject`) must not be blamed later.
+      if (fixture.failedAction && fixture.failedAction.error === error) {
+        record.error.failedAction = fixture.failedAction.action;
+      }
+      const page = failurePage ?? pageFromErrorData(record.error.data);
+      if (page) record.error.page = page;
     }
     const history = attempts.get(id) ?? [];
     history.push(record);
@@ -591,6 +601,7 @@ async function run(): Promise<ProtocolReport> {
     ...counts,
     cases: redact.deep(cases),
   };
+  json.failures = failureRecords(json.cases);
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
   await attachText(host, "report.html", renderHtml(json), "text/html; charset=utf-8");
@@ -663,7 +674,44 @@ function asText(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-async function captureForensics(fixture: LiveFixture): Promise<void> {
+/** The current page as a driver error's `data.current` names it. */
+function pageFromErrorData(data: unknown): FailurePage | undefined {
+  const current = data && typeof data === "object" ? (data as { current?: unknown }).current : undefined;
+  return current && typeof current === "object" ? toFailurePage(current) : undefined;
+}
+
+function toFailurePage(value: unknown): FailurePage | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const page = value as { name?: unknown; instanceId?: unknown };
+  const name = typeof page.name === "string" ? page.name : null;
+  const instanceId = typeof page.instanceId === "string" ? page.instanceId : null;
+  return name === null && instanceId === null ? undefined : { name, instanceId };
+}
+
+/** `failures[]`: every failing case, flat, with what failed and where. */
+export function failureRecords(cases: CaseRecord[]): FailureRecord[] {
+  return cases
+    .filter((item) => item.status === "failed" || item.status === "timeout" || item.status === "xpass")
+    .map((item) => {
+      const error = item.error;
+      const screenshot = item.attachments.find((attachment) => attachment.name === "failure.png")?.path;
+      return {
+        id: item.id,
+        title: item.title,
+        file: item.file,
+        line: item.line,
+        phase: error?.phase,
+        code: error?.code,
+        message: error?.message ?? item.status,
+        failedAction: error?.failedAction,
+        page: error?.page,
+        screenshot,
+      };
+    });
+}
+
+/** Attach failure evidence; resolves to the page that was current, if known. */
+async function captureForensics(fixture: LiveFixture): Promise<FailurePage | undefined> {
   try {
     const shot = await fixture.raw.page.screenshot();
     const payload = encodeScreenshot(shot);
@@ -697,6 +745,7 @@ async function captureForensics(fixture: LiveFixture): Promise<void> {
   if (logs !== undefined) {
     await fixture.attachRaw("logs.txt", logs);
   }
+  return toFailurePage(route);
 }
 
 async function fixtureHostLogs(): Promise<string | undefined> {
