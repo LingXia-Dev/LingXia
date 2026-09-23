@@ -336,6 +336,7 @@ LingXia profile:
 | Apple | current native WebView, committed generation, and top-level `WKScriptMessage` frame proof | fail closed |
 | Android API 23+ | a host-issued load token correlated with commit, then a fresh per-document `MessagePort` | stale, external, and reused ports are rejected; navigation, reload, crash, and teardown close the port |
 | Android API 21/22 | no document-scoped transport exists; `JavascriptInterface` is always `Unproven` | rendering continues, but BrowserControl is unavailable; reported as `android_api_below_23` / `android_21_22_unproven_transport` |
+| Android Servo backend | a trusted load is attested by the unique stamped URL its HTML is served at, but `lx://bridge` beacons carry no frame proof and are always `Unproven` | rendering continues, but BrowserControl is unavailable; reported as `servo_unproven_transport` |
 | Windows | WebView2 navigation identity plus current top-level document/generation proof | fail closed on a stale, frame, or source mismatch |
 | HarmonyOS | a host-issued trusted load intent and non-reused native key correlated with the ArkTS page epoch across accepted start and commit, then a fresh per-document port bound to the native WebView, generation, port, and callback token | a stale, external, or reused port, reload, renderer loss, or teardown revokes the binding and fails closed |
 
