@@ -69,6 +69,36 @@ test("t.skip stops the spec and reports it skipped with its reason", async () =>
   assert.match(decodeAttachment(attachments, "junit.xml"), /<skipped message="none found"\/>/);
 });
 
+test("secret args are masked in every report output but reach the spec", async () => {
+  const world = createWorld();
+  const { attachments, events } = installFakeHost(world, {
+    args: { password: "hunter22", API_KEY: "k-123456", pin: "4711-9", user: "alice", secretArgs: JSON.stringify(["pin"]) },
+  });
+  let seen;
+  spec("logs in", { forensics: false }, async (t) => {
+    seen = { ...t.args };
+    expect(`pw=${t.args.password} pin=${t.args.pin}`).toBe("x");
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(seen.password, "hunter22");
+  assert.equal(seen.pin, "4711-9");
+  for (const name of ["report.json", "report.html", "junit.xml"]) {
+    const text = decodeAttachment(attachments, name);
+    for (const secret of ["hunter22", "k-123456", "4711-9"]) {
+      assert.ok(!text.includes(secret), `${name} leaks ${secret}`);
+    }
+  }
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(report.meta.args.password, "***");
+  assert.equal(report.meta.args.API_KEY, "***");
+  assert.equal(report.meta.args.pin, "***");
+  assert.equal(report.meta.args.user, "alice");
+  assert.match(report.cases[0].error.message, /pw=\*\*\* pin=\*\*\*/);
+  assert.ok(!JSON.stringify(events).includes("hunter22"), "events leak the secret");
+  assert.equal(protocol.meta.args.password, "***");
+});
+
 test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeout", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);

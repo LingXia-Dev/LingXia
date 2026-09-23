@@ -3,6 +3,7 @@ import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
+import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
@@ -195,7 +196,13 @@ async function relaunchHome(app: LxAppDriver): Promise<void> {
 
 async function run(): Promise<ProtocolReport> {
   warnVersionSkew();
-  const host = resolveHost();
+  const rawHost = resolveHost();
+  // Secret args reach the spec through `t.args` but never an event or report.
+  const redact = createRedactor(rawHost.args);
+  const host: ReturnType<typeof resolveHost> = {
+    ...rawHost,
+    emit: (event) => rawHost.emit(redact.deep(event)),
+  };
   const started = Date.now();
   clearInline();
 
@@ -483,7 +490,7 @@ async function run(): Promise<ProtocolReport> {
     meta: {
       started_at: new Date(started).toISOString(),
       duration_ms,
-      args: { ...host.args },
+      args: redact.args(host.args),
       platform: host.args.platform,
       framework: host.args.framework,
       subject,
@@ -493,7 +500,7 @@ async function run(): Promise<ProtocolReport> {
     filtered: Boolean(grep || host.args.id || host.args.ids || shard) || hasOnly,
     duration_ms,
     ...counts,
-    cases,
+    cases: redact.deep(cases),
   };
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
