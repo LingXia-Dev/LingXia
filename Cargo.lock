@@ -3328,6 +3328,7 @@ version = "0.18.0"
 dependencies = [
  "base64 0.23.1",
  "futures",
+ "http",
  "lingxia-browser",
  "lingxia-device-io",
  "lingxia-log",
@@ -3338,6 +3339,7 @@ dependencies = [
  "lingxia-webview",
  "lingxia-windows-contract",
  "log",
+ "regex",
  "rong",
  "rong_console",
  "rong_modules",
