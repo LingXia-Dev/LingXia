@@ -1,8 +1,12 @@
-This is `servo-net` 0.5.0 with a minimal read-only network observer for
-embedders. Servo's public embedding API currently exposes request interception,
-while its response and failure data remain internal to the network/devtools
-pipeline.
+This is `servo-net` 0.5.0 with two narrow embedder hooks. Servo's public
+embedding API exposes request interception, while response, failure, and
+download data remain internal to the network/devtools pipeline.
 
-The observer forwards existing request, response, body, and failure data without
-changing fetch behavior. Keep this patch narrow so it can be replaced by an
-upstream API when Servo exposes one.
+- `NetworkObserver` forwards existing request, response, body, and failure
+  data for diagnostics without changing fetch behavior.
+- `NavigationObserver` reports a top-level navigation's network error and
+  lets the embedder claim a top-level response as a download; a claimed fetch
+  is cancelled so the current document stays.
+
+Keep these patches narrow so they can be replaced by upstream APIs when Servo
+exposes them.

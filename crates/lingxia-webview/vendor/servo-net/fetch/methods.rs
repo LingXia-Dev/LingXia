@@ -840,6 +840,19 @@ pub async fn main_fetch(
         response
     };
 
+    // LingXia: report top-level navigation failures and claim downloads.
+    if !recursive_flag {
+        let (observed, claimed) =
+            crate::navigation_observer::observe_navigation_response(request, response);
+        response = observed;
+        if claimed {
+            // The body reader only stops on cancellation; the embedder
+            // fetches the download itself.
+            context.cancellation_listener.cancel();
+            *done_chan = None;
+        }
+    }
+
     // Step 20.
     if request.synchronous {
         // process_response is not supposed to be used
