@@ -2388,6 +2388,22 @@ impl WebViewInner {
                 }
             }
 
+            // Private WKWebView SPI (macOS 10.13+); probed so a WebKit that
+            // drops it only loses the opt-in.
+            #[cfg(target_os = "macos")]
+            if super::keeps_rendering_when_occluded() {
+                let supported: objc2::runtime::Bool = msg_send![
+                    webview,
+                    respondsToSelector: objc2::sel!(_setWindowOcclusionDetectionEnabled:)
+                ];
+                if supported.as_bool() {
+                    let _: () = msg_send![
+                        webview,
+                        _setWindowOcclusionDetectionEnabled: objc2::runtime::Bool::NO
+                    ];
+                }
+            }
+
             // Immediately hide the webview. It will be made visible by Swift once it's sized and positioned.
             let _: () = msg_send![webview, setHidden: true];
 
