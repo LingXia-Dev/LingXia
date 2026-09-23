@@ -185,6 +185,7 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - Use `--id ID`, `--last-failed report.json`, or `--shard 1/3`; shards need separate sessions and output directories.
 - `--retries N` requires file-scoped `spec.reset(async t => { ... })` before every attempt. Restore app/backend state there; `fresh` only relaunches a page. Reports retain attempts and flag flaky passes.
 - Hooks (`spec.reset`/`beforeEach`/`afterEach`) are scoped to the spec file that registers them, including through a shared helper such as `installHooks()` called from the spec file's top level.
+- Give non-ASCII titles an `id` when `--id`/`--last-failed` must survive reordering: generated ids number such specs per file.
 - `spec.afterEach` precedes LIFO `t.defer`; `timeoutCleanup` bounds both. Unsettled work stops subsequent specs.
 - `--timeout-secs` defaults to 300 for the whole run; specs default to 30 seconds.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
