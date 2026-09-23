@@ -43,6 +43,10 @@ pub(crate) fn init_automation_context(
     // A bare `lx` namespace carrying only the automation factory.
     ctx.global().set("lx", JSObject::new(ctx))?;
     init_automation(ctx, shared)?;
+    let run = Arc::downgrade(shared);
+    crate::network::attach_run_scope(ctx, shared.run_id.clone(), move || {
+        run.upgrade().is_some_and(|run| !run.state().is_terminal())
+    });
 
     ctx.register_hidden_class::<AutomationConsole>()?;
     ctx.global().set(

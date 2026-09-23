@@ -10,6 +10,9 @@ mod host;
 mod info;
 mod input;
 mod nav;
+// Test network routes need a host run to own them.
+#[cfg(feature = "runtime")]
+mod network;
 mod page;
 mod resolve;
 #[cfg(feature = "runtime")]
@@ -256,6 +259,11 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<input::JSPagePointer>()?;
     ctx.register_hidden_class::<input::JSPageKey>()?;
     ctx.register_hidden_class::<nav::JSNavDriver>()?;
+    #[cfg(feature = "runtime")]
+    {
+        ctx.register_hidden_class::<network::JSNetworkDriver>()?;
+        ctx.register_hidden_class::<network::JSNetworkRoute>()?;
+    }
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
     ctx.register_hidden_class::<host::JSLxAppManager>()?;
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;
@@ -283,7 +291,13 @@ struct AutomationExtension;
 
 impl lx::LxLogicExtension for AutomationExtension {
     fn init(&self, ctx: &JSContext) -> JSResult<()> {
-        init_automation_context(ctx)
+        init_automation_context(ctx)?;
+        // Only hosts that can run test programs can have routes to consult.
+        #[cfg(feature = "runtime")]
+        if let Err(err) = network::install_logic_fetch_interceptor(ctx) {
+            log::warn!("test network routing unavailable in this Logic context: {err}");
+        }
+        Ok(())
     }
 }
 

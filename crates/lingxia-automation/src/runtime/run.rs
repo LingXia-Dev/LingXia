@@ -233,6 +233,10 @@ impl RunShared {
             error,
             output,
         });
+        // Outside the state lock: route installation takes the route table
+        // lock before reading run state.
+        drop(inner);
+        crate::network::clear_run(&self.run_id);
         true
     }
 
