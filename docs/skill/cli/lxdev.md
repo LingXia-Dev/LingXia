@@ -75,8 +75,8 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 - `screenshot` — PNG of the tab's web content only
 
 **`test`** — bundle and run `@lingxia/test` specs in the session's isolated
-host automation runtime. See [Product testing](../lxapp/testing.md) for the
-execution model, fixtures, assertions, cross-app/browser/external HTTP journeys,
+host automation runtime. See [Product testing](../lxapp/testing.md) for a
+starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
 test layout, and reports. Use `lxdev test --help` for arguments and flags.
 
 **`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
