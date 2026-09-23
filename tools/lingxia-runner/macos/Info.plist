@@ -34,6 +34,12 @@
 	<string>NSApplication</string>
 	<key>NSSupportsAutomaticTermination</key>
 	<false/>
+	<!-- A development host must keep its timers on schedule while its window is
+	     hidden or the display sleeps: App Nap throttling made the devtool
+	     websocket heartbeat time out, and `lingxia dev` ended the session
+	     mid-run. -->
+	<key>NSAppSleepDisabled</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Required to capture photos and videos.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
