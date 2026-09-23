@@ -725,6 +725,13 @@ The aside region is fixed at three slots, grouped by rendering engine:
 - A page opened as a standalone window uses the platform-standard frame — it
   inherits neither the main window's framelessness nor sidebar/aside/action
   chrome.
+- First-launch main window: the shared logical default 1200×800, shrunk to 85%
+  of the work area on smaller screens, never below 480×480 (unless the work
+  area itself is smaller), centered on the screen the user is on (Windows: the
+  monitor under the cursor, at that monitor's DPI). No `lingxia.yaml` field
+  sets it; a host that calls the platform "default window size" API overrides
+  the default but is still fitted to the work area. Later launches restore the
+  persisted frame (§8).
 
 ---
 
@@ -1040,7 +1047,7 @@ Desktop shell persistence:
 
 | Data | Rule |
 |---|---|
-| Main window | Size and position; clamped to the current available screen on restore |
+| Main window | Normal size and position plus maximized/zoomed state; saved on move/resize end, close, and quit in every host build; clamped to the nearest screen's work area on restore, then re-maximized on first show |
 | Sidebar | Width and full/rail/hidden state |
 | Pins | The user's ordered mixed list |
 | Main session | Tab content keys, session entry ids, order, and selection |
