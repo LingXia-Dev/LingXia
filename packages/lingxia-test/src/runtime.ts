@@ -1,4 +1,4 @@
-import { AssertionError, expect, setAssertionSink } from "./expect.js";
+import { expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, TimeoutError, toReportError } from "./fixture.js";
 import { attachText, resolveHost, warnVersionSkew } from "./host.js";
 import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
@@ -411,11 +411,10 @@ async function run(): Promise<ProtocolReport> {
     fixture.endCleanup();
 
     if (item.annotation === "fail") {
-      const bodyAssertion =
-        status === "failed" &&
-        fixture.failurePhase === "body" &&
-        error instanceof AssertionError;
-      if (bodyAssertion) {
+      // The declared failure is whatever the body does to fail: a product
+      // rejection counts as much as an assertion. Setup failures, skips and
+      // timeouts keep their own verdicts.
+      if (status === "failed" && fixture.failurePhase === "body") {
         status = "xfail";
       } else if (status === "passed") {
         status = "xpass";
