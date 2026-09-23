@@ -78,10 +78,39 @@ fn embed_icon_and_manifest(manifest_path: &Path, icon_path: &Path) {
             .to_str()
             .expect("Windows manifest path is not valid UTF-8"),
     );
+    set_product_version_info(&mut res);
     res.compile()
         .expect("failed to compile Windows .exe resources (icon/manifest)");
     println!("cargo:rerun-if-changed={}", manifest_path.display());
     println!("cargo:rerun-if-changed={}", icon_path.display());
+}
+
+/// Explorer, Task Manager and taskbar pins read the exe's version resource;
+/// without this it carries the generated crate's name and `0.1.0`.
+fn set_product_version_info(res: &mut winresource::WindowsResource) {
+    println!("cargo:rerun-if-env-changed=LINGXIA_PRODUCT_NAME");
+    println!("cargo:rerun-if-env-changed=LINGXIA_PRODUCT_VERSION");
+    if let Ok(name) = std::env::var("LINGXIA_PRODUCT_NAME") {
+        res.set("ProductName", &name);
+        res.set("FileDescription", &name);
+    }
+    let Ok(version) = std::env::var("LINGXIA_PRODUCT_VERSION") else {
+        return;
+    };
+    res.set("ProductVersion", &version);
+    res.set("FileVersion", &version);
+    if let Some(packed) = pack_version(&version) {
+        res.set_version_info(winresource::VersionInfo::PRODUCTVERSION, packed);
+        res.set_version_info(winresource::VersionInfo::FILEVERSION, packed);
+    }
+}
+
+/// `major.minor.patch` as the binary `VS_FIXEDFILEINFO` quad (build = 0).
+fn pack_version(version: &str) -> Option<u64> {
+    let core = version.split(['-', '+']).next()?;
+    let mut parts = core.split('.').map(|part| part.parse::<u16>().ok());
+    let (major, minor, patch) = (parts.next()??, parts.next()??, parts.next()??);
+    Some((u64::from(major) << 48) | (u64::from(minor) << 32) | (u64::from(patch) << 16))
 }
 
 fn emit_gui_subsystem_args() {
@@ -143,5 +172,17 @@ fn watch_dir(source: &Path) {
         if entry.file_type().map(|ty| ty.is_dir()).unwrap_or(false) {
             watch_dir(&source_path);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pack_version;
+
+    #[test]
+    fn packs_semver_into_version_quad() {
+        assert_eq!(pack_version("0.1.3"), Some(0x0000_0001_0003_0000));
+        assert_eq!(pack_version("1.2.3-beta.1"), Some(0x0001_0002_0003_0000));
+        assert_eq!(pack_version("70000.0.0"), None);
     }
 }

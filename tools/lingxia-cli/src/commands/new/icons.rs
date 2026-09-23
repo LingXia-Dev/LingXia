@@ -188,7 +188,14 @@ fn generate_app_icons(
                     eprintln!("Skipping HarmonyOS icon generation.");
                 }
             }
-            Platform::Windows => {}
+            Platform::Windows => {
+                if let Err(e) =
+                    crate::platform::windows::generate_icons(&config.target_dir, &icon_path)
+                {
+                    eprintln!("{} {}", "Warning:".yellow(), e);
+                    eprintln!("Skipping Windows icon generation.");
+                }
+            }
         }
     }
 

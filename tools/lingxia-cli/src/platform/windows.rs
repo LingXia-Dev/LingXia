@@ -75,6 +75,11 @@ impl Platform for WindowsPlatform {
             .env("CARGO_TARGET_DIR", &cargo_target_dir)
             .env("LINGXIA_WINDOWS_ASSET_DIR", &assets_dir)
             .args(["build"]);
+        if let Some(app) = config.lingxia_config.as_ref().and_then(|c| c.app.as_ref()) {
+            command
+                .env("LINGXIA_PRODUCT_NAME", &app.product_name)
+                .env("LINGXIA_PRODUCT_VERSION", &app.product_version);
+        }
 
         if matches!(config.profile, super::BuildProfile::Release) {
             command.arg("--release");

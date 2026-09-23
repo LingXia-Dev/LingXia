@@ -3,6 +3,7 @@ use super::distribution::{WindowsPackageFormat, safe_component};
 use crate::config::LingXiaConfig;
 use anyhow::{Context, Result, bail};
 use std::{
+    collections::BTreeMap,
     ffi::OsStr,
     fs,
     path::{Path, PathBuf},
@@ -108,13 +109,11 @@ fn render(
         .to_str()
         .context("Executable name must be UTF-8")?;
     safe_component(exe)?;
-    let shortcut_name: String = app
-        .product_name
-        .chars()
-        .map(|c| if "<>:\"/\\|?*".contains(c) { '-' } else { c })
-        .collect();
-    let shortcut = format!("{shortcut_name} ({app_id})");
+    let shortcut = shortcut_name(&app.product_name);
     safe_component(&shortcut)?;
+    // Installers before per-locale names suffixed the app id; upgrades remove it.
+    let legacy_shortcut = format!("{shortcut} ({app_id})");
+    safe_component(&legacy_shortcut)?;
     let version = semver::Version::parse(&app.product_version)?;
     for component in [version.major, version.minor, version.patch] {
         if component > u64::from(u16::MAX) {
@@ -132,6 +131,7 @@ fn render(
         ("EXE", exe.into()),
         ("ARCH", architecture.into()),
         ("SHORTCUT", shortcut),
+        ("LEGACY_SHORTCUT", legacy_shortcut),
         ("PORTABLE_DATA", portable_data.to_string()),
         ("PAYLOAD", payload.to_string_lossy().into_owned()),
         ("OUTPUT", output.to_string_lossy().into_owned()),
@@ -156,10 +156,51 @@ fn render(
     if format == WindowsPackageFormat::Nsis {
         script.push_str(&super::signing::nsis_uninstaller_signing()?);
         script.push_str(include_str!("../../../templates/windows/setup.nsi"));
+        script.push_str(&select_product_name(&app.product_names)?);
     } else {
         script.push_str(include_str!("../../../templates/windows/portable.nsi"));
     }
     Ok(script)
+}
+
+fn shortcut_name(product_name: &str) -> String {
+    product_name
+        .chars()
+        .map(|c| if "<>:\"/\\|?*".contains(c) { '-' } else { c })
+        .collect()
+}
+
+/// Picks the `productNames` entry for the user's UI language at install time,
+/// falling back to `productName`. A same-language entry (zh-CN for zh-TW)
+/// applies first; an exact locale match overrides it.
+fn select_product_name(names: &BTreeMap<String, String>) -> Result<String> {
+    let mut function = String::from(
+        "Function SelectProductName\n\
+         \x20 StrCpy $ProductName \"${PRODUCT}\"\n\
+         \x20 StrCpy $ShortcutName \"${SHORTCUT}\"\n\
+         \x20 System::Call 'kernel32::GetUserDefaultUILanguage() i .r8'\n\
+         \x20 IntOp $9 $8 & 0x3FF\n",
+    );
+    for exact in [false, true] {
+        for (tag, name) in names {
+            let shortcut = shortcut_name(name);
+            safe_component(&shortcut)?;
+            let (lcid, user) = if exact { ("$7", "$8") } else { ("$6", "$9") };
+            function.push_str(&format!(
+                "  System::Call 'kernel32::LocaleNameToLCID(w \"{}\", i 0) i .r7'\n\
+                 \x20 IntOp $6 $7 & 0x3FF\n\
+                 \x20 ${{If}} {lcid} = {user}\n\
+                 \x20   StrCpy $ProductName \"{}\"\n\
+                 \x20   StrCpy $ShortcutName \"{}\"\n\
+                 \x20 ${{EndIf}}\n",
+                literal(tag)?,
+                literal(name)?,
+                literal(&shortcut)?,
+            ));
+        }
+    }
+    function.push_str("FunctionEnd\n");
+    Ok(function)
 }
 
 #[cfg(test)]
@@ -173,6 +214,15 @@ mod tests {
         }
     }
     #[test]
+    fn product_name_follows_ui_language() {
+        let names = BTreeMap::from([("zh-CN".to_string(), "阜盛".to_string())]);
+        let function = select_product_name(&names).unwrap();
+        assert!(function.contains("LocaleNameToLCID(w \"zh-CN\", i 0)"));
+        assert!(function.contains("StrCpy $ShortcutName \"阜盛\""));
+        // Language-only pass precedes the exact pass so the exact match wins.
+        assert!(function.find("$6 = $9").unwrap() < function.find("$7 = $8").unwrap());
+    }
+    #[test]
     fn compile_installers_when_nsis_available() {
         if find_makensis().is_err() {
             return;
@@ -182,7 +232,7 @@ mod tests {
         fs::create_dir_all(payload.join("assets")).unwrap();
         fs::write(payload.join("app.exe"), b"fixture").unwrap();
         fs::write(payload.join("assets/app.json"), b"{}").unwrap();
-        let config: LingXiaConfig = serde_yaml_ng::from_str("app:\n  projectName: test\n  productName: Test App\n  productVersion: 1.2.3\n  packageId: com.lingxia.packaging_test\n  platforms: [windows]\n").unwrap();
+        let config: LingXiaConfig = serde_yaml_ng::from_str("app:\n  projectName: test\n  productName: Test App\n  productNames:\n    zh-CN: 测试应用\n  productVersion: 1.2.3\n  packageId: com.lingxia.packaging_test\n  platforms: [windows]\n").unwrap();
         for format in [WindowsPackageFormat::Nsis, WindowsPackageFormat::Portable] {
             let out = temp.path().join(format!("{format:?}.exe"));
             package(
