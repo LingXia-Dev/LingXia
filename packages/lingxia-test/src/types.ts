@@ -3,8 +3,6 @@ import type {
   Automation,
   LogicLxAppEvalOptions,
   LxAppDriver,
-  LxAppEvalOptions,
-  LxAppEvalTrace,
   NetworkDriver,
   PageDriver,
   PageEvalOptions,
