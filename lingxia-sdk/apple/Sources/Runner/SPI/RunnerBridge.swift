@@ -279,6 +279,8 @@ enum RunnerBridge {
         // both device shapes); the shell must not auto-reveal or close its
         // window when the last tab goes — that reads as the app quitting.
         shell.autoRevealOnClose = false
+        // Device shapes fix the window size; the app's saved frame is not theirs.
+        shell.persistsWindowFrame = false
         shell.reconcileSidebarAutoHide()
         return shell
     }

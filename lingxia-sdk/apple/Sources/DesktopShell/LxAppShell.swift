@@ -149,6 +149,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         static let sidebarWidth: CGFloat = 148
         static let sidebarHiddenThreshold: CGFloat = 1
         static let mainWindowMinimumSize = CGSize(width: 480, height: 480)
+        static let mainWindowDefaultSize = CGSize(width: 1200, height: 800)
         static let toolbarCenterY: CGFloat = 14
         /// Breathing room the rail leaves after the traffic lights.
         static let trafficLightTrailingGap: CGFloat = 6
@@ -229,6 +230,13 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     nonisolated(unsafe) private var lxAppRegistryObserver: NSObjectProtocol?
     nonisolated(unsafe) private var tabBarStateObserver: NSObjectProtocol?
     nonisolated(unsafe) private var automationWindowMutationObserver: NSObjectProtocol?
+    nonisolated(unsafe) private var appTerminationObserver: NSObjectProtocol?
+    /// Off for hosts that size the window themselves (the runner's device frames).
+    internal var persistsWindowFrame = true
+    private var restoresZoomOnShow = false
+    private var lastNormalWindowFrame: NSRect?
+    private var lastSavedWindowFrame: (frame: NSRect, maximized: Bool)?
+    private var windowMoveSave: DispatchWorkItem?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
@@ -353,8 +361,10 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         self.hostView = LxAppHostView(controller: controller)
         self.startupBehavior = startupBehavior
 
-        let window = Self.createWindow()
+        let (window, restoredMaximized) = Self.createWindow()
         super.init(window: window)
+        lastNormalWindowFrame = window.frame
+        restoresZoomOnShow = restoredMaximized
         LxAppActiveHost.activate(shell: self)
         browserCoordinator.host = self
         setupTabMode()
@@ -370,6 +380,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         lxAppRegistryObserver.map(NotificationCenter.default.removeObserver)
         tabBarStateObserver.map(NotificationCenter.default.removeObserver)
         automationWindowMutationObserver.map(NotificationCenter.default.removeObserver)
+        appTerminationObserver.map(NotificationCenter.default.removeObserver)
         controllerEventsTask?.cancel()
         browserCoordinator.cleanup()
     }
@@ -398,6 +409,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     public func show() {
         showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        applyRestoredZoomIfNeeded()
         guard startupBehavior == .automaticHome,
               !didRequestHomeOpen,
               !tabManager.hasTabs else { return }
@@ -413,9 +425,12 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
 
     // MARK: - Window Creation
 
-    private static func createWindow() -> LxAppWindow {
+    private static func createWindow() -> (window: LxAppWindow, maximized: Bool) {
+        let initialSize = LxAppShellPersistence.initialWindowSize(
+            default: Layout.mainWindowDefaultSize
+        )
         let window = LxAppWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1200, height: 800),
+            contentRect: NSRect(origin: .zero, size: initialSize),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -424,13 +439,41 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         window.minSize = Layout.mainWindowMinimumSize
         window.configureForTabStyle()
         window.center()
+        var maximized = false
         if let restored = LxAppShellPersistence.restoredWindowFrame(
             minSize: Layout.mainWindowMinimumSize
         ) {
-            window.setFrame(restored, display: false)
+            window.setFrame(restored.frame, display: false)
+            maximized = restored.maximized
         }
         window.isReleasedWhenClosed = false
-        return window
+        return (window, maximized)
+    }
+
+    /// Zoom must run on an on-screen window so AppKit records the restored
+    /// frame as the one un-zoom returns to.
+    private func applyRestoredZoomIfNeeded() {
+        guard restoresZoomOnShow else { return }
+        restoresZoomOnShow = false
+        guard persistsWindowFrame, let window, window.isVisible, !window.isZoomed else { return }
+        window.zoom(nil)
+    }
+
+    private func saveWindowFrame() {
+        guard persistsWindowFrame, let window else { return }
+        let fullScreen = window.styleMask.contains(.fullScreen)
+        let maximized = !fullScreen && window.isZoomed
+        if !fullScreen && !maximized {
+            lastNormalWindowFrame = window.frame
+        }
+        // AppKit keeps the pre-zoom frame private, so the last unzoomed frame
+        // seen here stands in for it; `maximized` restores the zoom itself.
+        let frame = (fullScreen || maximized) ? (lastNormalWindowFrame ?? window.frame) : window.frame
+        if let last = lastSavedWindowFrame, last.frame == frame, last.maximized == maximized {
+            return
+        }
+        lastSavedWindowFrame = (frame, maximized)
+        LxAppShellPersistence.setWindowFrame(frame, maximized: maximized)
     }
 
     private func setupTabMode() {
@@ -472,9 +515,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     public func windowWillClose(_ notification: Notification) {
-        if let window {
-            LxAppShellPersistence.setWindowFrame(window.frame)
-        }
+        saveWindowFrame()
         for (_, viewController) in viewControllers {
             viewController.destroyNativeComponents()
         }
@@ -493,7 +534,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     public func windowShouldClose(_ sender: NSWindow) -> Bool {
-        LxAppShellPersistence.setWindowFrame(sender.frame)
+        saveWindowFrame()
         guard startupBehavior == .managedByAppUI else { return true }
         onManagedWindowCloseRequested?()
         return false
@@ -503,6 +544,18 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
         reportSurfaceWidth()
+    }
+
+    public func windowDidEndLiveResize(_ notification: Notification) {
+        saveWindowFrame()
+    }
+
+    public func windowDidMove(_ notification: Notification) {
+        // Fires for every step of a drag; save once the window settles.
+        windowMoveSave?.cancel()
+        let save = DispatchWorkItem { [weak self] in self?.saveWindowFrame() }
+        windowMoveSave = save
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: save)
     }
 
     public func windowWillStartLiveResize(_ notification: Notification) {
@@ -838,6 +891,15 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
                 Task { @MainActor in
                     self?.panelFramePreservationGeneration &+= 1
                 }
+            }
+        }
+        appTerminationObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.saveWindowFrame()
             }
         }
         sidebarRefreshObserver = NotificationCenter.default.addObserver(
