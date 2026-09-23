@@ -15,7 +15,7 @@ spec("route Logic fetch to a faked error and a transport failure", {
 
   const patch = await app.network.route(
     { url: `${BASE}/devices/*`, method: 'PATCH', times: 1 },
-    { status: 501, json: { error: 'unsupported_by_firmware' } },
+    { status: 501, json: { error: 'not_implemented' } },
   );
   await app.network.route(`${BASE}/clients`, { abort: 'failed' });
 
@@ -47,7 +47,7 @@ spec("route Logic fetch to a faked error and a transport failure", {
 
   expect(result.status).toBe(501);
   expect(result.contentType).toBe('application/json');
-  expect(result.body.error).toBe('unsupported_by_firmware');
+  expect(result.body.error).toBe('not_implemented');
   expect(result.failure).toEqual({ name: 'TypeError', message: 'fetch failed' });
 
   const patched = await patch.requests();
