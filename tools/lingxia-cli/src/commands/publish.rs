@@ -14,7 +14,6 @@ use crate::platform::detector::PlatformType;
 pub struct PublishOptions {
     pub token: Option<String>,
     pub lingxia_server: Option<String>,
-    pub lingxia_id: Option<String>,
     pub package: Option<String>,
     pub platform: Option<String>,
     pub env: Option<String>,
@@ -52,12 +51,6 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     let cwd = env::current_dir()?;
 
     let mut meta = resolve_meta(&cwd, opts.env.as_deref(), opts.channel.as_deref())?;
-    // Known before packaging, so a missing product fails before the build.
-    let package_product = if meta.target == "app" {
-        None
-    } else {
-        Some(resolve_lingxia_id(&cwd, &meta.target, opts.lingxia_id)?)
-    };
     let package = resolve_package_for_publish(
         &cwd,
         &meta,
@@ -77,13 +70,9 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         meta.env = metadata.env;
         // Match the lingxiaId baked into the package; host updates are
         // env-scoped and do not carry a channel.
-        if let Some(id) = metadata.lingxia_id {
-            meta.target_id = id;
-        }
+        meta.target_id = metadata.lingxia_id;
         meta.channel = None;
     }
-    // The host app is its own product.
-    let lingxia_id = package_product.unwrap_or_else(|| meta.target_id.clone());
     // Resolve server and token after env is known. The token is keyed by
     // (canonical server URL, env) in the wallet.
     let lingxia_server = resolve_lingxia_server(&cwd, meta.env, opts.lingxia_server)?;
@@ -100,13 +89,12 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
         .map(|c| format!(" ({c})"))
         .unwrap_or_default();
     println!(
-        "{}  Publishing {} {} v{}{} to {} …",
+        "{}  Publishing {} {} v{}{} …",
         "→".cyan(),
         meta.target,
         meta.target_id.bold(),
         meta.version.bold(),
         channel_label,
-        lingxia_id.bold(),
     );
     println!("   Package: {}", package_path.display());
 
@@ -117,9 +105,6 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
     if !meta.min_runtime.is_empty() {
         println!("   minRuntime: {}", meta.min_runtime);
     }
-
-    let upload_url = format!("{lingxia_server}/api/v1/package/upload");
-    println!("   Upload → {upload_url}");
 
     let channel = meta.channel.as_deref().unwrap_or("");
     let platform = match meta.target.as_str() {
@@ -143,32 +128,18 @@ pub fn execute(opts: PublishOptions) -> Result<()> {
             sha256: &sha256,
         },
     )?;
-
-    let mut fields: Vec<(&str, String)> = vec![
-        ("lingxiaId", lingxia_id.clone()),
-        ("kind", meta.target.clone()),
-        ("version", meta.version.clone()),
-        ("sha256", sha256.clone()),
-    ];
-    // A host-app package is the product itself; only packages inside it have an id.
-    if meta.target != "app" {
-        fields.push(("id", meta.target_id.clone()));
-    }
-    if let Some(channel) = &meta.channel {
-        fields.push(("channel", channel.clone()));
-    }
-    if meta.target == "app" {
-        fields.push(("platform", platform));
-    }
-    if !meta.min_runtime.is_empty() {
-        fields.push(("minRuntime", meta.min_runtime.clone()));
-    }
-    fields.extend(
-        extra
-            .iter()
-            .map(|(name, value)| (name.as_str(), value.clone())),
-    );
-    let field_refs: Vec<(&str, &str)> = fields.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let (upload_url, fields) = publish_upload(
+        &lingxia_server,
+        &meta,
+        package.platform.as_deref(),
+        &sha256,
+        &extra,
+    )?;
+    println!("   Upload → {upload_url}");
+    let field_refs: Vec<(&str, &str)> = fields
+        .iter()
+        .map(|(name, value)| (name.as_str(), value.as_str()))
+        .collect();
     let boundary = format!("----LingXiaBoundary{}", rand_hex());
     let body = build_multipart(&boundary, &field_refs, &file_name, &file_data);
     let content_type = format!("multipart/form-data; boundary={boundary}");
@@ -298,8 +269,8 @@ fn clean_arg(value: Option<String>, flag: &str) -> Result<Option<String>> {
     }
 }
 
-/// A publish server must be an absolute http(s) URL (the upload endpoint is
-/// built as `{server}/api/v1/package/upload`).
+/// A publish server must be an absolute http(s) URL. The upload path is
+/// `/api/v2/lingxia/{lingxiaId}/package` or `/api/v2/lxapp/{appId}/package`.
 fn validate_publish_server(server: &str) -> Result<()> {
     if !(server.starts_with("http://") || server.starts_with("https://")) {
         bail!("--server must be an http(s) URL (got '{server}')");
@@ -469,11 +440,11 @@ fn normalize_channel(s: &str) -> Result<String> {
     }
 }
 
+#[derive(Debug)]
 struct AppPackageMetadata {
     env: AppEnv,
-    /// Suffixed lingxiaId baked into the package, if any. Authoritative for
-    /// publish because the runtime resolves updates against this exact id.
-    lingxia_id: Option<String>,
+    /// The runtime resolves updates against this exact packaged id.
+    lingxia_id: String,
 }
 
 fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
@@ -511,8 +482,10 @@ fn read_app_package_metadata(path: &Path) -> Result<AppPackageMetadata> {
     let lingxia_id = value
         .get("lingxiaId")
         .and_then(|value| value.as_str())
+        .map(str::trim)
         .filter(|s| !s.is_empty())
-        .map(str::to_string);
+        .context("lingxiaId is missing from packaged app.json")?
+        .to_string();
     Ok(AppPackageMetadata { env, lingxia_id })
 }
 
@@ -669,26 +642,44 @@ fn resolve_token(env: AppEnv, server: &str, token_arg: Option<String>) -> Result
     );
 }
 
-/// The product an lxapp or plugin is published to: `--lingxia-id`, then
-/// `app.lingxiaId` in `lingxia.yaml`.
-fn resolve_lingxia_id(cwd: &Path, target: &str, flag: Option<String>) -> Result<String> {
-    if let Some(id) = flag {
-        let id = id.trim();
-        if id.is_empty() {
-            bail!("--lingxia-id cannot be empty");
+fn publish_upload(
+    server: &str,
+    meta: &PackageMeta,
+    platform: Option<&str>,
+    sha256: &str,
+    extra: &[(String, String)],
+) -> Result<(String, Vec<(String, String)>)> {
+    let server = server.trim_end_matches('/');
+    let id = urlencoding::encode(meta.target_id.trim());
+    let url = match meta.target.as_str() {
+        "app" => {
+            let platform = platform.context("host app publish requires --platform")?;
+            format!(
+                "{server}/api/v2/lingxia/{id}/package?platform={}",
+                urlencoding::encode(platform)
+            )
         }
-        return Ok(id.to_string());
+        "lxapp" | "lxplugin" => {
+            let channel = meta
+                .channel
+                .as_deref()
+                .context("lxapp publish requires a channel")?;
+            format!(
+                "{server}/api/v2/lxapp/{id}/package?channel={}",
+                urlencoding::encode(channel)
+            )
+        }
+        other => bail!("unknown publish target: {other}"),
+    };
+    let mut fields = vec![
+        ("version".to_string(), meta.version.clone()),
+        ("sha256".to_string(), sha256.to_string()),
+    ];
+    if !meta.min_runtime.is_empty() {
+        fields.push(("minRuntime".to_string(), meta.min_runtime.clone()));
     }
-    if cwd.join(HOST_CONFIG_FILE).exists()
-        && let Ok(cfg) = LingXiaConfig::load(cwd)
-        && let Some(id) = cfg
-            .app
-            .and_then(|app| app.lingxia_id)
-            .filter(|id| !id.trim().is_empty())
-    {
-        return Ok(id);
-    }
-    bail!("Use --lingxia-id to name the product this {target} is published to");
+    fields.extend(extra.iter().cloned());
+    Ok((url, fields))
 }
 
 fn resolve_lingxia_server(
@@ -1041,9 +1032,9 @@ fn build_multipart(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_multipart, find_or_resolve_package, normalize_channel, normalize_platform,
-        package_matches, publish_build_args, read_app_package_metadata, resolve_lingxia_id,
-        resolve_meta, resolve_publish_platform, signed_multipart_fields,
+        PackageMeta, build_multipart, find_or_resolve_package, normalize_channel,
+        normalize_platform, package_matches, publish_build_args, publish_upload,
+        read_app_package_metadata, resolve_meta, resolve_publish_platform, signed_multipart_fields,
     };
     use crate::config::AppEnv;
     use std::fs;
@@ -1218,15 +1209,65 @@ app:
     }
 
     #[test]
-    fn build_multipart_includes_app_platform_field() {
+    fn build_multipart_includes_text_fields() {
         let body = build_multipart(
             "boundary",
-            &[("kind", "app"), ("platform", "android")],
+            &[("version", "1.0.0"), ("sha256", "abc")],
             "app-release.apk",
             b"apk",
         );
         let body = String::from_utf8(body).unwrap();
-        assert!(body.contains("name=\"platform\"\r\n\r\nandroid"));
+        assert!(body.contains("name=\"version\"\r\n\r\n1.0.0"));
+        assert!(body.contains("name=\"sha256\"\r\n\r\nabc"));
+    }
+
+    #[test]
+    fn publish_upload_puts_identity_in_the_path() {
+        let host = PackageMeta {
+            target: "app".into(),
+            target_id: "host app".into(),
+            version: "1.2.0".into(),
+            env: AppEnv::Prod,
+            channel: None,
+            min_runtime: String::new(),
+        };
+        let (url, fields) =
+            publish_upload("https://api.example.com/", &host, Some("macos"), "abc", &[]).unwrap();
+        assert_eq!(
+            url,
+            "https://api.example.com/api/v2/lingxia/host%20app/package?platform=macos"
+        );
+        assert_eq!(
+            fields,
+            vec![
+                ("version".to_string(), "1.2.0".to_string()),
+                ("sha256".to_string(), "abc".to_string()),
+            ]
+        );
+
+        let lxapp = PackageMeta {
+            target: "lxapp".into(),
+            target_id: "shop/home".into(),
+            version: "1.0.1".into(),
+            env: AppEnv::Dev,
+            channel: Some("draft".into()),
+            min_runtime: "0.17.0".into(),
+        };
+        let (url, fields) =
+            publish_upload("https://api.example.com", &lxapp, None, "def", &[]).unwrap();
+        assert_eq!(
+            url,
+            "https://api.example.com/api/v2/lxapp/shop%2Fhome/package?channel=draft"
+        );
+        assert_eq!(
+            field_names(&fields),
+            vec!["version", "sha256", "minRuntime"]
+        );
+        assert!(publish_upload("https://api.example.com", &host, None, "abc", &[]).is_err());
+    }
+
+    fn field_names(fields: &[(String, String)]) -> Vec<&str> {
+        fields.iter().map(|(name, _)| name.as_str()).collect()
     }
 
     fn sign_request(sha256: &str) -> lingxia_update::SignRequest<'_> {
@@ -1329,24 +1370,6 @@ app:
     }
 
     #[test]
-    fn lxapp_publish_names_its_product() {
-        let temp = TempDir::new().unwrap();
-        fs::write(
-            temp.path().join("lxapp.json"),
-            br#"{"appId":"demo","version":"1.0.0","minRuntime":"0.17.0","pages":["index.html"]}"#,
-        )
-        .unwrap();
-        let meta = resolve_meta(temp.path(), None, None).unwrap();
-
-        assert!(resolve_lingxia_id(temp.path(), &meta.target, None).is_err());
-        assert!(resolve_lingxia_id(temp.path(), &meta.target, Some(" ".into())).is_err());
-        assert_eq!(
-            resolve_lingxia_id(temp.path(), &meta.target, Some("shop".into())).unwrap(),
-            "shop"
-        );
-    }
-
-    #[test]
     fn lxapp_publish_defaults_channel_from_env() {
         let temp = TempDir::new().unwrap();
         fs::write(
@@ -1426,14 +1449,14 @@ android:
             &apk,
             &[(
                 "assets/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev"}"#,
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"dev","lingxiaId":"demo.dev"}"#,
             )],
         );
 
         let metadata = read_app_package_metadata(&apk).unwrap();
 
         assert_eq!(metadata.env, AppEnv::Dev);
-        assert!(metadata.lingxia_id.is_none());
+        assert_eq!(metadata.lingxia_id, "demo.dev");
     }
 
     #[test]
@@ -1444,7 +1467,7 @@ android:
             &zip,
             &[(
                 "Demo.app/Contents/Resources/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"prod"}"#,
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","env":"prod","lingxiaId":"demo"}"#,
             )],
         );
 
@@ -1461,7 +1484,7 @@ android:
             &apk,
             &[(
                 "assets/app.json",
-                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0"}"#,
+                br#"{"productName":"Demo","productVersion":"1.0.0","homeAppId":"demo","homeAppVersion":"1.0.0","lingxiaId":"demo"}"#,
             )],
         );
 
@@ -1484,7 +1507,17 @@ android:
         let metadata = read_app_package_metadata(&apk).unwrap();
 
         assert_eq!(metadata.env, AppEnv::Dev);
-        assert_eq!(metadata.lingxia_id.as_deref(), Some("demo.dev"));
+        assert_eq!(metadata.lingxia_id, "demo.dev");
+    }
+
+    #[test]
+    fn publish_rejects_app_package_without_lingxia_id() {
+        let temp = TempDir::new().unwrap();
+        let apk = temp.path().join("app.apk");
+        write_zip(&apk, &[("assets/app.json", br#"{"env":"prod"}"#)]);
+
+        let error = read_app_package_metadata(&apk).unwrap_err().to_string();
+        assert!(error.contains("lingxiaId is missing"), "{error}");
     }
 
     fn write_zip(path: &std::path::Path, entries: &[(&str, &[u8])]) {
