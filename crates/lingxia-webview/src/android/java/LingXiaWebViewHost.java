@@ -6,6 +6,7 @@ import android.webkit.ValueCallback;
 /** Common host contract for Android system WebView and alternative renderers. */
 public interface LingXiaWebViewHost {
     View getHostView();
+    long getNativeViewId();
     String getAppId();
     String getCurrentPath();
     long getSessionId();
@@ -15,6 +16,9 @@ public interface LingXiaWebViewHost {
     boolean canGoForward();
     boolean usesStrictSecurityProfile();
     boolean retainsSurfaceWhenHidden();
+    /** Document scroll offset in device pixels, for native overlays. */
+    int getContentScrollX();
+    int getContentScrollY();
     void reload();
     void goBack();
     void goForward();
