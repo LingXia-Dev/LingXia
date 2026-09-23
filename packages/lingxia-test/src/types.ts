@@ -47,9 +47,14 @@ export interface LocatorOptions extends PageTarget {
 }
 
 /**
- * `attached`: exactly one match in the DOM, in the viewport or not (content of
- * a sheet or long page that overflows the Runner viewport). `visible`: that
- * match intersects the viewport. `hidden`: no visible match. `detached`: none.
+ * Locator states are strict about ambiguity (narrow with `.nth()`):
+ * - `attached`: exactly one match in the DOM, in the viewport or not (content
+ *   of a sheet or long page that overflows the Runner viewport).
+ * - `visible`: exactly one match, and it intersects the viewport.
+ * - `hidden`: no visible match, including no match at all.
+ * - `detached`: no match.
+ * Several matches satisfy only `hidden` (when none is visible). The raw
+ * `page.waitFor` driver checks the first match instead; see `PageWaitState`.
  */
 export type LocatorState = "attached" | "detached" | "visible" | "hidden";
 

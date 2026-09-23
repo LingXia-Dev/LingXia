@@ -139,8 +139,14 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
 - JSON keeps `timeout`, `xfail`, and `xpass` distinct; unexpected passes fail the run.
 - Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.
-  `locator.waitFor({ state })` waits for `visible` (default), `attached` (in the DOM, even outside
-  the viewport, e.g. an overflowing sheet), `hidden`, or `detached`.
-- `t.app.nav.*` resolves once the page stack changed, before the page is ready. Pass
-  `waitFor: 'ready'` (optional `timeoutMs`, default 15000) to await the landed page's `onReady`;
-  it rejects if the app replaced that page first (e.g. its own pending `lx.reLaunch`).
+  `locator.waitFor({ state })` waits for `visible` (default: exactly one match, in the viewport),
+  `attached` (exactly one match, even outside the viewport, e.g. an overflowing sheet), `hidden`
+  (no visible match, including none), or `detached` (no match). Narrow multiple matches with `.nth()`.
+  Raw `t.app.page.waitFor({ css, state })` checks the first match instead: its `hidden` needs an
+  existing, non-visible element, so wait for `detached` when the element may be removed.
+- `t.app.nav.*` waits for the landed page's `onReady` (`timeoutMs`, default 15000, max 60000) and
+  rejects if the app replaced that page first (e.g. its own `lx.reLaunch`). Pass
+  `waitUntil: 'commit'` to resolve once the page stack changed. `fresh` relaunches wait too, but accept a
+  home page that hands off to another page.
+  Raw `lx.automation()` nav defaults to `'commit'`. `PageInfo.ready` means `onReady` ran;
+  `webviewAttached` means the page has a WebView.

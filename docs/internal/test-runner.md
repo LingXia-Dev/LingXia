@@ -24,6 +24,17 @@ received artifacts. Keep the following invariants when changing these layers:
   a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
   poll gap) through the normal cancel path. `lingxia dev` likewise defers
   file-watch reloads while it relays an unfinished run.
+- Fixture nav (`t.app.nav.*` and the `fresh` relaunch) sends `waitUntil: 'ready'`
+  unless the spec chose `waitUntil`. The driver then polls the landed instance's
+  `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
+  thread; Logic-side `lx.automation()` rejects `'ready'` because awaiting its own
+  `onReady` would deadlock. The raw driver default stays `'commit'`. `fresh`
+  ignores only the "disposed before ready" rejection (the home page's own
+  hand-off); a ready timeout still fails the spec.
+- Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
+  (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
+  uniqueness-aware (`attached`/`visible` need exactly one match, `hidden`
+  includes no match). Keep both documented contracts when changing either.
 - The spec timeout is a timer on the test JS worker; it cannot fire while a
   driver call blocks that thread in native code. The manager's run deadline and
   lease run off-worker and interrupt JS, and a worker still stuck after the
