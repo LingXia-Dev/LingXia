@@ -54,9 +54,11 @@ for flags and the [development loop](../SKILL.md#the-development-loop) for reloa
 | External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
 
 The automation root is typed by `@lingxia/types/automation`; platform support
-and selectors follow [lxdev](../cli/lxdev.md). Browser automation targets host
-browser tabs; desktop automation requires a supported macOS/Windows dev/test
-host. `t.app.surfaceLayout()` reads the host render plan. Restore any existing
+and selectors follow [lxdev](../cli/lxdev.md). In a test program
+`lx.automation()` is `HostRunAutomation`; app Logic gets the narrower
+`Automation`, which has no `network`, nav `waitUntil: 'ready'`, or eval call
+tracing. Browser automation targets host browser tabs; desktop automation
+requires a macOS/Windows host built with it, such as the Runner. `t.app.surfaceLayout()` reads the host render plan. Restore any existing
 shell pins or device settings changed by a test.
 
 ## Context and assertions

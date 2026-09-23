@@ -50,7 +50,9 @@ editor applies the correct environment to each file.
 - Type `lx.` in the editor and hover a member to read its generated JSDoc.
 - Import reusable shapes from the package root, for example
   `import type { ScanCodeResult } from '@lingxia/types'`.
-  Automation types come from `@lingxia/types/automation`.
+  Automation types come from `@lingxia/types/automation`. In Logic,
+  `lx.automation()` needs the `automation` privilege for this app and `host`
+  for other apps and host tiers ([grants](../native/permissions.md)).
 - For the complete declaration, inspect
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
 

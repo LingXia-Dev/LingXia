@@ -110,6 +110,25 @@ received artifacts. Keep the following invariants when changing these layers:
 - `@lingxia/types/automation` describes the raw host drivers. Keep Logic eval,
   WebView eval, browser tabs, and OS input as separate targets. Locators and
   retry policy belong to `@lingxia/test`, not the product automation runtime.
+- One runtime object, two typed roots. `Automation` (the global `lx.automation()`
+  of app Logic) returns `LogicLxAppDriver`; `HostRunAutomation` (the
+  `automation-test-globals` root) returns `LxAppDriver`, which adds `network`,
+  nav `waitUntil: 'ready'`, and `captureCalls`. Those members reject from Logic
+  at runtime: `network` needs a run scope, `ready` is refused without
+  `HostAutomationAuthority`. `captureCalls`/`LxAppEvalTrace` are `@internal`
+  report plumbing; `TestApp.eval` omits that overload because the fixture
+  always strips the envelope. The Logic declaration stays global, not opt-in,
+  so existing Logic that calls `lx.automation()` keeps type-checking.
+- Privileges for Logic callers are the sealed session grants (`Automation`,
+  `AutomationHost`), bounded by the app's allowed privilege classes;
+  devtools hosts grant only those. `desktop` and `terminal` are gated by the
+  `host` grant (plus the `desktop` feature / native terminal), not by being a
+  dev/test host. A host run bypasses grants through its authority marker.
+- The host-tier getters on the root (`lxapps`, `browser`, `shell`, `device`,
+  `desktop`, `terminal`) check `host` on property read and throw, so enumerating
+  or logging the root throws in a session without it; the drivers' methods
+  recheck on every call. Making the getters lazy (like `LxAppDriver.network`)
+  is a Rust change in `lingxia-automation`.
 - `t.app`, `t.apps`, and `t.automation` share fixture guards and tracing.
   Test helpers must retain these wrappers instead of acquiring raw drivers.
   Code deliberately evaluated inside product Logic still uses `lx.automation()`.
