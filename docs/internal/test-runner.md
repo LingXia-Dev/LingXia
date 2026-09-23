@@ -60,6 +60,13 @@ received artifacts. Keep the following invariants when changing these layers:
 - `eval<T>` declares the caller's expected result, not runtime validation.
   Browser navigation eval returns `{ value, navigation }`; waits require exactly
   one condition. Preserve automation error codes and JSON data in test reports.
+- `LxAppDriver.network` routes are owned by one host run: installation needs
+  the context's run scope and checks the run is non-terminal under the route
+  table lock; `RunShared::finalize` clears them after releasing its state lock
+  (lock order: routes, then run state). Logic `fetch` is wrapped only when the
+  `runtime` feature is built, and its no-route path is one atomic load.
+  Fulfillments go through the app's domain policy; the fixture removes a
+  spec's routes in its cleanup.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.

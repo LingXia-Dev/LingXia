@@ -44,6 +44,7 @@ for flags and the [development loop](../SKILL.md#the-development-loop) for reloa
 |---|---|
 | Current app UI and navigation | `t.app.page.testId(...)`, `t.app.nav` |
 | App Logic state or `lx.*` calls | `t.app.eval({ script: '...' })` |
+| App Logic `fetch` error paths | `t.app.network.route(...)`; see [below](#routing-logic-fetch) |
 | Page DOM inspection | `t.app.page.eval({ script: '...' })` |
 | Another running lxapp | `t.apps.lxapp(appId)` |
 | App lifecycle and inbound links | `t.automation.lxapps` |
@@ -80,6 +81,42 @@ Poll reads, not mutations. `t.step` groups the trace,
 `t.attach` adds evidence, and `t.defer` registers cleanup on success or failure.
 Trigger the behavior under test through UI actions; setup/eval/backend calls
 do not replace that product path.
+
+## Routing Logic `fetch`
+
+`t.app.network` fakes responses to the app's Logic `fetch` so specs can reach
+HTTP error paths through the real data layer. Do not add test hooks to product
+fetch wrappers.
+
+```ts
+spec('rename shows the firmware error', async (t) => {
+  const patch = await t.app.network.route(
+    { url: '**/v1/devices/*', method: 'PATCH', times: 1 },
+    { status: 501, json: { error: 'unsupported_by_firmware' } },
+  );
+  await t.app.network.route('**/v1/clients', { abort: 'failed' });
+  await t.app.page.testId('rename-save').click();
+  await t.expect(t.app.page.testId('rename-error')).toBeVisible();
+  await t.expect.poll(async () => (await patch.requests()).length).toBe(1);
+});
+```
+
+- Pattern: a glob over the whole URL (`**` any, `*` no `/`, `{a,b}`; `?` is
+  literal), a `RegExp` (Rust regex syntax: no lookaround), or
+  `{ url, method?, times? }`. The newest matching route wins.
+- Handler: `{ status?, statusText?, headers?, body?, json?, contentType? }`
+  fulfills (non-string `body` is JSON); `{ abort: 'failed' }` rejects like a
+  transport failure (`TypeError: fetch failed`); `{ continue: true }` passes
+  through.
+- `route()` returns `{ id, pattern, unroute(), requests() }`;
+  `t.app.network.unrouteAll()` and `.requests()` cover the whole app. Requests
+  report `{ method, url, action, status }` for this spec's routes only.
+- Routes exist only inside a `lxdev test` run: removed when the spec ends and
+  cleared by the host at run end, including failure, cancel, and timeout. With
+  no route installed, `fetch` is untouched.
+- Only Logic `fetch` is routed, not WebView page requests. A host outside the
+  app's [network grants](../native/permissions.md) is never fulfilled; the
+  request reaches the real `fetch` and fails with the policy error.
 
 ## External integration journeys
 
