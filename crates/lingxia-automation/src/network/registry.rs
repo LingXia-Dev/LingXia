@@ -12,6 +12,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const MAX_LOG_ENTRIES: usize = 1_000;
 /// Fulfillment bodies are test fixtures, not payload transfer.
 pub(crate) const MAX_BODY_BYTES: usize = 8 * 1024 * 1024;
+/// Request bodies are recorded as text up to this many bytes.
+pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
+/// Recorded request bodies kept per process across all entries.
+const MAX_LOG_BODY_BYTES: usize = 16 * 1024 * 1024;
+/// Longest fulfillment delay a route may ask for.
+pub(crate) const MAX_DELAY_MS: u32 = 30_000;
 
 #[derive(Debug, Clone)]
 pub(crate) enum UrlMatcher {
@@ -110,18 +116,62 @@ impl UrlMatcher {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub(crate) enum ResponseBody {
+    Text(String),
+    Binary(Vec<u8>),
+}
+
+impl ResponseBody {
+    pub(crate) fn len(&self) -> usize {
+        match self {
+            Self::Text(text) => text.len(),
+            Self::Binary(bytes) => bytes.len(),
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Fulfill {
     pub status: u16,
     pub status_text: Option<String>,
     pub headers: Vec<(String, String)>,
-    pub body: Option<String>,
+    pub body: Option<ResponseBody>,
+    /// Milliseconds before the response resolves; at most [`MAX_DELAY_MS`].
+    pub delay_ms: u32,
+}
+
+/// Transport failures a route can emulate. Only failures the `fetch` wrapper
+/// reproduces faithfully belong here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AbortKind {
+    /// `TypeError: fetch failed`, as for an unreachable host.
+    Failed,
+}
+
+impl AbortKind {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "failed" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Failed => "failed",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum RouteAction {
     Fulfill(Fulfill),
-    /// Reject like a transport failure; the string is the reported reason.
-    Abort(String),
+    /// Reject like a transport failure.
+    Abort(AbortKind),
     Continue,
 }
 
@@ -153,6 +203,48 @@ struct Route {
     spec: RouteSpec,
 }
 
+/// What the app sent, as far as the `fetch` wrapper can read it synchronously.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SentRequest {
+    /// Lower-case names, in the order `Headers` iterates them.
+    pub headers: Vec<(String, String)>,
+    /// Text body, cut to [`MAX_REQUEST_BODY_BYTES`] on a UTF-8 boundary.
+    pub body: Option<String>,
+    pub body_truncated: bool,
+}
+
+impl SentRequest {
+    /// Record `body`, cutting it to the byte limit. `overflow` reports that
+    /// the caller already dropped bytes past the limit.
+    pub(crate) fn new(
+        headers: Vec<(String, String)>,
+        body: Option<String>,
+        overflow: bool,
+    ) -> Self {
+        let mut truncated = overflow;
+        let body = body.map(|mut text| {
+            if text.len() > MAX_REQUEST_BODY_BYTES {
+                let mut end = MAX_REQUEST_BODY_BYTES;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                text.truncate(end);
+                truncated = true;
+            }
+            text
+        });
+        Self {
+            headers,
+            body,
+            body_truncated: truncated,
+        }
+    }
+
+    fn body_len(&self) -> usize {
+        self.body.as_ref().map_or(0, String::len)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RequestEntry {
     pub route_id: u64,
@@ -162,6 +254,7 @@ pub(crate) struct RequestEntry {
     /// `fulfill`, `abort`, or `continue`.
     pub action: &'static str,
     pub status: Option<u16>,
+    pub request: SentRequest,
     pub timestamp_ms: u64,
     run_id: String,
     appid: String,
@@ -172,6 +265,7 @@ pub(crate) struct Registry {
     next_id: u64,
     routes: Vec<Route>,
     log: VecDeque<RequestEntry>,
+    log_body_bytes: usize,
 }
 
 impl Registry {
@@ -217,6 +311,7 @@ impl Registry {
     pub(crate) fn clear_run(&mut self, run_id: &str) {
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
+        self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
     }
 
     /// The most recently installed matching route wins. `allowed` reports
@@ -227,6 +322,7 @@ impl Registry {
         appid: &str,
         method: &str,
         url: &str,
+        request: impl FnOnce() -> SentRequest,
         allowed: impl FnOnce() -> bool,
     ) -> Option<RouteAction> {
         let index = self.routes.iter().rposition(|route| {
@@ -253,6 +349,7 @@ impl Registry {
                 RouteAction::Fulfill(fulfill) => Some(fulfill.status),
                 _ => None,
             },
+            request: request(),
             timestamp_ms: now_ms(),
             run_id: route.run_id.clone(),
             appid: route.appid.clone(),
@@ -263,9 +360,15 @@ impl Registry {
                 self.routes.remove(index);
             }
         }
-        if self.log.len() == MAX_LOG_ENTRIES {
-            self.log.pop_front();
+        let body_len = entry.request.body_len();
+        while self.log.len() >= MAX_LOG_ENTRIES
+            || (!self.log.is_empty() && self.log_body_bytes + body_len > MAX_LOG_BODY_BYTES)
+        {
+            if let Some(old) = self.log.pop_front() {
+                self.log_body_bytes -= old.request.body_len();
+            }
         }
+        self.log_body_bytes += body_len;
         self.log.push_back(entry);
         Some(action)
     }
@@ -293,6 +396,7 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     next_id: 0,
     routes: Vec::new(),
     log: VecDeque::new(),
+    log_body_bytes: 0,
 });
 /// Installed route count, mirrored outside the lock so Logic `fetch` pays one
 /// atomic load when no test route exists.
@@ -321,7 +425,8 @@ mod tests {
             status,
             status_text: None,
             headers: Vec::new(),
-            body: Some("{}".into()),
+            body: Some(ResponseBody::Text("{}".into())),
+            delay_ms: 0,
         })
     }
 
@@ -384,19 +489,43 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            registry.decide("app", "patch", "https://h/devices/1", || true),
+            registry.decide(
+                "app",
+                "patch",
+                "https://h/devices/1",
+                SentRequest::default,
+                || true
+            ),
             Some(fulfill(501))
         );
         assert_eq!(
-            registry.decide("app", "GET", "https://h/devices/1", || true),
+            registry.decide(
+                "app",
+                "GET",
+                "https://h/devices/1",
+                SentRequest::default,
+                || true
+            ),
             Some(fulfill(200))
         );
         assert_eq!(
-            registry.decide("other", "GET", "https://h/devices/1", || true),
+            registry.decide(
+                "other",
+                "GET",
+                "https://h/devices/1",
+                SentRequest::default,
+                || true
+            ),
             None
         );
         assert_eq!(
-            registry.decide("app", "GET", "https://h/users/1", || true),
+            registry.decide(
+                "app",
+                "GET",
+                "https://h/users/1",
+                SentRequest::default,
+                || true
+            ),
             None
         );
     }
@@ -405,7 +534,7 @@ mod tests {
     fn times_expire_and_log_records_actions() {
         let mut registry = Registry::default();
         let matcher = UrlMatcher::glob("**/x").unwrap();
-        let mut once = spec(matcher.clone(), None, RouteAction::Abort("failed".into()));
+        let mut once = spec(matcher.clone(), None, RouteAction::Abort(AbortKind::Failed));
         once.times = Some(1);
         registry
             .install(
@@ -418,12 +547,12 @@ mod tests {
         let aborting = registry.install("run", "app", once, || true).unwrap();
 
         assert_eq!(
-            registry.decide("app", "GET", "http://h/x", || true),
-            Some(RouteAction::Abort("failed".into()))
+            registry.decide("app", "GET", "http://h/x", SentRequest::default, || true),
+            Some(RouteAction::Abort(AbortKind::Failed))
         );
         // The one-shot route is gone; the older continue route answers now.
         assert_eq!(
-            registry.decide("app", "POST", "http://h/x", || true),
+            registry.decide("app", "POST", "http://h/x", SentRequest::default, || true),
             Some(RouteAction::Continue)
         );
         assert!(!registry.remove("run", aborting));
@@ -450,7 +579,13 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            registry.decide("app", "GET", "https://blocked/x", || false),
+            registry.decide(
+                "app",
+                "GET",
+                "https://blocked/x",
+                SentRequest::default,
+                || false
+            ),
             Some(RouteAction::Continue)
         );
         assert_eq!(registry.requests("run", "app")[0].status, None);
@@ -491,7 +626,7 @@ mod tests {
             .unwrap();
         // Another run cannot remove a route it does not own.
         assert!(!registry.remove("b", a));
-        registry.decide("app", "GET", "http://h/", || true);
+        registry.decide("app", "GET", "http://h/", SentRequest::default, || true);
 
         registry.clear_run("b");
         assert_eq!(registry.len(), 2);
@@ -499,7 +634,10 @@ mod tests {
         assert_eq!(registry.remove_app("a", "app"), 1);
         registry.clear_run("a");
         assert_eq!(registry.len(), 0);
-        assert_eq!(registry.decide("app", "GET", "http://h/", || true), None);
+        assert_eq!(
+            registry.decide("app", "GET", "http://h/", SentRequest::default, || true),
+            None
+        );
     }
 
     #[test]
@@ -514,10 +652,77 @@ mod tests {
             )
             .unwrap();
         for i in 0..(MAX_LOG_ENTRIES + 5) {
-            registry.decide("app", "GET", &format!("http://h/{i}"), || true);
+            registry.decide(
+                "app",
+                "GET",
+                &format!("http://h/{i}"),
+                SentRequest::default,
+                || true,
+            );
         }
         let log = registry.requests("run", "app");
         assert_eq!(log.len(), MAX_LOG_ENTRIES);
         assert_eq!(log[0].url, "http://h/5");
+    }
+    #[test]
+    fn request_body_is_cut_on_a_char_boundary() {
+        let short = SentRequest::new(Vec::new(), Some("{}".into()), false);
+        assert_eq!(
+            (short.body.as_deref(), short.body_truncated),
+            (Some("{}"), false)
+        );
+
+        // A 3-byte character straddles the limit and is dropped whole.
+        let text = format!("{}\u{20ac}tail", "a".repeat(MAX_REQUEST_BODY_BYTES - 1));
+        let long = SentRequest::new(Vec::new(), Some(text), false);
+        assert!(long.body_truncated);
+        assert_eq!(
+            long.body.as_ref().unwrap().len(),
+            MAX_REQUEST_BODY_BYTES - 1
+        );
+
+        let overflow = SentRequest::new(Vec::new(), Some("abc".into()), true);
+        assert!(overflow.body_truncated);
+        assert!(!SentRequest::new(Vec::new(), None, false).body_truncated);
+    }
+
+    #[test]
+    fn logged_request_bodies_share_a_byte_budget() {
+        let mut registry = Registry::default();
+        registry
+            .install(
+                "run",
+                "app",
+                spec(UrlMatcher::glob("**").unwrap(), None, RouteAction::Continue),
+                || true,
+            )
+            .unwrap();
+        let body = "x".repeat(MAX_REQUEST_BODY_BYTES);
+        let hits = MAX_LOG_BODY_BYTES / MAX_REQUEST_BODY_BYTES + 3;
+        for i in 0..hits {
+            registry.decide(
+                "app",
+                "POST",
+                &format!("http://h/{i}"),
+                || {
+                    SentRequest::new(
+                        vec![("x-n".into(), i.to_string())],
+                        Some(body.clone()),
+                        false,
+                    )
+                },
+                || true,
+            );
+        }
+        let log = registry.requests("run", "app");
+        assert_eq!(log.len(), MAX_LOG_BODY_BYTES / MAX_REQUEST_BODY_BYTES);
+        assert_eq!(log[0].url, "http://h/3");
+        assert_eq!(
+            log[0].request.headers,
+            vec![("x-n".to_string(), "3".to_string())]
+        );
+        assert!(registry.log_body_bytes <= MAX_LOG_BODY_BYTES);
+        registry.clear_run("run");
+        assert_eq!(registry.log_body_bytes, 0);
     }
 }

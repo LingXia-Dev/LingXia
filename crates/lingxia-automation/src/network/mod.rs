@@ -10,9 +10,12 @@ mod registry;
 use crate::auto_err;
 use crate::resolve::{json_to_js, upgrade_authorized};
 use lxapp::LxApp;
-use registry::{Fulfill, RouteAction, RouteSpec, UrlMatcher};
+use registry::{
+    AbortKind, Fulfill, MAX_DELAY_MS, ResponseBody, RouteAction, RouteSpec, SentRequest, UrlMatcher,
+};
 use rong::{
-    Class, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, Source, js_class, js_method,
+    AnyJSTypedArray, Class, HostError, JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult,
+    JSValue, Source, js_class, js_method,
 };
 use serde_json::Value;
 use std::sync::{Arc, Weak};
@@ -49,11 +52,12 @@ fn run_scope(ctx: &JSContext) -> JSResult<NetworkRunScope> {
     })
 }
 
-fn fetch_failed(reason: &str) -> rong::RongJSError {
+fn fetch_failed(kind: AbortKind) -> rong::RongJSError {
     // Same shape as a transport failure from Rong's `fetch`.
+    let detail = format!("aborted by test route: {}", kind.as_str());
     HostError::new(rong::error::E_IO, "fetch failed")
         .with_name("TypeError")
-        .with_data(rong::err_data!({ detail: (format!("aborted by test route: {reason}")) }))
+        .with_data(rong::err_data!({ detail: (detail) }))
         .into()
 }
 
@@ -65,10 +69,9 @@ pub(crate) struct JSNetworkDriver {
 }
 
 impl JSNetworkDriver {
-    pub(crate) fn new(lxapp: &Arc<LxApp>) -> Self {
-        Self {
-            lxapp: Arc::downgrade(lxapp),
-        }
+    /// Authorization is checked per call, so reading `.network` never throws.
+    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+        Self { lxapp }
     }
 }
 
@@ -127,7 +130,8 @@ impl JSNetworkDriver {
         Ok(removed as u32)
     }
 
-    /// Requests this run's routes matched for the app, oldest first.
+    /// Requests this run's routes matched for the app, oldest first. The log
+    /// spans the whole run, across specs.
     #[js_method]
     async fn requests(&self, ctx: JSContext) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
@@ -213,6 +217,14 @@ fn requests_js(
                 "url": entry.url,
                 "action": entry.action,
                 "status": entry.status,
+                "headers": entry
+                    .request
+                    .headers
+                    .into_iter()
+                    .map(|(name, value)| (name, Value::String(value)))
+                    .collect::<serde_json::Map<_, _>>(),
+                "body": entry.request.body,
+                "bodyTruncated": entry.request.body_truncated,
                 "timestamp": entry.timestamp_ms,
             })
         })
@@ -275,54 +287,94 @@ fn parse_url_matcher(value: JSValue) -> JSResult<UrlMatcher> {
     }
 }
 
-/// `{ status?, statusText?, headers?, body?, json?, contentType? }` fulfills;
-/// `{ abort: 'failed' }` rejects like a network error; `{ continue: true }`
-/// passes the request through.
+/// `{ status?, statusText?, headers?, body? | json?, contentType?, delay? }`
+/// fulfills; `{ abort: 'failed' }` rejects like a network error;
+/// `{ continue: true }` passes the request through. The three are exclusive.
 fn parse_handler(handler: &JSObject) -> JSResult<RouteAction> {
+    let binary = binary_body(handler)?;
     let json = handler
         .to_json_string()
         .map_err(|err| auto_err(format!("route handler must be JSON-compatible: {err}")))?;
     let value: Value = serde_json::from_str(&json)
         .map_err(|err| auto_err(format!("route handler must be JSON-compatible: {err}")))?;
-    parse_handler_value(&value).map_err(auto_err)
+    parse_handler_value(&value, binary).map_err(auto_err)
 }
 
-fn parse_handler_value(value: &Value) -> Result<RouteAction, String> {
+/// Bytes of an `ArrayBuffer` or typed-array `body`, which JSON would mangle.
+fn binary_body(handler: &JSObject) -> JSResult<Option<Vec<u8>>> {
+    if !handler.has_property("body")? {
+        return Ok(None);
+    }
+    let body = handler.get::<_, JSValue>("body")?;
+    if body.is_array_buffer() {
+        return Ok(Some(body.to_rust::<JSArrayBuffer>()?.as_bytes().to_vec()));
+    }
+    if let Some(object) = body.into_object()
+        && let Some(view) = AnyJSTypedArray::from_object(object)
+    {
+        return view
+            .as_bytes()
+            .map(|bytes| Some(bytes.to_vec()))
+            .ok_or_else(|| auto_err("route body buffer is detached"));
+    }
+    Ok(None)
+}
+
+const FULFILL_KEYS: [&str; 7] = [
+    "status",
+    "statusText",
+    "headers",
+    "body",
+    "json",
+    "contentType",
+    "delay",
+];
+
+fn parse_handler_value(value: &Value, binary: Option<Vec<u8>>) -> Result<RouteAction, String> {
     let Value::Object(fields) = value else {
         return Err("route handler must be an object".into());
     };
-    const KNOWN: [&str; 8] = [
-        "status",
-        "statusText",
-        "headers",
-        "body",
-        "json",
-        "contentType",
-        "abort",
-        "continue",
-    ];
-    if let Some(unknown) = fields.keys().find(|key| !KNOWN.contains(&key.as_str())) {
+    if let Some(unknown) = fields
+        .keys()
+        .find(|key| !FULFILL_KEYS.contains(&key.as_str()) && *key != "abort" && *key != "continue")
+    {
         return Err(format!("unknown route handler option '{unknown}'"));
     }
-    let fulfill_keys = KNOWN[..6].iter().any(|key| fields.contains_key(*key));
+    let fulfill_key = FULFILL_KEYS.iter().find(|key| fields.contains_key(**key));
     let abort = match fields.get("abort") {
-        None | Some(Value::Null) | Some(Value::Bool(false)) => None,
-        Some(Value::Bool(true)) => Some("failed".to_string()),
-        Some(Value::String(reason)) if !reason.is_empty() => Some(reason.clone()),
-        Some(_) => return Err("route abort must be a non-empty string such as 'failed'".into()),
+        None => None,
+        Some(Value::String(kind)) => Some(
+            AbortKind::parse(kind)
+                .ok_or_else(|| format!("route abort must be 'failed', got '{kind}'"))?,
+        ),
+        Some(other) => return Err(format!("route abort must be 'failed', got {other}")),
     };
-    let pass = matches!(fields.get("continue"), Some(Value::Bool(true)));
-    match (abort, pass, fulfill_keys) {
-        (Some(_), true, _) | (Some(_), _, true) | (_, true, true) => {
-            Err("route handler must choose one of fulfill, abort, or continue".into())
+    let pass = match fields.get("continue") {
+        None => false,
+        Some(Value::Bool(true)) => true,
+        Some(other) => return Err(format!("route continue must be true, got {other}")),
+    };
+    let exclusive = |chosen: &str| match fulfill_key {
+        Some(key) => Err(format!(
+            "route handler cannot combine {chosen} with the fulfill option '{key}'; \
+             choose one of fulfill, abort, or continue"
+        )),
+        None => Ok(()),
+    };
+    match (abort, pass) {
+        (Some(_), true) => {
+            Err("route handler cannot combine abort with continue; choose one of fulfill, abort, or continue".into())
         }
-        (Some(reason), false, false) => Ok(RouteAction::Abort(reason)),
-        (None, true, false) => Ok(RouteAction::Continue),
-        (None, false, _) => parse_fulfill(fields).map(RouteAction::Fulfill),
+        (Some(kind), false) => exclusive("abort").map(|()| RouteAction::Abort(kind)),
+        (None, true) => exclusive("continue").map(|()| RouteAction::Continue),
+        (None, false) => parse_fulfill(fields, binary).map(RouteAction::Fulfill),
     }
 }
 
-fn parse_fulfill(fields: &serde_json::Map<String, Value>) -> Result<Fulfill, String> {
+fn parse_fulfill(
+    fields: &serde_json::Map<String, Value>,
+    binary: Option<Vec<u8>>,
+) -> Result<Fulfill, String> {
     let status = match fields.get("status") {
         None => 200,
         Some(Value::Number(n)) => n
@@ -354,15 +406,23 @@ fn parse_fulfill(fields: &serde_json::Map<String, Value>) -> Result<Fulfill, Str
         }
         Some(_) => return Err("route headers must be an object of strings".into()),
     }
-    let (body, implied_type) = match (fields.get("json"), fields.get("body")) {
-        (Some(_), Some(_)) => {
+    let (body, implied_type) = match (fields.get("json"), fields.get("body"), binary) {
+        (Some(_), Some(_), _) => {
             return Err("route handler takes either body or json, not both".into());
         }
-        (Some(json), None) => (Some(json.to_string()), Some("application/json")),
-        (None, None) | (None, Some(Value::Null)) => (None, None),
-        (None, Some(Value::String(text))) => (Some(text.clone()), None),
-        // A non-string body is shorthand for `json`.
-        (None, Some(other)) => (Some(other.to_string()), Some("application/json")),
+        (Some(json), None, _) => (
+            Some(ResponseBody::Text(json.to_string())),
+            Some("application/json"),
+        ),
+        (None, Some(_), Some(bytes)) => (Some(ResponseBody::Binary(bytes)), None),
+        (None, None, _) | (None, Some(Value::Null), None) => (None, None),
+        (None, Some(Value::String(text)), None) => (Some(ResponseBody::Text(text.clone())), None),
+        (None, Some(_), None) => {
+            return Err(
+                "route body must be a string, ArrayBuffer, or Uint8Array; pass JSON values as json"
+                    .into(),
+            );
+        }
     };
     let content_type = match fields.get("contentType") {
         None | Some(Value::Null) => implied_type.map(str::to_string),
@@ -389,28 +449,80 @@ fn parse_fulfill(fields: &serde_json::Map<String, Value>) -> Result<Fulfill, Str
             return Err(format!("a {status} response cannot have a body"));
         }
     }
+    let delay_ms = match fields.get("delay") {
+        None | Some(Value::Null) => 0,
+        Some(Value::Number(n)) => n
+            .as_u64()
+            .filter(|delay| *delay <= u64::from(MAX_DELAY_MS))
+            .map(|delay| delay as u32)
+            .ok_or_else(|| {
+                format!("route delay must be an integer in 0..={MAX_DELAY_MS} ms, got {n}")
+            })?,
+        Some(other) => return Err(format!("route delay must be a number, got {other}")),
+    };
     Ok(Fulfill {
         status,
         status_text,
         headers,
         body: body.filter(|body| !body.is_empty() || !matches!(status, 204 | 205 | 304)),
+        delay_ms,
     })
 }
 
 // ------------------------------ Logic side ------------------------------
 
 /// Wraps the global `fetch` of a context. `active()` is the no-route fast
-/// path; `decide(method, url)` returns `undefined` to pass through, a
-/// fulfillment record, or throws the abort error.
-const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide) {
+/// path; `decide(method, url, headersJson, body, bodyOverflow)` returns
+/// `undefined` to pass through, a fulfillment record, or throws the abort
+/// error. Request bodies are read only when available synchronously (string,
+/// `URLSearchParams`, `ArrayBuffer`, typed array); streams, `Blob`,
+/// `FormData`, and a `Request` object's own body are recorded as `null`.
+const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide, bodyLimit) {
   'use strict';
   const ResponseCtor = globalThis.Response;
   const RequestCtor = globalThis.Request;
+  const HeadersCtor = globalThis.Headers;
+  const Params = globalThis.URLSearchParams;
+  const Decoder = globalThis.TextDecoder;
+  const setTimer = globalThis.setTimeout;
+  const clearTimer = globalThis.clearTimeout;
+  const sentHeaders = function (request, init) {
+    const source = init && init.headers != null ? init.headers : request ? request.headers : null;
+    const pairs = [];
+    if (source == null || typeof HeadersCtor !== 'function') return pairs;
+    try {
+      new HeadersCtor(source).forEach(function (value, name) { pairs.push([name, value]); });
+    } catch (_) {}
+    return pairs;
+  };
+  const cutText = function (text) {
+    if (text.length <= bodyLimit) return [text, false];
+    let end = bodyLimit;
+    const last = text.charCodeAt(end - 1);
+    if (last >= 0xd800 && last <= 0xdbff) end -= 1;
+    return [text.slice(0, end), true];
+  };
+  const sentBody = function (init) {
+    try {
+      const body = init ? init.body : null;
+      if (body == null) return [null, false];
+      if (typeof body === 'string') return cutText(body);
+      if (typeof Params === 'function' && body instanceof Params) return cutText(String(body));
+      let bytes = null;
+      if (body instanceof ArrayBuffer) bytes = new Uint8Array(body);
+      else if (ArrayBuffer.isView(body)) bytes = new Uint8Array(body.buffer, body.byteOffset, body.byteLength);
+      if (bytes === null || typeof Decoder !== 'function') return [null, false];
+      const overflow = bytes.byteLength > bodyLimit;
+      return [new Decoder().decode(overflow ? bytes.subarray(0, bodyLimit) : bytes), overflow];
+    } catch (_) {
+      return [null, false];
+    }
+  };
   const fetch = function fetch(input, init) {
     if (!active()) return originalFetch.apply(this, arguments);
-    let method, url;
+    let method, url, request;
     try {
-      const request = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
+      request = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
       url = request ? request.url
         : (input !== null && typeof input === 'object' && typeof input.href === 'string') ? input.href
         : String(input);
@@ -421,24 +533,42 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide) {
     }
     let hit;
     try {
-      hit = decide(method, url);
+      const body = sentBody(init);
+      hit = decide(method, url, JSON.stringify(sentHeaders(request, init)), body[0], body[1]);
     } catch (error) {
       return Promise.reject(error);
     }
     if (hit === undefined || hit === null) return originalFetch.apply(this, arguments);
     const signal = init && init.signal;
     if (signal && signal.aborted) return Promise.reject(signal.reason);
-    try {
+    const respond = function () {
       const response = new ResponseCtor(hit.body, {
         status: hit.status,
         statusText: hit.statusText,
         headers: hit.headers,
       });
       try { Object.defineProperty(response, 'url', { value: url, enumerable: true }); } catch (_) {}
-      return Promise.resolve(response);
-    } catch (error) {
-      return Promise.reject(error);
+      return response;
+    };
+    if (!(hit.delay > 0)) {
+      try { return Promise.resolve(respond()); } catch (error) { return Promise.reject(error); }
     }
+    if (typeof setTimer !== 'function') {
+      return Promise.reject(new Error('route delay needs setTimeout in this context'));
+    }
+    return new Promise(function (resolve, reject) {
+      let timer = null;
+      const listens = signal && typeof signal.addEventListener === 'function';
+      const onAbort = function () {
+        if (timer !== null && typeof clearTimer === 'function') clearTimer(timer);
+        reject(signal.reason);
+      };
+      if (listens) signal.addEventListener('abort', onAbort);
+      timer = setTimer(function () {
+        if (listens) signal.removeEventListener('abort', onAbort);
+        try { resolve(respond()); } catch (error) { reject(error); }
+      }, hit.delay);
+    });
   };
   globalThis.fetch = fetch;
 })"#;
@@ -463,7 +593,13 @@ pub(crate) fn install_fetch_interceptor(
     let active = JSFunc::new(ctx, registry::any_active)?;
     let decide = JSFunc::new(
         ctx,
-        move |ctx: JSContext, method: String, url: String| -> JSResult<JSValue> {
+        move |ctx: JSContext,
+              method: String,
+              url: String,
+              headers: String,
+              body: Option<String>,
+              overflow: bool|
+              -> JSResult<JSValue> {
             let Some(target) = resolve(&ctx) else {
                 return Ok(JSValue::undefined(&ctx));
             };
@@ -472,18 +608,23 @@ pub(crate) fn install_fetch_interceptor(
                 .ok()
                 .and_then(|uri| uri.host().map(str::to_string));
             let allowed = || host.as_deref().is_some_and(|host| (target.allowed)(host));
+            let sent = || {
+                let headers = serde_json::from_str(&headers).unwrap_or_default();
+                SentRequest::new(headers, body, overflow)
+            };
             let action = registry::with_registry(|routes| {
-                routes.decide(&target.appid, &method, &url, allowed)
+                routes.decide(&target.appid, &method, &url, sent, allowed)
             });
             match action {
                 None | Some(RouteAction::Continue) => Ok(JSValue::undefined(&ctx)),
-                Some(RouteAction::Abort(reason)) => Err(fetch_failed(&reason)),
+                Some(RouteAction::Abort(kind)) => Err(fetch_failed(kind)),
                 Some(RouteAction::Fulfill(fulfill)) => fulfillment_js(&ctx, fulfill),
             }
         },
     )?;
     let installer = ctx.eval::<JSFunc>(Source::from_bytes(FETCH_INTERCEPTOR))?;
-    installer.call::<_, ()>(None, (original, active, decide))
+    let limit = registry::MAX_REQUEST_BODY_BYTES as f64;
+    installer.call::<_, ()>(None, (original, active, decide, limit))
 }
 
 fn fulfillment_js(ctx: &JSContext, fulfill: Fulfill) -> JSResult<JSValue> {
@@ -499,9 +640,13 @@ fn fulfillment_js(ctx: &JSContext, fulfill: Fulfill) -> JSResult<JSValue> {
         .collect();
     object.set("headers", json_to_js(ctx, &Value::Array(headers))?)?;
     match fulfill.body {
-        Some(body) => object.set("body", body)?,
+        Some(ResponseBody::Text(text)) => object.set("body", text)?,
+        Some(ResponseBody::Binary(bytes)) => {
+            object.set("body", JSArrayBuffer::from_bytes_owned(ctx, bytes)?)?
+        }
         None => object.set("body", JSValue::null(ctx))?,
     };
+    object.set("delay", f64::from(fulfill.delay_ms))?;
     Ok(object.into_js_value())
 }
 
