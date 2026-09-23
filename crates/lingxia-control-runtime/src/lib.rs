@@ -44,8 +44,10 @@ pub use lingxia_control_protocol::{
 pub fn dispatch(request: ControlRequest) -> ControlResponse {
     let ControlRequest { id, method, params } = request;
     #[cfg(feature = "test-runtime")]
-    if let Some(result) = session_test::handle_session_test_command(&method, params.clone()) {
-        return command_result(id, result);
+    if let Some(response) =
+        session_test::handle_session_test_command(id.clone(), &method, params.clone())
+    {
+        return response;
     }
 
     #[cfg(feature = "computer-use")]

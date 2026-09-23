@@ -37,6 +37,7 @@ pub(crate) fn init_automation_context(
     ctx: &JSContext,
     shared: &Arc<RunShared>,
     args: &HashMap<String, String>,
+    control: &HashMap<String, String>,
 ) -> JSResult<()> {
     rong_modules::init(ctx, AUTOMATION_MODULES)?;
 
@@ -55,8 +56,10 @@ pub(crate) fn init_automation_context(
             shared: shared.clone(),
         }),
     )?;
-    ctx.global()
-        .set("__LINGXIA_AUTOMATION_HOST__", make_host(ctx, shared, args)?)?;
+    ctx.global().set(
+        "__LINGXIA_AUTOMATION_HOST__",
+        make_host(ctx, shared, args, control)?,
+    )?;
     Ok(())
 }
 
@@ -185,13 +188,22 @@ fn make_host(
     ctx: &JSContext,
     shared: &Arc<RunShared>,
     args: &HashMap<String, String>,
+    control: &HashMap<String, String>,
 ) -> JSResult<JSObject> {
     let host = JSObject::new(ctx);
-    let args_object = JSObject::new(ctx);
-    for (key, value) in args {
-        args_object.set(key.as_str(), value.as_str())?;
+    let string_map = |map: &HashMap<String, String>| -> JSResult<JSObject> {
+        let object = JSObject::new(ctx);
+        for (key, value) in map {
+            object.set(key.as_str(), value.as_str())?;
+        }
+        Ok(object)
+    };
+    host.set("args", string_map(args)?)?;
+    // Absent when the caller sent none: a framework then reads its controls
+    // from `args`, as callers that predate the split still send them.
+    if !control.is_empty() {
+        host.set("control", string_map(control)?)?;
     }
-    host.set("args", args_object)?;
 
     let attach_shared = shared.clone();
     host.set(

@@ -1,23 +1,54 @@
 //! `session.test.*` adapter over the generic host automation runtime.
 
 use lingxia_automation::runtime::{
-    AutomationCancelArgs, AutomationEventPayload, AutomationPollArgs, AutomationPollResponse,
-    AutomationRunError, AutomationRunState, AutomationRuntime, AutomationStartArgs,
+    AutomationActiveRun, AutomationCancelArgs, AutomationEventPayload, AutomationPollArgs,
+    AutomationPollResponse, AutomationRunError, AutomationRunState, AutomationRuntime,
+    AutomationStartArgs,
 };
-use lingxia_control_protocol::{dev_session::session_test::*, methods};
+use lingxia_control_protocol::{
+    ControlError, ControlResponse, dev_session::session_test::*, methods,
+};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::sync::OnceLock;
 
 pub(crate) fn handle_session_test_command(
+    id: String,
     handler: &str,
     args: Option<Value>,
-) -> Option<Result<Option<Value>, String>> {
+) -> Option<ControlResponse> {
     if !handler.starts_with("session.test.") {
         return None;
     }
-    Some(handle_session_test_command_impl(handler, args))
+    let result = handle_session_test_command_impl(handler, args);
+    // A refused start names the run holding the session as data, so a client
+    // can show and act on it without parsing the message (kept as it was for
+    // clients that still do).
+    if let Err(message) = &result
+        && handler == methods::session::test::START
+        && message.starts_with(RUN_IN_PROGRESS)
+        && let Some(active) = runtime().ok().and_then(AutomationRuntime::active)
+    {
+        return Some(ControlResponse {
+            id,
+            result: None,
+            error: Some(ControlError {
+                code: RUN_IN_PROGRESS.to_string(),
+                message: message.clone(),
+                data: serde_json::to_value(active_run(active)).ok(),
+            }),
+        });
+    }
+    Some(super::command_result(id, result))
+}
+
+fn active_run(active: AutomationActiveRun) -> TestActiveRun {
+    TestActiveRun {
+        run_id: active.run_id,
+        age_ms: active.age_ms,
+        since_last_poll_ms: active.since_last_poll_ms,
+    }
 }
 
 fn runtime() -> Result<&'static AutomationRuntime, String> {
@@ -40,6 +71,7 @@ fn handle_session_test_command_impl(
                 source_name: args.source_name,
                 timeout_ms: args.timeout_ms,
                 args: args.args,
+                control: args.control,
             })?;
             respond(TestStartResponse {
                 run_id: response.run_id,
@@ -65,6 +97,9 @@ fn handle_session_test_command_impl(
                 state: map_state(response.state),
             })
         }
+        methods::session::test::ACTIVE => respond(TestActiveResponse {
+            run: runtime()?.active().map(active_run),
+        }),
         other => Err(format!("unknown session.test handler: {other}")),
     }
 }
@@ -209,6 +244,7 @@ struct FrameworkEvent {
     total: Option<usize>,
     #[serde(default)]
     cases: Vec<Value>,
+    args: Option<std::collections::HashMap<String, String>>,
     record: Option<Value>,
     phase: Option<String>,
     message: Option<String>,
@@ -248,6 +284,7 @@ fn framework_event(value: Value) -> Result<TestEventPayload, String> {
         "run_started" => Ok(TestEventPayload::RunStarted {
             total: event.total.unwrap_or_default(),
             cases: event.cases,
+            args: event.args,
         }),
         "diagnostic" => Ok(TestEventPayload::Diagnostic {
             phase: event.phase.unwrap_or_default(),
