@@ -1,4 +1,11 @@
-import type { Automation, LxAppDriver, PageDriver, PageQueryResult, PageTarget } from "@lingxia/types/automation";
+import type {
+  Automation,
+  LxAppDriver,
+  NetworkDriver,
+  PageDriver,
+  PageQueryResult,
+  PageTarget,
+} from "@lingxia/types/automation";
 
 export type SpecStatus =
   | "passed"
@@ -83,6 +90,12 @@ export interface TestPage extends PageDriver {
 
 export interface TestApp extends LxAppDriver {
   readonly page: TestPage;
+  /**
+   * Spec-scoped: routes are removed when the spec ends, and `requests()`
+   * lists only requests this spec's routes handled (the raw driver's log
+   * spans the whole run).
+   */
+  readonly network: NetworkDriver;
 }
 
 export interface TestAutomation extends Omit<Automation, "lxapp"> {

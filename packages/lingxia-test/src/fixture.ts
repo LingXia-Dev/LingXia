@@ -455,8 +455,11 @@ export class LiveFixture implements Fixture {
     return {
       page,
       nav: guardObject(landingNav(driver.nav), this, "nav."),
-      // Lazy: a host without test routing must not break `t.app` itself.
-      get network() { return wrapNetwork(driver.network, fixture, fixture.networkScope); },
+      // Lazy and non-throwing: a host without test routing fails the call,
+      // never the `t.app` or `t.app.network` read.
+      get network() {
+        return wrapNetwork(() => driver.network, fixture, fixture.networkScope);
+      },
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
