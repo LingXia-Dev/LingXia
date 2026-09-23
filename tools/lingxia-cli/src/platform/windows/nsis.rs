@@ -172,7 +172,8 @@ fn shortcut_name(product_name: &str) -> String {
 
 /// Picks the `productNames` entry for the user's UI language at install time,
 /// falling back to `productName`. A same-language entry (zh-CN for zh-TW)
-/// applies first; an exact locale match overrides it.
+/// applies first; an exact locale match overrides it. Only the installer
+/// calls it: the uninstaller reads the stored `ShortcutName` instead.
 fn select_product_name(names: &BTreeMap<String, String>) -> Result<String> {
     let mut function = String::from(
         "Function SelectProductName\n\
@@ -182,7 +183,14 @@ fn select_product_name(names: &BTreeMap<String, String>) -> Result<String> {
          \x20 IntOp $9 $8 & 0x3FF\n",
     );
     for exact in [false, true] {
-        for (tag, name) in names {
+        // Later assignments win, so the language pass runs in reverse: with
+        // both zh-CN and zh-TW listed, a zh-HK user gets the first entry.
+        let entries: Vec<_> = if exact {
+            names.iter().collect()
+        } else {
+            names.iter().rev().collect()
+        };
+        for (tag, name) in entries {
             let shortcut = shortcut_name(name);
             safe_component(&shortcut)?;
             let (lcid, user) = if exact { ("$7", "$8") } else { ("$6", "$9") };
@@ -215,12 +223,18 @@ mod tests {
     }
     #[test]
     fn product_name_follows_ui_language() {
-        let names = BTreeMap::from([("zh-CN".to_string(), "阜盛".to_string())]);
+        let names = BTreeMap::from([
+            ("zh-CN".to_string(), "阜盛".to_string()),
+            ("zh-TW".to_string(), "阜盛繁".to_string()),
+        ]);
         let function = select_product_name(&names).unwrap();
         assert!(function.contains("LocaleNameToLCID(w \"zh-CN\", i 0)"));
         assert!(function.contains("StrCpy $ShortcutName \"阜盛\""));
         // Language-only pass precedes the exact pass so the exact match wins.
         assert!(function.find("$6 = $9").unwrap() < function.find("$7 = $8").unwrap());
+        // Within the language pass the first listed tag wins (assigned last).
+        let language_pass = &function[..function.find("$7 = $8").unwrap()];
+        assert!(language_pass.rfind("zh-CN").unwrap() > language_pass.rfind("zh-TW").unwrap());
     }
     #[test]
     fn compile_installers_when_nsis_available() {
