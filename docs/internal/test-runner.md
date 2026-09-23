@@ -20,14 +20,34 @@ received artifacts. Keep the following invariants when changing these layers:
 - The host holds one active run per session. Validate anything local (output
   directory) before `session.test.start`; once a run exists, every way the
   client stops without a terminal poll cancels it (`ActiveRun` in lxdev).
-- `t.skip()` throws `SkipSignal`; it grades `skipped` in every phase and under
-  `spec.fail`, and skips failure forensics. `spec.fail` inverts any body
-  failure, not only assertions; setup failures and timeouts keep their status.
-- Secret args (keys matching `/pass(word)?|secret|token|api[_-]?key|credential/i`,
-  and `--secret-arg` keys listed in the reserved `secretArgs` arg) reach
-  `t.args` unmasked but are `***` in `meta.args`, and their values are masked
-  in events and reports. lxdev re-scrubs its written reports for older
-  runtimes.
+- `session.test.active` names the run holding the slot (`run_id`, `age_ms`,
+  `since_last_poll_ms`); a refused `session.test.start` carries the same as
+  error `data` under code `automation_run_in_progress`. `--cancel-active`
+  refuses a run polled within the last 15s: its client is alive.
+- `session.test.start` sends `args` (user `--arg`/`--secret-arg`, the spec's
+  `t.args`) and `control` (grep, id, ids, shard, retries, passWithNoTests,
+  forbidOnly, platform, secretArgs) separately. The host exposes `control` on
+  `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
+  reads those keys from `args`, as older lxdev sent them. Reports put controls
+  in `meta.run`. A new lxdev against a host that drops `control` loses its
+  filters; the two ship together.
+- `t.skip()` throws the internal `SkipSignal`; from `beforeEach` or the body it
+  grades `skipped` (also under `spec.fail`) and skips failure forensics. During
+  cleanup (`t.defer`, `afterEach`) it rejects, and the case fails in the
+  `defer` phase. `spec.fail` without `expected` inverts any body failure; with
+  `expected` (`code`, `message` string or RegExp) only a matching one, and a
+  mismatch is `failed` with what was expected prepended. Setup failures and
+  timeouts keep their status.
+- Secrets: `--secret-arg` values (≥ 4 chars) are masked by `@lingxia/test` in
+  events, case records, `meta` and `t.attach`/forensics attachments, at the
+  data level before rendering. A `--arg` key whose last word names a
+  credential (`redact.ts` `looksSecretKey`, the only copy of the heuristic)
+  is masked in `meta.args` only, never searched for in content. The masked
+  args ride on `run_started`; lxdev uses them for reports it writes itself and
+  for rerun hints (`key=<key>` placeholders), hiding every value when it never
+  saw them. lxdev also scrubs declared values from every polled event (JSON
+  re-serialized, text replaced) and withholds an HTML/XML artifact that still
+  carries one, then renders its own report pages from the scrubbed JSON.
 - Retry artifacts have attempt-specific paths. Do not overwrite the first failure
   with the successful attempt. Terminal output is a presentation of the report,
   not an alternate result model.

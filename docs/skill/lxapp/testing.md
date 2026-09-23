@@ -71,8 +71,10 @@ Keep a separate test tsconfig with `lib: ["ES2020"]` and
 Node globals to make unavailable APIs compile. Start fixture servers from
 shell/CI and pass reachable URLs through `--arg key=value` (`t.args`). App
 requests retain their own [network grants](../native/permissions.md). Pass
-secrets with `--secret-arg key=value`: reports show them, and args named like
-passwords or tokens, as `***`.
+secrets with `--secret-arg key=value`: its value is `***` everywhere in reports,
+events, and attachments. `--arg` keys named like credentials (`password`,
+`apiKey`, `DB_TOKEN`) are `***` only in the report's arg list. Specs read real
+values from `t.args`.
 
 `t.expect(locator)` retries UI assertions; `t.expect.poll(read)` retries an
 observable result; imported `expect(value)` checks once. Await actions and
@@ -186,9 +188,9 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - `--timeout-secs` defaults to 300 for the whole run; specs default to 30 seconds.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
 - JSON keeps `timeout`, `xfail`, and `xpass` distinct; unexpected passes fail the run.
-- `spec.skip`/`spec.fixme` skip at registration; `t.skip(reason)` skips from inside the body when only the run can tell.
-- `spec.fail`: any body failure, assertion or thrown error, is `xfail`; a completed body is `xpass`.
-- `lxdev test --cancel-active` cancels a run left active by a client that exited (`automation_run_in_progress`).
+- `spec.skip`/`spec.fixme` skip at registration; `t.skip(reason)` skips from the body or `beforeEach` when only the run can tell (not from cleanup).
+- `spec.fail`: any body failure is `xfail`; a completed body is `xpass`. Pin the known failure with `spec.fail(title, { expected: { code, message } }, body)` so any other failure stays `failed`.
+- `lxdev test --cancel-active` cancels a run left active by a client that exited (`automation_run_in_progress`). It prints the run's age and last poll, and refuses a run a live client still polls.
 - Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.
   `locator.waitFor({ state })` waits for `visible` (default: exactly one match, in the viewport),
   `attached` (exactly one match, even outside the viewport, e.g. an overflowing sheet), `hidden`
