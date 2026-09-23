@@ -81,6 +81,11 @@ received artifacts. Keep the following invariants when changing these layers:
   a `diagnostic` event (`phase: "collect"`) says it never runs.
   `captureFrames` raises V8's `Error.stackTraceLimit` to 50 while capturing.
   Specs themselves are still attributed to their first authored frame.
+- Generated ids (`<file stem>-<n>`) apply to specs with no `id` and no ASCII
+  slug; `n` counts only those specs, per file, in registration order, assigned
+  at run start once files are known. `n` used to be a run-wide counter over
+  every spec, so ids from older reports can differ for suites with several
+  files or with ASCII specs before a non-ASCII one.
 
 ## Automation JS boundary
 

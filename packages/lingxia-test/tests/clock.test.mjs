@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
+import { registerOtherFileSpec } from "./helpers/other-file.mjs";
 import { spec, expect, reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/index.js";
 
 afterEach(() => {
@@ -85,6 +86,31 @@ test("ASCII titles slug; non-ASCII titles use file-n unless id is set", async ()
   assert.equal(report.cases[0].id, "home-greets-by-name");
   assert.match(report.cases[1].id, /^clock-\d+$/);
   assert.equal(report.cases[2].id, "UI-HOME-009");
+});
+
+test("generated ids count per file, so another file's specs never shift them", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world);
+
+  const register = (extraInOtherFile) => {
+    for (let i = 0; i < extraInOtherFile; i += 1) registerOtherFileSpec(`另一个文件 ${i}`);
+    spec("首页打招呼", async () => {});
+    spec("ASCII title in between", async () => {});
+    registerOtherFileSpec("另一个文件 末尾");
+    spec("设置页", async () => {});
+  };
+
+  register(0);
+  await globalThis.__LINGXIA_TEST__.run();
+  const before = reportJson(attachments).cases.map((item) => item.id);
+  assert.deepEqual(before, ["clock-1", "ascii-title-in-between", "other-file-1", "clock-2"]);
+
+  reset();
+  register(2);
+  await globalThis.__LINGXIA_TEST__.run();
+  const after = reportJson(attachments).cases.map((item) => item.id);
+  assert.deepEqual(after.filter((id) => id.startsWith("clock-")), ["clock-1", "clock-2"]);
+  assert.deepEqual(after.filter((id) => id.startsWith("other-file-")), ["other-file-1", "other-file-2", "other-file-3"]);
 });
 
 test("grep filters by title or id and marks the report filtered", async () => {

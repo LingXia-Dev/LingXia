@@ -47,7 +47,12 @@ interface RegisteredSpec {
   annotation: Annotation;
   body: SpecBody;
   frames: StackFrame[];
-  indexInFile: number;
+  /**
+   * 1-based position among the specs of the same file that need a generated
+   * id (no `id`, no ASCII slug). Assigned when the run starts: the file is
+   * only known once the bundle's source map is installed.
+   */
+  indexInFile?: number;
 }
 
 interface Hook {
@@ -59,7 +64,6 @@ const specs: RegisteredSpec[] = [];
 const hooks: Hook[] = [];
 const afterHooks: Hook[] = [];
 const resetHooks: Hook[] = [];
-const fileCounts = new Map<string, number>();
 let forceRelaunchNext = false;
 let trackSurface = false;
 
@@ -107,8 +111,6 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
   // frame inside this package, identical for every caller, so it can order
   // registrations but must never stand in for identity.
   const frames = captureFrames();
-  const indexInFile = fileCounts.size + 1;
-  fileCounts.set(String(indexInFile), indexInFile);
   specs.push({
     title,
     id: options.id,
@@ -123,7 +125,6 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     annotation,
     body,
     frames,
-    indexInFile,
   });
 }
 
@@ -168,10 +169,30 @@ function sourceOf(item: RegisteredSpec): { file: string; line: number } {
   return { file: origin.file, line: origin.line };
 }
 
+function needsGeneratedId(item: RegisteredSpec): boolean {
+  return !(item.id && item.id.length > 0) && slugTitle(item.title) === undefined;
+}
+
+/**
+ * Number the specs that need a generated id, per file and in registration
+ * order, so adding a spec to one file never renames a spec in another.
+ */
+function assignFileIndexes(): void {
+  const counts = new Map<string, number>();
+  for (const item of specs) {
+    if (!needsGeneratedId(item)) continue;
+    const file = sourceOf(item).file;
+    const next = (counts.get(file) ?? 0) + 1;
+    counts.set(file, next);
+    item.indexInFile = next;
+  }
+}
+
 function resolvedId(item: RegisteredSpec): string {
   if (item.id && item.id.length > 0) return item.id;
   const slug = slugTitle(item.title);
   if (slug) return slug;
+  if (item.indexInFile === undefined) assignFileIndexes();
   return `${fileStem(sourceOf(item).file)}-${item.indexInFile}`;
 }
 
@@ -254,6 +275,7 @@ async function run(): Promise<ProtocolReport> {
   const started = Date.now();
   clearInline();
 
+  assignFileIndexes();
   const ids = new Map<string, string>();
   for (const item of specs) {
     const id = resolvedId(item);
@@ -695,7 +717,6 @@ function reset(): void {
   afterHooks.length = 0;
   resetHooks.length = 0;
   trackSurface = false;
-  fileCounts.clear();
   forceRelaunchNext = false;
   clearInline();
   setAssertionSink();
