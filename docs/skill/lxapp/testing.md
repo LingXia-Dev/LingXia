@@ -139,3 +139,6 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
 - JSON keeps `timeout`, `xfail`, and `xpass` distinct; unexpected passes fail the run.
 - Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.
+- `t.app.nav.*` resolves once the page stack changed, before the page is ready. Pass
+  `waitFor: 'ready'` (optional `timeoutMs`, default 15000) to await the landed page's `onReady`;
+  it rejects if the app replaced that page first (e.g. its own pending `lx.reLaunch`).
