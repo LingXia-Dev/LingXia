@@ -447,12 +447,9 @@ fn runner_splash_env(lxapp_path: &Path) -> Option<RunnerSplashLaunch> {
     let text = fs::read_to_string(host.join(crate::config::HOST_CONFIG_FILE)).ok()?;
     let file: RunnerSplashFile = serde_yaml_ng::from_str(&text).ok()?;
     let splash = file.splash?;
-    let background = splash.background.trim();
-    if !is_splash_hex(background) {
-        return None;
-    }
+    let background = crate::splash::normalize_hex_rgb(&splash.background).ok()?;
     Some(RunnerSplashLaunch {
-        background: background.to_string(),
+        background,
         image: splash
             .image
             .as_deref()
@@ -462,13 +459,6 @@ fn runner_splash_env(lxapp_path: &Path) -> Option<RunnerSplashLaunch> {
             .as_deref()
             .and_then(|raw| splash_asset(host, raw)),
     })
-}
-
-fn is_splash_hex(value: &str) -> bool {
-    let Some(rest) = value.strip_prefix('#') else {
-        return false;
-    };
-    rest.len() == 6 && rest.chars().all(|c| c.is_ascii_hexdigit())
 }
 
 fn splash_asset(root: &Path, raw: &str) -> Option<PathBuf> {
@@ -1604,6 +1594,20 @@ mod tests {
         )
         .unwrap();
         assert!(runner_splash_env(temp.path()).is_none());
+    }
+
+    #[test]
+    fn runner_splash_env_expands_short_background_like_host_builds() {
+        let temp = tempdir().unwrap();
+        fs::write(
+            temp.path().join("lingxia.yaml"),
+            "splash:\n  background: \"#a2f\"\n",
+        )
+        .unwrap();
+        assert_eq!(
+            runner_splash_env(temp.path()).unwrap().background,
+            "#AA22FF"
+        );
     }
 
     #[test]

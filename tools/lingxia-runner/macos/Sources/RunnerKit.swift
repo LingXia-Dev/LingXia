@@ -67,10 +67,16 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
             guard await RunnerUserAgentPolicy.shared.prepare() else {
                 fatalError("LingXia Runner could not configure the engine user agent")
             }
+            let webURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"]
+                .flatMap(URL.init(string:))
+                .flatMap { ($0.scheme == "http" || $0.scheme == "https") ? $0 : nil }
+            // Campaign selection runs during runtime initialization, so mark
+            // the phone launch face before that initialization begins.
+            if webURL == nil && RunnerApp.shared.selectedDeviceSize.usesPhoneChrome {
+                RunnerSupport.Splash.armIfConfigured()
+            }
             guard initializeRuntime() else { return }
-            if let rawURL = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_WEB_URL"],
-               let url = URL(string: rawURL),
-               url.scheme == "http" || url.scheme == "https" {
+            if let url = webURL {
                 do {
                     try RunnerApp.shared.openWeb(url: url)
                 } catch {
@@ -79,11 +85,6 @@ private class RunnerKitDelegate: NSObject, NSApplicationDelegate {
                     Darwin.exit(EXIT_FAILURE)
                 }
                 return
-            }
-            // Phone only. Pad and desktop shells take no launch overlay, and
-            // marking a face that is never shown holds home-ready anyway.
-            if RunnerApp.shared.selectedDeviceSize.usesPhoneChrome {
-                RunnerSupport.Splash.armIfConfigured()
             }
             _ = try? await controller.openHomeApp()
         }
