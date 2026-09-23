@@ -373,6 +373,12 @@ gradle.settingsEvaluated {{ settings ->
                     } else {
                         bin_dir.join("clang")
                     };
+                    // Bindgen reads the target-qualified variable first, so
+                    // the Servo C++ target flags must extend it rather than
+                    // the generic one; otherwise libc++ headers are parsed
+                    // without the API level (mozangle fails on
+                    // `pthread_cond_clockwait`).
+                    let servo_bindgen_args = format!("{bindgen_extra_clang_args} {cxxflags}");
                     cmd.env("TARGET_CC", &cc_path)
                         .env("TARGET_CXX", &cxx_path)
                         .env("TARGET_AR", &ar_path)
@@ -380,14 +386,30 @@ gradle.settingsEvaluated {{ settings ->
                         .env("TARGET_CFLAGS", &cflags)
                         .env("TARGET_CXXFLAGS", &cxxflags)
                         .env("TARGET_PKG_CONFIG_SYSROOT_DIR", &sysroot)
-                        .env("BINDGEN_EXTRA_CLANG_ARGS", &cxxflags);
+                        .env("BINDGEN_EXTRA_CLANG_ARGS", &cxxflags)
+                        .env(
+                            format!("BINDGEN_EXTRA_CLANG_ARGS_{}", target_env),
+                            &servo_bindgen_args,
+                        );
 
-                    #[cfg(windows)]
-                    if env::var_os("LIBCLANG_PATH").is_none()
-                        && let Some(program_files) = env::var_os("ProgramFiles")
-                    {
-                        let libclang = PathBuf::from(program_files).join("LLVM/bin");
-                        if libclang.join("libclang.dll").exists() {
+                    // Servo's debug info makes a debug liblingxia.so several
+                    // GB. An explicit profile setting still wins.
+                    if env::var_os("CARGO_PROFILE_DEV_DEBUG").is_none() {
+                        cmd.env("CARGO_PROFILE_DEV_DEBUG", "0");
+                    }
+
+                    // Parse the NDK's libc++ with the NDK's own libclang: an
+                    // older host libclang (Xcode 15) rejects those headers.
+                    if env::var_os("LIBCLANG_PATH").is_none() {
+                        #[cfg(windows)]
+                        let libclang = env::var_os("ProgramFiles")
+                            .map(|program_files| PathBuf::from(program_files).join("LLVM/bin"))
+                            .filter(|dir| dir.join("libclang.dll").exists());
+                        #[cfg(not(windows))]
+                        let libclang = Some(toolchain_base.join("lib")).filter(|dir| {
+                            dir.join("libclang.dylib").exists() || dir.join("libclang.so").exists()
+                        });
+                        if let Some(libclang) = libclang {
                             cmd.env("LIBCLANG_PATH", libclang);
                         }
                     }
