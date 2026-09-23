@@ -78,6 +78,8 @@ Pass values into a run with `--arg` (`t.args`), so one suite can cover several p
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
+Reports record the args of a run. Keys that look like credentials (`password`, `secret`, `token`, `apiKey`, `credential`) are written as `***`, and `--secret-arg key=value` masks any other key; the spec still reads the real value from `t.args`.
+
 Results print as they finish and are written under `test-results/<run-id>/` (`report.html`, `report.json`, `junit.xml`) so CI can keep them as an artifact.
 
 ## Park work without deleting it
@@ -89,6 +91,18 @@ spec.skip('resumes an interrupted upload', {
   reason: 'needs the retry API',
 });
 ```
+
+When only the run itself can tell whether a case applies, skip from inside the body. `t.skip(reason)` stops the spec and reports it as skipped with that reason — neither passed nor failed:
+
+```ts
+spec('reconnects an offline client', async (t) => {
+  const offline = await findOfflineClient(t);
+  if (!offline) t.skip('this account has no offline client');
+  // …
+});
+```
+
+`spec.fail` declares a known-broken case: any failure of its body — a failed assertion or a thrown product error — is reported as the expected failure (`xfail`), and a body that completes is an unexpected pass (`xpass`) that fails the run.
 
 ## Behavior worth a permanent test
 

@@ -78,6 +78,8 @@ lxdev test tests/ --grep checkout
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
+报告会记录运行参数。看起来像凭据的键（`password`、`secret`、`token`、`apiKey`、`credential`）写成 `***`；其他键用 `--secret-arg key=value` 传入即可同样遮蔽。用例从 `t.args` 读到的仍是真实值。
+
 结果边跑边输出，并写到 `test-results/<run-id>/`（`report.html`、`report.json`、`junit.xml`），CI 可以作为产物留存。
 
 ## 搁置但不删除
@@ -89,6 +91,18 @@ spec.skip('恢复中断的上传', {
   reason: '需要重试 API',
 });
 ```
+
+只有运行时才知道用例是否适用时，在用例体内跳过。`t.skip(reason)` 立即结束该用例，并以该原因报告为 skipped —— 既不算通过也不算失败：
+
+```ts
+spec('重连离线客户端', async (t) => {
+  const offline = await findOfflineClient(t);
+  if (!offline) t.skip('该账号没有离线客户端');
+  // …
+});
+```
+
+`spec.fail` 声明已知有问题的用例：用例体的任何失败 —— 断言失败或产品抛出的错误 —— 都报告为预期失败（`xfail`）；用例体顺利完成则是意外通过（`xpass`），会让运行失败。
 
 ## 什么行为值得写成永久测试
 

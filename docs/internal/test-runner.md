@@ -17,6 +17,16 @@ received artifacts. Keep the following invariants when changing these layers:
 - Persist events before consuming them. Missing final reports, terminal timeout,
   cancellation and connection loss need client-side partial reports. A JUnit run
   error represents an incomplete run even when every completed case passed.
+- The host holds one active run per session. Validate anything local (output
+  directory) before `session.test.start`; once a run exists, every way the
+  client stops without a terminal poll cancels it (`ActiveRun` in lxdev).
+- `t.skip()` throws `SkipSignal`; it grades `skipped` in every phase and under
+  `spec.fail`, and skips failure forensics. `spec.fail` inverts any body
+  failure, not only assertions; setup failures and timeouts keep their status.
+- Secret args (credential-like keys, `--secret-arg` keys listed in the
+  reserved `secretArgs` arg) reach `t.args` unmasked but are `***` in
+  `meta.args`, and their values are masked in events and reports. lxdev
+  re-scrubs its written reports for older runtimes.
 - Retry artifacts have attempt-specific paths. Do not overwrite the first failure
   with the successful attempt. Terminal output is a presentation of the report,
   not an alternate result model.
