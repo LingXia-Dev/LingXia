@@ -1,6 +1,7 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 import type {
   Automation,
+  LogicLxAppEvalOptions,
   LxAppDriver,
   LxAppEvalOptions,
   LxAppEvalTrace,
@@ -180,12 +181,8 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
    * spans the whole run).
    */
   readonly network: NetworkDriver;
-  /**
-   * Evaluate a script string in app Logic and resolve to its value (the
-   * fixture unwraps the call trace). `T` is not validated.
-   */
-  eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
-  eval<T = unknown>(options: LxAppEvalOptions): Promise<T>;
+  /** Evaluate a script string in app Logic and resolve to its value. `T` is not validated. */
+  eval<T = unknown>(options: LogicLxAppEvalOptions): Promise<T>;
   /**
    * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
    * JSON result. `fn` must be self-contained (see `LogicFunction`).
