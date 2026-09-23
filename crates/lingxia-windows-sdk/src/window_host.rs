@@ -35,15 +35,13 @@ use lingxia_windows_contract::{
     WindowsContentRect, WindowsFrameButton, WindowsHostBackend, WindowsHostPanelContent,
     WindowsHostPanelKeyEvent, WindowsHostPanelTab, WindowsHostWindow, WindowsNavAnimation,
     WindowsPanelPosition, WindowsWebViewContentWindow, WindowsWebViewWindowSnapshot,
-    WindowsWindowLayout, cleanup_webview_state, current_window_layout, default_window_size,
-    host_panel_input_handler, host_window_created_handlers, set_webview_window_layout,
-    set_windows_host_backend, webview_chrome_event_handler, webview_close_handler,
-    webview_visibility_handler, windows_chrome_renderer,
+    WindowsWindowLayout, cleanup_webview_state, current_window_layout,
+    default_window_size_override, host_panel_input_handler, host_window_created_handlers,
+    set_webview_window_layout, set_windows_host_backend, webview_chrome_event_handler,
+    webview_close_handler, webview_visibility_handler, windows_chrome_renderer,
 };
 use windows::Win32::Foundation::SIZE;
 use windows::Win32::Foundation::{COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-#[cfg(feature = "shell-chrome")]
-use windows::Win32::Graphics::Gdi::MonitorFromRect;
 use windows::Win32::Graphics::Gdi::{AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION};
 use windows::Win32::Graphics::Gdi::{
     BI_RGB, BITMAPINFO, BITMAPINFOHEADER, BeginPaint, BitBlt, CreateCompatibleDC, CreateDIBSection,
@@ -51,6 +49,9 @@ use windows::Win32::Graphics::Gdi::{
     ExcludeClipRect, GetDC, GetMonitorInfoW, HDC, HGDIOBJ, IntersectClipRect,
     MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow, PAINTSTRUCT, PS_SOLID, ReleaseDC,
     RestoreDC, SRCCOPY, SaveDC, ScreenToClient, SelectObject,
+};
+use windows::Win32::Graphics::Gdi::{
+    HMONITOR, MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint, MonitorFromRect,
 };
 use windows::Win32::System::LibraryLoader;
 use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
@@ -102,6 +103,8 @@ static CHROME_INTERACTIONS: OnceLock<Mutex<HashMap<isize, ChromeInteraction>>> =
 static WINDOW_RESIZE_DRAGS: OnceLock<Mutex<HashMap<isize, WindowResizeDrag>>> = OnceLock::new();
 static DEFAULT_HOST_HEADLESS: AtomicBool = AtomicBool::new(false);
 static RESTORED_WINDOW_FRAME: AtomicBool = AtomicBool::new(false);
+/// Primary HWND whose restored frame was maximized; maximized on first show.
+static PENDING_RESTORE_MAXIMIZE: AtomicIsize = AtomicIsize::new(0);
 static CHROME_BACK_BUFFERS: OnceLock<Mutex<HashMap<isize, ChromeBackBuffer>>> = OnceLock::new();
 static ATTACHED_PANEL_RESIZE_DRAG: OnceLock<Mutex<Option<AttachedPanelResizeDrag>>> =
     OnceLock::new();
@@ -176,8 +179,8 @@ fn overlay_default_height() -> i32 {
 fn resize_border() -> i32 {
     crate::dpi::px(8)
 }
-const MAIN_WINDOW_MIN_WIDTH: i32 = 480;
-const MAIN_WINDOW_MIN_HEIGHT: i32 = 480;
+const MAIN_WINDOW_MIN_WIDTH: i32 = lingxia_shell::MIN_MAIN_WINDOW_SIZE.0 as i32;
+const MAIN_WINDOW_MIN_HEIGHT: i32 = lingxia_shell::MIN_MAIN_WINDOW_SIZE.1 as i32;
 
 #[cfg(feature = "shell-chrome")]
 #[derive(Clone)]
@@ -9441,6 +9444,16 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
                     invalidate_window(hwnd);
                 }
+                // Maximize/restore never reaches WM_EXITSIZEMOVE; persist only on
+                // that transition so a live resize does not write every step.
+                let size_kind = wparam.0 as u32;
+                let maximized = size_kind == WindowsAndMessaging::SIZE_MAXIMIZED;
+                if (maximized || size_kind == WindowsAndMessaging::SIZE_RESTORED)
+                    && lingxia_shell::window_frame()
+                        .map_or(maximized, |frame| frame.maximized != maximized)
+                {
+                    persist_primary_window_frame(hwnd);
+                }
                 unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
             }
             WindowsAndMessaging::WM_WINDOWPOSCHANGED => {
@@ -9467,7 +9480,14 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
                 sync_chrome_overlays(hwnd, active_webtag_key_for_window(hwnd).as_deref());
                 #[cfg(feature = "runtime")]
                 crate::dev_service_mark::sync(hwnd);
-                unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) }
+                let result =
+                    unsafe { WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam) };
+                // After DefWindowProc, so its WM_SIZE for this show cannot land
+                // after the maximize with the pre-maximize size.
+                if is_window_visible(hwnd) && !is_minimized(hwnd) {
+                    apply_pending_restore_maximize(hwnd);
+                }
+                result
             }
             WindowsAndMessaging::WM_ERASEBKGND => {
                 if windows_chrome_renderer().is_some() && !is_native_framed_window(hwnd) {
@@ -9816,11 +9836,7 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
 
     unsafe {
         WindowsAndMessaging::RegisterClassW(&class);
-        let (width, height) = physical_default_window_size();
-        let (origin_x, origin_y) = primary_centered_origin(width, height).unwrap_or((
-            WindowsAndMessaging::CW_USEDEFAULT,
-            WindowsAndMessaging::CW_USEDEFAULT,
-        ));
+        let (origin_x, origin_y, width, height) = initial_window_frame();
         let user_data = Box::new(webtag.key().to_string());
         let user_data_ptr = Box::into_raw(user_data);
         let assign_tray_popover = HIDE_FROM_TASKBAR.load(Ordering::Relaxed)
@@ -10232,37 +10248,114 @@ fn consume_update_relaunch_marker() -> bool {
     }
 }
 
-/// Top-left origin that centers a `width`x`height` window on the primary
-/// monitor's work area. Used at window-creation time so the window is born
-/// centered instead of at the WS_POPUP default of (0, 0).
-/// The default window size in physical pixels for the primary display.
-///
-/// The configured size is logical: a host asking for 1024x768 means the window
-/// a person sees at 100%, not a smaller one on every scaled display. Handing
-/// those numbers to `CreateWindowExW` unscaled makes a 150% display open at 683
-/// logical px wide — inside the Medium breakpoint, where the shell projects the
-/// sidebar as an icon rail — so the app looks like it launched collapsed.
-fn physical_default_window_size() -> (i32, i32) {
-    let (width, height) = default_window_size();
-    let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForSystem() };
-    if dpi == 0 || dpi == 96 {
-        return (width, height);
+/// Frame (`x`, `y`, `width`, `height`, physical px) a new host window is
+/// created at: centered on the work area of the monitor under the cursor.
+fn initial_window_frame() -> (i32, i32, i32, i32) {
+    let explicit = default_window_size_override();
+    if let Some((work, dpi)) = cursor_monitor_work_area_and_dpi() {
+        let (width, height) = physical_initial_window_size(work, dpi, explicit);
+        let (x, y) = centered_origin(work, width, height);
+        return (x, y, width, height);
     }
-    let scale = f64::from(dpi) / 96.0;
-    let scaled = |value: i32| ((f64::from(value) * scale).round() as i32).max(value);
-    let (mut width, mut height) = (scaled(width), scaled(height));
-    // Scaling can outgrow a small high-density display — 768 at 150% is taller
-    // than a 1080p screen's work area. Fit it rather than open off-screen.
-    if let Some(work) = primary_work_area() {
-        width = width.min((work.right - work.left).max(1));
-        height = height.min((work.bottom - work.top).max(1));
-    }
-    (width, height)
+    let (width, height) = explicit.unwrap_or((
+        lingxia_shell::DEFAULT_MAIN_WINDOW_SIZE.0 as i32,
+        lingxia_shell::DEFAULT_MAIN_WINDOW_SIZE.1 as i32,
+    ));
+    (
+        WindowsAndMessaging::CW_USEDEFAULT,
+        WindowsAndMessaging::CW_USEDEFAULT,
+        width,
+        height,
+    )
 }
 
-#[cfg(feature = "shell-chrome")]
-fn persisted_window_rect() -> Option<RECT> {
-    let frame = lingxia_shell::window_frame()?;
+/// Physical size for a first window on `work` at `dpi`. Sizes are logical — an
+/// unscaled 1024 on a 150% display is 683 logical px, inside the Medium
+/// breakpoint where the sidebar collapses to a rail — so both an explicit size
+/// and the shared default scale by the monitor DPI, then fit the work area.
+fn physical_initial_window_size(work: RECT, dpi: u32, explicit: Option<(i32, i32)>) -> (i32, i32) {
+    let scale = f64::from(if dpi == 0 { 96 } else { dpi }) / 96.0;
+    let work_width = (work.right - work.left).max(1);
+    let work_height = (work.bottom - work.top).max(1);
+    let (width, height) = explicit
+        .map(|(width, height)| (f64::from(width), f64::from(height)))
+        .unwrap_or_else(|| {
+            lingxia_shell::initial_main_window_size(
+                f64::from(work_width) / scale,
+                f64::from(work_height) / scale,
+            )
+        });
+    let physical = |value: f64, max: i32| ((value * scale).round() as i32).clamp(1, max);
+    (physical(width, work_width), physical(height, work_height))
+}
+
+fn centered_origin(work: RECT, width: i32, height: i32) -> (i32, i32) {
+    (
+        work.left + ((work.right - work.left) - width).max(0) / 2,
+        work.top + ((work.bottom - work.top) - height).max(0) / 2,
+    )
+}
+
+/// The app opens where the user is looking: the monitor under the cursor.
+fn cursor_monitor_work_area_and_dpi() -> Option<(RECT, u32)> {
+    let mut cursor = POINT::default();
+    // A failed read leaves (0, 0), which is on the primary monitor.
+    let _ = unsafe { WindowsAndMessaging::GetCursorPos(&mut cursor) };
+    let monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTOPRIMARY) };
+    let info = monitor_info(monitor)?;
+    Some((info.rcWork, monitor_dpi(monitor)))
+}
+
+fn monitor_info(monitor: HMONITOR) -> Option<MONITORINFO> {
+    let mut info = MONITORINFO {
+        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+        ..Default::default()
+    };
+    unsafe { GetMonitorInfoW(monitor, &mut info) }
+        .as_bool()
+        .then_some(info)
+}
+
+fn monitor_dpi(monitor: HMONITOR) -> u32 {
+    use windows::Win32::UI::HiDpi;
+    let (mut dpi_x, mut dpi_y) = (0u32, 0u32);
+    let dpi = unsafe {
+        if HiDpi::GetDpiForMonitor(monitor, HiDpi::MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y)
+            .is_ok()
+            && dpi_x != 0
+        {
+            dpi_x
+        } else {
+            HiDpi::GetDpiForSystem()
+        }
+    };
+    if dpi == 0 { 96 } else { dpi }
+}
+
+/// `GetWindowPlacement` reports the normal rect in workspace coordinates,
+/// which exclude a top/left taskbar; screen coordinates add it back.
+fn workspace_to_screen(rect: RECT, monitor: RECT, work: RECT) -> RECT {
+    let dx = work.left - monitor.left;
+    let dy = work.top - monitor.top;
+    RECT {
+        left: rect.left + dx,
+        top: rect.top + dy,
+        right: rect.right + dx,
+        bottom: rect.bottom + dy,
+    }
+}
+
+/// A window minimized out of the maximized state still reopens maximized.
+fn placement_is_maximized(placement: &WindowsAndMessaging::WINDOWPLACEMENT) -> bool {
+    let show = placement.showCmd as i32;
+    show == WindowsAndMessaging::SW_SHOWMAXIMIZED.0
+        || (show == WindowsAndMessaging::SW_SHOWMINIMIZED.0
+            && placement
+                .flags
+                .contains(WindowsAndMessaging::WPF_RESTORETOMAXIMIZED))
+}
+
+fn persisted_window_rect(frame: lingxia_shell::WindowFrame) -> Option<RECT> {
     let left = rounded_i32(frame.x)?;
     let top = rounded_i32(frame.y)?;
     let right = rounded_i32(frame.x + frame.width)?;
@@ -10274,41 +10367,39 @@ fn persisted_window_rect() -> Option<RECT> {
     {
         return None;
     }
-    let mut rect = RECT {
+    let rect = RECT {
         left,
         top,
         right,
         bottom,
     };
-
     let monitor = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
-    let mut info = MONITORINFO {
-        cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-        ..Default::default()
-    };
-    if !unsafe { GetMonitorInfoW(monitor, &mut info).as_bool() } {
-        return None;
-    }
-    let work = info.rcWork;
+    let work = monitor_info(monitor)?.rcWork;
+    Some(fit_rect_to_work_area(rect, work, monitor_dpi(monitor)))
+}
+
+/// Clamp a saved rect onto `work`, keeping the logical minimum size at `dpi`.
+fn fit_rect_to_work_area(mut rect: RECT, work: RECT, dpi: u32) -> RECT {
+    let dpi = dpi.max(96) as i32;
     let max_width = (work.right - work.left).max(1);
     let max_height = (work.bottom - work.top).max(1);
-    let width = (rect.right - rect.left).clamp(MAIN_WINDOW_MIN_WIDTH.min(max_width), max_width);
-    let height = (rect.bottom - rect.top).clamp(MAIN_WINDOW_MIN_HEIGHT.min(max_height), max_height);
+    let min_width = (MAIN_WINDOW_MIN_WIDTH * dpi / 96).min(max_width);
+    let min_height = (MAIN_WINDOW_MIN_HEIGHT * dpi / 96).min(max_height);
+    let width = (rect.right - rect.left).clamp(min_width, max_width);
+    let height = (rect.bottom - rect.top).clamp(min_height, max_height);
     rect.left = rect.left.clamp(work.left, work.right - width);
     rect.top = rect.top.clamp(work.top, work.bottom - height);
     rect.right = rect.left + width;
     rect.bottom = rect.top + height;
-    Some(rect)
+    rect
 }
 
-#[cfg(feature = "shell-chrome")]
 fn rounded_i32(value: f64) -> Option<i32> {
     let value = value.round();
     (value.is_finite() && value >= f64::from(i32::MIN) && value <= f64::from(i32::MAX))
         .then_some(value as i32)
 }
 
-#[cfg(feature = "shell-chrome")]
 fn restore_primary_window_frame(hwnd: HWND) {
     if DEFAULT_HOST_HEADLESS.load(Ordering::Acquire) {
         return;
@@ -10321,7 +10412,10 @@ fn restore_primary_window_frame(hwnd: HWND) {
     if crate::device_frame::window_has_device_frame(hwnd_handle(hwnd)) {
         return;
     }
-    let Some(rect) = persisted_window_rect() else {
+    let Some(frame) = lingxia_shell::window_frame() else {
+        return;
+    };
+    let Some(rect) = persisted_window_rect(frame) else {
         return;
     };
     if RESTORED_WINDOW_FRAME
@@ -10344,13 +10438,30 @@ fn restore_primary_window_frame(hwnd: HWND) {
     };
     if !restored {
         RESTORED_WINDOW_FRAME.store(false, Ordering::Release);
+        return;
+    }
+    // The window is usually still hidden here, and SetWindowPlacement with
+    // SW_SHOWMAXIMIZED would show it before its content is ready; maximize on
+    // the first show instead. The rect above stays the restore-down frame.
+    if frame.maximized {
+        PENDING_RESTORE_MAXIMIZE.store(hwnd_handle(hwnd), Ordering::Release);
+        if is_window_visible(hwnd) && !is_minimized(hwnd) {
+            apply_pending_restore_maximize(hwnd);
+        }
     }
 }
 
-#[cfg(not(feature = "shell-chrome"))]
-fn restore_primary_window_frame(_hwnd: HWND) {}
+fn apply_pending_restore_maximize(hwnd: HWND) {
+    if PENDING_RESTORE_MAXIMIZE
+        .compare_exchange(hwnd_handle(hwnd), 0, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+    {
+        unsafe {
+            let _ = WindowsAndMessaging::ShowWindow(hwnd, WindowsAndMessaging::SW_MAXIMIZE);
+        }
+    }
+}
 
-#[cfg(feature = "shell-chrome")]
 fn persist_primary_window_frame(hwnd: HWND) {
     if !is_top_level_window(hwnd)
         || !is_window_visible(hwnd)
@@ -10366,63 +10477,38 @@ fn persist_primary_window_frame(hwnd: HWND) {
         return;
     }
 
-    let mut rect = RECT::default();
-    let got_rect = unsafe {
-        if WindowsAndMessaging::IsIconic(hwnd).as_bool()
-            || WindowsAndMessaging::IsZoomed(hwnd).as_bool()
-        {
-            let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
-                length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
-                ..Default::default()
-            };
-            if WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement).is_ok() {
-                rect = placement.rcNormalPosition;
-                true
-            } else {
-                false
-            }
-        } else {
-            WindowsAndMessaging::GetWindowRect(hwnd, &mut rect).is_ok()
-        }
+    let mut placement = WindowsAndMessaging::WINDOWPLACEMENT {
+        length: std::mem::size_of::<WindowsAndMessaging::WINDOWPLACEMENT>() as u32,
+        ..Default::default()
     };
-    if !got_rect {
+    if unsafe { WindowsAndMessaging::GetWindowPlacement(hwnd, &mut placement) }.is_err() {
         return;
+    }
+    let mut rect = placement.rcNormalPosition;
+    // Tool windows already report screen coordinates.
+    let ex_style =
+        unsafe { WindowsAndMessaging::GetWindowLongPtrW(hwnd, WindowsAndMessaging::GWL_EXSTYLE) }
+            as u32;
+    if ex_style & WindowsAndMessaging::WS_EX_TOOLWINDOW.0 == 0
+        && let Some(info) =
+            monitor_info(unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) })
+    {
+        rect = workspace_to_screen(rect, info.rcMonitor, info.rcWork);
     }
     let Some(frame) = lingxia_shell::WindowFrame::new(
         f64::from(rect.left),
         f64::from(rect.top),
         f64::from(rect.right - rect.left),
         f64::from(rect.bottom - rect.top),
+        placement_is_maximized(&placement),
     ) else {
         return;
     };
-    if let Err(error) = lingxia_shell::set_window_frame(frame) {
-        log::warn!("could not persist the app window frame: {error}");
+    match lingxia_shell::set_window_frame(frame) {
+        // A host-api-only build never opens the shell store.
+        Ok(()) | Err(lingxia_shell::ShellError::NotInitialized) => {}
+        Err(error) => log::warn!("could not persist the app window frame: {error}"),
     }
-}
-
-#[cfg(not(feature = "shell-chrome"))]
-fn persist_primary_window_frame(_hwnd: HWND) {}
-
-fn primary_work_area() -> Option<RECT> {
-    let mut work = RECT::default();
-    let ok = unsafe {
-        WindowsAndMessaging::SystemParametersInfoW(
-            WindowsAndMessaging::SPI_GETWORKAREA,
-            0,
-            Some(&mut work as *mut _ as *mut c_void),
-            WindowsAndMessaging::SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
-        )
-        .is_ok()
-    };
-    ok.then_some(work)
-}
-
-fn primary_centered_origin(width: i32, height: i32) -> Option<(i32, i32)> {
-    let work = primary_work_area()?;
-    let x = work.left + (((work.right - work.left) - width) / 2).max(0);
-    let y = work.top + (((work.bottom - work.top) - height) / 2).max(0);
-    Some((x, y))
 }
 
 /// Center `hwnd` on its monitor's work area and pull it to the foreground. Uses
@@ -10822,6 +10908,10 @@ mod tests {
         full_chrome_window_style, registered_host_keeps_message_loop, resized_window_rect,
         same_window_generation, shell_window_style, webtag_content_bounds_changed,
     };
+    use super::{
+        centered_origin, fit_rect_to_work_area, physical_initial_window_size,
+        placement_is_maximized, workspace_to_screen,
+    };
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     use super::{device_frame_surface_corner_radii, per_corner_region_row_span};
     use std::ffi::c_void;
@@ -10982,6 +11072,91 @@ mod tests {
         );
         assert_eq!(clamped_at_100_percent.right, base.right);
         assert_eq!(clamped_at_100_percent.bottom, base.bottom);
+    }
+
+    fn rect(left: i32, top: i32, right: i32, bottom: i32) -> RECT {
+        RECT {
+            left,
+            top,
+            right,
+            bottom,
+        }
+    }
+
+    #[test]
+    fn first_window_scales_to_the_monitor_and_fits_its_work_area() {
+        // 1920x1040 work area at 150%: 1280x693 logical, so 85% of each axis.
+        let work = rect(0, 0, 1920, 1040);
+        assert_eq!(physical_initial_window_size(work, 144, None), (1632, 884));
+        // 4K at 150%: the 1200x800 default fits whole.
+        let work = rect(0, 0, 3840, 2080);
+        assert_eq!(physical_initial_window_size(work, 144, None), (1800, 1200));
+        // An explicit size is logical and capped to the work area even at 96.
+        let work = rect(0, 0, 1366, 728);
+        assert_eq!(
+            physical_initial_window_size(work, 96, Some((1024, 768))),
+            (1024, 728)
+        );
+        assert_eq!(
+            physical_initial_window_size(work, 0, Some((400, 300))),
+            (400, 300)
+        );
+    }
+
+    #[test]
+    fn first_window_centers_in_the_work_area_of_its_monitor() {
+        let work = rect(1920, 40, 3840, 1080);
+        assert_eq!(centered_origin(work, 1200, 800), (2280, 160));
+        assert_eq!(centered_origin(work, 4000, 800), (1920, 160));
+    }
+
+    #[test]
+    fn workspace_rect_moves_past_a_top_or_left_taskbar() {
+        let normal = rect(100, 100, 900, 700);
+        // Taskbar on the left of a secondary monitor.
+        let screen =
+            workspace_to_screen(normal, rect(1920, 0, 3840, 1080), rect(1968, 0, 3840, 1080));
+        assert_eq!(screen, rect(148, 100, 948, 700));
+        // Bottom taskbar: workspace and screen coordinates agree.
+        let screen = workspace_to_screen(normal, rect(0, 0, 1920, 1080), rect(0, 0, 1920, 1040));
+        assert_eq!(screen, normal);
+    }
+
+    #[test]
+    fn restored_rect_keeps_the_logical_minimum_at_the_monitor_dpi() {
+        let work = rect(0, 0, 2560, 1400);
+        let fitted = fit_rect_to_work_area(rect(10, 10, 110, 110), work, 144);
+        assert_eq!(fitted, rect(10, 10, 730, 730));
+        let fitted = fit_rect_to_work_area(rect(2000, -50, 3000, 550), work, 96);
+        assert_eq!(fitted, rect(1560, 0, 2560, 600));
+    }
+
+    #[test]
+    fn minimized_from_maximized_still_counts_as_maximized() {
+        let placement = |show: WindowsAndMessaging::SHOW_WINDOW_CMD, flags| {
+            WindowsAndMessaging::WINDOWPLACEMENT {
+                showCmd: show.0 as u32,
+                flags,
+                ..Default::default()
+            }
+        };
+        let none = WindowsAndMessaging::WINDOWPLACEMENT_FLAGS(0);
+        assert!(placement_is_maximized(&placement(
+            WindowsAndMessaging::SW_SHOWMAXIMIZED,
+            none
+        )));
+        assert!(!placement_is_maximized(&placement(
+            WindowsAndMessaging::SW_SHOWNORMAL,
+            none
+        )));
+        assert!(!placement_is_maximized(&placement(
+            WindowsAndMessaging::SW_SHOWMINIMIZED,
+            none
+        )));
+        assert!(placement_is_maximized(&placement(
+            WindowsAndMessaging::SW_SHOWMINIMIZED,
+            WindowsAndMessaging::WPF_RESTORETOMAXIMIZED
+        )));
     }
 
     #[test]

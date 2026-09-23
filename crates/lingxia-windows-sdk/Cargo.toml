@@ -18,6 +18,7 @@ default = ["standard"]
 host-api = [
     "dep:lingxia-platform",
     "dep:lingxia-webview",
+    "dep:lingxia-shell",
     "dep:lingxia-windows-contract",
     "dep:log",
     "dep:serde_json",
@@ -60,7 +61,6 @@ shell-chrome = [
     "runtime",
     "dep:lingxia-app-context",
     "dep:lingxia-logic",
-    "dep:lingxia-shell",
     "dep:resvg",
     "dep:tiny-skia",
     "dep:tokio",
@@ -146,6 +146,7 @@ windows = { workspace = true, features = [
     "Win32_System_Variant",
     "Win32_UI_Accessibility",
     "Win32_UI_Controls",
+    "Win32_UI_HiDpi",
     "Win32_UI_Input_Ime",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
