@@ -152,6 +152,9 @@ pub fn send_app_update_failed(
 
 pub trait AppUpdateHost: Clone + Send + Sync + 'static {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>);
+    fn store_update_only(&self) -> bool {
+        false
+    }
     fn current_app_version(&self) -> Result<String, UpdateError>;
     fn check_app_update<'a>(
         &'a self,
@@ -200,7 +203,8 @@ async fn check_app_update_for<H: AppUpdateHost>(
     trusted_public_keys: &[String],
     target_id: String,
 ) -> Result<Option<UpdatePackageInfo>, UpdateError> {
-    if !check_update_enabled(trusted_public_keys) {
+    let store_update_only = host.store_update_only();
+    if !store_update_only && !check_update_enabled(trusted_public_keys) {
         return Ok(None);
     }
     let current_version = host.current_app_version()?;
@@ -208,26 +212,52 @@ async fn check_app_update_for<H: AppUpdateHost>(
     let Some(package) = candidate else {
         return Ok(None);
     };
-    let package = verify_checked_update(
-        package,
-        &UpdateVerifyTarget {
-            kind: "app".into(),
-            target_id,
-            channel: String::new(),
-            platform: host_update_platform().into(),
-            exact_version: None,
-        },
-        trusted_public_keys,
-    )?;
-    // Only surface a strictly-newer candidate. A provider that re-offers the
-    // installed version (or the same version after a successful update) would
-    // otherwise make the app re-download and re-prompt on every check — an
-    // endless "update available" loop. Unparseable versions fall through to the
-    // apply-time downgrade guard.
-    if !app_update_candidate_is_newer(&package.version, &current_version) {
+    let package = if store_update_only {
+        // Store updates only use the version signal. Never consume package
+        // metadata or authenticate an archive that this build will not install.
+        UpdatePackageInfo {
+            version: package.version,
+            release_notes: package.release_notes,
+            url: String::new(),
+            checksum_sha256: String::new(),
+            size: None,
+            min_runtime: None,
+            authentication: None,
+        }
+    } else {
+        verify_checked_update(
+            package,
+            &UpdateVerifyTarget {
+                kind: "app".into(),
+                target_id,
+                channel: String::new(),
+                platform: host_update_platform().into(),
+                exact_version: None,
+            },
+            trusted_public_keys,
+        )?
+    };
+    // Only surface a newer candidate. Store signals cannot rely on an
+    // apply-time version check, so an unparseable version is ignored here.
+    let newer = if store_update_only {
+        store_update_candidate_is_newer(&package.version, &current_version)
+    } else {
+        app_update_candidate_is_newer(&package.version, &current_version)
+    };
+    if !newer {
         return Ok(None);
     }
     Ok(Some(package))
+}
+
+fn store_update_candidate_is_newer(candidate: &str, current: &str) -> bool {
+    match (
+        Version::parse(candidate.trim()),
+        Version::parse(current.trim()),
+    ) {
+        (Ok(candidate), Ok(current)) => candidate > current,
+        _ => false,
+    }
 }
 
 fn app_update_candidate_is_newer(candidate: &str, current: &str) -> bool {
@@ -299,6 +329,7 @@ mod tests {
         current_version: String,
         response: Option<UpdatePackageInfo>,
         provider_calls: Arc<AtomicUsize>,
+        store_update_only: bool,
     }
 
     impl FakeHost {
@@ -307,12 +338,22 @@ mod tests {
                 current_version: current_version.into(),
                 response,
                 provider_calls: Arc::new(AtomicUsize::new(0)),
+                store_update_only: false,
             }
+        }
+
+        fn store_only(mut self) -> Self {
+            self.store_update_only = true;
+            self
         }
     }
 
     impl AppUpdateHost for FakeHost {
         fn spawn_detached(&self, _task: BoxFuture<'static, ()>) {}
+
+        fn store_update_only(&self) -> bool {
+            self.store_update_only
+        }
 
         fn current_app_version(&self) -> Result<String, UpdateError> {
             Ok(self.current_version.clone())
@@ -438,6 +479,58 @@ mod tests {
             .expect("update available");
         assert_eq!(accepted.version, "1.0.1");
         assert_eq!(accepted.checksum_sha256, archive_sha256_hex(ARCHIVE));
+    }
+
+    #[test]
+    fn store_update_uses_only_version_and_notes() {
+        let mut package = signed_package("1.0.1", None);
+        package.url.clear();
+        package.checksum_sha256.clear();
+        package.size = None;
+        let host = FakeHost::new("1.0.0", Some(package.clone())).store_only();
+
+        let checked = block_on(check_app_update_for(&host, &[], TARGET_ID.into()))
+            .unwrap()
+            .expect("newer store version");
+        assert_eq!(checked.version, "1.0.1");
+        assert_eq!(host.provider_calls.load(Ordering::SeqCst), 1);
+
+        let mut signed_signal = package.clone();
+        signed_signal.authentication = Some(sign("1.0.1"));
+        let signed_store = FakeHost::new("1.0.0", Some(signed_signal)).store_only();
+        let checked = block_on(check_app_update_for(&signed_store, &[], TARGET_ID.into()))
+            .unwrap()
+            .unwrap();
+        assert!(checked.authentication.is_none());
+
+        let direct = FakeHost::new("1.0.0", Some(package.clone()));
+        let keys = [public_key_base64url(&SEED)];
+        assert!(block_on(check_app_update_for(&direct, &keys, TARGET_ID.into())).is_err());
+
+        package.url = "https://cdn.example.com/app".into();
+        package.checksum_sha256 = archive_sha256_hex(ARCHIVE);
+        package.size = Some(ARCHIVE.len() as u64);
+        package.min_runtime = Some("0.1.0".into());
+        let store_package = FakeHost::new("1.0.0", Some(package)).store_only();
+        let checked = block_on(check_app_update_for(&store_package, &[], TARGET_ID.into()))
+            .unwrap()
+            .unwrap();
+        assert!(checked.url.is_empty());
+        assert!(checked.checksum_sha256.is_empty());
+        assert!(checked.size.is_none());
+        assert!(checked.min_runtime.is_none());
+
+        let invalid_version =
+            FakeHost::new("1.0.0", Some(signed_package("latest", None))).store_only();
+        assert!(
+            block_on(check_app_update_for(
+                &invalid_version,
+                &[],
+                TARGET_ID.into()
+            ))
+            .unwrap()
+            .is_none()
+        );
     }
 
     #[test]

@@ -85,7 +85,11 @@ impl HostAppUpdateService {
         // Store channel still queries the feed: version + notes are the signal
         // that a marketplace update exists. apply() / the auto-flow then open
         // the store instead of downloading.
-        lingxia_update::check_app_update(self).await
+        let update = lingxia_update::check_app_update(self).await?;
+        if let Some(update) = &update {
+            validate_host_update_package(update, self.self_update_supported())?;
+        }
+        Ok(update)
     }
 
     /// Whether this process may download and self-install. False when the
@@ -191,6 +195,25 @@ impl HostAppUpdateService {
     }
 }
 
+fn validate_host_update_package(
+    update: &UpdatePackageInfo,
+    direct_update: bool,
+) -> Result<(), UpdateError> {
+    if direct_update {
+        if update.url.trim().is_empty() {
+            return Err(UpdateError::invalid_parameter(
+                "direct app update response requires downloadUrl",
+            ));
+        }
+        if update.checksum_sha256.trim().is_empty() {
+            return Err(UpdateError::invalid_parameter(
+                "direct app update response requires sha256",
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Prompt metadata for a store-channel update. `openStore` tells the ready
 /// card to open the marketplace instead of installing a downloaded package.
 pub fn store_update_info_json(update: &UpdatePackageInfo, package_id: Option<&str>) -> String {
@@ -230,6 +253,10 @@ fn apply_open_store(runner: HostAppUpdateService, update: UpdatePackageInfo) -> 
 impl lingxia_update::AppUpdateHost for HostAppUpdateService {
     fn spawn_detached(&self, task: BoxFuture<'static, ()>) {
         let _ = rong_rt::RongExecutor::global().spawn(task);
+    }
+
+    fn store_update_only(&self) -> bool {
+        !self.self_update_supported()
     }
 
     fn current_app_version(&self) -> Result<String, UpdateError> {
@@ -562,6 +589,28 @@ fn reusable_app_update_package_size(path: &Path, checksum_sha256: &str) -> Optio
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn store_update_does_not_require_download_url() {
+        let update = UpdatePackageInfo {
+            version: "1.2.3".into(),
+            url: String::new(),
+            checksum_sha256: String::new(),
+            size: None,
+            release_notes: None,
+            min_runtime: None,
+            authentication: None,
+        };
+
+        assert!(validate_host_update_package(&update, false).is_ok());
+        assert!(validate_host_update_package(&update, true).is_err());
+
+        let direct_without_sha = UpdatePackageInfo {
+            url: "https://example.com/app.zip".into(),
+            ..update
+        };
+        assert!(validate_host_update_package(&direct_without_sha, true).is_err());
+    }
 
     #[test]
     fn prune_preserves_current_package_and_resume_file() {

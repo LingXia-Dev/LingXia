@@ -261,7 +261,9 @@ impl UpdateTarget {
 #[derive(Clone, Debug)]
 pub struct UpdatePackageInfo {
     pub version: String,
+    /// Empty only for a host app's store-only version signal.
     pub url: String,
+    /// Empty only when that store signal has no downloadable archive.
     pub checksum_sha256: String,
     pub size: Option<u64>,
     pub release_notes: Option<Vec<String>>,

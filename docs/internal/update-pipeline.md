@@ -24,13 +24,14 @@ without platform services.
 - **The host build decides whether signatures are required.** A requested lxapp
   channel cannot waive verification. A production host may open a draft lxapp,
   but the package must be signed for that channel.
-- **Production builds without embedded trusted keys must not query the feed.**
-  This includes store-only hosts: the feed is still their version signal.
-  Development builds query without keys and verify when keys are present.
-- **Only the signed manifest establishes version and checksum.** Verification
-  binds `kind`, `targetId`, `channel`, `platform`, `version`, and `sha256`.
-  Verified version and checksum replace response values. Response `url`,
-  `size`, `releaseNotes`, and `minRuntime` are unsigned hints.
+- **Production direct updates require embedded trusted keys.** Store hosts
+  use only the version and optional release notes; they do not verify or use
+  package fields. Lxapp and plugin update verification is unchanged.
+- **The signed manifest establishes package version and checksum.** Package
+  verification binds `kind`, `targetId`, `channel`, `platform`, `version`, and
+  `sha256`. An unsigned version-only store signal has no signed manifest: its
+  version and release notes are advisory. Store opening uses only the locally
+  configured listing identity and still requires a user action.
 - Providers must preserve the exact signed bytes. Request-controlled fields
   must not select the signature verification scheme.
 - After unpacking an lxapp, validate its own `lxapp.json`: expected app id,
@@ -62,6 +63,10 @@ Store builds still check the feed, but never download an installer. Publish
 their feed entry **only after the store listing is live**. Automatic store
 prompts are snoozed per version for three days after presentation is accepted;
 a newer version may prompt again. Explicit JS apply requests are not snoozed.
+The store update contract is `version` plus optional `releaseNotes`; the host
+ignores other response fields. Direct builds require both `downloadUrl` and
+`sha256`; production direct updates also require `authentication`. Lxapp and
+plugin packages retain their download and signature requirements.
 
 ### Automatic flow and JS ownership
 

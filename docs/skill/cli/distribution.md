@@ -36,12 +36,10 @@ The key file is one line: base64url (no `=`) of a 32-byte Ed25519 seed, mode
 `0600` or `0400`. The matching public key is that seed's 32-byte verify key
 in the same encoding. Put 1 or 2 of those under host `update.trustedPublicKeys`.
 `update.channel` / `update.platforms` choose `direct` (self-install) vs
-`store` per platform — see [host `update`](../app/project.md#update). Keys are
-required on both channels: the signed feed is the version signal even when the
-store installs. For a `store` platform, publish the feed package only once the
-store listing is live, or users are pointed at a listing with nothing new.
-Omit the `update:` table: a `dev` build still runs `checkUpdate` (unverified);
-`prod` builds skip check-update entirely.
+`store` per platform — see [host `update`](../app/project.md#update). Direct
+prod updates require trusted keys; store updates use only a version and optional
+release notes and do not need keys. `lingxia publish` uploads packages, while
+`lingxia store` handles OS store submission.
 
 ```bash
 umask 077
