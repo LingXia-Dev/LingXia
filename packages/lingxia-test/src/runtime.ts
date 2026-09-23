@@ -184,7 +184,13 @@ function pinApp(appId?: string): LxAppDriver {
 async function relaunchHome(app: LxAppDriver): Promise<void> {
   const pages = await app.pages();
   const home = pages[0]?.name ?? "home";
-  await app.nav.relaunch({ page: home });
+  try {
+    await app.nav.relaunch({ page: home, waitUntil: "ready" });
+  } catch (error) {
+    // The home page may hand off to another page itself (a gate, a login
+    // redirect); that is the app's own start, not a failed relaunch.
+    if (!/was disposed before runtime became ready/.test(String((error as Error)?.message ?? error))) throw error;
+  }
 }
 
 async function run(): Promise<ProtocolReport> {

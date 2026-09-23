@@ -10,6 +10,12 @@ spec('typed test boundary', async t => {
   const state = await app.eval<{ready:boolean}>({script:'return {ready:true}'});
   state.ready.valueOf();
   await t.automation.browser.tabs();
+  const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
+  landed.webviewAttached.valueOf();
+  await app.nav.back({waitUntil:'ready', timeoutMs:5_000});
+  // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
+  await app.nav.to({page:'editor', waitFor:'ready'});
+  await input.waitFor({state:'attached'});
   // @ts-expect-error Test context has no DOM.
   document.querySelector('button');
   // @ts-expect-error Queries read once; they do not accept ignored retry options.

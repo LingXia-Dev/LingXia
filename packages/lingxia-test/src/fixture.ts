@@ -44,7 +44,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { Automation, LxAppDriver, PageDriver } from "@lingxia/types/automation";
+import type { Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver } from "@lingxia/types/automation";
 
 export class TimeoutError extends Error {
   override readonly name = "TimeoutError";
@@ -451,7 +451,7 @@ export class LiveFixture implements Fixture {
     const page = this.wrapPage(driver.page);
     return {
       page,
-      nav: guardObject(driver.nav, this, "nav."),
+      nav: guardObject(landingNav(driver.nav), this, "nav."),
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
@@ -785,6 +785,29 @@ function matchLocator(
     if (expected instanceof RegExp) applyMatcher("toMatch", resolved.value ?? "", expected, inverted);
     else applyMatcher("toBe", resolved.value, expected, inverted);
   }
+}
+
+const LANDING_NAV = new Set<PropertyKey>(["to", "redirect", "switchTab", "relaunch", "back"]);
+
+/**
+ * A spec almost always wants the page it navigated to, so fixture navigation
+ * waits for the landed page's `onReady` unless the caller picks `waitUntil`
+ * (`'commit'` resolves once the stack changed).
+ */
+function untilReady<T extends NavWaitOptions>(options?: T): T {
+  if (options && typeof options === "object" && options.waitUntil !== undefined) return options;
+  return { ...(options ?? {}), waitUntil: "ready" } as T;
+}
+
+function landingNav(nav: NavDriver): NavDriver {
+  return new Proxy(nav, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop, target);
+      if (typeof value !== "function") return value;
+      if (!LANDING_NAV.has(prop)) return value.bind(target);
+      return (options?: NavWaitOptions) => value.call(target, untilReady(options));
+    },
+  });
 }
 
 function guardObject<T extends object>(
