@@ -2,6 +2,7 @@ import { normalizeVideoEventDetail } from "./video-events.js";
 import { ensureComponentId } from "./component.js";
 import { registerNativeComponentHandler } from "./nativecomponent.js";
 import { findInlineNativeRoot } from "./inline-native/structure.js";
+import { clearAspectRatioFallback, ensureAspectRatioFallback } from "./dom.js";
 
 export type LxVideoQuality = { label: string; url?: string };
 export interface LxVideoEventPayloads {
@@ -113,6 +114,8 @@ export class LxVideoElement extends HTMLElement {
   private unregister?: () => void;
   private handlers: Record<string, EventListenerOrEventListenerObject> = {};
   private rawHandlers: Record<string, EventListenerOrEventListenerObject> = {};
+  private aspectRatioFallback = false;
+  private aspectRatioObserver?: ResizeObserver;
 
   set src(value: string | null | undefined) {
     if (value == null) {
@@ -175,6 +178,7 @@ export class LxVideoElement extends HTMLElement {
         );
       });
       this.ensurePlaceholderStyle();
+      this.observeAspectRatio();
       return;
     }
 
@@ -190,11 +194,16 @@ export class LxVideoElement extends HTMLElement {
       }
     }
     this.ensurePlaceholderStyle();
+    this.observeAspectRatio();
   }
 
   disconnectedCallback(): void {
     this.unregister?.();
     this.unregister = undefined;
+    this.aspectRatioObserver?.disconnect();
+    this.aspectRatioObserver = undefined;
+    clearAspectRatioFallback(this, this.aspectRatioFallback);
+    this.aspectRatioFallback = false;
     for (const [name, handler] of Object.entries(this.handlers)) {
       this.removeEventListener(name, handler);
     }
@@ -331,6 +340,17 @@ export class LxVideoElement extends HTMLElement {
     if (!this.style.backgroundColor) this.style.backgroundColor = "black";
     if (!this.style.aspectRatio) this.style.aspectRatio = "16 / 9";
     this.syncPosterPlaceholder();
+  }
+
+  /** Engines that compute but do not apply aspect-ratio here (Servo) size the box by hand. */
+  private observeAspectRatio(): void {
+    const apply = () => {
+      this.aspectRatioFallback = ensureAspectRatioFallback(this, this.aspectRatioFallback);
+    };
+    apply();
+    if (typeof ResizeObserver === "undefined" || this.aspectRatioObserver) return;
+    this.aspectRatioObserver = new ResizeObserver(apply);
+    this.aspectRatioObserver.observe(this);
   }
 
   private syncPosterPlaceholder(): void {
