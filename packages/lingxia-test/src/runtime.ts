@@ -28,7 +28,7 @@ import {
   VERSION,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { Automation, LxAppDriver } from "@lingxia/types/automation";
+import type { HostRunAutomation, LxAppDriver } from "@lingxia/types/automation";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -205,7 +205,7 @@ function suiteOf(file: string): string {
 }
 
 function automationRoot() {
-  const lx = (globalThis as { lx?: { automation?: () => Automation } }).lx;
+  const lx = (globalThis as { lx?: { automation?: () => HostRunAutomation } }).lx;
   if (!lx || typeof lx.automation !== "function") {
     throw new Error("lx.automation() is not available in this runtime");
   }

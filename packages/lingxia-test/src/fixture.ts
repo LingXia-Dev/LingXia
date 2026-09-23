@@ -53,7 +53,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
