@@ -1,6 +1,7 @@
 import type { PageQueryResult } from "@lingxia/types/automation";
 import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
+import { ActionDeadline, isPreDispatchPageError, isTransientPageError } from "./deadline.js";
 import { displayLocation } from "./ids.js";
 import type {
   ExpectOptions,
@@ -45,6 +46,8 @@ export interface PageLike {
 export type Guard = <T>(op: () => T | Promise<T>) => Promise<T>;
 /** Records one locator action in the report's trace. */
 export type ActionRecorder = <T>(verb: string, detail: string, op: () => Promise<T>) => Promise<T>;
+/** Milliseconds left in the spec (or cleanup) budget; bounds every action. */
+export type BudgetRoom = () => number;
 
 export interface LocatorResolve {
   count: number;
@@ -74,6 +77,7 @@ export class PageLocator implements Locator {
     selector: string,
     private readonly location: SourceLocation,
     private readonly options: LocatorOptions = {},
+    private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -84,7 +88,7 @@ export class PageLocator implements Locator {
   }
 
   nth(index: number): Locator {
-    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location, { ...this.options, index });
+    return new PageLocator(this.page, this.guard, this.record, this.selector, this.location, { ...this.options, index }, this.room);
   }
 
   async press(key: string, options?: ExpectOptions): Promise<void> {
@@ -114,21 +118,28 @@ export class PageLocator implements Locator {
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
       throw new TypeError("Wait timeout and interval must be positive finite numbers");
     }
-    const target = `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`;
-    await this.record("page.waitFor", `${target} ${state}`, async () => {
-      const started = Date.now();
+    const deadline = new ActionDeadline(timeout, this.room());
+    await this.record("page.waitFor", `${this.target()} ${state}`, async () => {
       let reason = "";
       while (true) {
-        const resolved = await this.resolve();
-        if (reachedState(resolved, state)) return;
-        reason = this.missText(resolved);
-        const elapsed = Date.now() - started;
-        if (elapsed >= timeout) break;
-        await sleep(Math.min(interval, Math.max(1, timeout - elapsed)));
+        try {
+          const resolved = await this.resolve(deadline, "waitFor");
+          if (reachedState(resolved, state)) return;
+          reason = this.missText(resolved);
+        } catch (error) {
+          // A page mid-transition is not an answer yet; anything else is.
+          if (!isTransientPageError(error)) throw error;
+          reason = transientReason(error);
+        }
+        if (deadline.expired()) break;
+        await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
-      const where = displayLocation(this.location.source, this.location.line, this.location.column);
-      throw new AssertionError("waitFor", reason, state,
-        `Timed out after ${Date.now() - started}ms waiting for ${formatValue(this.selector)} to be ${state}.\n${reason}\nat ${where}`);
+      throw new AssertionError("waitFor", reason, state, [
+        `Timed out after ${deadline.elapsed()}ms waiting for ${formatValue(this.selector)} to be ${state}.`,
+        reason,
+        deadline.clampNote(),
+        `at ${this.where()}`,
+      ].filter(Boolean).join("\n"));
     });
   }
 
@@ -136,9 +147,14 @@ export class PageLocator implements Locator {
     return this.guard(() => this.page.query({ ...this.options, css: this.selector })) as Promise<PageQueryResult>;
   }
 
-  async resolve(): Promise<LocatorResolve> {
+  /**
+   * One read of the locator's matches. With a deadline the query is raced
+   * against what is left of it, so a query that never returns fails `verb`.
+   */
+  async resolve(deadline?: ActionDeadline, verb = "resolve"): Promise<LocatorResolve> {
+    const query = () => this.page.query({ page: this.options.page, css: this.selector, all: true });
     const all = await this.guard(() =>
-      this.page.query({ page: this.options.page, css: this.selector, all: true }),
+      deadline ? deadline.call("page.query", query, () => this.callContext(verb)) : query(),
     );
     const matches = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
     const selected = this.options.index === undefined ? undefined : matches[this.options.index];
@@ -202,9 +218,21 @@ export class PageLocator implements Locator {
     return `locator ${formatValue(this.selector)} resolved to a visible element`;
   }
 
-  private async actionability(index: number, verb: string): Promise<true | string> {
+  private target(): string {
+    return `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`;
+  }
+
+  private where(): string {
+    return displayLocation(this.location.source, this.location.line, this.location.column);
+  }
+
+  private callContext(verb: string): string {
+    return `while trying to ${verb} ${formatValue(this.selector)}\nat ${this.where()}`;
+  }
+
+  private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
-    const result = await this.guard(() => this.page.eval!({ page: this.options.page, script: `(() => {
+    const script = `(() => {
       const el = document.querySelectorAll(${JSON.stringify(this.selector)})[${index}];
       if (!el || !el.isConnected) return "element detached";
       el.scrollIntoView({block:"center", inline:"center", behavior:"instant"});
@@ -213,7 +241,9 @@ export class PageLocator implements Locator {
       const r = el.getBoundingClientRect();
       const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
       return hit && (hit === el || el.contains(hit)) ? true : "element is obscured";
-    })()` }));
+    })()`;
+    const result = await this.guard(() => deadline.call("page.eval (actionability)",
+      () => this.page.eval!({ page: this.options.page, script }), () => this.callContext(verb)));
     return result === true ? true : String(result ?? "invalid actionability response");
   }
 
@@ -227,49 +257,76 @@ export class PageLocator implements Locator {
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
       throw new TypeError("Action timeout and interval must be positive finite numbers");
     }
-    await this.record(`page.${verb}`, `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`, async () => {
-      const started = Date.now();
+    const deadline = new ActionDeadline(timeout, this.room());
+    const context = () => this.callContext(verb);
+    await this.record(`page.${verb}`, this.target(), async () => {
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
       let reason = "not attached";
-      while (Date.now() - started < timeout) {
-        last = await this.resolve();
-        reason = this.missText(last);
-        if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
-          await this.guard(() => this.page.eval!({ page: this.options.page, script: `document.querySelectorAll(${JSON.stringify(this.selector)})[${last!.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})` }));
-        }
-        if (last.kind === "unique") {
-          const rect = JSON.stringify(last.rect);
-          const stable = last.rect === undefined || previousRect === rect;
-          previousRect = rect;
-          if (last.enabled === false) reason = "element is disabled";
-          else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
-          else if (!stable) reason = "element is moving";
-          else {
-            const check = await this.actionability(last.index, verb);
-            if (check === true) {
-              try {
-                await this.guard(() => run(this.selector, last!.index));
-                return;
-              } catch (error) {
-                // These native errors are raised before input dispatch. A transport
-                // failure is ambiguous and must never resubmit an action.
-                const message = error instanceof Error ? error.message : "";
-                if (!/^Element (?:not found|not interactable):/.test(message)) throw error;
-                reason = message;
-                previousRect = undefined;
-              }
-            }
-            if (check !== true) reason = check;
+      while (!deadline.expired()) {
+        try {
+          last = await this.resolve(deadline, verb);
+          reason = this.missText(last);
+          if (last.kind === "hidden" && last.count === 1 && this.page.eval) {
+            const script = `document.querySelectorAll(${JSON.stringify(this.selector)})[${last.index}]?.scrollIntoView({block:"center", inline:"center", behavior:"instant"})`;
+            await this.guard(() => deadline.call("page.eval (scrollIntoView)",
+              () => this.page.eval!({ page: this.options.page, script }), context));
           }
-        } else { previousRect = undefined; }
-        await sleep(Math.min(interval, Math.max(1, timeout - (Date.now() - started))));
+          if (last.kind === "unique") {
+            const rect = JSON.stringify(last.rect);
+            const stable = last.rect === undefined || previousRect === rect;
+            previousRect = rect;
+            if (last.enabled === false) reason = "element is disabled";
+            else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
+            else if (!stable) reason = "element is moving";
+            else {
+              const check = await this.actionability(last.index, verb, deadline);
+              if (check === true) {
+                try {
+                  const index = last.index;
+                  await this.guard(() => deadline.call(`page.${verb}`, () => run(this.selector, index), context));
+                  return;
+                } catch (error) {
+                  // These native errors are raised before input dispatch. A transport
+                  // failure is ambiguous and must never resubmit an action.
+                  const message = error instanceof Error ? error.message : "";
+                  if (!/^Element (?:not found|not interactable):/.test(message) && !isPreDispatchPageError(error)) {
+                    throw new DispatchFailure(error);
+                  }
+                  reason = message;
+                  previousRect = undefined;
+                }
+              }
+              if (check !== true) reason = check;
+            }
+          } else { previousRect = undefined; }
+        } catch (error) {
+          // The page is being replaced (navigation in flight): no read or
+          // dispatch reached it, so wait for the new page within the budget.
+          if (error instanceof DispatchFailure) throw error.error;
+          if (!isTransientPageError(error)) throw error;
+          reason = transientReason(error);
+          previousRect = undefined;
+        }
+        await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
-      const where = displayLocation(this.location.source, this.location.line, this.location.column);
-      throw new AssertionError(verb, reason, "stable, enabled, unobscured element",
-        `Timed out after ${Date.now() - started}ms waiting to ${verb} ${formatValue(this.selector)}.\n${reason}\nat ${where}`);
+      throw new AssertionError(verb, reason, "stable, enabled, unobscured element", [
+        `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
+        reason,
+        deadline.clampNote(),
+        `at ${this.where()}`,
+      ].filter(Boolean).join("\n"));
     });
   }
+}
+
+/** A dispatch error that must propagate as is, never be retried. */
+class DispatchFailure {
+  constructor(readonly error: unknown) {}
+}
+
+function transientReason(error: unknown): string {
+  return `page not ready: ${error instanceof Error ? error.message : String(error)}`;
 }
 
 /** `many` never satisfies `attached`/`visible`: the match is ambiguous. */
