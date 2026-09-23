@@ -72,6 +72,15 @@ received artifacts. Keep the following invariants when changing these layers:
   grace period is declared wedged.
 - Check actionability before dispatch. Never retry an ambiguous input transport
   failure: the original click may already have had its side effect.
+- Hook scope: `spec.reset/beforeEach/afterEach` keep their raw registration
+  frames (the bundle map is installed after the modules run). At run start the
+  owner is the nearest mapped frame in a file that declares specs
+  (`resolveOwner` in `ids.ts`), so a helper module's `installHooks()` belongs to
+  the calling spec file, and a spec file exporting a hook helper keeps it. With
+  no spec file on the stack the hook falls back to its first authored frame and
+  a `diagnostic` event (`phase: "collect"`) says it never runs.
+  `captureFrames` raises V8's `Error.stackTraceLimit` to 50 while capturing.
+  Specs themselves are still attributed to their first authored frame.
 
 ## Automation JS boundary
 

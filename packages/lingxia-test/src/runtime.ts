@@ -2,7 +2,7 @@ import { expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
-import { captureFrames, fileStem, resolveOrigin, slugTitle, type StackFrame } from "./ids.js";
+import { captureFrames, fileStem, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
@@ -297,11 +297,22 @@ async function run(): Promise<ProtocolReport> {
       full_name: item.id ? `${item.id} | ${item.title}` : item.title, ...sourceOf(item),
       suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers })) });
 
-  // Resolve each hook's authored file once, so a `beforeEach` stays scoped to
-  // the file that declared it rather than running for every spec in the run.
+  // Resolve each hook's spec file once, so a `beforeEach` stays scoped to the
+  // file that registered it rather than running for every spec in the run. A
+  // hook registered by a shared helper belongs to the spec file that called
+  // the helper (the nearest spec file on its registration stack).
+  const specFiles = new Set(specs.map((item) => sourceOf(item).file));
   const hookFiles = new Map<Hook, string>(
-    [...hooks, ...afterHooks, ...resetHooks].map((hook) => [hook, resolveOrigin(hook.frames).file] as const),
+    [...hooks, ...afterHooks, ...resetHooks].map((hook) => [hook, resolveOwner(hook.frames, specFiles).file] as const),
   );
+  for (const [kind, list] of [["beforeEach", hooks], ["afterEach", afterHooks], ["reset", resetHooks]] as const) {
+    for (const hook of list) {
+      const file = hookFiles.get(hook)!;
+      if (specFiles.has(file)) continue;
+      await host.emit({ type: "diagnostic", phase: "collect",
+        message: `spec.${kind}() registered from ${file} never runs: no spec file is on its call stack. Call it (or the helper that registers it) from a spec file's top level.` });
+    }
+  }
   if (retries > 0) {
     for (const item of selected.filter(item => !["skip", "fixme"].includes(item.annotation))) {
       if (!resetHooks.some(hook => hookFiles.get(hook) === sourceOf(item).file)) {
