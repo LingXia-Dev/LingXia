@@ -20,6 +20,9 @@ received artifacts. Keep the following invariants when changing these layers:
 - Retry artifacts have attempt-specific paths. Do not overwrite the first failure
   with the successful attempt. Terminal output is a presentation of the report,
   not an alternate result model.
+- A Runner-side run holds the single automation slot. The run manager cancels
+  a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
+  poll gap) through the normal cancel path.
 - Check actionability before dispatch. Never retry an ambiguous input transport
   failure: the original click may already have had its side effect.
 

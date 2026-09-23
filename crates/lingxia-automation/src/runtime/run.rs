@@ -22,6 +22,11 @@ pub(crate) struct RunShared {
     /// distinguish an interrupt-induced abort from a genuine thrown error,
     /// deterministically rather than by racing the clock.
     preemption_requested: AtomicBool,
+    /// Last time the controller asked about this run (start, poll, cancel).
+    last_contact: Mutex<Instant>,
+    /// Terminal error recorded by a manager-initiated cancellation, so the
+    /// cancelled result says why nobody asked for it.
+    cancel_error: Mutex<Option<AutomationRunError>>,
     inner: Mutex<RunInner>,
     log_ring: Mutex<VecDeque<String>>,
 }
@@ -48,6 +53,8 @@ impl RunShared {
             timeout,
             cancel_tx,
             preemption_requested: AtomicBool::new(false),
+            last_contact: Mutex::new(Instant::now()),
+            cancel_error: Mutex::new(None),
             log_ring: Mutex::new(VecDeque::new()),
             inner: Mutex::new(RunInner {
                 state: AutomationRunState::Running,
@@ -84,6 +91,26 @@ impl RunShared {
         // `start` publishes the run before the worker subscribes. Preserve an
         // early cancellation even while the channel has no receivers yet.
         self.cancel_tx.send_replace(true);
+    }
+
+    /// Cancel on the manager's behalf, recording why for the terminal result.
+    pub fn request_cancel_with_error(&self, error: AutomationRunError) {
+        self.cancel_error.lock().unwrap().get_or_insert(error);
+        self.request_cancel();
+    }
+
+    pub fn take_cancel_error(&self) -> Option<AutomationRunError> {
+        self.cancel_error.lock().unwrap().take()
+    }
+
+    /// Record controller contact; the run's lease restarts from now.
+    pub fn touch(&self) {
+        *self.last_contact.lock().unwrap() = Instant::now();
+    }
+
+    /// Time since the controller last asked about this run.
+    pub fn idle_for(&self) -> Duration {
+        self.last_contact.lock().unwrap().elapsed()
     }
 
     pub fn cancel_receiver(&self) -> watch::Receiver<bool> {
