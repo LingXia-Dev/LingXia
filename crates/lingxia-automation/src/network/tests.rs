@@ -9,7 +9,7 @@ fn handler(value: Value) -> Result<RouteAction, String> {
 fn handler_json_body_sets_content_type() {
     let RouteAction::Fulfill(fulfill) = handler(json!({
         "status": 501,
-        "json": { "error": "unsupported_by_firmware" }
+        "json": { "error": "not_implemented" }
     }))
     .unwrap() else {
         panic!("expected fulfill");
@@ -17,7 +17,7 @@ fn handler_json_body_sets_content_type() {
     assert_eq!(fulfill.status, 501);
     assert_eq!(
         fulfill.body.as_deref(),
-        Some(r#"{"error":"unsupported_by_firmware"}"#)
+        Some(r#"{"error":"not_implemented"}"#)
     );
     assert_eq!(
         fulfill.headers,
@@ -163,7 +163,7 @@ mod interceptor {
             "https://api.test/v1/devices/*",
             Some("PATCH"),
             None,
-            serde_json::json!({ "status": 501, "json": { "error": "unsupported_by_firmware" } }),
+            serde_json::json!({ "status": 501, "json": { "error": "not_implemented" } }),
         );
         install(
             "https://api.test/v1/devices/*",
@@ -220,7 +220,7 @@ mod interceptor {
         assert_eq!(out["ok"], false);
         assert_eq!(out["type"], "application/json");
         assert_eq!(out["url"], "https://api.test/v1/devices/d1");
-        assert_eq!(out["body"]["error"], "unsupported_by_firmware");
+        assert_eq!(out["body"]["error"], "not_implemented");
         assert_eq!(out["abort"], "TypeError: fetch failed");
         assert_ne!(out["expired"], "resolved");
         assert_eq!(out["blocked"], "passed-through");

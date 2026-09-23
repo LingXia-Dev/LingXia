@@ -89,10 +89,10 @@ HTTP error paths through the real data layer. Do not add test hooks to product
 fetch wrappers.
 
 ```ts
-spec('rename shows the firmware error', async (t) => {
+spec('rename shows the not-implemented error', async (t) => {
   const patch = await t.app.network.route(
     { url: '**/v1/devices/*', method: 'PATCH', times: 1 },
-    { status: 501, json: { error: 'unsupported_by_firmware' } },
+    { status: 501, json: { error: 'not_implemented' } },
   );
   await t.app.network.route('**/v1/clients', { abort: 'failed' });
   await t.app.page.testId('rename-save').click();
