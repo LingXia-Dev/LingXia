@@ -1,10 +1,17 @@
 //! Sidebar auxiliary rows.
 
 use super::*;
+use crate::dpi::px;
 
-const PINNED_SHORTCUT_SIZE: i32 = 36;
-const PINNED_SHORTCUT_ICON_SIZE: i32 = 20;
-const PINNED_SHORTCUT_GAP: i32 = 5;
+fn pinned_shortcut_size() -> i32 {
+    crate::dpi::px(36)
+}
+fn pinned_shortcut_icon_size() -> i32 {
+    crate::dpi::px(20)
+}
+fn pinned_shortcut_gap() -> i32 {
+    crate::dpi::px(5)
+}
 const PINNED_SHORTCUT_COLUMNS: usize = 4;
 
 pub(in crate::shell::chrome) fn sidebar_pinned_count(tabbar: &WindowsShellTabBarLayout) -> usize {
@@ -27,7 +34,7 @@ pub(in crate::shell::chrome) fn sidebar_pinned_grid_height(
 }
 
 fn pinned_grid_height(count: usize) -> i32 {
-    let stride = PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP;
+    let stride = pinned_shortcut_size() + pinned_shortcut_gap();
     count.div_ceil(PINNED_SHORTCUT_COLUMNS) as i32 * stride
 }
 
@@ -49,24 +56,24 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     if tabbar.auxiliary_items.is_empty() && !tabbar.show_auxiliary_add {
         return None;
     }
-    let viewport_top = rect.top + SHELL_TOP_BAR_HEIGHT;
+    let viewport_top = rect.top + shell_top_bar_height();
     // A collapsed items group hides its rows; the auxiliary section moves up
     // directly under the group header.
     let pinned_height = sidebar_pinned_grid_height(rect, tabbar);
     let items_height = if tabbar.items_collapsed || tabbar.items.is_empty() {
         0
     } else {
-        SIDEBAR_PARENT_CHILD_GAP
-            + tabbar.items.len() as i32 * SIDEBAR_CHILD_ITEM_HEIGHT
-            + (tabbar.items.len() as i32 - 1) * SIDEBAR_CHILD_ITEM_GAP
+        sidebar_parent_child_gap()
+            + tabbar.items.len() as i32 * sidebar_child_item_height()
+            + (tabbar.items.len() as i32 - 1) * sidebar_child_item_gap()
     };
-    let top_level_start = rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height;
+    let top_level_start = rect.top + shell_top_bar_height() + pinned_height;
     let row = |top: i32| -> RECT {
         normalize_rect(RECT {
-            left: rect.left + SIDEBAR_ITEM_INSET,
+            left: rect.left + sidebar_item_inset(),
             top: top - scroll_offset,
-            right: rect.right - SIDEBAR_ITEM_INSET,
-            bottom: top - scroll_offset + SIDEBAR_ITEM_HEIGHT,
+            right: rect.right - sidebar_item_inset(),
+            bottom: top - scroll_offset + sidebar_item_height(),
         })
     };
     let visible = |rect: RECT| rect.bottom > viewport_top && rect.top < viewport_bottom;
@@ -77,21 +84,21 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
         // Leading-aligned on the shared icon axis (not centered): the first
         // tile's icon lines up with the top-level rows, and the grid no
         // longer drifts when the sidebar is resized.
-        let grid_left = rect.left + SIDEBAR_ICON_AXIS - PINNED_SHORTCUT_SIZE / 2;
+        let grid_left = rect.left + sidebar_icon_axis() - pinned_shortcut_size() / 2;
         // Pins are global shortcuts, not children of the current
         // lxapp group. They sit immediately below the caption controls and
         // above the lxapp header/navigation, matching macOS.
-        let grid_top = rect.top + SHELL_TOP_BAR_HEIGHT - scroll_offset;
+        let grid_top = rect.top + shell_top_bar_height() - scroll_offset;
         for index in 0..pinned_count {
             let row = index / PINNED_SHORTCUT_COLUMNS;
             let column = index % PINNED_SHORTCUT_COLUMNS;
-            let left = grid_left + column as i32 * (PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP);
-            let top = grid_top + row as i32 * (PINNED_SHORTCUT_SIZE + PINNED_SHORTCUT_GAP);
+            let left = grid_left + column as i32 * (pinned_shortcut_size() + pinned_shortcut_gap());
+            let top = grid_top + row as i32 * (pinned_shortcut_size() + pinned_shortcut_gap());
             let pinned_rect = normalize_rect(RECT {
                 left,
                 top,
-                right: left + PINNED_SHORTCUT_SIZE,
-                bottom: top + PINNED_SHORTCUT_SIZE,
+                right: left + pinned_shortcut_size(),
+                bottom: top + pinned_shortcut_size(),
             });
             if visible(pinned_rect) {
                 items.push((index, pinned_rect));
@@ -100,16 +107,16 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     }
     let unpinned_count = tabbar.auxiliary_items.len().saturating_sub(pinned_count);
     let group_index = tabbar.group_order_index.min(unpinned_count);
-    let top_level_stride = SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP;
+    let top_level_stride = sidebar_item_height() + sidebar_item_gap();
     let group_top = top_level_start + group_index as i32 * top_level_stride;
     for index in 0..unpinned_count {
         let top = if index < group_index {
             top_level_start + index as i32 * top_level_stride
         } else {
             group_top
-                + SIDEBAR_ITEM_HEIGHT
+                + sidebar_item_height()
                 + items_height
-                + SIDEBAR_ITEM_GAP
+                + sidebar_item_gap()
                 + (index - group_index) as i32 * top_level_stride
         };
         let item_rect = row(top);
@@ -119,9 +126,9 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_rects(
     }
     let add = if tabbar.show_auxiliary_add {
         let top = group_top
-            + SIDEBAR_ITEM_HEIGHT
+            + sidebar_item_height()
             + items_height
-            + SIDEBAR_ITEM_GAP
+            + sidebar_item_gap()
             + unpinned_count.saturating_sub(group_index) as i32 * top_level_stride;
         let add = row(top);
         visible(add).then_some(add)
@@ -139,46 +146,46 @@ pub(in crate::shell::chrome) fn sidebar_content_bottom(
     if tabbar.collapsed || tabbar.icon_rail {
         let count = 1 + tabbar.auxiliary_items.len() + usize::from(tabbar.show_auxiliary_add);
         return rect.top
-            + SHELL_TOP_BAR_HEIGHT
-            + SIDEBAR_ITEM_GAP
-            + count as i32 * (SIDEBAR_RAIL_ITEM_SIZE + SIDEBAR_ITEM_GAP);
+            + shell_top_bar_height()
+            + sidebar_item_gap()
+            + count as i32 * (sidebar_rail_item_size() + sidebar_item_gap());
     }
     let pinned_count = sidebar_pinned_count(tabbar);
     let pinned_height = sidebar_pinned_grid_height(rect, tabbar);
     let unpinned_count = tabbar.auxiliary_items.len().saturating_sub(pinned_count);
     let group_index = tabbar.group_order_index.min(unpinned_count);
-    let stride = SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP;
-    let start = rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height;
+    let stride = sidebar_item_height() + sidebar_item_gap();
+    let start = rect.top + shell_top_bar_height() + pinned_height;
     let group_top = start + group_index as i32 * stride;
     let items_height = if tabbar.items_collapsed || tabbar.items.is_empty() {
         0
     } else {
-        SIDEBAR_PARENT_CHILD_GAP
-            + tabbar.items.len() as i32 * SIDEBAR_CHILD_ITEM_HEIGHT
-            + (tabbar.items.len() as i32 - 1) * SIDEBAR_CHILD_ITEM_GAP
+        sidebar_parent_child_gap()
+            + tabbar.items.len() as i32 * sidebar_child_item_height()
+            + (tabbar.items.len() as i32 - 1) * sidebar_child_item_gap()
     };
-    let mut bottom = group_top + SIDEBAR_ITEM_HEIGHT + items_height;
+    let mut bottom = group_top + sidebar_item_height() + items_height;
     for index in 0..unpinned_count {
         let top = if index < group_index {
             start + index as i32 * stride
         } else {
             group_top
-                + SIDEBAR_ITEM_HEIGHT
+                + sidebar_item_height()
                 + items_height
-                + SIDEBAR_ITEM_GAP
+                + sidebar_item_gap()
                 + (index - group_index) as i32 * stride
         };
-        bottom = bottom.max(top + SIDEBAR_ITEM_HEIGHT);
+        bottom = bottom.max(top + sidebar_item_height());
     }
     if tabbar.show_auxiliary_add {
         let top = group_top
-            + SIDEBAR_ITEM_HEIGHT
+            + sidebar_item_height()
             + items_height
-            + SIDEBAR_ITEM_GAP
+            + sidebar_item_gap()
             + unpinned_count.saturating_sub(group_index) as i32 * stride;
-        bottom = bottom.max(top + SIDEBAR_ITEM_HEIGHT);
+        bottom = bottom.max(top + sidebar_item_height());
     }
-    bottom.max(rect.top + SHELL_TOP_BAR_HEIGHT + pinned_height)
+    bottom.max(rect.top + shell_top_bar_height() + pinned_height)
 }
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
@@ -228,7 +235,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_hit_test(
 
 pub(in crate::shell::chrome) fn sidebar_auxiliary_close_rect(item_rect: RECT) -> RECT {
     normalize_rect(RECT {
-        left: item_rect.right - SIDEBAR_BROWSER_CLOSE_SIZE,
+        left: item_rect.right - sidebar_browser_close_size(),
         top: item_rect.top,
         right: item_rect.right,
         bottom: item_rect.bottom,
@@ -245,7 +252,7 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_menu_rect(
         item_rect.right
     };
     normalize_rect(RECT {
-        left: trailing - SIDEBAR_BROWSER_CLOSE_SIZE,
+        left: trailing - sidebar_browser_close_size(),
         top: item_rect.top,
         right: trailing,
         bottom: item_rect.bottom,
@@ -277,14 +284,14 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                 draw_hover_wash(hdc, item_rect, 6, cursor);
             }
             let left =
-                item_rect.left + (rect_width(&item_rect) - PINNED_SHORTCUT_ICON_SIZE).max(0) / 2;
+                item_rect.left + (rect_width(&item_rect) - pinned_shortcut_icon_size()).max(0) / 2;
             let top =
-                item_rect.top + (rect_height(&item_rect) - PINNED_SHORTCUT_ICON_SIZE).max(0) / 2;
+                item_rect.top + (rect_height(&item_rect) - pinned_shortcut_icon_size()).max(0) / 2;
             let icon_rect = normalize_rect(RECT {
                 left,
                 top,
-                right: left + PINNED_SHORTCUT_ICON_SIZE,
-                bottom: top + PINNED_SHORTCUT_ICON_SIZE,
+                right: left + pinned_shortcut_icon_size(),
+                bottom: top + pinned_shortcut_icon_size(),
             });
             // Live-tab favicon bytes first, then the bookmark's cached
             // favicon file (`icon_path`), then the generic globe.
@@ -297,7 +304,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                         hdc,
                         &item.icon_path,
                         icon_rect,
-                        PINNED_SHORTCUT_ICON_SIZE as u32,
+                        pinned_shortcut_icon_size() as u32,
                     ));
             if !drawn {
                 if item.id.starts_with("lxapp:") || item.id.starts_with("pin:lxapp:") {
@@ -308,7 +315,7 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
                         item_rect,
                         WindowsDesignIcon::Globe,
                         shell_palette().text_muted,
-                        PINNED_SHORTCUT_ICON_SIZE,
+                        pinned_shortcut_icon_size(),
                     );
                 }
             }
@@ -327,19 +334,19 @@ pub(in crate::shell::chrome) fn draw_sidebar_auxiliary_section(
         // no favicon; the LingXia mark is only the last-resort fallback).
         // Top-level browser tabs share the lxapp header's outer row and icon
         // axis. Only lxapp page items are indented beneath their parent.
-        let mut label_left = item_rect.left + SIDEBAR_TOP_LEVEL_ICON_INSET;
-        let icon_rect = sidebar_top_level_icon_rect(item_rect, SIDEBAR_FAVICON_SIZE);
+        let mut label_left = item_rect.left + sidebar_top_level_icon_inset();
+        let icon_rect = sidebar_top_level_icon_rect(item_rect, sidebar_favicon_size());
         let icon_drawn = match item.icon_png.as_deref() {
             Some(png) => draw_icon_from_png_bytes(hdc, &item.id, png, icon_rect),
             None => draw_icon_or_default(
                 hdc,
                 &item.icon_path,
                 icon_rect,
-                SIDEBAR_FAVICON_SIZE.max(1) as u32,
+                sidebar_favicon_size().max(1) as u32,
             ),
         };
         if icon_drawn {
-            label_left = icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP;
+            label_left = icon_rect.right + sidebar_favicon_text_gap();
         }
         let label_rect = sidebar_auxiliary_title_rect(item_rect, item, label_left);
         let text_color = if item.active {
@@ -386,9 +393,9 @@ pub(in crate::shell::chrome) fn sidebar_auxiliary_title_rect(
         left: label_left,
         top: item_rect.top,
         right: if item.pinned {
-            item_rect.right - 8
+            item_rect.right - px(8)
         } else {
-            sidebar_auxiliary_menu_rect(item_rect, item).left - 2
+            sidebar_auxiliary_menu_rect(item_rect, item).left - px(2)
         },
         bottom: item_rect.bottom,
     })
@@ -466,8 +473,8 @@ mod tests {
         let title = sidebar_auxiliary_title_rect(item_rect, &item, 40);
         assert_eq!(menu.right, close.left);
         assert_eq!(title.right, menu.left - 2);
-        assert_eq!(menu.right - menu.left, SIDEBAR_BROWSER_CLOSE_SIZE);
-        assert_eq!(close.right - close.left, SIDEBAR_BROWSER_CLOSE_SIZE);
+        assert_eq!(menu.right - menu.left, sidebar_browser_close_size());
+        assert_eq!(close.right - close.left, sidebar_browser_close_size());
     }
 
     #[test]
@@ -490,8 +497,8 @@ mod tests {
         };
         let rows = sidebar_auxiliary_rects(sidebar, &tabbar, 0, sidebar.bottom).unwrap();
         let pin = rows.items[0].1;
-        assert_eq!(pin.left, SIDEBAR_ICON_AXIS - PINNED_SHORTCUT_SIZE / 2);
-        assert_eq!(pin.top, SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(pin.left, sidebar_icon_axis() - pinned_shortcut_size() / 2);
+        assert_eq!(pin.top, shell_top_bar_height());
         let point = ((pin.left + pin.right) / 2, (pin.top + pin.bottom) / 2);
 
         let Some(WindowsChromeHit::CommandWithContext {

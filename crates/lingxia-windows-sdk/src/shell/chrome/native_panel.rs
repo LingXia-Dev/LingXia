@@ -1,6 +1,7 @@
 //! Native panel chrome, including terminal panel headers and body drawing.
 
 use super::*;
+use crate::dpi::px;
 use windows::Win32::Graphics::Gdi::{RestoreDC, SaveDC};
 
 /// Restores the DC's saved state (clip region included) on drop, so the
@@ -93,56 +94,56 @@ pub(super) fn terminal_header_rects(
         left: rect.left,
         top: rect.top,
         right: rect.right,
-        bottom: (rect.top + TERMINAL_HEADER_HEIGHT).min(rect.bottom),
+        bottom: (rect.top + terminal_header_height()).min(rect.bottom),
     });
-    let button_top = header.top + (rect_height(&header) - TERMINAL_HEADER_BUTTON_SIZE).max(0) / 2;
+    let button_top = header.top + (rect_height(&header) - terminal_header_button_size()).max(0) / 2;
     let square_button = |left: i32| {
         normalize_rect(RECT {
             left,
             top: button_top,
-            right: left + TERMINAL_HEADER_BUTTON_SIZE,
-            bottom: button_top + TERMINAL_HEADER_BUTTON_SIZE,
+            right: left + terminal_header_button_size(),
+            bottom: button_top + terminal_header_button_size(),
         })
     };
 
-    let maximize_left = header.right - TERMINAL_HEADER_PADDING - TERMINAL_HEADER_BUTTON_SIZE;
+    let maximize_left = header.right - terminal_header_padding() - terminal_header_button_size();
     let maximize =
         (native.show_maximize && maximize_left > header.left).then(|| square_button(maximize_left));
     let tabs_right_limit = maximize
-        .map(|rect| rect.left - TERMINAL_TAB_GAP)
-        .unwrap_or(header.right - TERMINAL_HEADER_PADDING);
+        .map(|rect| rect.left - terminal_tab_gap())
+        .unwrap_or(header.right - terminal_header_padding());
 
     let mut tabs = Vec::with_capacity(native.tabs.len());
-    let mut left = header.left + TERMINAL_HEADER_PADDING;
+    let mut left = header.left + terminal_header_padding();
     let count = native.tabs.len() as i32;
     if count > 0 {
         // Reserve room for the new-tab button after the last tab, then
         // split the rest evenly (capped at the max tab width).
         let avail = (tabs_right_limit
             - left
-            - (TERMINAL_HEADER_BUTTON_SIZE + TERMINAL_TAB_GAP)
-            - (count - 1) * TERMINAL_TAB_GAP)
-            .max(0);
-        let tab_width = (avail / count).clamp(24, TERMINAL_TAB_MAX_WIDTH);
+            - (terminal_header_button_size() + terminal_tab_gap())
+            - (count - 1) * terminal_tab_gap())
+        .max(0);
+        let tab_width = (avail / count).clamp(24, terminal_tab_max_width());
         for item in &native.tabs {
             let tab_rect = normalize_rect(RECT {
                 left,
-                top: header.top + TERMINAL_TAB_TOP_INSET,
+                top: header.top + terminal_tab_top_inset(),
                 right: (left + tab_width).min(tabs_right_limit),
                 bottom: header.bottom,
             });
             // Every tab wide enough gets a close glyph (macOS tab-rail
             // parity); narrow tabs keep the full rect clickable.
-            let close = (rect_width(&tab_rect) >= 3 * TERMINAL_TAB_CLOSE_WIDTH).then(|| {
+            let close = (rect_width(&tab_rect) >= 3 * terminal_tab_close_width()).then(|| {
                 normalize_rect(RECT {
-                    left: tab_rect.right - TERMINAL_TAB_CLOSE_WIDTH,
+                    left: tab_rect.right - terminal_tab_close_width(),
                     top: tab_rect.top,
                     right: tab_rect.right,
                     bottom: tab_rect.bottom,
                 })
             });
             let title = normalize_rect(RECT {
-                left: tab_rect.left + 14,
+                left: tab_rect.left + px(14),
                 top: tab_rect.top,
                 right: close.map(|close| close.left).unwrap_or(tab_rect.right - 6),
                 bottom: tab_rect.bottom,
@@ -154,12 +155,12 @@ pub(super) fn terminal_header_rects(
                 title,
                 close,
             });
-            left = tab_rect.right + TERMINAL_TAB_GAP;
+            left = tab_rect.right + terminal_tab_gap();
         }
     }
 
     let new_tab =
-        (left + TERMINAL_HEADER_BUTTON_SIZE <= tabs_right_limit).then(|| square_button(left));
+        (left + terminal_header_button_size() <= tabs_right_limit).then(|| square_button(left));
 
     TerminalHeaderRects {
         header,
@@ -275,7 +276,7 @@ pub(super) fn draw_terminal_panel_content(
     fill_round_rect_aa_band(
         hdc,
         rect,
-        SHELL_CONTENT_RADIUS,
+        shell_content_radius(),
         chrome.header,
         rect.top,
         header.bottom,
@@ -283,7 +284,7 @@ pub(super) fn draw_terminal_panel_content(
     fill_round_rect_aa_band(
         hdc,
         rect,
-        SHELL_CONTENT_RADIUS,
+        shell_content_radius(),
         surface,
         header.bottom,
         rect.bottom,
@@ -292,7 +293,7 @@ pub(super) fn draw_terminal_panel_content(
     // interior so square fills cannot overpaint the bottom arcs. The clip
     // boundary is aliased, but everything drawn inside matches the card's
     // surface color there, so it stays invisible.
-    clip_to_round_rect_inside(hdc, rect, SHELL_CONTENT_RADIUS);
+    clip_to_round_rect_inside(hdc, rect, shell_content_radius());
 
     // Hairline under the tab strip; the active tab paints over it, so it
     // visually connects into the surface (macOS rail parity).
@@ -316,15 +317,15 @@ pub(super) fn draw_terminal_panel_content(
             fill_round_rect_aa_corners(
                 hdc,
                 tab.rect,
-                [TERMINAL_TAB_RADIUS, TERMINAL_TAB_RADIUS, 0, 0],
+                [terminal_tab_radius(), terminal_tab_radius(), 0, 0],
                 surface,
             );
             fill_rect(
                 hdc,
                 RECT {
-                    left: tab.rect.left + TERMINAL_TAB_RADIUS + 2,
+                    left: tab.rect.left + terminal_tab_radius() + 2,
                     top: tab.rect.top + 1,
-                    right: tab.rect.right - TERMINAL_TAB_RADIUS - 2,
+                    right: tab.rect.right - terminal_tab_radius() - 2,
                     bottom: tab.rect.top + 2,
                 },
                 blend_rgb(chrome.text, surface, 8),
@@ -335,9 +336,9 @@ pub(super) fn draw_terminal_panel_content(
             fill_rect(
                 hdc,
                 RECT {
-                    left: tab.rect.right + TERMINAL_TAB_GAP / 2,
+                    left: tab.rect.right + terminal_tab_gap() / 2,
                     top: tab.rect.top + inset,
-                    right: tab.rect.right + TERMINAL_TAB_GAP / 2 + 1,
+                    right: tab.rect.right + terminal_tab_gap() / 2 + 1,
                     bottom: tab.rect.bottom - inset,
                 },
                 blend_rgb(chrome.text, chrome.header, 8),
@@ -381,12 +382,12 @@ pub(super) fn draw_terminal_panel_content(
     if header_rects.tabs.is_empty() {
         // Pre-session states (starting, runtime unavailable): plain title.
         let title_rect = normalize_rect(RECT {
-            left: header.left + TERMINAL_HEADER_PADDING + 4,
+            left: header.left + terminal_header_padding() + px(4),
             top: header.top,
             right: header_rects
                 .new_tab
                 .map(|rect| rect.left)
-                .unwrap_or(header.right - TERMINAL_HEADER_PADDING),
+                .unwrap_or(header.right - terminal_header_padding()),
             bottom: header.bottom,
         });
         let fallback_title = lingxia_logic::i18n::t(lingxia_logic::I18nKey::TerminalTitle);
@@ -440,7 +441,7 @@ pub(super) fn draw_terminal_panel_content(
         hwnd,
         &panel.panel_id,
         body,
-        [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+        [0, 0, shell_content_radius(), shell_content_radius()],
         cursor,
     );
 }

@@ -458,7 +458,7 @@ fn apply_tabbar_overflow_alpha(
         right: sheet.right,
         bottom: sheet.bottom,
     };
-    let panel_radius = crate::shell::TABBAR_OVERFLOW_PANEL_RADIUS;
+    let panel_radius = crate::shell::tabbar_overflow_panel_radius();
     let screen_radius = screen_corner_radius.clamp(0, width.min(height) / 2);
     let rounded_rect_coverage = |x: i32, y: i32| -> f32 {
         if x < panel.left || x >= panel.right || y < panel.top || y >= panel.bottom {

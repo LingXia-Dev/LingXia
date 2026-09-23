@@ -134,7 +134,9 @@ const PULL_REFRESH_TIMER_MS: u32 = 120;
 const PULL_REFRESH_SLOT_HEIGHT: i32 = 42;
 const PULL_REFRESH_INDICATOR_WIDTH: i32 = 64;
 const PULL_REFRESH_INDICATOR_HEIGHT: i32 = 32;
-const OVERLAY_MARGIN: i32 = 24;
+fn overlay_margin() -> i32 {
+    crate::dpi::px(24)
+}
 #[cfg(feature = "shell-chrome")]
 const SIDEBAR_TABBAR_POPUP_TIMER_ID: usize = 0x5A18;
 #[cfg(feature = "shell-chrome")]
@@ -153,11 +155,21 @@ const SYSTEM_MENU_COMMAND_MASK: usize = 0xfff0;
 const WM_DWMCOLORIZATIONCOLORCHANGED: u32 = 0x0320;
 /// `WM_MOUSELEAVE` (winuser.h) - not surfaced by the pinned `windows` rev.
 const WM_MOUSELEAVE: u32 = 0x02a3;
-const OVERLAY_MIN_WIDTH: i32 = 280;
-const OVERLAY_MIN_HEIGHT: i32 = 220;
-const OVERLAY_DEFAULT_WIDTH: i32 = 460;
-const OVERLAY_DEFAULT_HEIGHT: i32 = 560;
-const RESIZE_BORDER: i32 = 8;
+fn overlay_min_width() -> i32 {
+    crate::dpi::px(280)
+}
+fn overlay_min_height() -> i32 {
+    crate::dpi::px(220)
+}
+fn overlay_default_width() -> i32 {
+    crate::dpi::px(460)
+}
+fn overlay_default_height() -> i32 {
+    crate::dpi::px(560)
+}
+fn resize_border() -> i32 {
+    crate::dpi::px(8)
+}
 const MAIN_WINDOW_MIN_WIDTH: i32 = 480;
 const MAIN_WINDOW_MIN_HEIGHT: i32 = 480;
 
@@ -378,7 +390,7 @@ struct ContentBounds {
     corner_color: u32,
     /// Device-frame fit factor ×1000; part of the dedupe key so a device
     /// switch re-applies the webview's rasterization scale.
-    fit_scale_milli: u32,
+    css_scale_milli: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -1150,7 +1162,16 @@ pub fn present_webview_as_overlay(
     let bounds = owner
         .and_then(overlay_reference_rect_for_host)
         .unwrap_or_else(|| overlay_reference_rect(hwnd));
-    let rect = overlay_rect(bounds, width, height, width_ratio, height_ratio, position);
+    let scale = window_css_scale(owner.unwrap_or(hwnd));
+    let rect = overlay_rect(
+        bounds,
+        width,
+        height,
+        width_ratio,
+        height_ratio,
+        position,
+        scale,
+    );
 
     #[cfg(all(feature = "shell-chrome", feature = "device-frame"))]
     let device_edge_clipped = apply_floating_overlay_device_region(hwnd, owner, rect);
@@ -1623,6 +1644,7 @@ fn sync_floating_overlays(owner: HWND) {
             layout.width_ratio,
             layout.height_ratio,
             layout.position,
+            window_css_scale(owner),
         );
         let mut current = RECT::default();
         if unsafe { WindowsAndMessaging::GetWindowRect(window, &mut current) }.is_err()
@@ -2294,7 +2316,7 @@ fn overlay_reference_rect_for_host(host: HWND) -> Option<RECT> {
     };
     let width = client.right - client.left;
     let height = client.bottom - client.top;
-    if width <= OVERLAY_MIN_WIDTH || height <= OVERLAY_MIN_HEIGHT {
+    if width <= overlay_min_width() || height <= overlay_min_height() {
         return None;
     }
     let mut origin = POINT {
@@ -2314,6 +2336,7 @@ fn overlay_reference_rect_for_host(host: HWND) -> Option<RECT> {
     })
 }
 
+/// `width`/`height` are CSS px; `scale` maps them to the physical `bounds`.
 fn overlay_rect(
     bounds: RECT,
     width: f64,
@@ -2321,7 +2344,9 @@ fn overlay_rect(
     width_ratio: f64,
     height_ratio: f64,
     position: u8,
+    scale: f64,
 ) -> RECT {
+    let (width, height) = (width * scale, height * scale);
     let bounds_width = (bounds.right - bounds.left).max(1);
     let bounds_height = (bounds.bottom - bounds.top).max(1);
     // Honor the caller's extent — an absolute size, else a fraction of the host
@@ -2333,15 +2358,15 @@ fn overlay_rect(
         width,
         width_ratio,
         bounds_width,
-        OVERLAY_DEFAULT_WIDTH,
-        OVERLAY_MIN_WIDTH,
+        overlay_default_width(),
+        overlay_min_width(),
     );
     let overlay_height = resolve_overlay_extent(
         height,
         height_ratio,
         bounds_height,
-        OVERLAY_DEFAULT_HEIGHT,
-        OVERLAY_MIN_HEIGHT,
+        overlay_default_height(),
+        overlay_min_height(),
     );
 
     // A surface that fills the cross axis is a sheet: flush to its anchored edge
@@ -2354,19 +2379,19 @@ fn overlay_rect(
     let (x, y) = match position {
         1 => (
             if full_w { bounds.left } else { center_x },
-            bounds.bottom - overlay_height - if full_w { 0 } else { OVERLAY_MARGIN },
+            bounds.bottom - overlay_height - if full_w { 0 } else { overlay_margin() },
         ),
         2 => (
-            bounds.left + if full_h { 0 } else { OVERLAY_MARGIN },
+            bounds.left + if full_h { 0 } else { overlay_margin() },
             if full_h { bounds.top } else { center_y },
         ),
         3 => (
-            bounds.right - overlay_width - if full_h { 0 } else { OVERLAY_MARGIN },
+            bounds.right - overlay_width - if full_h { 0 } else { overlay_margin() },
             if full_h { bounds.top } else { center_y },
         ),
         4 => (
             if full_w { bounds.left } else { center_x },
-            bounds.top + if full_w { 0 } else { OVERLAY_MARGIN },
+            bounds.top + if full_w { 0 } else { overlay_margin() },
         ),
         _ => (center_x, center_y),
     };
@@ -2395,7 +2420,7 @@ fn resolve_overlay_extent(
     } else {
         // The floating-card default never fills the host: keep a margin on a
         // phone-narrow host so the card still reads as floating.
-        fallback.min(reference - 2 * OVERLAY_MARGIN)
+        fallback.min(reference - 2 * overlay_margin())
     };
     // Never exceed the host content; floor at the min capped to the content so a
     // frame narrower than the min can still host a (full-bleed) surface.
@@ -2410,6 +2435,10 @@ pub fn resize_host_window_content(webtag: &WebTag, width: i32, height: i32) -> S
     }
     let snapshot = webview_window_snapshot(webtag)?;
     let hwnd = hwnd_from_handle(snapshot.window_id as isize);
+    // The page asks in CSS px; the window is sized in physical px.
+    let scale = window_css_scale(hwnd);
+    let width = (f64::from(width) * scale).round() as i32;
+    let height = (f64::from(height) * scale).round() as i32;
     let mut window = RECT::default();
     unsafe {
         WindowsAndMessaging::GetWindowRect(hwnd, &mut window)
@@ -3637,8 +3666,8 @@ fn upload_sidebar_tabbar_popup(hwnd: HWND, content: &SidebarPopupContent, width:
             width,
             height,
             match content {
-                SidebarPopupContent::Tabbar(_) => crate::shell::SIDEBAR_TABBAR_POPUP_RADIUS,
-                SidebarPopupContent::Tooltip(_) => crate::shell::SIDEBAR_RAIL_TOOLTIP_RADIUS,
+                SidebarPopupContent::Tabbar(_) => crate::shell::sidebar_tabbar_popup_radius(),
+                SidebarPopupContent::Tooltip(_) => crate::shell::sidebar_rail_tooltip_radius(),
             },
         );
         let size = SIZE {
@@ -4730,7 +4759,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let width = (rect.right - rect.left).max(0);
     let height = (rect.bottom - rect.top).max(0);
     let (corner_radii, corner_color) = surface_clip_style(hwnd, webtag_key, rect);
-    let fit_scale = window_fit_scale(hwnd);
+    let css_scale = window_css_scale(hwnd);
     let host_bounds = ContentBounds {
         hwnd: hwnd_handle(hwnd),
         left: rect.left,
@@ -4739,7 +4768,7 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
         height,
         corner_radii,
         corner_color,
-        fit_scale_milli: (fit_scale * 1000.0).round() as u32,
+        css_scale_milli: (css_scale * 1000.0).round() as u32,
     };
     let Some(webtag) = webtag_for_key(webtag_key) else {
         return;
@@ -4756,9 +4785,11 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let controller_bounds = rect;
     let bounds_changed = webtag_content_bounds_changed(webtag_key, host_bounds);
     if bounds_changed {
-        // A fit-scaled device frame renders the page at `fit` physical px
-        // per CSS px, keeping the simulated device's logical viewport.
-        if let Err(err) = handler.set_rasterization_scale(fit_scale) {
+        // Physical px per CSS px: the monitor scale for a shell window, so
+        // the page renders at the display's DPI like the chrome around it;
+        // the fit factor for a device frame, keeping the simulated device's
+        // logical viewport.
+        if let Err(err) = handler.set_rasterization_scale(css_scale) {
             log::debug!("Failed to set WebView rasterization scale: {err}");
         }
         #[cfg(feature = "runtime")]
@@ -4786,14 +4817,15 @@ fn sync_webtag_content_bounds_to_rect(hwnd: HWND, webtag_key: &str, rect: RECT) 
     let _ = handler.notify_parent_position_changed();
 }
 
-/// Device-frame fit factor for a host window; 1.0 when unframed.
-fn window_fit_scale(hwnd: HWND) -> f64 {
+/// Physical pixels per CSS pixel for the page in `hwnd`: the device-frame
+/// fit when simulated (frame geometry is physical by design), else the
+/// monitor scale.
+fn window_css_scale(hwnd: HWND) -> f64 {
     #[cfg(feature = "device-frame")]
     if let Some(fit) = crate::device_frame::device_frame_fit_scale(hwnd_handle(hwnd)) {
         return fit;
     }
-    let _ = hwnd;
-    1.0
+    crate::dpi::window_scale(hwnd)
 }
 
 #[cfg(feature = "runtime")]
@@ -4805,15 +4837,7 @@ fn report_surface_viewport(hwnd: HWND, webtag: &WebTag, width: i32, height: i32)
     if appid.is_empty() {
         return;
     }
-    // A fit-scaled device frame overrides the DPI mapping: physical px are
-    // `fit` per CSS px there, regardless of monitor scale.
-    let fit = window_fit_scale(hwnd);
-    let scale = if fit < 1.0 {
-        fit
-    } else {
-        let dpi = unsafe { windows::Win32::UI::HiDpi::GetDpiForWindow(hwnd) };
-        if dpi == 0 { 1.0 } else { dpi as f64 / 96.0 }
-    };
+    let scale = window_css_scale(hwnd);
     lingxia::windows::set_surface_viewport(&appid, width as f64 / scale, height as f64 / scale);
 }
 
@@ -6889,10 +6913,10 @@ fn resize_hit_test(hwnd: HWND, point: (i32, i32)) -> Option<LRESULT> {
             return None;
         }
     }
-    let left = point.0 < client.left + RESIZE_BORDER;
-    let right = point.0 >= client.right - RESIZE_BORDER;
-    let top = point.1 < client.top + RESIZE_BORDER;
-    let bottom = point.1 >= client.bottom - RESIZE_BORDER;
+    let left = point.0 < client.left + resize_border();
+    let right = point.0 >= client.right - resize_border();
+    let top = point.1 < client.top + resize_border();
+    let bottom = point.1 >= client.bottom - resize_border();
     match (left, right, top, bottom) {
         (true, _, true, _) => Some(LRESULT(WindowsAndMessaging::HTTOPLEFT as isize)),
         (_, true, true, _) => Some(LRESULT(WindowsAndMessaging::HTTOPRIGHT as isize)),
@@ -7956,14 +7980,9 @@ pub fn find_webview_content_window(webtag: &WebTag) -> Option<WindowsWebViewCont
         content_top: client.top,
         content_width: (client.right - client.left).max(0),
         content_height: (client.bottom - client.top).max(0),
-        // The WebView2 controller is pinned to raw pixels (RasterizationScale
-        // 1.0 in `configure_controller`), so CSS px == physical px regardless
-        // of the monitor DPI. Native component overlays must map document
-        // rects with the same factor — the monitor scale would blow them up
-        // past the elements they cover (a 1.5x video on a 150% laptop). A
-        // fit-scaled device frame is the exception: there CSS px map to
-        // `fit` physical px.
-        scale: window_fit_scale(hwnd),
+        // Native component overlays map document rects with the same factor
+        // the controller rasterizes at (`sync_webtag_content_bounds_to_rect`).
+        scale: window_css_scale(hwnd),
     })
 }
 
@@ -8086,8 +8105,11 @@ pub fn show_webview_window_with_chrome(
     notify_webtag_visibility(webtag.key(), true);
     if width.is_some() || height.is_some() {
         let snapshot = webview_window_snapshot(webtag)?;
-        let target_width = width.unwrap_or(snapshot.content_width as i32);
-        let target_height = height.unwrap_or(snapshot.content_height as i32);
+        // `resize_host_window_content` takes CSS px; the snapshot is physical.
+        let scale = window_css_scale(hwnd);
+        let css = |physical: u32| (f64::from(physical) / scale).round() as i32;
+        let target_width = width.unwrap_or_else(|| css(snapshot.content_width));
+        let target_height = height.unwrap_or_else(|| css(snapshot.content_height));
         resize_host_window_content(webtag, target_width, target_height)?;
         sync_window_layout(hwnd);
         if !is_tray_popover(hwnd) {
@@ -9255,7 +9277,35 @@ fn create_webview_parent_window(webtag: &WebTag) -> StdResult<WindowsWebViewNati
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
+        if is_top_level_window(hwnd) {
+            crate::dpi::sync_chrome_scale(hwnd);
+        }
         match msg {
+            WindowsAndMessaging::WM_DPICHANGED => {
+                // The suggested rect keeps the window the same logical size on
+                // the new monitor; chrome and page follow through WM_SIZE.
+                let suggested = lparam.0 as *const RECT;
+                if !suggested.is_null() {
+                    let rect = unsafe { *suggested };
+                    let _ = unsafe {
+                        WindowsAndMessaging::SetWindowPos(
+                            hwnd,
+                            None,
+                            rect.left,
+                            rect.top,
+                            rect.right - rect.left,
+                            rect.bottom - rect.top,
+                            WindowsAndMessaging::SWP_NOZORDER | WindowsAndMessaging::SWP_NOACTIVATE,
+                        )
+                    };
+                }
+                if let Some(webtag_key) = active_webtag_key_for_window(hwnd) {
+                    clear_webtag_content_bounds(&webtag_key);
+                }
+                sync_window_layout(hwnd);
+                invalidate_window(hwnd);
+                LRESULT(0)
+            }
             WindowsAndMessaging::WM_NCCREATE => {
                 let create = lparam.0 as *const WindowsAndMessaging::CREATESTRUCTW;
                 if !create.is_null() {
@@ -10934,7 +10984,7 @@ mod tests {
             height: 736,
             corner_radii: [0; 4],
             corner_color: 0,
-            fit_scale_milli: 1_000,
+            css_scale_milli: 1_000,
         };
         clear_webtag_content_bounds(key);
         assert!(webtag_content_bounds_changed(key, bounds));

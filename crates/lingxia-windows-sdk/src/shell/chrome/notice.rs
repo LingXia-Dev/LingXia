@@ -1,11 +1,20 @@
 //! Short-lived shell-owned notices shown above the WebView layer.
 
 use super::*;
+use crate::dpi::px;
 
-const NOTICE_RADIUS: i32 = 12;
-const NOTICE_BORDER: i32 = 1;
-const NOTICE_ICON_SIZE: i32 = 30;
-const NOTICE_PADDING: i32 = 14;
+fn notice_radius() -> i32 {
+    crate::dpi::px(12)
+}
+fn notice_border() -> i32 {
+    crate::dpi::px(1)
+}
+fn notice_icon_size() -> i32 {
+    crate::dpi::px(30)
+}
+fn notice_padding() -> i32 {
+    crate::dpi::px(14)
+}
 
 pub(crate) fn paint_shell_notice(hdc: HDC, title: &str, message: &str, width: i32, height: i32) {
     if width <= 0 || height <= 0 {
@@ -18,30 +27,30 @@ pub(crate) fn paint_shell_notice(hdc: HDC, title: &str, message: &str, width: i3
         right: width,
         bottom: height,
     };
-    fill_round_rect_aa(hdc, bounds, NOTICE_RADIUS, palette.divider);
+    fill_round_rect_aa(hdc, bounds, notice_radius(), palette.divider);
     fill_round_rect_aa(
         hdc,
         RECT {
-            left: NOTICE_BORDER,
-            top: NOTICE_BORDER,
-            right: width - NOTICE_BORDER,
-            bottom: height - NOTICE_BORDER,
+            left: notice_border(),
+            top: notice_border(),
+            right: width - notice_border(),
+            bottom: height - notice_border(),
         },
-        NOTICE_RADIUS - NOTICE_BORDER,
+        notice_radius() - notice_border(),
         palette.panel_background,
     );
 
     let icon = RECT {
-        left: NOTICE_PADDING,
-        top: (height - NOTICE_ICON_SIZE) / 2,
-        right: NOTICE_PADDING + NOTICE_ICON_SIZE,
-        bottom: (height + NOTICE_ICON_SIZE) / 2,
+        left: notice_padding(),
+        top: (height - notice_icon_size()) / 2,
+        right: notice_padding() + notice_icon_size(),
+        bottom: (height + notice_icon_size()) / 2,
     };
-    fill_round_rect_aa(hdc, icon, NOTICE_ICON_SIZE / 2, palette.control_surface);
+    fill_round_rect_aa(hdc, icon, notice_icon_size() / 2, palette.control_surface);
     draw_text_antialiased(hdc, "!", icon, palette.accent, DT_CENTER);
 
-    let text_left = icon.right + 12;
-    let text_right = (width - NOTICE_PADDING).max(text_left);
+    let text_left = icon.right + px(12);
+    let text_right = (width - notice_padding()).max(text_left);
     draw_text_antialiased(
         hdc,
         title,
@@ -61,7 +70,7 @@ pub(crate) fn paint_shell_notice(hdc: HDC, title: &str, message: &str, width: i3
             left: text_left,
             top: 36,
             right: text_right,
-            bottom: height - 9,
+            bottom: height - px(9),
         },
         palette.text_muted,
     );

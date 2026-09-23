@@ -587,11 +587,13 @@ fn persist_sidebar_chrome(rail: bool) {
     }
 }
 
+/// The persisted width is a 96-DPI value; the layout it feeds is physical.
 fn persisted_expanded_sidebar_width() -> i32 {
-    lingxia_shell::sidebar_chrome()
+    let logical = lingxia_shell::sidebar_chrome()
         .expanded_width
         .round()
-        .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH)) as i32
+        .clamp(f64::from(MIN_SIDEBAR_WIDTH), f64::from(MAX_SIDEBAR_WIDTH)) as i32;
+    crate::dpi::px(logical)
 }
 
 fn update_sidebar_ui_state(group: &str, update: impl FnOnce(&mut SidebarUiState)) {
@@ -2296,7 +2298,7 @@ fn build_navigation_bar_layout(app: &LxApp, path: &str) -> WindowsShellNavigatio
         text_color,
         show_back_button: navbar.show_back_button,
         show_home_button: navbar.home_button_visible(),
-        height: DEFAULT_NAV_BAR_HEIGHT,
+        height: crate::dpi::px(DEFAULT_NAV_BAR_HEIGHT),
     }
 }
 
@@ -2486,7 +2488,7 @@ fn build_tab_bar_layout(
     // inset by the home-indicator safe area, so the strip sits just above it and
     // must not re-reserve that height (which would float it up by that much).
     let dimension = match position {
-        WindowsShellTabBarPosition::Bottom => BOTTOM_TABBAR_CONTENT_HEIGHT,
+        WindowsShellTabBarPosition::Bottom => crate::dpi::px(BOTTOM_TABBAR_CONTENT_HEIGHT),
         WindowsShellTabBarPosition::Left | WindowsShellTabBarPosition::Right => {
             persisted_expanded_sidebar_width()
         }

@@ -73,139 +73,236 @@ pub(super) const GLYPH_CHEVRON_RIGHT: &str = "\u{e76c}";
 
 /// Side length of the square top-bar buttons (sidebar toggle, back/
 /// forward/reload).
-pub(super) const TOP_BAR_BUTTON_SIZE: i32 = 26;
+pub(super) fn top_bar_button_size() -> i32 {
+    crate::dpi::px(26)
+}
 
-pub(super) const TOP_BAR_BUTTON_GAP: i32 = 2;
+pub(super) fn top_bar_button_gap() -> i32 {
+    crate::dpi::px(2)
+}
 
-pub(super) const TOP_BAR_PADDING: i32 = 6;
+pub(super) fn top_bar_padding() -> i32 {
+    crate::dpi::px(6)
+}
 
 /// Maximum width of the centered URL capsule.
-pub(super) const ADDRESS_CAPSULE_MAX_WIDTH: i32 = 520;
+pub(super) fn address_capsule_max_width() -> i32 {
+    crate::dpi::px(520)
+}
 
-pub(super) const ADDRESS_CAPSULE_HEIGHT: i32 = 24;
+pub(super) fn address_capsule_height() -> i32 {
+    crate::dpi::px(24)
+}
 
 /// Gap between the nav-button cluster and the URL capsule.
-pub(super) const ADDRESS_CAPSULE_NAV_GAP: i32 = 8;
+pub(super) fn address_capsule_nav_gap() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Side length of the star/pin buttons inside the URL capsule (macOS
 /// address-bar parity).
-pub(super) const ADDRESS_CAPSULE_BUTTON_SIZE: i32 = 20;
+pub(super) fn address_capsule_button_size() -> i32 {
+    crate::dpi::px(20)
+}
 
 /// Side length of the sidebar group-header chevron hit area.
-pub(super) const SIDEBAR_CHEVRON_SIZE: i32 = 18;
+pub(super) fn sidebar_chevron_size() -> i32 {
+    crate::dpi::px(18)
+}
 
 /// Side length of the sidebar header action buttons (settings/downloads),
 /// and the gap between them.
-pub(super) const SIDEBAR_HEADER_ACTION_SIZE: i32 = 28;
-pub(super) const SIDEBAR_HEADER_ACTION_GAP: i32 = 4;
+pub(super) fn sidebar_header_action_size() -> i32 {
+    crate::dpi::px(28)
+}
+pub(super) fn sidebar_header_action_gap() -> i32 {
+    crate::dpi::px(4)
+}
 
-pub(super) const SHELL_SIDEBAR_WIDTH: i32 = 184;
+pub(super) fn shell_sidebar_width() -> i32 {
+    crate::dpi::px(184)
+}
 
 /// Width of the icon-only rail (the macOS first-collapse state).
-pub(super) const SHELL_SIDEBAR_RAIL_WIDTH: i32 = 44;
+pub(super) fn shell_sidebar_rail_width() -> i32 {
+    crate::dpi::px(44)
+}
 
 /// Column width for a sidebar in its current state: 0 only for auto-hidden
 /// legacy/full-hidden state, the rail width when collapsed to icons, else the
 /// expanded width.
 pub(super) fn sidebar_column_width(tabbar: &WindowsShellTabBarLayout) -> i32 {
     if tabbar.collapsed || tabbar.icon_rail {
-        SHELL_SIDEBAR_RAIL_WIDTH
+        shell_sidebar_rail_width()
     } else {
-        tabbar.dimension.max(SHELL_SIDEBAR_WIDTH)
+        tabbar.dimension.max(shell_sidebar_width())
     }
 }
 
 /// Top-level lxapp/web rows share one vertical rhythm.
-pub(super) const SIDEBAR_ITEM_HEIGHT: i32 = 36;
-pub(super) const SIDEBAR_ITEM_GAP: i32 = 4;
+pub(super) fn sidebar_item_height() -> i32 {
+    crate::dpi::px(36)
+}
+pub(super) fn sidebar_item_gap() -> i32 {
+    crate::dpi::px(4)
+}
 
 /// Expanded lxapp children use a compact desktop rhythm; the whole 28px row
 /// remains clickable even though the visual selection is deliberately quiet.
-pub(super) const SIDEBAR_CHILD_ITEM_HEIGHT: i32 = 28;
-pub(super) const SIDEBAR_CHILD_ITEM_GAP: i32 = 0;
-pub(super) const SIDEBAR_PARENT_CHILD_GAP: i32 = 1;
+pub(super) fn sidebar_child_item_height() -> i32 {
+    crate::dpi::px(28)
+}
+pub(super) fn sidebar_child_item_gap() -> i32 {
+    crate::dpi::px(0)
+}
+pub(super) fn sidebar_parent_child_gap() -> i32 {
+    crate::dpi::px(1)
+}
 
 /// macOS uses the same 8pt outer inset for lxapp and browser rows. Keeping
 /// this shared is what makes both top-level tab types occupy one visual
 /// column instead of letting browser tabs drift inward.
-pub(super) const SIDEBAR_ITEM_INSET: i32 = 8;
+pub(super) fn sidebar_item_inset() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Leading padding inside every top-level lxapp/web row. Their 16px icons
 /// therefore share the exact same x axis (`8 + 8` from the sidebar edge).
-pub(super) const SIDEBAR_TOP_LEVEL_ICON_INSET: i32 = 8;
+pub(super) fn sidebar_top_level_icon_inset() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Child navigation sits inside its owning lxapp group. The parent remains a
 /// plain section header; only the active leaf receives a selection surface.
-pub(super) const SIDEBAR_CHILD_INDENT: i32 = 22;
+pub(super) fn sidebar_child_indent() -> i32 {
+    crate::dpi::px(22)
+}
 
 /// Width of the close-glyph hit area at the trailing edge of a browser row.
-pub(super) const SIDEBAR_BROWSER_CLOSE_SIZE: i32 = 22;
+pub(super) fn sidebar_browser_close_size() -> i32 {
+    crate::dpi::px(22)
+}
 
 /// Close glyph for browser tab rows (multiplication X).
 pub(super) const GLYPH_TAB_CLOSE: &str = "\u{2715}";
 
-pub(super) const SIDEBAR_ICON_SIZE: i32 = 16;
+pub(super) fn sidebar_icon_size() -> i32 {
+    crate::dpi::px(16)
+}
 
 /// One leading axis for every first-column icon in the sidebar: top-level
 /// rows center their icon at item inset + icon inset + half the icon, and the
 /// pinned grid and footer actions align to the same line.
-pub(super) const SIDEBAR_ICON_AXIS: i32 =
-    SIDEBAR_ITEM_INSET + SIDEBAR_TOP_LEVEL_ICON_INSET + SIDEBAR_ICON_SIZE / 2;
+pub(super) fn sidebar_icon_axis() -> i32 {
+    sidebar_item_inset() + sidebar_top_level_icon_inset() + sidebar_icon_size() / 2
+}
 
-pub(super) const SIDEBAR_RAIL_ITEM_SIZE: i32 = 34;
+pub(super) fn sidebar_rail_item_size() -> i32 {
+    crate::dpi::px(34)
+}
 
-pub(super) const SIDEBAR_RAIL_ICON_SIZE: i32 = 18;
+pub(super) fn sidebar_rail_icon_size() -> i32 {
+    crate::dpi::px(18)
+}
 
-pub(super) const SIDEBAR_TABBAR_POPUP_WIDTH: i32 = 220;
-pub(super) const SIDEBAR_TABBAR_POPUP_PADDING: i32 = 8;
+pub(super) fn sidebar_tabbar_popup_width() -> i32 {
+    crate::dpi::px(220)
+}
+pub(super) fn sidebar_tabbar_popup_padding() -> i32 {
+    crate::dpi::px(8)
+}
 /// Corner radius of the collapsed-rail tabbar popup card; the host masks the
 /// layered popup window to this same rounding.
-const SIDEBAR_TABBAR_POPUP_TITLE_HEIGHT: i32 = 22;
-pub(crate) const SIDEBAR_TABBAR_POPUP_RADIUS: i32 = 10;
-pub(crate) const SIDEBAR_RAIL_TOOLTIP_RADIUS: i32 = 6;
-const SIDEBAR_RAIL_TOOLTIP_HEIGHT: i32 = 32;
-const SIDEBAR_RAIL_TOOLTIP_GAP: i32 = 6;
-const SIDEBAR_RAIL_TOOLTIP_PADDING: i32 = 12;
+fn sidebar_tabbar_popup_title_height() -> i32 {
+    crate::dpi::px(22)
+}
+pub(crate) fn sidebar_tabbar_popup_radius() -> i32 {
+    crate::dpi::px(10)
+}
+pub(crate) fn sidebar_rail_tooltip_radius() -> i32 {
+    crate::dpi::px(6)
+}
+fn sidebar_rail_tooltip_height() -> i32 {
+    crate::dpi::px(32)
+}
+fn sidebar_rail_tooltip_gap() -> i32 {
+    crate::dpi::px(6)
+}
+fn sidebar_rail_tooltip_padding() -> i32 {
+    crate::dpi::px(12)
+}
 
 /// Edge length of the favicon drawn on a sidebar browser-tab row.
-pub(super) const SIDEBAR_FAVICON_SIZE: i32 = 16;
+pub(super) fn sidebar_favicon_size() -> i32 {
+    crate::dpi::px(16)
+}
 
 /// Gap between a browser row's favicon and its title text.
-pub(super) const SIDEBAR_FAVICON_TEXT_GAP: i32 = 8;
+pub(super) fn sidebar_favicon_text_gap() -> i32 {
+    crate::dpi::px(8)
+}
 
-pub(super) const FOOTER_ACTION_SIZE: i32 = 30;
+pub(super) fn footer_action_size() -> i32 {
+    crate::dpi::px(30)
+}
 
-pub(super) const FOOTER_ACTION_ICON_SIZE: i32 = 16;
+pub(super) fn footer_action_icon_size() -> i32 {
+    crate::dpi::px(16)
+}
 
-pub(super) const FOOTER_ACTION_GAP: i32 = 4;
+pub(super) fn footer_action_gap() -> i32 {
+    crate::dpi::px(4)
+}
 
-/// SIDEBAR_ICON_AXIS − cell padding (8) − half icon: footer action icons
+/// sidebar_icon_axis() − cell padding (8) − half icon: footer action icons
 /// center on the shared first-column axis.
-pub(super) const FOOTER_ACTION_MARGIN: i32 = 8;
+pub(super) fn footer_action_margin() -> i32 {
+    crate::dpi::px(8)
+}
 
 pub(super) const FOOTER_ACTION_MAX_ROWS: usize = 5;
 
-pub(super) const BROWSER_PANEL_HEADER_PADDING: i32 = 8;
-pub(super) const BROWSER_PANEL_BUTTON_SIZE: i32 = 28;
-pub(super) const BROWSER_PANEL_BUTTON_GAP: i32 = 4;
+pub(super) fn browser_panel_header_padding() -> i32 {
+    crate::dpi::px(8)
+}
+pub(super) fn browser_panel_button_size() -> i32 {
+    crate::dpi::px(28)
+}
+pub(super) fn browser_panel_button_gap() -> i32 {
+    crate::dpi::px(4)
+}
 
 pub(super) const SHELL_TEXT_POINT_SIZE: i32 = 9;
 
 pub(super) const SHELL_TEXT_WEIGHT: i32 = 400;
 
-pub(super) const ATTACHED_PANEL_WIDTH: i32 = 380;
+pub(super) fn attached_panel_width() -> i32 {
+    crate::dpi::px(380)
+}
 
-pub(super) const ATTACHED_PANEL_BOTTOM_HEIGHT: i32 = 280;
+pub(super) fn attached_panel_bottom_height() -> i32 {
+    crate::dpi::px(280)
+}
 
-pub(super) const ATTACHED_PANEL_MIN_SIZE: i32 = 160;
+pub(super) fn attached_panel_min_size() -> i32 {
+    crate::dpi::px(160)
+}
 
-pub(super) const ATTACHED_PANEL_MAX_SIZE: i32 = 700;
+pub(super) fn attached_panel_max_size() -> i32 {
+    crate::dpi::px(700)
+}
 
-pub(super) const ATTACHED_PANEL_HANDLE_SIZE: i32 = 5;
+pub(super) fn attached_panel_handle_size() -> i32 {
+    crate::dpi::px(5)
+}
 
-pub(super) const ATTACHED_MAIN_MIN_WIDTH: i32 = 320;
+pub(super) fn attached_main_min_width() -> i32 {
+    crate::dpi::px(320)
+}
 
-pub(super) const ATTACHED_MAIN_MIN_HEIGHT: i32 = 240;
+pub(super) fn attached_main_min_height() -> i32 {
+    crate::dpi::px(240)
+}
 
 pub(super) mod command_id {
     pub(super) const TAB_BAR_CLICK: &str = "tabbar.click";
@@ -379,7 +476,7 @@ fn sidebar_scroll_metrics(
     }
     let viewport_bottom =
         sidebar_navigation_viewport_bottom(tabbar_rect, tabbar, &layout.footer_actions)
-            .clamp(tabbar_rect.top + SHELL_TOP_BAR_HEIGHT, tabbar_rect.bottom);
+            .clamp(tabbar_rect.top + shell_top_bar_height(), tabbar_rect.bottom);
     let (offset, max_offset) = clamp_sidebar_scroll(
         tabbar.main_scroll_offset,
         sidebar_content_bottom(tabbar_rect, tabbar),
@@ -440,12 +537,12 @@ fn chrome_mouse_wheel(
 
     let (current, max_offset, viewport_bottom) = sidebar_scroll_metrics(tabbar_rect, layout)?;
     if max_offset == 0
-        || point.1 < tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+        || point.1 < tabbar_rect.top + shell_top_bar_height()
         || point.1 >= viewport_bottom
     {
         return None;
     }
-    let step = SIDEBAR_ITEM_HEIGHT + SIDEBAR_ITEM_GAP;
+    let step = sidebar_item_height() + sidebar_item_gap();
     let offset = if delta > 0 {
         current.saturating_sub(step)
     } else {
@@ -608,7 +705,7 @@ fn chrome_hover_rect(
                 Some(expand)
             };
         }
-        if point.1 < tabbar_rect.top + SHELL_TOP_BAR_HEIGHT || point.1 >= viewport_bottom {
+        if point.1 < tabbar_rect.top + shell_top_bar_height() || point.1 >= viewport_bottom {
             return None;
         }
         for index in 0..=tabbar.auxiliary_items.len() {
@@ -633,7 +730,7 @@ fn chrome_hover_rect(
             return Some(rect);
         }
     }
-    if point.1 < tabbar_rect.top + SHELL_TOP_BAR_HEIGHT || point.1 >= viewport_bottom {
+    if point.1 < tabbar_rect.top + shell_top_bar_height() || point.1 >= viewport_bottom {
         return None;
     }
     let chevron = sidebar_group_chevron_rect(tabbar_rect, tabbar, scroll_offset);
@@ -727,13 +824,13 @@ fn sync_sidebar_surface_title_rects(hwnd: HWND, client: RECT, layout: &WindowsSh
             else {
                 continue;
             };
-            let icon_rect = sidebar_top_level_icon_rect(item_rect, SIDEBAR_FAVICON_SIZE);
+            let icon_rect = sidebar_top_level_icon_rect(item_rect, sidebar_favicon_size());
             titles.insert(
                 item.id.clone(),
                 sidebar_auxiliary_title_rect(
                     item_rect,
                     item,
-                    icon_rect.right + SIDEBAR_FAVICON_TEXT_GAP,
+                    icon_rect.right + sidebar_favicon_text_gap(),
                 ),
             );
         }
@@ -1103,7 +1200,7 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
         top: client.top + top_inset,
         right: content.right,
         bottom: if reserve_top_bar {
-            (client.top + top_inset + SHELL_TOP_BAR_HEIGHT).min(client.bottom)
+            (client.top + top_inset + shell_top_bar_height()).min(client.bottom)
         } else {
             client.top + top_inset
         },
@@ -1155,10 +1252,10 @@ pub(super) fn compute_chrome_rects(client: RECT, layout: &WindowsShellWindowLayo
 
 fn inset_desktop_workspace(rect: RECT) -> RECT {
     normalize_rect(RECT {
-        left: rect.left + SHELL_CONTENT_INSET,
+        left: rect.left + shell_content_inset(),
         top: rect.top,
-        right: rect.right - SHELL_CONTENT_INSET,
-        bottom: rect.bottom - SHELL_CONTENT_INSET,
+        right: rect.right - shell_content_inset(),
+        bottom: rect.bottom - shell_content_inset(),
     })
 }
 
@@ -1235,7 +1332,7 @@ pub(crate) fn collapsed_sidebar_tabbar_popup(
     let (scroll_offset, _, viewport_bottom) =
         sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
     let hit = |anchor: RECT| {
-        anchor.top >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+        anchor.top >= tabbar_rect.top + shell_top_bar_height()
             && anchor.bottom <= viewport_bottom
             && rect_contains(&anchor, point)
     };
@@ -1300,7 +1397,7 @@ pub(crate) fn collapsed_sidebar_tooltip(
     let (scroll_offset, _, viewport_bottom) =
         sidebar_scroll_metrics(tabbar_rect, layout).unwrap_or((0, 0, tabbar_rect.bottom));
     let in_sidebar_viewport = |anchor: RECT| {
-        anchor.top >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT
+        anchor.top >= tabbar_rect.top + shell_top_bar_height()
             && anchor.bottom <= viewport_bottom
             && rect_contains(&anchor, point)
     };
@@ -1378,12 +1475,12 @@ pub(crate) fn collapsed_sidebar_tooltip(
             .map(|ch| if ch.is_ascii() { 8 } else { 16 })
             .sum::<i32>(),
     };
-    let max_width = (client.right - client.left - SIDEBAR_RAIL_TOOLTIP_GAP * 2).clamp(72, 480);
-    let width = (text_width + SIDEBAR_RAIL_TOOLTIP_PADDING * 2 + 4).clamp(72, max_width);
-    let height = SIDEBAR_RAIL_TOOLTIP_HEIGHT;
+    let max_width = (client.right - client.left - sidebar_rail_tooltip_gap() * 2).clamp(72, 480);
+    let width = (text_width + sidebar_rail_tooltip_padding() * 2 + 4).clamp(72, max_width);
+    let height = sidebar_rail_tooltip_height();
     let desired_left = match tabbar.position {
-        WindowsShellTabBarPosition::Left => tabbar_rect.right + SIDEBAR_RAIL_TOOLTIP_GAP,
-        WindowsShellTabBarPosition::Right => tabbar_rect.left - SIDEBAR_RAIL_TOOLTIP_GAP - width,
+        WindowsShellTabBarPosition::Left => tabbar_rect.right + sidebar_rail_tooltip_gap(),
+        WindowsShellTabBarPosition::Right => tabbar_rect.left - sidebar_rail_tooltip_gap() - width,
         WindowsShellTabBarPosition::Bottom => return None,
     };
     let left = desired_left.clamp(client.left, (client.right - width).max(client.left));
@@ -1435,7 +1532,7 @@ fn collapsed_sidebar_popup_title_height(tabbar: &WindowsShellTabBarLayout) -> i3
     if tabbar.app_name.trim().is_empty() {
         0
     } else {
-        SIDEBAR_TABBAR_POPUP_TITLE_HEIGHT
+        sidebar_tabbar_popup_title_height()
     }
 }
 
@@ -1465,11 +1562,11 @@ fn auxiliary_popup_tabbar(
 pub(crate) fn collapsed_sidebar_tabbar_popup_size(tabbar: &WindowsShellTabBarLayout) -> (i32, i32) {
     let rows = tabbar.items.len().max(1) as i32;
     (
-        SIDEBAR_TABBAR_POPUP_WIDTH,
-        SIDEBAR_TABBAR_POPUP_PADDING * 2
+        sidebar_tabbar_popup_width(),
+        sidebar_tabbar_popup_padding() * 2
             + collapsed_sidebar_popup_title_height(tabbar)
-            + rows * SIDEBAR_CHILD_ITEM_HEIGHT
-            + (rows - 1).max(0) * SIDEBAR_CHILD_ITEM_GAP,
+            + rows * sidebar_child_item_height()
+            + (rows - 1).max(0) * sidebar_child_item_gap(),
     )
 }
 
@@ -1479,11 +1576,11 @@ pub(crate) fn collapsed_sidebar_tabbar_popup_hit(
 ) -> Option<usize> {
     // Hit-test against the same tabbar variant the popup paints; the raw
     // tabbar's auxiliary items would shift row rects by the pinned-grid height.
-    let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, SIDEBAR_TABBAR_POPUP_WIDTH);
+    let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, sidebar_tabbar_popup_width());
     let bounds = normalize_rect(RECT {
         left: 0,
         top: 0,
-        right: SIDEBAR_TABBAR_POPUP_WIDTH,
+        right: sidebar_tabbar_popup_width(),
         bottom: collapsed_sidebar_tabbar_popup_size(&popup_tabbar).1,
     });
     let item_bounds = collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar);
@@ -1547,10 +1644,10 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
             hdc,
             &popup_tabbar.app_name,
             RECT {
-                left: bounds.left + SIDEBAR_TABBAR_POPUP_PADDING,
-                top: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING,
-                right: bounds.right - SIDEBAR_TABBAR_POPUP_PADDING,
-                bottom: bounds.top + SIDEBAR_TABBAR_POPUP_PADDING + title_height,
+                left: bounds.left + sidebar_tabbar_popup_padding(),
+                top: bounds.top + sidebar_tabbar_popup_padding(),
+                right: bounds.right - sidebar_tabbar_popup_padding(),
+                bottom: bounds.top + sidebar_tabbar_popup_padding() + title_height,
             },
             shell_palette().text_muted,
             DT_LEFT,
@@ -1566,7 +1663,7 @@ pub(crate) fn paint_collapsed_sidebar_tabbar_popup(
     stroke_round_rect_aa(
         hdc,
         bounds,
-        SIDEBAR_TABBAR_POPUP_RADIUS,
+        sidebar_tabbar_popup_radius(),
         shell_palette().divider,
     );
 }
@@ -1583,9 +1680,9 @@ pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, 
         hdc,
         text,
         RECT {
-            left: SIDEBAR_RAIL_TOOLTIP_PADDING,
+            left: sidebar_rail_tooltip_padding(),
             top: 0,
-            right: width - SIDEBAR_RAIL_TOOLTIP_PADDING,
+            right: width - sidebar_rail_tooltip_padding(),
             bottom: height,
         },
         shell_palette().text_primary,
@@ -1594,7 +1691,7 @@ pub(crate) fn paint_collapsed_sidebar_tooltip(hdc: HDC, text: &str, width: i32, 
     stroke_round_rect_aa(
         hdc,
         bounds,
-        SIDEBAR_RAIL_TOOLTIP_RADIUS,
+        sidebar_rail_tooltip_radius(),
         shell_palette().divider,
     );
 }
@@ -1608,11 +1705,11 @@ fn collapsed_sidebar_tabbar_popup_item_bounds(
         // `sidebar_item_rect` adds the normal shell/header/group offsets.
         // Cancel them so the popup's first child starts below the title band.
         top: bounds.top
-            + SIDEBAR_TABBAR_POPUP_PADDING
+            + sidebar_tabbar_popup_padding()
             + collapsed_sidebar_popup_title_height(tabbar)
-            - SHELL_TOP_BAR_HEIGHT
-            - SIDEBAR_ITEM_HEIGHT
-            - SIDEBAR_PARENT_CHILD_GAP,
+            - shell_top_bar_height()
+            - sidebar_item_height()
+            - sidebar_parent_child_gap(),
         right: bounds.right,
         bottom: bounds.bottom,
     })
@@ -1764,14 +1861,14 @@ fn compute_attached_layout(
         }
         let (rect, resize_handle) = match panel.position {
             WindowsPanelPosition::Left => {
-                let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
+                let width = attached_panel_size(panel, main_region, attached_panel_width());
                 let rect = RECT {
                     left: main_region.left,
                     top: main_region.top,
                     right: (main_region.left + width).min(main_region.right),
                     bottom: main_region.bottom,
                 };
-                let handle_width = ATTACHED_PANEL_HANDLE_SIZE;
+                let handle_width = attached_panel_handle_size();
                 let handle = normalize_rect(RECT {
                     left: rect.right,
                     top: rect.top,
@@ -1782,14 +1879,14 @@ fn compute_attached_layout(
                 (rect, Some(handle))
             }
             WindowsPanelPosition::Right => {
-                let width = attached_panel_size(panel, main_region, ATTACHED_PANEL_WIDTH);
+                let width = attached_panel_size(panel, main_region, attached_panel_width());
                 let rect = RECT {
                     left: (main_region.right - width).max(main_region.left),
                     top: main_region.top,
                     right: main_region.right,
                     bottom: main_region.bottom,
                 };
-                let handle_width = ATTACHED_PANEL_HANDLE_SIZE;
+                let handle_width = attached_panel_handle_size();
                 let handle = normalize_rect(RECT {
                     left: (rect.left - handle_width).max(main_region.left),
                     top: rect.top,
@@ -1804,14 +1901,15 @@ fn compute_attached_layout(
             // resize handle, so the split reads as a divider — not the panel
             // covering the content. (Side panels already separate this way.)
             WindowsPanelPosition::Top => {
-                let height = attached_panel_size(panel, main_region, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let height =
+                    attached_panel_size(panel, main_region, attached_panel_bottom_height());
                 let rect = RECT {
                     left: main_region.left,
                     top: main_region.top,
                     right: main_region.right,
                     bottom: (main_region.top + height).min(main_region.bottom),
                 };
-                let handle_height = ATTACHED_PANEL_HANDLE_SIZE;
+                let handle_height = attached_panel_handle_size();
                 let handle = normalize_rect(RECT {
                     left: rect.left,
                     top: rect.bottom,
@@ -1822,7 +1920,8 @@ fn compute_attached_layout(
                 (rect, Some(handle))
             }
             WindowsPanelPosition::Bottom => {
-                let height = attached_panel_size(panel, main_region, ATTACHED_PANEL_BOTTOM_HEIGHT);
+                let height =
+                    attached_panel_size(panel, main_region, attached_panel_bottom_height());
                 // Docked panels split the space flat — flush with the content
                 // edges, divided from the content by the gutter's hairline —
                 // so both regions read as the same layer. A floating panel
@@ -1830,7 +1929,7 @@ fn compute_attached_layout(
                 let bottom = if panel.docked {
                     main_region.bottom
                 } else {
-                    (main_region.bottom - SHELL_PANEL_GAP).max(main_region.top)
+                    (main_region.bottom - shell_panel_gap()).max(main_region.top)
                 };
                 let rect = RECT {
                     left: main_region.left,
@@ -1838,7 +1937,7 @@ fn compute_attached_layout(
                     right: main_region.right,
                     bottom,
                 };
-                let handle_height = ATTACHED_PANEL_HANDLE_SIZE;
+                let handle_height = attached_panel_handle_size();
                 let handle = normalize_rect(RECT {
                     left: rect.left,
                     top: (rect.top - handle_height).max(main_region.top),
@@ -1913,10 +2012,10 @@ fn attached_panel_size(
 
     let max_with_main = match panel.position {
         WindowsPanelPosition::Top | WindowsPanelPosition::Bottom => {
-            available - SHELL_PANEL_GAP - ATTACHED_MAIN_MIN_HEIGHT
+            available - shell_panel_gap() - attached_main_min_height()
         }
         WindowsPanelPosition::Left | WindowsPanelPosition::Right => {
-            available - SHELL_PANEL_GAP - ATTACHED_MAIN_MIN_WIDTH
+            available - shell_panel_gap() - attached_main_min_width()
         }
     };
     let max_size = if max_with_main > 0 {
@@ -1924,10 +2023,10 @@ fn attached_panel_size(
     } else {
         available / 2
     }
-    .min(ATTACHED_PANEL_MAX_SIZE)
+    .min(attached_panel_max_size())
     .min(available)
     .max(1);
-    let min_size = ATTACHED_PANEL_MIN_SIZE.min(max_size);
+    let min_size = attached_panel_min_size().min(max_size);
     requested.clamp(min_size, max_size)
 }
 
@@ -2016,7 +2115,7 @@ pub(super) fn draw_window_chrome(
             .map(|attached| attached.main_region)
             .unwrap_or(rects.workspace);
         let corner_radii = if desktop_card {
-            workspace_corner_radii(navbar_rect, silhouette, SHELL_CONTENT_RADIUS)
+            workspace_corner_radii(navbar_rect, silhouette, shell_content_radius())
         } else {
             [0; 4]
         };
@@ -2287,7 +2386,7 @@ pub(super) fn chrome_hit_test(
             (0, 0, tabbar_rect.bottom)
         };
         let in_sidebar_viewport =
-            point.1 >= tabbar_rect.top + SHELL_TOP_BAR_HEIGHT && point.1 < viewport_bottom;
+            point.1 >= tabbar_rect.top + shell_top_bar_height() && point.1 < viewport_bottom;
         if sidebar {
             // Header actions remain interactive, while every unused pixel in
             // the sidebar's caption strip must behave like a native caption.
@@ -2534,7 +2633,7 @@ fn sidebar_caption_contains(rect: RECT, point: (i32, i32)) -> bool {
             left: rect.left,
             top: rect.top,
             right: rect.right,
-            bottom: (rect.top + SHELL_TOP_BAR_HEIGHT).min(rect.bottom),
+            bottom: (rect.top + shell_top_bar_height()).min(rect.bottom),
         },
         point,
     )
@@ -2616,7 +2715,7 @@ pub(super) fn draw_content_cards(
                 fill_round_rect_aa_corners(
                     hdc,
                     header,
-                    [SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS, 0, 0],
+                    [shell_content_radius(), shell_content_radius(), 0, 0],
                     pal.group_active_background,
                 );
                 fill_round_rect_aa_corners(
@@ -2627,7 +2726,7 @@ pub(super) fn draw_content_cards(
                         right: panel.rect.right,
                         bottom: panel.rect.bottom,
                     },
-                    [0, 0, SHELL_CONTENT_RADIUS, SHELL_CONTENT_RADIUS],
+                    [0, 0, shell_content_radius(), shell_content_radius()],
                     pal.panel_background,
                 );
             } else {
@@ -2687,7 +2786,7 @@ pub(super) fn draw_content_card_shadow(hdc: HDC, rect: RECT) {
                 right: rect.right + spread,
                 bottom: rect.bottom + spread + 2,
             },
-            SHELL_CONTENT_RADIUS + spread,
+            shell_content_radius() + spread,
             alpha << 24,
         );
     }
@@ -2704,7 +2803,7 @@ pub(super) fn draw_content_card(hdc: HDC, rect: RECT, desktop_card: bool) {
         fill_round_rect_aa(
             hdc,
             rect,
-            SHELL_CONTENT_RADIUS,
+            shell_content_radius(),
             shell_palette().panel_background,
         );
     }
@@ -2811,24 +2910,24 @@ pub(crate) fn workspace_silhouette_rect(
 #[cfg(test)]
 mod scroll_tests {
     use super::{
-        ATTACHED_PANEL_HANDLE_SIZE, SHELL_CONTENT_INSET, SHELL_TOP_BAR_HEIGHT, SIDEBAR_ICON_SIZE,
-        SIDEBAR_ITEM_HEIGHT, SIDEBAR_TABBAR_POPUP_PADDING, SIDEBAR_TABBAR_POPUP_WIDTH,
         WindowsChromeHit, WindowsChromePanelLayoutInput, WindowsChromeState, WindowsPanelPosition,
         WindowsShellAddressBarLayout, WindowsShellAuxiliaryItemLayout,
         WindowsShellFooterActionLayout, WindowsShellNavigationBarLayout,
         WindowsShellSidebarActionSource, WindowsShellTabBarItemLayout, WindowsShellTabBarLayout,
-        WindowsShellTabBarPosition, WindowsShellWindowLayout, chrome_hit_test,
-        chrome_rects_for_state, clamp_sidebar_scroll, collapsed_sidebar_popup_tabbar,
-        collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup_hit,
-        collapsed_sidebar_tabbar_popup_item_bounds, collapsed_sidebar_tabbar_popup_size,
-        collapsed_sidebar_tooltip, compute_attached_layout, compute_chrome_rects,
-        covering_panel_layout, disabled_rail_expand_hit, footer_action_rects,
+        WindowsShellTabBarPosition, WindowsShellWindowLayout, attached_panel_handle_size,
+        chrome_hit_test, chrome_rects_for_state, clamp_sidebar_scroll,
+        collapsed_sidebar_popup_tabbar, collapsed_sidebar_tabbar_click_command,
+        collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tabbar_popup_item_bounds,
+        collapsed_sidebar_tabbar_popup_size, collapsed_sidebar_tooltip, compute_attached_layout,
+        compute_chrome_rects, covering_panel_layout, disabled_rail_expand_hit, footer_action_rects,
         layout_for_maximized_native_panel, layout_without_covered_main_chrome,
-        phone_browser_bar_active, phone_browser_bar_rects, rect_height,
-        sidebar_auxiliary_rail_index, sidebar_auxiliary_rects, sidebar_caption_contains,
-        sidebar_group_rect, sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
-        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_top_level_icon_rect,
-        tabbar_requires_full_repaint, top_bar_controls,
+        phone_browser_bar_active, phone_browser_bar_rects, rect_height, shell_content_inset,
+        shell_top_bar_height, sidebar_auxiliary_rail_index, sidebar_auxiliary_rects,
+        sidebar_caption_contains, sidebar_group_rect, sidebar_icon_size, sidebar_item_height,
+        sidebar_item_rect, sidebar_rail_close_rect, sidebar_rail_expand_rect,
+        sidebar_rail_item_rect, sidebar_rail_pinned_divider_rect, sidebar_tabbar_popup_padding,
+        sidebar_tabbar_popup_width, sidebar_top_level_icon_rect, tabbar_requires_full_repaint,
+        top_bar_controls,
     };
     use lingxia_windows_contract::{
         WindowsChromeAttachedState, WindowsChromePanel, WindowsHostPanelContent,
@@ -3095,7 +3194,7 @@ mod scroll_tests {
                 right: width,
                 bottom: height,
             };
-            let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, SIDEBAR_TABBAR_POPUP_WIDTH);
+            let popup_tabbar = collapsed_sidebar_popup_tabbar(tabbar, sidebar_tabbar_popup_width());
             let rect = sidebar_item_rect(
                 collapsed_sidebar_tabbar_popup_item_bounds(bounds, &popup_tabbar),
                 &popup_tabbar,
@@ -3111,7 +3210,7 @@ mod scroll_tests {
         // so the last row still lands inside the padded box.
         assert_eq!(titled_height - untitled_height, 22);
         assert_eq!(titled_row.top - untitled_row.top, 22);
-        assert!(titled_row.bottom <= titled_height - SIDEBAR_TABBAR_POPUP_PADDING);
+        assert!(titled_row.bottom <= titled_height - sidebar_tabbar_popup_padding());
         // Paint and hit-test share `..._item_bounds`, so the shift must reach
         // both: hit-testing the drawn row still resolves to that row.
         assert_eq!(
@@ -3276,7 +3375,7 @@ mod scroll_tests {
             bottom: 768,
         };
         let top_bar = RECT {
-            bottom: SHELL_TOP_BAR_HEIGHT,
+            bottom: shell_top_bar_height(),
             ..client
         };
         let layout = WindowsShellWindowLayout {
@@ -3305,7 +3404,7 @@ mod scroll_tests {
             bottom: 768,
         };
         let top_bar = RECT {
-            bottom: SHELL_TOP_BAR_HEIGHT,
+            bottom: shell_top_bar_height(),
             ..client
         };
         let layout = WindowsShellWindowLayout {
@@ -3432,9 +3531,9 @@ mod scroll_tests {
 
         assert!(!phone_browser_bar_active(client, &layout));
         assert!(rects.phone_bar.is_none());
-        assert_eq!(rect_height(&rects.top_bar), SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(rects.top_bar.left, super::SHELL_SIDEBAR_RAIL_WIDTH);
-        assert_eq!(rects.content.bottom, client.bottom - SHELL_CONTENT_INSET);
+        assert_eq!(rect_height(&rects.top_bar), shell_top_bar_height());
+        assert_eq!(rects.top_bar.left, super::shell_sidebar_rail_width());
+        assert_eq!(rects.content.bottom, client.bottom - shell_content_inset());
     }
 
     #[test]
@@ -3504,12 +3603,12 @@ mod scroll_tests {
 
         assert_eq!(rects.top_bar.left, 220);
         assert_eq!(rects.top_bar.top, client.top);
-        assert_eq!(rects.top_bar.bottom, client.top + SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(rects.panel.left, 220 + SHELL_CONTENT_INSET);
-        assert_eq!(rects.panel.top, SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(client.right - rects.panel.right, SHELL_CONTENT_INSET);
-        assert_eq!(client.bottom - rects.panel.bottom, SHELL_CONTENT_INSET);
-        assert_eq!(rects.content.top, SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(rects.top_bar.bottom, client.top + shell_top_bar_height());
+        assert_eq!(rects.panel.left, 220 + shell_content_inset());
+        assert_eq!(rects.panel.top, shell_top_bar_height());
+        assert_eq!(client.right - rects.panel.right, shell_content_inset());
+        assert_eq!(client.bottom - rects.panel.bottom, shell_content_inset());
+        assert_eq!(rects.content.top, shell_top_bar_height());
 
         layout.navigation_bar = Some(WindowsShellNavigationBarLayout {
             visible: true,
@@ -3521,8 +3620,8 @@ mod scroll_tests {
             height: 38,
         });
         let rects = compute_chrome_rects(client, &layout);
-        assert_eq!(rects.workspace.top, SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(rects.navigation_bar.unwrap().top, SHELL_TOP_BAR_HEIGHT);
+        assert_eq!(rects.workspace.top, shell_top_bar_height());
+        assert_eq!(rects.navigation_bar.unwrap().top, shell_top_bar_height());
     }
 
     #[test]
@@ -3547,20 +3646,20 @@ mod scroll_tests {
         let attached = compute_attached_layout(client, &layout, &[panel]);
         let aside = &attached.panels[0];
 
-        assert_eq!(attached.main_region.top, SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(aside.rect.top, SHELL_TOP_BAR_HEIGHT);
-        assert_eq!(aside.rect.right, client.right - SHELL_CONTENT_INSET);
-        assert_eq!(aside.rect.bottom, client.bottom - SHELL_CONTENT_INSET);
+        assert_eq!(attached.main_region.top, shell_top_bar_height());
+        assert_eq!(aside.rect.top, shell_top_bar_height());
+        assert_eq!(aside.rect.right, client.right - shell_content_inset());
+        assert_eq!(aside.rect.bottom, client.bottom - shell_content_inset());
         assert_eq!(
             aside.rect.left - attached.main_region.right,
-            ATTACHED_PANEL_HANDLE_SIZE
+            attached_panel_handle_size()
         );
         let handle = aside.resize_handle.unwrap();
         assert_eq!(handle.left, attached.main_region.right);
         assert_eq!(handle.right, aside.rect.left);
         assert_eq!(
             attached.main_region.bottom,
-            client.bottom - SHELL_CONTENT_INSET
+            client.bottom - shell_content_inset()
         );
     }
 
@@ -3778,11 +3877,11 @@ mod scroll_tests {
             .1;
 
         assert_eq!((lxapp.left, lxapp.right), (web.left, web.right));
-        assert_eq!(lxapp.bottom - lxapp.top, SIDEBAR_ITEM_HEIGHT);
-        assert_eq!(web.bottom - web.top, SIDEBAR_ITEM_HEIGHT);
+        assert_eq!(lxapp.bottom - lxapp.top, sidebar_item_height());
+        assert_eq!(web.bottom - web.top, sidebar_item_height());
         assert_eq!(
-            sidebar_top_level_icon_rect(lxapp, SIDEBAR_ICON_SIZE).left,
-            sidebar_top_level_icon_rect(web, SIDEBAR_ICON_SIZE).left
+            sidebar_top_level_icon_rect(lxapp, sidebar_icon_size()).left,
+            sidebar_top_level_icon_rect(web, sidebar_icon_size()).left
         );
     }
 
@@ -3854,7 +3953,7 @@ mod corner_tests {
     };
     use windows::Win32::Foundation::RECT;
 
-    const R: i32 = super::SHELL_CONTENT_RADIUS;
+    const R: i32 = 10;
 
     fn client() -> RECT {
         RECT {

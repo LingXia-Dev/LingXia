@@ -1,16 +1,24 @@
 /// Side and bottom clearance around the elevated desktop content card. Its
 /// top edge stays flush with the first sidebar row below the caption band.
-pub(super) const SHELL_CONTENT_INSET: i32 = 12;
+pub(super) fn shell_content_inset() -> i32 {
+    crate::dpi::px(12)
+}
 
 /// Separation belongs only between independently resizable main/aside panes.
-pub(super) const SHELL_PANEL_GAP: i32 = 8;
+pub(super) fn shell_panel_gap() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Radius of the elevated content wrapper and its shadow. Windowed WebView2
 /// content remains rectangular, but the wrapper is still visible while a
 /// surface is loading and around native/attached regions.
-pub(super) const SHELL_CONTENT_RADIUS: i32 = 10;
+pub(super) fn shell_content_radius() -> i32 {
+    crate::dpi::px(10)
+}
 
-pub(super) const SHELL_PANEL_RADIUS: i32 = 14;
+pub(super) fn shell_panel_radius() -> i32 {
+    crate::dpi::px(14)
+}
 
 pub(super) const SHELL_BADGE_RED: u32 = 0xff3b30;
 
@@ -206,7 +214,9 @@ pub(super) const FRAME_BUTTON_HOVER_OVERLAY: u32 = 6;
 pub(super) const FRAME_BUTTON_PRESSED_OVERLAY: u32 = 9;
 
 /// Height of the terminal panel header (tab strip + maximize) row.
-pub(super) const TERMINAL_HEADER_HEIGHT: i32 = 34;
+pub(super) fn terminal_header_height() -> i32 {
+    crate::dpi::px(34)
+}
 
 // The terminal card's colors — surface, header, separator and both text
 // weights — are not constants: they are derived from the scheme in effect by
@@ -216,34 +226,52 @@ pub(super) const TERMINAL_HEADER_HEIGHT: i32 = 34;
 
 /// Corner radius of the active tab's top-rounded pill; shared with the
 /// macOS tab rail so both platforms draw the same shape.
-pub(super) const TERMINAL_TAB_RADIUS: i32 = 8;
+pub(super) fn terminal_tab_radius() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Maximum width of one header tab; tabs shrink evenly below this.
-pub(super) const TERMINAL_TAB_MAX_WIDTH: i32 = 190;
+pub(super) fn terminal_tab_max_width() -> i32 {
+    crate::dpi::px(190)
+}
 
-pub(super) const TERMINAL_TAB_GAP: i32 = 4;
+pub(super) fn terminal_tab_gap() -> i32 {
+    crate::dpi::px(4)
+}
 
 /// Top inset of tabs inside the header; doubles as the draggable divider
-/// thickness of a docked panel (`ATTACHED_PANEL_HANDLE_SIZE` in
+/// thickness of a docked panel (`attached_panel_handle_size()` in
 /// lingxia-webview), so tab clicks never collide with resize drags.
-pub(super) const TERMINAL_TAB_TOP_INSET: i32 = 5;
+pub(super) fn terminal_tab_top_inset() -> i32 {
+    crate::dpi::px(5)
+}
 
 /// Side length of the square header buttons (new tab, maximize).
-pub(super) const TERMINAL_HEADER_BUTTON_SIZE: i32 = 22;
+pub(super) fn terminal_header_button_size() -> i32 {
+    crate::dpi::px(22)
+}
 
 /// Width of the close-glyph hit area inside the active tab.
-pub(super) const TERMINAL_TAB_CLOSE_WIDTH: i32 = 20;
+pub(super) fn terminal_tab_close_width() -> i32 {
+    crate::dpi::px(20)
+}
 
-pub(super) const TERMINAL_HEADER_PADDING: i32 = 8;
+pub(super) fn terminal_header_padding() -> i32 {
+    crate::dpi::px(8)
+}
 
 /// Segoe Fluent Icons "Add" glyph for the new-tab button.
 pub(super) const GLYPH_ADD: &str = "\u{e710}";
 
 /// Compact Arc-style caption strip.
-pub(super) const SHELL_TOP_BAR_HEIGHT: i32 = 32;
+pub(super) fn shell_top_bar_height() -> i32 {
+    crate::dpi::px(32)
+}
 
 /// Win11 caption-button width.
-pub(super) const WINDOW_BUTTON_WIDTH: i32 = 46;
+pub(super) fn window_button_width() -> i32 {
+    crate::dpi::px(46)
+}
 
 /// Caption glyph size.
 pub(super) const WINDOW_BUTTON_GLYPH_POINT_SIZE: i32 = 9;

@@ -86,15 +86,15 @@ pub(crate) use chrome::{
     phone_tab_switcher_hit, phone_tab_switcher_layout,
 };
 pub(crate) use chrome::{
-    SIDEBAR_RAIL_TOOLTIP_RADIUS, SIDEBAR_TABBAR_POPUP_RADIUS, bottom_tabbar_rect,
-    collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
-    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip, disabled_rail_expand_hit,
-    paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
-    paint_transparent_tabbar_overlay, transparent_tabbar_overlay_rect,
+    TabbarOverflowHit, TabbarOverflowLayout, paint_tabbar_overflow, tabbar_overflow_hit,
+    tabbar_overflow_layout, tabbar_overflow_panel_radius,
 };
 pub(crate) use chrome::{
-    TABBAR_OVERFLOW_PANEL_RADIUS, TabbarOverflowHit, TabbarOverflowLayout, paint_tabbar_overflow,
-    tabbar_overflow_hit, tabbar_overflow_layout,
+    bottom_tabbar_rect, collapsed_sidebar_tabbar_click_command, collapsed_sidebar_tabbar_popup,
+    collapsed_sidebar_tabbar_popup_hit, collapsed_sidebar_tooltip, disabled_rail_expand_hit,
+    paint_collapsed_sidebar_tabbar_popup, paint_collapsed_sidebar_tooltip,
+    paint_transparent_tabbar_overlay, sidebar_rail_tooltip_radius, sidebar_tabbar_popup_radius,
+    transparent_tabbar_overlay_rect,
 };
 
 pub(crate) use chrome::{workspace_corner_radii, workspace_silhouette_rect};
@@ -112,17 +112,17 @@ pub(crate) fn draw_icon_from_path(
 /// Height of the shell-owned top caption strip. Lxapp navigation bars belong
 /// to the main region below it; browser address chrome may use this strip.
 pub(crate) fn shell_top_bar_height() -> i32 {
-    style::SHELL_TOP_BAR_HEIGHT
+    style::shell_top_bar_height()
 }
 
 /// Corner radius of the rounded workspace silhouette (the content card).
 pub(crate) fn shell_content_radius() -> i32 {
-    style::SHELL_CONTENT_RADIUS
+    style::shell_content_radius()
 }
 
 /// Corner radius of free-standing (floating) panel cards.
 pub(crate) fn shell_panel_radius() -> i32 {
-    style::SHELL_PANEL_RADIUS
+    style::shell_panel_radius()
 }
 
 /// The shell background surrounding the workspace card (theme-dependent) —

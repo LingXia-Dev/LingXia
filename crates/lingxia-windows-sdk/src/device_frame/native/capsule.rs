@@ -17,7 +17,7 @@ const CAPSULE_SHADOW: i32 = 7;
 /// Inset from the content's top-right corner.
 const CAPSULE_INSET: i32 = 12;
 /// Nav-bar row height the shell reserves below the status bar (matches the
-/// shell `SHELL_TOP_BAR_HEIGHT`); the capsule centers in it.
+/// shell `shell_top_bar_height()`); the capsule centers in it.
 const NAV_BAR_ROW_HEIGHT: i32 = 32;
 /// Lift the capsule a few px above the nav-bar center so it sits a touch higher
 /// (toward the status bar) without reaching the status bar's signal/battery.
