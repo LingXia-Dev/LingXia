@@ -66,7 +66,9 @@ received artifacts. Keep the following invariants when changing these layers:
   (lock order: routes, then run state). Logic `fetch` is wrapped only when the
   `runtime` feature is built, and its no-route path is one atomic load.
   Fulfillments go through the app's domain policy; the fixture removes a
-  spec's routes in its cleanup.
+  spec's routes in its cleanup. Patterns compile to the Rust `regex` crate
+  (globs are translated), so JS lookaround and backreferences are rejected at
+  `route()`.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.
