@@ -46,11 +46,16 @@ declare global {
 
   interface Lx {
     /**
-     * In-process UI/runtime automation.
+     * In-process UI/runtime automation, as app Logic may use it.
      *
-     * Select the current app with `.lxapp()` or a specific running app with
-     * `.lxapp(appid)`. Host-only surfaces enforce the `host` privilege when
-     * selected; `lingxia dev` and the Runner grant it implicitly.
+     * Select the calling app with `.lxapp()` (requires the `automation`
+     * privilege) or another running app with `.lxapp(appid)`; the host tiers
+     * (`lxapps`, `browser`, `shell`, `device`, `desktop`, `terminal`) require
+     * `host`, checked when the property is read. A privilege holds only when
+     * it is allowed for the app and the native host sealed a session grant
+     * for it; `lingxia dev` and the Runner do not widen that. Test-run-only
+     * members (`network`, nav `waitUntil: 'ready'`) belong to
+     * `HostRunAutomation`, the root of an `lxdev test` program.
      */
     automation(): Automation;
   }

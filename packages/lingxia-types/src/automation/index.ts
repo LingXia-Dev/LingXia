@@ -1,9 +1,20 @@
 /**
  * In-process UI/runtime automation — `lx.automation()`.
  *
- * Returns a stable selector root. Selecting the calling lxapp requires the
- * `automation` security privilege; cross-lxapp and host surfaces require
- * `host`. `lingxia dev` sessions and the Runner grant both implicitly.
+ * Two roots share one runtime object:
+ *
+ * - {@link Automation} is what app Logic may call. Selecting the calling lxapp
+ *   requires the `automation` security privilege; cross-lxapp and host
+ *   surfaces require `host`. A session holds one only when the privilege
+ *   class is allowed for the app (the app registry, or its unrestricted
+ *   default) and the native host seals a matching session grant — from a
+ *   product `HostAddon`, or a devtools host such as the Runner, which grants
+ *   the allowed automation privileges and nothing beyond them. Neither
+ *   `lingxia dev` nor the Runner widens what app Logic is allowed.
+ * - {@link HostRunAutomation} is the root of a host automation run
+ *   (`lxdev test`). That context carries the host's own authority, so every
+ *   selector is available without a grant, and it adds the test-run-only
+ *   members: `network`, nav `waitUntil: 'ready'`, and eval call tracing.
  *
  * This mirrors the devtool (`lxdev`) automation surface as a privilege-scoped,
  * product-side API.
@@ -13,28 +24,57 @@ import type { TerminalSettingsValue } from '../generated/logic.js';
 
 // ============================ factory ============================
 
-/** Stable automation root; it grants no capability until one is selected. */
+/**
+ * Automation root as app Logic sees it (`lx.automation()` in Logic). It grants
+ * no capability until one is selected.
+ *
+ * @remarks The host-tier getters (`lxapps`, `browser`, `shell`, `device`,
+ * `desktop`, `terminal`) check the `host` privilege when the property is
+ * read, and reading one without it throws `E_AUTOMATION`. Enumerating,
+ * spreading, or logging the root therefore throws in a session without
+ * `host`; read only the members you use. Every method on a returned driver
+ * checks the privilege again when called.
+ */
 export interface Automation {
-  /** Drive the calling/current lxapp. Requires `automation` outside dev. */
-  lxapp(): LxAppDriver;
-  /** Drive a specific running lxapp. Requires `host` outside dev. */
-  lxapp(appid: string): LxAppDriver;
-  /** Cross-lxapp lifecycle and host-window capture. */
+  /**
+   * Drive the calling lxapp. Requires the `automation` privilege. Evaluating
+   * the calling Logic runtime itself (`eval`) rejects.
+   */
+  lxapp(): LogicLxAppDriver;
+  /** Drive a specific running lxapp. Requires the `host` privilege. */
+  lxapp(appid: string): LogicLxAppDriver;
+  /** Cross-lxapp lifecycle and host-window capture. Requires `host`. */
   readonly lxapps: LxAppManager;
-  /** The host app's browser tabs. */
+  /** The host app's browser tabs. Requires `host`. */
   readonly browser: BrowserDriver;
-  /** Persisted host-shell shortcuts for deterministic test setup/assertion. */
+  /** Persisted host-shell shortcuts for deterministic test setup/assertion. Requires `host`. */
   readonly shell: ShellDriver;
-  /** Simulated-device selection in a host runner. */
+  /** Simulated-device selection in a host runner. Requires `host`. */
   readonly device: DeviceDriver;
   /**
-   * Session-less local-OS desktop automation (`lxdev desktop`). Beyond the
-   * app sandbox, so restricted to dev/test hosts (`lingxia dev` or the
-   * Runner) on top of the `host` privilege. Windows/macOS only.
+   * Session-less local-OS desktop automation (`lxdev desktop`). Windows/macOS
+   * only. Gated by the `host` privilege alone, and present only in hosts
+   * built with desktop automation (the Runner, or a product that enables the
+   * `desktop-automation` feature); elsewhere reading it throws. It drives the
+   * whole OS, beyond the app sandbox — grant `host` only to lxapps you trust
+   * with that.
    */
   readonly desktop: DesktopDriver;
-  /** Native terminal workspace state and pane actions in trusted dev/test hosts. */
+  /** Native terminal workspace state and pane actions. Requires `host`. */
   readonly terminal: TerminalDriver;
+}
+
+/**
+ * Automation root of a host automation run — the `lx` global of an
+ * `lxdev test` program (`@lingxia/types/automation-test-globals`). The run
+ * carries host authority, so no selector needs a privilege grant, and the
+ * selected lxapp driver adds the test-run-only members.
+ */
+export interface HostRunAutomation extends Automation {
+  /** Drive the host's current lxapp. */
+  lxapp(): LxAppDriver;
+  /** Drive a specific running lxapp. */
+  lxapp(appid: string): LxAppDriver;
 }
 
 // ========================== terminal tier ==========================
@@ -114,7 +154,10 @@ export interface TerminalSplitOptions extends TerminalSurfaceRef {
   direction: TerminalSplitDirection;
 }
 
-/** Native terminal automation; available only to trusted dev/test hosts. */
+/**
+ * Native terminal automation. Requires the `host` privilege from app Logic
+ * (a host automation run needs none) and a host with a native terminal.
+ */
 export interface TerminalDriver {
   snapshot(options: TerminalSurfaceRef): Promise<TerminalWorkspaceSnapshot>;
   /** Send text to the focused pane, as if typed into its PTY. */
@@ -365,29 +408,40 @@ export interface PageDriver {
  * When a nav action resolves. `'commit'` (default) resolves once the page
  * stack changed, before the landed page is ready. `'ready'` also waits for its
  * `onReady` and rejects if the page is disposed or replaced first (e.g. by the
- * app's own `lx.reLaunch`); host automation runs only, Logic-side
- * `lx.automation()` rejects it. The `@lingxia/test` fixture's `t.app.nav`
- * defaults to `'ready'`.
+ * app's own `lx.reLaunch`); it is available only in a host automation run
+ * ({@link NavDriver}), since app Logic awaiting its own `onReady` would
+ * deadlock. The `@lingxia/test` fixture's `t.app.nav` defaults to `'ready'`.
  */
 export type NavWaitUntil = 'commit' | 'ready';
 
+/** Nav wait options available to app Logic: only `'commit'`. */
+export interface LogicNavWaitOptions {
+  waitUntil?: 'commit';
+}
+
+/** Nav wait options of a host automation run. */
 export interface NavWaitOptions {
   waitUntil?: NavWaitUntil;
   /** Bound for `waitUntil: 'ready'` in ms (default 15000, capped at 60000). */
   timeoutMs?: number;
 }
 
-export interface NavOptions extends NavWaitOptions {
+interface NavTargetFields {
   /** Configured page name (from lxapp.json). */
   page: string;
   /** Query forwarded to the destination page. */
   query?: Record<string, unknown>;
 }
 
-export interface NavBackOptions extends NavWaitOptions {
+interface NavBackFields {
   /** Number of pages to pop (default 1). */
   delta?: number;
 }
+
+export interface LogicNavOptions extends NavTargetFields, LogicNavWaitOptions {}
+export interface LogicNavBackOptions extends NavBackFields, LogicNavWaitOptions {}
+export interface NavOptions extends NavTargetFields, NavWaitOptions {}
+export interface NavBackOptions extends NavBackFields, NavWaitOptions {}
 
 /** A page's runtime position. */
 export interface PageInfo {
@@ -403,26 +457,39 @@ export interface PageInfo {
 }
 
 /**
- * Page-stack navigation for the selected lxapp. Action verbs take a configured
- * page name (`redirect` rejects a tab-bar page); `back` pops; `current`/`stack`
- * read. Unlike the JS `lx.navigateTo` family this returns the landed page. By
- * default it resolves once the stack changed, before the destination is ready;
- * pass `waitUntil: 'ready'` from a test run to also wait for `onReady`.
+ * Page-stack navigation for the selected lxapp, as app Logic sees it. Action
+ * verbs take a configured page name (`redirect` rejects a tab-bar page);
+ * `back` pops; `current`/`stack` read. Unlike the JS `lx.navigateTo` family
+ * this returns the landed page. It resolves once the stack changed, before the
+ * destination is ready.
  */
-export interface NavDriver {
+export interface LogicNavDriver {
   /** Push a page onto the stack. */
-  to(options: NavOptions): Promise<PageInfo>;
+  to(options: LogicNavOptions): Promise<PageInfo>;
   /** Replace the current page (rejects tab-bar targets). */
-  redirect(options: NavOptions): Promise<PageInfo>;
+  redirect(options: LogicNavOptions): Promise<PageInfo>;
   /** Switch to a configured tab page. */
-  switchTab(options: NavOptions): Promise<PageInfo>;
+  switchTab(options: LogicNavOptions): Promise<PageInfo>;
   /** Clear the stack and relaunch at a page. */
-  relaunch(options: NavOptions): Promise<PageInfo>;
-  back(options?: NavBackOptions): Promise<PageInfo>;
+  relaunch(options: LogicNavOptions): Promise<PageInfo>;
+  back(options?: LogicNavBackOptions): Promise<PageInfo>;
   current(): Promise<PageInfo>;
   /** Status of a configured page by name; omit `page` for the current page. */
   info(options?: PageTarget): Promise<PageInfo>;
   stack(): Promise<PageInfo[]>;
+}
+
+/**
+ * Page-stack navigation in a host automation run. Same verbs as
+ * {@link LogicNavDriver}; pass `waitUntil: 'ready'` to also wait for the
+ * landed page's `onReady`.
+ */
+export interface NavDriver extends LogicNavDriver {
+  to(options: NavOptions): Promise<PageInfo>;
+  redirect(options: NavOptions): Promise<PageInfo>;
+  switchTab(options: NavOptions): Promise<PageInfo>;
+  relaunch(options: NavOptions): Promise<PageInfo>;
+  back(options?: NavBackOptions): Promise<PageInfo>;
 }
 
 // ============================ lxapp driver ============================
@@ -437,22 +504,33 @@ export interface LxAppPageConfig {
   path: string;
 }
 
+/**
+ * Envelope `eval` resolves to with `captureCalls: true`.
+ *
+ * @internal Report plumbing for the test runner; the `@lingxia/test` fixture
+ * unwraps it, and specs never see it.
+ */
 export interface LxAppEvalTrace<T = unknown> {
   __lxEval: 1;
   value: T;
   calls: string[];
 }
 
-export interface LxAppEvalOptions {
+/** Logic-runtime eval options available to app Logic. */
+export interface LogicLxAppEvalOptions {
   /** JavaScript expression or function body run in the selected Logic runtime. */
   script: string;
   timeoutMs?: number;
+}
+
+/** Logic-runtime eval options of a host automation run. */
+export interface LxAppEvalOptions extends LogicLxAppEvalOptions {
   /**
    * Resolve to `{ value, calls }`, where `calls` lists the `lx.*` members the
    * script reached, instead of the bare value.
    *
-   * The test runner sets this so a report can tell a capability a spec
-   * exercised from one it merely declared. Only the evaluated script is
+   * @internal The test runner sets this so a report can tell a capability a
+   * spec exercised from one it merely declared. Only the evaluated script is
    * observed — the lxapp's own concurrent work is not.
    */
   captureCalls?: boolean;
@@ -679,9 +757,29 @@ export interface NetworkDriver {
   requests(): Promise<NetworkRouteRequest[]>;
 }
 
-/** Capability for one selected running lxapp. */
-export interface LxAppDriver {
+/** Capability for one selected running lxapp, as app Logic sees it. */
+export interface LogicLxAppDriver {
   readonly page: PageDriver;
+  readonly nav: LogicNavDriver;
+  /** Complete runtime snapshot of the selected lxapp. */
+  info(): Promise<LxAppRuntimeInfo>;
+  /** Configured pages of the selected lxapp. */
+  pages(): Promise<LxAppPageConfig[]>;
+  /** Authoritative host surface render plan, for end-to-end assertions. */
+  surfaceLayout(): Promise<SurfaceLayoutSnapshot>;
+  /**
+   * Logic-runtime eval of another lxapp; evaluating the calling Logic runtime
+   * itself rejects. `T` describes the expected JSON result; it is not
+   * runtime validation.
+   */
+  eval<T = unknown>(options: LogicLxAppEvalOptions): Promise<T>;
+}
+
+/**
+ * Capability for one selected running lxapp in a host automation run
+ * (`HostRunAutomation.lxapp()`): the Logic driver plus test-run-only members.
+ */
+export interface LxAppDriver extends LogicLxAppDriver {
   readonly nav: NavDriver;
   /**
    * Test-only Logic `fetch` routing, scoped to the host automation run.
@@ -691,14 +789,12 @@ export interface LxAppDriver {
    * or in a host built without the automation runtime.
    */
   readonly network: NetworkDriver;
-  /** Complete runtime snapshot of the selected lxapp. */
-  info(): Promise<LxAppRuntimeInfo>;
-  /** Configured pages of the selected lxapp. */
-  pages(): Promise<LxAppPageConfig[]>;
-  /** Authoritative host surface render plan, for end-to-end assertions. */
-  surfaceLayout(): Promise<SurfaceLayoutSnapshot>;
-  /** Logic-runtime eval; self-eval from that Logic runtime is rejected. */
+  /** @internal Test-runner plumbing: resolves to the call-trace envelope. */
   eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
+  /**
+   * Logic-runtime eval; evaluating the calling Logic runtime itself rejects.
+   * `T` describes the expected JSON result; it is not runtime validation.
+   */
   eval<T = unknown>(options: LxAppEvalOptions & { captureCalls?: false }): Promise<T>;
   eval<T = unknown>(options: LxAppEvalOptions): Promise<T | LxAppEvalTrace<T>>;
 }
@@ -791,7 +887,8 @@ export interface ApplinkResult {
 }
 
 /**
- * Cross-lxapp lifecycle and host-window access. Requires `host` outside dev.
+ * Cross-lxapp lifecycle and host-window access. Requires the `host` privilege
+ * from app Logic; a host automation run needs no grant.
  *
  * `close`, `restart`, and `uninstall` reject when they target the calling app
  * itself. Use `lx.host.exit()` to self-exit.
@@ -1178,7 +1275,7 @@ export interface PageKey {
   press(options: KeyPressOptions): Promise<InputResult>;
 }
 
-// ======================= desktop (host, dev/test only) =======================
+// ======================= desktop (host) =======================
 
 /** A rectangle in backend-native global desktop coordinates. */
 export interface DesktopRect {
