@@ -23,10 +23,11 @@ received artifacts. Keep the following invariants when changing these layers:
 - `t.skip()` throws `SkipSignal`; it grades `skipped` in every phase and under
   `spec.fail`, and skips failure forensics. `spec.fail` inverts any body
   failure, not only assertions; setup failures and timeouts keep their status.
-- Secret args (credential-like keys, `--secret-arg` keys listed in the
-  reserved `secretArgs` arg) reach `t.args` unmasked but are `***` in
-  `meta.args`, and their values are masked in events and reports. lxdev
-  re-scrubs its written reports for older runtimes.
+- Secret args (keys matching `/pass(word)?|secret|token|api[_-]?key|credential/i`,
+  and `--secret-arg` keys listed in the reserved `secretArgs` arg) reach
+  `t.args` unmasked but are `***` in `meta.args`, and their values are masked
+  in events and reports. lxdev re-scrubs its written reports for older
+  runtimes.
 - Retry artifacts have attempt-specific paths. Do not overwrite the first failure
   with the successful attempt. Terminal output is a presentation of the report,
   not an alternate result model.

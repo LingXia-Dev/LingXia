@@ -70,9 +70,9 @@ Keep a separate test tsconfig with `lib: ["ES2020"]` and
 `types: ["@lingxia/types/automation-test-globals"]`. Do not add Logic, DOM, or
 Node globals to make unavailable APIs compile. Start fixture servers from
 shell/CI and pass reachable URLs through `--arg key=value` (`t.args`). App
-requests retain their own [network grants](../native/permissions.md). Reports
-mask args whose key matches `pass|secret|token|api_key|credential` as `***`;
-pass any other sensitive value with `--secret-arg key=value`.
+requests retain their own [network grants](../native/permissions.md). Pass
+secrets with `--secret-arg key=value`: reports show them, and args named like
+passwords or tokens, as `***`.
 
 `t.expect(locator)` retries UI assertions; `t.expect.poll(read)` retries an
 observable result; imported `expect(value)` checks once. Await actions and
@@ -186,9 +186,9 @@ integrations with logs/artifacts; review screenshots and interactions for UX.
 - `--timeout-secs` defaults to 300 for the whole run; specs default to 30 seconds.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams events. Interrupted runs retain partial JSON/HTML/JUnit reports and fail CI.
 - JSON keeps `timeout`, `xfail`, and `xpass` distinct; unexpected passes fail the run.
-- `spec.skip`/`spec.fixme` skip at registration. `t.skip(reason)` skips from inside the body when only the run can tell (it throws; `t.defer` cleanup still runs).
-- `spec.fail`: any body failure (assertion or thrown error) is `xfail`; a completed body is `xpass`; a timeout stays `timeout`.
-- A run whose client died holds the session (`automation_run_in_progress`); `lxdev test --cancel-active` cancels it, alone or before a new run. `--output-dir` must be writable before the run starts.
+- `spec.skip`/`spec.fixme` skip at registration; `t.skip(reason)` skips from inside the body when only the run can tell.
+- `spec.fail`: any body failure, assertion or thrown error, is `xfail`; a completed body is `xpass`.
+- `lxdev test --cancel-active` cancels a run left active by a client that exited (`automation_run_in_progress`).
 - Locator actions wait for visibility, enabled/editable state, stable geometry, and an unobscured target.
   `locator.waitFor({ state })` waits for `visible` (default: exactly one match, in the viewport),
   `attached` (exactly one match, even outside the viewport, e.g. an overflowing sheet), `hidden`
