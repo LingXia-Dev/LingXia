@@ -78,7 +78,7 @@ Pass values into a run with `--arg` (`t.args`), so one suite can cover several p
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-Reports record the args of a run. Keys that look like credentials (`password`, `secret`, `token`, `apiKey`, `credential`) are written as `***`, and `--secret-arg key=value` masks any other key; the spec still reads the real value from `t.args`.
+Pass a secret with `--secret-arg key=value`: its value is written as `***` wherever it would appear in reports, events and attachments. Reports also list a run's args; an `--arg` named like a credential (`password`, `apiKey`, `DB_TOKEN`) shows as `***` in that list. The spec still reads the real value from `t.args`.
 
 Results print as they finish and are written under `test-results/<run-id>/` (`report.html`, `report.json`, `junit.xml`) so CI can keep them as an artifact.
 
@@ -102,7 +102,13 @@ spec('reconnects an offline client', async (t) => {
 });
 ```
 
-`spec.fail` declares a known-broken case: any failure of its body — a failed assertion or a thrown product error — is reported as the expected failure (`xfail`), and a body that completes is an unexpected pass (`xpass`) that fails the run.
+`spec.fail` declares a known-broken case: a failure of its body — a failed assertion or a thrown product error — is reported as the expected failure (`xfail`), and a body that completes is an unexpected pass (`xpass`) that fails the run. Name the failure you expect, so a different one (a mistyped selector, a fixture server that is down) still fails:
+
+```ts
+spec.fail('rejects an over-quota upload', { expected: { code: 'E_QUOTA' } }, async (t) => {
+  await uploadLargeFile(t);
+});
+```
 
 ## Behavior worth a permanent test
 

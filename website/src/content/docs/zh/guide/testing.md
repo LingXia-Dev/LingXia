@@ -78,7 +78,7 @@ lxdev test tests/ --grep checkout
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-报告会记录运行参数。看起来像凭据的键（`password`、`secret`、`token`、`apiKey`、`credential`）写成 `***`；其他键用 `--secret-arg key=value` 传入即可同样遮蔽。用例从 `t.args` 读到的仍是真实值。
+机密值用 `--secret-arg key=value` 传入：它在报告、事件和附件里出现的地方都写成 `***`。报告还会列出运行参数；名字像凭据的 `--arg`（`password`、`apiKey`、`DB_TOKEN`）在这份列表里显示为 `***`。用例从 `t.args` 读到的仍是真实值。
 
 结果边跑边输出，并写到 `test-results/<run-id>/`（`report.html`、`report.json`、`junit.xml`），CI 可以作为产物留存。
 
@@ -102,7 +102,13 @@ spec('重连离线客户端', async (t) => {
 });
 ```
 
-`spec.fail` 声明已知有问题的用例：用例体的任何失败 —— 断言失败或产品抛出的错误 —— 都报告为预期失败（`xfail`）；用例体顺利完成则是意外通过（`xpass`），会让运行失败。
+`spec.fail` 声明已知有问题的用例：用例体的失败 —— 断言失败或产品抛出的错误 —— 报告为预期失败（`xfail`）；用例体顺利完成则是意外通过（`xpass`），会让运行失败。写明预期的失败，其他失败（选择器写错、测试服务没启动）仍然算失败：
+
+```ts
+spec.fail('拒绝超出配额的上传', { expected: { code: 'E_QUOTA' } }, async (t) => {
+  await uploadLargeFile(t);
+});
+```
 
 ## 什么行为值得写成永久测试
 
