@@ -19,10 +19,22 @@ import java.lang.ref.WeakReference
 
 internal object ServoEmbedderControls {
     private const val TAG = "ServoEmbedderControls"
+    private const val FILE_CHOOSER_DIR = "servo-file-chooser"
+    @Volatile
+    private var staleCopiesPurged = false
 
     fun attachIfNeeded(webView: LingXiaWebViewHost, activity: LxAppActivity) {
         if (webView !is LingXiaServoView) return
+        purgeStaleCopies(activity)
         webView.setEmbedderControlHandler(Handler(webView, activity))
+    }
+
+    /** Copies left by a previous process are unreachable from any page now. */
+    private fun purgeStaleCopies(activity: LxAppActivity) {
+        if (staleCopiesPurged) return
+        staleCopiesPurged = true
+        val directory = File(activity.cacheDir, FILE_CHOOSER_DIR)
+        Thread { directory.listFiles()?.forEach(File::delete) }.start()
     }
 
     private class Handler(
@@ -33,6 +45,9 @@ internal object ServoEmbedderControls {
         private val activity = WeakReference(activity)
         private val dialogs = mutableMapOf<Long, Dialog>()
         private val pending = mutableSetOf<Long>()
+        // Servo reads a selected file lazily (upload, FileReader), so a copy
+        // lives until its page does.
+        private val copies = mutableListOf<File>()
         private var destroyed = false
 
         override fun show(requestId: Long, kind: String, payload: String) {
@@ -58,6 +73,8 @@ internal object ServoEmbedderControls {
             pending.clear()
             dialogs.values.toList().forEach(Dialog::dismiss)
             dialogs.clear()
+            deleteCopies(copies.toList())
+            copies.clear()
         }
 
         private fun complete(requestId: Long, value: String) {
@@ -169,10 +186,20 @@ internal object ServoEmbedderControls {
             if (!host.openHostFileDialog(intent) { result ->
                     when (result) {
                         is HostFileDialogResult.Selected -> Thread {
-                            val paths = materializeFiles(host, requestId, result.paths)
+                            val files = materializeFiles(host, requestId, result.paths)
                             host.runOnUiThread {
-                                if (paths.isEmpty()) cancel(requestId)
-                                else complete(requestId, JSONArray(paths).toString())
+                                if (destroyed || requestId !in pending) {
+                                    deleteCopies(files)
+                                    cancel(requestId)
+                                } else if (files.isEmpty()) {
+                                    cancel(requestId)
+                                } else {
+                                    copies += files
+                                    complete(
+                                        requestId,
+                                        JSONArray(files.map(File::getAbsolutePath)).toString(),
+                                    )
+                                }
                             }
                         }.start()
 
@@ -184,12 +211,16 @@ internal object ServoEmbedderControls {
             }
         }
 
+        private fun deleteCopies(files: List<File>) {
+            if (files.isNotEmpty()) Thread { files.forEach(File::delete) }.start()
+        }
+
         private fun materializeFiles(
             host: LxAppActivity,
             requestId: Long,
             values: List<String>,
-        ): List<String> {
-            val directory = File(host.cacheDir, "servo-file-chooser").apply { mkdirs() }
+        ): List<File> {
+            val directory = File(host.cacheDir, FILE_CHOOSER_DIR).apply { mkdirs() }
             return values.mapIndexedNotNull { index, raw ->
                 runCatching {
                     val uri = Uri.parse(raw)
@@ -208,7 +239,7 @@ internal object ServoEmbedderControls {
                         requireNotNull(input) { "Unable to open $uri" }
                         target.outputStream().use(input::copyTo)
                     }
-                    target.absolutePath
+                    target
                 }.getOrElse { error ->
                     Log.w(TAG, "Unable to materialize selected file $raw", error)
                     null
