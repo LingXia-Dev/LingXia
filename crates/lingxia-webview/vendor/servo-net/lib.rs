@@ -18,6 +18,7 @@ pub mod http_cache;
 pub mod http_loader;
 pub mod image_cache;
 pub mod local_directory_listing;
+mod navigation_observer;
 pub mod protocols;
 pub mod request_interceptor;
 pub mod resource_thread;
@@ -27,6 +28,7 @@ pub mod test_util;
 mod websocket_loader;
 
 pub use devtools::{NetworkObserver, has_network_observer, set_network_observer};
+pub use navigation_observer::{NavigationObserver, set_navigation_observer};
 pub use devtools_traits::{
     HttpRequest as ObservedNetworkRequest, HttpResponse as ObservedNetworkResponse,
 };
