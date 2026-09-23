@@ -236,7 +236,7 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     private var restoresZoomOnShow = false
     private var lastNormalWindowFrame: NSRect?
     private var lastSavedWindowFrame: (frame: NSRect, maximized: Bool)?
-    private var windowMoveSave: DispatchWorkItem?
+    private var windowFrameSave: DispatchWorkItem?
     private var controllerEventsTask: Task<Void, Never>?
     private var didRequestHomeOpen = false
     private let startupBehavior: LxAppShellStartupBehavior
@@ -541,20 +541,23 @@ public final class LxAppShell: NSWindowController, NSWindowDelegate {
     }
 
     public func windowDidResize(_ notification: Notification) {
+        scheduleWindowFrameSave()
         syncSidebarHeaderButtonAlignment()
         workspaceManager.relayoutPanels()
         reportSurfaceWidth()
     }
 
-    public func windowDidEndLiveResize(_ notification: Notification) {
-        saveWindowFrame()
+    public func windowDidMove(_ notification: Notification) {
+        scheduleWindowFrameSave()
     }
 
-    public func windowDidMove(_ notification: Notification) {
-        // Fires for every step of a drag; save once the window settles.
-        windowMoveSave?.cancel()
+    /// Move and resize fire for every step of a drag, and a programmatic
+    /// resize (AX, a tiling tool) never ends a live resize: save once the
+    /// window settles.
+    private func scheduleWindowFrameSave() {
+        windowFrameSave?.cancel()
         let save = DispatchWorkItem { [weak self] in self?.saveWindowFrame() }
-        windowMoveSave = save
+        windowFrameSave = save
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: save)
     }
 
