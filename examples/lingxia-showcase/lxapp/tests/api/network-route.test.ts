@@ -74,7 +74,8 @@ spec("route Logic fetch to a faked error and a transport failure", {
   expect(JSON.parse(patched[0].body ?? 'null')).toEqual({ name: 'Office' });
   expect(patched[0].bodyTruncated).toBe(false);
   const all = await app.network.requests();
-  expect(all.map((entry) => entry.action)).toEqual(['fulfill', 'abort', 'fulfill', 'fulfill']);
+  // In the order the app sent them: PATCH, icon, slow, then the aborted read.
+  expect(all.map((entry) => entry.action)).toEqual(['fulfill', 'fulfill', 'fulfill', 'abort']);
 
   // `times: 1` already retired the PATCH route; three routes are left.
   expect(await patch.unroute()).toBe(false);
