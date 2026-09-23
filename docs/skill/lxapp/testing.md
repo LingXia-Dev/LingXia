@@ -102,7 +102,7 @@ spec('rename shows the firmware error', async (t) => {
 ```
 
 - Pattern: a glob over the whole URL (`**` any, `*` no `/`, `{a,b}`; `?` is
-  literal), a `RegExp` (Rust regex syntax: no lookaround), or
+  literal), a `RegExp` without lookaround or backreferences, or
   `{ url, method?, times? }`. The newest matching route wins.
 - Handler: `{ status?, statusText?, headers?, body?, json?, contentType? }`
   fulfills (non-string `body` is JSON); `{ abort: 'failed' }` rejects like a
@@ -111,12 +111,10 @@ spec('rename shows the firmware error', async (t) => {
 - `route()` returns `{ id, pattern, unroute(), requests() }`;
   `t.app.network.unrouteAll()` and `.requests()` cover the whole app. Requests
   report `{ method, url, action, status }` for this spec's routes only.
-- Routes exist only inside a `lxdev test` run: removed when the spec ends and
-  cleared by the host at run end, including failure, cancel, and timeout. With
-  no route installed, `fetch` is untouched.
+- Routes last until the spec ends; they exist only in a `lxdev test` run.
 - Only Logic `fetch` is routed, not WebView page requests. A host outside the
-  app's [network grants](../native/permissions.md) is never fulfilled; the
-  request reaches the real `fetch` and fails with the policy error.
+  app's [network grants](../native/permissions.md) is never faked; the request
+  fails with the policy error as usual.
 
 ## External integration journeys
 
