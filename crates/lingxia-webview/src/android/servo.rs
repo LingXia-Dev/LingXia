@@ -1,12 +1,15 @@
-use crate::events::normalizer::{self, NativeNavigationResult, NativeSignal};
+use crate::events::normalizer::{self, NativeKey, NativeNavigationResult, NativeSignal};
 use crate::webview::{
-    ProxyActivation, ProxyApplyReport, ProxyConfig, WebTag, find_webview, find_webview_delegate,
+    EffectiveWebViewCreateOptions, ProxyActivation, ProxyApplyReport, ProxyConfig, SecurityProfile,
+    WebTag, WebViewDataMode, find_webview_by_native_view_id,
 };
 use crate::{
-    ClearSiteDataOptions, ClearSiteDataResult, FileChooserRequest, FileChooserResponse, LogLevel,
+    ClearSiteDataOptions, ClearSiteDataResult, ContextualSchemeRequest, DownloadRequest,
+    FileChooserRequest, FileChooserResponse, LoadError, LoadErrorKind, LogLevel, NativeWebViewId,
     NavigationPolicy, NavigationRequest, NetworkBody, NetworkCaptureSnapshot, NetworkEntry,
-    UserAgentOverride, WebResourceBody, WebResourceResponse, WebViewCookie, WebViewCookieSameSite,
-    WebViewCookieSetRequest, WebViewError,
+    NewWindowPolicy, SchemeRequestFrame, UserAgentOverride, WebMessageFrame, WebMessageSource,
+    WebMessageTransport, WebResourceBody, WebResourceResponse, WebViewCookie,
+    WebViewCookieSameSite, WebViewCookieSetRequest, WebViewError,
 };
 use base64::Engine as _;
 use cookie::{Cookie, SameSite};
@@ -24,15 +27,16 @@ use servo::protocol_handler::{
     Request, ResourceFetchTiming, Response, ResponseBody,
 };
 use servo::{
-    Code, CompositionEvent, CompositionState, ConsoleLogLevel, CookieSource, EmbedderControl,
-    EmbedderControlId, EventLoopWaker, ImeEvent, InputEvent, InputMethodControl, InputMethodType,
-    Key, KeyState, KeyboardEvent, LoadStatus, Location, Modifiers, NamedKey, PrefValue,
-    Preferences, RenderingContext, RgbColor, SelectElementOptionOrOptgroup, Servo, ServoBuilder,
-    SimpleDialog, StorageType, TouchEvent, TouchEventType, TouchId, TouchPointerType,
-    UserContentManager, UserScript, WebView, WebViewBuilder, WebViewDelegate, WebViewId,
-    WheelDelta, WheelEvent, WheelMode, WindowRenderingContext,
+    Code, CompositionEvent, CompositionState, ConsoleLogLevel, CookieSource,
+    CreateNewWebViewRequest, EmbedderControl, EmbedderControlId, EventLoopWaker, ImeEvent,
+    InputEvent, InputMethodControl, InputMethodType, Key, KeyState, KeyboardEvent, LoadStatus,
+    Location, Modifiers, NamedKey, PixelFormat, PrefValue, Preferences, RenderingContext, RgbColor,
+    SelectElementOptionOrOptgroup, Servo, ServoBuilder, SimpleDialog, StorageType, TouchEvent,
+    TouchEventType, TouchId, TouchPointerType, UserContentManager, UserScript, WebResourceLoad,
+    WebView, WebViewBuilder, WebViewDelegate, WebViewId, WheelDelta, WheelEvent, WheelMode,
+    WindowRenderingContext,
 };
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::future::{self, Future};
 use std::io::Read;
@@ -41,12 +45,62 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::ptr::NonNull;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, mpsc};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::oneshot;
 use url::Url;
 
 use super::webview::complete_pending_eval_request;
+use crate::servo_document::{is_download_response, stamp_document_url, unstamped};
+
+/// Servo's protocol registry is fixed when the engine starts, so these are the
+/// only builder schemes it can route to LingXia handlers.
+const ROUTED_SCHEMES: [&str; 2] = ["lx", "lingxia"];
+/// Same outer bound as every other platform's native message ingress.
+const MAX_WEB_MESSAGE_BYTES: usize = 64 * 1024;
+/// A `window.open()` probe that never navigates is discarded after this delay.
+const NEW_WINDOW_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// A navigation Servo never resolves stops holding later loads after this.
+const NAVIGATION_SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+const CAPTURE_LIMIT: usize = 1_000;
+const CAPTURE_BODY_LIMIT: usize = 8 * 1024 * 1024;
+
+/// Security-profile behavior which Servo cannot express as per-view settings.
+#[derive(Clone, Copy, Debug)]
+pub(super) struct ServoPolicy {
+    strict_profile: bool,
+    ephemeral: bool,
+    new_windows: bool,
+}
+
+impl ServoPolicy {
+    pub(super) fn from_options(options: &EffectiveWebViewCreateOptions) -> Self {
+        let strict_profile = options.profile == SecurityProfile::StrictDefault;
+        Self {
+            strict_profile,
+            ephemeral: options.data_mode == WebViewDataMode::Ephemeral,
+            new_windows: !strict_profile || options.has_new_window_handler,
+        }
+    }
+}
+
+/// Refuse a builder scheme Servo could never deliver, instead of creating a
+/// WebView whose handler silently never runs.
+pub(super) fn validate_create_options(
+    options: &EffectiveWebViewCreateOptions,
+) -> Result<(), WebViewError> {
+    match options
+        .registered_schemes
+        .iter()
+        .find(|scheme| !ROUTED_SCHEMES.contains(&scheme.as_str()))
+    {
+        Some(scheme) => Err(WebViewError::InvalidCreateOptions(format!(
+            "the Servo backend cannot route custom scheme '{scheme}'"
+        ))),
+        None => Ok(()),
+    }
+}
 
 fn js_value_to_json(value: servo::JSValue) -> serde_json::Value {
     match value {
@@ -123,11 +177,41 @@ fn input_method_type_id(input_type: InputMethodType) -> jint {
     }
 }
 
-fn show_java_input_method(webtag: &WebTag, control: &InputMethodControl) {
+/// The concrete LingXia WebView a Servo view belongs to. Java callbacks and
+/// Servo delegate callbacks carry both halves, so a replaced view's late
+/// callback can never reach its successor under the same tag.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ViewKey {
+    webtag: WebTag,
+    native_view_id: NativeWebViewId,
+}
+
+impl ViewKey {
+    fn new(webtag: &WebTag, native_view_id: NativeWebViewId) -> Self {
+        Self {
+            webtag: webtag.clone(),
+            native_view_id,
+        }
+    }
+
+    fn java_id(&self) -> jlong {
+        self.native_view_id.raw() as jlong
+    }
+
+    fn submit(&self, signal: NativeSignal) {
+        normalizer::submit(&self.webtag, self.native_view_id, signal);
+    }
+
+    fn webview(&self) -> Option<Arc<crate::WebView>> {
+        find_webview_by_native_view_id(&self.webtag, self.native_view_id)
+    }
+}
+
+fn show_java_input_method(view: &ViewKey, control: &InputMethodControl) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
             super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
-        let webtag = env.new_string(webtag.as_str())?;
+        let webtag = env.new_string(view.webtag.as_str())?;
         let text = env.new_string(control.text())?;
         let insertion_point = control
             .insertion_point()
@@ -138,9 +222,10 @@ fn show_java_input_method(webtag: &WebTag, control: &InputMethodControl) {
         env.call_static_method(
             class,
             jni_str!("showServoInputMethod"),
-            jni_sig!("(Ljava/lang/String;ILjava/lang/String;IZZ)V"),
+            jni_sig!("(Ljava/lang/String;JILjava/lang/String;IZZ)V"),
             &[
                 (&webtag).into(),
+                view.java_id().into(),
                 input_method_type_id(control.input_method_type()).into(),
                 (&text).into(),
                 insertion_point.into(),
@@ -150,40 +235,47 @@ fn show_java_input_method(webtag: &WebTag, control: &InputMethodControl) {
         )?;
         Ok(())
     }) {
-        log::warn!("Failed to show Android input method for {webtag}: {error}");
+        log::warn!(
+            "Failed to show Android input method for {}: {error}",
+            view.webtag
+        );
     }
 }
 
-fn hide_java_input_method(webtag: &WebTag) {
+fn hide_java_input_method(view: &ViewKey) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
             super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
-        let webtag = env.new_string(webtag.as_str())?;
+        let webtag = env.new_string(view.webtag.as_str())?;
         env.call_static_method(
             class,
             jni_str!("hideServoInputMethod"),
-            jni_sig!("(Ljava/lang/String;)V"),
-            &[(&webtag).into()],
+            jni_sig!("(Ljava/lang/String;J)V"),
+            &[(&webtag).into(), view.java_id().into()],
         )?;
         Ok(())
     }) {
-        log::warn!("Failed to hide Android input method for {webtag}: {error}");
+        log::warn!(
+            "Failed to hide Android input method for {}: {error}",
+            view.webtag
+        );
     }
 }
 
-fn show_java_embedder_control(webtag: &WebTag, token: u64, kind: &str, payload: &str) {
+fn show_java_embedder_control(view: &ViewKey, token: u64, kind: &str, payload: &str) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
             super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
-        let webtag = env.new_string(webtag.as_str())?;
+        let webtag = env.new_string(view.webtag.as_str())?;
         let kind = env.new_string(kind)?;
         let payload = env.new_string(payload)?;
         env.call_static_method(
             class,
             jni_str!("showServoEmbedderControl"),
-            jni_sig!("(Ljava/lang/String;JLjava/lang/String;Ljava/lang/String;)V"),
+            jni_sig!("(Ljava/lang/String;JJLjava/lang/String;Ljava/lang/String;)V"),
             &[
                 (&webtag).into(),
+                view.java_id().into(),
                 (token as jlong).into(),
                 (&kind).into(),
                 (&payload).into(),
@@ -191,47 +283,101 @@ fn show_java_embedder_control(webtag: &WebTag, token: u64, kind: &str, payload: 
         )?;
         Ok(())
     }) {
-        log::warn!("Failed to show Android embedder control for {webtag}: {error}");
+        log::warn!(
+            "Failed to show Android embedder control for {}: {error}",
+            view.webtag
+        );
     }
 }
 
-fn hide_java_embedder_control(webtag: &WebTag, token: u64) {
+fn hide_java_embedder_control(view: &ViewKey, token: u64) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
             super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
-        let webtag = env.new_string(webtag.as_str())?;
+        let webtag = env.new_string(view.webtag.as_str())?;
         env.call_static_method(
             class,
             jni_str!("hideServoEmbedderControl"),
-            jni_sig!("(Ljava/lang/String;J)V"),
-            &[(&webtag).into(), (token as jlong).into()],
+            jni_sig!("(Ljava/lang/String;JJ)V"),
+            &[
+                (&webtag).into(),
+                view.java_id().into(),
+                (token as jlong).into(),
+            ],
         )?;
         Ok(())
     }) {
-        log::warn!("Failed to hide Android embedder control for {webtag}: {error}");
+        log::warn!(
+            "Failed to hide Android embedder control for {}: {error}",
+            view.webtag
+        );
     }
 }
 
-fn dispatch_java_native_component_message(webtag: &WebTag, message: &str) {
+#[derive(Clone, Copy, Debug)]
+enum ViewMessage {
+    NativeComponent,
+    Scroll,
+}
+
+fn confirm_window_released(release_token: u64) {
     if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
         let class =
             super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
-        let webtag = env.new_string(webtag.as_str())?;
-        let message = env.new_string(message)?;
         env.call_static_method(
             class,
-            jni_str!("dispatchServoNativeComponentMessage"),
-            jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
-            &[(&webtag).into(), (&message).into()],
+            jni_str!("servoWindowReleased"),
+            jni_sig!("(J)V"),
+            &[(release_token as jlong).into()],
         )?;
         Ok(())
     }) {
-        log::warn!("Failed to dispatch Servo native-component message for {webtag}: {error}");
+        log::warn!("Failed to return a released Servo window to Java: {error}");
     }
 }
 
-const CAPTURE_LIMIT: usize = 1_000;
-const CAPTURE_BODY_LIMIT: usize = 8 * 1024 * 1024;
+fn dispatch_java_view_message(view: &ViewKey, kind: ViewMessage, message: &str) {
+    if let Err(error) = super::jni_env::with_env(|env| -> Result<(), Box<dyn std::error::Error>> {
+        let class =
+            super::jni_env::get_lingxia_webview_class().ok_or("LingXiaWebView class not cached")?;
+        let webtag = env.new_string(view.webtag.as_str())?;
+        let message = env.new_string(message)?;
+        let args = [(&webtag).into(), view.java_id().into(), (&message).into()];
+        let method = match kind {
+            ViewMessage::NativeComponent => jni_str!("dispatchServoNativeComponentMessage"),
+            ViewMessage::Scroll => jni_str!("dispatchServoScroll"),
+        };
+        env.call_static_method(
+            class,
+            method,
+            jni_sig!("(Ljava/lang/String;JLjava/lang/String;)V"),
+            &args,
+        )?;
+        Ok(())
+    }) {
+        log::warn!(
+            "Failed to dispatch Servo {kind:?} message for {}: {error}",
+            view.webtag
+        );
+    }
+}
+
+unsafe extern "C" {
+    fn mallopt(param: libc::c_int, value: libc::c_int) -> libc::c_int;
+}
+
+/// Bionic's `M_BIONIC_SET_HEAP_TAGGING_LEVEL` / `M_HEAP_TAGGING_LEVEL_NONE`.
+const M_BIONIC_SET_HEAP_TAGGING_LEVEL: libc::c_int = -204;
+const M_HEAP_TAGGING_LEVEL_NONE: libc::c_int = 0;
+
+/// SpiderMonkey NaN-boxes pointers into 47 bits, but Android 11+ tags the top
+/// byte of every heap pointer on arm64. Stop tagging before Servo allocates
+/// anything a JS value can hold; bionic still untags earlier pointers on free.
+fn disable_heap_pointer_tagging() {
+    if unsafe { mallopt(M_BIONIC_SET_HEAP_TAGGING_LEVEL, M_HEAP_TAGGING_LEVEL_NONE) } == 0 {
+        log::debug!("Heap pointer tagging was not active");
+    }
+}
 
 #[link(name = "android")]
 unsafe extern "C" {
@@ -251,6 +397,7 @@ impl Drop for NativeWindow {
 }
 
 struct RuntimeHandle {
+    native_view_id: NativeWebViewId,
     capture: Arc<Mutex<CaptureState>>,
 }
 
@@ -266,13 +413,24 @@ static EMBEDDER_CONTROLS: OnceLock<Mutex<HashMap<String, HashMap<u64, EmbedderCo
     OnceLock::new();
 static RUNTIME_SENDER: OnceLock<mpsc::Sender<RuntimeCommand>> = OnceLock::new();
 static SERVO_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
-static WEBVIEW_TAGS: OnceLock<Mutex<HashMap<WebViewId, WebTag>>> = OnceLock::new();
-static DOCUMENTS: OnceLock<Mutex<HashMap<String, Document>>> = OnceLock::new();
+static WEBVIEW_TAGS: OnceLock<Mutex<HashMap<WebViewId, ViewKey>>> = OnceLock::new();
+static DOCUMENTS: OnceLock<Mutex<HashMap<String, PageDocuments>>> = OnceLock::new();
+static NAVIGATION_FAILURES: OnceLock<Mutex<HashMap<WebViewId, LoadError>>> = OnceLock::new();
+static BROWSER_STATES: OnceLock<Mutex<HashMap<String, (NativeWebViewId, BrowserState)>>> =
+    OnceLock::new();
+static NEXT_LOAD_KEY: AtomicU64 = AtomicU64::new(1);
+static BROWSER_CONTROL_DEGRADED: AtomicU64 = AtomicU64::new(0);
+static NEXT_DOCUMENT_STAMP: AtomicU64 = AtomicU64::new(1);
 
-struct Document {
-    url: String,
-    html: Vec<u8>,
+/// Pages delivered through `load_data`, by stamped URL. A few recent ones stay
+/// servable: a park immediately followed by a re-entry issues two loads, and
+/// the superseded navigation may still be fetching its document.
+struct PageDocuments {
+    native_view_id: NativeWebViewId,
+    recent: VecDeque<(String, Vec<u8>)>,
 }
+
+const RETAINED_PAGE_DOCUMENTS: usize = 4;
 
 fn runtimes() -> &'static Mutex<HashMap<String, RuntimeHandle>> {
     RUNTIMES.get_or_init(|| Mutex::new(HashMap::new()))
@@ -282,12 +440,47 @@ fn embedder_controls() -> &'static Mutex<HashMap<String, HashMap<u64, EmbedderCo
     EMBEDDER_CONTROLS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn webview_tags() -> &'static Mutex<HashMap<WebViewId, WebTag>> {
+fn webview_tags() -> &'static Mutex<HashMap<WebViewId, ViewKey>> {
     WEBVIEW_TAGS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn documents() -> &'static Mutex<HashMap<String, Document>> {
+fn documents() -> &'static Mutex<HashMap<String, PageDocuments>> {
     DOCUMENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn navigation_failures() -> &'static Mutex<HashMap<WebViewId, LoadError>> {
+    NAVIGATION_FAILURES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn take_navigation_failure(webview_id: WebViewId) -> Option<LoadError> {
+    navigation_failures()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&webview_id)
+}
+
+fn view_for_servo_webview(webview_id: WebViewId) -> Option<ViewKey> {
+    webview_tags()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&webview_id)
+        .cloned()
+}
+
+fn is_registered(view: &ViewKey) -> bool {
+    runtimes()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(view.webtag.as_str())
+        .is_some_and(|runtime| runtime.native_view_id == view.native_view_id)
+}
+
+/// A trusted browser document loaded without a provable transport.
+pub(super) fn report_browser_control_degraded() {
+    let count = BROWSER_CONTROL_DEGRADED.fetch_add(1, Ordering::Relaxed) + 1;
+    log::warn!(
+        "metric=browser_control_bridge_degraded reason=servo_unproven_transport count={count}"
+    );
 }
 
 pub fn set_data_dir(path: PathBuf) {
@@ -301,15 +494,19 @@ pub fn set_data_dir(path: PathBuf) {
 
 enum RuntimeCommand {
     Register {
-        webtag: WebTag,
-        strict_profile: bool,
+        view: ViewKey,
+        policy: ServoPolicy,
     },
-    Unregister(WebTag),
+    Unregister(ViewKey),
     Dispatch {
-        webtag: WebTag,
+        view: ViewKey,
         command: Command,
     },
     Proxy(Option<ProxyConfig>),
+    Download {
+        view: ViewKey,
+        request: DownloadRequest,
+    },
     Wake,
 }
 
@@ -320,9 +517,15 @@ enum Command {
         height: u32,
         density: f32,
     },
-    SurfaceDestroyed,
+    /// Java frees the window's buffers only after this unbinds it; the token
+    /// names that pending release.
+    SurfaceDestroyed(u64),
     Resize(u32, u32),
     Paint,
+    SetThrottled(bool),
+    /// The window's texture left or rejoined the screen; nothing consumes
+    /// frames while it is away.
+    SetSurfaceShown(bool),
     Touch(TouchEventType, i32, f32, f32),
     Wheel(f64, f64),
     Input(InputEvent),
@@ -330,12 +533,20 @@ enum Command {
     LoadData {
         data: String,
         base_url: String,
+        trusted: Option<crate::TrustedLoadIntent>,
     },
     ApplyPendingLoad,
     Exec(String),
     Evaluate {
         script: String,
         request_id: u64,
+    },
+    /// `eval_js`: a parse guard, then the wrapped script. The result comes back
+    /// through `LingXiaProxy.resolveEval`; only a failure to run is reported here.
+    EvaluateEnvelope {
+        scripts: [String; 2],
+        request_id: u64,
+        token: String,
     },
     CurrentUrl(oneshot::Sender<Option<String>>),
     PostMessage(String),
@@ -358,11 +569,15 @@ enum Command {
         options: ClearSiteDataOptions,
         reply: oneshot::Sender<Result<ClearSiteDataResult, String>>,
     },
-    Screenshot(oneshot::Sender<Result<Vec<u8>, String>>),
-    BrowserState(mpsc::Sender<BrowserState>),
+    NewWindow {
+        probe: WebViewId,
+        url: Option<String>,
+    },
 }
 
-#[derive(Default)]
+/// Last URL/title/history state Servo reported, so Java getters on the UI
+/// thread never wait on the engine thread.
+#[derive(Clone, Default)]
 struct BrowserState {
     url: String,
     title: String,
@@ -395,60 +610,70 @@ fn runtime_sender() -> &'static mpsc::Sender<RuntimeCommand> {
     })
 }
 
-pub(super) fn register(webtag: &WebTag, strict_profile: bool) {
-    let key = webtag.to_string();
+pub(super) fn register(webtag: &WebTag, native_view_id: NativeWebViewId, policy: ServoPolicy) {
+    let view = ViewKey::new(webtag, native_view_id);
     let mut runtimes = runtimes().lock().unwrap_or_else(|e| e.into_inner());
-    if runtimes.contains_key(&key) {
+    if runtimes
+        .get(webtag.as_str())
+        .is_some_and(|runtime| runtime.native_view_id == native_view_id)
+    {
         return;
     }
-    let capture = Arc::new(Mutex::new(CaptureState::default()));
+    // A same-tag successor replaces the old view's runtime; the old view's
+    // later teardown then matches nothing.
     runtimes.insert(
-        key,
+        webtag.to_string(),
         RuntimeHandle {
-            capture: capture.clone(),
+            native_view_id,
+            capture: Arc::new(Mutex::new(CaptureState::default())),
         },
     );
-    let _ = runtime_sender().send(RuntimeCommand::Register {
-        webtag: webtag.clone(),
-        strict_profile,
-    });
+    let _ = runtime_sender().send(RuntimeCommand::Register { view, policy });
 }
 
-pub(super) fn unregister(webtag: &WebTag) {
+pub(super) fn unregister(webtag: &WebTag, native_view_id: NativeWebViewId) {
+    let removed = {
+        let mut runtimes = runtimes().lock().unwrap_or_else(|e| e.into_inner());
+        let current = runtimes
+            .get(webtag.as_str())
+            .is_some_and(|runtime| runtime.native_view_id == native_view_id);
+        current && runtimes.remove(webtag.as_str()).is_some()
+    };
+    if !removed {
+        return;
+    }
     embedder_controls()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .remove(webtag.as_str());
-    if runtimes()
+    browser_states()
         .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .remove(webtag.as_str())
-        .is_some()
-    {
-        let _ = runtime_sender().send(RuntimeCommand::Unregister(webtag.clone()));
-        disable_network_observer_if_idle();
-    }
+        .unwrap_or_else(|error| error.into_inner())
+        .remove(webtag.as_str());
+    let _ = runtime_sender().send(RuntimeCommand::Unregister(ViewKey::new(
+        webtag,
+        native_view_id,
+    )));
+    disable_network_observer_if_idle();
 }
 
-fn send(webtag: &WebTag, command: Command) -> Result<(), WebViewError> {
-    let registered = runtimes()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .contains_key(webtag.as_str());
-    if !registered {
+fn send(view: &ViewKey, command: Command) -> Result<(), WebViewError> {
+    if !is_registered(view) {
         return Err(WebViewError::WebView(format!(
-            "Servo backend is not ready for {webtag}"
+            "Servo backend is not ready for {}",
+            view.webtag
         )));
     }
     runtime_sender()
         .send(RuntimeCommand::Dispatch {
-            webtag: webtag.clone(),
+            view: view.clone(),
             command,
         })
-        .map_err(|_| WebViewError::WebView(format!("Servo backend stopped for {webtag}")))
+        .map_err(|_| WebViewError::WebView(format!("Servo backend stopped for {}", view.webtag)))
 }
 
 fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
+    disable_heap_pointer_tagging();
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
     let Some(data_dir) = SERVO_DATA_DIR.get().cloned() else {
         log::error!("Servo data directory must be configured before creating a WebView");
@@ -462,15 +687,17 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
         return;
     }
     let mut protocols = ProtocolRegistry::default();
-    protocols
-        .register("lx", LxProtocolHandler)
-        .expect("lx protocol should only be registered once");
-    protocols
-        .register("lxbridge", BridgeProtocolHandler)
-        .expect("lxbridge protocol should only be registered once");
+    for scheme in ROUTED_SCHEMES {
+        protocols
+            .register(scheme, SchemeProtocolHandler { scheme })
+            .expect("LingXia protocols should only be registered once");
+    }
+    servo_net::set_navigation_observer(Some(Arc::new(ServoNavigationObserver)));
 
-    let mut opts = servo::Opts::default();
-    opts.config_dir = Some(data_dir);
+    let opts = servo::Opts {
+        config_dir: Some(data_dir),
+        ..Default::default()
+    };
     let servo = ServoBuilder::default()
         .opts(opts)
         .preferences(Preferences::default())
@@ -481,31 +708,56 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
 
     while let Ok(runtime_command) = rx.recv() {
         match runtime_command {
-            RuntimeCommand::Register {
-                webtag,
-                strict_profile,
-            } => {
-                log::info!("Registering Servo WebView state for {webtag}");
-                states
-                    .entry(webtag.to_string())
-                    .or_insert_with(|| EngineState::new(webtag, strict_profile));
-            }
-            RuntimeCommand::Unregister(webtag) => {
-                if let Some(mut state) = states.remove(webtag.as_str()) {
-                    state.destroy_surface();
+            RuntimeCommand::Register { view, policy } => {
+                log::info!("Registering Servo WebView state for {}", view.webtag);
+                if policy.ephemeral {
+                    // Servo has one site-data store per process. Mirror the
+                    // Android single-profile fallback: nothing persistent may
+                    // be visible to an ephemeral view, nor survive it.
+                    clear_all_site_data(&servo);
                 }
-                documents()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(webtag.as_str());
+                if let Some(mut replaced) = states.insert(
+                    view.webtag.to_string(),
+                    EngineState::new(view.clone(), policy),
+                ) {
+                    replaced.destroy_surface();
+                }
             }
-            RuntimeCommand::Dispatch { webtag, command } => {
-                if let Some(state) = states.get_mut(webtag.as_str()) {
-                    state.handle(&servo, command);
-                } else if let Command::SurfaceCreated { native_window, .. } = command
-                    && let Some(native_window) = NonNull::new(native_window as *mut libc::c_void)
+            RuntimeCommand::Unregister(view) => {
+                let current = states
+                    .get(view.webtag.as_str())
+                    .is_some_and(|state| state.view_key == view);
+                if current && let Some(mut state) = states.remove(view.webtag.as_str()) {
+                    state.destroy_surface();
+                    if state.policy.ephemeral {
+                        clear_all_site_data(&servo);
+                    }
+                }
+                let mut documents = documents().lock().unwrap_or_else(|e| e.into_inner());
+                if documents
+                    .get(view.webtag.as_str())
+                    .is_some_and(|document| document.native_view_id == view.native_view_id)
                 {
-                    unsafe { ANativeWindow_release(native_window.as_ptr()) };
+                    documents.remove(view.webtag.as_str());
+                }
+            }
+            RuntimeCommand::Dispatch { view, command } => {
+                match states.get_mut(view.webtag.as_str()) {
+                    Some(state) if state.view_key == view => state.handle(&servo, command),
+                    // No state renders for this view any more.
+                    _ => match command {
+                        Command::SurfaceCreated { native_window, .. } => {
+                            if let Some(native_window) =
+                                NonNull::new(native_window as *mut libc::c_void)
+                            {
+                                unsafe { ANativeWindow_release(native_window.as_ptr()) };
+                            }
+                        }
+                        Command::SurfaceDestroyed(release_token) => {
+                            confirm_window_released(release_token)
+                        }
+                        _ => {}
+                    },
                 }
             }
             RuntimeCommand::Proxy(config) => {
@@ -519,46 +771,305 @@ fn run(tx: mpsc::Sender<RuntimeCommand>, rx: mpsc::Receiver<RuntimeCommand>) {
                 servo.set_preference("network_https_proxy_uri", PrefValue::Str(https));
                 servo.set_preference("network_http_no_proxy", PrefValue::Str(bypass));
             }
+            RuntimeCommand::Download { view, mut request } => {
+                // The claimed navigation was aborted and will produce no document.
+                if let Some(state) = states.get(view.webtag.as_str())
+                    && state.view_key == view
+                    && let Some(webview) = &state.view
+                {
+                    state.loads.navigation_settled(webview);
+                }
+                if let Ok(url) = Url::parse(&request.url) {
+                    let cookies = servo
+                        .site_data_manager()
+                        .cookies_for_url(url, CookieSource::HTTP)
+                        .into_iter()
+                        .map(|cookie| format!("{}={}", cookie.name(), cookie.value()))
+                        .collect::<Vec<_>>();
+                    if !cookies.is_empty() {
+                        request.cookie = Some(cookies.join("; "));
+                    }
+                }
+                std::thread::spawn(move || {
+                    if let Some(webview) = view.webview() {
+                        webview.handle_download(request);
+                    }
+                });
+            }
             RuntimeCommand::Wake => {}
         }
         servo.spin_event_loop();
     }
 }
 
+fn clear_all_site_data(servo: &Servo) {
+    let storage_types = StorageType::Cookies | StorageType::Local | StorageType::Session;
+    let manager = servo.site_data_manager();
+    let sites = manager
+        .site_data(storage_types)
+        .into_iter()
+        .map(|site| site.name())
+        .collect::<Vec<_>>();
+    let site_refs = sites.iter().map(String::as_str).collect::<Vec<_>>();
+    manager.clear_site_data(&site_refs, storage_types);
+    // This also covers cookies whose hosts Servo cannot reduce to a
+    // registered domain (for example localhost and IP hosts).
+    manager.clear_cookies(None);
+}
+
+/// Where the view's current top-level load stands, as far as LingXia has
+/// reported it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LoadPhase {
+    Idle,
+    /// Started and committed under this key; its `Complete` finishes it.
+    Loading(NativeKey),
+    /// The load failed; Servo's error document lifecycle is not reported.
+    Failed,
+}
+
+/// Servo reports load status per document, without attempt ids: `Started`
+/// when a new top-level document is created (deduplicated away for a view's
+/// first load and for reloads), `HeadParsed` once its body exists, and
+/// `Complete` at its load event. Each document gets its own key, so the
+/// normalizer binds every commit to exactly one start.
+struct LoadTracker {
+    phase: Cell<LoadPhase>,
+    /// The `about:blank` document a view is built with is not a LingXia
+    /// navigation; its lifecycle must not reach the page.
+    bootstrapping: Cell<bool>,
+    /// Servo's constellation drops an embedder load while the view already
+    /// has a navigation pending, so the first request would win. Loads wait
+    /// here until that navigation produces its document; the latest wins.
+    /// The pending navigation and when it began. Only a document at its URL
+    /// resolves it: a late event from the previous document must not.
+    pending_navigation: RefCell<Option<(Url, Instant)>>,
+    queued_load: RefCell<Option<Url>>,
+    /// The host-issued trusted load and the unique stamped URL its HTML is
+    /// served at. Only the first document at exactly that URL attests it,
+    /// the way Android matches its load token at page start.
+    trusted_load: RefCell<Option<(String, crate::TrustedLoadIntent)>>,
+    /// The pending navigation's URL change, held until its document starts.
+    deferred_location: RefCell<Option<NativeSignal>>,
+}
+
+impl Default for LoadTracker {
+    fn default() -> Self {
+        Self {
+            phase: Cell::new(LoadPhase::Idle),
+            bootstrapping: Cell::new(false),
+            pending_navigation: RefCell::new(None),
+            queued_load: RefCell::new(None),
+            trusted_load: RefCell::new(None),
+            deferred_location: RefCell::new(None),
+        }
+    }
+}
+
+impl LoadTracker {
+    fn navigation_pending(&self) -> bool {
+        self.pending_navigation
+            .borrow()
+            .as_ref()
+            .is_some_and(|(_, since)| since.elapsed() < NAVIGATION_SETTLE_TIMEOUT)
+    }
+
+    fn begin_navigation(&self, url: &Url) {
+        *self.pending_navigation.borrow_mut() = Some((url.clone(), Instant::now()));
+    }
+
+    fn navigate(&self, webview: &WebView, url: Url) {
+        if self.navigation_pending() {
+            log::debug!("Servo load of {url} waits for the pending navigation");
+            *self.queued_load.borrow_mut() = Some(url);
+            return;
+        }
+        self.begin_navigation(&url);
+        webview.load(url);
+    }
+
+    /// A document at `url` exists; if it is the pending navigation's, issue
+    /// the load that waited for it.
+    fn document_appeared(&self, webview: &WebView, url: Option<&Url>) {
+        let resolves = self
+            .pending_navigation
+            .borrow()
+            .as_ref()
+            .is_some_and(|(pending, _)| Some(pending) == url);
+        if resolves {
+            self.navigation_settled(webview);
+        }
+    }
+
+    /// The pending navigation is resolved or abandoned.
+    fn navigation_settled(&self, webview: &WebView) {
+        self.pending_navigation.borrow_mut().take();
+        if let Some(url) = self.queued_load.borrow_mut().take() {
+            self.navigate(webview, url);
+        }
+    }
+
+    /// Recover a queued load if Servo never resolved the pending navigation
+    /// (a redirect changed its URL, or it was dropped).
+    fn flush_stale_navigation(&self, webview: &WebView) {
+        if self.pending_navigation.borrow().is_some() && !self.navigation_pending() {
+            self.navigation_settled(webview);
+        }
+    }
+
+    /// Report a new document: supersede a load still in flight, then either
+    /// commit it or, if its navigation failed, terminate it.
+    fn document_created(&self, view: &ViewKey, webview_id: WebViewId, url: String) {
+        if let LoadPhase::Loading(previous) = self.phase.get() {
+            view.submit(NativeSignal::NavigationFinished {
+                key: Some(previous),
+                result: NativeNavigationResult::Cancelled(Some(
+                    crate::events::NavigationCancellationReason::Superseded,
+                )),
+            });
+        }
+        super::webview::fail_pending_eval_requests_after_navigation(&view.webtag);
+        let key = NEXT_LOAD_KEY.fetch_add(1, Ordering::Relaxed);
+        let trusted = {
+            let mut trusted_load = self.trusted_load.borrow_mut();
+            let matches = trusted_load
+                .as_ref()
+                .is_some_and(|(stamped, _)| *stamped == url);
+            matches.then(|| trusted_load.take()).flatten()
+        };
+        match trusted {
+            Some((_, intent)) => {
+                if !normalizer::start_trusted_navigation(
+                    &view.webtag,
+                    view.native_view_id,
+                    intent,
+                    key,
+                    unstamped(&url),
+                ) {
+                    normalizer::revoke_trusted_load(&view.webtag, view.native_view_id, intent);
+                }
+            }
+            None => view.submit(NativeSignal::NavigationStarted {
+                key: Some(key),
+                url: unstamped(&url),
+            }),
+        }
+        if let Some(location) = self.deferred_location.borrow_mut().take() {
+            view.submit(location);
+        }
+        if let Some(error) = take_navigation_failure(webview_id) {
+            self.phase.set(LoadPhase::Failed);
+            view.submit(NativeSignal::NavigationFinished {
+                key: Some(key),
+                result: NativeNavigationResult::Failed(error),
+            });
+        } else {
+            self.phase.set(LoadPhase::Loading(key));
+            view.submit(NativeSignal::DocumentCommitted { key: Some(key) });
+        }
+    }
+
+    fn document_complete(&self, view: &ViewKey, webview_id: WebViewId, url: String) {
+        if self.phase.get() == LoadPhase::Idle {
+            self.document_created(view, webview_id, url.clone());
+        }
+        if let LoadPhase::Loading(key) = self.phase.get() {
+            let result = match take_navigation_failure(webview_id) {
+                Some(error) => NativeNavigationResult::Failed(error),
+                None => NativeNavigationResult::Succeeded {
+                    final_url: unstamped(&url),
+                },
+            };
+            view.submit(NativeSignal::NavigationFinished {
+                key: Some(key),
+                result,
+            });
+        }
+        self.phase.set(LoadPhase::Idle);
+    }
+
+    /// End a load the view will never finish (surface loss, crash).
+    fn abandon(&self, view: &ViewKey) {
+        if let LoadPhase::Loading(key) = self.phase.replace(LoadPhase::Idle) {
+            view.submit(NativeSignal::NavigationFinished {
+                key: Some(key),
+                result: NativeNavigationResult::Cancelled(None),
+            });
+        }
+    }
+}
+
 struct EngineState {
-    webtag: WebTag,
-    strict_profile: bool,
+    view_key: ViewKey,
+    policy: ServoPolicy,
     view: Option<WebView>,
-    context: Option<Rc<dyn RenderingContext>>,
+    context: Option<Rc<WindowRenderingContext>>,
+    /// The window the context currently renders to. A view outlives its
+    /// window: detaching the host view unbinds it, reattaching rebinds.
     native_window: Option<NativeWindow>,
     density: f32,
     size: PhysicalSize<u32>,
+    throttled: bool,
+    surface_shown: bool,
     pending_load: Option<String>,
+    loads: Rc<LoadTracker>,
+    probes: Rc<RefCell<Vec<WebView>>>,
     next_embedder_control_token: Rc<Cell<u64>>,
 }
 
 impl EngineState {
-    fn new(webtag: WebTag, strict_profile: bool) -> Self {
+    fn new(view_key: ViewKey, policy: ServoPolicy) -> Self {
         Self {
-            webtag,
-            strict_profile,
+            view_key,
+            policy,
             view: None,
             context: None,
             native_window: None,
             density: 1.0,
             size: PhysicalSize::new(1, 1),
+            throttled: false,
+            surface_shown: true,
             pending_load: None,
+            loads: Rc::new(LoadTracker::default()),
+            probes: Rc::new(RefCell::new(Vec::new())),
             next_embedder_control_token: Rc::new(Cell::new(0)),
         }
     }
 
+    /// Stop rendering to the window without losing the document.
+    fn release_window(&mut self) {
+        if self.native_window.is_none() {
+            return;
+        }
+        if let Some(view) = &self.view {
+            apply_throttle(view, true);
+        }
+        if let Some(context) = &self.context
+            && let Err(error) = context.take_window()
+        {
+            log::warn!(
+                "Failed to unbind the Servo window for {}: {error:?}",
+                self.view_key.webtag
+            );
+        }
+        self.native_window = None;
+    }
+
     fn destroy_surface(&mut self) {
+        self.release_window();
+        self.probes.borrow_mut().clear();
         if let Some(view) = self.view.take() {
             webview_tags()
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .remove(&view.id());
+            navigation_failures()
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&view.id());
         }
+        // Any load in flight dies with the Servo view.
+        self.loads.abandon(&self.view_key);
         self.context = None;
         self.native_window = None;
     }
@@ -571,14 +1082,9 @@ impl EngineState {
                 height,
                 density,
             } => self.create_surface(servo, native_window, width, height, density),
-            Command::SurfaceDestroyed => {
-                log::info!("Destroying Servo surface for {}", self.webtag);
-                self.pending_load = self
-                    .view
-                    .as_ref()
-                    .and_then(|view| view.url())
-                    .map(|u| u.to_string());
-                self.destroy_surface();
+            Command::SurfaceDestroyed(release_token) => {
+                self.release_window();
+                confirm_window_released(release_token);
             }
             Command::Resize(width, height) => {
                 self.size = PhysicalSize::new(width.max(1), height.max(1));
@@ -587,6 +1093,14 @@ impl EngineState {
                 }
             }
             Command::Paint => self.paint(),
+            Command::SetThrottled(throttled) => {
+                self.throttled = throttled;
+                self.apply_visibility();
+            }
+            Command::SetSurfaceShown(shown) => {
+                self.surface_shown = shown;
+                self.apply_visibility();
+            }
             Command::Touch(kind, id, x, y) => {
                 if let Some(view) = &self.view {
                     if matches!(&kind, TouchEventType::Down) {
@@ -622,37 +1136,55 @@ impl EngineState {
                     view.notify_input_event(event);
                 }
             }
-            Command::Load(url) => {
-                documents()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .remove(self.webtag.as_str());
-                self.load(url);
-            }
-            Command::LoadData { data, base_url } => {
+            Command::Load(url) => self.load(url),
+            Command::LoadData {
+                data,
+                base_url,
+                trusted,
+            } => {
                 log::info!(
                     "Loading Servo page data for {} ({} bytes, base {base_url})",
-                    self.webtag,
+                    self.view_key.webtag,
                     data.len()
                 );
-                let Ok(url) = Url::parse(&base_url) else {
+                let stamp = NEXT_DOCUMENT_STAMP.fetch_add(1, Ordering::Relaxed);
+                let Some(url) = stamp_document_url(&base_url, stamp) else {
                     log::error!(
                         "Servo rejected invalid page base URL for {}: {base_url}",
-                        self.webtag
+                        self.view_key.webtag
                     );
                     return;
                 };
-                let url = url.to_string();
-                documents()
-                    .lock()
-                    .unwrap_or_else(|e| e.into_inner())
-                    .insert(
-                        self.webtag.to_string(),
-                        Document {
-                            url: url.clone(),
-                            html: data.into_bytes(),
-                        },
+                {
+                    let mut documents = documents().lock().unwrap_or_else(|e| e.into_inner());
+                    let page = documents
+                        .entry(self.view_key.webtag.to_string())
+                        .or_insert_with(|| PageDocuments {
+                            native_view_id: self.view_key.native_view_id,
+                            recent: VecDeque::new(),
+                        });
+                    if page.native_view_id != self.view_key.native_view_id {
+                        page.native_view_id = self.view_key.native_view_id;
+                        page.recent.clear();
+                    }
+                    if page.recent.len() == RETAINED_PAGE_DOCUMENTS {
+                        page.recent.pop_front();
+                    }
+                    page.recent.push_back((url.clone(), data.into_bytes()));
+                }
+                if let Some(intent) = trusted
+                    && let Some((_, replaced)) = self
+                        .loads
+                        .trusted_load
+                        .borrow_mut()
+                        .replace((url.clone(), intent))
+                {
+                    normalizer::revoke_trusted_load(
+                        &self.view_key.webtag,
+                        self.view_key.native_view_id,
+                        replaced,
                     );
+                }
                 self.load(url);
             }
             Command::ApplyPendingLoad => {
@@ -677,12 +1209,48 @@ impl EngineState {
                     );
                 }
             }
+            Command::EvaluateEnvelope {
+                scripts,
+                request_id,
+                token,
+            } => {
+                let Some(view) = &self.view else {
+                    // No document exists before the view has a surface; like
+                    // a document mid-replacement, the caller should retry.
+                    super::webview::fail_pending_eval_requests_after_navigation(
+                        &self.view_key.webtag,
+                    );
+                    return;
+                };
+                for script in scripts {
+                    let token = token.clone();
+                    let webtag = self.view_key.webtag.clone();
+                    view.evaluate_javascript(script, move |result| {
+                        use servo::JavaScriptEvaluationError as Error;
+                        match result {
+                            Err(Error::DocumentNotFound | Error::WebViewNotReady) => {
+                                super::webview::fail_pending_eval_requests_after_navigation(
+                                    &webtag,
+                                );
+                            }
+                            Err(Error::CompilationFailure) => complete_pending_eval_request(
+                                request_id,
+                                &token,
+                                Err("JavaScript evaluation failed to compile".to_string()),
+                            ),
+                            // The wrapper resolves through the bridge, and its
+                            // Promise result is not serializable.
+                            _ => {}
+                        }
+                    });
+                }
+            }
             Command::CurrentUrl(reply) => {
                 let _ = reply.send(
                     self.view
                         .as_ref()
                         .and_then(|view| view.url())
-                        .map(|u| u.to_string()),
+                        .map(|url| unstamped(url.as_str())),
                 );
             }
             Command::PostMessage(message) => {
@@ -697,19 +1265,7 @@ impl EngineState {
                 }
             }
             Command::ClearBrowsingData => {
-                let storage_types =
-                    StorageType::Cookies | StorageType::Local | StorageType::Session;
-                let manager = servo.site_data_manager();
-                let sites = manager
-                    .site_data(storage_types)
-                    .into_iter()
-                    .map(|site| site.name())
-                    .collect::<Vec<_>>();
-                let site_refs = sites.iter().map(String::as_str).collect::<Vec<_>>();
-                manager.clear_site_data(&site_refs, storage_types);
-                // This also covers cookies whose hosts Servo cannot reduce to
-                // a registered domain (for example localhost and IP hosts).
-                manager.clear_cookies(None);
+                clear_all_site_data(servo);
                 servo.network_manager().clear_cache();
             }
             Command::SetUserAgent(user_agent) => {
@@ -759,30 +1315,24 @@ impl EngineState {
             } => {
                 let _ = reply.send(self.clear_site_data(servo, &url, options));
             }
-            Command::Screenshot(reply) => {
-                if let Some(view) = &self.view {
-                    view.take_screenshot(None, move |result| {
-                        let result = result
-                            .map_err(|error| format!("Servo screenshot failed: {error:?}"))
-                            .and_then(encode_png);
-                        let _ = reply.send(result);
-                    });
-                } else {
-                    let _ = reply.send(Err("Servo surface is not ready".into()));
-                }
-            }
-            Command::BrowserState(reply) => {
-                let state = self
-                    .view
-                    .as_ref()
-                    .map(|view| BrowserState {
-                        url: view.url().map(|url| url.to_string()).unwrap_or_default(),
-                        title: view.page_title().unwrap_or_default(),
-                        can_go_back: view.can_go_back(),
-                        can_go_forward: view.can_go_forward(),
-                    })
-                    .unwrap_or_default();
-                let _ = reply.send(state);
+            Command::NewWindow { probe, url } => {
+                self.probes.borrow_mut().retain(|view| view.id() != probe);
+                let Some(url) = url else {
+                    return;
+                };
+                let view = self.view_key.clone();
+                // A new-window handler is host code (the browser opens a
+                // tab); keep it off the engine thread it may call back into.
+                std::thread::spawn(move || {
+                    let Some(webview) = view.webview() else {
+                        return;
+                    };
+                    if webview.handle_new_window(&url) == NewWindowPolicy::LoadInSelf
+                        && let Err(error) = send(&view, Command::Load(url))
+                    {
+                        log::warn!("Servo new-window load failed for {}: {error}", view.webtag);
+                    }
+                });
             }
         }
     }
@@ -796,24 +1346,59 @@ impl EngineState {
         density: f32,
     ) {
         let Some(native_window) = NonNull::new(native_window as *mut libc::c_void) else {
-            log::error!("Servo received a null ANativeWindow for {}", self.webtag);
+            log::error!(
+                "Servo received a null ANativeWindow for {}",
+                self.view_key.webtag
+            );
             return;
         };
+        let native_window = NativeWindow(native_window);
+        self.release_window();
+        self.surface_shown = true;
         self.size = PhysicalSize::new(width.max(1), height.max(1));
         self.density = density.max(0.1);
-        let raw_display = RawDisplayHandle::Android(AndroidDisplayHandle::new());
-        let raw_window = RawWindowHandle::AndroidNdk(AndroidNdkWindowHandle::new(native_window));
-        self.destroy_surface();
-        let display = unsafe { DisplayHandle::borrow_raw(raw_display) };
+        let raw_window =
+            RawWindowHandle::AndroidNdk(AndroidNdkWindowHandle::new(native_window.0.cast()));
         let window = unsafe { WindowHandle::borrow_raw(raw_window) };
-        let context = match WindowRenderingContext::new(display, window, self.size) {
-            Ok(context) => Rc::new(context) as Rc<dyn RenderingContext>,
-            Err(error) => {
+
+        if let (Some(view), Some(context)) = (&self.view, &self.context) {
+            // surfman panics instead of erroring when EGL rejects a window.
+            let bound = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                context.set_window(window, self.size)
+            }));
+            if !matches!(bound, Ok(Ok(()))) {
+                log::error!(
+                    "Failed to rebind the Servo window for {}",
+                    self.view_key.webtag
+                );
+                return;
+            }
+            view.resize(self.size);
+            self.native_window = Some(native_window);
+            self.apply_visibility();
+            return;
+        }
+
+        let display = unsafe {
+            DisplayHandle::borrow_raw(RawDisplayHandle::Android(AndroidDisplayHandle::new()))
+        };
+        let created = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            WindowRenderingContext::new(display, window, self.size)
+        }));
+        let context = match created {
+            Ok(Ok(context)) => Rc::new(context),
+            Ok(Err(error)) => {
                 log::error!(
                     "Failed to create Servo EGL context for {}: {error:?}",
-                    self.webtag
+                    self.view_key.webtag
                 );
-                unsafe { ANativeWindow_release(native_window.as_ptr()) };
+                return;
+            }
+            Err(_) => {
+                log::error!(
+                    "Servo EGL context creation panicked for {}",
+                    self.view_key.webtag
+                );
                 return;
             }
         };
@@ -822,58 +1407,82 @@ impl EngineState {
         }
 
         let content = Rc::new(UserContentManager::new(servo));
-        content.add_script(Rc::new(UserScript::from(bridge_script(
-            &self.webtag,
-            self.strict_profile,
-        ))));
+        content.add_script(Rc::new(UserScript::from(bridge_script(self.policy))));
         let delegate = Rc::new(Delegate {
-            webtag: self.webtag.clone(),
+            view: self.view_key.clone(),
+            policy: self.policy,
+            context: context.clone(),
+            loads: self.loads.clone(),
+            probes: self.probes.clone(),
             next_embedder_control_token: self.next_embedder_control_token.clone(),
         });
         let initial_url = self
             .pending_load
             .take()
-            .and_then(|url| Url::parse(&url).ok())
-            .unwrap_or_else(|| Url::parse("about:blank").unwrap());
+            .and_then(|url| Url::parse(&url).ok());
+        self.loads.bootstrapping.set(initial_url.is_none());
         let view = WebViewBuilder::new(servo, context.clone())
             .delegate(delegate)
             .user_content_manager(content)
             .hidpi_scale_factor(Scale::new(self.density))
-            .url(initial_url)
+            .url(initial_url.unwrap_or_else(|| Url::parse("about:blank").unwrap()))
             .build();
+        if self.throttled {
+            apply_throttle(&view, true);
+        }
         webview_tags()
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(view.id(), self.webtag.clone());
+            .insert(view.id(), self.view_key.clone());
         log::info!(
             "Created Servo surface for {} at {}x{}",
-            self.webtag,
+            self.view_key.webtag,
             self.size.width,
             self.size.height
         );
-        self.native_window = Some(NativeWindow(native_window));
+        self.native_window = Some(native_window);
         self.context = Some(context);
         self.view = Some(view);
     }
 
     fn load(&mut self, url: String) {
         let Ok(url) = Url::parse(&url) else {
-            log::error!("Servo rejected invalid URL for {}: {url}", self.webtag);
+            log::error!(
+                "Servo rejected invalid URL for {}: {url}",
+                self.view_key.webtag
+            );
             return;
         };
         if let Some(view) = &self.view
-            && view.url().is_some()
+            && !self.loads.bootstrapping.get()
         {
-            view.load(url);
+            self.loads.navigate(view, url);
         } else {
+            log::debug!(
+                "Servo load of {url} for {} waits for its view",
+                self.view_key.webtag
+            );
             self.pending_load = Some(url.to_string());
         }
     }
 
+    fn apply_visibility(&self) {
+        if let Some(view) = &self.view
+            && self.native_window.is_some()
+        {
+            apply_throttle(view, self.throttled || !self.surface_shown);
+        }
+    }
+
     fn paint(&self) {
-        let (Some(view), Some(context)) = (&self.view, &self.context) else {
+        let (Some(view), Some(context), Some(_)) = (&self.view, &self.context, &self.native_window)
+        else {
             return;
         };
+        self.loads.flush_stale_navigation(view);
+        if !self.surface_shown {
+            return;
+        }
         if context.make_current().is_ok() {
             view.paint();
             context.present();
@@ -987,17 +1596,58 @@ impl EngineState {
     }
 }
 
-fn encode_png(image: servo::RgbaImage) -> Result<Vec<u8>, String> {
+/// Pause/resume: stop Servo painting and throttle the view's timers and
+/// animations while the host view is hidden.
+fn apply_throttle(view: &WebView, throttled: bool) {
+    view.set_throttled(throttled);
+    if throttled {
+        view.hide();
+    } else {
+        view.show();
+    }
+}
+
+/// `file:` and `content:` are never reachable from web content, matching the
+/// Android WebView profile settings.
+fn is_blocked_local_scheme(url: &Url) -> bool {
+    matches!(url.scheme(), "file" | "content")
+}
+
+fn encode_png_bytes(
+    width: u32,
+    height: u32,
+    color: png::ColorType,
+    data: &[u8],
+) -> Result<Vec<u8>, String> {
     let mut bytes = Vec::new();
-    let mut encoder = png::Encoder::new(&mut bytes, image.width(), image.height());
-    encoder.set_color(png::ColorType::Rgba);
+    let mut encoder = png::Encoder::new(&mut bytes, width, height);
+    encoder.set_color(color);
     encoder.set_depth(png::BitDepth::Eight);
     let mut writer = encoder.write_header().map_err(|error| error.to_string())?;
     writer
-        .write_image_data(image.as_raw())
+        .write_image_data(data)
         .map_err(|error| error.to_string())?;
     writer.finish().map_err(|error| error.to_string())?;
     Ok(bytes)
+}
+
+fn encode_favicon(image: &servo::Image) -> Option<Vec<u8>> {
+    let (color, data) = match image.format {
+        PixelFormat::K8 => (png::ColorType::Grayscale, image.data().to_vec()),
+        PixelFormat::KA8 => (png::ColorType::GrayscaleAlpha, image.data().to_vec()),
+        PixelFormat::RGB8 => (png::ColorType::Rgb, image.data().to_vec()),
+        PixelFormat::RGBA8 => (png::ColorType::Rgba, image.data().to_vec()),
+        PixelFormat::BGRA8 => {
+            let mut data = image.data().to_vec();
+            for pixel in data.chunks_exact_mut(4) {
+                pixel.swap(0, 2);
+            }
+            (png::ColorType::Rgba, data)
+        }
+    };
+    encode_png_bytes(image.width, image.height, color, &data)
+        .inspect_err(|error| log::debug!("Dropping undecodable Servo favicon: {error}"))
+        .ok()
 }
 
 fn cookie_from_servo(cookie: Cookie<'static>) -> WebViewCookie {
@@ -1021,11 +1671,14 @@ fn cookie_from_servo(cookie: Cookie<'static>) -> WebViewCookie {
     }
 }
 
-fn complete_embedder_control(webtag: &WebTag, token: u64, action: &str, value: &str) -> bool {
+fn complete_embedder_control(view: &ViewKey, token: u64, action: &str, value: &str) -> bool {
+    if !is_registered(view) {
+        return false;
+    }
     let control = embedder_controls()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
-        .get_mut(webtag.as_str())
+        .get_mut(view.webtag.as_str())
         .and_then(|controls| controls.remove(&token));
     let Some(control) = control else {
         return false;
@@ -1158,14 +1811,14 @@ fn embedder_control_payload(control: &EmbedderControl) -> Option<(&'static str, 
 }
 
 fn dispatch_registered_file_chooser(
-    webtag: &WebTag,
+    view: &ViewKey,
     token: u64,
     request: FileChooserRequest,
 ) -> bool {
-    let Some(webview) = find_webview(webtag) else {
+    let Some(webview) = view.webview() else {
         return false;
     };
-    let webtag = webtag.clone();
+    let callback_view = view.clone();
     webview.handle_file_chooser(request, move |response| {
         let (action, value) = match response {
             FileChooserResponse::Files(files) => {
@@ -1183,39 +1836,75 @@ fn dispatch_registered_file_chooser(
                 }
             }
             FileChooserResponse::Error(error) => {
-                log::warn!("Servo file chooser failed for {webtag}: {error}");
+                log::warn!(
+                    "Servo file chooser failed for {}: {error}",
+                    callback_view.webtag
+                );
                 ("cancel".to_string(), String::new())
             }
             FileChooserResponse::Cancel => ("cancel".to_string(), String::new()),
         };
-        complete_embedder_control(&webtag, token, &action, &value);
+        complete_embedder_control(&callback_view, token, &action, &value);
     })
 }
 
 struct Delegate {
-    webtag: WebTag,
+    view: ViewKey,
+    policy: ServoPolicy,
+    context: Rc<WindowRenderingContext>,
+    loads: Rc<LoadTracker>,
+    probes: Rc<RefCell<Vec<WebView>>>,
     next_embedder_control_token: Rc<Cell<u64>>,
 }
 
 impl WebViewDelegate for Delegate {
     fn notify_url_changed(&self, webview: WebView, url: Url) {
-        normalizer::submit(
-            &self.webtag,
-            NativeSignal::LocationChanged {
-                url: url.to_string(),
-            },
-        );
-        normalizer::submit(
-            &self.webtag,
-            NativeSignal::BackForwardChanged {
-                can_go_back: webview.can_go_back(),
-                can_go_forward: webview.can_go_forward(),
-            },
-        );
+        if self.loads.bootstrapping.get() {
+            return;
+        }
+        publish_browser_state(&self.view, &webview);
+        let location = NativeSignal::LocationChanged {
+            url: unstamped(url.as_str()),
+        };
+        // Servo moves the URL before it reports the new document; the page's
+        // start must come first, as it does on every other backend.
+        if self
+            .loads
+            .pending_navigation
+            .borrow()
+            .as_ref()
+            .is_some_and(|(pending, _)| *pending == url)
+        {
+            *self.loads.deferred_location.borrow_mut() = Some(location);
+        } else {
+            self.view.submit(location);
+        }
+        self.view.submit(NativeSignal::BackForwardChanged {
+            can_go_back: webview.can_go_back(),
+            can_go_forward: webview.can_go_forward(),
+        });
     }
 
-    fn notify_page_title_changed(&self, _webview: WebView, title: Option<String>) {
-        normalizer::submit(&self.webtag, NativeSignal::TitleChanged { title });
+    fn notify_page_title_changed(&self, webview: WebView, title: Option<String>) {
+        if !self.loads.bootstrapping.get() {
+            publish_browser_state(&self.view, &webview);
+            self.view.submit(NativeSignal::TitleChanged { title });
+        }
+    }
+
+    fn notify_history_changed(&self, webview: WebView, _entries: Vec<Url>, _current: usize) {
+        if !self.loads.bootstrapping.get() {
+            publish_browser_state(&self.view, &webview);
+            self.view.submit(NativeSignal::BackForwardChanged {
+                can_go_back: webview.can_go_back(),
+                can_go_forward: webview.can_go_forward(),
+            });
+        }
+    }
+
+    fn notify_favicon_changed(&self, webview: WebView) {
+        let png_bytes = webview.favicon().and_then(|image| encode_favicon(&image));
+        self.view.submit(NativeSignal::FaviconChanged { png_bytes });
     }
 
     fn notify_load_status_changed(&self, webview: WebView, status: LoadStatus) {
@@ -1223,44 +1912,134 @@ impl WebViewDelegate for Delegate {
             .url()
             .map(|url| url.to_string())
             .unwrap_or_else(|| "about:blank".into());
-        if status == LoadStatus::Complete && url == "about:blank" {
-            let _ = runtime_sender().send(RuntimeCommand::Dispatch {
-                webtag: self.webtag.clone(),
-                command: Command::ApplyPendingLoad,
-            });
+        log::debug!(
+            "Servo load status {status:?} for {} at {url}",
+            self.view.webtag
+        );
+        if self.loads.bootstrapping.get() {
+            if url == "about:blank" {
+                if status == LoadStatus::Complete {
+                    self.loads.bootstrapping.set(false);
+                    let _ = send(&self.view, Command::ApplyPendingLoad);
+                }
+                return;
+            }
+            self.loads.bootstrapping.set(false);
+        }
+        if matches!(status, LoadStatus::Started | LoadStatus::HeadParsed) {
+            self.loads
+                .document_appeared(&webview, webview.url().as_ref());
         }
         match status {
-            LoadStatus::Started => normalizer::submit(
-                &self.webtag,
-                NativeSignal::NavigationStarted { key: None, url },
-            ),
+            LoadStatus::Started => self.loads.document_created(&self.view, webview.id(), url),
+            // The first document of a view and a reload never report
+            // `Started`; their body is the first evidence of the document.
             LoadStatus::HeadParsed => {
-                normalizer::submit(&self.webtag, NativeSignal::DocumentCommitted)
+                if self.loads.phase.get() == LoadPhase::Idle {
+                    self.loads.document_created(&self.view, webview.id(), url);
+                }
             }
-            LoadStatus::Complete => normalizer::submit(
-                &self.webtag,
-                NativeSignal::NavigationFinished {
-                    key: None,
-                    result: NativeNavigationResult::Succeeded { final_url: url },
-                },
-            ),
+            LoadStatus::Complete => self.loads.document_complete(&self.view, webview.id(), url),
         }
     }
 
     fn notify_new_frame_ready(&self, _webview: WebView) {}
 
+    fn notify_crashed(&self, _webview: WebView, reason: String, _backtrace: Option<String>) {
+        log::error!("Servo content crashed for {}: {reason}", self.view.webtag);
+        // The Servo view survives its crashed pipeline, like a WebView2
+        // renderer failure: the document is gone, the native view is not.
+        self.loads.abandon(&self.view);
+        self.view.submit(NativeSignal::DocumentInvalidated);
+        if let Some(delegate) = self
+            .view
+            .webview()
+            .and_then(|webview| webview.get_delegate())
+        {
+            delegate.on_web_content_process_terminated(self.view.native_view_id);
+        }
+    }
+
     fn request_navigation(&self, _webview: WebView, request: servo::NavigationRequest) {
+        if is_blocked_local_scheme(&request.url) {
+            request.deny();
+            return;
+        }
         let navigation = NavigationRequest::new(request.url.to_string(), false, true);
-        if find_webview(&self.webtag).is_some_and(|webview| {
+        if self.view.webview().is_some_and(|webview| {
             webview.handle_navigation(&navigation) == NavigationPolicy::Cancel
         }) {
             request.deny();
         } else {
+            self.loads.begin_navigation(&request.url);
             request.allow();
         }
     }
 
+    fn request_create_new(&self, _parent: WebView, request: CreateNewWebViewRequest) {
+        // Servo discloses the target only through the new view's first
+        // navigation. Build a never-painted probe to read it, then route the
+        // URL through LingXia's new-window policy like Android's popup probe.
+        if !self.policy.new_windows {
+            return;
+        }
+        let probe = request
+            .builder(self.context.clone() as Rc<dyn RenderingContext>)
+            .delegate(Rc::new(NewWindowProbe {
+                parent: self.view.clone(),
+                captured: Cell::new(false),
+            }))
+            .build();
+        let probe_id = probe.id();
+        self.probes.borrow_mut().push(probe);
+        let parent = self.view.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(NEW_WINDOW_PROBE_TIMEOUT);
+            let _ = send(
+                &parent,
+                Command::NewWindow {
+                    probe: probe_id,
+                    url: None,
+                },
+            );
+        });
+    }
+
+    fn load_web_resource(&self, _webview: WebView, load: WebResourceLoad) {
+        let url = load.request().url.clone();
+        if is_blocked_local_scheme(&url) {
+            let response =
+                servo::WebResourceResponse::new(url).status_code(http::StatusCode::FORBIDDEN);
+            load.intercept(response).cancel();
+            return;
+        }
+        // `load_data` under an http(s) base URL (a browser error page) must
+        // never reach the network: serve its HTML at the stamped URL.
+        if load.request().is_for_main_frame
+            && let Some(html) = page_document_html(&self.view, url.as_str())
+        {
+            let mut headers = http::HeaderMap::new();
+            headers.insert(
+                http::header::CONTENT_TYPE,
+                http::HeaderValue::from_static("text/html; charset=utf-8"),
+            );
+            headers.insert(
+                http::header::CACHE_CONTROL,
+                http::HeaderValue::from_static("no-store"),
+            );
+            let response = servo::WebResourceResponse::new(url).headers(headers);
+            let mut intercepted = load.intercept(response);
+            intercepted.send_body_data(html);
+            intercepted.finish();
+        }
+    }
+
     fn show_console_message(&self, _webview: WebView, level: ConsoleLogLevel, message: String) {
+        // Browser-profile pages may be hostile; like Android WebView, only
+        // strict pages log straight to the delegate.
+        if !self.policy.strict_profile {
+            return;
+        }
         let level = match level {
             ConsoleLogLevel::Trace => LogLevel::Verbose,
             ConsoleLogLevel::Debug | ConsoleLogLevel::Dir => LogLevel::Debug,
@@ -1268,7 +2047,11 @@ impl WebViewDelegate for Delegate {
             ConsoleLogLevel::Warn => LogLevel::Warn,
             ConsoleLogLevel::Error => LogLevel::Error,
         };
-        if let Some(delegate) = find_webview_delegate(&self.webtag) {
+        if let Some(delegate) = self
+            .view
+            .webview()
+            .and_then(|webview| webview.get_delegate())
+        {
             delegate.log(level, &message);
         }
     }
@@ -1276,9 +2059,20 @@ impl WebViewDelegate for Delegate {
     fn show_embedder_control(&self, webview: WebView, control: EmbedderControl) {
         if let EmbedderControl::InputMethod(input_method) = &control {
             if input_method.input_method_type() == InputMethodType::Color {
-                hide_java_input_method(&self.webtag);
+                hide_java_input_method(&self.view);
             } else {
-                show_java_input_method(&self.webtag, input_method);
+                show_java_input_method(&self.view, input_method);
+            }
+            return;
+        }
+        if self.policy.strict_profile
+            && let EmbedderControl::SimpleDialog(dialog) = control
+        {
+            // Strict pages get no JavaScript dialogs; answer like Android.
+            log::info!("Suppressed JavaScript dialog in strict profile");
+            match dialog {
+                SimpleDialog::Alert(_) => dialog.confirm(),
+                SimpleDialog::Confirm(_) | SimpleDialog::Prompt(_) => dialog.dismiss(),
             }
             return;
         }
@@ -1301,36 +2095,169 @@ impl WebViewDelegate for Delegate {
                 allow_multiple: picker.allow_select_multiple(),
                 allow_directories: false,
                 capture: false,
-                source_page_url: webview.url().map(|url| url.to_string()),
+                source_page_url: webview.url().map(|url| unstamped(url.as_str())),
             }),
             _ => None,
         };
         embedder_controls()
             .lock()
             .unwrap_or_else(|error| error.into_inner())
-            .entry(self.webtag.to_string())
+            .entry(self.view.webtag.to_string())
             .or_default()
             .insert(token, control);
         let handled_by_host = host_file_request
-            .is_some_and(|request| dispatch_registered_file_chooser(&self.webtag, token, request));
+            .is_some_and(|request| dispatch_registered_file_chooser(&self.view, token, request));
         if !handled_by_host {
-            show_java_embedder_control(&self.webtag, token, kind, &payload);
+            show_java_embedder_control(&self.view, token, kind, &payload);
         }
     }
 
     fn hide_embedder_control(&self, _webview: WebView, control_id: EmbedderControlId) {
-        hide_java_input_method(&self.webtag);
+        hide_java_input_method(&self.view);
         let mut registry = embedder_controls()
             .lock()
             .unwrap_or_else(|error| error.into_inner());
-        let controls = registry.entry(self.webtag.to_string()).or_default();
+        let controls = registry.entry(self.view.webtag.to_string()).or_default();
         let token = controls
             .iter()
             .find_map(|(token, control)| (control.id() == control_id).then_some(*token));
         if let Some(token) = token {
             controls.remove(&token);
-            hide_java_embedder_control(&self.webtag, token);
+            hide_java_embedder_control(&self.view, token);
         }
+    }
+}
+
+/// Delegate of a `window.open()` probe view: capture the first navigation,
+/// never let it load.
+struct NewWindowProbe {
+    parent: ViewKey,
+    captured: Cell<bool>,
+}
+
+impl WebViewDelegate for NewWindowProbe {
+    fn request_navigation(&self, webview: WebView, request: servo::NavigationRequest) {
+        let url = request.url.to_string();
+        request.deny();
+        if self.captured.replace(true) || url.is_empty() || url == "about:blank" {
+            return;
+        }
+        let _ = send(
+            &self.parent,
+            Command::NewWindow {
+                probe: webview.id(),
+                url: Some(url),
+            },
+        );
+    }
+}
+
+struct ServoNavigationObserver;
+
+impl servo_net::NavigationObserver for ServoNavigationObserver {
+    fn navigation_failed(
+        &self,
+        webview_id: WebViewId,
+        url: &servo::ServoUrl,
+        error: &NetworkError,
+    ) {
+        navigation_failures()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(
+                webview_id,
+                LoadError {
+                    failing_url: Some(url.to_string()),
+                    kind: load_error_kind(error),
+                    description: format!("{error:?}"),
+                },
+            );
+    }
+
+    fn claim_download(
+        &self,
+        webview_id: WebViewId,
+        url: &servo::ServoUrl,
+        status: u16,
+        headers: &http::HeaderMap,
+    ) -> bool {
+        if !(200..300).contains(&status) {
+            return false;
+        }
+        let Some(view) = view_for_servo_webview(webview_id) else {
+            return false;
+        };
+        let header = |name: http::header::HeaderName| {
+            headers
+                .get(name)
+                .and_then(|value| value.to_str().ok())
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .map(str::to_string)
+        };
+        let content_disposition = header(http::header::CONTENT_DISPOSITION);
+        let mime_type = header(http::header::CONTENT_TYPE);
+        if !is_download_response(content_disposition.as_deref(), mime_type.as_deref())
+            || !view
+                .webview()
+                .is_some_and(|webview| webview.has_download_handler())
+        {
+            return false;
+        }
+        let request = DownloadRequest {
+            url: url.to_string(),
+            user_agent: None,
+            content_disposition,
+            mime_type,
+            content_length: header(http::header::CONTENT_LENGTH)
+                .and_then(|value| value.parse().ok()),
+            suggested_filename: None,
+            source_page_url: None,
+            cookie: None,
+        };
+        runtime_sender()
+            .send(RuntimeCommand::Download { view, request })
+            .is_ok()
+    }
+}
+
+fn load_error_kind(error: &NetworkError) -> LoadErrorKind {
+    match error {
+        NetworkError::SslValidation(..)
+        | NetworkError::MixedContent
+        | NetworkError::ContentSecurityPolicy
+        | NetworkError::CorsGeneral
+        | NetworkError::CrossOriginResponse
+        | NetworkError::CorsCredentials
+        | NetworkError::CorsAllowMethods
+        | NetworkError::CorsAllowHeaders
+        | NetworkError::CorsMethod
+        | NetworkError::CorsAuthorization
+        | NetworkError::CorsHeaders => LoadErrorKind::Security,
+        NetworkError::UnsupportedScheme | NetworkError::InvalidPort => LoadErrorKind::InvalidUrl,
+        NetworkError::ConnectionFailure
+        | NetworkError::RedirectError
+        | NetworkError::TooManyRedirects
+        | NetworkError::HttpError(_)
+        | NetworkError::WebsocketConnectionFailure(_) => {
+            let description = format!("{error:?}").to_ascii_lowercase();
+            if description.contains("dns") || description.contains("resolve") {
+                LoadErrorKind::Dns
+            } else if description.contains("timed out") || description.contains("timeout") {
+                LoadErrorKind::Timeout
+            } else {
+                LoadErrorKind::Network
+            }
+        }
+        NetworkError::ResourceLoadError(description) => {
+            let description = description.to_ascii_lowercase();
+            if description.contains("not found") || description.contains("no lingxia") {
+                LoadErrorKind::NotFound
+            } else {
+                LoadErrorKind::Unknown
+            }
+        }
+        _ => LoadErrorKind::Unknown,
     }
 }
 
@@ -1343,6 +2270,10 @@ impl servo_net::NetworkObserver for ServoNetworkObserver {
         request: &servo_net::ObservedNetworkRequest,
         _update: bool,
     ) {
+        // Bridge beacons are LingXia's page transport, not page traffic.
+        if request.url.as_str().starts_with("lx://bridge/") {
+            return;
+        }
         let Some(capture) = capture_for_browsing_context(request.browsing_context_id) else {
             return;
         };
@@ -1480,13 +2411,13 @@ impl servo_net::NetworkObserver for ServoNetworkObserver {
 fn capture_for_browsing_context(
     browsing_context_id: servo_net::ObservedBrowsingContextId,
 ) -> Option<Arc<Mutex<CaptureState>>> {
-    let webtag = webview_tags()
+    let view = webview_tags()
         .lock()
         .unwrap_or_else(|error| error.into_inner())
         .iter()
         .find(|(webview_id, _)| **webview_id == browsing_context_id)
-        .map(|(_, webtag)| webtag.clone())?;
-    capture(&webtag).ok()
+        .map(|(_, view)| view.clone())?;
+    capture(&view).ok()
 }
 
 fn update_network_request(
@@ -1565,34 +2496,30 @@ fn push_network_entry(capture: &mut CaptureState, entry: NetworkEntry) {
     capture.entries.push_back(entry);
 }
 
-fn request_webtag(request: &Request) -> Option<WebTag> {
-    request.target_webview_id.and_then(|id| {
-        webview_tags()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .get(&id)
-            .cloned()
-    })
+/// The LingXia view a Servo request belongs to. Only Servo's own request
+/// metadata identifies it; nothing the page puts in the URL does.
+fn request_view(request: &Request) -> Option<ViewKey> {
+    request
+        .target_webview_id
+        .and_then(view_for_servo_webview)
+        .filter(is_registered)
 }
 
-fn initial_lx_webtag(url: &servo::ServoUrl) -> Option<WebTag> {
-    if url.host_str() != Some("lxapp") {
-        return None;
+fn scheme_request_frame(request: &Request) -> SchemeRequestFrame {
+    if request.destination.as_str() == "document" {
+        SchemeRequestFrame::TopLevelDocument
+    } else {
+        SchemeRequestFrame::Subresource
     }
-    let mut segments = url.path_segments()?;
-    let appid = segments.next()?;
-    let path = segments.collect::<Vec<_>>().join("/");
-    runtimes()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .keys()
-        .map(|key| WebTag::from(key.as_str()))
-        .find(|webtag| webtag.extract_parts() == (appid.to_string(), path.clone()))
 }
 
-struct LxProtocolHandler;
+/// Routes one of [`ROUTED_SCHEMES`] to the requesting view's LingXia handler.
+/// `lx://bridge/*` is the page-to-native beacon transport.
+struct SchemeProtocolHandler {
+    scheme: &'static str,
+}
 
-impl ProtocolHandler for LxProtocolHandler {
+impl ProtocolHandler for SchemeProtocolHandler {
     fn load<'a>(
         &'a self,
         request: &'a mut Request,
@@ -1600,45 +2527,38 @@ impl ProtocolHandler for LxProtocolHandler {
         _context: &FetchContext,
     ) -> Pin<Box<dyn Future<Output = Response> + Send + 'a>> {
         let url = request.current_url();
-        if url.host_str() == Some("bridge") {
-            let webtag = bridge_request_webtag(request, &url);
-            return Box::pin(future::ready(bridge_response(request, url, webtag)));
+        let view = request_view(request);
+        if self.scheme == "lx" && url.host_str() == Some("bridge") {
+            return Box::pin(future::ready(bridge_response(request, url, view)));
         }
-        let webtag = request_webtag(request).or_else(|| initial_lx_webtag(&url));
-        let response = webtag
+        let timing = ResourceFetchTiming::new(request.timing_type());
+        let response = view
             .as_ref()
-            .and_then(|webtag| {
-                let document = documents().lock().unwrap_or_else(|e| e.into_inner());
-                let document = document.get(webtag.as_str())?;
-                (document.url == url.as_str()).then(|| {
-                    WebResourceResponse::bytes(document.html.clone())
-                        .mime("text/html; charset=utf-8")
-                })
-            })
-            .or_else(|| {
-                webtag.as_ref().and_then(find_webview).and_then(|webview| {
+            .and_then(|view| {
+                page_document(view, url.as_str()).or_else(|| {
+                    let webview = view.webview()?;
                     let mut builder = http::Request::builder()
                         .method(request.method.clone())
                         .uri(url.as_str());
                     if let Some(headers) = builder.headers_mut() {
                         *headers = request.headers.clone();
                     }
-                    builder
-                        .body(Vec::new())
-                        .ok()
-                        .and_then(|request| webview.handle_scheme_request("lx", request))
+                    let http_request = builder.body(Vec::new()).ok()?;
+                    webview.handle_contextual_scheme_request(
+                        self.scheme,
+                        ContextualSchemeRequest::new(
+                            http_request,
+                            view.native_view_id,
+                            scheme_request_frame(request),
+                        ),
+                    )
                 })
             })
-            .map(|response| {
-                lingxia_response(
-                    url.clone(),
-                    ResourceFetchTiming::new(request.timing_type()),
-                    response,
-                )
-            })
+            .map(|response| lingxia_response(url.clone(), timing, response))
             .unwrap_or_else(|| {
                 Response::network_error(NetworkError::ResourceLoadError(format!(
-                    "No LingXia lx:// handler for {url}"
+                    "No LingXia {}:// handler for {url}",
+                    self.scheme
                 )))
             });
         Box::pin(future::ready(response))
@@ -1647,15 +2567,37 @@ impl ProtocolHandler for LxProtocolHandler {
     fn is_fetchable(&self) -> bool {
         true
     }
+
     fn is_secure(&self) -> bool {
         true
     }
 }
 
+/// HTML delivered through `load_data`, served to that view's own navigation.
+fn page_document_html(view: &ViewKey, url: &str) -> Option<Vec<u8>> {
+    let documents = documents().lock().unwrap_or_else(|e| e.into_inner());
+    let page = documents
+        .get(view.webtag.as_str())
+        .filter(|page| page.native_view_id == view.native_view_id)?;
+    page.recent
+        .iter()
+        .rev()
+        .find(|(stamped, _)| stamped == url)
+        .map(|(_, html)| html.clone())
+}
+
+fn page_document(view: &ViewKey, url: &str) -> Option<WebResourceResponse> {
+    page_document_html(view, url).map(|html| {
+        WebResourceResponse::bytes(html)
+            .mime("text/html; charset=utf-8")
+            .header("Cache-Control", "no-store")
+    })
+}
+
 fn lingxia_response(
     url: servo::ServoUrl,
     timing: ResourceFetchTiming,
-    response: crate::WebResourceResponse,
+    response: WebResourceResponse,
 ) -> Response {
     let (parts, body) = response.into_parts();
     let mut result = Response::new(url, timing);
@@ -1687,61 +2629,42 @@ fn lingxia_response(
     result
 }
 
-struct BridgeProtocolHandler;
-
-impl ProtocolHandler for BridgeProtocolHandler {
-    fn load<'a>(
-        &'a self,
-        request: &'a mut Request,
-        _done_chan: &mut DoneChannel,
-        _context: &FetchContext,
-    ) -> Pin<Box<dyn Future<Output = Response> + Send + 'a>> {
-        let url = request.current_url();
-        let webtag = bridge_request_webtag(request, &url);
-        Box::pin(future::ready(bridge_response(request, url, webtag)))
-    }
-
-    fn is_fetchable(&self) -> bool {
-        true
-    }
-    fn is_secure(&self) -> bool {
-        true
-    }
-}
-
-fn bridge_request_webtag(request: &Request, url: &servo::ServoUrl) -> Option<WebTag> {
-    request_webtag(request).or_else(|| {
-        let query: HashMap<String, String> = url.as_url().query_pairs().into_owned().collect();
-        let tag = WebTag::from(query.get("tag")?.as_str());
-        runtimes()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .contains_key(tag.as_str())
-            .then_some(tag)
-    })
-}
-
-fn bridge_response(request: &Request, url: servo::ServoUrl, webtag: Option<WebTag>) -> Response {
+fn bridge_response(request: &Request, url: servo::ServoUrl, view: Option<ViewKey>) -> Response {
     let query: HashMap<String, String> = url.as_url().query_pairs().into_owned().collect();
-    let kind = if url.scheme() == "lx" {
-        url.path().trim_matches('/')
-    } else {
-        url.host_str().unwrap_or_default()
-    };
-    match kind {
-        "post" => {
-            if let Some(message) = query.get("message")
-                && let Some(delegate) = webtag.as_ref().and_then(find_webview_delegate)
-            {
-                delegate.handle_post_message(message.clone());
+    let kind = url.path().trim_matches('/');
+    match (kind, view) {
+        ("post", Some(view)) => {
+            if let (Some(message), Some(webview)) = (query.get("message"), view.webview()) {
+                if message.len() > MAX_WEB_MESSAGE_BYTES {
+                    webview.reject_oversized_web_message();
+                } else {
+                    // Like Android's JavascriptInterface, a beacon cannot
+                    // prove which frame sent it.
+                    webview.enqueue_web_message(
+                        message.clone(),
+                        WebMessageFrame::Unproven,
+                        WebMessageTransport::Other,
+                        WebMessageSource::diagnostic_url(
+                            request
+                                .referrer
+                                .to_url()
+                                .map(|referrer| referrer.as_str().to_string()),
+                        ),
+                    );
+                }
             }
         }
-        "component" => {
-            if let (Some(message), Some(webtag)) = (query.get("message"), webtag.as_ref()) {
-                dispatch_java_native_component_message(webtag, message);
+        ("component", Some(view)) => {
+            if let Some(message) = query.get("message") {
+                dispatch_java_view_message(&view, ViewMessage::NativeComponent, message);
             }
         }
-        "eval" => {
+        ("scroll", Some(view)) => {
+            if let Some(message) = query.get("message") {
+                dispatch_java_view_message(&view, ViewMessage::Scroll, message);
+            }
+        }
+        ("eval", _) => {
             if let (Some(id), Some(token), Some(result)) =
                 (query.get("id"), query.get("token"), query.get("result"))
                 && let Ok(id) = id.parse()
@@ -1756,25 +2679,43 @@ fn bridge_response(request: &Request, url: servo::ServoUrl, webtag: Option<WebTa
     *response.body.lock() = ResponseBody::Done(Vec::new());
     response
 }
-fn bridge_script(webtag: &WebTag, strict_profile: bool) -> String {
-    let webtag = serde_json::to_string(webtag.as_str()).unwrap_or_else(|_| "\"\"".into());
-    let native_component_bridge = if strict_profile {
+
+fn bridge_script(policy: ServoPolicy) -> String {
+    let strict_profile_script = if policy.strict_profile {
+        // Strict pages have DOM storage and databases disabled, as Android
+        // WebView's profile settings do.
         r#"
+      for (const name of ['localStorage', 'sessionStorage', 'indexedDB']) {
+        try {
+          Object.defineProperty(globalThis, name, { configurable: false, get: () => null });
+        } catch (_) {}
+      }
       globalThis.NativeComponentBridge = {
         postMessage: message => send('component', { message: String(message) })
-      };"#
+      };
+      let scrollFrame = 0;
+      const reportScroll = () => {
+        scrollFrame = 0;
+        const root = document.scrollingElement || document.documentElement;
+        send('scroll', { message: JSON.stringify({
+          x: root ? root.scrollLeft : 0,
+          y: root ? root.scrollTop : 0,
+          dpr: globalThis.devicePixelRatio || 1
+        }) });
+      };
+      addEventListener('scroll', () => {
+        if (!scrollFrame) scrollFrame = requestAnimationFrame(reportScroll);
+      }, { passive: true, capture: true });"#
     } else {
         ""
     };
     format!(
         r#"(() => {{
-      const webtag = {webtag};
       const beacons = new Set();
       let sequence = 0;
       const send = (kind, params) => {{
         const query = new URLSearchParams({{
           ...params,
-          tag: webtag,
           sequence: sequence++
         }}).toString();
         const beacon = new Image();
@@ -1790,65 +2731,128 @@ fn bridge_script(webtag: &WebTag, strict_profile: bool) -> String {
         postMessage: message => send('post', {{ message: String(message) }}),
         resolveEval: (id, token, result) => send('eval', {{ id, token, result }})
       }};
-      {native_component_bridge}
+      {strict_profile_script}
     }})();"#
     )
 }
 
-pub(super) fn load_url(webtag: &WebTag, url: &str) -> Result<(), WebViewError> {
-    send(webtag, Command::Load(url.to_string()))
+pub(super) fn load_url(view: &WebTag, id: NativeWebViewId, url: &str) -> Result<(), WebViewError> {
+    send(&ViewKey::new(view, id), Command::Load(url.to_string()))
 }
 
-pub(super) fn load_data(webtag: &WebTag, data: &str, base_url: &str) -> Result<(), WebViewError> {
+pub(super) fn load_data(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    data: &str,
+    base_url: &str,
+) -> Result<(), WebViewError> {
     send(
-        webtag,
+        &ViewKey::new(webtag, id),
         Command::LoadData {
             data: data.to_string(),
             base_url: base_url.to_string(),
+            trusted: None,
         },
     )
 }
 
-pub(super) fn exec_js(webtag: &WebTag, script: &str) -> Result<(), WebViewError> {
-    send(webtag, Command::Exec(script.to_string()))
+pub(super) fn load_trusted_data(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    intent: crate::TrustedLoadIntent,
+    data: &str,
+    base_url: &str,
+) -> Result<(), WebViewError> {
+    send(
+        &ViewKey::new(webtag, id),
+        Command::LoadData {
+            data: data.to_string(),
+            base_url: base_url.to_string(),
+            trusted: Some(intent),
+        },
+    )
 }
 
-pub(super) async fn current_url(webtag: &WebTag) -> Result<Option<String>, WebViewError> {
+pub(super) fn exec_js(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    script: &str,
+) -> Result<(), WebViewError> {
+    send(&ViewKey::new(webtag, id), Command::Exec(script.to_string()))
+}
+
+pub(super) fn evaluate(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    request_id: u64,
+    token: &str,
+    scripts: [String; 2],
+) -> Result<(), WebViewError> {
+    send(
+        &ViewKey::new(webtag, id),
+        Command::EvaluateEnvelope {
+            scripts,
+            request_id,
+            token: token.to_string(),
+        },
+    )
+}
+
+pub(super) async fn current_url(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<Option<String>, WebViewError> {
     let (tx, rx) = oneshot::channel();
-    send(webtag, Command::CurrentUrl(tx))?;
+    send(&ViewKey::new(webtag, id), Command::CurrentUrl(tx))?;
     rx.await
         .map_err(|_| WebViewError::WebView("Servo current_url was canceled".into()))
 }
 
-pub(super) fn post_message(webtag: &WebTag, message: &str) -> Result<(), WebViewError> {
-    send(webtag, Command::PostMessage(message.to_string()))
+pub(super) fn post_message(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+    message: &str,
+) -> Result<(), WebViewError> {
+    send(
+        &ViewKey::new(webtag, id),
+        Command::PostMessage(message.to_string()),
+    )
 }
 
-pub(super) fn clear_browsing_data(webtag: &WebTag) -> Result<(), WebViewError> {
-    send(webtag, Command::ClearBrowsingData)
+pub(super) fn clear_browsing_data(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<(), WebViewError> {
+    send(&ViewKey::new(webtag, id), Command::ClearBrowsingData)
 }
 
 pub(super) fn set_user_agent(
     webtag: &WebTag,
+    id: NativeWebViewId,
     user_agent: UserAgentOverride,
 ) -> Result<(), WebViewError> {
     user_agent.validate()?;
-    send(webtag, Command::SetUserAgent(user_agent))
+    send(&ViewKey::new(webtag, id), Command::SetUserAgent(user_agent))
 }
 
-pub(super) fn reload(webtag: &WebTag) -> Result<(), WebViewError> {
-    send(webtag, Command::Reload)
-}
-pub(super) fn go_back(webtag: &WebTag) -> Result<(), WebViewError> {
-    send(webtag, Command::Back)
-}
-pub(super) fn go_forward(webtag: &WebTag) -> Result<(), WebViewError> {
-    send(webtag, Command::Forward)
+pub(super) fn reload(webtag: &WebTag, id: NativeWebViewId) -> Result<(), WebViewError> {
+    send(&ViewKey::new(webtag, id), Command::Reload)
 }
 
-pub(super) async fn list_cookies(webtag: &WebTag) -> Result<Vec<WebViewCookie>, WebViewError> {
+pub(super) fn go_back(webtag: &WebTag, id: NativeWebViewId) -> Result<(), WebViewError> {
+    send(&ViewKey::new(webtag, id), Command::Back)
+}
+
+pub(super) fn go_forward(webtag: &WebTag, id: NativeWebViewId) -> Result<(), WebViewError> {
+    send(&ViewKey::new(webtag, id), Command::Forward)
+}
+
+pub(super) async fn list_cookies(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<Vec<WebViewCookie>, WebViewError> {
     let (tx, rx) = oneshot::channel();
-    send(webtag, Command::ListCookies(tx))?;
+    send(&ViewKey::new(webtag, id), Command::ListCookies(tx))?;
     rx.await
         .map_err(|_| WebViewError::WebView("Servo list_cookies was canceled".into()))?
         .map_err(WebViewError::WebView)
@@ -1856,10 +2860,11 @@ pub(super) async fn list_cookies(webtag: &WebTag) -> Result<Vec<WebViewCookie>, 
 
 pub(super) async fn set_cookie(
     webtag: &WebTag,
+    id: NativeWebViewId,
     request: WebViewCookieSetRequest,
 ) -> Result<(), WebViewError> {
     let (tx, rx) = oneshot::channel();
-    send(webtag, Command::SetCookie(request, tx))?;
+    send(&ViewKey::new(webtag, id), Command::SetCookie(request, tx))?;
     rx.await
         .map_err(|_| WebViewError::WebView("Servo set_cookie was canceled".into()))?
         .map_err(WebViewError::WebView)
@@ -1867,13 +2872,14 @@ pub(super) async fn set_cookie(
 
 pub(super) async fn delete_cookie(
     webtag: &WebTag,
+    id: NativeWebViewId,
     name: &str,
     domain: &str,
     path: &str,
 ) -> Result<(), WebViewError> {
     let (tx, rx) = oneshot::channel();
     send(
-        webtag,
+        &ViewKey::new(webtag, id),
         Command::DeleteCookie {
             name: name.to_string(),
             domain: domain.to_string(),
@@ -1886,21 +2892,25 @@ pub(super) async fn delete_cookie(
         .map_err(WebViewError::WebView)
 }
 
-pub(super) async fn clear_cookies(webtag: &WebTag) -> Result<(), WebViewError> {
+pub(super) async fn clear_cookies(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<(), WebViewError> {
     let (tx, rx) = oneshot::channel();
-    send(webtag, Command::ClearCookies(tx))?;
+    send(&ViewKey::new(webtag, id), Command::ClearCookies(tx))?;
     rx.await
         .map_err(|_| WebViewError::WebView("Servo clear_cookies was canceled".into()))
 }
 
 pub(super) async fn clear_site_data(
     webtag: &WebTag,
+    id: NativeWebViewId,
     url: &str,
     options: ClearSiteDataOptions,
 ) -> Result<ClearSiteDataResult, WebViewError> {
     let (tx, rx) = oneshot::channel();
     send(
-        webtag,
+        &ViewKey::new(webtag, id),
         Command::ClearSiteData {
             url: url.to_string(),
             options,
@@ -1909,14 +2919,6 @@ pub(super) async fn clear_site_data(
     )?;
     rx.await
         .map_err(|_| WebViewError::WebView("Servo clear_site_data was canceled".into()))?
-        .map_err(WebViewError::WebView)
-}
-
-pub(super) async fn take_screenshot(webtag: &WebTag) -> Result<Vec<u8>, WebViewError> {
-    let (tx, rx) = oneshot::channel();
-    send(webtag, Command::Screenshot(tx))?;
-    rx.await
-        .map_err(|_| WebViewError::WebView("Servo screenshot was canceled".into()))?
         .map_err(WebViewError::WebView)
 }
 
@@ -1933,17 +2935,23 @@ pub(super) fn apply_http_proxy(
     })
 }
 
-fn capture(webtag: &WebTag) -> Result<Arc<Mutex<CaptureState>>, WebViewError> {
+fn capture(view: &ViewKey) -> Result<Arc<Mutex<CaptureState>>, WebViewError> {
     runtimes()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
-        .get(webtag.as_str())
+        .get(view.webtag.as_str())
+        .filter(|runtime| runtime.native_view_id == view.native_view_id)
         .map(|runtime| runtime.capture.clone())
-        .ok_or_else(|| WebViewError::WebView(format!("Servo backend is not ready for {webtag}")))
+        .ok_or_else(|| {
+            WebViewError::WebView(format!("Servo backend is not ready for {}", view.webtag))
+        })
 }
 
-pub(super) async fn start_network_capture(webtag: &WebTag) -> Result<(), WebViewError> {
-    capture(webtag)?
+pub(super) async fn start_network_capture(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<(), WebViewError> {
+    capture(&ViewKey::new(webtag, id))?
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .enabled = true;
@@ -1951,8 +2959,11 @@ pub(super) async fn start_network_capture(webtag: &WebTag) -> Result<(), WebView
     Ok(())
 }
 
-pub(super) async fn stop_network_capture(webtag: &WebTag) -> Result<(), WebViewError> {
-    capture(webtag)?
+pub(super) async fn stop_network_capture(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<(), WebViewError> {
+    capture(&ViewKey::new(webtag, id))?
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .enabled = false;
@@ -1980,8 +2991,9 @@ fn disable_network_observer_if_idle() {
 
 pub(super) async fn network_entries(
     webtag: &WebTag,
+    id: NativeWebViewId,
 ) -> Result<NetworkCaptureSnapshot, WebViewError> {
-    let capture = capture(webtag)?;
+    let capture = capture(&ViewKey::new(webtag, id))?;
     let capture = capture.lock().unwrap_or_else(|e| e.into_inner());
     Ok(NetworkCaptureSnapshot {
         entries: capture.entries.iter().cloned().collect(),
@@ -1989,23 +3001,45 @@ pub(super) async fn network_entries(
     })
 }
 
-pub(super) async fn clear_network_capture(webtag: &WebTag) -> Result<(), WebViewError> {
-    let capture = capture(webtag)?;
+pub(super) async fn clear_network_capture(
+    webtag: &WebTag,
+    id: NativeWebViewId,
+) -> Result<(), WebViewError> {
+    let capture = capture(&ViewKey::new(webtag, id))?;
     let mut capture = capture.lock().unwrap_or_else(|e| e.into_inner());
     capture.entries.clear();
     capture.dropped = 0;
     Ok(())
 }
 
-pub(super) fn wheel(webtag: &WebTag, dx: f64, dy: f64) -> Result<(), WebViewError> {
-    send(webtag, Command::Wheel(dx, dy))
+fn browser_states() -> &'static Mutex<HashMap<String, (NativeWebViewId, BrowserState)>> {
+    BROWSER_STATES.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn browser_state(webtag: &WebTag) -> Result<BrowserState, WebViewError> {
-    let (tx, rx) = mpsc::channel();
-    send(webtag, Command::BrowserState(tx))?;
-    rx.recv_timeout(std::time::Duration::from_secs(1))
-        .map_err(|_| WebViewError::WebView(format!("Servo browser state timed out for {webtag}")))
+fn publish_browser_state(view: &ViewKey, webview: &WebView) {
+    let state = BrowserState {
+        url: webview
+            .url()
+            .map(|url| unstamped(url.as_str()))
+            .unwrap_or_default(),
+        title: webview.page_title().unwrap_or_default(),
+        can_go_back: webview.can_go_back(),
+        can_go_forward: webview.can_go_forward(),
+    };
+    browser_states()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(view.webtag.to_string(), (view.native_view_id, state));
+}
+
+fn browser_state(view: &ViewKey) -> BrowserState {
+    browser_states()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(view.webtag.as_str())
+        .filter(|(native_view_id, _)| *native_view_id == view.native_view_id)
+        .map(|(_, state)| state.clone())
+        .unwrap_or_default()
 }
 
 fn touch_kind(action: i32) -> Option<TouchEventType> {
@@ -2061,8 +3095,21 @@ fn android_modifiers(meta_state: i32) -> Modifiers {
     modifiers
 }
 
-fn jstring(env: &mut jni::Env<'_>, value: JString<'_>) -> Result<String, jni::errors::Error> {
-    value.try_to_string(env)
+/// Resolve a Java callback to its registered view, or `None` for a view the
+/// runtime no longer owns under that tag.
+fn java_view(
+    env: &mut jni::Env<'_>,
+    tag: JString<'_>,
+    native_view_id: jlong,
+) -> Result<Option<ViewKey>, jni::errors::Error> {
+    let tag = tag.try_to_string(env)?;
+    if native_view_id <= 0 {
+        return Ok(None);
+    }
+    Ok(Some(ViewKey::new(
+        &WebTag::from(tag.as_str()),
+        NativeWebViewId::new(native_view_id as u64),
+    )))
 }
 
 #[unsafe(no_mangle)]
@@ -2070,18 +3117,25 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceCr
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     surface: JObject,
     width: jint,
     height: jint,
     density: jfloat,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
+        let Some(view) = java_view(env, tag, native_view_id)? else {
+            return Ok(());
+        };
         let window = unsafe { ANativeWindow_fromSurface(env.get_raw(), surface.as_raw()) };
-        log::info!("Received Servo surface for {tag} at {}x{}", width, height);
+        log::info!(
+            "Received Servo surface for {} at {}x{}",
+            view.webtag,
+            width,
+            height
+        );
         if let Err(error) = send(
-            &tag,
+            &view,
             Command::SurfaceCreated {
                 native_window: window as usize,
                 width: width.max(1) as u32,
@@ -2089,7 +3143,10 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceCr
                 density,
             },
         ) {
-            log::error!("Failed to attach Servo surface for {tag}: {error}");
+            log::error!(
+                "Failed to attach Servo surface for {}: {error}",
+                view.webtag
+            );
             if !window.is_null() {
                 unsafe { ANativeWindow_release(window) };
             }
@@ -2104,16 +3161,17 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceCh
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     width: jint,
     height: jint,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
-        let _ = send(
-            &tag,
-            Command::Resize(width.max(1) as u32, height.max(1) as u32),
-        );
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let _ = send(
+                &view,
+                Command::Resize(width.max(1) as u32, height.max(1) as u32),
+            );
+        }
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -2124,13 +3182,22 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSurfaceDe
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
-) {
-    env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
-        log::info!("Received Servo surface destruction for {tag}");
-        let _ = send(&tag, Command::SurfaceDestroyed);
-        Ok(())
+    native_view_id: jlong,
+    release_token: jlong,
+) -> jboolean {
+    env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
+        // `false` tells Java nothing renders into the window any more.
+        // Bypass the registration check: a view already unregistered by its
+        // Rust owner may still have that unregistration queued, and only the
+        // engine thread's order proves it no longer renders.
+        Ok(java_view(env, tag, native_view_id)?.is_some_and(|view| {
+            runtime_sender()
+                .send(RuntimeCommand::Dispatch {
+                    view,
+                    command: Command::SurfaceDestroyed(release_token as u64),
+                })
+                .is_ok()
+        }))
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -2140,15 +3207,18 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCompleteE
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     token: jlong,
     action: JString,
     value: JString,
 ) -> jboolean {
     env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let action = jstring(env, action)?;
-        let value = jstring(env, value)?;
-        Ok(complete_embedder_control(&tag, token as u64, &action, &value) as jboolean)
+        let Some(view) = java_view(env, tag, native_view_id)? else {
+            return Ok(false);
+        };
+        let action = action.try_to_string(env)?;
+        let value = value.try_to_string(env)?;
+        Ok(complete_embedder_control(&view, token as u64, &action, &value) as jboolean)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -2158,11 +3228,46 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeFrame(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
-        let _ = send(&tag, Command::Paint);
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let _ = send(&view, Command::Paint);
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSetThrottled(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    native_view_id: jlong,
+    throttled: jboolean,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let _ = send(&view, Command::SetThrottled(throttled));
+        }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeSetSurfaceShown(
+    mut env: EnvUnowned,
+    _this: JObject,
+    tag: JString,
+    native_view_id: jlong,
+    shown: jboolean,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let _ = send(&view, Command::SetSurfaceShown(shown));
+        }
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -2173,16 +3278,17 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeTouch(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     action: jint,
     id: jint,
     x: jfloat,
     y: jfloat,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
-        if let Some(kind) = touch_kind(action) {
-            let _ = send(&tag, Command::Touch(kind, id, x, y));
+        if let Some(view) = java_view(env, tag, native_view_id)?
+            && let Some(kind) = touch_kind(action)
+        {
+            let _ = send(&view, Command::Touch(kind, id, x, y));
         }
         Ok(())
     })
@@ -2194,13 +3300,14 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeWheel(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     dx: f64,
     dy: f64,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = jstring(env, tag)?;
-        let tag = WebTag::from(tag.as_str());
-        let _ = wheel(&tag, dx, dy);
+        if let Some(view) = java_view(env, tag, native_view_id)? {
+            let _ = send(&view, Command::Wheel(dx, dy));
+        }
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
@@ -2211,10 +3318,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeGetUrl<'a
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     tag: JString<'a>,
+    native_view_id: jlong,
 ) -> JString<'a> {
     env.with_env(|env| -> Result<JString<'a>, jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let value = browser_state(&tag)
+        let value = java_view(env, tag, native_view_id)?
+            .map(|view| browser_state(&view))
             .map(|state| state.url)
             .unwrap_or_default();
         env.new_string(value)
@@ -2227,10 +3335,11 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeGetTitle<
     mut env: EnvUnowned<'a>,
     _this: JObject<'a>,
     tag: JString<'a>,
+    native_view_id: jlong,
 ) -> JString<'a> {
     env.with_env(|env| -> Result<JString<'a>, jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let value = browser_state(&tag)
+        let value = java_view(env, tag, native_view_id)?
+            .map(|view| browser_state(&view))
             .map(|state| state.title)
             .unwrap_or_default();
         env.new_string(value)
@@ -2243,12 +3352,12 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCanGoBack
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
 ) -> jboolean {
     env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        Ok(browser_state(&tag)
-            .map(|state| state.can_go_back)
-            .unwrap_or(false) as jboolean)
+        Ok(java_view(env, tag, native_view_id)?
+            .map(|view| browser_state(&view))
+            .is_some_and(|state| state.can_go_back) as jboolean)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -2258,12 +3367,12 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeCanGoForw
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
 ) -> jboolean {
     env.with_env(|env| -> Result<jboolean, jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        Ok(browser_state(&tag)
-            .map(|state| state.can_go_forward)
-            .unwrap_or(false) as jboolean)
+        Ok(java_view(env, tag, native_view_id)?
+            .map(|view| browser_state(&view))
+            .is_some_and(|state| state.can_go_forward) as jboolean)
     })
     .resolve::<ThrowRuntimeExAndDefault>()
 }
@@ -2273,18 +3382,24 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeNavigate(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     action: jint,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let result = match action {
-            0 => reload(&tag),
-            1 => go_back(&tag),
-            2 => go_forward(&tag),
-            _ => Ok(()),
+        let Some(view) = java_view(env, tag, native_view_id)? else {
+            return Ok(());
         };
-        if let Err(error) = result {
-            log::warn!("Servo navigation command failed for {tag}: {error}");
+        let command = match action {
+            0 => Command::Reload,
+            1 => Command::Back,
+            2 => Command::Forward,
+            _ => return Ok(()),
+        };
+        if let Err(error) = send(&view, command) {
+            log::warn!(
+                "Servo navigation command failed for {}: {error}",
+                view.webtag
+            );
         }
         Ok(())
     })
@@ -2296,20 +3411,23 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeEvaluate(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     request_id: jlong,
     script: JString,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let script = jstring(env, script)?;
-        if let Err(error) = send(
-            &tag,
-            Command::Evaluate {
-                script,
-                request_id: request_id as u64,
-            },
-        ) {
-            log::warn!("Servo JavaScript dispatch failed for {tag}: {error}");
+        let view = java_view(env, tag, native_view_id)?;
+        let script = script.try_to_string(env)?;
+        let dispatched = view.as_ref().map(|view| {
+            send(
+                view,
+                Command::Evaluate {
+                    script,
+                    request_id: request_id as u64,
+                },
+            )
+        });
+        if !matches!(dispatched, Some(Ok(()))) {
             complete_java_evaluation(
                 request_id as u64,
                 Err(servo::JavaScriptEvaluationError::WebViewNotReady),
@@ -2325,12 +3443,15 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeIme(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     state: jint,
     text: JString,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
-        let data = jstring(env, text)?;
+        let Some(view) = java_view(env, tag, native_view_id)? else {
+            return Ok(());
+        };
+        let data = text.try_to_string(env)?;
         let state = match state {
             0 => CompositionState::Start,
             1 => CompositionState::Update,
@@ -2338,13 +3459,13 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeIme(
             _ => return Ok(()),
         };
         if let Err(error) = send(
-            &tag,
+            &view,
             Command::Input(InputEvent::Ime(ImeEvent::Composition(CompositionEvent {
                 state,
                 data,
             }))),
         ) {
-            log::warn!("Servo IME dispatch failed for {tag}: {error}");
+            log::warn!("Servo IME dispatch failed for {}: {error}", view.webtag);
         }
         Ok(())
     })
@@ -2356,6 +3477,7 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeKey(
     mut env: EnvUnowned,
     _this: JObject,
     tag: JString,
+    native_view_id: jlong,
     action: jint,
     key_code: jint,
     unicode_code_point: jint,
@@ -2363,7 +3485,9 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeKey(
     repeat_count: jint,
 ) {
     env.with_env(|env| -> Result<(), jni::errors::Error> {
-        let tag = WebTag::from(jstring(env, tag)?.as_str());
+        let Some(view) = java_view(env, tag, native_view_id)? else {
+            return Ok(());
+        };
         let state = match action {
             0 => KeyState::Down,
             1 => KeyState::Up,
@@ -2379,9 +3503,33 @@ pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeKey(
             repeat_count > 0,
             false,
         );
-        if let Err(error) = send(&tag, Command::Input(InputEvent::Keyboard(event))) {
-            log::warn!("Servo keyboard dispatch failed for {tag}: {error}");
+        if let Err(error) = send(&view, Command::Input(InputEvent::Keyboard(event))) {
+            log::warn!(
+                "Servo keyboard dispatch failed for {}: {error}",
+                view.webtag
+            );
         }
+        Ok(())
+    })
+    .resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_com_lingxia_webview_LingXiaServoView_nativeScreenshotResult(
+    mut env: EnvUnowned,
+    _this: JObject,
+    request_id: jlong,
+    png_bytes: jni::objects::JByteArray,
+    error: JString,
+) {
+    env.with_env(|env| -> Result<(), jni::errors::Error> {
+        let error = error.try_to_string(env)?;
+        let result = if error.trim().is_empty() {
+            Ok(env.convert_byte_array(&png_bytes)?)
+        } else {
+            Err(error)
+        };
+        super::webview::complete_pending_screenshot_request(request_id as u64, result);
         Ok(())
     })
     .resolve::<ThrowRuntimeExAndDefault>()
