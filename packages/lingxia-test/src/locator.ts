@@ -2,7 +2,14 @@ import type { PageQueryResult } from "@lingxia/types/automation";
 import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
 import { displayLocation } from "./ids.js";
-import type { ExpectOptions, Locator, LocatorOptions, SourceLocation } from "./types.js";
+import type {
+  ExpectOptions,
+  Locator,
+  LocatorOptions,
+  LocatorState,
+  LocatorWaitOptions,
+  SourceLocation,
+} from "./types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
@@ -95,6 +102,34 @@ export class PageLocator implements Locator {
 
   async type(text: string, options?: ExpectOptions): Promise<void> {
     await this.act("type", options, (css, index) => this.page.type({ ...this.options, css, text, index }));
+  }
+
+  async waitFor(options?: LocatorWaitOptions): Promise<void> {
+    const state: LocatorState = options?.state ?? "visible";
+    if (!["attached", "detached", "visible", "hidden"].includes(state)) {
+      throw new TypeError(`Unknown locator state: ${String(state)}`);
+    }
+    const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
+    const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
+    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
+      throw new TypeError("Wait timeout and interval must be positive finite numbers");
+    }
+    const target = `${this.options.page ? this.options.page + " " : ""}${this.selector}${this.options.index === undefined ? "" : ` [${this.options.index}]`}`;
+    await this.record("page.waitFor", `${target} ${state}`, async () => {
+      const started = Date.now();
+      let reason = "";
+      while (true) {
+        const resolved = await this.resolve();
+        if (reachedState(resolved, state)) return;
+        reason = this.missText(resolved);
+        const elapsed = Date.now() - started;
+        if (elapsed >= timeout) break;
+        await sleep(Math.min(interval, Math.max(1, timeout - elapsed)));
+      }
+      const where = displayLocation(this.location.source, this.location.line, this.location.column);
+      throw new AssertionError("waitFor", reason, state,
+        `Timed out after ${Date.now() - started}ms waiting for ${formatValue(this.selector)} to be ${state}.\n${reason}\nat ${where}`);
+    });
   }
 
   async query(): Promise<PageQueryResult> {
@@ -234,6 +269,20 @@ export class PageLocator implements Locator {
       throw new AssertionError(verb, reason, "stable, enabled, unobscured element",
         `Timed out after ${Date.now() - started}ms waiting to ${verb} ${formatValue(this.selector)}.\n${reason}\nat ${where}`);
     });
+  }
+}
+
+/** `many` never satisfies `attached`/`visible`: the match is ambiguous. */
+function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
+  switch (state) {
+    case "attached":
+      return resolved.kind === "unique" || resolved.kind === "hidden";
+    case "visible":
+      return resolved.kind === "unique";
+    case "hidden":
+      return resolved.visibleCount === 0;
+    case "detached":
+      return resolved.kind === "nothing";
   }
 }
 

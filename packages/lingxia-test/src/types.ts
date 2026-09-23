@@ -46,8 +46,22 @@ export interface LocatorOptions extends PageTarget {
   index?: number;
 }
 
+/**
+ * `attached`: exactly one match in the DOM, in the viewport or not (content of
+ * a sheet or long page that overflows the Runner viewport). `visible`: that
+ * match intersects the viewport. `hidden`: no visible match. `detached`: none.
+ */
+export type LocatorState = "attached" | "detached" | "visible" | "hidden";
+
+export interface LocatorWaitOptions extends ExpectOptions {
+  /** Defaults to `visible`. */
+  state?: LocatorState;
+}
+
 export interface Locator {
   readonly selector: string;
+  /** Wait until the locator reaches `state`; rejects at the timeout. */
+  waitFor(options?: LocatorWaitOptions): Promise<void>;
   click(options?: ExpectOptions): Promise<void>;
   fill(text: string, options?: ExpectOptions): Promise<void>;
   type(text: string, options?: ExpectOptions): Promise<void>;

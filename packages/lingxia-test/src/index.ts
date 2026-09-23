@@ -24,6 +24,8 @@ export type {
   Locator,
   LocatorMatchers,
   LocatorOptions,
+  LocatorState,
+  LocatorWaitOptions,
   Matchers,
   ProtocolReport,
   RejectExpected,

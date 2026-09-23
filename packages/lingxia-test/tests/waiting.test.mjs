@@ -192,3 +192,23 @@ test("wrapping the page driver never writes back onto the driver", async () => {
   assert.equal(driver.page.testId, original.testId);
   assert.equal(driver.page.css, original.css);
 });
+
+test("locator waitFor attached accepts an out-of-viewport match that visible rejects", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet-confirm", visible: false, text: "Confirm" });
+  const { attachments } = installFakeHost(world);
+
+  spec("attached, not visible", async (t) => {
+    const confirm = t.app.page.testId("sheet-confirm");
+    await confirm.waitFor({ state: "attached", timeout: 80 });
+    await confirm.waitFor({ state: "hidden", timeout: 80 });
+    await t.expect(t.app.page.testId("missing")).toHaveCount(0);
+    await t.app.page.testId("missing").waitFor({ state: "detached", timeout: 80 });
+    await confirm.waitFor({ timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const message = failedMessage(attachments);
+  assert.match(message, /to be visible/);
+  assert.match(message, /resolved to hidden/);
+});
