@@ -34,18 +34,27 @@ pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `li
 #[derive(Args)]
 #[command(after_long_help = "Pass a file or a directory of *.test.ts files.\n\
 Import spec from @lingxia/test (or test from @rongjs/test).\n\
-Example: lxdev test tests/ --grep home")]
+Example: lxdev test tests/ --grep home\n\
+Recover a session held by an abandoned run: lxdev test --cancel-active")]
 pub struct TestOptions {
-    /// Test entry file, or a directory of `*.test.ts` files
-    pub entry: PathBuf,
+    /// Test entry file, or a directory of `*.test.ts` files. Omit it with
+    /// `--cancel-active` to only cancel the session's active run.
+    #[arg(required_unless_present = "cancel_active")]
+    pub entry: Option<PathBuf>,
 
     /// Whole-run budget in seconds
     #[arg(long, default_value_t = 300, value_parser = parse_timeout_secs)]
     timeout_secs: u64,
 
-    /// Key=value string exposed as test.args (repeatable)
+    /// Key=value string exposed as test.args (repeatable). Keys that look
+    /// like credentials (password, secret, token, api key) are written to
+    /// reports as `***`.
     #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
     args: Vec<(String, String)>,
+
+    /// Like `--arg`, but the value is always written to reports as `***`
+    #[arg(long = "secret-arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
+    secret_args: Vec<(String, String)>,
 
     /// Run only specs whose title or id matches this regex
     #[arg(long, value_name = "PATTERN")]
@@ -68,7 +77,8 @@ pub struct TestOptions {
     last_failed: Option<PathBuf>,
 
     /// Cancel an automation run left active by an earlier `lxdev test`, then
-    /// start. Only needed when a previous run's client died mid-run.
+    /// start. Only needed when a previous run's client died mid-run. Without
+    /// an entry, only cancel the active run.
     #[arg(long)]
     cancel_active: bool,
 
@@ -167,19 +177,41 @@ pub fn looks_unreachable(err: &anyhow::Error) -> bool {
 
 fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let machine = options.json || options.pretty || options.jsonl;
+    let Some(entry) = options.entry.clone() else {
+        return cancel_active_only(info, &options);
+    };
     let started_at = chrono::Utc::now().to_rfc3339();
-    warn_package_version(&options.entry, machine);
-    let bundle = bundle_test_path(&options.entry)?;
+    // A bad output path must fail before the run exists: afterwards the
+    // Runner would keep it active with nobody polling.
+    let output_root = options
+        .output_dir
+        .clone()
+        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_ROOT));
+    ensure_writable_dir(&output_root)?;
+    warn_package_version(&entry, machine);
+    let bundle = bundle_test_path(&entry)?;
     if !machine {
         eprintln!(
             "{} bundled {} ({})",
             "test".cyan(),
-            options.entry.display(),
+            entry.display(),
             human_bytes(bundle.code.len())
         );
     }
 
     let mut args = options.args.iter().cloned().collect::<HashMap<_, _>>();
+    let secret_keys = secret_keys(&options);
+    args.extend(options.secret_args.iter().cloned());
+    if !options.secret_args.is_empty() {
+        let mut keys = options
+            .secret_args
+            .iter()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        keys.sort();
+        keys.dedup();
+        args.insert(SECRET_ARGS_KEY.into(), serde_json::to_string(&keys)?);
+    }
     args.entry("platform".into())
         .or_insert_with(|| info.target.clone());
     if let Some(grep) = &options.grep {
@@ -219,6 +251,9 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let start: TestStartResponse =
         start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
     let run_id = start.run_id;
+    // From here every early exit — `?`, a lost session, a local IO error —
+    // must not leave the Runner holding this run.
+    let active_run = ActiveRun::new(&info.ws_url, &run_id);
     if !machine {
         eprintln!(
             "{} {} · run {} started (timeout {}s)",
@@ -229,35 +264,43 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         );
     }
 
-    let output_dir = options
-        .output_dir
-        .clone()
-        .unwrap_or_else(|| PathBuf::from("test-results").join(&run_id));
+    let output_dir = if options.output_dir.is_some() {
+        output_root.clone()
+    } else {
+        output_root.join(&run_id)
+    };
 
-    // First Ctrl-C requests a cooperative cancel; the second exits immediately.
+    // First Ctrl-C requests a cooperative cancel; the second exits
+    // immediately, still telling the Runner to drop the run.
     let interrupts = Arc::new(AtomicUsize::new(0));
     {
         let interrupts = interrupts.clone();
+        let ws_url = info.ws_url.clone();
+        let run_id = run_id.clone();
         ctrlc::set_handler(move || {
             if interrupts.fetch_add(1, Ordering::SeqCst) >= 1 {
+                send_cancel(&ws_url, &run_id, "client_interrupt");
                 std::process::exit(130);
             }
         })
         .context("failed to install Ctrl-C handler")?;
     }
 
-    std::fs::create_dir_all(&output_dir)?;
-    let mut outcome = poll_until_terminal(
+    std::fs::create_dir_all(&output_dir)
+        .with_context(|| format!("failed to create {}", output_dir.display()))?;
+    let polled = poll_until_terminal(
         info,
-        &run_id,
+        &active_run,
         &output_dir,
         machine,
         options.verbose,
         options.jsonl,
         &interrupts,
         Duration::from_secs(options.timeout_secs),
-        &args,
-    )?;
+    );
+    // Cancel (once) unless the host already finished the run.
+    drop(active_run);
+    let mut outcome = polled?;
     if !options.pass_with_no_tests
         && let Some(result) = outcome.result.as_mut()
         && result.report.as_ref().is_some_and(|r| r.total == 0)
@@ -282,7 +325,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             let mut value = report_value(framework, &bundle);
             value["schema_version"] = json!(1);
             value["partial"] = json!(outcome.partial);
-            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": args});
+            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": redacted_args(&args, &secret_keys)});
             value["framework"] = json!({"name":"test framework", "version":"unknown"});
             if let Some(cases) = value["cases"].as_array_mut() {
                 for case in cases {
@@ -308,7 +351,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             write_partial_report(
                 &output_dir,
                 &run_id,
-                &args,
+                &redacted_args(&args, &secret_keys),
                 &started_at,
                 outcome
                     .result
@@ -327,6 +370,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     {
         complete_client_reports(&output_dir, &run_id, &outcome)?;
     }
+    scrub_secret_values(&output_dir, &secret_values(&args, &secret_keys));
     for name in ["report.json", "report.html", "junit.xml"] {
         let path = output_dir.join(name);
         if path.exists() && !outcome.artifacts.iter().any(|(n, _, _)| n == name) {
@@ -340,6 +384,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &run_id,
         &output_dir,
         &options,
+        &entry,
         &info.session_id,
     );
 
@@ -382,14 +427,7 @@ fn start_run(
     if !machine {
         eprintln!("{} cancelling abandoned run {active}…", "test".cyan());
     }
-    let _ = execute_typed::<_, TestCancelResponse>(
-        ws_url,
-        methods::session::test::CANCEL,
-        &TestCancelArgs {
-            run_id: active.clone(),
-            reason: Some("superseded_by_new_run".to_string()),
-        },
-    );
+    send_cancel(ws_url, &active, "superseded_by_new_run");
     // The host retires a cancelled run once it reaches a terminal state, so the
     // next start has to wait for that rather than race it.
     let deadline = std::time::Instant::now() + CANCEL_GRACE;
@@ -413,6 +451,264 @@ fn active_run_id(message: &str) -> Option<String> {
     let rest = message.strip_prefix("automation_run_in_progress: run ")?;
     let id = rest.split_whitespace().next()?;
     (!id.is_empty()).then(|| id.to_string())
+}
+
+const DEFAULT_OUTPUT_ROOT: &str = "test-results";
+
+/// Create `dir` and prove a file can be written in it.
+fn ensure_writable_dir(dir: &Path) -> Result<()> {
+    std::fs::create_dir_all(dir)
+        .with_context(|| format!("output directory {} cannot be created", dir.display()))?;
+    let probe = dir.join(format!(".lxdev-write-probe-{}", std::process::id()));
+    std::fs::write(&probe, b"")
+        .with_context(|| format!("output directory {} is not writable", dir.display()))?;
+    let _ = std::fs::remove_file(&probe);
+    Ok(())
+}
+
+/// Best effort: the session may already be gone, and nothing else can be done
+/// about a run we are abandoning anyway.
+fn send_cancel(ws_url: &str, run_id: &str, reason: &str) -> Option<TestCancelResponse> {
+    execute_typed::<_, TestCancelResponse>(
+        ws_url,
+        methods::session::test::CANCEL,
+        &TestCancelArgs {
+            run_id: run_id.to_string(),
+            reason: Some(reason.to_string()),
+        },
+    )
+    .ok()
+}
+
+/// A started run the client still owes the Runner an ending for. Dropping it
+/// without [`ActiveRun::settled`] cancels the run, so every way out of the
+/// poll loop — including `?` and panics — releases the session lock.
+struct ActiveRun {
+    ws_url: String,
+    run_id: String,
+    settled: std::cell::Cell<bool>,
+}
+
+impl ActiveRun {
+    fn new(ws_url: &str, run_id: &str) -> Self {
+        Self {
+            ws_url: ws_url.to_string(),
+            run_id: run_id.to_string(),
+            settled: std::cell::Cell::new(false),
+        }
+    }
+
+    fn run_id(&self) -> &str {
+        &self.run_id
+    }
+
+    /// The host reported a terminal state; there is nothing left to cancel.
+    fn settled(&self) {
+        self.settled.set(true);
+    }
+
+    /// Cancel now with a specific reason; the drop will not cancel again.
+    fn cancel(&self, reason: &str) {
+        if !self.settled.replace(true) {
+            send_cancel(&self.ws_url, &self.run_id, reason);
+        }
+    }
+}
+
+impl Drop for ActiveRun {
+    fn drop(&mut self) {
+        self.cancel("client_gave_up");
+    }
+}
+
+/// `lxdev test --cancel-active` with no entry. The protocol has no "which run
+/// is active" query, so ask by starting an empty probe: the host refuses it
+/// with the active run's id, or — when nothing was active — the probe itself
+/// starts and is retired at once.
+fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
+    let machine = options.json || options.pretty || options.jsonl;
+    let probe = TestStartArgs {
+        source: "/* lxdev test --cancel-active probe */ void 0;".to_string(),
+        source_name: Some("lxdev-cancel-active-probe".to_string()),
+        timeout_ms: Some(1000),
+        args: HashMap::new(),
+    };
+    let (cancelled, state) = match execute_typed::<_, TestStartResponse>(
+        &info.ws_url,
+        methods::session::test::START,
+        &probe,
+    ) {
+        Ok(started) => {
+            send_cancel(&info.ws_url, &started.run_id, "cancel_active_probe");
+            wait_until_terminal(&info.ws_url, &started.run_id, CANCEL_GRACE);
+            (None, None)
+        }
+        Err(error) => {
+            let Some(active) = active_run_id(&error.to_string()) else {
+                return Err(error);
+            };
+            send_cancel(&info.ws_url, &active, "cancel_active");
+            let state = wait_until_terminal(&info.ws_url, &active, CANCEL_GRACE);
+            (Some(active), state)
+        }
+    };
+    if machine {
+        let value = json!({
+            "schema_version": 1,
+            "kind": "cancel_active",
+            "cancelled_run_id": cancelled,
+            "state": state.map(TestRunState::as_str),
+        });
+        println!("{value}");
+        return Ok(());
+    }
+    match (&cancelled, state) {
+        (None, _) => eprintln!("{} no automation run was active", "test".cyan()),
+        (Some(run_id), Some(state)) => {
+            eprintln!(
+                "{} cancelled run {run_id} ({})",
+                "test".cyan(),
+                state.as_str()
+            )
+        }
+        (Some(run_id), None) => eprintln!(
+            "{} cancel sent to run {run_id}; it has not stopped yet. It is released once its \
+             current step returns or its budget expires.",
+            "test".yellow()
+        ),
+    }
+    Ok(())
+}
+
+/// Poll until the run reports a terminal state, or `grace` passes.
+fn wait_until_terminal(ws_url: &str, run_id: &str, grace: Duration) -> Option<TestRunState> {
+    let deadline = Instant::now() + grace;
+    loop {
+        let now = Instant::now();
+        let polled = execute_poll(
+            ws_url,
+            &TestPollArgs {
+                run_id: run_id.to_string(),
+                after_seq: u64::MAX,
+            },
+            poll_wait(now, deadline),
+            &|| false,
+        );
+        match polled {
+            Ok(poll) if poll.state.is_terminal() => return Some(poll.state),
+            // The run is gone (retired or unknown): nothing holds the lock.
+            Err(err) if format!("{err:#}").contains("unknown automation run") => {
+                return Some(TestRunState::Cancelled);
+            }
+            _ => {}
+        }
+        if Instant::now() >= deadline {
+            return None;
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    }
+}
+
+/// Reserved arg naming the `--secret-arg` keys, so `@lingxia/test` redacts
+/// them in the reports it renders.
+const SECRET_ARGS_KEY: &str = "secretArgs";
+const REDACTED: &str = "***";
+/// Shorter values are too likely to collide with ordinary report text.
+const MIN_SCRUB_LENGTH: usize = 4;
+
+/// Mirrors `@lingxia/test`: /pass(word)?|secret|token|api[_-]?key|credential/i.
+fn looks_secret(key: &str) -> bool {
+    let key = key.to_ascii_lowercase();
+    [
+        "pass",
+        "secret",
+        "token",
+        "apikey",
+        "api_key",
+        "api-key",
+        "credential",
+    ]
+    .iter()
+    .any(|needle| key.contains(needle))
+}
+
+fn secret_keys(options: &TestOptions) -> std::collections::HashSet<String> {
+    options
+        .args
+        .iter()
+        .map(|(key, _)| key)
+        .filter(|key| looks_secret(key))
+        .chain(options.secret_args.iter().map(|(key, _)| key))
+        .cloned()
+        .collect()
+}
+
+fn is_secret(key: &str, secret_keys: &std::collections::HashSet<String>) -> bool {
+    key != SECRET_ARGS_KEY && (secret_keys.contains(key) || looks_secret(key))
+}
+
+fn redacted_args(
+    args: &HashMap<String, String>,
+    secret_keys: &std::collections::HashSet<String>,
+) -> HashMap<String, String> {
+    args.iter()
+        .map(|(key, value)| {
+            let value = if is_secret(key, secret_keys) {
+                REDACTED.to_string()
+            } else {
+                value.clone()
+            };
+            (key.clone(), value)
+        })
+        .collect()
+}
+
+fn secret_values(
+    args: &HashMap<String, String>,
+    secret_keys: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let mut values = args
+        .iter()
+        .filter(|(key, value)| is_secret(key, secret_keys) && value.len() >= MIN_SCRUB_LENGTH)
+        .map(|(_, value)| value.clone())
+        .collect::<Vec<_>>();
+    values.sort_by_key(|value| std::cmp::Reverse(value.len()));
+    values
+}
+
+/// The runtime already redacts; this also covers an older `@lingxia/test`
+/// and anything else that echoed a secret into a report or the journal.
+fn scrub_secret_values(output_dir: &Path, values: &[String]) {
+    if values.is_empty() {
+        return;
+    }
+    let forms = values
+        .iter()
+        .flat_map(|value| {
+            let json = serde_json::to_string(value).unwrap_or_default();
+            let json = json
+                .get(1..json.len().saturating_sub(1))
+                .unwrap_or_default()
+                .to_string();
+            [value.clone(), json, escape_markup(value)]
+        })
+        .filter(|form| form.len() >= MIN_SCRUB_LENGTH)
+        .collect::<Vec<_>>();
+    for name in ["report.json", "report.html", "junit.xml", "events.jsonl"] {
+        let path = output_dir.join(name);
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut scrubbed = text.clone();
+        for form in &forms {
+            if scrubbed.contains(form.as_str()) {
+                scrubbed = scrubbed.replace(form.as_str(), REDACTED);
+            }
+        }
+        if scrubbed != text {
+            let _ = std::fs::write(&path, scrubbed);
+        }
+    }
 }
 
 fn warn_package_version(entry: &Path, machine: bool) {
@@ -530,8 +826,7 @@ fn execute_poll(
 
 fn finish_poll_deadline(
     stop: PollDeadlineStop,
-    info: &SessionInfo,
-    run_id: &str,
+    run: &ActiveRun,
     elapsed: Duration,
     console: Vec<(String, String)>,
     artifacts: Vec<(String, PathBuf, usize)>,
@@ -557,14 +852,7 @@ fn finish_poll_deadline(
     // Leaving a run active here is how the next `lxdev test` gets stranded
     // on automation_run_in_progress. Cancel was already sent for the grace path.
     if let Some(reason) = reason {
-        let _ = execute_typed::<_, TestCancelResponse>(
-            &info.ws_url,
-            methods::session::test::CANCEL,
-            &TestCancelArgs {
-                run_id: run_id.to_string(),
-                reason: Some(reason.to_string()),
-            },
-        );
+        run.cancel(reason);
     }
     interrupted_outcome(
         state,
@@ -579,15 +867,15 @@ fn finish_poll_deadline(
 #[allow(clippy::too_many_arguments)]
 fn poll_until_terminal(
     info: &SessionInfo,
-    run_id: &str,
+    run: &ActiveRun,
     output_dir: &Path,
     machine: bool,
     verbose: bool,
     jsonl: bool,
     interrupts: &AtomicUsize,
     run_timeout: Duration,
-    _args: &HashMap<String, String>,
 ) -> Result<Outcome> {
+    let run_id = run.run_id();
     let run_started = std::time::Instant::now();
     let mut journal = std::fs::File::create(output_dir.join("events.jsonl"))?;
     let mut total = None;
@@ -611,14 +899,7 @@ fn poll_until_terminal(
             if !machine {
                 eprintln!("{} cancelling run {run_id}…", "test".cyan());
             }
-            let _ = execute_typed::<_, TestCancelResponse>(
-                &info.ws_url,
-                methods::session::test::CANCEL,
-                &TestCancelArgs {
-                    run_id: run_id.to_string(),
-                    reason: Some("client_interrupt".to_string()),
-                },
-            );
+            run.cancel("client_interrupt");
         }
 
         let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
@@ -626,8 +907,7 @@ fn poll_until_terminal(
         if let Some(stop) = poll_deadline_stop(now, cancel_deadline, poll_deadline, watchdog_at) {
             return Ok(finish_poll_deadline(
                 stop,
-                info,
-                run_id,
+                run,
                 run_started.elapsed(),
                 console,
                 artifacts,
@@ -671,8 +951,7 @@ fn poll_until_terminal(
                 {
                     return Ok(finish_poll_deadline(
                         stop,
-                        info,
-                        run_id,
+                        run,
                         run_started.elapsed(),
                         console,
                         artifacts,
@@ -907,6 +1186,7 @@ fn poll_until_terminal(
         }
         let events_drained = after_seq.saturating_add(1) >= poll.next_seq;
         if poll.state.is_terminal() && events_drained {
+            run.settled();
             return Ok(Outcome {
                 state: poll.state,
                 result: poll.result.clone(),
@@ -926,8 +1206,7 @@ fn poll_until_terminal(
         {
             return Ok(finish_poll_deadline(
                 stop,
-                info,
-                run_id,
+                run,
                 run_started.elapsed(),
                 console,
                 artifacts,
@@ -944,6 +1223,7 @@ fn report(
     run_id: &str,
     output_dir: &Path,
     options: &TestOptions,
+    entry: &Path,
     session_id: &str,
 ) {
     let machine = options.json || options.pretty || options.jsonl;
@@ -1105,16 +1385,11 @@ fn report(
                 let mut command = format!(
                     "lxdev --session {} test {} --id {} --timeout-secs {}",
                     shell_quote(session_id),
-                    shell_quote(&options.entry.to_string_lossy()),
+                    shell_quote(&entry.to_string_lossy()),
                     shell_quote(id),
                     options.timeout_secs
                 );
-                for (key, value) in &options.args {
-                    command.push_str(&format!(
-                        " --arg {}",
-                        shell_quote(&format!("{key}={value}"))
-                    ));
-                }
+                command.push_str(&rerun_args(options));
                 eprintln!("  Rerun: {command}");
             }
             if options.verbose
@@ -1248,6 +1523,7 @@ fn print_case_finished(
     status: TestCaseStatus,
     duration_ms: u64,
     error: Option<&TestRunError>,
+    reason: Option<&str>,
 ) {
     let display_name = if full_name.is_empty() {
         name
@@ -1280,6 +1556,35 @@ fn print_case_finished(
             }
         }
     }
+}
+
+/// `--arg`/`--secret-arg` flags for a rerun hint. Terminal scrollback is a
+/// report too, so secret values stay masked; the caller re-supplies them.
+fn rerun_args(options: &TestOptions) -> String {
+    let explicit = options
+        .secret_args
+        .iter()
+        .map(|(key, _)| key.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    let mut out = String::new();
+    for (key, value) in &options.args {
+        let value = if looks_secret(key) || explicit.contains(key.as_str()) {
+            REDACTED
+        } else {
+            value.as_str()
+        };
+        out.push_str(&format!(
+            " --arg {}",
+            shell_quote(&format!("{key}={value}"))
+        ));
+    }
+    for (key, _) in &options.secret_args {
+        out.push_str(&format!(
+            " --secret-arg {}",
+            shell_quote(&format!("{key}={REDACTED}"))
+        ));
+    }
+    out
 }
 
 fn print_console(level: &str, message: &str) {
@@ -1528,7 +1833,6 @@ mod tests {
                 full_name: "home".into(),
                 status: Some(TestCaseStatus::Passed),
                 duration_ms: 10,
-    reason: Option<&str>,
                 covers: vec!["lx.host".into()],
                 steps: vec![json!({ "name": "greet", "path": "greet", "status": "passed" })],
             }],
@@ -1834,18 +2138,21 @@ mod recovery_tests {
         });
         let session: SessionInfo = serde_json::from_value(json!({"session_id":"test","project_root":".","target":"macos", "pid":1,"ws_url":format!("ws://{address}"),"log_file":""})).unwrap();
         let dir = tempfile::tempdir().unwrap();
+        let run = ActiveRun::new(&session.ws_url, "r");
         let outcome = poll_until_terminal(
             &session,
-            "r",
+            &run,
             dir.path(),
             true,
             false,
             false,
             &AtomicUsize::new(0),
             Duration::from_secs(1),
-            &HashMap::new(),
         )
         .unwrap();
+        // The host reported the run over; dropping must not cancel it.
+        assert!(run.settled.get());
+        drop(run);
         server.join().unwrap();
         assert!(outcome.partial);
         assert_eq!(outcome.state, TestRunState::TimedOut);
@@ -1854,6 +2161,173 @@ mod recovery_tests {
         let event: serde_json::Value = serde_json::from_str(journal.trim()).unwrap();
         assert_eq!(event["schema_version"], 1);
         assert_eq!(event["kind"], "case_started");
+    }
+}
+
+#[cfg(test)]
+mod lifecycle_tests {
+    use super::*;
+    use clap::Parser;
+    use lingxia_control_protocol::{ControlResponse, dev_session::DevSessionMessage};
+
+    #[derive(Parser)]
+    struct Harness {
+        #[command(flatten)]
+        options: TestOptions,
+    }
+
+    fn options(args: &[&str]) -> TestOptions {
+        Harness::try_parse_from(std::iter::once("test").chain(args.iter().copied()))
+            .unwrap()
+            .options
+    }
+
+    /// Accepts one command, records `(method, params)`, answers success.
+    fn one_shot_server() -> (String, std::thread::JoinHandle<(String, serde_json::Value)>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut socket = tungstenite::accept(stream).unwrap();
+            loop {
+                let message = socket.read().unwrap();
+                let Ok(DevSessionMessage::Request(request)) =
+                    serde_json::from_str(message.to_text().unwrap())
+                else {
+                    continue;
+                };
+                let seen = (request.method.clone(), request.params.clone().unwrap());
+                let response = DevSessionMessage::Response(ControlResponse::success(
+                    request.id,
+                    Some(json!({"run_id": seen.1["run_id"], "state": "cancelled"})),
+                ));
+                socket
+                    .send(tungstenite::Message::Text(
+                        serde_json::to_string(&response).unwrap().into(),
+                    ))
+                    .unwrap();
+                return seen;
+            }
+        });
+        (url, handle)
+    }
+
+    #[test]
+    fn an_abandoned_run_is_cancelled_when_the_client_gives_up() {
+        let (url, server) = one_shot_server();
+        drop(ActiveRun::new(&url, "run-7"));
+        let (method, params) = server.join().unwrap();
+        assert_eq!(method, methods::session::test::CANCEL);
+        assert_eq!(params["run_id"], "run-7");
+        assert_eq!(params["reason"], "client_gave_up");
+    }
+
+    #[test]
+    fn an_explicit_cancel_is_sent_once() {
+        let (url, server) = one_shot_server();
+        let run = ActiveRun::new(&url, "run-8");
+        run.cancel("hang_watchdog");
+        let (_, params) = server.join().unwrap();
+        assert_eq!(params["reason"], "hang_watchdog");
+        // Nothing listens any more: a second cancel would fail to connect,
+        // but the guard must not even try.
+        assert!(run.settled.get());
+        drop(run);
+    }
+
+    #[test]
+    fn an_unwritable_output_dir_fails_before_the_run_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let blocker = dir.path().join("file");
+        std::fs::write(&blocker, b"").unwrap();
+        let target = blocker.join("out");
+        assert!(ensure_writable_dir(&target).is_err());
+
+        // No session is listening: reaching the Runner would fail differently.
+        let session: SessionInfo = serde_json::from_value(json!({"session_id":"test","project_root":".","target":"macos","pid":1,"ws_url":"ws://127.0.0.1:9","log_file":""})).unwrap();
+        let error = execute_inner(
+            &session,
+            options(&["missing.test.ts", "--output-dir", target.to_str().unwrap()]),
+        )
+        .unwrap_err();
+        assert!(
+            format!("{error:#}").contains("output directory"),
+            "{error:#}"
+        );
+        assert!(!looks_unreachable(&error));
+
+        let writable = dir.path().join("nested/out");
+        ensure_writable_dir(&writable).unwrap();
+        assert_eq!(std::fs::read_dir(&writable).unwrap().count(), 0);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_read_only_output_dir_is_refused() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let locked = dir.path().join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let result = ensure_writable_dir(&locked);
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // Root ignores permission bits; everyone else must be refused.
+        if unsafe { libc::geteuid() } != 0 {
+            assert!(format!("{:#}", result.unwrap_err()).contains("not writable"));
+        }
+    }
+
+    #[test]
+    fn cancel_active_needs_no_entry() {
+        let parsed = options(&["--cancel-active"]);
+        assert!(parsed.cancel_active && parsed.entry.is_none());
+        assert!(Harness::try_parse_from(["test"]).is_err());
+    }
+
+    #[test]
+    fn credential_args_are_redacted_in_reports_and_rerun_hints() {
+        let parsed = options(&[
+            "tests/",
+            "--arg",
+            "user=alice",
+            "--arg",
+            "PASSWORD=hunter22",
+            "--arg",
+            "apiKey=k-123456",
+            "--arg",
+            "auth_token=t-999999",
+            "--secret-arg",
+            "pin=4711-9",
+        ]);
+        let keys = secret_keys(&parsed);
+        let mut args = parsed.args.iter().cloned().collect::<HashMap<_, _>>();
+        args.extend(parsed.secret_args.iter().cloned());
+        let redacted = redacted_args(&args, &keys);
+        assert_eq!(redacted["user"], "alice");
+        for key in ["PASSWORD", "apiKey", "auth_token", "pin"] {
+            assert_eq!(redacted[key], REDACTED, "{key}");
+        }
+        let hint = rerun_args(&parsed);
+        assert!(hint.contains("user=alice"));
+        for secret in ["hunter22", "k-123456", "t-999999", "4711-9"] {
+            assert!(!hint.contains(secret), "{hint}");
+        }
+        assert!(hint.contains("--secret-arg 'pin=***'"));
+
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(
+            dir.path().join("report.json"),
+            serde_json::to_vec(&json!({"meta":{"args":args}, "note":"pw hunter22"})).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("report.html"), "<td>4711-9</td>").unwrap();
+        scrub_secret_values(dir.path(), &secret_values(&args, &keys));
+        let json = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
+        let html = std::fs::read_to_string(dir.path().join("report.html")).unwrap();
+        for secret in ["hunter22", "k-123456", "t-999999", "4711-9"] {
+            assert!(!json.contains(secret) && !html.contains(secret));
+        }
+        assert!(json.contains("alice"));
     }
 }
 
