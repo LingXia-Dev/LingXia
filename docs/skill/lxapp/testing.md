@@ -43,9 +43,9 @@ for flags and the [development loop](../SKILL.md#the-development-loop) for reloa
 | Target | Use |
 |---|---|
 | Current app UI and navigation | `t.app.page.testId(...)`, `t.app.nav` |
-| App Logic state or `lx.*` calls | `t.app.eval({ script: '...' })` |
+| App Logic state or `lx.*` calls | `t.app.eval(fn, ...args)`, `t.app.pageData()`, `t.app.callPage()`; see [below](#reading-app-logic) |
 | App Logic `fetch` error paths | `t.app.network.route(...)`; see [below](#routing-logic-fetch) |
-| Page DOM inspection | `t.app.page.eval({ script: '...' })` |
+| Page DOM inspection | `t.app.page.eval(fn, ...args)` |
 | Another running lxapp | `t.apps.lxapp(appId)` |
 | App lifecycle and inbound links | `t.automation.lxapps` |
 | External web pages, auth/payment callback tabs | `t.automation.browser` |
@@ -69,15 +69,18 @@ Logic or DOM; importing product source does not run it in the target context.
 Keep a separate test tsconfig with `lib: ["ES2020"]` and
 `types: ["@lingxia/types/automation-test-globals"]`. Do not add Logic, DOM, or
 Node globals to make unavailable APIs compile. Start fixture servers from
-shell/CI and pass reachable URLs through `--arg key=value` (`t.args`). App
+shell/CI and pass reachable URLs through `--arg key=value`; read them with
+`t.arg('key')`, which throws naming the missing `--arg` (`{ default }` or
+`{ required: false }` relax it; `t.args` values are `string | undefined`). App
 requests retain their own [network grants](../native/permissions.md). Pass
 secrets with `--secret-arg key=value`: its value is `***` everywhere in reports,
 events, and attachments. `--arg` keys named like credentials (`password`,
 `apiKey`, `DB_TOKEN`) are `***` only in the report's arg list. Specs read real
-values from `t.args`.
+values from `t.arg`.
 
 `t.expect(locator)` retries UI assertions; `t.expect.poll(read)` retries an
-observable result; imported `expect(value)` checks once. Await actions and
+observable result; `t.waitFor(read, accept?)` retries until `accept` (default:
+truthy) passes and returns that value; imported `expect(value)` checks once. Await actions and
 retrying assertions. Locators accept `{ page, index }` or `.nth(index)`; omitted
 `page` follows the current page. `.query()` reads once. Use `t.automation` for
 fixture-guarded host actions; raw `lx.automation()` bypasses test tracing and guards.
@@ -85,6 +88,35 @@ Poll reads, not mutations. `t.step` groups the trace,
 `t.attach` adds evidence, and `t.defer` registers cleanup on success or failure.
 Trigger the behavior under test through UI actions; setup/eval/backend calls
 do not replace that product path.
+
+## Reading app Logic
+
+```ts
+interface DevicesData { devices: { id: string; name: string }[] }
+
+const { devices } = await t.waitFor(
+  () => t.app.pageData<DevicesData>(),
+  (data) => data.devices.length > 0,
+);
+await t.app.callPage('refresh');
+const path = await t.app.eval(({ lx }) => lx.env.USER_DATA_PATH);
+const route = await t.app.eval(({ getCurrentPages }, index) => getCurrentPages()[index].route, 0);
+const title = await t.app.page.eval(({ document }) => (document as { title: string }).title);
+```
+
+- `t.app.eval(fn, ...args)` runs `fn` in the app's Logic with `{ lx, getApp,
+  getCurrentPages }`; `t.app.page.eval(fn, ...args)` runs it in the page WebView
+  with `{ document, window }` (`unknown` without the DOM lib: cast).
+- `fn` is sent as source text: it cannot use spec variables, imports or helpers.
+  Pass values as extra arguments; arguments and the result must be JSON.
+- `t.app.pageData<T>({ page? })` reads the current or named page's `data`;
+  `t.app.callPage<R>(method, ...args)` calls a method of the current page.
+  `T`/`R` are declared, not validated.
+- `t.waitFor` retries a read that throws, except `TypeError`, `ReferenceError`,
+  and `SyntaxError`, which fail at once (override with `retryIf`). `timeout`
+  defaults to 5000 ms and never exceeds the spec's remaining budget.
+- `t.app.eval({ script })` and `t.app.page.eval({ script, page })` still take a
+  script string.
 
 ## Routing Logic `fetch`
 
@@ -144,8 +176,8 @@ product-owned fixture endpoints scoped to that order, supplied with `--arg`:
 import { spec } from '@lingxia/test';
 
 spec('submission reaches the external service', async (t) => {
-  const { statusUrl, cleanupUrl } = t.args;
-  if (!statusUrl || !cleanupUrl) throw new Error('Missing fixture URLs');
+  const statusUrl = t.arg('statusUrl');
+  const cleanupUrl = t.arg('cleanupUrl');
   t.defer(async () => {
     const response = await fetch(cleanupUrl, { method: 'DELETE' });
     if (!response.ok) throw new Error(`Cleanup failed: ${response.status}`);
