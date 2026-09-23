@@ -69,6 +69,24 @@ received artifacts. Keep the following invariants when changing these layers:
   spec's routes in its cleanup. Patterns compile to the Rust `regex` crate
   (globs are translated), so JS lookaround and backreferences are rejected at
   `route()`.
+- Route handlers are validated in Rust (`parse_handler_value`), mirroring the
+  exclusive `NetworkRouteHandler` union: fulfill keys, `abort`, and `continue`
+  never mix. `abort` accepts only kinds the wrapper reproduces faithfully
+  (`AbortKind`, today `failed`); add a kind only with a matching emulation.
+  Binary `body` is read from the handler object before its JSON view, which
+  would turn a `Uint8Array` into an index map. `delay` (at most 30 s) is a
+  `setTimeout` in the Logic wrapper that the request's `AbortSignal` cancels.
+- Request records are captured by the wrapper without consuming anything:
+  headers via `Headers`, and the body only when it is a string,
+  `URLSearchParams`, `ArrayBuffer`, or typed array (decoded as UTF-8). The
+  wrapper pre-cuts to the limit and Rust cuts again on a UTF-8 boundary to
+  64 KiB (`MAX_REQUEST_BODY_BYTES`); the process log also caps total body
+  bytes. `NetworkDriver.requests()` reads the run-wide log; the fixture's
+  filters it to the spec's route ids.
+- `LxAppDriver.network` never throws on access: the driver authorizes per
+  call. Builds without the `runtime` feature compile `network/unavailable.rs`,
+  a driver whose calls all reject; from app Logic, calls reject for lack of a
+  run scope.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.
