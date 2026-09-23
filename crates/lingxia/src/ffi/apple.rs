@@ -408,7 +408,13 @@ mod bridge {
         fn shell_window_frame() -> String;
 
         #[swift_bridge(swift_name = "shellSetWindowFrame")]
-        fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64) -> bool;
+        fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64, maximized: bool)
+        -> bool;
+
+        // JSON `{"width","height"}` for a first launch on a work area of
+        // the given logical size.
+        #[swift_bridge(swift_name = "shellInitialMainWindowSize")]
+        fn shell_initial_main_window_size(work_width: f64, work_height: f64) -> String;
 
         #[swift_bridge(swift_name = "shellIsPinned")]
         fn shell_is_pinned(kind: &str, key: &str) -> bool;
@@ -1687,10 +1693,17 @@ pub fn shell_window_frame() -> String {
     })
 }
 
-pub fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64) -> bool {
+pub fn shell_set_window_frame(x: f64, y: f64, width: f64, height: f64, maximized: bool) -> bool {
     ffi_catch_unwind!("shell_set_window_frame", false, || {
-        lingxia_shell::WindowFrame::new(x, y, width, height)
+        lingxia_shell::WindowFrame::new(x, y, width, height, maximized)
             .is_some_and(|frame| lingxia_shell::set_window_frame(frame).is_ok())
+    })
+}
+
+pub fn shell_initial_main_window_size(work_width: f64, work_height: f64) -> String {
+    ffi_catch_unwind!("shell_initial_main_window_size", String::new(), || {
+        let (width, height) = lingxia_shell::initial_main_window_size(work_width, work_height);
+        format!("{{\"width\":{width},\"height\":{height}}}")
     })
 }
 

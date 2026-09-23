@@ -233,7 +233,7 @@ mod tests {
     fn sidebar_and_window_updates_preserve_each_other() {
         let dir = tempfile::tempdir().unwrap();
         let manager = ShellManager::open(dir.path()).unwrap();
-        let frame = WindowFrame::new(10.0, 20.0, 1200.0, 800.0).unwrap();
+        let frame = WindowFrame::new(10.0, 20.0, 1200.0, 800.0, false).unwrap();
 
         manager.set_window_frame(frame).unwrap();
         manager
