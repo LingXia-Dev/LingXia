@@ -149,8 +149,8 @@ pub fn host_requires_signature() -> bool {
     env_requires_signature(env())
 }
 
-/// Prod only queries check-update with embedded public keys.
-/// Dev always queries; without keys it does not verify.
+/// Package-backed prod checks need embedded public keys. The host store-only
+/// version signal is handled separately and may be unsigned.
 pub fn check_update_enabled(trusted_public_keys: &[String]) -> bool {
     !host_requires_signature() || !trusted_public_keys.is_empty()
 }
@@ -246,6 +246,11 @@ pub fn verify_checked_update(
     let manifest: ManifestWire = serde_json::from_slice(&signed)
         .map_err(|e| UpdateError::invalid_parameter(format!("signed manifest is not JSON: {e}")))?;
     bind_manifest(&manifest, target)?;
+    if target.kind != "app" && manifest.sha256.trim().is_empty() {
+        return Err(UpdateError::invalid_parameter(
+            "signed package manifest requires sha256",
+        ));
+    }
 
     package.version = manifest.version;
     package.checksum_sha256 = manifest.sha256;
@@ -402,6 +407,13 @@ mod tests {
             verify_checked_update(package(Some(auth), &sha256, size), &target(), &keys).unwrap();
         assert_eq!(verified.checksum_sha256, sha256);
         verify_archive_bytes(ARCHIVE, &verified.checksum_sha256).unwrap();
+    }
+
+    #[test]
+    fn lxapp_manifest_cannot_have_empty_sha256() {
+        let auth = sign_package(&SEED, &request("")).unwrap();
+        let keys = [public_key_base64url(&SEED)];
+        assert!(verify_checked_update(package(Some(auth), "", 0), &target(), &keys).is_err());
     }
 
     #[test]

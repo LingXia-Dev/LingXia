@@ -308,9 +308,9 @@ Lxapp page content does not inherit these colors; it responds to the standard
 
 ## `update`
 
-In-app host updates. Omit the table to skip prod `checkUpdate` (`dev` still checks, unsigned). If present, it must list 1–2 `trustedPublicKeys` (two = key rotation) — the signed feed is the version signal on every channel, including `store`. How to mint the seed/public pair: [Distribution](../cli/distribution.md#lingxia-publish).
+In-app host updates. Direct prod updates need 1–2 `trustedPublicKeys` (two = key rotation). Store updates need no keys: they use only the returned version and optional release notes. How to mint a key pair for direct updates: [Distribution](../cli/distribution.md#lingxia-publish).
 
-`channel` / `platforms` choose who installs the package. This is **not** the `ios.store` / `android.googlePlayStore` listing identity used by `lingxia store`. A freshly scaffolded `lingxia.yaml` already carries this block, commented out — uncomment it and add your key.
+`channel` / `platforms` choose direct installation or a store prompt. This is **not** the `ios.store` / `android.googlePlayStore` listing identity used by `lingxia store`. A freshly scaffolded `lingxia.yaml` already carries this block, commented out — add keys for direct updates.
 
 ```yaml
 update:
@@ -326,7 +326,9 @@ update:
 
 `direct` — download the LingXia feed and self-install. `store` — never self-install. The feed is still the version signal: `lx.host.checkUpdate()` returns `hasUpdate: true` when a newer host version exists, the built-in flow offers a prompt, and `apply()` (or confirming that prompt) opens the store listing. `lx.supports('app.selfUpdate')` is false. The store is only ever opened by a user action; nothing is opened automatically. The prompt repeats at most once every 3 days per version.
 
-**Publish the feed package for a `store` platform only after the store listing is live.** The feed is what tells users a new version exists — if it lands while the listing is still in review, everyone is sent to a page with nothing to update.
+Show a store update only after its listing is live. The host uses `version` and
+optional `releaseNotes` from the update response; the store destination comes
+from the app's embedded listing identity and opens only after a user action.
 
 Reuse the existing store identity — no extra yaml, no country URL. The ids are
 baked into `app.json` as `storeListingIds`, and a `store` platform that needs one

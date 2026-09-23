@@ -67,10 +67,9 @@ pub struct LingXiaConfig {
     /// cannot.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub assets: Option<String>,
-    /// In-app update trust and distribution channel. Omit the whole table
-    /// to skip prod check-update (dev still checks, unsigned). If present,
-    /// must list 1 or 2 `trustedPublicKeys` — the signed feed is the version
-    /// signal on the `store` channel too.
+    /// In-app update trust and distribution channel. Production direct updates
+    /// require 1 or 2 `trustedPublicKeys`; a store-only version signal without
+    /// a package does not need them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update: Option<UpdateSigningConfig>,
 }
@@ -101,13 +100,8 @@ impl UpdateSigningConfig {
                 ));
             }
         }
-        // The feed is the version signal on every channel, and prod only
-        // queries it with a trusted key — store builds need keys too.
         match self.trusted_public_keys.len() {
-            1 | 2 => Ok(()),
-            0 => Err(anyhow!(
-                "update.trustedPublicKeys must list 1 or 2 keys; omit the update: table to skip prod check-update"
-            )),
+            0..=2 => Ok(()),
             _ => Err(anyhow!("update.trustedPublicKeys allows at most two keys")),
         }
     }
@@ -2075,6 +2069,20 @@ impl LingXiaConfig {
             }
             crate::host_identity::validate_package_id_field("app.packageId", &app.package_id)?;
             let app_platforms = validate_app_platforms(app)?;
+            if let Some(update) = self.update.as_ref()
+                && update.trusted_public_keys.is_empty()
+                && app_platforms.iter().any(|platform| {
+                    lingxia_app_context::update::resolve_update_channel(
+                        update.channel,
+                        &update.platforms,
+                        platform,
+                    ) == lingxia_app_context::UpdateChannel::Direct
+                })
+            {
+                return Err(anyhow!(
+                    "update.trustedPublicKeys is required for direct host updates"
+                ));
+            }
             for platform in &app_platforms {
                 self.resolved_package_id(platform)?;
             }
@@ -2975,6 +2983,20 @@ update:
         .unwrap_err()
         .to_string();
         assert!(err.contains("update.platforms.linux"), "{err}");
+    }
+
+    #[test]
+    fn store_update_config_allows_no_trusted_keys() {
+        let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "demo");
+        config.update = Some(UpdateSigningConfig {
+            channel: Some(lingxia_app_context::UpdateChannel::Store),
+            ..Default::default()
+        });
+        assert!(config.validate().is_ok());
+
+        config.update.as_mut().unwrap().channel = Some(lingxia_app_context::UpdateChannel::Direct);
+        let error = config.validate().unwrap_err().to_string();
+        assert!(error.contains("update.trustedPublicKeys"), "{error}");
     }
 
     #[test]
