@@ -16,7 +16,7 @@ use project::SessionSelector;
 #[derive(Parser)]
 #[command(name = "lxdev")]
 #[command(about = "LingXia devtools client", long_about = None)]
-#[command(version)]
+#[command(version = env!("LXDEV_BUILD_VERSION"))]
 struct Cli {
     /// Select the dev session by id prefix or target name (android, ios,
     /// macos, harmony, windows, lxapp). Optional when only one session is
@@ -287,5 +287,20 @@ mod tests {
         assert_eq!(options.entry, std::path::PathBuf::from("tests/"));
         assert_eq!(options.grep.as_deref(), Some("home"));
         assert!(options.forbid_only);
+    }
+
+    #[test]
+    fn version_names_the_build_commit() {
+        use clap::CommandFactory;
+        let version = Cli::command().get_version().unwrap().to_string();
+        assert!(version.starts_with(env!("CARGO_PKG_VERSION")), "{version}");
+        // Outside a git checkout the stamp is just the release version.
+        if std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .output()
+            .is_ok_and(|output| output.status.success())
+        {
+            assert!(version.contains(" ("), "{version}");
+        }
     }
 }

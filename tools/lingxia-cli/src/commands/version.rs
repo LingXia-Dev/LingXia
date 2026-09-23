@@ -19,6 +19,10 @@ pub(crate) fn render(verbose: bool) -> String {
 
     output.push_str(&format!("commit-hash: {}\n", env!("LINGXIA_COMMIT_HASH")));
     output.push_str(&format!("commit-date: {}\n", env!("LINGXIA_COMMIT_DATE")));
+    output.push_str(&format!(
+        "commit-dirty: {}\n",
+        !env!("LINGXIA_COMMIT_DIRTY").is_empty()
+    ));
     output.push_str(&format!("host: {}\n", env!("LINGXIA_BUILD_HOST")));
     output.push_str(&format!("os: {os}\n"));
     output.push_str(&format!("rustc: {rustc}\n"));
@@ -41,16 +45,7 @@ pub(crate) fn render(verbose: bool) -> String {
 }
 
 fn version_line() -> String {
-    let version = env!("CARGO_PKG_VERSION");
-    let hash = env!("LINGXIA_COMMIT_HASH");
-    let date = env!("LINGXIA_COMMIT_DATE");
-
-    if hash == "unknown" || date == "unknown" {
-        return format!("lingxia {version}");
-    }
-
-    let short_hash = hash.get(..9).unwrap_or(hash);
-    format!("lingxia {version} ({short_hash} {date})")
+    format!("lingxia {}", env!("LINGXIA_BUILD_VERSION"))
 }
 
 fn os_line() -> String {
@@ -74,6 +69,20 @@ mod tests {
     #[test]
     fn terse_version_matches_cargo_style() {
         assert_eq!(render(false), format!("{}\n", version_line()));
+    }
+
+    #[test]
+    fn version_line_names_the_build_commit() {
+        let line = version_line();
+        assert!(line.starts_with(&format!("lingxia {}", env!("CARGO_PKG_VERSION"))));
+        if env!("LINGXIA_COMMIT_HASH") != "unknown" {
+            let short = &env!("LINGXIA_COMMIT_HASH")[..9];
+            assert!(line.contains(&format!("({short}")), "{line}");
+            assert_eq!(
+                line.contains("-dirty"),
+                !env!("LINGXIA_COMMIT_DIRTY").is_empty()
+            );
+        }
     }
 
     #[test]

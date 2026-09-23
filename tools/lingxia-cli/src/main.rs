@@ -52,7 +52,7 @@ mod versions;
 mod wallet;
 
 #[derive(Parser)]
-#[command(name = "lingxia")]
+#[command(name = "lingxia", version = env!("LINGXIA_BUILD_VERSION"))]
 #[command(about = "LingXia CLI - Build cross-platform apps with ease", long_about = None)]
 struct Cli {
     /// Skip automatic skill synchronization, including during upgrade (for CI).
