@@ -15,6 +15,8 @@ import type {
   LxAppDriver,
   LxAppManager,
   NavDriver,
+  NetworkDriver,
+  NetworkRoute,
   PageDriver,
   PageKey,
   PagePointer,
@@ -241,7 +243,9 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'page', 'pages', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'network', 'page', 'pages', 'surfaceLayout'] as const;
+const NETWORK_DRIVER_API = ['requests', 'route', 'unrouteAll'] as const;
+const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'unroute'] as const;
 const LXAPP_MANAGER_API = [
   'applink',
   'close',
@@ -544,7 +548,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp()',
     members: LXAPP_DRIVER_API,
-    properties: ['nav', 'page'],
+    properties: ['nav', 'network', 'page'],
   },
   {
     name: 'PageDriver',
@@ -556,6 +560,19 @@ export const LX_RUNTIME_SURFACES = [
   { name: 'PagePointer', layer: 'automation', expression: 'lx.automation().lxapp().page.pointer', members: PAGE_POINTER_API },
   { name: 'PageKey', layer: 'automation', expression: 'lx.automation().lxapp().page.key', members: PAGE_KEY_API },
   { name: 'NavDriver', layer: 'automation', expression: 'lx.automation().lxapp().nav', members: NAV_DRIVER_API },
+  {
+    name: 'NetworkDriver',
+    layer: 'automation',
+    expression: 'lx.automation().lxapp().network',
+    members: NETWORK_DRIVER_API,
+  },
+  {
+    name: 'NetworkRoute',
+    layer: 'automation',
+    expression: 'lx.automation().lxapp().network.route()',
+    members: NETWORK_ROUTE_API,
+    properties: ['id', 'pattern'],
+  },
   { name: 'LxAppManager', layer: 'automation', expression: 'lx.automation().lxapps', members: LXAPP_MANAGER_API },
   { name: 'DeviceDriver', layer: 'automation', expression: 'lx.automation().device', members: DEVICE_DRIVER_API },
   {
@@ -797,6 +814,8 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<PagePointer, typeof PAGE_POINTER_API>>,
   AssertTrue<Exact<PageKey, typeof PAGE_KEY_API>>,
   AssertTrue<Exact<NavDriver, typeof NAV_DRIVER_API>>,
+  AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,
+  AssertTrue<Exact<NetworkRoute, typeof NETWORK_ROUTE_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,
   AssertTrue<Exact<BrowserDriver, typeof BROWSER_DRIVER_API>>,
   AssertTrue<Exact<BrowserCookies, typeof BROWSER_COOKIES_API>>,
