@@ -12,10 +12,13 @@ InstallDirRegKey HKCU "Software\LingXia\Installations\${APP_ID}" "InstallLocatio
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 !insertmacro MUI_LANGUAGE "SimpChinese"
+Var ProductName
+Var ShortcutName
 
 Function .onInit
   SetShellVarContext current
   Call CheckArchitecture
+  Call SelectProductName
 FunctionEnd
 
 Section "Install"
@@ -82,7 +85,7 @@ swap_new:
   FileClose $0
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKCU "Software\LingXia\Installations\${APP_ID}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayName" "${PRODUCT}"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayName" "$ProductName"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayVersion" "${VERSION}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "DisplayIcon" "$INSTDIR\app\${EXE}"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "InstallLocation" "$INSTDIR"
@@ -90,9 +93,19 @@ swap_new:
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "QuietUninstallString" '$\"$INSTDIR\Uninstall.exe$\" /S'
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "NoModify" 1
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}" "NoRepair" 1
+  ; An earlier install may have used another language's name or the legacy id suffix.
+  ReadRegStr $3 HKCU "Software\LingXia\Installations\${APP_ID}" "ShortcutName"
+  ${If} $3 != ""
+  ${AndIf} $3 != $ShortcutName
+    Delete "$SMPROGRAMS\$3.lnk"
+    Delete "$DESKTOP\$3.lnk"
+  ${EndIf}
+  Delete "$SMPROGRAMS\${LEGACY_SHORTCUT}.lnk"
+  Delete "$DESKTOP\${LEGACY_SHORTCUT}.lnk"
+  WriteRegStr HKCU "Software\LingXia\Installations\${APP_ID}" "ShortcutName" "$ShortcutName"
   SetOutPath "$INSTDIR\app"
-  CreateShortcut "$SMPROGRAMS\${SHORTCUT}.lnk" "$INSTDIR\app\${EXE}"
-  CreateShortcut "$DESKTOP\${SHORTCUT}.lnk" "$INSTDIR\app\${EXE}"
+  CreateShortcut "$SMPROGRAMS\$ShortcutName.lnk" "$INSTDIR\app\${EXE}"
+  CreateShortcut "$DESKTOP\$ShortcutName.lnk" "$INSTDIR\app\${EXE}"
   RMDir /r "$INSTDIR\app.old"
   SetErrorLevel 0
   Goto done
@@ -135,8 +148,15 @@ un_remove:
   RMDir /r "$INSTDIR\app.old"
   RMDir /r "$INSTDIR\app.new"
   IfFileExists "$INSTDIR\app\*.*" un_abort
+  ReadRegStr $3 HKCU "Software\LingXia\Installations\${APP_ID}" "ShortcutName"
+  ${If} $3 != ""
+    Delete "$SMPROGRAMS\$3.lnk"
+    Delete "$DESKTOP\$3.lnk"
+  ${EndIf}
   Delete "$SMPROGRAMS\${SHORTCUT}.lnk"
   Delete "$DESKTOP\${SHORTCUT}.lnk"
+  Delete "$SMPROGRAMS\${LEGACY_SHORTCUT}.lnk"
+  Delete "$DESKTOP\${LEGACY_SHORTCUT}.lnk"
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_ID}"
   DeleteRegKey HKCU "Software\LingXia\Installations\${APP_ID}"
   DeleteRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_ID}"

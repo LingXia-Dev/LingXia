@@ -188,6 +188,10 @@ NSIS is the default website distribution; `--format portable` builds a
 self-extracting launcher, and `--format msix` keeps OS-managed deployment.
 NSIS installs per-user under `%LOCALAPPDATA%/Programs/<appId>/app`, registers
 Start Menu/desktop shortcuts and an uninstaller, and preserves user data.
+Shortcuts take the `productNames` entry for the installing user's UI language
+(fallback `productName`). The exe and installer icon is the committed
+`windows/AppIcon.ico`; build never regenerates it, so rerun
+`lingxia icon <AppIcon.png> --platform windows` after changing the app icon.
 NSIS/portable detect WebView2; if missing, they offer to download Microsoft's
 bootstrapper and verify its Microsoft Authenticode signature before running it.
 The first installation therefore needs internet when WebView2 is absent.
