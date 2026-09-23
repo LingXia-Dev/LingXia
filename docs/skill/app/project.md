@@ -513,8 +513,8 @@ are one picture.
   with it at launch.
 - `mark` (PNG, authored at the pixels it occupies on screen) is what the OS
   frame centers when no `image` is configured.
-- `minDuration` (ms, default 600) is measured from process start, not from first
-  paint. The maximum is a framework constant.
+- `minDuration` (ms, default 600) is measured from process start; phone Runner
+  measures from its cover appearing. The maximum is a framework constant.
 - **iOS** needs the platform installed (`xcodebuild -downloadPlatform iOS`) to
   compile its generated storyboard. Without it a dev build degrades to
   `background` alone; a release build fails outright.

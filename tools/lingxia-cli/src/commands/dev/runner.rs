@@ -36,6 +36,7 @@ const RUNNER_INSTANCE_ENV: &str = "LINGXIA_RUNNER_INSTANCE";
 const RUNNER_SPLASH_BACKGROUND_ENV: &str = "LINGXIA_RUNNER_SPLASH_BACKGROUND";
 const RUNNER_SPLASH_IMAGE_ENV: &str = "LINGXIA_RUNNER_SPLASH_IMAGE";
 const RUNNER_SPLASH_MARK_ENV: &str = "LINGXIA_RUNNER_SPLASH_MARK";
+const RUNNER_SPLASH_MIN_DURATION_ENV: &str = "LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS";
 const REQUIRED_RUNNER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Windows runner: standalone executable installed by
@@ -430,12 +431,15 @@ struct RunnerSplashFields {
     image: Option<String>,
     #[serde(default)]
     mark: Option<String>,
+    #[serde(default, rename = "minDuration")]
+    min_duration: Option<u32>,
 }
 
 struct RunnerSplashLaunch {
     background: String,
     image: Option<PathBuf>,
     mark: Option<PathBuf>,
+    min_duration_ms: u32,
 }
 
 /// `splash:` from the nearest ancestor `lingxia.yaml`, without loading the
@@ -458,6 +462,10 @@ fn runner_splash_env(lxapp_path: &Path) -> Option<RunnerSplashLaunch> {
             .mark
             .as_deref()
             .and_then(|raw| splash_asset(host, raw)),
+        min_duration_ms: splash
+            .min_duration
+            .unwrap_or(lingxia_app_context::DEFAULT_SPLASH_MIN_DURATION_MS)
+            .min(lingxia_app_context::MAX_SPLASH_MIN_DURATION_MS),
     })
 }
 
@@ -480,6 +488,10 @@ fn apply_runner_splash_env(command: &mut Command, lxapp_path: &Path) {
         return;
     };
     command.env(RUNNER_SPLASH_BACKGROUND_ENV, splash.background);
+    command.env(
+        RUNNER_SPLASH_MIN_DURATION_ENV,
+        splash.min_duration_ms.to_string(),
+    );
     if let Some(image) = splash.image {
         command.env(RUNNER_SPLASH_IMAGE_ENV, image);
     }
@@ -1546,10 +1558,11 @@ fn installed_runner_version(app_path: &Path) -> Result<Option<String>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        RunnerDevTarget, WindowsRunnerLxAppIdentity, is_standalone_lxapp_project,
-        lxapp_runner_build_args, prepare_windows_runner_assets, prepare_windows_runner_web_assets,
-        render_runner_devices, resolve_dev_target, runner_splash_env, windows_runner_launch_args,
-        windows_runner_ui_json, windows_web_runner_launch_args,
+        RunnerDevTarget, WindowsRunnerLxAppIdentity, apply_runner_splash_env,
+        is_standalone_lxapp_project, lxapp_runner_build_args, prepare_windows_runner_assets,
+        prepare_windows_runner_web_assets, render_runner_devices, resolve_dev_target,
+        runner_splash_env, windows_runner_launch_args, windows_runner_ui_json,
+        windows_web_runner_launch_args,
     };
     use crate::config::HOST_CONFIG_FILE;
     use std::fs;
@@ -1562,7 +1575,7 @@ mod tests {
         fs::write(host.join("art.png"), b"png").unwrap();
         fs::write(
             host.join("lingxia.yaml"),
-            "splash:\n  background: \"#112233\"\n  image: art.png\n  mark: missing.png\n",
+            "splash:\n  background: \"#112233\"\n  image: art.png\n  mark: missing.png\n  minDuration: 1200\n",
         )
         .unwrap();
         let lxapp = host.join("lxapps").join("demo");
@@ -1572,6 +1585,18 @@ mod tests {
         assert_eq!(splash.background, "#112233");
         assert_eq!(splash.image.unwrap(), host.join("art.png"));
         assert!(splash.mark.is_none());
+        assert_eq!(splash.min_duration_ms, 1200);
+
+        let mut command = std::process::Command::new("true");
+        apply_runner_splash_env(&mut command, &lxapp);
+        assert_eq!(
+            command
+                .get_envs()
+                .find(|(key, _)| *key == "LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS")
+                .and_then(|(_, value)| value)
+                .and_then(|value| value.to_str()),
+            Some("1200")
+        );
     }
 
     #[test]
@@ -1607,6 +1632,10 @@ mod tests {
         assert_eq!(
             runner_splash_env(temp.path()).unwrap().background,
             "#AA22FF"
+        );
+        assert_eq!(
+            runner_splash_env(temp.path()).unwrap().min_duration_ms,
+            lingxia_app_context::DEFAULT_SPLASH_MIN_DURATION_MS
         );
     }
 

@@ -771,27 +771,35 @@ pub fn mark_splash_visible() {
 /// Where the OS frame cannot carry the art (Android, whose system splash
 /// offers a colour and an icon slot and nothing else) the face really does
 /// begin at the app's own first draw, and that platform's overlay measures
-/// its own hold from there.
+/// its own hold from there. The macOS phone Runner does the same because it
+/// has no OS frame.
 pub fn splash_visible_for() -> Option<std::time::Duration> {
     SPLASH_VISIBLE
         .load(std::sync::atomic::Ordering::Relaxed)
         .then(since_startup)
 }
 
-const SPLASH_HOLD_CAP_MS: u32 = 6_000;
+pub const MAX_SPLASH_MIN_DURATION_MS: u32 = 6_000;
 
 /// How long the splash must stay up before a ready signal may dismiss it.
 pub fn splash_min_duration() -> std::time::Duration {
-    let ms = APP_CONFIG
-        .get()
-        .and_then(|config| config.splash.as_ref())
-        .and_then(|splash| splash.min_duration)
+    let runner_override = (std::env::var("LINGXIA_RUNNER").ok().as_deref() == Some("1"))
+        .then(|| std::env::var("LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS").ok())
+        .flatten()
+        .and_then(|value| value.parse::<u32>().ok());
+    let ms = runner_override
+        .or_else(|| {
+            APP_CONFIG
+                .get()
+                .and_then(|config| config.splash.as_ref())
+                .and_then(|splash| splash.min_duration)
+        })
         .unwrap_or(DEFAULT_SPLASH_MIN_DURATION_MS)
         // Config used to reach the platforms only through this crate's own
         // hold, which the dismissal timeout bounded anyway; now a platform can
         // read the number and wait on it itself, so the documented upper bound
         // has to be real here.
-        .min(SPLASH_HOLD_CAP_MS);
+        .min(MAX_SPLASH_MIN_DURATION_MS);
     std::time::Duration::from_millis(u64::from(ms))
 }
 

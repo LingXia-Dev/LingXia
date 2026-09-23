@@ -349,6 +349,7 @@ enum LingXiaSplashOverlay {
     private static let timeoutSeconds: TimeInterval = 6
     private static let liftSeconds: TimeInterval = 0.3
     private static let campaignFadeSeconds: TimeInterval = 0.2
+    private static let defaultMinimumSeconds: TimeInterval = 0.6
 
     private static var coverView: NSView?
     private static var armed = false
@@ -403,13 +404,13 @@ enum LingXiaSplashOverlay {
 
         coverView = cover
         shownThisProcess = true
-        shownAt = CFAbsoluteTimeGetCurrent()
         host.layoutSubtreeIfNeeded()
+        shownAt = CFAbsoluteTimeGetCurrent()
         os_log("splash shown", log: splashLog, type: .info)
 
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: UInt64(timeoutSeconds * 1_000_000_000))
-            guard !campaignActive, coverView != nil else { return }
+            guard !homeReadySeen, !campaignActive, coverView != nil else { return }
             os_log("splash dismissed by timeout", log: splashLog, type: .error)
             dismiss()
         }
@@ -423,11 +424,38 @@ enum LingXiaSplashOverlay {
 
     static func notifyHomeReady() {
         homeReadySeen = true
-        dismiss()
+        afterMinimumDisplay { dismiss() }
     }
 
     static func showCampaign(path: String, durationMs: UInt32) {
         homeReadySeen = true
+        afterMinimumDisplay { showCampaignNow(path: path, durationMs: durationMs) }
+    }
+
+    private static func afterMinimumDisplay(_ action: @escaping @MainActor () -> Void) {
+        guard let cover = coverView else { return }
+        let elapsed = CFAbsoluteTimeGetCurrent() - shownAt
+        let remaining = max(0, minimumVisibleSeconds - elapsed)
+        guard remaining > 0 else {
+            action()
+            return
+        }
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(remaining * 1_000_000_000))
+            guard coverView === cover else { return }
+            action()
+        }
+    }
+
+    private static var minimumVisibleSeconds: TimeInterval {
+        guard let raw = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_SPLASH_MIN_DURATION_MS"],
+              let milliseconds = Double(raw), milliseconds.isFinite else {
+            return defaultMinimumSeconds
+        }
+        return min(max(milliseconds, 0), 6_000) / 1_000
+    }
+
+    private static func showCampaignNow(path: String, durationMs: UInt32) {
         guard let cover = coverView, let art = NSImage(contentsOfFile: path),
               let cgImage = cgImage(of: art)
         else {
