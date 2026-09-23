@@ -97,13 +97,29 @@ received artifacts. Keep the following invariants when changing these layers:
   driver calls (`t.app.eval`, nav) carry their own driver timeouts instead.
   The race only stops waiting: a native call that blocks the JS thread cannot
   be preempted from JS, and an abandoned call may still complete in the app.
-- Transient page errors (`isTransientPageError`, mirroring
+- Transient page errors (`isTransientPageError`: code `E_PAGE_NOT_ACTIVE` or
+  `E_PAGE_NOT_READY`; for hosts that predate the codes, the messages of
   `is_transient_page_error` in `lingxia-automation/src/page.rs`: `page is not
   active:`, `page WebView is not ready`, `WebView not ready`, `no current page`,
   WebView2 `0x8007139F`) are retried by locator actions and `waitFor` until the
   action budget ends; other errors fail at once. Dispatch retries only the
-  page-resolution subset (`isPreDispatchPageError`): the WebView2 code can come
-  from a script that already ran. Keep the list in step with the Rust helper.
+  page-resolution subset (`isPreDispatchPageError`, never the WebView2 code,
+  which can come from a script that already ran) and element refusals
+  (`isElementRefusal`: `E_ELEMENT_NOT_FOUND`/`E_ELEMENT_NOT_INTERACTABLE`, or
+  the `Element not found|not interactable:` messages). Keep the lists in step
+  with the Rust helpers. An action that times out on such a rejection carries
+  its `code`/`data` on the `AssertionError`, so `spec.fail({ expected: { code
+  } })` can pin it.
+- Failure diagnostics: `LiveFixture` remembers the last failed recorded action
+  with its error; the case's `error.failedAction` is set only when the case
+  failed with that same error object (or the spec timed out while it ran), so
+  an action a spec expected to reject is never blamed. `error.page` is the
+  current page from the forensics `nav.current()` (`{ name, instanceId }`),
+  else the rejection's `data.current`. `report.json` keeps `cases` and adds a
+  flat `failures[]` (`id, title, file, line, phase, code, message,
+  failedAction, page, screenshot`); lxdev rebuilds it for reports it writes or
+  completes itself (`failure_records`) and prints the same one-line summary as
+  the HTML report (`failed_at` / `failedAt`).
 
 ## Execution and bundling
 
@@ -204,8 +220,20 @@ Development machine: lxdev receives progress, results, and artifacts
   64 KiB (`MAX_REQUEST_BODY_BYTES`); the process log also caps total body
   bytes. `NetworkDriver.requests()` reads the run-wide log; the fixture's
   filters it to the spec's route ids.
+- Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
+  strings that older clients parse, so messages never change; `code_for` /
+  `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
+  `E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`, `E_ELEMENT_NOT_FOUND`,
+  `E_ELEMENT_NOT_INTERACTABLE`, `E_AUTOMATION_TIMEOUT`, `E_EVAL_SCRIPT`,
+  `E_EVAL_TIMEOUT`), else `E_AUTOMATION`. Page-driver failures carry `data:
+  { page, instanceId?, current? }` read when they fail. The TS list is
+  `AUTOMATION_ERROR_CODES` in `@lingxia/types/automation`; change both
+  together. `PageInfo.instanceId` comes from the resolved `PageInstance`.
 - `LxAppDriver.network` never throws on access: the driver authorizes per
-  call. Builds without the `runtime` feature compile `network/unavailable.rs`,
+  call. The same holds for every driver property (`lxapps`, `browser`,
+  `desktop`, `page`, `nav`, `cookies`, desktop sub-drivers, …): each method
+  re-checks the calling context (`require_host_context` /
+  `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. Builds without the `runtime` feature compile `network/unavailable.rs`,
   a driver whose calls all reject; from app Logic, calls reject for lack of a
   run scope.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
