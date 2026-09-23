@@ -193,6 +193,7 @@ fn run_watch(
     }
 
     let mut dirty: BTreeSet<String> = BTreeSet::new();
+    let mut deferred = false;
     while !stop_flag.load(Ordering::Acquire) {
         let timeout = if dirty.is_empty() {
             IDLE_POLL
@@ -220,6 +221,20 @@ fn run_watch(
                 if dirty.is_empty() || stop_flag.load(Ordering::Acquire) {
                     continue;
                 }
+                // Reloading replaces the app under a running spec (and can
+                // drop the runtime connection); keep the changes queued.
+                if state.test_run_active() {
+                    if !deferred {
+                        println!(
+                            "  {} test run active — reload of {} deferred until it ends",
+                            "•".cyan(),
+                            dirty.iter().cloned().collect::<Vec<_>>().join(", ").cyan()
+                        );
+                        deferred = true;
+                    }
+                    continue;
+                }
+                deferred = false;
                 let app_ids: Vec<String> = dirty.iter().cloned().collect();
                 dirty.clear();
                 for app_id in app_ids {

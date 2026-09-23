@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tungstenite::handshake::server::{Request, Response};
 use tungstenite::protocol::Message;
 use tungstenite::{Error as WsError, WebSocket, accept_hdr};
@@ -24,6 +24,9 @@ const DEFAULT_COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 const COMMAND_TIMEOUT_BUFFER: Duration = Duration::from_secs(5);
 const RUNTIME_EVENT_QUEUE_CAPACITY: usize = 64;
 const DEV_LXAPP_HTTP_PREFIX: &str = "/__lingxia/dev/lxapp/";
+/// Mirrors the Runner's automation controller lease: a test run nobody has
+/// polled for this long no longer holds back file-watch reloads.
+const TEST_RUN_LEASE: Duration = Duration::from_secs(180);
 /// Desktop/Runner: after the runtime has connected once, a disconnect that is
 /// not replaced within this window ends the session. Closing the window is
 /// the stop signal — the user should not need `lingxia dev stop`.
@@ -148,6 +151,9 @@ pub(crate) struct DevServerState {
     /// Bumped on connect and on disconnect so an in-flight gone-timer is cancelled
     /// when a replacement runtime attaches during the grace window.
     runtime_epoch: AtomicU64,
+    /// The `session.test` run relayed through this server that has not yet
+    /// been seen to finish, with the time it was last polled.
+    active_test_run: Mutex<Option<(String, Instant)>>,
 }
 
 impl DevServerState {
@@ -168,6 +174,7 @@ impl DevServerState {
             runtime_rejected: AtomicBool::new(false),
             end_on_runtime_gone,
             runtime_epoch: AtomicU64::new(0),
+            active_test_run: Mutex::new(None),
         }
     }
 
@@ -201,6 +208,8 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if guard.as_ref().is_some_and(|(id, _)| *id == runtime_id) {
             *guard = None;
+            // The run lived in that runtime.
+            *self.lock_active_test_run() = None;
             // Serialize cleanup and the disconnect epoch with replacement claims.
             self.clear_pending_results();
             return Some(self.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1);
@@ -275,6 +284,52 @@ impl DevServerState {
             thread::sleep(runtime_gone_grace());
             state.finish_runtime_disconnect(epoch);
         });
+    }
+
+    fn lock_active_test_run(&self) -> std::sync::MutexGuard<'_, Option<(String, Instant)>> {
+        self.active_test_run
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Track `session.test` runs from the responses this server relays, so
+    /// file-watch reloads can wait for the run instead of replacing the app
+    /// under it.
+    fn observe_test_response(&self, method: &str, response: &DevSessionMessage) {
+        use lingxia_control_protocol::methods::session::test;
+        if !matches!(method, test::START | test::POLL | test::CANCEL) {
+            return;
+        }
+        let DevSessionMessage::Response(response) = response else {
+            return;
+        };
+        let Some(result) = response
+            .result
+            .as_ref()
+            .filter(|_| response.error.is_none())
+        else {
+            return;
+        };
+        let Some(run_id) = result.get("run_id").and_then(serde_json::Value::as_str) else {
+            return;
+        };
+        let running = result.get("state").and_then(serde_json::Value::as_str) == Some("running");
+        let mut active = self.lock_active_test_run();
+        if method == test::START {
+            if running {
+                *active = Some((run_id.to_string(), Instant::now()));
+            }
+            return;
+        }
+        if active.as_ref().is_some_and(|(id, _)| id == run_id) {
+            *active = running.then(|| (run_id.to_string(), Instant::now()));
+        }
+    }
+
+    pub(crate) fn test_run_active(&self) -> bool {
+        self.lock_active_test_run()
+            .as_ref()
+            .is_some_and(|(_, last_seen)| last_seen.elapsed() < TEST_RUN_LEASE)
     }
 
     pub(crate) fn rebuild_lxapp(
@@ -946,6 +1001,7 @@ fn handle_client_connection(
 
     let _command_guard = state.lock_command_forwarding();
     let command_timeout = command_timeout(params.as_ref());
+    let relayed_method = method.clone();
     let (result_tx, result_rx) = mpsc::channel::<DevSessionMessage>();
     state.register_pending_result(id.clone(), result_tx);
     let bridged_command = DevSessionMessage::Request(ControlRequest {
@@ -961,6 +1017,7 @@ fn handle_client_connection(
 
     match result_rx.recv_timeout(command_timeout) {
         Ok(result) => {
+            state.observe_test_response(&relayed_method, &result);
             send_wire_message(&mut websocket, &result)?;
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
@@ -1129,8 +1186,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DevServerState, accept_websocket, dev_port, persist_runtime_events, read_wire_message,
-        refresh_lxapp_manifests, resolve_lxapp_dir, route_runtime_message, send_wire_message,
+        DevServerState, TEST_RUN_LEASE, accept_websocket, dev_port, persist_runtime_events,
+        read_wire_message, refresh_lxapp_manifests, resolve_lxapp_dir, route_runtime_message,
+        send_wire_message,
     };
     use lingxia_control_protocol::dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
@@ -1140,7 +1198,7 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::{Arc, mpsc};
     use std::thread;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     fn authenticated_state() -> DevServerState {
         DevServerState::new(
@@ -1248,6 +1306,52 @@ mod tests {
         assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
         state.finish_runtime_disconnect(new_epoch);
         assert!(stop.load(std::sync::atomic::Ordering::Acquire));
+    }
+
+    fn test_response(run_id: &str, state: &str) -> DevSessionMessage {
+        DevSessionMessage::success(
+            "cmd".to_string(),
+            Some(serde_json::json!({ "run_id": run_id, "state": state })),
+        )
+    }
+
+    #[test]
+    fn relayed_test_run_is_active_until_a_terminal_poll() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = authenticated_state();
+        assert!(!state.test_run_active());
+
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        assert!(state.test_run_active());
+        state.observe_test_response(test::POLL, &test_response("run-1", "running"));
+        assert!(state.test_run_active());
+        // A stale run id cannot end the active run.
+        state.observe_test_response(test::POLL, &test_response("run-0", "passed"));
+        assert!(state.test_run_active());
+        state.observe_test_response(test::POLL, &test_response("run-1", "failed"));
+        assert!(!state.test_run_active());
+    }
+
+    #[test]
+    fn unpolled_test_run_stops_deferring_after_the_lease() {
+        let state = authenticated_state();
+        *state.lock_active_test_run() = Some((
+            "run-1".to_string(),
+            Instant::now() - TEST_RUN_LEASE - Duration::from_secs(1),
+        ));
+        assert!(!state.test_run_active());
+    }
+
+    #[test]
+    fn runtime_disconnect_ends_the_tracked_test_run() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = authenticated_state();
+        let (tx, _rx) = mpsc::channel();
+        let (runtime_id, _) = state.claim_runtime_sender(tx);
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        assert!(state.test_run_active());
+        state.clear_runtime_sender(runtime_id);
+        assert!(!state.test_run_active());
     }
 
     #[test]
