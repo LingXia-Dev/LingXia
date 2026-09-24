@@ -428,6 +428,8 @@ export interface CaseRecord {
   title: string;
   name: string;
   full_name: string;
+  /** Which `--repeat-each` execution this is (1-based); absent without it. */
+  repeat?: number;
   /** Source file the spec was registered from, remapped through the bundle map. */
   file?: string;
   line?: number;
@@ -471,6 +473,16 @@ export interface RunMeta {
   subject?: RunSubject;
   /** The suite opted into measuring the whole published `lx` surface. */
   surface_coverage?: boolean;
+  /**
+   * The whole-run budget: fixed by `--timeout-secs`, or scaled to the
+   * planned executions (`auto`). `exhausted_after` counts the specs that
+   * finished before it ran out; the rest are skipped as not run.
+   */
+  budget?: { ms: number; auto: boolean; planned: number; exhausted_after?: number };
+  /** `--shuffle` seed; rerun with `--shuffle=<seed>` for the same order. */
+  shuffle_seed?: number;
+  /** `--repeat-each` count. */
+  repeat_each?: number;
 }
 
 /** One failed case, flat, for tools that only need what broke and where. */

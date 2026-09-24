@@ -241,6 +241,48 @@ const LEGACY_CONTROL_KEYS = new Set([
   "platform", "secretArgs",
 ]);
 
+/** One planned execution: a spec, and which of its `--repeat-each` runs. */
+interface Planned {
+  item: RegisteredSpec;
+  /** 1-based; always 1 without `--repeat-each`. */
+  repeat: number;
+}
+
+/**
+ * The run budget lxdev asked for: a fixed `budgetMs`, or scaled to the
+ * planned executions — `max(budgetMinMs, planned × budgetPerSpecMs)`, capped
+ * at `budgetMaxMs`. `undefined` when lxdev sent neither (an older lxdev: the
+ * host's own deadline is the only budget).
+ */
+export function runBudget(control: Record<string, string>, planned: number): { ms: number; auto: boolean } | undefined {
+  const fixed = Number(control.budgetMs);
+  if (control.budgetMs !== undefined && Number.isFinite(fixed) && fixed > 0) return { ms: fixed, auto: false };
+  const perSpec = Number(control.budgetPerSpecMs);
+  if (control.budgetPerSpecMs === undefined || !Number.isFinite(perSpec) || perSpec <= 0) return undefined;
+  const min = Number(control.budgetMinMs ?? 0);
+  const max = Number(control.budgetMaxMs ?? Number.POSITIVE_INFINITY);
+  const scaled = Math.max(Number.isFinite(min) ? min : 0, planned * perSpec);
+  return { ms: Math.min(scaled, Number.isFinite(max) && max > 0 ? max : scaled), auto: true };
+}
+
+/** Seeded Fisher–Yates (mulberry32), so a printed seed reproduces the order. */
+export function shuffleWithSeed<T>(items: readonly T[], seed: number): T[] {
+  let state = seed >>> 0;
+  const next = () => {
+    state = (state + 0x6d2b79f5) >>> 0;
+    let t = state;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(next() * (i + 1));
+    [out[i], out[j]] = [out[j]!, out[i]!];
+  }
+  return out;
+}
+
 function splitControl(host: ResolvedHost): { args: Record<string, string>; control: Record<string, string> } {
   if (host.control) return { args: host.args, control: host.control };
   const args: Record<string, string> = {};
@@ -314,11 +356,21 @@ async function run(): Promise<ProtocolReport> {
   if (selected.length === 0 && control.passWithNoTests !== "1") {
     throw new Error("No tests matched this selection. Check the entry and filters, or use --pass-with-no-tests.");
   }
+  const repeatEach = Number(control.repeatEach ?? 1);
+  if (!Number.isInteger(repeatEach) || repeatEach < 1 || repeatEach > 100) throw new Error("repeatEach must be between 1 and 100");
+  const shuffleSeed = control.shuffle === undefined ? undefined : Number(control.shuffle);
+  if (shuffleSeed !== undefined && (!Number.isInteger(shuffleSeed) || shuffleSeed < 0)) throw new Error("shuffle seed must be a non-negative integer");
+  const repeated: Planned[] = selected.flatMap((item) =>
+    Array.from({ length: repeatEach }, (_, index) => ({ item, repeat: index + 1 })));
+  const plan = shuffleSeed === undefined ? repeated : shuffleWithSeed(repeated, shuffleSeed);
+  const budget = runBudget(control, plan.length);
+  const fullName = (item: RegisteredSpec, repeat: number) =>
+    (item.id ? `${item.id} | ${item.title}` : item.title) + (repeatEach > 1 ? ` [repeat ${repeat}/${repeatEach}]` : "");
   // `args` is the masked view, so lxdev can write the same one into any
   // report it has to complete itself.
-  await host.emit({ type: "run_started", schema_version: 1, total: selected.length, args: redact.args(args),
-    cases: selected.map(item => ({ id: resolvedId(item), title: item.title, name: item.title,
-      full_name: item.id ? `${item.id} | ${item.title}` : item.title, ...sourceOf(item),
+  await host.emit({ type: "run_started", schema_version: 1, total: plan.length, args: redact.args(args),
+    cases: plan.map(({ item, repeat }) => ({ id: resolvedId(item), title: item.title, name: item.title,
+      full_name: fullName(item, repeat), ...sourceOf(item), ...(repeatEach > 1 ? { repeat } : {}),
       suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers })) });
 
   // Resolve each hook's spec file once, so a `beforeEach` stays scoped to the
@@ -349,17 +401,28 @@ async function run(): Promise<ProtocolReport> {
   forceRelaunchNext = false;
   let contaminated = false;
 
-  const queue = [...selected];
+  const queue = [...plan];
   const attempts = new Map<string, CaseRecord[]>();
-  for (const item of queue) {
+  const executionKey = (id: string, repeat: number) => `${id}#${repeat}`;
+  let budgetExhausted: { after: number } | undefined;
+  for (const planned of queue) {
+    const { item, repeat } = planned;
     const id = resolvedId(item);
+    const key = executionKey(id, repeat);
     const timeout = item.timeout;
     const source = sourceOf(item);
+    // Checked between specs: a spec already running keeps its own timeout.
+    if (!budgetExhausted && budget && Date.now() - started >= budget.ms) {
+      budgetExhausted = { after: new Set(cases.map((done) => executionKey(done.id, done.repeat ?? 1))).size };
+      await host.emit({ type: "diagnostic", phase: "budget",
+        message: `Run budget of ${Math.round(budget.ms / 1000)}s exhausted after ${budgetExhausted.after}/${plan.length} specs; the rest are reported as not run. Raise --timeout-secs, or split the suite with --shard.` });
+    }
     const record: CaseRecord = {
       id,
       title: item.title,
       name: item.title,
-      full_name: item.id ? `${item.id} | ${item.title}` : item.title,
+      full_name: fullName(item, repeat),
+      ...(repeatEach > 1 ? { repeat } : {}),
       file: source.file,
       line: source.line,
       suite: suiteOf(source.file),
@@ -370,7 +433,7 @@ async function run(): Promise<ProtocolReport> {
       assertions: [],
       attachments: [],
       timeout_ms: timeout,
-      attempt: attempts.get(id)?.length ?? 0,
+      attempt: attempts.get(key)?.length ?? 0,
       reason: item.reason,
     };
     await host.emit({
@@ -384,8 +447,9 @@ async function run(): Promise<ProtocolReport> {
     });
 
     const caseStarted = Date.now();
-    if (contaminated || item.annotation === "skip" || item.annotation === "fixme") {
+    if (budgetExhausted || contaminated || item.annotation === "skip" || item.annotation === "fixme") {
       if (contaminated) record.reason = "Not run: a previous spec left asynchronous work pending; restart the run.";
+      else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
       record.status = "skipped";
       record.duration_ms = Date.now() - caseStarted;
       cases.push(record);
@@ -394,7 +458,7 @@ async function run(): Promise<ProtocolReport> {
     }
 
     const fixture = new LiveFixture(
-      `${encodeURIComponent(id)}/attempt-${record.attempt}`,
+      `${encodeURIComponent(id)}${repeatEach > 1 ? `/repeat-${repeat}` : ""}/attempt-${record.attempt}`,
       pinApp(item.app),
       host,
       args,
@@ -567,16 +631,16 @@ async function run(): Promise<ProtocolReport> {
       const page = failurePage ?? pageFromErrorData(record.error.data);
       if (page) record.error.page = page;
     }
-    const history = attempts.get(id) ?? [];
+    const history = attempts.get(key) ?? [];
     history.push(record);
-    attempts.set(id, history);
+    attempts.set(key, history);
     const finished = { ...record, attempts: history.length > 1 ? history.map(attempt => ({ ...attempt })) : undefined,
       flaky: record.status === "passed" && history.length > 1 };
-    const previous = cases.findIndex(item => item.id === id);
+    const previous = cases.findIndex(item => item.id === id && (item.repeat ?? 1) === repeat);
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);
     await finishCase(host, finished);
     if (!contaminated && (status === "failed" || status === "timeout") && history.length <= retries) {
-      queue.splice(queue.indexOf(item) + 1, 0, { ...item });
+      queue.splice(queue.indexOf(planned) + 1, 0, { item: { ...item }, repeat });
     }
   }
 
@@ -594,8 +658,12 @@ async function run(): Promise<ProtocolReport> {
       framework: args.framework,
       subject,
       surface_coverage: trackSurface,
+      ...(budget ? { budget: { ms: budget.ms, auto: budget.auto, planned: plan.length,
+        ...(budgetExhausted ? { exhausted_after: budgetExhausted.after } : {}) } } : {}),
+      ...(shuffleSeed !== undefined ? { shuffle_seed: shuffleSeed } : {}),
+      ...(repeatEach > 1 ? { repeat_each: repeatEach } : {}),
     },
-    partial: contaminated,
+    partial: contaminated || budgetExhausted !== undefined,
     filtered: Boolean(grep || control.id || control.ids || shard) || hasOnly,
     duration_ms,
     ...counts,
