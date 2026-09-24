@@ -88,9 +88,10 @@ export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: Netw
 }
 
 function describeScenario(definition: NetworkScenarioInput): string {
-  const record = definition as { name?: unknown; routes?: unknown };
+  const record = definition as { name?: unknown; routes?: unknown; http?: { routes?: unknown } };
   const name = typeof record.name === "string" ? record.name : "scenario";
-  const count = Array.isArray(record.routes) ? record.routes.length : 0;
+  const routes = record.routes ?? record.http?.routes;
+  const count = Array.isArray(routes) ? routes.length : 0;
   return truncate(`${name} (${count} route${count === 1 ? "" : "s"})`, 80);
 }
 

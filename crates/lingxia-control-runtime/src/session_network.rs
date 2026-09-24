@@ -1,5 +1,6 @@
 //! `session.network.*`: dev-session network scenarios and recordings
-//! (`lxdev network …`) over the automation runtime's route table.
+//! (the HTTP section of `lxdev scenario …`, and `lxdev network …`) over the
+//! automation runtime's route table.
 
 use lingxia_automation::runtime::network;
 use lingxia_control_protocol::methods::session::network as method;
@@ -96,6 +97,39 @@ pub(crate) fn session_ended() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dev_scenario_reports_why_it_stopped_answering() {
+        let appid = "control.runtime.scenario.test";
+        let scenario = |http: Value| {
+            Some(json!({
+                "scenario": { "name": "offline", "http": http },
+                "source": "qoe/offline",
+                "appid": appid,
+            }))
+        };
+        let status = handle(
+            method::SCENARIO_USE,
+            scenario(json!({ "routes": [{ "url": "https://h.invalid/**", "status": 503 }] })),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(status["active"], true);
+        assert_eq!(status["scenario"]["source"], "qoe/offline");
+
+        // An invalid file leaves the active scenario answering.
+        let err = handle(method::SCENARIO_USE, scenario(json!({ "routes": [] }))).unwrap_err();
+        assert!(err.contains("http.routes must not be empty"), "{err}");
+        let status = handle(method::STATUS, None).unwrap().unwrap();
+        assert_eq!(status["active"], true);
+
+        session_ended();
+        let status = handle(method::STATUS, None).unwrap().unwrap();
+        assert_eq!(status["active"], false);
+        assert_eq!(status["lastCleared"]["reason"], "session_ended");
+        assert_eq!(status["lastCleared"]["source"], "qoe/offline");
+        assert!(status["lastCleared"]["clearedAt"].is_string());
+    }
 
     #[test]
     fn an_unknown_appid_is_warned_about() {

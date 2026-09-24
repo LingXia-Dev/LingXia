@@ -53,7 +53,7 @@ pub(crate) fn attach_run_scope(
             dev::warn(
                 &dev.appid,
                 format!(
-                    "dev network scenario {} stands aside while automation run {run_id} runs",
+                    "dev scenario {} stands aside while automation run {run_id} runs",
                     dev::label(dev)
                 ),
             );
@@ -1563,7 +1563,7 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                     dev::warn(
                         &target.appid,
                         format!(
-                            "dev network scenario {label} answered {method} {} with {}",
+                            "dev scenario {label} answered {method} {} with {}",
                             capture::redact_url(&url, capture::REDACTED),
                             dev::describe(action)
                         ),

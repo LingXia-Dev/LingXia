@@ -860,14 +860,17 @@ export type NetworkScenarioRoute = {
 
 /**
  * A declarative set of routes, usually a JSON file. The first matching entry
- * answers. Unknown fields are rejected.
+ * answers. Unknown fields are rejected. Routes sit at the top level or, in
+ * the sectioned form `lxdev scenario` files use, under `http.routes`.
  */
-export interface NetworkScenarioDefinition {
+export type NetworkScenarioDefinition = {
   $schema?: string;
   name?: string;
   description?: string;
-  routes: NetworkScenarioRoute[];
-}
+} & (
+  | { routes: NetworkScenarioRoute[]; http?: never }
+  | { http: { routes: NetworkScenarioRoute[] }; routes?: never }
+);
 
 /**
  * What `scenario()` accepts: a typed definition, or an imported JSON file,
@@ -875,7 +878,8 @@ export interface NetworkScenarioDefinition {
  */
 export type NetworkScenarioInput =
   | NetworkScenarioDefinition
-  | { readonly routes: readonly object[]; readonly [key: string]: unknown };
+  | { readonly routes: readonly object[]; readonly [key: string]: unknown }
+  | { readonly http: { readonly routes: readonly object[] }; readonly [key: string]: unknown };
 
 /** Handle returned by `scenario()`. */
 export interface NetworkScenario {

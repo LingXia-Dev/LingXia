@@ -39,7 +39,7 @@ function fakeNetwork() {
     },
     async scenario(definition) {
       const handles = [];
-      for (const entry of definition.routes) handles.push(await network.route(entry.url, entry));
+      for (const entry of definition.routes ?? definition.http.routes) handles.push(await network.route(entry.url, entry));
       return {
         name: definition.name ?? null,
         get routes() { return [...handles]; },
@@ -180,6 +180,34 @@ test("a scenario installs its routes for one spec and reports their requests", a
   assert.equal(seenAfter, 0, "a scenario route leaked into the next spec");
   const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
   assert.equal(step?.detail, "outage (2 routes)");
+});
+
+test("a sectioned scenario file installs its http routes", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  let name;
+  let installed;
+
+  spec("sectioned", async (t) => {
+    const scenario = await t.app.network.scenario({
+      $schema: "../../node_modules/@lingxia/test/schemas/scenario.schema.json",
+      name: "gateway offline",
+      description: "the status card shows offline",
+      http: { routes: [{ url: "/v1/status", status: 503 }, { url: "/v1/devices", json: [] }] },
+    });
+    name = scenario.name;
+    installed = network.routes.size;
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(installed, 2);
+  assert.equal(name, "gateway offline");
+  assert.equal(network.routes.size, 0, "the routes last one spec");
+  const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
+  assert.equal(step?.detail, "gateway offline (2 routes)");
 });
 
 test("a failed spec reports the app's last Logic network calls, secrets masked", async () => {

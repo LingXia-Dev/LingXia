@@ -1,6 +1,9 @@
 //! Declarative scenario files and relative-time templates.
 //!
-//! A scenario is JSON: `{ name?, description?, routes: [...] }`. Each route
+//! A scenario is JSON: `{ name?, description?, routes: [...] }`, or the
+//! sectioned form `{ name?, description?, http: { routes: [...] } }` that
+//! `lxdev scenario` files use; a `worker` section is reserved and rejected
+//! until a provider for it exists. Each route
 //! is `{ url, method?, times?, note? }` plus one answer in the route handler
 //! shape (`status`/`json`/`body`/…, `abort`, `continue`, `hang`, `sse`) or a
 //! `sequence` of them, served in call order with the last one repeating.
@@ -21,7 +24,8 @@ pub(crate) const MAX_SCENARIO_ROUTES: usize = 200;
 /// Answers one `sequence` may list.
 pub(crate) const MAX_SEQUENCE: usize = 100;
 
-const SCENARIO_KEYS: [&str; 4] = ["$schema", "name", "description", "routes"];
+const SCENARIO_KEYS: [&str; 5] = ["$schema", "name", "description", "routes", "http"];
+const HTTP_KEYS: [&str; 1] = ["routes"];
 const ROUTE_KEYS: [&str; 5] = ["url", "method", "times", "note", "description"];
 
 /// A parsed scenario, routes in file order.
@@ -32,11 +36,17 @@ pub(crate) struct Scenario {
 }
 
 /// Parse and validate a scenario file. Errors name the offending route as
-/// `routes[i]`.
+/// `routes[i]` (or `http.routes[i]` in the sectioned form).
 pub(crate) fn parse_scenario(value: &Value) -> Result<Scenario, String> {
     let Value::Object(fields) = value else {
         return Err("a scenario must be a JSON object with a routes array".into());
     };
+    if fields.contains_key("worker") {
+        return Err(
+            "the worker section of a scenario is not supported yet; only http routes can be installed"
+                .into(),
+        );
+    }
     if let Some(unknown) = fields
         .keys()
         .find(|key| !SCENARIO_KEYS.contains(&key.as_str()))
@@ -57,11 +67,32 @@ pub(crate) fn parse_scenario(value: &Value) -> Result<Scenario, String> {
     ) {
         return Err("scenario description must be a string".into());
     }
-    let routes = match fields.get("routes") {
-        Some(Value::Array(routes)) if !routes.is_empty() => routes,
-        Some(Value::Array(_)) => return Err("scenario routes must not be empty".into()),
-        Some(_) => return Err("scenario routes must be an array".into()),
-        None => return Err("a scenario needs a routes array".into()),
+    let (routes, path) = match (fields.get("routes"), fields.get("http")) {
+        (Some(_), Some(_)) => {
+            return Err(
+                "a scenario lists its routes at the top level or under http, not both".into(),
+            );
+        }
+        (Some(routes), None) => (routes, "routes"),
+        (None, Some(Value::Object(http))) => {
+            if let Some(unknown) = http.keys().find(|key| !HTTP_KEYS.contains(&key.as_str())) {
+                return Err(format!(
+                    "unknown http section field '{unknown}' (allowed: {})",
+                    HTTP_KEYS.join(", ")
+                ));
+            }
+            match http.get("routes") {
+                Some(routes) => (routes, "http.routes"),
+                None => return Err("the http section needs a routes array".into()),
+            }
+        }
+        (None, Some(_)) => return Err("the http section must be an object".into()),
+        (None, None) => return Err("a scenario needs a routes array (or http.routes)".into()),
+    };
+    let routes = match routes {
+        Value::Array(routes) if !routes.is_empty() => routes,
+        Value::Array(_) => return Err(format!("scenario {path} must not be empty")),
+        _ => return Err(format!("scenario {path} must be an array")),
     };
     if routes.len() > MAX_SCENARIO_ROUTES {
         return Err(format!(
@@ -72,7 +103,7 @@ pub(crate) fn parse_scenario(value: &Value) -> Result<Scenario, String> {
     let routes = routes
         .iter()
         .enumerate()
-        .map(|(index, route)| parse_route(route).map_err(|err| format!("routes[{index}]: {err}")))
+        .map(|(index, route)| parse_route(route).map_err(|err| format!("{path}[{index}]: {err}")))
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Scenario { name, routes })
 }

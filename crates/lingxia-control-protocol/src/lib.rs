@@ -134,7 +134,8 @@ pub mod methods {
         }
 
         /// Network scenarios and recordings for a running lxapp's Logic
-        /// `fetch` and `Rong.SSE` outside test runs (`lxdev network`).
+        /// `fetch` and `Rong.SSE` outside test runs: the HTTP section of
+        /// `lxdev scenario`, and `lxdev network`.
         /// Runtime-owned and present only in hosts built with the test
         /// runtime; a release build answers "unknown method".
         pub mod network {
@@ -143,7 +144,8 @@ pub mod methods {
             pub const SCENARIO_USE: &str = "session.network.scenario.use";
             /// Remove the dev scenario. Returns `{ cleared }`.
             pub const SCENARIO_CLEAR: &str = "session.network.scenario.clear";
-            /// The dev scenario and recording, if any.
+            /// The dev scenario and recording, if any, and the scenario
+            /// cleared last (`lastCleared: { reason, clearedAt, … }`).
             pub const STATUS: &str = "session.network.status";
             /// Start recording real Logic `fetch` traffic. Args:
             /// `{ appid?, match? }`.

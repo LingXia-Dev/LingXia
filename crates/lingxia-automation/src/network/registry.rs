@@ -19,8 +19,7 @@ pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
 const MAX_LOG_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// Longest fulfillment delay a route may ask for.
 pub(crate) const MAX_DELAY_MS: u32 = 30_000;
-/// Owner of the routes a dev session installed with `lxdev network scenario
-/// use`. Automation run ids are UUIDs, so it never collides with one.
+/// Owner of the routes a dev session installed with `lxdev scenario use`. Automation run ids are UUIDs, so it never collides with one.
 pub(crate) const DEV_SESSION_OWNER: &str = "@dev-session";
 
 #[derive(Debug, Clone)]
@@ -364,6 +363,36 @@ pub(crate) struct DevScenario {
     pub installed_ms: u64,
 }
 
+/// Why a dev scenario stopped answering.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DevClearReason {
+    /// `lxdev scenario clear`.
+    Cleared,
+    /// Another `lxdev scenario use`.
+    Replaced,
+    /// The dev bridge disconnected (the session ended, or a transient
+    /// reconnect: dev scenarios fail closed).
+    SessionEnded,
+}
+
+impl DevClearReason {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Cleared => "cleared",
+            Self::Replaced => "replaced",
+            Self::SessionEnded => "session_ended",
+        }
+    }
+}
+
+/// The last dev scenario that stopped answering, for `status`.
+#[derive(Debug, Clone)]
+pub(crate) struct ClearedDevScenario {
+    pub scenario: DevScenario,
+    pub reason: DevClearReason,
+    pub cleared_ms: u64,
+}
+
 #[derive(Debug)]
 struct Route {
     id: u64,
@@ -440,6 +469,8 @@ pub(crate) struct Registry {
     /// routes stand aside and Logic `fetch` calls are logged.
     active_runs: Vec<String>,
     pub(crate) dev: Option<DevScenario>,
+    /// The dev scenario cleared last, and why.
+    pub(crate) dev_cleared: Option<ClearedDevScenario>,
     pub(crate) calls: CallLog,
     /// A recording a dev session started (`lxdev network record`). It
     /// pauses while a host automation run is active, like dev routes.
@@ -628,6 +659,25 @@ impl Registry {
         self.log.retain(|entry| entry.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
         self.captures.clear_run(run_id);
+    }
+
+    /// Remove the dev scenario's routes, remembering why. Returns the
+    /// scenario that was installed.
+    pub(crate) fn end_dev_scenario(
+        &mut self,
+        reason: DevClearReason,
+        now_ms: u64,
+    ) -> Option<DevScenario> {
+        let dev = self.dev.clone();
+        self.clear_run(DEV_SESSION_OWNER);
+        if let Some(scenario) = &dev {
+            self.dev_cleared = Some(ClearedDevScenario {
+                scenario: scenario.clone(),
+                reason,
+                cleared_ms: now_ms,
+            });
+        }
+        dev
     }
 
     /// [`Self::decide_route`] without call observation.
@@ -824,6 +874,7 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     held: Vec::new(),
     active_runs: Vec::new(),
     dev: None,
+    dev_cleared: None,
     calls: CallLog::new(),
     dev_recording: None,
     run_recording: None,
