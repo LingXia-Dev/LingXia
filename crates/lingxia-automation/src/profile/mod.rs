@@ -11,8 +11,11 @@
 use crate::error::{E_PROFILE_NOT_ISOLATED, coded};
 use crate::resolve::upgrade_authorized;
 use lxapp::LxApp;
-use lxapp::data_profile::{self, RunProfile};
-use rong::{HostError, JSContext, JSResult, js_class, js_method};
+use lxapp::data_profile::{self, KeepKeys, RunProfile};
+use rong::{
+    FromJSObject, HostError, IntoJSObject, JSContext, JSResult, function::Optional, js_class,
+    js_method,
+};
 use std::sync::{Arc, Weak};
 
 /// Marks a host automation context with the isolated profile its run owns.
@@ -64,6 +67,18 @@ fn scope_for(ctx: &JSContext, app: &LxApp) -> JSResult<ProfileRunScope> {
     Ok(scope)
 }
 
+#[derive(FromJSObject)]
+struct RestoreOptions {
+    /// `lx.getStorage()` key globs whose current values survive the rollback.
+    keep: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, IntoJSObject)]
+struct RestoreResult {
+    /// Kept keys whose current values were carried into the restored data.
+    kept: Vec<String>,
+}
+
 #[js_class(clone)]
 pub(crate) struct JSProfileDriver {
     lxapp: Weak<LxApp>,
@@ -100,14 +115,32 @@ impl JSProfileDriver {
     }
 
     /// Close the app, replace its profile with checkpoint `id`, reopen it.
+    /// With `keep`, storage keys matching those globs keep their current
+    /// values (or stay absent) across the rollback; the app is closed for
+    /// the whole merge, so it never sees the checkpoint's values of them.
     #[js_method]
-    async fn restore(&self, ctx: JSContext, id: String) -> JSResult<()> {
+    async fn restore(
+        &self,
+        ctx: JSContext,
+        id: String,
+        // `Option` inside: an explicit `undefined` or `null` means no options.
+        options: Optional<Option<RestoreOptions>>,
+    ) -> JSResult<RestoreResult> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let scope = scope_for(&ctx, &app)?;
         drop(app);
-        data_profile::restore(&scope.appid, &scope.profile, &id)
+        let keep = KeepKeys::new(
+            options
+                .0
+                .flatten()
+                .and_then(|options| options.keep)
+                .unwrap_or_default(),
+        )
+        .map_err(|err| crate::auto_err(err.to_string()))?;
+        let kept = data_profile::restore_keeping(&scope.appid, &scope.profile, &id, &keep)
             .await
-            .map_err(|err| crate::auto_err(err.to_string()))
+            .map_err(|err| crate::auto_err(err.to_string()))?;
+        Ok(RestoreResult { kept })
     }
 
     /// Discard checkpoint `id`. The app keeps running.
@@ -119,5 +152,37 @@ impl JSProfileDriver {
             .profile
             .drop_checkpoint(&id)
             .map_err(|err| crate::auto_err(err.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RestoreOptions;
+    use rong::{JSEngine, JSFunc, RongJS, Source, function::Optional};
+
+    /// `restore(id)`, `restore(id, undefined)` and `restore(id, null)` all
+    /// mean "no options".
+    #[test]
+    fn restore_options_accept_undefined_and_null() {
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        let restore = JSFunc::new(
+            &ctx,
+            |_id: String, options: Optional<Option<RestoreOptions>>| -> String {
+                match options.0.flatten() {
+                    None => "none".into(),
+                    Some(options) => options.keep.unwrap_or_default().join(","),
+                }
+            },
+        )
+        .unwrap();
+        ctx.global().set("restore", restore).unwrap();
+        let out: String = ctx
+            .eval(Source::from_bytes(
+                "JSON.stringify([restore('p'), restore('p', undefined), restore('p', null), \
+                 restore('p', { keep: ['a', 'b*'] })])",
+            ))
+            .unwrap();
+        assert_eq!(out, r#"["none","none","none","a,b*"]"#);
     }
 }
