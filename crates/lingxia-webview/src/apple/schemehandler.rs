@@ -379,6 +379,9 @@ impl LingXiaSchemeHandler {
                 self.fail_task_with_error(task, "Failed to create HTTP response");
                 return;
             }
+            // `alloc`/`init` hand this function a reference; the task retains
+            // what it keeps, so release ours when the function returns.
+            let _response = Retained::from_raw(response_result);
 
             if !task_did_receive_response(task, response_result) {
                 return;
@@ -524,6 +527,7 @@ impl LingXiaSchemeHandler {
                 HTTPVersion: &*http_version,
                 headerFields: &*headers];
 
+            let _response = Retained::from_raw(response_result);
             let body_data = NSData::from_vec("Not Found".as_bytes().to_vec());
 
             if !response_result.is_null() {
@@ -567,6 +571,7 @@ impl LingXiaSchemeHandler {
                 statusCode: 500i64,
                 HTTPVersion: &*http_version,
                 headerFields: &*headers];
+            let _response = Retained::from_raw(response_result);
 
             if !response_result.is_null() {
                 if task_did_receive_response(task, response_result) {
