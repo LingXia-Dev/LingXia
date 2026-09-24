@@ -7,7 +7,9 @@ const buffer: NetworkRouteHandler = { body: new ArrayBuffer(2) };
 const empty: NetworkRouteHandler = { status: 204 };
 const abort: NetworkRouteHandler = { abort: 'failed' };
 const pass: NetworkRouteHandler = { continue: true };
-void [fulfill, text, bytes, buffer, empty, abort, pass];
+const patched: NetworkRouteHandler = { continue: true, patchJson: { total: 0, items: [], cursor: null } };
+const hang: NetworkRouteHandler = { hang: true };
+void [fulfill, text, bytes, buffer, empty, abort, pass, patched, hang];
 
 // @ts-expect-error a handler cannot both fulfill and abort
 const mixed: NetworkRouteHandler = { status: 500, abort: 'failed' };
@@ -23,7 +25,15 @@ const abortTrue: NetworkRouteHandler = { abort: true };
 const objectBody: NetworkRouteHandler = { body: { error: 'x' } };
 // @ts-expect-error body and json are exclusive
 const bodyAndJson: NetworkRouteHandler = { body: 'x', json: {} };
-void [mixed, passWithDelay, abortAndPass, freeText, abortTrue, objectBody, bodyAndJson];
+// @ts-expect-error patchJson patches a real response, so it needs continue
+const patchAlone: NetworkRouteHandler = { patchJson: { a: 1 } };
+// @ts-expect-error hang never answers, so it takes no fulfill options
+const hangWithStatus: NetworkRouteHandler = { hang: true, status: 200 };
+// @ts-expect-error hang and continue are exclusive
+const hangAndPass: NetworkRouteHandler = { hang: true, continue: true };
+// @ts-expect-error hang is `true`, not a duration
+const hangFor: NetworkRouteHandler = { hang: 500 };
+void [mixed, passWithDelay, abortAndPass, freeText, abortTrue, objectBody, bodyAndJson, patchAlone, hangWithStatus, hangAndPass, hangFor];
 
 declare const request: NetworkRouteRequest;
 const sent: { headers: Record<string, string>; body: string | null; bodyTruncated: boolean } = request;

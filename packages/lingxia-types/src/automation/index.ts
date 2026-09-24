@@ -749,7 +749,7 @@ interface NetworkRouteFulfillFields {
  * `content-type: application/json`), never both.
  */
 export type NetworkRouteFulfill = NetworkRouteFulfillFields &
-  NetworkRouteForbid<'abort' | 'continue'> &
+  NetworkRouteForbid<'abort' | 'continue' | 'patchJson' | 'hang'> &
   (
     | { body?: string | ArrayBuffer | Uint8Array; json?: never }
     | { json: unknown; body?: never }
@@ -760,14 +760,36 @@ export type NetworkRouteFulfill = NetworkRouteFulfillFields &
  * `'failed'` is the only failure the wrapper emulates.
  */
 export type NetworkRouteAbort = { abort: 'failed' } &
-  NetworkRouteForbid<NetworkRouteFulfillKey | 'continue'>;
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'continue' | 'patchJson' | 'hang'>;
 
-/** Let the request reach the network, shadowing older matching routes. */
-export type NetworkRouteContinue = { continue: true } &
-  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort'>;
+/**
+ * Let the request reach the network, shadowing older matching routes. With
+ * `patchJson`, the real response's JSON body is rewritten host-side by that
+ * RFC 7396 merge patch: object keys merge, `null` deletes a key, and any
+ * other value (arrays included) replaces what it patches. Status and headers
+ * stay the real ones. A body that is not JSON rejects the `fetch` with a
+ * `TypeError` naming the URL; an empty body passes through. The patched
+ * body is re-serialized, so object keys come back sorted.
+ */
+export type NetworkRouteContinue = { continue: true; patchJson?: unknown } &
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'hang'>;
 
-/** Exactly one of fulfill, abort, or continue. */
-export type NetworkRouteHandler = NetworkRouteFulfill | NetworkRouteAbort | NetworkRouteContinue;
+/**
+ * Never answer: the `fetch` stays pending until the route is removed (the
+ * spec ends, `unroute()`, or the run ends), then rejects like a transport
+ * failure. An `AbortSignal` passed to `fetch` still rejects it early. For
+ * loading states and client-side timeouts. `times` limits which requests are
+ * held, not how long.
+ */
+export type NetworkRouteHang = { hang: true } &
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'continue' | 'patchJson'>;
+
+/** Exactly one of fulfill, abort, continue, or hang. */
+export type NetworkRouteHandler =
+  | NetworkRouteFulfill
+  | NetworkRouteAbort
+  | NetworkRouteContinue
+  | NetworkRouteHang;
 
 /** One request a route handled, as the app sent it. */
 export interface NetworkRouteRequest {
@@ -787,8 +809,9 @@ export interface NetworkRouteRequest {
   body: string | null;
   /** `body` was cut to the 64 KiB (65536-byte) limit. */
   bodyTruncated: boolean;
-  action: 'fulfill' | 'abort' | 'continue';
-  /** Fulfilled status; `null` for abort/continue. */
+  /** `continue` also covers a `patchJson` pass-through. */
+  action: 'fulfill' | 'abort' | 'continue' | 'hang';
+  /** Fulfilled status; `null` for abort/continue/hang. */
   status: number | null;
   /** Epoch milliseconds. */
   timestamp: number;

@@ -76,7 +76,8 @@ function describePattern(pattern: NetworkRoutePattern): string {
 
 function describeHandler(handler: NetworkRouteHandler): string {
   if (handler.abort !== undefined) return `abort ${String(handler.abort)}`;
-  if (handler.continue !== undefined) return "continue";
+  if (handler.hang !== undefined) return "hang";
+  if (handler.continue !== undefined) return handler.patchJson !== undefined ? "continue + patchJson" : "continue";
   const status = String(handler.status ?? 200);
   return handler.delay ? `${status} after ${handler.delay}ms` : status;
 }

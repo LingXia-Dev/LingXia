@@ -173,6 +173,15 @@ pub(crate) enum RouteAction {
     /// Reject like a transport failure.
     Abort(AbortKind),
     Continue,
+    /// Let the request reach the network, then apply this RFC 7396 JSON
+    /// merge patch to the real response body.
+    Patch(serde_json::Value),
+    /// Never answer until the route is removed (the spec ends) or the run
+    /// ends. `token` is 0 in a route spec; a decision carries the held
+    /// request's own token.
+    Hang {
+        token: u64,
+    },
 }
 
 impl RouteAction {
@@ -180,9 +189,44 @@ impl RouteAction {
         match self {
             Self::Fulfill(_) => "fulfill",
             Self::Abort(_) => "abort",
-            Self::Continue => "continue",
+            Self::Continue | Self::Patch(_) => "continue",
+            Self::Hang { .. } => "hang",
         }
     }
+}
+
+/// RFC 7396 JSON merge patch: an object patch merges key by key (`null`
+/// removes a key); anything else replaces the target.
+pub(crate) fn merge_patch(target: &mut serde_json::Value, patch: &serde_json::Value) {
+    let serde_json::Value::Object(fields) = patch else {
+        *target = patch.clone();
+        return;
+    };
+    if !target.is_object() {
+        *target = serde_json::Value::Object(serde_json::Map::new());
+    }
+    let Some(object) = target.as_object_mut() else {
+        return;
+    };
+    for (key, value) in fields {
+        if value.is_null() {
+            object.remove(key);
+        } else {
+            merge_patch(
+                object.entry(key.clone()).or_insert(serde_json::Value::Null),
+                value,
+            );
+        }
+    }
+}
+
+/// A request a `hang` route is holding.
+#[derive(Debug)]
+struct Held {
+    token: u64,
+    run_id: String,
+    appid: String,
+    route_id: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -251,7 +295,7 @@ pub(crate) struct RequestEntry {
     pub pattern: String,
     pub method: String,
     pub url: String,
-    /// `fulfill`, `abort`, or `continue`.
+    /// `fulfill`, `abort`, `continue`, or `hang`.
     pub action: &'static str,
     pub status: Option<u16>,
     pub request: SentRequest,
@@ -266,6 +310,7 @@ pub(crate) struct Registry {
     routes: Vec<Route>,
     log: VecDeque<RequestEntry>,
     log_body_bytes: usize,
+    held: Vec<Held>,
 }
 
 impl Registry {
@@ -293,7 +338,11 @@ impl Registry {
         Ok(id)
     }
 
+    /// Remove a route and release the requests it holds — also after the
+    /// route already expired through `times`.
     pub(crate) fn remove(&mut self, run_id: &str, id: u64) -> bool {
+        self.held
+            .retain(|held| !(held.run_id == run_id && held.route_id == id));
         let before = self.routes.len();
         self.routes
             .retain(|route| !(route.id == id && route.run_id == run_id));
@@ -301,6 +350,8 @@ impl Registry {
     }
 
     pub(crate) fn remove_app(&mut self, run_id: &str, appid: &str) -> usize {
+        self.held
+            .retain(|held| !(held.run_id == run_id && held.appid == appid));
         let before = self.routes.len();
         self.routes
             .retain(|route| !(route.run_id == run_id && route.appid == appid));
@@ -309,6 +360,7 @@ impl Registry {
 
     /// Drop every route and log entry a run owns.
     pub(crate) fn clear_run(&mut self, run_id: &str) {
+        self.held.retain(|held| held.run_id != run_id);
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
@@ -336,8 +388,20 @@ impl Registry {
         })?;
         let route = &mut self.routes[index];
         let mut action = route.spec.action.clone();
-        if matches!(action, RouteAction::Fulfill(_)) && !allowed() {
+        // Neither an answer nor a stall may stand in for a host the real
+        // `fetch` would refuse.
+        if matches!(action, RouteAction::Fulfill(_) | RouteAction::Hang { .. }) && !allowed() {
             action = RouteAction::Continue;
+        }
+        if let RouteAction::Hang { token } = &mut action {
+            self.next_id += 1;
+            *token = self.next_id;
+            self.held.push(Held {
+                token: *token,
+                run_id: route.run_id.clone(),
+                appid: route.appid.clone(),
+                route_id: route.id,
+            });
         }
         let entry = RequestEntry {
             route_id: route.id,
@@ -373,6 +437,11 @@ impl Registry {
         Some(action)
     }
 
+    /// Whether a `hang` route still holds the request behind `token`.
+    pub(crate) fn holds(&self, token: u64) -> bool {
+        self.held.iter().any(|held| held.token == token)
+    }
+
     pub(crate) fn requests(&self, run_id: &str, appid: &str) -> Vec<RequestEntry> {
         self.log
             .iter()
@@ -397,6 +466,7 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     routes: Vec::new(),
     log: VecDeque::new(),
     log_body_bytes: 0,
+    held: Vec::new(),
 });
 /// Installed route count, mirrored outside the lock so Logic `fetch` pays one
 /// atomic load when no test route exists.
@@ -437,6 +507,115 @@ mod tests {
             times: None,
             action,
         }
+    }
+
+    #[test]
+    fn merge_patch_follows_rfc_7396() {
+        use serde_json::json;
+        // The RFC's own example (section 3).
+        let mut target = json!({
+            "title": "Goodbye!",
+            "author": { "givenName": "John", "familyName": "Doe" },
+            "tags": ["example", "sample"],
+            "content": "This will be unchanged"
+        });
+        merge_patch(
+            &mut target,
+            &json!({
+                "title": "Hello!",
+                "phoneNumber": "+01-123-456-7890",
+                "author": { "familyName": null },
+                "tags": ["example"]
+            }),
+        );
+        assert_eq!(
+            target,
+            json!({
+                "title": "Hello!",
+                "author": { "givenName": "John" },
+                "tags": ["example"],
+                "content": "This will be unchanged",
+                "phoneNumber": "+01-123-456-7890"
+            })
+        );
+        // Appendix A cases: a non-object patch replaces; an object patch
+        // turns a non-object target into an object.
+        let mut array = json!(["a", "b"]);
+        merge_patch(&mut array, &json!(["c"]));
+        assert_eq!(array, json!(["c"]));
+        let mut scalar = json!("text");
+        merge_patch(&mut scalar, &json!({ "a": { "bb": { "ccc": null } } }));
+        assert_eq!(scalar, json!({ "a": { "bb": {} } }));
+    }
+
+    #[test]
+    fn a_hang_is_held_until_its_route_is_removed_even_after_it_expired() {
+        let mut registry = Registry::default();
+        let matcher = UrlMatcher::glob("https://api.test/**").unwrap();
+        let mut once = spec(matcher, None, RouteAction::Hang { token: 0 });
+        once.times = Some(1);
+        let id = registry.install("run", "app", once, || true).unwrap();
+        let Some(RouteAction::Hang { token }) = registry.decide(
+            "app",
+            "GET",
+            "https://api.test/slow",
+            SentRequest::default,
+            || true,
+        ) else {
+            panic!("expected a hang");
+        };
+        assert_ne!(token, 0);
+        assert_eq!(registry.len(), 0, "times: 1 expired the route");
+        assert!(registry.holds(token), "expiry alone does not release");
+        assert_eq!(registry.requests("run", "app")[0].action, "hang");
+        assert!(!registry.remove("run", id));
+        assert!(!registry.holds(token), "removing the route releases it");
+
+        // A run ending releases what its routes held.
+        let matcher = UrlMatcher::glob("https://api.test/**").unwrap();
+        registry
+            .install(
+                "run",
+                "app",
+                spec(matcher, None, RouteAction::Hang { token: 0 }),
+                || true,
+            )
+            .unwrap();
+        let Some(RouteAction::Hang { token }) = registry.decide(
+            "app",
+            "GET",
+            "https://api.test/x",
+            SentRequest::default,
+            || true,
+        ) else {
+            panic!("expected a hang");
+        };
+        registry.clear_run("run");
+        assert!(!registry.holds(token));
+    }
+
+    #[test]
+    fn a_hang_never_stalls_a_refused_host() {
+        let mut registry = Registry::default();
+        let matcher = UrlMatcher::glob("**").unwrap();
+        registry
+            .install(
+                "run",
+                "app",
+                spec(matcher, None, RouteAction::Hang { token: 0 }),
+                || true,
+            )
+            .unwrap();
+        assert_eq!(
+            registry.decide(
+                "app",
+                "GET",
+                "https://blocked.test/",
+                SentRequest::default,
+                || false
+            ),
+            Some(RouteAction::Continue)
+        );
     }
 
     #[test]

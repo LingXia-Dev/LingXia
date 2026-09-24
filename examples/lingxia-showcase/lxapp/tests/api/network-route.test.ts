@@ -97,7 +97,7 @@ spec("reject a route handler that mixes fulfill and abort", {
   } catch (error) {
     message = String((error as Error)?.message ?? error);
   }
-  expect(message).toContain('choose one of fulfill, abort, or continue');
+  expect(message).toContain('choose one of fulfill, abort, continue, or hang');
 });
 
 spec("reject network routes from inside app Logic", {
