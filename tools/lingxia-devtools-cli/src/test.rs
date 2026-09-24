@@ -44,9 +44,19 @@ pub struct TestOptions {
     #[arg(required_unless_present = "cancel_active")]
     pub entry: Option<PathBuf>,
 
-    /// Whole-run budget in seconds
-    #[arg(long, default_value_t = 300, value_parser = parse_timeout_secs)]
-    timeout_secs: u64,
+    /// Whole-run budget in seconds. Default: scaled to the selection,
+    /// max(300, planned specs × 30), up to the 3600s runtime ceiling
+    #[arg(long, value_parser = parse_timeout_secs)]
+    timeout_secs: Option<u64>,
+
+    /// Run the selected specs in a random order to expose order dependence.
+    /// Prints the seed; pass `--shuffle=SEED` to reproduce an order
+    #[arg(long, value_name = "SEED", num_args = 0..=1, default_missing_value = "random", value_parser = parse_shuffle)]
+    shuffle: Option<ShuffleSeed>,
+
+    /// Run every selected spec N times (1-100) to expose flakiness
+    #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=100))]
+    repeat_each: u8,
 
     /// Key=value string exposed as test.args (repeatable). Keys named like
     /// credentials (password, secret, token, api key) show as `***` in the
@@ -120,6 +130,46 @@ pub struct TestOptions {
 /// only naming the range: a suite too big for one budget is what `--shard`
 /// is for.
 const MAX_TIMEOUT_SECS: u64 = 3600;
+/// The default run budget: this floor, or this much per planned spec
+/// execution when that is more. Only the runtime knows the selection, so it
+/// applies the scaling; the host deadline is then the runtime ceiling.
+const DEFAULT_MIN_BUDGET_SECS: u64 = 300;
+const DEFAULT_BUDGET_PER_SPEC_SECS: u64 = 30;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShuffleSeed {
+    Random,
+    Seed(u32),
+}
+
+fn parse_shuffle(raw: &str) -> Result<ShuffleSeed, String> {
+    if raw == "random" {
+        return Ok(ShuffleSeed::Random);
+    }
+    raw.parse::<u32>()
+        .map(ShuffleSeed::Seed)
+        .map_err(|_| format!("`{raw}` is not a shuffle seed (0-{})", u32::MAX))
+}
+
+impl ShuffleSeed {
+    fn resolve(self) -> u32 {
+        match self {
+            Self::Seed(seed) => seed,
+            Self::Random => {
+                let nanos = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map_or(0, |elapsed| elapsed.as_nanos());
+                ((nanos as u64 ^ ((std::process::id() as u64) << 17)) % u64::from(u32::MAX)) as u32
+            }
+        }
+    }
+}
+
+/// The host deadline for a run: an explicit budget, or the runtime ceiling
+/// when the runtime scales the default itself.
+fn host_budget_secs(options: &TestOptions) -> u64 {
+    options.timeout_secs.unwrap_or(MAX_TIMEOUT_SECS)
+}
 
 fn parse_timeout_secs(raw: &str) -> Result<u64, String> {
     let secs: u64 = raw
@@ -209,7 +259,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let start_args = TestStartArgs {
         source: bundle.code.clone(),
         source_name: Some(bundle.bundle_name.clone()),
-        timeout_ms: Some(options.timeout_secs * 1000),
+        timeout_ms: Some(host_budget_secs(&options) * 1000),
         args,
         control: control.clone(),
     };
@@ -220,13 +270,24 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     // must not leave the Runner holding this run.
     let active_run = ActiveRun::new(&info.ws_url, &run_id);
     if !machine {
+        let budget = match options.timeout_secs {
+            Some(secs) => format!("timeout {secs}s"),
+            None => format!(
+                "budget max({DEFAULT_MIN_BUDGET_SECS}s, {DEFAULT_BUDGET_PER_SPEC_SECS}s per spec)"
+            ),
+        };
         eprintln!(
-            "{} {} · run {} started (timeout {}s)",
+            "{} {} · run {} started ({budget})",
             "test".cyan(),
             info.target,
             run_id,
-            options.timeout_secs
         );
+        if let Some(seed) = control.get("shuffle") {
+            eprintln!(
+                "{} shuffled with seed {seed}; reproduce with --shuffle={seed}",
+                "test".cyan()
+            );
+        }
     }
 
     let output_dir = if options.output_dir.is_some() {
@@ -261,7 +322,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         options.verbose,
         options.jsonl,
         &interrupts,
-        Duration::from_secs(options.timeout_secs),
+        Duration::from_secs(host_budget_secs(&options)),
         &secrets,
     );
     // Cancel (once) unless the host already finished the run.
@@ -373,6 +434,31 @@ fn run_control(
     let mut control = HashMap::new();
     control.insert("platform".to_string(), target.to_string());
     control.insert("retries".to_string(), options.retries.to_string());
+    match options.timeout_secs {
+        Some(secs) => {
+            control.insert("budgetMs".to_string(), (secs * 1000).to_string());
+        }
+        None => {
+            control.insert(
+                "budgetPerSpecMs".to_string(),
+                (DEFAULT_BUDGET_PER_SPEC_SECS * 1000).to_string(),
+            );
+            control.insert(
+                "budgetMinMs".to_string(),
+                (DEFAULT_MIN_BUDGET_SECS * 1000).to_string(),
+            );
+            control.insert(
+                "budgetMaxMs".to_string(),
+                (MAX_TIMEOUT_SECS * 1000).to_string(),
+            );
+        }
+    }
+    if let Some(shuffle) = options.shuffle {
+        control.insert("shuffle".to_string(), shuffle.resolve().to_string());
+    }
+    if options.repeat_each > 1 {
+        control.insert("repeatEach".to_string(), options.repeat_each.to_string());
+    }
     if let Some(keys) = secrets.secret_keys_json() {
         control.insert(SECRET_ARGS_KEY.to_string(), keys);
     }
@@ -1077,11 +1163,22 @@ fn poll_until_terminal(
                                 .unwrap_or(DEFAULT_CASE_TIMEOUT)
                                 + Duration::from_secs(27)
                         });
-                    let index = streamed.iter().position(|case| {
+                    let same = |case: &StreamedCase| {
                         id.as_ref()
                             .map(|id| case.record["id"].as_str() == Some(id))
                             .unwrap_or(case.full_name == *full_name)
-                    });
+                    };
+                    // `--repeat-each` lists one entry per execution: fill the
+                    // next unstarted one. A retry reuses its finished entry.
+                    let index = streamed
+                        .iter()
+                        .position(|case| {
+                            same(case)
+                                && case.status.is_none()
+                                && case.record["started"] != true
+                                && case.full_name == *full_name
+                        })
+                        .or_else(|| streamed.iter().position(same));
                     let record = json!({ "id": id.as_deref().unwrap_or(full_name), "file": file, "line": line, "started": true });
                     let case = StreamedCase {
                         record,
@@ -1283,6 +1380,7 @@ fn report(
                 .iter()
                 .map(|(level, message)| json!({ "level": level, "message": message }))
                 .collect::<Vec<_>>(),
+            "budget_exhausted": budget_exhaustion(outcome),
             "artifacts": outcome
                 .artifacts
                 .iter()
@@ -1312,6 +1410,9 @@ fn report(
             eprintln!("{} after {seconds:.1}s", "✗ cancelled".yellow().bold())
         }
         other => eprintln!("{} {} in {seconds:.1}s", "✗".red().bold(), other.as_str()),
+    }
+    if let Some(line) = budget_exhaustion(outcome) {
+        eprintln!("{}", line.red());
     }
     if let Some((error, stack, _)) = &mapped_error {
         eprintln!("{}: {}", error.name.red(), error.message);
@@ -1396,12 +1497,14 @@ fn report(
             }
             if let Some(id) = case.detail.get("id").and_then(|v| v.as_str()) {
                 let mut command = format!(
-                    "lxdev --session {} test {} --id {} --timeout-secs {}",
+                    "lxdev --session {} test {} --id {}",
                     shell_quote(session_id),
                     shell_quote(&entry.to_string_lossy()),
                     shell_quote(id),
-                    options.timeout_secs
                 );
+                if let Some(secs) = options.timeout_secs {
+                    command.push_str(&format!(" --timeout-secs {secs}"));
+                }
                 command.push_str(&secrets.rerun_flags(shell_quote));
                 eprintln!("  Rerun: {command}");
             }
@@ -1426,6 +1529,40 @@ fn report(
 
 /// The report is the deliverable, so name it last and name it absolutely —
 /// a run-scoped directory is otherwise hard to find in scrollback.
+/// "budget exhausted after N/M", when the run budget ended the run early:
+/// the runtime stopped between specs (its report says so), or the host
+/// deadline cut a spec off (only the streamed cases say how far it got).
+fn budget_exhaustion(outcome: &Outcome) -> Option<String> {
+    const HINT: &str = "raise --timeout-secs, or split the suite with --shard INDEX/TOTAL";
+    let budget = outcome
+        .result
+        .as_ref()
+        .and_then(|result| result.report.as_ref())
+        .and_then(|report| report.detail.get("meta"))
+        .and_then(|meta| meta.get("budget"));
+    if let Some(budget) = budget
+        && let Some(after) = budget.get("exhausted_after").and_then(|v| v.as_u64())
+    {
+        let planned = budget.get("planned").and_then(|v| v.as_u64()).unwrap_or(0);
+        let secs = budget.get("ms").and_then(|v| v.as_u64()).unwrap_or(0) / 1000;
+        return Some(format!(
+            "run budget ({secs}s) exhausted after {after}/{planned} specs; the rest were not run — {HINT}"
+        ));
+    }
+    if outcome.state != TestRunState::TimedOut || outcome.streamed.is_empty() {
+        return None;
+    }
+    let finished = outcome
+        .streamed
+        .iter()
+        .filter(|case| case.status.is_some())
+        .count();
+    Some(format!(
+        "run budget exhausted after {finished}/{} specs — {HINT}",
+        outcome.streamed.len()
+    ))
+}
+
 fn print_artifact_index(output_dir: &Path, artifacts: &[(String, PathBuf, usize)]) {
     let mut named = artifacts
         .iter()
@@ -2454,6 +2591,76 @@ mod lifecycle_tests {
         assert_eq!(control["passWithNoTests"], "1");
         assert_eq!(control["retries"], "0");
         assert_eq!(control[SECRET_ARGS_KEY], r#"["pin"]"#);
+    }
+
+    #[test]
+    fn the_default_budget_is_scaled_by_the_runtime() {
+        let secrets = RunSecrets::new(&[], &[]);
+        let scaled = options(&["tests/"]);
+        assert_eq!(host_budget_secs(&scaled), MAX_TIMEOUT_SECS);
+        let control = run_control(&scaled, "macos", &secrets).unwrap();
+        assert_eq!(control["budgetPerSpecMs"], "30000");
+        assert_eq!(control["budgetMinMs"], "300000");
+        assert_eq!(control["budgetMaxMs"], "3600000");
+        assert!(!control.contains_key("budgetMs"));
+
+        let fixed = options(&["tests/", "--timeout-secs", "90"]);
+        assert_eq!(host_budget_secs(&fixed), 90);
+        let control = run_control(&fixed, "macos", &secrets).unwrap();
+        assert_eq!(control["budgetMs"], "90000");
+        assert!(!control.contains_key("budgetPerSpecMs"));
+    }
+
+    #[test]
+    fn shuffle_and_repeat_each_travel_as_controls() {
+        let secrets = RunSecrets::new(&[], &[]);
+        let seeded = options(&["tests/", "--shuffle=42", "--repeat-each", "3"]);
+        let control = run_control(&seeded, "macos", &secrets).unwrap();
+        assert_eq!(control["shuffle"], "42");
+        assert_eq!(control["repeatEach"], "3");
+
+        let random = options(&["tests/", "--shuffle"]);
+        let control = run_control(&random, "macos", &secrets).unwrap();
+        assert!(control["shuffle"].parse::<u32>().is_ok());
+        assert!(!control.contains_key("repeatEach"));
+
+        let plain = run_control(&options(&["tests/"]), "macos", &secrets).unwrap();
+        assert!(!plain.contains_key("shuffle"));
+        assert!(Harness::try_parse_from(["test", "tests/", "--shuffle=x"]).is_err());
+        assert!(Harness::try_parse_from(["test", "tests/", "--repeat-each", "0"]).is_err());
+    }
+
+    #[test]
+    fn budget_exhaustion_names_how_far_the_run_got() {
+        let case = |status| StreamedCase {
+            record: json!({}),
+            name: "a".into(),
+            full_name: "a".into(),
+            status,
+            duration_ms: 0,
+            covers: vec![],
+            steps: vec![],
+        };
+        let cut = Outcome {
+            state: TestRunState::TimedOut,
+            result: None,
+            console: vec![],
+            artifacts: vec![],
+            partial: true,
+            streamed: vec![
+                case(Some(TestCaseStatus::Passed)),
+                case(Some(TestCaseStatus::Failed)),
+                case(None),
+                case(None),
+            ],
+        };
+        let line = budget_exhaustion(&cut).unwrap();
+        assert!(line.contains("exhausted after 2/4 specs"), "{line}");
+        let passed = Outcome {
+            state: TestRunState::Passed,
+            ..cut
+        };
+        assert_eq!(budget_exhaustion(&passed), None);
     }
 
     #[test]
