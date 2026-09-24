@@ -237,7 +237,26 @@ fn make_host(
         "logs",
         JSFunc::new(ctx, move || logs_shared.log_ring_text())?,
     )?;
+    crate::network::attach_host_functions(
+        ctx,
+        &host,
+        &shared.run_id,
+        secret_values(args, control),
+    )?;
     Ok(host)
+}
+
+/// Values of the `--secret-arg` keys lxdev declared in `control.secretArgs`.
+fn secret_values(args: &HashMap<String, String>, control: &HashMap<String, String>) -> Vec<String> {
+    control
+        .get("secretArgs")
+        .and_then(|keys| serde_json::from_str::<Vec<String>>(keys).ok())
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|key| args.get(key))
+        .filter(|value| value.len() >= 4)
+        .cloned()
+        .collect()
 }
 
 fn attach(shared: &RunShared, name: String, options: AttachOptions) -> JSResult<()> {

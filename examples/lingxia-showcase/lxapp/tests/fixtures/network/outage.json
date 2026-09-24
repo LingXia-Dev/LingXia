@@ -1,0 +1,29 @@
+{
+  "name": "showcase-outage",
+  "description": "The status endpoint fails twice, then recovers; device reads carry timestamps relative to now.",
+  "routes": [
+    {
+      "url": "https://api.example.com/lingxia-showcase/route/status",
+      "method": "GET",
+      "sequence": [
+        { "status": 503, "json": { "up": false } },
+        { "status": 502 },
+        { "json": { "up": true, "checkedAt": "{{now}}" } }
+      ]
+    },
+    {
+      "url": "https://api.example.com/lingxia-showcase/route/devices/special",
+      "status": 418,
+      "note": "Listed first, so it answers before the wildcard below."
+    },
+    {
+      "url": "https://api.example.com/lingxia-showcase/route/devices/*",
+      "json": {
+        "id": "d1",
+        "lastSeen": "{{now-2h}}",
+        "lastSeenMs": "{{nowMs-2h}}",
+        "expires": "{{now+30m}}"
+      }
+    }
+  ]
+}

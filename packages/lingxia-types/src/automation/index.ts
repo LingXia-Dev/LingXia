@@ -755,7 +755,7 @@ interface NetworkRouteFulfillFields {
  * `content-type: application/json`), never both.
  */
 export type NetworkRouteFulfill = NetworkRouteFulfillFields &
-  NetworkRouteForbid<'abort' | 'continue' | 'patchJson' | 'hang'> &
+  NetworkRouteForbid<'abort' | 'continue' | 'patchJson' | 'hang' | 'sse' | 'sequence'> &
   (
     | { body?: string | ArrayBuffer | Uint8Array; json?: never }
     | { json: unknown; body?: never }
@@ -766,7 +766,7 @@ export type NetworkRouteFulfill = NetworkRouteFulfillFields &
  * `'failed'` is the only failure the wrapper emulates.
  */
 export type NetworkRouteAbort = { abort: 'failed' } &
-  NetworkRouteForbid<NetworkRouteFulfillKey | 'continue' | 'patchJson' | 'hang'>;
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'continue' | 'patchJson' | 'hang' | 'sse' | 'sequence'>;
 
 /**
  * Let the request reach the network, shadowing older matching routes. With
@@ -778,7 +778,7 @@ export type NetworkRouteAbort = { abort: 'failed' } &
  * body is re-serialized, so object keys come back sorted.
  */
 export type NetworkRouteContinue = { continue: true; patchJson?: unknown } &
-  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'hang'>;
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'hang' | 'sse' | 'sequence'>;
 
 /**
  * Never answer: the `fetch` stays pending until the route is removed (the
@@ -788,14 +788,106 @@ export type NetworkRouteContinue = { continue: true; patchJson?: unknown } &
  * held, not how long.
  */
 export type NetworkRouteHang = { hang: true } &
-  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'continue' | 'patchJson'>;
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'continue' | 'patchJson' | 'sse' | 'sequence'>;
 
-/** Exactly one of fulfill, abort, continue, or hang. */
-export type NetworkRouteHandler =
+/**
+ * One item of an SSE answer, played in order: an event (`data` that is not a
+ * string is sent as JSON; multi-line data becomes several `data:` lines), a
+ * `comment` line, a pause of `delayMs` (0..=30000), or `drop`, which closes
+ * the stream as a server dropping the connection would and must come last.
+ */
+export type NetworkSseItem =
+  | { event?: string; data: unknown; id?: string; retry?: number }
+  | { comment: string }
+  | { delayMs: number }
+  | { drop: true };
+
+/**
+ * Answer with a `text/event-stream` (status 200) that plays `sse`. Without a
+ * final `{ drop: true }` the stream stays open after its last item, like a
+ * live server, until the route is removed. `Rong.SSE` in Logic receives the
+ * events and, after a drop, reconnects with `Last-Event-ID`, which the next
+ * answer of a `sequence` can serve. `delay` (0..=30000 ms) holds the response
+ * before it opens.
+ */
+export type NetworkRouteSse = {
+  sse: NetworkSseItem[];
+  headers?: Record<string, string>;
+  delay?: number;
+} & NetworkRouteForbid<
+  'status' | 'statusText' | 'contentType' | 'body' | 'json' | 'abort' | 'continue' | 'patchJson' | 'hang' | 'sequence'
+>;
+
+/** Exactly one of fulfill, abort, continue, hang, or sse. */
+export type NetworkRouteAnswer =
   | NetworkRouteFulfill
   | NetworkRouteAbort
   | NetworkRouteContinue
-  | NetworkRouteHang;
+  | NetworkRouteHang
+  | NetworkRouteSse;
+
+/**
+ * Answers served in call order: the first matched request gets the first
+ * answer, and the last answer repeats. Answers take text or `json` bodies,
+ * not bytes. Combine with a pattern's `times` to stop matching.
+ */
+export type NetworkRouteSequence = { sequence: NetworkRouteAnswer[] } &
+  NetworkRouteForbid<NetworkRouteFulfillKey | 'abort' | 'continue' | 'patchJson' | 'hang' | 'sse'>;
+
+/**
+ * One answer, or a `sequence` of them. String values may contain
+ * relative-time templates rendered each time the answer is served:
+ * `{{now}}`, `{{now-2h}}`, `{{now+30m}}` (ISO-8601 UTC, like
+ * `Date.prototype.toISOString`; units `ms`, `s`, `m`, `h`, `d`) and
+ * `{{nowMs}}` (epoch milliseconds, as text).
+ */
+export type NetworkRouteHandler = NetworkRouteAnswer | NetworkRouteSequence;
+
+/**
+ * One scenario route: which requests it matches and how it answers. `url` is
+ * a glob or a regex written as `"/source/flags"`. `note` is ignored.
+ */
+export type NetworkScenarioRoute = {
+  url: string;
+  method?: string;
+  times?: number;
+  note?: string;
+  description?: string;
+} & (
+  | NetworkRouteHandler
+  | (NetworkRouteFulfillFields & { bodyBase64: string } & NetworkRouteForbid<'body' | 'json'>)
+);
+
+/**
+ * A declarative set of routes, usually a JSON file. The first matching entry
+ * answers. Unknown fields are rejected.
+ */
+export interface NetworkScenarioDefinition {
+  $schema?: string;
+  name?: string;
+  description?: string;
+  routes: NetworkScenarioRoute[];
+}
+
+/**
+ * What `scenario()` accepts: a typed definition, or an imported JSON file,
+ * whose literal types TypeScript widens. Either is validated by the host.
+ */
+export type NetworkScenarioInput =
+  | NetworkScenarioDefinition
+  | { readonly routes: readonly object[]; readonly [key: string]: unknown };
+
+/** Handle returned by `scenario()`. */
+export interface NetworkScenario {
+  /** The scenario's `name`, or `null`. */
+  readonly name: string | null;
+  /** One route handle per scenario entry, in file order. */
+  readonly routes: NetworkRoute[];
+  /** Remove every route of the scenario; resolves how many were still installed. */
+  unroute(): Promise<number>;
+  /** Requests any route of the scenario handled, oldest first. */
+  requests(): Promise<NetworkRouteRequest[]>;
+}
 
 /** One request a route handled, as the app sent it. */
 export interface NetworkRouteRequest {
@@ -815,9 +907,12 @@ export interface NetworkRouteRequest {
   body: string | null;
   /** `body` was cut to the 64 KiB (65536-byte) limit. */
   bodyTruncated: boolean;
-  /** `continue` also covers a `patchJson` pass-through. */
+  /**
+   * `continue` also covers a `patchJson` pass-through; `fulfill` also covers
+   * an `sse` answer.
+   */
   action: 'fulfill' | 'abort' | 'continue' | 'hang';
-  /** Fulfilled status; `null` for abort/continue/hang. */
+  /** Fulfilled status (200 for `sse`); `null` for abort/continue/hang. */
   status: number | null;
   /** Epoch milliseconds. */
   timestamp: number;
@@ -833,15 +928,21 @@ export interface NetworkRoute {
 }
 
 /**
- * Test-only routing of the selected lxapp's Logic `fetch`. Available only in
- * a host automation run (`lxdev test`); every route is removed when that run
- * ends. The newest matching route handles a request; unmatched requests are
+ * Test-only routing of the selected lxapp's Logic `fetch` and `Rong.SSE`.
+ * Available only in a host automation run (`lxdev test`); every route is
+ * removed when that run ends. The newest matching route handles a request; unmatched requests are
  * untouched. A fulfillment never answers a host the app's network policy
  * refuses — the request goes to the real `fetch`, which rejects it.
  * WebView page requests are not routed.
  */
 export interface NetworkDriver {
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<NetworkRoute>;
+  /**
+   * Install every route of a scenario at once, validated as a whole (unknown
+   * fields and bad patterns reject). Within the scenario the first matching
+   * entry answers; routes installed later still take precedence over it.
+   */
+  scenario(scenario: NetworkScenarioInput): Promise<NetworkScenario>;
   /** Remove every route this run installed for the app; resolves the count. */
   unrouteAll(): Promise<number>;
   /**

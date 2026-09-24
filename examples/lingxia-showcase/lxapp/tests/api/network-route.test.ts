@@ -2,6 +2,7 @@ import { expect, spec } from '@lingxia/test';
 import type { NetworkRouteHandler } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import outage from '../fixtures/network/outage.json';
 
 // Public host: the Showcase keeps the default public-network grant, and a
 // route never fulfills a host the app's policy would refuse.
@@ -129,4 +130,131 @@ spec("reject network routes from inside app Logic", {
   expect(rejection.rejected).toBeTruthy();
   expect(rejection.code).toBe('E_AUTOMATION');
   expect(rejection.message).toContain('host automation run');
+});
+
+spec("serve a scenario file with a sequence, relative times and file-order precedence", {
+  id: "AUT-NET-004",
+  covers: [
+    'NetworkDriver.scenario',
+    'NetworkScenario.name',
+    'NetworkScenario.routes',
+    'NetworkScenario.requests',
+    'NetworkScenario.unroute',
+  ],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, "AUT-NET-004");
+
+  const scenario = await app.network.scenario(outage);
+  expect(scenario.name).toBe('showcase-outage');
+  expect(scenario.routes.map((route) => route.pattern)).toEqual(outage.routes.map((route) => route.url));
+
+  const result = await app.eval({
+    script: `
+      const base = ${JSON.stringify(BASE)};
+      const statuses = [];
+      let recovered = null;
+      for (let i = 0; i < 4; i += 1) {
+        const response = await fetch(base + '/status');
+        statuses.push(response.status);
+        if (response.ok) recovered = await response.json();
+      }
+      const device = await (await fetch(base + '/devices/d1')).json();
+      const special = (await fetch(base + '/devices/special')).status;
+      return { statuses, recovered, device, special, now: Date.now() };
+    `,
+  }) as {
+    statuses: number[];
+    recovered: { up: boolean; checkedAt: string } | null;
+    device: { id: string; lastSeen: string; lastSeenMs: string; expires: string };
+    special: number;
+    now: number;
+  };
+
+  // Answers follow call order; the last one repeats.
+  expect(result.statuses).toEqual([503, 502, 200, 200]);
+  expect(result.recovered?.up).toBe(true);
+  const near = (iso: string, offsetMs: number) => Math.abs(Date.parse(iso) - (result.now + offsetMs)) < 120_000;
+  expect(near(result.recovered?.checkedAt ?? '', 0)).toBeTruthy();
+  expect(near(result.device.lastSeen, -2 * 3600_000)).toBeTruthy();
+  expect(near(result.device.expires, 30 * 60_000)).toBeTruthy();
+  expect(Math.abs(Number(result.device.lastSeenMs) - (result.now - 2 * 3600_000)) < 120_000).toBeTruthy();
+  expect(result.special).toBe(418);
+
+  const [status] = scenario.routes;
+  expect((await status.requests()).map((entry) => entry.status)).toEqual([503, 502, 200, 200]);
+  expect((await scenario.requests()).length).toBe(6);
+  expect(await scenario.unroute()).toBe(3);
+});
+
+spec("reject a scenario with an unknown field", {
+  id: "AUT-NET-006",
+  covers: ['NetworkDriver.scenario'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, "AUT-NET-006");
+  await t.reject(
+    () => app.network.scenario({ routes: [{ url: `${BASE}/x`, stauts: 200 }] }),
+    { message: "routes[0]: unknown route handler option 'stauts'" },
+  );
+});
+
+spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Event-ID", {
+  id: "AUT-NET-005",
+  covers: ['NetworkDriver.route', 'NetworkRoute.requests'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, "AUT-NET-005");
+
+  await app.network.route(`${BASE}/feed`, {
+    sse: [
+      { event: 'ready', data: { n: 1 }, id: '1' },
+      { comment: 'keepalive' },
+      { delayMs: 150 },
+      { data: 'bye' },
+      { drop: true },
+    ],
+  });
+  const live = await app.network.route(`${BASE}/live`, {
+    sequence: [
+      // Dropped after two events: Rong.SSE reconnects with Last-Event-ID.
+      { sse: [{ data: 'one', id: 'e1' }, { data: { two: 2 }, id: 'e2', retry: 20 }, { drop: true }] },
+      // No drop: stays open like a live server until the spec ends.
+      { sse: [{ event: 'late', data: 'three', id: 'e3' }] },
+    ],
+  });
+
+  const result = await app.eval({
+    script: `
+      const base = ${JSON.stringify(BASE)};
+      const started = Date.now();
+      const feed = await fetch(base + '/feed');
+      const feedType = feed.headers.get('content-type');
+      const feedText = await feed.text();
+      const feedMs = Date.now() - started;
+
+      const sse = new Rong.SSE(base + '/live', { reconnect: { baseDelayMs: 10, maxDelayMs: 100 } });
+      const events = [];
+      for await (const event of sse) {
+        events.push([event.type, event.data, event.id]);
+        if (events.length === 3) break;
+      }
+      return { feedType, feedText, feedMs, events };
+    `,
+  }) as { feedType: string | null; feedText: string; feedMs: number; events: string[][] };
+
+  expect(result.feedType).toBe('text/event-stream');
+  expect(result.feedText).toBe('event: ready\nid: 1\ndata: {"n":1}\n\n: keepalive\ndata: bye\n\n');
+  expect(result.feedMs >= 120).toBeTruthy();
+  expect(result.events).toEqual([
+    ['message', 'one', 'e1'],
+    ['message', '{"two":2}', 'e2'],
+    ['late', 'three', 'e3'],
+  ]);
+
+  const connections = await live.requests();
+  expect(connections.length).toBe(2);
+  expect(connections[0].headers['accept']).toBe('text/event-stream');
+  expect(connections[0].headers['last-event-id']).toBe(undefined);
+  expect(connections[1].headers['last-event-id']).toBe('e2');
 });

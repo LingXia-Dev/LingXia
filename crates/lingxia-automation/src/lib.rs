@@ -286,6 +286,8 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<network::JSNetworkDriver>()?;
     #[cfg(feature = "runtime")]
     ctx.register_hidden_class::<network::JSNetworkRoute>()?;
+    #[cfg(feature = "runtime")]
+    ctx.register_hidden_class::<network::JSNetworkScenario>()?;
     ctx.register_hidden_class::<profile::JSProfileDriver>()?;
     ctx.register_hidden_class::<clock::JSClockDriver>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
@@ -333,4 +335,7 @@ impl lx::LxLogicExtension for AutomationExtension {
 /// LxApp JS context is created (same timing as `register_logic_runtime`).
 pub fn register_automation_runtime() {
     lx::register_logic_extension(Box::new(AutomationExtension));
+    // `Rong.SSE` can only be wrapped before lxapp freezes `Rong`.
+    #[cfg(feature = "runtime")]
+    lx::register_rong_member_wrapper("SSE", network::wrap_logic_sse);
 }

@@ -4,6 +4,8 @@ import type {
   NetworkRouteHandler,
   NetworkRoutePattern,
   NetworkRouteRequest,
+  NetworkScenario,
+  NetworkScenarioInput,
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
 
@@ -59,12 +61,34 @@ export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: Netw
         scope.track(host, route);
         return wrapRoute(route);
       }),
+    scenario: (definition: NetworkScenarioInput) =>
+      host.act("network.scenario", describeScenario(definition), async () => {
+        const scenario = await driver().scenario(definition);
+        // Read once: the host builds new handles on every read.
+        const routes = [...scenario.routes];
+        for (const route of routes) scope.track(host, route);
+        const label = scenario.name ?? "scenario";
+        const wrapped: NetworkScenario = {
+          get name() { return scenario.name; },
+          routes: routes.map(wrapRoute),
+          unroute: () => host.act("network.unroute", label, () => scenario.unroute()),
+          requests: () => host.act("network.requests", label, () => scenario.requests()),
+        };
+        return wrapped;
+      }),
     unrouteAll: () => host.act("network.unrouteAll", "", () => driver().unrouteAll()),
     // Spec-scoped: the host log spans the whole run.
     requests: () =>
       host.act("network.requests", "", async () =>
         (await driver().requests()).filter((entry: NetworkRouteRequest) => scope.routes.has(entry.routeId))),
   };
+}
+
+function describeScenario(definition: NetworkScenarioInput): string {
+  const record = definition as { name?: unknown; routes?: unknown };
+  const name = typeof record.name === "string" ? record.name : "scenario";
+  const count = Array.isArray(record.routes) ? record.routes.length : 0;
+  return truncate(`${name} (${count} route${count === 1 ? "" : "s"})`, 80);
 }
 
 function describePattern(pattern: NetworkRoutePattern): string {
@@ -75,6 +99,8 @@ function describePattern(pattern: NetworkRoutePattern): string {
 }
 
 function describeHandler(handler: NetworkRouteHandler): string {
+  if (handler.sequence !== undefined) return `sequence of ${handler.sequence.length}`;
+  if (handler.sse !== undefined) return `sse (${handler.sse.length} items)`;
   if (handler.abort !== undefined) return `abort ${String(handler.abort)}`;
   if (handler.hang !== undefined) return "hang";
   if (handler.continue !== undefined) return handler.patchJson !== undefined ? "continue + patchJson" : "continue";

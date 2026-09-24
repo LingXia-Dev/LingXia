@@ -2,6 +2,7 @@
 //! and the matched-request log. Pure Rust so it is unit-testable without a
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
+use super::capture::{CallLog, Recording};
 use regex::Regex;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -18,6 +19,9 @@ pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
 const MAX_LOG_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// Longest fulfillment delay a route may ask for.
 pub(crate) const MAX_DELAY_MS: u32 = 30_000;
+/// Owner of the routes a dev session installed with `lxdev network scenario
+/// use`. Automation run ids are UUIDs, so it never collides with one.
+pub(crate) const DEV_SESSION_OWNER: &str = "@dev-session";
 
 #[derive(Debug, Clone)]
 pub(crate) enum UrlMatcher {
@@ -144,6 +148,78 @@ pub(crate) struct Fulfill {
     pub delay_ms: u32,
 }
 
+/// One item of an SSE answer, in stream order.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum SseStep {
+    Event {
+        event: Option<String>,
+        data: String,
+        id: Option<String>,
+        retry: Option<u64>,
+    },
+    Comment(String),
+    /// Pause the stream this many milliseconds.
+    Delay(u32),
+    /// Close the stream here, as a server dropping the connection would.
+    Drop,
+}
+
+impl SseStep {
+    /// The `text/event-stream` wire form of an event or comment.
+    pub(crate) fn frame(&self) -> Option<String> {
+        match self {
+            Self::Event {
+                event,
+                data,
+                id,
+                retry,
+            } => {
+                let mut out = String::new();
+                if let Some(event) = event {
+                    out.push_str(&format!("event: {event}\n"));
+                }
+                if let Some(id) = id {
+                    out.push_str(&format!("id: {id}\n"));
+                }
+                if let Some(retry) = retry {
+                    out.push_str(&format!("retry: {retry}\n"));
+                }
+                for line in data.split('\n') {
+                    let line = line.strip_suffix('\r').unwrap_or(line);
+                    out.push_str(&format!("data: {line}\n"));
+                }
+                out.push('\n');
+                Some(out)
+            }
+            Self::Comment(text) => Some(
+                text.split('\n')
+                    .map(|line| format!(": {}\n", line.strip_suffix('\r').unwrap_or(line)))
+                    .collect(),
+            ),
+            Self::Delay(_) | Self::Drop => None,
+        }
+    }
+}
+
+/// A `text/event-stream` answer. Without a trailing [`SseStep::Drop`] the
+/// stream stays open after its last item, like a live server, until the
+/// route is removed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct SseAnswer {
+    pub headers: Vec<(String, String)>,
+    pub steps: Vec<SseStep>,
+    /// Milliseconds before the response opens.
+    pub delay_ms: u32,
+    /// Held-request token while the stream stays open; 0 in a route spec.
+    pub hold: u64,
+}
+
+impl SseAnswer {
+    pub(crate) fn stays_open(&self) -> bool {
+        !matches!(self.steps.last(), Some(SseStep::Drop))
+    }
+}
+
 /// Transport failures a route can emulate. Only failures the `fetch` wrapper
 /// reproduces faithfully belong here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -182,12 +258,14 @@ pub(crate) enum RouteAction {
     Hang {
         token: u64,
     },
+    /// Answer with a `text/event-stream` built from these items.
+    Sse(SseAnswer),
 }
 
 impl RouteAction {
-    fn kind(&self) -> &'static str {
+    pub(crate) fn kind(&self) -> &'static str {
         match self {
-            Self::Fulfill(_) => "fulfill",
+            Self::Fulfill(_) | Self::Sse(_) => "fulfill",
             Self::Abort(_) => "abort",
             Self::Continue | Self::Patch(_) => "continue",
             Self::Hang { .. } => "hang",
@@ -236,7 +314,54 @@ pub(crate) struct RouteSpec {
     pub method: Option<String>,
     /// Remaining matches before the route removes itself.
     pub times: Option<u32>,
+    /// Answers in call order; the last one repeats. Never empty.
+    pub answers: Vec<RouteAction>,
+    /// Requests this route answered so far.
+    pub served: usize,
+}
+
+impl RouteSpec {
+    pub(crate) fn new(
+        matcher: UrlMatcher,
+        method: Option<String>,
+        times: Option<u32>,
+        answers: Vec<RouteAction>,
+    ) -> Self {
+        debug_assert!(!answers.is_empty());
+        Self {
+            matcher,
+            method,
+            times,
+            answers,
+            served: 0,
+        }
+    }
+
+    /// The answer for the next request, advancing the sequence.
+    fn next_answer(&mut self) -> RouteAction {
+        let index = self.served.min(self.answers.len().saturating_sub(1));
+        self.served += 1;
+        self.answers[index].clone()
+    }
+}
+
+/// The route that answered a request, and how.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Decision {
     pub action: RouteAction,
+    pub owner: String,
+    pub route_id: u64,
+    pub pattern: String,
+}
+
+/// The routes a dev session installed from a scenario file.
+#[derive(Debug, Clone)]
+pub(crate) struct DevScenario {
+    pub name: Option<String>,
+    pub source: Option<String>,
+    pub appid: String,
+    pub route_ids: Vec<u64>,
+    pub installed_ms: u64,
 }
 
 #[derive(Debug)]
@@ -311,6 +436,12 @@ pub(crate) struct Registry {
     log: VecDeque<RequestEntry>,
     log_body_bytes: usize,
     held: Vec<Held>,
+    /// Host automation runs in progress. While any exists, dev-session
+    /// routes stand aside and Logic `fetch` calls are logged.
+    active_runs: Vec<String>,
+    pub(crate) dev: Option<DevScenario>,
+    pub(crate) calls: CallLog,
+    pub(crate) recording: Option<Recording>,
 }
 
 impl Registry {
@@ -338,6 +469,71 @@ impl Registry {
         Ok(id)
     }
 
+    /// Install `specs` together, all or none. The first spec answers before
+    /// later ones, so they are installed newest-last in reverse order.
+    /// Returns `(id, pattern)` in `specs` order.
+    pub(crate) fn install_all(
+        &mut self,
+        run_id: &str,
+        appid: &str,
+        specs: Vec<RouteSpec>,
+        run_active: impl FnOnce() -> bool,
+    ) -> Result<Vec<(u64, String)>, String> {
+        if !run_active() {
+            return Err("the automation run that owns this driver has ended".into());
+        }
+        let mut installed = Vec::with_capacity(specs.len());
+        for spec in specs.into_iter().rev() {
+            self.next_id += 1;
+            installed.push((self.next_id, spec.matcher.label()));
+            self.routes.push(Route {
+                id: self.next_id,
+                run_id: run_id.to_string(),
+                appid: appid.to_string(),
+                spec,
+            });
+        }
+        installed.reverse();
+        Ok(installed)
+    }
+
+    /// Open a call-log entry for a Logic request when a run or a recording
+    /// watches it: `(id, whether the recording wants its response)`.
+    pub(crate) fn observe(
+        &mut self,
+        appid: &str,
+        kind: &'static str,
+        method: &str,
+        url: &str,
+    ) -> Option<(u64, bool)> {
+        let record = self
+            .recording
+            .as_ref()
+            .is_some_and(|recording| recording.wants(appid, url));
+        if !record && self.active_runs.is_empty() {
+            return None;
+        }
+        Some((self.calls.begin(appid, kind, method, url, record), record))
+    }
+
+    /// Close a call-log entry; a recorded one joins the recording.
+    pub(crate) fn settle(&mut self, id: u64, settled: super::capture::Settled) {
+        let Some(call) = self.calls.settle(id, &settled) else {
+            return;
+        };
+        // An app cancelling its own request is not something the server said.
+        if settled
+            .error
+            .as_deref()
+            .is_some_and(|error| error.starts_with("AbortError"))
+        {
+            return;
+        }
+        if let Some(recording) = self.recording.as_mut() {
+            recording.push(&call, settled);
+        }
+    }
+
     /// Remove a route and release the requests it holds — also after the
     /// route already expired through `times`.
     pub(crate) fn remove(&mut self, run_id: &str, id: u64) -> bool {
@@ -358,17 +554,41 @@ impl Registry {
         before - self.routes.len()
     }
 
-    /// Drop every route and log entry a run owns.
+    /// A host automation run started: its Logic `fetch` calls are logged
+    /// and dev-session routes stand aside until it ends.
+    pub(crate) fn begin_run(&mut self, run_id: &str) {
+        if !self.active_runs.iter().any(|run| run == run_id) {
+            self.active_runs.push(run_id.to_string());
+        }
+    }
+
+    pub(crate) fn runs_active(&self) -> bool {
+        !self.active_runs.is_empty()
+    }
+
+    /// Drop every route and log entry a run owns, and end it.
     pub(crate) fn clear_run(&mut self, run_id: &str) {
+        self.active_runs.retain(|run| run != run_id);
+        // A dev recording outlives a scenario change; the session end stops it.
+        if run_id != DEV_SESSION_OWNER
+            && self
+                .recording
+                .as_ref()
+                .is_some_and(|recording| recording.owner == run_id)
+        {
+            self.recording = None;
+        }
+        if run_id == DEV_SESSION_OWNER {
+            self.dev = None;
+        }
         self.held.retain(|held| held.run_id != run_id);
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
     }
 
-    /// The most recently installed matching route wins. `allowed` reports
-    /// whether the app's network policy admits the URL: a fulfillment never
-    /// answers a request the real `fetch` would have refused.
+    /// [`Self::decide_route`] without call observation.
+    #[cfg(test)]
     pub(crate) fn decide(
         &mut self,
         appid: &str,
@@ -377,8 +597,30 @@ impl Registry {
         request: impl FnOnce() -> SentRequest,
         allowed: impl FnOnce() -> bool,
     ) -> Option<RouteAction> {
+        self.decide_route(appid, method, url, request, allowed, 0)
+            .map(|decision| decision.action)
+    }
+
+    /// The route answering a request, and how. The most recently installed
+    /// matching route wins; a sequence advances by one answer. `allowed`
+    /// reports whether the app's network policy admits the URL: a
+    /// fulfillment never answers a request the real `fetch` would have
+    /// refused. `call` is the [`CallLog`] id of the request, or 0 when it is
+    /// not observed.
+    pub(crate) fn decide_route(
+        &mut self,
+        appid: &str,
+        method: &str,
+        url: &str,
+        request: impl FnOnce() -> SentRequest,
+        allowed: impl FnOnce() -> bool,
+        call: u64,
+    ) -> Option<Decision> {
+        // A test run is never steered by a scenario a developer left on.
+        let dev_aside = !self.active_runs.is_empty();
         let index = self.routes.iter().rposition(|route| {
             route.appid == appid
+                && !(dev_aside && route.run_id == DEV_SESSION_OWNER)
                 && route
                     .spec
                     .method
@@ -387,13 +629,22 @@ impl Registry {
                 && route.spec.matcher.is_match(url)
         })?;
         let route = &mut self.routes[index];
-        let mut action = route.spec.action.clone();
+        let mut action = super::scenario::render_action(&route.spec.next_answer(), now_ms());
         // Neither an answer nor a stall may stand in for a host the real
         // `fetch` would refuse.
-        if matches!(action, RouteAction::Fulfill(_) | RouteAction::Hang { .. }) && !allowed() {
+        if matches!(
+            action,
+            RouteAction::Fulfill(_) | RouteAction::Hang { .. } | RouteAction::Sse(_)
+        ) && !allowed()
+        {
             action = RouteAction::Continue;
         }
-        if let RouteAction::Hang { token } = &mut action {
+        let hold = match &mut action {
+            RouteAction::Hang { token } => Some(token),
+            RouteAction::Sse(sse) if sse.stays_open() => Some(&mut sse.hold),
+            _ => None,
+        };
+        if let Some(token) = hold {
             self.next_id += 1;
             *token = self.next_id;
             self.held.push(Held {
@@ -411,6 +662,7 @@ impl Registry {
             action: action.kind(),
             status: match &action {
                 RouteAction::Fulfill(fulfill) => Some(fulfill.status),
+                RouteAction::Sse(_) => Some(200),
                 _ => None,
             },
             request: request(),
@@ -418,11 +670,20 @@ impl Registry {
             run_id: route.run_id.clone(),
             appid: route.appid.clone(),
         };
+        let decision = Decision {
+            action: action.clone(),
+            owner: route.run_id.clone(),
+            route_id: route.id,
+            pattern: entry.pattern.clone(),
+        };
         if let Some(times) = route.spec.times.as_mut() {
             *times = times.saturating_sub(1);
             if *times == 0 {
                 self.routes.remove(index);
             }
+        }
+        if call != 0 {
+            self.calls.routed(call, &decision);
         }
         let body_len = entry.request.body_len();
         while self.log.len() >= MAX_LOG_ENTRIES
@@ -434,7 +695,7 @@ impl Registry {
         }
         self.log_body_bytes += body_len;
         self.log.push_back(entry);
-        Some(action)
+        Some(decision)
     }
 
     /// Whether a `hang` route still holds the request behind `token`.
@@ -450,12 +711,35 @@ impl Registry {
             .collect()
     }
 
+    /// Requests the route `id` of `owner` answered, as far as the log holds.
+    pub(crate) fn hits(&self, owner: &str, id: u64) -> usize {
+        self.log
+            .iter()
+            .filter(|entry| entry.run_id == owner && entry.route_id == id)
+            .count()
+    }
+
+    /// Route ids of `owner` still installed, with the answers left in
+    /// their `times` budget.
+    pub(crate) fn remaining(&self, owner: &str, id: u64) -> Option<Option<u32>> {
+        self.routes
+            .iter()
+            .find(|route| route.run_id == owner && route.id == id)
+            .map(|route| route.spec.times)
+    }
+
+    #[cfg(test)]
     fn len(&self) -> usize {
         self.routes.len()
     }
+
+    /// What keeps the Logic `fetch` wrapper off its fast path.
+    fn watched(&self) -> usize {
+        self.routes.len() + self.active_runs.len() + usize::from(self.recording.is_some())
+    }
 }
 
-fn now_ms() -> u64 {
+pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |elapsed| elapsed.as_millis() as u64)
@@ -467,9 +751,13 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     log: VecDeque::new(),
     log_body_bytes: 0,
     held: Vec::new(),
+    active_runs: Vec::new(),
+    dev: None,
+    calls: CallLog::new(),
+    recording: None,
 });
-/// Installed route count, mirrored outside the lock so Logic `fetch` pays one
-/// atomic load when no test route exists.
+/// Installed routes plus active runs and recordings, mirrored outside the
+/// lock so Logic `fetch` pays one atomic load when nothing watches it.
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 
 /// Run `f` against the process route table, keeping [`ACTIVE`] in sync.
@@ -478,7 +766,7 @@ pub(crate) fn with_registry<R>(f: impl FnOnce(&mut Registry) -> R) -> R {
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let result = f(&mut guard);
-    ACTIVE.store(guard.len(), Ordering::Release);
+    ACTIVE.store(guard.watched(), Ordering::Release);
     result
 }
 
@@ -501,12 +789,7 @@ mod tests {
     }
 
     fn spec(matcher: UrlMatcher, method: Option<&str>, action: RouteAction) -> RouteSpec {
-        RouteSpec {
-            matcher,
-            method: method.map(str::to_string),
-            times: None,
-            action,
-        }
+        RouteSpec::new(matcher, method.map(str::to_string), None, vec![action])
     }
 
     #[test]
