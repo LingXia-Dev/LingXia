@@ -2101,8 +2101,10 @@ mod tests {
         use rong::{JSEngine, RongJS};
         let runtime = RongJS::runtime();
         let ctx = runtime.context();
-        // The Logic worker modules `Page.js` relies on (timers, abort + DOMException).
-        rong_modules::init(&ctx, ["timer", "event", "exception", "abort"]).expect("Logic modules");
+        // The Logic worker modules `Page.js` relies on: timers, abort with
+        // DOMException, and console for a listener error it reports.
+        rong_modules::init(&ctx, ["timer", "event", "exception", "abort", "console"])
+            .expect("Logic modules");
         // A stand-in for the Rust `PageSvc` class: `Page.js` only constructs it.
         ctx.eval::<()>(Source::from_bytes(
             "globalThis.PageSvc = class { constructor() {} _setData() {} };",
