@@ -308,3 +308,51 @@ Development machine: lxdev receives progress, results, and artifacts
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.
+
+## Isolated data profiles
+
+Isolation, snapshot and restore happen in the host, never in the app under
+test: no test writes into its storage and app code has no test branch.
+
+- `lxapp::data_profile` keeps a process-memory override per appid.
+  `initialize_paths` reads it once per `LxApp` instance and resolves
+  `storage.redb`, `userdata`, `usercache` and `temp` under the profile's
+  `live/` root; the bundle, fingermark and every shared store (`lxapps.redb`,
+  downloads, settings) are unchanged. Page WebViews are already ephemeral
+  (`StrictDefault`); `BrowserRelaxed` tabs still share the Runner's store.
+- Every switch is close → change → reopen (`with_app_closed`, serialized by
+  one lock): retire the instance, wait for its `logic_contexts` to reach 0 so
+  no redb handle is open, run the change, reopen with the captured open mode,
+  panel and initial route, and wait for page ready. Copying a live redb is
+  never safe; that is why a checkpoint costs two reopens.
+- `leave` clears the override before closing anything, so a failed close or
+  reopen still leaves the next instance on its own data. A crash leaves no
+  override; startup (`prepare_directory_structure`) sweeps
+  `<data>/lingxia/test-profiles`, which is outside the cleanup roots.
+- `checkpoint`/`restore` refuse unless the app currently runs on that exact
+  profile (`RunProfile::is_active_for`), and the driver additionally requires
+  the context's `ProfileRunScope`, attached only to runs started isolated.
+  Rollback therefore cannot reach real data (`E_PROFILE_NOT_ISOLATED`).
+- `session.test.start` with `profile` checks the slot, creates the profile,
+  unpacks the seed (manifest `format`, `appid`, `fingermark`,
+  `storage_format` must match; only regular files under `data/`, 256 MiB cap),
+  switches, then starts; a refused start `abandon`s it. The run owns the
+  `AutomationProfile`: `RunShared::finalize` (every terminal path) starts the
+  teardown on its own thread. Until it finishes, `retire_completed` keeps the
+  run in the slot and `poll` reports `running`, so neither the next start nor
+  lxdev's export/rerun races a half-switched app, and the dev server keeps
+  deferring file-watch reloads. Retained profiles expire after 300 s.
+- Snapshots travel only over `session.profile.*` (≤ 4 MiB decoded chunks,
+  offset-checked, sha256), never the artifact channel, so they stay out of
+  `output_dir`, reports and secret scrubbing. lxdev refuses isolation unless
+  `session.test.capabilities` reports `profile`: an older host ignores the
+  start field and would run on real data. `meta.run` gets `profile` and
+  `profile_seed` (`<name>@<sha256[:8]>`), never paths or contents.
+- A profile switch reopens the app as a new instance; drivers hold a `Weak`
+  to the old one. `LiveFixture` re-selects the lxapp after `checkpoint` /
+  `restore`. `restoreProfile` checkpoints before the implied relaunch and
+  registers restore + drop as the first defer; if it does not complete, the
+  run is contaminated (partial), like a stuck cleanup.
+- Not isolated in v1: downloads and `downloads.redb`, other lxapps opened in
+  the run, and browser-profile WebViews. Mobile hosts share the Rust path but
+  are not yet validated (transfer limits, `test-profiles` writability).
