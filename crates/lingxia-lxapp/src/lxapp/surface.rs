@@ -21,6 +21,9 @@ static SURFACE_VISIBILITY_OBSERVER: OnceLock<SurfaceVisibilityObserver> = OnceLo
 /// Observer fired when one lxapp presentation's actual viewport changes.
 /// Receives that lxapp's app id.
 static SURFACE_CONTEXT_OBSERVER: OnceLock<fn(&str)> = OnceLock::new();
+/// The adaptive context Logic's `lx.surface.watchContext` delivers, as JSON,
+/// for one lxapp. Views are sent the same value, so both sides agree.
+static SURFACE_CONTEXT_SNAPSHOT: OnceLock<fn(&str) -> Option<String>> = OnceLock::new();
 static SURFACE_VIEWPORTS: OnceLock<std::sync::Mutex<HashMap<String, SurfaceViewportContext>>> =
     OnceLock::new();
 
@@ -1090,6 +1093,28 @@ fn notify_surface_close_observer(id: &str, reason: &str) {
 
 pub fn register_surface_context_observer(observer: fn(&str)) {
     let _ = SURFACE_CONTEXT_OBSERVER.set(observer);
+}
+
+pub fn register_surface_context_snapshot(snapshot: fn(&str) -> Option<String>) {
+    let _ = SURFACE_CONTEXT_SNAPSHOT.set(snapshot);
+}
+
+/// Orders pushes to Views. A push built earlier can run later — the initial
+/// one is queued to the main thread while a change pushes at once — so each
+/// carries a revision and a View keeps the newest it has seen.
+static VIEW_CONTEXT_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The script that hands a page's View this lxapp's adaptive context, read by
+/// `useSurfaceContext()`. `None` before the Logic runtime can describe it.
+pub(crate) fn view_surface_context_script(appid: &str) -> Option<String> {
+    let payload = SURFACE_CONTEXT_SNAPSHOT.get()?(appid)?;
+    Some(view_surface_context_script_for(&payload))
+}
+
+/// The same script for context JSON already built.
+pub(crate) fn view_surface_context_script_for(payload: &str) -> String {
+    let revision = VIEW_CONTEXT_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    format!("var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({payload}, {revision});")
 }
 
 fn notify_surface_context_observer(window_id: &str) {
@@ -3038,6 +3063,37 @@ fn close_reason_str(reason: CloseReason) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn views_are_sent_the_context_logic_describes() {
+        fn snapshot(appid: &str) -> Option<String> {
+            (appid == "known").then(|| {
+                r#"{"sizeClass":"regular","width":900,"height":700,"aside":false}"#.to_string()
+            })
+        }
+        register_surface_context_snapshot(snapshot);
+        let script = view_surface_context_script("known").expect("a known lxapp has a context");
+        assert!(
+            script.starts_with(
+                r#"var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({"sizeClass":"regular","width":900,"height":700,"aside":false}, "#
+            ),
+            "{script}"
+        );
+        // Each push carries a later revision than the one before it.
+        let revision = |script: &str| -> u64 {
+            script
+                .rsplit(", ")
+                .next()
+                .unwrap()
+                .trim_end_matches(");")
+                .parse()
+                .unwrap()
+        };
+        let next = view_surface_context_script_for("{}");
+        assert!(revision(&next) > revision(&script), "{script} / {next}");
+        // An lxapp Logic cannot describe yet sends nothing.
+        assert_eq!(view_surface_context_script("unknown"), None);
+    }
 
     #[test]
     fn only_the_stable_lxapp_root_lacks_workspace_close_controls() {

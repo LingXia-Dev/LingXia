@@ -34,8 +34,8 @@ Content size class is scoped to the lxapp surface, not the host window: an
 aside inside a wide desktop shell can receive `compact`. The shell's own
 `medium` / `expanded` bands drive chrome admission and never reach content.
 `aside` is live host docking availability, decided by the shell rather than
-derived from the content viewport — this subscription is the only way to read
-it.
+derived from the content viewport — read it from this context (in Logic or the
+View), never infer it from the viewport.
 
 `regular` is room, not desktop. Pair it with `usePlatform().isDesktop`;
 tablets and foldable phones are mobile, and unfolding a fold flips
@@ -77,46 +77,36 @@ Browser `env(safe-area-inset-*)` alone does not describe simulated Runner
 chrome. Do not compensate with a fixed phone/notch height. Capsule geometry
 belongs to the View, through the framework's page-chrome helper.
 
-## Subscribe in Logic
+## Read it in the View
 
-Keep the authoritative value in Page Logic and replicate it to the View. Store
-the unsubscribe function per page instance so multiple instances of one route
-do not overwrite each other.
+A View reads the context itself: `useSurfaceContext()` from `@lingxia/react` /
+`@lingxia/vue`, or `getSurfaceContext()` and `subscribeSurfaceContext(cb)` from
+`@lingxia/html`. It is the same value `watchContext` delivers to Logic, sent to
+the page as soon as its bridge is up — ahead of the page's first data — and
+again on every change, so a page that only picks a layout needs no Logic
+subscription, no `setData` and nothing in its `data`. It is `null` until that
+first push; render the page skeleton meanwhile. A host older than the release
+that added it never sends it, so keep `lxapp.json` `minRuntime` at that release
+or later — `lingxia` raises it when the project moves to this line.
+
+Subscribe in Logic only when Logic itself acts on the context — say, fetching
+less on `compact`. Then keep the unsubscribe per page instance, never in `data`:
 
 ```ts
-import type { SurfaceContext } from '@lingxia/types';
-
-type PageData = {
-  surfaceContext: SurfaceContext;
-};
-
 const subscriptions = new WeakMap<object, () => void>();
 
 Page({
-  data: {
-    surfaceContext: {
-      sizeClass: 'compact',
-      width: 0,
-      height: 0,
-    },
-  } as PageData,
-
   onLoad() {
-    const unsubscribe = lx.surface.watchContext((surfaceContext) => {
-      this.setData({ surfaceContext });
-    });
-    subscriptions.set(this, unsubscribe);
+    subscriptions.set(this, lx.surface.watchContext(({ sizeClass }) => {
+      // Logic's own use of the size class.
+    }));
   },
-
   onUnload() {
     subscriptions.get(this)?.();
     subscriptions.delete(this);
   },
 });
 ```
-
-Do not store the unsubscribe function in `data`; bridge state must remain
-serializable.
 
 ## Choose CSS or separate Views
 
@@ -128,19 +118,20 @@ desktop toolbar, or a compact flow that omits workspace-only operations.
 For React, keep the registered page entry stable and lazy-load one variant:
 
 ```tsx
-import { useLxPage, usePlatform } from '@lingxia/react';
+import { useLxPage, usePlatform, useSurfaceContext } from '@lingxia/react';
 
 const CompactView = lazy(() => import('./views/compact-view'));
 const WorkspaceView = lazy(() => import('./views/workspace-view'));
 
 export default function PageView() {
-  const page = useLxPage<Partial<PageData>, PageActions>();
+  const page = useLxPage<Partial<PageData>, PageActions>(); // the page's own types
   const { isDesktop } = usePlatform();
-  if (!page.data.surfaceContext) {
+  const surface = useSurfaceContext();
+  if (!surface) {
     return <PageSkeleton />;
   }
   const View =
-    page.data.surfaceContext.sizeClass === 'regular' && isDesktop
+    surface.sizeClass === 'regular' && isDesktop
       ? WorkspaceView
       : CompactView;
 

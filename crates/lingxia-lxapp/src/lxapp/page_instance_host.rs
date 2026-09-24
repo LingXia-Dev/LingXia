@@ -935,6 +935,16 @@ impl LxApp {
         pages.values().cloned().collect()
     }
 
+    /// Send every live page's View this lxapp's adaptive context — the JSON
+    /// Logic's `watchContext` was just sent — after it changed. A page whose
+    /// bridge is not up yet gets it once it is.
+    pub fn push_surface_context_to_views(&self, context_json: &str) {
+        let script = super::surface::view_surface_context_script_for(context_json);
+        for page in self.live_page_instances() {
+            page.push_view_script(&script);
+        }
+    }
+
     /// Live instances on the navigation stack, oldest → newest.
     pub fn get_page_stack_pages(&self) -> Vec<PageInstance> {
         let state = self.state.lock().unwrap();

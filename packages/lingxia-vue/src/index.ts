@@ -5,12 +5,14 @@ export {
   useLxChannel,
   usePlatform,
   useDisplayLanguage,
+  useSurfaceContext,
   type LxStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
   type LxChannelState,
   type LxPlatform,
 } from "./hook.js";
+export type { SurfaceContext } from "@lingxia/bridge";
 export { default as LxVideo } from "./LxVideo.vue";
 export { default as LxNativeRoot } from "./LxNativeRoot.vue";
 export { default as LxNativeView } from "./LxNativeView.vue";

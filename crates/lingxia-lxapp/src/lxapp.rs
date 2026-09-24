@@ -107,13 +107,14 @@ pub use runtime_ops::{
 };
 pub(crate) use runtime_registry::get_lxapps_manager;
 pub use runtime_registry::{find_page_by_instance_id, get_platform, try_get};
-pub(crate) use surface::SurfaceRecords;
 pub use surface::{
     HostMainSurfaceRegistration, HostSurfaceMenuExecution, LxAppRuntimeSurfaceInfo,
     ManagedNativeSurface, PageSurface, PageSurfaceRequest, PageSurfaceTarget, UrlCallbackSurface,
     UrlCallbackWaitError, register_surface_active_main_observer, register_surface_close_observer,
-    register_surface_context_observer, register_surface_visibility_observer,
+    register_surface_context_observer, register_surface_context_snapshot,
+    register_surface_visibility_observer,
 };
+pub(crate) use surface::{SurfaceRecords, view_surface_context_script};
 use version::Version;
 
 /// Constants for lxapp storage layout

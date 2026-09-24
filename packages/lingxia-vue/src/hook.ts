@@ -13,7 +13,13 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import { getDisplayLanguage, subscribeDisplayLanguage } from "@lingxia/bridge";
+import {
+  getDisplayLanguage,
+  getSurfaceContext,
+  subscribeDisplayLanguage,
+  subscribeSurfaceContext,
+  type SurfaceContext,
+} from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -390,4 +396,22 @@ export function useDisplayLanguage(): Readonly<Ref<string>> {
   });
   onUnmounted(unsubscribe);
   return language;
+}
+
+/**
+ * The page's adaptive context — `sizeClass`, viewport size, docked aside —
+ * the same value Logic's `lx.surface.watchContext()` delivers. `null` until
+ * the host sends it, as soon as the page's bridge is up; follows a change.
+ */
+export function useSurfaceContext(): Readonly<Ref<SurfaceContext | null>> {
+  const context = shallowRef(getSurfaceContext());
+  if (!getCurrentInstance()) {
+    console.warn("useSurfaceContext() must be called during component setup");
+    return context;
+  }
+  const unsubscribe = subscribeSurfaceContext(() => {
+    context.value = getSurfaceContext();
+  });
+  onUnmounted(unsubscribe);
+  return context;
 }

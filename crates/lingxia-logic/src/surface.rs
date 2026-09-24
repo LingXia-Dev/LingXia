@@ -321,15 +321,26 @@ pub(crate) fn notify_surface_context_changed(appid: &str) {
     let Some(lxapp) = try_get(appid) else {
         return;
     };
-    let context = surface_context_for(&lxapp);
-    let payload = serde_json::json!({
+    let context = context_json(&lxapp);
+    // Views read the very same JSON through `useSurfaceContext()`.
+    lxapp.push_surface_context_to_views(&context);
+    publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
+}
+
+/// This lxapp's adaptive context as the JSON both Logic and Views receive.
+pub(crate) fn surface_context_json(appid: &str) -> Option<String> {
+    try_get(appid).map(|lxapp| context_json(&lxapp))
+}
+
+fn context_json(lxapp: &LxApp) -> String {
+    let context = surface_context_for(lxapp);
+    serde_json::json!({
         "sizeClass": context.size_class,
         "width": context.width,
         "height": context.height,
         "aside": context.aside,
     })
-    .to_string();
-    publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(payload));
+    .to_string()
 }
 
 #[derive(Debug, Clone, IntoJSObject)]

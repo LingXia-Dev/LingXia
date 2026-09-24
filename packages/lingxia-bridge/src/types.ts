@@ -168,6 +168,14 @@ declare global {
     __lingxiaApplyDisplayLanguage?: (language: string) => void;
     /** Shared by every copy of the bridge module in this document. */
     __lxDisplayLanguage?: { value: string; listeners: Set<() => void> };
+    /** Host push for the page's adaptive context; see `surface-context.ts`. */
+    __lingxiaApplySurfaceContext?: (context: unknown) => void;
+    /** Shared by every copy of the bridge module in this document. */
+    __lxSurfaceContext?: {
+      value: import('./surface-context').SurfaceContext | null;
+      revision: number;
+      listeners: Set<() => void>;
+    };
     __LX_BRIDGE_INIT_STATE?: 'initializing' | 'initialized';
     __LX_RUNTIME_CONFIG?: RuntimeConfig;
     /**

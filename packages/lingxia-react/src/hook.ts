@@ -4,7 +4,13 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import { getDisplayLanguage, subscribeDisplayLanguage } from "@lingxia/bridge";
+import {
+  getDisplayLanguage,
+  getSurfaceContext,
+  subscribeDisplayLanguage,
+  subscribeSurfaceContext,
+  type SurfaceContext,
+} from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -380,5 +386,19 @@ export function useDisplayLanguage(): string {
     subscribeDisplayLanguage,
     getDisplayLanguage,
     getDisplayLanguage,
+  );
+}
+
+/**
+ * The page's adaptive context — `sizeClass`, viewport size, docked aside —
+ * the same value Logic's `lx.surface.watchContext()` delivers, so a View
+ * chooses its layout without Logic forwarding it. `null` until the host sends
+ * it, which it does as soon as the page's bridge is up.
+ */
+export function useSurfaceContext(): SurfaceContext | null {
+  return React.useSyncExternalStore(
+    subscribeSurfaceContext,
+    getSurfaceContext,
+    getSurfaceContext,
   );
 }
