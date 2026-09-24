@@ -174,6 +174,10 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
   that spec (implies `fresh`); `t.profile.checkpoint()` / `restore(id)` /
   `drop(id)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
   and both reject with `E_PROFILE_NOT_ISOLATED` without `--isolate`.
+- A rollback restores everything the app stored, sign-in tokens included. If
+  the app rotates single-use refresh tokens, a rollback across a rotation hands
+  it a spent token, and the server may end the session on its next refresh:
+  keep checkpoints short-lived, and never restore one taken before a sign-out.
 - A snapshot belongs to one app, channel and device; another one is refused.
   Downloads (`destination: "downloads"`) and other lxapps stay shared.
 
