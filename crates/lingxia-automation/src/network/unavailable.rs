@@ -5,7 +5,7 @@
 
 use crate::auto_err;
 use lxapp::LxApp;
-use rong::{HostError, JSResult, JSValue, js_class, js_method};
+use rong::{HostError, JSResult, JSValue, function::Optional, js_class, js_method};
 use std::sync::Weak;
 
 const UNAVAILABLE: &str = "network routing is not built into this host; \
@@ -50,6 +50,16 @@ impl JSNetworkDriver {
 
     #[js_method]
     async fn requests(&self) -> JSResult<JSValue> {
+        Err(auto_err(UNAVAILABLE))
+    }
+
+    #[js_method(rename = "captureResponses")]
+    async fn capture_responses(&self, _options: Optional<JSValue>) -> JSResult<()> {
+        Err(auto_err(UNAVAILABLE))
+    }
+
+    #[js_method]
+    async fn responses(&self, _options: Optional<JSValue>) -> JSResult<JSValue> {
         Err(auto_err(UNAVAILABLE))
     }
 }

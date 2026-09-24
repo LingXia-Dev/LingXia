@@ -3321,6 +3321,7 @@ dependencies = [
  "futures",
  "http",
  "lingxia-browser",
+ "lingxia-control-protocol",
  "lingxia-device-io",
  "lingxia-log",
  "lingxia-lxapp",

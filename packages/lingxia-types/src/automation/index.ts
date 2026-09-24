@@ -928,6 +928,41 @@ export interface NetworkRoute {
 }
 
 /**
+ * One Logic `fetch` response recorded by `NetworkDriver.captureResponses()`.
+ * Headers are never recorded, and `url` keeps only scheme, host and path.
+ *
+ * @internal Test-runner plumbing for `lxdev test --openapi`.
+ */
+export interface NetworkResponseRecord {
+  /** Increasing across the run; pass it as `since` to read only newer ones. */
+  seq: number;
+  /** Upper-case method. */
+  method: string;
+  /** `scheme://host[:port]/path`: userinfo, query and fragment removed. */
+  url: string;
+  /**
+   * `route`: a route fulfilled it. `patch`: the real server answered and a
+   * route merge-patched the body. `network`: the real server answered.
+   */
+  source: 'route' | 'patch' | 'network';
+  /** The route's pattern for `route` and `patch`. */
+  pattern: string | null;
+  status: number;
+  contentType: string | null;
+  /** JSON body text, cut to `maxBodyBytes`; `null` for other content types. */
+  body: string | null;
+  bodyTruncated: boolean;
+  /** Epoch milliseconds. */
+  timestamp: number;
+}
+
+/** @internal `NetworkDriver.captureResponses()` options. */
+export interface NetworkCaptureOptions {
+  /** Body bytes kept per response, 1..=1048576. Default 262144. */
+  maxBodyBytes?: number;
+}
+
+/**
  * Test-only routing of the selected lxapp's Logic `fetch` and `Rong.SSE`.
  * Available only in a host automation run (`lxdev test`); every route is
  * removed when that run ends. The newest matching route handles a request; unmatched requests are
@@ -951,6 +986,22 @@ export interface NetworkDriver {
    * this to the current spec.
    */
   requests(): Promise<NetworkRouteRequest[]>;
+  /**
+   * Record the app's Logic `fetch` responses — status, content type and
+   * JSON body, never headers — until the run ends. A JSON response is read
+   * once and handed to the app as an equivalent buffered `Response`.
+   *
+   * @internal Test-runner plumbing for `lxdev test --openapi`.
+   */
+  captureResponses(options?: NetworkCaptureOptions): Promise<void>;
+  /**
+   * Responses captured for the app in this run, oldest first; `since` skips
+   * records up to that `seq`. At most 500 records and 8 MiB of bodies are
+   * kept; the oldest go first.
+   *
+   * @internal Test-runner plumbing for `lxdev test --openapi`.
+   */
+  responses(options?: { since?: number }): Promise<NetworkResponseRecord[]>;
 }
 
 /**

@@ -8,7 +8,10 @@
 //! Logic contexts get a thin `fetch` wrapper, and `Rong.SSE` a wrapper, whose
 //! fast path is one atomic load while no route, run, or recording exists.
 //! While a run is active the wrappers also log every call (`capture`) for
-//! failure reports, and a recording captures real responses as a scenario.
+//! failure reports; a recording captures real responses as a scenario, and
+//! a contract capture (`captureResponses()`) keeps what the app received
+//! for `lxdev test --openapi`. All three share one observation per call and
+//! one read of a response body.
 
 mod capture;
 pub(crate) mod dev;
@@ -24,7 +27,7 @@ use registry::{
 };
 use rong::{
     AnyJSTypedArray, Class, HostError, JSArrayBuffer, JSContext, JSFunc, JSObject, JSResult,
-    JSValue, Source, js_class, js_method,
+    JSValue, Source, function::Optional, js_class, js_method,
 };
 use serde_json::Value;
 use std::rc::Rc;
@@ -102,9 +105,8 @@ pub(crate) fn attach_host_functions(
         JSFunc::new(
             ctx,
             move |ctx: JSContext, command: String, name: Option<String>| -> JSResult<JSValue> {
-                let mut value =
-                    dev::run_record(&run_id, &command, name.as_deref()).map_err(auto_err)?;
-                capture::mask_strings(&mut value, &secrets);
+                let value = dev::run_record(&run_id, &command, name.as_deref(), &secrets)
+                    .map_err(auto_err)?;
                 json_to_js(&ctx, &value)
             },
         )?,
@@ -226,6 +228,68 @@ impl JSNetworkDriver {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;
         let scope = run_scope(&ctx)?;
         requests_js(&ctx, &scope.run_id, &app.appid, None)
+    }
+
+    /// Record the app's Logic `fetch` responses (status, content type, JSON
+    /// body) until the run ends. `{ maxBodyBytes }` bounds each body.
+    #[js_method(rename = "captureResponses")]
+    async fn capture_responses(&self, ctx: JSContext, options: Optional<JSValue>) -> JSResult<()> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let scope = run_scope(&ctx)?;
+        let limit = match options.0.and_then(JSValue::into_object) {
+            None => capture::DEFAULT_CAPTURE_BODY_BYTES,
+            Some(object) => match object.get_opt::<_, f64>("maxBodyBytes")? {
+                None => capture::DEFAULT_CAPTURE_BODY_BYTES,
+                Some(bytes) if bytes >= 1.0 && bytes.fract() == 0.0 => bytes as usize,
+                Some(bytes) => {
+                    return Err(auto_err(format!(
+                        "captureResponses maxBodyBytes must be a positive integer, got {bytes}"
+                    )));
+                }
+            },
+        };
+        registry::with_registry(|routes| {
+            routes
+                .captures
+                .enable(&scope.run_id, &app.appid, limit, || (scope.active)())
+        })
+        .map_err(auto_err)
+    }
+
+    /// Captured responses of the app in this run, oldest first; `{ since }`
+    /// skips entries up to that `seq`.
+    #[js_method]
+    async fn responses(&self, ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let scope = run_scope(&ctx)?;
+        let since = match options.0.and_then(JSValue::into_object) {
+            None => 0,
+            Some(object) => object
+                .get_opt::<_, f64>("since")?
+                .filter(|since| *since > 0.0)
+                .map_or(0, |since| since as u64),
+        };
+        let entries = registry::with_registry(|routes| {
+            routes.captures.responses(&scope.run_id, &app.appid, since)
+        });
+        let list: Vec<Value> = entries
+            .into_iter()
+            .map(|entry| {
+                serde_json::json!({
+                    "seq": entry.seq,
+                    "method": entry.method,
+                    "url": entry.url,
+                    "source": entry.source.as_str(),
+                    "pattern": entry.pattern,
+                    "status": entry.status,
+                    "contentType": entry.content_type,
+                    "body": entry.body,
+                    "bodyTruncated": entry.body_truncated,
+                    "timestamp": entry.timestamp_ms,
+                })
+            })
+            .collect();
+        json_to_js(&ctx, &Value::Array(list))
     }
 }
 
@@ -826,20 +890,28 @@ fn parse_sse_item(value: &Value, last: bool) -> Result<SseStep, String> {
 /// - `active()` is the fast path: false while no route, run, or recording
 ///   watches Logic `fetch`.
 /// - `observe(kind, method, url)` opens a call-log entry: `null`, or
-///   `[id, record]` where `record` asks for the real response body.
+///   `[id, record, contract]`: `record` asks for the real response body
+///   whatever its type (a recording), `contract` for the status and content
+///   type of what the app receives and its body when JSON (a contract
+///   capture). Either way the body is read once, here, and the app gets an
+///   equivalent buffered `Response`.
 /// - `decide(method, url, headersJson, body, bodyOverflow, id)` returns
 ///   `undefined` to pass through, a fulfillment record, `{ sse }` (a
 ///   `text/event-stream` answer, held open while `holds(hold)`), `{ patch }`
 ///   (pass through, then `patchBody(patch, text)` rewrites the JSON body
 ///   host-side), `{ hang }` (held while `holds(hang)`), or throws the abort
 ///   error.
-/// - `settle(id, status, error, contentType, body, note)` closes the entry.
+/// - `settle(id, status, error, contentType, body, note)` closes the entry;
+///   a second settle of the same id is ignored.
 ///
 /// Request bodies are read only when available synchronously (string,
 /// `URLSearchParams`, `ArrayBuffer`, typed array); streams, `Blob`,
 /// `FormData`, and a `Request` object's own body are recorded as `null`.
 const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   'use strict';
+  // One wrapper per context: installing twice would observe every call twice.
+  const WRAPPED = Symbol.for('lingxia.automation.network.wrapped');
+  if (typeof originalFetch !== 'function' || originalFetch[WRAPPED] === true) return;
   const active = host.active;
   const decide = host.decide;
   const observe = host.observe;
@@ -905,23 +977,36 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   const textual = function (type) {
     return type.indexOf('text/') === 0 || /json|xml|javascript|x-www-form-urlencoded|graphql/.test(type);
   };
-  // Record a real response: read its body, then hand the app an equivalent
-  // Response. Event streams and large binary bodies are only noted.
-  const capture = function (id, response, url) {
+  // Must agree with `capture::is_json_type`: streaming JSON types are not
+  // buffered for a contract capture, or an app reading them incrementally
+  // would stall.
+  const JSON_TYPE = /^\s*(application|text)\/([^;\s]*\+)?json\s*(;|$)/i;
+  const typeOf = function (response) {
+    try { return String(response.headers.get('content-type') || '').toLowerCase(); } catch (_) { return ''; }
+  };
+  // The one place a response body is read for the Rust side: read it once,
+  // settle the call with it, and hand the app an equivalent Response. A
+  // recording takes any body (event streams and large binary bodies are only
+  // noted); a contract capture only a JSON one. Anything else is settled
+  // without reading, and the app gets its response untouched.
+  const consume = function (id, response, url, watch) {
     const status = response.status;
-    const type = String(response.headers.get('content-type') || '').toLowerCase();
-    if (type.indexOf('text/event-stream') === 0) {
-      settle(id, status, null, type, null, 'event stream body not recorded; write an sse answer');
-      return response;
+    const type = typeOf(response);
+    let isText = true;
+    let note = null;
+    if (watch.record) {
+      isText = textual(type);
+      const declared = Number(response.headers.get('content-length'));
+      if (type.indexOf('text/event-stream') === 0) note = 'event stream body not recorded; write an sse answer';
+      else if (!isText && declared > binaryLimit) note = 'binary body of ' + declared + ' bytes not recorded';
     }
-    const isText = textual(type);
-    const declared = Number(response.headers.get('content-length'));
-    if (!isText && declared > binaryLimit) {
-      settle(id, status, null, type, null, 'binary body of ' + declared + ' bytes not recorded');
+    const read = watch.record ? note === null : watch.contract && JSON_TYPE.test(type);
+    if (!read) {
+      try { settle(id, status, null, type, null, note); } catch (_) {}
       return response;
     }
     return (isText ? response.text() : response.arrayBuffer()).then(function (body) {
-      settle(id, status, null, type, body, null);
+      try { settle(id, status, null, type, body, null); } catch (_) {}
       const headers = new HeadersCtor(response.headers);
       headers.delete('content-length');
       headers.delete('content-encoding');
@@ -933,11 +1018,12 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
       }), response.url || url);
     });
   };
-  const track = function (promise, id, record, url) {
+  const NO_BODY = { record: false, contract: false };
+  const track = function (promise, id, watch, url) {
     if (!id) return promise;
     return promise.then(function (response) {
-      if (record) return capture(id, response, url);
-      try { settle(id, response.status, null, null, null, null); } catch (_) {}
+      if (watch.record || watch.contract) return consume(id, response, url, watch);
+      try { settle(id, response.status, null, typeOf(response), null, null); } catch (_) {}
       return response;
     }, function (error) {
       try { settle(id, 0, errorText(error), null, null, null); } catch (_) {}
@@ -993,16 +1079,22 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
       },
     });
   };
-  const answer = function (self, args, hit, url, init) {
+  const answer = function (self, args, hit, url, init, id, contract) {
     const signal = init && init.signal;
     if (typeof hit.patch === 'string') {
+      // The patch reads the real body anyway: settle the call with the
+      // patched text the app receives.
       return originalFetch.apply(self, args).then(function (response) {
         return response.text().then(function (text) {
           const headers = new HeadersCtor(response.headers);
           // The body is re-encoded text of a new length.
           headers.delete('content-length');
           headers.delete('content-encoding');
-          const patched = new ResponseCtor(text === '' ? text : host.patchBody(hit.patch, text, response.url || url), {
+          const body = text === '' ? text : host.patchBody(hit.patch, text, response.url || url);
+          if (id) {
+            try { settle(id, response.status, null, typeOf(response), contract ? body : null, null); } catch (_) {}
+          }
+          const patched = new ResponseCtor(body, {
             status: response.status,
             statusText: response.statusText,
             headers: headers,
@@ -1082,7 +1174,7 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     let seen = null;
     try { seen = observe('fetch', method, url); } catch (_) {}
     const id = seen ? seen[0] : 0;
-    const record = Boolean(seen && seen[1]);
+    const watch = seen ? { record: Boolean(seen[1]), contract: Boolean(seen[2]) } : NO_BODY;
     let hit;
     try {
       const body = sentBody(init);
@@ -1092,10 +1184,13 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
       return Promise.reject(error);
     }
     if (hit === undefined || hit === null) {
-      return track(originalFetch.apply(this, arguments), id, record, url);
+      return track(originalFetch.apply(this, arguments), id, watch, url);
     }
-    return track(answer(self, args, hit, url, init), id, false, url);
+    // A route's answer is never recorded, and a fulfilled one is captured
+    // when it is decided; a patch settles with its own body.
+    return track(answer(self, args, hit, url, init, id, watch.contract), id, NO_BODY, url);
   };
+  Object.defineProperty(fetch, WRAPPED, { value: true });
   globalThis.fetch = fetch;
 })"#;
 
@@ -1111,7 +1206,8 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
 /// hands the connection to the native client, carrying `Last-Event-ID`.
 const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
   'use strict';
-  if (typeof OriginalSSE !== 'function') return OriginalSSE;
+  const WRAPPED = Symbol.for('lingxia.automation.network.wrapped');
+  if (typeof OriginalSSE !== 'function' || OriginalSSE[WRAPPED] === true) return OriginalSSE;
   const active = host.active;
   const decide = host.decide;
   const observe = host.observe;
@@ -1133,6 +1229,37 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
   };
   const count = function (value, fallback, min) {
     return typeof value === 'number' && isFinite(value) && value >= min ? Math.floor(value) : fallback;
+  };
+  // A pass-through connection belongs to the native client; its call-log
+  // entry settles when the first read opens the stream (200) or fails.
+  const settleOnOpen = function (sse, call) {
+    if (!call) return sse;
+    const settleOnce = function (status, error) {
+      try { settle(call, status, error, null, null, null); } catch (_) {}
+    };
+    const original = sse.next;
+    if (typeof original !== 'function') { settleOnce(200, null); return sse; }
+    let pending = true;
+    try {
+      Object.defineProperty(sse, 'next', {
+        configurable: true,
+        writable: true,
+        value: function () {
+          const result = original.apply(sse, arguments);
+          if (pending) {
+            pending = false;
+            Promise.resolve(result).then(
+              function () { settleOnce(200, null); },
+              function (error) { settleOnce(0, errorText(error)); },
+            );
+          }
+          return result;
+        },
+      });
+    } catch (_) {
+      settleOnce(200, null);
+    }
+    return sse;
   };
   const headerPairs = function (headers) {
     const pairs = [];
@@ -1270,7 +1397,7 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
             const headers = {};
             pairs.forEach(function (pair) { headers[pair[0]] = pair[1]; });
             if (lastId !== null) headers['last-event-id'] = lastId;
-            delegate = new OriginalSSE(url, Object.assign({}, opts, { headers: headers }));
+            delegate = settleOnOpen(new OriginalSSE(url, Object.assign({}, opts, { headers: headers })), opening.call);
             continue;
           }
           if (opening.delay > 0) {
@@ -1368,10 +1495,11 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
     const pairs = headerPairs(opts.headers);
     const origin = parsed.protocol.slice(0, -1) + '://' + parsed.host;
     const first = attempt(href, pairs, null);
-    if (first.kind === 'real') return new OriginalSSE(url, options);
+    if (first.kind === 'real') return settleOnOpen(new OriginalSSE(url, options), first.call);
     return fake(url, href, origin, opts, pairs, policy, first);
   };
   SSE.prototype = OriginalSSE.prototype;
+  Object.defineProperty(SSE, WRAPPED, { value: true });
   return SSE;
 })"#;
 
@@ -1472,7 +1600,9 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                 match registry::with_registry(|routes| {
                     routes.observe(&target.appid, kind, &method, &url)
                 }) {
-                    Some((id, record)) => json_to_js(&ctx, &serde_json::json!([id, record])),
+                    Some((id, watch)) => {
+                        json_to_js(&ctx, &serde_json::json!([id, watch.record, watch.contract]))
+                    }
                     None => Ok(JSValue::null(&ctx)),
                 }
             },

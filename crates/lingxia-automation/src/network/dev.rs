@@ -125,15 +125,22 @@ pub fn status() -> Value {
                     .collect::<Vec<_>>(),
             })
         });
-        let recording = routes.recording.as_ref().map(|recording| {
-            json!({
-                "owner": if recording.owner == DEV_SESSION_OWNER { "dev-session" } else { "test-run" },
-                "appid": recording.appid,
-                "match": recording.matcher.as_ref().map(|m| m.label()),
-                "startedAt": scenario::iso_utc(recording.started_ms as i64),
-                "exchanges": recording.exchanges.len(),
-            })
-        });
+        let recording = routes
+            .dev_recording
+            .as_ref()
+            .or(routes.run_recording.as_ref())
+            .map(|recording| {
+                let dev = recording.owner == DEV_SESSION_OWNER;
+                json!({
+                    "owner": if dev { "dev-session" } else { "test-run" },
+                    "appid": recording.appid,
+                    "match": recording.matcher.as_ref().map(|m| m.label()),
+                    "startedAt": scenario::iso_utc(recording.started_ms as i64),
+                    "exchanges": recording.exchanges.len(),
+                    // A dev recording pauses while a test run is active.
+                    "paused": dev && routes.runs_active(),
+                })
+            });
         json!({
             "active": scenario.is_some(),
             // Dev routes stand aside while a test run is active.
@@ -150,28 +157,37 @@ fn start_recording(owner: &str, appid: Option<&str>, matcher: Option<&str>) -> R
         .map(scenario::parse_url_string)
         .transpose()?;
     registry::with_registry(|routes| {
-        if let Some(active) = &routes.recording {
+        let slot = if owner == DEV_SESSION_OWNER {
+            &mut routes.dev_recording
+        } else {
+            &mut routes.run_recording
+        };
+        if let Some(active) = slot {
             return Err(if active.owner == DEV_SESSION_OWNER {
                 "a dev-session network recording is already running; stop it first \
                  (`lxdev network record stop`)"
                     .to_string()
             } else {
-                "a test run is recording network traffic".to_string()
+                "another test run is recording network traffic".to_string()
             });
         }
-        routes.recording = Some(Recording::new(owner, appid.map(str::to_string), matcher));
+        *slot = Some(Recording::new(owner, appid.map(str::to_string), matcher));
         Ok(())
     })
 }
 
 fn stop_recording(owner: &str) -> Option<Recording> {
     registry::with_registry(|routes| {
-        if routes
-            .recording
+        let slot = if owner == DEV_SESSION_OWNER {
+            &mut routes.dev_recording
+        } else {
+            &mut routes.run_recording
+        };
+        if slot
             .as_ref()
             .is_some_and(|recording| recording.owner == owner)
         {
-            routes.recording.take()
+            slot.take()
         } else {
             None
         }
@@ -221,18 +237,29 @@ pub fn session_ended() {
 // ------------------------------ host runs ------------------------------
 
 /// `networkRecord('start' | 'stop', name?)` for the test framework's
-/// `--record-network`: the scenario on stop, `null` when nothing recorded.
-pub(crate) fn run_record(run_id: &str, command: &str, name: Option<&str>) -> Result<Value, String> {
+/// `--record-network`: the scenario on stop, with every `secrets` value
+/// (the run's `--secret-arg` values) masked; `null` when nothing recorded.
+/// A dev-session recording does not block it: that one pauses during runs.
+pub(crate) fn run_record(
+    run_id: &str,
+    command: &str,
+    name: Option<&str>,
+    secrets: &[String],
+) -> Result<Value, String> {
     match command {
         "start" => start_recording(run_id, None, None).map(|()| Value::Null),
         "stop" => Ok(stop_recording(run_id)
-            .map(|recording| {
-                let name = name.unwrap_or("recorded");
-                recording.to_scenario(name)
-            })
+            .map(|recording| run_scenario(&recording, name.unwrap_or("recorded"), secrets))
             .unwrap_or(Value::Null)),
         other => Err(format!("unknown networkRecord command '{other}'")),
     }
+}
+
+/// The scenario a run recording amounts to, `secrets` masked everywhere.
+pub(crate) fn run_scenario(recording: &Recording, name: &str, secrets: &[String]) -> Value {
+    let mut scenario = recording.to_scenario(name);
+    capture::mask_strings(&mut scenario, secrets);
+    scenario
 }
 
 /// `networkLog(sinceMs, limit?)`: Logic `fetch` calls since a spec started,

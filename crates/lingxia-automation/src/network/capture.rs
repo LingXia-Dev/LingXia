@@ -1,13 +1,24 @@
-//! Watching Logic `fetch` without changing it: the bounded call log that
-//! failed specs carry into their report, and recording real traffic into a
-//! scenario file. Pure Rust; the `fetch` wrapper feeds it through
-//! `observe`/`settle`.
+//! Watching Logic `fetch` without changing it. One observation feeds three
+//! consumers:
+//!
+//! - the bounded call log that failed specs carry into their report;
+//! - a recording of real traffic into a scenario file (`--record-network`,
+//!   `lxdev network record`);
+//! - the response capture a contract check reads (`captureResponses()`,
+//!   `lxdev test --openapi`).
+//!
+//! The `fetch` wrapper opens a call with `observe`, which says whether a
+//! consumer wants the response body; it then reads that body once, hands the
+//! app an equivalent buffered `Response`, and closes the call with `settle`.
+//! Each consumer applies its own bounds and redaction here. Pure Rust, so it
+//! is unit-testable without a JS engine.
 
 use super::registry::{Decision, UrlMatcher, now_ms};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde_json::{Map, Value, json};
 use std::collections::VecDeque;
+use std::sync::LazyLock;
 
 /// Calls kept per process; the oldest are dropped first.
 pub(crate) const MAX_CALLS: usize = 200;
@@ -25,25 +36,36 @@ pub(crate) const MAX_BINARY_BODY_BYTES: usize = 64 * 1024;
 const MAX_RECORDED_BYTES: usize = 16 * 1024 * 1024;
 /// What a redacted value becomes in a report or a recorded body.
 pub(crate) const REDACTED: &str = "***";
+/// Captured body bytes per response unless the run asks for another limit.
+pub(crate) const DEFAULT_CAPTURE_BODY_BYTES: usize = 256 * 1024;
+/// Largest per-response capture limit a run may ask for.
+pub(crate) const MAX_CAPTURE_BODY_BYTES: usize = 1024 * 1024;
+/// Captured responses kept per process; the oldest are dropped first.
+const MAX_CAPTURED: usize = 500;
+/// Captured body bytes kept per process across all entries.
+const MAX_CAPTURED_BYTES: usize = 8 * 1024 * 1024;
 
-/// JSON fields whose values are never recorded. Compared case-insensitively
-/// with `_` and `-` removed, so `access_token` and `accessToken` both match.
-const SECRET_FIELDS: [&str; 4] = ["accesstoken", "refreshtoken", "idtoken", "password"];
-/// Query parameters whose values are never logged or recorded.
-const SECRET_PARAMS: [&str; 12] = [
+/// Names whose values are never recorded or logged, as JSON fields and as
+/// query parameters. Compared case-insensitively with `_` and `-` removed,
+/// so `access_token`, `accessToken` and `Access-Token` all match.
+const SECRET_NAMES: [&str; 14] = [
+    "token",
     "accesstoken",
     "refreshtoken",
     "idtoken",
-    "password",
-    "token",
     "apikey",
     "secret",
     "clientsecret",
-    "signature",
-    "sig",
-    "auth",
+    "password",
     "authorization",
+    "session",
+    "sessionid",
+    "cookie",
+    "setcookie",
+    "xapikey",
 ];
+/// Query parameters that are secret besides [`SECRET_NAMES`].
+const SECRET_PARAMS: [&str; 3] = ["signature", "sig", "auth"];
 
 fn normalized(name: &str) -> String {
     name.chars()
@@ -53,33 +75,16 @@ fn normalized(name: &str) -> String {
 }
 
 pub(crate) fn is_secret_field(name: &str) -> bool {
-    SECRET_FIELDS.contains(&normalized(name).as_str())
+    SECRET_NAMES.contains(&normalized(name).as_str())
 }
 
 fn is_secret_param(name: &str) -> bool {
-    let name = percent_decode(name);
-    SECRET_PARAMS.contains(&normalized(&name).as_str())
+    let name = normalized(&percent_decode(name));
+    SECRET_NAMES.contains(&name.as_str()) || SECRET_PARAMS.contains(&name.as_str())
 }
 
 fn percent_decode(text: &str) -> String {
-    let bytes = text.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'%'
-            && i + 2 < bytes.len()
-            && let Some(byte) = std::str::from_utf8(&bytes[i + 1..i + 3])
-                .ok()
-                .and_then(|hex| u8::from_str_radix(hex, 16).ok())
-        {
-            out.push(byte);
-            i += 3;
-            continue;
-        }
-        out.push(if bytes[i] == b'+' { b' ' } else { bytes[i] });
-        i += 1;
-    }
-    String::from_utf8_lossy(&out).into_owned()
+    lingxia_control_protocol::text::percent_decode(text, true)
 }
 
 /// `url` with credentials removed: userinfo dropped and the value of every
@@ -113,6 +118,13 @@ pub(crate) fn redact_url(url: &str, mask: &str) -> String {
     out
 }
 
+/// `scheme://host[:port]/path` of `url`: userinfo, query and fragment can
+/// carry credentials, and a contract check only needs the path.
+pub(crate) fn contract_url(url: &str) -> String {
+    let cut = url.find(['?', '#']).unwrap_or(url.len());
+    strip_userinfo(&url[..cut])
+}
+
 fn strip_userinfo(path: &str) -> String {
     let Some(scheme_end) = path.find("://") else {
         return path.to_string();
@@ -131,7 +143,8 @@ fn strip_userinfo(path: &str) -> String {
     }
 }
 
-/// Replace the value of every secret-named field, at any depth.
+/// Replace the value of every secret-named field, at any depth, and mask
+/// credential-shaped text (see [`redact_text`]) in every string.
 pub(crate) fn redact_json(value: &mut Value) {
     match value {
         Value::Object(fields) => {
@@ -144,8 +157,36 @@ pub(crate) fn redact_json(value: &mut Value) {
             }
         }
         Value::Array(items) => items.iter_mut().for_each(redact_json),
+        Value::String(text) => {
+            if let std::borrow::Cow::Owned(masked) = redact_text(text) {
+                *text = masked;
+            }
+        }
         _ => {}
     }
+}
+
+/// A JSON Web Token: three base64url segments, the first a JSON header.
+static JWT: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*").expect("JWT pattern")
+});
+/// An HTTP bearer credential.
+static BEARER: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r"(?i)\b(bearer)\s+[A-Za-z0-9._~+/=-]+").expect("bearer pattern")
+});
+
+/// `text` with credential-shaped values masked: JSON Web Tokens and
+/// `Bearer <token>` credentials. Borrowed when nothing matched.
+pub(crate) fn redact_text(text: &str) -> std::borrow::Cow<'_, str> {
+    let masked = JWT.replace_all(text, REDACTED);
+    if !BEARER.is_match(&masked) {
+        return masked;
+    }
+    std::borrow::Cow::Owned(
+        BEARER
+            .replace_all(&masked, format!("${{1}} {REDACTED}").as_str())
+            .into_owned(),
+    )
 }
 
 /// How a route answered an observed call.
@@ -154,8 +195,25 @@ pub(crate) struct CallRoute {
     pub pattern: String,
     /// `fulfill`, `abort`, `continue`, or `hang`.
     pub action: &'static str,
+    /// A `continue` that merge-patches the real response.
+    pub patch: bool,
     /// The route came from a dev-session scenario.
     pub dev: bool,
+}
+
+/// Which consumers want an observed call's response body.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Watch {
+    /// The active recording keeps the response, whatever its type.
+    pub record: bool,
+    /// A contract capture keeps the response, and its body when JSON.
+    pub contract: bool,
+}
+
+impl Watch {
+    pub(crate) fn wants_body(self) -> bool {
+        self.record || self.contract
+    }
 }
 
 /// One observed Logic `fetch` (or SSE connection attempt).
@@ -173,9 +231,11 @@ pub(crate) struct Call {
     pub status: Option<u16>,
     pub error: Option<String>,
     pub route: Option<CallRoute>,
-    raw_url: String,
-    /// Whether the active recording wants this call's response.
-    record: bool,
+    pub(crate) raw_url: String,
+    /// Who wants this call's response.
+    pub(crate) watch: Watch,
+    /// Owner of the recording that keeps this call's response.
+    pub(crate) recorder: Option<String>,
 }
 
 impl Call {
@@ -233,7 +293,7 @@ impl CallLog {
         kind: &'static str,
         method: &str,
         url: &str,
-        record: bool,
+        watch: Watch,
     ) -> u64 {
         self.next_id += 1;
         if self.calls.len() >= MAX_CALLS {
@@ -251,31 +311,48 @@ impl CallLog {
             error: None,
             route: None,
             raw_url: url.to_string(),
-            record,
+            watch,
+            recorder: None,
         });
         self.next_id
     }
 
-    fn find(&mut self, id: u64) -> Option<&mut Call> {
+    pub(crate) fn find(&mut self, id: u64) -> Option<&mut Call> {
         self.calls.iter_mut().rev().find(|call| call.id == id)
     }
 
-    pub(crate) fn routed(&mut self, id: u64, decision: &Decision) {
-        if let Some(call) = self.find(id) {
-            let action = decision.action.kind();
-            // A recording captures what the server said, not a route.
-            if !matches!(decision.action, super::registry::RouteAction::Continue) {
-                call.record = false;
-            }
-            call.route = Some(CallRoute {
-                pattern: decision.pattern.clone(),
-                action,
-                dev: decision.owner == super::registry::DEV_SESSION_OWNER,
-            });
+    /// Note the route that answered call `id`. Returns the call when a
+    /// contract capture wants a response the route fulfilled: the route's
+    /// answer is known here, so the wrapper does not report its body.
+    pub(crate) fn routed(&mut self, id: u64, decision: &Decision) -> Option<Call> {
+        use super::registry::RouteAction;
+        let call = self.find(id)?;
+        let action = decision.action.kind();
+        // A recording captures what the server said, not a route.
+        if !matches!(decision.action, RouteAction::Continue) {
+            call.watch.record = false;
         }
+        call.route = Some(CallRoute {
+            pattern: decision.pattern.clone(),
+            action,
+            patch: matches!(decision.action, RouteAction::Patch(_)),
+            dev: decision.owner == super::registry::DEV_SESSION_OWNER,
+        });
+        let fulfilled = matches!(decision.action, RouteAction::Fulfill(_));
+        let contract = call.watch.contract && fulfilled;
+        // A pass-through or patched response is captured when it settles;
+        // an abort, a hang or an event stream has no body to check.
+        if !matches!(
+            decision.action,
+            RouteAction::Continue | RouteAction::Patch(_)
+        ) {
+            call.watch.contract = false;
+        }
+        contract.then(|| call.clone())
     }
 
-    /// Finish a call; returns it when a recording should keep it.
+    /// Finish a call; returns it when a recording or a contract capture
+    /// wants its response.
     pub(crate) fn settle(&mut self, id: u64, settled: &Settled) -> Option<Call> {
         let call = self.find(id)?;
         if call.duration_ms.is_some() {
@@ -287,7 +364,7 @@ impl CallLog {
             .error
             .as_ref()
             .map(|error| error.chars().take(MAX_ERROR_CHARS).collect());
-        call.record.then(|| call.clone())
+        call.watch.wants_body().then(|| call.clone())
     }
 
     /// The last `limit` calls that started at or after `since_ms`, oldest
@@ -518,9 +595,25 @@ pub(crate) fn url_pattern(url: &str) -> String {
     format!("/^{escaped}$/")
 }
 
-fn is_json_type(content_type: &str) -> bool {
-    let essence = content_type.split(';').next().unwrap_or("").trim();
-    essence == "application/json" || essence.ends_with("+json")
+/// `application/json`, `text/json` and `application/<x>+json`, parameters
+/// ignored. Streaming JSON types (`application/x-ndjson`, `json-seq`) are
+/// not: a contract capture must not buffer a stream the app reads
+/// incrementally. The `fetch` wrapper's `JSON_TYPE` must agree.
+pub(crate) fn is_json_type(content_type: &str) -> bool {
+    let essence = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    let Some((kind, subtype)) = essence.split_once('/') else {
+        return false;
+    };
+    (kind == "application" || kind == "text")
+        && (subtype == "json"
+            || subtype
+                .rsplit_once('+')
+                .is_some_and(|(_, suffix)| suffix == "json"))
 }
 
 /// The scenario answer for one exchange, plus a note for what was left out.
@@ -549,7 +642,7 @@ fn answer_for(exchange: &Exchange) -> (Value, Option<String>) {
             if let Some(content_type) = &content_type {
                 answer.insert("contentType".into(), json!(content_type));
             }
-            answer.insert("body".into(), json!(text));
+            answer.insert("body".into(), json!(redact_text(text)));
         }
         Some(RecordedBody::Binary(bytes)) => {
             if let Some(content_type) = &content_type {
@@ -575,4 +668,341 @@ fn answer_for(exchange: &Exchange) -> (Value, Option<String>) {
         answer.remove("bodyBase64");
     }
     (Value::Object(answer), note)
+}
+
+/// Who produced a captured response.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Source {
+    /// A route fulfilled it.
+    Route,
+    /// The real server answered and a route merge-patched the body.
+    Patch,
+    /// The real server answered (no route, or a plain `continue`).
+    Network,
+}
+
+impl Source {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Route => "route",
+            Self::Patch => "patch",
+            Self::Network => "network",
+        }
+    }
+}
+
+/// One captured response, as `NetworkDriver.responses()` reports it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ResponseEntry {
+    /// Process-wide, increasing; `responses({ since })` reads past it.
+    pub seq: u64,
+    pub method: String,
+    /// `scheme://host[:port]/path`, see [`contract_url`].
+    pub url: String,
+    pub source: Source,
+    /// The route's pattern for `route` and `patch` responses.
+    pub pattern: Option<String>,
+    pub status: u16,
+    pub content_type: Option<String>,
+    /// JSON body text, cut to the run's limit; `None` for other types.
+    pub body: Option<String>,
+    pub body_truncated: bool,
+    pub timestamp_ms: u64,
+    run_id: String,
+    appid: String,
+}
+
+/// One response the app received.
+pub(crate) struct Observed<'a> {
+    pub method: &'a str,
+    pub url: &'a str,
+    pub source: Source,
+    pub pattern: Option<String>,
+    pub status: u16,
+    pub content_type: Option<&'a str>,
+    pub body: Option<&'a str>,
+}
+
+impl<'a> Observed<'a> {
+    /// A settled call's response, `None` when it never got one.
+    pub(crate) fn settled(call: &'a Call, settled: &'a Settled) -> Option<Self> {
+        let (source, pattern) = match &call.route {
+            Some(route) if route.patch => (Source::Patch, Some(route.pattern.clone())),
+            _ => (Source::Network, None),
+        };
+        Some(Self {
+            method: &call.method,
+            url: &call.raw_url,
+            source,
+            pattern,
+            status: settled.status?,
+            content_type: settled.content_type.as_deref(),
+            body: match &settled.body {
+                Some(RecordedBody::Text(text)) => Some(text),
+                _ => None,
+            },
+        })
+    }
+}
+
+#[derive(Debug)]
+struct Capture {
+    run_id: String,
+    appid: String,
+    body_limit: usize,
+}
+
+/// Contract capture: which apps a run captures, and what they received.
+/// Nothing that can carry a credential is kept: no headers, and the URL
+/// without userinfo, query or fragment.
+#[derive(Debug, Default)]
+pub(crate) struct Captures {
+    next_seq: u64,
+    captures: Vec<Capture>,
+    log: VecDeque<ResponseEntry>,
+    bytes: usize,
+}
+
+impl Captures {
+    pub(crate) const fn new() -> Self {
+        Self {
+            next_seq: 0,
+            captures: Vec::new(),
+            log: VecDeque::new(),
+            bytes: 0,
+        }
+    }
+
+    /// Start (or re-limit) capturing `appid`'s responses for `run_id`.
+    /// `run_active` is checked under the lock, like a route install.
+    pub(crate) fn enable(
+        &mut self,
+        run_id: &str,
+        appid: &str,
+        body_limit: usize,
+        run_active: impl FnOnce() -> bool,
+    ) -> Result<(), String> {
+        if !run_active() {
+            return Err("the automation run that owns this driver has ended".into());
+        }
+        if body_limit == 0 || body_limit > MAX_CAPTURE_BODY_BYTES {
+            return Err(format!(
+                "captureResponses maxBodyBytes must be in 1..={MAX_CAPTURE_BODY_BYTES}, got {body_limit}"
+            ));
+        }
+        match self
+            .captures
+            .iter_mut()
+            .find(|capture| capture.run_id == run_id && capture.appid == appid)
+        {
+            Some(capture) => capture.body_limit = body_limit,
+            None => self.captures.push(Capture {
+                run_id: run_id.to_string(),
+                appid: appid.to_string(),
+                body_limit,
+            }),
+        }
+        Ok(())
+    }
+
+    /// Apps captured now, across runs.
+    pub(crate) fn len(&self) -> usize {
+        self.captures.len()
+    }
+
+    /// Whether `appid`'s responses are captured now.
+    pub(crate) fn capturing(&self, appid: &str) -> bool {
+        self.captures.iter().any(|capture| capture.appid == appid)
+    }
+
+    /// Record a response of `appid`; `false` when nobody captures it.
+    pub(crate) fn record(&mut self, appid: &str, observed: Observed<'_>) -> bool {
+        let Some(capture) = self
+            .captures
+            .iter()
+            .rev()
+            .find(|capture| capture.appid == appid)
+        else {
+            return false;
+        };
+        let json = observed.content_type.is_some_and(is_json_type);
+        let (body, body_truncated) = match observed.body.filter(|_| json) {
+            None => (None, false),
+            Some(text) if text.len() <= capture.body_limit => (Some(text.to_string()), false),
+            Some(text) => {
+                let mut end = capture.body_limit;
+                while !text.is_char_boundary(end) {
+                    end -= 1;
+                }
+                (Some(text[..end].to_string()), true)
+            }
+        };
+        self.next_seq += 1;
+        let entry = ResponseEntry {
+            seq: self.next_seq,
+            method: observed.method.to_ascii_uppercase(),
+            url: contract_url(observed.url),
+            source: observed.source,
+            pattern: observed.pattern,
+            status: observed.status,
+            content_type: observed.content_type.map(str::to_string),
+            body,
+            body_truncated,
+            timestamp_ms: now_ms(),
+            run_id: capture.run_id.clone(),
+            appid: appid.to_string(),
+        };
+        let len = entry.body.as_ref().map_or(0, String::len);
+        while self.log.len() >= MAX_CAPTURED
+            || (!self.log.is_empty() && self.bytes + len > MAX_CAPTURED_BYTES)
+        {
+            if let Some(old) = self.log.pop_front() {
+                self.bytes -= old.body.as_ref().map_or(0, String::len);
+            }
+        }
+        self.bytes += len;
+        self.log.push_back(entry);
+        true
+    }
+
+    /// `appid`'s responses in `run_id` recorded after `since`, oldest first.
+    pub(crate) fn responses(&self, run_id: &str, appid: &str, since: u64) -> Vec<ResponseEntry> {
+        self.log
+            .iter()
+            .filter(|entry| entry.run_id == run_id && entry.appid == appid && entry.seq > since)
+            .cloned()
+            .collect()
+    }
+
+    /// Stop capturing for a run and drop what it recorded.
+    pub(crate) fn clear_run(&mut self, run_id: &str) {
+        self.captures.retain(|capture| capture.run_id != run_id);
+        self.log.retain(|entry| entry.run_id != run_id);
+        self.bytes = self
+            .log
+            .iter()
+            .map(|entry| entry.body.as_ref().map_or(0, String::len))
+            .sum();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn observed<'a>(
+        url: &'a str,
+        content_type: Option<&'a str>,
+        body: Option<&'a str>,
+    ) -> Observed<'a> {
+        Observed {
+            method: "get",
+            url,
+            source: Source::Network,
+            pattern: None,
+            status: 200,
+            content_type,
+            body,
+        }
+    }
+
+    #[test]
+    fn json_types_exclude_streams() {
+        for yes in [
+            "application/json",
+            "application/json; charset=utf-8",
+            "application/problem+json",
+            "TEXT/JSON",
+            "application/vnd.api+json",
+        ] {
+            assert!(is_json_type(yes), "{yes}");
+        }
+        for no in [
+            "application/x-ndjson",
+            "application/json-seq",
+            "text/event-stream",
+            "text/plain",
+            "json",
+            "",
+        ] {
+            assert!(!is_json_type(no), "{no}");
+        }
+    }
+
+    #[test]
+    fn contract_urls_lose_credentials_query_and_fragment() {
+        assert_eq!(
+            contract_url("https://user:pw@api.test:8443/v1/devices?token=abc#x"),
+            "https://api.test:8443/v1/devices"
+        );
+        assert_eq!(contract_url("https://api.test"), "https://api.test");
+        assert_eq!(contract_url("/relative?q=1"), "/relative");
+    }
+
+    #[test]
+    fn captures_only_captured_apps_and_bounds_bodies() {
+        let mut captures = Captures::default();
+        assert!(!captures.record(
+            "app",
+            observed("https://a.test/x", Some("application/json"), Some("{}"))
+        ));
+        assert!(captures.enable("run", "app", 0, || true).is_err());
+        assert!(captures.enable("run", "app", 7, || false).is_err());
+        // Seven bytes end inside the two-byte `é`.
+        captures.enable("run", "app", 7, || true).unwrap();
+        assert!(captures.capturing("app"));
+        assert!(!captures.capturing("other"));
+
+        captures.record(
+            "app",
+            observed(
+                "https://a.test/x?k=1",
+                Some("application/json"),
+                Some("{\"a\":\"é\"}"),
+            ),
+        );
+        captures.record(
+            "app",
+            observed("https://a.test/y", Some("text/html"), Some("<p>")),
+        );
+        let log = captures.responses("run", "app", 0);
+        assert_eq!(log.len(), 2);
+        assert_eq!(log[0].method, "GET");
+        assert_eq!(log[0].url, "https://a.test/x");
+        // Cut on a character boundary, flagged.
+        assert_eq!(log[0].body.as_deref(), Some("{\"a\":\""));
+        assert!(log[0].body_truncated);
+        // A non-JSON body is never kept.
+        assert_eq!(log[1].body, None);
+        assert!(!log[1].body_truncated);
+        assert_eq!(captures.responses("run", "app", log[0].seq).len(), 1);
+
+        captures.clear_run("run");
+        assert!(!captures.capturing("app"));
+        assert!(captures.responses("run", "app", 0).is_empty());
+    }
+
+    #[test]
+    fn the_capture_log_is_bounded() {
+        let mut captures = Captures::default();
+        captures
+            .enable("run", "app", MAX_CAPTURE_BODY_BYTES, || true)
+            .unwrap();
+        let body = "x".repeat(MAX_CAPTURE_BODY_BYTES);
+        for _ in 0..(MAX_CAPTURED_BYTES / MAX_CAPTURE_BODY_BYTES + 3) {
+            captures.record(
+                "app",
+                observed("https://a.test/big", Some("application/json"), Some(&body)),
+            );
+        }
+        assert!(captures.bytes <= MAX_CAPTURED_BYTES);
+        for _ in 0..(MAX_CAPTURED + 10) {
+            captures.record(
+                "app",
+                observed("https://a.test/small", Some("application/json"), Some("1")),
+            );
+        }
+        assert_eq!(captures.log.len(), MAX_CAPTURED);
+        captures.clear_run("run");
+    }
 }

@@ -2,7 +2,7 @@
 //! and the matched-request log. Pure Rust so it is unit-testable without a
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
-use super::capture::{CallLog, Recording};
+use super::capture::{CallLog, Captures, Observed, Recording, Settled, Source, Watch};
 use regex::Regex;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -441,7 +441,13 @@ pub(crate) struct Registry {
     active_runs: Vec<String>,
     pub(crate) dev: Option<DevScenario>,
     pub(crate) calls: CallLog,
-    pub(crate) recording: Option<Recording>,
+    /// A recording a dev session started (`lxdev network record`). It
+    /// pauses while a host automation run is active, like dev routes.
+    pub(crate) dev_recording: Option<Recording>,
+    /// A recording a host run started (`lxdev test --record-network`).
+    pub(crate) run_recording: Option<Recording>,
+    /// Contract captures of host runs (`captureResponses()`).
+    pub(crate) captures: Captures,
 }
 
 impl Registry {
@@ -498,38 +504,75 @@ impl Registry {
     }
 
     /// Open a call-log entry for a Logic request when a run or a recording
-    /// watches it: `(id, whether the recording wants its response)`.
+    /// watches it: `(id, who wants its response)`. Only a `fetch` response
+    /// is captured for a contract check.
     pub(crate) fn observe(
         &mut self,
         appid: &str,
         kind: &'static str,
         method: &str,
         url: &str,
-    ) -> Option<(u64, bool)> {
-        let record = self
-            .recording
-            .as_ref()
-            .is_some_and(|recording| recording.wants(appid, url));
-        if !record && self.active_runs.is_empty() {
+    ) -> Option<(u64, Watch)> {
+        // A recording replays `fetch` answers; SSE connections are not
+        // recorded.
+        let recorder = (kind == "fetch")
+            .then(|| self.active_recording())
+            .flatten()
+            .filter(|recording| recording.wants(appid, url))
+            .map(|recording| recording.owner.clone());
+        let watch = Watch {
+            record: recorder.is_some(),
+            contract: kind == "fetch" && self.captures.capturing(appid),
+        };
+        if !watch.wants_body() && self.active_runs.is_empty() {
             return None;
         }
-        Some((self.calls.begin(appid, kind, method, url, record), record))
+        let id = self.calls.begin(appid, kind, method, url, watch);
+        if let Some(call) = self.calls.find(id) {
+            call.recorder = recorder;
+        }
+        Some((id, watch))
     }
 
-    /// Close a call-log entry; a recorded one joins the recording.
-    pub(crate) fn settle(&mut self, id: u64, settled: super::capture::Settled) {
+    /// The recording that captures new calls: a run's while any host run is
+    /// active (a dev recording pauses, so it never captures test traffic),
+    /// otherwise the dev session's.
+    fn active_recording(&self) -> Option<&Recording> {
+        if self.runs_active() {
+            self.run_recording.as_ref()
+        } else {
+            self.dev_recording.as_ref()
+        }
+    }
+
+    /// Close a call-log entry and hand its response to whoever wants it:
+    /// the recording, the contract capture. Settling twice is a no-op.
+    pub(crate) fn settle(&mut self, id: u64, settled: Settled) {
         let Some(call) = self.calls.settle(id, &settled) else {
             return;
         };
+        if call.watch.contract
+            && let Some(observed) = Observed::settled(&call, &settled)
+        {
+            self.captures.record(&call.appid, observed);
+        }
         // An app cancelling its own request is not something the server said.
-        if settled
-            .error
-            .as_deref()
-            .is_some_and(|error| error.starts_with("AbortError"))
+        if !call.watch.record
+            || settled
+                .error
+                .as_deref()
+                .is_some_and(|error| error.starts_with("AbortError"))
         {
             return;
         }
-        if let Some(recording) = self.recording.as_mut() {
+        // The recording that was active when the call started, if it still
+        // runs: a call does not move into a recording started later.
+        let owner = call.recorder.as_deref();
+        if let Some(recording) = [self.run_recording.as_mut(), self.dev_recording.as_mut()]
+            .into_iter()
+            .flatten()
+            .find(|recording| Some(recording.owner.as_str()) == owner)
+        {
             recording.push(&call, settled);
         }
     }
@@ -570,13 +613,12 @@ impl Registry {
     pub(crate) fn clear_run(&mut self, run_id: &str) {
         self.active_runs.retain(|run| run != run_id);
         // A dev recording outlives a scenario change; the session end stops it.
-        if run_id != DEV_SESSION_OWNER
-            && self
-                .recording
-                .as_ref()
-                .is_some_and(|recording| recording.owner == run_id)
+        if self
+            .run_recording
+            .as_ref()
+            .is_some_and(|recording| recording.owner == run_id)
         {
-            self.recording = None;
+            self.run_recording = None;
         }
         if run_id == DEV_SESSION_OWNER {
             self.dev = None;
@@ -585,6 +627,7 @@ impl Registry {
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
+        self.captures.clear_run(run_id);
     }
 
     /// [`Self::decide_route`] without call observation.
@@ -682,8 +725,32 @@ impl Registry {
                 self.routes.remove(index);
             }
         }
-        if call != 0 {
-            self.calls.routed(call, &decision);
+        if call != 0
+            && let Some(observed) = self.calls.routed(call, &decision)
+            && let RouteAction::Fulfill(fulfill) = &decision.action
+        {
+            // The route's answer is known here; the wrapper need not read it.
+            let content_type = fulfill
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+                .map(|(_, value)| value.as_str());
+            let body = match &fulfill.body {
+                Some(ResponseBody::Text(text)) => Some(text.as_str()),
+                _ => None,
+            };
+            self.captures.record(
+                &observed.appid,
+                Observed {
+                    method: &observed.method,
+                    url: &observed.raw_url,
+                    source: Source::Route,
+                    pattern: Some(decision.pattern.clone()),
+                    status: fulfill.status,
+                    content_type,
+                    body,
+                },
+            );
         }
         let body_len = entry.request.body_len();
         while self.log.len() >= MAX_LOG_ENTRIES
@@ -735,7 +802,11 @@ impl Registry {
 
     /// What keeps the Logic `fetch` wrapper off its fast path.
     fn watched(&self) -> usize {
-        self.routes.len() + self.active_runs.len() + usize::from(self.recording.is_some())
+        self.routes.len()
+            + self.active_runs.len()
+            + usize::from(self.dev_recording.is_some())
+            + usize::from(self.run_recording.is_some())
+            + self.captures.len()
     }
 }
 
@@ -754,7 +825,9 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     active_runs: Vec::new(),
     dev: None,
     calls: CallLog::new(),
-    recording: None,
+    dev_recording: None,
+    run_recording: None,
+    captures: Captures::new(),
 });
 /// Installed routes plus active runs and recordings, mirrored outside the
 /// lock so Logic `fetch` pays one atomic load when nothing watches it.
