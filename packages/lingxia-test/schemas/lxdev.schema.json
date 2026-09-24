@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lingxia.app/schemas/lxdev.schema.json",
+  "title": "lxdev project settings",
+  "description": "lxdev.json in the project root.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "test": {
+      "type": "object",
+      "properties": {
+        "presets": {
+          "type": "object",
+          "description": "Named `lxdev test` argument lists for `--preset NAME`. The preset's arguments go before the command line's: repeatable flags add up, a flag given on the command line wins. No --secret-arg, --preset, --cancel-active, or credential-named --arg.",
+          "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
