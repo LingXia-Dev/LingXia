@@ -21,10 +21,19 @@ function fakeProfile(world, options = {}) {
       profile.checkpoints.set(id, structuredClone(profile.data));
       return id;
     },
-    async restore(id) {
-      profile.calls.push(["restore", id]);
+    async restore(id, restoreOptions) {
+      profile.calls.push(restoreOptions === undefined ? ["restore", id] : ["restore", id, restoreOptions]);
       if (options.failRestore) throw Object.assign(new Error("reopen failed"), { code: "E_AUTOMATION" });
+      // Keys the globs match keep their current state (exact names here).
+      const keep = restoreOptions?.keep ?? [];
+      const current = profile.data;
       profile.data = structuredClone(profile.checkpoints.get(id));
+      for (const key of keep) {
+        if (key in current) profile.data[key] = current[key];
+        else delete profile.data[key];
+      }
+      if (options.oldHost) return undefined;
+      return { kept: keep.filter((key) => key in current) };
     },
     async drop(id) {
       profile.calls.push(["drop", id]);
@@ -122,4 +131,53 @@ test("t.profile re-selects the app after a switch", async () => {
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
+});
+
+test("restoreProfile keep carries chosen keys over the rollback", async () => {
+  const world = createWorld();
+  const profile = fakeProfile(world);
+  world.app.clock = {};
+  profile.data.token = "t0";
+  installFakeHost(world);
+  let seen;
+
+  spec("rotates the token", { restoreProfile: { keep: ["token"] } }, async () => {
+    profile.data.value = 42;
+    profile.data.token = "t1";
+  });
+  spec("reads", async () => {
+    seen = { ...profile.data };
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(seen, { value: 0, token: "t1" });
+  assert.deepEqual(profile.calls[1], ["restore", "cp-1", { keep: ["token"] }]);
+  const restore = report.cases[0].steps.find((step) => step.name === "profile.restore");
+  assert.equal(restore.detail, "cp-1 keep token");
+});
+
+test("t.profile.restore keep is refused by a host that would ignore it", async () => {
+  const world = createWorld();
+  const profile = fakeProfile(world);
+  installFakeHost(world);
+
+  spec("old host", async (t) => {
+    const id = await t.profile.checkpoint();
+    profile.data.token = "rotated";
+    await t.reject(() => t.profile.restore(id, { keep: ["token"] }), { message: /update the LingXia host/ });
+    assert.equal(profile.data.token, "rotated", "nothing was rolled back");
+    const plain = await t.profile.restore(id);
+    assert.deepEqual(plain, { kept: [] });
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(profile.calls.map(([name]) => name), ["checkpoint", "restore"]);
+});
+
+test("restoreProfile rejects a malformed keep at registration", () => {
+  assert.throws(() => spec("bad", { restoreProfile: { keep: "auth.*" } }, async () => {}), TypeError);
+  assert.throws(() => spec("bad", { restoreProfile: { keep: [""] } }, async () => {}), TypeError);
+  assert.throws(() => spec("bad", { restoreProfile: {} }, async () => {}), TypeError);
 });

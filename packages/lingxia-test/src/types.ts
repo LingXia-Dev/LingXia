@@ -3,6 +3,7 @@ import type {
   Automation,
   AutomationErrorCode,
   ClockDriver,
+  ProfileRestoreResult,
   LogicLxAppEvalOptions,
   LxAppDriver,
   NetworkDriver,
@@ -35,9 +36,11 @@ export interface SpecOptions {
    * Snapshot the app's isolated data before this spec and roll it back after,
    * so the next spec never sees this one's writes. Implies `fresh`. Needs an
    * isolated run (`lxdev test --isolate`); if the rollback fails, the rest of
-   * the run is not run.
+   * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
+   * the `lx.getStorage()` keys those globs match, which keep their state at
+   * the end of the spec (see `ProfileRestoreOptions`).
    */
-  restoreProfile?: boolean;
+  restoreProfile?: boolean | RestoreProfileOptions;
   /** Independent cleanup budget; a pending cleanup stops subsequent specs. */
   timeoutCleanup?: number;
   /** Pin `t.app` to this lxapp id instead of the current one. */
@@ -46,6 +49,12 @@ export interface SpecOptions {
   forensics?: boolean;
   /** Why a skip/fixme spec is registered. Shown in the HTML/JSON report; `t.skip(reason)` overrides it. */
   reason?: string;
+}
+
+/** `restoreProfile: { keep }`. */
+export interface RestoreProfileOptions {
+  /** `lx.getStorage()` key globs that survive the rollback (`*`, `?`). */
+  keep: string[];
 }
 
 /** `spec.fail` options. */
@@ -253,10 +262,24 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
 export interface ProfileFixture {
   /** Snapshot the app's data; resolves an id for `restore`. */
   checkpoint(): Promise<string>;
-  /** Roll the app's data back to checkpoint `id`. */
-  restore(id: string): Promise<void>;
+  /**
+   * Roll the app's data back to checkpoint `id`. With `keep`, the
+   * `lx.getStorage()` keys those globs match keep their current state.
+   */
+  restore(id: string, options?: ProfileRestoreOptions): Promise<ProfileRestoreResult>;
   /** Discard checkpoint `id`. */
   drop(id: string): Promise<void>;
+}
+
+/** `t.profile.restore` options. */
+export interface ProfileRestoreOptions {
+  /**
+   * `lx.getStorage()` keys whose current state survives the rollback: globs
+   * over the whole key (`*` any run of characters, `?` one). A matching key
+   * keeps its current value, one added since the checkpoint stays, and one
+   * deleted since stays deleted. Files always roll back.
+   */
+  keep?: readonly string[];
 }
 
 export interface TestAutomation extends Omit<Automation, "lxapp"> {

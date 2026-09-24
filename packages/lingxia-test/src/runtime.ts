@@ -42,6 +42,8 @@ interface RegisteredSpec {
   timeoutCleanup?: number;
   fresh: boolean;
   restoreProfile: boolean;
+  /** `restoreProfile: { keep }`: storage key globs the rollback keeps. */
+  restoreKeep?: string[];
   app?: string;
   forensics: boolean;
   reason?: string;
@@ -93,6 +95,16 @@ function parseArgs(
   return { options: optionsOrBody, body: maybeBody };
 }
 
+/** `restoreProfile: { keep }` → the keep globs; `true`/absent → none. */
+function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | undefined {
+  if (option === undefined || typeof option === "boolean") return undefined;
+  const keep = option && typeof option === "object" ? (option as { keep?: unknown }).keep : undefined;
+  if (!Array.isArray(keep) || keep.some((glob) => typeof glob !== "string" || glob.length === 0)) {
+    throw new TypeError("restoreProfile must be true or { keep: string[] } of non-empty storage key globs");
+  }
+  return [...keep];
+}
+
 function register(annotation: Annotation, title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
   if (typeof title !== "string" || title.length === 0) {
     throw new TypeError("spec() requires a non-empty title");
@@ -106,6 +118,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
       throw new TypeError("spec.fail `expected` needs a code or a message");
     }
   }
+  const restoreKeep = restoreProfileKeep(options.restoreProfile);
   for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
     if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${name} must be a positive finite number`);
   }
@@ -121,7 +134,8 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     timeout: options.timeout ?? DEFAULT_SPEC_TIMEOUT_MS,
     timeoutCleanup: options.timeoutCleanup,
     fresh: options.fresh === true,
-    restoreProfile: options.restoreProfile === true,
+    restoreProfile: options.restoreProfile === true || restoreKeep !== undefined,
+    restoreKeep,
     app: options.app,
     forensics: options.forensics !== false,
     reason: options.reason,
@@ -484,7 +498,7 @@ async function run(): Promise<ProtocolReport> {
         phase = "beforeEach";
         const checkpoint = await fixture.profile.checkpoint();
         fixture.defer(async () => {
-          await fixture.profile.restore(checkpoint);
+          await fixture.profile.restore(checkpoint, item.restoreKeep ? { keep: item.restoreKeep } : undefined);
           profileRestored = true;
           await fixture.profile.drop(checkpoint);
         });
