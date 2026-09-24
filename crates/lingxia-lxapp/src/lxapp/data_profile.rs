@@ -1109,6 +1109,43 @@ mod tests {
         assert!(paths_for(&appid).is_none());
     }
 
+    /// Hundreds of `restoreProfile` specs each take a checkpoint, roll back
+    /// to it and drop it; the profile must not grow with them.
+    #[test]
+    fn checkpoint_rollback_cycles_leave_nothing_behind() {
+        let base = scratch("cycles");
+        let profile = RunProfile::create(&base).unwrap();
+        seed(&profile.live());
+        for round in 0..200 {
+            let id = format!("cp-{round}");
+            profile.copy_live_to_checkpoint(&id).unwrap();
+            fs::write(
+                profile.live().join(USER_DATA).join(format!("spec-{round}")),
+                b"x",
+            )
+            .unwrap();
+            profile.replace_live_from_checkpoint(&id).unwrap();
+            profile.drop_checkpoint(&id).unwrap();
+        }
+        let entries = |dir: &Path| fs::read_dir(dir).unwrap().count();
+        assert_eq!(
+            entries(&profile.dir().join(CHECKPOINTS_DIR)),
+            0,
+            "no checkpoint left"
+        );
+        assert_eq!(
+            entries(profile.dir()),
+            2,
+            "only live/ and checkpoints/, no staged copies"
+        );
+        assert_eq!(
+            dir_size(&profile.live()),
+            10 + 5 + 7,
+            "live is the seed again"
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
     #[test]
     fn pack_and_unpack_round_trip_without_temp_files() {
         let base = scratch("pack");

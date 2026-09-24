@@ -577,6 +577,45 @@ test: no test writes into its storage and app code has no test branch.
   the run, and browser-profile WebViews. Mobile hosts share the Rust path but
   are not yet validated (transfer limits, `test-profiles` writability).
 
+## Logic context lifetime
+
+A profile switch, a dev reload and a restart each replace the app's Logic
+context on a pooled worker VM, hundreds of times in a long run. Two things
+kept every retired context alive on JavaScriptCore, and with it the app's
+whole heap:
+
+- A rong JS value held by native code is a GC root and retains its global
+  context. `PageSvc` held itself (`this`) and its page's functions that way.
+  The object now lives in `PageObject`, a cell shared by every clone;
+  `PageSvc::release_js` empties it and clears the JS object's own copy
+  (functions, emitter), pending callbacks and channels. It runs when a
+  terminated page has no lifecycle event left (`TerminatePage`), when the
+  lifecycle pump finishes a terminated page's owed `onUnload`, and for every
+  live or retired page when the context deactivates. A released service
+  answers requests with `BRIDGE_CANCELED`.
+- Native objects that hold JS values (`AbortController`, `Response`, …) free
+  their context only once finalized, which takes a full collection that also
+  sweeps. JavaScriptCore schedules that on a run-loop timer, and Logic workers
+  run no run loop. With `automation`, `TerminateAppSvc` forces one after
+  dropping the context (`context_lifecycle::collect_retired`, resolving
+  `JSSynchronousGarbageCollectForDebugging` with `dlsym`; not public API, so
+  product builds without `automation` never reference it). QuickJS builds
+  call `run_gc`.
+- Keep new native-held JS values releasable, or reachable only from JS.
+  `a_retired_logic_context_is_freed` guards both points.
+
+Host side:
+
+- WebKit keeps a page's `WKUserContentController` beyond its `WKWebView`;
+  teardown empties its script message handlers and user scripts so the
+  handlers (and the native component bridge) do not outlive the view. The
+  `+1` `WKUserScript`s and scheme-handler `NSHTTPURLResponse`s are released.
+- The Runner's DevTools console (`DevToolsLogger`) keeps at most 2000 entries,
+  and a new simulator window — one per app open — replays them in one edit.
+  It used to replay the whole session's log line by line, scrolling after
+  each, on the main thread at every reopen, which made each profile rollback
+  slower than the last.
+
 ## Test clock
 
 `LxAppDriver.clock` fakes time in one lxapp's Logic context only; the

@@ -52,6 +52,39 @@ type CreatedStreamHandle = (
     Rc<RefCell<Option<JSFunc>>>,
 );
 
+/// A page service's own JS object, shared by every clone of the service.
+///
+/// On JavaScriptCore a JS value held by native code is a GC root, and the
+/// service's JS object holds itself here. Until [`PageSvc::release_js`]
+/// empties it, the page — and, through its object, the whole Logic context —
+/// can never be collected.
+#[derive(Clone)]
+struct PageObject(Rc<RefCell<Option<JSObject>>>);
+
+impl PageObject {
+    fn new(object: JSObject) -> Self {
+        Self(Rc::new(RefCell::new(Some(object))))
+    }
+
+    fn get(&self) -> Option<JSObject> {
+        self.0.borrow().clone()
+    }
+
+    fn require(&self) -> JSResult<JSObject> {
+        self.get().ok_or_else(|| {
+            HostError::new(rong::error::E_INTERNAL, "page service was released").into()
+        })
+    }
+
+    fn set(&self, object: JSObject) {
+        *self.0.borrow_mut() = Some(object);
+    }
+
+    fn take(&self) -> Option<JSObject> {
+        self.0.borrow_mut().take()
+    }
+}
+
 #[js_class(clone)]
 pub struct PageSvc {
     functions: HashMap<String, JSFunc>,
@@ -60,7 +93,7 @@ pub struct PageSvc {
     /// expected to call `stream.end(result)` (or `stream.error(code, msg)`)
     /// instead of returning an async iterator.
     stream_handlers: HashSet<String>,
-    this: JSObject,
+    this: PageObject,
 
     pub(crate) page: PageInstance,
     event_emitter: EventEmitter,
@@ -389,7 +422,8 @@ impl PageSvc {
     ) -> Result<String, LxAppError> {
         let data_obj = self
             .this
-            .get::<_, JSObject>("data")
+            .require()
+            .and_then(|this| this.get::<_, JSObject>("data"))
             .map_err(|e| LxAppError::Bridge(e.to_string()))?;
         let data_json = data_obj
             .to_json_string()
@@ -407,7 +441,9 @@ impl PageSvc {
         params_json: Option<&str>,
         mut cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<String, RpcError> {
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
 
         let build_call_arg = |json: Option<&str>| -> Option<JSValue> {
             let json = json?;
@@ -443,13 +479,16 @@ impl PageSvc {
                 match call_arg {
                     Some(val) => {
                         js_func
-                            .call_async::<_, JSValue>(Some(self.this.clone()), (val, stream_handle))
+                            .call_async::<_, JSValue>(
+                                Some(self.this.require()?),
+                                (val, stream_handle),
+                            )
                             .await
                     }
                     None => {
                         js_func
                             .call_async::<_, JSValue>(
-                                Some(self.this.clone()),
+                                Some(self.this.require()?),
                                 (JSObject::new(&ctx), stream_handle),
                             )
                             .await
@@ -483,12 +522,12 @@ impl PageSvc {
             match call_arg {
                 Some(val) => {
                     js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), (val,))
+                        .call_async::<_, JSValue>(Some(self.this.require()?), (val,))
                         .await
                 }
                 None => {
                     js_func
-                        .call_async::<_, JSValue>(Some(self.this.clone()), ())
+                        .call_async::<_, JSValue>(Some(self.this.require()?), ())
                         .await
                 }
             }
@@ -540,7 +579,9 @@ impl PageSvc {
                 ));
             }
         };
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let params = params_json
             .and_then(|json| json.json_to_js_value(&ctx).ok())
             .and_then(JSValue::into_object)
@@ -582,8 +623,11 @@ impl PageSvc {
         let Some(js_func) = self.get_js_func(method) else {
             return;
         };
+        let Some(this_obj) = self.this.get() else {
+            return;
+        };
 
-        let ctx = self.get_ctx();
+        let ctx = this_obj.context();
         let call_arg = params_json.and_then(|json| {
             if json == "null" {
                 return None;
@@ -591,7 +635,6 @@ impl PageSvc {
             json.json_to_js_value(&ctx).ok()
         });
 
-        let this_obj = self.this.clone();
         let method_name = method.to_string();
         let page_path = self.page.path().to_string();
         let task = async move {
@@ -636,7 +679,9 @@ impl PageSvc {
             ));
         };
 
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let call_arg = params_json.and_then(|json| {
             if json == "null" {
                 return None;
@@ -706,7 +751,10 @@ impl PageSvc {
         let page_svc = self.clone();
         let key_for_task = key.clone();
         let outbound_for_task = outbound.clone();
-        let this = self.this.clone();
+        let this = self
+            .this
+            .get()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         super::context_lifecycle::spawn(&ctx, move |ctx| async move {
             let result =
                 with_document_callback_work(Some(key_for_task.work_id), outbound_for_task, async {
@@ -760,14 +808,16 @@ impl PageSvc {
         let Some(mut turn) = self.queue_channel_turn(&key).await else {
             return Ok(());
         };
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let payload = payload_json
-            .json_to_js_value(&self.get_ctx())
+            .json_to_js_value(&ctx)
             .map_err(rpc_error_from_rong)?;
         let page_svc = self.clone();
         let key_for_task = key.clone();
         let appid = self.page.appid();
         let path = self.page.path().to_string();
-        let ctx = self.get_ctx();
         let callback_work_id = turn.work_id;
         let callback_outbound = turn.outbound.clone();
         super::context_lifecycle::spawn(&ctx, move |_ctx| async move {
@@ -822,7 +872,9 @@ impl PageSvc {
         let key_for_task = key.clone();
         let code = code.unwrap_or_default().to_string();
         let reason = reason.unwrap_or_default().to_string();
-        let ctx = self.get_ctx();
+        let Some(ctx) = self.get_ctx() else {
+            return;
+        };
         let callback_work_id = turn.work_id;
         let callback_outbound = turn.outbound.clone();
         super::context_lifecycle::spawn(&ctx, move |ctx| async move {
@@ -911,7 +963,9 @@ impl PageSvc {
         }
         let code = code.to_string();
         let reason = reason.to_string();
-        let ctx = self.get_ctx();
+        let Some(ctx) = self.get_ctx() else {
+            return;
+        };
         for (work_id, outbound, callback) in callbacks {
             let code = code.clone();
             let reason = reason.clone();
@@ -976,7 +1030,9 @@ impl PageSvc {
         for channel in channels {
             let _ = channel.send(true);
         }
-        let ctx = self.get_ctx();
+        let Some(ctx) = self.get_ctx() else {
+            return;
+        };
         for callback in callbacks {
             super::context_lifecycle::spawn(&ctx, move |_ctx| {
                 with_document_callback_work(callback.work_id, callback.outbound, async move {
@@ -1097,7 +1153,7 @@ impl PageSvc {
         let mut page_svc = PageSvc {
             functions: HashMap::new(),
             stream_handlers: HashSet::new(),
-            this: config.clone(),
+            this: PageObject::new(config.clone()),
             page,
             event_emitter: EventEmitter::default(),
             state: Rc::new(Mutex::new(PageSvcState {
@@ -1122,8 +1178,8 @@ impl PageSvc {
         let instance = class.instance(page_svc);
 
         let binding = instance.clone();
-        let mut page_svc = binding.borrow_mut::<PageSvc>().unwrap();
-        page_svc.this = instance.clone();
+        let page_svc = binding.borrow_mut::<PageSvc>().unwrap();
+        page_svc.this.set(instance.clone());
         let page_instance_id = page_svc.page.instance_id_string();
         super::with_page_svc_map(&ctx, |page_svc_map| {
             page_svc_map
@@ -1256,7 +1312,9 @@ impl PageSvc {
         for func in self.functions.values() {
             mark_fn(func.as_js_value());
         }
-        mark_fn(self.this.as_js_value());
+        if let Some(this) = self.this.0.borrow().as_ref() {
+            mark_fn(this.as_js_value());
+        }
 
         if let Ok(state) = self.state.try_lock() {
             for func in state.callback.values() {
@@ -1335,7 +1393,9 @@ impl PageSvc {
         work_id: Option<SessionWorkId>,
         outbound: Option<&OutboundContext>,
     ) -> Result<String, RpcError> {
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let next_fn = iterator
             .get::<_, JSFunc>("next")
             .map_err(rpc_error_from_rong)?;
@@ -1400,7 +1460,9 @@ impl PageSvc {
         work_id: Option<SessionWorkId>,
         outbound: Option<OutboundContext>,
     ) -> Result<CreatedStreamHandle, RpcError> {
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let handle = JSObject::new(&ctx);
 
         handle
@@ -1519,7 +1581,9 @@ impl PageSvc {
         listeners: Rc<RefCell<ChannelListeners>>,
         outbound: Option<OutboundContext>,
     ) -> Result<JSObject, RpcError> {
-        let ctx = self.get_ctx();
+        let ctx = self
+            .get_ctx()
+            .ok_or_else(|| RpcError::new(BRIDGE_CANCELED, None))?;
         let channel_ctx = JSObject::new(&ctx);
         channel_ctx
             .set("id", key.id.clone())
@@ -1612,8 +1676,9 @@ impl PageSvc {
                             .flatten()
                             .and_then(|channel| channel.listeners.borrow_mut().on_close.take())
                     };
-                    if let Some(on_close) = on_close {
-                        let ctx = page_svc.get_ctx();
+                    if let Some(on_close) = on_close
+                        && let Some(ctx) = page_svc.get_ctx()
+                    {
                         let callback_code = code.0.clone();
                         let callback_reason = reason.0.clone();
                         let _ = with_document_callback_work(
@@ -1706,10 +1771,13 @@ impl PageSvc {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
             return match args_obj {
                 Some(obj) => {
-                    func.call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                    func.call_async::<_, ()>(Some(self.this.require()?), (obj,))
                         .await
                 }
-                None => func.call_async::<_, ()>(Some(self.this.clone()), ()).await,
+                None => {
+                    func.call_async::<_, ()>(Some(self.this.require()?), ())
+                        .await
+                }
             };
         }
         Err(RongJSError::from(HostError::new(
@@ -1721,17 +1789,56 @@ impl PageSvc {
     /// Retire the service: queued lifecycle events other than `onUnload` are
     /// dropped and in-flight handlers lose their write path back to the page.
     fn abort_lifetime(&self) {
-        if let Ok(abort) = self.this.get::<_, JSFunc>("_abortLifetime") {
-            let _ = abort.call::<_, ()>(Some(self.this.clone()), ());
+        let Some(this) = self.this.get() else {
+            return;
+        };
+        if let Ok(abort) = this.get::<_, JSFunc>("_abortLifetime") {
+            let _ = abort.call::<_, ()>(Some(this), ());
         }
     }
 
     pub(crate) fn mark_terminated(&self) {
         self.terminated.set(true);
         retain_owed_unload(&mut self.lifecycle_queue.borrow_mut());
-        if let Ok(cancel) = self.this.get::<_, JSFunc>("_cancelPendingSetData") {
-            let _ = cancel.call::<_, ()>(Some(self.this.clone()), ());
+        let Some(this) = self.this.get() else {
+            return;
+        };
+        if let Ok(cancel) = this.get::<_, JSFunc>("_cancelPendingSetData") {
+            let _ = cancel.call::<_, ()>(Some(this), ());
         }
+    }
+
+    /// Whether the service still holds its JS object (it was not released).
+    pub(crate) fn holds_js(&self) -> bool {
+        self.this.get().is_some()
+    }
+
+    /// Whether the lifecycle pump is still draining events (an owed
+    /// `onUnload` included).
+    pub(crate) fn lifecycle_pending(&self) -> bool {
+        self.lifecycle_pump_running.get() || !self.lifecycle_queue.borrow().is_empty()
+    }
+
+    /// Drop every JS value this service holds — its own object, the page's
+    /// functions, listeners and pending callbacks — so a retired page, and
+    /// once all its pages are gone the Logic context, can be collected.
+    /// Idempotent; the service does nothing afterwards.
+    pub(crate) fn release_js(&self) {
+        self.terminated.set(true);
+        self.lifecycle_queue.borrow_mut().clear();
+        if let Ok(mut state) = self.state.try_lock() {
+            state.callback.clear();
+            state.state_callback.clear();
+            state.channels.clear();
+        }
+        let Some(object) = self.this.take() else {
+            return;
+        };
+        // The JS object carries its own copy of the service.
+        if let Ok(mut own) = object.borrow_mut::<PageSvc>() {
+            own.functions.clear();
+            own.event_emitter = EventEmitter::default();
+        };
     }
 
     /// Queue a lifecycle event and run the queue FIFO off the worker pump.
@@ -1763,6 +1870,11 @@ impl PageSvc {
                 );
                 let Some((event, args)) = next else {
                     page_svc.lifecycle_pump_running.set(false);
+                    if page_svc.terminated.get() {
+                        // The owed `onUnload` has run: nothing uses the
+                        // retired service's JS values any more.
+                        page_svc.release_js();
+                    }
                     break;
                 };
                 if let Err(e) = page_svc.call_page_event(&ctx, event, args.as_deref()).await {
@@ -1801,12 +1913,12 @@ impl PageSvc {
             match args_obj {
                 Some(obj) => {
                     js_func
-                        .call_async::<_, ()>(Some(self.this.clone()), (obj,))
+                        .call_async::<_, ()>(Some(self.this.require()?), (obj,))
                         .await
                 }
                 None => {
                     js_func
-                        .call_async::<_, ()>(Some(self.this.clone()), ())
+                        .call_async::<_, ()>(Some(self.this.require()?), ())
                         .await
                 }
             }
@@ -1830,10 +1942,10 @@ impl PageSvc {
             // Serialize the LIVE page data: onLoad may have called setData
             // before the bridge was ready, and the construction-time snapshot
             // would silently miss those writes.
-            let page_data = self
-                .this
+            let this = self.this.require()?;
+            let page_data = this
                 .get::<_, JSObject>("data")
-                .unwrap_or_else(|_| JSObject::new(&self.this.context()));
+                .unwrap_or_else(|_| JSObject::new(&this.context()));
             let data_json = page_data.to_json_string()?;
 
             let new_rev = state.state_rev + 1;
@@ -1864,27 +1976,28 @@ impl PageSvc {
         self.page.bridge()
     }
 
-    pub(crate) fn get_ctx(&self) -> JSContext {
-        self.this.context()
+    /// The service's Logic context; `None` once the service was released.
+    pub(crate) fn get_ctx(&self) -> Option<JSContext> {
+        self.this.get().map(|this| this.context())
     }
 
     pub fn bind_surface(&self, surface: JSObject) -> JSResult<()> {
-        self.this.set("surface", surface)?;
+        self.this.require()?.set("surface", surface)?;
         Ok(())
     }
 
     pub fn clear_surface(&self) -> JSResult<()> {
-        self.this.delete("surface")?;
+        self.this.require()?.delete("surface")?;
         Ok(())
     }
 
     pub fn bind_opener(&self, opener: JSObject) -> JSResult<()> {
-        self.this.set("opener", opener)?;
+        self.this.require()?.set("opener", opener)?;
         Ok(())
     }
 
     pub fn clear_opener(&self) -> JSResult<()> {
-        self.this.delete("opener")?;
+        self.this.require()?.delete("opener")?;
         Ok(())
     }
 }
@@ -2064,7 +2177,7 @@ fn get_current_pages(ctx: JSContext) -> JSResult<Vec<JSObject>> {
             Ok(page_svc_map
                 .borrow()
                 .get(&id)
-                .map(|page_svc| page_svc.this.clone()))
+                .and_then(|page_svc| page_svc.this.get()))
         })? {
             pages.push(page_obj);
         }

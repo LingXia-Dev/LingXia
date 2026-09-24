@@ -644,9 +644,13 @@ async function run(): Promise<ProtocolReport> {
         phase = "beforeEach";
         const checkpoint = await fixture.profile.checkpoint();
         fixture.defer(async () => {
-          await fixture.profile.restore(checkpoint, item.restoreKeep ? { keep: item.restoreKeep } : undefined);
-          profileRestored = true;
-          await fixture.profile.drop(checkpoint);
+          try {
+            await fixture.profile.restore(checkpoint, item.restoreKeep ? { keep: item.restoreKeep } : undefined);
+            profileRestored = true;
+          } finally {
+            // A failed rollback must not leave its copy on disk for the rest of the run.
+            await Promise.resolve(fixture.profile.drop(checkpoint)).catch(() => {});
+          }
         });
         phase = "body";
       }

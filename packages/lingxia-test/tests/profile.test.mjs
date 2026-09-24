@@ -74,7 +74,7 @@ test("restoreProfile rolls a spec's writes back before the next spec", async () 
 
 test("a failed rollback stops the run instead of leaking data", async () => {
   const world = createWorld();
-  fakeProfile(world, { failRestore: true });
+  const profile = fakeProfile(world, { failRestore: true });
   installFakeHost(world);
   let secondRan = false;
 
@@ -88,6 +88,7 @@ test("a failed rollback stops the run instead of leaking data", async () => {
   assert.equal(report.cases[0].error.phase, "defer");
   assert.equal(report.cases[1].status, "skipped");
   assert.match(report.cases[1].reason, /restoreProfile/);
+  assert.equal(profile.checkpoints.size, 0, "the failed rollback's checkpoint is dropped too");
 });
 
 test("restoreProfile outside an isolated run fails before the body", async () => {
