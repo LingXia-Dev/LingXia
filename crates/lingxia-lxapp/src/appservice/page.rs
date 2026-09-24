@@ -2084,6 +2084,16 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
     Ok(())
 }
 
+/// Hands `Page.js` the real `setTimeout`/`clearTimeout` for setData batching.
+/// Call it right after the timer module is initialised and before any app
+/// code runs, so a test clock installed later never holds View updates. The
+/// hook is removed afterwards, so app code cannot recapture.
+pub(crate) fn capture_real_timers(ctx: &JSContext) -> JSResult<()> {
+    ctx.eval::<()>(Source::from_bytes(
+        "globalThis.__lxCaptureTimers(); delete globalThis.__lxCaptureTimers;",
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2110,6 +2120,7 @@ mod tests {
             "globalThis.PageSvc = class { constructor() {} _setData() {} };",
         ))?;
         ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        capture_real_timers(&ctx)?;
         let result: String = ctx.eval_async(Source::from_bytes(
             r#"
             (async () => { try {
@@ -2145,6 +2156,57 @@ mod tests {
             result.starts_with("true,true,") && result.ends_with(",true,rejected"),
             "{result}"
         );
+        Ok(())
+    }
+
+    /// A test clock installed after the worker started, but before the first
+    /// setData, must not hold the View update: batching uses the timers
+    /// captured at worker start. Deterministic: the "real" timers captured at
+    /// start are recording stubs, so no executor or wall-clock wait is
+    /// involved.
+    #[test]
+    fn first_set_data_after_a_fake_clock_still_reaches_the_view() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.PageSvc = class { constructor() {} _setData(ops, done) { globalThis.__delivered = ops; done(); } };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        // Everything a page needs but the timer module: its timers are stubs.
+        rong_modules::init(&ctx, ["event", "exception", "abort", "console"])
+            .expect("Logic modules");
+        // The timers present at worker start: stubs that record what they get.
+        ctx.eval::<()>(Source::from_bytes(
+            r#"
+            globalThis.__startTimers = [];
+            globalThis.setTimeout = (fn, delay) => { __startTimers.push({ fn, delay }); return __startTimers.length; };
+            globalThis.clearTimeout = () => {};
+            "#,
+        ))?;
+        capture_real_timers(&ctx)?;
+        let hook_left: bool = ctx.eval(Source::from_bytes(
+            "typeof globalThis.__lxCaptureTimers !== 'undefined'",
+        ))?;
+        assert!(!hook_left, "the capture hook must not outlive worker start");
+        let result: String = ctx.eval(Source::from_bytes(
+            r#"
+            (() => { try {
+              // A clock installed later that never fires unless ticked.
+              const faked = [];
+              globalThis.setTimeout = (fn) => { faked.push(fn); return 1; };
+              globalThis.clearTimeout = () => {};
+              __registerPage("pages/home", { data: {} });
+              const page = __LX_CREATE_PAGE__("pages/home", null, "p1");
+              page.setData({ answer: 42 });
+              if (faked.length > 0) return "batched on the fake clock";
+              if (__startTimers.length !== 1) return `start timers used ${__startTimers.length} times`;
+              __startTimers[0].fn();
+              return String(JSON.stringify(globalThis.__delivered) || "undelivered");
+            } catch (error) { return `threw: ${error}`; } })()
+            "#,
+        ))?;
+        assert!(result.contains("answer"), "{result}");
         Ok(())
     }
 

@@ -97,6 +97,25 @@ mod rong_modules_tests {
             "Rong must be sealed before extensions run"
         );
     }
+
+    #[test]
+    fn set_data_timers_are_captured_after_the_timer_module_and_before_app_code() {
+        // `rfind`: the worker code comes after this test in the file.
+        let source = include_str!("js_runtime.rs");
+        let modules = source
+            .rfind("rong_modules::init(&ctx, RONG_MODULES)")
+            .expect("Rong module init");
+        let capture = source
+            .rfind("page::capture_real_timers(&ctx)")
+            .expect("setData timer capture");
+        let extensions = source
+            .rfind("with_registered_extensions(")
+            .expect("extension dispatch");
+        let logic = source
+            .rfind("logic_entry_source(&ctx)")
+            .expect("logic entry");
+        assert!(modules < capture && capture < extensions && capture < logic);
+    }
 }
 
 /// Message type for LxApp service system
@@ -703,6 +722,16 @@ pub(crate) async fn lxapp_service_handler(
             if let Err(e) = rong_modules::init(&ctx, RONG_MODULES) {
                 error!(
                     "[Worker {}] Failed to initialize Rong modules: {}",
+                    worker_id, e
+                )
+                .with_appid(lxapp.appid.clone());
+                return;
+            }
+            // Capture the real timers for setData batching now, before any
+            // app code (and so any test clock) can replace them.
+            if let Err(e) = page::capture_real_timers(&ctx) {
+                error!(
+                    "[Worker {}] Failed to capture timers for setData: {}",
                     worker_id, e
                 )
                 .with_appid(lxapp.appid.clone());
