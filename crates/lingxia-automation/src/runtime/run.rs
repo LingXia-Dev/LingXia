@@ -1,5 +1,6 @@
 //! Per-run shared state: the state machine, event buffer, and limits.
 
+use super::profile::{AutomationProfile, RunProfileSlot, TeardownFn};
 use super::protocol::*;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Mutex;
@@ -29,6 +30,9 @@ pub(crate) struct RunShared {
     cancel_error: Mutex<Option<AutomationRunError>>,
     inner: Mutex<RunInner>,
     log_ring: Mutex<VecDeque<String>>,
+    /// The isolated profile this run owns, if any, and its teardown.
+    profile: RunProfileSlot,
+    teardown: TeardownFn,
 }
 
 struct RunInner {
@@ -59,6 +63,8 @@ impl RunShared {
             last_contact: Mutex::new(Instant::now()),
             cancel_error: Mutex::new(None),
             log_ring: Mutex::new(VecDeque::new()),
+            profile: RunProfileSlot::new(None),
+            teardown: super::profile::DEFAULT_TEARDOWN,
             inner: Mutex::new(RunInner {
                 state: AutomationRunState::Running,
                 events: Vec::new(),
@@ -72,6 +78,27 @@ impl RunShared {
                 last_poll_at: None,
             }),
         }
+    }
+
+    /// Give the run the isolated profile its target app runs on.
+    pub fn with_profile(
+        mut self,
+        profile: Option<AutomationProfile>,
+        teardown: TeardownFn,
+    ) -> Self {
+        self.profile = RunProfileSlot::new(profile);
+        self.teardown = teardown;
+        self
+    }
+
+    pub fn profile(&self) -> Option<&AutomationProfile> {
+        self.profile.profile()
+    }
+
+    /// Finished, but its app is not back on its own data yet. Such a run
+    /// still holds the automation slot and polls as running.
+    pub fn teardown_pending(&self) -> bool {
+        self.profile.pending()
     }
 
     pub fn state(&self) -> AutomationRunState {
@@ -241,6 +268,7 @@ impl RunShared {
         // lock before reading run state.
         drop(inner);
         crate::network::clear_run(&self.run_id);
+        self.profile.begin_teardown(&self.run_id, self.teardown);
         true
     }
 
@@ -256,6 +284,9 @@ impl RunShared {
     }
 
     pub fn poll(&self, after_seq: u64) -> AutomationPollResponse {
+        // Report the ending only once the app is back on its own data, so a
+        // client that exports or starts the next run never races the teardown.
+        let settling = self.teardown_pending();
         let mut inner = self.inner.lock().unwrap();
         inner.last_poll_at = Some(Instant::now());
         let mut released = 0usize;
@@ -283,12 +314,17 @@ impl RunShared {
             .cloned()
             .collect();
 
+        let state = if settling {
+            AutomationRunState::Running
+        } else {
+            inner.state
+        };
         AutomationPollResponse {
             run_id: self.run_id.clone(),
-            state: inner.state,
+            state,
             next_seq: inner.next_seq,
             events,
-            result: if inner.state.is_terminal() {
+            result: if state.is_terminal() {
                 inner.result.clone()
             } else {
                 None

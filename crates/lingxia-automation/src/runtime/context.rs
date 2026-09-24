@@ -48,6 +48,15 @@ pub(crate) fn init_automation_context(
     crate::network::attach_run_scope(ctx, shared.run_id.clone(), move || {
         run.upgrade().is_some_and(|run| !run.state().is_terminal())
     });
+    if let Some(profile) = shared.profile() {
+        let run = Arc::downgrade(shared);
+        crate::profile::attach_run_scope(
+            ctx,
+            profile.appid.clone(),
+            profile.profile.clone(),
+            move || run.upgrade().is_some_and(|run| !run.state().is_terminal()),
+        );
+    }
 
     ctx.register_hidden_class::<AutomationConsole>()?;
     ctx.global().set(

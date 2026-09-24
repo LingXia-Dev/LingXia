@@ -50,6 +50,8 @@ export const AUTOMATION_ERROR_CODES = [
   'E_EVAL_SCRIPT',
   /** The evaluation did not settle within its `timeoutMs`. */
   'E_EVAL_TIMEOUT',
+  /** Profile rollback outside an isolated run (`lxdev test --isolate`), or for an lxapp the run does not isolate. */
+  'E_PROFILE_NOT_ISOLATED',
 ] as const;
 
 export type AutomationErrorCode = (typeof AUTOMATION_ERROR_CODES)[number];
@@ -846,6 +848,25 @@ export interface NetworkDriver {
   requests(): Promise<NetworkRouteRequest[]>;
 }
 
+/**
+ * Checkpoint and roll back the isolated data profile of a host automation run
+ * (`lxdev test --isolate`). Each call rejects with `E_PROFILE_NOT_ISOLATED`
+ * unless the selected lxapp runs on this run's profile, so it can never touch
+ * the app's real data.
+ *
+ * `checkpoint` and `restore` close the app, copy or swap its closed data and
+ * reopen it at its initial page: a driver selected before the call is bound to
+ * the closed instance, so select the lxapp again afterwards.
+ */
+export interface ProfileDriver {
+  /** Snapshot the profile; resolves the checkpoint id. */
+  checkpoint(): Promise<string>;
+  /** Replace the profile with checkpoint `id`. */
+  restore(id: string): Promise<void>;
+  /** Discard checkpoint `id`; the app keeps running. */
+  drop(id: string): Promise<void>;
+}
+
 /** Capability for one selected running lxapp, as app Logic sees it. */
 export interface LogicLxAppDriver {
   readonly page: PageDriver;
@@ -878,6 +899,13 @@ export interface LxAppDriver extends LogicLxAppDriver {
    * or in a host built without the automation runtime.
    */
   readonly network: NetworkDriver;
+  /**
+   * Isolated data profile rollback, scoped to the host automation run.
+   *
+   * @remarks Reading the property always works; every call rejects with
+   * `E_PROFILE_NOT_ISOLATED` outside an isolated run.
+   */
+  readonly profile: ProfileDriver;
   /** @internal Test-runner plumbing: resolves to the call-trace envelope. */
   eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
   /**

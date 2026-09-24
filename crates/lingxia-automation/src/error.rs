@@ -30,6 +30,8 @@ pub(crate) const E_AUTOMATION_TIMEOUT: &str = "E_AUTOMATION_TIMEOUT";
 pub(crate) const E_EVAL_SCRIPT: &str = "E_EVAL_SCRIPT";
 /// The evaluation did not settle within its timeout.
 pub(crate) const E_EVAL_TIMEOUT: &str = "E_EVAL_TIMEOUT";
+/// Profile rollback outside an isolated run, or for an app it does not isolate.
+pub(crate) const E_PROFILE_NOT_ISOLATED: &str = "E_PROFILE_NOT_ISOLATED";
 
 /// The code for a driver or lower-half failure message.
 pub(crate) fn code_for(message: &str) -> &'static str {
