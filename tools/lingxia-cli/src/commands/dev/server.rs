@@ -421,13 +421,23 @@ impl DevServerState {
         run_lxapp_build(&self.project_root, Some(&args))
     }
 
-    /// Restart a running lxapp. `Ok(false)` means no runtime is attached yet.
-    pub(crate) fn restart_lxapp(&self, appid: &str) -> Result<bool> {
+    /// Restart a running lxapp unless a test run is active.
+    ///
+    /// The watcher checks for a run before it rebuilds, but a rebuild takes
+    /// seconds and `lxdev test` can start one meanwhile; restarting then
+    /// replaces the app under a running spec. The check is repeated here
+    /// under the command lock, which every relayed `session.test` start holds
+    /// until its response is observed, so no run can start between the check
+    /// and the restart.
+    pub(crate) fn restart_lxapp(&self, appid: &str) -> Result<RestartOutcome> {
         let Some(sender) = self.runtime_sender() else {
-            return Ok(false);
+            return Ok(RestartOutcome::NotConnected);
         };
         let id = uuid::Uuid::new_v4().to_string();
         let _guard = self.lock_command_forwarding();
+        if self.test_run_active() {
+            return Ok(RestartOutcome::Deferred);
+        }
         let (tx, rx) = mpsc::channel();
         self.register_pending_result(id.clone(), tx);
         let request = DevSessionMessage::Request(ControlRequest {
@@ -444,7 +454,7 @@ impl DevServerState {
                 if let Some(error) = response.error {
                     Err(anyhow!("{}", error.message))
                 } else {
-                    Ok(true)
+                    Ok(RestartOutcome::Restarted)
                 }
             }
             Ok(_) => Err(anyhow!("unexpected restart response")),
@@ -458,6 +468,16 @@ impl DevServerState {
             }
         }
     }
+}
+
+/// What [`DevServerState::restart_lxapp`] did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RestartOutcome {
+    Restarted,
+    /// No runtime is attached yet.
+    NotConnected,
+    /// A test run is active; restart after it ends.
+    Deferred,
 }
 
 fn runtime_gone_grace() -> Duration {
@@ -1425,6 +1445,22 @@ mod tests {
         assert!(state.test_run_active());
         state.observe_test_response(test::POLL, &test_response("run-1", "failed"));
         assert!(!state.test_run_active());
+    }
+
+    #[test]
+    fn a_restart_waits_for_a_run_that_started_during_the_rebuild() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = authenticated_state();
+        let (tx, rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        // The watcher saw no run and started rebuilding; `lxdev test` started
+        // one meanwhile.
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        assert_eq!(
+            state.restart_lxapp("demo").unwrap(),
+            super::RestartOutcome::Deferred
+        );
+        assert!(rx.try_recv().is_err(), "no restart reaches the runtime");
     }
 
     #[test]

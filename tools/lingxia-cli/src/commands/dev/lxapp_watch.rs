@@ -4,7 +4,7 @@
 //! `resources.bundles[].path` that is a local lxapp. Build outputs (`dist`,
 //! `node_modules`, `.lingxia`, …) are not watched, so a rebuild cannot loop.
 
-use super::server::DevServerState;
+use super::server::{DevServerState, RestartOutcome};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
@@ -241,7 +241,11 @@ fn run_watch(
                     if stop_flag.load(Ordering::Acquire) {
                         break;
                     }
-                    reload_one(&state, &app_id, &options);
+                    if reload_one(&state, &app_id, &options) == Reload::Deferred {
+                        // A run started while it rebuilt: restart once it ends.
+                        dirty.insert(app_id);
+                        deferred = true;
+                    }
                 }
             }
             Err(RecvTimeoutError::Disconnected) => break,
@@ -251,27 +255,42 @@ fn run_watch(
     Ok(())
 }
 
-fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions) {
+#[derive(Debug, PartialEq, Eq)]
+enum Reload {
+    Done,
+    Deferred,
+}
+
+fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions) -> Reload {
     println!("  {} rebuilding {}...", "↻".cyan(), app_id.cyan());
     if let Err(err) = state.rebuild_lxapp(app_id, options.framework.as_deref(), options.release) {
         eprintln!("  {} auto-reload {app_id} failed: {err:#}", "✗".red());
-        return;
+        return Reload::Done;
     }
     match state.restart_lxapp(app_id) {
-        Ok(true) => {
+        Ok(RestartOutcome::Restarted) => {
             println!("  {} reloaded {}", "✓".green(), app_id.cyan());
         }
-        Ok(false) => {
+        Ok(RestartOutcome::NotConnected) => {
             println!(
                 "  {} rebuilt {} (runtime not connected yet)",
                 "✓".green(),
                 app_id.cyan()
             );
         }
+        Ok(RestartOutcome::Deferred) => {
+            println!(
+                "  {} rebuilt {}; a test run started meanwhile — reload deferred until it ends",
+                "•".cyan(),
+                app_id.cyan()
+            );
+            return Reload::Deferred;
+        }
         Err(err) => {
             eprintln!("  {} rebuilt {app_id}, restart failed: {err:#}", "✗".red());
         }
     }
+    Reload::Done
 }
 
 fn is_reload_event(kind: EventKind) -> bool {

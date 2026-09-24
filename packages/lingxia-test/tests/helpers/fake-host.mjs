@@ -277,6 +277,7 @@ export function installFakeHost(world, options = {}) {
           if (appId && options.apps?.[appId]) return options.apps[appId];
           return world.app;
         },
+        ...(options.lxapps ? { lxapps: options.lxapps } : {}),
       };
     },
   };
