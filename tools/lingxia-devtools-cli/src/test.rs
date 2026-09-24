@@ -123,6 +123,9 @@ pub struct TestOptions {
     /// Emit one final pretty JSON object instead of live output
     #[arg(long, conflicts_with = "json")]
     pretty: bool,
+
+    #[command(flatten)]
+    state: crate::test_state::StateOptions,
 }
 
 /// The ceiling is the automation runtime's own run budget
@@ -254,7 +257,17 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
 
     let secrets = RunSecrets::new(&options.args, &options.secret_args);
     let args = secrets.spec_args();
-    let control = run_control(&options, &info.target, &secrets)?;
+    let mut control = run_control(&options, &info.target, &secrets)?;
+    // Isolation is settled (and a seed uploaded) before the run exists.
+    let isolation = crate::test_state::prepare(
+        &info.ws_url,
+        &options.state,
+        &find_project_root(&entry),
+        machine,
+    )?;
+    if let Some(isolation) = &isolation {
+        control.extend(isolation.control.iter().cloned());
+    }
 
     let start_args = TestStartArgs {
         source: bundle.code.clone(),
@@ -262,10 +275,21 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         timeout_ms: Some(host_budget_secs(&options) * 1000),
         args,
         control: control.clone(),
+        profile: isolation
+            .as_ref()
+            .map(|isolation| isolation.profile.clone()),
     };
     let start: TestStartResponse =
-        start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
+        start_run(&info.ws_url, &start_args, options.cancel_active, machine).inspect_err(|_| {
+            if let Some(isolation) = &isolation {
+                isolation.discard_seed();
+            }
+        })?;
     let run_id = start.run_id;
+    // Released after saving; any other way out discards the host's copy.
+    let retained_profile = isolation
+        .as_ref()
+        .and_then(|isolation| isolation.retained(&run_id));
     // From here every early exit — `?`, a lost session, a local IO error —
     // must not leave the Runner holding this run.
     let active_run = ActiveRun::new(&info.ws_url, &run_id);
@@ -416,6 +440,13 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &secrets,
     );
 
+    if let Some(isolation) = &isolation
+        && let Err(error) =
+            isolation.finish(retained_profile, outcome.state, outcome.partial, machine)
+    {
+        eprintln!("{} --save-state: {error:#}", "error".red());
+        outcome.partial = true;
+    }
     let exit_code = match outcome.state {
         TestRunState::Passed if !outcome.partial => 0,
         TestRunState::Cancelled if interrupts.load(Ordering::SeqCst) > 0 => 130,
@@ -1574,6 +1605,7 @@ fn report(
                     command.push_str(&format!(" --timeout-secs {secs}"));
                 }
                 command.push_str(&secrets.rerun_flags(shell_quote));
+                command.push_str(&options.state.rerun_flags(shell_quote));
                 eprintln!("  Rerun: {command}");
             }
             if options.verbose
