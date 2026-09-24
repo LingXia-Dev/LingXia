@@ -1,0 +1,59 @@
+# A small contract for the routed-contract specs in this directory. The
+# server URL only supplies the base path: hosts are not compared.
+openapi: 3.0.3
+info:
+  title: Showcase devices
+  version: "1"
+servers:
+  - url: https://api.example.com/lingxia-showcase/contract/v1
+paths:
+  /devices:
+    get:
+      operationId: listDevices
+      responses:
+        "200":
+          description: The devices.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceList" }
+        4XX:
+          $ref: "#/components/responses/Problem"
+  /devices/{id}:
+    patch:
+      operationId: renameDevice
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: The renamed device.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Device" }
+components:
+  schemas:
+    Device:
+      type: object
+      required: [id, name, kind]
+      properties:
+        id: { type: string }
+        name: { type: string, minLength: 1 }
+        room: { type: string, nullable: true }
+        kind: { type: string, enum: [router, extender] }
+    DeviceList:
+      type: object
+      required: [items, total]
+      additionalProperties: false
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Device" } }
+        total: { type: integer, minimum: 0 }
+    Problem:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+  responses:
+    Problem:
+      description: A client error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }

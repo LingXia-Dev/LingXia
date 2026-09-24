@@ -1,0 +1,7 @@
+# Requirement ids the contract specs claim with `covers`.
+- id: CONTRACT-LIST
+  title: The device list follows the contract
+- id: CONTRACT-ERROR
+  title: A client error carries a problem body
+- id: CONTRACT-RENAME
+  title: Renaming returns the device

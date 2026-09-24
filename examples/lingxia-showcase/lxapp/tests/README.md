@@ -16,6 +16,12 @@ behind.
 | `ios.test.ts` | Shared suite plus https `previewMedia` handle contracts | iOS, local |
 | `harmony.test.ts` | Shared suite plus https `previewMedia` handle contracts | Harmony, local |
 
+`contract/` holds routed contract specs that need their OpenAPI document:
+`lxdev test tests/contract --openapi tests/contract/devices.openapi.yaml
+--covers-manifest tests/contract/coverage.yaml`. No platform entry imports
+them, and without `--openapi` (for example `lxdev test tests/`) they skip
+themselves.
+
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility
 entry and deliberately excludes physical platform tests.
