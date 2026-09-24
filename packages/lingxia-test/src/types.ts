@@ -2,6 +2,7 @@
 import type {
   Automation,
   AutomationErrorCode,
+  ClockDriver,
   LogicLxAppEvalOptions,
   LxAppDriver,
   NetworkDriver,
@@ -222,6 +223,13 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
    * spans the whole run).
    */
   readonly network: NetworkDriver;
+  /**
+   * Test clock for the app's Logic (`Date`, timers, `performance.now`).
+   * Spec-scoped: a clock still installed when the spec ends is uninstalled,
+   * and if that drops pending test timers the next spec starts from a
+   * relaunched home page.
+   */
+  readonly clock: ClockDriver;
   /** Evaluate a script string in app Logic and resolve to its value. `T` is not validated. */
   eval<T = unknown>(options: LogicLxAppEvalOptions): Promise<T>;
   /**

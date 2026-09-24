@@ -11,6 +11,7 @@ import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
+import { ClockScope, wrapClock } from "./clock.js";
 import { ActionDeadline, TimeoutError } from "./deadline.js";
 import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
@@ -107,6 +108,8 @@ export class LiveFixture implements Fixture {
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
   private readonly networkScope = new NetworkScope();
+  /** Test clocks this spec installed; uninstalled when it ends. */
+  readonly clockScope = new ClockScope();
   /** When the spec's own timer fires; see `budgetRoom()`. */
   private readonly specDeadline: number;
 
@@ -632,6 +635,16 @@ export class LiveFixture implements Fixture {
       // The same as `t.profile`: it re-selects the app after a switch.
       get profile() {
         return fixture.profile;
+      },
+      // Lazy and non-throwing like `network`; spec-scoped: uninstalled when
+      // the spec ends.
+      get clock() {
+        return wrapClock(
+          () => ({ driver: driver.clock, appid: async () => (await driver.info()).appid }),
+          fixture,
+          fixture.clockScope,
+          () => fixture.hostAutomation,
+        );
       },
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
