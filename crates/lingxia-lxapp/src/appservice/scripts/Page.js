@@ -1,5 +1,36 @@
 (function () {
   const pageDefinitions = new Map();
+  // setData batching keeps real time. The timer globals are installed after
+  // this script runs, so the Logic worker calls the hidden capture hook right
+  // after the timer module is initialised — before app code, and so before a
+  // test clock, can replace them. A faked clock then never holds View updates.
+  let realTimers = null;
+  function captureTimers() {
+    const set = globalThis.setTimeout;
+    const clear = globalThis.clearTimeout;
+    if (typeof set !== "function" || typeof clear !== "function") {
+      throw new Error("setData: timers are not available to capture");
+    }
+    realTimers = { set, clear };
+  }
+  Object.defineProperty(globalThis, "__lxCaptureTimers", {
+    value: captureTimers,
+    enumerable: false,
+    writable: false,
+    configurable: true,
+  });
+  function timers() {
+    if (!realTimers) {
+      throw new Error("setData: timers were not captured when the Logic worker started");
+    }
+    return realTimers;
+  }
+  function setTimer(fn, delay) {
+    return timers().set(fn, delay);
+  }
+  function clearTimer(id) {
+    return timers().clear(id);
+  }
 
   function createPageInstance(definition, pagePath, pageInstanceId) {
     const pageConfig = definition && definition.config;
@@ -72,7 +103,7 @@
     pageSvc._cancelPendingSetData = function () {
       disposed = true;
       rejectFlushes(new Error("Page unloaded before its state was flushed"));
-      clearTimeout(updateTimer);
+      clearTimer(updateTimer);
       updateTimer = null;
       pendingBaseState.clear();
       pendingOps.clear();
@@ -99,8 +130,8 @@
         throw err;
       }
 
-      clearTimeout(updateTimer);
-      updateTimer = setTimeout(submitPending, DEBOUNCE_WAIT);
+      clearTimer(updateTimer);
+      updateTimer = setTimer(submitPending, DEBOUNCE_WAIT);
     };
 
     function submitPending() {
@@ -154,7 +185,7 @@
         });
         // Submit now: a steady setData stream would otherwise re-arm the
         // debounce and starve the flush.
-        clearTimeout(updateTimer);
+        clearTimer(updateTimer);
         submitPending();
       });
     };
