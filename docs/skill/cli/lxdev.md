@@ -79,6 +79,13 @@ host automation runtime. See [Product testing](../lxapp/testing.md) for a
 starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
 test layout, and reports. Use `lxdev test --help` for arguments and flags.
 
+**`network`** — fake or capture the running lxapp's Logic network traffic
+(`fetch` and `Rong.SSE`) with scenario files, outside a test run. Development
+hosts and the Runner only; see [Network scenarios in a dev
+session](../lxapp/testing.md#network-scenarios-in-a-dev-session):
+- `scenario use <file.json> [--appid]` / `scenario clear` / `scenario status`
+- `record start [--match <glob>]` / `record stop --out <file.json> [--redact <value>]`
+
 **`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
 filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
 `--app <id>`. `lxdev logs --origins` lists the origins present in the selected
