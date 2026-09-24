@@ -85,10 +85,12 @@ lx.surface.openUrl('https://example.com', { as: 'aside' })
 lx.surface.openPage('inspector', { as: 'float' })
 lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 
-const unsubscribe = lx.surface.watchContext((context) => {
-  this.setData({ surfaceContext: context })
-})
+// Logic：仅当 Logic 自己要根据尺寸类别做事时才订阅。
+const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
 ```
+
+View 直接用 `@lingxia/react` / `@lingxia/vue` 的 `useLxHost().sizeClass` 读取同一个尺寸类别，
+无需订阅，也无需 `setData`。它只在尺寸类别变化时才变；精确宽度交给 CSS 与容器查询。
 
 - `openDeclared(id)` 打开 `lingxia.yaml` 声明的内容；`id` 是该声明的内容 identity。
 - `openUrl(url)` 打开普通应用内浏览器标签；`{ as: 'aside' }` 把浏览器停靠为 aside。

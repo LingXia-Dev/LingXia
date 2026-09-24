@@ -1,5 +1,5 @@
 import React from 'react';
-import { useDisplayLanguage, useLxPage } from '@lingxia/react';
+import { useLxHost, useLxPage } from '@lingxia/react';
 import {
   resolveDisplayLanguage,
   type DisplayLanguagePreference,
@@ -30,7 +30,7 @@ const LANGUAGE_OPTIONS: DisplayLanguagePreference[] = ['auto', 'en-US', 'zh-CN']
 export default function HomePage() {
   const { data, actions } = useLxPage<PageData, PageActions>();
   const { greet, setAppearance, setDisplayLanguage } = actions;
-  const hostLanguage = useDisplayLanguage();
+  const { displayLanguage: hostLanguage } = useLxHost();
   const { t } = getMessages(resolveDisplayLanguage(hostLanguage));
   const [name, setName] = React.useState('');
   const [isSending, setIsSending] = React.useState(false);

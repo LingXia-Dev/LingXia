@@ -65,7 +65,7 @@ pub mod desktop;
 /// OS is this," shared by the WebView bridge config injection
 /// (`lingxia-lxapp`), `lx.host.getBaseInfo().os`, and `lx.getDeviceInfo().osName`
 /// (`lingxia-logic`) so the three can never drift apart. Matches the values
-/// the View-side bridge already exposes via `usePlatform().os`.
+/// the View-side bridge already exposes via `useLxHost().os`.
 pub fn os_label() -> &'static str {
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     {

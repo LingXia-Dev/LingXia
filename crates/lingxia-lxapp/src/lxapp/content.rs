@@ -167,7 +167,7 @@ impl LxApp {
     }
 
     fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
-        // Seed the page's adaptive context, so `useSurfaceContext()` has a
+        // Seed the page's adaptive context, so `useLxHost()` has a
         // value from the first frame; the host pushes changes after that.
         let seed = super::surface::view_surface_context_seed(&self.appid);
         inject_bridge_config_with_bootstrap(html_data, bridge_nonce, None, seed.as_deref())

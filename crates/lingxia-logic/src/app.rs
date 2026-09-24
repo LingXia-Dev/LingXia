@@ -21,7 +21,7 @@ mod update;
 #[derive(Debug, Clone, IntoJSObject)]
 struct AppBaseInfo {
     /// Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
-    /// `"Harmony"`. Matches the View-side `usePlatform().os` value.
+    /// `"Harmony"`. Matches the View-side `useLxHost().os` value.
     #[ts_type = "HostOs"]
     os: String,
     #[js_name = "productName"]

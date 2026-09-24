@@ -128,7 +128,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { useDisplayLanguage, useLxPage } from '@lingxia/vue';
+import { useLxHost, useLxPage } from '@lingxia/vue';
 import {
   resolveDisplayLanguage,
   type DisplayLanguagePreference,
@@ -159,8 +159,8 @@ const LANGUAGE_OPTIONS: DisplayLanguagePreference[] = ['auto', 'en-US', 'zh-CN']
 
 const { data, actions } = useLxPage();
 const { greet, setAppearance, setDisplayLanguage } = actions;
-const hostLanguage = useDisplayLanguage();
-const t = computed(() => getMessages(resolveDisplayLanguage(hostLanguage.value)).t);
+const host = useLxHost();
+const t = computed(() => getMessages(resolveDisplayLanguage(host.displayLanguage)).t);
 const name = ref('');
 const isSending = ref(false);
 
@@ -187,7 +187,7 @@ const resolvedAppearanceLabel = computed(() =>
   resolvedAppearance.value === 'dark' ? t.value('appearanceDark') : t.value('appearanceLight'),
 );
 const resolvedLanguageLabel = computed(() =>
-  resolveDisplayLanguage(hostLanguage.value) === 'zh-CN'
+  resolveDisplayLanguage(host.displayLanguage) === 'zh-CN'
     ? t.value('languageZh')
     : t.value('languageEn'),
 );

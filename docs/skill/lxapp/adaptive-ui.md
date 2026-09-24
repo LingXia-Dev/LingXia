@@ -39,7 +39,7 @@ second window sees the main presentation's context, not its own. The shell's own
 derived from the content viewport — read it from this context (in Logic or the
 View), never infer it from the viewport.
 
-`regular` is room, not desktop. Pair it with `usePlatform().isDesktop`;
+`regular` is room, not desktop. Pair it with `useLxHost().formFactor`;
 tablets and foldable phones are mobile, and unfolding a fold flips
 `sizeClass` without changing host form:
 
@@ -73,24 +73,25 @@ before offering it.
 
 ## Runner safe areas and page chrome
 
-Use the host's page-chrome snapshot/CSS insets for native chrome, including
+Use the host's `--lx-page-chrome-*` CSS variables for native chrome, including
 custom-header pages in Runner; see [page chrome](guide.md#laying-out-under-immersive-chrome).
 Browser `env(safe-area-inset-*)` alone does not describe simulated Runner
 chrome. Do not compensate with a fixed phone/notch height. Capsule geometry
-belongs to the View, through the framework's page-chrome helper.
+belongs to the View, through `--lx-page-chrome-capsule-*`.
 
 ## Read it in the View
 
-A View reads the context itself: `useSurfaceContext()` from `@lingxia/react` /
-`@lingxia/vue`, or `getSurfaceContext()` and `subscribeSurfaceContext(cb)` from
+A View reads the size class itself: `useLxHost().sizeClass` (and `.aside`) from
+`@lingxia/react` / `@lingxia/vue`, or `getHost()` / `subscribeHost(cb)` from
 `@lingxia/html`. It is the same value `watchContext` delivers to Logic, seeded
-into the page before its first frame and updated on every change, so a page
+into the page before its first frame and updated when it changes, so a page
 that only picks a layout needs no Logic subscription, no `setData`, nothing in
-its `data` and no gate: the hook always has a value. It re-renders its
-component on every width change, so read it where layout depends on it rather
-than in every component. A host older than the release that added it reports
-`compact` with a 0×0 viewport forever, so keep `lxapp.json` `minRuntime` at that
-release or later — `lingxia` raises it when the project moves to this line.
+its `data` and no gate. It changes only when the size class does — a window
+drag within a class re-renders nothing. The exact width and height are not a
+hook: size spacing and columns with CSS and container queries, which follow
+every pixel without re-rendering. A host older than the release that added it
+reports `compact` forever, so keep `lxapp.json` `minRuntime` at that release or
+later — `lingxia` raises it when the project moves to this line.
 
 Subscribe in Logic only when Logic itself acts on the context — say, fetching
 less on `compact`. Then keep the unsubscribe per page instance, never in `data`:
@@ -121,23 +122,22 @@ desktop toolbar, or a compact flow that omits workspace-only operations.
 For React, keep the registered page entry stable and lazy-load one variant:
 
 ```tsx
-import { useLxPage, usePlatform, useSurfaceContext } from '@lingxia/react';
+import { useLxHost } from '@lingxia/react';
 
 const CompactView = lazy(() => import('./views/compact-view'));
 const WorkspaceView = lazy(() => import('./views/workspace-view'));
 
 export default function PageView() {
-  const page = useLxPage<Partial<PageData>, PageActions>(); // the page's own types
-  const { isDesktop } = usePlatform();
-  const surface = useSurfaceContext();
+  const { sizeClass, formFactor } = useLxHost();
   const View =
-    surface.sizeClass === 'regular' && isDesktop
+    sizeClass === 'regular' && formFactor === 'desktop'
       ? WorkspaceView
       : CompactView;
 
+  // Each View reads its own data with useLxPage(); nothing is passed down.
   return (
     <Suspense fallback={<PageSkeleton />}>
-      <View page={page} />
+      <View />
     </Suspense>
   );
 }
@@ -146,8 +146,8 @@ export default function PageView() {
 Workspace is the desktop interaction, not "anything wider than a phone": a
 `regular` mobile surface keeps CompactView.
 
-The React bridge snapshot is initially empty. Gate required nested data before
-reading it; keep React hooks above the gate so hook order remains stable.
+The page mounts once its first state has arrived, so a View reads
+`useLxPage().data` whole, with no gate.
 
 Only the selected component is mounted. Both dynamic chunks remain part of the
 lxapp package. Confirm build output before claiming a first-load JavaScript

@@ -135,9 +135,9 @@ What an lxapp or host author imports, and from where. Don't guess an import from
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
-| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxPageChrome`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
+| `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
 | `@lingxia/vue` | Vue composables + framework-wrapped native components | lxapp View (Vue) | same surface as React, Vue-flavored |
-| `@lingxia/html` | DOM helpers for HTML-only views (`subscribe`, `getActions`, …) | lxapp View (HTML) | `getActions`, `subscribe`, `getPageChromeLayout` |
+| `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, `<lx-input>`, …) | rarely direct — `@lingxia/react`/`vue` re-export wrappers around these | `registerVideoComponent`, `LxVideoElement` |
 | `@lingxia/types` | **TypeScript declarations for the Logic-side `lx.*` API + `Page({})` / `App({})` globals** | lxapp Logic (`pages/*/index.ts`) | install as dev dep; types apply globally |
 | `@lingxia/test` | Authoring SDK and clock for lxapp tests (`spec`, locators, `t.expect`) | lxapp tests / `lxdev test` | `import { spec } from '@lingxia/test'` |
