@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./entry": {
+      "types": "./dist/entry.d.ts",
+      "default": "./dist/entry.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -25,14 +29,17 @@
     "@lingxia/page-runtime": "~0.18.0"
   },
   "peerDependencies": {
-    "react": "^19.0.0"
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
   },
   "devDependencies": {
     "@lingxia/bridge": "file:../lingxia-bridge",
     "@lingxia/elements": "file:../lingxia-elements",
     "@lingxia/page-runtime": "file:../lingxia-page-runtime",
     "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.3.0",
     "react": "^19.2.8",
+    "react-dom": "^19.3.0",
     "typescript": "^5.7.2"
   },
   "files": [

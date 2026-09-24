@@ -1,4 +1,4 @@
-import { type DataSubscriber, type StateInfo } from "@lingxia/bridge";
+import { type StateInfo } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: never[]) => unknown>;
 export type Snapshot = Record<string, unknown>;
@@ -14,7 +14,9 @@ let snapshot: Snapshot = {};
 let stateInfo: StateInfo = { rev: -1, initial: true };
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let snapshotRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let initialSnapshotResolved = false;
+let actions: ActionMap | null = null;
 let snapshotRequestInFlight = false;
 const listeners = new Set<Listener>();
 
@@ -42,9 +44,26 @@ function scheduleSubscribeRetry(): void {
   }, 10);
 }
 
+/**
+ * Retry the snapshot request itself. The subscription is already in place, so
+ * retrying it (as this used to) returned at once and never asked again; the
+ * page then relied on the host's own push at bridge-ready.
+ */
+function scheduleSnapshotRetry(): void {
+  if (snapshotRetryTimer !== null) return;
+  snapshotRetryTimer = setTimeout(() => {
+    snapshotRetryTimer = null;
+    requestInitialSnapshot(window.LingXiaBridge);
+  }, 250);
+}
+
 function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
+  if (stateInfo.rev >= 0) initialSnapshotResolved = true;
   if (initialSnapshotResolved || snapshotRequestInFlight) return;
-  if (!bridge?.raw?.call) return;
+  if (!bridge?.raw?.call) {
+    scheduleSnapshotRetry();
+    return;
+  }
   snapshotRequestInFlight = true;
   bridge
     .raw.call("state.getSnapshot", { scope: "page" })
@@ -52,7 +71,7 @@ function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): vo
       initialSnapshotResolved = true;
     })
     .catch(() => {
-      scheduleSubscribeRetry();
+      scheduleSnapshotRetry();
     })
     .finally(() => {
       snapshotRequestInFlight = false;
@@ -82,18 +101,34 @@ export function subscribePageSnapshot(listener: Listener): () => void {
   };
 }
 
-export function subscribePageData(
-  callback: DataSubscriber,
-): () => void {
-  if (typeof callback !== "function") return () => {};
+/** Whether the page's first state has arrived. Flips once per document. */
+export function isPageReady(): boolean {
   ensurePageBridgeSubscription();
+  return stateInfo.rev >= 0;
+}
 
-  if (stateInfo.rev >= 0) {
-    callback(snapshot, { rev: stateInfo.rev, initial: true });
-  }
-
-  return subscribePageSnapshot(() => {
-    callback(snapshot, stateInfo);
+/**
+ * Resolves once the page's first state has arrived — the host pushes it at
+ * bridge-ready, before `onLoad`, carrying `Page({ data })`'s defaults — so a
+ * page can mount with its data whole. Rejects after `timeoutMs` if Logic never
+ * delivers it (it failed to load, or threw first), so the page can say so
+ * instead of staying blank.
+ */
+export function whenPageReady(options: { timeoutMs?: number } = {}): Promise<void> {
+  if (isPageReady()) return Promise.resolve();
+  const timeoutMs = options.timeoutMs ?? 10_000;
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      if (stateInfo.rev < 0) return;
+      clearTimeout(timer);
+      listeners.delete(check);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      listeners.delete(check);
+      reject(new Error(`Page Logic did not deliver the page state within ${timeoutMs} ms`));
+    }, timeoutMs);
+    listeners.add(check);
   });
 }
 
@@ -102,26 +137,27 @@ export function getPageSnapshot<TData = Snapshot>(): TData {
   return snapshot as TData;
 }
 
+/**
+ * The page's actions: one object for the whole page, so it is a stable
+ * dependency. Built on first use — the page's action names arrive with its
+ * bridge metadata, after the page module has evaluated.
+ */
 export function getPageActions<TActions extends ActionMap>(): TActions {
-  const actions: ActionMap = {};
+  if (actions) return actions as TActions;
   const bridge = window.__pageBridge as PageBridgeMetadata | undefined;
   if (!bridge?.__names) {
-    return actions as TActions;
+    return {} as TActions;
   }
-
+  const built: ActionMap = {};
   for (const name of bridge.__names) {
     if (typeof name !== "string") continue;
     const fn = getOrCreatePageAction(bridge, name);
     if (typeof fn === "function") {
-      actions[name] = fn;
+      built[name] = fn;
     }
   }
-
+  actions = built;
   return actions as TActions;
-}
-
-export function getPageStateInfo(): StateInfo {
-  return stateInfo;
 }
 
 function getOrCreatePageAction(

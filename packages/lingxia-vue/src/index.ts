@@ -1,18 +1,14 @@
 export {
   useLxPage,
-  useLxPageChrome,
+  useLxHost,
   useLxStream,
   useLxChannel,
-  usePlatform,
-  useDisplayLanguage,
-  useSurfaceContext,
   type LxStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
   type LxChannelState,
-  type LxPlatform,
 } from "./hook.js";
-export type { SurfaceContext } from "@lingxia/bridge";
+export type { LxHost } from "@lingxia/bridge";
 export { default as LxVideo } from "./LxVideo.vue";
 export { default as LxNativeRoot } from "./LxNativeRoot.vue";
 export { default as LxNativeView } from "./LxNativeView.vue";
@@ -34,12 +30,6 @@ export type {
   LxNavigatorProps,
   LxNavigatorEvent,
 } from "./types.js";
-export type {
-  LxPageChrome,
-  PageChromeLayoutListener,
-  PageChromeLayoutSnapshot,
-  PageChromeRect,
-} from "@lingxia/page-runtime";
 
 export type { LxVideoEventPayloads, LxVideoEventHandlers, NativeActionIcon } from "@lingxia/elements";
 export type { NativeStyle } from "./types.js";

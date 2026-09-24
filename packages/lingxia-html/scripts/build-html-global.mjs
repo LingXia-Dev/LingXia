@@ -34,16 +34,22 @@ try {
 async function writeEntryFile() {
   await writeRuntimeShimFile();
   const importPath = normalizeImportPath(path.relative(distDir, runtimeShimFile));
+  const bridgeImportPath = normalizeImportPath(
+    path.relative(distDir, path.join(bridgeDir, "dist", "es2020", "index.js")),
+  );
+  // The same page API as the `@lingxia/html` module: `pageReady`, `getPage` /
+  // `subscribePage`, and the host facts through `getHost` / `subscribeHost`.
   const source = [
-    'export {',
-    '  getPageActions as getActions,',
-    '  getPageChromeLayout,',
-    '  getPageSnapshot as getSnapshot,',
-    '  getPageStateInfo as getStateInfo,',
-    '  subscribePageData as subscribe,',
-    '  subscribePageChromeLayout,',
-    '  subscribePageSnapshot as subscribeSnapshot,',
+    'import {',
+    '  getPageActions,',
+    '  getPageSnapshot,',
+    '  subscribePageSnapshot,',
+    '  whenPageReady,',
     `} from "${importPath}";`,
+    `export { getHost, subscribeHost } from "${bridgeImportPath}";`,
+    'export function pageReady(options) { return whenPageReady(options); }',
+    'export function getPage() { return { data: getPageSnapshot(), actions: getPageActions() }; }',
+    'export function subscribePage(listener) { return subscribePageSnapshot(listener); }',
     "",
   ].join("\n");
   await fs.writeFile(entryFile, source, "utf8");

@@ -25,10 +25,6 @@ export interface LxPageChrome {
   readonly layout: PageChromeLayoutSnapshot;
 }
 
-export type PageChromeLayoutListener = (
-  layout: PageChromeLayoutSnapshot,
-) => void;
-
 declare global {
   interface Window {
     readonly lxPageChrome: LxPageChrome;
@@ -68,25 +64,13 @@ function projectPageChromeLayout(layout: PageChromeLayoutSnapshot): void {
     "--lx-page-chrome-capsule-inline-end-inset",
     `${layout.capsuleInlineEndInset}px`,
   );
-}
-
-/** Read the latest realized page-chrome layout synchronously. */
-export function getPageChromeLayout(): PageChromeLayoutSnapshot {
-  if (typeof window === "undefined") return initialLayout;
-  return installPageChromeRuntime()?.layout ?? initialLayout;
-}
-
-/** Subscribe to realized page-chrome layout changes. */
-export function subscribePageChromeLayout(
-  listener: PageChromeLayoutListener,
-): () => void {
-  if (typeof window === "undefined") return () => {};
-  installPageChromeRuntime();
-  const handleChange = (event: CustomEvent<PageChromeLayoutSnapshot>) => {
-    listener(event.detail);
-  };
-  window.addEventListener("lxpagechromechange", handleChange);
-  return () => window.removeEventListener("lxpagechromechange", handleChange);
+  // The capsule's box, so a header can clear it in CSS alone
+  // (`padding-top: calc(var(--lx-page-chrome-capsule-bottom) + 12px)`).
+  // All zero when the page has no capsule.
+  const capsule = layout.capsuleRect;
+  for (const edge of ["top", "right", "bottom", "left", "width", "height"] as const) {
+    root?.style.setProperty(`--lx-page-chrome-capsule-${edge}`, `${capsule ? capsule[edge] : 0}px`);
+  }
 }
 
 /** Ensure browser previews have the same synchronous contract as native pages. */

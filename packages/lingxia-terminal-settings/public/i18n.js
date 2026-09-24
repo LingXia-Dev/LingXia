@@ -122,8 +122,8 @@
   // host, never a preference of its own.
   function hostLocale() {
     var bridge = global.LingXiaBridge;
-    if (bridge && bridge.displayLanguage) {
-      var narrowed = normalizeLocale(bridge.displayLanguage.get());
+    if (bridge && bridge.host) {
+      var narrowed = normalizeLocale(bridge.host.get().displayLanguage);
       if (narrowed) return narrowed;
     }
     var candidates = Array.isArray(navigator.languages) && navigator.languages.length
@@ -202,7 +202,8 @@
     }
   }
 
-  if (global.LingXiaBridge && global.LingXiaBridge.displayLanguage) {
-    global.LingXiaBridge.displayLanguage.subscribe(adoptHostLocale);
+  // Change-only, and on any host fact; adoptHostLocale ignores the rest.
+  if (global.LingXiaBridge && global.LingXiaBridge.host) {
+    global.LingXiaBridge.host.subscribe(adoptHostLocale);
   }
 })(window);

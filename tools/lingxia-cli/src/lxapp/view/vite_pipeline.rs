@@ -168,11 +168,14 @@ fn build_component_pages(
             "import App from '{}';",
             relative_import_path(&build_dir, &source_path)?
         );
+        // Only a page with Logic ever receives state; one without mounts at once.
+        let wait_for_state = project.logic_entry.is_some() && logic_path.is_some();
         let scaffold = framework::scaffold(
             project.framework,
             &page_title,
             &app_import,
             &render_page_bridge_import(),
+            wait_for_state,
         );
 
         fs::write(build_dir.join("index.html"), scaffold.index_html)?;

@@ -1,4 +1,4 @@
-import { getActions, subscribe } from '@lingxia/html';
+import { getPage, pageReady, subscribePage } from '@lingxia/html';
 
 type PageData = { greeting?: string };
 type PageActions = { greet(payload: { name: string }): void };
@@ -6,19 +6,9 @@ type PageActions = { greet(payload: { name: string }): void };
 const nameInput = document.getElementById('name') as HTMLInputElement | null;
 const btn = document.getElementById('btn') as HTMLButtonElement | null;
 const greetingEl = document.getElementById('greeting');
-const actions = getActions<PageActions>();
 
-function submit() {
-  const name = nameInput?.value.trim();
-  if (name) actions.greet({ name });
-}
-
-btn?.addEventListener('click', submit);
-nameInput?.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') submit();
-});
-
-subscribe((data: PageData) => {
+function render() {
+  const { data } = getPage<PageData, PageActions>();
   if (!greetingEl) return;
   if (data.greeting) {
     greetingEl.textContent = data.greeting;
@@ -27,4 +17,20 @@ subscribe((data: PageData) => {
     greetingEl.textContent = '';
     greetingEl.style.display = 'none';
   }
+}
+
+function submit() {
+  const name = nameInput?.value.trim();
+  if (name) getPage<PageData, PageActions>().actions.greet({ name });
+}
+
+btn?.addEventListener('click', submit);
+nameInput?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') submit();
+});
+
+// Plain HTML has no mount to gate: wait for the page's first state, then follow it.
+void pageReady().then(() => {
+  render();
+  subscribePage(render);
 });

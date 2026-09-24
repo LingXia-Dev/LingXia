@@ -29,12 +29,11 @@ import {
   type V3DocumentCodec,
   type V3DocumentToNativeKind,
 } from "./protocol-v3";
+import { getHost, subscribeHost } from "./host";
 import {
   BRIDGE_CONFIG,
   getCommunicationMethod,
-  getDisplayLanguage,
   getPlatformOS,
-  subscribeDisplayLanguage,
   isAndroid,
   isHarmony,
   isIOS,
@@ -2193,11 +2192,11 @@ export const LingXiaBridge: LingXiaBridgeInterface = {
 
   debug: createDebugObject(debugFlags),
 
-  // The host language, for documents that cannot bundle `@lingxia/bridge` —
+  // The host facts, for documents that cannot bundle `@lingxia/bridge` —
   // browser internal pages and plain-HTML lxapps load this runtime as a script.
-  displayLanguage: {
-    get: getDisplayLanguage,
-    subscribe: subscribeDisplayLanguage,
+  host: {
+    get: getHost,
+    subscribe: subscribeHost,
   },
 
   platform: {
