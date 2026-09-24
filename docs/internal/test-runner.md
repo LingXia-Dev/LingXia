@@ -503,3 +503,84 @@ automation context, page WebViews and native code keep real time.
   `clearTimeout` at load for the `setData` debounce, and the fetch
   interceptor captures them for route `delay`/`hang`, so both keep real time.
 
+## Tags, coverage manifest and OpenAPI contract
+
+- Tags: `SpecOptions.tags` plus `spec.configure({ tags })`, which is
+  file-scoped like the hooks (`resolveOwner` at run start; a call with no
+  spec file on its stack emits a `collect` diagnostic). A case's `tags` are
+  the file's, then its own, deduplicated. `--tag` values travel as
+  `control.tags`, a JSON list of clauses: each clause is comma-separated
+  terms (`tag` / `!tag`) of which one must hold, and every clause must hold
+  (CNF). lxdev checks the syntax with the same grammar
+  (`test_contract::parse_tag_expr`); selection itself happens in the runtime,
+  ANDed with `only`, `ids`, `id`, `shard` and `grep`, and marks the report
+  `filtered`. Tags ride on `run_started` and `case_started`, so reports lxdev
+  writes for an interrupted run keep them.
+- `tag_summary` (report.json), the HTML "By tag" table and the JUnit root
+  `<properties>` (`tag:<name>`) count each tag's cases; untagged cases appear
+  as `(untagged)` only when some case is tagged. lxdev recomputes
+  `tag_summary` whenever it regrades cases (`refresh_report_file`).
+- `--covers-manifest`: lxdev reads JSON or YAML (`serde_yaml_ng`, already in
+  the workspace), normalizes it to `[{ id, title? }]` and sends it as
+  `control.coversManifest` plus `coversManifestFile`. The runtime builds
+  `coverage` from every registered spec, not only the selected ones (those
+  are `not_run`), and emits a `coverage` diagnostic for `covers` ids missing
+  from the manifest. lxdev refreshes spec statuses from regraded cases and
+  keeps the runtime's `not_run` entries.
+- Payload controls (`openapi`, `coversManifest`) never reach `meta.run`: the
+  runtime (`PAYLOAD_CONTROL_KEYS`) and lxdev (`reported_control`) drop them
+  and keep the file names.
+
+### OpenAPI contract
+
+- Where validation runs: in `@lingxia/test`, in the test worker. That is the
+  only place `expect(value).toMatchSchema()` can answer synchronously, the
+  runtime already owns grading, and it keeps the host free of a schema
+  engine: `schema.ts` is a dependency-free validator for what OpenAPI schemas
+  use (`$ref`, 3.0 `nullable`/boolean exclusive bounds, 3.1 type arrays and
+  numeric exclusive bounds, `enum`/`const`, `required` with the
+  `writeOnly`-in-responses exemption, `properties`/`patternProperties`/
+  `additionalProperties`, `items`/`prefixItems`/`contains`, `allOf`/`anyOf`/
+  `oneOf` with `discriminator`, `not`, `if`/`then`/`else`). `format` is not
+  asserted; 3.0 ignores a `$ref`'s siblings, 3.1 applies them. A Rust crate
+  in the host (the `jsonschema` family) would pull a regex/URL/HTTP stack into
+  every automation build and still leave `toMatchSchema` to cross the driver
+  boundary asynchronously.
+- lxdev parses the documents (JSON/YAML), refuses Swagger 2, anything but
+  3.0/3.1, and non-local `$ref`s, and sends them as `control.openapi`
+  (`[{ name, doc }]`, at most 4 MiB as JSON) with `openapiFiles`.
+  `openapi.ts` indexes operations by method, server base path (server
+  variables at their defaults; path- and operation-level `servers` win) and
+  path template; hosts are not compared, a concrete path beats a template.
+  Response lookup is exact status, then `NXX`, then `default`; media type is
+  the exact JSON type, then `application/json*`, any `+json`, `*/*`.
+- Capture (Rust, `lingxia-automation/src/network/capture.rs`): with
+  `--openapi` the runtime calls `lxapp().network.captureResponses()` for the
+  spec's app before each body (idempotent). Capture is per run and appid,
+  cleared by `clear_run` with the routes. While any app is captured the
+  `fetch` wrapper's fast path is taken (`any_active` also reads
+  `CAPTURING`), and `decide` answers `{ observe }` for pass-through and
+  `continue` requests, `{ patch, observe, pattern }` for `patchJson`; a
+  fulfillment is recorded in Rust at decision time with its route pattern.
+  The wrapper reads a JSON response (`application/json`, `text/json`,
+  `*+json`; never `x-ndjson`, `json-seq` or SSE, which an app may read
+  incrementally) through `Response.clone()`, or, for a streamed real body
+  that cannot be cloned, reads it once and returns an equivalent buffered
+  `Response` (status, status text, headers minus `content-length` and
+  `content-encoding`, `url`; `redirected` and `type` are not reproduced).
+  Records keep method, `scheme://host/path` (no userinfo, query or
+  fragment), source (`route`/`patch`/`network`), status, content type and
+  the JSON body cut to 256 KiB (`maxBodyBytes` raises it to at most 1 MiB); no
+  headers.
+  The process log holds at most 500 records and 8 MiB of bodies.
+- After each spec's cleanup the runtime reads `responses({ since })` past a
+  run-wide watermark, so a response that arrives after a spec ended is
+  checked with the next spec. Routed (`route`, `patch`) mismatches become a
+  `ContractError` (`E_OPENAPI_CONTRACT`, phase `contract`) before `spec.fail`
+  grading, so a known break can be declared; a spec that already failed gets
+  the violations appended. Real-server mismatches are `contract.warnings` on
+  the case, `openapi.warnings` (at most 100) and a `contract` diagnostic;
+  unmatched requests, undocumented statuses and skipped responses (no
+  schema, not JSON, empty, truncated) are only counted. A host without
+  `captureResponses` sets `openapi.capture` to `unavailable: …` once and the
+  run continues with `toMatchSchema` only.
