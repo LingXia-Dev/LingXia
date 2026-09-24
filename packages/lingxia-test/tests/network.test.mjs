@@ -67,6 +67,8 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     seenAfterFirst = network.routes.size;
     await t.app.network.route("/v1/clients", { abort: "failed" });
     await t.app.network.route("/v1/slow", { status: 202, delay: 300 });
+    await t.app.network.route("/v1/list", { continue: true, patchJson: { items: [] } });
+    await t.app.network.route("/v1/stall", { hang: true });
     network.hit("https://h/v1/clients");
     // The run-wide host log holds both specs' hits; the fixture shows only this spec's.
     const own = await t.app.network.requests();
@@ -83,7 +85,12 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
   assert.equal(routeStep.detail, "PATCH /v1/devices → 501");
   assert.ok(steps.some((step) => step.name === "network.requests"));
   const secondRoutes = report.cases[1].steps.filter((step) => step.name === "network.route");
-  assert.deepEqual(secondRoutes.map((step) => step.detail), ["/v1/clients → abort failed", "/v1/slow → 202 after 300ms"]);
+  assert.deepEqual(secondRoutes.map((step) => step.detail), [
+    "/v1/clients → abort failed",
+    "/v1/slow → 202 after 300ms",
+    "/v1/list → continue + patchJson",
+    "/v1/stall → hang",
+  ]);
 });
 
 test("reading t.app.network never throws; a host without routing fails the call", async () => {

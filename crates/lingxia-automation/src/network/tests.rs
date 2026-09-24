@@ -93,6 +93,45 @@ fn handler_abort_and_continue() {
 }
 
 #[test]
+fn handler_patch_and_hang() {
+    assert_eq!(
+        handler(json!({ "continue": true, "patchJson": { "a": null, "b": [1] } })).unwrap(),
+        RouteAction::Patch(json!({ "a": null, "b": [1] }))
+    );
+    assert_eq!(
+        handler(json!({ "hang": true })).unwrap(),
+        RouteAction::Hang { token: 0 }
+    );
+    for bad in [
+        json!({ "patchJson": {} }),
+        json!({ "continue": true, "patchJson": {}, "status": 200 }),
+        json!({ "hang": true, "continue": true }),
+        json!({ "hang": true, "delay": 10 }),
+        json!({ "hang": true, "abort": "failed" }),
+        json!({ "hang": false }),
+        json!({ "hang": 1 }),
+    ] {
+        assert!(handler(bad.clone()).is_err(), "{bad} should be rejected");
+    }
+    let err = handler(json!({ "patchJson": { "a": 1 } })).unwrap_err();
+    assert!(err.contains("continue: true"), "{err}");
+}
+
+#[test]
+fn patch_applies_to_json_bodies_only() {
+    assert_eq!(
+        apply_patch_json(
+            r#"{"items":[],"total":null}"#,
+            r#"{"items":[1,2],"total":2,"page":1}"#
+        )
+        .unwrap(),
+        r#"{"items":[],"page":1}"#
+    );
+    let err = apply_patch_json("{}", "<html>").unwrap_err();
+    assert!(err.contains("not JSON"), "{err}");
+}
+
+#[test]
 fn handler_kinds_are_exclusive() {
     let err = handler(json!({ "status": 500, "abort": "failed" })).unwrap_err();
     assert!(err.contains("abort") && err.contains("'status'"), "{err}");
@@ -196,6 +235,10 @@ mod interceptor {
                         },
                     )?;
                     ctx.global().set("__route", route)?;
+                    let unroute = JSFunc::new(&ctx, move |id: f64| -> bool {
+                        registry::with_registry(|routes| routes.remove(run, id as u64))
+                    })?;
+                    ctx.global().set("__unroute", unroute)?;
                     install_fetch_interceptor(&ctx, move |_| {
                         Some(LogicTarget {
                             appid: appid.to_string(),
@@ -306,6 +349,94 @@ mod interceptor {
 
         clear_run(RUN);
         assert!(registry::with_registry(|routes| routes.requests(RUN, APPID)).is_empty());
+    }
+
+    /// Serve `body` as JSON on a loopback port for `connections` requests.
+    fn json_server(body: &'static str, connections: usize) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(connections) {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = [0u8; 4096];
+                let _ = stream.read(&mut request);
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-origin: real\r\n\
+                     content-length: {}\r\nconnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    #[test]
+    fn patches_the_real_response_and_holds_a_hang_until_released() {
+        const APP: &str = "network-interceptor-patch";
+        const OWNER: &str = "network-interceptor-patch-run";
+        let base = json_server(r#"{"devices":[{"id":"d1"}],"total":1,"cursor":"x"}"#, 2);
+        let script: &'static str = Box::leak(
+            format!(
+                r#"(async () => {{ try {{
+              const out = {{}};
+              const patchId = __route('{base}/devices', {{ continue: true, patchJson: {{ total: 0, devices: [], cursor: null }} }});
+              const patched = await fetch('{base}/devices');
+              out.status = patched.status;
+              out.origin = patched.headers.get('x-origin');
+              out.body = await patched.json();
+              __unroute(patchId);
+              const real = await fetch('{base}/devices');
+              out.real = await real.json();
+
+              __route('https://api.test/stall', {{ hang: true }});
+              const controller = new AbortController();
+              setTimeout(() => controller.abort(), 50);
+              try {{
+                await fetch('https://api.test/stall', {{ signal: controller.signal }});
+                out.aborted = 'resolved';
+              }} catch (error) {{
+                out.aborted = error.name;
+              }}
+              const hangId = __route('https://api.test/held', {{ hang: true }});
+              let settled = 'pending';
+              const held = fetch('https://api.test/held').then(
+                () => {{ settled = 'resolved'; }},
+                (error) => {{ settled = `${{error.name}}: ${{error.message}}`; }},
+              );
+              await new Promise((resolve) => setTimeout(resolve, 450));
+              out.whileHeld = settled;
+              __unroute(hangId);
+              await held;
+              out.released = settled;
+              return JSON.stringify(out);
+            }} catch (error) {{
+              return JSON.stringify({{ fatal: `${{error}}
+${{error && error.stack}}` }});
+            }} }})()"#
+            )
+            .into_boxed_str(),
+        );
+        let out = eval_with_interceptor(APP, OWNER, script);
+        let out: Value = serde_json::from_str(&out).unwrap();
+        assert!(out.get("fatal").is_none(), "{out}");
+        assert_eq!(out["status"], 200);
+        assert_eq!(out["origin"], "real");
+        assert_eq!(
+            out["body"],
+            serde_json::json!({ "devices": [], "total": 0 })
+        );
+        assert_eq!(out["real"]["total"], 1);
+        assert_eq!(out["aborted"], "AbortError");
+        assert_eq!(out["whileHeld"], "pending");
+        assert_eq!(out["released"], "TypeError: fetch failed");
+        let actions: Vec<_> = registry::with_registry(|routes| routes.requests(OWNER, APP))
+            .into_iter()
+            .map(|entry| entry.action)
+            .collect();
+        assert_eq!(actions, vec!["continue", "hang", "hang"]);
+        clear_run(OWNER);
     }
 
     #[test]

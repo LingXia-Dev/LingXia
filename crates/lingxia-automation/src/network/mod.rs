@@ -289,7 +289,9 @@ fn parse_url_matcher(value: JSValue) -> JSResult<UrlMatcher> {
 
 /// `{ status?, statusText?, headers?, body? | json?, contentType?, delay? }`
 /// fulfills; `{ abort: 'failed' }` rejects like a network error;
-/// `{ continue: true }` passes the request through. The three are exclusive.
+/// `{ continue: true, patchJson? }` passes the request through, optionally
+/// merge-patching the real JSON response; `{ hang: true }` never answers.
+/// The four are exclusive.
 fn parse_handler(handler: &JSObject) -> JSResult<RouteAction> {
     let binary = binary_body(handler)?;
     let json = handler
@@ -334,13 +336,36 @@ fn parse_handler_value(value: &Value, binary: Option<Vec<u8>>) -> Result<RouteAc
     let Value::Object(fields) = value else {
         return Err("route handler must be an object".into());
     };
-    if let Some(unknown) = fields
-        .keys()
-        .find(|key| !FULFILL_KEYS.contains(&key.as_str()) && *key != "abort" && *key != "continue")
-    {
+    if let Some(unknown) = fields.keys().find(|key| {
+        !FULFILL_KEYS.contains(&key.as_str())
+            && !["abort", "continue", "hang", "patchJson"].contains(&key.as_str())
+    }) {
         return Err(format!("unknown route handler option '{unknown}'"));
     }
     let fulfill_key = FULFILL_KEYS.iter().find(|key| fields.contains_key(**key));
+    let patch = fields.get("patchJson");
+    match fields.get("hang") {
+        None => {}
+        Some(Value::Bool(true)) => {
+            if let Some(other) = fulfill_key.copied().or_else(|| {
+                ["abort", "continue", "patchJson"]
+                    .into_iter()
+                    .find(|key| fields.contains_key(*key))
+            }) {
+                return Err(format!(
+                    "route handler cannot combine hang with '{other}'; \
+                     choose one of fulfill, abort, continue, or hang"
+                ));
+            }
+            return Ok(RouteAction::Hang { token: 0 });
+        }
+        Some(other) => return Err(format!("route hang must be true, got {other}")),
+    }
+    if patch.is_some() && !fields.contains_key("continue") {
+        return Err(
+            "route patchJson patches the real response; pass it with continue: true".into(),
+        );
+    }
     let abort = match fields.get("abort") {
         None => None,
         Some(Value::String(kind)) => Some(
@@ -357,16 +382,23 @@ fn parse_handler_value(value: &Value, binary: Option<Vec<u8>>) -> Result<RouteAc
     let exclusive = |chosen: &str| match fulfill_key {
         Some(key) => Err(format!(
             "route handler cannot combine {chosen} with the fulfill option '{key}'; \
-             choose one of fulfill, abort, or continue"
+             choose one of fulfill, abort, continue, or hang"
         )),
         None => Ok(()),
     };
     match (abort, pass) {
         (Some(_), true) => {
-            Err("route handler cannot combine abort with continue; choose one of fulfill, abort, or continue".into())
+            Err("route handler cannot combine abort with continue; choose one of fulfill, abort, continue, or hang".into())
         }
         (Some(kind), false) => exclusive("abort").map(|()| RouteAction::Abort(kind)),
-        (None, true) => exclusive("continue").map(|()| RouteAction::Continue),
+        (None, true) => exclusive("continue").and_then(|()| match patch {
+            None => Ok(RouteAction::Continue),
+            Some(patch) if patch.to_string().len() > registry::MAX_BODY_BYTES => Err(format!(
+                "route patchJson exceeds the {}-byte limit",
+                registry::MAX_BODY_BYTES
+            )),
+            Some(patch) => Ok(RouteAction::Patch(patch.clone())),
+        }),
         (None, false) => parse_fulfill(fields, binary).map(RouteAction::Fulfill),
     }
 }
@@ -473,11 +505,12 @@ fn parse_fulfill(
 
 /// Wraps the global `fetch` of a context. `active()` is the no-route fast
 /// path; `decide(method, url, headersJson, body, bodyOverflow)` returns
-/// `undefined` to pass through, a fulfillment record, or throws the abort
-/// error. Request bodies are read only when available synchronously (string,
+/// `undefined` to pass through, a fulfillment record, `{ patch }` (pass
+/// through, then `patchBody(patch, text)` rewrites the JSON body host-side),
+/// `{ hang }` (held while `holds(hang)`), or throws the abort error. Request bodies are read only when available synchronously (string,
 /// `URLSearchParams`, `ArrayBuffer`, typed array); streams, `Blob`,
 /// `FormData`, and a `Request` object's own body are recorded as `null`.
-const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide, bodyLimit) {
+const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide, bodyLimit, patchBody, holds, released) {
   'use strict';
   const ResponseCtor = globalThis.Response;
   const RequestCtor = globalThis.Request;
@@ -518,8 +551,11 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide, bod
       return [null, false];
     }
   };
+  const HANG_POLL_MS = 200;
   const fetch = function fetch(input, init) {
     if (!active()) return originalFetch.apply(this, arguments);
+    const self = this;
+    const args = arguments;
     let method, url, request;
     try {
       request = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
@@ -540,7 +576,44 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, active, decide, bod
     }
     if (hit === undefined || hit === null) return originalFetch.apply(this, arguments);
     const signal = init && init.signal;
+    if (typeof hit.patch === 'string') {
+      return originalFetch.apply(self, args).then(function (response) {
+        return response.text().then(function (text) {
+          const headers = new HeadersCtor(response.headers);
+          // The body is re-encoded text of a new length.
+          headers.delete('content-length');
+          headers.delete('content-encoding');
+          const patched = new ResponseCtor(text === '' ? text : patchBody(hit.patch, text, response.url || url), {
+            status: response.status,
+            statusText: response.statusText,
+            headers: headers,
+          });
+          try { Object.defineProperty(patched, 'url', { value: response.url || url, enumerable: true }); } catch (_) {}
+          return patched;
+        });
+      });
+    }
     if (signal && signal.aborted) return Promise.reject(signal.reason);
+    if (hit.hang > 0) {
+      if (typeof setTimer !== 'function') {
+        return Promise.reject(new Error('route hang needs setTimeout in this context'));
+      }
+      return new Promise(function (_resolve, reject) {
+        let timer = null;
+        const listens = signal && typeof signal.addEventListener === 'function';
+        const onAbort = function () {
+          if (timer !== null && typeof clearTimer === 'function') clearTimer(timer);
+          reject(signal.reason);
+        };
+        if (listens) signal.addEventListener('abort', onAbort);
+        const check = function () {
+          if (holds(hit.hang)) { timer = setTimer(check, HANG_POLL_MS); return; }
+          if (listens) signal.removeEventListener('abort', onAbort);
+          try { released(); } catch (error) { reject(error); }
+        };
+        timer = setTimer(check, HANG_POLL_MS);
+      });
+    }
     const respond = function () {
       const response = new ResponseCtor(hit.body, {
         status: hit.status,
@@ -619,12 +692,57 @@ pub(crate) fn install_fetch_interceptor(
                 None | Some(RouteAction::Continue) => Ok(JSValue::undefined(&ctx)),
                 Some(RouteAction::Abort(kind)) => Err(fetch_failed(kind)),
                 Some(RouteAction::Fulfill(fulfill)) => fulfillment_js(&ctx, fulfill),
+                Some(RouteAction::Patch(patch)) => {
+                    let object = JSObject::new(&ctx);
+                    object.set("patch", patch.to_string())?;
+                    Ok(object.into_js_value())
+                }
+                Some(RouteAction::Hang { token }) => {
+                    let object = JSObject::new(&ctx);
+                    object.set("hang", token as f64)?;
+                    Ok(object.into_js_value())
+                }
             }
         },
     )?;
+    let patch_body = JSFunc::new(
+        ctx,
+        |patch: String, text: String, url: String| -> JSResult<String> {
+            apply_patch_json(&patch, &text).map_err(|message| {
+                HostError::new(
+                    rong::error::E_IO,
+                    format!("test route patchJson: {message} ({url})"),
+                )
+                .with_name("TypeError")
+                .into()
+            })
+        },
+    )?;
+    let holds = JSFunc::new(ctx, |token: f64| -> bool {
+        registry::with_registry(|routes| routes.holds(token as u64))
+    })?;
+    let released = JSFunc::new(ctx, || -> JSResult<()> {
+        Err(HostError::new(rong::error::E_IO, "fetch failed")
+            .with_name("TypeError")
+            .with_data(rong::err_data!({ detail: ("released by test route: hang ended") }))
+            .into())
+    })?;
     let installer = ctx.eval::<JSFunc>(Source::from_bytes(FETCH_INTERCEPTOR))?;
     let limit = registry::MAX_REQUEST_BODY_BYTES as f64;
-    installer.call::<_, ()>(None, (original, active, decide, limit))
+    installer.call::<_, ()>(
+        None,
+        (original, active, decide, limit, patch_body, holds, released),
+    )
+}
+
+/// Apply a route's merge patch to a real response body.
+fn apply_patch_json(patch: &str, body: &str) -> Result<String, String> {
+    let patch: Value =
+        serde_json::from_str(patch).map_err(|err| format!("invalid patch: {err}"))?;
+    let mut target: Value = serde_json::from_str(body)
+        .map_err(|_| "the response body is not JSON, so it cannot be patched".to_string())?;
+    registry::merge_patch(&mut target, &patch);
+    Ok(target.to_string())
 }
 
 fn fulfillment_js(ctx: &JSContext, fulfill: Fulfill) -> JSResult<JSValue> {
