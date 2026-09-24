@@ -14,6 +14,7 @@ mod test;
 mod test_bundle;
 mod test_contract;
 mod test_network;
+mod test_preset;
 mod test_secrets;
 mod test_state;
 
@@ -142,7 +143,9 @@ fn main() {
 }
 
 fn run() -> Result<()> {
-    let cli = Cli::try_parse()?;
+    let cwd = std::env::current_dir()?;
+    let argv = test_preset::expand(std::env::args_os().collect(), &cwd)?;
+    let cli = Cli::try_parse_from(&argv)?;
     let selector = SessionSelector {
         query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
     };
@@ -218,6 +221,12 @@ fn run() -> Result<()> {
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
         Commands::Test(options) => {
+            if options.list_presets {
+                return test_preset::list(&cwd, options.json || options.pretty);
+            }
+            if options.print_args {
+                return test_preset::print_args(&argv, options.json || options.pretty);
+            }
             let info = resolve(&selector).map_err(|err| {
                 if test::looks_unreachable(&err) {
                     anyhow::anyhow!(test::NO_SESSION_HINT)
@@ -375,6 +384,28 @@ mod tests {
             panic!("expected scenario command");
         };
         assert!(options.is_list());
+    }
+
+    #[test]
+    fn test_presets_parse_with_the_command_line() {
+        let parse = |argv: &[&str]| {
+            let Commands::Test(options) = Cli::try_parse_from(argv).unwrap().command else {
+                panic!("expected test command");
+            };
+            options
+        };
+        // What `--preset ci` expands to, then the command line: a later
+        // scalar wins, repeatables add up.
+        let options = parse(&[
+            "lxdev", "test", "--grep", "home", "--tag", "unit", "tests/", "--preset", "ci",
+            "--grep", "checkout", "--tag", "!slow",
+        ]);
+        assert_eq!(options.preset.as_deref(), Some("ci"));
+        assert_eq!(options.grep.as_deref(), Some("checkout"));
+        // Neither needs an entry.
+        assert!(parse(&["lxdev", "test", "--list-presets"]).list_presets);
+        assert!(parse(&["lxdev", "test", "--preset", "ci", "--print-args"]).print_args);
+        assert!(Cli::try_parse_from(["lxdev", "test"]).is_err());
     }
 
     #[test]

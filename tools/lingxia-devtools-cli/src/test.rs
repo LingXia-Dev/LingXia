@@ -34,15 +34,34 @@ const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `lingxia dev --background`, then re-run `lxdev test`.";
 
 #[derive(Args)]
+// A preset's arguments come first: the command line may repeat a flag of
+// it, and the last one wins.
+#[command(args_override_self = true)]
 #[command(after_long_help = "Pass a file or a directory of *.test.ts files.\n\
 Import spec from @lingxia/test (or test from @rongjs/test).\n\
 Example: lxdev test tests/ --grep home\n\
+Named argument lists live in lxdev.json (test.presets): lxdev test tests/ --preset ci\n\
 Recover a session held by an abandoned run: lxdev test --cancel-active")]
 pub struct TestOptions {
     /// Test entry file, or a directory of `*.test.ts` files. Omit it with
     /// `--cancel-active` to only cancel the session's active run.
-    #[arg(required_unless_present = "cancel_active")]
+    #[arg(required_unless_present_any = ["cancel_active", "list_presets", "print_args"])]
     pub entry: Option<PathBuf>,
+
+    /// Put this preset's arguments from lxdev.json (`test.presets`) in the
+    /// project root before the command line's: repeatable flags add up, a
+    /// flag given on the command line wins
+    #[arg(long, value_name = "NAME")]
+    pub preset: Option<String>,
+
+    /// List the presets of lxdev.json and exit
+    #[arg(long)]
+    pub list_presets: bool,
+
+    /// Print the effective arguments (preset, then command line) with
+    /// secret values masked, and exit
+    #[arg(long)]
+    pub print_args: bool,
 
     /// Whole-run budget in seconds. Default: scaled to the selection,
     /// max(300, planned specs × 30), up to the 3600s runtime ceiling
@@ -135,11 +154,11 @@ pub struct TestOptions {
 
     /// Emit one final compact JSON object instead of live output
     #[arg(long, conflicts_with = "pretty")]
-    json: bool,
+    pub json: bool,
 
     /// Emit one final pretty JSON object instead of live output
     #[arg(long, conflicts_with = "json")]
-    pretty: bool,
+    pub pretty: bool,
 
     #[command(flatten)]
     state: crate::test_state::StateOptions,
