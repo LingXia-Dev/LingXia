@@ -19,6 +19,91 @@ written out in full in that release's notes on GitHub.
 
 <!-- releases below -->
 
+## 0.19.0 — 2026-09-24
+
+### Breaking
+
+- **Breaking** — **test**: separate rendered from in-viewport and add forced actions (b7075e0ee)
+
+### Writing an lxapp
+
+- **test**: add restoreProfile and t.profile for isolated runs (46715fb8d)
+- **lxapp**: let a host point an lxapp's data at an isolated profile (5b806a31b)
+- **test**: patch real JSON responses and hang requests in network routes (492cbd96b)
+- **test**: add toContainText and toHaveAttribute locator matchers (7c5333c46)
+- **test**: match driver error codes and name what failed where (2edb0feac)
+- **test**: drop the eval imports the trimmed TestApp no longer uses (1b7864c1a)
+- **test**: drop the call-trace overload from TestApp.eval (d80e50a9b)
+- **test**: read and drive app Logic through typed functions (828b5bd62)
+- **test**: bound locator and poll driver calls by the action budget (35dde3ede)
+- **test**: number generated spec ids per file (477c2da81)
+- **test**: scope hooks registered by a helper to the calling spec file (234c42b51)
+- **test**: mask only declared secrets and keep run controls out of t.args (1fded6d0f)
+- **test**: redact secret args in reports and events (6f616e11d)
+- **test**: add t.skip(reason) for runtime skips (73425eebd)
+- **test**: grade any spec.fail body failure as xfail (582a07fca)
+- **test**: read t.app.network lazily and document its spec scope (100a4b5a7)
+- **test**: trace t.app.network routes and scope them to the spec (c98d88c9b)
+- **test**: wait for the landed page in fixture navigation (2f03c526c)
+- **test**: locator.waitFor with an attached state (56a5e9b65)
+- **lxapp**: deliver onUnload to pages closed by reLaunch (aacaf0be3)
+- **update**: use version-only signals for store hosts (ddc95714c)
+- **webview**: bind Apple navigation keys to object lifetimes (a138ab849)
+
+### Embedding a host app
+
+- **macos**: save the window frame after programmatic resizes too (a496cc384)
+- **macos**: fit the first window to the screen and save it on move, resize and quit (234563b25)
+- **windows**: fit the first window to the cursor's monitor and always remember it (44e0b2560)
+- **shell**: share the first-launch window size and remember maximized (642c2d190)
+- **windows**: embed version info without an icon and stabilize name selection (67a09bce3)
+- **windows**: localize installer names and embed product version info (305100efc)
+- **windows**: scope the chrome scale to the window handling a message (787c7e4a6)
+- **windows**: scale shell chrome and WebView2 to the monitor DPI (fd10623de)
+- **shell**: remove the switcher row when an lxapp is uninstalled (7a676c7c0)
+- **shell**: offer Uninstall on desktop lxapp switcher menus (f43f9fe34)
+- **windows**: package and update NSIS and portable distributions (c52cb22c0)
+- **windows**: drop needless returns in the Downloads path lookup (becd78431)
+- **windows**: default browser downloads to Explorer's Downloads folder (26b1cd316)
+- **android**: attest queued trusted loads on their exact start callback (bf7fc29ff)
+- **windows**: preserve trusted control-page navigation (2ab2e74bd)
+- **harmony**: anchor environment badge to launcher tile corner (dc5c2cecb)
+- **browser**: default control tab keys to registered routes (ab7d33c76)
+- **browser**: give a control page one tab identity, whoever opens it (d909716b0)
+
+### Rust native extensions
+
+- **control**: start session tests on an isolated data profile (2cf1883f1)
+- **automation**: tie an isolated profile to its run and add profile rollback (425637fa3)
+- **automation**: give driver failures stable codes and page instance ids (744dc5d5d)
+- **automation**: name the active run and carry run controls apart from args (edd6a362b)
+- **automation**: make route handlers exclusive and record sent requests (c68babf04)
+- **automation**: route lxapp Logic fetch from test runs (b6033d20b)
+- **automation**: opt-in waitFor 'ready' on nav driver actions (467dc8b59)
+- **automation**: cancel runs whose controller stopped polling (f5246863d)
+
+### CLI and CI
+
+- **lxdev**: add --isolate, --state and --save-state to lxdev test (609a6291b)
+- **lxdev**: scale the run budget and add --shuffle and --repeat-each (329098b75)
+- **runner**: opt the macOS Runner out of App Nap (fc072fe3e)
+- **lxdev**: scrub declared secrets as data and cancel only abandoned runs (1f5aa736c)
+- **lxdev**: never leave a test run holding the session (9b945f2ef)
+- **cli**: stamp --version with the build commit and dirty flag (b7caf31ab)
+- **runner**: keep Runner WebViews rendering while the window is covered (51e53ec3f)
+- **cli**: publish packages over HTTP v2 (61b64ab97)
+
+### Other
+
+- **dev**: replace a stale dev broker and survive a runtime drop mid-run (5cea92701)
+- **dev**: defer file-watch reloads while a test run is active (ca6ad7b8e)
+- **env**: let prod hosts switch service environments (b50d6faf2)
+- **devtools**: stop a quiet poll on the run's own deadline (10c817a80)
+- **devtools**: stop reporting a busy test session as a lost one (8f438f957)
+- **devtools**: recover a test run stranded by a dead client (80746410b)
+- **devtools**: survive a read timeout instead of dropping the run (486a7bfac)
+- **icons**: match the non-Android D badge to Android (b4fe019f8)
+
 ## 0.18.0 — 2026-09-21
 
 ### Breaking
