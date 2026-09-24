@@ -73,9 +73,10 @@ for framework_index in "${!frameworks[@]}"; do
   set +e
   (
     cd "$lxapp_root"
-    "$lxdev" test tests/entries/macos.test.ts --forbid-only \
+    # The macos preset of lxapp/lxdev.json: the entry, --forbid-only and
+    # the platform arg.
+    "$lxdev" test --preset macos \
       --timeout-secs "$timeout_seconds" \
-      --arg platform=macos \
       --arg "framework=$current_framework" \
       ${fixture_base:+--arg "httpBase=$fixture_base"} \
       --output-dir "test-results/automation/macos-$current_framework"

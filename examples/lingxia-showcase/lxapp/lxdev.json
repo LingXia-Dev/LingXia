@@ -1,0 +1,11 @@
+{
+  "$schema": "../../../packages/lingxia-test/schemas/lxdev.schema.json",
+  "test": {
+    "presets": {
+      "portable": ["tests/all.test.ts", "--forbid-only"],
+      "macos": ["tests/entries/macos.test.ts", "--forbid-only", "--arg", "platform=macos"],
+      "windows": ["tests/entries/windows.test.ts", "--forbid-only", "--arg", "platform=windows"],
+      "android": ["tests/entries/android.test.ts", "--forbid-only", "--arg", "platform=android"]
+    }
+  }
+}
