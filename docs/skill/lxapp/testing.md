@@ -58,6 +58,8 @@ lxdev test tests/pages/notes.test.ts
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#routing-logic-fetch) |
 | Fast-forward Logic timers and `Date` | `t.app.clock.install()` / `.tick(ms)`; see [below](#test-clock) |
 | Replay a set of fake responses from a file | `t.app.network.scenario(json)`; see [scenario files](#scenario-files) |
+| Tag specs, run a layer | `spec(title, { tags }, body)`, `spec.configure({ tags })`; `lxdev test --tag`; see [below](#tags-and-layers) |
+| Check responses against an API contract | `lxdev test --openapi api.yaml`, `expect(value).toMatchSchema('Name')`; see [below](#api-contract-checks) |
 | Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, read with `t.arg('k')` |
 | Cleanup | `t.defer(fn)` (LIFO, runs on success or failure); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
@@ -328,6 +330,98 @@ spec('status refreshes every 3 s', async (t) => {
 - `install` twice rejects with `E_CLOCK_INSTALLED`; `tick` without a clock with
   `E_CLOCK_NOT_INSTALLED`. `uninstall()` resolves `{ uninstalled, dropped }`.
 
+## Tags and layers
+
+Tag specs by how much of the world they touch, and run each layer on its own:
+
+```ts
+// tests/pages/devices.test.ts
+spec.configure({ tags: ['routed'] });            // every spec in this file
+
+spec('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // routed + smoke
+```
+
+| Layer | Talks to | Typical run |
+|---|---|---|
+| `unit` | nothing: pure Logic helpers through `t.app.eval` | every change |
+| `routed` | the UI, with every backend call faked by `t.app.network.route` | every change, CI |
+| `live` | a real backend or device | nightly, before release |
+
+```bash
+lxdev test tests/ --tag routed                 # only routed specs
+lxdev test tests/ --tag '!live'                # everything except live
+lxdev test tests/ --tag unit,routed --tag smoke   # (unit or routed) and smoke
+```
+
+- One `--tag` is any of its comma-separated terms; `!tag` means "without
+  tag"; several `--tag` flags must all hold.
+- An untagged spec has no tags: `--tag routed` leaves it out, `--tag '!live'`
+  keeps it. Tag every file (`spec.configure`) so no spec falls between layers.
+- `--tag` combines with `--grep`, `--id`, `--last-failed` and `--shard`.
+- Tags use letters, digits and `_ . : / -`. `spec.configure` applies to the
+  file that calls it and adds to the spec's own `tags`.
+- Reports show each spec's tags and a per-tag table (`tag_summary` in
+  `report.json`, `tag:<name>` properties in `junit.xml`), so a failing `live`
+  group does not hide a clean `routed` one; untagged specs appear as
+  `(untagged)`.
+
+## Coverage manifest
+
+List the requirements a suite must cover and let the report say which have a
+spec:
+
+```yaml
+# tests/coverage.yaml — a list of ids, or { id, title }
+- { id: DEV-LIST, title: Device list }
+- { id: DEV-RENAME, title: Rename a device }
+```
+
+```ts
+spec('renames a device', { covers: ['DEV-RENAME'] }, async (t) => { /* … */ });
+```
+
+```bash
+lxdev test tests/ --covers-manifest tests/coverage.yaml
+```
+
+`report.json` `coverage` and the HTML report list every id with the specs
+that cover it and their outcome, the ids no spec covers, and `covers` ids
+missing from the manifest (also printed as a warning). A spec outside the
+selection still counts, as `not_run`, so a filtered run shows no false holes.
+The manifest may also be JSON, a `covers:` list, or an `id: title` map.
+
+## API contract checks
+
+`--openapi` checks the app's Logic `fetch` responses against an OpenAPI 3.0 or
+3.1 document (JSON or YAML, repeatable):
+
+```bash
+lxdev test tests/ --tag routed --openapi api/openapi.yaml
+```
+
+- A response a route fulfilled (or patched with `patchJson`) that breaks the
+  documented schema for its operation and status fails the spec with
+  `E_OPENAPI_CONTRACT`, naming the JSON path and what was expected. A stale
+  route fixture cannot pass silently.
+- A real server's response that breaks it is a warning: printed and listed in
+  the report, never a failure.
+- Operations match by method, server base path and path template; hosts are
+  not compared. Requests no operation describes and statuses the operation
+  does not document are counted in the report, not failed.
+- Only JSON responses are validated (`application/json`, `*+json`). `format`
+  is not asserted. `$ref`s must be local: bundle a multi-file document first.
+
+Assert a value directly with `toMatchSchema`:
+
+```ts
+const data = await t.app.pageData<{ devices: unknown[] }>();
+expect(data.devices[0]).toMatchSchema('Device');                   // #/components/schemas/Device
+expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
+```
+
+Without `--openapi`, `toMatchSchema` fails saying so. Declare a known contract
+break with `spec.fail(title, { expected: { code: 'E_OPENAPI_CONTRACT' } }, body)`.
+
 ## Isolated app data
 
 `--isolate` runs the suite on a throwaway copy of the app's data (storage,
@@ -415,9 +509,9 @@ lxdev test tests/ --grep checkout
 - Reports land in `test-results/<run-id>/` (or `--output-dir`): `report.html`,
   `report.json`, `junit.xml`. Failures fail the command.
 - Empty selections fail; opt out with `--pass-with-no-tests`.
-- Select with `--id ID`, `--last-failed report.json`, or `--shard 1/3`; shards
-  need separate sessions and output directories. Give non-ASCII titles an `id`
-  so `--id`/`--last-failed` survive reordering.
+- Select with `--id ID`, `--last-failed report.json`, `--tag EXPR`, or
+  `--shard 1/3`; shards need separate sessions and output directories. Give
+  non-ASCII titles an `id` so `--id`/`--last-failed` survive reordering.
 - `--retries N` requires `spec.reset`; reports keep every attempt and flag
   flaky passes.
 - `--timeout-secs` bounds the whole run. The default scales with the
