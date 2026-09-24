@@ -45,6 +45,7 @@ import type {
   LogicScope,
   PageDataOptions,
   ProfileFixture,
+  ProfileRestoreOptions,
   WaitForOptions,
 } from "./types.js";
 import {
@@ -152,8 +153,23 @@ export class LiveFixture implements Fixture {
     return {
       checkpoint: () => this.act("profile.checkpoint", "", () =>
         this.reopening((driver) => driver.profile.checkpoint())),
-      restore: (id: string) => this.act("profile.restore", id, () =>
-        this.reopening((driver) => driver.profile.restore(id))),
+      restore: (id: string, options?: ProfileRestoreOptions) =>
+        this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
+          this.reopening(async (driver) => {
+            if (!options?.keep?.length) {
+              // An older host resolves nothing.
+              const result = await driver.profile.restore(id);
+              return { kept: Array.isArray(result?.kept) ? result.kept : [] };
+            }
+            // A host that predates `keep` would ignore it and hand the app
+            // the rolled-back keys. `keep` shipped with the test clock, so a
+            // host without `clock` is refused before anything is restored.
+            const outdated = "this host cannot keep storage keys across a profile rollback; update the LingXia host";
+            if ((driver as { clock?: unknown }).clock === undefined) throw new Error(outdated);
+            const result = await driver.profile.restore(id, { keep: [...options.keep] });
+            if (!result || !Array.isArray(result.kept)) throw new Error(outdated);
+            return result;
+          })),
       drop: (id: string) => this.act("profile.drop", id, () => this.rawApp.profile.drop(id)),
     };
   }
