@@ -15,6 +15,13 @@ let stateInfo: StateInfo = { rev: -1, initial: true };
 let subscribed = false;
 let subscribeRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let snapshotRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let snapshotRetries = 0;
+/**
+ * The host pushes a page's first state at bridge-ready, so the request is only
+ * a fallback: a few tries, backing off, then stop. A page with no Logic never
+ * answers, and must not be asked for the life of the page.
+ */
+const MAX_SNAPSHOT_RETRIES = 3;
 let initialSnapshotResolved = false;
 let actions: ActionMap | null = null;
 let snapshotRequestInFlight = false;
@@ -50,11 +57,12 @@ function scheduleSubscribeRetry(): void {
  * page then relied on the host's own push at bridge-ready.
  */
 function scheduleSnapshotRetry(): void {
-  if (snapshotRetryTimer !== null) return;
+  if (snapshotRetryTimer !== null || snapshotRetries >= MAX_SNAPSHOT_RETRIES) return;
+  snapshotRetries += 1;
   snapshotRetryTimer = setTimeout(() => {
     snapshotRetryTimer = null;
     requestInitialSnapshot(window.LingXiaBridge);
-  }, 250);
+  }, 250 * 2 ** (snapshotRetries - 1));
 }
 
 function requestInitialSnapshot(bridge: Window["LingXiaBridge"] | undefined): void {
@@ -110,24 +118,27 @@ export function isPageReady(): boolean {
 /**
  * Resolves once the page's first state has arrived — the host pushes it at
  * bridge-ready, before `onLoad`, carrying `Page({ data })`'s defaults — so a
- * page can mount with its data whole. Rejects after `timeoutMs` if Logic never
- * delivers it (it failed to load, or threw first), so the page can say so
- * instead of staying blank.
+ * page can mount with its data whole. With `timeoutMs`, rejects if Logic has
+ * not delivered it by then (it failed to load, or threw first); `null` waits
+ * without limit.
  */
-export function whenPageReady(options: { timeoutMs?: number } = {}): Promise<void> {
+export function whenPageReady(options: { timeoutMs?: number | null } = {}): Promise<void> {
   if (isPageReady()) return Promise.resolve();
-  const timeoutMs = options.timeoutMs ?? 10_000;
+  const timeoutMs = options.timeoutMs === undefined ? 10_000 : options.timeoutMs;
   return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
     const check = () => {
       if (stateInfo.rev < 0) return;
-      clearTimeout(timer);
+      if (timer !== null) clearTimeout(timer);
       listeners.delete(check);
       resolve();
     };
-    const timer = setTimeout(() => {
-      listeners.delete(check);
-      reject(new Error(`Page Logic did not deliver the page state within ${timeoutMs} ms`));
-    }, timeoutMs);
+    if (timeoutMs !== null) {
+      timer = setTimeout(() => {
+        listeners.delete(check);
+        reject(new Error(`Page Logic did not deliver the page state within ${timeoutMs} ms`));
+      }, timeoutMs);
+    }
     listeners.add(check);
   });
 }

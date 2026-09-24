@@ -21,7 +21,8 @@
     "build": "npm run clean && npm --prefix ../lingxia-elements run build && npm --prefix ../lingxia-page-runtime run build && tsc -p tsconfig.json && node scripts/copy-sfc-assets.mjs",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build",
-    "test:components": "npm run build && node tests/native-components.mjs && node tests/native-aria-attributes.mjs"
+    "test:components": "npm run build && node tests/native-components.mjs && node tests/native-aria-attributes.mjs",
+    "test:hooks": "rolldown -c tests/rolldown.hooks.config.mjs && node tests/page-hooks.mjs"
   },
   "dependencies": {
     "@lingxia/bridge": "~0.18.0",
