@@ -27,6 +27,8 @@ mod lxapp_nav;
 mod lxapp_page;
 mod runner;
 #[cfg(feature = "test-runtime")]
+mod session_profile;
+#[cfg(feature = "test-runtime")]
 mod session_test;
 mod util;
 

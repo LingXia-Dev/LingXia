@@ -13,11 +13,19 @@ use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::sync::OnceLock;
 
+use crate::session_profile;
+
 pub(crate) fn handle_session_test_command(
     id: String,
     handler: &str,
     args: Option<Value>,
 ) -> Option<ControlResponse> {
+    if handler.starts_with("session.profile.") {
+        return Some(super::command_result(
+            id,
+            crate::session_profile::handle(handler, args),
+        ));
+    }
     if !handler.starts_with("session.test.") {
         return None;
     }
@@ -66,13 +74,41 @@ fn handle_session_test_command_impl(
     match handler {
         methods::session::test::START => {
             let args: TestStartArgs = parse(handler, args)?;
-            let response = runtime()?.start(AutomationStartArgs {
+            let runtime = runtime()?;
+            let profile = if session_profile::wants_isolation(args.profile.as_ref()) {
+                // Refuse before touching the app: a held slot must not cost
+                // the running test its data.
+                if let Some(active) = runtime.active() {
+                    return Err(format!(
+                        "{RUN_IN_PROGRESS}: run {} is active",
+                        active.run_id
+                    ));
+                }
+                Some(session_profile::enter(
+                    args.profile
+                        .as_ref()
+                        .expect("isolation implies profile args"),
+                )?)
+            } else {
+                None
+            };
+            let started = runtime.start(AutomationStartArgs {
                 source: args.source,
                 source_name: args.source_name,
                 timeout_ms: args.timeout_ms,
                 args: args.args,
                 control: args.control,
-            })?;
+                profile: profile.clone(),
+            });
+            let response = match started {
+                Ok(response) => response,
+                Err(err) => {
+                    if let Some(profile) = profile {
+                        session_profile::abandon(profile);
+                    }
+                    return Err(err);
+                }
+            };
             respond(TestStartResponse {
                 run_id: response.run_id,
                 state: TestRunState::Running,
@@ -100,6 +136,7 @@ fn handle_session_test_command_impl(
         methods::session::test::ACTIVE => respond(TestActiveResponse {
             run: runtime()?.active().map(active_run),
         }),
+        methods::session::test::CAPABILITIES => respond(session_profile::capabilities()),
         other => Err(format!("unknown session.test handler: {other}")),
     }
 }
