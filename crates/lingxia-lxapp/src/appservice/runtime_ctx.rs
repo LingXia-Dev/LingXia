@@ -19,15 +19,40 @@ pub(crate) struct LxAppRuntimeCtx {
     pub(crate) app_svc: RefCell<Option<LxAppSvc>>,
     /// Tracks which plugin logic.js files have been loaded
     pub(crate) loaded_plugins: Rc<RefCell<HashSet<String>>>,
+    /// Terminated page services still draining an owed `onUnload`; released
+    /// by their lifecycle pump, or here when the context shuts down first.
+    retired_pages: RefCell<Vec<PageSvc>>,
 }
 
 impl LxAppRuntimeCtx {
     fn deactivate(&self) {
         if self.active.replace(false) {
-            self.page_svc_map.borrow_mut().clear();
+            // Page services hold JS values natively (their own object among
+            // them); released, nothing native keeps this context's objects
+            // reachable and the engine can collect the whole context.
+            let pages: Vec<PageSvc> = self
+                .page_svc_map
+                .borrow_mut()
+                .drain()
+                .map(|(_, svc)| svc)
+                .collect();
+            for page in pages.iter().chain(self.retired_pages.borrow().iter()) {
+                page.release_js();
+            }
+            self.retired_pages.borrow_mut().clear();
             self.app_svc.borrow_mut().take();
             self.loaded_plugins.borrow_mut().clear();
         }
+    }
+}
+
+/// Keep a terminated page service until its lifecycle pump has run the owed
+/// `onUnload` and released it, so a context shutdown in between releases it.
+pub(crate) fn retire_page_svc(ctx: &JSContext, page_svc: PageSvc) {
+    if let Some(app_ctx) = ctx.get_service::<LxAppRuntimeCtx>() {
+        let mut retired = app_ctx.retired_pages.borrow_mut();
+        retired.retain(PageSvc::holds_js);
+        retired.push(page_svc);
     }
 }
 
@@ -49,6 +74,7 @@ pub(crate) fn register_app_ctx(
         page_svc_map: page_svc_map.clone(),
         app_svc: RefCell::new(None),
         loaded_plugins: Rc::new(RefCell::new(HashSet::new())),
+        retired_pages: RefCell::new(Vec::new()),
     });
     page_svc_map
 }

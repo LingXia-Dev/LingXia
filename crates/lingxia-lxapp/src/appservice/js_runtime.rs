@@ -557,7 +557,9 @@ async fn handle_bridge_source(
                 .await
             {
                 Ok(result_rx) => {
-                    let ctx = page_svc.get_ctx();
+                    let Some(ctx) = page_svc.get_ctx() else {
+                        return Ok(());
+                    };
                     let page_svc = page_svc.clone();
                     context_lifecycle::spawn(&ctx, move |_ctx| async move {
                         let result = result_rx.await.unwrap_or_else(|_| {
@@ -640,7 +642,9 @@ async fn handle_bridge_source(
 
 // Handles a call from native code to a PageInstance service function
 fn handle_native_source(page_svc: &PageSvc, appid: String, name: String, args: Option<String>) {
-    let ctx = page_svc.get_ctx();
+    let Some(ctx) = page_svc.get_ctx() else {
+        return;
+    };
     let page_svc_clone = page_svc.clone();
     let name_clone = name.clone();
 
@@ -835,6 +839,8 @@ pub(crate) async fn lxapp_service_handler(
             if let Some(ctx) = current_ctx.as_ref() {
                 shutdown_app_context(ctx).await;
                 *current_ctx = None;
+                #[cfg(feature = "automation")]
+                context_lifecycle::collect_retired(&runtime);
                 info!("[Worker {}] Removed LxApp context ", worker_id)
                     .with_appid(lxapp.appid.clone());
             }
@@ -960,6 +966,11 @@ pub(crate) async fn lxapp_service_handler(
                     // Instance-scoped: terminating one instance must not clear
                     // a same-path sibling's subscriptions.
                     event_bus::clear_page(ctx, &page_svc.get_page().instance_id_string());
+                    if page_svc.lifecycle_pending() {
+                        runtime_ctx::retire_page_svc(ctx, page_svc.clone());
+                    } else {
+                        page_svc.release_js();
+                    }
 
                     info!("[Worker {}] Removed page", worker_id)
                         .with_appid(lxapp.appid.clone())
@@ -1496,6 +1507,136 @@ mod worker_assignment_tests {
                 assert!(current.is_none());
                 assert!(dropped.load(Ordering::SeqCst));
                 assert_eq!(*app.logic_contexts.borrow(), 0);
+            })
+            .await;
+    }
+
+    use rong::{JSResult, js_method};
+
+    static PROBES_DROPPED: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    /// Native object whose drop says the engine collected what referenced it.
+    #[rong::js_class]
+    struct LeakProbe {
+        _live: bool,
+    }
+
+    #[rong::js_class]
+    impl LeakProbe {
+        #[js_method(constructor)]
+        fn new() -> Self {
+            LeakProbe { _live: true }
+        }
+    }
+
+    impl Drop for LeakProbe {
+        fn drop(&mut self) {
+            PROBES_DROPPED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        }
+    }
+
+    /// Every Logic context an app replaces (a relaunch, a dev reload, a
+    /// profile rollback per spec) must be freed with it. On JavaScriptCore two
+    /// things kept them: a page service's object holding itself natively (a
+    /// GC root), and native objects such as an `AbortController` or a
+    /// `Response`, which free their context only when finalized — by a full
+    /// collection the engine never scheduled on a worker thread. Left alone,
+    /// every retired context stayed in memory and every new one got slower.
+    #[cfg(feature = "automation")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn a_retired_logic_context_is_freed() {
+        use rong::{JSEngine, RongJS, Source};
+        use std::sync::atomic::Ordering;
+        const ROUNDS: usize = 16;
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let platform = Arc::new(
+                    lingxia_platform::Platform::new(
+                        root.path().join("data").display().to_string(),
+                        root.path().join("cache").display().to_string(),
+                        "en-US".to_string(),
+                    )
+                    .unwrap(),
+                );
+                let appid = format!("app.lingxia.logic-release.{}", uuid::Uuid::new_v4());
+                crate::lxapp::register_synthetic_lxapp(appid.clone());
+                let app = Arc::new(
+                    crate::LxApp::new_with_session_class_for_test(
+                        appid.clone(),
+                        platform,
+                        crate::appservice::LxAppWorkers::init(1),
+                        crate::lxapp::AppSessionClass::StandardApp,
+                    )
+                    .unwrap(),
+                );
+                app.bind_arc();
+                let runtime = RongJS::runtime();
+                let before = PROBES_DROPPED.load(Ordering::SeqCst);
+                for _ in 0..ROUNDS {
+                    let ctx = runtime.context();
+                    super::register_app_ctx(&ctx, &app);
+                    super::app::init(&ctx).unwrap();
+                    super::page::init(&ctx).unwrap();
+                    super::plugin::init(&ctx).unwrap();
+                    super::event_bus::init(&ctx);
+                    rong_modules::init(&ctx, super::RONG_MODULES).unwrap();
+                    // Bound first: a source-order test looks for the call text.
+                    let capture_timers = super::page::capture_real_timers;
+                    capture_timers(&ctx).unwrap();
+                    ctx.register_class::<LeakProbe>().unwrap();
+                    let page = crate::page::PageInstance::new_headless(
+                        appid.clone(),
+                        "pages/home/index".to_string(),
+                        &app,
+                    );
+                    let id = page.instance_id_string();
+                    {
+                        let state = app.state.lock().unwrap();
+                        state.pages_by_id.lock().unwrap().insert(id.clone(), page);
+                    }
+                    let script = format!(
+                        "__registerApp({{ onLaunch() {{}}, globalData: {{ probe: new LeakProbe() }} }}, '[\"onLaunch\"]'); \
+                         __registerPage('pages/home/index', {{ data: {{}}, onLoad() {{}} }}); \
+                         (() => {{ \
+                           const svc = __LX_CREATE_PAGE__('pages/home/index', null, {id:?}); \
+                           svc.probe = new LeakProbe(); \
+                           svc.ballast = Array.from({{ length: 20000 }}, (_, i) => ({{ i, s: 'x' + i }})); \
+                           new Response('done'); \
+                         }})();"
+                    );
+                    ctx.eval::<()>(Source::from_bytes(script)).unwrap();
+                    app.logic_contexts.send_replace(1);
+                    let (ack_tx, ack_rx) = tokio::sync::oneshot::channel();
+                    let mut current = Some(ctx);
+                    super::lxapp_service_handler(
+                        0,
+                        runtime.clone(),
+                        super::ServiceMessage::TerminateAppSvc {
+                            lxapp: app.clone(),
+                            worker_id: 0,
+                            ack_tx,
+                        },
+                        &mut current,
+                    )
+                    .await;
+                    ack_rx.await.unwrap();
+                    app.state.lock().unwrap().pages_by_id.lock().unwrap().remove(&id);
+                }
+                // Finalizers run as blocks are swept; allocation drives the rest.
+                let ctx = runtime.context();
+                for _ in 0..10 {
+                    ctx.eval::<()>(Source::from_bytes(
+                        "globalThis.churn = Array.from({ length: 50000 }, (_, i) => ({ i, s: 'y' + i }));",
+                    ))
+                    .unwrap();
+                }
+                let collected = PROBES_DROPPED.load(Ordering::SeqCst) - before;
+                assert!(
+                    collected >= ROUNDS,
+                    "only {collected} of {} probes of {ROUNDS} retired Logic contexts were freed",
+                    ROUNDS * 2
+                );
             })
             .await;
     }
