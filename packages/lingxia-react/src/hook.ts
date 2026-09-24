@@ -390,12 +390,13 @@ export function useDisplayLanguage(): string {
 }
 
 /**
- * The page's adaptive context — `sizeClass`, viewport size, docked aside —
+ * The lxapp's adaptive context — `sizeClass`, viewport size, docked aside —
  * the same value Logic's `lx.surface.watchContext()` delivers, so a View
- * chooses its layout without Logic forwarding it. `null` until the host sends
- * it, which it does as soon as the page's bridge is up.
+ * chooses its layout without Logic forwarding it. Seeded into the page before
+ * its first frame and updated on every change. It re-renders on every width
+ * change: read it where layout depends on it, not in every component.
  */
-export function useSurfaceContext(): SurfaceContext | null {
+export function useSurfaceContext(): SurfaceContext {
   return React.useSyncExternalStore(
     subscribeSurfaceContext,
     getSurfaceContext,

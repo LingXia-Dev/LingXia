@@ -1104,17 +1104,34 @@ pub fn register_surface_context_snapshot(snapshot: fn(&str) -> Option<String>) {
 /// carries a revision and a View keeps the newest it has seen.
 static VIEW_CONTEXT_REVISION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+/// The next push's revision. Take it *before* reading the context it will
+/// carry: a newer value under an older revision is dropped for good, while an
+/// older value under a newer one is only a moment stale.
+pub fn next_surface_context_revision() -> u64 {
+    VIEW_CONTEXT_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1
+}
+
 /// The script that hands a page's View this lxapp's adaptive context, read by
 /// `useSurfaceContext()`. `None` before the Logic runtime can describe it.
 pub(crate) fn view_surface_context_script(appid: &str) -> Option<String> {
+    let revision = next_surface_context_revision();
     let payload = SURFACE_CONTEXT_SNAPSHOT.get()?(appid)?;
-    Some(view_surface_context_script_for(&payload))
+    Some(view_surface_context_script_for(&payload, revision))
 }
 
-/// The same script for context JSON already built.
-pub(crate) fn view_surface_context_script_for(payload: &str) -> String {
-    let revision = VIEW_CONTEXT_REVISION.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+/// The same script for context JSON already built under `revision`.
+pub(crate) fn view_surface_context_script_for(payload: &str, revision: u64) -> String {
     format!("var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({payload}, {revision});")
+}
+
+/// A bridge-config script seeding a new document with the context, so the
+/// View has a value from its first frame. Runs before the bridge runtime.
+pub(crate) fn view_surface_context_seed(appid: &str) -> Option<String> {
+    let revision = next_surface_context_revision();
+    let payload = SURFACE_CONTEXT_SNAPSHOT.get()?(appid)?;
+    Some(format!(
+        "<script>(function(){{var c=window.__LX_BRIDGE_CFG||{{}};window.__LX_BRIDGE_CFG=Object.assign({{}},c,{{surfaceContext:{payload},surfaceContextRevision:{revision}}});}})();</script>"
+    ))
 }
 
 fn notify_surface_context_observer(window_id: &str) {
@@ -3066,20 +3083,15 @@ mod tests {
 
     #[test]
     fn views_are_sent_the_context_logic_describes() {
+        // Logic's snapshot reports the revision counter as it reads the value,
+        // so the test can see which came first.
         fn snapshot(appid: &str) -> Option<String> {
             (appid == "known").then(|| {
-                r#"{"sizeClass":"regular","width":900,"height":700,"aside":false}"#.to_string()
+                let seen = VIEW_CONTEXT_REVISION.load(std::sync::atomic::Ordering::SeqCst);
+                format!(r#"{{"sizeClass":"regular","width":900,"height":700,"aside":false,"seen":{seen}}}"#)
             })
         }
         register_surface_context_snapshot(snapshot);
-        let script = view_surface_context_script("known").expect("a known lxapp has a context");
-        assert!(
-            script.starts_with(
-                r#"var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({"sizeClass":"regular","width":900,"height":700,"aside":false}, "#
-            ),
-            "{script}"
-        );
-        // Each push carries a later revision than the one before it.
         let revision = |script: &str| -> u64 {
             script
                 .rsplit(", ")
@@ -3089,10 +3101,33 @@ mod tests {
                 .parse()
                 .unwrap()
         };
-        let next = view_surface_context_script_for("{}");
+        let seen = |script: &str| -> u64 {
+            let start = script.find(r#""seen":"#).unwrap() + 7;
+            script[start..].split('}').next().unwrap().parse().unwrap()
+        };
+
+        let script = view_surface_context_script("known").expect("a known lxapp has a context");
+        assert!(
+            script.starts_with(r#"var f = globalThis.__lingxiaApplySurfaceContext; if (f) f({"sizeClass":"regular""#),
+            "{script}"
+        );
+        // The revision is taken before the value is read: a change landing in
+        // between gets a later revision, so it can never be shadowed.
+        assert!(revision(&script) <= seen(&script), "{script}");
+        let next = view_surface_context_script_for("{}", next_surface_context_revision());
         assert!(revision(&next) > revision(&script), "{script} / {next}");
+
+        // A new document is seeded before its bridge runtime runs.
+        let seed = view_surface_context_seed("known").expect("a known lxapp is seeded");
+        assert!(
+            seed.starts_with("<script>") && seed.contains("surfaceContext:{"),
+            "{seed}"
+        );
+        assert!(seed.contains("surfaceContextRevision:"), "{seed}");
+
         // An lxapp Logic cannot describe yet sends nothing.
         assert_eq!(view_surface_context_script("unknown"), None);
+        assert_eq!(view_surface_context_seed("unknown"), None);
     }
 
     #[test]

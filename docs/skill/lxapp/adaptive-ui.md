@@ -30,8 +30,10 @@ uses the following ranges with platform-managed hysteresis at 600:
 | `compact` | less than 600 |
 | `regular` | 600 and above |
 
-Content size class is scoped to the lxapp surface, not the host window: an
-aside inside a wide desktop shell can receive `compact`. The shell's own
+Content size class is scoped to the lxapp's own presentation, not the host
+window: an lxapp in a narrow region of a wide desktop shell receives `compact`.
+It is one value per lxapp — a page of that lxapp shown in an aside, float or
+second window sees the main presentation's context, not its own. The shell's own
 `medium` / `expanded` bands drive chrome admission and never reach content.
 `aside` is live host docking availability, decided by the shell rather than
 derived from the content viewport — read it from this context (in Logic or the
@@ -81,13 +83,14 @@ belongs to the View, through the framework's page-chrome helper.
 
 A View reads the context itself: `useSurfaceContext()` from `@lingxia/react` /
 `@lingxia/vue`, or `getSurfaceContext()` and `subscribeSurfaceContext(cb)` from
-`@lingxia/html`. It is the same value `watchContext` delivers to Logic, sent to
-the page as soon as its bridge is up — ahead of the page's first data — and
-again on every change, so a page that only picks a layout needs no Logic
-subscription, no `setData` and nothing in its `data`. It is `null` until that
-first push; render the page skeleton meanwhile. A host older than the release
-that added it never sends it, so keep `lxapp.json` `minRuntime` at that release
-or later — `lingxia` raises it when the project moves to this line.
+`@lingxia/html`. It is the same value `watchContext` delivers to Logic, seeded
+into the page before its first frame and updated on every change, so a page
+that only picks a layout needs no Logic subscription, no `setData`, nothing in
+its `data` and no gate: the hook always has a value. It re-renders its
+component on every width change, so read it where layout depends on it rather
+than in every component. A host older than the release that added it reports
+`compact` with a 0×0 viewport forever, so keep `lxapp.json` `minRuntime` at that
+release or later — `lingxia` raises it when the project moves to this line.
 
 Subscribe in Logic only when Logic itself acts on the context — say, fetching
 less on `compact`. Then keep the unsubscribe per page instance, never in `data`:
@@ -127,9 +130,6 @@ export default function PageView() {
   const page = useLxPage<Partial<PageData>, PageActions>(); // the page's own types
   const { isDesktop } = usePlatform();
   const surface = useSurfaceContext();
-  if (!surface) {
-    return <PageSkeleton />;
-  }
   const View =
     surface.sizeClass === 'regular' && isDesktop
       ? WorkspaceView

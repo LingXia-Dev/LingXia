@@ -73,8 +73,12 @@ impl LxApp {
             ))
         })?;
         let mut injected_data = self.inject_content_security_policy(&data);
-        injected_data =
-            inject_bridge_config_with_bootstrap(&injected_data, bridge_nonce, Some(bootstrap))?;
+        injected_data = inject_bridge_config_with_bootstrap(
+            &injected_data,
+            bridge_nonce,
+            Some(bootstrap),
+            None,
+        )?;
         if let Ok(app_css_data) = self.read_bytes("lxapp.css") {
             injected_data = self.inject_css(&injected_data, &app_css_data, path)?;
         }
@@ -163,7 +167,10 @@ impl LxApp {
     }
 
     fn inject_bridge_config(&self, html_data: &[u8], bridge_nonce: Option<&str>) -> Vec<u8> {
-        inject_bridge_config_with_bootstrap(html_data, bridge_nonce, None)
+        // Seed the page's adaptive context, so `useSurfaceContext()` has a
+        // value from the first frame; the host pushes changes after that.
+        let seed = super::surface::view_surface_context_seed(&self.appid);
+        inject_bridge_config_with_bootstrap(html_data, bridge_nonce, None, seed.as_deref())
             .expect("ordinary bridge config injection has a safe fallback")
     }
 
@@ -214,9 +221,13 @@ fn inject_bridge_config_with_bootstrap(
     html_data: &[u8],
     bridge_nonce: Option<&str>,
     bootstrap: Option<ControlDocumentBootstrap>,
+    extra_config: Option<&str>,
 ) -> Result<Vec<u8>, LxAppError> {
     let html_str = String::from_utf8_lossy(html_data);
-    let script_tag = build_bridge_config_script(bridge_nonce);
+    let mut script_tag = build_bridge_config_script(bridge_nonce);
+    if let Some(extra) = extra_config {
+        script_tag.push_str(extra);
+    }
 
     if let Some(script_start) = find_bridge_runtime_script_start(&html_str, bootstrap.is_some()) {
         let (before, after) = html_str.split_at(script_start);
@@ -573,7 +584,8 @@ mod tests {
         )
         .unwrap();
         let trusted =
-            inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap)).unwrap();
+            inject_bridge_config_with_bootstrap(html.as_bytes(), None, Some(bootstrap), None)
+                .unwrap();
         let trusted = String::from_utf8(trusted).unwrap();
         let bootstrap_at = trusted
             .find("__LingXiaTakeControlBootstrap")
@@ -590,11 +602,13 @@ mod tests {
             b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
             None,
             Some(bootstrap),
+            None,
         )
         .is_err());
 
         let ordinary =
-            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None).unwrap();
+            inject_bridge_config_with_bootstrap(b"<html><head></head></html>", None, None, None)
+                .unwrap();
         assert!(
             !String::from_utf8(ordinary)
                 .unwrap()
@@ -603,6 +617,7 @@ mod tests {
 
         let ordinary = inject_bridge_config_with_bootstrap(
             b"<html><head><script src=\"lx://assets/bridge-runtime.js\"></script></head></html>",
+            None,
             None,
             None,
         )
