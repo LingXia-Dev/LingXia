@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { spec, reset, run } from "../dist/index.js";
+import { renderHtml } from "../dist/report.js";
 
 afterEach(() => {
   reset();
@@ -179,4 +180,72 @@ test("a scenario installs its routes for one spec and reports their requests", a
   assert.equal(seenAfter, 0, "a scenario route leaked into the next spec");
   const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
   assert.equal(step?.detail, "outage (2 routes)");
+});
+
+test("a failed spec reports the app's last Logic network calls, secrets masked", async () => {
+  const world = createWorld();
+  installFakeHost(world, { control: { secretArgs: JSON.stringify(["token"]) }, args: { token: "tok-12345" } });
+  const asked = [];
+  globalThis.__LINGXIA_AUTOMATION_HOST__.networkLog = (since, limit) => {
+    asked.push([typeof since, limit]);
+    return [
+      { time: 1000, kind: "fetch", method: "GET", url: "https://h/v1/me?key=tok-12345", status: 200, durationMs: 12, source: "network" },
+      { time: 1040, kind: "fetch", method: "PATCH", url: "https://h/v1/devices/d1", status: 501, durationMs: 3, source: "route", route: { pattern: "**/devices/*", action: "fulfill" } },
+      { time: 1100, kind: "sse", method: "GET", url: "https://h/v1/events", status: null, error: "sse request failed", durationMs: 1, source: "network" },
+    ];
+  };
+
+  spec("passes", async () => {});
+  spec("rename fails", async () => {
+    throw new Error("rename-error never showed");
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 1);
+  assert.deepEqual(asked, [["number", 20]], "only the failed spec reads the log");
+  const failure = report.failures[0];
+  assert.equal(failure.network.length, 3);
+  assert.equal(failure.network[0].url, "https://h/v1/me?key=***");
+  assert.equal(report.cases[1].error.network[1].source, "route");
+  assert.equal(report.cases[0].error, undefined);
+  const html = renderHtml(report);
+  assert.match(html, /Logic network &middot; last 3 calls/);
+  assert.match(html, /https:\/\/h\/v1\/me\?key=\*\*\*/);
+  assert.doesNotMatch(html, /tok-12345/);
+  assert.match(html, /\+40ms/);
+  assert.match(html, /sse request failed/);
+});
+
+test("--record-network attaches each spec's scenario and masks secrets", async () => {
+  const world = createWorld();
+  const { attachments } = installFakeHost(world, {
+    control: { recordNetwork: "1", secretArgs: JSON.stringify(["token"]) },
+    args: { token: "tok-12345" },
+  });
+  const calls = [];
+  globalThis.__LINGXIA_AUTOMATION_HOST__.networkRecord = (command, name) => {
+    calls.push([command, name]);
+    return command === "stop"
+      ? { name, routes: [{ url: "https://h/v1/me?key=tok-12345", method: "GET", status: 200, json: { ok: true } }] }
+      : null;
+  };
+
+  spec("records", { id: "rec-1" }, async () => {});
+  const report = await run();
+  assert.equal(report.failed, 0);
+  assert.deepEqual(calls, [["start", undefined], ["stop", "records"]]);
+  const artifact = attachments.get("attachments/rec-1/attempt-0/network.scenario.json");
+  assert.ok(artifact, [...attachments.keys()].join(", "));
+  const scenario = JSON.parse(Buffer.from(artifact.base64, "base64").toString("utf8"));
+  assert.equal(scenario.routes[0].url, "https://h/v1/me?key=***");
+  assert.ok(report.cases[0].attachments.some((entry) => entry.name === "network.scenario.json"));
+});
+
+test("--record-network on a host without recording says so once per spec", async () => {
+  const world = createWorld();
+  const { events } = installFakeHost(world, { control: { recordNetwork: "1" } });
+  spec("records nothing", async () => {});
+  const report = await run();
+  assert.equal(report.failed, 0);
+  assert.ok(events.some((event) => event.type === "diagnostic" && event.phase === "record-network"));
 });

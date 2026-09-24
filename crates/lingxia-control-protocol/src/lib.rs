@@ -7,6 +7,52 @@ pub mod invocation {
     pub const CLI_ARGUMENT: &str = "--cli";
 }
 
+/// Text helpers shared by the test runtime and `lxdev`.
+pub mod text {
+    /// Decode `%XX` escapes in `text`; an invalid escape is kept as written.
+    /// `plus_as_space` also turns `+` into a space, as in a query string
+    /// (`application/x-www-form-urlencoded`); `encodeURIComponent` output
+    /// keeps `+` literal.
+    pub fn percent_decode(text: &str, plus_as_space: bool) -> String {
+        let bytes = text.as_bytes();
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            if bytes[i] == b'%'
+                && i + 2 < bytes.len()
+                && let Some(byte) = std::str::from_utf8(&bytes[i + 1..i + 3])
+                    .ok()
+                    .and_then(|hex| u8::from_str_radix(hex, 16).ok())
+            {
+                out.push(byte);
+                i += 3;
+                continue;
+            }
+            out.push(if plus_as_space && bytes[i] == b'+' {
+                b' '
+            } else {
+                bytes[i]
+            });
+            i += 1;
+        }
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::percent_decode;
+
+        #[test]
+        fn decodes_escapes_and_plus_on_request() {
+            assert_eq!(percent_decode("a%20b+c", false), "a b+c");
+            assert_eq!(percent_decode("a%20b+c", true), "a b c");
+            assert_eq!(percent_decode("100%", true), "100%");
+            assert_eq!(percent_decode("%zz%4", false), "%zz%4");
+            assert_eq!(percent_decode("%E2%9C%93", false), "\u{2713}");
+        }
+    }
+}
+
 /// Filesystem and endpoint names shared by the shipped-product client and
 /// server. Both processes know the product's app-data directory, so discovery
 /// needs no generated launcher or environment-carried endpoint.
