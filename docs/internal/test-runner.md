@@ -522,8 +522,15 @@ test: no test writes into its storage and app code has no test branch.
 - Every switch is close → change → reopen (`with_app_closed`, serialized by
   one lock): retire the instance, wait for its `logic_contexts` to reach 0 so
   no redb handle is open, run the change, reopen with the captured open mode,
-  panel and initial route, and wait for page ready. Copying a live redb is
-  never safe; that is why a checkpoint costs two reopens.
+  panel and initial route, and wait for the app to settle. Copying a live
+  redb is never safe; that is why a checkpoint costs two reopens.
+- Settling (`wait_settled`, the `Settle` state machine): `App.onLaunch` has
+  settled (`LxApp::launch_settled`, set when the handler's promise settles,
+  reset whenever onLaunch is due again), the current page is ready, and its
+  instance id has not changed for `SETTLE_QUIET` (300 ms). No ready page
+  within `REOPEN_TIMEOUT` fails the switch; still unsettled `SETTLE_TIMEOUT`
+  (5 s) after the first ready page is only logged. A page the app replaces at
+  start-up is not an error, unlike `wait_page_runtime_ready`.
 - `leave` clears the override before closing anything, so a failed close or
   reopen still leaves the next instance on its own data. A crash leaves no
   override; startup (`prepare_directory_structure`) sweeps

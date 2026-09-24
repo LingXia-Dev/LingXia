@@ -481,6 +481,11 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
   that spec (implies `fresh`); `t.profile.checkpoint()` / `restore(id)` /
   `drop(id)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
   and both reject with `E_PROFILE_NOT_ISOLATED` without `--isolate`.
+- A reopen resolves once the app has settled: `App.onLaunch` has finished
+  (its promise included), a page is ready, and the current page has not
+  changed for 300 ms. A redirect the app makes at start-up therefore lands
+  inside the rollback, never in the next spec. Start-up work still running
+  5 s after the page is ready is left running.
 - A rollback restores everything the app stored, sign-in tokens included. If
   the app rotates single-use refresh tokens, a rollback across a rotation hands
   it a spent token and the server may end the session. Keep the session with
