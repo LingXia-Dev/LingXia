@@ -43,6 +43,7 @@ import type {
   JsonValue,
   LogicScope,
   PageDataOptions,
+  ProfileFixture,
   WaitForOptions,
 } from "./types.js";
 import {
@@ -102,6 +103,7 @@ export class LiveFixture implements Fixture {
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
   private rawApp: LxAppDriver;
+  private readonly hostAutomation: Automation;
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
   private readonly networkScope = new NetworkScope();
@@ -118,6 +120,7 @@ export class LiveFixture implements Fixture {
     private readonly redactor?: Redactor,
   ) {
     this.rawApp = rawApp;
+    this.hostAutomation = automation;
     this.startedAt = Date.now();
     this.args = args;
     this.specDeadline = Date.now() + specBudgetMs;
@@ -140,6 +143,29 @@ export class LiveFixture implements Fixture {
 
   get raw(): LxAppDriver {
     return this.rawApp;
+  }
+
+  get profile(): ProfileFixture {
+    return {
+      checkpoint: () => this.act("profile.checkpoint", "", () =>
+        this.reopening((driver) => driver.profile.checkpoint())),
+      restore: (id: string) => this.act("profile.restore", id, () =>
+        this.reopening((driver) => driver.profile.restore(id))),
+      drop: (id: string) => this.act("profile.drop", id, () => this.rawApp.profile.drop(id)),
+    };
+  }
+
+  /**
+   * A profile switch closes the app and reopens it as a new instance, which
+   * the old driver no longer reaches: select the same lxapp again after it.
+   */
+  private async reopening<T>(op: (driver: LxAppDriver) => Promise<T>): Promise<T> {
+    const { appid } = await this.rawApp.info();
+    try {
+      return await op(this.rawApp);
+    } finally {
+      this.rawApp = this.hostAutomation.lxapp(appid);
+    }
   }
 
   step<T>(name: string, body: () => T | Promise<T>): Promise<T> {
@@ -602,6 +628,10 @@ export class LiveFixture implements Fixture {
       // never the `t.app` or `t.app.network` read.
       get network() {
         return wrapNetwork(() => driver.network, fixture, fixture.networkScope);
+      },
+      // The same as `t.profile`: it re-selects the app after a switch.
+      get profile() {
+        return fixture.profile;
       },
       info: () => this.act("app.info", "", () => driver.info()),
       pages: () => this.act("app.pages", "", () => driver.pages()),
