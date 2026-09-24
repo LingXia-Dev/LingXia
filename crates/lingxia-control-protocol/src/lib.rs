@@ -133,6 +133,26 @@ pub mod methods {
             pub const CAPABILITIES: &str = "session.test.capabilities";
         }
 
+        /// Network scenarios and recordings for a running lxapp's Logic
+        /// `fetch` and `Rong.SSE` outside test runs (`lxdev network`).
+        /// Runtime-owned and present only in hosts built with the test
+        /// runtime; a release build answers "unknown method".
+        pub mod network {
+            /// Install a scenario until cleared or the session ends. Args:
+            /// `{ scenario, source?, appid? }`; returns the status.
+            pub const SCENARIO_USE: &str = "session.network.scenario.use";
+            /// Remove the dev scenario. Returns `{ cleared }`.
+            pub const SCENARIO_CLEAR: &str = "session.network.scenario.clear";
+            /// The dev scenario and recording, if any.
+            pub const STATUS: &str = "session.network.status";
+            /// Start recording real Logic `fetch` traffic. Args:
+            /// `{ appid?, match? }`.
+            pub const RECORD_START: &str = "session.network.record.start";
+            /// Stop recording. Args: `{ name? }`; returns
+            /// `{ scenario, exchanges, dropped }`.
+            pub const RECORD_STOP: &str = "session.network.record.stop";
+        }
+
         /// Isolated data profiles of `session.test` runs (`lxdev test
         /// --isolate`). Snapshots travel only over these methods, never the
         /// run's artifact channel.

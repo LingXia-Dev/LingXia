@@ -27,6 +27,8 @@ mod lxapp_nav;
 mod lxapp_page;
 mod runner;
 #[cfg(feature = "test-runtime")]
+mod session_network;
+#[cfg(feature = "test-runtime")]
 mod session_profile;
 #[cfg(feature = "test-runtime")]
 mod session_test;
@@ -50,6 +52,11 @@ pub fn dispatch(request: ControlRequest) -> ControlResponse {
         session_test::handle_session_test_command(id.clone(), &method, params.clone())
     {
         return response;
+    }
+
+    #[cfg(feature = "test-runtime")]
+    if method.starts_with("session.network.") {
+        return command_result(id, session_network::handle(&method, params));
     }
 
     #[cfg(feature = "computer-use")]
