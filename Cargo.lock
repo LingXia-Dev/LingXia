@@ -3572,6 +3572,7 @@ dependencies = [
  "oxc_transformer",
  "serde",
  "serde_json",
+ "serde_yaml_ng",
  "sha2 0.11.0",
  "sysinfo 0.39.6",
  "tempfile",
