@@ -2,11 +2,21 @@ import assert from 'node:assert/strict';
 
 // Two copies of the bridge module live in a page: the injected runtime and
 // the page's own bundle. Both must read the one store the host writes.
-globalThis.window = {};
+// The host seeds the context into the document's bridge config.
+globalThis.window = {
+  __LX_BRIDGE_CFG: {
+    surfaceContext: { sizeClass: 'regular', width: 800, height: 600, aside: false },
+    surfaceContextRevision: 5,
+  },
+};
 const injected = await import('../dist/es2020/surface-context.js?copy=injected');
 const bundled = await import('../dist/es2020/surface-context.js?copy=bundled');
 
-assert.equal(bundled.getSurfaceContext(), null, 'nothing before the host sends it');
+assert.deepEqual(
+  bundled.getSurfaceContext(),
+  { sizeClass: 'regular', width: 800, height: 600, aside: false },
+  'the seed is there from the first frame',
+);
 
 let heard = 0;
 const unsubscribe = bundled.subscribeSurfaceContext(() => {
@@ -14,6 +24,10 @@ const unsubscribe = bundled.subscribeSurfaceContext(() => {
 });
 const apply = window.__lingxiaApplySurfaceContext;
 assert.equal(typeof apply, 'function', 'the host entry point is installed');
+
+apply({ sizeClass: 'compact', width: 300, height: 600, aside: false }, 4);
+assert.equal(bundled.getSurfaceContext().width, 800, 'a push older than the seed is stale');
+assert.equal(heard, 0);
 
 apply({ sizeClass: 'regular', width: 900, height: 700, aside: true });
 assert.deepEqual(injected.getSurfaceContext(), { sizeClass: 'regular', width: 900, height: 700, aside: true });
@@ -42,5 +56,13 @@ assert.equal(heard, 3);
 unsubscribe();
 apply({ sizeClass: 'regular', width: 1000, height: 800, aside: false }, 11);
 assert.equal(heard, 3, 'unsubscribed listeners stay quiet');
+
+
+// A host older than this API seeds nothing: a valid default, never null.
+{
+  globalThis.window = {};
+  const older = await import('../dist/es2020/surface-context.js?copy=older-host');
+  assert.deepEqual(older.getSurfaceContext(), { sizeClass: 'compact', width: 0, height: 0, aside: false });
+}
 
 console.log('surface context store: ok');

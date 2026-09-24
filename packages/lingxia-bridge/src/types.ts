@@ -8,6 +8,10 @@ export interface BridgeConfig {
   hostClass?: 'mobile' | 'desktop';
   /** Effective host display language; distinct from the raw system locale. */
   displayLanguage?: string;
+  /** The lxapp's adaptive context when this document was built; see `surface-context.ts`. */
+  surfaceContext?: unknown;
+  /** The host revision of `surfaceContext`, so a later push can supersede it. */
+  surfaceContextRevision?: number;
   nonce?: string;
   appleDownstreamURL?: string;
   // Set by the host when attached to a `lingxia dev` session; gates the
@@ -169,10 +173,10 @@ declare global {
     /** Shared by every copy of the bridge module in this document. */
     __lxDisplayLanguage?: { value: string; listeners: Set<() => void> };
     /** Host push for the page's adaptive context; see `surface-context.ts`. */
-    __lingxiaApplySurfaceContext?: (context: unknown) => void;
+    __lingxiaApplySurfaceContext?: (context: unknown, revision?: unknown) => void;
     /** Shared by every copy of the bridge module in this document. */
     __lxSurfaceContext?: {
-      value: import('./surface-context').SurfaceContext | null;
+      value: import('./surface-context').SurfaceContext;
       revision: number;
       listeners: Set<() => void>;
     };

@@ -399,11 +399,11 @@ export function useDisplayLanguage(): Readonly<Ref<string>> {
 }
 
 /**
- * The page's adaptive context — `sizeClass`, viewport size, docked aside —
- * the same value Logic's `lx.surface.watchContext()` delivers. `null` until
- * the host sends it, as soon as the page's bridge is up; follows a change.
+ * The lxapp's adaptive context — `sizeClass`, viewport size, docked aside —
+ * the same value Logic's `lx.surface.watchContext()` delivers. Seeded into the
+ * page before its first frame; follows a change.
  */
-export function useSurfaceContext(): Readonly<Ref<SurfaceContext | null>> {
+export function useSurfaceContext(): Readonly<Ref<SurfaceContext>> {
   const context = shallowRef(getSurfaceContext());
   if (!getCurrentInstance()) {
     console.warn("useSurfaceContext() must be called during component setup");

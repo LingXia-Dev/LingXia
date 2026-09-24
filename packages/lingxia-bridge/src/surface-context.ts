@@ -1,21 +1,25 @@
 /**
- * The page's adaptive context, pushed by the host: the same value Logic's
+ * The lxapp's adaptive context, from the host: the same value Logic's
  * `lx.surface.watchContext()` delivers, so a View picks its layout without
- * Logic forwarding it through `setData`.
+ * Logic forwarding it through `setData`. It describes the lxapp's main
+ * presentation; a page shown in an aside, float or window sees the same value.
  */
 export interface SurfaceContext {
   /** `compact` (< 600 logical px) or `regular`, with hysteresis. */
   sizeClass: 'compact' | 'regular';
-  /** The page's viewport width in logical pixels. */
+  /** The presentation's viewport width in logical pixels; 0 until measured. */
   width: number;
-  /** The page's viewport height in logical pixels. */
+  /** The presentation's viewport height in logical pixels; 0 until measured. */
   height: number;
   /** Whether the host layout currently offers a docked aside. */
   aside: boolean;
 }
 
+/** What a host that sends nothing — one older than this API — is taken to say. */
+const UNREPORTED: SurfaceContext = { sizeClass: 'compact', width: 0, height: 0, aside: false };
+
 interface SurfaceContextStore {
-  value: SurfaceContext | null;
+  value: SurfaceContext;
   /** The newest host revision applied; an older push arriving late is stale. */
   revision: number;
   listeners: Set<() => void>;
@@ -29,12 +33,18 @@ interface SurfaceContextStore {
 function store(): SurfaceContextStore {
   if (typeof window === 'undefined') return fallbackStore;
   if (!window.__lxSurfaceContext) {
-    window.__lxSurfaceContext = { value: null, revision: 0, listeners: new Set() };
+    // Seeded by the host in this document's bridge config, before any script.
+    const config = window.__LX_BRIDGE_CFG;
+    window.__lxSurfaceContext = {
+      value: parse(config?.surfaceContext) ?? UNREPORTED,
+      revision: typeof config?.surfaceContextRevision === 'number' ? config.surfaceContextRevision : 0,
+      listeners: new Set(),
+    };
   }
   return window.__lxSurfaceContext;
 }
 
-const fallbackStore: SurfaceContextStore = { value: null, revision: 0, listeners: new Set() };
+const fallbackStore: SurfaceContextStore = { value: UNREPORTED, revision: 0, listeners: new Set() };
 
 function parse(next: unknown): SurfaceContext | null {
   if (typeof next !== 'object' || next === null) return null;
@@ -44,9 +54,8 @@ function parse(next: unknown): SurfaceContext | null {
   return { sizeClass, width, height, aside: aside === true };
 }
 
-function same(a: SurfaceContext | null, b: SurfaceContext): boolean {
-  return a !== null
-    && a.sizeClass === b.sizeClass
+function same(a: SurfaceContext, b: SurfaceContext): boolean {
+  return a.sizeClass === b.sizeClass
     && a.width === b.width
     && a.height === b.height
     && a.aside === b.aside;
@@ -80,10 +89,11 @@ if (typeof window !== 'undefined' && !window.__lingxiaApplySurfaceContext) {
 }
 
 /**
- * The page's adaptive context, or `null` until the host has sent it — which it
- * does as soon as the page's bridge is up, ahead of the page's first data.
+ * The lxapp's adaptive context. The host seeds it into every page before any
+ * script runs and pushes each change, so there is always a value; a host older
+ * than this API reports `compact` with a 0×0 viewport.
  */
-export function getSurfaceContext(): SurfaceContext | null {
+export function getSurfaceContext(): SurfaceContext {
   return store().value;
 }
 

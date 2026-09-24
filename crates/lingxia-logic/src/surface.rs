@@ -321,9 +321,11 @@ pub(crate) fn notify_surface_context_changed(appid: &str) {
     let Some(lxapp) = try_get(appid) else {
         return;
     };
+    // The revision first, then the value it carries: see the revision's doc.
+    let revision = ::lxapp::next_surface_context_revision();
     let context = context_json(&lxapp);
     // Views read the very same JSON through `useSurfaceContext()`.
-    lxapp.push_surface_context_to_views(&context);
+    lxapp.push_surface_context_to_views(&context, revision);
     publish_app_event(appid, SURFACE_CONTEXT_EVENT, Some(context));
 }
 
