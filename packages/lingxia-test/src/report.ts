@@ -16,6 +16,15 @@ import {
   type CapabilityLayer,
 } from "./inventory.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
+import {
+  EXTRA_STYLE,
+  caseSearchTerms,
+  renderCaseContract,
+  renderCaseTags,
+  renderContract,
+  renderManifestCoverage,
+  renderTagSummary,
+} from "./report-extras.js";
 
 /** A status the report groups, filters, and colours by. */
 const STATUS_ORDER: SpecStatus[] = [
@@ -102,7 +111,7 @@ export function renderHtml(report: JsonReport): string {
 
   const flags = [
     report.partial ? flag("partial", "The run ended early; results below are incomplete.") : "",
-    report.filtered ? flag("filtered", "A --grep or spec.only selection was in effect.") : "",
+    report.filtered ? flag("filtered", "A --grep, --tag, --id, --shard or spec.only selection was in effect.") : "",
   ].filter(Boolean).join("");
 
   return `<!DOCTYPE html>
@@ -111,7 +120,7 @@ export function renderHtml(report: JsonReport): string {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${escapeHtml(documentTitle)}</title>
-<style>${STYLE}</style>
+<style>${STYLE}${EXTRA_STYLE}</style>
 </head>
 <body>
 <a class="skip-link" href="#results">Skip to results</a>
@@ -153,6 +162,9 @@ export function renderHtml(report: JsonReport): string {
     </div>
   </div>
 
+  ${renderTagSummary(report.tag_summary)}
+  ${renderContract(report.openapi)}
+  ${renderManifestCoverage(report.coverage)}
   ${renderCoverage(report)}
   ${renderSlowest(report)}
 
@@ -590,6 +602,7 @@ function renderCase(item: CaseRecord, suiteName: string): string {
     item.reason ?? "",
     item.error?.message ?? "",
     ...item.covers,
+    ...caseSearchTerms(item),
     ...assertions.map((entry) => `${entry.matcher} ${entry.expected} ${entry.actual}`),
   ].join(" ");
   const assertMeta = assertions.length > 0
@@ -606,9 +619,11 @@ function renderCase(item: CaseRecord, suiteName: string): string {
     </summary>
     <div class="body">
       <p class="meta"><code>${escapeHtml(item.id)}</code>${where}${assertMeta}</p>
+      ${renderCaseTags(item)}
       ${covers}
       ${reason}
       ${error}
+      ${renderCaseContract(item)}
       ${item.attempts && item.attempts.length > 1 ? `<details><summary>${item.attempts.length} attempts</summary>${item.attempts.map(attempt => `<section><h4>Attempt ${(attempt.attempt ?? 0) + 1}: ${escapeHtml(attempt.status)}</h4>${renderError(attempt)}${renderSteps(attempt.steps)}${renderAttachments(attempt)}</section>`).join("")}</details>` : ""}
       ${renderSteps(item.steps)}
       ${renderAssertions(item.assertions ?? [], "spec assertions")}

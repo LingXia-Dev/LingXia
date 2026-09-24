@@ -1,4 +1,4 @@
-import { spec, type AutomationErrorCode, type FailureRecord, type TestApp } from '../dist/index.js';
+import { spec, expect, type AutomationErrorCode, type FailureRecord, type JsonReport, type TagSummary, type TestApp } from '../dist/index.js';
 import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
@@ -162,3 +162,25 @@ spec('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
 });
 // @ts-expect-error keep is a list of globs.
 spec('bad keep', { restoreProfile: { keep: 'auth.*' } }, async () => {});
+// Tags: a file default plus the spec's own; report rows are typed.
+spec.configure({ tags: ['routed'] });
+spec('tagged spec', { tags: ['smoke'], covers: ['DEV-1'] }, async () => {});
+// @ts-expect-error Tags are a list of strings.
+spec('bad tags', { tags: 'smoke' }, async () => {});
+declare const tagRow: TagSummary;
+const tagOk: boolean = tagRow.ok;
+void tagOk;
+
+// Contract assertions take a schema name, a ref, or a ref in a named document.
+expect({ id: 'd1' }).toMatchSchema('Device');
+expect({ id: 'd1' }).not.toMatchSchema({ ref: '#/components/schemas/Device', document: 'api.yaml' });
+// @ts-expect-error A schema target is a name or a ref, not a schema object.
+expect({}).toMatchSchema({ type: 'object' });
+declare const contractReport: JsonReport;
+contractReport.openapi?.routed.failed.toFixed();
+contractReport.coverage?.uncovered.map((entry) => entry.id);
+// A contract-only spec skips itself without --openapi.
+spec('contract only', async (t) => {
+  if (!t.openapi) return t.skip('needs --openapi');
+  t.openapi.documents.map((doc) => doc.name.toUpperCase());
+});

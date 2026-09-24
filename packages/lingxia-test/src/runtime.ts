@@ -6,10 +6,14 @@ import { captureFrames, fileStem, resolveOrigin, resolveOwner, slugTitle, type S
 import { renderJUnit } from "./junit.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
+import { coverageSummary, parseManifest } from "./coverage.js";
+import { ContractError, ContractLedger, parseOpenApiControl, setActiveOpenApi } from "./openapi.js";
+import { matchesTags, parseTagFilter, tagSummary, validateTags } from "./tags.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
   CaseRecord,
   FailOptions,
+  FileOptions,
   FailurePage,
   FailureRecord,
   Fixture,
@@ -39,6 +43,8 @@ interface RegisteredSpec {
   title: string;
   id?: string;
   covers: string[];
+  /** The spec's own tags; the file's `spec.configure` tags join at run start. */
+  tags: string[];
   timeout: number;
   timeoutCleanup?: number;
   fresh: boolean;
@@ -66,10 +72,17 @@ interface Hook {
   fn: SpecBody;
 }
 
+/** A `spec.configure()` call, scoped to its file like a hook. */
+interface FileConfig {
+  frames: StackFrame[];
+  tags: string[];
+}
+
 const specs: RegisteredSpec[] = [];
 const hooks: Hook[] = [];
 const afterHooks: Hook[] = [];
 const resetHooks: Hook[] = [];
+const fileConfigs: FileConfig[] = [];
 let forceRelaunchNext = false;
 let trackSurface = false;
 
@@ -127,11 +140,13 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
   // the authored file is only knowable once the run starts. `frames[0]` is a
   // frame inside this package, identical for every caller, so it can order
   // registrations but must never stand in for identity.
+  const tags = validateTags(options.tags, `spec ${JSON.stringify(title)}`);
   const frames = captureFrames();
   specs.push({
     title,
     id: options.id,
     covers: [...(options.covers ?? [])],
+    tags,
     timeout: options.timeout ?? DEFAULT_SPEC_TIMEOUT_MS,
     timeoutCleanup: options.timeoutCleanup,
     fresh: options.fresh === true,
@@ -179,6 +194,10 @@ const spec: SpecApi = Object.assign(
     beforeEach(fn: SpecBody): void {
       if (typeof fn !== "function") throw new TypeError("spec.beforeEach() requires a function");
       hooks.push({ frames: captureFrames(), fn });
+    },
+    configure(options: FileOptions): void {
+      if (!options || typeof options !== "object") throw new TypeError("spec.configure() requires an options object");
+      fileConfigs.push({ frames: captureFrames(), tags: validateTags(options.tags, "spec.configure()") });
     },
   },
 );
@@ -247,6 +266,12 @@ async function relaunchHome(app: LxAppDriver): Promise<void> {
     if (!/was disposed before runtime became ready/.test(String((error as Error)?.message ?? error))) throw error;
   }
 }
+
+/**
+ * Controls that carry file contents: the report names the files
+ * (`openapiFiles`, `coversManifestFile`) instead of repeating them.
+ */
+const PAYLOAD_CONTROL_KEYS = ["openapi", "coversManifest"];
 
 /**
  * Controls lxdev sent inside `args` before it had a channel of its own. Only
@@ -335,6 +360,7 @@ async function run(): Promise<ProtocolReport> {
   };
   const started = Date.now();
   clearInline();
+  contractSeq = 0;
 
   assignFileIndexes();
   const ids = new Map<string, string>();
@@ -356,6 +382,24 @@ async function run(): Promise<ProtocolReport> {
     throw new Error("spec.only is registered; lxdev test --forbid-only refuses to run");
   }
 
+  const tagFilter = control.tags ? parseTagFilter(JSON.parse(control.tags) as string[]) : [];
+  const manifest = parseManifest(control.coversManifest);
+  const openapi = parseOpenApiControl(control.openapi);
+  setActiveOpenApi(openapi);
+  const ledger = openapi ? new ContractLedger(openapi) : undefined;
+  const specFiles = new Set(specs.map((item) => sourceOf(item).file));
+  const fileTags = new Map<string, string[]>();
+  for (const config of fileConfigs) {
+    const file = resolveOwner(config.frames, specFiles).file;
+    if (!specFiles.has(file)) {
+      await host.emit({ type: "diagnostic", phase: "collect",
+        message: `spec.configure() called from ${file} applies to no spec: no spec file is on its call stack. Call it from a spec file's top level.` });
+      continue;
+    }
+    fileTags.set(file, [...new Set([...(fileTags.get(file) ?? []), ...config.tags])]);
+  }
+  const tagsOf = (item: RegisteredSpec) => [...new Set([...(fileTags.get(sourceOf(item).file) ?? []), ...item.tags])];
+
   const retries = Number(control.retries ?? 0);
   if (!Number.isInteger(retries) || retries < 0 || retries > 10) throw new Error("retries must be between 0 and 10");
   const selectedIds: string[] | undefined = control.ids ? JSON.parse(control.ids) : undefined;
@@ -366,6 +410,7 @@ async function run(): Promise<ProtocolReport> {
     if (selectedIds && !selectedIds.includes(resolvedId(item))) return false;
     if (shard && stableHash(resolvedId(item)) % shard[1]! !== shard[0]! - 1) return false;
     if (control.id && resolvedId(item) !== control.id) return false;
+    if (tagFilter.length > 0 && !matchesTags(tagsOf(item), tagFilter)) return false;
     if (!grep) return true;
     const id = resolvedId(item);
     return pattern!.test(item.title) || pattern!.test(id);
@@ -389,13 +434,20 @@ async function run(): Promise<ProtocolReport> {
   await host.emit({ type: "run_started", schema_version: 1, total: plan.length, args: redact.args(args),
     cases: plan.map(({ item, repeat }) => ({ id: resolvedId(item), title: item.title, name: item.title,
       full_name: fullName(item, repeat), ...sourceOf(item), ...(repeatEach > 1 ? { repeat } : {}),
-      suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers })) });
+      suite: suiteOf(sourceOf(item).file), timeout_ms: item.timeout, covers: item.covers, tags: tagsOf(item) })) });
+  if (manifest) {
+    const known = new Set(manifest.map((entry) => entry.id));
+    const stray = [...new Set(specs.flatMap((item) => item.covers).filter((id) => !known.has(id)))];
+    if (stray.length > 0) {
+      await host.emit({ type: "diagnostic", phase: "coverage",
+        message: `${stray.length} covers id(s) not in the coverage manifest: ${stray.slice(0, 10).join(", ")}${stray.length > 10 ? ", …" : ""}` });
+    }
+  }
 
   // Resolve each hook's spec file once, so a `beforeEach` stays scoped to the
   // file that registered it rather than running for every spec in the run. A
   // hook registered by a shared helper belongs to the spec file that called
   // the helper (the nearest spec file on its registration stack).
-  const specFiles = new Set(specs.map((item) => sourceOf(item).file));
   const hookFiles = new Map<Hook, string>(
     [...hooks, ...afterHooks, ...resetHooks].map((hook) => [hook, resolveOwner(hook.frames, specFiles).file] as const),
   );
@@ -448,6 +500,7 @@ async function run(): Promise<ProtocolReport> {
       status: "passed",
       duration_ms: 0,
       covers: [...item.covers],
+      tags: tagsOf(item),
       steps: [],
       assertions: [],
       attachments: [],
@@ -463,6 +516,7 @@ async function run(): Promise<ProtocolReport> {
       timeout_ms: timeout,
       watchdog_timeout_ms: timeout + (item.timeoutCleanup ?? MAX_DEFER_BUDGET_MS) + FORENSICS_BUDGET_MS + WEDGED_DEFER_BUDGET_MS,
       covers: record.covers,
+      tags: record.tags,
     });
 
     const caseStarted = Date.now();
@@ -490,6 +544,15 @@ async function run(): Promise<ProtocolReport> {
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
     const recordingNetwork = recordNetwork && await startNetworkRecording(host);
+    if (ledger && ledger.summary.capture === "ok") {
+      try {
+        await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS, "captureResponses timed out");
+      } catch (captureError) {
+        ledger.summary.capture = `unavailable: ${captureError instanceof Error ? captureError.message : String(captureError)}`;
+        await host.emit({ type: "diagnostic", phase: "contract",
+          message: `--openapi cannot capture Logic fetch responses on this host (${ledger.summary.capture}); only toMatchSchema checks run.` });
+      }
+    }
 
     const shouldRelaunch = item.fresh || item.restoreProfile || forceRelaunchNext;
     forceRelaunchNext = false;
@@ -614,13 +677,34 @@ async function run(): Promise<ProtocolReport> {
       contaminationReason = "Not run: a previous spec's restoreProfile could not roll the app's data back; restart the run.";
     }
 
+    // Routed responses that break the contract fail the spec like a body
+    // failure would, so `spec.fail({ expected: { code: 'E_OPENAPI_CONTRACT' } })`
+    // can declare one.
+    if (ledger && ledger.summary.capture === "ok") {
+      const checked = await checkContract(ledger, fixture, id, host);
+      if (checked) {
+        record.contract = checked;
+        if (checked.violations.length > 0 && status !== "skipped") {
+          const contractError = new ContractError(checked.violations);
+          if (status === "failed" || status === "timeout") {
+            if (error instanceof Error) error.message += `\n${contractError.message}`;
+            else error = contractError;
+          } else {
+            status = "failed";
+            error = contractError;
+            fixture.failurePhase = "contract";
+          }
+        }
+      }
+    }
+
     if (item.annotation === "fail") {
       // Without `expected`, the declared failure is whatever the body does to
       // fail: a product rejection counts as much as an assertion. With it,
       // only a matching failure is the known one; anything else — a mistyped
       // selector, a dead fixture server — is a real failure. Setup failures,
       // skips and timeouts keep their own verdicts.
-      if (status === "failed" && fixture.failurePhase === "body") {
+      if (status === "failed" && (fixture.failurePhase === "body" || fixture.failurePhase === "contract")) {
         const mismatch = item.expected ? expectedMismatch(error, item.expected) : undefined;
         if (mismatch === undefined) status = "xfail";
         else error = mismatch;
@@ -690,6 +774,8 @@ async function run(): Promise<ProtocolReport> {
 
   const counts = countStatuses(cases);
   const duration_ms = Date.now() - started;
+  const reportedControl: Record<string, string> = { ...control };
+  for (const key of PAYLOAD_CONTROL_KEYS) delete reportedControl[key];
   const json: JsonReport = {
     schema_version: 1,
     framework: { name: PACKAGE_NAME, version: VERSION },
@@ -697,7 +783,7 @@ async function run(): Promise<ProtocolReport> {
       started_at: new Date(started).toISOString(),
       duration_ms,
       args: redact.args(args),
-      run: redact.deep(control),
+      run: redact.deep(reportedControl),
       platform: control.platform,
       framework: args.framework,
       subject,
@@ -708,12 +794,19 @@ async function run(): Promise<ProtocolReport> {
       ...(repeatEach > 1 ? { repeat_each: repeatEach } : {}),
     },
     partial: contaminated || budgetExhausted !== undefined,
-    filtered: Boolean(grep || control.id || control.ids || shard) || hasOnly,
+    filtered: Boolean(grep || control.id || control.ids || shard || tagFilter.length > 0) || hasOnly,
     duration_ms,
     ...counts,
     cases: redact.deep(cases),
   };
   json.failures = failureRecords(json.cases);
+  const tagRows = tagSummary(json.cases);
+  if (tagRows.length > 0) json.tag_summary = tagRows;
+  if (manifest) {
+    json.coverage = coverageSummary(manifest, json.cases,
+      specs.map((item) => ({ id: resolvedId(item), title: item.title, covers: item.covers })));
+  }
+  if (ledger) json.openapi = redact.deep(ledger.summary);
 
   await attachText(host, "report.json", JSON.stringify(json, null, 2), "application/json");
   await attachText(host, "report.html", renderHtml(json), "text/html; charset=utf-8");
@@ -916,6 +1009,8 @@ function encodeScreenshot(shot: unknown): { mimeType: string; base64: string } |
 
 function reset(): void {
   specs.length = 0;
+  fileConfigs.length = 0;
+  setActiveOpenApi(undefined);
   hooks.length = 0;
   afterHooks.length = 0;
   resetHooks.length = 0;
@@ -942,6 +1037,42 @@ if (!globalThis.__LINGXIA_TEST__) {
 
 export { spec, expect, run, reset, resolvedId, trackPublicSurface };
 export type { SpecOptions, SpecBody, Fixture };
+
+/** Bound on the capture driver calls a contract check makes. */
+const CONTRACT_CALL_MS = 5_000;
+/** Newest captured response already checked, per run. */
+let contractSeq = 0;
+
+/**
+ * Check the responses captured since the last spec: routed mismatches come
+ * back as violations, the real server's as warnings (also a diagnostic).
+ */
+async function checkContract(
+  ledger: ContractLedger,
+  fixture: LiveFixture,
+  id: string,
+  host: ResolvedHost,
+): Promise<NonNullable<CaseRecord["contract"]> | undefined> {
+  let records;
+  try {
+    records = await within(Promise.resolve(fixture.raw.network.responses({ since: contractSeq })), CONTRACT_CALL_MS,
+      "reading captured responses timed out");
+  } catch (readError) {
+    await host.emit({ type: "diagnostic", phase: "contract",
+      message: `${id}: captured responses could not be read: ${readError instanceof Error ? readError.message : String(readError)}` });
+    return undefined;
+  }
+  for (const record of records) contractSeq = Math.max(contractSeq, record.seq);
+  if (records.length === 0) return undefined;
+  const result = ledger.checkSpec(id, records);
+  for (const warning of result.warnings.slice(0, 3)) {
+    const first = warning.issues[0];
+    await host.emit({ type: "diagnostic", phase: "contract",
+      message: `${id}: ${warning.operation} → ${warning.status} from the server does not match ${warning.schema}` +
+        (first ? ` (at ${first.path || "/"}: ${first.message})` : "") });
+  }
+  return result;
+}
 
 async function within<T>(task: Promise<T>, ms: number, message: string): Promise<T> {
   let handle: ReturnType<typeof setTimeout> | undefined;
