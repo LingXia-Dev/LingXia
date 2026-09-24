@@ -56,6 +56,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait until a value is ready | `t.waitFor(read, accept?)` returns it; `t.expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })` |
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#routing-logic-fetch) |
+| Fast-forward Logic timers and `Date` | `t.app.clock.install()` / `.tick(ms)`; see [below](#test-clock) |
 | Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, read with `t.arg('k')` |
 | Cleanup | `t.defer(fn)` (LIFO, runs on success or failure); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
@@ -153,6 +154,44 @@ spec('rename shows the not-implemented error', async (t) => {
 - Only Logic `fetch` is routed, not WebView requests. A host outside the app's
   [network grants](../native/permissions.md) is never faked.
 
+## Test clock
+
+`t.app.clock` puts the app's Logic on test time, so a 30-second poll, a
+session expiry or a date-dependent screen is tested without waiting.
+
+```ts
+spec('status refreshes every 3 s', async (t) => {
+  await t.app.network.route('**/v1/status', { json: { online: true } });
+  await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
+  await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
+  const { fired } = await t.app.clock.tick(9_000);  // three polls, in order
+  expect(fired).toBe(3);
+  await t.expect(t.app.page.testId('status')).toHaveText('Online');
+});
+```
+
+- While installed, Logic's `Date` (`new Date()`, `Date()`, `Date.now()`),
+  `setTimeout` / `setInterval` / `clear*` and `performance.now()` read test
+  time. Timers fire only from `tick(ms)` (each at its own time, in order) or
+  `runAll()` (until none is left; rejects after `maxTimers`, default 1000, so
+  use `tick` with a `setInterval`). `setSystemTime(t)` moves `Date` without
+  firing anything. `tick`/`runAll` resolve `{ now, fired, pending }`.
+- After each timer fires, promise chains it started settle before the next
+  one: an async poll that awaits a routed `fetch` and `res.json()` re-arms
+  within the same `tick`. Work waiting on real I/O does not settle inside a
+  tick; wait for it with `t.waitFor` / `t.expect`, then tick again.
+- Real time still runs for the page WebView, native work and timeouts, real
+  network requests, route `delay` / `hang`, `setData` delivery, and timers
+  started before `install` — install before opening the page under test.
+- Only the selected app's Logic (`t.apps.lxapp(id).clock` for another), and
+  only in a `lxdev test` run. A spec's clock is removed when it ends (pending
+  test timers are dropped, and the next spec then starts from a relaunched
+  home page); the run's end or the app reopening (a profile rollback) also
+  returns it to real time. The runner's own timers and spec timeout are never
+  faked.
+- `install` twice rejects with `E_CLOCK_INSTALLED`; `tick` without a clock with
+  `E_CLOCK_NOT_INSTALLED`. `uninstall()` resolves `{ uninstalled, dropped }`.
+
 ## Isolated app data
 
 `--isolate` runs the suite on a throwaway copy of the app's data (storage,
@@ -176,8 +215,18 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
   and both reject with `E_PROFILE_NOT_ISOLATED` without `--isolate`.
 - A rollback restores everything the app stored, sign-in tokens included. If
   the app rotates single-use refresh tokens, a rollback across a rotation hands
-  it a spent token, and the server may end the session on its next refresh:
-  keep checkpoints short-lived, and never restore one taken before a sign-out.
+  it a spent token and the server may end the session. Keep the session with
+  `keep`: the `lx.getStorage()` keys it matches keep their current state (a
+  new key stays, a deleted one stays deleted) while everything else rolls back.
+
+  ```ts
+  spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
+  await t.profile.restore(id, { keep: ['auth.*', 'session.token'] }); // resolves { kept }
+  ```
+
+  Globs match whole keys: `*` any run of characters (dots included), `?` one.
+  Only storage keys are kept; `lx://userdata` files always roll back. The app
+  is closed during the merge, so it never sees the rolled-back tokens.
 - A snapshot belongs to one app, channel and device; another one is refused.
   Downloads (`destination: "downloads"`) and other lxapps stay shared.
 

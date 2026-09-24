@@ -353,6 +353,70 @@ test: no test writes into its storage and app code has no test branch.
   `restore`. `restoreProfile` checkpoints before the implied relaunch and
   registers restore + drop as the first defer; if it does not complete, the
   run is contaminated (partial), like a stuck cleanup.
+- `restore(id, { keep })` (and `restoreProfile: { keep }`) merges inside the
+  same closed-app window: `replace_live_keeping` reads the live
+  `storage.redb` entries whose keys match the globs (`KeepKeys`: `*`, `?`, ≤ 64
+  patterns), copies the checkpoint to the staged directory, makes the matching
+  keys of the staged `storage.redb` exactly that set (write the current
+  values, remove matching keys the live data no longer has), then swaps. A
+  failed read or merge removes the staged copy and leaves live untouched, and
+  the app is reopened only after the swap, so it never observes the
+  checkpoint's values of a kept key. Values are copied as opaque bytes from
+  the rong_storage table (`"storage"`, `&str → &[u8]`, `STORAGE_FORMAT`).
+  Files are never kept. The driver resolves `{ kept }` (keys carried over);
+  `LiveFixture` refuses `keep` on a host without `LxAppDriver.clock` (they
+  shipped together) before calling restore, because an older host would
+  silently ignore it.
 - Not isolated in v1: downloads and `downloads.redb`, other lxapps opened in
   the run, and browser-profile WebViews. Mobile hosts share the Rust path but
   are not yet validated (transfer limits, `test-profiles` writability).
+
+## Test clock
+
+`LxAppDriver.clock` fakes time in one lxapp's Logic context only; the
+automation context, page WebViews and native code keep real time.
+
+- `AutomationExtension::init` (runtime builds) evaluates `clock/fake_clock.js`
+  in every Logic context after the fetch interceptor. It captures the real
+  `setTimeout`/`setInterval`/`clearInterval` and a host `turn` for its own
+  use and defines a dormant, frozen controller at `globalThis[Symbol.for('lingxia.automation.clock')]`;
+  nothing global changes until `install`.
+- Driver calls go through `LxApp::eval_logic` as controller calls carrying an
+  install token (`clock.tick(token, ms)`); answers are JSON, `{ error }`
+  values map to `E_CLOCK_INSTALLED`, `E_CLOCK_NOT_INSTALLED` or
+  `E_AUTOMATION`. Every call needs the context's `ClockRunScope` (attached to
+  host runs only), so app Logic's own `lx.automation()` is refused.
+- `install` swaps `Date` (a function sharing `Date.prototype`, statics
+  copied), the four timer functions and an own `performance.now`. Fake ids
+  start at `0xC0000000`, far above the real registry's counter, because the
+  real `clearTimeout` applies ToUint32 and a stale fake id passed to it after
+  uninstall must not cancel a real timer. `clear*` of a non-fake id is
+  forwarded to the real function (timers created before install stay real).
+  Fakes captured by app code keep working after uninstall by forwarding to
+  the saved natives.
+- Firing: earliest `(at, seq)`; an interval re-arms before its callback runs,
+  and a throwing interval is cancelled and the error rethrown on a real turn
+  (the real registry does the same). After each firing `settle` yields real
+  turns until one passes without fake-timer activity (at least 3, at most
+  100), so promise chains and immediately-completing native futures (routed
+  `fetch`, `Response.json`, storage) progress before the next timer. A turn
+  is `host_turn`, a round trip through `RongExecutor::global()`, not a real
+  `setTimeout(0)`: `rong_timer` 0.6.0 can drop a one-shot timer whose tick is
+  still queued when its spawn task finishes (likely at delay 0), which would
+  stall the settle loop. `tick` caps at 10000 firings, `runAll` at
+  `maxTimers`.
+- Leases: `install` inserts `token → (run, appid)` before evaluating;
+  `RunShared::finalize` calls `clock::clear_run`. The controller checks its
+  lease on a real 1 s interval and uninstalls itself when it is gone, so a
+  cancelled, timed-out or disconnected run cannot leave the app on fake time
+  and finalization never has to reach into Logic. An install that finds a
+  clock whose lease is gone replaces it.
+- A reopened app has a fresh context (real time); its old lease is replaced
+  by the next install or dropped at uninstall/run end. `uninstall` drops
+  pending fake timers and reports the count; `LiveFixture` (`ClockScope`)
+  uninstalls every app a spec installed on, re-selecting it by appid, and
+  sets `forceRelaunchNext` when timers were dropped.
+- Framework timers must not be faked: `Page.js` captures `setTimeout` /
+  `clearTimeout` at load for the `setData` debounce, and the fetch
+  interceptor captures them for route `delay`/`hang`, so both keep real time.
+
