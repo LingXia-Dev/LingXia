@@ -30,6 +30,13 @@ export interface SpecOptions {
   timeout?: number;
   /** Relaunch the home page before the body. */
   fresh?: boolean;
+  /**
+   * Snapshot the app's isolated data before this spec and roll it back after,
+   * so the next spec never sees this one's writes. Implies `fresh`. Needs an
+   * isolated run (`lxdev test --isolate`); if the rollback fails, the rest of
+   * the run is not run.
+   */
+  restoreProfile?: boolean;
   /** Independent cleanup budget; a pending cleanup stops subsequent specs. */
   timeoutCleanup?: number;
   /** Pin `t.app` to this lxapp id instead of the current one. */
@@ -228,6 +235,22 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
   callPage<R = unknown>(method: string, ...args: JsonValue[]): Promise<Awaited<R>>;
 }
 
+/**
+ * `t.profile`: checkpoint and roll back the app's isolated data by hand.
+ * Needs an isolated run (`lxdev test --isolate`); otherwise every call
+ * rejects with `E_PROFILE_NOT_ISOLATED`. `checkpoint` and `restore` close the
+ * app and reopen it at its initial page; `t.app` follows the reopened app, a
+ * `t.app` saved before the call does not.
+ */
+export interface ProfileFixture {
+  /** Snapshot the app's data; resolves an id for `restore`. */
+  checkpoint(): Promise<string>;
+  /** Roll the app's data back to checkpoint `id`. */
+  restore(id: string): Promise<void>;
+  /** Discard checkpoint `id`. */
+  drop(id: string): Promise<void>;
+}
+
 export interface TestAutomation extends Omit<Automation, "lxapp"> {
   lxapp(): TestApp;
   lxapp(appId: string): TestApp;
@@ -306,6 +329,7 @@ export interface Fixture {
   readonly automation: TestAutomation;
   readonly app: TestApp;
   readonly apps: Apps;
+  readonly profile: ProfileFixture;
   /** `--arg` / `--secret-arg` values; a missing key is `undefined`. */
   readonly args: Readonly<Record<string, string | undefined>>;
   /**

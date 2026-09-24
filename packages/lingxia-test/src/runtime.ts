@@ -41,6 +41,7 @@ interface RegisteredSpec {
   timeout: number;
   timeoutCleanup?: number;
   fresh: boolean;
+  restoreProfile: boolean;
   app?: string;
   forensics: boolean;
   reason?: string;
@@ -120,6 +121,7 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
     timeout: options.timeout ?? DEFAULT_SPEC_TIMEOUT_MS,
     timeoutCleanup: options.timeoutCleanup,
     fresh: options.fresh === true,
+    restoreProfile: options.restoreProfile === true,
     app: options.app,
     forensics: options.forensics !== false,
     reason: options.reason,
@@ -400,6 +402,7 @@ async function run(): Promise<ProtocolReport> {
   const cases: CaseRecord[] = [];
   forceRelaunchNext = false;
   let contaminated = false;
+  let contaminationReason: string | undefined;
 
   const queue = [...plan];
   const attempts = new Map<string, CaseRecord[]>();
@@ -448,7 +451,7 @@ async function run(): Promise<ProtocolReport> {
 
     const caseStarted = Date.now();
     if (budgetExhausted || contaminated || item.annotation === "skip" || item.annotation === "fixme") {
-      if (contaminated) record.reason = "Not run: a previous spec left asynchronous work pending; restart the run.";
+      if (contaminated) record.reason = contaminationReason ?? "Not run: a previous spec left asynchronous work pending; restart the run.";
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
       record.status = "skipped";
       record.duration_ms = Date.now() - caseStarted;
@@ -471,9 +474,22 @@ async function run(): Promise<ProtocolReport> {
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
 
-    const shouldRelaunch = item.fresh || forceRelaunchNext;
+    const shouldRelaunch = item.fresh || item.restoreProfile || forceRelaunchNext;
     forceRelaunchNext = false;
+    // `restoreProfile`: snapshot the isolated profile now and roll back to it
+    // after the spec. Registered as the first cleanup, so it runs last.
+    let profileRestored = false;
     const bodyPromise = (async () => {
+      if (item.restoreProfile) {
+        phase = "beforeEach";
+        const checkpoint = await fixture.profile.checkpoint();
+        fixture.defer(async () => {
+          await fixture.profile.restore(checkpoint);
+          profileRestored = true;
+          await fixture.profile.drop(checkpoint);
+        });
+        phase = "body";
+      }
       if (shouldRelaunch) await relaunchHome(fixture.raw);
       phase = "beforeEach";
       for (const hook of resetHooks) { if (hookFiles.get(hook) === source.file) await hook.fn(fixture); }
@@ -572,6 +588,11 @@ async function run(): Promise<ProtocolReport> {
       deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
     }
     fixture.endCleanup();
+    if (item.restoreProfile && !profileRestored && !contaminated) {
+      // The next spec would start on this spec's data: a stuck cleanup.
+      contaminated = true;
+      contaminationReason = "Not run: a previous spec's restoreProfile could not roll the app's data back; restart the run.";
+    }
 
     if (item.annotation === "fail") {
       // Without `expected`, the declared failure is whatever the body does to
