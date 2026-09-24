@@ -2544,6 +2544,8 @@ impl WebViewInner {
                 forMainFrameOnly: false];
 
                 let _: () = msg_send![user_content_controller, addUserScript: console_user_script];
+                // The controller retains the script; release the `alloc` reference.
+                let _ = Retained::from_raw(console_user_script);
             }
 
             // WebKit may restore a page from BFCache without producing a new
@@ -2566,6 +2568,8 @@ impl WebViewInner {
                 injectionTime: injection_time,
                 forMainFrameOnly: true];
             let _: () = msg_send![user_content_controller, addUserScript: restoration_user_script];
+            // The controller retains the script; release the `alloc` reference.
+            let _ = Retained::from_raw(restoration_user_script);
 
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
             {
@@ -2577,6 +2581,8 @@ impl WebViewInner {
                     forMainFrameOnly: false];
 
                 let _: () = msg_send![user_content_controller, addUserScript: input_helper_script];
+                // The controller retains the script; release the `alloc` reference.
+                let _ = Retained::from_raw(input_helper_script);
             }
 
             // LingXia platform/selection baseline. lxapp pages only: browser tabs render
@@ -2620,6 +2626,8 @@ impl WebViewInner {
                     injectionTime: injection_time,
                     forMainFrameOnly: true];
                 let _: () = msg_send![user_content_controller, addUserScript: platform_user_script];
+                // The controller retains the script; release the `alloc` reference.
+                let _ = Retained::from_raw(platform_user_script);
             }
 
             let message_handler = LingXiaMessageHandler::new(
@@ -4452,6 +4460,19 @@ impl WebViewInner {
         let result = objc2::exception::catch(std::panic::AssertUnwindSafe(|| unsafe {
             if let Some(observer) = observer {
                 observer.unobserve(webview);
+            }
+
+            // WebKit keeps a page's user content controller alive past the
+            // view, and with it every script message handler it retains (the
+            // native component bridge and what that holds). Empty it with the
+            // view so none of them outlive it.
+            let configuration: *mut AnyObject = msg_send![webview, configuration];
+            if !configuration.is_null() {
+                let controller: *mut AnyObject = msg_send![configuration, userContentController];
+                if !controller.is_null() {
+                    let _: () = msg_send![controller, removeAllScriptMessageHandlers];
+                    let _: () = msg_send![controller, removeAllUserScripts];
+                }
             }
 
             // Remove from superview if attached to prevent memory leaks

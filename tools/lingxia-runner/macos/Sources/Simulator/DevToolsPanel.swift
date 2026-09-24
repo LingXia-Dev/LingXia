@@ -16,6 +16,11 @@ public final class DevToolsLogger {
         public let message: String
     }
 
+    /// Entries kept for the console. Every simulator window replays them, and
+    /// a long session (a test run reopening the app for every spec) would
+    /// otherwise make each reopen slower than the last.
+    static let maxEntries = 2_000
+
     private(set) var entries: [LogEntry] = []
     /// Called on main thread whenever a new entry is appended.
     var onNewEntry: ((LogEntry) -> Void)?
@@ -25,6 +30,10 @@ public final class DevToolsLogger {
     public func log(_ message: String, level: LogLevel = .info) {
         let entry = LogEntry(timestamp: Date(), level: level, message: message)
         entries.append(entry)
+        // Trim in batches so appending stays amortized O(1).
+        if entries.count > Self.maxEntries + Self.maxEntries / 4 {
+            entries.removeFirst(entries.count - Self.maxEntries)
+        }
         onNewEntry?(entry)
     }
 
@@ -56,6 +65,8 @@ class DevToolsPanel: NSView {
     private var infoTextView: NSTextView!
 
     private var currentTab: Tab = .console
+    /// Lines in the console text view, trimmed like the logger's entries.
+    private var consoleLines = 0
 
     private static let timeFormatter: DateFormatter = {
         let f = DateFormatter()
@@ -201,13 +212,23 @@ class DevToolsPanel: NSView {
     }
 
     private func subscribeToLogger() {
-        // Replay existing entries
-        for entry in DevToolsLogger.shared.entries {
-            appendEntry(entry)
-        }
+        showEntries(DevToolsLogger.shared.entries)
         DevToolsLogger.shared.onNewEntry = { [weak self] entry in
             self?.appendEntry(entry)
         }
+    }
+
+    /// Replace the console with `entries` in one edit and one scroll, rather
+    /// than laying out and scrolling once per line.
+    private func showEntries(_ entries: [DevToolsLogger.LogEntry]) {
+        guard let storage = consoleTextView.textStorage else { return }
+        let text = NSMutableAttributedString()
+        for entry in entries {
+            text.append(Self.render(entry))
+        }
+        storage.setAttributedString(text)
+        consoleLines = entries.count
+        consoleTextView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
     }
 
     // MARK: - Actions
@@ -221,12 +242,26 @@ class DevToolsPanel: NSView {
     @objc private func clearConsole() {
         DevToolsLogger.shared.clear()
         consoleTextView.string = ""
+        consoleLines = 0
     }
 
     // MARK: - Console output
 
     private func appendEntry(_ entry: DevToolsLogger.LogEntry) {
-        let time = Self.timeFormatter.string(from: entry.timestamp)
+        if consoleLines >= DevToolsLogger.maxEntries + DevToolsLogger.maxEntries / 4 {
+            // The logger already holds this entry: redraw its trimmed list.
+            showEntries(DevToolsLogger.shared.entries)
+            return
+        }
+        guard let storage = consoleTextView.textStorage else { return }
+        storage.append(Self.render(entry))
+        consoleLines += 1
+        // Auto-scroll
+        consoleTextView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
+    }
+
+    private static func render(_ entry: DevToolsLogger.LogEntry) -> NSAttributedString {
+        let time = timeFormatter.string(from: entry.timestamp)
 
         let (color, prefix): (NSColor, String) = {
             switch entry.level {
@@ -243,10 +278,7 @@ class DevToolsPanel: NSView {
             .font: NSFont.monospacedSystemFont(ofSize: 11, weight: .regular),
             .foregroundColor: color,
         ]
-        guard let storage = consoleTextView.textStorage else { return }
-        storage.append(NSAttributedString(string: line, attributes: attrs))
-        // Auto-scroll
-        consoleTextView.scrollRangeToVisible(NSRange(location: storage.length, length: 0))
+        return NSAttributedString(string: line, attributes: attrs)
     }
 
     // MARK: - Info tab
