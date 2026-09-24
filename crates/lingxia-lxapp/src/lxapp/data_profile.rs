@@ -16,6 +16,7 @@
 #![cfg_attr(not(feature = "automation"), allow(dead_code))]
 
 use super::*;
+use std::collections::BTreeMap;
 
 /// Directory under `<data>/lingxia` holding every profile of this process.
 pub const PROFILES_DIR: &str = "test-profiles";
@@ -266,7 +267,19 @@ impl RunProfile {
         copy_dir(&self.live(), &target)
     }
 
+    #[cfg(test)]
     fn replace_live_from_checkpoint(&self, id: &str) -> Result<(), LxAppError> {
+        self.replace_live_keeping(id, &KeepKeys::default())
+            .map(|_| ())
+    }
+
+    /// Replace live with checkpoint `id`, carrying the current value (or
+    /// absence) of every storage key `keep` matches into the restored data.
+    /// Resolves the keys whose current values were carried over. The merge
+    /// happens on the staged copy, so live is either untouched or fully
+    /// replaced: the reopened app never sees the checkpoint's values of a
+    /// kept key.
+    fn replace_live_keeping(&self, id: &str, keep: &KeepKeys) -> Result<Vec<String>, LxAppError> {
         let source = self.checkpoint(id)?;
         if !source.is_dir() {
             return Err(LxAppError::ResourceNotFound(format!(
@@ -274,17 +287,176 @@ impl RunProfile {
             )));
         }
         let live = self.live();
-        // Stage next to live first, so a failed copy leaves live intact.
+        let kept = if keep.is_empty() {
+            BTreeMap::new()
+        } else {
+            read_kept(&live.join(STORAGE_FILE), keep)?
+        };
+        // Stage next to live first, so a failed copy or merge leaves live
+        // intact.
         let staged = self
             .dir
             .join(format!("restore-{}", Uuid::new_v4().simple()));
-        copy_dir(&source, &staged)?;
+        let prepared = copy_dir(&source, &staged).and_then(|()| {
+            if keep.is_empty() {
+                Ok(())
+            } else {
+                apply_kept(&staged.join(STORAGE_FILE), keep, &kept)
+            }
+        });
+        if let Err(err) = prepared {
+            let _ = fs::remove_dir_all(&staged);
+            return Err(err);
+        }
         if live.exists() {
             fs::remove_dir_all(&live)?;
         }
         fs::rename(&staged, &live)?;
-        Ok(())
+        Ok(kept.into_keys().collect())
     }
+}
+
+/// Most patterns one rollback may keep.
+pub const MAX_KEEP_PATTERNS: usize = 64;
+/// Longest keep pattern, the same bound `lx.getStorage()` puts on a key.
+pub const MAX_KEEP_PATTERN_BYTES: usize = 1024;
+
+/// `lx.getStorage()` keys a rollback keeps at their current values: globs
+/// where `*` matches any run of characters (dots included) and `?` exactly
+/// one; everything else is literal. Only storage keys are kept, never files.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct KeepKeys {
+    patterns: Vec<String>,
+}
+
+impl KeepKeys {
+    pub fn new(patterns: Vec<String>) -> Result<Self, LxAppError> {
+        if patterns.len() > MAX_KEEP_PATTERNS {
+            return Err(LxAppError::InvalidParameter(format!(
+                "a rollback keeps at most {MAX_KEEP_PATTERNS} key patterns, got {}",
+                patterns.len()
+            )));
+        }
+        for pattern in &patterns {
+            if pattern.is_empty() || pattern.len() > MAX_KEEP_PATTERN_BYTES {
+                return Err(LxAppError::InvalidParameter(format!(
+                    "keep pattern must be 1..={MAX_KEEP_PATTERN_BYTES} bytes, got {:?}",
+                    pattern
+                )));
+            }
+        }
+        Ok(Self { patterns })
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.patterns.is_empty()
+    }
+
+    pub fn matches(&self, key: &str) -> bool {
+        self.patterns
+            .iter()
+            .any(|pattern| glob_matches(pattern, key))
+    }
+}
+
+/// `*` any run of characters, `?` one character, the rest literal.
+fn glob_matches(pattern: &str, text: &str) -> bool {
+    let pattern: Vec<char> = pattern.chars().collect();
+    let text: Vec<char> = text.chars().collect();
+    let (mut p, mut t) = (0, 0);
+    // Where the last `*` was and how much text it had absorbed.
+    let mut star: Option<(usize, usize)> = None;
+    while t < text.len() {
+        match pattern.get(p) {
+            Some('*') => {
+                star = Some((p, t));
+                p += 1;
+            }
+            Some(&c) if c == '?' || c == text[t] => {
+                p += 1;
+                t += 1;
+            }
+            _ => match star {
+                Some((star_p, star_t)) => {
+                    p = star_p + 1;
+                    t = star_t + 1;
+                    star = Some((star_p, star_t + 1));
+                }
+                None => return false,
+            },
+        }
+    }
+    pattern[p..].iter().all(|c| *c == '*')
+}
+
+/// The table `lx.getStorage()` (rong_storage, [`STORAGE_FORMAT`]) keeps its
+/// entries in: string keys, encoded values copied as opaque bytes.
+const STORAGE_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("storage");
+
+fn storage_err(context: &str, err: impl std::fmt::Display) -> LxAppError {
+    LxAppError::IoError(format!("{context} profile storage: {err}"))
+}
+
+/// Current entries of the closed storage file whose keys `keep` matches.
+fn read_kept(storage: &Path, keep: &KeepKeys) -> Result<BTreeMap<String, Vec<u8>>, LxAppError> {
+    use redb::{ReadableDatabase, ReadableTable};
+    let mut kept = BTreeMap::new();
+    if !storage.is_file() {
+        return Ok(kept);
+    }
+    let db = redb::Database::open(storage).map_err(|err| storage_err("open", err))?;
+    let txn = db.begin_read().map_err(|err| storage_err("read", err))?;
+    let table = match txn.open_table(STORAGE_TABLE) {
+        Ok(table) => table,
+        Err(redb::TableError::TableDoesNotExist(_)) => return Ok(kept),
+        Err(err) => return Err(storage_err("read", err)),
+    };
+    for entry in table.iter().map_err(|err| storage_err("read", err))? {
+        let (key, value) = entry.map_err(|err| storage_err("read", err))?;
+        if keep.matches(key.value()) {
+            kept.insert(key.value().to_string(), value.value().to_vec());
+        }
+    }
+    Ok(kept)
+}
+
+/// Make the keys `keep` matches in the closed storage file exactly `kept`:
+/// matching keys absent from `kept` are removed, the others written.
+fn apply_kept(
+    storage: &Path,
+    keep: &KeepKeys,
+    kept: &BTreeMap<String, Vec<u8>>,
+) -> Result<(), LxAppError> {
+    use redb::ReadableTable;
+    if !storage.is_file() && kept.is_empty() {
+        return Ok(());
+    }
+    let db = redb::Database::create(storage).map_err(|err| storage_err("open", err))?;
+    let txn = db.begin_write().map_err(|err| storage_err("write", err))?;
+    {
+        let mut table = txn
+            .open_table(STORAGE_TABLE)
+            .map_err(|err| storage_err("write", err))?;
+        let mut stale = Vec::new();
+        for entry in table.iter().map_err(|err| storage_err("read", err))? {
+            let (key, _) = entry.map_err(|err| storage_err("read", err))?;
+            let key = key.value();
+            if keep.matches(key) && !kept.contains_key(key) {
+                stale.push(key.to_string());
+            }
+        }
+        for key in stale {
+            table
+                .remove(key.as_str())
+                .map_err(|err| storage_err("write", err))?;
+        }
+        for (key, value) in kept {
+            table
+                .insert(key.as_str(), value.as_slice())
+                .map_err(|err| storage_err("write", err))?;
+        }
+    }
+    txn.commit().map_err(|err| storage_err("write", err))
 }
 
 fn create_private_dir(dir: &Path) -> Result<(), LxAppError> {
@@ -541,12 +713,27 @@ mod switching {
     /// Replace the profile with checkpoint `id`. Refused unless `appid`
     /// currently runs on `profile`, so it can never touch the app's real data.
     pub async fn restore(appid: &str, profile: &RunProfile, id: &str) -> Result<(), LxAppError> {
+        restore_keeping(appid, profile, id, &KeepKeys::default())
+            .await
+            .map(|_| ())
+    }
+
+    /// [`restore`], carrying the current values of the storage keys `keep`
+    /// matches into the restored profile while the app is closed. Resolves
+    /// the keys carried over.
+    pub async fn restore_keeping(
+        appid: &str,
+        profile: &RunProfile,
+        id: &str,
+        keep: &KeepKeys,
+    ) -> Result<Vec<String>, LxAppError> {
         require_active(appid, profile)?;
         profile.checkpoint(id)?;
         let profile_owned = profile.clone();
         let checkpoint = id.to_string();
+        let keep = keep.clone();
         with_app_closed(&manager()?, appid, move || {
-            profile_owned.replace_live_from_checkpoint(&checkpoint)
+            profile_owned.replace_live_keeping(&checkpoint, &keep)
         })
         .await
     }
@@ -804,6 +991,190 @@ mod tests {
         profile.drop_checkpoint("cp-1").unwrap();
         assert!(profile.replace_live_from_checkpoint("cp-1").is_err());
         assert!(profile.checkpoint("../escape").is_err());
+        let _ = fs::remove_dir_all(base);
+    }
+
+    fn write_storage(path: &Path, entries: &[(&str, &[u8])], removed: &[&str]) {
+        let db = redb::Database::create(path).unwrap();
+        let txn = db.begin_write().unwrap();
+        {
+            let mut table = txn.open_table(STORAGE_TABLE).unwrap();
+            for (key, value) in entries {
+                table.insert(*key, *value).unwrap();
+            }
+            for key in removed {
+                table.remove(*key).unwrap();
+            }
+        }
+        txn.commit().unwrap();
+    }
+
+    fn read_storage(path: &Path) -> BTreeMap<String, Vec<u8>> {
+        read_kept(path, &KeepKeys::new(vec!["*".into()]).unwrap()).unwrap()
+    }
+
+    fn keep(patterns: &[&str]) -> KeepKeys {
+        KeepKeys::new(patterns.iter().map(|p| p.to_string()).collect()).unwrap()
+    }
+
+    #[test]
+    fn keep_patterns_glob_over_whole_keys() {
+        let auth = keep(&["auth.*"]);
+        assert!(auth.matches("auth.token"));
+        assert!(auth.matches("auth."));
+        assert!(auth.matches("auth.session.refresh"));
+        assert!(!auth.matches("auth"));
+        assert!(!auth.matches("my.auth.token"));
+        let mixed = keep(&["*token", "user.?d", "exact"]);
+        assert!(mixed.matches("refresh_token"));
+        assert!(mixed.matches("token"));
+        assert!(mixed.matches("user.id"));
+        assert!(!mixed.matches("user.idx"));
+        assert!(mixed.matches("exact"));
+        assert!(!mixed.matches("exactly"));
+        assert!(keep(&["a*b*c"]).matches("a-b-b-c"));
+        assert!(!keep(&["a*b*c"]).matches("a-c-b"));
+        assert!(keep(&["令牌.*"]).matches("令牌.刷新"));
+        assert!(KeepKeys::default().is_empty());
+        assert!(!KeepKeys::default().matches("anything"));
+        assert!(KeepKeys::new(vec![String::new()]).is_err());
+        assert!(KeepKeys::new(vec!["x".repeat(MAX_KEEP_PATTERN_BYTES + 1)]).is_err());
+        assert!(KeepKeys::new(vec!["k".into(); MAX_KEEP_PATTERNS + 1]).is_err());
+    }
+
+    #[test]
+    fn restore_keeping_carries_current_matching_keys_over_the_checkpoint() {
+        let base = scratch("keep");
+        let profile = RunProfile::create(&base).unwrap();
+        let storage = profile.live().join(STORAGE_FILE);
+        write_storage(
+            &storage,
+            &[
+                ("auth.token", b"t1"),
+                ("auth.refresh", b"r1"),
+                ("draft", b"d1"),
+            ],
+            &[],
+        );
+        fs::create_dir_all(profile.live().join(USER_DATA)).unwrap();
+        fs::write(profile.live().join(USER_DATA).join("a.txt"), b"old").unwrap();
+        profile.copy_live_to_checkpoint("cp").unwrap();
+
+        // The spec rotates the token, signs a new device in, drops the
+        // refresh token and edits app data.
+        write_storage(
+            &storage,
+            &[
+                ("auth.token", b"t2"),
+                ("auth.device", b"dev"),
+                ("draft", b"d2"),
+            ],
+            &["auth.refresh"],
+        );
+        fs::write(profile.live().join(USER_DATA).join("a.txt"), b"new").unwrap();
+
+        let kept = profile
+            .replace_live_keeping("cp", &keep(&["auth.*"]))
+            .unwrap();
+        assert_eq!(
+            kept,
+            vec!["auth.device".to_string(), "auth.token".to_string()]
+        );
+        let restored = read_storage(&storage);
+        assert_eq!(
+            restored.get("auth.token").map(Vec::as_slice),
+            Some(&b"t2"[..])
+        );
+        assert_eq!(
+            restored.get("auth.device").map(Vec::as_slice),
+            Some(&b"dev"[..])
+        );
+        assert!(
+            !restored.contains_key("auth.refresh"),
+            "a deleted key stays deleted"
+        );
+        assert_eq!(restored.get("draft").map(Vec::as_slice), Some(&b"d1"[..]));
+        assert_eq!(
+            fs::read(profile.live().join(USER_DATA).join("a.txt")).unwrap(),
+            b"old",
+            "files roll back"
+        );
+        // The checkpoint itself is untouched.
+        let checkpoint = read_storage(&profile.checkpoint("cp").unwrap().join(STORAGE_FILE));
+        assert_eq!(
+            checkpoint.get("auth.token").map(Vec::as_slice),
+            Some(&b"t1"[..])
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn restore_keeping_handles_missing_storage_on_either_side() {
+        let base = scratch("keep-missing");
+        let profile = RunProfile::create(&base).unwrap();
+        // Checkpoint taken before the app ever opened its storage.
+        profile.copy_live_to_checkpoint("empty").unwrap();
+        let storage = profile.live().join(STORAGE_FILE);
+        write_storage(&storage, &[("auth.token", b"t"), ("cache", b"c")], &[]);
+        profile
+            .replace_live_keeping("empty", &keep(&["auth.*"]))
+            .unwrap();
+        let restored = read_storage(&storage);
+        assert_eq!(restored.len(), 1);
+        assert_eq!(
+            restored.get("auth.token").map(Vec::as_slice),
+            Some(&b"t"[..])
+        );
+
+        // Nothing current to keep, nothing in the checkpoint: no file appears.
+        let fresh = RunProfile::create(&base).unwrap();
+        fresh.copy_live_to_checkpoint("none").unwrap();
+        fresh
+            .replace_live_keeping("none", &keep(&["auth.*"]))
+            .unwrap();
+        assert!(!fresh.live().join(STORAGE_FILE).exists());
+
+        // A checkpoint with a matching key the current data no longer has.
+        let signed_out = RunProfile::create(&base).unwrap();
+        let path = signed_out.live().join(STORAGE_FILE);
+        write_storage(&path, &[("auth.token", b"old")], &[]);
+        signed_out.copy_live_to_checkpoint("cp").unwrap();
+        write_storage(&path, &[], &["auth.token"]);
+        signed_out
+            .replace_live_keeping("cp", &keep(&["auth.*"]))
+            .unwrap();
+        assert!(
+            read_storage(&path).is_empty(),
+            "a sign-out survives the rollback"
+        );
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_failed_keep_merge_leaves_live_untouched() {
+        let base = scratch("keep-fail");
+        let profile = RunProfile::create(&base).unwrap();
+        profile.copy_live_to_checkpoint("cp").unwrap();
+        // A checkpoint whose storage is not a database.
+        fs::write(
+            profile.checkpoint("cp").unwrap().join(STORAGE_FILE),
+            b"not redb",
+        )
+        .unwrap();
+        let storage = profile.live().join(STORAGE_FILE);
+        write_storage(&storage, &[("auth.token", b"t")], &[]);
+        assert!(
+            profile
+                .replace_live_keeping("cp", &keep(&["auth.*"]))
+                .is_err()
+        );
+        assert_eq!(read_storage(&storage).len(), 1, "live is intact");
+        let leftovers: Vec<_> = fs::read_dir(profile.dir())
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().starts_with("restore-"))
+            .collect();
+        assert!(leftovers.is_empty(), "the staged copy is removed");
         let _ = fs::remove_dir_all(base);
     }
 
