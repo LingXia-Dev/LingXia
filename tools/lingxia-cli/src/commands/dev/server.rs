@@ -33,6 +33,14 @@ const TEST_RUN_LEASE: Duration = Duration::from_secs(180);
 /// Mobile keeps waiting: swiping the app away is not the end of a device session.
 #[cfg_attr(test, allow(dead_code))]
 const RUNTIME_GONE_GRACE: Duration = Duration::from_secs(1);
+/// The same window while a test run is active: a runtime that drops its
+/// connection mid-run (a transient socket loss, a busy host) gets this long
+/// to come back before the session — and the run with it — ends.
+#[cfg_attr(test, allow(dead_code))]
+const RUNTIME_GONE_GRACE_DURING_RUN: Duration = Duration::from_secs(30);
+/// Error code a `session.test.poll` gets while its run's runtime is away
+/// but may still reconnect.
+pub(crate) const RUNTIME_RECONNECTING: &str = "runtime_reconnecting";
 
 pub struct DevServerHandle {
     session: DevLogSession,
@@ -154,6 +162,9 @@ pub(crate) struct DevServerState {
     /// The `session.test` run relayed through this server that has not yet
     /// been seen to finish, with the time it was last polled.
     active_test_run: Mutex<Option<(String, Instant)>>,
+    /// The active run whose runtime disconnected, with the disconnect time;
+    /// restored as active if the runtime reconnects within the grace.
+    interrupted_test_run: Mutex<Option<(String, Instant)>>,
 }
 
 impl DevServerState {
@@ -175,6 +186,7 @@ impl DevServerState {
             end_on_runtime_gone,
             runtime_epoch: AtomicU64::new(0),
             active_test_run: Mutex::new(None),
+            interrupted_test_run: Mutex::new(None),
         }
     }
 
@@ -195,6 +207,14 @@ impl DevServerState {
         *guard = Some((runtime_id, sender));
         // Cancel any in-flight "runtime gone" teardown from a previous disconnect.
         self.runtime_epoch.fetch_add(1, Ordering::AcqRel);
+        // A run interrupted by the disconnect may have survived it.
+        if let Some((run_id, since)) = self.lock_interrupted_test_run().take() {
+            eprintln!(
+                "[lingxia dev] runtime reconnected {:.1}s into test run {run_id}; resuming it.",
+                since.elapsed().as_secs_f64()
+            );
+            *self.lock_active_test_run() = Some((run_id, Instant::now()));
+        }
         if replaced {
             self.clear_pending_results();
         }
@@ -208,8 +228,13 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if guard.as_ref().is_some_and(|(id, _)| *id == runtime_id) {
             *guard = None;
-            // The run lived in that runtime.
-            *self.lock_active_test_run() = None;
+            // The run lived in that runtime: it is interrupted, not over,
+            // until the grace decides.
+            let active = self
+                .lock_active_test_run()
+                .take()
+                .filter(|(_, last_seen)| last_seen.elapsed() < TEST_RUN_LEASE);
+            *self.lock_interrupted_test_run() = active.map(|(run_id, _)| (run_id, Instant::now()));
             // Serialize cleanup and the disconnect epoch with replacement claims.
             self.clear_pending_results();
             return Some(self.runtime_epoch.fetch_add(1, Ordering::AcqRel) + 1);
@@ -267,7 +292,13 @@ impl DevServerState {
             && self.runtime_epoch.load(Ordering::Acquire) == epoch
             && guard.is_none()
         {
-            eprintln!("[lingxia dev] runtime disconnected; ending session.");
+            let interrupted = self.lock_interrupted_test_run().take();
+            match interrupted {
+                Some((run_id, _)) => eprintln!(
+                    "[lingxia dev] runtime did not reconnect during test run {run_id}; ending session."
+                ),
+                None => eprintln!("[lingxia dev] runtime disconnected; ending session."),
+            }
             self.request_shutdown();
         }
     }
@@ -279,11 +310,53 @@ impl DevServerState {
         if !state.end_on_runtime_gone {
             return;
         }
+        let grace = match state.interrupted_test_run() {
+            Some(run_id) => {
+                let grace = runtime_gone_grace_during_run();
+                eprintln!(
+                    "[lingxia dev] runtime disconnected during test run {run_id}; \
+                     waiting {}s for it to reconnect.",
+                    grace.as_secs()
+                );
+                grace
+            }
+            None => runtime_gone_grace(),
+        };
         let state = Arc::clone(state);
         thread::spawn(move || {
-            thread::sleep(runtime_gone_grace());
+            thread::sleep(grace);
             state.finish_runtime_disconnect(epoch);
         });
+    }
+
+    fn lock_interrupted_test_run(&self) -> std::sync::MutexGuard<'_, Option<(String, Instant)>> {
+        self.interrupted_test_run
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The run whose runtime is away but still within its reconnect grace.
+    fn interrupted_test_run(&self) -> Option<String> {
+        self.lock_interrupted_test_run()
+            .as_ref()
+            .filter(|(_, since)| since.elapsed() < runtime_gone_grace_during_run())
+            .map(|(run_id, _)| run_id.clone())
+    }
+
+    /// The error a poll for `run_id` gets while its runtime may reconnect.
+    fn reconnecting_poll_error(&self, id: String, run_id: &str) -> Option<DevSessionMessage> {
+        let interrupted = self.interrupted_test_run()?;
+        (interrupted == run_id).then(|| {
+            DevSessionMessage::error(
+                id,
+                RUNTIME_RECONNECTING,
+                format!(
+                    "runtime disconnected during test run {run_id}; waiting up to {}s for it \
+                     to reconnect",
+                    runtime_gone_grace_during_run().as_secs()
+                ),
+            )
+        })
     }
 
     fn lock_active_test_run(&self) -> std::sync::MutexGuard<'_, Option<(String, Instant)>> {
@@ -395,6 +468,17 @@ fn runtime_gone_grace() -> Duration {
     #[cfg(not(test))]
     {
         RUNTIME_GONE_GRACE
+    }
+}
+
+fn runtime_gone_grace_during_run() -> Duration {
+    #[cfg(test)]
+    {
+        Duration::from_millis(300)
+    }
+    #[cfg(not(test))]
+    {
+        RUNTIME_GONE_GRACE_DURING_RUN
     }
 }
 
@@ -983,6 +1067,17 @@ fn handle_client_connection(
     }
 
     let Some(runtime_sender) = state.runtime_sender() else {
+        if method.as_str() == lingxia_control_protocol::methods::session::test::POLL
+            && let Some(run_id) = params
+                .as_ref()
+                .and_then(|params| params.get("run_id"))
+                .and_then(serde_json::Value::as_str)
+            && let Some(reply) = state.reconnecting_poll_error(id.clone(), run_id)
+        {
+            send_wire_message(&mut websocket, &reply)?;
+            let _ = websocket.close(None);
+            return Ok(());
+        }
         let error = if state.runtime_rejected.load(Ordering::Acquire) {
             "devtool runtime is not connected: a runtime peer was rejected for a missing or \
              wrong session token — the device host likely predates session tokens; rebuild \
@@ -1340,6 +1435,60 @@ mod tests {
             Instant::now() - TEST_RUN_LEASE - Duration::from_secs(1),
         ));
         assert!(!state.test_run_active());
+    }
+
+    #[test]
+    fn a_disconnect_during_a_run_waits_longer_and_reports_it() {
+        use lingxia_control_protocol::methods::session::test;
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        DevServerState::drop_runtime(&state, id);
+        // Past the plain grace, still inside the run grace.
+        thread::sleep(Duration::from_millis(120));
+        assert!(
+            !stop.load(std::sync::atomic::Ordering::Acquire),
+            "an active run extends the grace"
+        );
+        match state.reconnecting_poll_error("p1".into(), "run-1") {
+            Some(DevSessionMessage::Response(response)) => {
+                assert_eq!(response.error.unwrap().code, super::RUNTIME_RECONNECTING);
+            }
+            other => panic!("expected a reconnecting error, got {other:?}"),
+        }
+        assert!(
+            state
+                .reconnecting_poll_error("p2".into(), "run-0")
+                .is_none()
+        );
+
+        // The runtime comes back: the run is active again, the session lives.
+        let (tx2, _rx2) = mpsc::channel();
+        let _ = state.claim_runtime_sender(tx2);
+        assert!(state.test_run_active());
+        thread::sleep(Duration::from_millis(350));
+        assert!(!stop.load(std::sync::atomic::Ordering::Acquire));
+        assert!(
+            state
+                .reconnecting_poll_error("p3".into(), "run-1")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn a_runtime_that_stays_away_ends_the_run_and_session() {
+        use lingxia_control_protocol::methods::session::test;
+        let stop = Arc::new(AtomicBool::new(false));
+        let state = desktop_state(stop.clone());
+        let (tx, _rx) = mpsc::channel();
+        let (id, _) = state.claim_runtime_sender(tx);
+        state.observe_test_response(test::START, &test_response("run-1", "running"));
+        DevServerState::drop_runtime(&state, id);
+        thread::sleep(Duration::from_millis(450));
+        assert!(stop.load(std::sync::atomic::Ordering::Acquire));
+        assert!(state.reconnecting_poll_error("p".into(), "run-1").is_none());
     }
 
     #[test]

@@ -68,11 +68,94 @@ pub struct SessionInfo {
     pub log_file: String,
 }
 
+/// Which build a broker process runs. A per-user broker outlives the
+/// `lingxia` that spawned it, so it can be a build from another checkout or
+/// one since rebuilt in place; clients compare this with their own build.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BrokerBuild {
+    pub version: String,
+    /// Executable path of the broker process.
+    pub executable: String,
+    /// The executable's modification time when the process started, in ms
+    /// since the Unix epoch; a rebuild in place changes it.
+    #[serde(default)]
+    pub modified_ms: u64,
+}
+
+impl BrokerBuild {
+    /// This process's build, identified by `version` and its executable.
+    pub fn current(version: &str) -> Self {
+        let executable = std::env::current_exe().ok();
+        let modified_ms = executable
+            .as_ref()
+            .and_then(|path| std::fs::metadata(path).ok())
+            .and_then(|meta| meta.modified().ok())
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |elapsed| elapsed.as_millis() as u64);
+        Self {
+            version: version.to_string(),
+            executable: executable
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
+            modified_ms,
+        }
+    }
+
+    /// Why `self` (a running broker) is not `client`'s build, if it is not.
+    pub fn mismatch(&self, client: &Self) -> Option<String> {
+        if self.version != client.version {
+            return Some(format!(
+                "version {} (this CLI is {})",
+                self.version, client.version
+            ));
+        }
+        if self.executable != client.executable {
+            return Some(format!("built at {}", self.executable));
+        }
+        if self.modified_ms != client.modified_ms {
+            return Some("started before this CLI was rebuilt".to_string());
+        }
+        None
+    }
+}
+
+/// A running broker, as it describes itself.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrokerInfo {
+    /// `None` for a broker started without build identity.
+    pub build: Option<BrokerBuild>,
+    pub pid: u32,
+    /// Live registered sessions.
+    pub sessions: usize,
+}
+
+/// What answers on the broker socket.
+#[derive(Debug, Clone)]
+pub enum BrokerProbe {
+    /// No broker is running.
+    Absent,
+    /// A broker that predates `info` (closes the connection on it).
+    Legacy,
+    Running(BrokerInfo),
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 enum Request {
-    Register { v: u32, session: SessionInfo },
-    List { v: u32 },
+    Register {
+        v: u32,
+        session: SessionInfo,
+    },
+    List {
+        v: u32,
+    },
+    Info {
+        v: u32,
+    },
+    /// Exit, but only while no session is registered.
+    Shutdown {
+        v: u32,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -81,6 +164,29 @@ enum Response {
     Registered { v: u32 },
     Sessions { v: u32, sessions: Vec<SessionInfo> },
     Error { v: u32, message: String },
+    Info { v: u32, info: BrokerInfo },
+    ShuttingDown { v: u32 },
+}
+
+/// The broker's answer to `shutdown` with `live` sessions registered, and
+/// whether it then exits.
+fn shutdown_reply(live: usize) -> (Response, bool) {
+    if live == 0 {
+        (
+            Response::ShuttingDown {
+                v: PROTOCOL_VERSION,
+            },
+            true,
+        )
+    } else {
+        (
+            Response::Error {
+                v: PROTOCOL_VERSION,
+                message: format!("{live} dev session(s) still registered"),
+            },
+            false,
+        )
+    }
 }
 
 /// Local IPC name for the current user's broker.
@@ -199,6 +305,11 @@ fn read_json<R: BufRead, T: for<'de> Deserialize<'de>>(r: &mut R) -> std::io::Re
 /// Run the broker accept loop. Returns `Ok(false)` without serving when
 /// another live broker already owns the socket (the normal lost-race exit).
 pub fn run_broker() -> std::io::Result<bool> {
+    run_broker_as(None)
+}
+
+/// [`run_broker`], reporting `build` to clients that ask which build it is.
+pub fn run_broker_as(build: Option<BrokerBuild>) -> std::io::Result<bool> {
     let name = broker_name()?;
     let listener = match ListenerOptions::new().name(name.clone()).create_sync() {
         Ok(listener) => listener,
@@ -228,15 +339,21 @@ pub fn run_broker() -> std::io::Result<bool> {
     }
 
     let sessions: Arc<Mutex<Vec<SessionInfo>>> = Arc::new(Mutex::new(Vec::new()));
+    let build = Arc::new(build);
     for conn in listener.incoming() {
         let Ok(conn) = conn else { continue };
         let sessions = Arc::clone(&sessions);
-        std::thread::spawn(move || serve_connection(conn, sessions));
+        let build = Arc::clone(&build);
+        std::thread::spawn(move || serve_connection(conn, sessions, build));
     }
     Ok(true)
 }
 
-fn serve_connection(conn: Stream, sessions: Arc<Mutex<Vec<SessionInfo>>>) {
+fn serve_connection(
+    conn: Stream,
+    sessions: Arc<Mutex<Vec<SessionInfo>>>,
+    build: Arc<Option<BrokerBuild>>,
+) {
     let mut reader = BufReader::new(conn);
     loop {
         let request: Option<Request> = match read_json(&mut reader) {
@@ -245,6 +362,37 @@ fn serve_connection(conn: Stream, sessions: Arc<Mutex<Vec<SessionInfo>>>) {
         };
         let Some(request) = request else { return };
         match request {
+            Request::Info { .. } => {
+                let live = sessions.lock().map(|s| s.len()).unwrap_or_default();
+                let _ = write_json(
+                    reader.get_mut(),
+                    &Response::Info {
+                        v: PROTOCOL_VERSION,
+                        info: BrokerInfo {
+                            build: (*build).clone(),
+                            pid: std::process::id(),
+                            sessions: live,
+                        },
+                    },
+                );
+            }
+            Request::Shutdown { .. } => {
+                // Held across the reply so no registration slips in between.
+                let Ok(live) = sessions.lock() else {
+                    return;
+                };
+                let (reply, exit) = shutdown_reply(live.len());
+                let _ = write_json(reader.get_mut(), &reply);
+                if exit {
+                    #[cfg(unix)]
+                    {
+                        if let Ok(path) = socket_path() {
+                            let _ = std::fs::remove_file(path);
+                        }
+                    }
+                    std::process::exit(0);
+                }
+            }
             Request::List { .. } => {
                 let snapshot = sessions.lock().map(|s| s.clone()).unwrap_or_default();
                 let _ = write_json(
@@ -343,6 +491,46 @@ pub fn list_sessions() -> std::io::Result<Vec<SessionInfo>> {
     match read_json(&mut reader)? {
         Some(Response::Sessions { sessions, .. }) => Ok(sessions),
         Some(Response::Error { message, .. }) => Err(std::io::Error::other(message)),
+        _ => Err(std::io::Error::other("unexpected broker reply")),
+    }
+}
+
+/// Ask the running broker which build it is.
+pub fn probe_broker() -> BrokerProbe {
+    let Ok(stream) = connect() else {
+        return BrokerProbe::Absent;
+    };
+    let mut reader = BufReader::new(stream);
+    if write_json(
+        reader.get_mut(),
+        &Request::Info {
+            v: PROTOCOL_VERSION,
+        },
+    )
+    .is_err()
+    {
+        return BrokerProbe::Legacy;
+    }
+    match read_json::<_, Response>(&mut reader) {
+        Ok(Some(Response::Info { info, .. })) => BrokerProbe::Running(info),
+        // An older broker cannot parse `info` and drops the connection.
+        _ => BrokerProbe::Legacy,
+    }
+}
+
+/// Stop the broker if no session is registered with it. `Ok(false)` when it
+/// refused because sessions are live.
+pub fn shutdown_idle_broker() -> std::io::Result<bool> {
+    let mut reader = BufReader::new(connect()?);
+    write_json(
+        reader.get_mut(),
+        &Request::Shutdown {
+            v: PROTOCOL_VERSION,
+        },
+    )?;
+    match read_json::<_, Response>(&mut reader)? {
+        Some(Response::ShuttingDown { .. }) => Ok(true),
+        Some(Response::Error { .. }) => Ok(false),
         _ => Err(std::io::Error::other("unexpected broker reply")),
     }
 }
@@ -454,6 +642,79 @@ mod tests {
             Request::Register { session, .. } => assert_eq!(session.session_id, "abc123"),
             _ => panic!("wrong variant"),
         }
+    }
+
+    #[test]
+    fn a_broker_shuts_down_only_when_idle() {
+        let (reply, exit) = shutdown_reply(0);
+        assert!(exit);
+        assert!(matches!(reply, Response::ShuttingDown { .. }));
+        let (reply, exit) = shutdown_reply(2);
+        assert!(!exit);
+        match reply {
+            Response::Error { message, .. } => assert!(message.contains("2 dev session")),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_mismatch_names_what_differs() {
+        let client = BrokerBuild {
+            version: "0.18.0".into(),
+            executable: "/a/target/debug/lingxia".into(),
+            modified_ms: 10,
+        };
+        assert_eq!(client.mismatch(&client), None);
+        let other_checkout = BrokerBuild {
+            executable: "/b/target/debug/lingxia".into(),
+            ..client.clone()
+        };
+        assert!(
+            other_checkout
+                .mismatch(&client)
+                .unwrap()
+                .contains("/b/target")
+        );
+        let older = BrokerBuild {
+            version: "0.17.0".into(),
+            ..client.clone()
+        };
+        assert!(older.mismatch(&client).unwrap().contains("0.17.0"));
+        let rebuilt = BrokerBuild {
+            modified_ms: 5,
+            ..client.clone()
+        };
+        assert!(rebuilt.mismatch(&client).unwrap().contains("rebuilt"));
+    }
+
+    #[test]
+    fn an_older_broker_cannot_parse_info() {
+        // What a pre-`info` broker's `Request` accepted.
+        #[derive(Deserialize)]
+        #[serde(tag = "op", rename_all = "snake_case")]
+        #[allow(dead_code)]
+        enum OldRequest {
+            Register { v: u32, session: SessionInfo },
+            List { v: u32 },
+        }
+        let info = serde_json::to_string(&Request::Info {
+            v: PROTOCOL_VERSION,
+        })
+        .unwrap();
+        assert!(serde_json::from_str::<OldRequest>(&info).is_err());
+        let reply = serde_json::to_string(&Response::Info {
+            v: PROTOCOL_VERSION,
+            info: BrokerInfo {
+                build: None,
+                pid: 1,
+                sessions: 0,
+            },
+        })
+        .unwrap();
+        assert!(matches!(
+            serde_json::from_str::<Response>(&reply).unwrap(),
+            Response::Info { .. }
+        ));
     }
 
     #[test]
