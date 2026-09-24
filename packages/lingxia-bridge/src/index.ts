@@ -46,6 +46,11 @@ export {
 } from './bridge';
 export { isNativeError } from './invocation';
 export { getDisplayLanguage, subscribeDisplayLanguage } from './runtime-env';
+export {
+  getSurfaceContext,
+  subscribeSurfaceContext,
+  type SurfaceContext,
+} from './surface-context';
 export { renderErrorUI, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 

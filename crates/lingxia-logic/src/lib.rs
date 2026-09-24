@@ -85,6 +85,7 @@ pub fn register_logic_runtime() {
     ::lxapp::register_surface_active_main_observer(surface::notify_active_main_changed);
     ::lxapp::register_surface_visibility_observer(surface::notify_surface_visibility);
     ::lxapp::register_surface_context_observer(surface::notify_surface_context_changed);
+    ::lxapp::register_surface_context_snapshot(surface::surface_context_json);
     // SAFETY: the symbol is lxapp's private framework registration edge. It
     // is intentionally absent from the downstream extension API.
     unsafe { register_framework_logic_extension(Box::new(LxLogicRuntime)) };

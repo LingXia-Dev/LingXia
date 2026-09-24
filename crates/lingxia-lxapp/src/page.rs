@@ -1226,6 +1226,20 @@ impl PageInstance {
         self.fire_lifecycle_events(events_to_fire);
     }
 
+    /// Hand this page's View its adaptive context, for `useSurfaceContext()`.
+    pub(crate) fn push_surface_context(&self) {
+        if let Some(script) = crate::lxapp::view_surface_context_script(&self.appid()) {
+            self.push_view_script(&script);
+        }
+    }
+
+    /// Run a host-to-View script in this page's document, if it has one.
+    pub(crate) fn push_view_script(&self, script: &str) {
+        if let Some(webview) = self.webview() {
+            let _ = webview.exec_js(script);
+        }
+    }
+
     fn notify_render_started_inner(&self) {
         let mut events_to_fire: Vec<(PageLifecycleEvent, Option<String>)> = Vec::new();
         {

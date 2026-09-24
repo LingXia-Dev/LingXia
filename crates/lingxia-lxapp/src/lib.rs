@@ -116,7 +116,8 @@ pub use lxapp::{
     refresh_display_language_system, refresh_host_appearance_system, register_builtin_asset_bundle,
     register_dev_bundle_source, register_runner_host, register_surface_active_main_observer,
     register_surface_close_observer, register_surface_context_observer,
-    register_surface_visibility_observer, register_synthetic_lxapp,
+    register_surface_context_snapshot, register_surface_visibility_observer,
+    register_synthetic_lxapp,
     registry::{
         display_icon_path as lxapp_display_icon_path, display_name as lxapp_display_name,
         display_status as lxapp_registry_status, ensure_open_allowed,

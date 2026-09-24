@@ -17,7 +17,10 @@ export type {
 } from "@lingxia/page-runtime";
 export {
   getDisplayLanguage,
+  getSurfaceContext,
   subscribeDisplayLanguage,
+  subscribeSurfaceContext,
+  type SurfaceContext,
 } from "@lingxia/bridge";
 export {
   registerInlineNativeComponents,

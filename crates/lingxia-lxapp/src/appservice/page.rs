@@ -1809,6 +1809,9 @@ impl PageSvc {
         work_id: Option<SessionWorkId>,
         outbound: Option<OutboundContext>,
     ) -> JSResult<()> {
+        // Before the first data: the View picks its layout in the same frame
+        // it first renders data, not a skeleton frame later.
+        self.page.push_surface_context();
         let mut state = self.state.lock().await;
 
         if std::mem::take(&mut state.initial_snapshot_pending) {
