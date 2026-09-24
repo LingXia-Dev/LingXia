@@ -392,16 +392,35 @@ fn dependency_paths_in_source_order(
     Ok(paths)
 }
 
+/// Bundle line (1-based) of the `new Error()` whose reported line tells how
+/// far the engine shifted the script; see [`assemble`].
+const LINE_PROBE_LINE: u32 = 3;
+
 /// Every module — the entry included — becomes an awaited async IIFE inside
 /// one outer async IIFE, so top-level `await` works everywhere and each
 /// module keeps its own scope. The outer IIFE's promise is the run's result.
+///
+/// An engine may evaluate the script behind lines of its own: Rong's
+/// JavaScriptCore backend prepends `"use strict";\n`, so every frame it
+/// reports is one line below the bundle line that produced it. Looking such a
+/// frame up in the map reads the *next* bundle line, which is another
+/// statement, a comment (no mapping at all) or the next file. The bundle
+/// therefore measures the shift on its first lines, prepends that many empty
+/// lines to the map it installs for `@lingxia/test`, and moves a thrown
+/// error's frames back to bundle lines, which is what lxdev's own map reads.
 fn assemble(modules: Vec<CompiledModule>, bundle_name: String) -> TestBundle {
     let mut code = String::new();
     let mut concat = ConcatSourceMapBuilder::default();
     let mut line = 0u32;
+    let name = json_string_literal(&bundle_name);
 
     code.push_str(&format!(
         "(async () => {{\n\"use strict\";\n\
+const __lx_line_offset = __lx_measure_line_offset(String(new Error().stack || \"\"));\n\
+function __lx_measure_line_offset(stack) {{ const at = stack.indexOf({name} + \":\"); if (at < 0) return 0; const reported = parseInt(stack.slice(at + {name}.length + 1), 10); const offset = reported - {LINE_PROBE_LINE}; return Number.isInteger(offset) && offset > 0 && offset <= 64 ? offset : 0; }}\n\
+function __lx_bundle_lines(error) {{ if (__lx_line_offset === 0) return error; const seen = new Set(); for (let item = error; item !== null && typeof item === \"object\" && !seen.has(item); item = item.cause) {{ seen.add(item); try {{ if (typeof item.stack === \"string\") item.stack = item.stack.split({name} + \":\").map((part, index) => index === 0 ? part : part.replace(/^\\d+/, (digits) => String(Math.max(1, Number(digits) - __lx_line_offset)))).join({name} + \":\"); }} catch {{}} }} return error; }}\n\
+function __lx_shift_map(map) {{ if (__lx_line_offset > 0 && typeof map.mappings === \"string\") map.mappings = \";\".repeat(__lx_line_offset) + map.mappings; return map; }}\n\
+try {{\n\
 const __lx_automation_host = globalThis.__LINGXIA_AUTOMATION_HOST__;\n\
 globalThis.__LINGXIA_CLI_VERSION__ = {};\n\
 globalThis.__RONG_TEST_HOST__ = {{\n\
@@ -411,7 +430,7 @@ globalThis.__RONG_TEST_HOST__ = {{\n\
 }};\n",
         json_string_literal(env!("CARGO_PKG_VERSION")),
     ));
-    line += 9;
+    line += 14;
 
     for module in &modules {
         code.push_str(&format!(
@@ -427,7 +446,7 @@ globalThis.__RONG_TEST_HOST__ = {{\n\
     }
     let map: SourceMap<'static> = concat.into_owned_sourcemap().into();
     code.push_str(&format!(
-        "globalThis.__LINGXIA_TEST_SOURCE_MAP__ = {};\n",
+        "globalThis.__LINGXIA_TEST_SOURCE_MAP__ = __lx_shift_map({});\n",
         source_map_js_literal(&map)
     ));
     code.push_str(
@@ -438,6 +457,9 @@ if (!__lx_test_framework || typeof __lx_test_framework.run !== \"function\") {\n
   throw new Error('No test framework was registered. Import spec from \"@lingxia/test\" (or test from \"@rongjs/test\").');\n\
 }\n\
 return await __lx_test_framework.run();\n\
+} catch (__lx_error) {\n\
+  throw __lx_bundle_lines(__lx_error);\n\
+}\n\
 })()\n",
     );
 
@@ -1597,6 +1619,182 @@ mod tests {
         assert_eq!(primary.line, 3, "mapped stack: {mapped}");
         assert!(mapped.contains("flow.ts:3:"));
         assert!(!mapped.contains("lxdev-test://"));
+    }
+
+    #[test]
+    fn line_probe_sits_on_the_line_it_measures_from() {
+        let dir = project();
+        let entry = write(&dir, "flow.ts", "export {};\n");
+        let bundle = bundle_test_entry(&entry).expect("bundle");
+        let probe = bundle
+            .code
+            .lines()
+            .position(|line| line.starts_with("const __lx_line_offset ="))
+            .expect("probe line");
+        assert_eq!(probe + 1, LINE_PROBE_LINE as usize);
+    }
+
+    /// Spec files whose `spec`, `spec.configure` and hook calls are followed by
+    /// comments, blank lines and banners, and sit at file boundaries: the shape
+    /// that lost its file when the engine ran the bundle a line lower.
+    fn commented_spec_files(dir: &tempfile::TempDir) {
+        write(
+            dir,
+            "node_modules/@lingxia/test/package.json",
+            r#"{ "name": "@lingxia/test", "type": "module", "exports": { ".": "./index.js" } }"#,
+        );
+        write(
+            dir,
+            "node_modules/@lingxia/test/index.js",
+            "export function spec(title) { globalThis.__frames.push([title, new Error().stack]); }\n\
+             spec.configure = (options) => { globalThis.__frames.push(['configure:' + options.tags.join(), new Error().stack]); };\n\
+             spec.beforeEach = () => { globalThis.__frames.push(['beforeEach', new Error().stack]); };\n",
+        );
+        write(
+            dir,
+            "tests/a.test.ts",
+            "/* Banner.\n *\n * Run: lxdev test tests/a.test.ts\n */\n\nimport { spec } from '@lingxia/test';\n\n\
+             spec.configure({ tags: ['a'] });\n\n// ── section ──\n\n\
+             spec.beforeEach(async () => {\n  // hook body\n});\n// after hook\n\
+             spec('a1', async () => {\n  // body comment first\n  const n: number = 1;\n});\n// after spec\n/* block */\n\
+             spec('a2', async () => {});\n// last line of the file is a comment\n",
+        );
+        write(
+            dir,
+            "tests/b.test.ts",
+            "import { spec } from '@lingxia/test';\nspec.configure({\n  tags: ['b'],\n});\n// right after configure\n\
+             spec('b1', () => {\n}); // same-line comment\n// comment\n",
+        );
+    }
+
+    fn node_available() -> bool {
+        std::process::Command::new("node")
+            .arg("--version")
+            .output()
+            .is_ok_and(|output| output.status.success())
+    }
+
+    /// Runs `code` under Node with `shift` engine lines prepended (Rong's
+    /// JavaScriptCore backend prepends one) and returns the script's JSON line.
+    fn run_under_node(
+        dir: &tempfile::TempDir,
+        bundle: &TestBundle,
+        shift: usize,
+    ) -> serde_json::Value {
+        let bundle_path = dir.path().join("bundle.js");
+        fs::write(&bundle_path, &bundle.code).unwrap();
+        let script = r#"
+const vm = require("node:vm");
+const code = require("node:fs").readFileSync(process.argv[1], "utf8");
+globalThis.__frames = [];
+globalThis.__LINGXIA_AUTOMATION_HOST__ = { args: {}, control: {}, emit() {} };
+globalThis.__LINGXIA_TEST__ = { run: async () => "done" };
+const run = vm.runInThisContext("\"use strict\";\n".repeat(Number(process.argv[3])) + code, { filename: process.argv[2] });
+run.then(
+  () => console.log(JSON.stringify({ map: globalThis.__LINGXIA_TEST_SOURCE_MAP__, frames: globalThis.__frames })),
+  (error) => console.log(JSON.stringify({ error: String(error && error.stack) })),
+);
+"#;
+        let output = std::process::Command::new("node")
+            .arg("-e")
+            .arg(script)
+            .arg(&bundle_path)
+            .arg(&bundle.bundle_name)
+            .arg(shift.to_string())
+            .output()
+            .expect("run node");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice(&output.stdout).expect("node output")
+    }
+
+    /// `name:line:column` of the n-th frame in `stack` that points into the bundle.
+    fn bundle_frame(stack: &str, name: &str, nth: usize) -> (u32, u32) {
+        let rest = stack
+            .split(&format!("{name}:"))
+            .nth(nth + 1)
+            .expect("bundle frame");
+        let mut numbers = rest
+            .split(|ch: char| !ch.is_ascii_digit())
+            .filter(|part| !part.is_empty())
+            .map(|part| part.parse::<u32>().unwrap());
+        (numbers.next().unwrap(), numbers.next().unwrap())
+    }
+
+    #[test]
+    fn calls_followed_by_comments_keep_their_file_whatever_the_engine_prepends() {
+        if !node_available() {
+            eprintln!("skipped: node is not installed");
+            return;
+        }
+        let dir = project();
+        commented_spec_files(&dir);
+        let bundle = bundle_test_path(&dir.path().join("tests")).expect("bundle");
+        for shift in 0..=2 {
+            let result = run_under_node(&dir, &bundle, shift);
+            assert!(result.get("error").is_none(), "shift {shift}: {result}");
+            let map_json = result["map"].to_string();
+            let installed = SourceMap::from_json_string(&map_json).expect("installed map");
+            let table = installed.generate_lookup_table();
+            let mut seen = Vec::new();
+            for frame in result["frames"].as_array().unwrap() {
+                let label = frame[0].as_str().unwrap();
+                // Frame 0 is the stub itself; frame 1 is the spec file's call.
+                let (line, column) =
+                    bundle_frame(frame[1].as_str().unwrap(), &bundle.bundle_name, 1);
+                let token = installed
+                    .lookup_source_view_token(&table, line - 1, column - 1)
+                    .unwrap_or_else(|| {
+                        panic!("shift {shift}: {label} at {line}:{column} has no mapping")
+                    });
+                seen.push((
+                    label.to_string(),
+                    token.get_source().unwrap().to_string(),
+                    token.get_src_line() + 1,
+                ));
+            }
+            let expected = [
+                ("configure:a", "tests/a.test.ts", 8),
+                ("beforeEach", "tests/a.test.ts", 12),
+                ("a1", "tests/a.test.ts", 16),
+                ("a2", "tests/a.test.ts", 22),
+                ("configure:b", "tests/b.test.ts", 2),
+                ("b1", "tests/b.test.ts", 6),
+            ]
+            .map(|(label, file, line)| (label.to_string(), file.to_string(), line));
+            assert_eq!(seen, expected, "shift {shift}");
+        }
+    }
+
+    #[test]
+    fn a_thrown_error_comes_back_on_bundle_lines() {
+        if !node_available() {
+            eprintln!("skipped: node is not installed");
+            return;
+        }
+        let dir = project();
+        let entry = write(
+            &dir,
+            "flow.test.ts",
+            "// a comment first\nconst n: number = 1;\n// and another\nthrow new Error('boom ' + n);\n",
+        );
+        let bundle = bundle_test_entry(&entry).expect("bundle");
+        for shift in 0..=2 {
+            let result = run_under_node(&dir, &bundle, shift);
+            let stack = result["error"]
+                .as_str()
+                .unwrap_or_else(|| panic!("shift {shift}: {result}"));
+            let (_, primary) = bundle.remap_stack(stack);
+            let primary = primary.unwrap_or_else(|| panic!("shift {shift}: unmapped {stack}"));
+            assert_eq!(
+                (primary.source.as_str(), primary.line),
+                ("flow.test.ts", 4),
+                "shift {shift}"
+            );
+        }
     }
 
     #[test]

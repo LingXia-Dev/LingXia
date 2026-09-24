@@ -71,3 +71,15 @@ test('an already-mapped source location is never mapped a second time', () => {
     assert.deepEqual(resolveOrigin([frame]), frame);
   } finally { delete globalThis.__LINGXIA_TEST_SOURCE_MAP__; }
 });
+
+test("a one-field map segment still moves the column", () => {
+  // Line 1: an unmapped segment at column 1, then mapped ones at columns 3
+  // and 5 (source columns 3 and 4).
+  globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { version: 3, sources: ["tests/a.test.ts"], mappings: "C,EAAE,EAAC" };
+  try {
+    const origin = resolveOrigin([{ file: "lxdev-test://tests", line: 1, column: 5 }]);
+    assert.deepEqual(origin, { file: "tests/a.test.ts", line: 1, column: 3 });
+  } finally {
+    delete globalThis.__LINGXIA_TEST_SOURCE_MAP__;
+  }
+});

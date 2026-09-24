@@ -140,3 +140,34 @@ test("a manifest control is checked", () => {
   const summary = coverageSummary([{ id: "a" }], [], [{ id: "s", title: "S", covers: ["a"] }]);
   assert.equal(summary.ids[0].status, "not_run");
 });
+
+test("a bundled registration that maps to no file stops the run instead of losing its tags", async () => {
+  const { runInThisContext } = await import("node:vm");
+  const register = (mappings) => {
+    globalThis.__spec = spec;
+    globalThis.__LINGXIA_TEST_SOURCE_MAP__ = { version: 3, sources: ["tests/a.test.ts"], mappings };
+    runInThisContext(
+      '__spec("placed", async () => {});\n__spec.configure({ tags: ["t"] });\n__spec("lost", async () => {});\n',
+      { filename: "lxdev-test://tests" },
+    );
+  };
+  try {
+    installFakeHost(createWorld(), { control: {} });
+    // Line 3 has no mapping, as a comment line has none.
+    register("AAAA;AACA");
+    await assert.rejects(run(), /Cannot tell which file registered spec "lost" \(lxdev-test:\/\/tests:3\)/);
+
+    reset();
+    const { events } = installFakeHost(createWorld(), { control: {} });
+    register("AAAA;AACA;AACA");
+    await run();
+    const started = events.find((event) => event.type === "run_started");
+    assert.deepEqual(started.cases.map((c) => [c.title, c.file, c.tags]), [
+      ["placed", "tests/a.test.ts", ["t"]],
+      ["lost", "tests/a.test.ts", ["t"]],
+    ]);
+  } finally {
+    delete globalThis.__spec;
+    delete globalThis.__LINGXIA_TEST_SOURCE_MAP__;
+  }
+});

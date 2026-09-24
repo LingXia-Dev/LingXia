@@ -2,7 +2,7 @@ import { expect, setAssertionSink } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
-import { captureFrames, fileStem, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
+import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
@@ -207,6 +207,30 @@ function sourceOf(item: RegisteredSpec): { file: string; line: number } {
   return { file: origin.file, line: origin.line };
 }
 
+/**
+ * Every spec, `spec.configure()` and hook must resolve to the file that
+ * registered it: a file-less spec loses its file's tags and hooks without a
+ * word, so the run stops and names what it could not place.
+ */
+function assertAttributed(): void {
+  const lost: string[] = [];
+  for (const item of specs) {
+    const origin = resolveOrigin(item.frames);
+    if (isUnattributed(origin.file)) lost.push(`spec ${JSON.stringify(item.title)} (${origin.file}:${origin.line})`);
+  }
+  const specFiles = new Set(specs.map((item) => sourceOf(item).file));
+  for (const [kind, list] of [["configure", fileConfigs], ["beforeEach", hooks], ["afterEach", afterHooks], ["reset", resetHooks]] as const) {
+    for (const entry of list as ReadonlyArray<{ frames: StackFrame[] }>) {
+      const owner = resolveOwner(entry.frames, specFiles);
+      if (isUnattributed(owner.file)) lost.push(`spec.${kind}() (${owner.file}:${owner.line})`);
+    }
+  }
+  if (lost.length === 0) return;
+  const shown = lost.slice(0, 10).join(", ") + (lost.length > 10 ? `, and ${lost.length - 10} more` : "");
+  throw new Error(`Cannot tell which file registered ${shown}: the bundle source map has no position for the call. ` +
+    "Its file's tags and hooks would not apply, so the run stops. Please report this with the spec file and the lxdev version.");
+}
+
 function needsGeneratedId(item: RegisteredSpec): boolean {
   return !(item.id && item.id.length > 0) && slugTitle(item.title) === undefined;
 }
@@ -362,6 +386,7 @@ async function run(): Promise<ProtocolReport> {
   clearInline();
   contractSeq = 0;
 
+  assertAttributed();
   assignFileIndexes();
   const ids = new Map<string, string>();
   for (const item of specs) {
