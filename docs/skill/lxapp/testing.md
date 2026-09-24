@@ -46,10 +46,10 @@ lxdev test tests/pages/notes.test.ts
 |---|---|
 | Start on a known page | `t.app.nav.relaunch({ page, query? })`; `{ fresh: true }` for home |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
-| Find an element | `t.app.page.testId(id)`, `.css(selector)`, `.nth(i)`, `{ page }` option |
-| Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)` |
-| Assert UI | `t.expect(locator).toBeVisible()` / `.toBeAttached()` / `.toHaveText()` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
-| Wait for an element state | `locator.waitFor({ state: 'visible' \| 'attached' \| 'hidden' \| 'detached' })` |
+| Find an element | `t.app.page.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`, `{ page }` option |
+| Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `{ force: true }` on click/fill, see [gotchas](#gotchas) |
+| Assert UI | `t.expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
+| Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read page Logic `data` | `t.app.pageData<T>({ page? })`; see [below](#reading-app-logic) |
 | Call a page method | `t.app.callPage<R>(method, ...args)` |
 | Run code in Logic / page DOM | `t.app.eval(fn, ...args)` / `t.app.page.eval(fn, ...args)` |
@@ -138,7 +138,15 @@ spec('rename shows the not-implemented error', async (t) => {
   contentType?, delay? }` plus `body` (sent verbatim) or `json`; `delay` (max
   30000 ms) shows loading states. `{ abort: 'failed' }` rejects like a
   transport failure (`TypeError: fetch failed`). `{ continue: true }` passes
-  through.
+  through; add `patchJson` to edit the real response instead of faking it
+  (RFC 7396 merge patch: keys merge, `null` deletes, arrays replace).
+  `{ hang: true }` never answers until the spec ends, for spinners and
+  client-side timeouts; an `AbortSignal` still cancels it.
+
+  ```ts
+  await t.app.network.route('**/v1/devices', { continue: true, patchJson: { items: [], total: 0 } });
+  await t.app.network.route('**/v1/status', { hang: true });
+  ```
 - `route()` returns `{ id, pattern, unroute(), requests() }`; requests report
   `{ method, url, headers, body, bodyTruncated, action, status }` (`body` cut
   to 64 KiB, `null` for streams, `Blob`, `FormData`).
@@ -147,10 +155,15 @@ spec('rename shows the not-implemented error', async (t) => {
 
 ## Gotchas
 
-- **Visible means in the viewport.** `toBeVisible` and `waitFor()` (default
-  `visible`) fail for content below the fold of an overflowing sheet or long
-  page. Use `toBeAttached()` or `waitFor({ state: 'attached' })`; actions
+- **Visible means rendered, not in the viewport.** `toBeVisible` and
+  `waitFor()` (default `visible`) pass for content below the fold, and
+  `toBeHidden` fails for it; assert placement with `toBeInViewport()`. Actions
   scroll their target into view themselves.
+- **`force` is for unreachable content.** When no scroll brings an element
+  under the pointer (the lower part of an overflowing sheet), `click({ force:
+  true })` / `fill(text, { force: true })` dispatch to it directly; it must
+  still be one enabled match. It proves less than a normal click, so use it
+  only where that fails with `element is obscured`.
 - **Fixture nav waits for `onReady`** (`timeoutMs`, default 15000) and rejects
   if the app replaces the page first, e.g. with its own `lx.reLaunch`. Pass
   `waitUntil: 'commit'` to resolve once the stack changed, then assert the
@@ -192,7 +205,13 @@ lxdev test tests/ --grep checkout
   so `--id`/`--last-failed` survive reordering.
 - `--retries N` requires `spec.reset`; reports keep every attempt and flag
   flaky passes.
-- `--timeout-secs` bounds the whole run (default 300).
+- `--timeout-secs` bounds the whole run. The default scales with the
+  selection: max(300 s, 30 s per spec run), up to 3600 s. When it runs out,
+  the rest are reported as not run and lxdev prints `budget exhausted after
+  N/M`; raise it or `--shard`.
+- `--shuffle` runs specs in a random order and prints the seed;
+  `--shuffle=SEED` reproduces it. `--repeat-each N` runs every spec N times.
+  Use both to find order dependence and flaky specs.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams
   events. Interrupted runs keep partial reports and fail CI.
 - Statuses: `timeout`, `xfail`, and `xpass` stay distinct; an unexpected pass

@@ -64,8 +64,30 @@ received artifacts. Keep the following invariants when changing these layers:
   hand-off); a ready timeout still fails the spec.
 - Raw `page.waitFor` states follow `lxdev lxapp page wait` on the first match
   (`hidden` = exists and not visible). Locator states in `@lingxia/test` are
-  uniqueness-aware (`attached`/`visible` need exactly one match, `hidden`
-  includes no match). Keep both documented contracts when changing either.
+  uniqueness-aware (`attached`/`visible`/`inViewport` need exactly one match,
+  `hidden` includes no match). Keep both documented contracts when changing
+  either.
+- The page query payload (`lxapp::automation::build_query_script`) reports
+  `visible` as rendered — non-empty box, not `display:none`,
+  `visibility:hidden` or `opacity:0` — independent of scroll, and
+  `in_viewport` as rendered and intersecting `window.inner*`. Before this
+  split `visible` was viewport-aware; `@lingxia/test` treats a missing
+  `in_viewport` (older runtime) as `visible`. The Browser driver's own query
+  script still reports the viewport-aware `visible`. Native input paths keep
+  their own viewport + hit-test refusal, which is actionability, not
+  visibility.
+- `force` on click/fill: the locator skips stability and the actionability
+  eval and requires only one enabled (for fill, editable) match. The native
+  side routes a forced click through `WebView::click_via_js(…, force)` on
+  every platform — DOM events on the element, no viewport or
+  `elementFromPoint` check, still refusing a disabled element — and a forced
+  fill through `type_via_js` (Windows otherwise types through a native click
+  at the element center).
+- `filter({ hasText })`/`first()`/`last()` narrow the `all: true` query
+  client-side; each item keeps its DOM index, which is what query, the
+  actionability probe and dispatch address. `toHaveAttribute` reads
+  attributes with a read-only page eval inside the retry loop; nothing is
+  written to the page.
 - The spec timeout is a timer on the test JS worker; it cannot fire while a
   driver call blocks that thread in native code. The manager's run deadline and
   lease run off-worker and interrupt JS, and a worker still stuck after the
@@ -141,6 +163,26 @@ Development machine: lxdev receives progress, results, and artifacts
 - Locator actions wait for a unique match, enabled/editable state, stable
   geometry, and an unobscured hit point (after `scrollIntoView`), retrying
   while a navigation is still replacing the page.
+- Run budget: without `--timeout-secs`, lxdev sends `budgetPerSpecMs`
+  (30 s), `budgetMinMs` (300 s) and `budgetMaxMs` (3600 s) as controls and
+  asks the host for the 3600 s ceiling, because only the runtime knows the
+  selection. The runtime computes max(min, planned executions × per-spec),
+  capped at max, and checks it between specs; with `--timeout-secs` it gets
+  `budgetMs` and the host deadline is the same value. Once spent, the rest
+  are skipped with a "not run" reason, a `diagnostic` (`phase: "budget"`) is
+  emitted, `meta.budget.exhausted_after` records N of `planned`, and the
+  report is partial. A spec cut off by the host deadline instead ends the run
+  `timeout`; lxdev then derives N/M from the streamed cases
+  (`budget_exhaustion`). An older runtime ignores the budget controls and
+  runs to the host ceiling.
+- `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
+  is given and prints it); the runtime shuffles the planned executions with a
+  seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
+  `--repeat-each N` (`control.repeatEach`) plans each selected spec N times,
+  adjacent unless shuffled; each execution is its own case (`repeat`,
+  `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
+  retries key attempts by id and repeat. `run_started` lists every planned
+  execution, and lxdev fills the next unstarted entry with a matching name.
 - `PageInfo.ready` means `onReady` ran; `webviewAttached` means the page has a
   WebView. `fresh` relaunches wait for ready but accept a home page that hands
   off to another page.
@@ -207,12 +249,26 @@ Development machine: lxdev receives progress, results, and artifacts
   (globs are translated), so JS lookaround and backreferences are rejected at
   `route()`.
 - Route handlers are validated in Rust (`parse_handler_value`), mirroring the
-  exclusive `NetworkRouteHandler` union: fulfill keys, `abort`, and `continue`
-  never mix. `abort` accepts only kinds the wrapper reproduces faithfully
+  exclusive `NetworkRouteHandler` union: fulfill keys, `abort`, `continue`
+  (optionally with `patchJson`), and `hang` never mix. `abort` accepts only kinds the wrapper reproduces faithfully
   (`AbortKind`, today `failed`); add a kind only with a matching emulation.
   Binary `body` is read from the handler object before its JSON view, which
   would turn a `Uint8Array` into an index map. `delay` (at most 30 s) is a
   `setTimeout` in the Logic wrapper that the request's `AbortSignal` cancels.
+- `patchJson`: `decide` returns the patch as JSON text; the wrapper calls the
+  real `fetch`, reads `text()`, and a host function applies RFC 7396
+  (`registry::merge_patch`) and returns the new body, so only data crosses
+  into the app context. Status and headers are kept minus `content-length`
+  and `content-encoding`; `serde_json` without `preserve_order` re-serializes
+  with sorted keys. Non-JSON rejects with a `TypeError`, empty passes through.
+  The record's `action` stays `continue`.
+- `hang`: `decide` registers a held token (`Registry::held`) tied to run,
+  app and route id, and the wrapper returns a promise that polls
+  `holds(token)` every 200 ms. `remove(run, id)` (the fixture's spec-end
+  `unroute`, also after `times` expired the route), `remove_app` and
+  `clear_run` release the token; the promise then rejects like a transport
+  failure. Like a fulfillment, a hang never applies to a host the domain
+  policy refuses.
 - Request records are captured by the wrapper without consuming anything:
   headers via `Headers`, and the body only when it is a string,
   `URLSearchParams`, `ArrayBuffer`, or typed array (decoded as UTF-8). The
@@ -236,6 +292,19 @@ Development machine: lxdev receives progress, results, and artifacts
   `upgrade_authorized`) and rejects with `E_AUTOMATION_PRIVILEGE`. Builds without the `runtime` feature compile `network/unavailable.rs`,
   a driver whose calls all reject; from app Logic, calls reject for lack of a
   run scope.
+- Dev session: a runtime disconnect while `lingxia dev` relays an active run
+  (seen from `session.test` responses within the lease) moves the run to
+  `interrupted_test_run` and uses a 30 s gone-grace instead of 1 s. A poll for
+  that run meanwhile gets error `runtime_reconnecting`; lxdev treats it as a
+  pause, journals `runtime_disconnected`/`runtime_reconnected` events
+  (`source: "lxdev"`), and a reconnect restores the run as active. After the
+  grace a desktop session ends as before.
+- Dev broker: `lingxia dev-broker` answers `info` with its `BrokerBuild`
+  (CLI version, executable path, executable mtime at start) and live session
+  count, and `shutdown` by exiting only when no session is registered (the
+  check holds the session lock). `lingxia dev` probes it before registering
+  and replaces an idle mismatched broker; a broker older than `info` drops
+  the connection on it and is reported, not stopped.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.
