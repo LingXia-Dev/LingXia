@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../../crates/lingxia-lxapp/src/appservice/scripts/Page.js', import.meta.url), 'utf8');
-const context = vm.createContext({ setTimeout, clearTimeout, console });
+const context = vm.createContext({ setTimeout, clearTimeout, console, AbortController, AbortSignal });
 vm.runInContext(`
 globalThis.acks = [];
 globalThis.PageSvc = class {
@@ -51,4 +51,17 @@ run('globalThis.unloaded = page.flush(); unloaded.catch(() => {}); page._cancelP
 await assert.rejects(run('unloaded'), /unloaded/);
 await assert.rejects(run('page.flush()'), /unloaded/);
 assert.throws(() => run(`__registerPage('bad', { flush() {} }); __LX_CREATE_PAGE__('bad');`), /reserved/);
+
+// `this.signal` lives as long as the page: aborted when the runtime retires it.
+run(`globalThis.signalPage = __LX_CREATE_PAGE__('home');
+globalThis.heardAbort = false;
+signalPage.signal.addEventListener('abort', () => { heardAbort = true; });`);
+assert.equal(run('signalPage.signal.aborted'), false);
+run('signalPage._cancelPendingSetData()');
+assert.equal(run('signalPage.signal.aborted'), true);
+assert.equal(run('heardAbort'), true);
+assert.throws(
+  () => run(`__registerPage('taken', { signal: null }); __LX_CREATE_PAGE__('taken');`),
+  /reserved by the runtime/,
+);
 console.log('Page state validation, acknowledgement, and teardown checks passed.');

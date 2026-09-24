@@ -175,6 +175,7 @@ Page({
 | `this.data` | Current page state. A readonly view — use `setData()` / `setPath()` to change. |
 | `this.setData(patch)` | Merge a top-level partial into `data` and replicate to View. Nested writes use `setPath` (checked) or `setDataPath` (unchecked). |
 | `await this.flush()` | Resolves once every `setData` issued so far is acknowledged by the View; rejects if the page unloads first, or if the runtime discarded a write before the View could receive it. |
+| `this.signal` | An `AbortSignal` aborted as the page unloads, before `onUnload` runs. Pass it to work the page starts — `fetch(url, { signal: this.signal })` — and that work stops with the page, rejecting with an `AbortError`, instead of resolving into one that is gone. It does not fire when the whole lxapp shuts down; its Logic ends with it. |
 | `this.yourMethod()` | Anything else you declare beside the hooks is a page method, reachable through `this`. A name that differs from a lifecycle hook only in case (`onload`) is rejected, because the runtime would never call it. |
 | `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
 
@@ -426,6 +427,11 @@ Unsubscribe in `onUnload`, and keep the closure on the page instance rather than
 in `data` — `data` crosses the bridge and a function cannot. A route can be open
 more than once, so a subscription left behind is leaked once per page instance,
 not once per app. Calling the returned function twice is safe.
+
+Work the page starts needs no teardown of its own: pass `this.signal`, which the
+runtime aborts before `onUnload` runs, instead of keeping an `AbortController`
+per page. Work it stops rejects with an `AbortError`; ignore that rejection
+rather than reporting it.
 
 The same shape covers `onNetworkChange`, `onWifiConnected`,
 `onDeviceOrientationChange`, `onKeyDown`, `onKeyUp`, `lx.surface.watchContext`,
