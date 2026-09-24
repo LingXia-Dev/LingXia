@@ -289,7 +289,10 @@ Development machine: lxdev receives progress, results, and artifacts
   `{{…}}` text is kept verbatim.
 - Scenarios (`network/scenario.rs`) are parsed and validated in Rust for both
   `NetworkDriver.scenario()` and `session.network.scenario.use`, so both
-  entries reject the same files. `Registry::install_all` installs a
+  entries reject the same files. `parse_scenario` takes top-level `routes`
+  or the sectioned `{ http: { routes } }` (errors then name
+  `http.routes[i]`), never both, and rejects a `worker` section as not
+  supported yet. `Registry::install_all` installs a
   scenario all-or-nothing in reverse order, which makes the first file entry
   the newest route; `route()` calls made later still win. A file may carry
   `bodyBase64`; `note`/`description` are ignored. The scenario handle
@@ -332,11 +335,35 @@ Development machine: lxdev receives progress, results, and artifacts
 - Dev-session scenarios (`network/dev.rs`, `session.network.*` in
   `lingxia-control-runtime`) install under the owner `@dev-session`. They
   are skipped by `decide_route` while any run is active, logged with
-  `LogBuilder` warnings on install, clear and every answered request, and
-  cleared when the dev bridge disconnects (`bridge.rs` → `session_ended`,
-  also on a transient reconnect: failing closed). The methods exist only
-  with the `test-runtime` feature; lxdev maps `unknown_method` to "built
-  without the automation test runtime".
+  `LogBuilder` warnings on install, replace, clear and every answered
+  request, and cleared when the dev bridge disconnects (`bridge.rs` →
+  `session_ended`, also on a transient reconnect: failing closed). An app
+  relaunch keeps them: routes match by appid, not by context.
+  `Registry::end_dev_scenario(reason)` is the one way a dev scenario ends;
+  it keeps `dev_cleared` (`cleared` / `replaced` / `session_ended` and the
+  time) for `status`'s `lastCleared`. A `use` parses the whole file before
+  touching the active scenario, so an invalid file leaves it answering. The
+  methods exist only with the `test-runtime` feature; lxdev maps
+  `unknown_method` to "built without the automation test runtime".
+- `lxdev scenario` (`tools/lingxia-devtools-cli/src/scenario.rs`) owns the
+  sectioning; the host protocol only sees HTTP routes. `parse_file` splits a
+  file into sections (top-level `routes` becomes `http`). Each section has a
+  `SectionProvider` (`install`/`clear`/`status`, `suspendable`); `providers()`
+  lists the ones this lxdev has (today only `HttpProvider`, which sends the
+  flat `{ name, description, routes }` to `session.network.scenario.use`). A
+  section without a provider fails before anything is installed. `install`
+  runs providers in `SECTIONS` order (`worker` before `http`), clears the
+  ones already installed when a later one fails, then clears providers whose
+  section the new file lacks. `refuse_test_while_blocking` runs before every
+  `lxdev test` start: it asks only non-suspendable providers for their
+  status and fails with `scenario_active` while one is active; with only
+  HTTP it costs nothing. Name resolution: a path that exists wins, else
+  `<root>/<name>.json` over `search_roots` (session content dir, project
+  root, then the lxapp project of the current directory when it lies inside
+  one of those), each joined with `tests/scenarios`. `list` needs no session
+  (it falls back to the current directory's project). The Worker contract a
+  future provider follows is sketched in
+  [scenario-worker-provider.md](scenario-worker-provider.md).
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
@@ -443,7 +470,7 @@ route table (`Registry`) under its one lock.
   and attaches the stopped scenario as `network.scenario.json` (masked like
   any attachment); lxdev copies each to `<dir>/<spec id>.json` after the
   run, suffixing `-2`, `-3`… when two spec ids sanitize to one name.
-  `lxdev network record stop --out` creates a placeholder next to the output
+  `lxdev network record stop --out [--name]` creates a placeholder next to the output
   before `RECORD_STOP` and renames over it after writing; on a write failure
   it prints the scenario to stdout and fails.
 - A pass-through `Rong.SSE` (no route, or `patchJson`) is the native client;
@@ -577,6 +604,25 @@ automation context, page WebViews and native code keep real time.
   `delay`/`hang`, SSE `delayMs`, holds and reconnect backoff keep real time.
   Observation, recording and capture use no timers; scenario time templates
   read the host's wall clock.
+
+## Presets
+
+`lxdev test --preset NAME` (`tools/lingxia-devtools-cli/src/test_preset.rs`)
+is expanded before clap sees the command line: `main` calls `expand` on
+`argv`, which finds the `test` subcommand (skipping the global `--session`),
+reads the `--preset` value before any `--`, and splices the preset's
+strings right after `test`. clap then parses the result once; `TestOptions`
+sets `args_override_self`, so a scalar the command line repeats replaces the
+preset's, and `Vec` flags append. `--preset` stays in `argv` (clap records
+it, and a second one is a clap error). `lxdev.json` is read from
+`find_project_root(cwd)`; `parse` rejects unknown keys, bad names, non-string
+items, the flags in `FORBIDDEN` and `--arg` keys `looks_secret_key` flags
+(the Rust port of `@lingxia/test`'s `looksSecretKey`). `--list-presets` and
+`--print-args` run before a session is resolved; `effective_args` drops
+`--preset`/`--print-args` and masks `--secret-arg` values and credential-named
+`--arg` values. The JSON Schemas for scenario files and `lxdev.json` ship in
+`@lingxia/test` (`schemas/`); `tests/schemas.test.mjs` checks them against
+the same cases the Rust parsers reject.
 
 ## Tags, coverage manifest and OpenAPI contract
 
