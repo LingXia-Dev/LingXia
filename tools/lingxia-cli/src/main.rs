@@ -1035,7 +1035,10 @@ fn main() -> Result<()> {
             commands::runner::execute(action)?;
         }
         Commands::DevBroker => {
-            lingxia_control_protocol::dev_session::broker::run_broker()?;
+            use lingxia_control_protocol::dev_session::broker;
+            broker::run_broker_as(Some(broker::BrokerBuild::current(env!(
+                "CARGO_PKG_VERSION"
+            ))))?;
         }
         #[cfg(target_os = "windows")]
         Commands::DevFocusWindow {

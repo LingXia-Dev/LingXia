@@ -971,6 +971,9 @@ fn poll_until_terminal(
     let mut cancel_deadline: Option<std::time::Instant> = None;
     let mut last_event_at = std::time::Instant::now();
     let mut case_budget = run_timeout;
+    // The dev server answers a poll this way while the run's runtime is away
+    // but may reconnect; the run is not lost yet.
+    let mut runtime_away: Option<Instant> = None;
     // The runtime enforces the deadline; this client-side bound only guards
     // against a vanished session.
     let poll_deadline = std::time::Instant::now() + run_timeout + Duration::from_secs(30);
@@ -1013,7 +1016,41 @@ fn poll_until_terminal(
         let poll = match polled {
             Ok(poll) => {
                 poll_failures = 0;
+                if let Some(since) = runtime_away.take() {
+                    let message = format!(
+                        "runtime reconnected after {:.1}s; the run continues",
+                        since.elapsed().as_secs_f64()
+                    );
+                    journal_client_event(
+                        &mut journal,
+                        jsonl,
+                        run_id,
+                        "runtime_reconnected",
+                        &message,
+                    )?;
+                    if !machine {
+                        eprintln!("{} {message}", "test".cyan());
+                    }
+                }
                 poll
+            }
+            Err(err) if is_runtime_reconnecting(&err) => {
+                if runtime_away.is_none() {
+                    runtime_away = Some(Instant::now());
+                    let message = format!("{err}");
+                    journal_client_event(
+                        &mut journal,
+                        jsonl,
+                        run_id,
+                        "runtime_disconnected",
+                        &message,
+                    )?;
+                    if !machine {
+                        eprintln!("warning (runtime): {message}");
+                    }
+                }
+                std::thread::sleep(POLL_INTERVAL);
+                continue;
             }
             Err(err) => {
                 /* A poll that times out has not told us the session is gone:
@@ -1321,6 +1358,37 @@ fn poll_until_terminal(
         }
         std::thread::sleep(POLL_INTERVAL);
     }
+}
+
+/// The dev server's "runtime away, may reconnect" answer to a poll.
+fn is_runtime_reconnecting(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<CommandError>()
+        .is_some_and(|error| error.code == "runtime_reconnecting")
+}
+
+/// Record an event lxdev itself observed (not one the runtime emitted) in
+/// the run's event journal, and on stdout with `--jsonl`.
+fn journal_client_event(
+    journal: &mut std::fs::File,
+    jsonl: bool,
+    run_id: &str,
+    kind: &str,
+    message: &str,
+) -> Result<()> {
+    let event = json!({
+        "schema_version": 1,
+        "run_id": run_id,
+        "type": kind,
+        "source": "lxdev",
+        "message": message,
+        "timestamp_ms": chrono::Utc::now().timestamp_millis(),
+    });
+    writeln!(journal, "{event}")?;
+    journal.flush()?;
+    if jsonl {
+        println!("{event}");
+    }
+    Ok(())
 }
 
 fn report(
@@ -2661,6 +2729,33 @@ mod lifecycle_tests {
             ..cut
         };
         assert_eq!(budget_exhaustion(&passed), None);
+    }
+
+    #[test]
+    fn a_reconnecting_runtime_is_told_apart_from_a_lost_session() {
+        let reconnecting = anyhow::Error::new(CommandError {
+            code: "runtime_reconnecting".into(),
+            message: "runtime disconnected during test run r1".into(),
+            data: None,
+        });
+        assert!(is_runtime_reconnecting(&reconnecting));
+        let gone = anyhow::Error::new(CommandError {
+            code: "runtime_unavailable".into(),
+            message: "devtool runtime is not connected".into(),
+            data: None,
+        });
+        assert!(!is_runtime_reconnecting(&gone));
+        assert!(!is_runtime_reconnecting(&anyhow!("connection refused")));
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("events.jsonl");
+        let mut journal = std::fs::File::create(&path).unwrap();
+        journal_client_event(&mut journal, false, "r1", "runtime_disconnected", "away").unwrap();
+        let line: serde_json::Value =
+            serde_json::from_str(std::fs::read_to_string(&path).unwrap().trim()).unwrap();
+        assert_eq!(line["type"], "runtime_disconnected");
+        assert_eq!(line["run_id"], "r1");
+        assert_eq!(line["source"], "lxdev");
     }
 
     #[test]

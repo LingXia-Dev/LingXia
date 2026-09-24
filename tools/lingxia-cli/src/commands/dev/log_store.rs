@@ -169,7 +169,80 @@ pub fn register_session_with_content(
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
     };
+    ensure_current_broker();
     lingxia_control_protocol::dev_session::broker::register_session(info, spawn_broker)
+}
+
+/// The per-user broker outlives the `lingxia` that spawned it, so it can be
+/// a stale build (another checkout, or rebuilt since). Replace it while no
+/// session depends on it; otherwise say what is running.
+pub fn ensure_current_broker() {
+    use lingxia_control_protocol::dev_session::broker::{self, BrokerBuild, BrokerProbe};
+    let current = BrokerBuild::current(env!("CARGO_PKG_VERSION"));
+    let (mismatch, sessions) = match broker::probe_broker() {
+        BrokerProbe::Absent => return,
+        BrokerProbe::Legacy => ("an older build without version reporting".to_string(), None),
+        BrokerProbe::Running(info) => {
+            let Some(build) = info.build else {
+                return;
+            };
+            match build.mismatch(&current) {
+                Some(why) => (format!("{why}, pid {}", info.pid), Some(info.sessions)),
+                None => return,
+            }
+        }
+    };
+    match broker_restart_plan(sessions) {
+        BrokerRestart::Restart => {
+            if matches!(broker::shutdown_idle_broker(), Ok(true)) && wait_broker_gone() {
+                eprintln!("ℹ Restarted the dev broker: it was {mismatch}.");
+                return;
+            }
+            eprintln!(
+                "⚠ The dev broker is {mismatch} and could not be restarted; \
+                 sessions may be listed by a stale build."
+            );
+        }
+        BrokerRestart::Busy(live) => eprintln!(
+            "⚠ The dev broker is {mismatch} and {live} session(s) use it; it is replaced \
+             once they end (`lingxia dev stop`)."
+        ),
+        BrokerRestart::Manual => eprintln!(
+            "⚠ The dev broker is {mismatch}. If sessions misbehave, stop it \
+             (it is the `lingxia dev-broker` process) while no `lingxia dev` runs; \
+             the next `lingxia dev` starts a current one."
+        ),
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum BrokerRestart {
+    /// Idle and able to stop itself: replace it now.
+    Restart,
+    /// Sessions depend on it.
+    Busy(usize),
+    /// An older broker cannot be asked to stop.
+    Manual,
+}
+
+/// `sessions` is `None` for a broker too old to report them.
+fn broker_restart_plan(sessions: Option<usize>) -> BrokerRestart {
+    match sessions {
+        None => BrokerRestart::Manual,
+        Some(0) => BrokerRestart::Restart,
+        Some(live) => BrokerRestart::Busy(live),
+    }
+}
+
+fn wait_broker_gone() -> bool {
+    use lingxia_control_protocol::dev_session::broker::{self, BrokerProbe};
+    for _ in 0..20 {
+        if matches!(broker::probe_broker(), BrokerProbe::Absent) {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
 }
 
 /// Live sessions for this project, ordered by start time.
@@ -450,6 +523,13 @@ mod tests {
 
         assert!(!old_log.exists());
         assert!(new_log.exists());
+    }
+
+    #[test]
+    fn a_stale_broker_is_replaced_only_while_idle() {
+        assert_eq!(broker_restart_plan(Some(0)), BrokerRestart::Restart);
+        assert_eq!(broker_restart_plan(Some(2)), BrokerRestart::Busy(2));
+        assert_eq!(broker_restart_plan(None), BrokerRestart::Manual);
     }
 
     #[test]
