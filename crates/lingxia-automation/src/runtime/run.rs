@@ -268,6 +268,7 @@ impl RunShared {
         // lock before reading run state.
         drop(inner);
         crate::network::clear_run(&self.run_id);
+        crate::clock::clear_run(&self.run_id);
         self.profile.begin_teardown(&self.run_id, self.teardown);
         true
     }

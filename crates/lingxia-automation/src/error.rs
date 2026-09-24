@@ -32,6 +32,12 @@ pub(crate) const E_EVAL_SCRIPT: &str = "E_EVAL_SCRIPT";
 pub(crate) const E_EVAL_TIMEOUT: &str = "E_EVAL_TIMEOUT";
 /// Profile rollback outside an isolated run, or for an app it does not isolate.
 pub(crate) const E_PROFILE_NOT_ISOLATED: &str = "E_PROFILE_NOT_ISOLATED";
+/// A test clock call needs an installed clock and none is (or a reopen dropped it).
+#[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+pub(crate) const E_CLOCK_NOT_INSTALLED: &str = "E_CLOCK_NOT_INSTALLED";
+/// `clock.install()` while a clock is already installed.
+#[cfg_attr(not(feature = "runtime"), allow(dead_code))]
+pub(crate) const E_CLOCK_INSTALLED: &str = "E_CLOCK_INSTALLED";
 
 /// The code for a driver or lower-half failure message.
 pub(crate) fn code_for(message: &str) -> &'static str {

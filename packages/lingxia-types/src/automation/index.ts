@@ -52,6 +52,10 @@ export const AUTOMATION_ERROR_CODES = [
   'E_EVAL_TIMEOUT',
   /** Profile rollback outside an isolated run (`lxdev test --isolate`), or for an lxapp the run does not isolate. */
   'E_PROFILE_NOT_ISOLATED',
+  /** A test clock call needs an installed clock and none is; an app that reopened is back on real time. */
+  'E_CLOCK_NOT_INSTALLED',
+  /** `clock.install()` while this lxapp's Logic already runs on a test clock. */
+  'E_CLOCK_INSTALLED',
 ] as const;
 
 export type AutomationErrorCode = (typeof AUTOMATION_ERROR_CODES)[number];
@@ -867,6 +871,75 @@ export interface ProfileDriver {
   drop(id: string): Promise<void>;
 }
 
+// ============================ test clock ============================
+
+/** A time for the test clock: epoch milliseconds, a `Date.parse` string, or a `Date`. */
+export type ClockTime = number | string | Date;
+
+export interface ClockInstallOptions {
+  /** What Logic's `Date` reads at install. Default: the real current time. */
+  now?: ClockTime;
+}
+
+export interface ClockRunAllOptions {
+  /** Reject once this many timers fired and more are pending. Default 1000. */
+  maxTimers?: number;
+}
+
+/** What `tick` / `runAll` did. */
+export interface ClockAdvance {
+  /** Logic's `Date.now()` afterwards. */
+  now: number;
+  /** Timers fired by this call. */
+  fired: number;
+  /** Timers still scheduled on the test clock. */
+  pending: number;
+}
+
+export interface ClockUninstallResult {
+  /** `false` when no clock was installed (never, or the app reopened since). */
+  uninstalled: boolean;
+  /** Timers still pending on the test clock; they are discarded, never fired. */
+  dropped: number;
+}
+
+/**
+ * Test clock for the selected lxapp's Logic context, scoped to the host
+ * automation run (`lxdev test`); outside one every call rejects with
+ * `E_AUTOMATION`. While installed, Logic's `Date` (no-argument
+ * construction, `Date()`, `Date.now()`), `setTimeout` / `setInterval` and
+ * their `clear*`, and `performance.now()` read test time, and those timers
+ * fire only from `tick` / `runAll`, in time order. The page WebView, native
+ * work, real network requests, test route `delay` / `hang` and timers started
+ * before `install` keep real time. The run's end, or the app reopening,
+ * returns the app to real time.
+ */
+export interface ClockDriver {
+  /**
+   * Put Logic on test time; resolves Logic's `Date.now()`. Rejects with
+   * `E_CLOCK_INSTALLED` when a clock is already installed.
+   */
+  install(options?: ClockInstallOptions): Promise<number>;
+  /**
+   * Advance by `ms`, firing each timer due on the way at its own time. After
+   * every firing, promise chains the callback started settle before the next
+   * timer fires. Rejects with `E_CLOCK_NOT_INSTALLED` without a clock.
+   */
+  tick(ms: number): Promise<ClockAdvance>;
+  /**
+   * Fire timers, including those they schedule, until none is left; rejects
+   * once `maxTimers` fired (an interval never lets the queue empty).
+   */
+  runAll(options?: ClockRunAllOptions): Promise<ClockAdvance>;
+  /**
+   * Change what `Date` reads without firing timers; timer due times and
+   * `performance.now()` are unaffected. Resolves the new `Date.now()`.
+   */
+  setSystemTime(time: ClockTime): Promise<number>;
+  /** Return Logic to real time; pending test timers are dropped. */
+  uninstall(): Promise<ClockUninstallResult>;
+}
+
 /** Capability for one selected running lxapp, as app Logic sees it. */
 export interface LogicLxAppDriver {
   readonly page: PageDriver;
@@ -906,6 +979,14 @@ export interface LxAppDriver extends LogicLxAppDriver {
    * `E_PROFILE_NOT_ISOLATED` outside an isolated run.
    */
   readonly profile: ProfileDriver;
+  /**
+   * Test clock for the selected lxapp's Logic, scoped to the host automation
+   * run.
+   *
+   * @remarks Reading the property always works, but every call rejects with
+   * `E_AUTOMATION` outside a host test run (`lxdev test`).
+   */
+  readonly clock: ClockDriver;
   /** @internal Test-runner plumbing: resolves to the call-trace envelope. */
   eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
   /**
