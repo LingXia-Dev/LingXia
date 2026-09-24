@@ -63,6 +63,108 @@ pub trait LxLogicExtension: Send + Sync {
     fn init(&self, ctx: &JSContext) -> JSResult<()>;
 }
 
+/// Replaces an existing member of the reserved `Rong` namespace with a
+/// wrapper built from the original. See [`register_rong_member_wrapper`].
+/// Automation plumbing: only with the `automation` feature.
+#[cfg(feature = "automation")]
+#[doc(hidden)]
+pub type RongMemberWrapper = fn(&JSContext, rong::JSValue) -> JSResult<rong::JSValue>;
+
+/// Registered `Rong` member wrappers, applied to each Logic context.
+#[cfg(feature = "automation")]
+struct RongMemberWrappers(std::sync::Mutex<Vec<(&'static str, RongMemberWrapper)>>);
+
+#[cfg(feature = "automation")]
+impl RongMemberWrappers {
+    const fn new() -> Self {
+        Self(std::sync::Mutex::new(Vec::new()))
+    }
+
+    fn list(&self) -> std::sync::MutexGuard<'_, Vec<(&'static str, RongMemberWrapper)>> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    #[cfg_attr(not(feature = "js-appservice"), allow(dead_code))]
+    fn register(&self, member: &'static str, wrap: RongMemberWrapper) {
+        let mut wrappers = self.list();
+        if !wrappers
+            .iter()
+            .any(|(name, known)| *name == member && std::ptr::fn_addr_eq(*known, wrap))
+        {
+            wrappers.push((member, wrap));
+        }
+    }
+
+    fn apply(&self, ctx: &JSContext) -> Vec<(&'static str, String)> {
+        let wrappers = self.list().clone();
+        let mut failures = Vec::new();
+        if wrappers.is_empty() {
+            return failures;
+        }
+        let Some(namespace) = ctx
+            .global()
+            .get::<_, rong::JSValue>("Rong")
+            .ok()
+            .and_then(|value| value.into_object())
+        else {
+            return failures;
+        };
+        for (member, wrap) in wrappers {
+            if !namespace.has_property(member).unwrap_or(false) {
+                continue;
+            }
+            let result = namespace
+                .get::<_, rong::JSValue>(member)
+                .and_then(|original| {
+                    if original.is_undefined() {
+                        return Ok(());
+                    }
+                    let wrapped = wrap(ctx, original)?;
+                    namespace.set(member, wrapped).map(|_| ())
+                });
+            if let Err(err) = result {
+                failures.push((member, err.to_string()));
+            }
+        }
+        failures
+    }
+}
+
+#[cfg(feature = "automation")]
+static RONG_MEMBER_WRAPPERS: RongMemberWrappers = RongMemberWrappers::new();
+
+/// Wrap an existing `Rong` member (`Rong.SSE`) in every Logic context, for
+/// the automation runtime's test network routing. Extensions run after
+/// `Rong` is frozen and cannot touch it; a wrapper runs just before, and can
+/// only replace a member that already exists — never add one — so the
+/// namespace stays reserved. Call at process bootstrap; registering the
+/// same wrapper for the same member again is a no-op, so a member is never
+/// wrapped twice by it.
+///
+/// Automation plumbing, not an app API: it exists only with the
+/// `automation` feature, which product builds leave off, so there `Rong`
+/// is sealed exactly as the runtime created it.
+#[cfg(all(feature = "js-appservice", feature = "automation"))]
+#[doc(hidden)]
+pub fn register_rong_member_wrapper(member: &'static str, wrap: RongMemberWrapper) {
+    RONG_MEMBER_WRAPPERS.register(member, wrap);
+}
+
+/// Apply the registered wrappers to `ctx`'s `Rong`, before it is frozen.
+/// A member the context does not have is left absent.
+#[cfg(feature = "automation")]
+pub(crate) fn apply_rong_member_wrappers(ctx: &JSContext) -> Vec<(&'static str, String)> {
+    RONG_MEMBER_WRAPPERS.apply(ctx)
+}
+
+/// Without the `automation` feature nothing can be registered.
+#[cfg(not(feature = "automation"))]
+pub(crate) fn apply_rong_member_wrappers(_ctx: &JSContext) -> Vec<(&'static str, String)> {
+    Vec::new()
+}
+
 // Type alias for convenience when handling boxed extensions.
 type BoxedExtension = Box<dyn LxLogicExtension>;
 
@@ -207,6 +309,57 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "automation")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn rong_member_wrappers_replace_existing_members_only() {
+        use rong::{JSEngine, JSObject, RongJS, Source};
+        fn wrap(ctx: &JSContext, original: rong::JSValue) -> JSResult<rong::JSValue> {
+            let wrapped = JSObject::new(ctx);
+            wrapped.set("original", original)?;
+            Ok(wrapped.into_js_value())
+        }
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.Rong = { Existing: function Existing() {} };",
+        ))
+        .unwrap();
+        // A registry of its own: the process one is shared with other tests.
+        let wrappers = RongMemberWrappers::new();
+        // Registering the same wrapper twice must not wrap the member twice.
+        wrappers.register("Existing", wrap);
+        wrappers.register("Existing", wrap);
+        wrappers.register("Missing", wrap);
+        assert_eq!(wrappers.list().len(), 2);
+        let failures = wrappers.apply(&ctx);
+        assert!(failures.is_empty(), "{failures:?}");
+        let shape: String = ctx
+            .eval(Source::from_bytes(
+                "JSON.stringify([typeof Rong.Existing.original, 'Missing' in Rong])",
+            ))
+            .unwrap();
+        assert_eq!(shape, r#"["function",false]"#);
+    }
+
+    /// Without the `automation` feature there is nothing to register, and
+    /// `Rong` reaches the seal untouched.
+    #[cfg(not(feature = "automation"))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn without_automation_rong_is_never_wrapped() {
+        use rong::{JSEngine, RongJS, Source};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.Rong = { SSE: function SSE() {} }; globalThis.__before = Rong.SSE;",
+        ))
+        .unwrap();
+        assert!(apply_rong_member_wrappers(&ctx).is_empty());
+        let same: bool = ctx
+            .eval(Source::from_bytes("Rong.SSE === __before"))
+            .unwrap();
+        assert!(same);
+    }
 
     #[test]
     fn ordinary_extensions_cannot_enter_control_contexts() {
