@@ -126,6 +126,13 @@ pub struct TestOptions {
 
     #[command(flatten)]
     state: crate::test_state::StateOptions,
+
+    /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
+    /// a scenario file `t.app.network.scenario()` and `lxdev network
+    /// scenario use` can replay. Credentials and --secret-arg values are
+    /// redacted.
+    #[arg(long, value_name = "DIR")]
+    record_network: Option<PathBuf>,
 }
 
 /// The ceiling is the automation runtime's own run budget
@@ -244,6 +251,9 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         .clone()
         .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_ROOT));
     ensure_writable_dir(&output_root)?;
+    if let Some(dir) = &options.record_network {
+        ensure_writable_dir(dir)?;
+    }
     warn_package_version(&entry, machine);
     let bundle = bundle_test_path(&entry)?;
     if !machine {
@@ -429,6 +439,21 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             outcome.artifacts.push((name.into(), path, bytes));
         }
     }
+    if let Some(dir) = &options.record_network {
+        match crate::test_network::save_recorded_scenarios(dir, &outcome.artifacts) {
+            Ok(written) if !machine => eprintln!(
+                "{} recorded {} network scenario(s) in {}",
+                "test".cyan(),
+                written.len(),
+                dir.display()
+            ),
+            Ok(_) => {}
+            Err(error) => {
+                eprintln!("{} --record-network: {error:#}", "error".red());
+                outcome.partial = true;
+            }
+        }
+    }
     report(
         &outcome,
         &bundle,
@@ -518,6 +543,9 @@ fn run_control(
     }
     if options.forbid_only {
         control.insert("forbidOnly".to_string(), "1".to_string());
+    }
+    if options.record_network.is_some() {
+        control.insert("recordNetwork".to_string(), "1".to_string());
     }
     Ok(control)
 }
@@ -1824,6 +1852,7 @@ fn failure_records(cases: &[serde_json::Value]) -> serde_json::Value {
             for (key, value) in [
                 ("failedAction", &error["failedAction"]),
                 ("page", &error["page"]),
+                ("network", &error["network"]),
             ] {
                 if !value.is_null() {
                     record.insert(key.into(), value.clone());
@@ -2344,8 +2373,17 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
                 .or(case["reason"].as_str())
                 .unwrap_or(""),
         );
+        let calls = crate::test_network::network_lines(&case["error"]["network"]);
+        let network = if calls.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "<p>Logic fetch calls before the failure:</p><pre>{}</pre>",
+                escape_markup(&calls.join("\n"))
+            )
+        };
         html.push_str(&format!(
-            "<tr><td>{name}</td><td>{status}</td><td><pre>{detail}</pre></td></tr>"
+            "<tr><td>{name}</td><td>{status}</td><td><pre>{detail}</pre>{network}</td></tr>"
         ));
         xml.push_str(&format!(
             "<testcase name=\"{name}\" time=\"{}\">",

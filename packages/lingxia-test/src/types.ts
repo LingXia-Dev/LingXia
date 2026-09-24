@@ -457,10 +457,34 @@ export interface FailurePage {
   instanceId: string | null;
 }
 
+/**
+ * One Logic `fetch` (or `Rong.SSE` connection) the app made, as a failed
+ * spec's report lists it: no bodies, no headers, credentials and
+ * `--secret-arg` values masked in the URL.
+ */
+export interface NetworkCall {
+  /** Epoch milliseconds when the request started. */
+  time: number;
+  kind: "fetch" | "sse";
+  method: string;
+  url: string;
+  /** Response status; `null` when it failed or has not answered. */
+  status: number | null;
+  /** The rejection, e.g. `TypeError: fetch failed`. */
+  error?: string;
+  durationMs: number | null;
+  /** `route` when a test route answered; `network` when the request was real. */
+  source: "route" | "network";
+  /** The route that matched, including a `continue` pass-through. */
+  route?: { pattern: string; action: string };
+}
+
 export interface ReportError {
   code?: string;
   data?: unknown;
   phase?: string;
+  /** The app's last Logic network calls before the failure, oldest first. */
+  network?: NetworkCall[];
   /** The recorded driver action that failed, e.g. `page.click [data-testid=save]`. */
   failedAction?: string;
   /** The page that was current when the spec failed. */
@@ -553,6 +577,8 @@ export interface FailureRecord {
   page?: FailurePage;
   /** Report-relative path of the failure screenshot, when one was captured. */
   screenshot?: string;
+  /** The app's last Logic network calls before the failure (up to 20). */
+  network?: NetworkCall[];
 }
 
 export interface JsonReport {
@@ -594,6 +620,10 @@ export interface AutomationHost {
   emit?: (event: Record<string, unknown>) => void | Promise<void>;
   report?: (event: Record<string, unknown>) => void | Promise<void>;
   logs?: () => string | string[] | Promise<string | string[]>;
+  /** Logic network calls since `sinceMs`, newest `limit`. */
+  networkLog?: (sinceMs: number, limit?: number) => unknown;
+  /** `lxdev test --record-network`: start, or stop and return the scenario. */
+  networkRecord?: (command: "start" | "stop", name?: string) => unknown;
 }
 
 declare global {

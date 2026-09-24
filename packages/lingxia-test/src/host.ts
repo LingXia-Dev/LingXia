@@ -16,6 +16,10 @@ export interface ResolvedHost {
   ): Promise<void>;
   emit(event: Record<string, unknown>): Promise<void>;
   logs(): Promise<string | undefined>;
+  /** Logic network calls since `sinceMs`; `undefined` on a host without them. */
+  networkLog?(sinceMs: number, limit?: number): unknown;
+  /** Network recording for `--record-network`; `undefined` on a host without it. */
+  networkRecord?(command: "start" | "stop", name?: string): unknown;
 }
 
 function asArgs(value: unknown): Record<string, string> {
@@ -52,6 +56,12 @@ export function resolveHost(): ResolvedHost {
       if (typeof value === "string" && value.length > 0) return value;
       return undefined;
     },
+    ...(typeof raw?.networkLog === "function"
+      ? { networkLog: (sinceMs: number, limit?: number) => raw.networkLog!(sinceMs, limit) }
+      : {}),
+    ...(typeof raw?.networkRecord === "function"
+      ? { networkRecord: (command: "start" | "stop", name?: string) => raw.networkRecord!(command, name) }
+      : {}),
   };
 }
 

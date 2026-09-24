@@ -3,6 +3,7 @@ import type {
   AssertionRecord,
   CaseRecord,
   JsonReport,
+  NetworkCall,
   ReportError,
   SpecStatus,
   StepRecord,
@@ -665,8 +666,39 @@ function renderError(item: CaseRecord): string {
   return `<div class="failure">
     <h3>${escapeHtml(error.name)}${error.matcher ? ` &middot; <code>${escapeHtml(error.matcher)}</code>` : ""}</h3>
     <pre class="message">${escapeHtml(error.message)}</pre>
-    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}
+    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}${renderNetwork(error.network)}
   </div>`;
+}
+
+/**
+ * The app's last Logic network calls before the failure: when each started
+ * relative to the first, what it asked, what came back and whether a route
+ * or the real network answered.
+ */
+export function renderNetwork(calls: NetworkCall[] | undefined): string {
+  if (!calls || calls.length === 0) return "";
+  const first = calls[0].time;
+  const rows = calls.map((call) => {
+    const outcome = call.status !== null && call.status !== undefined
+      ? String(call.status)
+      : call.error ?? "pending";
+    const failed = call.error !== undefined || (typeof call.status === "number" && call.status >= 400);
+    const source = call.source === "route"
+      ? `<span class="net-route" title="${escapeHtml(call.route?.pattern ?? "")}">route</span>`
+      : `<span class="net-real">network</span>`;
+    return `<tr>
+      <td class="net-time">+${Math.max(0, call.time - first)}ms</td>
+      <td><code>${escapeHtml(call.method)}</code>${call.kind === "sse" ? " <span class=\"net-kind\">sse</span>" : ""}</td>
+      <td class="net-url">${escapeHtml(call.url)}</td>
+      <td class="${failed ? "fail" : ""}">${escapeHtml(outcome)}</td>
+      <td class="net-time">${call.durationMs === null || call.durationMs === undefined ? "—" : `${call.durationMs}ms`}</td>
+      <td>${source}</td>
+    </tr>`;
+  }).join("");
+  return `<details class="network" open>
+    <summary>Logic network &middot; last ${calls.length} call${calls.length === 1 ? "" : "s"}</summary>
+    <table class="net"><thead><tr><th>at</th><th>method</th><th>url</th><th>result</th><th>took</th><th>answered by</th></tr></thead><tbody>${rows}</tbody></table>
+  </details>`;
 }
 
 /**
@@ -977,6 +1009,17 @@ pre.message { background:var(--panel); border:1px solid var(--line); border-radi
 .side.expected pre { border-left:3px solid var(--pass); }
 .side.actual pre { border-left:3px solid var(--fail); }
 .at { margin:8px 0 0; color:var(--muted); font-size:12px; font-family:var(--mono); }
+.network { margin-top:8px; }
+.network summary { cursor:pointer; color:var(--muted); font-size:12px; }
+.net { width:100%; border-collapse:collapse; margin-top:6px; font-size:12px; background:var(--panel);
+  border:1px solid var(--line); border-radius:8px; }
+.net th, .net td { text-align:left; padding:4px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+.net th { font-weight:500; color:var(--muted); }
+.net-url { font-family:var(--mono); word-break:break-all; }
+.net-time { font-family:var(--mono); color:var(--muted); white-space:nowrap; }
+.net td.fail { color:var(--fail); }
+.net-route { color:var(--skip); font-weight:500; }
+.net-real, .net-kind { color:var(--muted); }
 .stack { margin-top:8px; }
 .stack summary { cursor:pointer; color:var(--muted); font-size:12px; }
 .stack pre { margin-top:6px; background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:10px 12px; max-height:280px; overflow:auto; }

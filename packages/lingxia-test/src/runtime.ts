@@ -15,6 +15,7 @@ import type {
   Fixture,
   JsonReport,
   LingxiaTestController,
+  NetworkCall,
   ProtocolReport,
   RejectExpected,
   RunSubject,
@@ -347,6 +348,7 @@ async function run(): Promise<ProtocolReport> {
   }
 
   const grep = control.grep;
+  const recordNetwork = control.recordNetwork === "1";
   const pattern = grep ? new RegExp(grep) : undefined;
   const forbidOnly = control.forbidOnly === "1" || control["forbid-only"] === "1";
   const hasOnly = specs.some((item) => item.annotation === "only");
@@ -487,6 +489,7 @@ async function run(): Promise<ProtocolReport> {
     let status: SpecStatus = "passed";
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
+    const recordingNetwork = recordNetwork && await startNetworkRecording(host);
 
     const shouldRelaunch = item.fresh || item.restoreProfile || forceRelaunchNext;
     forceRelaunchNext = false;
@@ -647,6 +650,7 @@ async function run(): Promise<ProtocolReport> {
     }
 
     if (status !== "passed" && status !== "skipped") await collectEvidence();
+    if (recordingNetwork) await saveNetworkRecording(host, fixture, record.title);
     if (status === "skipped") record.reason = fixture.skipReason ?? record.reason;
     fixture.close();
     record.status = status;
@@ -668,6 +672,8 @@ async function run(): Promise<ProtocolReport> {
       }
       const page = failurePage ?? pageFromErrorData(record.error.data);
       if (page) record.error.page = page;
+      const calls = networkCalls(host, caseStarted);
+      if (calls.length > 0) record.error.network = calls;
     }
     const history = attempts.get(key) ?? [];
     history.push(record);
@@ -812,8 +818,50 @@ export function failureRecords(cases: CaseRecord[]): FailureRecord[] {
         failedAction: error?.failedAction,
         page: error?.page,
         screenshot,
+        ...(error?.network && error.network.length > 0 ? { network: error.network } : {}),
       };
     });
+}
+
+/** The per-spec attachment `lxdev test --record-network` collects. */
+const RECORDED_SCENARIO = "network.scenario.json";
+
+/** Logic network calls a failed spec reports: the last 20 since it started. */
+const REPORTED_NETWORK_CALLS = 20;
+
+function networkCalls(host: ResolvedHost, since: number): NetworkCall[] {
+  if (!host.networkLog) return [];
+  try {
+    const calls = host.networkLog(since, REPORTED_NETWORK_CALLS);
+    return Array.isArray(calls) ? (calls as NetworkCall[]).slice(-REPORTED_NETWORK_CALLS) : [];
+  } catch {
+    // The call log is evidence; it never replaces the failure.
+    return [];
+  }
+}
+
+/** `--record-network`: capture this spec's real Logic traffic. */
+async function startNetworkRecording(host: ResolvedHost): Promise<boolean> {
+  if (!host.networkRecord) {
+    await host.emit({ type: "diagnostic", phase: "record-network", message: "this host cannot record network traffic; rebuild it from this LingXia revision" });
+    return false;
+  }
+  try {
+    host.networkRecord("start");
+    return true;
+  } catch (error) {
+    await host.emit({ type: "diagnostic", phase: "record-network", message: String((error as Error)?.message ?? error) });
+    return false;
+  }
+}
+
+async function saveNetworkRecording(host: ResolvedHost, fixture: LiveFixture, title: string): Promise<void> {
+  try {
+    const scenario = host.networkRecord?.("stop", title);
+    if (scenario && typeof scenario === "object") await fixture.attachRaw(RECORDED_SCENARIO, scenario);
+  } catch (error) {
+    await host.emit({ type: "diagnostic", phase: "record-network", message: String((error as Error)?.message ?? error) });
+  }
 }
 
 /** Attach failure evidence; resolves to the page that was current, if known. */
