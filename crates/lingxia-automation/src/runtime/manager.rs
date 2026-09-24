@@ -1,6 +1,7 @@
 //! One isolated Rong worker per [`AutomationRuntime`] instance.
 
 use super::context;
+use super::profile::TeardownFn;
 use super::protocol::*;
 use super::run::RunShared;
 use log::{error, warn};
@@ -38,6 +39,7 @@ struct RuntimeInner {
     state: Mutex<RuntimeState>,
     sender: mpsc::Sender<RunRequest>,
     lease: Duration,
+    teardown: TeardownFn,
 }
 
 /// Reusable host-owned automation executor.
@@ -55,6 +57,10 @@ impl AutomationRuntime {
     }
 
     fn with_controller_lease(lease: Duration) -> Result<Self, String> {
+        Self::with_options(lease, super::profile::DEFAULT_TEARDOWN)
+    }
+
+    fn with_options(lease: Duration, teardown: TeardownFn) -> Result<Self, String> {
         let (sender, receiver) = mpsc::channel::<RunRequest>();
         let inner = Arc::new(RuntimeInner {
             state: Mutex::new(RuntimeState {
@@ -65,6 +71,7 @@ impl AutomationRuntime {
             }),
             sender,
             lease,
+            teardown,
         });
         let runtime = Arc::downgrade(&inner);
         std::thread::Builder::new()
@@ -106,10 +113,13 @@ impl AutomationRuntime {
             ));
         }
 
-        let shared = Arc::new(RunShared::new(
-            uuid::Uuid::new_v4().to_string(),
-            Duration::from_millis(timeout_ms),
-        ));
+        let shared = Arc::new(
+            RunShared::new(
+                uuid::Uuid::new_v4().to_string(),
+                Duration::from_millis(timeout_ms),
+            )
+            .with_profile(args.profile, self.inner.teardown),
+        );
         let request = RunRequest {
             shared: shared.clone(),
             source: args.source,
@@ -191,8 +201,11 @@ fn duration_ms(duration: Duration) -> u64 {
 }
 
 fn retire_completed(state: &mut RuntimeState) {
+    // A finished run whose profile is still being torn down keeps the slot:
+    // the next run must not start while the app is between data roots.
     if let Some(active) = &state.active
         && active.state().is_terminal()
+        && !active.teardown_pending()
     {
         let run = state.active.take().unwrap();
         state.completed.push(run);
@@ -568,6 +581,7 @@ mod tests {
                 timeout_ms: Some(timeout_ms),
                 args: HashMap::new(),
                 control: HashMap::new(),
+                profile: None,
             })
             .expect("start automation run")
     }
@@ -639,6 +653,7 @@ mod tests {
                 timeout_ms: Some(5_000),
                 args: HashMap::new(),
                 control: HashMap::new(),
+                profile: None,
             })
             .expect_err("concurrent run must be rejected");
         assert!(error.contains("automation_run_in_progress"));
@@ -816,6 +831,83 @@ mod tests {
         let response = wait_for_terminal(&runtime, &started.run_id);
         assert_eq!(response.state, AutomationRunState::Cancelled);
         assert!(response.result.expect("result").error.is_none());
+    }
+
+    #[test]
+    fn profile_teardown_holds_the_slot_until_the_app_is_back() {
+        use super::super::profile::AutomationProfile;
+        static RELEASE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        fn slow_teardown(_: &AutomationProfile) -> Result<(), String> {
+            while !RELEASE.load(std::sync::atomic::Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
+        }
+        let runtime =
+            AutomationRuntime::with_options(CONTROLLER_LEASE, slow_teardown).expect("runtime");
+        let base = std::env::temp_dir().join(format!(
+            "lingxia-automation-barrier-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let profile = lxapp::data_profile::RunProfile::create(&base).expect("profile");
+        let profile_dir = profile.dir().to_path_buf();
+        let started = runtime
+            .start(AutomationStartArgs {
+                source: "true".to_string(),
+                source_name: None,
+                timeout_ms: Some(5_000),
+                args: HashMap::new(),
+                control: HashMap::new(),
+                profile: Some(AutomationProfile {
+                    appid: "app.lingxia.barrier".to_string(),
+                    profile,
+                    retain: false,
+                }),
+            })
+            .expect("start isolated run");
+
+        // The program finishes at once; its teardown does not.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while runtime
+            .find_run(&started.run_id)
+            .is_ok_and(|run| !run.state().is_terminal())
+        {
+            assert!(Instant::now() < deadline, "program did not finish");
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert_eq!(
+            poll_once(&runtime, &started.run_id).state,
+            AutomationRunState::Running,
+            "the ending is reported only after the teardown"
+        );
+        let refused = runtime
+            .start(AutomationStartArgs {
+                source: "true".to_string(),
+                source_name: None,
+                timeout_ms: Some(5_000),
+                args: HashMap::new(),
+                control: HashMap::new(),
+                profile: None,
+            })
+            .expect_err("the slot is held during teardown");
+        assert!(refused.contains("automation_run_in_progress"));
+        assert_eq!(
+            runtime.active().expect("still active").run_id,
+            started.run_id
+        );
+
+        RELEASE.store(true, std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(
+            wait_for_terminal(&runtime, &started.run_id).state,
+            AutomationRunState::Succeeded
+        );
+        assert!(!profile_dir.exists(), "an unretained profile is deleted");
+        let next = start(&runtime, "true", 5_000);
+        assert_eq!(
+            wait_for_terminal(&runtime, &next.run_id).state,
+            AutomationRunState::Succeeded
+        );
+        let _ = std::fs::remove_dir_all(base);
     }
 
     #[test]

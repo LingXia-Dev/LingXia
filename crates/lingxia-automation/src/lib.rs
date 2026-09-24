@@ -19,6 +19,13 @@ mod network;
 #[path = "network/unavailable.rs"]
 mod network;
 mod page;
+// Profile rollback needs a host run that owns an isolated profile; without
+// the runtime the driver exists but every call rejects.
+#[cfg(feature = "runtime")]
+mod profile;
+#[cfg(not(feature = "runtime"))]
+#[path = "profile/unavailable.rs"]
+mod profile;
 mod resolve;
 #[cfg(feature = "runtime")]
 pub mod runtime;
@@ -272,6 +279,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<network::JSNetworkDriver>()?;
     #[cfg(feature = "runtime")]
     ctx.register_hidden_class::<network::JSNetworkRoute>()?;
+    ctx.register_hidden_class::<profile::JSProfileDriver>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
     ctx.register_hidden_class::<host::JSLxAppManager>()?;
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;

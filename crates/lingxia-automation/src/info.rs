@@ -119,6 +119,15 @@ impl JSLxAppDriver {
             .instance(crate::network::JSNetworkDriver::new(self.lxapp.clone())))
     }
 
+    /// Checkpoint and roll back the isolated data profile of a host run.
+    /// Reading the property never throws; calls outside an isolated run
+    /// reject with `E_PROFILE_NOT_ISOLATED`.
+    #[js_method(getter, enumerable)]
+    fn profile(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::profile::JSProfileDriver>(&ctx)?
+            .instance(crate::profile::JSProfileDriver::new(self.lxapp.clone())))
+    }
+
     #[js_method]
     async fn info(&self, ctx: JSContext) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;

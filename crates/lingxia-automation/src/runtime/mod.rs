@@ -10,10 +10,12 @@
 
 mod context;
 mod manager;
+mod profile;
 mod protocol;
 mod run;
 
 pub use manager::AutomationRuntime;
+pub use profile::{AutomationProfile, ProfileExport, discard_retained, export_retained};
 pub use protocol::{
     AutomationActiveRun, AutomationCancelArgs, AutomationCancelResponse, AutomationEvent,
     AutomationEventPayload, AutomationPollArgs, AutomationPollResponse, AutomationRunError,

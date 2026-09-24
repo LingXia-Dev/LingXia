@@ -35,6 +35,11 @@ pub struct AutomationStartArgs {
     /// separate from `args`.
     #[serde(default)]
     pub control: HashMap<String, String>,
+    /// Isolated data profile the target lxapp already runs on. The run owns
+    /// it: finalization returns the app to its own data before the slot is
+    /// released. Set by the host, never by a wire payload.
+    #[serde(skip)]
+    pub profile: Option<super::profile::AutomationProfile>,
 }
 
 /// The run holding the runtime's single slot.
