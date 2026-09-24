@@ -38,6 +38,9 @@ Page({
   bump() {
     this.setData({ count: this.data.count + 1 });
     void this.flush();
+    // The page's lifetime, for work the page starts.
+    const signal: AbortSignal = this.signal;
+    void signal;
   },
 });
 

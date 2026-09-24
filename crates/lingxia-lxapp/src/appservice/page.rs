@@ -1720,6 +1720,12 @@ impl PageSvc {
 
     /// Retire the service: queued lifecycle events other than `onUnload` are
     /// dropped and in-flight handlers lose their write path back to the page.
+    fn abort_lifetime(&self) {
+        if let Ok(abort) = self.this.get::<_, JSFunc>("_abortLifetime") {
+            let _ = abort.call::<_, ()>(Some(self.this.clone()), ());
+        }
+    }
+
     pub(crate) fn mark_terminated(&self) {
         self.terminated.set(true);
         retain_owed_unload(&mut self.lifecycle_queue.borrow_mut());
@@ -1782,6 +1788,12 @@ impl PageSvc {
         event: PageLifecycleEvent,
         args: Option<&str>,
     ) -> JSResult<()> {
+        // `this.signal` is aborted by the time `onUnload` runs, however the
+        // page leaves: navigating back retires the service only after a
+        // grace period, and work must not resolve into the page meanwhile.
+        if event == PageLifecycleEvent::OnUnload {
+            self.abort_lifetime();
+        }
         if let Some(js_func) = self.functions.get(event.as_str()) {
             let args_obj = args.and_then(|json| rong::JSObject::from_json_string(ctx, json).ok());
             // The caller owns a task-local JSContext for the full async call;
@@ -2075,6 +2087,64 @@ pub(crate) fn init(ctx: &JSContext) -> JSResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `this.signal` is the page's lifetime: live until the runtime retires
+    /// the page, aborted then, and not something a page config can replace.
+    #[tokio::test(flavor = "current_thread")]
+    async fn page_signal_aborts_when_the_page_is_retired() -> JSResult<()> {
+        tokio::task::LocalSet::new()
+            .run_until(page_signal_contract())
+            .await
+    }
+
+    async fn page_signal_contract() -> JSResult<()> {
+        use rong::{JSEngine, RongJS};
+        let runtime = RongJS::runtime();
+        let ctx = runtime.context();
+        // The Logic worker modules `Page.js` relies on (timers, abort + DOMException).
+        rong_modules::init(&ctx, ["timer", "event", "exception", "abort"]).expect("Logic modules");
+        // A stand-in for the Rust `PageSvc` class: `Page.js` only constructs it.
+        ctx.eval::<()>(Source::from_bytes(
+            "globalThis.PageSvc = class { constructor() {} _setData() {} };",
+        ))?;
+        ctx.eval::<()>(Source::from_bytes(include_str!("scripts/Page.js")))?;
+        let result: String = ctx.eval_async(Source::from_bytes(
+            r#"
+            (async () => { try {
+              __registerPage("pages/home", { data: {} });
+              const page = __LX_CREATE_PAGE__("pages/home", null, "p1");
+              const before = page.signal instanceof AbortSignal && !page.signal.aborted;
+              let heard = false;
+              // A throwing listener must not cut teardown short.
+              page.signal.addEventListener("abort", () => { throw new Error("page bug"); });
+              page.signal.addEventListener("abort", () => { heard = true; });
+              page.setData({ late: true });
+              let flushSettled = "pending";
+              page.flush().then(() => { flushSettled = "resolved"; }, () => { flushSettled = "rejected"; });
+              page._cancelPendingSetData();
+              page._abortLifetime();
+              let reserved = false;
+              try {
+                __registerPage("pages/bad", { signal: null });
+                __LX_CREATE_PAGE__("pages/bad", null, "p2");
+              } catch (error) {
+                reserved = /reserved by the runtime/.test(String(error));
+              }
+              await Promise.resolve();
+              await Promise.resolve();
+              return [before, page.signal.aborted, heard, reserved, flushSettled].join(",");
+            } catch (error) { return `threw: ${error}`; } })()
+            "#,
+        ))
+        .await?;
+        // rong stops at the first throwing listener, so `heard` shows only
+        // that the throw was contained; the flush still settles.
+        assert!(
+            result.starts_with("true,true,") && result.ends_with(",true,rejected"),
+            "{result}"
+        );
+        Ok(())
+    }
 
     #[test]
     fn pump_still_delivers_the_unload_queued_before_retirement() {

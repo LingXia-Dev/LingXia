@@ -168,6 +168,14 @@ export interface PageInstance<TData extends object = Record<string, unknown>> {
   setDataPath(path: string, value: JsonValue | undefined): void;
   /** Drain pending state writes; an attached View acknowledges application, not paint. Rejects on unload. */
   flush(): Promise<void>;
+  /**
+   * Aborted as the page unloads, before `onUnload` runs, however the page
+   * leaves. Pass it to work the page starts — `fetch(url, { signal:
+   * this.signal })` — so that work stops with the page, rejecting with an
+   * `AbortError`, instead of resolving into a page that is gone. When the
+   * whole lxapp shuts down, its Logic ends with it and the signal does not fire.
+   */
+  readonly signal: AbortSignal;
 }
 
 /**

@@ -7,7 +7,7 @@
       throw new Error("setData: Invalid page configuration");
     }
 
-    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'surface', 'opener', '_cancelPendingSetData', '_setData']) {
+    for (const key of ['setData', 'setPath', 'setDataPath', 'flush', 'signal', 'surface', 'opener', '_abortLifetime', '_cancelPendingSetData', '_setData']) {
       if (Object.prototype.hasOwnProperty.call(pageConfig, key)) {
         throw new TypeError(`Page member '${key}' is reserved by the runtime`);
       }
@@ -35,6 +35,17 @@
       }
     }
 
+    // Aborted as the page unloads — just before `onUnload` runs, or when the
+    // page is retired without one — so work the page started (a fetch, a
+    // subscription) stops with it instead of resolving into a page that is gone.
+    const lifetime = new AbortController();
+    Object.defineProperty(pageSvc, "signal", {
+      value: lifetime.signal,
+      enumerable: false,
+      writable: false,
+      configurable: false,
+    });
+
     let updateTimer = null;
     const pendingBaseState = new Map();
     const pendingOps = new Map();
@@ -48,6 +59,16 @@
     };
     const DEBOUNCE_WAIT = 16;
 
+    // A listener that throws is the page's bug: report it, never let it cut
+    // the runtime's own teardown short. Aborting twice is a no-op.
+    pageSvc._abortLifetime = function () {
+      try {
+        lifetime.abort();
+      } catch (error) {
+        console.error("A page's signal abort listener threw:", error);
+      }
+    };
+
     pageSvc._cancelPendingSetData = function () {
       disposed = true;
       rejectFlushes(new Error("Page unloaded before its state was flushed"));
@@ -56,6 +77,7 @@
       pendingBaseState.clear();
       pendingOps.clear();
       pendingCallbacks = [];
+      pageSvc._abortLifetime();
     };
 
     pageSvc.setData = function (updates) {
