@@ -7,6 +7,10 @@ pub(crate) mod extension;
 
 #[cfg(feature = "js-appservice")]
 pub use extension::{LxLogicExtension, register_logic_extension};
+// Automation plumbing for the test runtime, never an app API.
+#[cfg(all(feature = "js-appservice", feature = "automation"))]
+#[doc(hidden)]
+pub use extension::{RongMemberWrapper, register_rong_member_wrapper};
 
 /// Register the global `lx` object in the JavaScript context.
 /// This function must be called before using any other `lx` APIs.

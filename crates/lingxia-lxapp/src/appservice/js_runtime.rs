@@ -753,6 +753,13 @@ pub(crate) async fn lxapp_service_handler(
                 }
             }
             let _ = lx::init(&ctx);
+            for (member, err) in crate::lx::extension::apply_rong_member_wrappers(&ctx) {
+                error!(
+                    "[Worker {}] Failed to wrap Rong.{}: {}",
+                    worker_id, member, err
+                )
+                .with_appid(lxapp.appid.clone());
+            }
             if let Err(e) = ctx.eval::<()>(Source::from_bytes(
                 "Object.defineProperty(globalThis, 'Rong', { value: globalThis.Rong, writable: false, configurable: false }); Object.freeze(globalThis.Rong)",
             )) {
