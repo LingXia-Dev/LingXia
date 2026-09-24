@@ -865,10 +865,30 @@ export interface NetworkDriver {
 export interface ProfileDriver {
   /** Snapshot the profile; resolves the checkpoint id. */
   checkpoint(): Promise<string>;
-  /** Replace the profile with checkpoint `id`. */
-  restore(id: string): Promise<void>;
+  /**
+   * Replace the profile with checkpoint `id`. With `keep`, the storage keys
+   * those globs match keep their current values across the rollback.
+   */
+  restore(id: string, options?: ProfileRestoreOptions): Promise<ProfileRestoreResult>;
   /** Discard checkpoint `id`; the app keeps running. */
   drop(id: string): Promise<void>;
+}
+
+/** `ProfileDriver.restore` options. */
+export interface ProfileRestoreOptions {
+  /**
+   * `lx.getStorage()` keys whose current state survives the rollback: globs
+   * over the whole key, `*` any run of characters (dots included), `?` one
+   * character, anything else literal (at most 64 patterns). A matching key
+   * keeps its current value, one added since the checkpoint stays, and one
+   * deleted since stays deleted. Files (`lx://userdata`, …) always roll back.
+   */
+  keep?: string[];
+}
+
+export interface ProfileRestoreResult {
+  /** Kept keys that currently exist and were carried into the restored data. */
+  kept: string[];
 }
 
 // ============================ test clock ============================

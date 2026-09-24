@@ -5,7 +5,7 @@
 
 use crate::error::{E_PROFILE_NOT_ISOLATED, coded};
 use lxapp::LxApp;
-use rong::{HostError, JSResult, js_class, js_method};
+use rong::{HostError, JSResult, JSValue, function::Optional, js_class, js_method};
 use std::sync::Weak;
 
 const UNAVAILABLE: &str = "profile rollback is not built into this host; \
@@ -39,7 +39,7 @@ impl JSProfileDriver {
     }
 
     #[js_method]
-    async fn restore(&self, _id: String) -> JSResult<()> {
+    async fn restore(&self, _id: String, _options: Optional<JSValue>) -> JSResult<()> {
         Err(coded(E_PROFILE_NOT_ISOLATED, UNAVAILABLE).into())
     }
 
