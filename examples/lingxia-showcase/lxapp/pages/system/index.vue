@@ -441,12 +441,12 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { useLxPage, usePlatform } from '@lingxia/vue';
+import { useLxHost, useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 const { data, actions } = useLxPage();
-const { isMacOS, isWindows } = usePlatform();
-const bannerAvailable = isMacOS || isWindows;
+const { os } = useLxHost();
+const bannerAvailable = os === 'macOS' || os === 'Windows';
 const {
   getBaseInfo,
   getSystemSetting,

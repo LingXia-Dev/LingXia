@@ -85,10 +85,13 @@ lx.surface.openUrl('https://example.com', { as: 'aside' })
 lx.surface.openPage('inspector', { as: 'float' })
 lx.surface.openPage('editor', { as: 'window', chrome: 'full' })
 
-const unsubscribe = lx.surface.watchContext((context) => {
-  this.setData({ surfaceContext: context })
-})
+// Logic: only when Logic itself acts on the size class.
+const unsubscribe = lx.surface.watchContext(({ sizeClass }) => { /* … */ })
 ```
+
+A View reads the same size class with `useLxHost().sizeClass` from
+`@lingxia/react` / `@lingxia/vue` — no subscription, no `setData`. It changes
+only when the size class does; exact widths are CSS and container queries.
 
 - `openDeclared(id)` opens content declared in `lingxia.yaml`; `id` is the declaration's content identity.
 - `openUrl(url)` opens a normal in-app browser tab; `{ as: 'aside' }` docks the browser aside.

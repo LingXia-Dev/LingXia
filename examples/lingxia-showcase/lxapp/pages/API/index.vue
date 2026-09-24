@@ -682,7 +682,7 @@
 
 <script setup lang="ts">
 import { reactive } from 'vue';
-import { useLxPage, usePlatform } from '@lingxia/vue';
+import { useLxHost, useLxPage } from '@lingxia/vue';
 import '../../tailwind.css';
 
 type ExpandedSections = {
@@ -721,8 +721,8 @@ type PageData = {
 };
 
 const { data, actions } = useLxPage<PageData, PageActions>();
-const { isMacOS, isWindows } = usePlatform();
-const bannerAvailable = isMacOS || isWindows;
+const { os } = useLxHost();
+const bannerAvailable = os === 'macOS' || os === 'Windows';
 const {
   navigateToUIPage,
   navigateToDevicePage,

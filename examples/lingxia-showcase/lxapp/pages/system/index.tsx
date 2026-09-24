@@ -1,10 +1,10 @@
-import { useLxPage, usePlatform } from '@lingxia/react';
+import { useLxHost, useLxPage } from '@lingxia/react';
 import '../../tailwind.css';
 
 export default function SystemPage() {
   const { data, actions } = useLxPage();
-  const { isMacOS, isWindows } = usePlatform();
-  const bannerAvailable = isMacOS || isWindows;
+  const { os } = useLxHost();
+  const bannerAvailable = os === 'macOS' || os === 'Windows';
   const {
     getBaseInfo,
     getSystemSetting,

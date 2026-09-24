@@ -391,21 +391,32 @@ For streams, check `chat.error` after `chat.streaming` becomes `false`. For chan
 
 ---
 
-## Platform Detection
+## Host Facts
 
-Two different questions, answered separately:
+A View reads what the host decided for its page from one hook:
 
-- **Which machine is this?** `isMobile()` / `isDesktop()` — the form factor. Branch on these for anything a phone should not show at all.
-- **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform.
+```ts
+const { sizeClass, aside, displayLanguage, formFactor, os, runner } = useLxHost();
+```
 
-Neither is a size class. `useSurfaceContext()` in a View (`lx.surface.watchContext` in Logic) answers "how much room is there"; a narrowed desktop window is still a desktop. An unfolded fold is still a phone: `regular` + mobile, not a desktop workspace. Combine the two; do not invent a third size class.
+`@lingxia/react` / `@lingxia/vue`; `getHost()` / `subscribeHost(cb)` in
+`@lingxia/html`; `window.LingXiaBridge.host.get()` / `.subscribe(cb)` in a page
+that bundles nothing. It changes only when one of its fields does — crossing a
+size class, a language switch — never while a window is dragged.
 
-- **View (React/Vue)**: `usePlatform()` from `@lingxia/react` / `@lingxia/vue` → `{ isMobile, isDesktop, isApple, isIOS, isMacOS, isAndroid, isHarmony, isWindows, isRunner, os }` (typed, sync).
-- **View (any framework)**: `window.LingXiaBridge.platform` — `isMobile()`, `isDesktop()`, `isApple()`, `isIOS()`, `getOS()`, … (sync; read the global, never import). It is already typed in pages that import `@lingxia/react` / `@lingxia/vue`, so no cast is needed.
-- `isApple()` is `iOS || macOS`, the WKWebView group — a transport question, not a form-factor one.
+Three different questions, answered separately:
+
+- **How much room is there?** `sizeClass` (`compact` | `regular`), the same value Logic's `lx.surface.watchContext` reports; `aside` says whether the host offers a docked aside. See [adaptive Views](adaptive-ui.md).
+- **Which machine is this?** `formFactor` (`mobile` | `desktop`). Branch on it for anything a phone should not show at all. A narrowed desktop window is still `desktop`; an unfolded fold is still `mobile` (`regular` + mobile, not a workspace). Do not invent a third size class.
+- **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform. `runner` is `true` inside the `lingxia dev` simulator.
+
+`formFactor`, `os` and `runner` are fixed for the life of a page. In the
+simulator a phone frame reports `mobile` while `os` still names the desktop it
+runs on, so a mobile layout can be checked without a device; picking a frame of
+a different form factor re-serves the page, the way a browser's device mode
+reloads on an emulation toggle.
+
 - **Logic**: `lx.device.getDeviceInfo()` → `osName` (async); the tab bar's `showOn: ['mobile' | 'desktop']` picks destinations by form factor declaratively.
-
-All of these are fixed for the life of a page, so they resolve once. In the `lingxia dev` simulator a phone frame reports `isMobile()` while `os` still names the desktop the simulator runs on, so a mobile layout can be checked without a device; picking a frame of a different form factor re-serves the page, the way a browser's device mode reloads on an emulation toggle.
 
 ## Display Language
 
@@ -415,10 +426,9 @@ One product, one language, one writer — the rule, and the
 effective language here; never keep a second preference of your own, and never
 offer a language picker inside a page.
 
-- **View**: `useDisplayLanguage()` in React/Vue; `getDisplayLanguage()` and
-  `subscribeDisplayLanguage(cb)` in `@lingxia/html`. A plain-HTML page that
-  bundles nothing reads `window.LingXiaBridge.displayLanguage.get()` and
-  `.subscribe(cb)`.
+- **View**: `useLxHost().displayLanguage` (see [host facts](#host-facts)). The
+  runtime also sets `<html lang>` and `<html dir>` from it, so CSS logical
+  properties and `:dir()` follow a right-to-left language with no page code.
 - **Logic**: `lx.host.displayLanguage.get()` returns the tag in effect;
   `lx.host.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
   Logic needs the second one because the strings it hands to native chrome —

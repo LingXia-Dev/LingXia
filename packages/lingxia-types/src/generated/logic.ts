@@ -2768,7 +2768,7 @@ export type WindowsTerminalInlineImageStatus = {
 export interface AppBaseInfo {
   /**
    * Platform family: `"iOS"` / `"macOS"` / `"Android"` / `"Windows"` /
-   * `"Harmony"`. Matches the View-side `usePlatform().os` value.
+   * `"Harmony"`. Matches the View-side `useLxHost().os` value.
    */
   os: HostOs;
   productName: string;

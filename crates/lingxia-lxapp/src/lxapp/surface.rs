@@ -1112,7 +1112,7 @@ pub fn next_surface_context_revision() -> u64 {
 }
 
 /// The script that hands a page's View this lxapp's adaptive context, read by
-/// `useSurfaceContext()`. `None` before the Logic runtime can describe it.
+/// `useLxHost()`. `None` before the Logic runtime can describe it.
 pub(crate) fn view_surface_context_script(appid: &str) -> Option<String> {
     let revision = next_surface_context_revision();
     let payload = SURFACE_CONTEXT_SNAPSHOT.get()?(appid)?;

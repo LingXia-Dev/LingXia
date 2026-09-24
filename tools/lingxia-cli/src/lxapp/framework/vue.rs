@@ -19,7 +19,10 @@ pub(super) fn scaffold(
         main_entry: MAIN_TEMPLATE
             .replace("/* {{APP_IMPORT}} */", app_import)
             .replace("/* {{PAGE_BRIDGE_IMPORT}} */", page_bridge_import)
-            .replace("/* {{WAIT_FOR_STATE}} */", if wait_for_state { "true" } else { "false" }),
+            .replace(
+                "/* {{WAIT_FOR_STATE}} */",
+                if wait_for_state { "true" } else { "false" },
+            ),
         output_extension: ".vue",
     }
 }

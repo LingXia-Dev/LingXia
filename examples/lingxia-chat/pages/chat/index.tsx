@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as echarts from 'echarts';
-import { useLxPage, useLxStream } from '@lingxia/react';
+import { useLxHost, useLxPage, useLxStream } from '@lingxia/react';
 import type { LxStream } from '@lingxia/bridge';
 import type { Message, ChatChunk, ChartData } from '../../shared/chat';
 import '../../tailwind.css';
@@ -147,41 +147,6 @@ function EmptyState() {
       </div>
     </div>
   );
-}
-
-function bridgePlatform() {
-  return (window as unknown as {
-    LingXiaBridge?: {
-      platform?: {
-        isMacOS(): boolean;
-        isWindows(): boolean;
-        isDesktop?(): boolean;
-        isRunner?(): boolean;
-      };
-    };
-  }).LingXiaBridge?.platform;
-}
-
-// Whether the host is a desktop (macOS/Windows) — where the Tools menu applies.
-function isDesktopHost(): boolean {
-  try {
-    const p = bridgePlatform();
-    return !!p && (p.isMacOS() || p.isWindows());
-  } catch {
-    return false;
-  }
-}
-
-// The dockable terminal is a host-declared surface that the LingXia Runner does
-// not provide. Show the terminal affordance only on a desktop host that is NOT
-// the Runner. (isRunner is optional-called so older bridges read as "not runner".)
-function hasDesktopTerminal(): boolean {
-  try {
-    const p = bridgePlatform();
-    return !!p && (p.isMacOS() || p.isWindows()) && p.isRunner?.() !== true;
-  } catch {
-    return false;
-  }
 }
 
 const TERMINAL_EDGES = [
@@ -409,6 +374,10 @@ function InputBar({
 }
 
 export default function ChatPage() {
+  // The Tools menu is for desktop hosts; its dockable terminal is a
+  // host-declared surface the LingXia Runner does not provide.
+  const { os, runner } = useLxHost();
+  const desktopHost = os === 'macOS' || os === 'Windows';
   const { data, actions } = useLxPage<
     { messages: Message[] },
     {
@@ -462,9 +431,9 @@ export default function ChatPage() {
             Clear
           </button>
         )}
-        {isDesktopHost() && (
+        {desktopHost && (
           <ToolsMenu
-            showTerminal={hasDesktopTerminal()}
+            showTerminal={!runner}
             onOpenBrowser={() => actions.onOpenBrowser()}
             onOpenTerminal={(edge) => actions.onOpenTerminal({ edge })}
           />

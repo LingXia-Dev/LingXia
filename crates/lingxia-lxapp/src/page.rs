@@ -1226,7 +1226,7 @@ impl PageInstance {
         self.fire_lifecycle_events(events_to_fire);
     }
 
-    /// Hand this page's View its adaptive context, for `useSurfaceContext()`.
+    /// Hand this page's View its adaptive context, for `useLxHost()`.
     pub(crate) fn push_surface_context(&self) {
         if let Some(script) = crate::lxapp::view_surface_context_script(&self.appid()) {
             self.push_view_script(&script);

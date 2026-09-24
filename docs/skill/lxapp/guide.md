@@ -309,23 +309,35 @@ The View file can be a standard React component, a Vue component, or an HTML mod
 
 ### Typing `PageData` and `PageActions`
 
-Keep the Logic contract distinct from bridge readiness. The View snapshot
-starts empty while the initial Logic data arrives asynchronously; public
-methods are exposed through the actions bridge. In your product contracts:
+A page mounts ready: its View renders only once the page's first state has
+arrived — the host sends it at bridge-ready, before `onLoad`, carrying
+`Page({ data })`'s defaults — so `data` is whole from the first render. There
+is no readiness gate, no `Partial<PageData>`, and no cast. In your product
+contracts:
 
 - **Required by default.** Fields declared in Logic `data: { … }` and public methods are required.
 - **Mark `?:` only when the field is genuinely populated lazily** — for example, a field that starts unset and is filled by `this.setData(…)` after an async fetch in `onLoad`.
 
-At the View entry, use `Partial<PageData>` and gate the fields rendering needs
-until the first snapshot arrives. Keep hooks above the gate. Do not make the
-product contract itself all-optional or use `actions.foo?.()` to hide a missing
-action. See [adaptive Views](adaptive-ui.md#choose-css-or-separate-views).
+Do not make the product contract all-optional or use `actions.foo?.()` to hide
+a missing action. If Logic never delivers the state — it failed to load, or
+threw first — the page shows a panel naming itself instead of staying blank.
+
+A View has two page-level hooks:
+
+| Hook | Returns | Changes |
+|---|---|---|
+| `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and methods | on every `setData` |
+| `useLxHost()` | `{ sizeClass, aside, displayLanguage, formFactor, os, runner }` — what the host decided | only when one of them changes; never while a window is dragged |
+
+Any component may call either; neither needs props passed down. Geometry is
+CSS, not a hook — see [page chrome](#laying-out-under-immersive-chrome) and
+[adaptive Views](adaptive-ui.md).
 
 ### React
 
 ```tsx
 // pages/home/index.tsx
-import { useLxPage } from '@lingxia/react';
+import { useLxHost, useLxPage } from '@lingxia/react';
 
 type PageData = {
   count: number;
@@ -338,12 +350,11 @@ type PageActions = {
 };
 
 export default function HomePage() {
-  const { data, actions } = useLxPage<Partial<PageData>, PageActions>();
-
-  if (data.count === undefined || data.message === undefined) return null;
+  const { data, actions } = useLxPage<PageData, PageActions>();
+  const { formFactor } = useLxHost();
 
   return (
-    <div>
+    <div data-form-factor={formFactor}>
       <p>Count: {data.count}</p>
       <p>{data.message}</p>
       <button onClick={() => actions.increment()}>+1</button>
@@ -357,28 +368,31 @@ export default function HomePage() {
 
 ### Vue
 
-Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<Partial<PageData>, PageActions>()` in `<script setup lang="ts">`, gate the template until required data arrives, then bind `{{ data.count }}` / `@click="actions.increment()"` in the template. `lingxia new … ` scaffolds the full file.
+Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<PageData, PageActions>()` and `const host = useLxHost()` in `<script setup lang="ts">`, then bind `{{ data.count }}`, `host.sizeClass` and `@click="actions.increment()"` in the template. `data` is deep-reactive and updated in place, so destructuring it stays live; read `host.sizeClass` rather than destructuring `host`. `lingxia new …` scaffolds the full file.
 
 ### HTML
 
 ```ts
 // pages/home/entry.ts — index.html loads it with <script type="module">
-import { getActions, subscribe } from '@lingxia/html';
+import { getPage, pageReady, subscribePage } from '@lingxia/html';
 
-const actions = getActions<PageActions>();
+const render = () => draw(getPage<PageData, PageActions>().data);
+document.getElementById('inc-btn')?.addEventListener('click', () => getPage<PageData, PageActions>().actions.increment());
 
-document.getElementById('inc-btn')?.addEventListener('click', () => actions.increment());
-subscribe((data: Partial<PageData>) => render(data));
+// Plain HTML has no mount to gate: wait for the first state, then follow it.
+void pageReady().then(() => {
+  render();
+  subscribePage(render);
+});
 ```
+
+`getHost()` / `subscribeHost()` are the HTML form of `useLxHost()`. A page that
+bundles nothing reads `window.LingXiaBridge.host.get()` / `.subscribe(cb)`.
 
 ### What `useLxPage()` returns
 
-```ts
-const { data, actions } = useLxPage<Partial<PageData>, PageActions>();
-```
-
-- **`data`** — Reactive page state, updated whenever Logic calls `setData()`. In React this triggers a re-render; in Vue it's a `reactive()` object.
-- **`actions`** — All public functions from `Page({})` (except lifecycle hooks and `_`-prefixed methods). Each action is a bridge function that calls through to the Logic layer.
+- **`data`** — This page's Logic state, updated whenever Logic calls `setData()`. In React this re-renders; in Vue it is a `reactive()` object updated in place.
+- **`actions`** — All public functions from `Page({})` (except lifecycle hooks and `_`-prefixed methods), one object for the page. Each action is a bridge function that calls through to the Logic layer.
 
 Use typed `PageActions` interfaces so View and Logic stay aligned as your page grows.
 
@@ -795,23 +809,23 @@ the page-chrome CSS variables for ordinary layout:
 }
 ```
 
-Use the framework helper when placement needs the exact capsule rectangle or
-must react in JavaScript: `useLxPageChrome()` from `@lingxia/react` (snapshot) or
-`@lingxia/vue` (`Readonly<Ref<PageChromeLayoutSnapshot>>`), and
-`getPageChromeLayout()` / `subscribePageChromeLayout(cb)` from `@lingxia/html`.
+The capsule's box is CSS too, so a header clears it without JavaScript:
 
-```tsx
-const chrome = useLxPageChrome();
-const capsule = chrome.capsuleRect;   // { top, left, width, height }
+```css
+.page-header {
+  padding-top: calc(var(--lx-page-chrome-capsule-bottom) + 12px);
+}
 ```
 
-Snapshots are frozen and revisioned. `window.lxPageChrome.layout` and the
-`lxpagechromechange` event remain the low-level View contract; framework code
-should prefer the helpers so subscriptions are cleaned up with the component.
+`--lx-page-chrome-capsule-{top,right,bottom,left,width,height}` are all `0px`
+when the page has no capsule. There is no hook for chrome geometry: it changes
+with appearance and layout, and CSS follows it without re-rendering. For the
+rare placement that must be computed in JavaScript, `window.lxPageChrome.layout`
+holds the frozen snapshot and the `lxpagechromechange` event reports a change.
 Capsule geometry is View-owned; Logic has no capsule measurement API.
 
-Full Logic patch shapes are exported by `@lingxia/types`; View snapshot types
-are exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
+Full Logic patch shapes are exported by `@lingxia/types`; the `LxHost` type is
+exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
 
 ---
 
