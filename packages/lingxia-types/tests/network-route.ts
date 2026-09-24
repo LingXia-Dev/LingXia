@@ -87,6 +87,17 @@ void handles;
 // @ts-expect-error a scenario route needs a url
 const noUrl: NetworkScenarioDefinition = { routes: [{ status: 200 }] };
 void noUrl;
+// The sectioned form of `lxdev scenario` files.
+const sectioned: NetworkScenarioDefinition = {
+  $schema: './scenario.schema.json',
+  name: 'gateway offline',
+  http: { routes: [{ url: '**/v1/status', status: 503 }] },
+};
+const importedSectioned = { name: 'from-json', http: { routes: [{ url: '**/a', status: 503 }] } };
+void [network.scenario(sectioned), network.scenario(importedSectioned)];
+// @ts-expect-error routes sit at the top level or under http, not both
+const both: NetworkScenarioDefinition = { routes: [], http: { routes: [] } };
+void both;
 declare const handle: NetworkScenario;
 const name: string | null = handle.name;
 const count: Promise<number> = handle.unroute();

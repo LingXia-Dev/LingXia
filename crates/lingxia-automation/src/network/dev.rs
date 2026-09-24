@@ -1,5 +1,5 @@
 //! Network scenarios and recordings driven by a dev session
-//! (`lxdev network …`) while no test runs, and the recording and call log a
+//! (`lxdev scenario …`, `lxdev network record …`) while no test runs, and the recording and call log a
 //! host automation run reads through its host object.
 //!
 //! A dev scenario is impossible to miss: installing it, and every request it
@@ -7,7 +7,9 @@
 //! host automation run is active so it never steers a test.
 
 use super::capture::{self, REPORT_CALLS, Recording};
-use super::registry::{self, DEV_SESSION_OWNER, DevScenario, RouteAction, now_ms};
+use super::registry::{
+    self, DEV_SESSION_OWNER, DevClearReason, DevScenario, Registry, RouteAction, now_ms,
+};
 use super::scenario;
 use lingxia_log::{LogBuilder, LogLevel, LogTag};
 use serde_json::{Value, json};
@@ -43,8 +45,8 @@ pub(crate) fn describe(action: &RouteAction) -> String {
 pub fn use_scenario(appid: &str, scenario: &Value, source: Option<&str>) -> Result<Value, String> {
     let parsed = scenario::parse_scenario(scenario)?;
     let count = parsed.routes.len();
-    let dev = registry::with_registry(|routes| {
-        routes.clear_run(DEV_SESSION_OWNER);
+    let (dev, replaced) = registry::with_registry(|routes| {
+        let replaced = routes.end_dev_scenario(DevClearReason::Replaced, now_ms());
         let installed = routes.install_all(DEV_SESSION_OWNER, appid, parsed.routes, || true)?;
         let dev = DevScenario {
             name: parsed.name,
@@ -54,13 +56,23 @@ pub fn use_scenario(appid: &str, scenario: &Value, source: Option<&str>) -> Resu
             installed_ms: now_ms(),
         };
         routes.dev = Some(dev.clone());
-        Ok::<_, String>(dev)
+        Ok::<_, String>((dev, replaced))
     })?;
+    if let Some(previous) = &replaced {
+        warn(
+            &previous.appid,
+            format!(
+                "dev scenario {} replaced by {}",
+                label(previous),
+                label(&dev)
+            ),
+        );
+    }
     warn(
         appid,
         format!(
-            "dev network scenario {} is ACTIVE: {count} route{} answer this app's Logic fetch \
-             until `lxdev network scenario clear` or the dev session ends",
+            "dev scenario {} is ACTIVE: {count} route{} answer this app's Logic fetch \
+             until `lxdev scenario clear` or the dev session ends",
             label(&dev),
             if count == 1 { "" } else { "s" }
         ),
@@ -68,86 +80,102 @@ pub fn use_scenario(appid: &str, scenario: &Value, source: Option<&str>) -> Resu
     Ok(status())
 }
 
-/// Remove the dev scenario. Returns whether one was installed.
+/// Remove the dev scenario (`lxdev scenario clear`). Returns whether one was
+/// installed.
 pub fn clear_scenario() -> bool {
-    let cleared = registry::with_registry(|routes| {
-        let dev = routes.dev.clone();
-        routes.clear_run(DEV_SESSION_OWNER);
-        dev
-    });
+    end_scenario(DevClearReason::Cleared)
+}
+
+fn end_scenario(reason: DevClearReason) -> bool {
+    let cleared = registry::with_registry(|routes| routes.end_dev_scenario(reason, now_ms()));
     if let Some(dev) = &cleared {
-        warn(
-            &dev.appid,
-            format!("dev network scenario {} cleared", label(dev)),
-        );
+        let why = match reason {
+            DevClearReason::Cleared => "cleared",
+            DevClearReason::Replaced => "replaced",
+            DevClearReason::SessionEnded => "cleared: the dev session disconnected",
+        };
+        warn(&dev.appid, format!("dev scenario {} {why}", label(dev)));
     }
     cleared.is_some()
 }
 
-/// The active dev scenario and recording, for `lxdev network … status`.
+/// The active dev scenario and recording, for `lxdev scenario status` and
+/// `lxdev network status`.
 pub fn status() -> Value {
-    registry::with_registry(|routes| {
-        let scenario = routes.dev.as_ref().map(|dev| {
-            let entries: Vec<Value> = dev
-                .route_ids
-                .iter()
-                .map(|id| {
-                    let remaining = routes.remaining(DEV_SESSION_OWNER, *id);
-                    json!({
-                        "id": id,
-                        "installed": remaining.is_some(),
-                        "timesLeft": remaining.flatten(),
-                        "hits": routes.hits(DEV_SESSION_OWNER, *id),
-                    })
+    registry::with_registry(|routes| status_of(routes))
+}
+
+pub(crate) fn status_of(routes: &Registry) -> Value {
+    let scenario = routes.dev.as_ref().map(|dev| {
+        let entries: Vec<Value> = dev
+            .route_ids
+            .iter()
+            .map(|id| {
+                let remaining = routes.remaining(DEV_SESSION_OWNER, *id);
+                json!({
+                    "id": id,
+                    "installed": remaining.is_some(),
+                    "timesLeft": remaining.flatten(),
+                    "hits": routes.hits(DEV_SESSION_OWNER, *id),
                 })
-                .collect();
-            let patterns = routes.requests(DEV_SESSION_OWNER, &dev.appid);
+            })
+            .collect();
+        let patterns = routes.requests(DEV_SESSION_OWNER, &dev.appid);
+        json!({
+            "name": dev.name,
+            "source": dev.source,
+            "appid": dev.appid,
+            "installedAt": scenario::iso_utc(dev.installed_ms as i64),
+            "routes": entries,
+            "requests": patterns.len(),
+            "lastRequests": patterns
+                .iter()
+                .rev()
+                .take(10)
+                .rev()
+                .map(|entry| json!({
+                    "method": entry.method,
+                    "url": capture::redact_url(&entry.url, capture::REDACTED),
+                    "pattern": entry.pattern,
+                    "action": entry.action,
+                    "status": entry.status,
+                    "time": scenario::iso_utc(entry.timestamp_ms as i64),
+                }))
+                .collect::<Vec<_>>(),
+        })
+    });
+    let last_cleared = routes.dev_cleared.as_ref().map(|cleared| {
+        json!({
+            "name": cleared.scenario.name,
+            "source": cleared.scenario.source,
+            "appid": cleared.scenario.appid,
+            "reason": cleared.reason.as_str(),
+            "clearedAt": scenario::iso_utc(cleared.cleared_ms as i64),
+        })
+    });
+    let recording = routes
+        .dev_recording
+        .as_ref()
+        .or(routes.run_recording.as_ref())
+        .map(|recording| {
+            let dev = recording.owner == DEV_SESSION_OWNER;
             json!({
-                "name": dev.name,
-                "source": dev.source,
-                "appid": dev.appid,
-                "installedAt": scenario::iso_utc(dev.installed_ms as i64),
-                "routes": entries,
-                "requests": patterns.len(),
-                "lastRequests": patterns
-                    .iter()
-                    .rev()
-                    .take(10)
-                    .rev()
-                    .map(|entry| json!({
-                        "method": entry.method,
-                        "url": capture::redact_url(&entry.url, capture::REDACTED),
-                        "pattern": entry.pattern,
-                        "action": entry.action,
-                        "status": entry.status,
-                        "time": scenario::iso_utc(entry.timestamp_ms as i64),
-                    }))
-                    .collect::<Vec<_>>(),
+                "owner": if dev { "dev-session" } else { "test-run" },
+                "appid": recording.appid,
+                "match": recording.matcher.as_ref().map(|m| m.label()),
+                "startedAt": scenario::iso_utc(recording.started_ms as i64),
+                "exchanges": recording.exchanges.len(),
+                // A dev recording pauses while a test run is active.
+                "paused": dev && routes.runs_active(),
             })
         });
-        let recording = routes
-            .dev_recording
-            .as_ref()
-            .or(routes.run_recording.as_ref())
-            .map(|recording| {
-                let dev = recording.owner == DEV_SESSION_OWNER;
-                json!({
-                    "owner": if dev { "dev-session" } else { "test-run" },
-                    "appid": recording.appid,
-                    "match": recording.matcher.as_ref().map(|m| m.label()),
-                    "startedAt": scenario::iso_utc(recording.started_ms as i64),
-                    "exchanges": recording.exchanges.len(),
-                    // A dev recording pauses while a test run is active.
-                    "paused": dev && routes.runs_active(),
-                })
-            });
-        json!({
-            "active": scenario.is_some(),
-            // Dev routes stand aside while a test run is active.
-            "suspended": scenario.is_some() && routes.runs_active(),
-            "scenario": scenario,
-            "recording": recording,
-        })
+    json!({
+        "active": scenario.is_some(),
+        // Dev routes stand aside while a test run is active.
+        "suspended": scenario.is_some() && routes.runs_active(),
+        "scenario": scenario,
+        "lastCleared": last_cleared,
+        "recording": recording,
     })
 }
 
@@ -227,7 +255,7 @@ pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
 
 /// The dev session that owned the scenario went away.
 pub fn session_ended() {
-    let had_scenario = clear_scenario();
+    let had_scenario = end_scenario(DevClearReason::SessionEnded);
     let had_recording = stop_recording(DEV_SESSION_OWNER).is_some();
     if had_scenario || had_recording {
         log::warn!("dev session ended: its network scenario and recording were removed");

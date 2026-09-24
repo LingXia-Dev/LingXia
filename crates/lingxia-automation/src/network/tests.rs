@@ -1155,6 +1155,52 @@ mod scenarios {
     }
 
     #[test]
+    fn a_sectioned_scenario_installs_its_http_routes() {
+        let scenario = parse_scenario(&json!({
+            "$schema": "../schemas/scenario.schema.json",
+            "name": "gateway offline",
+            "description": "the status card shows offline",
+            "http": { "routes": [
+                { "url": "**/v1/status", "status": 503 },
+                { "url": "**/v1/devices/*", "json": { "id": "d1" } }
+            ] }
+        }))
+        .unwrap();
+        assert_eq!(scenario.name.as_deref(), Some("gateway offline"));
+        assert_eq!(scenario.routes.len(), 2);
+        assert!(scenario.routes[0].matcher.is_match("https://h/v1/status"));
+
+        let cases = [
+            (
+                json!({ "worker": {}, "http": { "routes": [{ "url": "**", "status": 200 }] } }),
+                "worker section of a scenario is not supported yet",
+            ),
+            (
+                json!({ "routes": [{ "url": "**", "status": 200 }], "http": { "routes": [] } }),
+                "not both",
+            ),
+            (json!({ "http": [] }), "http section must be an object"),
+            (json!({ "http": {} }), "http section needs a routes array"),
+            (
+                json!({ "http": { "routes": [], "fixtures": {} } }),
+                "unknown http section field 'fixtures'",
+            ),
+            (
+                json!({ "http": { "routes": [] } }),
+                "http.routes must not be empty",
+            ),
+            (
+                json!({ "http": { "routes": [{ "url": "**", "stauts": 200 }] } }),
+                "http.routes[0]: unknown route handler option 'stauts'",
+            ),
+        ];
+        for (file, expected) in cases {
+            let err = parse_scenario(&file).unwrap_err();
+            assert!(err.contains(expected), "{file}: {err}");
+        }
+    }
+
+    #[test]
     fn the_first_scenario_entry_answers_before_later_ones() {
         let scenario = parse_scenario(&json!({ "routes": [
             { "url": "**/v1/devices/special", "status": 418 },
@@ -1567,6 +1613,51 @@ mod scenarios {
         assert!(decide(&mut registry, "GET", "https://h/x").is_some());
         registry.clear_run(DEV_SESSION_OWNER);
         assert_eq!(decide(&mut registry, "GET", "https://h/x"), None);
+    }
+
+    #[test]
+    fn dev_scenario_status_says_why_and_when_it_was_cleared() {
+        use super::super::registry::{DevClearReason, DevScenario};
+        let mut registry = Registry::default();
+        let status = super::super::dev::status_of(&registry);
+        assert_eq!(status["active"], false);
+        assert!(status["lastCleared"].is_null());
+        // Nothing installed: nothing to remember.
+        assert!(
+            registry
+                .end_dev_scenario(DevClearReason::Cleared, 0)
+                .is_none()
+        );
+        assert!(registry.dev_cleared.is_none());
+
+        let scenario =
+            parse_scenario(&json!({ "http": { "routes": [{ "url": "**", "status": 299 }] } }))
+                .unwrap();
+        let installed = registry
+            .install_all(DEV_SESSION_OWNER, "app", scenario.routes, || true)
+            .unwrap();
+        registry.dev = Some(DevScenario {
+            name: Some("offline".into()),
+            source: Some("qoe/offline".into()),
+            appid: "app".into(),
+            route_ids: installed.iter().map(|(id, _)| *id).collect(),
+            installed_ms: 0,
+        });
+        let status = super::super::dev::status_of(&registry);
+        assert_eq!(status["active"], true);
+        assert_eq!(status["scenario"]["source"], "qoe/offline");
+
+        let ended = registry.end_dev_scenario(DevClearReason::SessionEnded, 86_400_000);
+        assert_eq!(ended.unwrap().name.as_deref(), Some("offline"));
+        assert_eq!(decide(&mut registry, "GET", "https://h/x"), None);
+        let status = super::super::dev::status_of(&registry);
+        assert_eq!(status["active"], false);
+        assert_eq!(status["lastCleared"]["reason"], "session_ended");
+        assert_eq!(status["lastCleared"]["name"], "offline");
+        assert_eq!(
+            status["lastCleared"]["clearedAt"],
+            "1970-01-02T00:00:00.000Z"
+        );
     }
 
     #[test]

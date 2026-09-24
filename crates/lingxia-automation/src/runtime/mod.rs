@@ -17,7 +17,7 @@ mod run;
 pub use manager::AutomationRuntime;
 
 /// Network scenarios and recordings a dev session drives outside test runs
-/// (`lxdev network …`).
+/// (`lxdev scenario …`, `lxdev network …`).
 pub mod network {
     pub use crate::network::dev::{
         clear_scenario, record_start, record_stop, session_ended, status, use_scenario,
