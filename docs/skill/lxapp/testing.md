@@ -57,6 +57,7 @@ lxdev test tests/pages/notes.test.ts
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })` |
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#routing-logic-fetch) |
 | Fast-forward Logic timers and `Date` | `t.app.clock.install()` / `.tick(ms)`; see [below](#test-clock) |
+| Replay a set of fake responses from a file | `t.app.network.scenario(json)`; see [scenario files](#scenario-files) |
 | Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, read with `t.arg('k')` |
 | Cleanup | `t.defer(fn)` (LIFO, runs on success or failure); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
@@ -151,8 +152,143 @@ spec('rename shows the not-implemented error', async (t) => {
 - `route()` returns `{ id, pattern, unroute(), requests() }`; requests report
   `{ method, url, headers, body, bodyTruncated, action, status }` (`body` cut
   to 64 KiB, `null` for streams, `Blob`, `FormData`).
-- Only Logic `fetch` is routed, not WebView requests. A host outside the app's
-  [network grants](../native/permissions.md) is never faked.
+- `{ sequence: [a, b, c] }` answers matched requests in call order; the last
+  answer repeats. Use it for "fails twice, then recovers":
+
+  ```ts
+  await t.app.network.route('**/v1/status', {
+    sequence: [{ status: 503 }, { status: 503 }, { json: { up: true } }],
+  });
+  ```
+- String values of an answer may carry relative times, rendered each time it
+  is served: `{{now}}`, `{{now-2h}}`, `{{now+30m}}` (ISO-8601 UTC, like
+  `toISOString()`; units `ms`, `s`, `m`, `h`, `d`) and `{{nowMs}}` (epoch
+  milliseconds, as a string). Other `{{…}}` text is left alone.
+- Logic `fetch` and `Rong.SSE` are routed, not WebView requests. A host outside
+  the app's [network grants](../native/permissions.md) is never faked.
+
+### Server-sent events
+
+`{ sse: [...] }` answers with a `text/event-stream` (status 200). Items play in
+order: events `{ event?, data, id?, retry? }` (`data` that is not a string is
+sent as JSON), `{ comment }`, `{ delayMs }` (up to 30000), and `{ drop: true }`,
+which closes the stream like a server dropping the connection and must be last.
+Without `drop` the stream stays open after its last item until the spec ends.
+
+```ts
+const live = await t.app.network.route('**/v1/events', {
+  sequence: [
+    { sse: [{ event: 'status', data: { online: 3 }, id: 'e1' }, { delayMs: 500 }, { drop: true }] },
+    { sse: [{ event: 'status', data: { online: 4 }, id: 'e2' }] },
+  ],
+});
+await t.expect(t.app.page.testId('online-count')).toHaveText('4');
+const [first, reconnect] = await live.requests();
+expect(reconnect.headers['last-event-id']).toBe('e1');
+```
+
+- `Rong.SSE` in Logic receives the events as it would from a server: `retry`
+  and `id` apply, and after a `drop` it reconnects with `Last-Event-ID` (the
+  next answer of a `sequence` serves the reconnect). A request log entry is
+  recorded for every connection attempt. An `sse` answer to Logic `fetch`
+  delivers the same bytes as the response body.
+- Consume event streams in Logic with `Rong.SSE`, not `fetch`: Logic `fetch`
+  hands a streamed body over in large chunks, so `response.body.getReader()`
+  does not see events as they arrive.
+
+  ```ts
+  const events = new (Rong as any).SSE(url, {
+    headers: { Authorization: `Bearer ${token}` },
+    reconnect: { baseDelayMs: 1000, maxDelayMs: 30000 },
+  });
+  for await (const { type, data, id } of events) { /* … */ }
+  events.close();
+  ```
+
+### Scenario files
+
+A scenario is a JSON file of routes, installed together. Keep one per product
+state (`tests/scenarios/outage.json`) and share it between specs and manual
+checks in a dev session.
+
+```json
+{
+  "name": "status-outage",
+  "description": "Status fails twice, then recovers",
+  "routes": [
+    { "url": "**/v1/status", "method": "GET",
+      "sequence": [{ "status": 503 }, { "status": 503 }, { "json": { "up": true, "checkedAt": "{{now}}" } }] },
+    { "url": "**/v1/devices/special", "status": 404, "note": "listed first, so it wins" },
+    { "url": "/\\/v1\\/devices\\/\\w+$/", "json": { "id": "d1", "lastSeen": "{{now-2h}}" } },
+    { "url": "**/v1/events", "sse": [{ "data": "hello" }] },
+    { "url": "**/v1/offline", "abort": "failed" }
+  ]
+}
+```
+
+```ts
+import outage from '../scenarios/outage.json';
+
+spec('the status banner recovers', async (t) => {
+  const scenario = await t.app.network.scenario(outage);
+  await t.app.nav.relaunch({ page: 'home' });
+  await t.expect(t.app.page.testId('status-ok')).toBeVisible();
+  expect((await scenario.routes[0].requests()).length).toBe(3);
+});
+```
+
+- Each route is `{ url, method?, times?, note? }` plus one answer in the
+  `route()` handler shape, or a `sequence`. `url` is a glob or a regex written
+  `"/source/flags"`. A file may also give a binary body as `bodyBase64`.
+- The first matching route of a scenario answers; routes added later with
+  `route()` still take precedence. Unknown fields and bad patterns reject with
+  the route's index (`routes[2]: …`).
+- `scenario()` returns `{ name, routes, unroute(), requests() }`; its routes
+  are removed when the spec ends, like `route()`.
+- Import JSON with `resolveJsonModule` in the test tsconfig.
+
+### Network scenarios in a dev session
+
+The same file can drive the app by hand while you develop, with no test
+running:
+
+```bash
+lxdev network scenario use tests/scenarios/outage.json
+lxdev network scenario status     # what is active and what it answered
+lxdev network scenario clear
+```
+
+- The scenario answers the app's Logic requests until `clear` or the dev
+  session ends; `use` replaces an earlier one. It targets the home lxapp (or
+  the current one); pass `--appid` for another.
+- It is loud on purpose: installing it and every request it answers write a
+  warning to the session log (`lxdev logs`), and `status` shows it.
+- It stands aside while an `lxdev test` run is active, so it never changes a
+  test's outcome.
+- Only development hosts and the Runner can do this; a release build has no
+  network routing and the command says so.
+
+### Recording real traffic
+
+```bash
+lxdev network record start --match '**/v1/**'
+# … use the app …
+lxdev network record stop --out tests/scenarios/recorded.json
+lxdev test tests/ --record-network recorded/   # one scenario per spec: recorded/<spec id>.json
+```
+
+- A recording keeps each request's method, URL, status, content type and JSON
+  or text body; repeated URLs become a `sequence` when the answers differ, and
+  a transport failure becomes `abort`.
+- Credentials are never written: request headers are not recorded (so
+  `Authorization` and `Cookie` never are), response headers other than the
+  content type are dropped (so `Set-Cookie` is), `access_token`,
+  `refresh_token`, `id_token` and `password` JSON fields become `***`,
+  token-like query values become `*`, and `--secret-arg` values (or
+  `record stop --redact <value>`) become `***`.
+- Event streams and binary bodies over 64 KiB are noted on the route
+  (`note`) instead of recorded; `Rong.SSE` connections are not recorded.
+  Review a recording before committing it.
 
 ## Test clock
 
@@ -264,7 +400,8 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
 - **`t.arg('k')` throws** naming the missing `--arg`; pass `{ default }` or
   `{ required: false }` to relax it.
 - **Network routes last one spec** and work only in a `lxdev test` run;
-  `requests()` lists only this spec's routes.
+  `requests()` lists only this spec's routes. A scenario installed with
+  `lxdev network scenario use` stands aside during a run.
 - **A timeout never outlives the spec.** A longer action timeout is clamped to
   the spec's remaining time, and the error says so.
 
@@ -298,6 +435,11 @@ lxdev test tests/ --grep checkout
   `E_ELEMENT_NOT_FOUND`, `E_EVAL_SCRIPT`, …; `AUTOMATION_ERROR_CODES`) for
   `t.reject(op, { code })` and `expected.code`. `report.json` `failures[]`
   names each failure's action, page instance and code.
+- A failed spec also lists the app's last 20 Logic network calls since it
+  started, in `failures[].network` and under the failure in `report.html`:
+  method, URL, status or error, duration, and whether a route or the real
+  network answered. No bodies or headers are kept; token-like query values
+  and `--secret-arg` values are masked.
 - `lxdev test --cancel-active` cancels a run left active by a client that
   exited (`automation_run_in_progress`); it refuses a run a live client still polls.
 - Keep files generated by test setup outside the watched project;

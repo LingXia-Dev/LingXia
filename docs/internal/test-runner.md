@@ -157,7 +157,9 @@ Development machine: lxdev receives progress, results, and artifacts
   run. Specs execute sequentially and await async hooks and bodies.
 - Directory input collects `*.test.ts` recursively, follows static imports, and
   strips TypeScript types into one JS script with a source map, reading sources
-  without writing a temporary entry into the project.
+  without writing a temporary entry into the project. A `.json` import becomes
+  a module whose `default` export is the parsed value (validated with line and
+  column on error), shared by every importer.
 - Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
   bounds both.
 - Locator actions wait for a unique match, enabled/editable state, stable
@@ -276,6 +278,87 @@ Development machine: lxdev receives progress, results, and artifacts
   64 KiB (`MAX_REQUEST_BODY_BYTES`); the process log also caps total body
   bytes. `NetworkDriver.requests()` reads the run-wide log; the fixture's
   filters it to the spec's route ids.
+- Answers and sequences: a `RouteSpec` holds `answers` (never empty) and a
+  `served` counter; `decide_route` serves `answers[min(served, len-1)]` and
+  counts it before `times` is spent, so `times` still bounds matches.
+  Handler parsing goes through `parse_answers` (`sequence` or one answer);
+  only a top-level binary `body` survives, sequence items are parsed from
+  their JSON view. Templates (`scenario::render_action`) are rendered on the
+  cloned answer at serve time, over text bodies, header values, status text,
+  `patchJson` strings and SSE fields — never over binary bodies. Unknown
+  `{{…}}` text is kept verbatim.
+- Scenarios (`network/scenario.rs`) are parsed and validated in Rust for both
+  `NetworkDriver.scenario()` and `session.network.scenario.use`, so both
+  entries reject the same files. `Registry::install_all` installs a
+  scenario all-or-nothing in reverse order, which makes the first file entry
+  the newest route; `route()` calls made later still win. A file may carry
+  `bodyBase64`; `note`/`description` are ignored. The scenario handle
+  (`JSNetworkScenario`) owns route ids of one run and rebuilds `NetworkRoute`
+  handles on every `routes` read; `@lingxia/test` reads it once and tracks
+  each route in the spec's `NetworkScope`.
+- SSE answers (`RouteAction::Sse`) carry frames and fields per step. The
+  `fetch` wrapper builds a `ReadableStream` (JS `start` + `setTimeout`) that
+  enqueues frames, honours `delayMs`, closes on `drop`, and otherwise polls
+  `holds(hold)` like a hang; `decide_route` allocates the hold token only
+  when the answer does not end in `drop`. Rong's `Response(ReadableStream)`
+  materializes the whole body on `.body`/`.text()`, which matches the real
+  path: rong_rt coalesces streamed fetch bodies into
+  `DEFAULT_STREAM_COALESCE_TARGET` (512 KiB) chunks, so Logic `fetch` is not
+  an incremental SSE consumer either way.
+- `Rong.SSE` is replaced by the wrapper `SSE_INTERCEPTOR` returns.
+  Extensions run after `js_runtime.rs` freezes the reserved `Rong`
+  namespace, so `register_automation_runtime` registers it with
+  `lx::register_rong_member_wrapper("SSE", …)`, applied just before the
+  freeze. That registry can only replace a member a context already has,
+  never add one, so `Rong` stays closed to extensions. With `active()` false the
+  wrapper constructs the native class unchanged. Otherwise each connection
+  attempt calls `observe`/`decide` (`GET`, `accept: text/event-stream`, the
+  caller's headers, `last-event-id` on reconnects). No route, `continue` or
+  `patchJson` hands the connection to the native client (later reconnects
+  included, with the last id as a header). A routed attempt is played by a
+  JS object on `OriginalSSE.prototype` (so `instanceof` holds) with own
+  `next`/`close`/`return`/`url`/`Symbol.asyncIterator`, mirroring
+  `rong_rt::sse::run_sse_worker`: non-200 or a non-event-stream content type
+  fails without reconnect; a transport failure (`abort`, released `hang`)
+  and a stream end (`drop`, a released hold, the end of a fulfilled body)
+  reconnect with doubling backoff from `baseDelayMs` (reset by `retry`),
+  capped at `maxDelayMs`, while `enabled` and `maxRetries` allow; `retries`
+  resets on every successful open. A fulfilled `text/event-stream` body is
+  parsed in JS. `requestTimeoutMs` is not emulated.
+- Watching without routes: `ACTIVE` counts routes, active runs
+  (`begin_run` from `attach_run_scope`, ended by `clear_run`) and a
+  recording, so the wrapper leaves its fast path whenever any exists.
+  `observe` opens a `CallLog` entry only then; `settle` closes it with
+  status or error. `decide_route(…, call)` marks the entry routed. The log
+  keeps 200 calls process-wide with credentials removed from URLs
+  (`capture::redact_url`); the host object's `networkLog(sinceMs, limit)`
+  returns the newest entries with the run's `--secret-arg` values masked,
+  and `@lingxia/test` stores up to 20 on the failed case's `error.network`
+  (flattened into `failures[]`, rendered by `renderNetwork`). lxdev copies
+  `error.network` into the `failures[]` it rebuilds.
+- Recording (`capture::Recording`) has one owner: a run (`networkRecord`) or
+  the dev session. The wrapper asks for bodies only on real, unrouted
+  responses (a routed call clears the flag, `continue` keeps it): it reads
+  `text()` for textual types or `arrayBuffer()` for binary ones within
+  64 KiB (a declared larger `content-length` is noted unread), then hands
+  the app a rebuilt `Response` (status, status text, headers minus
+  `content-length`/`content-encoding`, `url`). Event streams are noted and
+  passed through untouched. `to_scenario` groups by method and URL, keeps
+  one answer only when all are equal (else a `sequence` of up to 100, so
+  the n-th replayed call gets the n-th recorded answer), turns transport
+  failures into `abort`, drops `AbortError`s, and redacts token fields and
+  query values. For
+  `--record-network` the framework starts a recording per spec and attaches
+  the stopped scenario as `network.scenario.json` (masked like any
+  attachment); lxdev copies each to `<dir>/<spec id>.json` after the run.
+- Dev-session scenarios (`network/dev.rs`, `session.network.*` in
+  `lingxia-control-runtime`) install under the owner `@dev-session`. They
+  are skipped by `decide_route` while any run is active, logged with
+  `LogBuilder` warnings on install, clear and every answered request, and
+  cleared when the dev bridge disconnects (`bridge.rs` → `session_ended`,
+  also on a transient reconnect: failing closed). The methods exist only
+  with the `test-runtime` feature; lxdev maps `unknown_method` to "built
+  without the automation test runtime".
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
