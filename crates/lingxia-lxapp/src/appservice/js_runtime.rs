@@ -978,8 +978,14 @@ pub(crate) async fn lxapp_service_handler(
                     // If an app handler awaits network/IO, blocking here can starve bridge handshake
                     // and other view messages, causing "Handshake timeout" even when transport is OK.
                     let appid = lxapp.appid.clone();
+                    let launched = (event == AppServiceEvent::OnLaunch).then(|| lxapp.clone());
                     context_lifecycle::spawn(ctx, move |ctx| async move {
                         handle_app_service_event(worker_id, &ctx, appid, event, args).await;
+                        // onLaunch's promise has settled: its start-up work
+                        // (and any navigation it awaited) is done.
+                        if let Some(lxapp) = launched {
+                            lxapp.launch_settled.send_replace(true);
+                        }
                     });
                 }
             }

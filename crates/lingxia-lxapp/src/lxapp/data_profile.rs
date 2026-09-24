@@ -653,6 +653,12 @@ mod switching {
     /// reopened one to become ready.
     const CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
     const REOPEN_TIMEOUT: Duration = Duration::from_secs(20);
+    /// How long a reopened app, once a page is ready, gets to finish its
+    /// start-up work before the caller moves on anyway.
+    const SETTLE_TIMEOUT: Duration = Duration::from_secs(5);
+    /// How long the current page must stay the same, and ready, to count as
+    /// settled.
+    const SETTLE_QUIET: Duration = Duration::from_millis(300);
 
     fn switch_lock() -> &'static tokio::sync::Mutex<()> {
         static LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -821,29 +827,202 @@ mod switching {
                 .set_open_mode(reopen.open_mode)
                 .set_panel_id(reopen.panel_id),
         )?;
-        let deadline = tokio::time::Instant::now() + REOPEN_TIMEOUT;
-        // Native containers create the first page asynchronously.
-        let page = loop {
-            if let Ok(page) = app.current_page() {
-                break page;
+        wait_settled(&app).await
+    }
+
+    /// Wait for a reopened app to settle: `App.onLaunch` has finished, a page
+    /// is ready, and the current page has not changed for [`SETTLE_QUIET`].
+    /// Start-up work the app kicks off itself (a session probe that
+    /// redirects) then lands before the caller moves on, instead of under
+    /// whatever runs next. Failing to get a ready page within
+    /// [`REOPEN_TIMEOUT`] is an error; start-up work still running
+    /// [`SETTLE_TIMEOUT`] after that is logged and left running.
+    async fn wait_settled(app: &Arc<LxApp>) -> Result<(), LxAppError> {
+        let launched = app.launch_settled.subscribe();
+        let mut settle = Settle::new(tokio::time::Instant::now());
+        loop {
+            let current = app.current_page().ok().map(|page| {
+                let state = page.automation_state();
+                SettleView {
+                    page: page.instance_id_string(),
+                    ready: state.ready,
+                    error: state.webview_error,
+                }
+            });
+            let now = tokio::time::Instant::now();
+            match settle.observe(now, *launched.borrow(), current) {
+                SettleStep::Wait => {}
+                SettleStep::Settled => return Ok(()),
+                SettleStep::Unsettled(what) => {
+                    warn!(
+                        "{} still {what} {}ms after reopening; not waiting longer",
+                        app.appid,
+                        SETTLE_TIMEOUT.as_millis()
+                    );
+                    return Ok(());
+                }
+                SettleStep::Failed(message) => {
+                    return Err(LxAppError::Runtime(format!("{}: {message}", app.appid)));
+                }
             }
-            if tokio::time::Instant::now() >= deadline {
-                return Err(LxAppError::Runtime(format!(
-                    "timed out waiting for {appid} to reopen"
-                )));
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    }
+
+    /// What [`wait_settled`] sees of the current page on one poll.
+    pub(super) struct SettleView {
+        pub page: String,
+        pub ready: bool,
+        pub error: Option<String>,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub(super) enum SettleStep {
+        Wait,
+        Settled,
+        /// A page is ready but start-up work is still going; the string says what.
+        Unsettled(&'static str),
+        Failed(String),
+    }
+
+    /// The settle decision, kept apart from the clock and the app so it can
+    /// be driven step by step.
+    pub(super) struct Settle {
+        ready_deadline: tokio::time::Instant,
+        settle_deadline: Option<tokio::time::Instant>,
+        page: Option<String>,
+        since: tokio::time::Instant,
+    }
+
+    impl Settle {
+        pub(super) fn new(now: tokio::time::Instant) -> Self {
+            Self {
+                ready_deadline: now + REOPEN_TIMEOUT,
+                settle_deadline: None,
+                page: None,
+                since: now,
             }
-            tokio::time::sleep(Duration::from_millis(20)).await;
-        };
-        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-        crate::automation::wait_page_runtime_ready(&app, &page, remaining)
-            .await
-            .map_err(LxAppError::Runtime)
+        }
+
+        pub(super) fn observe(
+            &mut self,
+            now: tokio::time::Instant,
+            launched: bool,
+            current: Option<SettleView>,
+        ) -> SettleStep {
+            if let Some(error) = current.as_ref().and_then(|view| view.error.clone()) {
+                return SettleStep::Failed(format!("page WebView failed after reopening: {error}"));
+            }
+            let page = current.as_ref().map(|view| view.page.clone());
+            if page != self.page {
+                self.page = page;
+                self.since = now;
+            }
+            let ready = current.as_ref().is_some_and(|view| view.ready);
+            if ready && self.settle_deadline.is_none() {
+                self.settle_deadline = Some(now + SETTLE_TIMEOUT);
+            }
+            if ready && launched && now.duration_since(self.since) >= SETTLE_QUIET {
+                return SettleStep::Settled;
+            }
+            match self.settle_deadline {
+                Some(deadline) if now >= deadline => SettleStep::Unsettled(if launched {
+                    "navigating"
+                } else {
+                    "running App.onLaunch"
+                }),
+                None if now >= self.ready_deadline => {
+                    SettleStep::Failed("timed out waiting for a page after reopening".into())
+                }
+                _ => SettleStep::Wait,
+            }
+        }
     }
 
     #[cfg(test)]
     mod tests {
         use super::*;
         use crate::appservice::LxAppWorkers;
+
+        fn view(page: &str, ready: bool) -> Option<SettleView> {
+            Some(SettleView {
+                page: page.into(),
+                ready,
+                error: None,
+            })
+        }
+
+        #[test]
+        fn a_reopened_app_settles_after_launch_and_a_quiet_page() {
+            let start = tokio::time::Instant::now();
+            let at = |ms: u64| start + Duration::from_millis(ms);
+            let mut settle = Settle::new(start);
+            assert_eq!(settle.observe(at(0), false, None), SettleStep::Wait);
+            // The initial page is ready, but onLaunch is still probing.
+            assert_eq!(
+                settle.observe(at(100), false, view("home", true)),
+                SettleStep::Wait
+            );
+            assert_eq!(
+                settle.observe(at(900), false, view("home", true)),
+                SettleStep::Wait
+            );
+            // onLaunch redirects and returns: the new page must be ready and
+            // stay current for the quiet period.
+            assert_eq!(
+                settle.observe(at(1000), true, view("login", false)),
+                SettleStep::Wait
+            );
+            assert_eq!(
+                settle.observe(at(1100), true, view("login", true)),
+                SettleStep::Wait
+            );
+            assert_eq!(
+                settle.observe(at(1200), true, view("login", true)),
+                SettleStep::Wait
+            );
+            assert_eq!(
+                settle.observe(at(1000) + SETTLE_QUIET, true, view("login", true)),
+                SettleStep::Settled
+            );
+        }
+
+        #[test]
+        fn settling_is_bounded() {
+            let start = tokio::time::Instant::now();
+            let mut settle = Settle::new(start);
+            // onLaunch never returns.
+            assert_eq!(
+                settle.observe(start, false, view("home", true)),
+                SettleStep::Wait
+            );
+            assert_eq!(
+                settle.observe(start + SETTLE_TIMEOUT, false, view("home", true)),
+                SettleStep::Unsettled("running App.onLaunch")
+            );
+
+            // No page ever becomes ready: that is still a failed reopen.
+            let mut settle = Settle::new(start);
+            assert_eq!(
+                settle.observe(start, true, view("home", false)),
+                SettleStep::Wait
+            );
+            assert!(matches!(
+                settle.observe(start + REOPEN_TIMEOUT, true, view("home", false)),
+                SettleStep::Failed(_)
+            ));
+
+            let mut settle = Settle::new(start);
+            let broken = Some(SettleView {
+                page: "home".into(),
+                ready: false,
+                error: Some("crashed".into()),
+            });
+            assert!(matches!(
+                settle.observe(start, true, broken),
+                SettleStep::Failed(_)
+            ));
+        }
 
         #[test]
         fn switching_waits_for_logic_to_stop_before_touching_data() {

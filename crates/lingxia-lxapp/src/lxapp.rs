@@ -985,6 +985,9 @@ pub struct LxApp {
     /// Current runtime session of this app (id + status)
     pub(crate) session: LxAppSession,
     pub(crate) logic_contexts: tokio::sync::watch::Sender<usize>,
+    /// Whether `App.onLaunch` of the current Logic context has settled
+    /// (returned, resolved or rejected). Reset whenever onLaunch is due again.
+    pub(crate) launch_settled: tokio::sync::watch::Sender<bool>,
     admission: OnceLock<Arc<shutdown::Admission>>,
 
     // Mutable state - protected by mutex for fine-grained locking
@@ -2042,6 +2045,7 @@ impl LxApp {
         // Terminate AppService (receiver handles its own state)
         let _ = self.executor.terminate_app_svc(self.clone_arc());
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
+        self.launch_settled.send_replace(false);
         self.clear_open_region();
         Ok(())
     }
@@ -2093,6 +2097,7 @@ impl LxApp {
             logic_feature_snapshots: Mutex::new(Default::default()),
             session,
             logic_contexts: tokio::sync::watch::channel(0).0,
+            launch_settled: tokio::sync::watch::channel(false).0,
             admission: OnceLock::new(),
             state: Mutex::new(LxAppState::new()),
             presentation_open_lock: Mutex::new(()),
@@ -3099,6 +3104,7 @@ impl LxApp {
     pub fn restart_app_service_in_place(&self) -> Result<(), LxAppError> {
         self.executor.restart_app_svc(self.clone_arc())?;
         self.app_launch_dispatched.store(false, Ordering::SeqCst);
+        self.launch_settled.send_replace(false);
         // Re-run onLaunch so app-service state (globalData, network init) is
         // rebuilt. onLaunch normally fires only during open(); an in-place
         // restart skips that lifecycle, so fire it explicitly. It is enqueued
