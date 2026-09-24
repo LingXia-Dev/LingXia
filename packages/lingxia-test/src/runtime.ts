@@ -588,6 +588,9 @@ async function run(): Promise<ProtocolReport> {
       deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
     }
     fixture.endCleanup();
+    // Test timers dropped with the spec's clock leave the app's polling loops
+    // and debounces dead; the next spec starts from a relaunched home page.
+    if (fixture.clockScope.dropped > 0) forceRelaunchNext = true;
     if (item.restoreProfile && !profileRestored && !contaminated) {
       // The next spec would start on this spec's data: a stuck cleanup.
       contaminated = true;

@@ -145,3 +145,16 @@ const knownCode: AutomationErrorCode = AUTOMATION_ERROR_CODES[0];
 const mistypedCode: AutomationErrorCode = 'E_PAGE_INACTIVE';
 declare const failure: FailureRecord;
 failure.page?.instanceId?.toUpperCase();
+
+// Test clock.
+spec('clock', async (t) => {
+  const started: number = await t.app.clock.install({ now: new Date(0) });
+  await t.app.clock.install({ now: '2030-01-01T00:00:00Z' });
+  const { now, fired, pending } = await t.app.clock.tick(3_000);
+  await t.app.clock.runAll({ maxTimers: 10 });
+  await t.app.clock.setSystemTime(Date.now());
+  const { uninstalled, dropped } = await t.app.clock.uninstall();
+  // @ts-expect-error tick takes milliseconds.
+  await t.app.clock.tick('3s');
+  void started; void now; void fired; void pending; void uninstalled; void dropped;
+});
