@@ -4,6 +4,7 @@ use clap::{Args, Parser, Subcommand};
 mod client;
 mod logs;
 mod lxapp;
+mod network;
 mod project;
 mod runner;
 mod screenshot;
@@ -51,6 +52,9 @@ enum Commands {
     App(lingxia_control_commands::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
     Test(test::TestOptions),
+    /// Fake or record the running lxapp's Logic network traffic with
+    /// scenario files (development hosts only)
+    Network(network::NetworkOptions),
 }
 
 #[derive(Args, Clone)]
@@ -188,6 +192,10 @@ fn run() -> Result<()> {
             };
             lingxia_control_commands::app::execute(&context, options)
         }
+        Commands::Network(options) => {
+            let info = resolve(&selector)?;
+            network::execute(&info, options)
+        }
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
         Commands::Test(options) => {
@@ -290,6 +298,34 @@ mod tests {
         assert_eq!(options.entry, Some(std::path::PathBuf::from("tests/")));
         assert_eq!(options.grep.as_deref(), Some("home"));
         assert!(options.forbid_only);
+    }
+
+    #[test]
+    fn network_commands_have_stable_cli_shapes() {
+        for argv in [
+            vec!["lxdev", "network", "scenario", "use", "s.json"],
+            vec![
+                "lxdev", "network", "scenario", "use", "s.json", "--appid", "app", "--json",
+            ],
+            vec!["lxdev", "network", "scenario", "clear"],
+            vec!["lxdev", "network", "scenario", "status", "--json"],
+            vec!["lxdev", "network", "status"],
+            vec![
+                "lxdev",
+                "network",
+                "record",
+                "start",
+                "--match",
+                "**/api/**",
+            ],
+            vec![
+                "lxdev", "network", "record", "stop", "--out", "r.json", "--redact", "x",
+            ],
+        ] {
+            assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
+        }
+        assert!(Cli::try_parse_from(["lxdev", "network", "record", "stop"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "use"]).is_err());
     }
 
     #[test]

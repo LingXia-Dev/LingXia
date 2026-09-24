@@ -200,6 +200,9 @@ fn run_dev_bridge(ws_url: String) {
                 if let Err(err) = bridge_loop(&mut websocket, attached) {
                     log::warn!("Devtool bridge disconnected: {}", err);
                 }
+                // A dev network scenario belongs to the session that set it.
+                #[cfg(feature = "test-runtime")]
+                crate::session_network::session_ended();
             }
             Err(err) => {
                 connect_failures = connect_failures.saturating_add(1);
