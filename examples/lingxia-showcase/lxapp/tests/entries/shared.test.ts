@@ -8,6 +8,7 @@ trackPublicSurface();
 
 import '../api/automation.test.js';
 import '../api/network-route.test.js';
+import '../api/clock.test.js';
 import '../api/applink.test.js';
 import '../api/surface.test.js';
 import '../api/runtime.test.js';
