@@ -81,6 +81,22 @@ pub mod methods {
             pub const CANCEL: &str = "session.test.cancel";
             /// Which run, if any, holds the session's automation slot.
             pub const ACTIVE: &str = "session.test.active";
+            /// What this host's test runtime supports beyond the base run
+            /// protocol. A host that predates it answers "unknown handler",
+            /// which a client must read as "no optional capability".
+            pub const CAPABILITIES: &str = "session.test.capabilities";
+        }
+
+        /// Isolated data profiles of `session.test` runs (`lxdev test
+        /// --isolate`). Snapshots travel only over these methods, never the
+        /// run's artifact channel.
+        pub mod profile {
+            /// Stage a snapshot in chunks; the final chunk returns its state id.
+            pub const UPLOAD: &str = "session.profile.upload";
+            /// Read the profile a finished run retained, in chunks.
+            pub const EXPORT: &str = "session.profile.export";
+            /// Delete a retained profile or a staged snapshot now.
+            pub const DISCARD: &str = "session.profile.discard";
         }
     }
 

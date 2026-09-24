@@ -16,6 +16,104 @@ pub struct TestStartArgs {
     /// field ignores it.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub control: HashMap<String, String>,
+    /// Run the target lxapp on an isolated data profile. A host that
+    /// predates the field ignores it, so a client must first confirm
+    /// [`TestCapabilities::profile`] rather than run un-isolated.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<TestProfileArgs>,
+}
+
+/// `TestStartArgs.profile`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+pub struct TestProfileArgs {
+    /// Start the app on an empty profile (or on `seed_state_id`).
+    #[serde(default)]
+    pub isolate: bool,
+    /// A snapshot staged with `session.profile.upload`, unpacked into the
+    /// profile before the app opens on it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed_state_id: Option<String>,
+    /// Keep the profile after the run for `session.profile.export`.
+    #[serde(default)]
+    pub retain: bool,
+    /// The lxapp to isolate; the session's home lxapp when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub appid: Option<String>,
+}
+
+/// `session.test.capabilities`.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct TestCapabilities {
+    /// Present when the host can run a test on an isolated profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<ProfileCapability>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileCapability {
+    /// Largest snapshot the host accepts or produces, in bytes.
+    pub max_state_bytes: u64,
+    /// Largest decoded chunk of one upload or export call, in bytes.
+    pub chunk_bytes: u64,
+}
+
+/// Largest decoded chunk of one `session.profile.*` transfer.
+pub const PROFILE_CHUNK_BYTES: usize = 4 * 1024 * 1024;
+
+/// `session.profile.upload`: append `base64` at byte `offset` of staged
+/// upload `upload_id`; `done` finishes it.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileUploadArgs {
+    pub upload_id: String,
+    pub offset: u64,
+    pub base64: String,
+    #[serde(default)]
+    pub done: bool,
+    /// SHA-256 (hex) of the whole snapshot, checked on `done`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileUploadResponse {
+    pub upload_id: String,
+    /// Bytes staged so far.
+    pub received: u64,
+    /// Set once `done`: pass it as `TestProfileArgs.seed_state_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_id: Option<String>,
+}
+
+/// `session.profile.export`: the bytes of run `run_id`'s retained profile
+/// from `offset`.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileExportArgs {
+    pub run_id: String,
+    #[serde(default)]
+    pub offset: u64,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileExportResponse {
+    pub base64: String,
+    pub total: u64,
+    pub done: bool,
+    /// SHA-256 (hex) of the whole snapshot.
+    pub sha256: String,
+}
+
+/// `session.profile.discard`: exactly one of the two.
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct ProfileDiscardArgs {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub state_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ProfileDiscardResponse {
+    pub discarded: bool,
 }
 
 /// Error code of a `session.test.start` refused because another run holds the
@@ -248,5 +346,54 @@ impl TestCaseStatus {
             Self::Xfail => "xfail",
             Self::Xpass => "xpass",
         }
+    }
+}
+
+#[cfg(test)]
+mod profile_wire_tests {
+    use super::*;
+
+    #[test]
+    fn a_start_without_a_profile_keeps_its_old_shape() {
+        let args = TestStartArgs {
+            source: "x".into(),
+            source_name: None,
+            timeout_ms: None,
+            args: HashMap::new(),
+            control: HashMap::new(),
+            profile: None,
+        };
+        let value = serde_json::to_value(&args).unwrap();
+        assert!(value.get("profile").is_none());
+        // An older client's start still parses.
+        let parsed: TestStartArgs =
+            serde_json::from_value(serde_json::json!({ "source": "x" })).unwrap();
+        assert!(parsed.profile.is_none());
+    }
+
+    #[test]
+    fn profile_args_round_trip_and_default() {
+        let parsed: TestStartArgs = serde_json::from_value(serde_json::json!({
+            "source": "x",
+            "profile": { "isolate": true, "seed_state_id": "s1", "retain": true }
+        }))
+        .unwrap();
+        assert_eq!(
+            parsed.profile,
+            Some(TestProfileArgs {
+                isolate: true,
+                seed_state_id: Some("s1".into()),
+                retain: true,
+                appid: None,
+            })
+        );
+        let empty: TestProfileArgs = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert_eq!(empty, TestProfileArgs::default());
+    }
+
+    #[test]
+    fn capabilities_without_profile_mean_no_isolation() {
+        let caps: TestCapabilities = serde_json::from_value(serde_json::json!({})).unwrap();
+        assert!(caps.profile.is_none());
     }
 }
