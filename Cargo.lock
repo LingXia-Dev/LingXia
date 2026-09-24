@@ -6956,9 +6956,9 @@ dependencies = [
 
 [[package]]
 name = "rong_timer"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "41c189de0a5f930e28253aedd9f1285b0848d3ae268c20d3cf0bf6eb147badad"
+checksum = "19689a20f4ef881c50161ee061af5a9831c019e01ecc4e0d93880f198d5f2b2c"
 dependencies = [
  "futures",
  "rong",
