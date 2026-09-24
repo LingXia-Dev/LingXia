@@ -77,7 +77,9 @@ Mobile reports one host window. Desktop hosts may report several (for example ma
 **`test`** — bundle and run `@lingxia/test` specs in the session's isolated
 host automation runtime. See [Product testing](../lxapp/testing.md) for a
 starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
-test layout, and reports. Use `lxdev test --help` for arguments and flags.
+test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
+contract (`--openapi`) and recording (`--record-network`) are covered there.
+Use `lxdev test --help` for arguments and flags.
 
 **`network`** — fake or capture the running lxapp's Logic network traffic
 (`fetch` and `Rong.SSE`) with scenario files, outside a test run. Development
