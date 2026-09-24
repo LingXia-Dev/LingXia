@@ -18,6 +18,7 @@ import type {
   NavDriver,
   NetworkDriver,
   NetworkRoute,
+  NetworkScenario,
   PageDriver,
   ProfileDriver,
   PageKey,
@@ -248,8 +249,9 @@ const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'spl
 const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
-const NETWORK_DRIVER_API = ['requests', 'route', 'unrouteAll'] as const;
+const NETWORK_DRIVER_API = ['requests', 'route', 'scenario', 'unrouteAll'] as const;
 const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'unroute'] as const;
+const NETWORK_SCENARIO_API = ['name', 'requests', 'routes', 'unroute'] as const;
 const LXAPP_MANAGER_API = [
   'applink',
   'close',
@@ -589,6 +591,13 @@ export const LX_RUNTIME_SURFACES = [
     members: NETWORK_ROUTE_API,
     properties: ['id', 'pattern'],
   },
+  {
+    name: 'NetworkScenario',
+    layer: 'automation',
+    expression: 'lx.automation().lxapp().network.scenario()',
+    members: NETWORK_SCENARIO_API,
+    properties: ['name', 'routes'],
+  },
   { name: 'LxAppManager', layer: 'automation', expression: 'lx.automation().lxapps', members: LXAPP_MANAGER_API },
   { name: 'DeviceDriver', layer: 'automation', expression: 'lx.automation().device', members: DEVICE_DRIVER_API },
   {
@@ -832,6 +841,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NavDriver, typeof NAV_DRIVER_API>>,
   AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,
   AssertTrue<Exact<NetworkRoute, typeof NETWORK_ROUTE_API>>,
+  AssertTrue<Exact<NetworkScenario, typeof NETWORK_SCENARIO_API>>,
   AssertTrue<Exact<ProfileDriver, typeof PROFILE_DRIVER_API>>,
   AssertTrue<Exact<ClockDriver, typeof CLOCK_DRIVER_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,

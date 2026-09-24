@@ -36,6 +36,20 @@ function fakeNetwork() {
         async requests() { return log.filter((entry) => entry.routeId === id); },
       };
     },
+    async scenario(definition) {
+      const handles = [];
+      for (const entry of definition.routes) handles.push(await network.route(entry.url, entry));
+      return {
+        name: definition.name ?? null,
+        get routes() { return [...handles]; },
+        async unroute() {
+          let removed = 0;
+          for (const handle of handles) if (await handle.unroute()) removed += 1;
+          return removed;
+        },
+        async requests() { return log.filter((entry) => handles.some((handle) => handle.id === entry.routeId)); },
+      };
+    },
     async unrouteAll() {
       const count = routes.size;
       routes.clear();
@@ -124,4 +138,45 @@ test("a host without test routing does not break t.app", async () => {
     await t.app.info();
   });
   assert.equal((await run()).failed, 0);
+});
+
+test("a scenario installs its routes for one spec and reports their requests", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  let installed;
+  let names;
+  let handleRequests;
+  let specRequests;
+  let seenAfter;
+
+  spec("scenario", async (t) => {
+    const scenario = await t.app.network.scenario({
+      name: "outage",
+      routes: [
+        { url: "/v1/status", sequence: [{ status: 503 }, { json: { up: true } }] },
+        { url: "/v1/events", sse: [{ data: "hello" }, { drop: true }] },
+      ],
+    });
+    installed = network.routes.size;
+    names = scenario.routes.map((route) => route.pattern);
+    network.hit("https://h/v1/status");
+    handleRequests = (await scenario.requests()).length;
+    specRequests = (await t.app.network.requests()).length;
+    assert.equal(scenario.name, "outage");
+  });
+  spec("after", async () => {
+    seenAfter = network.routes.size;
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(installed, 2);
+  assert.deepEqual(names, ["/v1/status", "/v1/events"]);
+  assert.equal(handleRequests, 1);
+  assert.equal(specRequests, 1);
+  assert.equal(seenAfter, 0, "a scenario route leaked into the next spec");
+  const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
+  assert.equal(step?.detail, "outage (2 routes)");
 });

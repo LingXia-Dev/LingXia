@@ -242,10 +242,13 @@ struct TestBundler {
 
 impl TestBundler {
     fn compile_module(&mut self, path: PathBuf) -> Result<String> {
-        ensure_supported_test_module(&path)?;
         if let Some(module_var) = self.module_vars.get(&path) {
             return Ok(module_var.clone());
         }
+        if is_json_module(&path) {
+            return self.compile_json_module(path);
+        }
+        ensure_supported_test_module(&path)?;
         if !self.visiting.insert(path.clone()) {
             bail!("Circular test import detected at {}", path.display());
         }
@@ -298,6 +301,47 @@ impl TestBundler {
         self.visiting.remove(&path);
         Ok(module_var)
     }
+}
+
+impl TestBundler {
+    /// A JSON import (`import scenario from './outage.json'`) is its parsed
+    /// value as the default export, like an ESM JSON module.
+    fn compile_json_module(&mut self, path: PathBuf) -> Result<String> {
+        let source = fs::read_to_string(&path)
+            .with_context(|| format!("Failed to read JSON module {}", path.display()))?;
+        let value: serde_json::Value = serde_json::from_str(&source).map_err(|err| {
+            anyhow!(
+                "{} is not valid JSON (line {}, column {}): {err}",
+                relative_display(&path, &self.root),
+                err.line(),
+                err.column()
+            )
+        })?;
+        // `JSON.parse` rather than an object literal: a `__proto__` key in
+        // the file is then an own property, never the value's prototype.
+        let code = format!(
+            "const __lx_module_exports = {{ \"default\": JSON.parse({}) }};\n",
+            serde_json::to_string(&serde_json::to_string(&value)?)?
+        );
+        let display = relative_display(&path, &self.root).replace('\\', "/");
+        let mut builder = oxc_sourcemap::SourceMapBuilder::default();
+        builder.add_source_and_content(&display, &source);
+        let map: SourceMap<'static> = builder.into_owned_sourcemap().into();
+        let module_var = format!("__lx_mod_{}", self.modules.len());
+        self.module_vars.insert(path, module_var.clone());
+        self.modules.push(CompiledModule {
+            code,
+            map,
+            module_var: module_var.clone(),
+        });
+        Ok(module_var)
+    }
+}
+
+fn is_json_module(path: &Path) -> bool {
+    path.extension()
+        .and_then(|ext| ext.to_str())
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
 }
 
 fn ensure_supported_test_module(path: &Path) -> Result<()> {
@@ -1289,6 +1333,72 @@ mod tests {
                 .map
                 .get_source_contents()
                 .all(|content| content.is_some())
+        );
+    }
+
+    #[test]
+    fn json_imports_are_their_default_export() {
+        let dir = project();
+        write(
+            &dir,
+            "scenarios/outage.json",
+            "{\n  \"name\": \"outage\",\n  \"routes\": [{ \"url\": \"**/status\", \"status\": 503 }]\n}\n",
+        );
+        write(
+            &dir,
+            "shared.ts",
+            "import outage from './scenarios/outage.json';\nexport const again = outage;\n",
+        );
+        let entry = write(
+            &dir,
+            "flow.test.ts",
+            "import outage from './scenarios/outage.json' with { type: 'json' };\nimport { again } from './shared';\n(globalThis as any).__scenario = [outage.name, again === outage];\n",
+        );
+        let bundle = bundle_test_entry(&entry).unwrap();
+        assert!(
+            bundle.code.contains(
+                r#"{ "default": JSON.parse("{\"name\":\"outage\",\"routes\":[{\"url\":\"**/status\",\"status\":503}]}") }"#
+            ),
+            "{}",
+            bundle.code
+        );
+        // One module, shared by both importers.
+        assert_eq!(bundle.code.matches(r#"\"name\":\"outage\""#).count(), 1);
+        assert!(bundle.map.get_sources().any(|s| s.contains("outage.json")));
+
+        // A `__proto__` key stays data: never an object literal's prototype.
+        write(
+            &dir,
+            "proto.json",
+            "{ \"__proto__\": { \"polluted\": true } }",
+        );
+        let proto = write(
+            &dir,
+            "proto.test.ts",
+            "import proto from './proto.json';\n(globalThis as any).__proto_json = proto;\n",
+        );
+        let bundle = bundle_test_entry(&proto).unwrap();
+        assert!(
+            bundle
+                .code
+                .contains(r#"JSON.parse("{\"__proto__\":{\"polluted\":true}}")"#),
+            "{}",
+            bundle.code
+        );
+
+        write(&dir, "broken.json", "{ \"routes\": [, ] }");
+        let bad = write(
+            &dir,
+            "bad.test.ts",
+            "import broken from './broken.json';\nvoid broken;\n",
+        );
+        let err = match bundle_test_entry(&bad) {
+            Ok(_) => panic!("a broken JSON import must not bundle"),
+            Err(err) => format!("{err:#}"),
+        };
+        assert!(
+            err.contains("broken.json is not valid JSON (line 1"),
+            "{err}"
         );
     }
 

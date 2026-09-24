@@ -38,6 +38,11 @@ impl JSNetworkDriver {
         Err(auto_err(UNAVAILABLE))
     }
 
+    #[js_method]
+    async fn scenario(&self, _scenario: JSValue) -> JSResult<JSValue> {
+        Err(auto_err(UNAVAILABLE))
+    }
+
     #[js_method(rename = "unrouteAll")]
     async fn unroute_all(&self) -> JSResult<u32> {
         Err(auto_err(UNAVAILABLE))

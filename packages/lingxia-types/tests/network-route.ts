@@ -1,4 +1,10 @@
-import type { NetworkRouteHandler, NetworkRouteRequest } from '../src/automation/index.js';
+import type {
+  NetworkDriver,
+  NetworkRouteHandler,
+  NetworkRouteRequest,
+  NetworkScenario,
+  NetworkScenarioDefinition,
+} from '../src/automation/index.js';
 
 const fulfill: NetworkRouteHandler = { status: 501, json: { error: 'not_implemented' } };
 const text: NetworkRouteHandler = { status: 404, body: 'missing', contentType: 'text/plain' };
@@ -38,3 +44,50 @@ void [mixed, passWithDelay, abortAndPass, freeText, abortTrue, objectBody, bodyA
 declare const request: NetworkRouteRequest;
 const sent: { headers: Record<string, string>; body: string | null; bodyTruncated: boolean } = request;
 void sent;
+
+const stream: NetworkRouteHandler = {
+  sse: [
+    { event: 'ready', data: { n: 1 }, id: '1', retry: 500 },
+    { comment: 'keepalive' },
+    { delayMs: 200 },
+    { data: 'bye' },
+    { drop: true },
+  ],
+  headers: { 'x-trace': 't' },
+  delay: 50,
+};
+const sequence: NetworkRouteHandler = {
+  sequence: [{ status: 503 }, { json: { up: true, at: '{{now-5m}}' } }, { abort: 'failed' }, { sse: [{ data: 'x' }] }],
+};
+void [stream, sequence];
+// @ts-expect-error an sse answer has status 200 and takes no fulfill body
+const sseWithStatus: NetworkRouteHandler = { sse: [], status: 500 };
+// @ts-expect-error sequence items are whole answers
+const sequenceWithStatus: NetworkRouteHandler = { sequence: [{ status: 200 }], status: 200 };
+// @ts-expect-error sequences do not nest
+const nested: NetworkRouteHandler = { sequence: [{ sequence: [] }] };
+// @ts-expect-error drop is `true`
+const dropFalse: NetworkRouteHandler = { sse: [{ drop: false }] };
+void [sseWithStatus, sequenceWithStatus, nested, dropFalse];
+
+const outage: NetworkScenarioDefinition = {
+  name: 'outage',
+  routes: [
+    { url: '**/v1/status', method: 'GET', times: 2, sequence: [{ status: 503 }, { json: { up: true } }] },
+    { url: '/devices\\/\\w+$/i', status: 404, note: 'gone' },
+    { url: '**/icon.png', bodyBase64: 'iVBORw==', contentType: 'image/png' },
+    { url: '**/events', sse: [{ data: 'hello' }] },
+  ],
+};
+// A JSON import widens literals ('failed' becomes string); scenario() takes it as is.
+const imported = { name: 'from-json', routes: [{ url: '**/a', abort: 'failed' as string }] };
+declare const network: NetworkDriver;
+const handles: Promise<NetworkScenario>[] = [network.scenario(outage), network.scenario(imported)];
+void handles;
+// @ts-expect-error a scenario route needs a url
+const noUrl: NetworkScenarioDefinition = { routes: [{ status: 200 }] };
+void noUrl;
+declare const handle: NetworkScenario;
+const name: string | null = handle.name;
+const count: Promise<number> = handle.unroute();
+void [name, count, handle.routes[0].requests(), handle.requests()];
