@@ -1,4 +1,4 @@
-import type { FailOptions, SpecBody, SpecOptions } from "./types.js";
+import type { FailOptions, FileOptions, SpecBody, SpecOptions } from "./types.js";
 
 export interface SpecApi {
   (title: string, body: SpecBody): void;
@@ -15,4 +15,9 @@ export interface SpecApi {
   reset(fn: SpecBody): void;
   beforeEach(fn: SpecBody): void;
   afterEach(fn: SpecBody): void;
+  /**
+   * Defaults for every spec in the calling file, such as `{ tags: ['routed'] }`.
+   * File-scoped like the hooks; calling it again adds to the file's tags.
+   */
+  configure(options: FileOptions): void;
 }

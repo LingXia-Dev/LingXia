@@ -25,7 +25,7 @@ export function renderJUnit(report: JsonReport): string {
     : "";
   return `<?xml version="1.0" encoding="UTF-8"?>
 <testsuites name="${attr(PACKAGE_NAME)}" tests="${report.total + errors}" failures="${failures}" errors="${errors}" skipped="${report.skipped}" time="${seconds(report.duration_ms)}">
-${body}${interrupted}</testsuites>
+${renderRunProperties(report)}${body}${interrupted}</testsuites>
 `;
 }
 
@@ -64,12 +64,40 @@ function renderCase(item: CaseRecord, suite: string): string {
   if (item.status === "xfail") {
     inner.push(`      <system-out>${text("spec.fail: failed as declared")}</system-out>\n`);
   }
-  if (item.covers.length > 0) {
-    inner.push(`      <properties>\n        <property name="covers" value="${attr(item.covers.join(" "))}"/>\n      </properties>\n`);
+  const properties = [
+    ...(item.covers.length > 0 ? [`        <property name="covers" value="${attr(item.covers.join(" "))}"/>\n`] : []),
+    ...(item.tags && item.tags.length > 0 ? [`        <property name="tags" value="${attr(item.tags.join(" "))}"/>\n`] : []),
+  ];
+  if (properties.length > 0) {
+    inner.push(`      <properties>\n${properties.join("")}      </properties>\n`);
   }
   return inner.length === 0
     ? `    <testcase ${attrs}/>\n`
     : `    <testcase ${attrs}>\n${inner.join("")}    </testcase>\n`;
+}
+
+/**
+ * Run-wide summaries as properties of the root: one per tag
+ * (`tag:<name>` = `passed=3 failed=1 …`), plus coverage and contract totals.
+ * Consumers that do not read root properties ignore them.
+ */
+function renderRunProperties(report: JsonReport): string {
+  const properties: string[] = [];
+  for (const row of report.tag_summary ?? []) {
+    const counts = (["passed", "failed", "timeout", "xpass", "xfail", "skipped"] as const)
+      .map((status) => `${status}=${row[status]}`).join(" ");
+    properties.push(`<property name="tag:${attr(row.tag)}" value="${attr(`total=${row.total} ${counts}`)}"/>`);
+  }
+  if (report.coverage) {
+    const coverage = report.coverage;
+    properties.push(`<property name="coverage" value="${attr(`covered=${coverage.covered}/${coverage.total} passing=${coverage.passing} failing=${coverage.failing} uncovered=${coverage.uncovered.length} unknown=${coverage.unknown.length}`)}"/>`);
+  }
+  if (report.openapi) {
+    const openapi = report.openapi;
+    properties.push(`<property name="openapi" value="${attr(`validated=${openapi.validated} routed_failed=${openapi.routed.failed} server_mismatched=${openapi.network.mismatched} unmatched=${openapi.unmatched.reduce((sum, entry) => sum + entry.count, 0)}`)}"/>`);
+  }
+  if (properties.length === 0) return "";
+  return `  <properties>\n${properties.map((line) => `    ${line}\n`).join("")}  </properties>\n`;
 }
 
 function graded(item: CaseRecord): "success" | "failure" | "skipped" {

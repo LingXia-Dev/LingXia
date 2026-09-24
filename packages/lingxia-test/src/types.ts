@@ -28,6 +28,12 @@ export interface SpecOptions {
   id?: string;
   /** Declared coverage tags. Journeys omit this. */
   covers?: readonly string[];
+  /**
+   * Selection tags (`unit`, `routed`, `live`, `smoke`, …), merged after the
+   * file's `spec.configure({ tags })`. `lxdev test --tag` selects by them and
+   * the report summarizes each. Letters, digits and `_ . : / -`.
+   */
+  tags?: readonly string[];
   /** Spec budget in ms (default 30_000). */
   timeout?: number;
   /** Relaunch the home page before the body. */
@@ -55,6 +61,12 @@ export interface SpecOptions {
 export interface RestoreProfileOptions {
   /** `lx.getStorage()` key globs that survive the rollback (`*`, `?`). */
   keep: string[];
+}
+
+/** `spec.configure()` options: defaults for every spec in the calling file. */
+export interface FileOptions {
+  /** Tags every spec of this file carries, before its own `tags`. */
+  tags?: readonly string[];
 }
 
 /** `spec.fail` options. */
@@ -361,6 +373,12 @@ export interface Fixture {
   readonly app: TestApp;
   readonly apps: Apps;
   readonly profile: ProfileFixture;
+  /**
+   * The OpenAPI documents this run checks against (`lxdev test --openapi`),
+   * or `undefined` without them. A spec that only means something against a
+   * contract skips itself: `if (!t.openapi) return t.skip('needs --openapi …')`.
+   */
+  readonly openapi: OpenApiRun | undefined;
   /** `--arg` / `--secret-arg` values; a missing key is `undefined`. */
   readonly args: Readonly<Record<string, string | undefined>>;
   /**
@@ -412,6 +430,13 @@ export interface Matchers<T> {
   toBeGreaterThanOrEqual(expected: number): void;
   toBeLessThan(expected: number): void;
   toBeLessThanOrEqual(expected: number): void;
+  /**
+   * The value matches a schema of the run's OpenAPI documents (`lxdev test
+   * --openapi`): a component schema name (`'Device'`), a `'#/…'` ref, or
+   * `{ ref, document }` when several documents define it. Without
+   * `--openapi` it fails saying so.
+   */
+  toMatchSchema(schema: string | { ref: string; document?: string }): void;
 }
 
 export interface SourceLocation {
@@ -517,6 +542,14 @@ export interface CaseRecord {
   status: SpecStatus;
   duration_ms: number;
   covers: string[];
+  /** Selection tags: the file's `spec.configure` tags, then the spec's own. */
+  tags?: string[];
+  /**
+   * `lxdev test --openapi`: this spec's Logic `fetch` responses checked
+   * against the contract. `violations` (routed responses) failed the spec;
+   * `warnings` (the real server's) did not.
+   */
+  contract?: CaseContract;
   /**
    * `lx.*` members the spec's evals actually reached, observed by the runtime
    * rather than declared. A `covers` tag absent from here was claimed but never
@@ -529,6 +562,102 @@ export interface CaseRecord {
   error?: ReportError;
   timeout_ms: number;
   reason?: string;
+}
+
+/** One response that breaks the OpenAPI contract. */
+export interface ContractIssue {
+  /** The spec id. */
+  case: string;
+  /** `route`/`patch`: a route shaped it; `network`: the real server. */
+  source: "route" | "patch" | "network";
+  method: string;
+  /** Scheme, host and path only. */
+  url: string;
+  status: number;
+  /** `METHOD /path/{template}` as the document names it. */
+  operation: string;
+  /** The response schema, as a document pointer. */
+  schema: string;
+  /** The route that fulfilled or patched it. */
+  pattern?: string;
+  issues: Array<{ path: string; message: string; schema: string }>;
+}
+
+export interface CaseContract {
+  /** Responses captured during the spec. */
+  checked: number;
+  violations: ContractIssue[];
+  warnings: ContractIssue[];
+}
+
+/** `t.openapi`: the contract a run loaded with `--openapi`. */
+export interface OpenApiRun {
+  documents: Array<{ name: string; version: string; title?: string }>;
+}
+
+/** `report.openapi`: what `--openapi` checked across the run. */
+export interface OpenApiSummary {
+  documents: Array<{ name: string; version: string; title?: string; operations: number }>;
+  /** `ok`, or why responses could not be captured (older host). */
+  capture: string;
+  /** Captured responses. */
+  responses: number;
+  /** Responses with a documented JSON schema and a body, validated. */
+  validated: number;
+  routed: { validated: number; failed: number };
+  network: { validated: number; mismatched: number };
+  /** Matched an operation but not validated, by why. */
+  skipped: { no_schema: number; not_json: number; empty: number; truncated: number };
+  /** A status the operation does not document. */
+  undocumented: Array<{ operation: string; status: number; source: string; count: number }>;
+  /** Requests no operation describes (another API, or a gap in the document). */
+  unmatched: Array<{ method: string; path: string; count: number }>;
+  /** Real-server mismatches (at most 100). */
+  warnings: ContractIssue[];
+}
+
+/** `report.tag_summary`: one row per tag, and `(untagged)` for the rest. */
+export interface TagSummary {
+  tag: string;
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  timeout: number;
+  xfail: number;
+  xpass: number;
+  flaky: number;
+  /** No failed, timed-out or xpass spec carries the tag. */
+  ok: boolean;
+}
+
+/** A spec covering a manifest id, with its outcome in this run. */
+export interface CoverageSpec {
+  id: string;
+  title: string;
+  /** `not_run`: registered, but outside this selection. */
+  status: SpecStatus | "not_run";
+}
+
+/** `report.coverage`: the `--covers-manifest` ids against the suite's `covers`. */
+export interface CoverageSummary {
+  total: number;
+  /** Ids at least one registered spec covers. */
+  covered: number;
+  /** Covered ids whose specs passed (none broke). */
+  passing: number;
+  /** Covered ids with a failed, timed-out or xpass spec. */
+  failing: number;
+  /** Manifest ids no spec covers. */
+  uncovered: Array<{ id: string; title?: string }>;
+  /** `covers` ids used by specs but missing from the manifest. */
+  unknown: Array<{ id: string; specs: string[] }>;
+  ids: Array<{
+    id: string;
+    title?: string;
+    status: "passed" | "failed" | "xfail" | "skipped" | "not_run" | "uncovered";
+    specs: CoverageSpec[];
+  }>;
 }
 
 /** The app under test, so a report identifies its own subject. */
@@ -598,6 +727,12 @@ export interface JsonReport {
   cases: CaseRecord[];
   /** Every failed, timed-out or xpass case, flattened from `cases`. */
   failures?: FailureRecord[];
+  /** Per-tag outcome, when any spec is tagged. */
+  tag_summary?: TagSummary[];
+  /** `--covers-manifest` summary. */
+  coverage?: CoverageSummary;
+  /** `--openapi` contract summary. */
+  openapi?: OpenApiSummary;
 }
 
 export type ProtocolReport = JsonReport;

@@ -81,6 +81,9 @@ export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: Netw
     requests: () =>
       host.act("network.requests", "", async () =>
         (await driver().requests()).filter((entry: NetworkRouteRequest) => scope.routes.has(entry.routeId))),
+    // Run-scoped, like the raw driver: `lxdev test --openapi` turns capture on.
+    captureResponses: (options) => host.act("network.captureResponses", "", () => driver().captureResponses(options)),
+    responses: (options) => host.act("network.responses", "", () => driver().responses(options)),
   };
 }
 

@@ -12,6 +12,7 @@ import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { ClockScope, wrapClock } from "./clock.js";
+import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError } from "./deadline.js";
 import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
@@ -46,6 +47,7 @@ import type {
   PageDataOptions,
   ProfileFixture,
   ProfileRestoreOptions,
+  OpenApiRun,
   WaitForOptions,
 } from "./types.js";
 import {
@@ -72,7 +74,7 @@ export class SkipSignal extends Error {
   }
 }
 
-export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout";
+export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract";
 
 export class LiveFixture implements Fixture {
   readonly apps: Apps;
@@ -147,6 +149,18 @@ export class LiveFixture implements Fixture {
 
   get raw(): LxAppDriver {
     return this.rawApp;
+  }
+
+  get openapi(): OpenApiRun | undefined {
+    const index = activeOpenApi();
+    if (!index) return undefined;
+    return {
+      documents: index.documents.map((doc) => ({
+        name: doc.name,
+        version: doc.version,
+        ...(doc.title ? { title: doc.title } : {}),
+      })),
+    };
   }
 
   get profile(): ProfileFixture {
