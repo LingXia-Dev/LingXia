@@ -7,6 +7,7 @@ mod lxapp;
 mod network;
 mod project;
 mod runner;
+mod scenario;
 mod screenshot;
 mod sessions;
 mod test;
@@ -53,8 +54,11 @@ enum Commands {
     App(lingxia_control_commands::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
     Test(Box<test::TestOptions>),
-    /// Fake or record the running lxapp's Logic network traffic with
-    /// scenario files (development hosts only)
+    /// Put the running app into a named product state from
+    /// tests/scenarios/ (development hosts only)
+    Scenario(scenario::ScenarioOptions),
+    /// Inspect and record the running lxapp's Logic network traffic
+    /// (development hosts only)
     Network(network::NetworkOptions),
 }
 
@@ -193,6 +197,20 @@ fn run() -> Result<()> {
             };
             lingxia_control_commands::app::execute(&context, options)
         }
+        Commands::Scenario(options) => {
+            // Listing needs no session: it falls back to this directory's
+            // project.
+            let info = match resolve(&selector) {
+                Ok(info) => Some(info),
+                Err(err)
+                    if options.is_list() && err.to_string().contains("No live dev session") =>
+                {
+                    None
+                }
+                Err(err) => return Err(err),
+            };
+            scenario::execute(info.as_ref(), options)
+        }
         Commands::Network(options) => {
             let info = resolve(&selector)?;
             network::execute(&info, options)
@@ -304,13 +322,8 @@ mod tests {
     #[test]
     fn network_commands_have_stable_cli_shapes() {
         for argv in [
-            vec!["lxdev", "network", "scenario", "use", "s.json"],
-            vec![
-                "lxdev", "network", "scenario", "use", "s.json", "--appid", "app", "--json",
-            ],
-            vec!["lxdev", "network", "scenario", "clear"],
-            vec!["lxdev", "network", "scenario", "status", "--json"],
             vec!["lxdev", "network", "status"],
+            vec!["lxdev", "network", "status", "--json"],
             vec![
                 "lxdev",
                 "network",
@@ -322,11 +335,46 @@ mod tests {
             vec![
                 "lxdev", "network", "record", "stop", "--out", "r.json", "--redact", "x",
             ],
+            vec![
+                "lxdev", "network", "record", "stop", "--out", "r.json", "--name", "offline",
+            ],
         ] {
             assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
         }
         assert!(Cli::try_parse_from(["lxdev", "network", "record", "stop"]).is_err());
-        assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "use"]).is_err());
+        // Scenarios moved to `lxdev scenario`.
+        assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "use", "s.json"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "clear"]).is_err());
+    }
+
+    #[test]
+    fn scenario_commands_have_stable_cli_shapes() {
+        for argv in [
+            vec!["lxdev", "scenario", "list"],
+            vec!["lxdev", "scenario", "list", "--json"],
+            vec!["lxdev", "scenario", "use", "qoe/offline"],
+            vec![
+                "lxdev",
+                "scenario",
+                "use",
+                "tests/scenarios/offline.json",
+                "--appid",
+                "app",
+                "--json",
+            ],
+            vec!["lxdev", "scenario", "status", "--json"],
+            vec!["lxdev", "scenario", "clear"],
+        ] {
+            assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
+        }
+        assert!(Cli::try_parse_from(["lxdev", "scenario", "use"]).is_err());
+        let Commands::Scenario(options) = Cli::try_parse_from(["lxdev", "scenario", "list"])
+            .unwrap()
+            .command
+        else {
+            panic!("expected scenario command");
+        };
+        assert!(options.is_list());
     }
 
     #[test]

@@ -1,9 +1,9 @@
-//! `lxdev network`: fake or record a running lxapp's Logic network traffic
-//! in a dev session, outside any test run.
+//! `lxdev network`: the network panel of a dev session. It shows what
+//! answers the running lxapp's Logic `fetch` and `Rong.SSE` and records real
+//! traffic into scenario files for `lxdev scenario use`.
 //!
-//! A scenario installed here answers the app's Logic `fetch` and `Rong.SSE`
-//! until it is cleared or the dev session ends. Only hosts built with the
-//! automation test runtime (development hosts, the Runner) can do this.
+//! Only hosts built with the automation test runtime (development hosts, the
+//! Runner) can do this.
 
 use crate::client::{self, CommandError};
 use crate::project::SessionInfo;
@@ -22,41 +22,10 @@ pub struct NetworkOptions {
 
 #[derive(Subcommand, Clone)]
 enum NetworkCommand {
-    /// Answer the app's Logic requests from a scenario file
-    #[command(subcommand)]
-    Scenario(ScenarioCommand),
     /// Capture real Logic traffic into a scenario file
     #[command(subcommand)]
     Record(RecordCommand),
     /// Show the active scenario and recording
-    Status {
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
-    },
-}
-
-#[derive(Subcommand, Clone)]
-enum ScenarioCommand {
-    /// Install a scenario until `scenario clear` or the session ends; it
-    /// replaces a scenario installed earlier
-    Use {
-        /// Scenario JSON file
-        file: PathBuf,
-        /// Target lxapp (default: the home lxapp, else the current one)
-        #[arg(long)]
-        appid: Option<String>,
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
-    },
-    /// Remove the active scenario
-    Clear {
-        /// Print JSON output
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show the active scenario and what it answered
     Status {
         /// Print JSON output
         #[arg(long)]
@@ -98,40 +67,9 @@ enum RecordCommand {
 pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
     let ws = info.ws_url.as_str();
     match options.command {
-        NetworkCommand::Status { json }
-        | NetworkCommand::Scenario(ScenarioCommand::Status { json }) => {
+        NetworkCommand::Status { json } => {
             let status = call(ws, method::STATUS, None)?;
             print(&status, json, print_status)
-        }
-        NetworkCommand::Scenario(ScenarioCommand::Use { file, appid, json }) => {
-            let scenario = read_scenario(&file)?;
-            let source = file
-                .file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| file.display().to_string());
-            let status = call(
-                ws,
-                method::SCENARIO_USE,
-                Some(json!({ "scenario": scenario, "source": source, "appid": appid })),
-            )?;
-            print(&status, json, |status| {
-                print_status(status);
-                print_warning(status);
-                eprintln!(
-                    "{} Logic requests matching it are faked until `lxdev network scenario clear` or the session ends",
-                    "warning".yellow().bold()
-                );
-            })
-        }
-        NetworkCommand::Scenario(ScenarioCommand::Clear { json }) => {
-            let result = call(ws, method::SCENARIO_CLEAR, None)?;
-            print(&result, json, |result| {
-                if result["cleared"] == true {
-                    println!("network scenario cleared; Logic requests reach the network again");
-                } else {
-                    println!("no network scenario was active");
-                }
-            })
         }
         NetworkCommand::Record(RecordCommand::Start {
             matcher,
@@ -200,7 +138,7 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
     }
 }
 
-fn call(ws: &str, handler: &str, args: Option<Value>) -> Result<Value> {
+pub(crate) fn call(ws: &str, handler: &str, args: Option<Value>) -> Result<Value> {
     match client::execute_command(ws, handler, args) {
         Ok(value) => Ok(value.unwrap_or(Value::Null)),
         Err(err) => {
@@ -217,19 +155,6 @@ fn call(ws: &str, handler: &str, args: Option<Value>) -> Result<Value> {
             Err(err)
         }
     }
-}
-
-fn read_scenario(file: &Path) -> Result<Value> {
-    let text = std::fs::read_to_string(file)
-        .with_context(|| format!("cannot read scenario {}", file.display()))?;
-    serde_json::from_str(&text).map_err(|err| {
-        anyhow!(
-            "{} is not valid JSON (line {}, column {}): {err}",
-            file.display(),
-            err.line(),
-            err.column()
-        )
-    })
 }
 
 /// Where `record stop --out` puts the scenario: a placeholder file created
@@ -327,7 +252,7 @@ pub(crate) fn mask_values(value: &mut Value, values: &[String]) {
     }
 }
 
-fn print(value: &Value, json: bool, human: impl FnOnce(&Value)) -> Result<()> {
+pub(crate) fn print(value: &Value, json: bool, human: impl FnOnce(&Value)) -> Result<()> {
     if json {
         println!("{}", serde_json::to_string(value)?);
     } else {
@@ -336,14 +261,38 @@ fn print(value: &Value, json: bool, human: impl FnOnce(&Value)) -> Result<()> {
     Ok(())
 }
 
+/// Why and when the last dev scenario stopped answering.
+pub(crate) fn print_last_cleared(status: &Value) {
+    let Some(cleared) = status
+        .get("lastCleared")
+        .filter(|cleared| cleared.is_object())
+    else {
+        return;
+    };
+    let why = match cleared["reason"].as_str() {
+        Some("cleared") => "cleared with `lxdev scenario clear`",
+        Some("replaced") => "replaced by another `lxdev scenario use`",
+        Some("session_ended") => "cleared: the dev session disconnected",
+        _ => "cleared",
+    };
+    println!(
+        "  last: '{}' {why} at {}",
+        cleared["name"]
+            .as_str()
+            .or(cleared["source"].as_str())
+            .unwrap_or("unnamed"),
+        cleared["clearedAt"].as_str().unwrap_or("?"),
+    );
+}
+
 /// The host's warning about the request, such as an unknown `--appid`.
-fn print_warning(status: &Value) {
+pub(crate) fn print_warning(status: &Value) {
     if let Some(warning) = status["warning"].as_str() {
         eprintln!("{} {warning}", "warning".yellow().bold());
     }
 }
 
-fn print_status(status: &Value) {
+pub(crate) fn print_status(status: &Value) {
     match status
         .get("scenario")
         .filter(|scenario| scenario.is_object())
@@ -355,7 +304,7 @@ fn print_status(status: &Value) {
                 .map(|source| format!(" ({source})"))
                 .unwrap_or_default();
             println!(
-                "{} network scenario '{name}'{source} for {} since {}",
+                "{} scenario '{name}'{source}: http routes for {} since {}",
                 "ACTIVE".yellow().bold(),
                 scenario["appid"].as_str().unwrap_or("?"),
                 scenario["installedAt"].as_str().unwrap_or("?"),
@@ -384,7 +333,10 @@ fn print_status(status: &Value) {
                 println!("  (standing aside while a test run is active)");
             }
         }
-        None => println!("no network scenario is active"),
+        None => {
+            println!("no scenario answers Logic requests");
+            print_last_cleared(status);
+        }
     }
     if let Some(recording) = status
         .get("recording")
@@ -458,14 +410,5 @@ mod tests {
         let message = format!("{err:#}");
         assert!(message.contains("printed to stdout"), "{message}");
         assert!(message.contains("rec.json"), "{message}");
-    }
-
-    #[test]
-    fn a_bad_scenario_file_names_where_it_broke() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("bad.json");
-        std::fs::write(&file, "{\n  \"routes\": [,]\n}").unwrap();
-        let err = read_scenario(&file).unwrap_err().to_string();
-        assert!(err.contains("line 2"), "{err}");
     }
 }
