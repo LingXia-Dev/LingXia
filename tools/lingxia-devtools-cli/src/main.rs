@@ -11,6 +11,7 @@ mod screenshot;
 mod sessions;
 mod test;
 mod test_bundle;
+mod test_contract;
 mod test_network;
 mod test_secrets;
 mod test_state;
@@ -51,7 +52,7 @@ enum Commands {
     /// Automate the host app surface in the current dev session
     App(lingxia_control_commands::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
-    Test(test::TestOptions),
+    Test(Box<test::TestOptions>),
     /// Fake or record the running lxapp's Logic network traffic with
     /// scenario files (development hosts only)
     Network(network::NetworkOptions),
@@ -206,7 +207,7 @@ fn run() -> Result<()> {
                     err
                 }
             })?;
-            test::execute(&info, options)
+            test::execute(&info, *options)
         }
     }
 }

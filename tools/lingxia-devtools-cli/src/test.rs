@@ -73,6 +73,23 @@ pub struct TestOptions {
     #[arg(long, value_name = "PATTERN")]
     pub grep: Option<String>,
 
+    /// Run only specs whose tags match (repeatable: every --tag must hold).
+    /// `a,b` is a or b; `!a` is without a. An untagged spec fails `--tag a`
+    /// and passes `--tag '!a'`
+    #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr)]
+    tags: Vec<String>,
+
+    /// Summarize which ids of this list (JSON or YAML) the specs' `covers`
+    /// reach, which have no spec, and which `covers` ids it lacks
+    #[arg(long, value_name = "FILE")]
+    covers_manifest: Option<PathBuf>,
+
+    /// Check Logic fetch responses against this OpenAPI 3.0/3.1 document
+    /// (JSON or YAML, repeatable): a routed response that breaks it fails its
+    /// spec, a server response is a warning. Enables `toMatchSchema`
+    #[arg(long = "openapi", value_name = "SPEC")]
+    openapi: Vec<PathBuf>,
+
     /// Fail if any spec.only is registered
     #[arg(long)]
     pub forbid_only: bool,
@@ -268,6 +285,13 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let secrets = RunSecrets::new(&options.args, &options.secret_args);
     let args = secrets.spec_args();
     let mut control = run_control(&options, &info.target, &secrets)?;
+    let inputs = crate::test_contract::RunInputs::load(
+        options.covers_manifest.as_deref(),
+        &options.openapi,
+    )?;
+    inputs.add_controls(&mut control)?;
+    // What reports show: file names, not the documents.
+    let reported_control = crate::test_contract::reported_control(&control);
     // Isolation is settled (and a seed uploaded) before the run exists.
     let isolation = crate::test_state::prepare(
         &info.ws_url,
@@ -386,7 +410,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             let mut value = report_value(framework, &bundle);
             value["schema_version"] = json!(1);
             value["partial"] = json!(outcome.partial);
-            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": secrets.meta_args(), "run": control});
+            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": secrets.meta_args(), "run": reported_control});
             value["framework"] = json!({"name":"test framework", "version":"unknown"});
             if let Some(cases) = value["cases"].as_array_mut() {
                 for case in cases {
@@ -413,7 +437,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
                 &output_dir,
                 &run_id,
                 &secrets.meta_args(),
-                &control,
+                &reported_control,
                 &started_at,
                 outcome
                     .result
@@ -431,6 +455,10 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             .any(|page| !outcome.artifacts.iter().any(|(name, _, _)| name == page))
     {
         complete_client_reports(&output_dir, &run_id, &outcome)?;
+        crate::test_contract::refresh_report_file(
+            &output_dir.join("report.json"),
+            inputs.manifest_entries(),
+        )?;
     }
     for name in ["report.json", "report.html", "junit.xml"] {
         let path = output_dir.join(name);
@@ -523,6 +551,9 @@ fn run_control(
     }
     if let Some(shard) = &options.shard {
         control.insert("shard".to_string(), shard.clone());
+    }
+    if !options.tags.is_empty() {
+        control.insert("tags".to_string(), serde_json::to_string(&options.tags)?);
     }
     if let Some(path) = &options.last_failed {
         let previous: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
@@ -1577,6 +1608,7 @@ fn report(
                 format!("{flaky} flaky: passed only after retry").yellow()
             );
         }
+        crate::test_contract::print_summaries(&output_dir.join("report.json"));
         for case in &framework_report.cases {
             if !case.status.is_failure() {
                 continue;
@@ -1631,6 +1663,12 @@ fn report(
                 );
                 if let Some(secs) = options.timeout_secs {
                     command.push_str(&format!(" --timeout-secs {secs}"));
+                }
+                for spec in &options.openapi {
+                    command.push_str(&format!(
+                        " --openapi {}",
+                        shell_quote(&spec.to_string_lossy())
+                    ));
                 }
                 command.push_str(&secrets.rerun_flags(shell_quote));
                 command.push_str(&options.state.rerun_flags(shell_quote));
@@ -2004,7 +2042,7 @@ fn write_partial_report(
             "run_id": run_id,
         },
         "partial": true,
-        "filtered": (["grep", "id", "ids", "shard"].iter().any(|key| control.contains_key(*key))),
+        "filtered": (["grep", "id", "ids", "shard", "tags"].iter().any(|key| control.contains_key(*key))),
         "run_id": run_id,
         "total": cases.len(),
         "passed": count("passed"),
@@ -2766,6 +2804,28 @@ mod lifecycle_tests {
         assert!(!plain.contains_key("shuffle"));
         assert!(Harness::try_parse_from(["test", "tests/", "--shuffle=x"]).is_err());
         assert!(Harness::try_parse_from(["test", "tests/", "--repeat-each", "0"]).is_err());
+    }
+
+    #[test]
+    fn tag_expressions_travel_as_one_control() {
+        let secrets = RunSecrets::new(&[], &[]);
+        let tagged = options(&["tests/", "--tag", "routed,unit", "--tag", "!live"]);
+        let control = run_control(&tagged, "macos", &secrets).unwrap();
+        assert_eq!(control["tags"], r#"["routed,unit","!live"]"#);
+        let plain = run_control(&options(&["tests/"]), "macos", &secrets).unwrap();
+        assert!(!plain.contains_key("tags"));
+        assert!(Harness::try_parse_from(["test", "tests/", "--tag", "routed,"]).is_err());
+        assert!(
+            Harness::try_parse_from([
+                "test",
+                "tests/",
+                "--openapi",
+                "a.yaml",
+                "--openapi",
+                "b.json"
+            ])
+            .is_ok()
+        );
     }
 
     #[test]
