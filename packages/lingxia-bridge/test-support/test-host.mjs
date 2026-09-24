@@ -11,7 +11,11 @@ globalThis.window = {
     surfaceContextRevision: 1,
   },
 };
+// The runtime stamps <html lang> and <html dir> at load and on each change.
+globalThis.document = { documentElement: {} };
 const { getHost, subscribeHost, textDirection } = await import('../dist/test/host.mjs');
+assert.equal(document.documentElement.lang, 'en-US');
+assert.equal(document.documentElement.dir, 'ltr');
 
 const first = getHost();
 assert.deepEqual(first, {
@@ -40,6 +44,8 @@ assert.notEqual(getHost(), first, 'and a change is a new object');
 window.__lingxiaApplyDisplayLanguage('ar-EG');
 assert.equal(heard, 2, 'a language change is');
 assert.equal(getHost().displayLanguage, 'ar-EG');
+assert.equal(document.documentElement.lang, 'ar-EG');
+assert.equal(document.documentElement.dir, 'rtl', 'a right-to-left language turns the page');
 
 stop();
 window.__lingxiaApplyDisplayLanguage('en-US');

@@ -34,8 +34,10 @@ try {
 async function writeEntryFile() {
   await writeRuntimeShimFile();
   const importPath = normalizeImportPath(path.relative(distDir, runtimeShimFile));
+  // The host store only: the bridge's index also boots the bridge and
+  // registers its UI handlers, which the host's own runtime already did.
   const bridgeImportPath = normalizeImportPath(
-    path.relative(distDir, path.join(bridgeDir, "dist", "es2020", "index.js")),
+    path.relative(distDir, path.join(bridgeDir, "dist", "es2020", "host.js")),
   );
   // The same page API as the `@lingxia/html` module: `pageReady`, `getPage` /
   // `subscribePage`, and the host facts through `getHost` / `subscribeHost`.

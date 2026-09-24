@@ -17,7 +17,8 @@
     "build": "npm run clean && npm --prefix ../lingxia-bridge run build:types && tsc -p tsconfig.json",
     "clean": "rm -rf dist",
     "test:runtime": "npm run build && node tests/page-chrome-revision.mjs",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "rolldown src/shared/runtime.ts --file dist/test/runtime.mjs --format esm && node ./test-support/test-runtime.mjs"
   },
   "dependencies": {
     "@lingxia/bridge": "~0.18.0"

@@ -108,18 +108,38 @@ export function renderErrorUI(errorInfo: ErrorInfo): void {
 }
 
 /**
- * A page whose Logic never delivered its first state — it failed to load, or
- * threw before the page could start. Shown instead of a blank page, naming the
- * page, so the failure is visible where it happened.
+ * A page whose Logic has not delivered its first state in time — it failed to
+ * load, threw before the page could start, or is very slow. Shown over the page
+ * instead of a blank screen, naming the page; returns a function that removes
+ * it, for when the state does arrive after all.
  */
-export function renderPageFault(pagePath: string | null, reason: string): void {
-  renderPanel({
-    code: 'Page',
-    title: "This page couldn't start",
-    description: 'Its Logic did not deliver the page state. Check the Logic log for an error.',
-    detail: pagePath,
-    reason,
-  });
+export function renderPageFault(pagePath: string | null, reason: string): () => void {
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+.lx-page-fault { position: fixed; inset: 0; z-index: 2147483647; overflow: auto;
+  background: #fff; color: #1d1d1f; }
+@media (prefers-color-scheme: dark) { .lx-page-fault { background: #000; color: #f5f5f7; } }
+${ERROR_STYLES.replace(/\bbody\b/g, '.lx-page-fault')}`;
+  document.head.appendChild(styleEl);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'lx-page-fault';
+  overlay.setAttribute('role', 'alert');
+  const container = document.createElement('div');
+  container.className = 'lx-error';
+  let html = '<div class="lx-error-code">Page</div>';
+  html += `<h1 class="lx-error-title">${escapeHtml("This page couldn't start")}</h1>`;
+  html += `<p class="lx-error-desc">${escapeHtml('Its Logic has not delivered the page state. Check the Logic log for an error.')}</p>`;
+  if (pagePath) html += `<div class="lx-error-path">${escapeHtml(pagePath)}</div>`;
+  html += `<p class="lx-error-desc" style="margin-top:12px">${escapeHtml(reason)}</p>`;
+  container.innerHTML = html;
+  overlay.appendChild(container);
+  document.body.appendChild(overlay);
+
+  return () => {
+    overlay.remove();
+    styleEl.remove();
+  };
 }
 
 export function hasError(): boolean {
