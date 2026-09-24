@@ -155,6 +155,11 @@ export function remapPosition(
   }
 }
 
+/** Whether lxdev installed a bundle map, so every frame should map to a file. */
+export function hasBundleMap(): boolean {
+  return bundleMap() !== undefined;
+}
+
 function bundleMap(): SourceMapJson | undefined {
   const map = globalThis.__LINGXIA_TEST_SOURCE_MAP__;
   if (!map || typeof map !== "object") return undefined;
@@ -212,8 +217,10 @@ function buildTable(map: SourceMapJson): MapEntry[][] {
     if (line.length > 0) {
       for (const segment of line.split(",")) {
         const decoded = decodeVlq(segment);
-        if (decoded.length < 4) continue;
+        if (decoded.length === 0) continue;
+        // A one-field segment maps nothing but still moves the column.
         col += decoded[0]!;
+        if (decoded.length < 4) continue;
         source += decoded[1]!;
         srcLine += decoded[2]!;
         srcCol += decoded[3]!;

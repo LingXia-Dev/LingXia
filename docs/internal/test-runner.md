@@ -160,6 +160,14 @@ Development machine: lxdev receives progress, results, and artifacts
   without writing a temporary entry into the project. A `.json` import becomes
   a module whose `default` export is the parsed value (validated with line and
   column on error), shared by every importer.
+- A spec, `spec.configure()` or hook belongs to the file of the nearest spec
+  frame on its registration stack, mapped through the bundle map. Engines may
+  evaluate the bundle behind lines of their own (Rong's JavaScriptCore backend
+  prepends `"use strict";\n`, so frames arrive one line low). The bundle's
+  line 3 measures that shift (`LINE_PROBE_LINE`), prepends as many empty
+  lines to the map it installs for `@lingxia/test`, and moves a thrown error's
+  frames back to bundle lines before lxdev maps them. A registration that
+  still maps to no file fails the run; it is never left file-less.
 - Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
   bounds both.
 - Locator actions wait for a unique match, enabled/editable state, stable

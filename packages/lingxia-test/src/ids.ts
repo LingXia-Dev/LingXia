@@ -1,4 +1,4 @@
-import { remapPosition } from "./host.js";
+import { hasBundleMap, remapPosition } from "./host.js";
 
 export interface StackFrame {
   file: string;
@@ -90,6 +90,16 @@ export function resolveOwner(frames: StackFrame[], specFiles: ReadonlySet<string
     if (!isFrameworkFrame(mapped.file) && specFiles.has(mapped.file)) return mapped;
   }
   return resolveOrigin(frames);
+}
+
+/**
+ * A registration whose authored file cannot be told: in a bundled run its
+ * frame did not map back to a source file (it is still the bundle's), or the
+ * engine gave no stack at all. Its tags, hooks and id would silently fall
+ * back to "no file", so the run refuses it instead.
+ */
+export function isUnattributed(file: string): boolean {
+  return hasBundleMap() && (file.startsWith("lxdev-test://") || file === UNKNOWN.file);
 }
 
 export function callerLocation(): StackFrame {
