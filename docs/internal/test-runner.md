@@ -169,7 +169,19 @@ Development machine: lxdev receives progress, results, and artifacts
   frames back to bundle lines before lxdev maps them. A registration that
   still maps to no file fails the run; it is never left file-less.
 - Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
-  bounds both.
+  bounds both. `restoreProfile`'s rollback is the first defer (so it runs
+  last) and drops its checkpoint whether or not the rollback succeeded.
+- Before each spec that runs, the runtime lists the lxapps; if the app under
+  test (`spec.app`, else the app `describeSubject` saw at run start) is
+  missing or `closed` (a `closing` one gets 5 s), it opens it, relaunches its
+  home page, emits a `diagnostic` with `phase: "recovery"` naming the previous
+  case and its status, and records an `app.reopen` step on the new case. A
+  failed reopen is recorded the same way and the spec then fails on its own.
+- `lingxia dev`'s watcher defers reloads while a relayed `session.test` run is
+  active. The check is repeated in `restart_lxapp` under the command lock
+  that every relayed request holds until its response is observed, so a run
+  that starts during the (seconds-long) rebuild defers the restart instead of
+  having its app replaced mid-spec.
 - Locator actions wait for a unique match, enabled/editable state, stable
   geometry, and an unobscured hit point (after `scrollIntoView`), retrying
   while a navigation is still replacing the page.

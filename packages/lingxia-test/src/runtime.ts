@@ -279,6 +279,43 @@ function pinApp(appId?: string): LxAppDriver {
   return appId ? automation.lxapp(appId) : automation.lxapp();
 }
 
+/** How long a closing app under test gets to finish closing before it is reopened. */
+const REOPEN_CLOSING_WAIT_MS = 5_000;
+
+/**
+ * Reopen the app under test when it is no longer running, and wait for its
+ * home page. Resolves `undefined` when it was running (or cannot be told);
+ * otherwise what happened, with the error if reopening failed.
+ */
+async function reopenAppUnderTest(appId: string | undefined): Promise<{ appId: string; error?: string } | undefined> {
+  if (!appId) return undefined;
+  let root: HostRunAutomation;
+  try { root = automationRoot(); } catch { return undefined; }
+  const status = async () => {
+    const apps = await root.lxapps.list();
+    return apps.find((app) => app.appid === appId)?.status;
+  };
+  try {
+    let current = await status();
+    const deadline = Date.now() + REOPEN_CLOSING_WAIT_MS;
+    while (current === "closing" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      current = await status();
+    }
+    if (current === "opened" || current === "opening" || current === "restarting") return undefined;
+  } catch {
+    // A host without `lxapps` cannot say; leave the app alone.
+    return undefined;
+  }
+  try {
+    await root.lxapps.open({ appid: appId });
+    await relaunchHome(root.lxapp(appId));
+    return { appId };
+  } catch (error) {
+    return { appId, error: String((error as Error)?.message ?? error) };
+  }
+}
+
 async function relaunchHome(app: LxAppDriver): Promise<void> {
   const pages = await app.pages();
   const home = pages[0]?.name ?? "home";
@@ -555,6 +592,18 @@ async function run(): Promise<ProtocolReport> {
       continue;
     }
 
+    // One spec that leaves the app under test closed (a crash, a dev reload,
+    // Logic torn down after a hung eval) must not fail every spec after it.
+    const reopenStarted = Date.now();
+    const reopened = await reopenAppUnderTest(item.app ?? subject?.appid);
+    if (reopened) {
+      const previous = cases[cases.length - 1];
+      await host.emit({ type: "diagnostic", phase: "recovery",
+        message: `The app under test (${reopened.appId}) was not running before "${item.title}"` +
+          (previous ? `; it stopped during or after "${previous.title}" (${previous.status})` : "") +
+          `. Reopened it on its home page${reopened.error ? `, which failed: ${reopened.error}` : ""}.` });
+    }
+
     const fixture = new LiveFixture(
       `${encodeURIComponent(id)}${repeatEach > 1 ? `/repeat-${repeat}` : ""}/attempt-${record.attempt}`,
       pinApp(item.app),
@@ -564,6 +613,12 @@ async function run(): Promise<ProtocolReport> {
       timeout,
       redact,
     );
+
+    if (reopened) {
+      fixture.steps.push({ name: "app.reopen", kind: "action", path: "app.reopen",
+        detail: `${reopened.appId} was not running`, status: reopened.error ? "failed" : "passed",
+        duration_ms: Date.now() - reopenStarted, steps: [], attachments: [], assertions: [] });
+    }
 
     let status: SpecStatus = "passed";
     let error: unknown;

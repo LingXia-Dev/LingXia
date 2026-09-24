@@ -514,7 +514,10 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
   `waitUntil: 'commit'` to resolve once the stack changed, then assert the
   landing page.
 - **Specs share app state.** A new spec does not reset the app, storage, or
-  backend (only a timed-out spec forces a home relaunch). Seed and clean up
+  backend (only a timed-out spec forces a home relaunch). If a spec leaves the
+  app under test closed (it crashed, or its Logic was torn down), the next spec
+  reopens it on its home page first and the run reports a `recovery`
+  diagnostic naming the spec that preceded it. Seed and clean up
   explicitly with `t.defer` or `spec.reset`, or roll back with
   `restoreProfile` in an isolated run.
 - **Hooks are file-scoped.** `spec.reset`, `beforeEach`, and `afterEach` apply
@@ -560,6 +563,8 @@ lxdev test tests/ --grep checkout
   Use both to find order dependence and flaky specs.
 - `--verbose` shows steps; `--json` returns one result; `--jsonl` streams
   events. Interrupted runs keep partial reports and fail CI.
+- Saving a source file while `lxdev test` runs rebuilds it, but `lingxia dev`
+  reloads the app only after the run ends, never under a running spec.
 - Statuses: `timeout`, `xfail`, and `xpass` stay distinct; an unexpected pass
   fails the run. `spec.fail` without `expected` accepts any body failure.
 - Driver rejections carry stable codes (`E_PAGE_NOT_ACTIVE`,

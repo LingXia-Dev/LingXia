@@ -237,3 +237,34 @@ test('fixture proxies keep the native receiver for branded getters', async () =>
   spec('native getter',async t=>{expect(await t.automation.browser.tabs()).toEqual(['tab']);});
   assert.equal((await run()).failed,0);
 });
+
+test('a spec that leaves the app under test closed does not fail the rest of the run', async () => {
+  const world = createWorld();
+  let running = true;
+  const opened = [];
+  const lxapps = {
+    async list() { return running ? [{ appid: 'demo-app', status: 'opened' }] : []; },
+    async open(options) {
+      opened.push(options.appid);
+      running = true;
+      return { appid: options.appid, path: 'pages/home/index' };
+    },
+  };
+  const { events } = installFakeHost(world, { control: {}, lxapps });
+  spec('closes the app', async () => {
+    running = false;
+    throw new Error('lxapp is not active: demo-app');
+  });
+  spec('runs after it', async () => {});
+  spec('runs later', async () => {});
+
+  const report = await run();
+  assert.deepEqual(report.cases.map((c) => c.status), ['failed', 'passed', 'passed']);
+  assert.deepEqual(opened, ['demo-app'], 'reopened once, before the next spec');
+  const recoveries = events.filter((event) => event.type === 'diagnostic' && event.phase === 'recovery');
+  assert.equal(recoveries.length, 1);
+  assert.match(recoveries[0].message,
+    /\(demo-app\) was not running before "runs after it"; it stopped during or after "closes the app" \(failed\)\. Reopened it/);
+  assert.equal(report.cases[1].steps[0].name, 'app.reopen');
+  assert.ok(world.navCalls.some(([method]) => method === 'relaunch'), 'waits for the home page');
+});
