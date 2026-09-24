@@ -153,6 +153,30 @@ spec('rename shows the not-implemented error', async (t) => {
 - Only Logic `fetch` is routed, not WebView requests. A host outside the app's
   [network grants](../native/permissions.md) is never faked.
 
+## Isolated app data
+
+`--isolate` runs the suite on a throwaway copy of the app's data (storage,
+`lx://userdata`, `lx://usercache`, `lx://temp`); the developer's own data is
+untouched and back in place when the run ends, however it ends.
+
+```bash
+lxdev test tests/ --isolate                        # start empty
+lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
+```
+
+- `--state NAME|PATH` seeds from a snapshot; `--save-state NAME|PATH` saves
+  after a passing run (`--save-state-on always` for any finished run). Both
+  imply `--isolate`. A NAME lives under `~/.lingxia/test-state/`; keep PATH
+  snapshots out of git (`*.lxstate`) — they can hold sign-in tokens.
+- Sign in once: a setup spec signs in through the UI only when the app shows it
+  is signed out; later runs start from the saved state.
+- `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
+  that spec (implies `fresh`); `t.profile.checkpoint()` / `restore(id)` /
+  `drop(id)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
+  and both reject with `E_PROFILE_NOT_ISOLATED` without `--isolate`.
+- A snapshot belongs to one app, channel and device; another one is refused.
+  Downloads (`destination: "downloads"`) and other lxapps stay shared.
+
 ## Gotchas
 
 - **Visible means rendered, not in the viewport.** `toBeVisible` and
@@ -170,7 +194,8 @@ spec('rename shows the not-implemented error', async (t) => {
   landing page.
 - **Specs share app state.** A new spec does not reset the app, storage, or
   backend (only a timed-out spec forces a home relaunch). Seed and clean up
-  explicitly with `t.defer` or `spec.reset`.
+  explicitly with `t.defer` or `spec.reset`, or roll back with
+  `restoreProfile` in an isolated run.
 - **Hooks are file-scoped.** `spec.reset`, `beforeEach`, and `afterEach` apply
   to specs in the file that registers them. A shared helper such as
   `installHooks()` registers into the spec file that calls it at top level.
