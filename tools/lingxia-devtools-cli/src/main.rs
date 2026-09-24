@@ -11,6 +11,7 @@ mod sessions;
 mod test;
 mod test_bundle;
 mod test_secrets;
+mod test_state;
 
 use project::SessionSelector;
 

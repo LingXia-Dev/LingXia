@@ -23,6 +23,7 @@ tungstenite = { version = "0.30", features = ["native-tls"] }
 owo-colors = "4.4"
 base64 = { workspace = true }
 ctrlc = "3.5"
+sha2 = "0.11"
 
 # `lxdev test` bundler — the same Oxc components as lingxia-cli's Logic
 # bundler, but a dedicated entry mode (no Page()/App() rewrites).
