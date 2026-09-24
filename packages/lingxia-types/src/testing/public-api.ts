@@ -2,6 +2,7 @@ import type {
   Automation,
   BrowserCookies,
   BrowserDriver,
+  ClockDriver,
   DesktopApp,
   DesktopAx,
   DesktopClipboard,
@@ -244,7 +245,8 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
 const NETWORK_DRIVER_API = ['requests', 'route', 'unrouteAll'] as const;
 const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'unroute'] as const;
@@ -550,7 +552,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp()',
     members: LXAPP_DRIVER_API,
-    properties: ['nav', 'network', 'page', 'profile'],
+    properties: ['clock', 'nav', 'network', 'page', 'profile'],
   },
   {
     name: 'PageDriver',
@@ -573,6 +575,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp().profile',
     members: PROFILE_DRIVER_API,
+  },
+  {
+    name: 'ClockDriver',
+    layer: 'automation',
+    expression: 'lx.automation().lxapp().clock',
+    members: CLOCK_DRIVER_API,
   },
   {
     name: 'NetworkRoute',
@@ -825,6 +833,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,
   AssertTrue<Exact<NetworkRoute, typeof NETWORK_ROUTE_API>>,
   AssertTrue<Exact<ProfileDriver, typeof PROFILE_DRIVER_API>>,
+  AssertTrue<Exact<ClockDriver, typeof CLOCK_DRIVER_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,
   AssertTrue<Exact<BrowserDriver, typeof BROWSER_DRIVER_API>>,
   AssertTrue<Exact<BrowserCookies, typeof BROWSER_COOKIES_API>>,

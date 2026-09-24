@@ -4,6 +4,13 @@
 //! returns one lxapp driver. Host-only managers and surfaces enforce their
 //! privilege when used; callers do not select an internal privilege tier.
 
+// The test clock needs a host run to own its lease; without the runtime the
+// driver exists but every call rejects.
+#[cfg(feature = "runtime")]
+mod clock;
+#[cfg(not(feature = "runtime"))]
+#[path = "clock/unavailable.rs"]
+mod clock;
 #[cfg(feature = "desktop")]
 mod desktop;
 mod error;
@@ -280,6 +287,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     #[cfg(feature = "runtime")]
     ctx.register_hidden_class::<network::JSNetworkRoute>()?;
     ctx.register_hidden_class::<profile::JSProfileDriver>()?;
+    ctx.register_hidden_class::<clock::JSClockDriver>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
     ctx.register_hidden_class::<host::JSLxAppManager>()?;
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;
@@ -312,6 +320,10 @@ impl lx::LxLogicExtension for AutomationExtension {
         #[cfg(feature = "runtime")]
         if let Err(err) = network::install_logic_fetch_interceptor(ctx) {
             log::warn!("test network routing unavailable in this Logic context: {err}");
+        }
+        #[cfg(feature = "runtime")]
+        if let Err(err) = clock::install_logic_clock(ctx) {
+            log::warn!("test clock unavailable in this Logic context: {err}");
         }
         Ok(())
     }

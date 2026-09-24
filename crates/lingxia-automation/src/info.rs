@@ -128,6 +128,14 @@ impl JSLxAppDriver {
             .instance(crate::profile::JSProfileDriver::new(self.lxapp.clone())))
     }
 
+    /// Test clock for this lxapp's Logic, scoped to the host automation run.
+    /// Reading the property never throws; calls outside a host run reject.
+    #[js_method(getter, enumerable)]
+    fn clock(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::clock::JSClockDriver>(&ctx)?
+            .instance(crate::clock::JSClockDriver::new(self.lxapp.clone())))
+    }
+
     #[js_method]
     async fn info(&self, ctx: JSContext) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;

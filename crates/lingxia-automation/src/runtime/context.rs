@@ -48,6 +48,10 @@ pub(crate) fn init_automation_context(
     crate::network::attach_run_scope(ctx, shared.run_id.clone(), move || {
         run.upgrade().is_some_and(|run| !run.state().is_terminal())
     });
+    let run = Arc::downgrade(shared);
+    crate::clock::attach_run_scope(ctx, shared.run_id.clone(), move || {
+        run.upgrade().is_some_and(|run| !run.state().is_terminal())
+    });
     if let Some(profile) = shared.profile() {
         let run = Arc::downgrade(shared);
         crate::profile::attach_run_scope(
