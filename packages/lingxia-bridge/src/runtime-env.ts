@@ -41,9 +41,33 @@ function store(): DisplayLanguageStore {
   return window.__lxDisplayLanguage;
 }
 
+/** Primary subtags of languages written right to left, for engines without `Intl.Locale#getTextInfo`. */
+const RTL_LANGUAGES = new Set(['ar', 'ckb', 'dv', 'fa', 'he', 'ps', 'sd', 'ug', 'ur', 'yi']);
+
+/** The writing direction of a BCP-47 tag. */
+export function textDirection(tag: string): 'ltr' | 'rtl' {
+  try {
+    const locale = new Intl.Locale(tag) as Intl.Locale & {
+      getTextInfo?: () => { direction?: string };
+      textInfo?: { direction?: string };
+    };
+    const info = typeof locale.getTextInfo === 'function' ? locale.getTextInfo() : locale.textInfo;
+    if (info?.direction === 'rtl' || info?.direction === 'ltr') return info.direction;
+  } catch {
+    // Not a tag `Intl` accepts; fall through to the subtag list.
+  }
+  return RTL_LANGUAGES.has(tag.split(/[-_]/)[0].toLowerCase()) ? 'rtl' : 'ltr';
+}
+
+/**
+ * `lang` and `dir` on `<html>` follow the display language, so a page never
+ * sets either: CSS logical properties and `:dir()` just work.
+ */
 function stampDocumentLanguage(): void {
   if (typeof document !== 'undefined' && document.documentElement) {
-    document.documentElement.lang = store().value;
+    const language = store().value;
+    document.documentElement.lang = language;
+    document.documentElement.dir = textDirection(language);
   }
 }
 

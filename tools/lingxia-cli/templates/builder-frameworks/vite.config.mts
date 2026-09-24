@@ -110,7 +110,10 @@ const workspaceAliasEntries = [
   ['@lingxia/elements', resolveWorkspaceSourceEntry('@lingxia/elements', 'src/index.ts')],
   ['@lingxia/html', resolveWorkspaceSourceEntry('@lingxia/html', 'src/index.ts')],
   ['@lingxia/page-runtime', resolveWorkspaceSourceEntry('@lingxia/page-runtime', 'src/index.ts')],
+  // Subpaths before their package: a string alias matches by prefix.
+  ['@lingxia/react/entry', resolveWorkspaceSourceEntry('@lingxia/react', 'src/entry.tsx')],
   ['@lingxia/react', resolveWorkspaceSourceEntry('@lingxia/react', 'src/index.ts')],
+  ['@lingxia/vue/entry', resolveWorkspaceSourceEntry('@lingxia/vue', 'src/entry.ts')],
   ['@lingxia/vue', resolveWorkspaceSourceEntry('@lingxia/vue', 'src/index.ts')],
 ];
 const workspaceAliases = workspaceAliasEntries

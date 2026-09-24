@@ -4,13 +4,7 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import {
-  getDisplayLanguage,
-  getSurfaceContext,
-  subscribeDisplayLanguage,
-  subscribeSurfaceContext,
-  type SurfaceContext,
-} from "@lingxia/bridge";
+import { getHost, subscribeHost, type LxHost } from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -25,43 +19,39 @@ import {
   type StreamResult,
 } from "@lingxia/bridge/invocation";
 import {
-  ensurePageBridgeSubscription,
-  getPageChromeLayout,
   getPageActions,
   getPageSnapshot,
-  subscribePageChromeLayout,
   subscribePageSnapshot,
   type ActionMap,
-  type PageChromeLayoutSnapshot,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
+/**
+ * This page's Logic state and actions — `this.data` and the page's methods.
+ * The page mounts once its first state has arrived, so `data` is whole from
+ * the first render; it follows every `setData`. `actions` is one object for
+ * the page.
+ */
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
 >(): { data: TData; actions: TActions } {
-  ensurePageBridgeSubscription();
-  const [, setVersion] = React.useState(0);
-
-  React.useEffect(() => {
-    ensurePageBridgeSubscription();
-    const listener = () => setVersion((v) => v + 1);
-    const unsubscribe = subscribePageSnapshot(listener);
-    setVersion((v) => v + 1);
-    return unsubscribe;
-  }, []);
-
-  const actions = React.useMemo(() => getPageActions<TActions>(), []);
-  return { data: getPageSnapshot<TData>(), actions };
+  const data = React.useSyncExternalStore(
+    subscribePageSnapshot,
+    getPageSnapshot<TData>,
+    getPageSnapshot<TData>,
+  );
+  return { data, actions: getPageActions<TActions>() };
 }
 
-/** Reactive native page-chrome geometry for View layout. */
-export function useLxPageChrome(): PageChromeLayoutSnapshot {
-  return React.useSyncExternalStore(
-    subscribePageChromeLayout,
-    getPageChromeLayout,
-    getPageChromeLayout,
-  );
+/**
+ * What the host decided for this page: `sizeClass`, `aside`,
+ * `displayLanguage`, `formFactor`, `os`, `runner`. Re-renders only when one
+ * of them changes — never while a window is dragged. Geometry is CSS:
+ * `--lx-page-chrome-*` and container queries.
+ */
+export function useLxHost(): LxHost {
+  return React.useSyncExternalStore(subscribeHost, getHost, getHost);
 }
 
 export interface LxStreamOptions<TData, TReduced> {
@@ -334,72 +324,4 @@ export function useLxChannel<
   }, [methodDep, options?.manual, paramsKey, reopen]);
 
   return { ...state, send, close, reopen };
-}
-
-export interface LxPlatform {
-  os: string;
-  isIOS: boolean;
-  isMacOS: boolean;
-  isApple: boolean;
-  isAndroid: boolean;
-  isHarmony: boolean;
-  isWindows: boolean;
-  /**
-   * Form factor, not OS. This, not `isMacOS`/`isWindows`, is what a layout
-   * decision is usually about: the Runner reports macOS while simulating a
-   * phone, and a narrowed desktop window is still a desktop.
-   */
-  isDesktop: boolean;
-  isMobile: boolean;
-  isRunner: boolean;
-}
-
-function readPlatform(): LxPlatform {
-  const p = window.LingXiaBridge?.platform;
-  const desktop = p?.isDesktop() ?? false;
-  return {
-    os: p?.getOS() ?? "unknown",
-    isIOS: p?.isIOS() ?? false,
-    isMacOS: p?.isMacOS() ?? false,
-    isApple: p?.isApple() ?? false,
-    isAndroid: p?.isAndroid() ?? false,
-    isHarmony: p?.isHarmony() ?? false,
-    isWindows: p?.isWindows() ?? false,
-    isDesktop: desktop,
-    // Derived, not read, so that a host too old to answer `isMobile` reports
-    // one of the two rather than neither.
-    isMobile: p?.isMobile?.() ?? !desktop,
-    isRunner: p?.isRunner() ?? false,
-  };
-}
-
-// Typed platform detection for pages, so they never reach for the window global
-// or hand-roll an OS check. Fixed for the session, so it resolves once — the
-// Runner re-serves the page when its simulated device changes form factor.
-export function usePlatform(): LxPlatform {
-  return React.useMemo(readPlatform, []);
-}
-
-/** Effective product language selected by the host. */
-export function useDisplayLanguage(): string {
-  return React.useSyncExternalStore(
-    subscribeDisplayLanguage,
-    getDisplayLanguage,
-    getDisplayLanguage,
-  );
-}
-
-/**
- * The lxapp's adaptive context — `sizeClass`, viewport size, docked aside —
- * the same value Logic's `lx.surface.watchContext()` delivers, so a View
- * chooses its layout without Logic forwarding it. Seeded into the page before
- * its first frame and updated on every change. It re-renders on every width
- * change: read it where layout depends on it, not in every component.
- */
-export function useSurfaceContext(): SurfaceContext {
-  return React.useSyncExternalStore(
-    subscribeSurfaceContext,
-    getSurfaceContext,
-    getSurfaceContext,
-  );
 }

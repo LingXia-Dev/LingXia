@@ -1,9 +1,8 @@
 import {
   onUnmounted,
-  getCurrentInstance,
   reactive,
+  readonly,
   ref,
-  shallowRef,
   unref,
   watch,
   type Ref,
@@ -13,13 +12,7 @@ import type {
   LxBridgeError,
   LxStream,
 } from "@lingxia/bridge";
-import {
-  getDisplayLanguage,
-  getSurfaceContext,
-  subscribeDisplayLanguage,
-  subscribeSurfaceContext,
-  type SurfaceContext,
-} from "@lingxia/bridge";
+import { getHost, subscribeHost, type LxHost } from "@lingxia/bridge";
 import {
   getMethodKey,
   invokeMethod,
@@ -34,13 +27,10 @@ import {
   type StreamResult,
 } from "@lingxia/bridge/invocation";
 import {
-  ensurePageBridgeSubscription,
   getPageActions,
-  getPageChromeLayout,
-  subscribePageChromeLayout,
-  subscribePageData,
+  getPageSnapshot,
+  subscribePageSnapshot,
   type ActionMap,
-  type PageChromeLayoutSnapshot,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
@@ -50,46 +40,57 @@ function resolveMethod<TMethod>(source: MethodSource<TMethod>): TMethod {
   return unref(source) as TMethod;
 }
 
+// One reactive copy of the page's data for the document, updated in place so
+// a destructured `data` stays live.
 const reactiveSnapshot = reactive<Snapshot>({});
 let snapshotSubscribed = false;
 
-function ensureReactiveSnapshot(): void {
-  if (snapshotSubscribed) return;
-  snapshotSubscribed = true;
-  subscribePageData((next: unknown) => {
-    const normalized: Snapshot =
-      next && typeof next === "object" ? (next as Snapshot) : {};
-
-    for (const key of Object.keys(reactiveSnapshot)) {
-      if (!Object.prototype.hasOwnProperty.call(normalized, key)) {
-        delete reactiveSnapshot[key];
-      }
+function syncSnapshot(): void {
+  const next = getPageSnapshot<Snapshot>();
+  const normalized: Snapshot = next && typeof next === "object" ? next : {};
+  for (const key of Object.keys(reactiveSnapshot)) {
+    if (!Object.prototype.hasOwnProperty.call(normalized, key)) {
+      delete reactiveSnapshot[key];
     }
-    Object.assign(reactiveSnapshot, normalized);
-  });
+  }
+  Object.assign(reactiveSnapshot, normalized);
 }
 
+/**
+ * This page's Logic state and actions — `this.data` and the page's methods.
+ * The page mounts once its first state has arrived, so `data` is whole from
+ * the first render. `data` is deep-reactive and updated in place, so it may be
+ * destructured; `actions` is one object for the page. Callable anywhere.
+ */
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
 >(): { data: TData; actions: TActions } {
-  ensurePageBridgeSubscription();
-  ensureReactiveSnapshot();
+  if (!snapshotSubscribed) {
+    snapshotSubscribed = true;
+    syncSnapshot();
+    subscribePageSnapshot(syncSnapshot);
+  }
   return { data: reactiveSnapshot as TData, actions: getPageActions<TActions>() };
 }
 
-/** Reactive native page-chrome geometry for View layout. */
-export function useLxPageChrome(): Readonly<Ref<PageChromeLayoutSnapshot>> {
-  const layout = shallowRef(getPageChromeLayout());
-  if (!getCurrentInstance()) {
-    console.warn("useLxPageChrome() must be called during component setup");
-    return layout;
+const hostState = reactive<LxHost>({ ...getHost() });
+let hostSubscribed = false;
+
+/**
+ * What the host decided for this page: `sizeClass`, `aside`,
+ * `displayLanguage`, `formFactor`, `os`, `runner` — a readonly reactive object
+ * that changes only when one of them does, never while a window is dragged.
+ * Read `host.sizeClass`; destructuring takes a snapshot. Geometry is CSS:
+ * `--lx-page-chrome-*` and container queries. Callable anywhere.
+ */
+export function useLxHost(): Readonly<LxHost> {
+  if (!hostSubscribed) {
+    hostSubscribed = true;
+    Object.assign(hostState, getHost());
+    subscribeHost(() => Object.assign(hostState, getHost()));
   }
-  const unsubscribe = subscribePageChromeLayout((next) => {
-    layout.value = next;
-  });
-  onUnmounted(unsubscribe);
-  return layout;
+  return readonly(hostState) as Readonly<LxHost>;
 }
 
 export interface LxStreamOptions<TData, TReduced> {
@@ -338,80 +339,4 @@ export function useLxChannel<
   });
 
   return { last, error, connecting, connected, send, close, reopen };
-}
-
-export interface LxPlatform {
-  os: string;
-  isIOS: boolean;
-  isMacOS: boolean;
-  isApple: boolean;
-  isAndroid: boolean;
-  isHarmony: boolean;
-  isWindows: boolean;
-  /**
-   * Form factor, not OS. This, not `isMacOS`/`isWindows`, is what a layout
-   * decision is usually about: the Runner reports macOS while simulating a
-   * phone, and a narrowed desktop window is still a desktop.
-   */
-  isDesktop: boolean;
-  isMobile: boolean;
-  isRunner: boolean;
-}
-
-function readPlatform(): LxPlatform {
-  const p = window.LingXiaBridge?.platform;
-  const desktop = p?.isDesktop() ?? false;
-  return {
-    os: p?.getOS() ?? "unknown",
-    isIOS: p?.isIOS() ?? false,
-    isMacOS: p?.isMacOS() ?? false,
-    isApple: p?.isApple() ?? false,
-    isAndroid: p?.isAndroid() ?? false,
-    isHarmony: p?.isHarmony() ?? false,
-    isWindows: p?.isWindows() ?? false,
-    isDesktop: desktop,
-    // Derived, not read, so that a host too old to answer `isMobile` reports
-    // one of the two rather than neither.
-    isMobile: p?.isMobile?.() ?? !desktop,
-    isRunner: p?.isRunner() ?? false,
-  };
-}
-
-// Typed platform detection for pages, so they never reach for the window global
-// or hand-roll an OS check. Fixed for the session, so it resolves once — the
-// Runner re-serves the page when its simulated device changes form factor.
-export function usePlatform(): LxPlatform {
-  return readPlatform();
-}
-
-/** Effective product language selected by the host; follows a change. */
-export function useDisplayLanguage(): Readonly<Ref<string>> {
-  const language = shallowRef(getDisplayLanguage());
-  if (!getCurrentInstance()) {
-    console.warn("useDisplayLanguage() must be called during component setup");
-    return language;
-  }
-  const unsubscribe = subscribeDisplayLanguage(() => {
-    language.value = getDisplayLanguage();
-  });
-  onUnmounted(unsubscribe);
-  return language;
-}
-
-/**
- * The lxapp's adaptive context — `sizeClass`, viewport size, docked aside —
- * the same value Logic's `lx.surface.watchContext()` delivers. Seeded into the
- * page before its first frame; follows a change.
- */
-export function useSurfaceContext(): Readonly<Ref<SurfaceContext>> {
-  const context = shallowRef(getSurfaceContext());
-  if (!getCurrentInstance()) {
-    console.warn("useSurfaceContext() must be called during component setup");
-    return context;
-  }
-  const unsubscribe = subscribeSurfaceContext(() => {
-    context.value = getSurfaceContext();
-  });
-  onUnmounted(unsubscribe);
-  return context;
 }

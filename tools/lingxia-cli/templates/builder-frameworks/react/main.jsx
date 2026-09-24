@@ -1,10 +1,5 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
+import { mountPage } from "@lingxia/react/entry";
 /* {{APP_IMPORT}} */
 /* {{PAGE_BRIDGE_IMPORT}} */
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+mountPage(App, { waitForState: /* {{WAIT_FOR_STATE}} */ });

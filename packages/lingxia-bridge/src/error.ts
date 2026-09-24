@@ -62,9 +62,15 @@ function escapeHtml(str: string): string {
   return div.innerHTML;
 }
 
-export function renderErrorUI(errorInfo: ErrorInfo): void {
-  const { failedPath, reason } = errorInfo;
+interface PanelContent {
+  code: string;
+  title: string;
+  description: string;
+  detail?: string | null;
+  reason?: string | null;
+}
 
+function renderPanel({ code, title, description, detail, reason }: PanelContent): void {
   const styleEl = document.createElement('style');
   styleEl.textContent = ERROR_STYLES;
   document.head.appendChild(styleEl);
@@ -75,12 +81,12 @@ export function renderErrorUI(errorInfo: ErrorInfo): void {
   const container = document.createElement('div');
   container.className = 'lx-error';
 
-  let html = '<div class="lx-error-code">404</div>';
-  html += '<h1 class="lx-error-title">Page Not Found</h1>';
-  html += '<p class="lx-error-desc">The page you\'re looking for doesn\'t exist.</p>';
+  let html = `<div class="lx-error-code">${escapeHtml(code)}</div>`;
+  html += `<h1 class="lx-error-title">${escapeHtml(title)}</h1>`;
+  html += `<p class="lx-error-desc">${escapeHtml(description)}</p>`;
 
-  if (failedPath) {
-    html += `<div class="lx-error-path">${escapeHtml(failedPath)}</div>`;
+  if (detail) {
+    html += `<div class="lx-error-path">${escapeHtml(detail)}</div>`;
   }
 
   if (reason) {
@@ -89,6 +95,31 @@ export function renderErrorUI(errorInfo: ErrorInfo): void {
 
   container.innerHTML = html;
   document.body.appendChild(container);
+}
+
+export function renderErrorUI(errorInfo: ErrorInfo): void {
+  renderPanel({
+    code: '404',
+    title: 'Page Not Found',
+    description: "The page you're looking for doesn't exist.",
+    detail: errorInfo.failedPath,
+    reason: errorInfo.reason,
+  });
+}
+
+/**
+ * A page whose Logic never delivered its first state — it failed to load, or
+ * threw before the page could start. Shown instead of a blank page, naming the
+ * page, so the failure is visible where it happened.
+ */
+export function renderPageFault(pagePath: string | null, reason: string): void {
+  renderPanel({
+    code: 'Page',
+    title: "This page couldn't start",
+    description: 'Its Logic did not deliver the page state. Check the Logic log for an error.',
+    detail: pagePath,
+    reason,
+  });
 }
 
 export function hasError(): boolean {

@@ -1,8 +1,5 @@
-import { createApp } from "vue";
+import { mountPage } from "@lingxia/vue/entry";
 /* {{APP_IMPORT}} */
 /* {{PAGE_BRIDGE_IMPORT}} */
 
-// Create and configure Vue app
-const app = createApp(App);
-
-app.mount("#app");
+mountPage(App, { waitForState: /* {{WAIT_FOR_STATE}} */ });

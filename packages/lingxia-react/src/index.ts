@@ -1,18 +1,14 @@
 export {
   useLxPage,
-  useLxPageChrome,
+  useLxHost,
   useLxStream,
   useLxChannel,
-  usePlatform,
-  useDisplayLanguage,
-  useSurfaceContext,
   type LxStreamOptions,
   type LxStreamState,
   type LxChannelOptions,
   type LxChannelState,
-  type LxPlatform,
 } from "./hook.js";
-export type { SurfaceContext } from "@lingxia/bridge";
+export type { LxHost } from "@lingxia/bridge";
 export { LxVideo, type LxVideoProps } from "./LxVideo.js";
 export { LxNativeRoot, type LxNativeRootProps, type LxNativeRootHandle } from "./native/LxNativeRoot.js";
 export { LxNativeView, type LxNativeViewProps } from "./native/LxNativeView.js";
@@ -22,12 +18,6 @@ export { LxNativeButton, type LxNativeButtonProps } from "./native/LxNativeButto
 export { LxMediaSwiper, type LxMediaSwiperProps } from "./LxMediaSwiper.js";
 export { LxPicker, type LxPickerProps } from "./LxPicker.js";
 export { LxNavigator, type LxNavigatorProps } from "./LxNavigator.js";
-export type {
-  LxPageChrome,
-  PageChromeLayoutListener,
-  PageChromeLayoutSnapshot,
-  PageChromeRect,
-} from "@lingxia/page-runtime";
 
 export type { LxVideoEventPayloads, LxVideoEventHandlers, NativeActionIcon } from "@lingxia/elements";
 export type { NativeStyle } from "./native/shared.js";

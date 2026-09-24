@@ -45,13 +45,8 @@ export {
   stream,
 } from './bridge';
 export { isNativeError } from './invocation';
-export { getDisplayLanguage, subscribeDisplayLanguage } from './runtime-env';
-export {
-  getSurfaceContext,
-  subscribeSurfaceContext,
-  type SurfaceContext,
-} from './surface-context';
-export { renderErrorUI, hasError, getErrorInfo } from './error';
+export { getHost, subscribeHost, type LxHost } from './host';
+export { renderErrorUI, renderPageFault, hasError, getErrorInfo } from './error';
 export { boot, bootWhenReady } from './boot';
 
 import { bootWhenReady } from './boot';

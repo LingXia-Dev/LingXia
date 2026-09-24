@@ -225,10 +225,10 @@ export interface LingXiaBridgeInterface {
   _connectWebMessagePort(port: MessagePort): void;
   _receiveEvaluateMessage(messageString: string): void;
   debug: { data: boolean; proto: boolean; all: boolean };
-  displayLanguage: {
-    get(): string;
+  host: {
+    get(): import('./host').LxHost;
     /** Change-only; read the current value with `get()`. */
-    subscribe(listener: (language: string) => void): () => void;
+    subscribe(listener: () => void): () => void;
   };
   platform: {
     isHarmony(): boolean;
