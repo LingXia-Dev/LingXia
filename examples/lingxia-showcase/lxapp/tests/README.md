@@ -22,6 +22,12 @@ behind.
 them, and without `--openapi` (for example `lxdev test tests/`) they skip
 themselves.
 
+`lxapp/lxdev.json` names each entry's arguments as a preset:
+`lxdev test --preset macos --arg framework=react` (the npm
+`test:automation:*` scripts use them; `--list-presets` shows them).
+`scenarios/` holds dev-time product states for `lxdev scenario use`, which
+specs may import too (`route/status-offline` is `AUT-NET-007`'s).
+
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility
 entry and deliberately excludes physical platform tests.

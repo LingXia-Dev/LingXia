@@ -3,6 +3,7 @@ import type { NetworkRouteHandler } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import outage from '../fixtures/network/outage.json';
+import statusOffline from '../scenarios/route/status-offline.json';
 
 // Public host: the Showcase keeps the default public-network grant, and a
 // route never fulfills a host the app's policy would refuse.
@@ -197,6 +198,37 @@ spec("reject a scenario with an unknown field", {
     () => app.network.scenario({ routes: [{ url: `${BASE}/x`, stauts: 200 }] }),
     { message: "routes[0]: unknown route handler option 'stauts'" },
   );
+  await t.reject(
+    () => app.network.scenario({ http: { routes: [{ url: `${BASE}/x`, status: 200 }] }, worker: {} }),
+    { message: 'worker section of a scenario is not supported yet' },
+  );
+});
+
+spec("serve a sectioned scenario file, the form `lxdev scenario use` takes", {
+  id: "AUT-NET-007",
+  covers: ['NetworkDriver.scenario', 'NetworkScenario.name', 'NetworkScenario.unroute'],
+  app: SHOWCASE_APP_ID,
+}, async (t) => {
+  const { app } = bindFixture(t, "AUT-NET-007");
+
+  const scenario = await app.network.scenario(statusOffline);
+  expect(scenario.name).toBe('Status offline');
+  expect(scenario.routes.map((route) => route.pattern)).toEqual(statusOffline.http.routes.map((route) => route.url));
+
+  const result = await app.eval({
+    script: `
+      const base = ${JSON.stringify(BASE)};
+      const status = await fetch(base + '/status');
+      const device = await (await fetch(base + '/devices/d1')).json();
+      return { status: status.status, up: (await status.json()).up, online: device.online, lastSeen: device.lastSeen, now: Date.now() };
+    `,
+  }) as { status: number; up: boolean; online: boolean; lastSeen: string; now: number };
+
+  expect(result.status).toBe(503);
+  expect(result.up).toBe(false);
+  expect(result.online).toBe(false);
+  expect(Math.abs(Date.parse(result.lastSeen) - (result.now - 6 * 3600_000)) < 120_000).toBeTruthy();
+  expect(await scenario.unroute()).toBe(2);
 });
 
 spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Event-ID", {
