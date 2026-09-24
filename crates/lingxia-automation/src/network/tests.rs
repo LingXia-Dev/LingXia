@@ -262,8 +262,8 @@ mod interceptor {
                     let record = JSFunc::new(
                         &ctx,
                         move |ctx: JSContext, command: String| -> JSResult<JSValue> {
-                            let value =
-                                dev::run_record(run, &command, Some("rec")).map_err(auto_err)?;
+                            let value = dev::run_record(run, &command, Some("rec"), &[])
+                                .map_err(auto_err)?;
                             crate::resolve::json_to_js(&ctx, &value)
                         },
                     )?;
@@ -665,11 +665,16 @@ ${{error && error.stack}}` }});
               }}
               out.events = events;
 
-              // An unrouted stream is the native client, unchanged.
+              // An unrouted stream is the native client, unchanged; in a
+              // run its call-log entry settles when the stream opens.
+              __beginRun();
               const native = new Rong.SSE('{real}/events', {{ reconnect: {{ enabled: false }} }});
               const first = await native.next();
               out.nativeEvent = first.value && first.value.data;
               native.close();
+              out.nativeCall = __calls()
+                .filter((call) => call.kind === 'sse' && call.url.indexOf('/events') >= 0)
+                .map((call) => [call.status, typeof call.durationMs]);
 
               // A held stream ends when its route goes; no reconnect here.
               const holdId = __route('https://api.test/held', {{ sse: [{{ data: 'hi' }}] }});
@@ -702,6 +707,7 @@ ${{error && error.stack}}` }});
         );
         assert_eq!(out["ended"], "sse server returned status 503");
         assert_eq!(out["nativeEvent"], "from the server");
+        assert_eq!(out["nativeCall"], serde_json::json!([[200, "number"]]));
         assert_eq!(out["heldFirst"], "hi");
         assert_eq!(out["heldEnd"], true);
 
@@ -738,6 +744,9 @@ ${{error && error.stack}}` }});
         const APP: &str = "network-interceptor-capture";
         const OWNER: &str = "network-interceptor-capture-run";
         let base = json_server(r#"{"user":"ada","access_token":"secret-token"}"#, 1);
+        // A contract capture shares the recording's single read of the body.
+        registry::with_registry(|routes| routes.captures.enable(OWNER, APP, 1024, || true))
+            .unwrap();
         let script: &'static str = Box::leak(
             format!(
                 r#"(async () => {{ try {{
@@ -796,13 +805,191 @@ ${{error && error.stack}}` }});
             calls[2]["error"].as_str().unwrap().contains("TypeError"),
             "{out}"
         );
+        // The recording redacts secret fields; the contract capture keeps the
+        // body a schema is checked against, and never the query.
+        let captured = registry::with_registry(|routes| routes.captures.responses(OWNER, APP, 0));
+        let captured: Vec<_> = captured
+            .iter()
+            .map(|entry| (entry.source.as_str(), entry.url.clone(), entry.status))
+            .collect();
+        assert_eq!(
+            captured,
+            vec![
+                ("network", format!("{base}/me"), 200),
+                ("route", "https://api.test/fake".to_string(), 418),
+            ]
+        );
+        let body = registry::with_registry(|routes| routes.captures.responses(OWNER, APP, 0))[0]
+            .body
+            .clone()
+            .unwrap();
+        assert!(body.contains("secret-token"), "{body}");
         clear_run(OWNER);
+    }
+
+    #[test]
+    fn captures_routed_patched_and_real_responses_without_taking_the_body() {
+        const APP: &str = "network-interceptor-contract";
+        const OWNER: &str = "network-interceptor-contract-run";
+        let base = json_server(r#"{"items":[{"id":"d1"}],"total":1}"#, 3);
+        registry::with_registry(|routes| {
+            routes.begin_run(OWNER);
+            routes.captures.enable(OWNER, APP, 1024, || true)
+        })
+        .unwrap();
+        let script: &'static str = Box::leak(
+            format!(
+                r#"(async () => {{ try {{
+              const out = {{}};
+              const real = await fetch('{base}/items?token=secret');
+              out.real = await real.json();
+              out.realUrl = real.url;
+              __route('{base}/patched', {{ continue: true, patchJson: {{ total: 0 }} }});
+              out.patched = await (await fetch('{base}/patched')).json();
+              __route('https://api.test/v1/devices/*', {{ status: 201, json: {{ id: 7 }} }});
+              out.routed = await (await fetch('https://api.test/v1/devices/d1', {{ method: 'post' }})).json();
+              __route('https://api.test/page', {{ body: '<p>hi</p>', contentType: 'text/html' }});
+              out.page = await (await fetch('https://api.test/page')).text();
+              __route('https://api.test/down', {{ abort: 'failed' }});
+              try {{ await fetch('https://api.test/down'); }} catch (error) {{ out.down = error.name; }}
+              return JSON.stringify(out);
+            }} catch (error) {{
+              return JSON.stringify({{ fatal: `${{error}}
+${{error && error.stack}}` }});
+            }} }})()"#
+            )
+            .into_boxed_str(),
+        );
+        let out = eval_with_interceptor(APP, OWNER, script);
+        let out: Value = serde_json::from_str(&out).unwrap();
+        assert!(out.get("fatal").is_none(), "{out}");
+        // The app still reads every body in full.
+        assert_eq!(out["real"]["total"], 1);
+        assert!(
+            out["realUrl"]
+                .as_str()
+                .unwrap()
+                .ends_with("/items?token=secret"),
+            "{out}"
+        );
+        assert_eq!(
+            out["patched"],
+            serde_json::json!({ "items": [{ "id": "d1" }], "total": 0 })
+        );
+        assert_eq!(out["routed"]["id"], 7);
+        assert_eq!(out["page"], "<p>hi</p>");
+        assert_eq!(out["down"], "TypeError");
+
+        let log = registry::with_registry(|routes| routes.captures.responses(OWNER, APP, 0));
+        let summary: Vec<_> = log
+            .iter()
+            .map(|entry| {
+                (
+                    entry.method.as_str(),
+                    entry.source.as_str(),
+                    entry.status,
+                    entry.body.is_some(),
+                )
+            })
+            .collect();
+        // One entry per response the app received; an abort received none.
+        assert_eq!(
+            summary,
+            vec![
+                ("GET", "network", 200, true),
+                ("GET", "patch", 200, true),
+                ("POST", "route", 201, true),
+                ("GET", "route", 200, false),
+            ]
+        );
+        // Never the query: it can carry a credential.
+        assert_eq!(log[0].url, format!("{base}/items"));
+        assert_eq!(
+            log[0].body.as_deref(),
+            Some(r#"{"items":[{"id":"d1"}],"total":1}"#)
+        );
+        assert_eq!(
+            log[1].pattern.as_deref(),
+            Some(format!("{base}/patched").as_str())
+        );
+        assert_eq!(
+            serde_json::from_str::<Value>(log[1].body.as_deref().unwrap()).unwrap()["total"],
+            0
+        );
+        assert_eq!(log[2].body.as_deref(), Some(r#"{"id":7}"#));
+        assert_eq!(
+            log[2].pattern.as_deref(),
+            Some("https://api.test/v1/devices/*")
+        );
+        clear_run(OWNER);
+        registry::with_registry(|routes| {
+            assert!(routes.captures.responses(OWNER, APP, 0).is_empty());
+            assert!(!routes.captures.capturing(APP));
+        });
+    }
+
+    #[test]
+    fn unwatched_calls_reach_the_natives_and_wrapping_is_idempotent() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        let out = rt.block_on(async {
+            let pool = Rong::<RongJS>::builder()
+                .shared()
+                .workers(1)
+                .build()
+                .unwrap();
+            let worker = pool.worker(0).unwrap();
+            let handle = worker
+                .spawn(async move |js_runtime, _receiver| -> JSResult<String> {
+                    let ctx = js_runtime.context();
+                    rong_modules::init(&ctx, ["timer", "url"])?;
+                    ctx.eval::<()>(Source::from_bytes(
+                        r#"globalThis.__sent = Promise.resolve('native');
+                        globalThis.fetch = function () { return globalThis.__sent; };
+                        function NativeSSE(url) { this.url = url; this.native = true; }
+                        globalThis.Rong = { SSE: NativeSSE };"#,
+                    ))?;
+                    // No app owns this context: nothing is ever watched.
+                    for _ in 0..2 {
+                        install_fetch_interceptor(&ctx, |_| None)?;
+                        install_sse_interceptor(&ctx, |_| None)?;
+                    }
+                    ctx.eval::<String>(Source::from_bytes(
+                        r#"(function () {
+                          const wrapped = Symbol.for('lingxia.automation.network.wrapped');
+                          const sse = new Rong.SSE('https://a.test/stream');
+                          return JSON.stringify({
+                            samePromise: fetch('https://a.test/x') === __sent,
+                            fetchWrapped: fetch[wrapped] === true,
+                            sseNative: sse.native === true && sse instanceof Rong.SSE,
+                            sseWrapped: Rong.SSE[wrapped] === true,
+                          });
+                        })()"#,
+                    ))
+                })
+                .await
+                .unwrap();
+            handle.join().await.unwrap()
+        });
+        let out: Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(
+            out,
+            serde_json::json!({
+                "samePromise": true,
+                "fetchWrapped": true,
+                "sseNative": true,
+                "sseWrapped": true,
+            })
+        );
     }
 }
 
 mod scenarios {
     use super::super::capture::{
-        self, Call, CallLog, RecordedBody, Recording, Settled, redact_json, redact_url, url_pattern,
+        self, Call, CallLog, RecordedBody, Recording, Settled, Watch, redact_json, redact_url,
+        url_pattern,
     };
     use super::super::registry::{DEV_SESSION_OWNER, Registry, SseStep};
     use super::super::scenario::{iso_utc, parse_scenario, render_action, render_templates};
@@ -1147,7 +1334,7 @@ mod scenarios {
             "fetch",
             "get",
             "https://api.test/me?token=abc&q=secret-9",
-            false,
+            Watch::default(),
         );
         calls.settle(
             id,
@@ -1166,9 +1353,96 @@ mod scenarios {
 
     fn exchange(recording: &mut Recording, method: &str, url: &str, settled: Settled) {
         let mut log = CallLog::new();
-        let id = log.begin("app", "fetch", method, url, true);
+        let id = log.begin(
+            "app",
+            "fetch",
+            method,
+            url,
+            Watch {
+                record: true,
+                contract: false,
+            },
+        );
         let call: Call = log.settle(id, &settled).expect("a recorded call");
         recording.push(&call, settled);
+    }
+
+    #[test]
+    fn secret_fields_match_across_case_and_separators() {
+        for name in [
+            "token",
+            "access_token",
+            "accessToken",
+            "Refresh-Token",
+            "id_token",
+            "api_key",
+            "apiKey",
+            "X-Api-Key",
+            "secret",
+            "client_secret",
+            "password",
+            "Authorization",
+            "session",
+            "session_id",
+            "sessionId",
+            "cookie",
+            "Set-Cookie",
+        ] {
+            assert!(capture::is_secret_field(name), "{name}");
+        }
+        for name in ["tokens_left", "user", "sessions", "id", "signature"] {
+            assert!(!capture::is_secret_field(name), "{name}");
+        }
+    }
+
+    #[test]
+    fn recorded_bodies_lose_secret_fields_tokens_and_bearers() {
+        let jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.c2lnbmF0dXJl";
+        let mut recording = Recording::new("run", None, None);
+        let json_body = format!(
+            r#"{{"token":"t1","apiKey":"k","session_id":"s","nested":[{{"client_secret":"c"}}],"note":"Bearer abc.def","jwt":"{jwt}","user":"ann"}}"#
+        );
+        exchange(
+            &mut recording,
+            "GET",
+            "https://a.test/json",
+            Settled {
+                status: Some(200),
+                content_type: Some("application/json".into()),
+                body: Some(RecordedBody::Text(json_body)),
+                ..Settled::default()
+            },
+        );
+        exchange(
+            &mut recording,
+            "GET",
+            "https://a.test/text",
+            Settled {
+                status: Some(200),
+                content_type: Some("text/plain".into()),
+                body: Some(RecordedBody::Text(format!(
+                    "auth: Bearer sk-live_123 and id {jwt} end"
+                ))),
+                ..Settled::default()
+            },
+        );
+        let scenario = recording.to_scenario("rec");
+        let text = scenario.to_string();
+        for leaked in [
+            "t1",
+            "\"k\"",
+            "\"s\"",
+            "\"c\"",
+            "abc.def",
+            "sk-live_123",
+            jwt,
+        ] {
+            assert!(!text.contains(leaked), "{leaked} leaked: {text}");
+        }
+        let routes = scenario["routes"].as_array().unwrap();
+        assert_eq!(routes[0]["json"]["user"], "ann");
+        assert_eq!(routes[0]["json"]["note"], "Bearer ***");
+        assert_eq!(routes[1]["body"], "auth: Bearer *** and id *** end");
     }
 
     #[test]
@@ -1300,10 +1574,10 @@ mod scenarios {
         let mut registry = Registry::default();
         assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
         registry.begin_run("run");
-        let (id, record) = registry
+        let (id, watch) = registry
             .observe("app", "fetch", "GET", "https://h/a")
             .unwrap();
-        assert!(!record);
+        assert_eq!(watch, Watch::default());
         let spec = RouteSpec::new(
             UrlMatcher::glob("**/a").unwrap(),
             None,
@@ -1333,8 +1607,8 @@ mod scenarios {
         registry.clear_run("run");
         assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
 
-        registry.recording = Some(Recording::new(
-            "run-2",
+        registry.dev_recording = Some(Recording::new(
+            DEV_SESSION_OWNER,
             Some("app".into()),
             Some(UrlMatcher::glob("**/api/**").unwrap()),
         ));
@@ -1346,10 +1620,10 @@ mod scenarios {
             registry.observe("other", "fetch", "GET", "https://h/api/x"),
             None
         );
-        let (id, record) = registry
+        let (id, watch) = registry
             .observe("app", "fetch", "GET", "https://h/api/x")
             .unwrap();
-        assert!(record);
+        assert!(watch.record && !watch.contract);
         registry.settle(
             id,
             Settled {
@@ -1359,7 +1633,7 @@ mod scenarios {
                 ..Settled::default()
             },
         );
-        assert_eq!(registry.recording.as_ref().unwrap().exchanges.len(), 1);
+        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 1);
         // A request the app cancelled is not an answer.
         let (id, _) = registry
             .observe("app", "fetch", "GET", "https://h/api/y")
@@ -1371,6 +1645,102 @@ mod scenarios {
                 ..Settled::default()
             },
         );
-        assert_eq!(registry.recording.as_ref().unwrap().exchanges.len(), 1);
+        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 1);
+    }
+    fn settle_text(registry: &mut Registry, id: u64, body: &str) {
+        registry.settle(
+            id,
+            Settled {
+                status: Some(200),
+                content_type: Some("text/plain".into()),
+                body: Some(RecordedBody::Text(body.into())),
+                ..Settled::default()
+            },
+        );
+    }
+
+    #[test]
+    fn a_dev_recording_pauses_while_a_run_records_its_own() {
+        let mut registry = Registry::default();
+        registry.dev_recording = Some(Recording::new(DEV_SESSION_OWNER, None, None));
+        let (id, watch) = registry
+            .observe("app", "fetch", "GET", "https://h/before")
+            .unwrap();
+        assert!(watch.record);
+        settle_text(&mut registry, id, "dev");
+
+        // A run starts: the dev recording captures nothing of it, with or
+        // without a run recording of its own.
+        registry.begin_run("run");
+        let (id, watch) = registry
+            .observe("app", "fetch", "GET", "https://h/unrecorded")
+            .unwrap();
+        assert!(!watch.record);
+        settle_text(&mut registry, id, "test traffic");
+        registry.run_recording = Some(Recording::new("run", None, None));
+        let (id, watch) = registry
+            .observe("app", "fetch", "GET", "https://h/during")
+            .unwrap();
+        assert!(watch.record);
+        settle_text(&mut registry, id, "run");
+        let dev = registry.dev_recording.as_ref().unwrap();
+        assert_eq!(dev.exchanges.len(), 1);
+        assert_eq!(dev.exchanges[0].url, "https://h/before");
+        let run = registry.run_recording.as_ref().unwrap();
+        assert_eq!(run.exchanges.len(), 1);
+        assert_eq!(run.exchanges[0].url, "https://h/during");
+
+        // A call the dev recording saw start still lands there when it
+        // settles during a run, never in the run's recording.
+        registry.clear_run("run");
+        assert!(registry.run_recording.is_none());
+        let (late, _) = registry
+            .observe("app", "fetch", "GET", "https://h/late")
+            .unwrap();
+        registry.begin_run("run-2");
+        registry.run_recording = Some(Recording::new("run-2", None, None));
+        settle_text(&mut registry, late, "late");
+        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 2);
+        assert!(
+            registry
+                .run_recording
+                .as_ref()
+                .unwrap()
+                .exchanges
+                .is_empty()
+        );
+
+        // The run ends: the dev recording resumes.
+        registry.clear_run("run-2");
+        let (id, watch) = registry
+            .observe("app", "fetch", "GET", "https://h/after")
+            .unwrap();
+        assert!(watch.record);
+        settle_text(&mut registry, id, "dev again");
+        assert_eq!(registry.dev_recording.as_ref().unwrap().exchanges.len(), 3);
+    }
+
+    #[test]
+    fn a_run_recording_masks_the_runs_secret_args() {
+        let mut recording = Recording::new("run", None, None);
+        exchange(
+            &mut recording,
+            "GET",
+            "https://api.test/v1/tenant-s3cr3t/items",
+            Settled {
+                status: Some(200),
+                content_type: Some("text/plain".into()),
+                body: Some(RecordedBody::Text("key=s3cr3t-value".into())),
+                ..Settled::default()
+            },
+        );
+        let scenario = super::super::dev::run_scenario(
+            &recording,
+            "rec",
+            &["s3cr3t-value".to_string(), "s3cr3t".to_string()],
+        );
+        let text = scenario.to_string();
+        assert!(!text.contains("s3cr3t"), "{text}");
+        assert_eq!(scenario["routes"][0]["body"], "key=***");
     }
 }

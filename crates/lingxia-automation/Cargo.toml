@@ -28,6 +28,7 @@ runtime = [
     "dep:http",
     "dep:regex",
     "dep:lingxia-log",
+    "dep:lingxia-control-protocol",
     "dep:rong_modules",
     "dep:rong_console",
     "dep:rong_timer",
@@ -54,6 +55,7 @@ http = { workspace = true, optional = true }
 regex = { version = "1", optional = true }
 uuid = { version = "1.26", features = ["v4"], optional = true }
 lingxia-log = { workspace = true, optional = true }
+lingxia-control-protocol = { workspace = true, optional = true }
 rong_modules = { workspace = true, optional = true, default-features = false, features = ["timer", "http", "encoding", "event", "exception", "abort", "url", "buffer", "stream", "compression"] }
 rong_console = { workspace = true, optional = true }
 rong_timer = { workspace = true, optional = true }
