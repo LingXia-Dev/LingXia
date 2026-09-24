@@ -79,14 +79,29 @@ host automation runtime. See [Product testing](../lxapp/testing.md) for a
 starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
 test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
 contract (`--openapi`) and recording (`--record-network`) are covered there.
+- `--preset NAME` — prepend a named argument list from `lxdev.json`
+  (`test.presets`) in the project root; the command line's own flags come
+  after it and win. `--list-presets` lists them, `--print-args` prints the
+  effective arguments with secrets masked. See
+  [presets](../lxapp/testing.md#presets).
+
 Use `lxdev test --help` for arguments and flags.
 
-**`network`** — fake or capture the running lxapp's Logic network traffic
-(`fetch` and `Rong.SSE`) with scenario files, outside a test run. Development
-hosts and the Runner only; see [Network scenarios in a dev
-session](../lxapp/testing.md#network-scenarios-in-a-dev-session):
-- `scenario use <file.json> [--appid]` / `scenario clear` / `scenario status`
-- `record start [--match <glob>]` / `record stop --out <file.json> [--redact <value>]`
+**`scenario`** — put the running app into a named product state from
+`tests/scenarios/`, outside a test run (development hosts and the Runner
+only); see [Scenarios](../lxapp/scenarios.md):
+- `list` — names (the path without `.json`), sections, `name`/`description`
+- `use <name|file> [--appid]` — install until `clear`, another `use`, or the
+  end of the session
+- `status` — the active scenario per section, what it answered, and the last
+  one cleared (why and when)
+- `clear`
+
+**`network`** — the network panel for the running lxapp's Logic `fetch` and
+`Rong.SSE` (development hosts and the Runner only):
+- `status` — the routes answering and the recording in progress
+- `record start [--match <glob>]` / `record stop --out <file.json> [--name <name>] [--redact <value>]`
+  — capture real traffic into a scenario file for `lxdev scenario use`
 
 **`logs [ORIGIN]`** — the session's JSONL log stream: tail or `-f` follow;
 filter by a dynamic origin prefix plus `--level`, `--path`, `--grep`, or
