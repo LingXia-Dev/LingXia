@@ -141,7 +141,8 @@ struct DevOptions {
     #[command(flatten)]
     build_options: BuildOptions,
 
-    /// Target platform (android, ios, macos, harmony, windows). Auto-detected if not specified.
+    /// Target platform (android, ios, macos, harmony, windows), or `runner`
+    /// for an lxapp in the desktop Runner. Auto-detected if not specified.
     #[arg(short = 'p', long)]
     platform: Option<String>,
 
@@ -200,9 +201,12 @@ struct TestOptions {
     #[arg(long)]
     keep_session: bool,
 
-    /// Target platform (android, ios, macos, harmony, windows); auto-detected
-    /// as `lingxia dev` does when omitted
-    #[arg(short = 'p', long, visible_alias = "target", value_name = "PLATFORM")]
+    /// What to run the tests in: `runner` (the lxapp in the local desktop
+    /// Runner) or a platform of the host app (android, ios, macos, harmony,
+    /// windows). Default: what `lingxia dev` would start in the nearest
+    /// project — an lxapp directory runs in the Runner, a host project on
+    /// its auto-detected platform
+    #[arg(short = 'p', long, visible_alias = "target", value_name = "TARGET")]
     platform: Option<String>,
 
     /// Device ID (required if multiple devices are connected)
@@ -545,13 +549,17 @@ enum Commands {
     #[command(after_long_help = "\
 Examples:
   lingxia test --preset ci
+  lingxia test -p runner tests/                 the lxapp in the desktop Runner
   lingxia test tests/ -p macos -- --grep checkout --format jsonl
   lingxia test --keep-session -- --timeout-secs 900
 
-Run it inside the project (for a host app, anywhere under the directory with
-lingxia.yaml; lxdev.json presets are read from the current directory). It
-refuses to start while a dev session of the project is already running:
-then use `lxdev test` against that session.")]
+It starts the session `lingxia dev` would start in the nearest project at or
+above the current directory: in an lxapp directory (lxapp.json) — also one
+inside a host project — the lxapp in the desktop Runner; in a host project
+(lingxia.yaml) the host app. `-p runner` asks for the Runner, `-p PLATFORM`
+for the host app on that platform. lxdev.json presets are read from the
+current directory's project. It refuses to start while a dev session of the
+same target is already running: then use `lxdev test` against that session.")]
     Test {
         #[command(flatten)]
         test_options: TestOptions,
