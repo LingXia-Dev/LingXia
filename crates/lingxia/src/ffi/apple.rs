@@ -600,9 +600,6 @@ mod bridge {
             cookie: &str,
         ) -> bool;
 
-        #[swift_bridge(swift_name = "toggleWebViewDevtoolsByPtr")]
-        fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool;
-
         #[swift_bridge(swift_name = "onApplinkReceived")]
         fn on_applink_received(applink_path: &str) -> i32;
 
@@ -1889,24 +1886,6 @@ pub fn start_browser_tab_download(
             }
         }
     })
-}
-
-pub fn toggle_webview_devtools_by_ptr(webview_ptr: usize, detached: bool) -> bool {
-    if webview_ptr == 0 {
-        return false;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        lingxia_webview::platform::apple::toggle_webview_devtools_by_swift_ptr(
-            webview_ptr,
-            detached,
-        )
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let _ = detached;
-        false
-    }
 }
 
 /// Get current active LxApp ID and path from Rust stack

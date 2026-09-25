@@ -378,29 +378,15 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
+    /// WebKit has no public API that opens the Web Inspector. Every page is
+    /// inspectable, so the inspector opens from the page's context menu.
     private func openInspector() {
-        guard let webView = currentInspectableWebView() else {
-            os_log("Inspect requested but no active webview was found", log: Self.log, type: .error)
-            return
-        }
-
-        // Use passRetained to prevent deallocation during the FFI call, then
-        // immediately release the extra retain count afterwards.
-        let retained = Unmanaged.passRetained(webView)
-        let ptr = UInt(bitPattern: retained.toOpaque())
-        let ok = toggleWebViewDevtoolsByPtr(ptr, true)
-        retained.release()
-        if !ok {
-            os_log("Failed to toggle web inspector for current webview", log: Self.log, type: .error)
-        }
+        DevToolsLogger.shared.log(
+            "Web Inspector: right-click the page and choose Inspect Element",
+            level: .info
+        )
     }
 
-    private func currentInspectableWebView() -> WKWebView? {
-        phoneBrowserSurface.activeWebView
-            ?? RunnerSupport.WebView.current()
-            ?? RunnerSupport.WebView.resolve(appId: appId, path: currentPath)
-    }
-    
     // MARK: - Phone Content Setup
     
     private func setupPhoneContent(appId: String, path: String) {

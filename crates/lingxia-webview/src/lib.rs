@@ -251,11 +251,9 @@ pub mod platform {
 
     #[cfg(any(target_os = "ios", target_os = "macos"))]
     pub mod apple {
-        #[cfg(target_os = "macos")]
-        pub use crate::apple::toggle_webview_devtools_by_swift_ptr;
         pub use crate::apple::{
             BRIDGE_DOWNSTREAM_CSP_SOURCE, BRIDGE_DOWNSTREAM_URL,
-            configure_user_agent_override_for_webviews, keep_rendering_when_occluded,
+            configure_user_agent_override_for_webviews,
         };
     }
 

@@ -47,7 +47,7 @@ use objc2_web_kit::{
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::sync::mpsc::sync_channel;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::{ffi::CString, ffi::c_char, ffi::c_void};
 use tokio::sync::oneshot;
@@ -106,7 +106,6 @@ unsafe extern "C" {
     ) -> *mut AnyObject;
     fn nw_proxy_config_add_excluded_domain(config: *mut AnyObject, domain: *const c_char);
     fn nw_release(object: *mut AnyObject);
-    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
 }
 
 fn nsstring_to_string(value: &NSString) -> String {
@@ -429,60 +428,6 @@ unsafe extern "C" {
     ) -> Option<std::ptr::NonNull<CGEvent>>;
     fn CGMainDisplayID() -> u32;
     fn CGDisplayBounds(display: u32) -> CGRect;
-}
-
-type OpenPanelStringArrayCopyFn = unsafe extern "C" fn(*mut AnyObject) -> *mut AnyObject;
-
-static COPY_ALLOWED_MIME_TYPES: OnceLock<Option<OpenPanelStringArrayCopyFn>> = OnceLock::new();
-static COPY_ACCEPTED_FILE_EXTENSIONS: OnceLock<Option<OpenPanelStringArrayCopyFn>> =
-    OnceLock::new();
-
-fn resolve_open_panel_copy_fn(
-    cache: &OnceLock<Option<OpenPanelStringArrayCopyFn>>,
-    symbol: &str,
-) -> Option<OpenPanelStringArrayCopyFn> {
-    *cache.get_or_init(|| {
-        let symbol = CString::new(symbol).ok()?;
-        let handle = (-2isize) as *mut c_void; // RTLD_DEFAULT on Darwin
-        let raw = unsafe { dlsym(handle, symbol.as_ptr()) };
-        if raw.is_null() {
-            None
-        } else {
-            Some(unsafe { std::mem::transmute::<*mut c_void, OpenPanelStringArrayCopyFn>(raw) })
-        }
-    })
-}
-
-unsafe fn nsarray_string_values(array_ptr: *mut AnyObject) -> Vec<String> {
-    let Some(array) = (unsafe { Retained::<NSArray<NSString>>::from_raw(array_ptr.cast()) }) else {
-        return Vec::new();
-    };
-    array
-        .to_vec()
-        .into_iter()
-        .map(|value| value.to_string())
-        .collect()
-}
-
-fn open_panel_accept_types(parameters: *mut AnyObject) -> Vec<String> {
-    let mut accept_types = Vec::new();
-
-    if let Some(copy_allowed_mime_types) = resolve_open_panel_copy_fn(
-        &COPY_ALLOWED_MIME_TYPES,
-        "_WKOpenPanelParametersCopyAllowedMIMETypes",
-    ) {
-        accept_types.extend(unsafe { nsarray_string_values(copy_allowed_mime_types(parameters)) });
-    }
-
-    if let Some(copy_accepted_file_extensions) = resolve_open_panel_copy_fn(
-        &COPY_ACCEPTED_FILE_EXTENSIONS,
-        "_WKOpenPanelParametersCopyAcceptedFileExtensions",
-    ) {
-        accept_types
-            .extend(unsafe { nsarray_string_values(copy_accepted_file_extensions(parameters)) });
-    }
-
-    accept_types
 }
 
 fn source_page_url_from_webview(webview: *mut AnyObject) -> Option<String> {
@@ -1787,9 +1732,9 @@ define_class!(
                 #[cfg(not(target_os = "macos"))]
                 let allows_directories = objc2::runtime::Bool::new(false);
                 FileChooserRequest {
-                    // Resolve these helpers at runtime so the static library
-                    // does not hard-link private WebKit SPI symbols.
-                    accept_types: open_panel_accept_types(parameters),
+                    // WebKit's public API does not expose the input's
+                    // `accept` list, so the chooser opens unfiltered.
+                    accept_types: Vec::new(),
                     allow_multiple: allows_multiple.as_bool(),
                     allow_directories: allows_directories.as_bool(),
                     capture: false,
@@ -1948,64 +1893,6 @@ fn post_message_to_current_document(
         expected_generation,
         &mut with_document,
     );
-}
-
-#[cfg(target_os = "macos")]
-pub(crate) fn toggle_devtools_by_swift_ptr(swift_ptr: usize, detached: bool) -> bool {
-    if swift_ptr == 0 {
-        return false;
-    }
-    let open = move || unsafe {
-        if detached {
-            // Force the inspector to open in its own window instead of docked
-            // into the page (a docked inspector splits the webview and shows a
-            // black strip). Per WebKit's WebInspectorUIProxy:
-            //   shouldOpenAttached() = inspectorStartsAttached() && canAttach()
-            // `inspectorStartsAttached` is a preference that defaults to TRUE,
-            // so on a large inspected view (where canAttach() is also true) the
-            // inspector docks. It is read from NSUserDefaults when the inspector
-            // frontend is created, so seed it to false BEFORE touching
-            // `_inspector` (which creates the proxy). Deterministic — no
-            // dock-then-detach race, no flash.
-            set_inspector_starts_attached_false();
-        }
-        let webview = swift_ptr as *mut AnyObject;
-        let inspector: *mut AnyObject = msg_send![webview, _inspector];
-        if inspector.is_null() {
-            return;
-        }
-        let visible: objc2::runtime::Bool = msg_send![inspector, isVisible];
-        if visible.as_bool() {
-            let _: () = msg_send![inspector, close];
-            return;
-        }
-        let _: () = msg_send![inspector, show];
-    };
-    if MainThreadMarker::new().is_some() {
-        open();
-    } else {
-        DispatchQueue::main().exec_async(open);
-    }
-    true
-}
-
-/// Force the Web Inspector to open detached by seeding WebKit's
-/// `inspectorStartsAttached` preference to false for the default inspector page
-/// group. WebKit's `shouldOpenAttached()` reads this preference (default true)
-/// from `NSUserDefaults` when creating the inspector frontend; setting it false
-/// makes the inspector open in its own window regardless of the inspected
-/// view's size.
-///
-/// macOS-only: called solely from `toggle_devtools_by_swift_ptr` (the Web
-/// Inspector isn't available on iOS).
-#[cfg(target_os = "macos")]
-unsafe fn set_inspector_starts_attached_false() {
-    let defaults: *mut AnyObject = msg_send![objc2::class!(NSUserDefaults), standardUserDefaults];
-    if defaults.is_null() {
-        return;
-    }
-    let key = NSString::from_str("__WebInspectorPageGroupLevel1__.WebKit2InspectorStartsAttached");
-    let _: () = msg_send![defaults, setBool: false, forKey: &*key];
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -2217,21 +2104,8 @@ impl WebViewInner {
             let allow_js_windows = allow_new_windows || effective_options.has_new_window_handler;
             prefs.setJavaScriptCanOpenWindowsAutomatically(allow_js_windows);
 
-            // Enable Web Inspector support for all webviews (lxapp pages + browser tabs).
-            {
-                let developer_extras_key = NSString::from_str("developerExtrasEnabled");
-                let ns_true: *mut AnyObject =
-                    msg_send![class!(NSNumber), numberWithBool: objc2::runtime::Bool::YES];
-                let prefs_obj: *mut AnyObject = Retained::as_ptr(&prefs).cast_mut().cast();
-                let _: () = msg_send![prefs_obj, setValue:ns_true, forKey:&*developer_extras_key];
-            }
-
-            // Disable local file access for security
-            let allow_file_access_key = NSString::from_str("allowFileAccessFromFileURLs");
-            let ns_false: *mut AnyObject =
-                msg_send![class!(NSNumber), numberWithBool: objc2::runtime::Bool::NO];
-            let prefs_obj: *mut AnyObject = Retained::as_ptr(&prefs).cast_mut().cast();
-            let _: () = msg_send![prefs_obj, setValue:ns_false, forKey:&*allow_file_access_key];
+            // Web Inspector: `isInspectable` is set once the view exists.
+            // File URL access stays at WebKit's default (off).
 
             // Configure media playback
             config.setMediaTypesRequiringUserActionForPlayback(WKAudiovisualMediaTypes::None);
@@ -2344,8 +2218,13 @@ impl WebViewInner {
                     }
                 }
             };
+            // iOS: the SDK's subclass routes touches to native components
+            // laid over the page before WebKit's content view claims them.
             #[cfg(not(target_os = "macos"))]
-            let webview_class = objc2::class!(WKWebView);
+            let webview_class = CString::new("LingXiaTouchRoutingWebView")
+                .ok()
+                .and_then(|name| objc2::runtime::AnyClass::get(name.as_c_str()))
+                .unwrap_or_else(|| objc2::class!(WKWebView));
 
             // Allocate WebView
             let webview: *mut AnyObject = msg_send![webview_class, alloc];
@@ -2371,36 +2250,13 @@ impl WebViewInner {
                 let _: () = msg_send![webview, setCustomUserAgent: &*user_agent];
             }
 
-            // Make all webviews inspectable (lxapp pages + browser tabs).
+            // Make all webviews inspectable (lxapp pages + browser tabs):
+            // Safari's Develop menu and the context menu's Inspect Element.
             {
-                let can_set_remote_inspection: objc2::runtime::Bool = msg_send![webview, respondsToSelector: objc2::sel!(_setAllowsRemoteInspection:)];
-                if can_set_remote_inspection.as_bool() {
-                    let _: () = msg_send![
-                        webview,
-                        _setAllowsRemoteInspection: objc2::runtime::Bool::YES
-                    ];
-                }
-
                 let can_set_inspectable: objc2::runtime::Bool =
                     msg_send![webview, respondsToSelector: objc2::sel!(setInspectable:)];
                 if can_set_inspectable.as_bool() {
                     let _: () = msg_send![webview, setInspectable: objc2::runtime::Bool::YES];
-                }
-            }
-
-            // Private WKWebView SPI (macOS 10.13+); probed so a WebKit that
-            // drops it only loses the opt-in.
-            #[cfg(target_os = "macos")]
-            if super::keeps_rendering_when_occluded() {
-                let supported: objc2::runtime::Bool = msg_send![
-                    webview,
-                    respondsToSelector: objc2::sel!(_setWindowOcclusionDetectionEnabled:)
-                ];
-                if supported.as_bool() {
-                    let _: () = msg_send![
-                        webview,
-                        _setWindowOcclusionDetectionEnabled: objc2::runtime::Bool::NO
-                    ];
                 }
             }
 
@@ -2655,25 +2511,6 @@ impl WebViewInner {
     /// Get the raw pointer to the WebView for Swift interop
     pub fn get_swift_webview_ptr(&self) -> usize {
         self.webview as usize
-    }
-
-    #[cfg(target_os = "macos")]
-    fn toggle_devtools_impl(&self, detached: bool) {
-        let _ = toggle_devtools_by_swift_ptr(self.webview as usize, detached);
-    }
-
-    /// Toggle docked DevTools using WKWebView's private `_inspector` API.
-    /// `show` opens the inspector respecting `_setInspectorAttachmentView:` (docked).
-    /// `isInspectable` and `developerExtrasEnabled` are set at WebView creation time.
-    #[cfg(target_os = "macos")]
-    pub fn toggle_devtools(&self) {
-        self.toggle_devtools_impl(false);
-    }
-
-    /// Toggle detached DevTools (forces `_setInspectorAttachmentView:nil` before toggle).
-    #[cfg(target_os = "macos")]
-    pub fn toggle_devtools_detached(&self) {
-        self.toggle_devtools_impl(true);
     }
 
     /// Helper method to load URL on main thread
@@ -4004,23 +3841,7 @@ impl WebViewInner {
             let ns_event = NSEvent::eventWithCGEvent(event.as_ref()).ok_or_else(|| {
                 WebViewInputError::Platform("Failed to convert scroll event".to_string())
             })?;
-            let ns_event_ptr = ns_event.as_ref() as *const NSEvent as *mut AnyObject;
-            let window_ptr = (&*window) as *const _ as *mut AnyObject;
-            let responds: bool = msg_send![
-                ns_event_ptr,
-                respondsToSelector: objc2::sel!(_eventRelativeToWindow:)
-            ];
-            let relative_event: *mut AnyObject = if responds {
-                let relative: *mut AnyObject =
-                    msg_send![ns_event_ptr, _eventRelativeToWindow: window_ptr];
-                if relative.is_null() {
-                    ns_event_ptr
-                } else {
-                    relative
-                }
-            } else {
-                ns_event_ptr
-            };
+            let relative_event = ns_event.as_ref() as *const NSEvent as *mut AnyObject;
             let webview = webview_ptr as *mut AnyObject;
             let _: () = msg_send![webview, scrollWheel: relative_event];
         }

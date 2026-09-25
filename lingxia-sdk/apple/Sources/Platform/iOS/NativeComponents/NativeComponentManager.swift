@@ -204,7 +204,7 @@ final class NativeComponentManager {
                 prepareSameLevelScrollView(wkChildScrollView)
 
                 component.mount(in: wkChildScrollView)
-                WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
+                NativeComponentHitRouter.shared.registerNativeView(component.view, in: wkChildScrollView)
                 os_log("NativeComponent %{public}@ mounted in WKChildScrollView", log: nativeComponentLog, type: .info, id)
             } else {
                 os_log("NativeComponent %{public}@ fallback to overlay (WKChildScrollView not found)", log: nativeComponentLog, type: .info, id)
@@ -221,7 +221,7 @@ final class NativeComponentManager {
             // host at any time, intercepting touches. The swizzler on WKContentView.hitTest lets
             // us reclaim taps at the correct content-space position.
             if let sv = scrollView {
-                WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: sv)
+                NativeComponentHitRouter.shared.registerNativeView(component.view, in: sv)
             }
             os_log("NativeComponent %{public}@ mounted in overlay", log: nativeComponentLog, type: .info, id)
         }
@@ -321,14 +321,14 @@ final class NativeComponentManager {
         }
 
         if component.view.superview != nil {
-            WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
+            NativeComponentHitRouter.shared.unregisterNativeView(component.view)
             component.view.removeFromSuperview()
         }
 
         prepareSameLevelScrollView(wkChildScrollView)
 
         component.mount(in: wkChildScrollView)
-        WKContentViewHitTestSwizzler.shared.registerNativeView(component.view, in: wkChildScrollView)
+        NativeComponentHitRouter.shared.registerNativeView(component.view, in: wkChildScrollView)
 
         let childBounds = stablePixelAligned(sameLevelContainerFrame(in: wkChildScrollView))
         component.setFrame(childBounds)
@@ -430,11 +430,11 @@ final class NativeComponentManager {
     /// for overlay components.
     func registerIslandTouchTarget(_ view: UIView) {
         guard let scrollView else { return }
-        WKContentViewHitTestSwizzler.shared.registerNativeView(view, in: scrollView)
+        NativeComponentHitRouter.shared.registerNativeView(view, in: scrollView)
     }
 
     func unregisterIslandTouchTarget(_ view: UIView) {
-        WKContentViewHitTestSwizzler.shared.unregisterNativeView(view)
+        NativeComponentHitRouter.shared.unregisterNativeView(view)
     }
 
     private func pauseIslandVideos() {
@@ -837,7 +837,7 @@ final class NativeComponentManager {
             updateScrollBounceSuppression()
         }
         // Unregister from hit-test swizzler before unmount
-        WKContentViewHitTestSwizzler.shared.unregisterNativeView(component.view)
+        NativeComponentHitRouter.shared.unregisterNativeView(component.view)
         component.unmount()
         lastAppliedViewportRect.removeValue(forKey: id)
         if let pageId {
@@ -1055,37 +1055,37 @@ final class NativeComponentManager {
 /// Swizzles WKContentView's hitTest to allow touch events to pass through to native views in WKChildScrollView.
 /// This enables true same-level rendering with working touch interactions.
 @MainActor
-final class WKContentViewHitTestSwizzler {
-    static let shared = WKContentViewHitTestSwizzler()
+/// Routes touches to native components laid over a page. WebKit's content
+/// view answers hit tests for everything inside the WebView, subviews it did
+/// not create included, so the WebView itself (`LingXiaTouchRoutingWebView`)
+/// asks this registry first.
+final class NativeComponentHitRouter {
+    static let shared = NativeComponentHitRouter()
 
     private var registeredViews: [ObjectIdentifier: (view: UIView, container: UIScrollView)] = [:]
-    private static var swizzled = false
 
-    private init() {
-        Self.performSwizzle()
-    }
+    private init() {}
 
     func registerNativeView(_ view: UIView, in container: UIScrollView) {
         registeredViews[ObjectIdentifier(view)] = (view, container)
-        os_log("WKContentViewHitTestSwizzler: registered view %{public}@", log: nativeComponentLog, type: .debug, String(describing: view))
+        os_log("NativeComponentHitRouter: registered view %{public}@", log: nativeComponentLog, type: .debug, String(describing: view))
     }
 
     func unregisterNativeView(_ view: UIView) {
         registeredViews.removeValue(forKey: ObjectIdentifier(view))
-        os_log("WKContentViewHitTestSwizzler: unregistered view", log: nativeComponentLog, type: .debug)
+        os_log("NativeComponentHitRouter: unregistered view", log: nativeComponentLog, type: .debug)
     }
 
-    /// Find registered native view at the given point in WKContentView's coordinate space
-    func nativeView(at point: CGPoint, in contentView: UIView) -> UIView? {
+    /// The registered native view under `point`, given in `hostView`'s
+    /// coordinates, when it lies inside `hostView`.
+    func nativeView(at point: CGPoint, in hostView: UIView) -> UIView? {
         for (_, entry) in registeredViews {
             let view = entry.view
-            guard let superview = view.superview else { continue }
-            // Convert point to the native view's coordinate space
-            let pointInView = contentView.convert(point, to: superview)
+            guard let superview = view.superview, view.isDescendant(of: hostView) else { continue }
+            let pointInView = hostView.convert(point, to: superview)
             if view.frame.contains(pointInView) && Self.isEffectivelyVisible(view) && view.isUserInteractionEnabled {
-                // Return the view that should receive touches
                 let local = superview.convert(pointInView, to: view)
-                // Island clipping must also apply when WebKit's hit-test bypasses its container.
+                // Island clipping applies to the routed hit too.
                 if let mask = view.layer.mask as? CAShapeLayer, let path = mask.path,
                    !path.contains(local) { continue }
                 return view.hitTest(local, with: nil) ?? view
@@ -1106,36 +1106,17 @@ final class WKContentViewHitTestSwizzler {
         }
         return true
     }
-
-    private static func performSwizzle() {
-        guard !swizzled else { return }
-        swizzled = true
-
-        guard let wkContentViewClass = NSClassFromString("WKContentView") else {
-            LXLog.error("WKContentViewHitTestSwizzler: WKContentView class not found", category: "NativeComponent")
-            return
-        }
-
-        let originalSelector = #selector(UIView.hitTest(_:with:))
-        let swizzledSelector = #selector(UIView.lx_swizzled_hitTest(_:with:))
-
-        guard let originalMethod = class_getInstanceMethod(wkContentViewClass, originalSelector),
-              let swizzledMethod = class_getInstanceMethod(UIView.self, swizzledSelector) else {
-            LXLog.error("WKContentViewHitTestSwizzler: failed to get methods", category: "NativeComponent")
-            return
-        }
-
-        method_exchangeImplementations(originalMethod, swizzledMethod)
-        os_log("WKContentViewHitTestSwizzler: swizzle complete", log: nativeComponentLog, type: .info)
-    }
 }
 
-extension UIView {
-    @objc func lx_swizzled_hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        if let nativeView = WKContentViewHitTestSwizzler.shared.nativeView(at: point, in: self) {
+/// The WKWebView class LingXia creates on iOS (looked up by name from Rust):
+/// native components get their touches before WebKit's content view does.
+@objc(LingXiaTouchRoutingWebView)
+final class LingXiaTouchRoutingWebView: WKWebView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        if let nativeView = NativeComponentHitRouter.shared.nativeView(at: point, in: self) {
             return nativeView
         }
-        return lx_swizzled_hitTest(point, with: event)
+        return super.hitTest(point, with: event)
     }
 }
 
