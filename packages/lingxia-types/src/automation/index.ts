@@ -542,7 +542,7 @@ export interface LogicNavDriver {
   redirect(options: LogicNavOptions): Promise<PageInfo>;
   /** Switch to a configured tab page. */
   switchTab(options: LogicNavOptions): Promise<PageInfo>;
-  /** Clear the stack and relaunch at a page. */
+  /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
   relaunch(options: LogicNavOptions): Promise<PageInfo>;
   back(options?: LogicNavBackOptions): Promise<PageInfo>;
   current(): Promise<PageInfo>;

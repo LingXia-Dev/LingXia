@@ -31,7 +31,9 @@ lxdev test tests/pages/notes.test.ts
 - `testId('x')` matches `[data-testid="x"]` in the current page's View. It must
   match exactly one element; narrow duplicates with `.nth(i)`.
 - `t.app.nav.relaunch({ page })` clears the stack and opens a configured page
-  (lxapp.json name), resolving after its `onReady`. `spec(title, { fresh: true }, body)`
+  (lxapp.json name) as a new instance, resolving after its `onReady`. Every
+  page is unloaded, tab pages kept by `switchTab` included, so the page runs
+  `onLoad` again. `spec(title, { fresh: true }, body)`
   relaunches the home page instead. Neither resets app or backend data.
 - Actions and `t.expect(...)` retry for 5 s by default (`{ timeout }` per call);
   a spec has 30 s (`spec(title, { timeout }, body)`). Await every action and assertion.

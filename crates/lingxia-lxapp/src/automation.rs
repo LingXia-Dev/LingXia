@@ -333,7 +333,10 @@ pub async fn navigate(
             .map_err(|err| err.to_string())?;
     }
 
-    resolve_page(app, None)
+    // The instance the navigation landed on, not whatever the platform last
+    // reported as current: that report lags a fresh page by a frame or more.
+    let name = page_name_for_path(app, &target_page.path());
+    Ok((target_page, name))
 }
 
 /// Navigate back `delta` pages and return the landed page (+ configured name).

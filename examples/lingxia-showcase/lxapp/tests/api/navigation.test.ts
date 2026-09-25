@@ -8,7 +8,12 @@ async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo>
   return eventually(
     () => app.nav.current(),
     (current) => current.name === name && current.ready,
-    { describe: `current page '${name}' to become ready`, timeoutMs: 30_000 });
+    {
+      describe: `current page '${name}' to become ready`,
+      timeoutMs: 30_000,
+      // A relaunch scheduled from Logic empties the stack before it lands.
+      retryIf: (error) => (error as { code?: string }).code === 'E_PAGE_NOT_READY',
+    });
 }
 
 spec("preserve stack, query, redirect, back, and tab semantics", { id: "NAV-001", covers: [
@@ -142,3 +147,102 @@ spec("reLaunch from Logic and reject invalid navigation", {
 });
 
 
+
+interface ApiPageProbe {
+  loadCount: number;
+  logicMarker: string | null;
+}
+
+async function apiPageProbe(app: LxAppDriver): Promise<ApiPageProbe | null> {
+  return app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
+      return page
+        ? { loadCount: page.data.loadCount ?? -1, logicMarker: page.__relaunchMarker ?? null }
+        : null;
+    `,
+  }) as Promise<ApiPageProbe | null>;
+}
+
+/** Visit the api tab, then mark its Logic page object and its document. */
+async function markWarmApiTab(app: LxAppDriver, marker: string): Promise<PageInfo> {
+  await app.nav.relaunch({ page: 'home' });
+  await waitForCurrent(app, 'home');
+  await app.nav.switchTab({ page: 'api' });
+  const warm = await waitForCurrent(app, 'api');
+  await eventually(() => apiPageProbe(app), (probe) => probe?.loadCount === 1, {
+    describe: 'the api tab to run onLoad once',
+  });
+  await app.eval({
+    script: `
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
+      page.__relaunchMarker = ${JSON.stringify(marker)};
+      return true;
+    `,
+  });
+  await app.page.eval({ page: 'api', script: `(window.__relaunchMarker = ${JSON.stringify(marker)}, true)` });
+  // Leave it warm off the stack: switchTab keeps tab pages alive.
+  await app.nav.switchTab({ page: 'home' });
+  await waitForCurrent(app, 'home');
+  return warm;
+}
+
+async function expectFreshApiTab(app: LxAppDriver, stale: PageInfo, landed?: PageInfo): Promise<void> {
+  // A relaunch scheduled from Logic empties the stack before it lands.
+  const current = await eventually(
+    () => app.nav.current(),
+    (page) => page.name === 'api' && page.ready,
+    {
+      describe: "the relaunched page 'api' to become ready",
+      timeoutMs: 30_000,
+      retryIf: (error) => (error as { code?: string }).code === 'E_PAGE_NOT_READY',
+    },
+  );
+  expect(current.instanceId).not.toBe(stale.instanceId);
+  if (landed) expect(landed.instanceId).toBe(current.instanceId);
+  const probe = await eventually(() => apiPageProbe(app), (value) => value !== null && value.loadCount > 0, {
+    describe: 'the relaunched api page to run onLoad',
+  });
+  expect(probe).toEqual({ loadCount: 1, logicMarker: null });
+  const windowMarker = await app.page.eval({ page: 'api', script: 'window.__relaunchMarker ?? null' });
+  expect(windowMarker).toBe(null);
+  expect((await app.nav.stack()).map((page) => page.name)).toEqual(['api']);
+}
+
+spec("relaunch onto a warm tab page opens a fresh instance", {
+  id: "NAV-RELAUNCH-001",
+  covers: ['NavDriver.relaunch', 'NavDriver.switchTab', 'lx.reLaunch'],
+  app: SHOWCASE_APP_ID,
+  timeout: 90_000,
+}, async (t) => {
+  const { app, defer } = bindFixture(t, "NAV-RELAUNCH-001");
+  defer(async () => {
+    await app.nav.relaunch({ page: 'home' });
+  });
+
+  await t.step('t.app.nav.relaunch from another tab', async () => {
+    const stale = await markWarmApiTab(app, 'nav-relaunch');
+    const landed = await app.nav.relaunch({ page: 'api' });
+    await expectFreshApiTab(app, stale, landed);
+  });
+
+  await t.step('lx.reLaunch from another tab', async () => {
+    const stale = await markWarmApiTab(app, 'lx-relaunch');
+    await relaunchFromLogic(app, 'api');
+    await expectFreshApiTab(app, stale);
+  });
+
+  await t.step('a warm tab that was not the target starts over too', async () => {
+    await markWarmApiTab(app, 'other-target');
+    await app.nav.relaunch({ page: 'components' });
+    await waitForCurrent(app, 'components');
+    await app.nav.switchTab({ page: 'api' });
+    await waitForCurrent(app, 'api');
+    const probe = await eventually(() => apiPageProbe(app), (value) => value !== null && value.loadCount > 0, {
+      describe: 'the api tab to run onLoad again',
+    });
+    expect(probe).toEqual({ loadCount: 1, logicMarker: null });
+    const windowMarker = await app.page.eval({ page: 'api', script: 'window.__relaunchMarker ?? null' });
+    expect(windowMarker).toBe(null);
+  });
+});
