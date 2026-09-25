@@ -271,17 +271,35 @@ unless `--keep-session`.
 
 ```bash
 lingxia test --preset ci                        # lxdev.json preset
+lingxia test -p runner tests/                   # the lxapp in the desktop Runner
 lingxia test tests/ -p macos -- --grep checkout # after `--`: lxdev test flags
 lingxia test --keep-session -- --format jsonl   # leave the session up for diagnostics
 ```
 
-Run it inside the project; for a host app, anywhere under the directory with
-`lingxia.yaml` (the session starts there, `lxdev.json` is read from the
-current directory). It takes the `lingxia dev` flags a session needs
-(`-p/--target`, `--skip-native`, `--release`, `--headless`, `--name`, …) and
-refuses to start while one of the project's sessions is already running — use
-`lxdev test` against that one. A failed spec's `Rerun:` line repeats the
-`lingxia test` command. See `lingxia test --help`.
+It starts the session `lingxia dev` would start in the nearest project at or
+above the current directory:
+
+| Run from | No `-p` | `-p runner` | `-p ios` (any platform) |
+|---|---|---|---|
+| an lxapp directory (`lxapp.json`), or below it | the lxapp in the desktop Runner | the Runner | the host app of the enclosing `lingxia.yaml` on iOS |
+| a host project (`lingxia.yaml`), or below it outside the lxapp | the host app, platform auto-detected | error: no lxapp directory | the host app on iOS |
+
+So in `my-app/lxapp/` it runs the lxapp in the Runner — like `lingxia dev`
+there — and `-p macos` (or any platform) runs the host app instead; in a
+standalone lxapp a platform must be the local desktop's. `lxdev.json` is read
+from the current directory's project. It takes the `lingxia dev` flags a
+session needs (`-p/--target`, `--skip-native`, `--release`, `--headless`,
+`--name`, …) and refuses to start while a session of the same target is
+already running — use `lxdev test` against that one. A failed spec's `Rerun:`
+line repeats the `lingxia test` command. See `lingxia test --help`.
+
+`lingxia dev -p runner` asks for the Runner explicitly (an error outside an
+lxapp directory) instead of relying on the directory.
+
+`--name` always reaches the session: a dev broker left running by an older
+`lingxia` build is replaced before the session registers (its other sessions
+re-register with the new one), and a session that could not be registered
+under its name fails to start instead of running unnamed.
 
 ### `lingxia devices`
 

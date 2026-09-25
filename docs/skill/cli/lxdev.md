@@ -96,9 +96,17 @@ session, runs it and stops it in one command.
 - `--profile empty|NAME|PATH` / `--profile-save[=pass|always]` — run on an
   isolated data profile ([App data](../lxapp/testing.md#isolated-app-data)).
 - `--secrets-file .env.test`, `LXDEV_SECRET_<KEY>` / `LXDEV_ARG_<KEY>` —
-  secret and plain args from outside the command line.
+  secret and plain args from outside the command line; `<KEY>` keeps its
+  case (`LXDEV_SECRET_PASSWORD` is `t.arg('PASSWORD')`). `--print-args` lists
+  them with their source, values of secrets masked.
 - `--format text|json|jsonl` (`--pretty` for json) — output.
-- `--last-failed` — rerun what failed in the last run (`test-results/latest`).
+- `--output-root DIR` — the results root: each run gets `DIR/<run-id>/`, and
+  `DIR/latest` points at the last run. Default: `test.outputDir` of
+  `lxdev.json`, else `test-results/` beside `lxdev.json`, else
+  `./test-results`. `--output-dir PATH` writes one run into PATH as is.
+- `--last-failed` — rerun what failed in the last run (`latest` in the
+  results root), with that run's `--preset` and `--profile`; with nothing
+  failed it runs nothing and exits 0.
 - `report [DIR|latest] [--failures] [--format json|junit]` — print an
   earlier run's summary, failures and `Rerun:` lines again, no session needed.
 
