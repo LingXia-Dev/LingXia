@@ -13,9 +13,11 @@ function runI18n(source, hostLanguage) {
     addEventListener: () => {},
   };
   const window = {
+    // The bridge's host facts (`LingXiaBridge.host`): `get()` returns them,
+    // `subscribe` is change-only.
     LingXiaBridge: {
-      displayLanguage: {
-        get: () => hostLanguage.value,
+      host: {
+        get: () => ({ displayLanguage: hostLanguage.value }),
         subscribe(listener) {
           listeners.add(listener);
           return () => listeners.delete(listener);
