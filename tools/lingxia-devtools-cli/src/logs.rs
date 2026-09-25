@@ -507,6 +507,7 @@ mod tests {
             log_file: String::new(),
             name: None,
             build: None,
+            extra: Default::default(),
         }
     }
 

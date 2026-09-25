@@ -273,7 +273,7 @@ pub(super) fn execute_runner_dev(
             platform_name,
             &ws_url,
             content,
-        );
+        )?;
 
         println!();
         println!("{}", "Step 2/2: Launching Runner...".bold());

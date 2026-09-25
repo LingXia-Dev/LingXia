@@ -145,7 +145,7 @@ pub fn register_session(
     session: &DevLogSession,
     target: &str,
     ws_url: &str,
-) -> Registration {
+) -> Result<Registration> {
     register_session_with_content(
         project_root,
         session,
@@ -163,7 +163,8 @@ pub fn register_session_with_content(
     target: &str,
     ws_url: &str,
     content: lingxia_control_protocol::dev_session::broker::SessionContent,
-) -> Registration {
+) -> Result<Registration> {
+    let name = SESSION_NAME.get().cloned().flatten();
     let info = SessionInfo {
         session_id: session.session_id.clone(),
         project_root: canonical_project_root(context_root),
@@ -176,77 +177,266 @@ pub fn register_session_with_content(
             .unwrap_or_default(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
-        name: SESSION_NAME.get().cloned().flatten(),
+        name: name.clone(),
         build: Some(env!("LINGXIA_BUILD_VERSION").to_string()),
+        extra: Default::default(),
     };
-    ensure_current_broker();
-    lingxia_control_protocol::dev_session::broker::register_session(info, spawn_broker)
+    ensure_current_broker(name.is_some())?;
+    let registration =
+        lingxia_control_protocol::dev_session::broker::register_session(info, spawn_broker);
+    if let Some(name) = &name {
+        verify_registered_name(&session.session_id, name)?;
+    }
+    Ok(registration)
+}
+
+/// `--name` is how scripts address the session: a broker that dropped it
+/// must stop the session here, not leave `lxdev --session NAME` to fail.
+fn verify_registered_name(session_id: &str, name: &str) -> Result<()> {
+    use lingxia_control_protocol::dev_session::broker;
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let sessions = broker::list_sessions().unwrap_or_default();
+        if let Some(registered) = sessions.iter().find(|s| s.session_id == session_id) {
+            return check_registered_name(registered, name);
+        }
+        if std::time::Instant::now() >= deadline {
+            eprintln!(
+                "⚠ Could not confirm that the dev broker registered this session as {name:?}."
+            );
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn check_registered_name(registered: &SessionInfo, name: &str) -> Result<()> {
+    if registered.name.as_deref() == Some(name) {
+        return Ok(());
+    }
+    Err(anyhow!(
+        "the dev broker registered this session without its name {name:?} (it is an older \
+         build that does not know `--name`). Stop the `lingxia dev-broker` process and \
+         start the session again."
+    ))
 }
 
 /// The per-user broker outlives the `lingxia` that spawned it, so it can be
-/// a stale build (another checkout, or rebuilt since). Replace it while no
-/// session depends on it; otherwise say what is running.
-pub fn ensure_current_broker() {
-    use lingxia_control_protocol::dev_session::broker::{self, BrokerBuild, BrokerProbe};
-    let current = BrokerBuild::current(env!("CARGO_PKG_VERSION"));
-    let (mismatch, sessions) = match broker::probe_broker() {
-        BrokerProbe::Absent => return,
-        BrokerProbe::Legacy => ("an older build without version reporting".to_string(), None),
-        BrokerProbe::Running(info) => {
-            let Some(build) = info.build else {
-                return;
-            };
-            match build.mismatch(&current) {
-                Some(why) => (format!("{why}, pid {}", info.pid), Some(info.sessions)),
-                None => return,
-            }
-        }
+/// a stale build (another checkout, rebuilt or upgraded since) — and a stale
+/// broker drops the record fields it does not know, such as `--name`.
+/// Replace it: asked to exit when idle, else terminated; its live sessions
+/// re-register with the new broker by themselves. When it cannot be
+/// replaced, `required` (a `--name` depends on it) makes that an error.
+pub fn ensure_current_broker(required: bool) -> Result<()> {
+    use lingxia_control_protocol::dev_session::broker;
+    let current = broker::BrokerBuild::current(env!("CARGO_PKG_VERSION"));
+    let Some(stale) = stale_broker(broker::probe_broker(), &current) else {
+        return Ok(());
     };
-    match broker_restart_plan(sessions) {
-        BrokerRestart::Restart => {
-            if matches!(broker::shutdown_idle_broker(), Ok(true)) && wait_broker_gone() {
-                eprintln!("ℹ Restarted the dev broker: it was {mismatch}.");
-                return;
-            }
+    match replace_broker(&stale, &current) {
+        Ok(()) => {
+            let moved = match stale.sessions {
+                Some(live) if live > 0 => {
+                    format!("; its {live} live session(s) re-register with the new one")
+                }
+                _ => String::new(),
+            };
+            let pid = stale
+                .pid
+                .map(|pid| format!(" (pid {pid})"))
+                .unwrap_or_default();
             eprintln!(
-                "⚠ The dev broker is {mismatch} and could not be restarted; \
-                 sessions may be listed by a stale build."
+                "ℹ Replaced the dev broker{pid}: it was {}{moved}.",
+                stale.why
             );
+            Ok(())
         }
-        BrokerRestart::Busy(live) => eprintln!(
-            "⚠ The dev broker is {mismatch} and {live} session(s) use it; it is replaced \
-             once they end (`lingxia dev stop`)."
-        ),
-        BrokerRestart::Manual => eprintln!(
-            "⚠ The dev broker is {mismatch}. If sessions misbehave, stop it \
-             (it is the `lingxia dev-broker` process) while no `lingxia dev` runs; \
-             the next `lingxia dev` starts a current one."
-        ),
+        Err(err) => {
+            let pid = stale
+                .pid
+                .map(|pid| format!(" (pid {pid})"))
+                .unwrap_or_default();
+            let message = format!(
+                "The dev broker{pid} is {} and could not be replaced ({err:#}). Stop that \
+                 `lingxia dev-broker` process; the next `lingxia dev` starts a current one.",
+                stale.why
+            );
+            if required {
+                return Err(anyhow!(
+                    "{message}\n`--name` needs a current broker: an older one drops the name."
+                ));
+            }
+            eprintln!("⚠ {message}");
+            Ok(())
+        }
+    }
+}
+
+/// A running broker that is not this build.
+#[derive(Debug)]
+struct StaleBroker {
+    why: String,
+    pid: Option<u32>,
+    /// `None` for a broker too old to report them.
+    sessions: Option<usize>,
+}
+
+fn stale_broker(
+    probe: lingxia_control_protocol::dev_session::broker::BrokerProbe,
+    current: &lingxia_control_protocol::dev_session::broker::BrokerBuild,
+) -> Option<StaleBroker> {
+    use lingxia_control_protocol::dev_session::broker::BrokerProbe;
+    match probe {
+        BrokerProbe::Absent => None,
+        BrokerProbe::Legacy => Some(StaleBroker {
+            why: "an older build without version reporting".to_string(),
+            pid: None,
+            sessions: None,
+        }),
+        BrokerProbe::Running(info) => {
+            // Only a broker started as a library reports no build.
+            let why = info.build.as_ref()?.mismatch(current)?;
+            Some(StaleBroker {
+                why,
+                pid: Some(info.pid),
+                sessions: Some(info.sessions),
+            })
+        }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 enum BrokerRestart {
-    /// Idle and able to stop itself: replace it now.
-    Restart,
-    /// Sessions depend on it.
-    Busy(usize),
-    /// An older broker cannot be asked to stop.
-    Manual,
+    /// Idle: ask it to exit.
+    AskToExit,
+    /// Sessions use it, which re-register once it is gone: terminate it.
+    Terminate(u32),
+    /// Too old to say its pid: find the `dev-broker` process and terminate it.
+    FindAndTerminate,
 }
 
-/// `sessions` is `None` for a broker too old to report them.
-fn broker_restart_plan(sessions: Option<usize>) -> BrokerRestart {
-    match sessions {
-        None => BrokerRestart::Manual,
-        Some(0) => BrokerRestart::Restart,
-        Some(live) => BrokerRestart::Busy(live),
+fn broker_restart_plan(stale: &StaleBroker) -> BrokerRestart {
+    match (stale.sessions, stale.pid) {
+        (Some(0), _) => BrokerRestart::AskToExit,
+        (_, Some(pid)) => BrokerRestart::Terminate(pid),
+        (_, None) => BrokerRestart::FindAndTerminate,
+    }
+}
+
+fn replace_broker(
+    stale: &StaleBroker,
+    current: &lingxia_control_protocol::dev_session::broker::BrokerBuild,
+) -> Result<()> {
+    use lingxia_control_protocol::dev_session::broker::{self, BrokerProbe};
+    let plan = broker_restart_plan(stale);
+    let asked = plan == BrokerRestart::AskToExit
+        && matches!(broker::shutdown_idle_broker(), Ok(true))
+        && wait_broker_gone();
+    if !asked {
+        // Refused (a session registered meanwhile), or never idle.
+        let pids = match (plan, stale.pid) {
+            (BrokerRestart::FindAndTerminate, _) | (_, None) => broker_processes(),
+            (_, Some(pid)) => vec![pid],
+        };
+        if pids.is_empty() {
+            return Err(anyhow!("no `lingxia dev-broker` process found"));
+        }
+        for pid in pids {
+            terminate_broker_process(pid);
+        }
+        if !wait_broker_gone() {
+            return Err(anyhow!("it did not exit"));
+        }
+    }
+    // Start the current build right away, before the old broker's sessions
+    // come back to re-register and could start their own build instead.
+    spawn_broker().context("could not start a new dev broker")?;
+    for _ in 0..30 {
+        if let BrokerProbe::Running(info) = broker::probe_broker() {
+            return match info
+                .build
+                .as_ref()
+                .and_then(|build| build.mismatch(current))
+            {
+                None => Ok(()),
+                Some(why) => Err(anyhow!("another build took its place: {why}")),
+            };
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    Err(anyhow!("the new dev broker did not come up"))
+}
+
+/// What telling a broker process apart needs: its command line and user.
+fn refresh_broker_candidates(system: &mut sysinfo::System, which: sysinfo::ProcessesToUpdate) {
+    use sysinfo::{ProcessRefreshKind, UpdateKind};
+    system.refresh_processes_specifics(
+        which,
+        true,
+        ProcessRefreshKind::nothing()
+            .with_cmd(UpdateKind::Always)
+            .with_user(UpdateKind::Always),
+    );
+}
+
+/// This user's `lingxia dev-broker` processes, other than this process.
+fn broker_processes() -> Vec<u32> {
+    use sysinfo::{ProcessesToUpdate, System};
+    let mut system = System::new();
+    refresh_broker_candidates(&mut system, ProcessesToUpdate::All);
+    let me = sysinfo::get_current_pid().ok();
+    let my_user = me
+        .and_then(|pid| system.process(pid))
+        .and_then(|process| process.user_id().cloned());
+    system
+        .processes()
+        .iter()
+        .filter(|(pid, process)| {
+            Some(**pid) != me
+                && is_broker_command(process.cmd())
+                && (my_user.is_none() || process.user_id() == my_user.as_ref())
+        })
+        .map(|(pid, _)| pid.as_u32())
+        .collect()
+}
+
+fn is_broker_command(cmd: &[std::ffi::OsString]) -> bool {
+    cmd.get(1).is_some_and(|arg| arg == "dev-broker")
+        && cmd.first().is_some_and(|exe| {
+            Path::new(exe)
+                .file_stem()
+                .is_some_and(|stem| stem.to_string_lossy().starts_with("lingxia"))
+        })
+}
+
+fn terminate_broker_process(pid: u32) {
+    use sysinfo::{ProcessesToUpdate, Signal, System};
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut system = System::new();
+    refresh_broker_candidates(&mut system, ProcessesToUpdate::Some(&[pid]));
+    // Only a broker: the pid came from the broker itself or a process scan,
+    // but guard against its reuse since.
+    let Some(process) = system.process(pid).filter(|p| is_broker_command(p.cmd())) else {
+        return;
+    };
+    if process.kill_with(Signal::Term).is_none() {
+        process.kill();
+    }
+    for _ in 0..20 {
+        system.refresh_processes(ProcessesToUpdate::Some(&[pid]), true);
+        if system.process(pid).is_none() {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    if let Some(process) = system.process(pid) {
+        process.kill();
     }
 }
 
 fn wait_broker_gone() -> bool {
     use lingxia_control_protocol::dev_session::broker::{self, BrokerProbe};
-    for _ in 0..20 {
+    for _ in 0..30 {
         if matches!(broker::probe_broker(), BrokerProbe::Absent) {
             return true;
         }
@@ -511,10 +701,67 @@ mod tests {
     }
 
     #[test]
-    fn a_stale_broker_is_replaced_only_while_idle() {
-        assert_eq!(broker_restart_plan(Some(0)), BrokerRestart::Restart);
-        assert_eq!(broker_restart_plan(Some(2)), BrokerRestart::Busy(2));
-        assert_eq!(broker_restart_plan(None), BrokerRestart::Manual);
+    fn a_stale_broker_is_replaced_even_while_sessions_use_it() {
+        use lingxia_control_protocol::dev_session::broker::{BrokerBuild, BrokerInfo, BrokerProbe};
+        let current = BrokerBuild {
+            version: "0.19.0".into(),
+            executable: "/bin/lingxia".into(),
+            modified_ms: 2,
+        };
+        let running = |build: BrokerBuild, sessions| {
+            BrokerProbe::Running(BrokerInfo {
+                build: Some(build),
+                pid: 77,
+                sessions,
+            })
+        };
+        assert!(stale_broker(BrokerProbe::Absent, &current).is_none());
+        assert!(stale_broker(running(current.clone(), 3), &current).is_none());
+        // Upgraded in place since it started, with sessions of its own: it
+        // used to be left running (and dropped the new session's --name).
+        let upgraded = BrokerBuild {
+            modified_ms: 1,
+            ..current.clone()
+        };
+        let busy = stale_broker(running(upgraded.clone(), 2), &current).unwrap();
+        assert!(busy.why.contains("rebuilt"), "{}", busy.why);
+        assert_eq!(broker_restart_plan(&busy), BrokerRestart::Terminate(77));
+        let idle = stale_broker(running(upgraded, 0), &current).unwrap();
+        assert_eq!(broker_restart_plan(&idle), BrokerRestart::AskToExit);
+        let legacy = stale_broker(BrokerProbe::Legacy, &current).unwrap();
+        assert_eq!(
+            broker_restart_plan(&legacy),
+            BrokerRestart::FindAndTerminate
+        );
+    }
+
+    #[test]
+    fn a_session_registered_without_its_name_is_an_error() {
+        let session = |name: Option<&str>| -> SessionInfo {
+            serde_json::from_value(serde_json::json!({
+                "session_id": "abc123", "project_root": "/p", "target": "runner", "pid": 1,
+                "ws_url": "ws://127.0.0.1:1", "log_file": "", "name": name
+            }))
+            .unwrap()
+        };
+        assert!(check_registered_name(&session(Some("ui")), "ui").is_ok());
+        let err = check_registered_name(&session(None), "ui").unwrap_err();
+        assert!(err.to_string().contains("without its name \"ui\""), "{err}");
+    }
+
+    #[test]
+    fn only_a_lingxia_dev_broker_command_is_a_broker() {
+        let cmd = |args: &[&str]| {
+            args.iter()
+                .map(std::ffi::OsString::from)
+                .collect::<Vec<_>>()
+        };
+        assert!(is_broker_command(&cmd(&[
+            "/home/u/.local/bin/lingxia",
+            "dev-broker"
+        ])));
+        assert!(!is_broker_command(&cmd(&["/bin/lingxia", "dev"])));
+        assert!(!is_broker_command(&cmd(&["/bin/other", "dev-broker"])));
     }
 
     #[test]

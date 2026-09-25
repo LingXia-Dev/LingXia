@@ -48,7 +48,7 @@ pub(super) fn execute_macos(ctx: DevContext) -> Result<()> {
         println!();
 
         let _session_registration =
-            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
+            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url)?;
 
         // Step 2: Run (run the built executable directly)
         println!("{}", "Step 2/2: Running...".bold());

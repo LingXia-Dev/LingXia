@@ -72,6 +72,10 @@ pub struct SessionInfo {
     /// Build of the `lingxia` that owns the session (`0.19.0 (abc1234 …)`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub build: Option<String>,
+    /// Fields of a newer record this build does not know, kept so a broker
+    /// passes them through to newer clients instead of dropping them.
+    #[serde(flatten, default)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// Which build a broker process runs. A per-user broker outlives the
@@ -636,6 +640,7 @@ mod tests {
             log_file: "/tmp/p/.lingxia/logs/x.jsonl".to_string(),
             name: None,
             build: None,
+            extra: Default::default(),
         }
     }
 
@@ -737,6 +742,11 @@ mod tests {
         assert_eq!(info.target, "lxapp");
         assert!(info.content.is_none());
         assert!(info.executable.is_empty());
+        // Passed through, so a broker of this build keeps what a newer
+        // client registered for newer clients to read.
+        let back = serde_json::to_value(&info).unwrap();
+        assert_eq!(back["from_the_future"], true);
+        assert!(back.get("extra").is_none());
     }
 
     #[cfg(windows)]

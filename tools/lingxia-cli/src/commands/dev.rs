@@ -289,6 +289,11 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         refuse_taken_name(name, &project_root)?;
     }
     log_store::set_session_name(options.name.clone());
+    if options.name.is_some() && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
+        // Before minutes of build: a broker too old to keep the name and
+        // impossible to replace fails the session now.
+        log_store::ensure_current_broker(true)?;
+    }
 
     // Fail fast on a CLI / package version skew, before minutes of build.
     crate::compat::ensure_project(&project_root, &[])?;

@@ -77,7 +77,7 @@ pub(super) fn execute_harmony(ctx: DevContext) -> Result<()> {
         // Step 4: Launch app
         println!("{}", "Step 4/4: Launching app...".bold());
         let _session_registration =
-            log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url);
+            log_store::register_session(&ctx.project_root, &session, platform_name, &host_ws_url)?;
 
         let run_config = RunConfig {
             package_id: bundle_name.clone(),
