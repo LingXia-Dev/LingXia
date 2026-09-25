@@ -1676,24 +1676,10 @@ fn report(
                 );
             }
             if let Some(id) = case.detail.get("id").and_then(|v| v.as_str()) {
-                let mut command = format!(
-                    "lxdev --session {} test {} --id {}",
-                    shell_quote(session_id),
-                    shell_quote(&entry.to_string_lossy()),
-                    shell_quote(id),
+                eprintln!(
+                    "  Rerun: {}",
+                    rerun_command(session_id, entry, id, options, secrets)
                 );
-                if let Some(secs) = options.timeout_secs {
-                    command.push_str(&format!(" --timeout-secs {secs}"));
-                }
-                for spec in &options.openapi {
-                    command.push_str(&format!(
-                        " --openapi {}",
-                        shell_quote(&spec.to_string_lossy())
-                    ));
-                }
-                command.push_str(&secrets.rerun_flags(shell_quote));
-                command.push_str(&options.state.rerun_flags(shell_quote));
-                eprintln!("  Rerun: {command}");
             }
             if options.verbose
                 && let Some(stack) = &error.stack
@@ -1712,6 +1698,36 @@ fn report(
         );
     }
     print_artifact_index(output_dir, &outcome.artifacts);
+}
+
+/// The command that reruns one failed spec with the run's effective flags —
+/// a preset's included, since they were expanded into `options` — and no
+/// secret values.
+fn rerun_command(
+    session_id: &str,
+    entry: &Path,
+    id: &str,
+    options: &TestOptions,
+    secrets: &RunSecrets,
+) -> String {
+    let mut command = format!(
+        "lxdev --session {} test {} --id {}",
+        shell_quote(session_id),
+        shell_quote(&entry.to_string_lossy()),
+        shell_quote(id),
+    );
+    if let Some(secs) = options.timeout_secs {
+        command.push_str(&format!(" --timeout-secs {secs}"));
+    }
+    for spec in &options.openapi {
+        command.push_str(&format!(
+            " --openapi {}",
+            shell_quote(&spec.to_string_lossy())
+        ));
+    }
+    command.push_str(&secrets.rerun_flags(shell_quote));
+    command.push_str(&options.state.rerun_flags(shell_quote));
+    command
 }
 
 /// The report is the deliverable, so name it last and name it absolutely —
@@ -2658,6 +2674,45 @@ mod lifecycle_tests {
         Harness::try_parse_from(std::iter::once("test").chain(args.iter().copied()))
             .unwrap()
             .options
+    }
+
+    #[test]
+    fn the_rerun_hint_repeats_the_effective_flags_without_secrets() {
+        let options = options(&[
+            "/project/tests/all.test.ts",
+            "--timeout-secs",
+            "60",
+            "--openapi",
+            "/contract.yaml",
+            "--state",
+            "auth",
+            "--save-state",
+            "auth",
+            "--save-state-on",
+            "always",
+            "--arg",
+            "platform=macos",
+            "--secret-arg",
+            "token=abc123",
+            "--tag",
+            "unit",
+        ]);
+        let secrets = RunSecrets::new(&options.args, &options.secret_args);
+        let command = rerun_command(
+            "macos",
+            options.entry.as_deref().unwrap(),
+            "HOME-001",
+            &options,
+            &secrets,
+        );
+        assert_eq!(
+            command,
+            "lxdev --session 'macos' test '/project/tests/all.test.ts' --id 'HOME-001' \
+             --timeout-secs 60 --openapi '/contract.yaml' --arg 'platform=<platform>' \
+             --secret-arg 'token=<token>' --state 'auth' --save-state 'auth' \
+             --save-state-on always"
+        );
+        assert!(!command.contains("abc123"));
     }
 
     /// Accepts one command, records `(method, params)`, answers success.

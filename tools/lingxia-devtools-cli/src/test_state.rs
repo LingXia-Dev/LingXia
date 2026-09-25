@@ -61,10 +61,22 @@ impl StateOptions {
     }
 
     /// Flags a rerun hint must repeat so the rerun sees the same data.
+    ///
+    /// A snapshot saved back to where it was read from is a rolling one: the
+    /// app may rotate what it holds (a refresh token used once), so a rerun
+    /// that read it without saving would leave the next run a stale copy.
+    /// Such a rerun saves it the same way. Any other `--save-state` is left
+    /// out: a one-spec rerun must not overwrite a snapshot a full run made.
     pub fn rerun_flags(&self, quote: impl Fn(&str) -> String) -> String {
         let mut flags = String::new();
         if let Some(state) = &self.state {
             flags.push_str(&format!(" --state {}", quote(state)));
+            if self.save_state.as_ref() == Some(state) {
+                flags.push_str(&format!(" --save-state {}", quote(state)));
+                if self.save_state_on == SaveOn::Always {
+                    flags.push_str(" --save-state-on always");
+                }
+            }
         } else if self.isolated() {
             flags.push_str(" --isolate");
         }
@@ -571,16 +583,36 @@ mod tests {
             parse(&["--isolate"]).unwrap().rerun_flags(quote),
             " --isolate"
         );
+        // A rolling snapshot is read and saved back the same way.
         assert_eq!(
             parse(&["--state", "auth", "--save-state", "auth"])
                 .unwrap()
                 .rerun_flags(quote),
-            " --state 'auth'"
+            " --state 'auth' --save-state 'auth'"
         );
-        // A rerun must not overwrite the snapshot.
+        assert_eq!(
+            parse(&[
+                "--state",
+                "auth",
+                "--save-state",
+                "auth",
+                "--save-state-on",
+                "always"
+            ])
+            .unwrap()
+            .rerun_flags(quote),
+            " --state 'auth' --save-state 'auth' --save-state-on always"
+        );
+        // A rerun must not overwrite a snapshot made by another source.
         assert_eq!(
             parse(&["--save-state", "auth"]).unwrap().rerun_flags(quote),
             " --isolate"
+        );
+        assert_eq!(
+            parse(&["--state", "seed", "--save-state", "auth"])
+                .unwrap()
+                .rerun_flags(quote),
+            " --state 'seed'"
         );
     }
 

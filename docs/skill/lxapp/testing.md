@@ -477,6 +477,11 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
   after a passing run (`--save-state-on always` for any finished run). Both
   imply `--isolate`. A NAME lives under `~/.lingxia/test-state/`; keep PATH
   snapshots out of git (`*.lxstate`) — they can hold sign-in tokens.
+- The `Rerun:` line printed under a failed spec repeats `--state`; when the
+  run saves the snapshot back to where it read it (`--state auth --save-state
+  auth`), it repeats `--save-state` and `--save-state-on` too, so a rerun
+  keeps the snapshot current. It never saves to a snapshot the run did not
+  read.
 - Sign in once: a setup spec signs in through the UI only when the app shows it
   is signed out; later runs start from the saved state.
 - `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
