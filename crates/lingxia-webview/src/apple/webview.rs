@@ -430,6 +430,168 @@ unsafe extern "C" {
     fn CGDisplayBounds(display: u32) -> CGRect;
 }
 
+/// Hold an `NSProcessInfo` activity for the rest of the process: user
+/// initiated (idle system sleep still allowed) and latency critical, so App
+/// Nap does not coalesce the timers a development session relies on.
+pub(super) fn begin_development_activity() {
+    const NS_ACTIVITY_USER_INITIATED_ALLOWING_IDLE_SYSTEM_SLEEP: u64 = 0x00EF_FFFF;
+    const NS_ACTIVITY_LATENCY_CRITICAL: u64 = 0xFF_0000_0000;
+    let begin = || unsafe {
+        let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        if info.is_null() {
+            return;
+        }
+        let reason = NSString::from_str("LingXia development session");
+        let activity: *mut AnyObject = msg_send![
+            info,
+            beginActivityWithOptions: NS_ACTIVITY_USER_INITIATED_ALLOWING_IDLE_SYSTEM_SLEEP
+                | NS_ACTIVITY_LATENCY_CRITICAL,
+            reason: &*reason
+        ];
+        if !activity.is_null() {
+            // The activity lasts while its token lives: keep it for good.
+            let _: *mut AnyObject = msg_send![activity, retain];
+        }
+    };
+    if MainThreadMarker::new().is_some() {
+        begin();
+    } else {
+        DispatchQueue::main().exec_async(begin);
+    }
+}
+
+/// The `accept` list of the file input that is about to open the macOS open
+/// panel. WebKit's public `WKOpenPanelParameters` carries only "multiple" and
+/// "directories", so a page script reports the input's `accept` when the
+/// input is activated (a click, a label click, a key press, or
+/// `showPicker()`), and the open panel request that follows picks it up. The
+/// report and the request travel on the same connection from the web
+/// process, so the report arrives first.
+///
+/// The hint only narrows the chooser for the page that sent it, so a page
+/// that lies about it gains nothing.
+#[cfg(target_os = "macos")]
+mod file_input_hint {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    use std::time::{Duration, Instant};
+
+    pub(super) const HANDLER: &str = "LingXiaFileInput";
+
+    /// The open panel request follows the activation at once; anything older
+    /// belongs to an input whose chooser never opened.
+    const FRESH_FOR: Duration = Duration::from_secs(5);
+    const MAX_ACCEPT_BYTES: usize = 4096;
+    const MAX_ACCEPT_TOKENS: usize = 64;
+
+    pub(super) const SCRIPT: &str = r#"
+        (function() {
+            if (window.__lingxiaFileInputHint) return;
+            Object.defineProperty(window, '__lingxiaFileInputHint', { value: true });
+            function report(el) {
+                try {
+                    if (!el || el.tagName !== 'INPUT' || String(el.type).toLowerCase() !== 'file') return;
+                    window.webkit.messageHandlers.LingXiaFileInput.postMessage(
+                        JSON.stringify({ accept: String(el.accept || '') }));
+                } catch (_) {}
+            }
+            document.addEventListener('click', function(event) {
+                var path = event.composedPath ? event.composedPath() : [event.target];
+                for (var i = 0; i < path.length; i++) {
+                    var node = path[i];
+                    if (node && node.tagName === 'INPUT') { report(node); return; }
+                }
+            }, true);
+            var showPicker = HTMLInputElement.prototype.showPicker;
+            if (typeof showPicker === 'function') {
+                HTMLInputElement.prototype.showPicker = function() {
+                    report(this);
+                    return showPicker.apply(this, arguments);
+                };
+            }
+        })();
+    "#;
+
+    /// Per WebView (by native pointer): when its input reported, and what.
+    type Hints = HashMap<usize, (Instant, Vec<String>)>;
+
+    fn hints() -> &'static Mutex<Hints> {
+        static HINTS: OnceLock<Mutex<Hints>> = OnceLock::new();
+        HINTS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    /// The accept tokens in a page report, or `None` for a malformed one.
+    pub(super) fn parse(message: &str) -> Option<Vec<String>> {
+        if message.len() > MAX_ACCEPT_BYTES {
+            return None;
+        }
+        let value: serde_json::Value = serde_json::from_str(message).ok()?;
+        let accept = value.get("accept")?.as_str()?;
+        Some(
+            accept
+                .split(',')
+                .map(str::trim)
+                .filter(|token| !token.is_empty())
+                .take(MAX_ACCEPT_TOKENS)
+                .map(str::to_string)
+                .collect(),
+        )
+    }
+
+    pub(super) fn record(webview: usize, message: &str) {
+        let Some(accept) = parse(message) else {
+            return;
+        };
+        let Ok(mut hints) = hints().lock() else {
+            return;
+        };
+        let now = Instant::now();
+        hints.retain(|_, (at, _)| now.duration_since(*at) < FRESH_FOR);
+        hints.insert(webview, (now, accept));
+    }
+
+    /// The accept list reported for this WebView's input, if it is fresh.
+    pub(super) fn take(webview: usize) -> Vec<String> {
+        let Ok(mut hints) = hints().lock() else {
+            return Vec::new();
+        };
+        match hints.remove(&webview) {
+            Some((at, accept)) if at.elapsed() < FRESH_FOR => accept,
+            _ => Vec::new(),
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn parses_the_accept_list_a_page_reports() {
+            assert_eq!(
+                parse(r#"{"accept":" image/*, .PDF ,,text/csv "}"#),
+                Some(vec![
+                    "image/*".to_string(),
+                    ".PDF".to_string(),
+                    "text/csv".to_string()
+                ])
+            );
+            assert_eq!(parse(r#"{"accept":""}"#), Some(Vec::new()));
+            assert_eq!(parse(r#"{"accept":5}"#), None);
+            assert_eq!(parse("not json"), None);
+            let long = format!(r#"{{"accept":"{}"}}"#, "a".repeat(MAX_ACCEPT_BYTES));
+            assert_eq!(parse(&long), None);
+        }
+
+        #[test]
+        fn an_open_panel_takes_the_hint_once() {
+            record(0x5eed, r#"{"accept":".txt"}"#);
+            assert_eq!(take(0x5eed), vec![".txt".to_string()]);
+            assert!(take(0x5eed).is_empty());
+            assert!(take(0xdead).is_empty());
+        }
+    }
+}
+
 fn source_page_url_from_webview(webview: *mut AnyObject) -> Option<String> {
     unsafe {
         if webview.is_null() {
@@ -1731,10 +1893,15 @@ define_class!(
                     msg_send![parameters, allowsDirectories];
                 #[cfg(not(target_os = "macos"))]
                 let allows_directories = objc2::runtime::Bool::new(false);
+                #[cfg(target_os = "macos")]
+                let accept_types = file_input_hint::take(_webview as usize);
+                #[cfg(not(target_os = "macos"))]
+                let accept_types = Vec::new();
                 FileChooserRequest {
                     // WebKit's public API does not expose the input's
-                    // `accept` list, so the chooser opens unfiltered.
-                    accept_types: Vec::new(),
+                    // `accept` list; the page reported it when the input
+                    // was activated (see `file_input_hint`).
+                    accept_types,
                     allow_multiple: allows_multiple.as_bool(),
                     allow_directories: allows_directories.as_bool(),
                     capture: false,
@@ -1893,6 +2060,23 @@ fn post_message_to_current_document(
         expected_generation,
         &mut with_document,
     );
+}
+
+/// Page script (an async function body) that resolves after `frames`
+/// animation frames, or after a short timer when the page gets none: WebKit
+/// stops animation frames for a page that is hidden or in an occluded window.
+#[cfg(all(feature = "webview-input", target_os = "macos"))]
+fn animation_frames_script(frames: u32) -> String {
+    format!(
+        "await new Promise((resolve) => {{ \
+           let done = false; \
+           const finish = () => {{ if (!done) {{ done = true; resolve(); }} }}; \
+           let left = {frames}; \
+           const step = () => {{ left -= 1; if (left <= 0) finish(); else requestAnimationFrame(step); }}; \
+           requestAnimationFrame(step); \
+           setTimeout(finish, document.visibilityState === 'visible' ? 250 : 16); \
+         }}); return '';"
+    )
 }
 
 impl std::fmt::Debug for WebViewInner {
@@ -2103,6 +2287,23 @@ impl WebViewInner {
                 || effective_options.data_mode == WebViewDataMode::Ephemeral;
             let allow_js_windows = allow_new_windows || effective_options.has_new_window_handler;
             prefs.setJavaScriptCanOpenWindowsAutomatically(allow_js_windows);
+
+            // Development hosts keep covered and background pages running
+            // (`WKInactiveSchedulingPolicyNone`, macOS 14 / iOS 17).
+            if super::keeps_responsive_for_development() {
+                let prefs_obj: *mut AnyObject = Retained::as_ptr(&prefs).cast_mut().cast();
+                let supported: objc2::runtime::Bool = msg_send![
+                    prefs_obj,
+                    respondsToSelector: objc2::sel!(setInactiveSchedulingPolicy:)
+                ];
+                if supported.as_bool() {
+                    const WK_INACTIVE_SCHEDULING_POLICY_NONE: objc2::ffi::NSInteger = 2;
+                    let _: () = msg_send![
+                        prefs_obj,
+                        setInactiveSchedulingPolicy: WK_INACTIVE_SCHEDULING_POLICY_NONE
+                    ];
+                }
+            }
 
             // Web Inspector: `isInspectable` is set once the view exists.
             // File URL access stays at WebKit's default (off).
@@ -2427,6 +2628,21 @@ impl WebViewInner {
             // The controller retains the script; release the `alloc` reference.
             let _ = Retained::from_raw(restoration_user_script);
 
+            // macOS open panel: WebKit's public API does not pass on the
+            // file input's `accept`, so the page reports it on activation.
+            #[cfg(target_os = "macos")]
+            {
+                let hint_string = NSString::from_str(file_input_hint::SCRIPT);
+                let hint_script: *mut AnyObject = msg_send![user_script_class, alloc];
+                let hint_script: *mut AnyObject = msg_send![hint_script,
+                    initWithSource: &*hint_string,
+                    injectionTime: injection_time,
+                    forMainFrameOnly: false];
+                let _: () = msg_send![user_content_controller, addUserScript: hint_script];
+                // The controller retains the script; release the `alloc` reference.
+                let _ = Retained::from_raw(hint_script);
+            }
+
             #[cfg(all(feature = "webview-input", target_os = "macos"))]
             {
                 let input_helper_string = NSString::from_str(INPUT_HELPER_BOOTSTRAP);
@@ -2504,6 +2720,11 @@ impl WebViewInner {
                 let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*console_name];
             }
             let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*lifecycle_name];
+            #[cfg(target_os = "macos")]
+            {
+                let file_input_name = NSString::from_str(file_input_hint::HANDLER);
+                let _: () = msg_send![user_content_controller, addScriptMessageHandler: &*message_handler, name: &*file_input_name];
+            }
             Ok(message_handler)
         }
     }
@@ -3618,22 +3839,18 @@ impl WebViewInner {
     }
 
     /// Wait until the page has painted: two animation frames, the second one
-    /// after the frame that picked up earlier changes.
+    /// after the frame that picked up earlier changes. WebKit pauses
+    /// animation frames for a page it considers hidden (an occluded or
+    /// minimized window), so a short timer stands in for them there.
     async fn wait_presentation_update(&self) -> Result<(), WebViewInputError> {
-        self.run_input_script(
-            "await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); return '';",
-        )
-        .await
+        self.run_input_script(&animation_frames_script(2)).await
     }
 
     /// Wait until the web process has handled the mouse events sent so far.
     /// Script evaluation is ordered after input already delivered to the
     /// page, so a round trip that also yields one frame is enough.
     async fn wait_pending_mouse_events(&self) -> Result<(), WebViewInputError> {
-        self.run_input_script(
-            "await new Promise((resolve) => requestAnimationFrame(resolve)); return '';",
-        )
-        .await
+        self.run_input_script(&animation_frames_script(1)).await
     }
 
     /// An editing command on the focused element, through the page's
@@ -4374,6 +4591,10 @@ define_class!(
                     "LingXiaLifecycle" => {
                         let (frame, _) = apple_message_frame_and_source(message);
                         self.handle_document_restored(message_string, frame);
+                    }
+                    #[cfg(target_os = "macos")]
+                    file_input_hint::HANDLER => {
+                        file_input_hint::record(self.ivars().native_webview, &message_string);
                     }
                     _ => {
                         log::warn!("Unknown message handler: {}", handler_name);

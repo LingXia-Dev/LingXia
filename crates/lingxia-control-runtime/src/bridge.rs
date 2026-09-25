@@ -68,6 +68,9 @@ pub fn start_dev_session_bridge_from_env() {
         }
     };
 
+    // Specs drive this app from a terminal or editor, often with its window
+    // covered: keep its pages and timers running meanwhile.
+    lxapp::keep_responsive_for_development();
     thread::spawn(move || run_dev_bridge(ws_url));
 }
 

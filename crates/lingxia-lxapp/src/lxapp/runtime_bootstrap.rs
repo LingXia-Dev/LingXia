@@ -123,6 +123,17 @@ static RUNNER_HOST: AtomicBool = AtomicBool::new(false);
 /// This designation is process-wide and cannot be revoked by the environment.
 pub fn register_runner_host() {
     RUNNER_HOST.store(true, Ordering::Release);
+    // Specs drive the Runner while its window is often covered by the
+    // terminal or editor.
+    keep_responsive_for_development();
+}
+
+/// Keep pages and timers running while the host window is covered or the
+/// app is in the background. Development hosts only (the Runner, a dev
+/// session): it costs battery. Apple only; a no-op elsewhere.
+pub fn keep_responsive_for_development() {
+    #[cfg(any(target_os = "macos", target_os = "ios"))]
+    lingxia_webview::platform::apple::keep_responsive_for_development();
 }
 
 pub fn runner_active() -> bool {

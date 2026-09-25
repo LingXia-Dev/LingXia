@@ -3,6 +3,7 @@ pub(crate) mod data_store;
 mod schemehandler;
 mod webview;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use crate::{UserAgentOverride, WebViewController, WebViewError};
@@ -12,6 +13,29 @@ pub(crate) use webview::apply_http_proxy;
 
 pub const BRIDGE_DOWNSTREAM_CSP_SOURCE: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_CSP_SOURCE;
 pub const BRIDGE_DOWNSTREAM_URL: &str = bridge_transport::APPLE_BRIDGE_DOWNSTREAM_URL;
+
+static KEEP_RESPONSIVE_FOR_DEVELOPMENT: AtomicBool = AtomicBool::new(false);
+
+/// Development hosts (the Runner, an app in a `lingxia dev` session): keep
+/// pages scheduled while their window is covered or the app is in the
+/// background, where specs drive it from a terminal or editor.
+///
+/// Public API only: WebViews created afterwards get
+/// `WKPreferences.inactiveSchedulingPolicy = .none` (macOS 14 / iOS 17 and
+/// later), and the process holds a user-initiated, latency-critical
+/// `NSProcessInfo` activity so App Nap does not throttle its timers. It still
+/// allows idle system sleep. WebKit keeps pausing `requestAnimationFrame` for
+/// a page in a fully covered window; nothing public changes that.
+pub fn keep_responsive_for_development() {
+    if KEEP_RESPONSIVE_FOR_DEVELOPMENT.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    webview::begin_development_activity();
+}
+
+pub(crate) fn keeps_responsive_for_development() -> bool {
+    KEEP_RESPONSIVE_FOR_DEVELOPMENT.load(Ordering::Acquire)
+}
 
 static USER_AGENT_OVERRIDE_FOR_NEW_WEBVIEWS: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 
