@@ -369,6 +369,16 @@ impl DisplayLanguageService {
         )
     }
 
+    /// The effective language and the revision it took effect at, read
+    /// under one lock.
+    fn effective_snapshot(&self) -> DisplayLanguageEffectiveUpdate {
+        let inner = self.inner.lock().unwrap_or_else(|error| error.into_inner());
+        DisplayLanguageEffectiveUpdate {
+            revision: inner.effective_revision,
+            effective: inner.state.effective.clone(),
+        }
+    }
+
     fn enqueue_locked(inner: &mut ServiceInner, previous: DisplayLanguageState) -> bool {
         let next = inner.resolve();
         if previous == next {
@@ -711,7 +721,7 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
     };
     let quoted = serde_json::to_string(update.effective.as_str())
         .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
-    let script = format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted});");
+    let script = view_display_language_script(update.revision, &update.effective);
     for webtag in lingxia_webview::runtime::list_webviews() {
         if let Some(webview) = lingxia_webview::runtime::find_webview(&webtag) {
             let _ = webview.exec_js(&script);
@@ -741,6 +751,29 @@ fn publish_effective(update: &DisplayLanguageEffectiveUpdate) {
         );
         refresh_host_tabbar(&appid, &app);
     }
+}
+
+/// The script that hands a View the effective language, tagged with the
+/// revision it took effect at.
+///
+/// A change is pushed once, to every WebView. A document that is still
+/// loading misses it — the push runs in the outgoing `about:blank`, or before
+/// the new document's bridge installed the hook — and then boots from the
+/// language baked into its HTML when it was generated, now stale. So each
+/// document is also sent the current value when its bridge reports ready
+/// ([`view_display_language_snapshot_script`]); the revision lets the page
+/// keep the newest of the two whichever lands last.
+fn view_display_language_script(revision: u64, effective: &LanguageTag) -> String {
+    let quoted = serde_json::to_string(effective.as_str())
+        .unwrap_or_else(|_| format!("\"{FALLBACK_LANGUAGE}\""));
+    format!("var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f({quoted}, {revision});")
+}
+
+/// The current effective language as a View push, for a document whose
+/// bridge just became ready.
+pub(crate) fn view_display_language_snapshot_script() -> String {
+    let update = service().effective_snapshot();
+    view_display_language_script(update.revision, &update.effective)
 }
 
 /// Host-owned tab chrome (overflow "More") is painted from display language.
@@ -848,6 +881,27 @@ mod tests {
         let explicit: DisplayLanguagePreference = serde_json::from_str("\"JA-jp\"").unwrap();
         assert_eq!(serde_json::to_string(&explicit).unwrap(), "\"ja-JP\"");
         assert!(serde_json::from_str::<LanguageTag>("\"auto\"").is_err());
+    }
+
+    #[test]
+    fn a_view_push_carries_the_revision_the_language_took_effect_at() {
+        assert_eq!(
+            view_display_language_script(7, &tag("zh-CN")),
+            "var f = globalThis.__lingxiaApplyDisplayLanguage; if (f) f(\"zh-CN\", 7);"
+        );
+        // The snapshot a booting document gets moves with each change, so a
+        // page keeps whichever of a change and a snapshot is newer.
+        let service = service_with("en-US", "en-US");
+        let before = service.effective_snapshot();
+        service
+            .set_preference_persisted("zh-CN".parse().unwrap(), |_| Ok(()))
+            .unwrap();
+        let after = service.effective_snapshot();
+        assert_eq!(after.effective, tag("zh-CN"));
+        assert!(after.revision > before.revision);
+        // A change that leaves the effective language alone keeps its revision.
+        service.refresh_system(tag("fr-FR"));
+        assert_eq!(service.effective_snapshot(), after);
     }
 
     #[test]

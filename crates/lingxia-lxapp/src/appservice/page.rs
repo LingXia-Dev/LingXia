@@ -1936,6 +1936,9 @@ impl PageSvc {
         // Before the first data: the View picks its layout in the same frame
         // it first renders data, not a skeleton frame later.
         self.page.push_surface_context();
+        // A language change made while this document loaded was pushed
+        // before its bridge existed; hand it the current one.
+        self.page.push_display_language();
         let mut state = self.state.lock().await;
 
         if std::mem::take(&mut state.initial_snapshot_pending) {

@@ -71,6 +71,7 @@ pub use crate::page::runtime::{
 use crate::page::runtime::{
     PageInstanceLifecycleState, PageInstanceRuntimeRecord, transition_page_instance_lifecycle,
 };
+pub(crate) use display_language::view_display_language_snapshot_script;
 pub use display_language::{
     DisplayLanguageEffectiveSource, DisplayLanguageEffectiveUpdate, DisplayLanguagePreference,
     DisplayLanguageSessionOwner, DisplayLanguageState, DisplayLanguageStateUpdate, LanguageTag,

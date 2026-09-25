@@ -169,9 +169,9 @@ declare global {
   interface Window {
     __LX_BRIDGE_CFG?: BridgeConfig;
     /** Host push for a display language changed while the page is open. */
-    __lingxiaApplyDisplayLanguage?: (language: string) => void;
+    __lingxiaApplyDisplayLanguage?: (language: string, revision?: number) => void;
     /** Shared by every copy of the bridge module in this document. */
-    __lxDisplayLanguage?: { value: string; listeners: Set<() => void> };
+    __lxDisplayLanguage?: { value: string; revision?: number; listeners: Set<() => void> };
     /** Host push for the page's adaptive context; see `surface-context.ts`. */
     __lingxiaApplySurfaceContext?: (context: unknown, revision?: unknown) => void;
     /** Shared by every copy of the bridge module in this document. */
