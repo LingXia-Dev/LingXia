@@ -161,3 +161,35 @@ pub(crate) async fn browser_choose_files(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::file_filters_from_accept_types;
+
+    fn extensions(accept: &[&str]) -> Vec<String> {
+        let accept: Vec<String> = accept.iter().map(|value| value.to_string()).collect();
+        file_filters_from_accept_types(&accept)
+            .into_iter()
+            .flat_map(|filter| filter.extensions)
+            .collect()
+    }
+
+    #[test]
+    fn maps_extensions_and_known_mime_types_to_one_filter() {
+        assert_eq!(
+            extensions(&[".PDF", "text/csv", "image/png"]),
+            vec!["csv".to_string(), "pdf".to_string()]
+        );
+        assert!(extensions(&["image/*"]).contains(&"png".to_string()));
+        assert_eq!(
+            extensions(&[".txt, .md"]),
+            vec!["md".to_string(), "txt".to_string()]
+        );
+    }
+
+    #[test]
+    fn an_empty_or_unknown_accept_list_leaves_the_chooser_unfiltered() {
+        assert!(file_filters_from_accept_types(&[]).is_empty());
+        assert!(extensions(&["application/x-unknown"]).is_empty());
+    }
+}
