@@ -820,14 +820,55 @@ mod switching {
         appid: &str,
         reopen: Reopen,
     ) -> Result<(), LxAppError> {
-        let app = manager.ensure_lxapp(appid.to_string(), reopen.release_type)?;
-        app.open(
-            LxAppStartupOptions::new(&reopen.path)
-                .set_release_type(reopen.release_type)
-                .set_open_mode(reopen.open_mode)
-                .set_panel_id(reopen.panel_id),
-        )?;
+        // A development bundle is read straight from the project's build
+        // output, which a rebuild empties and refills: a reopen that lands
+        // in between finds no `lxapp.json`. Wait the rebuild out instead of
+        // leaving the app closed. Installed bundles fail for good.
+        let retryable = !super::super::is_ota_managed_appid(appid);
+        let app = retry_while(retryable, REOPEN_TIMEOUT, REBUILD_RETRY, appid, || {
+            let app = manager.ensure_lxapp(appid.to_string(), reopen.release_type)?;
+            app.open(
+                LxAppStartupOptions::new(&reopen.path)
+                    .set_release_type(reopen.release_type)
+                    .set_open_mode(reopen.open_mode)
+                    .set_panel_id(reopen.panel_id.clone()),
+            )?;
+            Ok(app)
+        })
+        .await?;
         wait_settled(&app).await
+    }
+
+    /// How often a reopen retries while a development bundle is rebuilt.
+    const REBUILD_RETRY: Duration = Duration::from_millis(250);
+
+    /// Run `attempt` until it succeeds; when `retryable`, a failure is
+    /// retried every `interval` for up to `timeout`, then the last error is
+    /// returned.
+    pub(super) async fn retry_while<T>(
+        retryable: bool,
+        timeout: Duration,
+        interval: Duration,
+        appid: &str,
+        mut attempt: impl FnMut() -> Result<T, LxAppError>,
+    ) -> Result<T, LxAppError> {
+        let deadline = tokio::time::Instant::now() + timeout;
+        let mut warned = false;
+        loop {
+            match attempt() {
+                Ok(value) => return Ok(value),
+                Err(err) if retryable && tokio::time::Instant::now() < deadline => {
+                    if !warned {
+                        warn!(
+                            "reopening {appid} failed ({err}); retrying while its bundle is rebuilt"
+                        );
+                        warned = true;
+                    }
+                    tokio::time::sleep(interval).await;
+                }
+                Err(err) => return Err(err),
+            }
+        }
     }
 
     /// Wait for a reopened app to settle: `App.onLaunch` has finished, a page
@@ -950,6 +991,41 @@ mod switching {
                 ready,
                 error: None,
             })
+        }
+
+        #[tokio::test]
+        async fn a_reopen_waits_out_a_rebuild_of_a_dev_bundle() {
+            let interval = Duration::from_millis(5);
+            let mut attempts = 0;
+            // The bundle is back on the third attempt.
+            let reopened = retry_while(true, Duration::from_secs(5), interval, "app", || {
+                attempts += 1;
+                if attempts < 3 {
+                    Err(LxAppError::ResourceNotFound("lxapp.json".into()))
+                } else {
+                    Ok(attempts)
+                }
+            })
+            .await;
+            assert_eq!(reopened.unwrap(), 3);
+
+            // An installed bundle does not come back by waiting.
+            let mut attempts = 0;
+            let failed = retry_while(false, Duration::from_secs(5), interval, "app", || {
+                attempts += 1;
+                Err::<(), _>(LxAppError::ResourceNotFound("lxapp.json".into()))
+            })
+            .await;
+            assert!(failed.is_err());
+            assert_eq!(attempts, 1);
+
+            // A rebuild that never finishes gives up with the last error.
+            let gave_up = retry_while(true, Duration::from_millis(30), interval, "app", || {
+                Err::<(), _>(LxAppError::ResourceNotFound("lxapp.json".into()))
+            })
+            .await
+            .unwrap_err();
+            assert!(gave_up.to_string().contains("lxapp.json"), "{gave_up}");
         }
 
         #[test]

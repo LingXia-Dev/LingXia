@@ -249,6 +249,15 @@ fn register_lxapp_bundle_source(appid: impl Into<String>, source: LxAppBundleSou
     guard.insert(appid, source);
 }
 
+/// Whether `appid` runs from a development bundle directory — a project's
+/// build output that a rebuild can briefly empty.
+pub fn is_dev_bundle_appid(appid: &str) -> bool {
+    matches!(
+        lxapp_bundle_source_for(appid),
+        Some(LxAppBundleSource::DevPath { .. })
+    )
+}
+
 /// Whether `appid`'s bundle is managed by the update system. Answers for an
 /// appid with no live instance too — first install runs before one exists.
 pub(crate) fn is_ota_managed_appid(appid: &str) -> bool {

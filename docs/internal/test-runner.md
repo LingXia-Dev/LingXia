@@ -573,6 +573,17 @@ test: no test writes into its storage and app code has no test branch.
   `LiveFixture` refuses `keep` on a host without `LxAppDriver.clock` (they
   shipped together) before calling restore, because an older host would
   silently ignore it.
+- Profile switches and development rebuilds: a dev bundle is read straight
+  from the build output, which a rebuild empties first. `lingxia dev` holds
+  `DevServerState::build_lock` for each rebuild (file watch and `lxapp.build`)
+  and a relayed `session.test.start` takes it before the command lock, so a
+  start's switch never reopens a half-written bundle. For anything that still
+  races (an external build, a lease that expired), `reopen_and_wait` retries
+  a failed reopen of a dev bundle every 250 ms for `REOPEN_TIMEOUT`
+  (`retry_while`), and `lxapp_dev_restart` opens a dev bundle that is not live
+  instead of failing, so the next rebuild's reload brings a home app whose
+  setup failed back. `prepare_lxapp_open` lets the home app itself open while
+  it is not live.
 - Not isolated in v1: downloads and `downloads.redb`, other lxapps opened in
   the run, and browser-profile WebViews. Mobile hosts share the Rust path but
   are not yet validated (transfer limits, `test-profiles` writability).
