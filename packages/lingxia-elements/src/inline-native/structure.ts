@@ -784,8 +784,10 @@ function readComputedNativeStyle(element: Element): Record<string, unknown> {
   const style = view.getComputedStyle(element);
   const inherited = element.parentElement ? view.getComputedStyle(element.parentElement) : null;
   const out: Record<string, unknown> = {};
-  const put = (key: string, value: string, skip?: (value: string) => boolean) => {
-    const normalized = value.trim();
+  // A property the engine does not implement (Servo has no accent-color)
+  // reads as undefined, not "".
+  const put = (key: string, value: string | undefined, skip?: (value: string) => boolean) => {
+    const normalized = (value ?? "").trim();
     if (!normalized || skip?.(normalized)) return;
     out[key] = key.endsWith("Color") || key === "color"
       ? normalizeNativeColor(element.ownerDocument, normalized) ?? normalized : normalized;

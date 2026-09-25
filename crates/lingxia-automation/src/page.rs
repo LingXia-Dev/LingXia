@@ -29,6 +29,10 @@ fn is_transient_page_error(error: &str) -> bool {
         // No current page"), not the bare lowercase string navigate() emits.
         || error.to_ascii_lowercase().contains("no current page")
         || error.to_ascii_lowercase().contains("0x8007139f")
+        // A backend that knows its document was replaced mid-evaluation.
+        || error
+            .to_ascii_lowercase()
+            .contains("navigation changed during javascript evaluation")
 }
 
 #[js_class(clone)]

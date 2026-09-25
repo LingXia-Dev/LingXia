@@ -57,6 +57,7 @@ jobs:
       cli_fingerprint: ${{ steps.compute.outputs.cli_fingerprint }}
       rust_test: ${{ steps.compute.outputs.rust_test }}
       control_security: ${{ steps.compute.outputs.control_security }}
+      servo: ${{ steps.compute.outputs.servo }}
       release_tooling: ${{ steps.filter.outputs.release_tooling }}
     steps:
       - uses: actions/checkout@v4
@@ -111,6 +112,16 @@ jobs:
               - '.github/workflows/ci.yml'
             webview_harmony:
               - 'crates/lingxia-webview/src/harmony/**'
+            # The opt-in Android Servo backend and the inputs its build reads.
+            servo_backend:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'crates/lingxia/Cargo.toml'
+              - 'crates/lingxia/src/logging.rs'
+              - 'crates/lingxia-webview/Cargo.toml'
+              - 'crates/lingxia-webview/src/android/**'
+              - 'crates/lingxia-webview/vendor/**'
+              - 'tools/lingxia-cli/src/platform/android.rs'
             sdk_release:
               - 'scripts/release/sdk.sh'
             examples_common:
@@ -268,6 +279,7 @@ jobs:
           CORE_RUST: ${{ steps.filter.outputs.core_rust }}
           CONTROL_SECURITY: ${{ steps.filter.outputs.control_security }}
           WEBVIEW_HARMONY: ${{ steps.filter.outputs.webview_harmony }}
+          SERVO_BACKEND: ${{ steps.filter.outputs.servo_backend }}
           SDK_RELEASE: ${{ steps.filter.outputs.sdk_release }}
           EX_COMMON: ${{ steps.filter.outputs.examples_common }}
           EX_IOS: ${{ steps.filter.outputs.ex_ios }}
@@ -307,6 +319,9 @@ jobs:
           # runtime, or CI config rebuilds everything downstream.
           rust=$(any "$rel" "$CI_F" "$CORE" "$CLI" "$WEB_RT")
           control_security=$(any "$rel" "$CI_F" "$CONTROL_SECURITY")
+          # Servo compiles far longer than the rest of the Android target, so
+          # its check follows only its own inputs, CI config, and main.
+          servo=$(any "$rel" "$CI_F" "$IS_MAIN_PUSH" "$SERVO_BACKEND")
           # Common base for the example apps (runtime + lxapp frontend + shared
           # example config + localized strings).
           ex_base=$(any "$rust" "$WEB_FE" "$EX_COMMON" "$I18N")
@@ -368,6 +383,7 @@ jobs:
             harmony=false
             npm=false
             control_security=false
+            servo=false
             automation_cross_platform=false
             automation_macos=false
             automation_windows=false
@@ -435,6 +451,7 @@ jobs:
             echo "cli_fingerprint=$cli_fingerprint"
             echo "rust_test=$rust_test"
             echo "control_security=$control_security"
+            echo "servo=$servo"
           } >> "$GITHUB_OUTPUT"
 
   # ---- Gating jobs (required via ci-success) ----
@@ -587,6 +604,60 @@ jobs:
 
       - name: Check Rust compiles for Android target
         run: cargo check --target aarch64-linux-android -p lingxia --lib
+
+  # Advisory: the experimental Servo WebView backend (`android.webviewBackend:
+  # servo`). Its native dependencies (SpiderMonkey, ANGLE, WebRender) need the
+  # same toolchain environment `lingxia build` sets for that backend.
+  rust-android-servo:
+    needs: changes
+    if: ${{ needs.changes.outputs.servo == 'true' }}
+    name: Android Servo Target (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: aarch64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: rust-android-servo
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Configure Android NDK toolchain for Servo
+        run: |
+          NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-$ANDROID_NDK_HOME}}"
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64"
+          BIN="$TC/bin"
+          SYSROOT="$TC/sysroot"
+          API=29
+          RES="$("$BIN/clang" --print-resource-dir)/include"
+          CFLAGS="--target=aarch64-linux-android${API} --sysroot=$SYSROOT"
+          CXXFLAGS="$CFLAGS -isystem $SYSROOT/usr/include/c++/v1"
+          {
+            echo "ANDROID_NDK_ROOT=$NDK"
+            echo "ANDROID_API_LEVEL=$API"
+            echo "CC_aarch64_linux_android=$BIN/aarch64-linux-android${API}-clang"
+            echo "CXX_aarch64_linux_android=$BIN/aarch64-linux-android${API}-clang++"
+            echo "AR_aarch64_linux_android=$BIN/llvm-ar"
+            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$BIN/aarch64-linux-android${API}-clang"
+            echo "TARGET_CC=$BIN/aarch64-linux-android${API}-clang"
+            echo "TARGET_CXX=$BIN/aarch64-linux-android${API}-clang++"
+            echo "TARGET_AR=$BIN/llvm-ar"
+            echo "CLANG_PATH=$BIN/clang"
+            echo "LIBCLANG_PATH=$TC/lib"
+            echo "TARGET_CFLAGS=$CFLAGS"
+            echo "TARGET_CXXFLAGS=$CXXFLAGS"
+            echo "TARGET_PKG_CONFIG_SYSROOT_DIR=$SYSROOT"
+            echo "BINDGEN_EXTRA_CLANG_ARGS=$CXXFLAGS"
+            echo "BINDGEN_EXTRA_CLANG_ARGS_aarch64_linux_android=-I$RES -I$SYSROOT/usr/include -I$SYSROOT/usr/include/aarch64-linux-android $CXXFLAGS"
+          } >> "$GITHUB_ENV"
+
+      - name: Check Rust compiles for Android with the Servo backend
+        run: cargo check --target aarch64-linux-android -p lingxia --lib --features servo
 
   # The Windows host stack (lingxia-windows-sdk / -contract / -build and the Windows
   # backends of lingxia-platform / lingxia-webview / lingxia-shell) is

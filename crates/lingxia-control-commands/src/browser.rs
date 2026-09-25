@@ -314,8 +314,7 @@ pub enum BrowserCommand {
     },
     /// Manage browser cookies
     Cookies(CookiesOptions),
-    /// Inspect network traffic (request/response payloads). Windows sessions
-    /// only — requires the WebView2 DevTools protocol.
+    /// Inspect network traffic exposed by the active WebView backend.
     Network(NetworkOptions),
     /// Capture a PNG screenshot of the current/specified tab
     Screenshot {
@@ -840,11 +839,11 @@ fn print_user_agent_state(data: &Value) -> Result<()> {
 
 fn execute_network(context: &BrowserContext, options: NetworkOptions) -> Result<()> {
     // Runner is platform-neutral session metadata; its compiled runtime
-    // handler is the authority on whether WebView2 capture is available.
+    // handler remains the authority on whether capture is available.
     let platform = context.target.as_str();
     if !network_capture_may_be_supported(platform) {
         return Err(anyhow!(
-            "browser network capture needs a Windows WebView2 session (this session is '{platform}')",
+            "browser network capture is unavailable for '{platform}' sessions",
         ));
     }
     let transport = context.transport;
@@ -912,7 +911,7 @@ fn execute_network(context: &BrowserContext, options: NetworkOptions) -> Result<
 fn network_capture_may_be_supported(target: &str) -> bool {
     matches!(
         target.to_ascii_lowercase().as_str(),
-        "windows" | "lxapp" | "runner"
+        "android" | "windows" | "lxapp" | "runner"
     )
 }
 
@@ -1579,6 +1578,7 @@ mod tests {
     #[test]
     fn network_capture_allows_platform_neutral_runner_sessions() {
         assert!(network_capture_may_be_supported("windows"));
+        assert!(network_capture_may_be_supported("android"));
         assert!(network_capture_may_be_supported("lxapp"));
         assert!(network_capture_may_be_supported("runner"));
         assert!(!network_capture_may_be_supported("macos"));

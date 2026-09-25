@@ -19,6 +19,26 @@ pub struct Platform {
     locale: String,
 }
 
+pub fn present_browser_tab(tab_id: &str) -> Result<(), PlatformError> {
+    let host_class: &JClass = super::get_cached_class(super::CachedClass::Lingxia)
+        .map_err(|error| PlatformError::Platform(error.to_string()))?;
+    with_env(|env| -> Result<(), PlatformError> {
+        let tab_id = env.new_string(tab_id)?;
+        let result = env.call_static_method(
+            host_class,
+            jni_str!("presentBrowserTab"),
+            jni_sig!("(Ljava/lang/String;)Z"),
+            &[JValue::Object(&tab_id)],
+        )?;
+        if !result.z()? {
+            return Err(PlatformError::Platform(
+                "Android browser overlay is unavailable".to_string(),
+            ));
+        }
+        Ok(())
+    })
+}
+
 impl Clone for Platform {
     fn clone(&self) -> Self {
         let java_asset_manager = with_env(

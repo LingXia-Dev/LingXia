@@ -197,6 +197,7 @@ mod tests {
             }),
             android: Some(AndroidConfig {
                 package_id: Some("com.example.demo".into()),
+                webview_backend: None,
                 min_sdk: None,
                 target_sdk: None,
                 compile_sdk: None,
