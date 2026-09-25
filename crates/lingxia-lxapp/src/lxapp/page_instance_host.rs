@@ -958,6 +958,43 @@ impl LxApp {
             .collect()
     }
 
+    /// The pages a reLaunch retires: every page's instance.
+    ///
+    /// The stack, oldest first, then every page parked off it — warm tab
+    /// pages, pages left by navigateBack — are removed outright, so the
+    /// target and any page entered later open as a new instance with a fresh
+    /// Logic page object, document and `onLoad`. Surface-isolated pages
+    /// belong to their surfaces and pinned headless services to their
+    /// owners; both are left alone.
+    pub(crate) fn relaunch_retirees(&self) -> Vec<PageInstance> {
+        let tabbar = self.get_tabbar();
+        let state = self.state.lock().unwrap();
+        let pages_by_id = state.pages_by_id.lock().unwrap();
+        let stack: Vec<String> = state.page_stack.lock().unwrap().iter().cloned().collect();
+        let pinned: std::collections::HashSet<String> = state
+            .path_pins
+            .lock()
+            .map(|pins| pins.values().cloned().collect())
+            .unwrap_or_default();
+        let mut retire: Vec<PageInstance> = stack
+            .iter()
+            .filter_map(|id| pages_by_id.get(id).cloned())
+            .collect();
+        let mut parked: Vec<(&String, &PageInstance)> = pages_by_id
+            .iter()
+            .filter(|(id, page)| {
+                let headless_service = pinned.contains(*id)
+                    && !tabbar
+                        .as_ref()
+                        .is_some_and(|tabbar| tabbar.is_tabbar_page(&page.path()));
+                !page.is_isolated() && !stack.contains(*id) && !headless_service
+            })
+            .collect();
+        parked.sort_by_key(|(id, _)| (*id).clone());
+        retire.extend(parked.into_iter().map(|(_, page)| page.clone()));
+        retire
+    }
+
     /// Peek at the current page's instance id without removing it.
     /// Route path of the current page (stack top), when non-empty. The stack
     /// itself stores instance ids; every external caller wants the route.

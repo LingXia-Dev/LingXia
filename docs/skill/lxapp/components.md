@@ -325,7 +325,7 @@ Logic's `lx.surface.*` when you need to message, hide, or close the surface.
 | `navigate` (default) | Push a new page in the current lxapp |
 | `redirect` | Replace the current page |
 | `navigateBack` | Pop back by `delta`; with `target="lxapp"`, return from the opened lxapp |
-| `reLaunch` | Restart the app at a new page |
+| `reLaunch` | Restart the app at a new page: every page, cached tab pages included, is unloaded and the target opens fresh |
 | `switchTab` | Switch to a tab page |
 | `exit` | Exit the current lxapp |
 | `tel` | Trigger a phone call (use with `phone-number`) |

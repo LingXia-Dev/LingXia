@@ -1065,6 +1065,22 @@ impl PageInstance {
         entry == EntryPhase::Idle
     }
 
+    /// Whether the page has an entry that has not ended yet — `onLoad` was
+    /// delivered or is owed, and no `onUnload` has closed it since. A
+    /// preloaded tab never entered, and a page that left the stack already
+    /// unloaded; neither owes another `onUnload`.
+    pub(crate) fn owes_on_unload(&self) -> bool {
+        self.inner
+            .state
+            .lock()
+            .map(|state| {
+                state.entry != EntryPhase::Idle
+                    && state.reset == PageReset::None
+                    && state.event != Some(PageLifecycleEvent::OnUnload)
+            })
+            .unwrap_or(true)
+    }
+
     pub(crate) fn switch_tab_owes_on_load(&self) -> bool {
         self.inner
             .state
@@ -1729,7 +1745,9 @@ impl PageInstance {
         // Public entry points run this before resolving PageSvc/query state;
         // keep the same preflight here as a backstop for direct native calls.
         lxapp.validate_navigation_entry(&target_url, nav_type)?;
-        if target_page.is_discarded() {
+        // A reLaunch replaces the resolved instance below; waking its
+        // WebView first would only build a document to destroy.
+        if target_page.is_discarded() && nav_type != NavigationType::Launch {
             target_page.ensure_live_webview();
         }
         let is_tabbar_page = lxapp
@@ -1738,25 +1756,36 @@ impl PageInstance {
         let is_tab_switch = nav_type == NavigationType::SwitchTab
             || (nav_type == NavigationType::Launch && is_tabbar_page);
         let is_initial_route = path == lxapp.config().get_initial_route();
+        // WebViews a reLaunch retires, destroyed once the new page is on the
+        // stack: destroying first would leave the app without a current page
+        // for as long as the platform takes to tear them down.
+        let mut retired_webviews = Vec::new();
 
         // 2. Handle page stack modifications
         match nav_type {
             NavigationType::Launch | NavigationType::SwitchTab => {
                 if nav_type == NavigationType::Launch {
-                    let stack_pages = lxapp.get_page_stack_pages();
-                    for page in &stack_pages {
-                        page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                    // reLaunch ends every page, not only the stack: a tab
+                    // page switchTab parked off it would otherwise come back
+                    // — as the "relaunched" page or on a later switchTab —
+                    // with its old document, Logic page object, data and no
+                    // new onLoad. See `relaunch_retirees`.
+                    let retiring = lxapp.relaunch_retirees();
+                    for page in &retiring {
+                        if page.owes_on_unload() {
+                            page.dispatch_lifecycle_event(PageLifecycleEvent::OnUnload);
+                        }
                         let webview = page.webview();
                         page.detach_webview();
                         if let Some(webview) = webview {
-                            destroy_webview_if_matches(&page.webtag(), &webview);
+                            retired_webviews.push((page.webtag(), webview));
                         }
                     }
-                    let stack_ids: Vec<String> = stack_pages
+                    let retiring_ids: Vec<String> = retiring
                         .iter()
                         .map(|page| page.instance_id_string())
                         .collect();
-                    lxapp.remove_pages(&stack_ids);
+                    lxapp.remove_pages(&retiring_ids);
                     target_page = lxapp.get_or_create_page(&target_url);
                 }
                 if nav_type == NavigationType::SwitchTab {
@@ -1813,7 +1842,11 @@ impl PageInstance {
                 t.clear_selected_index();
             });
         }
-        lxapp.push_to_page_stack(&target_page)?;
+        let pushed = lxapp.push_to_page_stack(&target_page);
+        for (webtag, webview) in retired_webviews {
+            destroy_webview_if_matches(&webtag, &webview);
+        }
+        pushed?;
 
         // Set navbar state AFTER page creation to avoid being overwritten
         let stack_size = lxapp.get_page_stack_size();

@@ -4405,6 +4405,90 @@ mod manifest_reload_tests {
     }
 
     #[test]
+    fn relaunch_retires_every_page_but_pinned_services() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let appid = format!("app.lingxia.relaunch-retire.{}", Uuid::new_v4());
+        write_manifest(
+            root,
+            &appid,
+            r#"{
+              "appId": "APPID",
+              "appName": "Relaunch",
+              "version": "1.0.0",
+              "security": {"network":{"trustedDomains":[]},"privileges":[]},
+              "pages": [
+                {"name": "home", "path": "pages/home/index"},
+                {"name": "api", "path": "pages/api/index"},
+                {"name": "list", "path": "pages/list/index"},
+                {"name": "service", "path": "pages/service/index"}
+              ],
+              "tabBar": {
+                "items": [
+                  {"page": "home", "text": "Home"},
+                  {"page": "api", "text": "API"}
+                ]
+              }
+            }"#,
+        );
+        let app = dev_app(root, &appid);
+        let page = |path: &str| PageInstance::new_headless(app.appid.clone(), path.into(), &app);
+        let (home, api, list, service) = (
+            page("pages/home/index"),
+            page("pages/api/index"),
+            page("pages/list/index"),
+            page("pages/service/index"),
+        );
+        {
+            let state = app.state.lock().unwrap();
+            let mut pages = state.pages_by_id.lock().unwrap();
+            for page in [&home, &api, &list, &service] {
+                pages.insert(page.instance_id_string(), page.clone());
+            }
+            // switchTab home → api → home: api stays warm off the stack.
+            state
+                .page_stack
+                .lock()
+                .unwrap()
+                .push_back(home.instance_id_string());
+        }
+        for pinned in [&home, &api, &service] {
+            app.pin_page_path(pinned);
+        }
+
+        let paths = |pages: &[PageInstance]| -> Vec<String> {
+            let mut paths: Vec<String> = pages.iter().map(|page| page.path()).collect();
+            paths.sort();
+            paths
+        };
+        // The stack, then every parked page: the warm tab and the page left
+        // by navigateBack alike, whichever page the relaunch targets.
+        let retire = app.relaunch_retirees();
+        assert_eq!(
+            retire.first().map(|page| page.path()).as_deref(),
+            Some("pages/home/index"),
+            "the stack comes first"
+        );
+        assert_eq!(
+            paths(&retire),
+            ["pages/api/index", "pages/home/index", "pages/list/index"],
+            "the pinned headless service is left alone"
+        );
+
+        let ids: Vec<String> = retire
+            .iter()
+            .map(|page| page.instance_id_string())
+            .collect();
+        app.remove_pages(&ids);
+        assert!(app.pinned_page("pages/api/index").is_none());
+        assert!(app.get_page("pages/api/index").is_none());
+        assert!(app.get_page("pages/list/index").is_none());
+        let fresh = app.get_or_create_page("pages/api/index");
+        assert_ne!(fresh.instance_id(), api.instance_id());
+        assert!(app.pinned_page("pages/service/index").is_some());
+    }
+
+    #[test]
     fn reload_manifest_picks_up_pages_and_tabbar() {
         let temp = tempfile::tempdir().unwrap();
         let root = temp.path();
