@@ -71,7 +71,7 @@ pub(super) fn execute_windows(ctx: DevContext) -> Result<()> {
 
         println!("{}", "Step 2/2: Running...".bold());
         let _session_registration =
-            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url);
+            log_store::register_session(&ctx.project_root, &session, platform_name, &ws_url)?;
 
         ctx.watch_embedded_lxapps(&mut server);
         launch_and_wait_windows_app(

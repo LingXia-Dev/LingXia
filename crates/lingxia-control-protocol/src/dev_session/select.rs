@@ -371,6 +371,7 @@ mod tests {
             log_file: String::new(),
             name: name.map(str::to_string),
             build: None,
+            extra: Default::default(),
         }
     }
 

@@ -755,6 +755,7 @@ mod tests {
             log_file: String::new(),
             name: None,
             build: None,
+            extra: Default::default(),
         };
         assert_eq!(
             search_roots(&info, &lxapp),
