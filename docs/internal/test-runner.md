@@ -606,14 +606,15 @@ whole heap:
   answers requests with `BRIDGE_CANCELED`.
 - Native objects that hold JS values (`AbortController`, `Response`, …) free
   their context only once finalized, which takes a full collection that also
-  sweeps. JavaScriptCore schedules that on a run-loop timer, and Logic workers
-  run no run loop. With `automation`, `TerminateAppSvc` forces one after
-  dropping the context (`context_lifecycle::collect_retired`, resolving
-  `JSSynchronousGarbageCollectForDebugging` with `dlsym`; not public API, so
-  product builds without `automation` never reference it). QuickJS builds
-  call `run_gc`.
+  sweeps. JavaScriptCore schedules that on the VM thread's run loop, and Rong
+  workers run none, so on Apple platforms a retired context waits for a
+  collection that allocation alone brings late. The fix belongs in Rong (a
+  worker idle hook that lets JSC's own timers run; public CoreFoundation
+  only). LingXia no longer forces a collection: it used a private JSC
+  function, and no Apple private API may ship in any build.
 - Keep new native-held JS values releasable, or reachable only from JS.
-  `a_retired_logic_context_is_freed` guards both points.
+  `a_retired_logic_context_is_released` checks that every Rust owner of a
+  retired context lets go.
 
 Host side:
 
@@ -626,6 +627,59 @@ Host side:
   It used to replay the whole session's log line by line, scrolling after
   each, on the main thread at every reopen, which made each profile rollback
   slower than the last.
+
+## Automation run lifetime
+
+- The automation worker evaluates each run in a fresh context. What the
+  context can reach — `console`, `attach`, `emit`, `logs` — holds the run's
+  `RunShared` weakly, so the report, events and attachments go when the
+  manager stops keeping the run (the active run plus
+  `COMPLETED_RETAINED` finished ones), whenever the engine frees the
+  context itself. A host function called after that rejects with
+  `E_AUTOMATION_ENDED`. `a_finished_run_is_freed_once_it_leaves_retention`
+  guards it.
+- `destroy_webview_if_matches` also drops the WebView's event normalizer
+  (only while the tag's normalizer is still that native view's). Tags carry
+  the app session, so a normalizer left behind was never reused and one piled
+  up per page per reopen.
+
+### Soak check
+
+Repeat a whole suite in one Runner and sample the Runner's footprint after
+each run (`footprint -p <pid>`, and `ps -o rss=`). The showcase, with its own
+HOME so no other session is touched:
+
+```bash
+export HOME=/tmp/lxsoak PATH=/tmp/lxsoak/bin:$PATH   # CLI + Runner built from this tree
+cd examples/lingxia-showcase/lxapp
+lingxia dev --background --framework react
+for i in 1 2 3; do
+  lxdev test --preset macos --arg framework=react --output-dir /tmp/lxsoak/run$i
+  footprint -p "$(pgrep -f /tmp/lxsoak/.lingxia/runner)" | head -3
+done
+```
+
+Growth per run should level off rather than add up; RSS alone understates
+it once macOS compresses pages. `heap <pid> | grep
+JSGlobalObjectInspectorController` counts live JS global objects (one per
+context).
+
+Showcase `--preset macos` (203 specs), macOS x86_64, Runner footprint after
+each run (2026-09):
+
+| build | run 1 | run 2 | run 3 | idle 3 min later |
+|---|---|---|---|---|
+| before (private forced collection of retired Logic contexts) | 1786 MB | 3445 MB | 3947 MB | — |
+| now (no private API) | 1634 MB | 3137 MB | 3881 MB | 3904 MB |
+| now + worker run-loop pump (prototype) | 1384 MB | 2115 MB | 1460 MB | 1110 MB |
+
+Live JS global objects stay at 3–5 in every build, so retired contexts are
+not what grows: it is garbage in the live heaps (almost all of it "WebKit
+malloc", JSC's 16 KB blocks). JavaScriptCore's full collections and sweeping
+run from the VM thread's run loop, which Rong workers do not run; allocation
+alone mostly triggers young-generation collections. The prototype, which
+runs the worker's run loop every 50 ms, lets them run; the fix belongs in
+Rong's workers.
 
 ## Test clock
 

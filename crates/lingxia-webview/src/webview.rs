@@ -3348,6 +3348,9 @@ pub(crate) fn destroy_webview_if_matches(webtag: &WebTag, expected: &Arc<WebView
         None
     };
     if let Some(webview) = removed {
+        // Its event normalizer goes with it; tags carry the app session, so
+        // one left behind is never reused and piles up with every reopen.
+        crate::events::normalizer::destroy_if_native(webtag, webview.native_view_id());
         if let Some(signals) = remove_session_signals_owning(webtag, &webview) {
             signals.publish_destroyed();
         }

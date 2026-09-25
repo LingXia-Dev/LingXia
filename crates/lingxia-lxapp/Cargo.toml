@@ -13,7 +13,7 @@ default = ["standard"]
 standard = ["js-appservice"]
 # Shared automation lower half (target resolution, nav, DOM query script)
 # consumed by the devtool handlers and the lx.automation() JS API.
-automation = ["dep:rong_core"]
+automation = []
 # Test-only constructors for exercising native caller matrices across crates.
 test-utils = []
 # OS process execution for explicitly capable desktop product hosts. Runtime
@@ -75,8 +75,6 @@ lingxia-messaging = { workspace = true }
 # Apple platforms use JavaScriptCore.
 [target.'cfg(any(target_os = "ios", target_os = "macos"))'.dependencies]
 rong = { workspace = true, features = ["jscore"], optional = true }
-# Raw JavaScriptCore context handle for the automation-only full collection.
-rong_core = { version = "0.6.1", optional = true }
 rong_modules = { workspace = true, default-features = false, features = ["jscore"], optional = true }
 rong_command = { workspace = true, features = ["jscore"], optional = true }
 
