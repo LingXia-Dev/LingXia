@@ -489,6 +489,12 @@ jobs:
       - name: Check i18n-related crates explicitly
         run: cargo check -p lingxia-logic -p lingxia-cli
 
+      # The showcase native crate is its own workspace with its own lockfile.
+      # A manifest bump that leaves the lock behind makes every example build
+      # re-resolve against whatever crates.io has that day.
+      - name: Verify the showcase native lockfile matches its manifest
+        run: cargo metadata --locked --format-version 1 --manifest-path examples/lingxia-showcase/native/Cargo.toml > /dev/null
+
       # Byte-compares the committed Rust + TS outputs against a fresh
       # regeneration and fails on drift — catches "edited yaml but forgot to
       # run `gen i18n`". The native resource bundles are gitignored, so
