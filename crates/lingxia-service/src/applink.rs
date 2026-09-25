@@ -206,7 +206,7 @@ fn host_allowed(host: &str) -> bool {
 }
 
 /// Product hosts must match `appLinks.hosts`. The Runner is not a product and
-/// has no hosts — any AppLink URL is accepted so `lxdev app applink` can use
+/// has no hosts — any AppLink URL is accepted so `lxdev host applink` can use
 /// the URL under test.
 fn host_allowed_for(host: &str, hosts: &[String], is_runner: bool) -> bool {
     if hosts.is_empty() {

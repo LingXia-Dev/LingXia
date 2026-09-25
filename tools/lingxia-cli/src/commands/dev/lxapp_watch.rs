@@ -221,12 +221,14 @@ fn run_watch(
                 if dirty.is_empty() || stop_flag.load(Ordering::Acquire) {
                     continue;
                 }
-                // Reloading replaces the app under a running spec (and can
-                // drop the runtime connection); keep the changes queued.
-                if state.test_run_active() {
+                // A test run pauses the watcher (`session.watch.pause`):
+                // rebuilding empties the build output the app loads from, and
+                // reloading replaces the app under a running spec. Keep the
+                // changes queued; they rebuild once when the pause ends.
+                if state.watch_paused() {
                     if !deferred {
                         println!(
-                            "  {} test run active — reload of {} deferred until it ends",
+                            "  {} watcher paused by a test run — rebuild of {} waits until it ends",
                             "•".cyan(),
                             dirty.iter().cloned().collect::<Vec<_>>().join(", ").cyan()
                         );

@@ -21,3 +21,8 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# Tests: run output, and secret args for `lxdev test --secrets-file .env.test`
+test-results/
+.env.test
+*.lxstate

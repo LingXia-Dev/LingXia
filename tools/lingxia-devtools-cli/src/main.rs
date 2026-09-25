@@ -15,6 +15,7 @@ mod test_bundle;
 mod test_contract;
 mod test_network;
 mod test_preset;
+mod test_report;
 mod test_secrets;
 mod test_state;
 
@@ -25,10 +26,12 @@ use project::SessionSelector;
 #[command(about = "LingXia devtools client", long_about = None)]
 #[command(version = env!("LXDEV_BUILD_VERSION"))]
 struct Cli {
-    /// Select the dev session by id prefix or target name (android, ios,
-    /// macos, harmony, windows, lxapp). Optional when only one session is
-    /// live. Falls back to the LXDEV_SESSION env var.
-    #[arg(long, global = true)]
+    /// Select the dev session: a name (`lingxia dev --name`), a target
+    /// (android, ios, macos, harmony, windows, lxapp), `target@<project-dir>`,
+    /// the # from `lxdev session list`, or an id prefix. Without it: the
+    /// session of this directory's project, else the only live session.
+    /// Falls back to the LXDEV_SESSION env var
+    #[arg(long, global = true, value_name = "SESSION")]
     session: Option<String>,
 
     #[command(subcommand)]
@@ -51,8 +54,9 @@ enum Commands {
     Session(SessionCmd),
     /// Automate the local desktop OS (no dev session required)
     Desktop(lingxia_control_commands::desktop::DesktopOptions),
-    /// Automate the host app surface in the current dev session
-    App(lingxia_control_commands::app::AppOptions),
+    /// Automate the host surface in the current dev session: windows,
+    /// screenshots, mouse and keyboard input, app links
+    Host(lingxia_control_commands::app::AppOptions),
     /// Run JavaScript/TypeScript test cases in the current dev session
     Test(Box<test::TestOptions>),
     /// Put the running app into a named product state from
@@ -85,9 +89,17 @@ enum SessionAction {
 
 fn main() {
     let args = std::env::args_os().collect::<Vec<_>>();
-    let json_errors = args
-        .iter()
-        .any(|arg| arg == "--json" || arg == "--pretty" || arg == "--jsonl");
+    let json_errors = args.iter().enumerate().any(|(index, arg)| {
+        arg == "--json"
+            || arg == "--pretty"
+            || arg == "--jsonl"
+            || arg == "--format=json"
+            || arg == "--format=jsonl"
+            || (arg == "--format"
+                && args
+                    .get(index + 1)
+                    .is_some_and(|value| value == "json" || value == "jsonl"))
+    });
     let pretty_errors = args.iter().any(|arg| arg == "--pretty");
 
     if let Err(err) = run() {
@@ -161,7 +173,11 @@ fn run() -> Result<()> {
             };
             lingxia_control_commands::browser::execute(&context, options)
         }
-        Commands::Lxapp(options) => {
+        Commands::Lxapp(mut options) => {
+            let selector = match options.take_session() {
+                Some(query) => SessionSelector { query: Some(query) },
+                None => selector,
+            };
             if lxapp::handle_pre_session(&std::env::current_dir()?, &options)? {
                 return Ok(());
             }
@@ -190,7 +206,7 @@ fn run() -> Result<()> {
                 options,
             ))
         }
-        Commands::App(options) => {
+        Commands::Host(options) => {
             let info = resolve(&selector)?;
             let transport = client::DevSession::new(&info.ws_url);
             let context = lingxia_control_commands::app::AppContext {
@@ -221,11 +237,14 @@ fn run() -> Result<()> {
         // Session test runner: the handler owns process exit (run state
         // becomes the exit code).
         Commands::Test(options) => {
+            if let Some(test::TestCommand::Report(report)) = &options.command {
+                return test_report::execute(report);
+            }
             if options.list_presets {
-                return test_preset::list(&cwd, options.json || options.pretty);
+                return test_preset::list(&cwd, options.machine());
             }
             if options.print_args {
-                return test_preset::print_args(&argv, options.json || options.pretty);
+                return test_preset::print_args(&argv, options.machine());
             }
             let info = resolve(&selector).map_err(|err| {
                 if test::looks_unreachable(&err) {
@@ -247,6 +266,32 @@ mod tests {
         assert!(Cli::try_parse_from(["lxdev", "attach", "ws://host:39000"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "detach", "host"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "--ws", "ws://host:39000", "session"]).is_err());
+    }
+
+    #[test]
+    fn the_host_surface_is_lxdev_host_and_app_is_gone() {
+        for argv in [
+            vec!["lxdev", "host", "windows", "--json"],
+            vec!["lxdev", "host", "screenshot", "-o", "-"],
+            vec!["lxdev", "host", "applink", "https://example.com/x"],
+            vec!["lxdev", "--session", "demo", "host", "doctor"],
+        ] {
+            assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
+        }
+        // Renamed without an alias: `app` is not a command any more.
+        assert!(Cli::try_parse_from(["lxdev", "app", "windows"]).is_err());
+    }
+
+    #[test]
+    fn test_report_needs_no_entry_or_session() {
+        let cli = Cli::try_parse_from(["lxdev", "test", "report", "--failures"]).unwrap();
+        let Commands::Test(options) = cli.command else {
+            panic!("expected test command");
+        };
+        assert!(matches!(
+            options.command,
+            Some(test::TestCommand::Report(_))
+        ));
     }
 
     #[test]

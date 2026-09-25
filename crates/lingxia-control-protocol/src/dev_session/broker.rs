@@ -66,6 +66,12 @@ pub struct SessionInfo {
     pub executable: String,
     pub ws_url: String,
     pub log_file: String,
+    /// Stable alias given with `lingxia dev --name`; `--session` accepts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// Build of the `lingxia` that owns the session (`0.19.0 (abc1234 …)`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// Which build a broker process runs. A per-user broker outlives the
@@ -144,7 +150,8 @@ pub enum BrokerProbe {
 enum Request {
     Register {
         v: u32,
-        session: SessionInfo,
+        // Boxed: the record dwarfs the other requests.
+        session: Box<SessionInfo>,
     },
     List {
         v: u32,
@@ -419,7 +426,7 @@ fn serve_connection(
                         );
                         return;
                     }
-                    live.push(session);
+                    live.push(*session);
                 }
                 let _ = write_json(
                     reader.get_mut(),
@@ -583,7 +590,7 @@ pub fn register_session(
                 reader.get_mut(),
                 &Request::Register {
                     v: PROTOCOL_VERSION,
-                    session: session.clone(),
+                    session: Box::new(session.clone()),
                 },
             )
             .is_ok()
@@ -627,6 +634,8 @@ mod tests {
             executable: "/usr/local/bin/lingxia".to_string(),
             ws_url: "ws://127.0.0.1:1".to_string(),
             log_file: "/tmp/p/.lingxia/logs/x.jsonl".to_string(),
+            name: None,
+            build: None,
         }
     }
 
@@ -634,7 +643,7 @@ mod tests {
     fn wire_roundtrip() {
         let req = Request::Register {
             v: PROTOCOL_VERSION,
-            session: session("abc123"),
+            session: Box::new(session("abc123")),
         };
         let json = serde_json::to_string(&req).unwrap();
         let back: Request = serde_json::from_str(&json).unwrap();
@@ -694,7 +703,7 @@ mod tests {
         #[serde(tag = "op", rename_all = "snake_case")]
         #[allow(dead_code)]
         enum OldRequest {
-            Register { v: u32, session: SessionInfo },
+            Register { v: u32, session: Box<SessionInfo> },
             List { v: u32 },
         }
         let info = serde_json::to_string(&Request::Info {

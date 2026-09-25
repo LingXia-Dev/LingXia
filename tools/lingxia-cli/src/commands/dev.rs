@@ -83,6 +83,8 @@ pub struct DevExecuteOptions {
     /// Keep a Windows web-target Runner window hidden while it remains automatable.
     pub headless: bool,
     pub background: bool,
+    /// `--name`: a stable alias `--session` accepts.
+    pub name: Option<String>,
     pub action: Option<DevSessionAction>,
 }
 
@@ -281,6 +283,16 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
         return Ok(());
     }
 
+    if let Some(name) = &options.name {
+        lingxia_control_protocol::dev_session::select::validate_name(name)
+            .map_err(|err| anyhow!(err))?;
+        refuse_taken_name(name, &project_root)?;
+    }
+    log_store::set_session_name(options.name.clone());
+
+    // Fail fast on a CLI / package version skew, before minutes of build.
+    crate::compat::ensure_project(&project_root, &[])?;
+
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
         return spawn_background_dev(&project_root);
     }
@@ -449,6 +461,76 @@ fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Resu
 }
 
 fn spawn_background_dev(project_root: &Path) -> Result<()> {
+    match start_background_session(
+        project_root,
+        background_child_args(),
+        BACKGROUND_START_TIMEOUT,
+        false,
+    )? {
+        Some(session) => {
+            println!("Dev session is ready.");
+            println!("  id: {}", session.session_id);
+            if let Some(name) = &session.name {
+                println!("  name: {name}");
+            }
+            println!("  target: {}", session.target);
+            println!("  ws: {}", session.ws_url);
+            println!("  session log: {}", session.log_file);
+            println!("Use `lxdev logs -f` to follow logs.");
+            println!("Use `{}` to stop it.", stop_hint(project_root, &session));
+        }
+        None => {
+            println!("Background dev process is still starting.");
+            println!("Use `lingxia dev status` to check readiness.");
+        }
+    }
+    Ok(())
+}
+
+/// `lingxia dev stop [SELECTOR]` for `session`, with a selector only when
+/// this project has several sessions — and never an id.
+fn stop_hint(project_root: &Path, session: &log_store::SessionInfo) -> String {
+    let live = log_store::list_sessions(project_root).unwrap_or_default();
+    match lingxia_control_protocol::dev_session::select::hint_selector(&live, session, project_root)
+    {
+        Some(selector) => format!("lingxia dev stop {selector}"),
+        None => "lingxia dev stop".to_string(),
+    }
+}
+
+/// A name must pick out one session.
+fn refuse_taken_name(name: &str, project_root: &Path) -> Result<()> {
+    let root = log_store::canonical_project_root(project_root);
+    let all = lingxia_control_protocol::dev_session::broker::list_sessions_spawning(
+        &log_store::spawn_broker,
+    )
+    .unwrap_or_default();
+    if let Some(taken) = all.iter().find(|session| {
+        session
+            .name
+            .as_deref()
+            .is_some_and(|other| other.eq_ignore_ascii_case(name))
+            && session.project_root != root
+    }) {
+        return Err(anyhow!(
+            "session name {name:?} is taken by the {} session of {}; pick another --name",
+            taken.target,
+            taken.project_root
+        ));
+    }
+    Ok(())
+}
+
+/// Start `lingxia <child_args>` as a detached background session owner and
+/// wait until its session is ready. `None` if it is still starting after
+/// `ready_within` — when `stop_if_not_ready`, the owner is then terminated
+/// with everything it started, so no session comes up after the caller left.
+pub(crate) fn start_background_session(
+    project_root: &Path,
+    child_args: Vec<OsString>,
+    ready_within: Duration,
+    stop_if_not_ready: bool,
+) -> Result<Option<log_store::SessionInfo>> {
     let log_dir = log_store::dev_dir(project_root).join("background");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create {}", log_dir.display()))?;
@@ -469,7 +551,7 @@ fn spawn_background_dev(project_root: &Path) -> Result<()> {
 
     let mut command = Command::new(env::current_exe().context("Failed to resolve current exe")?);
     command
-        .args(background_child_args())
+        .args(child_args)
         .current_dir(project_root)
         .env(BACKGROUND_CHILD_ENV, "1")
         .stdin(Stdio::null())
@@ -487,22 +569,12 @@ fn spawn_background_dev(project_root: &Path) -> Result<()> {
     println!("Started background dev process pid {pid}.");
     println!("  log: {}", log_path.display());
 
-    match wait_for_background_session(project_root, &mut child, started_at)? {
-        Some(session) => {
-            println!("Dev session is ready.");
-            println!("  id: {}", session.session_id);
-            println!("  target: {}", session.target);
-            println!("  ws: {}", session.ws_url);
-            println!("  session log: {}", session.log_file);
-            println!("Use `lxdev logs -f` to follow logs.");
-            println!("Use `lingxia dev stop {}` to stop it.", session.session_id);
-        }
-        None => {
-            println!("Background dev process is still starting.");
-            println!("Use `lingxia dev status` to check readiness.");
-        }
+    let ready = wait_for_background_session(project_root, &mut child, started_at, ready_within)?;
+    if ready.is_none() && stop_if_not_ready {
+        terminate_process_tree(&mut System::new(), sysinfo::Pid::from_u32(child.id()));
+        let _ = child.wait();
     }
-    Ok(())
+    Ok(ready)
 }
 
 #[cfg(unix)]
@@ -545,8 +617,9 @@ fn wait_for_background_session(
     project_root: &Path,
     child: &mut Child,
     started_at: u64,
+    ready_within: Duration,
 ) -> Result<Option<log_store::SessionInfo>> {
-    let deadline = std::time::Instant::now() + BACKGROUND_START_TIMEOUT;
+    let deadline = std::time::Instant::now() + ready_within;
     loop {
         if let Some(status) = child
             .try_wait()
@@ -582,6 +655,7 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
                 let state = log_store::session_state(session);
                 serde_json::json!({
                     "session_id": session.session_id,
+                    "name": session.name,
                     "pid": session.pid,
                     "target": session.target,
                     "started_at": session.started_at,
@@ -603,14 +677,15 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
     }
 
     println!(
-        "{:<8}  {:<8}  {:<8}  {:<19}  {:<22}  PID",
-        "ID", "STATE", "TARGET", "STARTED", "WS"
+        "{:<8}  {:<12}  {:<8}  {:<8}  {:<19}  {:<22}  PID",
+        "ID", "NAME", "STATE", "TARGET", "STARTED", "WS"
     );
     for session in &sessions {
         let state = log_store::session_state(session).as_str();
         println!(
-            "{:<8}  {:<8}  {:<8}  {:<19}  {:<22}  {}",
+            "{:<8}  {:<12}  {:<8}  {:<8}  {:<19}  {:<22}  {}",
             session.session_id,
+            session.name.as_deref().unwrap_or("-"),
             state,
             session.target,
             format_started(session.started_at),
@@ -626,6 +701,12 @@ fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
 
 fn stop_session(project_root: &Path, selector: Option<String>) -> Result<()> {
     let session = log_store::resolve_session(project_root, selector.as_deref())?;
+    stop_session_info(&session)
+}
+
+/// Stop `session`: a graceful shutdown request, then its owner process.
+pub(crate) fn stop_session_info(session: &log_store::SessionInfo) -> Result<()> {
+    let session = session.clone();
     println!(
         "Stopping {} dev session {}...",
         session.target, session.session_id
@@ -952,7 +1033,7 @@ fn print_dev_banner(label: &str, stop_hint: &str, extra: &[(&str, &str)]) {
     println!(
         "  {}  {}   (run from the project root; --session to pick one)",
         "Control:".bold(),
-        "lxdev <logs | lxapp | app | browser>".cyan(),
+        "lxdev <logs | lxapp | host | browser | test>".cyan(),
     );
     println!("  {}  {}", "Stop:".bold(), stop_hint.cyan());
     println!();

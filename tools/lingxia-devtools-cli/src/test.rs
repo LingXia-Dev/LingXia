@@ -6,7 +6,7 @@ use crate::client::CommandError;
 use crate::client::{CommandTimeout, execute_command, execute_command_until, max_poll_wait};
 use crate::project::SessionInfo;
 use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
-use crate::test_secrets::{RunSecrets, SECRET_ARGS_KEY};
+use crate::test_secrets::{ArgSources, RunSecrets, SECRET_ARGS_KEY};
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -31,144 +31,258 @@ const DEFAULT_CASE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ARTIFACT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 
-pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `lingxia dev --background`, then re-run `lxdev test`.";
+pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `lingxia dev --background`, then re-run `lxdev test` — or run it all at once with `lingxia test`.";
+
+const TEST_AFTER_HELP: &str = "\
+Examples:
+  lxdev test tests/                              run every *.test.ts under tests/
+  lxdev test tests/ --grep checkout --tag '!slow'
+  lxdev test --preset ci                         arguments from lxdev.json (test.presets)
+  lxdev test tests/ --profile auth --profile-save  run on a saved sign-in, refresh it on pass
+  lxdev test tests/ --secrets-file .env.test     secret args from a gitignored dotenv file
+  lxdev test tests/ --last-failed                rerun what failed in test-results/latest
+  lxdev test report --failures                   show the last run's failures again
+  lxdev test --cancel-active                     release a run left by a dead client
+
+Specs import `spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and
+`LXDEV_SECRET_<KEY>` environment variables add --arg / --secret-arg values.
+One-shot in CI (start a session, run, stop it): `lingxia test`.
+
+Exit codes:
+  0    every selected spec passed
+  1    a spec failed or timed out, the run was incomplete, or it could not run
+  2    invalid arguments
+  130  interrupted (Ctrl-C)";
+
+/// `lxdev test --format`.
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OutputFormat {
+    /// Live progress and a summary on stderr
+    #[default]
+    Text,
+    /// One final JSON object on stdout
+    Json,
+    /// Versioned JSONL events, then a final result, on stdout
+    Jsonl,
+}
 
 #[derive(Args)]
 // A preset's arguments come first: the command line may repeat a flag of
 // it, and the last one wins.
 #[command(args_override_self = true)]
-#[command(after_long_help = "Pass a file or a directory of *.test.ts files.\n\
-Import spec from @lingxia/test (or test from @rongjs/test).\n\
-Example: lxdev test tests/ --grep home\n\
-Named argument lists live in lxdev.json (test.presets): lxdev test tests/ --preset ci\n\
-Recover a session held by an abandoned run: lxdev test --cancel-active")]
+#[command(args_conflicts_with_subcommands = true, subcommand_negates_reqs = true)]
+#[command(after_long_help = TEST_AFTER_HELP)]
 pub struct TestOptions {
+    #[command(subcommand)]
+    pub command: Option<TestCommand>,
+
     /// Test entry file, or a directory of `*.test.ts` files. Omit it with
-    /// `--cancel-active` to only cancel the session's active run.
-    #[arg(required_unless_present_any = ["cancel_active", "list_presets", "print_args"])]
+    /// `--cancel-active` to only cancel the session's active run
+    #[arg(
+        required_unless_present_any = ["cancel_active", "list_presets", "print_args"],
+        help_heading = "Selection"
+    )]
     pub entry: Option<PathBuf>,
 
-    /// Put this preset's arguments from lxdev.json (`test.presets`) in the
-    /// project root before the command line's: repeatable flags add up, a
-    /// flag given on the command line wins
-    #[arg(long, value_name = "NAME")]
-    pub preset: Option<String>,
-
-    /// List the presets of lxdev.json and exit
-    #[arg(long)]
-    pub list_presets: bool,
-
-    /// Print the effective arguments (preset, then command line) with
-    /// secret values masked, and exit
-    #[arg(long)]
-    pub print_args: bool,
-
-    /// Whole-run budget in seconds. Default: scaled to the selection,
-    /// max(300, planned specs × 30), up to the 3600s runtime ceiling
-    #[arg(long, value_parser = parse_timeout_secs)]
-    timeout_secs: Option<u64>,
-
-    /// Run the selected specs in a random order to expose order dependence.
-    /// Prints the seed; pass `--shuffle=SEED` to reproduce an order
-    #[arg(long, value_name = "SEED", num_args = 0..=1, default_missing_value = "random", value_parser = parse_shuffle)]
-    shuffle: Option<ShuffleSeed>,
-
-    /// Run every selected spec N times (1-100) to expose flakiness
-    #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=100))]
-    repeat_each: u8,
-
-    /// Key=value string exposed as test.args (repeatable). Keys named like
-    /// credentials (password, secret, token, api key) show as `***` in the
-    /// report's arg list.
-    #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
-    args: Vec<(String, String)>,
-
-    /// Like `--arg`, for a secret: its value is replaced by `***` wherever
-    /// it would appear in reports, events and attachments
-    #[arg(long = "secret-arg", value_name = "KEY=VALUE", value_parser = parse_key_value)]
-    secret_args: Vec<(String, String)>,
-
     /// Run only specs whose title or id matches this regex
-    #[arg(long, value_name = "PATTERN")]
+    #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
     pub grep: Option<String>,
+
+    /// Select one exact stable spec id
+    #[arg(long, help_heading = "Selection")]
+    id: Option<String>,
 
     /// Run only specs whose tags match (repeatable: every --tag must hold).
     /// `a,b` is a or b; `!a` is without a. An untagged spec fails `--tag a`
     /// and passes `--tag '!a'`
-    #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr)]
+    #[arg(long = "tag", value_name = "EXPR", value_parser = crate::test_contract::parse_tag_expr, help_heading = "Selection")]
     tags: Vec<String>,
 
-    /// Summarize which ids of this list (JSON or YAML) the specs' `covers`
-    /// reach, which have no spec, and which `covers` ids it lacks
-    #[arg(long, value_name = "FILE")]
-    covers_manifest: Option<PathBuf>,
-
-    /// Check Logic fetch responses against this OpenAPI 3.0/3.1 document
-    /// (JSON or YAML, repeatable): a routed response that breaks it fails its
-    /// spec, a server response is a warning. Enables `toMatchSchema`
-    #[arg(long = "openapi", value_name = "SPEC")]
-    openapi: Vec<PathBuf>,
-
-    /// Fail if any spec.only is registered
-    #[arg(long)]
-    pub forbid_only: bool,
-
-    /// Retry failed specs (requires a spec.reset hook for their file)
-    #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=10))]
-    retries: u8,
+    /// Rerun the failed specs of an earlier run: its report.json or run
+    /// directory. Without a value, the last run (`test-results/latest`)
+    #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST, help_heading = "Selection")]
+    last_failed: Option<PathBuf>,
 
     /// Partition stable spec ids across independent sessions (INDEX/TOTAL)
-    #[arg(long)]
+    #[arg(long, help_heading = "Selection")]
     shard: Option<String>,
 
-    /// Rerun failed ids from an earlier report.json
-    #[arg(long, value_name = "REPORT")]
-    last_failed: Option<PathBuf>,
+    /// Retry failed specs (requires a spec.reset hook for their file)
+    #[arg(long, default_value_t = 0, value_parser = clap::value_parser!(u8).range(0..=10), help_heading = "Execution")]
+    retries: u8,
+
+    /// Run every selected spec N times (1-100) to expose flakiness
+    #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=100), help_heading = "Execution")]
+    repeat_each: u8,
+
+    /// Run the selected specs in a random order to expose order dependence.
+    /// Prints the seed; pass `--shuffle=SEED` to reproduce an order
+    #[arg(long, value_name = "SEED", num_args = 0..=1, default_missing_value = "random", value_parser = parse_shuffle, help_heading = "Execution")]
+    shuffle: Option<ShuffleSeed>,
+
+    /// Whole-run budget in seconds. Default: scaled to the selection,
+    /// max(300, planned specs × 30), up to the 3600s runtime ceiling
+    #[arg(long, value_parser = parse_timeout_secs, help_heading = "Execution")]
+    timeout_secs: Option<u64>,
+
+    /// Fail if any spec.only is registered
+    #[arg(long, help_heading = "Execution")]
+    pub forbid_only: bool,
+
+    /// Allow a selection with no matching specs
+    #[arg(long, visible_alias = "allow-no-tests", help_heading = "Execution")]
+    pass_with_no_tests: bool,
 
     /// Cancel an automation run left active by an earlier `lxdev test`, then
     /// start. Only needed when a previous run's client died mid-run. Without
-    /// an entry, only cancel the active run.
-    #[arg(long)]
+    /// an entry, only cancel the active run
+    #[arg(long, help_heading = "Execution")]
     cancel_active: bool,
 
-    /// Allow a selection with no matching specs
-    #[arg(long)]
-    pass_with_no_tests: bool,
+    /// Key=value string exposed as test.args (repeatable). Keys named like
+    /// credentials (password, secret, token, api key) show as `***` in the
+    /// report's arg list
+    #[arg(long = "arg", value_name = "KEY=VALUE", value_parser = parse_key_value, help_heading = "Inputs")]
+    args: Vec<(String, String)>,
 
-    /// Select one exact stable spec id
-    #[arg(long)]
-    id: Option<String>,
+    /// Like `--arg`, for a secret: its value is replaced by `***` wherever
+    /// it would appear in reports, events and attachments
+    #[arg(long = "secret-arg", value_name = "KEY=VALUE", value_parser = parse_key_value, help_heading = "Inputs")]
+    secret_args: Vec<(String, String)>,
 
-    /// Include steps, console messages and individual artifact transfers
-    #[arg(long)]
-    verbose: bool,
+    /// Read secret args from a dotenv file (KEY=VALUE lines; keep it out of
+    /// git, e.g. `.env.test`). Each is redacted like `--secret-arg`, which
+    /// wins over it
+    #[arg(long, value_name = "PATH", help_heading = "Inputs")]
+    secrets_file: Option<PathBuf>,
 
-    /// Stream versioned JSONL events and a final result
-    #[arg(long, conflicts_with_all = ["json", "pretty"])]
-    jsonl: bool,
+    /// Put this preset's arguments from lxdev.json (`test.presets`) in the
+    /// project root before the command line's: repeatable flags add up, a
+    /// flag given on the command line wins
+    #[arg(long, value_name = "NAME", help_heading = "Inputs")]
+    pub preset: Option<String>,
 
-    /// Directory receiving attached artifacts
-    /// (default: test-results/<run-id>)
-    #[arg(long, value_name = "PATH")]
-    output_dir: Option<PathBuf>,
+    /// List the presets of lxdev.json and exit
+    #[arg(long, help_heading = "Inputs")]
+    pub list_presets: bool,
 
-    /// Emit one final compact JSON object instead of live output
-    #[arg(long, conflicts_with = "pretty")]
-    pub json: bool,
-
-    /// Emit one final pretty JSON object instead of live output
-    #[arg(long, conflicts_with = "json")]
-    pub pretty: bool,
+    /// Print the effective arguments (lxdev.json defaults, preset, then
+    /// command line) with secret values masked, and exit
+    #[arg(long, help_heading = "Inputs")]
+    pub print_args: bool,
 
     #[command(flatten)]
     state: crate::test_state::StateOptions,
 
+    /// Check Logic fetch responses against this OpenAPI 3.0/3.1 document
+    /// (JSON or YAML, repeatable): a routed response that breaks it fails its
+    /// spec, a server response is a warning. Enables `toMatchSchema`
+    #[arg(long = "openapi", value_name = "SPEC", help_heading = "Contract")]
+    openapi: Vec<PathBuf>,
+
+    /// Summarize which ids of this list (JSON or YAML) the specs' `covers`
+    /// reach, which have no spec, and which `covers` ids it lacks
+    #[arg(long, value_name = "FILE", help_heading = "Contract")]
+    covers_manifest: Option<PathBuf>,
+
+    /// Directory receiving the report and attached artifacts
+    /// (default: test-results/<run-id>, and test-results/latest points at it)
+    #[arg(long, value_name = "PATH", help_heading = "Output")]
+    output_dir: Option<PathBuf>,
+
+    /// Output: `text` (live progress), `json` (one final object) or `jsonl`
+    /// (streamed events and a final result)
+    #[arg(long, value_enum, value_name = "FORMAT", help_heading = "Output")]
+    format: Option<OutputFormat>,
+
+    /// Indent `--format json`
+    #[arg(long, help_heading = "Output")]
+    pub pretty: bool,
+
+    /// Include steps, console messages and individual artifact transfers
+    #[arg(long, help_heading = "Output")]
+    verbose: bool,
+
     /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
     /// a scenario file `t.app.network.scenario()` and `lxdev scenario use`
-    /// can replay. Credentials and --secret-arg values are
-    /// redacted.
-    #[arg(long, value_name = "DIR")]
+    /// can replay. Credentials and secret values are redacted
+    #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,
+
+    /// Deprecated: use `--format json`
+    #[arg(long, hide = true, conflicts_with_all = ["jsonl", "format"])]
+    pub json: bool,
+
+    /// Deprecated: use `--format jsonl`
+    #[arg(long, hide = true, conflicts_with_all = ["json", "format"])]
+    jsonl: bool,
+}
+
+/// `lxdev test <subcommand>`.
+#[derive(clap::Subcommand)]
+pub enum TestCommand {
+    /// Print an earlier run's summary, failures and Rerun lines again
+    Report(ReportOptions),
+}
+
+#[derive(Args)]
+pub struct ReportOptions {
+    /// A run directory, its report.json, or `latest`
+    #[arg(default_value = LATEST)]
+    pub run: PathBuf,
+
+    /// Only the failed specs
+    #[arg(long)]
+    pub failures: bool,
+
+    /// `text`, `json` (report.json, or its failed cases with --failures) or
+    /// `junit` (the run's junit.xml)
+    #[arg(long, value_enum, default_value_t = ReportFormat::Text)]
+    pub format: ReportFormat,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReportFormat {
+    Text,
+    Json,
+    Junit,
+}
+
+/// The pointer to the last run, and the value that means it.
+pub const LATEST: &str = "latest";
+
+impl TestOptions {
+    /// The output format, with the deprecated flags mapped onto it.
+    pub fn output(&self) -> OutputFormat {
+        match (self.format, self.json, self.jsonl, self.pretty) {
+            (Some(format), ..) => format,
+            (None, true, ..) => OutputFormat::Json,
+            (None, _, true, _) => OutputFormat::Jsonl,
+            (None, _, _, true) => OutputFormat::Json,
+            _ => OutputFormat::Text,
+        }
+    }
+
+    /// Whether the output is for a machine (no live text on stderr).
+    pub fn machine(&self) -> bool {
+        self.output() != OutputFormat::Text
+    }
+
+    /// What to say about a deprecated output flag, once, on stderr.
+    pub fn deprecation(&self) -> Option<&'static str> {
+        if self.format.is_some() {
+            return None;
+        }
+        if self.json {
+            Some("--json is deprecated; use --format json")
+        } else if self.jsonl {
+            Some("--jsonl is deprecated; use --format jsonl")
+        } else if self.pretty {
+            Some("--pretty without --format is deprecated; use --format json --pretty")
+        } else {
+            None
+        }
+    }
 }
 
 /// The ceiling is the automation runtime's own run budget
@@ -275,7 +389,10 @@ pub fn looks_unreachable(err: &anyhow::Error) -> bool {
 }
 
 fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
-    let machine = options.json || options.pretty || options.jsonl;
+    let machine = options.machine();
+    if let Some(line) = options.deprecation() {
+        eprintln!("{} {line}", "warning".yellow());
+    }
     let Some(entry) = options.entry.clone() else {
         return cancel_active_only(info, &options);
     };
@@ -292,7 +409,16 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     if let Some(dir) = &options.record_network {
         ensure_writable_dir(dir)?;
     }
-    warn_package_version(&entry, machine);
+    let last_failed = options
+        .last_failed
+        .as_deref()
+        .map(resolve_report_path)
+        .transpose()?;
+    let sources = ArgSources::gather(std::env::vars(), options.secrets_file.as_deref())?;
+    check_versions(info, &entry, machine)?;
+    // Held until the run ends: a save during the run neither rebuilds the
+    // app's output nor reloads the app under a spec.
+    let watch_pause = WatchPause::acquire(&info.ws_url);
     let bundle = bundle_test_path(&entry)?;
     if !machine {
         eprintln!(
@@ -303,9 +429,12 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         );
     }
 
-    let secrets = RunSecrets::new(&options.args, &options.secret_args);
+    let secrets = RunSecrets::with_sources(&options.args, &options.secret_args, sources);
     let args = secrets.spec_args();
     let mut control = run_control(&options, &info.target, &secrets)?;
+    if let Some(ids) = last_failed.as_deref().map(failed_ids).transpose()? {
+        control.insert("ids".to_string(), serde_json::to_string(&ids)?);
+    }
     let inputs = crate::test_contract::RunInputs::load(
         options.covers_manifest.as_deref(),
         &options.openapi,
@@ -341,6 +470,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             }
         })?;
     let run_id = start.run_id;
+    watch_pause.bind(&run_id);
     // Released after saving; any other way out discards the host's copy.
     let retained_profile = isolation
         .as_ref()
@@ -382,9 +512,11 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         let interrupts = interrupts.clone();
         let ws_url = info.ws_url.clone();
         let run_id = run_id.clone();
+        let lease = watch_pause.lease().to_string();
         ctrlc::set_handler(move || {
             if interrupts.fetch_add(1, Ordering::SeqCst) >= 1 {
                 send_cancel(&ws_url, &run_id, "client_interrupt");
+                resume_watch(&ws_url, &lease);
                 std::process::exit(130);
             }
         })
@@ -399,7 +531,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         &output_dir,
         machine,
         options.verbose,
-        options.jsonl,
+        options.output() == OutputFormat::Jsonl,
         &interrupts,
         Duration::from_secs(host_budget_secs(&options)),
         &secrets,
@@ -503,30 +635,231 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             }
         }
     }
-    report(
-        &outcome,
-        &bundle,
-        &run_id,
-        &output_dir,
-        &options,
-        &entry,
-        &info.session_id,
-        &secrets,
-    );
+    let rerun = rerun_base(info, &entry, &options, &secrets);
+    record_rerun(&output_dir.join("report.json"), &rerun);
+    // The run is over: saves made meanwhile rebuild once, now.
+    drop(watch_pause);
+    // `test-results/latest` names the last run wherever its report went.
+    update_latest(Path::new(DEFAULT_OUTPUT_ROOT), &output_dir);
+    let interrupted = interrupts.load(Ordering::SeqCst) > 0;
+    report(&outcome, &bundle, &run_id, &output_dir, &options, &rerun);
+    if !machine && needs_recovery(&outcome, interrupted) {
+        eprintln!(
+            "{} the app under test may not be running; restart it with `lxdev lxapp restart`",
+            "Recover:".yellow()
+        );
+    }
 
     if let Some(isolation) = &isolation
         && let Err(error) =
             isolation.finish(retained_profile, outcome.state, outcome.partial, machine)
     {
-        eprintln!("{} --save-state: {error:#}", "error".red());
+        eprintln!("{} --profile-save: {error:#}", "error".red());
         outcome.partial = true;
     }
-    let exit_code = match outcome.state {
+    std::process::exit(exit_code(&outcome, interrupted));
+}
+
+/// The process exit code of a finished run (see the `--help` table).
+fn exit_code(outcome: &Outcome, interrupted: bool) -> i32 {
+    match outcome.state {
         TestRunState::Passed if !outcome.partial => 0,
-        TestRunState::Cancelled if interrupts.load(Ordering::SeqCst) > 0 => 130,
+        TestRunState::Cancelled if interrupted => 130,
         _ => 1,
+    }
+}
+
+/// Whether the run ended in a way that can leave the app under test closed
+/// or wedged: the runtime could not reopen it, or the run itself broke.
+fn needs_recovery(outcome: &Outcome, interrupted: bool) -> bool {
+    outcome.app_not_live
+        || (!interrupted
+            && matches!(
+                outcome.state,
+                TestRunState::TimedOut | TestRunState::InternalError
+            ))
+}
+
+/// Refuse to run across a version skew between lxdev, the session's host and
+/// the project's `@lingxia/*` packages (see `lingxia doctor --project`).
+fn check_versions(info: &SessionInfo, entry: &Path, machine: bool) -> Result<()> {
+    use lingxia_control_protocol::dev_session::compat;
+    let cli = compat::Component::new("lxdev", env!("LXDEV_BUILD_VERSION"));
+    let mut hosts = Vec::new();
+    if let Some(build) = &info.build {
+        hosts.push(compat::Component::new("lingxia", build.as_str()));
+    }
+    if let Some(build) = crate::project::probe_session(info).runtime_build {
+        let name = if info.target == "lxapp" {
+            "Runner"
+        } else {
+            "host"
+        };
+        hosts.push(compat::Component::new(name, build.version));
+    }
+    let packages = compat::installed_packages(&find_project_root(entry));
+    match compat::check(&cli, &hosts, &packages) {
+        Ok(()) => Ok(()),
+        Err(skew) if compat::skew_allowed() => {
+            if !machine {
+                eprintln!("{} {skew}", "warning".yellow());
+            }
+            Ok(())
+        }
+        Err(skew) => Err(anyhow!("{skew}")),
+    }
+}
+
+/// Pauses the dev session's source watcher for this run (see
+/// `session.watch.pause`). Every way out resumes it: the drop, the host
+/// seeing the bound run end, and — for a client killed outright — the lease
+/// lapsing. A host that predates the method is left to its older
+/// behaviour (it defers reloads while it sees a run active).
+struct WatchPause {
+    ws_url: String,
+    lease: String,
+    held: bool,
+}
+
+/// Longer than one poll's wait, which is how the host renews a bound lease.
+const WATCH_LEASE_TTL: Duration = Duration::from_secs(300);
+
+impl WatchPause {
+    fn acquire(ws_url: &str) -> Self {
+        let lease = format!(
+            "lxdev-test-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|elapsed| elapsed.as_nanos())
+                .unwrap_or_default()
+        );
+        let held = Self::pause(ws_url, &lease, None);
+        Self {
+            ws_url: ws_url.to_string(),
+            lease,
+            held,
+        }
+    }
+
+    fn pause(ws_url: &str, lease: &str, run_id: Option<&str>) -> bool {
+        execute_command(
+            ws_url,
+            methods::session::watch::PAUSE,
+            serde_json::to_value(lingxia_control_protocol::dev_session::WatchPauseArgs {
+                lease: lease.to_string(),
+                ttl_ms: WATCH_LEASE_TTL.as_millis() as u64,
+                run_id: run_id.map(str::to_string),
+            })
+            .ok(),
+        )
+        .is_ok()
+    }
+
+    /// Tie the lease to the started run: its polls renew it, its end
+    /// releases it.
+    fn bind(&self, run_id: &str) {
+        if self.held {
+            Self::pause(&self.ws_url, &self.lease, Some(run_id));
+        }
+    }
+
+    fn lease(&self) -> &str {
+        &self.lease
+    }
+}
+
+impl Drop for WatchPause {
+    fn drop(&mut self) {
+        if std::mem::replace(&mut self.held, false) {
+            resume_watch(&self.ws_url, &self.lease);
+        }
+    }
+}
+
+fn resume_watch(ws_url: &str, lease: &str) {
+    let _ = execute_command(
+        ws_url,
+        methods::session::watch::RESUME,
+        serde_json::to_value(lingxia_control_protocol::dev_session::WatchResumeArgs {
+            lease: lease.to_string(),
+        })
+        .ok(),
+    );
+}
+
+/// `--last-failed` / `lxdev test report` input: `latest`, a run directory,
+/// or a report.json.
+pub(crate) fn resolve_report_path(path: &Path) -> Result<PathBuf> {
+    let run_dir = if path == Path::new(LATEST) {
+        read_latest(Path::new(DEFAULT_OUTPUT_ROOT)).ok_or_else(|| {
+            anyhow!(
+                "no previous run: {}/{LATEST} does not exist yet (pass a report.json or run directory)",
+                DEFAULT_OUTPUT_ROOT
+            )
+        })?
+    } else {
+        path.to_path_buf()
     };
-    std::process::exit(exit_code);
+    let report = if run_dir.is_dir() {
+        run_dir.join("report.json")
+    } else {
+        run_dir
+    };
+    if !report.is_file() {
+        bail!("{} does not exist", report.display());
+    }
+    Ok(report)
+}
+
+/// The ids of the specs that failed in `report`.
+fn failed_ids(report: &Path) -> Result<Vec<String>> {
+    let previous: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(report).with_context(|| format!("cannot read {}", report.display()))?,
+    )
+    .with_context(|| format!("{} is not a report", report.display()))?;
+    Ok(previous["cases"]
+        .as_array()
+        .ok_or_else(|| anyhow!("{} has no cases", report.display()))?
+        .iter()
+        .filter(|c| matches!(c["status"].as_str(), Some("failed" | "timeout" | "xpass")))
+        .filter_map(|c| c["id"].as_str().map(str::to_string))
+        .collect())
+}
+
+/// Point `<root>/latest` at `run_dir`: a symlink, or on Windows (where one
+/// needs a privilege) a file holding the path.
+fn update_latest(root: &Path, run_dir: &Path) {
+    let link = root.join(LATEST);
+    let target = std::fs::canonicalize(run_dir).unwrap_or_else(|_| run_dir.to_path_buf());
+    let _ = std::fs::create_dir_all(root);
+    if let Ok(meta) = std::fs::symlink_metadata(&link) {
+        if meta.is_dir() {
+            // Somebody's real directory: leave it alone.
+            return;
+        }
+        let _ = std::fs::remove_file(&link);
+    }
+    #[cfg(unix)]
+    {
+        let _ = std::os::unix::fs::symlink(&target, &link);
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = std::fs::write(&link, target.to_string_lossy().as_bytes());
+    }
+}
+
+/// The run directory `<root>/latest` points at.
+fn read_latest(root: &Path) -> Option<PathBuf> {
+    let link = root.join(LATEST);
+    let meta = std::fs::symlink_metadata(&link).ok()?;
+    if meta.file_type().is_symlink() || meta.is_dir() {
+        return std::fs::canonicalize(&link).ok();
+    }
+    let text = std::fs::read_to_string(&link).ok()?;
+    let path = PathBuf::from(text.trim());
+    path.is_dir().then_some(path)
 }
 
 /// lxdev's run controls, sent apart from the spec's args so a user `--arg`
@@ -575,17 +908,6 @@ fn run_control(
     }
     if !options.tags.is_empty() {
         control.insert("tags".to_string(), serde_json::to_string(&options.tags)?);
-    }
-    if let Some(path) = &options.last_failed {
-        let previous: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-        let ids = previous["cases"]
-            .as_array()
-            .ok_or_else(|| anyhow!("{} has no cases", path.display()))?
-            .iter()
-            .filter(|c| matches!(c["status"].as_str(), Some("failed" | "timeout" | "xpass")))
-            .filter_map(|c| c["id"].as_str())
-            .collect::<Vec<_>>();
-        control.insert("ids".to_string(), serde_json::to_string(&ids)?);
     }
     if options.pass_with_no_tests {
         control.insert("passWithNoTests".to_string(), "1".to_string());
@@ -812,7 +1134,7 @@ impl Drop for ActiveRun {
 /// `lxdev test --cancel-active` with no entry: ask the host which run holds
 /// the session, and cancel it unless a live client is still polling it.
 fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
-    let machine = options.json || options.pretty || options.jsonl;
+    let machine = options.machine();
     let active: TestActiveResponse =
         execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({})).map_err(
             |error| {
@@ -904,34 +1226,6 @@ fn wait_until_terminal(ws_url: &str, run_id: &str, grace: Duration) -> Option<Te
     }
 }
 
-fn warn_package_version(entry: &Path, machine: bool) {
-    let root = find_project_root(entry);
-    let package_json = root
-        .join("node_modules")
-        .join("@lingxia")
-        .join("test")
-        .join("package.json");
-    let Ok(text) = std::fs::read_to_string(&package_json) else {
-        return;
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
-        return;
-    };
-    let Some(version) = value.get("version").and_then(|item| item.as_str()) else {
-        return;
-    };
-    if version == env!("CARGO_PKG_VERSION") {
-        return;
-    }
-    if !machine {
-        eprintln!(
-            "{} @lingxia/test@{version} does not match lxdev {}; use matching package and CLI versions.",
-            "warning".yellow(),
-            env!("CARGO_PKG_VERSION")
-        );
-    }
-}
-
 struct StreamedCase {
     record: serde_json::Value,
     name: String,
@@ -943,6 +1237,8 @@ struct StreamedCase {
 }
 
 struct Outcome {
+    /// The runtime reported it could not reopen the app under test.
+    app_not_live: bool,
     state: TestRunState,
     result: Option<TestRunResult>,
     console: Vec<(String, String)>,
@@ -1079,6 +1375,7 @@ fn poll_until_terminal(
     let mut artifacts = Vec::new();
     let mut streamed = Vec::new();
     let mut cancel_sent = false;
+    let mut app_not_live = false;
     let mut cancel_deadline: Option<std::time::Instant> = None;
     let mut last_event_at = std::time::Instant::now();
     let mut case_budget = run_timeout;
@@ -1254,6 +1551,9 @@ fn poll_until_terminal(
                     }
                 }
                 TestEventPayload::Diagnostic { phase, message } => {
+                    if phase == "recovery_failed" {
+                        app_not_live = true;
+                    }
                     if !machine {
                         eprintln!("warning ({phase}): {message}");
                     }
@@ -1442,6 +1742,7 @@ fn poll_until_terminal(
         if poll.state.is_terminal() && events_drained {
             run.settled();
             return Ok(Outcome {
+                app_not_live,
                 state: poll.state,
                 result: poll.result.clone(),
                 console,
@@ -1508,11 +1809,9 @@ fn report(
     run_id: &str,
     output_dir: &Path,
     options: &TestOptions,
-    entry: &Path,
-    session_id: &str,
-    secrets: &RunSecrets,
+    rerun: &str,
 ) {
-    let machine = options.json || options.pretty || options.jsonl;
+    let machine = options.machine();
     let duration_ms = outcome
         .result
         .as_ref()
@@ -1569,7 +1868,7 @@ fn report(
                 .collect::<Vec<_>>(),
             "output_dir": output_dir.display().to_string(),
         });
-        let encoded = if options.pretty {
+        let encoded = if options.pretty && options.output() == OutputFormat::Json {
             serde_json::to_string_pretty(&envelope)
         } else {
             serde_json::to_string(&envelope)
@@ -1676,10 +1975,7 @@ fn report(
                 );
             }
             if let Some(id) = case.detail.get("id").and_then(|v| v.as_str()) {
-                eprintln!(
-                    "  Rerun: {}",
-                    rerun_command(session_id, entry, id, options, secrets)
-                );
+                eprintln!("  Rerun: {}", rerun_with_id(rerun, id));
             }
             if options.verbose
                 && let Some(stack) = &error.stack
@@ -1700,22 +1996,37 @@ fn report(
     print_artifact_index(output_dir, &outcome.artifacts);
 }
 
-/// The command that reruns one failed spec with the run's effective flags —
+/// Set by `lingxia test` to the command a rerun hint starts with (its own
+/// flags and a `--`), since the session it ran in is gone afterwards.
+pub const RERUN_PREFIX_ENV: &str = "LXDEV_RERUN_PREFIX";
+
+/// The command that reruns this run's selection with its effective flags —
 /// a preset's included, since they were expanded into `options` — and no
-/// secret values.
-fn rerun_command(
-    session_id: &str,
+/// secret values; append `--id <id>` for one spec. `--session` only when the
+/// default resolution would not reach this session, and never as an id.
+fn rerun_base(
+    info: &SessionInfo,
     entry: &Path,
-    id: &str,
     options: &TestOptions,
     secrets: &RunSecrets,
 ) -> String {
-    let mut command = format!(
-        "lxdev --session {} test {} --id {}",
-        shell_quote(session_id),
-        shell_quote(&entry.to_string_lossy()),
-        shell_quote(id),
-    );
+    let prefix = match std::env::var(RERUN_PREFIX_ENV) {
+        Ok(prefix) if !prefix.trim().is_empty() => prefix.trim().to_string(),
+        _ => match crate::project::hint_selector(info) {
+            Some(selector) => format!("lxdev --session {} test", shell_quote(&selector)),
+            None => "lxdev test".to_string(),
+        },
+    };
+    rerun_command(&prefix, entry, options, secrets)
+}
+
+fn rerun_command(
+    prefix: &str,
+    entry: &Path,
+    options: &TestOptions,
+    secrets: &RunSecrets,
+) -> String {
+    let mut command = format!("{prefix} {}", shell_quote(&entry.to_string_lossy()));
     if let Some(secs) = options.timeout_secs {
         command.push_str(&format!(" --timeout-secs {secs}"));
     }
@@ -1728,6 +2039,31 @@ fn rerun_command(
     command.push_str(&secrets.rerun_flags(shell_quote));
     command.push_str(&options.state.rerun_flags(shell_quote));
     command
+}
+
+pub(crate) fn rerun_with_id(base: &str, id: &str) -> String {
+    format!("{base} --id {}", shell_quote(id))
+}
+
+/// Keep the rerun command in report.json (`meta.rerun`), so `lxdev test
+/// report` can print Rerun lines later.
+fn record_rerun(report: &Path, rerun: &str) {
+    let Ok(bytes) = std::fs::read(report) else {
+        return;
+    };
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return;
+    };
+    let Some(root) = value.as_object_mut() else {
+        return;
+    };
+    let meta = root.entry("meta").or_insert_with(|| json!({}));
+    if let Some(meta) = meta.as_object_mut() {
+        meta.insert("rerun".to_string(), json!(rerun));
+    }
+    if let Ok(bytes) = serde_json::to_vec_pretty(&value) {
+        let _ = std::fs::write(report, bytes);
+    }
 }
 
 /// The report is the deliverable, so name it last and name it absolutely —
@@ -1860,7 +2196,7 @@ fn mapped_error_value(
 /// code, e.g. `failed at page.click [data-testid=save] on page "devices"
 /// (#a1b2) — E_PAGE_NOT_ACTIVE`. Mirrors `failedAt` in `@lingxia/test`;
 /// `None` when the failure names neither an action nor a page.
-fn failed_at(detail: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
+pub(crate) fn failed_at(detail: &serde_json::Map<String, serde_json::Value>) -> Option<String> {
     let action = detail.get("failedAction").and_then(|v| v.as_str());
     let page = detail.get("page").filter(|page| page.is_object());
     if action.is_none() && page.is_none() {
@@ -1887,7 +2223,7 @@ fn failed_at(detail: &serde_json::Map<String, serde_json::Value>) -> Option<Stri
 
 /// `failures[]`: every failed, timed-out or xpass case, flat, with what failed
 /// and where. Same shape as the one `@lingxia/test` writes.
-fn failure_records(cases: &[serde_json::Value]) -> serde_json::Value {
+pub(crate) fn failure_records(cases: &[serde_json::Value]) -> serde_json::Value {
     let failures = cases
         .iter()
         .filter(|case| {
@@ -2349,6 +2685,7 @@ fn interrupted_outcome(
     streamed: Vec<StreamedCase>,
 ) -> Outcome {
     Outcome {
+        app_not_live: false,
         state,
         result: Some(TestRunResult {
             duration_ms: elapsed.as_millis() as u64,
@@ -2684,12 +3021,9 @@ mod lifecycle_tests {
             "60",
             "--openapi",
             "/contract.yaml",
-            "--state",
+            "--profile",
             "auth",
-            "--save-state",
-            "auth",
-            "--save-state-on",
-            "always",
+            "--profile-save=always",
             "--arg",
             "platform=macos",
             "--secret-arg",
@@ -2698,21 +3032,201 @@ mod lifecycle_tests {
             "unit",
         ]);
         let secrets = RunSecrets::new(&options.args, &options.secret_args);
-        let command = rerun_command(
-            "macos",
+        let base = rerun_command(
+            "lxdev test",
             options.entry.as_deref().unwrap(),
-            "HOME-001",
+            &options,
+            &secrets,
+        );
+        let command = rerun_with_id(&base, "HOME-001");
+        assert_eq!(
+            command,
+            "lxdev test '/project/tests/all.test.ts' --timeout-secs 60 \
+             --openapi '/contract.yaml' --arg 'platform=<platform>' \
+             --secret-arg 'token=<token>' --profile 'auth' --profile-save=always \
+             --id 'HOME-001'"
+        );
+        assert!(!command.contains("abc123"));
+        assert!(!command.contains("--session"), "no session id is taught");
+    }
+
+    #[test]
+    fn lingxia_test_sets_the_rerun_command() {
+        let options = options(&["tests/"]);
+        let secrets = RunSecrets::new(&[], &[]);
+        let base = rerun_command(
+            "lingxia test -p macos --",
+            Path::new("tests/"),
             &options,
             &secrets,
         );
         assert_eq!(
-            command,
-            "lxdev --session 'macos' test '/project/tests/all.test.ts' --id 'HOME-001' \
-             --timeout-secs 60 --openapi '/contract.yaml' --arg 'platform=<platform>' \
-             --secret-arg 'token=<token>' --state 'auth' --save-state 'auth' \
-             --save-state-on always"
+            rerun_with_id(&base, "A-1"),
+            "lingxia test -p macos -- 'tests/' --id 'A-1'"
         );
-        assert!(!command.contains("abc123"));
+    }
+
+    #[test]
+    fn the_rerun_command_is_kept_in_the_report() {
+        let dir = tempfile::tempdir().unwrap();
+        let report = dir.path().join("report.json");
+        std::fs::write(&report, r#"{"cases":[],"meta":{"args":{}}}"#).unwrap();
+        record_rerun(&report, "lxdev test 'tests/'");
+        let value: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        assert_eq!(value["meta"]["rerun"], "lxdev test 'tests/'");
+        assert!(value["meta"]["args"].is_object());
+        // No report, nothing to do.
+        record_rerun(&dir.path().join("missing.json"), "x");
+    }
+
+    #[test]
+    fn output_format_replaces_the_json_flags() {
+        assert_eq!(options(&["t"]).output(), OutputFormat::Text);
+        assert_eq!(
+            options(&["t", "--format", "json"]).output(),
+            OutputFormat::Json
+        );
+        assert_eq!(
+            options(&["t", "--format", "jsonl"]).output(),
+            OutputFormat::Jsonl
+        );
+        let pretty = options(&["t", "--format", "json", "--pretty"]);
+        assert!(pretty.machine() && pretty.pretty && pretty.deprecation().is_none());
+        // The 0.18 spellings still work, and say what replaces them.
+        let json = options(&["t", "--json"]);
+        assert_eq!(json.output(), OutputFormat::Json);
+        assert!(json.deprecation().unwrap().contains("--format json"));
+        let jsonl = options(&["t", "--jsonl"]);
+        assert_eq!(jsonl.output(), OutputFormat::Jsonl);
+        assert!(jsonl.deprecation().unwrap().contains("--format jsonl"));
+        let bare_pretty = options(&["t", "--pretty"]);
+        assert_eq!(bare_pretty.output(), OutputFormat::Json);
+        assert!(bare_pretty.deprecation().is_some());
+        assert!(Harness::try_parse_from(["test", "t", "--format", "xml"]).is_err());
+        assert!(Harness::try_parse_from(["test", "t", "--json", "--format", "json"]).is_err());
+        assert!(Harness::try_parse_from(["test", "t", "--json", "--jsonl"]).is_err());
+    }
+
+    #[test]
+    fn help_groups_flags_and_documents_exit_codes() {
+        use clap::CommandFactory;
+        let mut command = Harness::command();
+        let help = command.render_long_help().to_string();
+        for heading in [
+            "Selection:",
+            "Execution:",
+            "Inputs:",
+            "App data:",
+            "Contract:",
+            "Output:",
+            "Exit codes:",
+            "Examples:",
+        ] {
+            assert!(help.contains(heading), "{heading} missing from\n{help}");
+        }
+        for hidden in ["--json ", "--jsonl", "--isolate", "--save-state"] {
+            assert!(!help.contains(hidden), "{hidden} is not advertised");
+        }
+        assert!(help.contains("--allow-no-tests"));
+        assert!(options(&["t", "--allow-no-tests"]).pass_with_no_tests);
+    }
+
+    #[test]
+    fn last_failed_defaults_to_the_latest_run() {
+        assert_eq!(
+            options(&["t", "--last-failed"]).last_failed,
+            Some(PathBuf::from(LATEST))
+        );
+        assert_eq!(
+            options(&["t", "--last-failed", "old/report.json"]).last_failed,
+            Some(PathBuf::from("old/report.json"))
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let run = dir.path().join("r1");
+        std::fs::create_dir_all(&run).unwrap();
+        std::fs::write(
+            run.join("report.json"),
+            r#"{"cases":[{"id":"A","status":"failed"},{"id":"B","status":"passed"},{"id":"C","status":"timeout"}]}"#,
+        )
+        .unwrap();
+        let root = dir.path().join("test-results");
+        update_latest(&root, &run);
+        assert_eq!(
+            read_latest(&root).unwrap(),
+            std::fs::canonicalize(&run).unwrap()
+        );
+        // A newer run moves the pointer.
+        let newer = dir.path().join("r2");
+        std::fs::create_dir_all(&newer).unwrap();
+        update_latest(&root, &newer);
+        assert_eq!(
+            read_latest(&root).unwrap(),
+            std::fs::canonicalize(&newer).unwrap()
+        );
+        assert_eq!(
+            failed_ids(&run.join("report.json")).unwrap(),
+            vec!["A".to_string(), "C".to_string()]
+        );
+        assert!(resolve_report_path(&run).unwrap().ends_with("report.json"));
+        assert!(resolve_report_path(&dir.path().join("none")).is_err());
+    }
+
+    #[test]
+    fn the_report_subcommand_takes_no_entry() {
+        let parsed = options(&["report"]);
+        let Some(TestCommand::Report(report)) = parsed.command else {
+            panic!("expected the report subcommand");
+        };
+        assert_eq!(report.run, PathBuf::from(LATEST));
+        assert_eq!(report.format, ReportFormat::Text);
+        let parsed = options(&[
+            "report",
+            "test-results/r1",
+            "--failures",
+            "--format",
+            "junit",
+        ]);
+        let Some(TestCommand::Report(report)) = parsed.command else {
+            panic!("expected the report subcommand");
+        };
+        assert!(report.failures);
+        assert_eq!(report.format, ReportFormat::Junit);
+    }
+
+    #[test]
+    fn recovery_is_advised_when_the_app_may_be_down() {
+        let outcome = |state, app_not_live| Outcome {
+            app_not_live,
+            state,
+            result: None,
+            console: vec![],
+            artifacts: vec![],
+            partial: false,
+            streamed: vec![],
+        };
+        assert!(!needs_recovery(
+            &outcome(TestRunState::Failed, false),
+            false
+        ));
+        assert!(needs_recovery(&outcome(TestRunState::Failed, true), false));
+        assert!(needs_recovery(
+            &outcome(TestRunState::TimedOut, false),
+            false
+        ));
+        assert!(!needs_recovery(
+            &outcome(TestRunState::Cancelled, false),
+            true
+        ));
+        assert_eq!(exit_code(&outcome(TestRunState::Passed, false), false), 0);
+        assert_eq!(exit_code(&outcome(TestRunState::Failed, false), false), 1);
+        assert_eq!(
+            exit_code(&outcome(TestRunState::Cancelled, false), true),
+            130
+        );
+        let mut partial = outcome(TestRunState::Passed, false);
+        partial.partial = true;
+        assert_eq!(exit_code(&partial, false), 1);
     }
 
     /// Accepts one command, records `(method, params)`, answers success.
@@ -2743,6 +3257,80 @@ mod lifecycle_tests {
             }
         });
         (url, handle)
+    }
+
+    /// Answers `count` single-command connections, recording each request.
+    fn recording_server(
+        count: usize,
+        answer: serde_json::Value,
+    ) -> (
+        String,
+        std::thread::JoinHandle<Vec<(String, serde_json::Value)>>,
+    ) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let mut seen = Vec::new();
+            for _ in 0..count {
+                let (stream, _) = listener.accept().unwrap();
+                let mut socket = tungstenite::accept(stream).unwrap();
+                loop {
+                    let message = socket.read().unwrap();
+                    let Ok(DevSessionMessage::Request(request)) =
+                        serde_json::from_str(message.to_text().unwrap())
+                    else {
+                        continue;
+                    };
+                    seen.push((request.method.clone(), request.params.clone().unwrap()));
+                    let response = DevSessionMessage::Response(ControlResponse::success(
+                        request.id,
+                        Some(answer.clone()),
+                    ));
+                    socket
+                        .send(tungstenite::Message::Text(
+                            serde_json::to_string(&response).unwrap().into(),
+                        ))
+                        .unwrap();
+                    break;
+                }
+            }
+            seen
+        });
+        (url, handle)
+    }
+
+    #[test]
+    fn a_run_pauses_the_watcher_binds_it_and_always_resumes_it() {
+        let (url, server) = recording_server(3, json!({ "paused": true, "leases": 1 }));
+        let pause = WatchPause::acquire(&url);
+        pause.bind("run-9");
+        let lease = pause.lease().to_string();
+        // Any way out of the run — success, failure, `?`, a panic — drops it.
+        drop(pause);
+        let seen = server.join().unwrap();
+        let methods_seen: Vec<&str> = seen.iter().map(|(method, _)| method.as_str()).collect();
+        assert_eq!(
+            methods_seen,
+            [
+                methods::session::watch::PAUSE,
+                methods::session::watch::PAUSE,
+                methods::session::watch::RESUME
+            ]
+        );
+        assert_eq!(seen[0].1["lease"], lease.as_str());
+        assert!(seen[0].1.get("run_id").is_none());
+        assert!(seen[0].1["ttl_ms"].as_u64().unwrap() > max_poll_wait().as_millis() as u64);
+        assert_eq!(seen[1].1["run_id"], "run-9");
+        assert_eq!(seen[2].1["lease"], lease.as_str());
+    }
+
+    #[test]
+    fn a_host_without_watch_pause_is_not_resumed() {
+        // Nothing listens: the pause fails and the drop sends nothing (a send
+        // would fail the same way, but must not even be tried).
+        let pause = WatchPause::acquire("ws://127.0.0.1:9");
+        assert!(!pause.held);
+        drop(pause);
     }
 
     #[test]
@@ -2916,6 +3504,7 @@ mod lifecycle_tests {
             steps: vec![],
         };
         let cut = Outcome {
+            app_not_live: false,
             state: TestRunState::TimedOut,
             result: None,
             console: vec![],
@@ -3025,6 +3614,7 @@ mod legacy_report_tests {
         )
         .unwrap();
         let outcome = Outcome {
+            app_not_live: false,
             state: TestRunState::Passed,
             result: None,
             console: vec![],

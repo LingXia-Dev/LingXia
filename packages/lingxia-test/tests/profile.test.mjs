@@ -95,7 +95,7 @@ test("restoreProfile outside an isolated run fails before the body", async () =>
   const world = createWorld();
   world.app.profile = {
     async checkpoint() {
-      throw Object.assign(new Error("profile rollback needs an isolated run (lxdev test --isolate)"),
+      throw Object.assign(new Error("profile rollback needs an isolated run (lxdev test --profile)"),
         { code: "E_PROFILE_NOT_ISOLATED" });
     },
   };

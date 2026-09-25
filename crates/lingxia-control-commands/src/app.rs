@@ -35,7 +35,7 @@ pub enum AppCommand {
     },
     /// Capture a PNG screenshot of the host app's window
     Screenshot {
-        /// Specific window id (from `app windows`); defaults to the
+        /// Specific window id (from the `windows` command); defaults to the
         /// platform's focused/main window.
         #[arg(long)]
         window: Option<String>,
@@ -65,7 +65,7 @@ pub enum AppCommand {
     },
 }
 
-/// `lxdev app`: the product's commands plus the ones only development needs.
+/// `lxdev host`: the product's commands plus the ones only development needs.
 /// A product mounts [`AppCommand`] alone; its control socket refuses these
 /// anyway, so listing them there only advertised a command that cannot run.
 #[derive(Subcommand, Clone)]
@@ -113,7 +113,7 @@ pub struct KeyPressOptions {
 
 #[derive(Args, Clone)]
 pub struct KeyTargetOptions {
-    /// Specific window id (from `app windows`); defaults to the
+    /// Specific window id (from the `windows` command); defaults to the
     /// platform's focused/main window.
     #[arg(long)]
     window: Option<String>,
@@ -159,7 +159,7 @@ pub enum MouseCommand {
 
 #[derive(Args, Clone)]
 pub struct MouseTargetOptions {
-    /// Specific window id (from `app windows`); defaults to the
+    /// Specific window id (from the `windows` command); defaults to the
     /// platform's focused/main window.
     #[arg(long)]
     window: Option<String>,

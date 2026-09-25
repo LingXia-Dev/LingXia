@@ -719,7 +719,7 @@ fn installed_windows_runner_exe_path() -> Result<PathBuf> {
     if !exe_path.exists() {
         return Err(anyhow!(
             "Windows LingXia Runner {} is not installed at {}.\n\
-             Install it with:\n  lingxia runner install",
+             Install it with:\n  lingxia upgrade",
             REQUIRED_RUNNER_VERSION,
             exe_path.display()
         ));
@@ -1422,7 +1422,7 @@ fn installed_runner_app_path() -> Result<PathBuf> {
     if !path.exists() {
         return Err(anyhow!(
             "LingXia Runner {} is not installed at {}.\n\
-             Install it with:\n  lingxia runner install",
+             Install it with:\n  lingxia upgrade",
             REQUIRED_RUNNER_VERSION,
             path.display()
         ));

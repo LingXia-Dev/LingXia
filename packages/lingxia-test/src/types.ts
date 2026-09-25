@@ -41,7 +41,7 @@ export interface SpecOptions {
   /**
    * Snapshot the app's isolated data before this spec and roll it back after,
    * so the next spec never sees this one's writes. Implies `fresh`. Needs an
-   * isolated run (`lxdev test --isolate`); if the rollback fails, the rest of
+   * isolated run (`lxdev test --profile`); if the rollback fails, the rest of
    * the run is not run. `{ keep: ['auth.*'] }` rolls back everything except
    * the `lx.getStorage()` keys those globs match, which keep their state at
    * the end of the spec (see `ProfileRestoreOptions`).
@@ -266,7 +266,7 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
 
 /**
  * `t.profile`: checkpoint and roll back the app's isolated data by hand.
- * Needs an isolated run (`lxdev test --isolate`); otherwise every call
+ * Needs an isolated run (`lxdev test --profile`); otherwise every call
  * rejects with `E_PROFILE_NOT_ISOLATED`. `checkpoint` and `restore` close the
  * app and reopen it at its initial page; `t.app` follows the reopened app, a
  * `t.app` saved before the call does not.

@@ -816,6 +816,18 @@ mod tests {
     // --- shared scaffold behaviour ---
 
     #[test]
+    fn scaffolded_gitignores_keep_test_secrets_out_of_git() {
+        for template in [
+            include_str!("../../../templates/lxapp-create/gitignore"),
+            include_str!("../../../templates/lxapp-create/html/gitignore"),
+        ] {
+            for rule in [".env.test", "*.lxstate", "test-results/"] {
+                assert!(template.lines().any(|line| line == rule), "{rule}");
+            }
+        }
+    }
+
+    #[test]
     fn scaffold_renames_gitignore() {
         let (_tmpl, out) = scaffold("react");
         let app = out.path().join("myapp");

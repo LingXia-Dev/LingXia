@@ -164,7 +164,7 @@ fn render_config(path: &Path) -> Result<String> {
     if !path.exists() {
         return Ok(format!(
             "LingXia Runner is not configured.\n\
-             Configure it with:\n  lingxia runner set <LINGXIA_ID> --dev <URL>\n\
+             Configure it with:\n  lingxia auth runner set <LINGXIA_ID> --dev <URL>\n\
              Config: {}",
             path.display()
         ));

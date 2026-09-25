@@ -7,7 +7,7 @@
 
 use lingxia_control_protocol::dev_session::{
     DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
-    DevSessionMessage, DevSessionRole, capabilities,
+    DevSessionMessage, DevSessionRole, PeerBuild, capabilities,
 };
 use lingxia_log::{AttachedLogStream, LogLevel, LogMessage, LogTag, attach_log_stream_default};
 use std::sync::OnceLock;
@@ -176,6 +176,7 @@ fn run_dev_bridge(ws_url: String) {
                             capabilities::REQUESTS.to_string(),
                             capabilities::LOG_EVENTS.to_string(),
                         ],
+                        build: Some(PeerBuild::current()),
                     },
                 ) {
                     log::warn!("Failed to send devtool hello: {}", err);

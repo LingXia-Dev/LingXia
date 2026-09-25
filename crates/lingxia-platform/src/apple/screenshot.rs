@@ -199,7 +199,7 @@ async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
 #[cfg(target_os = "ios")]
 async fn list_app_windows_ios() -> Result<Vec<WindowInfo>, PlatformError> {
     // The iOS app-screenshot path captures the key window unconditionally;
-    // surface a single-element list here so `lxdev app windows` has a
+    // surface a single-element list here so `lxdev host windows` has a
     // useful answer on iOS too.
     Ok(vec![WindowInfo {
         id: "main".to_string(),

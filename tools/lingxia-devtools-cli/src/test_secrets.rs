@@ -21,7 +21,8 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 
 pub const REDACTED: &str = "***";
 /// Reserved control key listing the `--secret-arg` keys for the framework.
@@ -29,11 +30,135 @@ pub const SECRET_ARGS_KEY: &str = "secretArgs";
 /// Shorter values are too likely to collide with ordinary report text.
 const MIN_SCRUB_LENGTH: usize = 4;
 
+/// Environment variable prefix of a secret arg: `LXDEV_SECRET_TOKEN=…` is
+/// `--secret-arg TOKEN=…`.
+pub const ENV_SECRET_PREFIX: &str = "LXDEV_SECRET_";
+/// Environment variable prefix of a plain arg: `LXDEV_ARG_USER=…` is
+/// `--arg USER=…`.
+pub const ENV_ARG_PREFIX: &str = "LXDEV_ARG_";
+
+/// Args that come from outside the command line: `LXDEV_ARG_*` and
+/// `LXDEV_SECRET_*` variables, and a `--secrets-file` (dotenv format; every
+/// entry is a secret). The command line wins over a file, a file over the
+/// environment.
+#[derive(Debug, Default, Clone)]
+pub struct ArgSources {
+    pub env_args: Vec<(String, String)>,
+    pub env_secrets: Vec<(String, String)>,
+    pub file_secrets: Vec<(String, String)>,
+    pub secrets_file: Option<PathBuf>,
+}
+
+impl ArgSources {
+    /// Read `vars` (the process environment) and `secrets_file`.
+    pub fn gather(
+        vars: impl IntoIterator<Item = (String, String)>,
+        secrets_file: Option<&Path>,
+    ) -> anyhow::Result<Self> {
+        let mut sources = Self::default();
+        let mut vars: Vec<(String, String)> = vars.into_iter().collect();
+        vars.sort();
+        for (name, value) in vars {
+            if let Some(key) = name
+                .strip_prefix(ENV_SECRET_PREFIX)
+                .filter(|key| !key.is_empty())
+            {
+                sources.env_secrets.push((key.to_string(), value));
+            } else if let Some(key) = name
+                .strip_prefix(ENV_ARG_PREFIX)
+                .filter(|key| !key.is_empty())
+            {
+                sources.env_args.push((key.to_string(), value));
+            }
+        }
+        if let Some(path) = secrets_file {
+            let text = std::fs::read_to_string(path)
+                .map_err(|err| anyhow::anyhow!("--secrets-file {}: {err}", path.display()))?;
+            sources.file_secrets = parse_dotenv(&text)
+                .map_err(|err| anyhow::anyhow!("--secrets-file {}: {err}", path.display()))?;
+            sources.secrets_file = Some(path.to_path_buf());
+        }
+        Ok(sources)
+    }
+}
+
+/// `KEY=VALUE` lines: `#` comments and blank lines are skipped, an `export `
+/// prefix is allowed, and a value may be single- or double-quoted (double
+/// quotes understand `\n`, `\"` and `\\`). An unquoted value ends at ` #`.
+/// Errors name the line, never its value.
+pub fn parse_dotenv(text: &str) -> Result<Vec<(String, String)>, String> {
+    let mut pairs = Vec::new();
+    for (index, raw) in text.lines().enumerate() {
+        let line = raw.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        let line = line.strip_prefix("export ").map_or(line, str::trim_start);
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("line {}: expected KEY=VALUE", index + 1));
+        };
+        let key = key.trim();
+        let valid_key = key
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && key
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '.' | '-'));
+        if !valid_key {
+            return Err(format!("line {}: invalid key {key:?}", index + 1));
+        }
+        let value = value.trim();
+        let value = if let Some(rest) = value.strip_prefix('"') {
+            let mut out = String::new();
+            let mut chars = rest.chars();
+            let mut closed = false;
+            while let Some(c) = chars.next() {
+                match c {
+                    '"' => {
+                        closed = true;
+                        break;
+                    }
+                    '\\' => match chars.next() {
+                        Some('n') => out.push('\n'),
+                        Some('t') => out.push('\t'),
+                        Some(other) => out.push(other),
+                        None => break,
+                    },
+                    other => out.push(other),
+                }
+            }
+            if !closed {
+                return Err(format!("line {}: unterminated double quote", index + 1));
+            }
+            out
+        } else if let Some(rest) = value.strip_prefix('\'') {
+            let Some(end) = rest.find('\'') else {
+                return Err(format!("line {}: unterminated single quote", index + 1));
+            };
+            rest[..end].to_string()
+        } else {
+            value
+                .split_once(" #")
+                .map_or(value, |(value, _)| value)
+                .trim_end()
+                .to_string()
+        };
+        pairs.push((key.to_string(), value));
+    }
+    Ok(pairs)
+}
+
 pub struct RunSecrets {
-    /// `--arg`, in command-line order.
+    /// Plain args: `LXDEV_ARG_*`, then `--arg` in command-line order.
     args: Vec<(String, String)>,
-    /// `--secret-arg`, in command-line order.
+    /// Secret args: `LXDEV_SECRET_*`, the secrets file, then `--secret-arg`.
     secret_args: Vec<(String, String)>,
+    /// Keys a rerun hint must repeat: given on the command line. The others
+    /// come back from the environment or the secrets file by themselves.
+    command_line_keys: HashSet<String>,
+    /// `--secrets-file`, repeated by a rerun hint.
+    secrets_file: Option<PathBuf>,
     /// Declared secret values, longest first so a secret containing another
     /// is masked whole.
     values: Vec<String>,
@@ -49,8 +174,32 @@ pub enum ArtifactScrub {
 }
 
 impl RunSecrets {
+    #[cfg(test)]
     pub fn new(args: &[(String, String)], secret_args: &[(String, String)]) -> Self {
-        let mut values = secret_args
+        Self::with_sources(args, secret_args, ArgSources::default())
+    }
+
+    /// Command-line args over `sources`: the command line wins over the
+    /// secrets file, the file over the environment, and a secret over a
+    /// plain arg of the same key.
+    pub fn with_sources(
+        args: &[(String, String)],
+        secret_args: &[(String, String)],
+        sources: ArgSources,
+    ) -> Self {
+        let command_line_keys = args
+            .iter()
+            .chain(secret_args)
+            .map(|(key, _)| key.clone())
+            .collect();
+        let all_args: Vec<_> = sources.env_args.into_iter().chain(args.to_vec()).collect();
+        let all_secrets: Vec<_> = sources
+            .env_secrets
+            .into_iter()
+            .chain(sources.file_secrets)
+            .chain(secret_args.to_vec())
+            .collect();
+        let mut values = all_secrets
             .iter()
             .map(|(_, value)| value.clone())
             .filter(|value| value.len() >= MIN_SCRUB_LENGTH)
@@ -58,8 +207,10 @@ impl RunSecrets {
         values.sort_by_key(|value| std::cmp::Reverse(value.len()));
         values.dedup();
         Self {
-            args: args.to_vec(),
-            secret_args: secret_args.to_vec(),
+            args: all_args,
+            secret_args: all_secrets,
+            command_line_keys,
+            secrets_file: sources.secrets_file,
             values,
             masked: RefCell::new(None),
         }
@@ -129,18 +280,38 @@ impl RunSecrets {
     /// supply it.
     pub fn rerun_flags(&self, quote: impl Fn(&str) -> String) -> String {
         let mut out = String::new();
-        for (key, value) in &self.args {
-            if self.is_declared(key) {
+        if let Some(path) = &self.secrets_file {
+            out.push_str(&format!(
+                " --secrets-file {}",
+                quote(&path.to_string_lossy())
+            ));
+        }
+        let latest: HashMap<&str, &str> = self
+            .args
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        let mut printed = HashSet::new();
+        for (key, _) in &self.args {
+            if self.is_declared(key)
+                || !self.command_line_keys.contains(key)
+                || !printed.insert(key.as_str())
+            {
                 continue;
             }
+            let value = latest[key.as_str()];
             let value = if self.shows(key) {
-                value.clone()
+                value.to_string()
             } else {
                 format!("<{key}>")
             };
             out.push_str(&format!(" --arg {}", quote(&format!("{key}={value}"))));
         }
+        let mut printed = HashSet::new();
         for (key, _) in &self.secret_args {
+            if !self.command_line_keys.contains(key) || !printed.insert(key.as_str()) {
+                continue;
+            }
             out.push_str(&format!(
                 " --secret-arg {}",
                 quote(&format!("{key}=<{key}>"))
@@ -347,6 +518,80 @@ mod tests {
         assert_eq!(meta["maxTokens"], "1000");
         assert_eq!(meta["PASSWORD"], REDACTED);
         assert_eq!(meta["pin"], REDACTED);
+    }
+
+    #[test]
+    fn env_and_file_args_are_secrets_the_command_line_can_override() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(".env.test");
+        std::fs::write(
+            &file,
+            "# test credentials\nexport API_TOKEN=\"tok-en\\nline\"\nPIN='12 34' \nUSER=bob # who\n\n",
+        )
+        .unwrap();
+        let sources = ArgSources::gather(
+            [
+                ("LXDEV_SECRET_PIN".to_string(), "env-pin-1".to_string()),
+                ("LXDEV_ARG_REGION".to_string(), "eu".to_string()),
+                ("LXDEV_ARG_".to_string(), "ignored".to_string()),
+                ("HOME".to_string(), "/home/x".to_string()),
+            ],
+            Some(&file),
+        )
+        .unwrap();
+        let secrets = RunSecrets::with_sources(
+            &pairs(&[("mode", "fast")]),
+            &pairs(&[("USER", "cli-user")]),
+            sources,
+        );
+        let args = secrets.spec_args();
+        assert_eq!(args["API_TOKEN"], "tok-en\nline");
+        // The file wins over the environment, the command line over both.
+        assert_eq!(args["PIN"], "12 34");
+        assert_eq!(args["USER"], "cli-user");
+        assert_eq!(args["REGION"], "eu");
+        assert_eq!(args["mode"], "fast");
+        assert!(!args.contains_key(""));
+        // Every file and environment secret is redacted like --secret-arg.
+        let mut value = json!({"log": "token tok-en\nline pin 12 34 env-pin-1 region eu"});
+        assert!(secrets.scrub_value(&mut value));
+        assert_eq!(value["log"], "token *** pin *** *** region eu");
+        let keys: Vec<String> = serde_json::from_str(&secrets.secret_keys_json().unwrap()).unwrap();
+        assert_eq!(keys, ["API_TOKEN", "PIN", "USER"]);
+        assert_eq!(secrets.meta_args()["PIN"], REDACTED);
+        // A rerun names the file and asks only for the command line's values.
+        let hint = secrets.rerun_flags(quote);
+        assert_eq!(
+            hint,
+            format!(
+                " --secrets-file '{}' --arg 'mode=<mode>' --secret-arg 'USER=<USER>'",
+                file.display()
+            )
+        );
+        assert!(
+            !hint.contains("REGION") && !hint.contains("tok-en"),
+            "{hint}"
+        );
+    }
+
+    #[test]
+    fn a_malformed_secrets_file_names_the_line_not_the_value() {
+        for (text, expected) in [
+            ("TOKEN\n", "line 1: expected KEY=VALUE"),
+            ("\n1BAD=x\n", "line 2: invalid key"),
+            ("A=\"open-secret\n", "line 1: unterminated double quote"),
+            ("A='open-secret\n", "unterminated single quote"),
+        ] {
+            let err = parse_dotenv(text).unwrap_err();
+            assert!(err.contains(expected), "{text:?}: {err}");
+            assert!(!err.contains("open-secret"), "{err}");
+        }
+        assert!(
+            ArgSources::gather(Vec::new(), Some(Path::new("/nonexistent/.env")))
+                .unwrap_err()
+                .to_string()
+                .contains("--secrets-file")
+        );
     }
 
     #[test]

@@ -105,6 +105,7 @@ pub(crate) fn execute_command_until(
             version: DEV_SESSION_PROTOCOL_VERSION,
             role: DevSessionRole::Controller,
             capabilities: vec![capabilities::REQUESTS.to_string()],
+            build: None,
         },
     )?;
 

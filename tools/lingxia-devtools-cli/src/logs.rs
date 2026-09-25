@@ -505,6 +505,8 @@ mod tests {
             executable: std::env::current_exe().unwrap().display().to_string(),
             ws_url: String::new(),
             log_file: String::new(),
+            name: None,
+            build: None,
         }
     }
 

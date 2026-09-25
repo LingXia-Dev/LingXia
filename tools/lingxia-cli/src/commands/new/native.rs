@@ -61,7 +61,16 @@ pub(super) fn create_project(config: &ProjectConfig, versions: &LingXiaVersions)
 }
 
 fn create_root_gitignore(config: &ProjectConfig) -> Result<()> {
-    let mut lines: Vec<&str> = vec!["# LingXia generated", ".lingxia/", "target/"];
+    let mut lines: Vec<&str> = vec![
+        "# LingXia generated",
+        ".lingxia/",
+        "target/",
+        "",
+        "# Tests: run output, and secret args for `lxdev test --secrets-file .env.test`",
+        "test-results/",
+        ".env.test",
+        "*.lxstate",
+    ];
 
     if config.platforms.contains(&Platform::Android) {
         lines.extend([
@@ -292,6 +301,12 @@ mod tests {
         };
         create_root_gitignore(&config).unwrap();
         let root = fs::read_to_string(dir.path().join(".gitignore")).unwrap();
+        for secret in [".env.test", "*.lxstate"] {
+            assert!(
+                root.lines().any(|line| line == secret),
+                "{secret} is ignored"
+            );
+        }
 
         for (platform_dir, template) in [
             ("ios", include_str!("../../../templates/ios/gitignore")),

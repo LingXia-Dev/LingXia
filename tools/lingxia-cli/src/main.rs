@@ -25,6 +25,7 @@ mod appicon;
 mod binding;
 mod cli_config;
 mod commands;
+mod compat;
 mod config;
 // `gen` is a reserved keyword in Rust 2024 — escape it so the module name
 // stays aligned with the user-facing `lingxia gen …` subcommand.
@@ -170,8 +171,95 @@ struct DevOptions {
     #[arg(long)]
     background: bool,
 
+    /// Name the session: `lxdev --session NAME` and `lingxia dev stop NAME`
+    /// select it by name, and printed hints use it
+    #[arg(long, value_name = "NAME")]
+    name: Option<String>,
+
     #[command(subcommand)]
     action: Option<DevAction>,
+}
+
+#[derive(clap::Args, Clone)]
+struct TestOptions {
+    /// Test entry file, or a directory of `*.test.ts` files (else the
+    /// preset's, or lxdev.json's `test.entry`)
+    #[arg(value_name = "ENTRY")]
+    entry: Option<String>,
+
+    /// A preset of lxdev.json (`test.presets`)
+    #[arg(long, value_name = "NAME")]
+    preset: Option<String>,
+
+    /// Run a web URL target without showing the desktop Runner window
+    #[arg(long)]
+    headless: bool,
+
+    /// Leave the dev session running after the run (stop it with `lingxia
+    /// dev stop`)
+    #[arg(long)]
+    keep_session: bool,
+
+    /// Target platform (android, ios, macos, harmony, windows); auto-detected
+    /// as `lingxia dev` does when omitted
+    #[arg(short = 'p', long, visible_alias = "target", value_name = "PLATFORM")]
+    platform: Option<String>,
+
+    /// Device ID (required if multiple devices are connected)
+    #[arg(short = 'd', long)]
+    device: Option<String>,
+
+    /// Name the session while it runs (see `lingxia dev --name`)
+    #[arg(long, value_name = "NAME")]
+    name: Option<String>,
+
+    /// Override the effective display language for this Runner session
+    #[arg(long, value_parser = parse_display_language)]
+    display_language: Option<String>,
+
+    #[command(flatten)]
+    build_options: BuildOptions,
+
+    /// Arguments for `lxdev test` (see `lxdev test --help`)
+    #[arg(
+        last = true,
+        value_name = "LXDEV_TEST_ARGS",
+        allow_hyphen_values = true
+    )]
+    lxdev_args: Vec<String>,
+}
+
+impl TestOptions {
+    /// The `lingxia dev` build flags, re-spelled for the session it starts.
+    fn dev_flags(&self) -> Vec<String> {
+        let build = &self.build_options;
+        let mut flags = Vec::new();
+        if build.release {
+            flags.push("--release".to_string());
+        }
+        if build.skip_native {
+            flags.push("--skip-native".to_string());
+        }
+        if let Some(framework) = &build.framework {
+            flags.extend(["--framework".to_string(), framework.clone()]);
+        }
+        if let Some(progress) = &build.progress {
+            flags.extend(["--progress".to_string(), progress.clone()]);
+        }
+        if let Some(env) = &build.env_version {
+            flags.extend(["--env".to_string(), env.clone()]);
+        }
+        for feature in &build.native_features {
+            flags.extend(["--native-feature".to_string(), feature.clone()]);
+        }
+        for provider in &build.with_provider {
+            flags.extend(["--with-provider".to_string(), provider.clone()]);
+        }
+        if let Some(path) = &build.provider_path {
+            flags.extend(["--provider-path".to_string(), path.clone()]);
+        }
+        flags
+    }
 }
 
 #[derive(Subcommand, Clone)]
@@ -184,7 +272,8 @@ enum DevAction {
     },
     /// Stop a dev session for this project
     Stop {
-        /// Session id prefix or platform name. Omit when only one session is live.
+        /// Session name, target (macos, lxapp, …), `target@<dir>`, # from
+        /// `lxdev session list`, or id prefix. Omit when only one is live.
         session: Option<String>,
     },
 }
@@ -451,10 +540,21 @@ enum Commands {
         dev_options: DevOptions,
     },
 
-    /// Configure the standalone lxapp Runner cloud identity
-    Runner {
-        #[command(subcommand)]
-        action: Option<commands::runner::RunnerAction>,
+    /// Start a dev session, run `lxdev test` in it, and stop it — one
+    /// command for CI. Exits with the test run's code
+    #[command(after_long_help = "\
+Examples:
+  lingxia test --preset ci
+  lingxia test tests/ -p macos -- --grep checkout --format jsonl
+  lingxia test --keep-session -- --timeout-secs 900
+
+Run it inside the project (for a host app, anywhere under the directory with
+lingxia.yaml; lxdev.json presets are read from the current directory). It
+refuses to start while a dev session of the project is already running:
+then use `lxdev test` against that session.")]
+    Test {
+        #[command(flatten)]
+        test_options: TestOptions,
     },
 
     /// Write this binary's agent skill over the installed copy. Run by
@@ -504,6 +604,12 @@ enum Commands {
         /// Platforms to check (comma-separated). Defaults to configured platforms or all.
         #[arg(short = 'p', long, value_delimiter = ',')]
         platform: Vec<String>,
+
+        /// Check only that this CLI and the project's installed @lingxia/*
+        /// packages share a version line (what `lingxia dev`/`build` and
+        /// `lxdev test` refuse to start without)
+        #[arg(long, conflicts_with = "platform")]
+        project: bool,
     },
 
     /// Developer credentials: log in once, commands pick automatically
@@ -617,6 +723,11 @@ enum AuthAction {
         /// Channel to re-resolve next time
         #[arg(long, value_parser = ["ios", "macos", "harmony", "googleplay", "xiaomi", "oppo", "honor", "msstore"])]
         platform: String,
+    },
+    /// The standalone lxapp Runner's cloud identity (show, set, clear)
+    Runner {
+        #[command(subcommand)]
+        action: Option<commands::runner::RunnerAction>,
     },
 }
 
@@ -1023,6 +1134,7 @@ fn main() -> Result<()> {
                 display_language: dev_options.display_language,
                 headless: dev_options.headless,
                 background: dev_options.background,
+                name: dev_options.name,
                 action: dev_options.action.map(|action| match action {
                     DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
                     DevAction::Stop { session } => {
@@ -1031,8 +1143,20 @@ fn main() -> Result<()> {
                 }),
             })?;
         }
-        Commands::Runner { action } => {
-            commands::runner::execute(action)?;
+        Commands::Test { test_options } => {
+            let dev_flags = test_options.dev_flags();
+            commands::test::execute(commands::test::TestExecuteOptions {
+                entry: test_options.entry,
+                preset: test_options.preset,
+                headless: test_options.headless,
+                keep_session: test_options.keep_session,
+                platform: test_options.platform,
+                name: test_options.name,
+                device: test_options.device,
+                display_language: test_options.display_language,
+                dev_flags,
+                lxdev_args: test_options.lxdev_args,
+            })?;
         }
         Commands::DevBroker => {
             use lingxia_control_protocol::dev_session::broker;
@@ -1047,8 +1171,14 @@ fn main() -> Result<()> {
         } => {
             commands::dev::focus_windows_launch(std::path::Path::new(&executable), &excluded_pids)?;
         }
-        Commands::Doctor { platform } => {
-            commands::doctor::execute(platform)?;
+        Commands::Doctor { platform, project } => {
+            if project {
+                if !compat::print_project_report(&std::env::current_dir()?) {
+                    std::process::exit(1);
+                }
+            } else {
+                commands::doctor::execute(platform)?;
+            }
         }
         Commands::SyncSkill => {
             update::sync_installed_skill(true);
@@ -1223,6 +1353,9 @@ fn main() -> Result<()> {
             }
             AuthAction::Forget { platform } => {
                 commands::auth::auth_forget(&platform)?;
+            }
+            AuthAction::Runner { action } => {
+                commands::runner::execute(action)?;
             }
         },
         Commands::Ds { platform } => {
@@ -1404,17 +1537,72 @@ mod cli_tests {
 
     #[test]
     fn runner_without_action_shows_config() {
-        let cli = Cli::try_parse_from(["lingxia", "runner"]).unwrap();
-        let Commands::Runner { action } = cli.command else {
-            panic!("expected runner command");
+        let cli = Cli::try_parse_from(["lingxia", "auth", "runner"]).unwrap();
+        let Commands::Auth {
+            action: AuthAction::Runner { action },
+        } = cli.command
+        else {
+            panic!("expected auth runner command");
         };
         assert!(action.is_none());
+        // Moved under `auth` without an alias.
+        assert!(Cli::try_parse_from(["lingxia", "runner"]).is_err());
+        assert!(Cli::try_parse_from(["lingxia", "runner", "clear"]).is_err());
+    }
+
+    #[test]
+    fn test_starts_runs_and_stops_with_its_own_flags() {
+        let cli = Cli::try_parse_from([
+            "lingxia",
+            "test",
+            "tests/",
+            "--preset",
+            "ci",
+            "--target",
+            "macos",
+            "--skip-native",
+            "--keep-session",
+            "--name",
+            "ci-run",
+            "--",
+            "--grep",
+            "home",
+            "--format",
+            "jsonl",
+        ])
+        .unwrap();
+        let Commands::Test { test_options } = cli.command else {
+            panic!("expected test command");
+        };
+        assert_eq!(test_options.entry.as_deref(), Some("tests/"));
+        assert_eq!(test_options.preset.as_deref(), Some("ci"));
+        assert_eq!(test_options.platform.as_deref(), Some("macos"));
+        assert!(test_options.keep_session);
+        assert_eq!(test_options.dev_flags(), ["--skip-native"]);
+        assert_eq!(
+            test_options.lxdev_args,
+            ["--grep", "home", "--format", "jsonl"]
+        );
+        assert!(Cli::try_parse_from(["lingxia", "test"]).is_ok());
+    }
+
+    #[test]
+    fn dev_accepts_a_session_name_and_doctor_a_project_check() {
+        let cli =
+            Cli::try_parse_from(["lingxia", "dev", "--background", "--name", "demo"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert_eq!(dev_options.name.as_deref(), Some("demo"));
+        assert!(Cli::try_parse_from(["lingxia", "doctor", "--project"]).is_ok());
+        assert!(Cli::try_parse_from(["lingxia", "doctor", "--project", "-p", "ios"]).is_err());
     }
 
     #[test]
     fn runner_set_accepts_identity_and_environment_urls() {
         let cli = Cli::try_parse_from([
             "lingxia",
+            "auth",
             "runner",
             "set",
             "com.example.app",
@@ -1424,13 +1612,16 @@ mod cli_tests {
             "https://api.example.com",
         ])
         .unwrap();
-        let Commands::Runner {
+        let Commands::Auth {
             action:
-                Some(commands::runner::RunnerAction::Set {
-                    lingxia_id,
-                    dev,
-                    prod,
-                }),
+                AuthAction::Runner {
+                    action:
+                        Some(commands::runner::RunnerAction::Set {
+                            lingxia_id,
+                            dev,
+                            prod,
+                        }),
+                },
         } = cli.command
         else {
             panic!("expected runner set command");

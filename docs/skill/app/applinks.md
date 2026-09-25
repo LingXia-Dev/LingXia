@@ -332,7 +332,7 @@ your work, then call the SDK entry point for the links you want in Logic.
 Warm path (`lingxia dev` / Runner):
 
 ```bash
-lxdev app applink "https://app.example.com/app/auth/reset-password?code=abc"
+lxdev host applink "https://app.example.com/app/auth/reset-password?code=abc"
 ```
 
 Use the real product URL — the SDK sees exactly what the OS would deliver.
