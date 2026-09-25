@@ -352,9 +352,17 @@ export class LiveFixture implements Fixture {
     if (value !== undefined) return value;
     if (options.default !== undefined) return options.default;
     if (options.required === false) return undefined;
+    // Keys are case-sensitive: `LXDEV_SECRET_PASSWORD` is `PASSWORD`.
+    const other = Object.keys(this.args).find(
+      (key) => key !== name && key.toLowerCase() === name.toLowerCase(),
+    );
+    const hint = other === undefined
+      ? ""
+      : `; "${other}" was given, and arg keys are case-sensitive ` +
+        `(LXDEV_ARG_<KEY> / LXDEV_SECRET_<KEY> keep the case of <KEY>)`;
     throw new Error(
       `Missing test arg "${name}": pass --arg ${name}=<value> ` +
-        `(or --secret-arg ${name}=<value>) to lxdev test`,
+        `(or --secret-arg ${name}=<value>) to lxdev test${hint}`,
     );
   }
 
