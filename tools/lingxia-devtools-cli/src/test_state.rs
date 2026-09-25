@@ -84,11 +84,14 @@ impl StateOptions {
     }
 }
 
+/// Whether a `--state`/`--save-state` value is a PATH rather than a NAME.
+pub fn names_a_path(value: &str) -> bool {
+    value.contains('/') || value.contains('\\') || value.ends_with(&format!(".{STATE_EXT}"))
+}
+
 /// Where a `--state`/`--save-state` value points.
 fn resolve(value: &str, project_root: &Path) -> Result<PathBuf> {
-    let is_path =
-        value.contains('/') || value.contains('\\') || value.ends_with(&format!(".{STATE_EXT}"));
-    if is_path {
+    if names_a_path(value) {
         return Ok(PathBuf::from(value));
     }
     let valid = !value.is_empty()

@@ -276,10 +276,110 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
             }
         )
     })?;
+    let base = presets.path.parent().unwrap_or(Path::new("."));
     let mut expanded = argv[..=index].to_vec();
-    expanded.extend(args.iter().map(OsString::from));
+    expanded.extend(anchor_paths(args, base).into_iter().map(OsString::from));
     expanded.extend(argv[index + 1..].iter().cloned());
     Ok(expanded)
+}
+
+/// Flags whose value is a file or directory. `--state`/`--save-state` take
+/// a NAME or a PATH; only a PATH is anchored.
+const PATH_FLAGS: [&str; 5] = [
+    "--openapi",
+    "--covers-manifest",
+    "--record-network",
+    "--output-dir",
+    "--last-failed",
+];
+const STATE_FLAGS: [&str; 2] = ["--state", "--save-state"];
+
+/// A preset's relative paths — the entry, and the values of path flags —
+/// made relative to the directory of `lxdev.json` (`base`) instead of the
+/// working directory, so a preset means the same files from any
+/// subdirectory. A path on the command line keeps its working-directory
+/// meaning.
+fn anchor_paths(args: &[String], base: &Path) -> Vec<String> {
+    let command =
+        <crate::test::TestOptions as clap::Args>::augment_args(clap::Command::new("test"));
+    // What a long flag consumes: `Some(true)` a value, `Some(false)` a value
+    // only when the next token is not a flag, `None` nothing.
+    let takes_value = |flag: &str| -> Option<bool> {
+        let long = flag.strip_prefix("--")?;
+        let arg = command
+            .get_arguments()
+            .find(|arg| arg.get_long() == Some(long))?;
+        if !arg.get_action().takes_values() {
+            return None;
+        }
+        Some(
+            !arg.get_num_args()
+                .is_some_and(|range| range.min_values() == 0),
+        )
+    };
+    let anchor = |value: &str| -> String {
+        let path = Path::new(value);
+        if value.is_empty() || path.is_absolute() {
+            return value.to_string();
+        }
+        normalize(&base.join(path)).to_string_lossy().into_owned()
+    };
+    let anchor_flag_value = |flag: &str, value: &str| -> String {
+        if PATH_FLAGS.contains(&flag)
+            || (STATE_FLAGS.contains(&flag) && crate::test_state::names_a_path(value))
+        {
+            anchor(value)
+        } else {
+            value.to_string()
+        }
+    };
+
+    let mut out = Vec::with_capacity(args.len());
+    let mut tokens = args.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token == "--" {
+            out.push(token.clone());
+            out.extend(tokens.cloned());
+            break;
+        }
+        if !token.starts_with('-') || token == "-" {
+            // A positional: the test entry.
+            out.push(anchor(token));
+            continue;
+        }
+        if let Some((flag, value)) = token.split_once('=') {
+            out.push(format!("{flag}={}", anchor_flag_value(flag, value)));
+            continue;
+        }
+        out.push(token.clone());
+        let consumes = match takes_value(token) {
+            Some(true) => true,
+            Some(false) => tokens.peek().is_some_and(|next| !next.starts_with('-')),
+            None => false,
+        };
+        if consumes && let Some(value) = tokens.next() {
+            out.push(anchor_flag_value(token, value));
+        }
+    }
+    out
+}
+
+/// `a/./b/../c` → `a/c`, without touching the filesystem.
+fn normalize(path: &Path) -> PathBuf {
+    use std::path::Component;
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
 }
 
 /// The effective `lxdev test` arguments of an expanded `argv`, without
@@ -425,6 +525,7 @@ mod tests {
         ]);
         // Found from a subdirectory, like the test project root.
         let expanded = expand(argv, &dir.path().join("tests/pages")).unwrap();
+        let api = dir.path().join("api.yaml");
         assert_eq!(
             expanded,
             os(&[
@@ -435,7 +536,7 @@ mod tests {
                 "--tag",
                 "unit,routed",
                 "--openapi",
-                "api.yaml",
+                api.to_str().unwrap(),
                 "--isolate",
                 "--retries",
                 "1",
@@ -458,6 +559,66 @@ mod tests {
         );
         let inline = expand(os(&["lxdev", "test", "--preset=nightly"]), dir.path()).unwrap();
         assert_eq!(inline[2], OsString::from("--state"));
+    }
+
+    #[test]
+    fn preset_paths_resolve_against_the_preset_file() {
+        let dir = project(
+            r#"{ "test": { "presets": { "p": [
+                "tests/all.test.ts",
+                "--openapi", "../contract.yaml",
+                "--covers-manifest=tests/coverage.yaml",
+                "--state", "auth",
+                "--save-state", "./snapshots/auth.lxstate",
+                "--record-network", "recorded",
+                "--output-dir", "/tmp/abs-results",
+                "--tag", "unit/x",
+                "--grep", "a/b",
+                "--shuffle",
+                "--arg", "dir=relative/path"
+            ] } } }"#,
+        );
+        let root = dir.path();
+        let at = |relative: &str| root.join(relative).to_string_lossy().into_owned();
+        let parent = root.parent().unwrap().join("contract.yaml");
+        // Run from a subdirectory: the preset still names the project's files.
+        let expanded = expand(
+            os(&["lxdev", "test", "--preset", "p", "--openapi", "local.yaml"]),
+            &root.join("tests/pages"),
+        )
+        .unwrap();
+        let expected = [
+            "lxdev".to_string(),
+            "test".to_string(),
+            at("tests/all.test.ts"),
+            "--openapi".to_string(),
+            parent.to_string_lossy().into_owned(),
+            format!("--covers-manifest={}", at("tests/coverage.yaml")),
+            "--state".to_string(),
+            "auth".to_string(),
+            "--save-state".to_string(),
+            at("snapshots/auth.lxstate"),
+            "--record-network".to_string(),
+            at("recorded"),
+            "--output-dir".to_string(),
+            "/tmp/abs-results".to_string(),
+            "--tag".to_string(),
+            "unit/x".to_string(),
+            "--grep".to_string(),
+            "a/b".to_string(),
+            "--shuffle".to_string(),
+            "--arg".to_string(),
+            "dir=relative/path".to_string(),
+            // The command line's own arguments are left as typed.
+            "--preset".to_string(),
+            "p".to_string(),
+            "--openapi".to_string(),
+            "local.yaml".to_string(),
+        ];
+        assert_eq!(
+            expanded,
+            expected.iter().map(OsString::from).collect::<Vec<_>>()
+        );
     }
 
     #[test]
