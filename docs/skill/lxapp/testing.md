@@ -562,13 +562,22 @@ lxdev test report --failures          # the last run's failures, again
 lingxia test --preset ci              # CI: start a session, run, stop it
 ```
 
-- `lingxia test [ENTRY] [--preset P] [-p PLATFORM] [--keep-session] [-- <lxdev
-  test flags>]` owns the whole lifecycle for CI: it starts a background dev
-  session, runs `lxdev test` in it, and stops the session on every way out —
-  pass, failure, error, Ctrl-C — unless `--keep-session`. Its exit code is the
-  run's. `lxdev test` is the same run against a session that is already live.
-- Reports land in `test-results/<run-id>/` (or `--output-dir`): `report.html`,
-  `report.json`, `junit.xml`. `test-results/latest` points at the last run.
+- `lingxia test [ENTRY] [--preset P] [-p runner|PLATFORM] [--keep-session]
+  [-- <lxdev test flags>]` owns the whole lifecycle for CI: it starts a
+  background dev session, runs `lxdev test` in it, and stops the session on
+  every way out — pass, failure, error, Ctrl-C — unless `--keep-session`. Its
+  exit code is the run's. It starts what `lingxia dev` starts in the nearest
+  project: from an lxapp directory (also one inside a host project) the lxapp
+  in the desktop Runner, from a host project the host app; `-p runner` or
+  `-p <platform>` chooses explicitly. `lxdev test` is the same run against a
+  session that is already live.
+- Reports land in a run directory under the results root,
+  `test-results/<run-id>/`: `report.html`, `report.json`, `junit.xml`, and
+  `test-results/latest` points at the last run. `test-results/` is beside
+  `lxdev.json` when the project has one (the same from any subdirectory),
+  else in the current directory; `test.outputDir` or `--output-root DIR`
+  moves the root. `--output-dir PATH` puts one run's files in PATH itself
+  (a fixed path for CI to collect); `latest` in the root still points at it.
   Failures fail the command.
 - `lxdev test report [DIR|latest] [--failures] [--format json|junit]` prints a
   finished run's summary, failures and `Rerun:` lines again from its
@@ -581,6 +590,11 @@ lingxia test --preset ci              # CI: start a session, run, stop it
   `--tag EXPR`, or `--shard 1/3`; shards need separate sessions and output
   directories. Give non-ASCII titles an `id` so `--id`/`--last-failed` survive
   reordering.
+- `--last-failed` reruns on the previous run's terms: its `--preset` and its
+  `--profile` (with `--profile-save`) carry over unless the command line gives
+  them — a new `--preset` brings its own profile — and lxdev prints what it
+  reused. When nothing failed it prints `No failed specs in <run>; nothing to
+  rerun`, exits 0, starts no run and leaves `latest` alone.
 - `--retries N` requires `spec.reset`; reports keep every attempt and flag
   flaky passes.
 - `--timeout-secs` bounds the whole run. The default scales with the
@@ -636,6 +650,14 @@ LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
   quotes) and every `LXDEV_SECRET_<KEY>` variable is a `--secret-arg`: its
   value is `***` wherever it would appear. `LXDEV_ARG_<KEY>` is a plain
   `--arg`.
+- The key is the rest of the variable name, exactly — case included — and
+  arg keys are case-sensitive: `LXDEV_SECRET_PASSWORD=…` is
+  `t.arg('PASSWORD')`, not `t.arg('password')`. Name the variable
+  `LXDEV_SECRET_password` or pass `--secret-arg password=…` for a lower-case
+  key; a missing key's error names one given in another case.
+- `--print-args` shows these too, one `#` line each with its source
+  (`LXDEV_SECRET_PASSWORD`, `--secrets-file .env.test`) and secret values as
+  `***`.
 - The command line wins over the file, the file over the environment.
 - A `Rerun:` line repeats `--secrets-file` and asks for command-line secrets by
   name (`--secret-arg 'token=<token>'`); environment values come back by
@@ -668,12 +690,15 @@ lxdev test --list-presets
   repeatable flags (`--tag`, `--openapi`, `--arg`) add up, any other flag
   given on the command line wins.
 - `test.entry`, `test.outputDir`, `test.openapi` and `test.tags` are defaults
-  for every run, with or without a preset. A default gives way when the
+  for every run, with or without a preset. `test.outputDir` is the results
+  root (`--output-root`): each run gets its own `<run-id>/` in it and
+  `latest` points at the last one. A default gives way when the
   preset or the command line sets that flag (or an entry) itself.
 - `lxdev.json` is found in the project root of the current directory (the
   directory with `package.json`, `lxapp.json` or `lingxia.yaml`).
-- Relative paths in `lxdev.json` — the entry, `--openapi`, `--covers-manifest`,
-  `--record-network`, `--output-dir`, `--last-failed`, `--secrets-file`, and
+- Relative paths in `lxdev.json` — the entry, `test.outputDir`, `--openapi`,
+  `--covers-manifest`, `--record-network`, `--output-root`, `--output-dir`,
+  `--last-failed`, `--secrets-file`, and
   a PATH given to `--profile` — are relative to the directory holding
   `lxdev.json`, so a preset runs the same from any subdirectory. Paths typed on
   the command line stay relative to the current directory. `--print-args`

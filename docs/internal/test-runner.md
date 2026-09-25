@@ -210,17 +210,26 @@ Development machine: lxdev receives progress, results, and artifacts
   resolver; `hint_selector` returns the shortest selector that resolves back
   to the same session from the same directory (none, name, target,
   `target@dir-name`, `target@path`) for printed hints. `SessionInfo.name` /
-  `.build` are optional fields; a broker older than them drops them, and the
-  session is then addressable by everything but its name.
+  `.build` are optional fields. `SessionInfo.extra` (`serde(flatten)`) keeps
+  fields a build does not know, so a broker passes newer fields through; a
+  broker built before `extra` still drops them, which is why a session with a
+  `--name` verifies its registration (below).
 - `lingxia test`: `run_once` over a `SessionOps` (start / run / stop); stop
   runs from a guard's `Drop`, so `?` and panics stop the session too. The
   Ctrl-C handler only sets a flag — `lxdev` in the same process group gets
   the signal and cancels its run — and the result is then 130. The dev
   session is started through `start_background_session` with explicit
-  `dev …` args (the background child is its own process group) from the
-  nearest directory with `lingxia.yaml`; `lxdev` runs in the invocation
-  directory with `LXDEV_RERUN_PREFIX=lingxia test <flags> --` so its Rerun
-  lines repeat `lingxia test`.
+  `dev …` args (the background child is its own process group) from
+  `DevProject::resolve(cwd, -p)`: the nearest ancestor `DevProject::at`
+  accepts (the same predicates `lingxia dev` applies to its cwd:
+  `is_standalone_lxapp_project` → Runner, `has_host_config` → host), the
+  nearest lxapp for `-p runner`, the nearest `lingxia.yaml` (else lxapp) for
+  a platform. `--platform runner` is not forwarded (the directory already
+  means the Runner); `lingxia dev -p runner` clears it and requires
+  `resolve_dev_target` to find an lxapp. The live-session check filters by
+  `runner` or the platform. `lxdev` runs in the invocation directory with
+  `LXDEV_RERUN_PREFIX=lingxia test <flags> --` so its Rerun lines repeat
+  `lingxia test`.
 - Locator actions wait for a unique match, enabled/editable state, stable
   geometry, and an unobscured hit point (after `scrollIntoView`), retrying
   while a navigation is still replacing the page.
@@ -446,12 +455,44 @@ Development machine: lxdev receives progress, results, and artifacts
   pause, journals `runtime_disconnected`/`runtime_reconnected` events
   (`source: "lxdev"`), and a reconnect restores the run as active. After the
   grace a desktop session ends as before.
+- Results root: `TestOptions::results_root` is `--output-root`, else
+  `test_preset::results_root(cwd)` — `test.outputDir` or `test-results`
+  joined to the directory of `lxdev.json` — else `./test-results`. A run
+  writes `<root>/<run-id>` unless `--output-dir` names its directory;
+  `update_latest(root, run_dir)` skips a run directory equal to the root.
+  `resolve_report_path(path, root)` reads `latest` from that root, for
+  `--last-failed` and `lxdev test report` (which takes `--output-root` too).
+- `--last-failed`: `record_rerun` writes `meta.run_settings`
+  (`preset`, `profile` — a PATH made absolute — and `profile_save`) into
+  report.json. Before preset expansion, `test_preset::carry_last_failed`
+  reads them from the report `--last-failed` names and splices `--preset`,
+  `--profile`, `--profile-save=` right after `test`, each only when the
+  command line (`scan`) lacks it (profile also not when it gives
+  `--preset`, or when the carried preset sets the same profile), and a
+  preset only if it would not add a second entry. It does
+  nothing when the report cannot be read or has no failed case. After
+  parsing, `test::nothing_to_rerun` (before a session is resolved) prints
+  `No failed specs in <run>; nothing to rerun` — `kind: "result"`,
+  `state: "nothing_to_rerun"` for `--format json|jsonl` — and exits 0.
+- `--print-args` also prints `ArgSources` (environment and
+  `--secrets-file`) as `# --flag KEY=VALUE  (from SOURCE)` lines, secret
+  values `***` and credential-named `LXDEV_ARG_` values masked; JSON has
+  them under `external`.
 - Dev broker: `lingxia dev-broker` answers `info` with its `BrokerBuild`
   (CLI version, executable path, executable mtime at start) and live session
   count, and `shutdown` by exiting only when no session is registered (the
-  check holds the session lock). `lingxia dev` probes it before registering
-  and replaces an idle mismatched broker; a broker older than `info` drops
-  the connection on it and is reported, not stopped.
+  check holds the session lock). `log_store::ensure_current_broker` probes
+  it before registering (and, with `--name`, before the build in the
+  foreground `lingxia dev`/`lingxia test`) and replaces any mismatched
+  broker: an idle one is asked to `shutdown`; a busy one is terminated by the
+  pid `info` reported (its sessions' `register_session` threads reconnect a
+  second later and re-register); one older than `info` is found by a process
+  scan (`<lingxia*> dev-broker`, same user). The current build is spawned
+  right after, before those sessions come back, and must answer `info` as
+  this build. A busy stale broker used to be only reported, and an older one
+  dropped `name` from the record. If replacing fails, `--name` makes it an
+  error; after registering, `verify_registered_name` lists the broker and
+  fails the session if its record lacks the name.
 - Dev WebSocket frame/message limits must fit both poll events (24 MiB) and the
   final result (8 MiB). A valid 16 MiB decoded attachment exceeds a 16 MiB frame
   after base64 encoding; both relay and CLI receiver need the shared limit.
@@ -794,7 +835,7 @@ items, the flags in `FORBIDDEN` and `--arg` keys `looks_secret_key` flags
 paths absolute against the directory of `lxdev.json`: the positional entry,
 the values of `PATH_FLAGS`, and a `--profile` value that names a PATH
 (`test_state::names_a_path`). `lxdev.json`'s `test.entry|outputDir|openapi|
-tags` defaults are spliced in first, each only when the preset and the
+tags` defaults (`outputDir` as `--output-root`) are spliced in first, each only when the preset and the
 command line (`scan`) leave that flag — or the entry — unset, and not for
 `report`, `--cancel-active` or `--list-presets`. Which tokens are values comes from clap's
 own `TestOptions` definition (`takes_values`, optional values only when the
