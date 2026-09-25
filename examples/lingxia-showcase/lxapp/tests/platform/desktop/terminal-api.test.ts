@@ -91,7 +91,9 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   });
 
   await t.step('the ControlSurface follows host language updates', async () => {
-    await terminal.page.waitFor({ page: 'settings', css: 'body', state: 'visible' });
+    // The heading exists only in the settings document itself, not in the
+    // blank document a WebView shows before its first navigation commits.
+    await terminal.page.waitFor({ page: 'settings', css: '#type-heading', state: 'visible' });
     const preference = await app.eval({
       script: 'return lx.host.control.displayLanguage.getPreference()',
     }) as string;

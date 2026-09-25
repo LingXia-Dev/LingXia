@@ -13,6 +13,8 @@ export const BRIDGE_CONFIG: BridgeConfig =
 
 interface DisplayLanguageStore {
   value: string;
+  /** Host revision of `value`; 0 for the value baked into the bridge config. */
+  revision?: number;
   listeners: Set<(language: string) => void>;
 }
 
@@ -77,10 +79,20 @@ stampDocumentLanguage();
  * Host entry point for a language the user changed while this document was
  * open. Bootstrap alone would leave a live page in the language it started in,
  * with the native chrome around it already switched.
+ *
+ * The host pushes each change once, and again — the current value — when a
+ * document's bridge reports ready, since a change made while it loaded found
+ * no hook to call. Those two can land in either order, so a push carries the
+ * host revision it took effect at and an older one never overwrites a newer
+ * one. A push without a revision applies as it always did.
  */
-function applyDisplayLanguage(next: unknown): void {
+function applyDisplayLanguage(next: unknown, revision?: unknown): void {
   const normalized = typeof next === 'string' ? next.trim() : '';
   const current = store();
+  if (typeof revision === 'number' && Number.isFinite(revision)) {
+    if (revision <= (current.revision ?? 0)) return;
+    current.revision = revision;
+  }
   if (!normalized || normalized === current.value) return;
   current.value = normalized;
   stampDocumentLanguage();

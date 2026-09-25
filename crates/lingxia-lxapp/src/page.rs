@@ -1249,6 +1249,13 @@ impl PageInstance {
         }
     }
 
+    /// Hand this page's View the current display language: its HTML was
+    /// built with the language of that moment, and a change published while
+    /// the document loaded found no bridge to deliver to.
+    pub(crate) fn push_display_language(&self) {
+        self.push_view_script(&crate::lxapp::view_display_language_snapshot_script());
+    }
+
     /// Run a host-to-View script in this page's document, if it has one.
     pub(crate) fn push_view_script(&self, script: &str) {
         if let Some(webview) = self.webview() {

@@ -51,6 +51,23 @@ stop();
 window.__lingxiaApplyDisplayLanguage('en-US');
 assert.equal(heard, 2, 'unsubscribed listeners stay quiet');
 
+// A document that loaded during a change gets the change and, once its bridge
+// is ready, the current value; either may land last, and the newer revision
+// wins.
+let languages = [];
+const stopLanguages = subscribeHost(() => languages.push(getHost().displayLanguage));
+window.__lingxiaApplyDisplayLanguage('zh-CN', 5);
+assert.deepEqual(languages, ['zh-CN']);
+window.__lingxiaApplyDisplayLanguage('en-US', 3);
+assert.equal(getHost().displayLanguage, 'zh-CN', 'an older revision never wins');
+window.__lingxiaApplyDisplayLanguage('zh-CN', 5);
+assert.deepEqual(languages, ['zh-CN'], 'a repeat of the current revision changes nothing');
+window.__lingxiaApplyDisplayLanguage('fr-FR', 6);
+assert.equal(getHost().displayLanguage, 'fr-FR');
+window.__lingxiaApplyDisplayLanguage('en-US');
+assert.equal(getHost().displayLanguage, 'en-US', 'a push without a revision still applies');
+stopLanguages();
+
 // The runtime stamps <html dir> with <html lang>.
 assert.equal(textDirection('ar-EG'), 'rtl');
 assert.equal(textDirection('he'), 'rtl');
