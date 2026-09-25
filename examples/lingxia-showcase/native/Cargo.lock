@@ -410,13 +410,32 @@ dependencies = [
  "clang-sys",
  "itertools 0.12.1",
  "log",
- "prettyplease",
+ "prettyplease 0.2.37",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
  "shlex 1.3.0",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.73.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "787ef8ef523575546b106a58213d6e6b06198a05c2f757258c68a74273670cfa"
+dependencies = [
+ "bitflags 2.13.2",
+ "cexpr",
+ "clang-sys",
+ "log",
+ "prettyplease 0.3.0",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash",
+ "shlex 2.0.1",
+ "syn 3.0.5",
 ]
 
 [[package]]
@@ -538,9 +557,9 @@ dependencies = [
 
 [[package]]
 name = "cc"
-version = "1.4.5"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "005ec2760ca554fae18df7a11195552ec576cd665632a881bc011d5bb2fd4d80"
+checksum = "f360145194ee8e21db5ee7f3fcd4fe52210864c75c985dae33218202c8bbe040"
 dependencies = [
  "find-msvc-tools",
  "jobserver",
@@ -1413,9 +1432,9 @@ dependencies = [
 
 [[package]]
 name = "find-msvc-tools"
-version = "0.1.12"
+version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e0f1c7c3a72c66fd80abe965175f7523475c0489a87d3ff9d6e8c87d87a9d2d"
+checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
 name = "flate2"
@@ -3947,6 +3966,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "prettyplease"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2bfe0f4c752e450fc2faf62654f1c134747922825d5b04ca717b8874f41a40c0"
+dependencies = [
+ "proc-macro2",
+ "syn 3.0.5",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4455,9 +4484,9 @@ dependencies = [
 
 [[package]]
 name = "rong"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ad77d1448b62728e36dc32627e1eeef0b1db58bc641d4ba64cd0fe238cfc76e2"
+checksum = "4e166f75145f323c31648357eecf7a0ac4d7797c41e2d61f1e0d849036aa52d0"
 dependencies = [
  "futures",
  "rong_arkjs",
@@ -4497,7 +4526,7 @@ version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f4d30ebdda9d18823fe0bf3603b8aefb19d77544cdee7848bcf2f0518a96267"
 dependencies = [
- "bindgen",
+ "bindgen 0.72.1",
 ]
 
 [[package]]
@@ -4559,9 +4588,9 @@ dependencies = [
 
 [[package]]
 name = "rong_core"
-version = "0.6.1"
+version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae9b8642360f721ef132bc64808893452aba7c729d0afea1434612d7dfe78717"
+checksum = "4415f7ccf10a54cae5ed029878badc0cd6e4155a23738581ecbca8ac307117ac"
 dependencies = [
  "bytes",
  "futures",
@@ -4680,9 +4709,9 @@ dependencies = [
 
 [[package]]
 name = "rong_jscore"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d6661b0b0ff6b41021f0e73bb445b6a3948a28008b80cc063807c49d3fee658"
+checksum = "25993fb728b2e240dd62ec46590602a89da913eb01bf76d80fab0ef740ab7523"
 dependencies = [
  "rong_core",
  "rong_jscore_sys",
@@ -4691,11 +4720,11 @@ dependencies = [
 
 [[package]]
 name = "rong_jscore_sys"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d71ae357824781b2cea72533dd7fdcf0225689d58c956c131e04c50e2dc017f"
+checksum = "0829e78bc588dedf0f87f1891d4de3f9c6de2c2a7f58cbfaecf5ba51b11d3dee"
 dependencies = [
- "bindgen",
+ "bindgen 0.73.2",
  "cc",
 ]
 
@@ -4743,9 +4772,9 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4dda46c483a35c74211f89f360098385f8b5255cfb05395409c59f19a87be56"
+checksum = "0ab739a87c2f41f5adefdd919307aa75b8154a3e7dbda62a21a602c62f60695e"
 dependencies = [
  "rong_core",
  "rong_quickjs_sys",
@@ -4754,11 +4783,11 @@ dependencies = [
 
 [[package]]
 name = "rong_quickjs_sys"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "22953f37e18ff85a2e0278d21937c16c12a6fba8e632232ec770fc4fa847d6f9"
+checksum = "ab32d31d5a4534f44a6f0ded7ef82fd5e48b952acc2ddf822d0715866b1aa940"
 dependencies = [
- "bindgen",
+ "bindgen 0.73.2",
  "cc",
 ]
 
@@ -5397,9 +5426,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "smallvec"
-version = "1.16.0"
+version = "1.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9be42f50aa861c555654aa3a37f52f4b1074bacf4e48fe0ef7fa584e80f1f0f"
+checksum = "f9395f0f0eee849a9b707b2f06bb92a6a422090e2123bb2ef8e87a0e61892a8e"
 
 [[package]]
 name = "socket2"
