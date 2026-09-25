@@ -45,10 +45,24 @@ test("the scenario schema rejects what the host rejects", () => {
 test("the lxdev.json schema describes test presets", () => {
   const file = {
     $schema: "./node_modules/@lingxia/test/schemas/lxdev.schema.json",
-    test: { presets: { ci: ["--tag", "unit,routed", "--isolate"], nightly: [] } },
+    test: {
+      entry: "tests/",
+      outputDir: "test-results",
+      openapi: ["api.yaml"],
+      tags: "unit",
+      presets: { ci: ["--tag", "unit,routed", "--profile", "empty"], nightly: [] },
+    },
   };
   assert.deepEqual(issues(file, lxdevSchema), []);
-  for (const bad of [{ presets: {} }, { test: { profiles: {} } }, { test: { presets: { ci: "--isolate" } } }, { test: { presets: { ci: [1] } } }]) {
+  for (const bad of [
+    { presets: {} },
+    { test: { profiles: {} } },
+    { test: { presets: { ci: "--profile" } } },
+    { test: { presets: { ci: [1] } } },
+    { test: { entry: ["tests/"] } },
+    { test: { tags: [1] } },
+    { test: { outputDir: "" } },
+  ]) {
     assert.notDeepEqual(issues(bad, lxdevSchema), [], JSON.stringify(bad));
   }
 });

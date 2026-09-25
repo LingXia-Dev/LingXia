@@ -9,7 +9,7 @@ use rong::{HostError, JSResult, JSValue, function::Optional, js_class, js_method
 use std::sync::Weak;
 
 const UNAVAILABLE: &str = "profile rollback is not built into this host; \
-    it works only inside an isolated host automation run (lxdev test --isolate)";
+    it works only inside an isolated host automation run (lxdev test --profile)";
 
 #[js_class(clone)]
 pub(crate) struct JSProfileDriver {

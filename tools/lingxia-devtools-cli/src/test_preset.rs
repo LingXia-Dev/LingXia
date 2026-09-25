@@ -3,13 +3,17 @@
 //!
 //! ```json
 //! { "$schema": "…/lxdev.schema.json",
-//!   "test": { "presets": { "ci": ["--tag", "unit,routed", "--isolate"] } } }
+//!   "test": {
+//!     "entry": "tests/", "outputDir": "test-results", "openapi": ["api.yaml"],
+//!     "presets": { "ci": ["--tag", "unit,routed", "--profile", "empty"] } } }
 //! ```
 //!
-//! A preset is argv. The effective command line is the preset's arguments
-//! followed by the command line's, parsed once by clap: repeatable flags add
-//! up, a scalar given on the command line wins. Presets are committed, so
-//! they may not carry secrets or anything that acts on another run.
+//! A preset is argv. The effective command line is the file's defaults, then
+//! the preset's arguments, then the command line's, parsed once by clap:
+//! repeatable flags add up, a scalar given later wins. A default is dropped
+//! when the preset or the command line gives that flag (or an entry) itself.
+//! The file is committed, so it may not carry secrets or anything that acts
+//! on another run.
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde_json::{Value, json};
@@ -19,7 +23,7 @@ use std::path::{Path, PathBuf};
 
 pub const PRESET_FILE: &str = "lxdev.json";
 const FILE_KEYS: [&str; 2] = ["$schema", "test"];
-const TEST_KEYS: [&str; 1] = ["presets"];
+const TEST_KEYS: [&str; 5] = ["presets", "entry", "outputDir", "openapi", "tags"];
 
 /// Flags a preset may not contain, and why.
 const FORBIDDEN: [(&str, &str); 5] = [
@@ -40,6 +44,31 @@ const FORBIDDEN: [(&str, &str); 5] = [
 pub struct Presets {
     pub path: PathBuf,
     pub presets: BTreeMap<String, Vec<String>>,
+    /// `test.entry|outputDir|openapi|tags`: `(flag, values)`, with `None`
+    /// for the entry.
+    pub defaults: Vec<(Option<&'static str>, Vec<String>)>,
+}
+
+impl Presets {
+    /// The defaults a run starts from, as argv, leaving out any the preset
+    /// or command line (`given`) sets itself.
+    fn default_args(&self, given: &[String]) -> Vec<String> {
+        let (has_entry, flags) = scan(given);
+        let mut out = Vec::new();
+        for (flag, values) in &self.defaults {
+            match flag {
+                None if !has_entry => out.extend(values.iter().cloned()),
+                Some(flag) if !flags.contains(*flag) => {
+                    for value in values {
+                        out.push((*flag).to_string());
+                        out.push(value.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        out
+    }
 }
 
 /// `lxdev.json` of the project `dir` belongs to, if it has one.
@@ -74,6 +103,7 @@ pub fn parse(text: &str, path: &Path) -> Result<Presets> {
         )));
     }
     let mut presets = BTreeMap::new();
+    let mut defaults = Vec::new();
     match fields.get("test") {
         None => {}
         Some(Value::Object(test)) => {
@@ -82,6 +112,39 @@ pub fn parse(text: &str, path: &Path) -> Result<Presets> {
                     "unknown field 'test.{unknown}' (allowed: {})",
                     TEST_KEYS.join(", ")
                 )));
+            }
+            for (key, flag, many) in [
+                ("entry", None, false),
+                ("outputDir", Some("--output-dir"), false),
+                ("openapi", Some("--openapi"), true),
+                ("tags", Some("--tag"), true),
+            ] {
+                let values = match (test.get(key), many) {
+                    (None, _) => continue,
+                    (Some(Value::String(value)), _) if !value.is_empty() => vec![value.clone()],
+                    (Some(Value::Array(items)), true) => items
+                        .iter()
+                        .map(|item| item.as_str().filter(|v| !v.is_empty()).map(str::to_string))
+                        .collect::<Option<Vec<_>>>()
+                        .ok_or_else(|| at(format!("test.{key} must be a list of strings")))?,
+                    _ => {
+                        return Err(at(format!(
+                            "test.{key} must be {}",
+                            if many {
+                                "a string or a list of strings"
+                            } else {
+                                "a string"
+                            }
+                        )));
+                    }
+                };
+                if let Some("--tag") = flag {
+                    for tag in &values {
+                        crate::test_contract::parse_tag_expr(tag)
+                            .map_err(|err| at(format!("test.tags: {err}")))?;
+                    }
+                }
+                defaults.push((flag, values));
             }
             match test.get("presets") {
                 None => {}
@@ -116,6 +179,7 @@ pub fn parse(text: &str, path: &Path) -> Result<Presets> {
     Ok(Presets {
         path: path.to_path_buf(),
         presets,
+        defaults,
     })
 }
 
@@ -248,51 +312,141 @@ fn preset_name(test_args: &[OsString]) -> Option<String> {
     None
 }
 
-/// `argv` with the named preset's arguments inserted right after `test`, so
-/// the command line's own arguments come later and win. Unchanged without
-/// `--preset`.
+/// `argv` with the file's defaults and the named preset's arguments inserted
+/// right after `test`, so the command line's own arguments come later and
+/// win. Unchanged without `lxdev.json`, or for `lxdev test report`,
+/// `--cancel-active` and `--list-presets`, which start no run.
 pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
     let Some(index) = test_subcommand_index(&argv) else {
         return Ok(argv);
     };
-    let Some(name) = preset_name(&argv[index + 1..]) else {
+    let rest: Vec<String> = argv[index + 1..]
+        .iter()
+        .map(|token| token.to_string_lossy().into_owned())
+        .collect();
+    if rest.first().is_some_and(|first| first == "report") {
+        return Ok(argv);
+    }
+    let preset = preset_name(&argv[index + 1..]);
+    let Some(presets) = (match &preset {
+        Some(name) => Some(load(cwd)?.ok_or_else(|| {
+            anyhow!(
+                "--preset {name}: no {PRESET_FILE} in {}",
+                crate::test_bundle::find_project_root(cwd).display()
+            )
+        })?),
+        None => load(cwd)?,
+    }) else {
         return Ok(argv);
     };
-    let presets = load(cwd)?.ok_or_else(|| {
-        anyhow!(
-            "--preset {name}: no {PRESET_FILE} in {}",
-            crate::test_bundle::find_project_root(cwd).display()
-        )
-    })?;
-    let args = presets.presets.get(&name).ok_or_else(|| {
-        let known = presets.presets.keys().cloned().collect::<Vec<_>>();
-        anyhow!(
-            "--preset {name}: {} has no such preset (presets: {})",
-            presets.path.display(),
-            if known.is_empty() {
-                "none".to_string()
-            } else {
-                known.join(", ")
-            }
-        )
-    })?;
     let base = presets.path.parent().unwrap_or(Path::new("."));
+    let preset_args = match &preset {
+        None => Vec::new(),
+        Some(name) => presets.presets.get(name).cloned().ok_or_else(|| {
+            let known = presets.presets.keys().cloned().collect::<Vec<_>>();
+            anyhow!(
+                "--preset {name}: {} has no such preset (presets: {})",
+                presets.path.display(),
+                if known.is_empty() {
+                    "none".to_string()
+                } else {
+                    known.join(", ")
+                }
+            )
+        })?,
+    };
+    let starts_no_run = rest
+        .iter()
+        .take_while(|token| *token != "--")
+        .any(|token| token == "--cancel-active" || token == "--list-presets");
+    let mut given = preset_args.clone();
+    given.extend(rest.iter().take_while(|token| *token != "--").cloned());
+    let defaults = if starts_no_run {
+        Vec::new()
+    } else {
+        presets.default_args(&given)
+    };
+    if defaults.is_empty() && preset_args.is_empty() {
+        return Ok(argv);
+    }
     let mut expanded = argv[..=index].to_vec();
-    expanded.extend(anchor_paths(args, base).into_iter().map(OsString::from));
+    expanded.extend(
+        anchor_paths(&defaults, base)
+            .into_iter()
+            .map(OsString::from),
+    );
+    expanded.extend(
+        anchor_paths(&preset_args, base)
+            .into_iter()
+            .map(OsString::from),
+    );
     expanded.extend(argv[index + 1..].iter().cloned());
     Ok(expanded)
 }
 
-/// Flags whose value is a file or directory. `--state`/`--save-state` take
-/// a NAME or a PATH; only a PATH is anchored.
-const PATH_FLAGS: [&str; 5] = [
+/// What a long flag of `lxdev test` consumes: `Some(true)` a value,
+/// `Some(false)` a value only when the next token is not a flag, `None`
+/// nothing (or not a flag of `lxdev test`).
+fn takes_value(flag: &str) -> Option<bool> {
+    let command =
+        <crate::test::TestOptions as clap::Args>::augment_args(clap::Command::new("test"));
+    let long = flag.strip_prefix("--")?;
+    let arg = command.get_arguments().find(|arg| {
+        arg.get_long() == Some(long)
+            || arg
+                .get_all_aliases()
+                .is_some_and(|aliases| aliases.contains(&long))
+    })?;
+    if !arg.get_action().takes_values() {
+        return None;
+    }
+    Some(
+        !arg.get_num_args()
+            .is_some_and(|range| range.min_values() == 0),
+    )
+}
+
+/// Whether `args` hold a positional (the entry), and which long flags.
+fn scan(args: &[String]) -> (bool, std::collections::HashSet<String>) {
+    let mut positional = false;
+    let mut flags = std::collections::HashSet::new();
+    let mut tokens = args.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token == "--" {
+            break;
+        }
+        if !token.starts_with('-') || token == "-" {
+            positional = true;
+            continue;
+        }
+        let name = flag_name(token);
+        flags.insert(name.to_string());
+        if token.contains('=') {
+            continue;
+        }
+        let consumes = match takes_value(token) {
+            Some(true) => true,
+            Some(false) => tokens.peek().is_some_and(|next| !next.starts_with('-')),
+            None => false,
+        };
+        if consumes {
+            tokens.next();
+        }
+    }
+    (positional, flags)
+}
+
+/// Flags whose value is a file or directory. `--profile` takes `empty`, a
+/// NAME or a PATH; only a PATH is anchored.
+const PATH_FLAGS: [&str; 6] = [
     "--openapi",
     "--covers-manifest",
     "--record-network",
     "--output-dir",
     "--last-failed",
+    "--secrets-file",
 ];
-const STATE_FLAGS: [&str; 2] = ["--state", "--save-state"];
+const STATE_FLAGS: [&str; 1] = ["--profile"];
 
 /// A preset's relative paths — the entry, and the values of path flags —
 /// made relative to the directory of `lxdev.json` (`base`) instead of the
@@ -300,23 +454,6 @@ const STATE_FLAGS: [&str; 2] = ["--state", "--save-state"];
 /// subdirectory. A path on the command line keeps its working-directory
 /// meaning.
 fn anchor_paths(args: &[String], base: &Path) -> Vec<String> {
-    let command =
-        <crate::test::TestOptions as clap::Args>::augment_args(clap::Command::new("test"));
-    // What a long flag consumes: `Some(true)` a value, `Some(false)` a value
-    // only when the next token is not a flag, `None` nothing.
-    let takes_value = |flag: &str| -> Option<bool> {
-        let long = flag.strip_prefix("--")?;
-        let arg = command
-            .get_arguments()
-            .find(|arg| arg.get_long() == Some(long))?;
-        if !arg.get_action().takes_values() {
-            return None;
-        }
-        Some(
-            !arg.get_num_args()
-                .is_some_and(|range| range.min_values() == 0),
-        )
-    };
     let anchor = |value: &str| -> String {
         let path = Path::new(value);
         if value.is_empty() || path.is_absolute() {
@@ -504,8 +641,8 @@ mod tests {
     const FILE: &str = r#"{
         "$schema": "./node_modules/@lingxia/test/schemas/lxdev.schema.json",
         "test": { "presets": {
-            "ci": ["--tag", "unit,routed", "--openapi", "api.yaml", "--isolate", "--retries", "1"],
-            "nightly": ["--state", "demo", "--save-state-on", "always"]
+            "ci": ["--tag", "unit,routed", "--openapi", "api.yaml", "--profile", "empty", "--retries", "1"],
+            "nightly": ["--profile", "demo", "--profile-save=always"]
         } }
     }"#;
 
@@ -537,7 +674,8 @@ mod tests {
                 "unit,routed",
                 "--openapi",
                 api.to_str().unwrap(),
-                "--isolate",
+                "--profile",
+                "empty",
                 "--retries",
                 "1",
                 "tests/",
@@ -558,7 +696,7 @@ mod tests {
             after_dashes
         );
         let inline = expand(os(&["lxdev", "test", "--preset=nightly"]), dir.path()).unwrap();
-        assert_eq!(inline[2], OsString::from("--state"));
+        assert_eq!(inline[2], OsString::from("--profile"));
     }
 
     #[test]
@@ -568,8 +706,8 @@ mod tests {
                 "tests/all.test.ts",
                 "--openapi", "../contract.yaml",
                 "--covers-manifest=tests/coverage.yaml",
-                "--state", "auth",
-                "--save-state", "./snapshots/auth.lxstate",
+                "--profile", "./snapshots/auth.lxstate",
+                "--secrets-file", ".env.test",
                 "--record-network", "recorded",
                 "--output-dir", "/tmp/abs-results",
                 "--tag", "unit/x",
@@ -594,10 +732,10 @@ mod tests {
             "--openapi".to_string(),
             parent.to_string_lossy().into_owned(),
             format!("--covers-manifest={}", at("tests/coverage.yaml")),
-            "--state".to_string(),
-            "auth".to_string(),
-            "--save-state".to_string(),
+            "--profile".to_string(),
             at("snapshots/auth.lxstate"),
+            "--secrets-file".to_string(),
+            at(".env.test"),
             "--record-network".to_string(),
             at("recorded"),
             "--output-dir".to_string(),
@@ -619,6 +757,79 @@ mod tests {
             expanded,
             expected.iter().map(OsString::from).collect::<Vec<_>>()
         );
+    }
+
+    #[test]
+    fn file_defaults_come_first_and_give_way_to_what_is_given() {
+        let dir = project(
+            r#"{ "test": {
+                "entry": "tests/",
+                "outputDir": "results",
+                "openapi": ["api.yaml"],
+                "tags": "unit",
+                "presets": { "smoke": ["tests/smoke.test.ts", "--tag", "smoke"] }
+            } }"#,
+        );
+        let root = dir.path();
+        let at = |relative: &str| root.join(relative).to_string_lossy().into_owned();
+        let strings = |argv: Vec<OsString>| {
+            argv.into_iter()
+                .map(|token| token.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        // No preset: every default, then the command line.
+        let plain = strings(expand(os(&["lxdev", "test", "--grep", "x"]), root).unwrap());
+        assert_eq!(
+            plain,
+            vec![
+                "lxdev".to_string(),
+                "test".to_string(),
+                at("tests"),
+                "--output-dir".to_string(),
+                at("results"),
+                "--openapi".to_string(),
+                at("api.yaml"),
+                "--tag".to_string(),
+                "unit".to_string(),
+                "--grep".to_string(),
+                "x".to_string(),
+            ]
+        );
+        // A preset's entry and tags replace the defaults'; the rest stays.
+        let smoke = strings(expand(os(&["lxdev", "test", "--preset", "smoke"]), root).unwrap());
+        assert!(!smoke.contains(&at("tests")), "{smoke:?}");
+        assert!(!smoke.contains(&"unit".to_string()), "{smoke:?}");
+        assert!(smoke.contains(&at("results")), "{smoke:?}");
+        // So does the command line's own entry or flag.
+        let own =
+            strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-dir=o"]), root).unwrap());
+        assert!(
+            !own.contains(&at("tests")) && !own.contains(&at("results")),
+            "{own:?}"
+        );
+        // Commands that start no run take no defaults.
+        for argv in [
+            &["lxdev", "test", "--cancel-active"][..],
+            &["lxdev", "test", "report", "latest"],
+            &["lxdev", "test", "--list-presets"],
+        ] {
+            assert_eq!(expand(os(argv), root).unwrap(), os(argv));
+        }
+        // Bad defaults are refused with the field named.
+        for (text, expected) in [
+            (
+                r#"{ "test": { "entry": ["a"] } }"#,
+                "test.entry must be a string",
+            ),
+            (r#"{ "test": { "tags": ["unit,"] } }"#, "test.tags"),
+            (
+                r#"{ "test": { "openapi": [1] } }"#,
+                "test.openapi must be a list",
+            ),
+        ] {
+            let err = format!("{:#}", parse(text, Path::new("lxdev.json")).unwrap_err());
+            assert!(err.contains(expected), "{text}: {err}");
+        }
     }
 
     #[test]
@@ -672,6 +883,10 @@ mod tests {
             (
                 r#"{ "test": { "profiles": {} } }"#,
                 "unknown field 'test.profiles'",
+            ),
+            (
+                r#"{ "test": { "presets": { "p": ["--secrets-file", ".env.test", "--secret-arg", "a=b"] } } }"#,
+                "--secret-arg is not allowed",
             ),
             (
                 r#"{ "test": { "presets": [] } }"#,

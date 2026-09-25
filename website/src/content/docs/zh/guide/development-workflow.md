@@ -45,7 +45,7 @@ lingxia dev status
 3. 通过页面 DOM（`page eval` / `query`）或 Logic evaluation（`lxapp eval`）断言结果。
 4. 查看 `lxdev logs`，确认没有新增 warning 与 error。
 
-完整原生宿主画面使用 `lxdev app screenshot`，单个页面 WebView 使用 `lxdev lxapp page screenshot`。预期结果不是视觉效果时，优先断言具体值而不是看截图猜测。
+完整原生宿主画面使用 `lxdev host screenshot`，单个页面 WebView 使用 `lxdev lxapp page screenshot`。预期结果不是视觉效果时，优先断言具体值而不是看截图猜测。
 
 ## 八个命令家族
 

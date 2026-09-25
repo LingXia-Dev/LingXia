@@ -125,6 +125,7 @@ impl DevCompanion {
             version,
             role,
             capabilities: peer_capabilities,
+            ..
         } = hello
         else {
             stop_child_tree(&mut child);

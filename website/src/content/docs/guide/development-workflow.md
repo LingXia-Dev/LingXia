@@ -45,7 +45,7 @@ A successful build is only the start:
 3. Assert the result with page DOM inspection (`page eval` / `query`) or Logic evaluation (`lxapp eval`).
 4. Check `lxdev logs` for new warnings and errors.
 
-Use `lxdev app screenshot` for the full native host surface and `lxdev lxapp page screenshot` for one page WebView. Prefer assertable values over screenshots when the expected result is not visual.
+Use `lxdev host screenshot` for the full native host surface and `lxdev lxapp page screenshot` for one page WebView. Prefer assertable values over screenshots when the expected result is not visual.
 
 ## Eight command families
 

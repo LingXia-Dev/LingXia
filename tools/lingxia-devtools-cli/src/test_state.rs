@@ -1,5 +1,5 @@
-//! `lxdev test --isolate / --state / --save-state`: run a suite on an
-//! isolated data profile of the app, seeded from and saved to snapshots.
+//! `lxdev test --profile / --profile-save`: run a suite on an isolated data
+//! profile of the app, empty or seeded from a snapshot, and save it back.
 //!
 //! The host does the isolating (it points the app's data at a throwaway
 //! profile and restores it when the run ends); this side validates flags and
@@ -23,27 +23,31 @@ use std::time::{Duration, SystemTime};
 const STATE_EXT: &str = "lxstate";
 /// A snapshot this old likely holds expired sessions; say so.
 const STALE_AFTER: Duration = Duration::from_secs(7 * 24 * 3600);
+/// `--profile empty`: isolated, from nothing.
+pub const EMPTY_PROFILE: &str = "empty";
 
 #[derive(Args, Debug, Clone, Default)]
 pub struct StateOptions {
-    /// Run the app on an isolated, empty data profile. Its own data is not
-    /// touched and is back in place when the run ends
-    #[arg(long)]
-    pub isolate: bool,
+    /// Run the app on an isolated data profile: `empty`, a snapshot NAME kept
+    /// under ~/.lingxia/test-state, or a PATH to a .lxstate file. The app's
+    /// own data is not touched and is back in place when the run ends
+    #[arg(long, value_name = "empty|NAME|PATH", help_heading = "App data")]
+    pub profile: Option<String>,
 
-    /// Start from a saved snapshot (implies --isolate): a NAME kept under
-    /// ~/.lingxia/test-state, or a PATH to a .lxstate file
-    #[arg(long, value_name = "NAME|PATH")]
-    pub state: Option<String>,
-
-    /// Save the isolated data after the run (implies --isolate). With the
-    /// same --state, a missing snapshot starts empty and is created
-    #[arg(long, value_name = "NAME|PATH")]
-    pub save_state: Option<String>,
-
-    /// When --save-state writes the snapshot
-    #[arg(long, value_enum, default_value_t = SaveOn::Pass, requires = "save_state")]
-    pub save_state_on: SaveOn,
+    /// Save the isolated data back to the --profile snapshot after the run:
+    /// `pass` (the default) only after a passing run, `always` after any run
+    /// that finished. A snapshot that does not exist yet starts empty
+    #[arg(
+        long,
+        value_enum,
+        value_name = "WHEN",
+        num_args = 0..=1,
+        require_equals = true,
+        default_missing_value = "pass",
+        requires = "profile",
+        help_heading = "App data"
+    )]
+    pub profile_save: Option<SaveOn>,
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -57,39 +61,40 @@ pub enum SaveOn {
 
 impl StateOptions {
     pub fn isolated(&self) -> bool {
-        self.isolate || self.state.is_some() || self.save_state.is_some()
+        self.profile.is_some()
     }
 
-    /// Flags a rerun hint must repeat so the rerun sees the same data.
-    ///
-    /// A snapshot saved back to where it was read from is a rolling one: the
-    /// app may rotate what it holds (a refresh token used once), so a rerun
-    /// that read it without saving would leave the next run a stale copy.
-    /// Such a rerun saves it the same way. Any other `--save-state` is left
-    /// out: a one-spec rerun must not overwrite a snapshot a full run made.
+    /// The snapshot the run starts from, if any.
+    fn seed(&self) -> Option<&str> {
+        self.profile
+            .as_deref()
+            .filter(|profile| *profile != EMPTY_PROFILE)
+    }
+
+    /// Flags a rerun hint must repeat so the rerun sees the same data. A
+    /// snapshot saved back is a rolling one — the app may rotate what it
+    /// holds (a refresh token used once) — so a rerun saves it the same way,
+    /// or it would leave the next run a stale copy.
     pub fn rerun_flags(&self, quote: impl Fn(&str) -> String) -> String {
-        let mut flags = String::new();
-        if let Some(state) = &self.state {
-            flags.push_str(&format!(" --state {}", quote(state)));
-            if self.save_state.as_ref() == Some(state) {
-                flags.push_str(&format!(" --save-state {}", quote(state)));
-                if self.save_state_on == SaveOn::Always {
-                    flags.push_str(" --save-state-on always");
-                }
-            }
-        } else if self.isolated() {
-            flags.push_str(" --isolate");
+        let Some(profile) = &self.profile else {
+            return String::new();
+        };
+        let mut flags = format!(" --profile {}", quote(profile));
+        match self.profile_save {
+            Some(SaveOn::Pass) => flags.push_str(" --profile-save"),
+            Some(SaveOn::Always) => flags.push_str(" --profile-save=always"),
+            None => {}
         }
         flags
     }
 }
 
-/// Whether a `--state`/`--save-state` value is a PATH rather than a NAME.
+/// Whether a `--profile` value is a PATH rather than a NAME.
 pub fn names_a_path(value: &str) -> bool {
     value.contains('/') || value.contains('\\') || value.ends_with(&format!(".{STATE_EXT}"))
 }
 
-/// Where a `--state`/`--save-state` value points.
+/// Where a `--profile` value points.
 fn resolve(value: &str, project_root: &Path) -> Result<PathBuf> {
     if names_a_path(value) {
         return Ok(PathBuf::from(value));
@@ -205,23 +210,31 @@ pub fn prepare(
     if !options.isolated() {
         return Ok(None);
     }
-    let save = options
-        .save_state
-        .as_deref()
-        .map(|value| resolve(value, project_root))
-        .transpose()?;
+    if options.profile_save.is_some() && options.seed().is_none() {
+        bail!(
+            "--profile-save needs a snapshot to save to: pass --profile NAME or --profile PATH \
+             instead of --profile {EMPTY_PROFILE}"
+        );
+    }
+    let save = match options.profile_save {
+        Some(_) => options
+            .seed()
+            .map(|value| resolve(value, project_root))
+            .transpose()?,
+        None => None,
+    };
     if let Some(save) = &save {
         let parent = save
             .parent()
             .filter(|parent| !parent.as_os_str().is_empty())
             .unwrap_or(Path::new("."));
         create_private_dir(parent)
-            .with_context(|| format!("cannot create {} for --save-state", parent.display()))?;
+            .with_context(|| format!("cannot create {} for --profile-save", parent.display()))?;
         if !machine && let Some(warning) = in_project_warning(save, project_root) {
             eprintln!("{} {warning}", "warning".yellow());
         }
     }
-    let seed = match options.state.as_deref() {
+    let seed = match options.seed() {
         None => None,
         Some(value) => {
             let path = resolve(value, project_root)?;
@@ -230,14 +243,18 @@ pub fn prepare(
             } else if save.as_ref() == Some(&path) {
                 if !machine {
                     eprintln!(
-                        "{} no saved state at {} yet; starting empty and saving it after the run",
+                        "{} no saved profile at {} yet; starting empty and saving it after the run",
                         "test".cyan(),
                         path.display()
                     );
                 }
                 None
             } else {
-                bail!("no saved test state at {}", path.display());
+                bail!(
+                    "no saved test profile at {} (add --profile-save to create it, or use \
+                     --profile {EMPTY_PROFILE})",
+                    path.display()
+                );
             }
         }
     };
@@ -285,7 +302,7 @@ pub fn prepare(
         },
         control,
         save,
-        save_on: options.save_state_on,
+        save_on: options.profile_save.unwrap_or_default(),
     }))
 }
 
@@ -299,7 +316,7 @@ fn require_profile_capability(ws_url: &str) -> Result<ProfileCapability> {
                     anyhow!(
                         "this host cannot isolate a test run (it predates \
                      `session.test.capabilities`); rebuild it with the current LingXia, \
-                     or drop --isolate/--state/--save-state"
+                     or drop --profile"
                     )
                 } else {
                     error
@@ -447,7 +464,7 @@ fn export(ws_url: &str, run_id: &str) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// The profile the host keeps for a `--save-state` run.
+/// The profile the host keeps for a `--profile-save` run.
 pub struct RetainedProfile {
     ws_url: String,
     run_id: String,
@@ -565,57 +582,79 @@ mod tests {
     }
 
     #[test]
-    fn state_flags_imply_isolation() {
+    fn a_profile_isolates_the_run() {
         assert!(!parse(&[]).unwrap().isolated());
-        assert!(parse(&["--isolate"]).unwrap().isolated());
-        assert!(parse(&["--state", "auth"]).unwrap().isolated());
-        let saving = parse(&["--save-state", "auth", "--save-state-on", "always"]).unwrap();
-        assert!(saving.isolated());
-        assert_eq!(saving.save_state_on, SaveOn::Always);
-        assert!(
-            parse(&["--save-state-on", "always"]).is_err(),
-            "--save-state-on needs --save-state"
+        let empty = parse(&["--profile", "empty"]).unwrap();
+        assert!(empty.isolated());
+        assert_eq!(empty.seed(), None);
+        let named = parse(&["--profile", "auth"]).unwrap();
+        assert_eq!(named.seed(), Some("auth"));
+        assert_eq!(named.profile_save, None);
+        assert_eq!(
+            parse(&["--profile", "auth", "--profile-save"])
+                .unwrap()
+                .profile_save,
+            Some(SaveOn::Pass)
         );
+        assert_eq!(
+            parse(&["--profile", "auth", "--profile-save=always"])
+                .unwrap()
+                .profile_save,
+            Some(SaveOn::Always)
+        );
+        assert!(
+            parse(&["--profile-save"]).is_err(),
+            "--profile-save needs --profile"
+        );
+        assert!(parse(&["--profile", "a", "--profile-save=never"]).is_err());
+        // The removed spellings are gone, not aliased.
+        for removed in [
+            &["--isolate"][..],
+            &["--state", "auth"],
+            &["--save-state", "auth"],
+        ] {
+            assert!(parse(removed).is_err(), "{removed:?}");
+        }
     }
 
     #[test]
-    fn rerun_keeps_the_isolation_flags() {
+    fn saving_needs_a_snapshot_to_save_to() {
+        let options = parse(&["--profile", "empty", "--profile-save"]).unwrap();
+        let error = prepare("ws://127.0.0.1:9", &options, Path::new("."), true)
+            .err()
+            .expect("refused before contacting the host");
+        assert!(error.to_string().contains("--profile NAME"), "{error}");
+        let missing = parse(&["--profile", "./missing.lxstate"]).unwrap();
+        let error = prepare("ws://127.0.0.1:9", &missing, Path::new("."), true)
+            .err()
+            .expect("a missing snapshot is refused");
+        assert!(error.to_string().contains("--profile-save"), "{error}");
+    }
+
+    #[test]
+    fn rerun_keeps_the_profile_flags() {
         let quote = |value: &str| format!("'{value}'");
         assert_eq!(parse(&[]).unwrap().rerun_flags(quote), "");
         assert_eq!(
-            parse(&["--isolate"]).unwrap().rerun_flags(quote),
-            " --isolate"
+            parse(&["--profile", "empty"]).unwrap().rerun_flags(quote),
+            " --profile 'empty'"
+        );
+        assert_eq!(
+            parse(&["--profile", "auth"]).unwrap().rerun_flags(quote),
+            " --profile 'auth'"
         );
         // A rolling snapshot is read and saved back the same way.
         assert_eq!(
-            parse(&["--state", "auth", "--save-state", "auth"])
+            parse(&["--profile", "auth", "--profile-save"])
                 .unwrap()
                 .rerun_flags(quote),
-            " --state 'auth' --save-state 'auth'"
+            " --profile 'auth' --profile-save"
         );
         assert_eq!(
-            parse(&[
-                "--state",
-                "auth",
-                "--save-state",
-                "auth",
-                "--save-state-on",
-                "always"
-            ])
-            .unwrap()
-            .rerun_flags(quote),
-            " --state 'auth' --save-state 'auth' --save-state-on always"
-        );
-        // A rerun must not overwrite a snapshot made by another source.
-        assert_eq!(
-            parse(&["--save-state", "auth"]).unwrap().rerun_flags(quote),
-            " --isolate"
-        );
-        assert_eq!(
-            parse(&["--state", "seed", "--save-state", "auth"])
+            parse(&["--profile", "auth", "--profile-save=always"])
                 .unwrap()
                 .rerun_flags(quote),
-            " --state 'seed'"
+            " --profile 'auth' --profile-save=always"
         );
     }
 

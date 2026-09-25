@@ -2,7 +2,7 @@
 import AVFoundation
 import UIKit
 
-/// Host-surface PNG for `lxdev app screenshot`.
+/// Host-surface PNG for `lxdev host screenshot`.
 ///
 /// `CALayer.render(in:)` captures WKWebView and UIImageView but skips
 /// `AVPlayerLayer`. Stamp the current `AVPlayerItem` frame over each player

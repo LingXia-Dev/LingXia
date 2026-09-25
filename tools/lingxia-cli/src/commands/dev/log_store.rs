@@ -129,6 +129,14 @@ fn detach_process(command: &mut std::process::Command) {
     command.creation_flags(CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
 }
 
+/// `lingxia dev --name`: the alias every session this process registers
+/// carries.
+static SESSION_NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+pub fn set_session_name(name: Option<String>) {
+    let _ = SESSION_NAME.set(name);
+}
+
 /// Register this dev session with the per-user broker. The returned guard
 /// keeps the registration alive (re-registering across broker restarts);
 /// dropping it — or process exit — removes the session.
@@ -168,6 +176,8 @@ pub fn register_session_with_content(
             .unwrap_or_default(),
         ws_url: ws_url.to_string(),
         log_file: session.log_file.display().to_string(),
+        name: SESSION_NAME.get().cloned().flatten(),
+        build: Some(env!("LINGXIA_BUILD_VERSION").to_string()),
     };
     ensure_current_broker();
     lingxia_control_protocol::dev_session::broker::register_session(info, spawn_broker)
@@ -287,6 +297,9 @@ pub fn find_live_for_target(project_root: &Path, target: &str) -> Result<Vec<Ses
         .collect())
 }
 
+/// The session of this project a `lingxia dev stop [SELECTOR]` means — the
+/// same rules `lxdev --session` follows (name, target, `target@dir`, #, id
+/// prefix; without one, the only session).
 pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<SessionInfo> {
     let all = list_sessions(project_root)?;
     if all.is_empty() {
@@ -294,39 +307,9 @@ pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<Se
             "No live dev session found for this project. Run `lingxia dev` first."
         ));
     }
-
-    let mut candidates: Vec<SessionInfo> = all
-        .into_iter()
-        .filter(|session| match selector {
-            Some(value) => {
-                session.target.eq_ignore_ascii_case(value) || session.session_id.starts_with(value)
-            }
-            None => true,
-        })
-        .collect();
-
-    if candidates.is_empty() {
-        return Err(anyhow!(
-            "No dev session matches the given selector ({:?}).",
-            selector
-        ));
-    }
-
-    match candidates.len() {
-        1 => Ok(candidates.remove(0)),
-        _ => {
-            let mut msg = String::from(
-                "Multiple live dev sessions match. Pass a session id prefix or target:\n",
-            );
-            for session in &candidates {
-                msg.push_str(&format!(
-                    "  {}  target={}  pid={}  ws={}\n",
-                    session.session_id, session.target, session.pid, session.ws_url
-                ));
-            }
-            Err(anyhow!(msg.trim_end().to_string()))
-        }
-    }
+    lingxia_control_protocol::dev_session::select::select(&all, selector, project_root)
+        .cloned()
+        .map_err(|err| anyhow!("{err}"))
 }
 
 pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
@@ -338,6 +321,7 @@ pub fn request_shutdown(info: &SessionInfo) -> Result<()> {
             version: DEV_SESSION_PROTOCOL_VERSION,
             role: DevSessionRole::Controller,
             capabilities: vec![capabilities::REQUESTS.to_string()],
+            build: None,
         },
     )?;
 
@@ -380,6 +364,7 @@ fn devtools_ws_echo(ws_url: &str, timeout: Duration) -> Option<(bool, Option<ser
             version: DEV_SESSION_PROTOCOL_VERSION,
             role: DevSessionRole::Controller,
             capabilities: vec![capabilities::REQUESTS.to_string()],
+            build: None,
         },
     )
     .is_err()

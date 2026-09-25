@@ -9,9 +9,33 @@
     "test": {
       "type": "object",
       "properties": {
+        "entry": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default test entry (file or directory), relative to lxdev.json. Used when neither the preset nor the command line names one."
+        },
+        "outputDir": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Default --output-dir, relative to lxdev.json, unless the preset or the command line sets one."
+        },
+        "openapi": {
+          "description": "Default --openapi document(s), relative to lxdev.json, unless the preset or the command line gives --openapi.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        },
+        "tags": {
+          "description": "Default --tag expression(s), unless the preset or the command line gives --tag.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        },
         "presets": {
           "type": "object",
-          "description": "Named `lxdev test` argument lists for `--preset NAME`. The preset's arguments go before the command line's: repeatable flags add up, a flag given on the command line wins. No --secret-arg, --preset, --cancel-active, or credential-named --arg.",
+          "description": "Named `lxdev test` argument lists for `--preset NAME`. The preset's arguments go after the defaults above and before the command line's: repeatable flags add up, a flag given later wins. No --secret-arg, --preset, --cancel-active, or credential-named --arg; keep secrets in a gitignored --secrets-file.",
           "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" },
           "additionalProperties": {
             "type": "array",

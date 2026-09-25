@@ -18,6 +18,12 @@ pub struct LxAppOptions {
 #[command(name = "lxdev lxapp")]
 #[command(about = "Manage lxapps in the current dev session", long_about = None)]
 struct LxAppCli {
+    /// Select the dev session: a name, target, `target@<project-dir>`, an
+    /// ordinal from `lxdev session list`, or an id prefix. Falls back to
+    /// LXDEV_SESSION
+    #[arg(long, global = true, value_name = "SESSION")]
+    session: Option<String>,
+
     #[command(subcommand)]
     command: LxAppCommand,
 }
@@ -531,6 +537,32 @@ pub fn execute(project_root: &Path, info: &SessionInfo, options: LxAppOptions) -
     Ok(())
 }
 
+impl LxAppOptions {
+    /// Take a `--session` given after `lxapp` (its arguments are parsed
+    /// here, not by the top-level command line).
+    pub fn take_session(&mut self) -> Option<String> {
+        let mut session = None;
+        let mut rest = Vec::with_capacity(self.args.len());
+        let mut tokens = std::mem::take(&mut self.args).into_iter();
+        while let Some(token) = tokens.next() {
+            if token == "--" {
+                rest.push(token);
+                rest.extend(tokens.by_ref());
+                break;
+            }
+            if token == "--session" {
+                session = tokens.next();
+            } else if let Some(value) = token.strip_prefix("--session=") {
+                session = Some(value.to_string());
+            } else {
+                rest.push(token);
+            }
+        }
+        self.args = rest;
+        session
+    }
+}
+
 pub fn handle_pre_session(project_root: &Path, options: &LxAppOptions) -> Result<bool> {
     if options.args.is_empty() || is_top_level_help(&options.args) {
         print_dynamic_help(commands_for_project(project_root));
@@ -947,7 +979,7 @@ fn parse_query_pairs(pairs: &[String]) -> Result<Option<Value>> {
 
 fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
     if project_root.join("lxapp.json").exists() && !project_root.join("lingxia.yaml").exists() {
-        &["doctor", "info", "pages", "page", "nav", "device", "eval"]
+        &["doctor", "info", "pages", "page", "nav", "eval"]
     } else {
         &[
             "list",
@@ -957,7 +989,6 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
             "pages",
             "page",
             "nav",
-            "device",
             "eval",
             "open",
             "close",
@@ -979,7 +1010,10 @@ fn print_dynamic_help(commands: &[&str]) {
     println!("  help        Print this message or the help of the given command(s)");
     println!();
     println!("Options:");
-    println!("  -h, --help  Print help");
+    println!("      --session <SESSION>  Select the dev session (see `lxdev session list`)");
+    println!("  -h, --help               Print help");
+    println!();
+    println!("The simulated device, orientation and appearance are `lxdev runner`.");
 }
 
 fn command_description(command: &str) -> &'static str {
@@ -991,7 +1025,6 @@ fn command_description(command: &str) -> &'static str {
         "pages" => "Print configured lxapp pages",
         "page" => "Inspect and automate lxapp pages",
         "nav" => "Navigate the lxapp runtime by page name",
-        "device" => "Inspect or switch the simulated device",
         "eval" => "Evaluate JavaScript in the lxapp logic runtime",
         "open" => "Open an lxapp",
         "close" => "Close an lxapp",
@@ -1142,6 +1175,21 @@ mod tests {
             options.command,
             PageCommand::Type { text, .. } if text == "-typed"
         ));
+    }
+
+    #[test]
+    fn a_session_after_lxapp_selects_the_session() {
+        let mut options = LxAppOptions {
+            args: args(&["page", "--session", "macos", "query", "--css", "a"]),
+        };
+        assert_eq!(options.take_session().as_deref(), Some("macos"));
+        assert_eq!(options.args, args(&["page", "query", "--css", "a"]));
+        let mut options = LxAppOptions {
+            args: args(&["eval", "--session=demo", "1"]),
+        };
+        assert_eq!(options.take_session().as_deref(), Some("demo"));
+        assert_eq!(options.args, args(&["eval", "1"]));
+        assert!(parse_lxapp_cli(args(&["eval", "--session", "x", "1"])).is_ok());
     }
 
     #[test]

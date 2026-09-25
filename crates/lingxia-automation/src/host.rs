@@ -111,7 +111,7 @@ impl JSLxAppManager {
         to_js(&ctx, &json!({ "appid": appid, "currentPage": path }))
     }
 
-    /// Inject an App Link (`lxdev app applink`). Resolves when accepted, not
+    /// Inject an App Link (`lxdev host applink`). Resolves when accepted, not
     /// when navigation finishes.
     #[js_method]
     async fn applink(&self, ctx: JSContext, options: ApplinkOpt) -> JSResult<JSApplinkResult> {

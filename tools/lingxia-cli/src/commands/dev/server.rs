@@ -170,7 +170,23 @@ pub(crate) struct DevServerState {
     /// The active run whose runtime disconnected, with the disconnect time;
     /// restored as active if the runtime reconnects within the grace.
     interrupted_test_run: Mutex<Option<(String, Instant)>>,
+    /// `session.watch.pause` leases holding the source watcher.
+    watch_leases: Mutex<std::collections::HashMap<String, WatchLease>>,
+    /// The build the connected runtime reported in its hello.
+    runtime_build: Mutex<Option<lingxia_control_protocol::dev_session::PeerBuild>>,
 }
+
+/// One `session.watch.pause` lease.
+#[derive(Debug, Clone)]
+struct WatchLease {
+    expires: Instant,
+    ttl: Duration,
+    /// A run whose terminal state releases the lease.
+    run_id: Option<String>,
+}
+
+/// Longest lease a client may ask for; it renews, it does not park.
+const MAX_WATCH_LEASE: Duration = Duration::from_secs(600);
 
 impl DevServerState {
     fn new(
@@ -193,7 +209,97 @@ impl DevServerState {
             runtime_epoch: AtomicU64::new(0),
             active_test_run: Mutex::new(None),
             interrupted_test_run: Mutex::new(None),
+            watch_leases: Mutex::new(std::collections::HashMap::new()),
+            runtime_build: Mutex::new(None),
         }
+    }
+
+    fn lock_watch_leases(
+        &self,
+    ) -> std::sync::MutexGuard<'_, std::collections::HashMap<String, WatchLease>> {
+        self.watch_leases
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn watch_status(
+        leases: &mut std::collections::HashMap<String, WatchLease>,
+    ) -> lingxia_control_protocol::dev_session::WatchStatus {
+        let now = Instant::now();
+        leases.retain(|_, lease| lease.expires > now);
+        lingxia_control_protocol::dev_session::WatchStatus {
+            paused: !leases.is_empty(),
+            leases: leases.len(),
+        }
+    }
+
+    /// Take or renew a `session.watch.pause` lease.
+    pub(crate) fn pause_watch(
+        &self,
+        args: lingxia_control_protocol::dev_session::WatchPauseArgs,
+    ) -> lingxia_control_protocol::dev_session::WatchStatus {
+        let ttl = Duration::from_millis(args.ttl_ms.max(1)).min(MAX_WATCH_LEASE);
+        let mut leases = self.lock_watch_leases();
+        let run_id = args.run_id.or_else(|| {
+            leases
+                .get(&args.lease)
+                .and_then(|lease| lease.run_id.clone())
+        });
+        leases.insert(
+            args.lease,
+            WatchLease {
+                expires: Instant::now() + ttl,
+                ttl,
+                run_id,
+            },
+        );
+        Self::watch_status(&mut leases)
+    }
+
+    /// Release a `session.watch.pause` lease.
+    pub(crate) fn resume_watch(
+        &self,
+        lease: &str,
+    ) -> lingxia_control_protocol::dev_session::WatchStatus {
+        let mut leases = self.lock_watch_leases();
+        leases.remove(lease);
+        Self::watch_status(&mut leases)
+    }
+
+    /// A relayed test response for `run_id`: a running run renews its
+    /// leases, a finished one releases them.
+    fn settle_watch_leases(&self, run_id: &str, running: bool) {
+        let mut leases = self.lock_watch_leases();
+        let now = Instant::now();
+        leases.retain(|_, lease| {
+            if lease.run_id.as_deref() != Some(run_id) {
+                return true;
+            }
+            if running {
+                lease.expires = now + lease.ttl;
+            }
+            running
+        });
+    }
+
+    /// Whether saves must wait: a pause lease holds the watcher, or a relayed
+    /// test run is active (a client that predates `session.watch.pause`).
+    pub(crate) fn watch_paused(&self) -> bool {
+        Self::watch_status(&mut self.lock_watch_leases()).paused || self.test_run_active()
+    }
+
+    fn set_runtime_build(&self, build: Option<lingxia_control_protocol::dev_session::PeerBuild>) {
+        *self
+            .runtime_build
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = build;
+    }
+
+    fn runtime_build(&self) -> Option<lingxia_control_protocol::dev_session::PeerBuild> {
+        self.runtime_build
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
     }
 
     fn authorizes(&self, presented: Option<&str>) -> bool {
@@ -414,6 +520,7 @@ impl DevServerState {
             return;
         };
         let running = result.get("state").and_then(serde_json::Value::as_str) == Some("running");
+        self.settle_watch_leases(run_id, running);
         let mut active = self.lock_active_test_run();
         if method == test::START {
             if running {
@@ -463,7 +570,7 @@ impl DevServerState {
         };
         let id = uuid::Uuid::new_v4().to_string();
         let _guard = self.lock_command_forwarding();
-        if self.test_run_active() {
+        if self.watch_paused() {
             return Ok(RestartOutcome::Deferred);
         }
         let (tx, rx) = mpsc::channel();
@@ -494,6 +601,31 @@ impl DevServerState {
                 let _ = self.take_pending_result(&id);
                 Err(anyhow!("runtime disconnected during restart"))
             }
+        }
+    }
+}
+
+fn handle_watch_request(
+    state: &DevServerState,
+    id: &str,
+    method: &str,
+    params: Option<serde_json::Value>,
+) -> DevSessionMessage {
+    use lingxia_control_protocol::dev_session::{WatchPauseArgs, WatchResumeArgs};
+    let params = params.unwrap_or(serde_json::Value::Null);
+    let status = if method == lingxia_control_protocol::methods::session::watch::PAUSE {
+        serde_json::from_value::<WatchPauseArgs>(params).map(|args| state.pause_watch(args))
+    } else {
+        serde_json::from_value::<WatchResumeArgs>(params)
+            .map(|args| state.resume_watch(&args.lease))
+    };
+    match status {
+        Ok(status) => DevSessionMessage::success(
+            id.to_string(),
+            Some(serde_json::to_value(status).unwrap_or_default()),
+        ),
+        Err(err) => {
+            DevSessionMessage::error(id.to_string(), "invalid_params", format!("{method}: {err}"))
         }
     }
 }
@@ -723,6 +855,7 @@ fn handle_connection(
         version,
         role,
         capabilities: _,
+        build: peer_build,
     } = hello
     else {
         return Err(anyhow!("First websocket message must be hello"));
@@ -750,6 +883,7 @@ fn handle_connection(
     match role {
         DevSessionRole::Runtime => {
             state.runtime_rejected.store(false, Ordering::Release);
+            state.set_runtime_build(peer_build);
             handle_devtool_connection(websocket, writer, state)
         }
         DevSessionRole::Controller => handle_client_connection(websocket, state.as_ref()),
@@ -1098,15 +1232,27 @@ fn handle_client_connection(
 
     if method.as_str() == lingxia_control_protocol::methods::ECHO {
         let runtime_connected = state.runtime_sender().is_some();
+        let mut result = serde_json::json!({
+            "runtimeConnected": runtime_connected,
+        });
+        if runtime_connected && let Some(build) = state.runtime_build() {
+            result["runtimeBuild"] = serde_json::to_value(build).unwrap_or_default();
+        }
         send_wire_message(
             &mut websocket,
-            &DevSessionMessage::success(
-                id,
-                Some(serde_json::json!({
-                    "runtimeConnected": runtime_connected,
-                })),
-            ),
+            &DevSessionMessage::success(id, Some(result)),
         )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if matches!(
+        method.as_str(),
+        lingxia_control_protocol::methods::session::watch::PAUSE
+            | lingxia_control_protocol::methods::session::watch::RESUME
+    ) {
+        let reply = handle_watch_request(state, &id, &method, params);
+        send_wire_message(&mut websocket, &reply)?;
         let _ = websocket.close(None);
         return Ok(());
     }
@@ -1333,12 +1479,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        DevServerState, TEST_RUN_LEASE, accept_websocket, dev_port, persist_runtime_events,
-        read_wire_message, refresh_lxapp_manifests, resolve_lxapp_dir, route_runtime_message,
-        send_wire_message,
+        DevServerState, TEST_RUN_LEASE, accept_websocket, dev_port, handle_watch_request,
+        persist_runtime_events, read_wire_message, refresh_lxapp_manifests, resolve_lxapp_dir,
+        route_runtime_message, send_wire_message,
     };
     use lingxia_control_protocol::dev_session::{
-        DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, capabilities,
+        DEV_SESSION_PROTOCOL_VERSION, DevSessionMessage, DevSessionRole, WatchPauseArgs,
+        capabilities,
     };
     use std::net::TcpListener;
     use std::path::PathBuf;
@@ -1523,6 +1670,102 @@ mod tests {
             .expect("the start is relayed once the rebuild ends");
     }
 
+    fn pause(lease: &str, ttl_ms: u64, run_id: Option<&str>) -> WatchPauseArgs {
+        WatchPauseArgs {
+            lease: lease.to_string(),
+            ttl_ms,
+            run_id: run_id.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn a_watch_pause_holds_until_resumed_and_counts_leases() {
+        let state = authenticated_state();
+        assert!(!state.watch_paused());
+        assert!(state.pause_watch(pause("a", 60_000, None)).paused);
+        assert_eq!(state.pause_watch(pause("b", 60_000, None)).leases, 2);
+        assert!(state.resume_watch("a").paused);
+        assert!(state.watch_paused());
+        let status = state.resume_watch("b");
+        assert!(!status.paused && status.leases == 0);
+        assert!(!state.watch_paused());
+        // Resuming twice, or an unknown lease, is harmless.
+        assert!(!state.resume_watch("b").paused);
+    }
+
+    #[test]
+    fn a_watch_pause_lapses_without_renewal() {
+        let state = authenticated_state();
+        state.pause_watch(pause("a", 1, None));
+        std::thread::sleep(Duration::from_millis(10));
+        assert!(
+            !state.watch_paused(),
+            "a client that died cannot hold the watcher"
+        );
+        // A renewal extends it.
+        state.pause_watch(pause("b", 60_000, None));
+        state.pause_watch(pause("b", 60_000, None));
+        assert!(state.watch_paused());
+    }
+
+    #[test]
+    fn a_run_bound_pause_is_released_by_every_terminal_state() {
+        use lingxia_control_protocol::methods::session::test;
+        for terminal in ["passed", "failed", "timed_out", "cancelled", "error"] {
+            let state = authenticated_state();
+            state.pause_watch(pause("lease", 60_000, None));
+            // Bound once the run exists; the binding survives renewals.
+            state.pause_watch(pause("lease", 60_000, Some("run-1")));
+            state.pause_watch(pause("lease", 60_000, None));
+            state.observe_test_response(test::POLL, &test_response("run-1", "running"));
+            assert!(state.watch_paused(), "{terminal}");
+            // Another run's end does not release it.
+            state.observe_test_response(test::POLL, &test_response("run-0", terminal));
+            assert!(state.watch_paused(), "{terminal}");
+            state.observe_test_response(test::POLL, &test_response("run-1", terminal));
+            assert!(!state.watch_paused(), "{terminal} releases the pause");
+        }
+        // A cancel reply that already reports the end releases it too.
+        let state = authenticated_state();
+        state.pause_watch(pause("lease", 60_000, Some("run-2")));
+        state.observe_test_response(test::CANCEL, &test_response("run-2", "cancelled"));
+        assert!(!state.watch_paused());
+    }
+
+    #[test]
+    fn a_restart_waits_while_the_watch_is_paused() {
+        let state = authenticated_state();
+        let (tx, rx) = mpsc::channel();
+        state.claim_runtime_sender(tx);
+        state.pause_watch(pause("lease", 60_000, None));
+        assert_eq!(
+            state.restart_lxapp("demo").unwrap(),
+            super::RestartOutcome::Deferred
+        );
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn watch_requests_are_answered_by_the_server() {
+        use lingxia_control_protocol::methods::session::watch;
+        let state = authenticated_state();
+        let reply = handle_watch_request(
+            &state,
+            "1",
+            watch::PAUSE,
+            Some(serde_json::json!({ "lease": "l", "ttl_ms": 60000 })),
+        );
+        let DevSessionMessage::Response(response) = reply else {
+            panic!("expected a response");
+        };
+        assert_eq!(response.result.unwrap()["paused"], true);
+        let reply = handle_watch_request(&state, "2", watch::RESUME, Some(serde_json::json!({})));
+        let DevSessionMessage::Response(response) = reply else {
+            panic!("expected a response");
+        };
+        assert_eq!(response.error.unwrap().code, "invalid_params");
+    }
+
     #[test]
     fn unpolled_test_run_stops_deferring_after_the_lease() {
         let state = authenticated_state();
@@ -1671,6 +1914,7 @@ mod tests {
                 version,
                 role,
                 capabilities: peer_capabilities,
+                ..
             } = hello
             else {
                 panic!("expected hello");
@@ -1689,6 +1933,7 @@ mod tests {
                 version: DEV_SESSION_PROTOCOL_VERSION,
                 role: DevSessionRole::Runtime,
                 capabilities: vec![capabilities::REQUESTS.to_string()],
+                build: None,
             },
         )
         .unwrap();

@@ -50,7 +50,7 @@ export const AUTOMATION_ERROR_CODES = [
   'E_EVAL_SCRIPT',
   /** The evaluation did not settle within its `timeoutMs`. */
   'E_EVAL_TIMEOUT',
-  /** Profile rollback outside an isolated run (`lxdev test --isolate`), or for an lxapp the run does not isolate. */
+  /** Profile rollback outside an isolated run (`lxdev test --profile`), or for an lxapp the run does not isolate. */
   'E_PROFILE_NOT_ISOLATED',
   /** A test clock call needs an installed clock and none is; an app that reopened is back on real time. */
   'E_CLOCK_NOT_INSTALLED',
@@ -1010,7 +1010,7 @@ export interface NetworkDriver {
 
 /**
  * Checkpoint and roll back the isolated data profile of a host automation run
- * (`lxdev test --isolate`). Each call rejects with `E_PROFILE_NOT_ISOLATED`
+ * (`lxdev test --profile`). Each call rejects with `E_PROFILE_NOT_ISOLATED`
  * unless the selected lxapp runs on this run's profile, so it can never touch
  * the app's real data.
  *
@@ -1272,7 +1272,7 @@ export interface LxAppManager {
   current(): Promise<LxAppSummary>;
   open(options: LxAppOpenOptions): Promise<LxAppOpenResult>;
   /**
-   * Inject an App Link (`lxdev app applink`). Warm `onShow`, `scene === 8003`.
+   * Inject an App Link (`lxdev host applink`). Warm `onShow`, `scene === 8003`.
    * Host must match `appLinks.hosts`. Resolves when accepted, not when
    * navigation finishes.
    */

@@ -133,6 +133,24 @@ pub mod methods {
             pub const CAPABILITIES: &str = "session.test.capabilities";
         }
 
+        /// The dev session's source watcher (`lingxia dev` rebuild-and-reload
+        /// on save). Handled by the dev server, not forwarded to the runtime.
+        ///
+        /// `lxdev test` pauses it for the whole run so a save cannot rebuild
+        /// or replace the app under a running spec; saves made meanwhile
+        /// trigger one rebuild when the last pause ends.
+        pub mod watch {
+            /// Args [`crate::dev_session::WatchPauseArgs`]: take or renew the
+            /// pause `lease`, optionally bound to a test run whose terminal
+            /// state releases it. A lease not renewed within `ttl_ms` lapses,
+            /// so a client that dies cannot hold the watcher. Returns
+            /// [`crate::dev_session::WatchStatus`].
+            pub const PAUSE: &str = "session.watch.pause";
+            /// Args `{ lease }`: release a pause. Returns
+            /// [`crate::dev_session::WatchStatus`].
+            pub const RESUME: &str = "session.watch.resume";
+        }
+
         /// Network scenarios and recordings for a running lxapp's Logic
         /// `fetch` and `Rong.SSE` outside test runs: the HTTP section of
         /// `lxdev scenario`, and `lxdev network`.
@@ -156,7 +174,7 @@ pub mod methods {
         }
 
         /// Isolated data profiles of `session.test` runs (`lxdev test
-        /// --isolate`). Snapshots travel only over these methods, never the
+        /// --profile`). Snapshots travel only over these methods, never the
         /// run's artifact channel.
         pub mod profile {
             /// Stage a snapshot in chunks; the final chunk returns its state id.
@@ -490,6 +508,9 @@ pub enum ControlMessage {
 pub mod dev_session {
     #[cfg(feature = "broker")]
     pub mod broker;
+    pub mod compat;
+    #[cfg(feature = "broker")]
+    pub mod select;
     pub mod session_test;
 
     use super::{ControlRequest, ControlResponse};
@@ -601,6 +622,53 @@ pub mod dev_session {
         pub runtime_env: BTreeMap<String, String>,
     }
 
+    /// `session.watch.pause` arguments.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct WatchPauseArgs {
+        /// Client-chosen lease id; pausing again with it renews the lease.
+        pub lease: String,
+        /// How long the lease lasts without a renewal.
+        pub ttl_ms: u64,
+        /// The test run the lease belongs to: its terminal state, as the
+        /// server relays it, releases the lease.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub run_id: Option<String>,
+    }
+
+    /// `session.watch.resume` arguments.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct WatchResumeArgs {
+        pub lease: String,
+    }
+
+    /// The watcher after a pause or resume.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct WatchStatus {
+        /// Whether any lease still holds the watcher.
+        pub paused: bool,
+        /// Live leases.
+        pub leases: usize,
+    }
+
+    /// Which build a runtime peer runs, sent in its `hello`.
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct PeerBuild {
+        /// The LingXia runtime crate version (`0.19.0`).
+        pub version: String,
+        /// [`DEV_SESSION_PROTOCOL_VERSION`] the peer speaks.
+        pub protocol: u32,
+    }
+
+    impl PeerBuild {
+        /// This build of the LingXia control runtime.
+        pub fn current() -> Self {
+            Self {
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                protocol: DEV_SESSION_PROTOCOL_VERSION,
+            }
+        }
+    }
+
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum DevSessionMessage {
@@ -609,6 +677,9 @@ pub mod dev_session {
             role: DevSessionRole,
             #[serde(default, skip_serializing_if = "Vec::is_empty")]
             capabilities: Vec<String>,
+            /// A runtime peer's build; older peers send none.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            build: Option<PeerBuild>,
         },
         EventBatch {
             events: Vec<DevSessionEvent>,
@@ -673,6 +744,7 @@ mod tests {
             version,
             role,
             capabilities,
+            build,
         } = hello
         else {
             panic!("expected hello");
@@ -680,6 +752,7 @@ mod tests {
         assert_eq!(version, DEV_SESSION_PROTOCOL_VERSION);
         assert_eq!(role, DevSessionRole::Controller);
         assert_eq!(capabilities, [capabilities::REQUESTS]);
+        assert_eq!(build, None);
     }
 
     #[test]

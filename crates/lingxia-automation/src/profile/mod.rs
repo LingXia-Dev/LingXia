@@ -1,7 +1,7 @@
 //! `ProfileDriver` — checkpoint and roll back the isolated data profile of a
 //! host automation run.
 //!
-//! Only a run started with an isolated profile (`lxdev test --isolate`)
+//! Only a run started with an isolated profile (`lxdev test --profile`)
 //! carries a profile scope, and every call also checks that the app still
 //! runs on that very profile. Rollback therefore cannot reach an app's real
 //! data. Each call closes the app, copies or swaps the closed profile, and
@@ -47,7 +47,7 @@ fn not_isolated(message: impl Into<String>) -> rong::RongJSError {
 /// selected app currently runs on.
 fn scope_for(ctx: &JSContext, app: &LxApp) -> JSResult<ProfileRunScope> {
     let scope = ctx.get_state::<ProfileRunScope>().cloned().ok_or_else(|| {
-        not_isolated("profile rollback needs an isolated run (lxdev test --isolate)")
+        not_isolated("profile rollback needs an isolated run (lxdev test --profile)")
     })?;
     if !(scope.active)() {
         return Err(not_isolated("this automation run has ended"));

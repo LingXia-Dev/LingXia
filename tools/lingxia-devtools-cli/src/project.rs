@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result};
 pub use lingxia_control_protocol::dev_session::broker::SessionInfo;
 use lingxia_control_protocol::{
     ControlRequest,
@@ -88,81 +88,45 @@ pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
     Ok(sessions)
 }
 
-/// Resolve which session a `lxdev` subcommand should target.
-///
-/// The common case is one live session and no selector: use it. With several
-/// sessions, `--session` (or `LXDEV_SESSION`) picks one by session id prefix
-/// or target name; anything ambiguous or unmatched is an error, never a
-/// guess.
+/// Resolve which session a `lxdev` subcommand should target: see
+/// [`lingxia_control_protocol::dev_session::select`] for the rules — an
+/// explicit selector (name, target, `target@dir`, ordinal, id prefix), else
+/// the session of this directory's project, else the only session; anything
+/// else is refused with a table of candidates.
 pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
     let all = list_all_sessions()?;
-    if all.is_empty() {
-        bail!("No live dev session found. Run `lingxia dev` first.");
-    }
-
-    let Some(needle) = selector.query.as_deref() else {
-        if all.len() == 1 {
-            return Ok(all.into_iter().next().unwrap());
-        }
-        bail!(pick_message(&all));
-    };
-
-    let candidates: Vec<SessionInfo> = all
-        .iter()
-        .filter(|s| s.target.eq_ignore_ascii_case(needle) || s.session_id.starts_with(needle))
+    let cwd = std::env::current_dir().unwrap_or_default();
+    lingxia_control_protocol::dev_session::select::select(&all, selector.query.as_deref(), &cwd)
         .cloned()
-        .collect();
-
-    match candidates.len() {
-        0 => bail!(
-            "No dev session matches --session {needle:?}.\n{}",
-            pick_message(&all)
-        ),
-        1 => Ok(candidates.into_iter().next().unwrap()),
-        _ => bail!(
-            "--session {needle:?} is ambiguous.\n{}",
-            pick_message(&candidates)
-        ),
-    }
+        .map_err(|err| anyhow::anyhow!("{err}"))
 }
 
-/// The disambiguation listing: session id, container target, mounted content.
-fn pick_message(sessions: &[SessionInfo]) -> String {
-    let mut msg =
-        String::from("Multiple LingXia dev sessions are live. Pick one with --session:\n\n");
-    for s in sessions {
-        let location = abbreviate_home(
-            s.content
-                .as_ref()
-                .map(|content| content.display())
-                .unwrap_or(&s.project_root),
-        );
-        msg.push_str(&format!(
-            "  {}  {:<8} {}\n",
-            s.session_id, s.target, location
-        ));
-    }
-    msg.trim_end().to_string()
+/// What to pass as `--session` in a printed hint to reach `info` again from
+/// this directory; `None` when no selector is needed.
+pub fn hint_selector(info: &SessionInfo) -> Option<String> {
+    let all = list_all_sessions().ok()?;
+    let cwd = std::env::current_dir().ok()?;
+    lingxia_control_protocol::dev_session::select::hint_selector(&all, info, &cwd)
 }
 
-fn abbreviate_home(path: &str) -> String {
-    let Some(home) = std::env::var_os("HOME") else {
-        return path.to_string();
-    };
-    let home = home.to_string_lossy();
-    match path.strip_prefix(home.as_ref()) {
-        Some(rest) if rest.starts_with('/') => format!("~{rest}"),
-        _ => path.to_string(),
-    }
+/// A session's readiness and the build its runtime reported.
+#[derive(Debug, Clone)]
+pub struct SessionProbe {
+    pub state: SessionState,
+    pub runtime_build: Option<lingxia_control_protocol::dev_session::PeerBuild>,
 }
 
-pub fn session_state(info: &SessionInfo) -> SessionState {
+pub fn probe_session(info: &SessionInfo) -> SessionProbe {
     devtools_session_state(&info.ws_url, WS_PROBE_TIMEOUT)
 }
 
-fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
+fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionProbe {
+    let stale = SessionProbe {
+        state: SessionState::Stale,
+        runtime_build: None,
+    };
     let Some(mut websocket) = connect_devtools_ws(ws_url, timeout) else {
-        return SessionState::Stale;
+        return stale;
     };
 
     if send_wire_message(
@@ -171,11 +135,12 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
             version: DEV_SESSION_PROTOCOL_VERSION,
             role: DevSessionRole::Controller,
             capabilities: vec![capabilities::REQUESTS.to_string()],
+            build: None,
         },
     )
     .is_err()
     {
-        return SessionState::Stale;
+        return stale;
     }
 
     let command_id = format!(
@@ -195,22 +160,33 @@ fn devtools_session_state(ws_url: &str, timeout: Duration) -> SessionState {
     )
     .is_err()
     {
-        return SessionState::Stale;
+        return stale;
     }
 
     loop {
         let Ok(message) = websocket.read() else {
-            return SessionState::Stale;
+            return stale;
         };
         let Message::Text(text) = message else {
             continue;
         };
         match serde_json::from_str(&text) {
             Ok(DevSessionMessage::Response(response)) if response.id == command_id => {
-                return session_state_from_echo_result(response.error.is_none(), response.result);
+                let runtime_build = response
+                    .result
+                    .as_ref()
+                    .and_then(|value| value.get("runtimeBuild"))
+                    .and_then(|value| serde_json::from_value(value.clone()).ok());
+                return SessionProbe {
+                    state: session_state_from_echo_result(
+                        response.error.is_none(),
+                        response.result,
+                    ),
+                    runtime_build,
+                };
             }
             Ok(_) => continue,
-            Err(_) => return SessionState::Stale,
+            Err(_) => return stale,
         }
     }
 }
@@ -279,27 +255,6 @@ fn parse_ws_addr(ws_url: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn session(id: &str, target: &str, started_at: u64) -> SessionInfo {
-        SessionInfo {
-            session_id: id.to_string(),
-            project_root: "/p".to_string(),
-            content: None,
-            target: target.to_string(),
-            pid: 1,
-            started_at,
-            executable: "/usr/local/bin/lingxia".to_string(),
-            ws_url: "ws://127.0.0.1:1".to_string(),
-            log_file: "/p/.lingxia/logs/x.jsonl".to_string(),
-        }
-    }
-
-    #[test]
-    fn pick_message_lists_id_target_path() {
-        let msg = pick_message(&[session("a1b2c3", "macos", 1), session("d4e5f6", "lxapp", 2)]);
-        assert!(msg.contains("a1b2c3  macos"));
-        assert!(msg.contains("d4e5f6  lxapp"));
-    }
 
     #[test]
     fn session_state_distinguishes_server_from_runtime_readiness() {
