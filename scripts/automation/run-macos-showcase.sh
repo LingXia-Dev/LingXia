@@ -56,8 +56,8 @@ for framework_index in "${!frameworks[@]}"; do
   set +e
   (
     cd "$lxapp_root"
-    # `lingxia test` starts the session from the showcase root (the nearest
-    # lingxia.yaml), runs the macos preset of lxapp/lxdev.json (the entry,
+    # With `--platform`, `lingxia test` starts the host app session from the
+    # showcase root (the nearest lingxia.yaml), runs the macos preset of lxapp/lxdev.json (the entry,
     # --forbid-only and the platform arg) with the flags after `--`, and
     # keeps the session for the diagnostics below.
     "$lingxia" "${test_args[@]}" -- \

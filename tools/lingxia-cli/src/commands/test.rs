@@ -7,6 +7,7 @@
 //! command only owns the session's lifetime around it.
 
 use super::dev::log_store::{self, SessionInfo};
+use super::dev::{DevProject, RUNNER_TARGET, is_runner_target};
 use anyhow::{Context, Result, anyhow, bail};
 use colored::Colorize;
 use std::ffi::OsString;
@@ -85,10 +86,14 @@ fn run_once(
 
 pub fn execute(options: TestExecuteOptions) -> Result<()> {
     let cwd = std::env::current_dir()?;
-    let project_root = dev_root(&cwd);
-    refuse_live_session(&project_root, options.platform.as_deref())?;
+    let project = DevProject::resolve(&cwd, options.platform.as_deref())?;
+    let project_root = project.root().to_path_buf();
+    refuse_live_session(&project_root, session_target(&project, &options))?;
     // The session would refuse the same skew from its background log.
     crate::compat::ensure_project(&project_root, &[])?;
+    // Here rather than in the session's background log, where a broker that
+    // cannot keep `--name` would only be a warning nobody reads.
+    log_store::ensure_current_broker(options.name.is_some())?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
     {
@@ -99,21 +104,20 @@ pub fn execute(options: TestExecuteOptions) -> Result<()> {
     let keep_session = options.keep_session;
     let mut ops = RealSession {
         cwd,
-        project_root,
+        project,
         options,
     };
     let code = run_once(&mut ops, keep_session, &interrupted)?;
     std::process::exit(code);
 }
 
-/// Where `lingxia dev` runs: the nearest directory up from `cwd` with a
-/// `lingxia.yaml` (a host project, run from its lxapp or anywhere inside),
-/// else `cwd` (a standalone lxapp).
-fn dev_root(cwd: &Path) -> PathBuf {
-    cwd.ancestors()
-        .find(|dir| crate::config::has_host_config(dir))
-        .unwrap_or(cwd)
-        .to_path_buf()
+/// The session target a run of `project` registers as, when it is known
+/// before the session starts: `runner`, or the platform asked for.
+fn session_target<'a>(project: &DevProject, options: &'a TestExecuteOptions) -> Option<&'a str> {
+    match project {
+        DevProject::Runner(_) => Some(RUNNER_TARGET),
+        DevProject::Host(_) => options.platform.as_deref(),
+    }
 }
 
 /// A developer's own session is not ours to take over and stop.
@@ -148,7 +152,7 @@ fn same_target(target: &str, platform: &str) -> bool {
 
 struct RealSession {
     cwd: PathBuf,
-    project_root: PathBuf,
+    project: DevProject,
     options: TestExecuteOptions,
 }
 
@@ -156,7 +160,13 @@ impl RealSession {
     fn dev_args(&self) -> Vec<OsString> {
         let options = &self.options;
         let mut args: Vec<OsString> = vec!["dev".into()];
-        if let Some(platform) = &options.platform {
+        // `lingxia dev` in an lxapp directory is the Runner by itself; any
+        // platform it is given must be the local desktop's, which it checks.
+        if let Some(platform) = options
+            .platform
+            .as_deref()
+            .filter(|platform| !is_runner_target(platform))
+        {
             args.extend(["--platform".into(), platform.into()]);
         }
         if let Some(name) = &options.name {
@@ -212,12 +222,16 @@ impl RealSession {
 impl SessionOps for RealSession {
     fn start(&mut self) -> Result<SessionInfo> {
         eprintln!(
-            "{} starting a dev session in {}",
+            "{} starting a dev session in {} ({})",
             "test".cyan(),
-            self.project_root.display()
+            self.project.root().display(),
+            match &self.project {
+                DevProject::Runner(_) => "the lxapp in the desktop Runner",
+                DevProject::Host(_) => "the host app",
+            }
         );
         super::dev::start_background_session(
-            &self.project_root,
+            self.project.root(),
             self.dev_args(),
             SESSION_READY_WITHIN,
             true,
@@ -399,7 +413,7 @@ mod tests {
     fn the_session_and_the_run_get_their_own_flags() {
         let real = RealSession {
             cwd: PathBuf::from("/p/lxapp"),
-            project_root: PathBuf::from("/p"),
+            project: DevProject::Host(PathBuf::from("/p")),
             options: TestExecuteOptions {
                 entry: Some("tests/".into()),
                 preset: Some("ci".into()),
@@ -444,17 +458,100 @@ mod tests {
         );
     }
 
-    #[test]
-    fn dev_runs_at_the_host_project_root() {
+    /// `<host>/lingxia.yaml` with the lxapp in `<host>/lxapp`.
+    fn host_project() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("lingxia.yaml"), "app: {}\n").unwrap();
-        let lxapp = dir.path().join("lxapp/tests");
-        std::fs::create_dir_all(&lxapp).unwrap();
-        assert_eq!(dev_root(&lxapp), dir.path());
+        std::fs::create_dir_all(dir.path().join("lxapp/tests")).unwrap();
+        std::fs::create_dir_all(dir.path().join("android")).unwrap();
+        std::fs::write(dir.path().join("lxapp/lxapp.json"), "{}").unwrap();
+        dir
+    }
+
+    #[test]
+    fn it_runs_what_lingxia_dev_runs_in_the_nearest_project() {
+        let host = host_project();
+        let root = host.path();
+        let lxapp = root.join("lxapp");
+        let resolve = |dir: &Path, target: Option<&str>| DevProject::resolve(dir, target).unwrap();
+        // `lingxia dev` in the lxapp directory starts the Runner, so does this.
+        assert_eq!(
+            DevProject::at(&lxapp),
+            Some(DevProject::Runner(lxapp.clone()))
+        );
+        assert_eq!(resolve(&lxapp, None), DevProject::Runner(lxapp.clone()));
+        assert_eq!(
+            resolve(&lxapp.join("tests"), None),
+            DevProject::Runner(lxapp.clone())
+        );
+        assert_eq!(resolve(root, None), DevProject::Host(root.to_path_buf()));
+        assert_eq!(
+            resolve(&root.join("android"), None),
+            DevProject::Host(root.to_path_buf())
+        );
+
         let standalone = tempfile::tempdir().unwrap();
-        assert_eq!(dev_root(standalone.path()), standalone.path());
+        std::fs::write(standalone.path().join("lxapp.json"), "{}").unwrap();
+        assert_eq!(
+            resolve(standalone.path(), None),
+            DevProject::Runner(standalone.path().to_path_buf())
+        );
+        let nothing = tempfile::tempdir().unwrap();
+        assert!(DevProject::resolve(nothing.path(), None).is_err());
+    }
+
+    #[test]
+    fn a_target_picks_the_runner_or_the_host_app() {
+        let host = host_project();
+        let root = host.path();
+        let lxapp = root.join("lxapp");
+        let resolve = |dir: &Path, target: &str| DevProject::resolve(dir, Some(target));
+        for runner in ["runner", "Runner"] {
+            assert_eq!(
+                resolve(&lxapp.join("tests"), runner).unwrap(),
+                DevProject::Runner(lxapp.clone())
+            );
+        }
+        // A platform means the host app, from anywhere inside it.
+        assert_eq!(
+            resolve(&lxapp, "ios").unwrap(),
+            DevProject::Host(root.to_path_buf())
+        );
+        // The host project root is not an lxapp.
+        let err = resolve(root, "runner").unwrap_err().to_string();
+        assert!(err.contains("no lxapp directory"), "{err}");
+        // A standalone lxapp has only its Runner.
+        let standalone = tempfile::tempdir().unwrap();
+        std::fs::write(standalone.path().join("lxapp.json"), "{}").unwrap();
+        assert_eq!(
+            resolve(standalone.path(), "macos").unwrap(),
+            DevProject::Runner(standalone.path().to_path_buf())
+        );
+    }
+
+    #[test]
+    fn a_runner_session_gets_no_platform_flag() {
+        let real = RealSession {
+            cwd: PathBuf::from("/p/lxapp"),
+            project: DevProject::Runner(PathBuf::from("/p/lxapp")),
+            options: TestExecuteOptions {
+                entry: None,
+                preset: None,
+                headless: false,
+                keep_session: false,
+                platform: Some("runner".into()),
+                name: Some("ui".into()),
+                device: None,
+                display_language: None,
+                dev_flags: vec![],
+                lxdev_args: vec![],
+            },
+        };
+        assert_eq!(real.dev_args(), ["dev", "--name", "ui"].map(OsString::from));
+        assert_eq!(real.rerun_prefix(), "lingxia test --platform runner --");
+        assert_eq!(session_target(&real.project, &real.options), Some("runner"));
+        assert!(same_target("runner", "runner"));
         assert!(same_target("macos", "mac"));
-        assert!(same_target("lxapp", "lxapp"));
         assert!(!same_target("android", "macos"));
     }
 }

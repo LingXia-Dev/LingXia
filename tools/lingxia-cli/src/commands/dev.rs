@@ -93,6 +93,79 @@ pub enum DevSessionAction {
     Stop { session: Option<String> },
 }
 
+/// `-p runner`: the lxapp in the local desktop Runner — what `lingxia dev`
+/// starts by itself in an lxapp directory. Also the session's target name.
+pub(crate) const RUNNER_TARGET: &str = "runner";
+
+pub(crate) fn is_runner_target(value: &str) -> bool {
+    value.trim().eq_ignore_ascii_case(RUNNER_TARGET)
+}
+
+/// What a dev session started in a directory runs. `lingxia dev` decides it
+/// for its working directory; `lingxia test` for the nearest project at or
+/// above its working directory, with the same rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum DevProject {
+    /// A standalone lxapp (`lxapp.json`, no `lingxia.yaml` beside it) in the
+    /// local desktop Runner — also the lxapp directory of a host project.
+    Runner(PathBuf),
+    /// A host app project (`lingxia.yaml`), built and run on a platform.
+    Host(PathBuf),
+}
+
+impl DevProject {
+    pub(crate) fn root(&self) -> &Path {
+        match self {
+            Self::Runner(root) | Self::Host(root) => root,
+        }
+    }
+
+    /// What `lingxia dev` run in `dir` starts, if `dir` is a project.
+    pub(crate) fn at(dir: &Path) -> Option<Self> {
+        if runner::is_standalone_lxapp_project(dir) {
+            Some(Self::Runner(dir.to_path_buf()))
+        } else if has_host_config(dir) {
+            Some(Self::Host(dir.to_path_buf()))
+        } else {
+            None
+        }
+    }
+
+    /// The project a session for `target` starts from, looking in `cwd`
+    /// and then its parents:
+    /// - no target: the nearest project, as `lingxia dev` there would run it
+    ///   (an lxapp directory — even inside a host project — is the Runner);
+    /// - `runner`: the nearest lxapp directory, in the Runner;
+    /// - a platform: the nearest host project, else the nearest lxapp (its
+    ///   Runner is the local desktop platform).
+    pub(crate) fn resolve(cwd: &Path, target: Option<&str>) -> Result<Self> {
+        fn runner_at(dir: &Path) -> Option<DevProject> {
+            runner::is_standalone_lxapp_project(dir).then(|| DevProject::Runner(dir.to_path_buf()))
+        }
+        fn host_at(dir: &Path) -> Option<DevProject> {
+            has_host_config(dir).then(|| DevProject::Host(dir.to_path_buf()))
+        }
+        let nearest = |pick: fn(&Path) -> Option<DevProject>| cwd.ancestors().find_map(pick);
+        let found = match target {
+            None => nearest(Self::at),
+            Some(target) if is_runner_target(target) => nearest(runner_at),
+            Some(_) => nearest(host_at).or_else(|| nearest(runner_at)),
+        };
+        found.ok_or_else(|| match target {
+            Some(target) if is_runner_target(target) => anyhow!(
+                "`-p runner` runs an lxapp in the desktop Runner, but there is no lxapp \
+                 directory (lxapp.json) at or above {}",
+                cwd.display()
+            ),
+            _ => anyhow!(
+                "no LingXia project at or above {}: expected an lxapp directory (lxapp.json) \
+                 or a host project (lingxia.yaml)",
+                cwd.display()
+            ),
+        })
+    }
+}
+
 #[derive(Clone)]
 struct DevContext {
     project_root: std::path::PathBuf,
@@ -266,9 +339,17 @@ fn session_owner_is_running(session: &log_store::SessionInfo) -> bool {
 /// 3. Launch the application
 ///
 /// For standalone lxapp projects, builds the lxapp and launches LingXia Runner.
-pub fn execute(options: DevExecuteOptions) -> Result<()> {
+pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     // Detect project root (current directory)
     let project_root = env::current_dir()?;
+    // `-p runner` names the Runner mode an lxapp directory gets by itself.
+    let runner_requested = options
+        .platform_arg
+        .as_deref()
+        .is_some_and(is_runner_target);
+    if runner_requested {
+        options.platform_arg = None;
+    }
 
     if let Some(action) = options.action {
         return execute_session_action(&project_root, action);
@@ -307,6 +388,12 @@ pub fn execute(options: DevExecuteOptions) -> Result<()> {
 
     if let Some(target) = runner::resolve_dev_target(&project_root, options.target.as_deref())? {
         return runner::execute_runner_dev(project_root, target, options, stop_requested);
+    }
+    if runner_requested {
+        return Err(anyhow!(
+            "`-p runner` starts an lxapp in the desktop Runner: run it in an lxapp directory \
+             (lxapp.json, no lingxia.yaml beside it), or pass one as TARGET."
+        ));
     }
 
     if options.headless {
