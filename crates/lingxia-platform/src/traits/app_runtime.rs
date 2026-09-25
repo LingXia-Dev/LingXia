@@ -149,6 +149,34 @@ impl DesktopBannerOutcome {
     }
 }
 
+/// A banner already queued or on screen, waiting for its outcome.
+///
+/// Returned by [`AppRuntime::banner_enqueue`]: once it exists, a later
+/// `banner_dismiss` for the same id finds the banner.
+#[derive(Debug)]
+pub struct DesktopBannerPending {
+    outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, PlatformError>>,
+}
+
+impl DesktopBannerPending {
+    #[cfg_attr(
+        not(any(test, target_os = "macos", target_os = "windows")),
+        allow(dead_code)
+    )]
+    pub(crate) fn new(
+        outcome: std::sync::mpsc::Receiver<Result<DesktopBannerOutcome, PlatformError>>,
+    ) -> Self {
+        Self { outcome }
+    }
+
+    /// Block until the banner is answered, dismissed, timed out, or replaced.
+    pub fn wait(self) -> Result<DesktopBannerOutcome, PlatformError> {
+        self.outcome
+            .recv()
+            .map_err(|_| PlatformError::Platform("banner waiter dropped".into()))?
+    }
+}
+
 /// What `notification_show` did with the request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocalNotificationStatus {
@@ -437,6 +465,16 @@ pub trait AppRuntime:
         &self,
         _request: &DesktopBannerShow,
     ) -> Result<DesktopBannerOutcome, PlatformError> {
+        Err(PlatformError::NotSupported("banner".to_string()))
+    }
+
+    /// Queue a desktop banner and return without waiting for it. When this
+    /// returns the banner is visible or queued, so a `banner_dismiss` issued
+    /// afterwards finds it. Desktop only.
+    fn banner_enqueue(
+        &self,
+        _request: &DesktopBannerShow,
+    ) -> Result<DesktopBannerPending, PlatformError> {
         Err(PlatformError::NotSupported("banner".to_string()))
     }
 

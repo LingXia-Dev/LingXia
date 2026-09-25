@@ -4,7 +4,7 @@
 //! and who is waiting.
 
 use crate::error::PlatformError;
-use crate::traits::app_runtime::{DesktopBannerOutcome, DesktopBannerShow};
+use crate::traits::app_runtime::{DesktopBannerOutcome, DesktopBannerPending, DesktopBannerShow};
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Sender};
@@ -45,6 +45,18 @@ fn lock() -> std::sync::MutexGuard<'static, State> {
 
 /// Block until this banner is answered, dismissed, timed out, or replaced.
 pub fn show(request: DesktopBannerShow) -> Result<DesktopBannerOutcome, PlatformError> {
+    enqueue_show(request)?.wait()
+}
+
+/// Queue this banner (or put it on screen) and hand back its waiter.
+pub fn enqueue_show(request: DesktopBannerShow) -> Result<DesktopBannerPending, PlatformError> {
+    validate(&request)?;
+    let (tx, rx) = mpsc::channel();
+    enqueue(request, tx);
+    Ok(DesktopBannerPending::new(rx))
+}
+
+fn validate(request: &DesktopBannerShow) -> Result<(), PlatformError> {
     if request.id.is_empty() || request.id.chars().count() > MAX_ID_CHARS {
         return Err(PlatformError::InvalidParameter(format!(
             "banner id must be 1–{MAX_ID_CHARS} characters"
@@ -67,11 +79,7 @@ pub fn show(request: DesktopBannerShow) -> Result<DesktopBannerOutcome, Platform
             ));
         }
     }
-
-    let (tx, rx) = mpsc::channel();
-    enqueue(request, tx);
-    rx.recv()
-        .map_err(|_| PlatformError::Platform("banner waiter dropped".into()))?
+    Ok(())
 }
 
 /// Finish a visible or queued banner as dismissed. Unknown ids are fine.

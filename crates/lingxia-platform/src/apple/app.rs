@@ -329,6 +329,14 @@ impl AppRuntime for Platform {
     }
 
     #[cfg(target_os = "macos")]
+    fn banner_enqueue(
+        &self,
+        request: &crate::traits::app_runtime::DesktopBannerShow,
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+        crate::desktop::banner::enqueue_show(request.clone())
+    }
+
+    #[cfg(target_os = "macos")]
     fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
         crate::desktop::banner::dismiss(id);
         Ok(())
