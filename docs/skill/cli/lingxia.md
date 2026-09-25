@@ -205,7 +205,16 @@ where cross-architecture artifacts are intentional.
 Re-running `lingxia dev` for the same platform **takes over**: it stops the
 project's existing same-platform session automatically and starts fresh.
 Different platforms don't conflict — `-p android` and `-p ios` run side by
-side.
+side. `--name NAME` gives the session a stable alias that `lxdev --session`
+and `lingxia dev stop` accept (and that printed hints use instead of an id).
+
+Before it builds, `lingxia dev` (like `lingxia build`, and `lxdev test` before
+a run) checks that this CLI, the host or Runner it drives, and the project's
+installed `@lingxia/*` packages share a major.minor line — and, for a package
+built locally that records its commit, the CLI's commit. A skew fails fast
+with one line naming the parts and the fix (`npm install …@~M.m.0`, or
+`lingxia upgrade`); `LINGXIA_ALLOW_SKEW=1` downgrades it to a warning, and
+`lingxia doctor --project` prints every version.
 
 While the session is live, `lingxia dev` watches standalone lxapp sources and
 each host `resources.bundles[].path` that is a local lxapp. A save rebuilds
@@ -226,10 +235,12 @@ exits. Either way the session publishes metadata and logs for `lxdev`.
 `lingxia dev status` reports `starting`, `ready`, or `stale` and exposes the
 same state plus `runtime_connected` with `--json`.
 
-`lingxia dev stop` has one terminal-state contract: it requests graceful
-shutdown, waits for the owner to exit, and automatically terminates the owner
-after a bounded timeout. There is no separate force mode. Session lifecycle
-stays with `lingxia`; `lxdev` only connects to and drives a live session.
+`lingxia dev stop [SESSION]` has one terminal-state contract: it requests
+graceful shutdown, waits for the owner to exit, and automatically terminates
+the owner after a bounded timeout. There is no separate force mode. `SESSION`
+takes the same selectors as `lxdev --session` (name, target, `target@dir`,
+`#`, id prefix). Session lifecycle stays with `lingxia`; `lxdev` only connects
+to and drives a live session.
 
 Desktop and Runner dev websockets stay loopback-only. A physical iOS device is
 the exception: it connects to an authenticated LAN listener using the token in
@@ -250,6 +261,27 @@ See `lingxia dev --help` for the flags.
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
 > automates the running app (browser tabs, lxapp pages, screenshots, logs).
 > The split: `lingxia dev` owns process lifetime, `lxdev` drives.
+
+### `lingxia test`
+
+One command for CI: start a dev session in the background, run
+[`lxdev test`](./lxdev.md) in it, and stop it. The exit code is the test
+run's; the session is stopped whatever happens (pass, failure, error, Ctrl-C)
+unless `--keep-session`.
+
+```bash
+lingxia test --preset ci                        # lxdev.json preset
+lingxia test tests/ -p macos -- --grep checkout # after `--`: lxdev test flags
+lingxia test --keep-session -- --format jsonl   # leave the session up for diagnostics
+```
+
+Run it inside the project; for a host app, anywhere under the directory with
+`lingxia.yaml` (the session starts there, `lxdev.json` is read from the
+current directory). It takes the `lingxia dev` flags a session needs
+(`-p/--target`, `--skip-native`, `--release`, `--headless`, `--name`, …) and
+refuses to start while one of the project's sessions is already running — use
+`lxdev test` against that one. A failed spec's `Rerun:` line repeats the
+`lingxia test` command. See `lingxia test --help`.
 
 ### `lingxia devices`
 
@@ -304,6 +336,7 @@ a specific platform build complains about missing tools.
 ```bash
 lingxia doctor
 lingxia doctor --platform harmony
+lingxia doctor --project   # this CLI vs the project's @lingxia/* packages
 ```
 
 ### Setup — `upgrade`

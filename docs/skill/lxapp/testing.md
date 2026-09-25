@@ -64,7 +64,7 @@ lxdev test tests/pages/notes.test.ts
 | Check responses against an API contract | `lxdev test --openapi api.yaml`, `expect(value).toMatchSchema('Name')`; see [below](#api-contract-checks) |
 | Tag specs, run a layer | `spec(title, { tags }, body)`, `spec.configure({ tags })`; `lxdev test --tag`; see [below](#tags-and-layers) |
 | Fast-forward Logic timers and `Date` | `t.app.clock.install()` / `.tick(ms)`; see [below](#test-clock) |
-| Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, read with `t.arg('k')` |
+| Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, `--secrets-file .env.test`, `LXDEV_SECRET_K` / `LXDEV_ARG_K`; read with `t.arg('k')`; see [secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, runs on success or failure); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
 | Skip at run time | `t.skip(reason)`; at registration `spec.skip` / `spec.fixme` |
@@ -464,30 +464,30 @@ spec('status refreshes every 3 s', async (t) => {
 
 ## Isolated app data
 
-`--isolate` runs the suite on a throwaway copy of the app's data (storage,
+`--profile` runs the suite on a throwaway copy of the app's data (storage,
 `lx://userdata`, `lx://usercache`, `lx://temp`); the developer's own data is
 untouched and back in place when the run ends, however it ends.
 
 ```bash
-lxdev test tests/ --isolate                        # start empty
-lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
+lxdev test tests/ --profile empty                 # start empty
+lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 ```
 
-- `--state NAME|PATH` seeds from a snapshot; `--save-state NAME|PATH` saves
-  after a passing run (`--save-state-on always` for any finished run). Both
-  imply `--isolate`. A NAME lives under `~/.lingxia/test-state/`; keep PATH
-  snapshots out of git (`*.lxstate`) — they can hold sign-in tokens.
-- The `Rerun:` line printed under a failed spec repeats `--state`; when the
-  run saves the snapshot back to where it read it (`--state auth --save-state
-  auth`), it repeats `--save-state` and `--save-state-on` too, so a rerun
-  keeps the snapshot current. It never saves to a snapshot the run did not
-  read.
+- `--profile empty|NAME|PATH` starts from nothing or from a snapshot. A NAME
+  lives under `~/.lingxia/test-state/`; keep PATH snapshots out of git
+  (`*.lxstate`) — they can hold sign-in tokens.
+- `--profile-save` writes the run's data back to that snapshot after a passing
+  run (`--profile-save=always` after any finished run); a snapshot that does
+  not exist yet starts empty and is created. It needs a NAME or PATH, not
+  `empty`.
+- The `Rerun:` line printed under a failed spec repeats `--profile` and
+  `--profile-save`, so a rerun keeps a rolling snapshot current.
 - Sign in once: a setup spec signs in through the UI only when the app shows it
   is signed out; later runs start from the saved state.
 - `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
   that spec (implies `fresh`); `t.profile.checkpoint()` / `restore(id)` /
   `drop(id)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
-  and both reject with `E_PROFILE_NOT_ISOLATED` without `--isolate`.
+  and both reject with `E_PROFILE_NOT_ISOLATED` without `--profile`.
 - A reopen resolves once the app has settled: `App.onLaunch` has finished
   (its promise included), a page is ready, and the current page has not
   changed for 300 ms. A redirect the app makes at start-up therefore lands
@@ -541,9 +541,10 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
 - **Specs run on the target device.** Test `fetch('http://127.0.0.1:...')`
   reaches the device's loopback, not the development machine. Start fixture
   servers from shell/CI and pass reachable URLs with `--arg`.
-- **Secrets go through `--secret-arg`.** Its value is `***` in reports, events,
-  and attachments. `--arg` keys named like credentials (`password`, `apiKey`)
-  are masked only in the report's arg list.
+- **Secrets go through `--secret-arg`**, `--secrets-file` or `LXDEV_SECRET_*`
+  (see [secrets](#secrets)). Their values are `***` in reports, events, and
+  attachments. `--arg` keys named like credentials (`password`, `apiKey`) are
+  masked only in the report's arg list.
 - **`t.arg('k')` throws** naming the missing `--arg`; pass `{ default }` or
   `{ required: false }` to relax it.
 - **Network routes last one spec.** A scenario installed with
@@ -556,14 +557,30 @@ lxdev test tests/ --state auth --save-state auth   # reuse, refresh on pass
 ```bash
 lxdev test tests/                     # every *.test.ts, recursively
 lxdev test tests/ --grep checkout
+lxdev test tests/ --last-failed       # what failed last time
+lxdev test report --failures          # the last run's failures, again
+lingxia test --preset ci              # CI: start a session, run, stop it
 ```
 
+- `lingxia test [ENTRY] [--preset P] [-p PLATFORM] [--keep-session] [-- <lxdev
+  test flags>]` owns the whole lifecycle for CI: it starts a background dev
+  session, runs `lxdev test` in it, and stops the session on every way out —
+  pass, failure, error, Ctrl-C — unless `--keep-session`. Its exit code is the
+  run's. `lxdev test` is the same run against a session that is already live.
 - Reports land in `test-results/<run-id>/` (or `--output-dir`): `report.html`,
-  `report.json`, `junit.xml`. Failures fail the command.
-- Empty selections fail; opt out with `--pass-with-no-tests`.
-- Select with `--id ID`, `--last-failed report.json`, `--tag EXPR`, or
-  `--shard 1/3`; shards need separate sessions and output directories. Give
-  non-ASCII titles an `id` so `--id`/`--last-failed` survive reordering.
+  `report.json`, `junit.xml`. `test-results/latest` points at the last run.
+  Failures fail the command.
+- `lxdev test report [DIR|latest] [--failures] [--format json|junit]` prints a
+  finished run's summary, failures and `Rerun:` lines again from its
+  `report.json`; it needs no session.
+- Exit codes: `0` passed; `1` a spec failed or timed out, the run was
+  incomplete, or it could not run; `2` invalid arguments; `130` interrupted.
+- Empty selections fail; opt out with `--pass-with-no-tests` (alias
+  `--allow-no-tests`).
+- Select with `--id ID`, `--last-failed [REPORT|DIR]` (default: the last run),
+  `--tag EXPR`, or `--shard 1/3`; shards need separate sessions and output
+  directories. Give non-ASCII titles an `id` so `--id`/`--last-failed` survive
+  reordering.
 - `--retries N` requires `spec.reset`; reports keep every attempt and flag
   flaky passes.
 - `--timeout-secs` bounds the whole run. The default scales with the
@@ -573,10 +590,18 @@ lxdev test tests/ --grep checkout
 - `--shuffle` runs specs in a random order and prints the seed;
   `--shuffle=SEED` reproduces it. `--repeat-each N` runs every spec N times.
   Use both to find order dependence and flaky specs.
-- `--verbose` shows steps; `--json` returns one result; `--jsonl` streams
-  events. Interrupted runs keep partial reports and fail CI.
-- Saving a source file while `lxdev test` runs rebuilds it, but `lingxia dev`
-  reloads the app only after the run ends, never under a running spec.
+- `--verbose` shows steps; `--format json` returns one result (`--pretty`
+  indents it); `--format jsonl` streams events. Interrupted runs keep partial
+  reports and fail CI.
+- A run pauses the session's source watcher: saving a file while `lxdev test`
+  runs neither rebuilds nor reloads the app under a spec; the saves rebuild
+  once when the run ends, however it ends.
+- A run starts and ends with the app under test running: a spec that leaves
+  it closed has it reopened before the next spec, and the run reopens it at
+  the end. When a reopen fails, lxdev prints `Recover: … lxdev lxapp restart`.
+- Before a run, lxdev checks that it, the session's host and the project's
+  installed `@lingxia/*` packages share a version line, and stops with the fix
+  when they do not (`LINGXIA_ALLOW_SKEW=1` makes that a warning).
 - Statuses: `timeout`, `xfail`, and `xpass` stay distinct; an unexpected pass
   fails the run. `spec.fail` without `expected` accepts any body failure.
 - Driver rejections carry stable codes (`E_PAGE_NOT_ACTIVE`,
@@ -589,9 +614,32 @@ lxdev test tests/ --grep checkout
   run them with `--preset NAME`; see [below](#presets).
 - `lxdev test --cancel-active` cancels a run left active by a client that
   exited (`automation_run_in_progress`); it refuses a run a live client still polls.
-- Keep files generated by test setup outside the watched project;
-  `lingxia dev` holds reloads until the run ends. See the
+- Keep files generated by test setup outside the watched project; the watcher
+  rebuilds them once the run ends. See the
   [development loop](../SKILL.md#the-development-loop).
+
+### Secrets
+
+```bash
+# .env.test — keep it out of git (`lingxia new` adds it to .gitignore)
+API_TOKEN=…
+TEST_PASSWORD="p@ss word"
+```
+
+```bash
+lxdev test tests/ --secrets-file .env.test
+LXDEV_SECRET_API_TOKEN=… lxdev test tests/     # e.g. from a CI secret
+LXDEV_ARG_REGION=eu lxdev test tests/          # a plain --arg REGION=eu
+```
+
+- Every entry of a `--secrets-file` (dotenv: `KEY=VALUE`, `#` comments,
+  quotes) and every `LXDEV_SECRET_<KEY>` variable is a `--secret-arg`: its
+  value is `***` wherever it would appear. `LXDEV_ARG_<KEY>` is a plain
+  `--arg`.
+- The command line wins over the file, the file over the environment.
+- A `Rerun:` line repeats `--secrets-file` and asks for command-line secrets by
+  name (`--secret-arg 'token=<token>'`); environment values come back by
+  themselves.
 
 ### Presets
 
@@ -599,9 +647,11 @@ lxdev test tests/ --grep checkout
 {
   "$schema": "./node_modules/@lingxia/test/schemas/lxdev.schema.json",
   "test": {
+    "entry": "tests/",
+    "outputDir": "test-results",
     "presets": {
-      "ci": ["tests/", "--tag", "unit,routed", "--openapi", "api/openapi.yaml", "--isolate"],
-      "nightly": ["tests/", "--state", "demo", "--save-state", "demo", "--save-state-on", "always"]
+      "ci": ["--tag", "unit,routed", "--openapi", "api/openapi.yaml", "--profile", "empty"],
+      "nightly": ["--profile", "demo", "--profile-save=always", "--secrets-file", ".env.test"]
     }
   }
 }
@@ -617,11 +667,14 @@ lxdev test --list-presets
 - A preset is the arguments it lists, placed before the command line's:
   repeatable flags (`--tag`, `--openapi`, `--arg`) add up, any other flag
   given on the command line wins.
+- `test.entry`, `test.outputDir`, `test.openapi` and `test.tags` are defaults
+  for every run, with or without a preset. A default gives way when the
+  preset or the command line sets that flag (or an entry) itself.
 - `lxdev.json` is found in the project root of the current directory (the
   directory with `package.json`, `lxapp.json` or `lingxia.yaml`).
-- Relative paths in a preset — the entry, `--openapi`, `--covers-manifest`,
-  `--record-network`, `--output-dir`, `--last-failed`, and a PATH given to
-  `--state`/`--save-state` — are relative to the directory holding
+- Relative paths in `lxdev.json` — the entry, `--openapi`, `--covers-manifest`,
+  `--record-network`, `--output-dir`, `--last-failed`, `--secrets-file`, and
+  a PATH given to `--profile` — are relative to the directory holding
   `lxdev.json`, so a preset runs the same from any subdirectory. Paths typed on
   the command line stay relative to the current directory. `--print-args`
   shows them resolved.
@@ -631,7 +684,8 @@ lxdev test --list-presets
   and add `--openapi PATH` on the command line, or in a second preset.
 - Presets are committed, so they may not hold `--secret-arg`, credential-named
   `--arg` keys, `--preset` or `--cancel-active`; pass those on the command
-  line. `--print-args` shows secret values as `***`.
+  line, or keep secrets in a gitignored `--secrets-file` the preset names.
+  `--print-args` shows secret values as `***`.
 
 ## External integration journeys
 

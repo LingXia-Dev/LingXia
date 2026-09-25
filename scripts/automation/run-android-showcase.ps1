@@ -284,10 +284,10 @@ try {
       Push-Location $lxappRoot
       try {
         $resultDirectory = "test-results/automation/android-$currentFramework"
-        $entry = 'tests/entries/android.test.ts'
-        & $lxdev test $entry --forbid-only `
+        # The android preset of lxapp/lxdev.json: the entry, --forbid-only
+        # and the platform arg.
+        & $lxdev test --preset android `
           --timeout-secs $($TimeoutSeconds.ToString()) `
-          --arg 'platform=android' `
           --arg "framework=$currentFramework" `
           --output-dir $resultDirectory
         $testExitCode = $LASTEXITCODE
