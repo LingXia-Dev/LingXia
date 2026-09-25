@@ -268,3 +268,43 @@ test('a spec that leaves the app under test closed does not fail the rest of the
   assert.equal(report.cases[1].steps[0].name, 'app.reopen');
   assert.ok(world.navCalls.some(([method]) => method === 'relaunch'), 'waits for the home page');
 });
+
+test('the run hands the app under test back running', async () => {
+  const world = createWorld();
+  let running = true;
+  const opened = [];
+  const lxapps = {
+    async list() { return running ? [{ appid: 'demo-app', status: 'opened' }] : []; },
+    async open(options) {
+      opened.push(options.appid);
+      running = true;
+      return { appid: options.appid, path: 'pages/home/index' };
+    },
+  };
+  const { events } = installFakeHost(world, { control: {}, lxapps });
+  spec('passes, then the app goes away', async () => { running = false; });
+
+  const report = await run();
+  assert.equal(report.passed, 1);
+  assert.deepEqual(opened, ['demo-app'], 'reopened once, after the last spec');
+  const recoveries = events.filter((event) => event.type === 'diagnostic' && event.phase === 'recovery');
+  assert.equal(recoveries.length, 1);
+  assert.match(recoveries[0].message, /not running at the end of the run; reopened it/);
+});
+
+test('a reopen that fails is reported as recovery_failed', async () => {
+  const world = createWorld();
+  const lxapps = {
+    async list() { return []; },
+    async open() { throw new Error('bundle missing'); },
+  };
+  const { events } = installFakeHost(world, { control: {}, lxapps });
+  spec('first', async () => {});
+  spec('second', async () => {});
+
+  await run();
+  const failed = events.filter((event) => event.type === 'diagnostic' && event.phase === 'recovery_failed');
+  // Before the first spec, before the second, and at the end of the run.
+  assert.equal(failed.length, 3);
+  assert.match(failed.at(-1).message, /at the end of the run, and reopening it failed: .*bundle missing/);
+});

@@ -598,7 +598,7 @@ async function run(): Promise<ProtocolReport> {
     const reopened = await reopenAppUnderTest(item.app ?? subject?.appid);
     if (reopened) {
       const previous = cases[cases.length - 1];
-      await host.emit({ type: "diagnostic", phase: "recovery",
+      await host.emit({ type: "diagnostic", phase: reopened.error ? "recovery_failed" : "recovery",
         message: `The app under test (${reopened.appId}) was not running before "${item.title}"` +
           (previous ? `; it stopped during or after "${previous.title}" (${previous.status})` : "") +
           `. Reopened it on its home page${reopened.error ? `, which failed: ${reopened.error}` : ""}.` });
@@ -853,6 +853,18 @@ async function run(): Promise<ProtocolReport> {
     await finishCase(host, finished);
     if (!contaminated && (status === "failed" || status === "timeout") && history.length <= retries) {
       queue.splice(queue.indexOf(planned) + 1, 0, { item: { ...item }, repeat });
+    }
+  }
+
+  // The run ends as each spec starts: with the app under test running, so
+  // what comes next (a rerun, `lxdev lxapp`, a developer) does not meet a
+  // closed app. Not after pending async work, which reopening could race.
+  if (!contaminated && cases.length > 0) {
+    const reopened = await reopenAppUnderTest(subject?.appid);
+    if (reopened) {
+      await host.emit({ type: "diagnostic", phase: reopened.error ? "recovery_failed" : "recovery",
+        message: `The app under test (${reopened.appId}) was not running at the end of the run` +
+          (reopened.error ? `, and reopening it failed: ${reopened.error}` : "; reopened it on its home page.") });
     }
   }
 
