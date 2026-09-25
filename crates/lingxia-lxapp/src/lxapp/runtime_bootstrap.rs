@@ -123,10 +123,6 @@ static RUNNER_HOST: AtomicBool = AtomicBool::new(false);
 /// This designation is process-wide and cannot be revoked by the environment.
 pub fn register_runner_host() {
     RUNNER_HOST.store(true, Ordering::Release);
-    // Specs drive the Runner while its window is often covered by the
-    // terminal or editor; covered pages must keep animating to stay clickable.
-    #[cfg(target_os = "macos")]
-    lingxia_webview::platform::apple::keep_rendering_when_occluded();
 }
 
 pub fn runner_active() -> bool {

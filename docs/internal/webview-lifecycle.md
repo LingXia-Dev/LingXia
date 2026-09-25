@@ -901,6 +901,45 @@ permanent close path. Browser tab discard instead retains the state, advances
 the token, and uses the `Stale` guard to protect the retained entry until
 reactivation creates a replacement WebView.
 
+## Apple: public API only
+
+No build — product, automation, test or Runner — may use Apple private API:
+no `_`-prefixed selectors, KVC on undocumented keys, private classes looked
+up by name, `dlsym` of non-public symbols, private headers or swizzling of
+WebKit classes. A `respondsToSelector:` guard does not help: the selector
+name is still in the binary. What that rules out, and what replaces it:
+
+- Web Inspector: every LingXia WebView sets the public `isInspectable`
+  (macOS 13.3 / iOS 16.4). WebKit offers no public call that opens the
+  inspector, so there is no programmatic toggle: users open it from the page's
+  context menu (Inspect Element) or Safari's Develop menu, and the Runner's
+  Inspect button says so.
+- File chooser: WebKit's public `WKOpenPanelParameters` does not expose the
+  input's `accept` list, so the open panel is unfiltered.
+- Transparent pages on macOS: AppKit's `WKWebView` has no public switch for
+  its own background; a transparent page gets a clear layer and
+  `underPageBackgroundColor`.
+- Native components on iOS: the SDK's `LingXiaTouchRoutingWebView` (created
+  from Rust by class name, like the macOS context-menu subclass) routes a
+  touch to a registered native view before WebKit's content view claims it,
+  instead of swizzling WebKit's private content-view class.
+- Stream frames on iOS: `AVSampleBufferVideoRenderer.copyDisplayedPixelBuffer`
+  (iOS 17.4) through the display layer's `sampleBufferRenderer`; earlier
+  systems have no frame to read.
+- Automation input (`webview-input`): waiting for a paint or for delivered
+  mouse events is a page script that yields animation frames; edit commands
+  go through `document.execCommand`; scroll events made from a CGEvent carry
+  their window point as their location, since AppKit reports a windowless
+  event's location as `locationInWindow`.
+- Window lookup (`lingxia-device-io`): an accessibility window is matched to a
+  `CGWindowID` by geometry within its app; there is no public bridge.
+- Covered Runner windows: WebKit throttles `requestAnimationFrame` in an
+  occluded window and there is no public opt-out; keep the Runner visible
+  while a suite that animates runs.
+- JavaScriptCore preemption: the execution-time-limit API is private, so on
+  Apple an automation program that never yields is not interrupted; its run
+  times out and the worker is marked unhealthy.
+
 ## Known Pitfalls
 
 - **Reuse semantics**: the same `WebTag` does not imply a fresh instance.

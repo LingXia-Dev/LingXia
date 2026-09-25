@@ -381,8 +381,10 @@ final class WebViewManager {
             : opaquePageStyle(appId: webView.appId).color
         webView.wantsLayer = true
         webView.layer?.backgroundColor = backgroundColor.cgColor
+        // AppKit's WKWebView has no public switch for its own background; a
+        // transparent page gets a clear layer and under-page color, and
+        // WebKit's base background shows where the page paints nothing.
         webView.underPageBackgroundColor = backgroundColor
-        webView.setValue(transparent, forKey: "drawsTransparentBackground")
         #endif
     }
 

@@ -61,11 +61,7 @@ final class BrowserTabCoordinator: NSObject {
 
     private static let log = OSLog(subsystem: "LingXia", category: "BrowserTabCoordinator")
     private static let attachMaxRetry = 5
-    private static let devToolsMaxRetry = 30
-    private static let devToolsRetryDelay: TimeInterval = 0.05
-    private static let lxappDevToolsDetached = true
-    private static let lxappDevToolsMaxRetry = 30
-    private static let lxappDevToolsRetryDelay: TimeInterval = 0.05
+    private static let attachRetryDelay: TimeInterval = 0.05
 
     struct Layout {
         static let toolbarHeight: CGFloat = 28
@@ -157,8 +153,6 @@ final class BrowserTabCoordinator: NSObject {
     /// placeholder in the sidebar until it's clicked.
     nonisolated(unsafe) private var tabTitleObservations: [String: NSKeyValueObservation] = [:]
 
-    private var devToolsRequestToken: UInt64 = 0
-    private var lxappDevToolsRequestToken: UInt64 = 0
 
     var isActive: Bool { activeTabId != nil }
 
@@ -200,7 +194,7 @@ final class BrowserTabCoordinator: NSObject {
         guard tabIds.contains(id), tabTitleObservations[id] == nil else { return }
         guard let webView = findWebView(for: id) else {
             if attempt < Self.attachMaxRetry {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Self.devToolsRetryDelay) { [weak self] in
+                DispatchQueue.main.asyncAfter(deadline: .now() + Self.attachRetryDelay) { [weak self] in
                     self?.ensureTitleObservation(for: id, attempt: attempt + 1)
                 }
             }
@@ -622,176 +616,11 @@ final class BrowserTabCoordinator: NSObject {
 
     // MARK: - DevTools
 
+    /// WebKit has no public API that opens the Web Inspector. Every page is
+    /// `isInspectable`, so the inspector opens from the context menu
+    /// (Inspect Element) or Safari's Develop menu; there is nothing to toggle.
     func toggleActiveDevTools() -> Bool {
-        if let activeId = activeTabId {
-            devToolsRequestToken &+= 1
-            let token = devToolsRequestToken
-            return toggleBrowserDevToolsWhenReady(tabId: activeId, attempt: 0, token: token)
-        }
-        return toggleActiveLxAppDevTools()
-    }
-
-    private func toggleActiveLxAppDevTools() -> Bool {
-        guard activeTabId == nil else { return false }
-        guard let webView = host?.currentLxAppWebView() else { return false }
-        lxappDevToolsRequestToken &+= 1
-        let token = lxappDevToolsRequestToken
-        return toggleLxAppDevToolsWhenReady(webView: webView, attempt: 0, token: token)
-    }
-
-    @discardableResult
-    private func toggleLxAppDevToolsWhenReady(webView: WKWebView, attempt: Int, token: UInt64) -> Bool {
-        guard token == lxappDevToolsRequestToken else { return false }
-        guard activeTabId == nil else { return false }
-
-        prepareLxAppWebViewForDevTools(webView, detached: Self.lxappDevToolsDetached)
-
-        guard isWebViewDisplayReady(webView) else {
-            return scheduleLxAppDevToolsRetry(webView: webView, attempt: attempt, token: token)
-        }
-
-        let ptr = swiftWebViewPointer(webView)
-        return toggleWebViewDevtoolsByPtr(ptr, Self.lxappDevToolsDetached)
-    }
-
-    private func prepareLxAppWebViewForDevTools(_ webView: WKWebView, detached: Bool) {
-        webView.isHidden = false
-        if let container = webView.superview {
-            let constraintsToDeactivate = container.constraints.filter { constraint in
-                constraint.firstItem as AnyObject === webView || constraint.secondItem as AnyObject === webView
-            }
-            if !constraintsToDeactivate.isEmpty {
-                NSLayoutConstraint.deactivate(constraintsToDeactivate)
-            }
-            webView.translatesAutoresizingMaskIntoConstraints = true
-            webView.autoresizingMask = [.width, .height]
-            webView.frame = container.bounds
-            webView.setFrameSize(container.bounds.size)
-            container.needsLayout = true
-            container.layoutSubtreeIfNeeded()
-        }
-        webView.needsLayout = true
-        webView.layoutSubtreeIfNeeded()
-        if detached {
-            clearInspectorAttachment(webView)
-        } else {
-            configureInspectorAttachment(webView)
-        }
-        host?.hostWindow?.contentView?.layoutSubtreeIfNeeded()
-    }
-
-    private func scheduleLxAppDevToolsRetry(webView: WKWebView, attempt: Int, token: UInt64) -> Bool {
-        guard attempt < Self.lxappDevToolsMaxRetry else { return false }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.lxappDevToolsRetryDelay) { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            _ = self.toggleLxAppDevToolsWhenReady(webView: webView, attempt: attempt + 1, token: token)
-        }
-        return true
-    }
-
-    @discardableResult
-    private func toggleBrowserDevToolsWhenReady(tabId: String, attempt: Int, token: UInt64) -> Bool {
-        guard token == devToolsRequestToken else { return false }
-        guard activeTabId == tabId else { return false }
-        guard let webView = findWebView(for: tabId) else {
-            return scheduleBrowserDevToolsRetry(tabId: tabId, attempt: attempt, token: token, reason: "webview-missing")
-        }
-
-        prepareBrowserWebViewForDevTools(webView)
-        guard isWebViewDisplayReady(webView) else {
-            return scheduleBrowserDevToolsRetry(tabId: tabId, attempt: attempt, token: token, reason: "display-not-ready")
-        }
-
-        let ptr = swiftWebViewPointer(webView)
-        let ok = toggleWebViewDevtoolsByPtr(ptr, false)
-        if ok {
-            scheduleBrowserDevToolsDetachedFallback(tabId: tabId, webView: webView, token: token)
-        }
-        return ok
-    }
-
-    private func scheduleBrowserDevToolsRetry(tabId: String, attempt: Int, token: UInt64, reason: String) -> Bool {
-        guard attempt < Self.devToolsMaxRetry else {
-            LXLog.error(
-                "toggleBrowserDevToolsWhenReady timed out after \(attempt) attempts for tab=\(tabIdString(tabId)) reason=\(reason)",
-                category: "BrowserTabCoordinator"
-            )
-            return false
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + Self.devToolsRetryDelay) { [weak self] in
-            _ = self?.toggleBrowserDevToolsWhenReady(tabId: tabId, attempt: attempt + 1, token: token)
-        }
-        return true
-    }
-
-    private func prepareBrowserWebViewForDevTools(_ webView: WKWebView) {
-        showBrowserView()
-        if webView.superview !== webContainer {
-            attachWebViewToContainer(webView)
-            activeWebView = webView
-            observeActiveWebView(webView)
-        }
-        webView.isHidden = false
-        configureInspectorAttachment(webView)
-        host?.hostWindow?.contentView?.layoutSubtreeIfNeeded()
-    }
-
-    private func scheduleBrowserDevToolsDetachedFallback(tabId: String, webView: WKWebView, token: UInt64) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self, weak webView] in
-            guard let self, let webView else { return }
-            guard token == self.devToolsRequestToken else { return }
-            guard self.activeTabId == tabId else { return }
-            guard self.isWebViewDisplayReady(webView) else { return }
-            guard self.inspectorVisible(for: webView) == false else { return }
-            _ = toggleWebViewDevtoolsByPtr(self.swiftWebViewPointer(webView), true)
-        }
-    }
-
-    // MARK: - Inspector Helpers
-
-    private func configureInspectorAttachment(_ webView: WKWebView) {
-        let setSelector = NSSelectorFromString("_setInspectorAttachmentView:")
-        guard webView.responds(to: setSelector) else { return }
-        _ = webView.perform(setSelector, with: webView)
-    }
-
-    private func clearInspectorAttachment(_ webView: WKWebView) {
-        let setSelector = NSSelectorFromString("_setInspectorAttachmentView:")
-        guard webView.responds(to: setSelector) else { return }
-        _ = webView.perform(setSelector, with: nil)
-    }
-
-    private func inspectorVisible(for webView: WKWebView) -> Bool? {
-        let inspectorSelector = NSSelectorFromString("_inspector")
-        guard webView.responds(to: inspectorSelector),
-              let inspectorObject = webView.perform(inspectorSelector)?.takeUnretainedValue() else {
-            return nil
-        }
-        let visibleSelector = NSSelectorFromString("isVisible")
-        guard inspectorObject.responds(to: visibleSelector),
-              let visibleObject = inspectorObject.perform(visibleSelector)?.takeUnretainedValue() else {
-            return nil
-        }
-        if let number = visibleObject as? NSNumber {
-            return number.boolValue
-        }
-        return nil
-    }
-
-    private func isWebViewDisplayReady(_ webView: WKWebView) -> Bool {
-        guard webView.superview != nil else { return false }
-        guard let window = webView.window, window.isVisible else { return false }
-        guard window.screen != nil else { return false }
-        if webView.isHidden || webView.isHiddenOrHasHiddenAncestor {
-            return false
-        }
-        let bounds = webView.bounds.integral
-        guard bounds.width > 1, bounds.height > 1 else { return false }
-        return true
-    }
-
-    private func swiftWebViewPointer(_ webView: WKWebView) -> UInt {
-        UInt(bitPattern: Unmanaged.passUnretained(webView).toOpaque())
+        false
     }
 
     // MARK: - WebView Management
@@ -901,9 +730,6 @@ final class BrowserTabCoordinator: NSObject {
         urlObservation = nil
         canGoBackObservation = nil
         canGoForwardObservation = nil
-        if let activeWebView {
-            clearInspectorAttachment(activeWebView)
-        }
         activeWebView?.removeFromSuperview()
         activeWebView = nil
         updateBackButtonState(canGoBack: false)
@@ -1153,10 +979,8 @@ final class BrowserTabCoordinator: NSObject {
             if #available(macOS 13.3, *) {
                 webView.isInspectable = true
             }
-            webView.configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")
             showBrowserView()
             attachWebViewToContainer(webView)
-            configureInspectorAttachment(webView)
             activeWebView = webView
             observeActiveWebView(webView)
             addressField.stringValue = displayableURL(

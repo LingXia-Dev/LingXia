@@ -1510,15 +1510,10 @@ private final class StreamDecoderSession {
 
     @MainActor
     private func copyDisplayedPixelBufferIfAvailable() -> CVPixelBuffer? {
-        let selector = NSSelectorFromString("copyDisplayedPixelBuffer")
-        guard videoLayerView.displayLayer.responds(to: selector) else {
-            return nil
-        }
-        guard let unmanaged = videoLayerView.displayLayer.perform(selector) else {
-            return nil
-        }
-        let value = unmanaged.takeRetainedValue()
-        return unsafeBitCast(value, to: CVPixelBuffer.self)
+        // Public on the layer's renderer since iOS 17.4; earlier systems have
+        // no public way to read the displayed frame.
+        guard #available(iOS 17.4, *) else { return nil }
+        return videoLayerView.displayLayer.sampleBufferRenderer.displayedPixelBuffer()
     }
 
     @MainActor

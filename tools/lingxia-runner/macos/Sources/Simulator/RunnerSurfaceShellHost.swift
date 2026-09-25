@@ -28,14 +28,14 @@ final class RunnerSurfaceShellHost {
         return bar
     }()
 
-    /// Toggle the Safari Web Inspector for the shell's active webview (same as the
-    /// phone simulator's DevTools action).
+    /// WebKit has no public API that opens the Web Inspector; the pages are
+    /// inspectable, so point at the context menu (same as the phone
+    /// simulator's Inspect action).
     private func openInspector() {
-        guard let webView = RunnerSupport.WebView.current() else { return }
-        let retained = Unmanaged.passRetained(webView)
-        let ptr = UInt(bitPattern: retained.toOpaque())
-        _ = toggleWebViewDevtoolsByPtr(ptr, true)
-        retained.release()
+        DevToolsLogger.shared.log(
+            "Web Inspector: right-click the page and choose Inspect Element",
+            level: .info
+        )
     }
     nonisolated(unsafe) private var closeObserver: NSObjectProtocol?
     private var isHiddenForHostSwitch = false
