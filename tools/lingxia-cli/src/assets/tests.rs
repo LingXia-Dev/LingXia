@@ -114,14 +114,15 @@ fn omitted_update_table_does_not_embed_keys() {
 }
 
 #[test]
-fn update_table_requires_one_or_two_keys() {
+fn update_table_allows_at_most_two_keys() {
+    // A direct host without keys is refused by `LingXiaConfig::validate`.
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
     config.update = Some(UpdateSigningConfig {
-        trusted_public_keys: vec![],
+        trusted_public_keys: vec!["a".into(), "b".into(), "c".into()],
         ..Default::default()
     });
     let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
-    assert!(err.to_string().contains("omit the update: table"), "{err}");
+    assert!(err.to_string().contains("at most two keys"), "{err}");
 }
 
 #[test]
@@ -233,7 +234,7 @@ fn generated_app_json_embeds_store_listing_ids() {
 }
 
 #[test]
-fn store_only_update_table_still_requires_keys() {
+fn a_store_only_update_table_needs_no_keys() {
     use lingxia_app_context::UpdateChannel;
 
     let mut config = LingXiaConfig::new_android("demo", "com.example.demo", "home");
@@ -245,8 +246,11 @@ fn store_only_update_table_still_requires_keys() {
         channel: Some(UpdateChannel::Store),
         ..Default::default()
     });
-    let err = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap_err();
-    assert!(err.to_string().contains("omit the update: table"), "{err}");
+    // A store version signal carries no package to verify.
+    let app_json = build_app_json_from_config(&config, None, None, &test_resolved_env()).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&app_json).unwrap();
+    assert!(value.get("updateTrustedPublicKeys").is_none());
+    assert_eq!(value["updateChannel"], "store");
 }
 
 #[test]
