@@ -2279,7 +2279,7 @@ private final class StreamDecoderSession {
         if let engine = audioEngine {
             engine.mainMixerNode.outputVolume = effective
         }
-        audioRenderer.setValue(NSNumber(value: effective), forKey: "volume")
+        audioRenderer.volume = effective
     }
 
     private func convertVideoData(_ data: Data) -> Data {

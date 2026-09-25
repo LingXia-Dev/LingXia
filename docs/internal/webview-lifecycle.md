@@ -910,35 +910,56 @@ WebKit classes. A `respondsToSelector:` guard does not help: the selector
 name is still in the binary. What that rules out, and what replaces it:
 
 - Web Inspector: every LingXia WebView sets the public `isInspectable`
-  (macOS 13.3 / iOS 16.4). WebKit offers no public call that opens the
-  inspector, so there is no programmatic toggle: users open it from the page's
-  context menu (Inspect Element) or Safari's Develop menu, and the Runner's
-  Inspect button says so.
-- File chooser: WebKit's public `WKOpenPanelParameters` does not expose the
-  input's `accept` list, so the open panel is unfiltered.
+  (macOS 13.3 / iOS 16.4). WebKit offers no public call that opens or docks
+  the inspector, so there is no programmatic toggle: users open it from the
+  page's context menu (Inspect Element) or Safari's Develop menu, and the
+  Runner's Inspect button says so. On macOS 12 to 13.2 there is no public
+  switch at all, so WebViews there are not inspectable.
+- File chooser (macOS): WebKit's public `WKOpenPanelParameters` does not
+  expose the input's `accept` list. An injected page script reports the
+  activated file input's `accept` (click, label click, key press or
+  `showPicker()`) to the `LingXiaFileInput` message handler just before WebKit
+  asks for the open panel, and the panel request picks it up; the chooser maps
+  it to `NSOpenPanel.allowedContentTypes` as before. The report only narrows
+  the chooser of the page that sent it. A chooser opened without an activation
+  the script sees stays unfiltered.
 - Transparent pages on macOS: AppKit's `WKWebView` has no public switch for
-  its own background; a transparent page gets a clear layer and
-  `underPageBackgroundColor`.
+  its own background, so WebKit's white base background shows wherever a page
+  paints nothing, whatever the layer and `underPageBackgroundColor` say. Every
+  macOS caller configures its WebViews opaque, so nothing on macOS changes; a
+  future transparent macOS surface has to paint its own backdrop.
 - Native components on iOS: the SDK's `LingXiaTouchRoutingWebView` (created
   from Rust by class name, like the macOS context-menu subclass) routes a
   touch to a registered native view before WebKit's content view claims it,
   instead of swizzling WebKit's private content-view class.
-- Stream frames on iOS: `AVSampleBufferVideoRenderer.copyDisplayedPixelBuffer`
-  (iOS 17.4) through the display layer's `sampleBufferRenderer`; earlier
-  systems have no frame to read.
+- Stream frames on iOS: `AVSampleBufferVideoRenderer.displayedPixelBuffer()`
+  (iOS 17.4) through the display layer's `sampleBufferRenderer`. The frames
+  LingXia enqueues are compressed samples the layer decodes, so there is no
+  decoded frame of our own to keep instead. On iOS 17.0 to 17.3 the stuck-frame
+  check is therefore off, and the freeze overlay snapshots the view hierarchy.
 - Automation input (`webview-input`): waiting for a paint or for delivered
-  mouse events is a page script that yields animation frames; edit commands
-  go through `document.execCommand`; scroll events made from a CGEvent carry
+  mouse events is a page script that yields animation frames, with a short
+  timer standing in when WebKit gives a hidden page none; edit commands go
+  through `document.execCommand`; scroll events made from a CGEvent carry
   their window point as their location, since AppKit reports a windowless
   event's location as `locationInWindow`.
 - Window lookup (`lingxia-device-io`): an accessibility window is matched to a
   `CGWindowID` by geometry within its app; there is no public bridge.
-- Covered Runner windows: WebKit throttles `requestAnimationFrame` in an
-  occluded window and there is no public opt-out; keep the Runner visible
-  while a suite that animates runs.
+- Covered and background windows in development: the Runner and any app in a
+  `lingxia dev` session call `keep_responsive_for_development()`. New
+  WebViews get `WKPreferences.inactiveSchedulingPolicy = .none` (macOS 14 /
+  iOS 17), and the process holds a user-initiated, latency-critical
+  `NSProcessInfo` activity (idle system sleep still allowed) so App Nap does
+  not coalesce its timers. WebKit still pauses `requestAnimationFrame` for a
+  page in a fully covered window and there is no public opt-out: an animation
+  a spec waits on only advances while the window is at least partly visible.
+  On macOS 12 and 13 the scheduling policy does not exist, so a covered or
+  hidden WebView may also be throttled; keep the Runner visible there.
 - JavaScriptCore preemption: the execution-time-limit API is private, so on
-  Apple an automation program that never yields is not interrupted; its run
-  times out and the worker is marked unhealthy.
+  Apple JavaScript that never yields cannot be interrupted, in an automation
+  program or in an lxapp's Logic. Timeouts are cooperative: the run times out
+  and the worker is marked unhealthy; the stuck context stays busy until the
+  app is reopened.
 
 ## Known Pitfalls
 
