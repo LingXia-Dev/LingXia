@@ -9,7 +9,11 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 pub fn execute(options: &ReportOptions) -> Result<()> {
-    let report_path = crate::test::resolve_report_path(&options.run)?;
+    let results_root = match &options.output_root {
+        Some(root) => root.clone(),
+        None => crate::test_preset::results_root(&std::env::current_dir()?),
+    };
+    let report_path = crate::test::resolve_report_path(&options.run, &results_root)?;
     let run_dir = report_path.parent().unwrap_or(Path::new("."));
     match options.format {
         ReportFormat::Junit => {
@@ -180,6 +184,7 @@ mod tests {
         std::fs::write(dir.path().join("report.json"), report().to_string()).unwrap();
         let options = |format, failures| ReportOptions {
             run: dir.path().to_path_buf(),
+            output_root: None,
             failures,
             format,
         };

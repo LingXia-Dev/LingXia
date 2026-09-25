@@ -156,7 +156,8 @@ fn main() {
 
 fn run() -> Result<()> {
     let cwd = std::env::current_dir()?;
-    let argv = test_preset::expand(std::env::args_os().collect(), &cwd)?;
+    let argv = test_preset::carry_last_failed(std::env::args_os().collect(), &cwd);
+    let argv = test_preset::expand(argv, &cwd)?;
     let cli = Cli::try_parse_from(&argv)?;
     let selector = SessionSelector {
         query: cli.session.or_else(|| std::env::var("LXDEV_SESSION").ok()),
@@ -244,7 +245,13 @@ fn run() -> Result<()> {
                 return test_preset::list(&cwd, options.machine());
             }
             if options.print_args {
-                return test_preset::print_args(&argv, options.machine());
+                let sources =
+                    test_secrets::ArgSources::gather(std::env::vars(), options.secrets_file())?;
+                return test_preset::print_args(&argv, options.machine(), &sources);
+            }
+            // Before a session is even needed.
+            if test::nothing_to_rerun(&options)? {
+                return Ok(());
             }
             let info = resolve(&selector).map_err(|err| {
                 if test::looks_unreachable(&err) {

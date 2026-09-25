@@ -17,7 +17,7 @@
         "outputDir": {
           "type": "string",
           "minLength": 1,
-          "description": "Default --output-dir, relative to lxdev.json, unless the preset or the command line sets one."
+          "description": "The results root, relative to lxdev.json (default: test-results beside it): each run writes <outputDir>/<run-id>/ and <outputDir>/latest points at the last run. Same as --output-root, which the preset or the command line may give instead."
         },
         "openapi": {
           "description": "Default --openapi document(s), relative to lxdev.json, unless the preset or the command line gives --openapi.",

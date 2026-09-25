@@ -99,7 +99,9 @@ pub struct TestOptions {
     tags: Vec<String>,
 
     /// Rerun the failed specs of an earlier run: its report.json or run
-    /// directory. Without a value, the last run (`test-results/latest`)
+    /// directory. Without a value, the last run (`latest` in the results
+    /// root). Its --preset and --profile (with --profile-save) carry over
+    /// unless given; with nothing failed, nothing runs
     #[arg(long, value_name = "REPORT", num_args = 0..=1, default_missing_value = LATEST, help_heading = "Selection")]
     last_failed: Option<PathBuf>,
 
@@ -185,8 +187,14 @@ pub struct TestOptions {
     #[arg(long, value_name = "FILE", help_heading = "Contract")]
     covers_manifest: Option<PathBuf>,
 
-    /// Directory receiving the report and attached artifacts
-    /// (default: test-results/<run-id>, and test-results/latest points at it)
+    /// Results root: each run writes DIR/<run-id>/ and DIR/latest points at
+    /// the last run. Default: lxdev.json's `test.outputDir`, else
+    /// test-results beside lxdev.json, else ./test-results
+    #[arg(long, value_name = "DIR", help_heading = "Output")]
+    pub output_root: Option<PathBuf>,
+
+    /// This run's own directory, used as is (no <run-id> inside it) — for a
+    /// fixed path in CI. `latest` in the results root still points at it
     #[arg(long, value_name = "PATH", help_heading = "Output")]
     output_dir: Option<PathBuf>,
 
@@ -231,6 +239,10 @@ pub struct ReportOptions {
     #[arg(default_value = LATEST)]
     pub run: PathBuf,
 
+    /// The results root `latest` is in (default: as for `lxdev test`)
+    #[arg(long, value_name = "DIR")]
+    pub output_root: Option<PathBuf>,
+
     /// Only the failed specs
     #[arg(long)]
     pub failures: bool,
@@ -266,6 +278,42 @@ impl TestOptions {
     /// Whether the output is for a machine (no live text on stderr).
     pub fn machine(&self) -> bool {
         self.output() != OutputFormat::Text
+    }
+
+    /// Where runs go and `latest` is: `--output-root`, else the project's.
+    pub fn results_root(&self) -> Result<PathBuf> {
+        match &self.output_root {
+            Some(root) => Ok(root.clone()),
+            None => Ok(crate::test_preset::results_root(&std::env::current_dir()?)),
+        }
+    }
+
+    pub fn secrets_file(&self) -> Option<&Path> {
+        self.secrets_file.as_deref()
+    }
+
+    /// The settings of this run a `--last-failed` rerun of it carries over:
+    /// the preset and the app-data profile. A profile PATH is made absolute,
+    /// so the rerun may start elsewhere.
+    fn run_settings(&self) -> serde_json::Value {
+        let profile = self.state.profile.as_ref().map(|profile| {
+            let path = Path::new(profile);
+            if crate::test_state::names_a_path(profile) && path.is_relative() {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(path).to_string_lossy().into_owned())
+                    .unwrap_or_else(|_| profile.clone())
+            } else {
+                profile.clone()
+            }
+        });
+        json!({
+            "preset": self.preset,
+            "profile": profile,
+            "profile_save": self.state.profile_save.map(|when| match when {
+                crate::test_state::SaveOn::Pass => "pass",
+                crate::test_state::SaveOn::Always => "always",
+            }),
+        })
     }
 
     /// What to say about a deprecated output flag, once, on stderr.
@@ -401,18 +449,15 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let started_at = chrono::Utc::now().to_rfc3339();
     // A bad output path must fail before the run exists: afterwards the
     // Runner would keep it active with nobody polling.
-    let output_root = options
-        .output_dir
-        .clone()
-        .unwrap_or_else(|| PathBuf::from(DEFAULT_OUTPUT_ROOT));
-    ensure_writable_dir(&output_root)?;
+    let results_root = options.results_root()?;
+    ensure_writable_dir(options.output_dir.as_ref().unwrap_or(&results_root))?;
     if let Some(dir) = &options.record_network {
         ensure_writable_dir(dir)?;
     }
     let last_failed = options
         .last_failed
         .as_deref()
-        .map(resolve_report_path)
+        .map(|run| resolve_report_path(run, &results_root))
         .transpose()?;
     let sources = ArgSources::gather(std::env::vars(), options.secrets_file.as_deref())?;
     check_versions(info, &entry, machine)?;
@@ -499,10 +544,9 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         }
     }
 
-    let output_dir = if options.output_dir.is_some() {
-        output_root.clone()
-    } else {
-        output_root.join(&run_id)
+    let output_dir = match &options.output_dir {
+        Some(dir) => dir.clone(),
+        None => results_root.join(&run_id),
     };
 
     // First Ctrl-C requests a cooperative cancel; the second exits
@@ -636,11 +680,15 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         }
     }
     let rerun = rerun_base(info, &entry, &options, &secrets);
-    record_rerun(&output_dir.join("report.json"), &rerun);
+    record_rerun(
+        &output_dir.join("report.json"),
+        &rerun,
+        &options.run_settings(),
+    );
     // The run is over: saves made meanwhile rebuild once, now.
     drop(watch_pause);
-    // `test-results/latest` names the last run wherever its report went.
-    update_latest(Path::new(DEFAULT_OUTPUT_ROOT), &output_dir);
+    // `latest` in the results root names the last run wherever it went.
+    update_latest(&results_root, &output_dir);
     let interrupted = interrupts.load(Ordering::SeqCst) > 0;
     report(&outcome, &bundle, &run_id, &output_dir, &options, &rerun);
     if !machine && needs_recovery(&outcome, interrupted) {
@@ -788,14 +836,47 @@ fn resume_watch(ws_url: &str, lease: &str) {
     );
 }
 
-/// `--last-failed` / `lxdev test report` input: `latest`, a run directory,
-/// or a report.json.
-pub(crate) fn resolve_report_path(path: &Path) -> Result<PathBuf> {
+/// `meta.run_settings` of report.json: see `TestOptions::run_settings`.
+pub const RUN_SETTINGS_KEY: &str = "run_settings";
+
+/// `--last-failed` of a run in which nothing failed: say so and start no
+/// run — `latest` keeps pointing at that run. `true` when that is the case.
+pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
+    let (Some(last), Some(_)) = (&options.last_failed, &options.entry) else {
+        return Ok(false);
+    };
+    let report = resolve_report_path(last, &options.results_root()?)?;
+    if !failed_ids(&report)?.is_empty() {
+        return Ok(false);
+    }
+    let run_dir = report.parent().unwrap_or(Path::new("."));
+    if options.machine() {
+        let envelope = json!({
+            "schema_version": 1,
+            "kind": "result",
+            "state": "nothing_to_rerun",
+            "partial": false,
+            "previous_run": run_dir.display().to_string(),
+        });
+        println!("{envelope}");
+    } else {
+        eprintln!(
+            "{} No failed specs in {}; nothing to rerun",
+            "test".cyan(),
+            run_dir.display()
+        );
+    }
+    Ok(true)
+}
+
+/// `--last-failed` / `lxdev test report` input: `latest` (in `results_root`),
+/// a run directory, or a report.json.
+pub(crate) fn resolve_report_path(path: &Path, results_root: &Path) -> Result<PathBuf> {
     let run_dir = if path == Path::new(LATEST) {
-        read_latest(Path::new(DEFAULT_OUTPUT_ROOT)).ok_or_else(|| {
+        read_latest(results_root).ok_or_else(|| {
             anyhow!(
-                "no previous run: {}/{LATEST} does not exist yet (pass a report.json or run directory)",
-                DEFAULT_OUTPUT_ROOT
+                "no previous run: {} does not exist yet (pass a report.json or run directory)",
+                results_root.join(LATEST).display()
             )
         })?
     } else {
@@ -813,7 +894,7 @@ pub(crate) fn resolve_report_path(path: &Path) -> Result<PathBuf> {
 }
 
 /// The ids of the specs that failed in `report`.
-fn failed_ids(report: &Path) -> Result<Vec<String>> {
+pub(crate) fn failed_ids(report: &Path) -> Result<Vec<String>> {
     let previous: serde_json::Value = serde_json::from_slice(
         &std::fs::read(report).with_context(|| format!("cannot read {}", report.display()))?,
     )
@@ -828,11 +909,15 @@ fn failed_ids(report: &Path) -> Result<Vec<String>> {
 }
 
 /// Point `<root>/latest` at `run_dir`: a symlink, or on Windows (where one
-/// needs a privilege) a file holding the path.
+/// needs a privilege) a file holding the path. Not when the run went into
+/// the root itself (`--output-dir` naming it), which would point at itself.
 fn update_latest(root: &Path, run_dir: &Path) {
     let link = root.join(LATEST);
     let target = std::fs::canonicalize(run_dir).unwrap_or_else(|_| run_dir.to_path_buf());
     let _ = std::fs::create_dir_all(root);
+    if std::fs::canonicalize(root).is_ok_and(|root| root == target) {
+        return;
+    }
     if let Ok(meta) = std::fs::symlink_metadata(&link) {
         if meta.is_dir() {
             // Somebody's real directory: leave it alone.
@@ -1062,8 +1147,6 @@ fn active_run_id(message: &str) -> Option<String> {
     let id = rest.split_whitespace().next()?;
     (!id.is_empty()).then(|| id.to_string())
 }
-
-const DEFAULT_OUTPUT_ROOT: &str = "test-results";
 
 /// Create `dir` and prove a file can be written in it.
 fn ensure_writable_dir(dir: &Path) -> Result<()> {
@@ -2046,8 +2129,9 @@ pub(crate) fn rerun_with_id(base: &str, id: &str) -> String {
 }
 
 /// Keep the rerun command in report.json (`meta.rerun`), so `lxdev test
-/// report` can print Rerun lines later.
-fn record_rerun(report: &Path, rerun: &str) {
+/// report` can print Rerun lines later, and the settings `--last-failed`
+/// carries over (`meta.run_settings`).
+fn record_rerun(report: &Path, rerun: &str, settings: &serde_json::Value) {
     let Ok(bytes) = std::fs::read(report) else {
         return;
     };
@@ -2060,6 +2144,7 @@ fn record_rerun(report: &Path, rerun: &str) {
     let meta = root.entry("meta").or_insert_with(|| json!({}));
     if let Some(meta) = meta.as_object_mut() {
         meta.insert("rerun".to_string(), json!(rerun));
+        meta.insert(RUN_SETTINGS_KEY.to_string(), settings.clone());
     }
     if let Ok(bytes) = serde_json::to_vec_pretty(&value) {
         let _ = std::fs::write(report, bytes);
@@ -3071,13 +3156,22 @@ mod lifecycle_tests {
         let dir = tempfile::tempdir().unwrap();
         let report = dir.path().join("report.json");
         std::fs::write(&report, r#"{"cases":[],"meta":{"args":{}}}"#).unwrap();
-        record_rerun(&report, "lxdev test 'tests/'");
+        let settings =
+            options(&["t", "--preset", "ci", "--profile", "auth", "--profile-save"]).run_settings();
+        record_rerun(&report, "lxdev test 'tests/'", &settings);
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
         assert_eq!(value["meta"]["rerun"], "lxdev test 'tests/'");
+        assert_eq!(
+            value["meta"][RUN_SETTINGS_KEY],
+            json!({"preset": "ci", "profile": "auth", "profile_save": "pass"})
+        );
         assert!(value["meta"]["args"].is_object());
+        // A profile PATH is kept absolute.
+        let by_path = options(&["t", "--profile", "snapshots/a.lxstate"]).run_settings();
+        assert!(Path::new(by_path["profile"].as_str().unwrap()).is_absolute());
         // No report, nothing to do.
-        record_rerun(&dir.path().join("missing.json"), "x");
+        record_rerun(&dir.path().join("missing.json"), "x", &json!({}));
     }
 
     #[test]
@@ -3168,8 +3262,67 @@ mod lifecycle_tests {
             failed_ids(&run.join("report.json")).unwrap(),
             vec!["A".to_string(), "C".to_string()]
         );
-        assert!(resolve_report_path(&run).unwrap().ends_with("report.json"));
-        assert!(resolve_report_path(&dir.path().join("none")).is_err());
+        assert!(
+            resolve_report_path(&run, &root)
+                .unwrap()
+                .ends_with("report.json")
+        );
+        assert!(resolve_report_path(&dir.path().join("none"), &root).is_err());
+        // `latest` is looked up in the results root given, not the cwd.
+        std::fs::write(newer.join("report.json"), r#"{"cases":[]}"#).unwrap();
+        assert_eq!(
+            resolve_report_path(Path::new(LATEST), &root).unwrap(),
+            std::fs::canonicalize(&newer).unwrap().join("report.json")
+        );
+        let err = resolve_report_path(Path::new(LATEST), &dir.path().join("elsewhere"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("elsewhere"), "{err}");
+    }
+
+    #[test]
+    fn a_run_written_into_the_root_itself_does_not_become_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("test-results");
+        let run = root.join("r1");
+        std::fs::create_dir_all(&run).unwrap();
+        update_latest(&root, &run);
+        // `--output-dir test-results`: `latest` would point at itself.
+        update_latest(&root, &root);
+        assert_eq!(
+            read_latest(&root).unwrap(),
+            std::fs::canonicalize(&run).unwrap()
+        );
+    }
+
+    #[test]
+    fn last_failed_after_a_clean_run_starts_nothing_and_keeps_latest() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("results");
+        let run = root.join("r1");
+        std::fs::create_dir_all(&run).unwrap();
+        std::fs::write(
+            run.join("report.json"),
+            r#"{"cases":[{"id":"A","status":"passed"},{"id":"B","status":"skipped"}]}"#,
+        )
+        .unwrap();
+        update_latest(&root, &run);
+        let root_arg = root.to_string_lossy().into_owned();
+        let clean = options(&["t/", "--last-failed", "--output-root", &root_arg]);
+        assert!(nothing_to_rerun(&clean).unwrap());
+        assert_eq!(
+            read_latest(&root).unwrap(),
+            std::fs::canonicalize(&run).unwrap()
+        );
+        // With a failure there is something to run.
+        std::fs::write(
+            run.join("report.json"),
+            r#"{"cases":[{"id":"A","status":"failed"}]}"#,
+        )
+        .unwrap();
+        assert!(!nothing_to_rerun(&clean).unwrap());
+        // Not a --last-failed run.
+        assert!(!nothing_to_rerun(&options(&["t/", "--output-root", &root_arg])).unwrap());
     }
 
     #[test]

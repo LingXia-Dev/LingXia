@@ -71,6 +71,136 @@ impl Presets {
     }
 }
 
+/// The results root when `--output-root` is not given.
+pub const DEFAULT_OUTPUT_ROOT: &str = "test-results";
+
+impl Presets {
+    /// `test.outputDir`, else `test-results`, beside `lxdev.json`.
+    fn results_root(&self) -> PathBuf {
+        let base = self.path.parent().unwrap_or(Path::new("."));
+        let configured = self.defaults.iter().find_map(|(flag, values)| {
+            (*flag == Some("--output-root"))
+                .then(|| values.first())
+                .flatten()
+        });
+        normalize(&base.join(configured.map_or(DEFAULT_OUTPUT_ROOT, String::as_str)))
+    }
+}
+
+/// Where runs go and `latest` is, for a command run in `cwd` without
+/// `--output-root`: resolved against `lxdev.json` like its presets, so it
+/// is the same from any subdirectory; `./test-results` without one.
+pub fn results_root(cwd: &Path) -> PathBuf {
+    match load(cwd) {
+        Ok(Some(presets)) => presets.results_root(),
+        _ => PathBuf::from(DEFAULT_OUTPUT_ROOT),
+    }
+}
+
+/// `--last-failed`: put the rerun on the run it reruns — that run's
+/// `--preset`, and its `--profile` (with `--profile-save`), recorded in its
+/// report.json — unless the command line gives them. A different `--preset`
+/// brings its own profile, so then only the preset's say counts. Inserted
+/// right after `test`, before the command line's own arguments; `argv` is
+/// unchanged when the previous run cannot be read (the run reports that).
+pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
+    let Some(index) = test_subcommand_index(&argv) else {
+        return argv;
+    };
+    let rest: Vec<String> = argv[index + 1..]
+        .iter()
+        .map(|token| token.to_string_lossy().into_owned())
+        .take_while(|token| token != "--")
+        .collect();
+    if rest.first().is_some_and(|first| first == "report") {
+        return argv;
+    }
+    let Some(last) = flag_value(&rest, "--last-failed", crate::test::LATEST) else {
+        return argv;
+    };
+    let root = flag_value(&rest, "--output-root", "")
+        .filter(|root| !root.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| results_root(cwd));
+    let Ok(report) = crate::test::resolve_report_path(Path::new(&last), &root) else {
+        return argv;
+    };
+    // Nothing failed: nothing runs, so nothing to carry.
+    if crate::test::failed_ids(&report).is_ok_and(|ids| ids.is_empty()) {
+        return argv;
+    }
+    let Some(settings) = std::fs::read(&report)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok())
+        .map(|mut report| report["meta"][crate::test::RUN_SETTINGS_KEY].take())
+    else {
+        return argv;
+    };
+    let (has_entry, given) = scan(&rest);
+    let text = |key: &str| settings[key].as_str().filter(|value| !value.is_empty());
+    let mut carried: Vec<String> = Vec::new();
+    let mut preset_args: Vec<String> = Vec::new();
+    if let Some(preset) = text("preset").filter(|_| !given.contains("--preset")) {
+        let args = load(cwd)
+            .ok()
+            .flatten()
+            .and_then(|presets| presets.presets.get(preset).cloned())
+            .unwrap_or_default();
+        // Its own entry would be a second one next to the command line's.
+        if !(has_entry && scan(&args).0) {
+            carried.extend(["--preset".to_string(), preset.to_string()]);
+            preset_args = args;
+        }
+    }
+    // The carried preset may set the same profile already.
+    let preset_sets_it = flag_value(&preset_args, "--profile", "").as_deref() == text("profile")
+        && flag_value(&preset_args, "--profile-save", "pass").as_deref() == text("profile_save");
+    if let Some(profile) = text("profile")
+        .filter(|_| !given.contains("--profile") && !given.contains("--preset") && !preset_sets_it)
+    {
+        carried.extend(["--profile".to_string(), profile.to_string()]);
+        if let Some(when) = text("profile_save").filter(|_| !given.contains("--profile-save")) {
+            carried.push(format!("--profile-save={when}"));
+        }
+    }
+    if carried.is_empty() {
+        return argv;
+    }
+    let run_dir = report.parent().unwrap_or(Path::new("."));
+    eprintln!(
+        "test --last-failed: reusing {} of {} (give them to override)",
+        carried
+            .iter()
+            .map(|arg| quote(arg))
+            .collect::<Vec<_>>()
+            .join(" "),
+        run_dir.display()
+    );
+    let mut out = argv[..=index].to_vec();
+    out.extend(carried.into_iter().map(OsString::from));
+    out.extend(argv[index + 1..].iter().cloned());
+    out
+}
+
+/// The value of long flag `name` among `args` (the last one given):
+/// `--name=V`, `--name V`, or `missing` when it takes an optional value and
+/// none follows.
+fn flag_value(args: &[String], name: &str, missing: &str) -> Option<String> {
+    let mut found = None;
+    let mut tokens = args.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if let Some(value) = token.strip_prefix(&format!("{name}=")) {
+            found = Some(value.to_string());
+        } else if token == name {
+            found = Some(match tokens.peek() {
+                Some(next) if !next.starts_with('-') => tokens.next().cloned().unwrap_or_default(),
+                _ => missing.to_string(),
+            });
+        }
+    }
+    found
+}
+
 /// `lxdev.json` of the project `dir` belongs to, if it has one.
 pub fn load(dir: &Path) -> Result<Option<Presets>> {
     let root = crate::test_bundle::find_project_root(dir);
@@ -115,7 +245,9 @@ pub fn parse(text: &str, path: &Path) -> Result<Presets> {
             }
             for (key, flag, many) in [
                 ("entry", None, false),
-                ("outputDir", Some("--output-dir"), false),
+                // The results root (runs in <run-id>/ under it), like the
+                // default test-results; `--output-dir` is one run's directory.
+                ("outputDir", Some("--output-root"), false),
                 ("openapi", Some("--openapi"), true),
                 ("tags", Some("--tag"), true),
             ] {
@@ -438,10 +570,11 @@ fn scan(args: &[String]) -> (bool, std::collections::HashSet<String>) {
 
 /// Flags whose value is a file or directory. `--profile` takes `empty`, a
 /// NAME or a PATH; only a PATH is anchored.
-const PATH_FLAGS: [&str; 6] = [
+const PATH_FLAGS: [&str; 7] = [
     "--openapi",
     "--covers-manifest",
     "--record-network",
+    "--output-root",
     "--output-dir",
     "--last-failed",
     "--secrets-file",
@@ -581,16 +714,82 @@ fn quote(token: &str) -> String {
     }
 }
 
-/// `lxdev test --print-args`.
-pub fn print_args(argv: &[OsString], json: bool) -> Result<()> {
+/// `lxdev test --print-args`: the command line, then — as `#` lines, so the
+/// output still pastes — the args the environment and `--secrets-file` add,
+/// each with where it comes from and secret values masked.
+pub fn print_args(
+    argv: &[OsString],
+    json: bool,
+    sources: &crate::test_secrets::ArgSources,
+) -> Result<()> {
     let args = effective_args(argv);
+    let external = external_args(sources);
     if json {
-        println!("{}", json!({ "args": args }));
+        let external = external
+            .iter()
+            .map(|arg| {
+                json!({ "flag": arg.flag, "key": arg.key, "value": arg.value, "source": arg.source })
+            })
+            .collect::<Vec<_>>();
+        println!("{}", json!({ "args": args, "external": external }));
     } else {
         let line = args.iter().map(|arg| quote(arg)).collect::<Vec<_>>();
         println!("lxdev test {}", line.join(" "));
+        for arg in &external {
+            println!(
+                "# {} {}  (from {})",
+                arg.flag,
+                quote(&format!("{}={}", arg.key, arg.value)),
+                arg.source
+            );
+        }
     }
     Ok(())
+}
+
+/// An arg from outside the command line, as `--print-args` shows it.
+struct ExternalArg {
+    flag: &'static str,
+    key: String,
+    value: String,
+    /// `LXDEV_SECRET_PIN`, or `--secrets-file PATH`.
+    source: String,
+}
+
+fn external_args(sources: &crate::test_secrets::ArgSources) -> Vec<ExternalArg> {
+    use crate::test_secrets::{ENV_ARG_PREFIX, ENV_SECRET_PREFIX, REDACTED};
+    let mut out = Vec::new();
+    for (key, value) in &sources.env_args {
+        out.push(ExternalArg {
+            flag: "--arg",
+            value: if looks_secret_key(key) {
+                REDACTED.to_string()
+            } else {
+                value.clone()
+            },
+            source: format!("{ENV_ARG_PREFIX}{key}"),
+            key: key.clone(),
+        });
+    }
+    for (key, _) in &sources.env_secrets {
+        out.push(ExternalArg {
+            flag: "--secret-arg",
+            key: key.clone(),
+            value: REDACTED.to_string(),
+            source: format!("{ENV_SECRET_PREFIX}{key}"),
+        });
+    }
+    if let Some(path) = &sources.secrets_file {
+        for (key, _) in &sources.file_secrets {
+            out.push(ExternalArg {
+                flag: "--secret-arg",
+                key: key.clone(),
+                value: REDACTED.to_string(),
+                source: format!("--secrets-file {}", path.display()),
+            });
+        }
+    }
+    out
 }
 
 /// `lxdev test --list-presets`.
@@ -785,7 +984,7 @@ mod tests {
                 "lxdev".to_string(),
                 "test".to_string(),
                 at("tests"),
-                "--output-dir".to_string(),
+                "--output-root".to_string(),
                 at("results"),
                 "--openapi".to_string(),
                 at("api.yaml"),
@@ -802,11 +1001,15 @@ mod tests {
         assert!(smoke.contains(&at("results")), "{smoke:?}");
         // So does the command line's own entry or flag.
         let own =
-            strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-dir=o"]), root).unwrap());
+            strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-root=o"]), root).unwrap());
         assert!(
             !own.contains(&at("tests")) && !own.contains(&at("results")),
             "{own:?}"
         );
+        // One run's own directory still has its `latest` in the root.
+        let fixed =
+            strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-dir=o"]), root).unwrap());
+        assert!(fixed.contains(&at("results")), "{fixed:?}");
         // Commands that start no run take no defaults.
         for argv in [
             &["lxdev", "test", "--cancel-active"][..],
@@ -976,6 +1179,189 @@ mod tests {
             !line.contains("abc123") && !line.contains("hunter2"),
             "{line}"
         );
+    }
+
+    #[test]
+    fn the_results_root_is_beside_lxdev_json_from_any_subdirectory() {
+        let configured = project(r#"{ "test": { "outputDir": "out/runs" } }"#);
+        let sub = configured.path().join("tests/pages");
+        assert_eq!(results_root(&sub), configured.path().join("out/runs"));
+        let default = project(r#"{ "test": {} }"#);
+        assert_eq!(
+            results_root(&default.path().join("tests")),
+            default.path().join(DEFAULT_OUTPUT_ROOT)
+        );
+        let none = tempfile::tempdir().unwrap();
+        assert_eq!(
+            results_root(none.path()),
+            PathBuf::from(DEFAULT_OUTPUT_ROOT)
+        );
+    }
+
+    /// A project whose `latest` run is `report`, with `settings` recorded.
+    fn last_run(dir: &Path, cases: &str, settings: Value) {
+        let run = dir.join("test-results/r1");
+        std::fs::create_dir_all(&run).unwrap();
+        let report = json!({
+            "cases": serde_json::from_str::<Value>(cases).unwrap(),
+            "meta": { crate::test::RUN_SETTINGS_KEY: settings },
+        });
+        std::fs::write(run.join("report.json"), report.to_string()).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&run, dir.join("test-results/latest")).unwrap();
+        #[cfg(not(unix))]
+        std::fs::write(
+            dir.join("test-results/latest"),
+            run.to_string_lossy().as_bytes(),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn last_failed_carries_the_previous_runs_preset_and_profile() {
+        let dir = project(FILE);
+        let root = dir.path();
+        let failed = r#"[{"id":"A","status":"failed"}]"#;
+        // `--preset nightly --profile auth --profile-save`: the command line
+        // had overridden the preset's profile.
+        last_run(
+            root,
+            failed,
+            json!({"preset": "nightly", "profile": "auth", "profile_save": "pass"}),
+        );
+        let strings = |argv: Vec<OsString>| {
+            argv.into_iter()
+                .map(|token| token.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        };
+        let sub = root.join("tests/pages");
+        // From a subdirectory: `latest` is the project's.
+        let carried = strings(carry_last_failed(
+            os(&["lxdev", "test", "tests/", "--last-failed"]),
+            &sub,
+        ));
+        assert_eq!(
+            carried,
+            [
+                "lxdev",
+                "test",
+                "--preset",
+                "nightly",
+                "--profile",
+                "auth",
+                "--profile-save=pass",
+                "tests/",
+                "--last-failed"
+            ]
+        );
+        // What the command line gives wins; a new preset brings its own data.
+        let own = strings(carry_last_failed(
+            os(&["lxdev", "test", "t/", "--last-failed", "--profile", "empty"]),
+            root,
+        ));
+        assert_eq!(
+            own,
+            [
+                "lxdev",
+                "test",
+                "--preset",
+                "nightly",
+                "t/",
+                "--last-failed",
+                "--profile",
+                "empty"
+            ]
+        );
+        let other = os(&["lxdev", "test", "t/", "--last-failed", "--preset", "ci"]);
+        assert_eq!(carry_last_failed(other.clone(), root), other);
+        // Not a --last-failed run, or one naming another report: unchanged.
+        let plain = os(&["lxdev", "test", "t/"]);
+        assert_eq!(carry_last_failed(plain.clone(), root), plain);
+        let missing = os(&[
+            "lxdev",
+            "test",
+            "t/",
+            "--last-failed",
+            "nowhere/report.json",
+        ]);
+        assert_eq!(carry_last_failed(missing.clone(), root), missing);
+    }
+
+    #[test]
+    fn last_failed_does_not_repeat_what_the_carried_preset_sets() {
+        let dir = project(FILE);
+        last_run(
+            dir.path(),
+            r#"[{"id":"A","status":"failed"}]"#,
+            json!({"preset": "nightly", "profile": "demo", "profile_save": "always"}),
+        );
+        let carried = carry_last_failed(os(&["lxdev", "test", "--last-failed"]), dir.path());
+        assert_eq!(
+            carried,
+            os(&["lxdev", "test", "--preset", "nightly", "--last-failed"])
+        );
+        // Without a preset, the profile alone.
+        last_run_again(dir.path(), json!({"profile": "demo", "profile_save": null}));
+        let carried = carry_last_failed(os(&["lxdev", "test", "--last-failed"]), dir.path());
+        assert_eq!(
+            carried,
+            os(&["lxdev", "test", "--profile", "demo", "--last-failed"])
+        );
+    }
+
+    /// Rewrite the settings of the run `last_run` made.
+    fn last_run_again(dir: &Path, settings: Value) {
+        let report = dir.join("test-results/r1/report.json");
+        let mut value: Value = serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
+        value["meta"][crate::test::RUN_SETTINGS_KEY] = settings;
+        std::fs::write(report, value.to_string()).unwrap();
+    }
+
+    #[test]
+    fn last_failed_after_a_clean_run_carries_nothing() {
+        let dir = project(FILE);
+        last_run(
+            dir.path(),
+            r#"[{"id":"A","status":"passed"}]"#,
+            json!({"preset": "nightly", "profile": "demo"}),
+        );
+        let argv = os(&["lxdev", "test", "t/", "--last-failed"]);
+        assert_eq!(carry_last_failed(argv.clone(), dir.path()), argv);
+    }
+
+    #[test]
+    fn printed_args_include_the_environment_and_the_secrets_file_by_source() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join(".env.test");
+        std::fs::write(&file, "PIN=4321\n").unwrap();
+        let sources = crate::test_secrets::ArgSources::gather(
+            [
+                ("LXDEV_ARG_REGION".to_string(), "eu".to_string()),
+                ("LXDEV_ARG_DB_PASSWORD".to_string(), "hunter2".to_string()),
+                (
+                    "LXDEV_SECRET_PASSWORD".to_string(),
+                    "s3cret-value".to_string(),
+                ),
+            ],
+            Some(&file),
+        )
+        .unwrap();
+        let shown = external_args(&sources)
+            .into_iter()
+            .map(|arg| format!("{} {}={} ({})", arg.flag, arg.key, arg.value, arg.source))
+            .collect::<Vec<_>>();
+        let file_source = format!("--secrets-file {}", file.display());
+        assert_eq!(
+            shown,
+            [
+                "--arg DB_PASSWORD=*** (LXDEV_ARG_DB_PASSWORD)".to_string(),
+                "--arg REGION=eu (LXDEV_ARG_REGION)".to_string(),
+                // The key keeps the variable's case.
+                "--secret-arg PASSWORD=*** (LXDEV_SECRET_PASSWORD)".to_string(),
+                format!("--secret-arg PIN=*** ({file_source})"),
+            ]
+        );
+        assert!(!shown.join(" ").contains("s3cret") && !shown.join(" ").contains("4321"));
     }
 
     #[test]
