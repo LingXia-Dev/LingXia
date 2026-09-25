@@ -349,9 +349,10 @@ fn content_point_to_window_point(
     }
 }
 
-/// Rebase screen-originated events when AppKit exposes its compatibility
-/// selector, then deliver through the target window. Mouse/key events created
-/// with a window number fall back to their original coordinates.
+/// Deliver an event through the target window. Mouse and key events are
+/// created with the window's number and window coordinates; a scroll event,
+/// made from a CGEvent, carries its window point as its location (see
+/// `post_scroll`).
 #[cfg(target_os = "macos")]
 pub(super) unsafe fn send_event_to_window(
     window: *mut objc2::runtime::AnyObject,
@@ -361,21 +362,6 @@ pub(super) unsafe fn send_event_to_window(
     use objc2_app_kit::NSEvent;
 
     let event_ptr = event as *const NSEvent as *mut objc2::runtime::AnyObject;
-    let responds: bool = msg_send![
-        event_ptr,
-        respondsToSelector: objc2::sel!(_eventRelativeToWindow:)
-    ];
-    let event_ptr = if responds {
-        let relative: *mut objc2::runtime::AnyObject =
-            msg_send![event_ptr, _eventRelativeToWindow: window];
-        if relative.is_null() {
-            event_ptr
-        } else {
-            relative
-        }
-    } else {
-        event_ptr
-    };
     let _: () = msg_send![window, sendEvent: event_ptr];
 }
 
@@ -465,14 +451,16 @@ fn post_scroll(
 
     unsafe {
         let view = &*(content_view as *mut NSView);
-        let typed_window = view
-            .window()
+        view.window()
             .ok_or_else(|| "contentView is not attached to a window".to_string())?;
-        let screen_point = typed_window.convertPointToScreen(window_point);
+        // An NSEvent made from a CGEvent has no window, so AppKit reports its
+        // screen location as `locationInWindow`. Place it at the window point
+        // (flipped to CoreGraphics' top-left origin) so the window's hit test
+        // lands where the caller asked.
         let main_display_height = CGDisplayBounds(CGMainDisplayID()).size.height;
         let cg_point = CGPoint {
-            x: screen_point.x,
-            y: main_display_height - screen_point.y,
+            x: window_point.x,
+            y: main_display_height - window_point.y,
         };
 
         let event = CGEvent::new_scroll_wheel_event2(

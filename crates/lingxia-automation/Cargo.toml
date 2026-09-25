@@ -33,9 +33,6 @@ runtime = [
     "dep:rong_console",
     "dep:rong_timer",
 ]
-# JSC execution-time-limit SPI for Apple hosts. Product hosts can use the
-# generic runtime without opting into this private API.
-runtime-interrupt = ["runtime", "rong/jscore-interrupt"]
 
 [dependencies]
 serde = { workspace = true }

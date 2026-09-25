@@ -5,8 +5,9 @@
 //! console, timers/fetch, and `__LINGXIA_AUTOMATION_HOST__` for string args,
 //! structured events, and bounded artifacts. They never impersonate an lxapp.
 //!
-//! On Apple platforms, enable `runtime-interrupt` when non-yielding programs
-//! must be preempted. It uses JavaScriptCore's private execution-time-limit SPI.
+//! On Apple platforms JavaScriptCore offers no public way to preempt running
+//! JavaScript, so interruption is cooperative there: a program that never
+//! yields is timed out and its worker marked unhealthy.
 
 mod context;
 mod manager;

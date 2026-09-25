@@ -38,13 +38,8 @@ pub(super) fn ax_window_for_id(window_id: &str) -> Result<AxEl> {
     require_trusted()?;
     let app = AxEl::for_app(target.pid as i32)?;
     let ax_windows = app.windows();
-    // Exact bridge first: the AX window whose CGWindowID equals the target.
-    for w in &ax_windows {
-        if w.window_id() == Some(wid) {
-            return Ok(w.clone_ref());
-        }
-    }
-    // Fall back to geometry when the private id bridge is unavailable.
+    // Accessibility has no public bridge from an AX window to its CGWindowID,
+    // so match geometry within the owning app.
     let window_count = ax_windows.len();
     let mut readable = 0usize;
     let mut best: Option<(f64, AxEl)> = None;
@@ -65,7 +60,7 @@ pub(super) fn ax_window_for_id(window_id: &str) -> Result<AxEl> {
     if let Some((_, w)) = best {
         return Ok(w);
     }
-    // Neither the id bridge nor any window's geometry answered. That is an
+    // No window's geometry answered. That is an
     // accessibility failure, not a stale window id: `AXIsProcessTrusted` keeps
     // answering yes after macOS invalidates the grant — which rebuilding an
     // unsigned app does — and every attribute read then comes back empty.
