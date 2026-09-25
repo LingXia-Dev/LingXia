@@ -260,4 +260,22 @@ test("t.arg reads, defaults, or names the missing --arg", async () => {
   assert.equal(seen.optional, undefined);
   assert.equal(seen.missingField, undefined);
   assert.match(seen.error, /Missing test arg "statusUrl": pass --arg statusUrl=<value>/);
+  assert.doesNotMatch(seen.error, /case-sensitive/);
+});
+
+test("t.arg names a key given in another case, without reading it", async () => {
+  installFakeHost(createWorld(), { args: { PASSWORD: "from-env" } });
+  const seen = {};
+  const result = await runOne(async (t) => {
+    seen.optional = t.arg("password", { required: false });
+    try {
+      t.arg("password");
+    } catch (error) {
+      seen.error = error.message;
+    }
+  });
+  assert.equal(result.status, "passed");
+  assert.equal(seen.optional, undefined);
+  assert.match(seen.error, /Missing test arg "password".*"PASSWORD" was given, and arg keys are case-sensitive/);
+  assert.doesNotMatch(seen.error, /from-env/);
 });
