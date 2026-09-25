@@ -610,6 +610,13 @@ impl AppRuntime for Platform {
         crate::desktop::banner::show(request.clone())
     }
 
+    fn banner_enqueue(
+        &self,
+        request: &DesktopBannerShow,
+    ) -> Result<crate::traits::app_runtime::DesktopBannerPending, PlatformError> {
+        crate::desktop::banner::enqueue_show(request.clone())
+    }
+
     fn banner_dismiss(&self, id: &str) -> Result<(), PlatformError> {
         crate::desktop::banner::dismiss(id);
         Ok(())

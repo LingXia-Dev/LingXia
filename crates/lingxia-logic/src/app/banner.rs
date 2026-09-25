@@ -48,7 +48,12 @@ async fn show(ctx: JSContext, options: JSValue) -> JSResult<JSObject> {
             decode_show(options)
         })?;
     let runtime = invocation.lxapp().runtime.clone();
-    let outcome = spawn_blocking(move || runtime.banner_show(&request)).await?;
+    let turn = call_order::take();
+    let outcome = spawn_blocking(move || {
+        let pending = call_order::in_turn(turn, || runtime.banner_enqueue(&request))?;
+        pending.wait()
+    })
+    .await?;
     encode_outcome(&ctx, outcome)
 }
 
@@ -64,7 +69,87 @@ async fn dismiss(ctx: JSContext, id: JSValue) -> JSResult<()> {
             Ok(id)
         })?;
     let runtime = invocation.lxapp().runtime.clone();
-    spawn_blocking(move || runtime.banner_dismiss(&id)).await
+    let turn = call_order::take();
+    spawn_blocking(move || call_order::in_turn(turn, || runtime.banner_dismiss(&id))).await
+}
+
+/// Banner calls reach the platform in the order the script made them.
+///
+/// Each call runs on its own blocking thread, so without this a
+/// `show(prompt)` followed by `dismiss(prompt)` can let the dismiss run first,
+/// find nothing, and leave the prompt waiting forever. A call takes its turn
+/// synchronously, when the script makes it, and the platform step (queueing
+/// a banner, or dismissing one) runs only when every earlier call has had its
+/// step. Waiting for a banner's outcome happens after the turn is released.
+mod call_order {
+    use std::sync::{Condvar, Mutex};
+    use std::time::Duration;
+
+    /// A turn whose owner never shows up (its task was dropped before it
+    /// ran) must not stall every later call.
+    const MAX_WAIT: Duration = Duration::from_secs(2);
+
+    struct Order {
+        next: u64,
+        serving: u64,
+    }
+
+    static ORDER: Mutex<Order> = Mutex::new(Order {
+        next: 0,
+        serving: 0,
+    });
+    static TURN: Condvar = Condvar::new();
+
+    fn lock() -> std::sync::MutexGuard<'static, Order> {
+        ORDER.lock().unwrap_or_else(|error| error.into_inner())
+    }
+
+    pub(super) fn take() -> u64 {
+        let mut order = lock();
+        let turn = order.next;
+        order.next += 1;
+        turn
+    }
+
+    pub(super) fn in_turn<R>(turn: u64, step: impl FnOnce() -> R) -> R {
+        {
+            let order = lock();
+            let _ = TURN
+                .wait_timeout_while(order, MAX_WAIT, |order| order.serving < turn)
+                .unwrap_or_else(|error| error.into_inner());
+        }
+        struct Release(u64);
+        impl Drop for Release {
+            fn drop(&mut self) {
+                let mut order = lock();
+                order.serving = order.serving.max(self.0 + 1);
+                TURN.notify_all();
+            }
+        }
+        let _release = Release(turn);
+        step()
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use std::sync::{Arc, Mutex as StdMutex};
+
+        #[test]
+        fn later_calls_wait_for_earlier_steps() {
+            let first = take();
+            let second = take();
+            let seen = Arc::new(StdMutex::new(Vec::new()));
+            let later = {
+                let seen = Arc::clone(&seen);
+                std::thread::spawn(move || in_turn(second, || seen.lock().unwrap().push(second)))
+            };
+            std::thread::sleep(Duration::from_millis(50));
+            in_turn(first, || seen.lock().unwrap().push(first));
+            later.join().unwrap();
+            assert_eq!(*seen.lock().unwrap(), vec![first, second]);
+        }
+    }
 }
 
 async fn spawn_blocking<T, F>(work: F) -> JSResult<T>
