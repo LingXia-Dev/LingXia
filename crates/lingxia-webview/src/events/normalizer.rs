@@ -1221,6 +1221,21 @@ fn notify_document_committed(
     delegate.on_document_committed(native_view_id, generation, navigation_id);
 }
 
+/// [`destroy`], only while the tag's normalizer still belongs to
+/// `native_view_id`: a newer create cycle on the same tag keeps its own.
+pub(crate) fn destroy_if_native(webtag: &WebTag, native_view_id: NativeWebViewId) {
+    let normalizer = {
+        let mut map = registry().lock().unwrap_or_else(|e| e.into_inner());
+        match map.get(webtag.key()) {
+            Some(current) if current.native_view_id == native_view_id => map.remove(webtag.key()),
+            _ => None,
+        }
+    };
+    if let Some(normalizer) = normalizer {
+        normalizer.submit(NativeSignal::Destroyed);
+    }
+}
+
 /// Remove the webtag's normalizer after draining teardown cancellations.
 pub(crate) fn destroy(webtag: &WebTag) {
     let normalizer = registry()
@@ -1239,6 +1254,24 @@ mod tests {
     use crate::{LogLevel, WebViewDelegate};
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
+
+    #[test]
+    fn a_destroyed_view_takes_only_its_own_normalizer() {
+        let webtag = WebTag::new("com.example.normalizer", "/pages/a", Some(41));
+        let registered = |webtag: &WebTag| registry().lock().unwrap().contains_key(webtag.key());
+        let old = NativeWebViewId::new(9_401);
+        let new = NativeWebViewId::new(9_402);
+        super::begin(&webtag, old);
+        // A newer create cycle took the tag over.
+        super::begin(&webtag, new);
+        destroy_if_native(&webtag, old);
+        assert!(registered(&webtag), "the newer view keeps its normalizer");
+        destroy_if_native(&webtag, new);
+        assert!(
+            !registered(&webtag),
+            "the destroyed view's normalizer is gone"
+        );
+    }
 
     struct CommitCapture(Arc<Mutex<Vec<(NativeWebViewId, DocumentGeneration, NavigationId)>>>);
 

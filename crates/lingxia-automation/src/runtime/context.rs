@@ -16,7 +16,7 @@ use rong::{
     js_class, js_method,
 };
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 /// Modules the automation profile registers: timers plus the surface `fetch` pulls
 /// in. `console` is deliberately absent — the run needs its own sink.
@@ -66,7 +66,7 @@ pub(crate) fn init_automation_context(
     ctx.global().set(
         "console",
         Class::lookup::<AutomationConsole>(ctx)?.instance(AutomationConsole {
-            shared: shared.clone(),
+            shared: Arc::downgrade(shared),
         }),
     )?;
     ctx.global().set(
@@ -135,20 +135,27 @@ fn format_console_args(args: Rest<JSValue>) -> String {
     parts.join(" ")
 }
 
+/// Everything the run's JS context can reach holds the run weakly. The
+/// context outlives the run until the engine collects it, and a strong
+/// reference would keep the run's report, events and attachments with it;
+/// the manager's retention decides how long a run lives.
 #[js_class(clone)]
 struct AutomationConsole {
-    shared: Arc<RunShared>,
+    shared: Weak<RunShared>,
 }
 
 impl AutomationConsole {
     fn emit(&self, level: &str, log_level: LogLevel, args: Rest<JSValue>) {
+        let Some(shared) = self.shared.upgrade() else {
+            return;
+        };
         let message = format_console_args(args);
         // Mirror into the session dev log for later diagnosis; live output
         // flows to the client through poll events.
         LogBuilder::new(LogTag::Automation, &message)
-            .with_path(self.shared.run_id.clone())
+            .with_path(shared.run_id.clone())
             .with_level(log_level);
-        self.shared.push_console(level, message);
+        shared.push_console(level, message);
     }
 }
 
@@ -218,24 +225,33 @@ fn make_host(
         host.set("control", string_map(control)?)?;
     }
 
-    let attach_shared = shared.clone();
+    let attach_shared = Arc::downgrade(shared);
     host.set(
         "attach",
         JSFunc::new(ctx, move |name: String, options: AttachOptions| {
-            attach(&attach_shared, name, options)
+            let run = live_run(&attach_shared)?;
+            attach(&run, name, options)
         })?,
     )?;
 
-    let event_shared = shared.clone();
+    let event_shared = Arc::downgrade(shared);
     host.set(
         "emit",
-        JSFunc::new(ctx, move |event: JSObject| emit(&event_shared, event))?,
+        JSFunc::new(ctx, move |event: JSObject| {
+            let run = live_run(&event_shared)?;
+            emit(&run, event)
+        })?,
     )?;
 
-    let logs_shared = shared.clone();
+    let logs_shared = Arc::downgrade(shared);
     host.set(
         "logs",
-        JSFunc::new(ctx, move || logs_shared.log_ring_text())?,
+        JSFunc::new(ctx, move || {
+            logs_shared
+                .upgrade()
+                .map(|run| run.log_ring_text())
+                .unwrap_or_default()
+        })?,
     )?;
     crate::network::attach_host_functions(
         ctx,
@@ -244,6 +260,12 @@ fn make_host(
         secret_values(args, control),
     )?;
     Ok(host)
+}
+
+/// The run a host function belongs to, while it is still kept.
+fn live_run(run: &Weak<RunShared>) -> JSResult<Arc<RunShared>> {
+    run.upgrade()
+        .ok_or_else(|| HostError::new("E_AUTOMATION_ENDED", "the automation run has ended").into())
 }
 
 /// Values of the `--secret-arg` keys lxdev declared in `control.secretArgs`.

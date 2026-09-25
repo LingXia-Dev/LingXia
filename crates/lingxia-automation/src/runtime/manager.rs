@@ -741,6 +741,53 @@ mod tests {
         );
     }
 
+    /// A run's state outlives its retention in nothing its JS context can
+    /// reach (console, attach, emit, logs): that context lingers until the
+    /// engine collects it, which can be long after the run.
+    #[test]
+    fn a_finished_run_is_freed_once_it_leaves_retention() {
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        // Native objects that hold JS values keep a context alive until a
+        // full, swept collection finalizes them.
+        let program = r#"
+(async () => {
+  const controller = new AbortController();
+  controller.signal.addEventListener("abort", () => {});
+  const response = new Response("body");
+  await response.text();
+  console.log("run", controller.signal.aborted);
+  await globalThis.__LINGXIA_AUTOMATION_HOST__.attach("a.txt", { mimeType: "text/plain", base64: "aGk=" });
+  return true;
+})()
+"#;
+        let first = start(&runtime, program, 5_000);
+        let first_run = {
+            let state = runtime.inner.state.lock().unwrap();
+            Arc::downgrade(state.active.as_ref().expect("an active run"))
+        };
+        assert_eq!(
+            wait_for_terminal(&runtime, &first.run_id).state,
+            AutomationRunState::Succeeded
+        );
+        // Push the first run out of the finished runs kept for polling.
+        for _ in 0..=COMPLETED_RETAINED {
+            let next = start(&runtime, program, 5_000);
+            assert_eq!(
+                wait_for_terminal(&runtime, &next.run_id).state,
+                AutomationRunState::Succeeded
+            );
+        }
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while first_run.upgrade().is_some() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(
+            first_run.upgrade().is_none(),
+            "a run past its retention is still referenced ({} strong refs)",
+            first_run.strong_count()
+        );
+    }
+
     #[test]
     fn worker_join_failure_is_terminal() {
         let shared = RunShared::new("join-failure".to_string(), Duration::from_secs(1));

@@ -2582,7 +2582,6 @@ dependencies = [
  "rong",
  "rong_command",
  "rong_console",
- "rong_core",
  "rong_event",
  "rong_http",
  "rong_modules",
