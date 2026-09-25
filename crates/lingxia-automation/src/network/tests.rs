@@ -1262,11 +1262,14 @@ mod scenarios {
         let RouteAction::Fulfill(fulfill) = render_action(&answers[0], now) else {
             panic!("expected fulfill");
         };
+        // Compared as JSON: key order depends on serde_json's
+        // `preserve_order`, which a workspace build may turn on.
+        let Some(ResponseBody::Text(body)) = &fulfill.body else {
+            panic!("expected a text body, got {:?}", fulfill.body);
+        };
         assert_eq!(
-            fulfill.body,
-            Some(ResponseBody::Text(
-                r#"{"n":1,"seen":"2023-11-14T22:08:20.000Z"}"#.into()
-            ))
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            json!({ "n": 1, "seen": "2023-11-14T22:08:20.000Z" })
         );
         assert!(
             fulfill
