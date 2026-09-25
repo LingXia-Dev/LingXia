@@ -278,10 +278,11 @@ function Invoke-ShowcaseSuite {
   # A function returns its whole output stream, so anything lxdev writes to
   # stdout would come back joined to the exit code -- one warning line was
   # enough to fail a suite that had passed. Send the output to the host.
+  # The windows preset of lxapp/lxdev.json: the entry, --forbid-only and the
+  # platform arg.
   $testArguments = Get-LxdevArguments @(
-    'test', 'tests/entries/windows.test.ts', '--forbid-only',
+    'test', '--preset', 'windows',
     '--timeout-secs', $TimeoutSeconds.ToString(),
-    '--arg', 'platform=windows',
     '--arg', "framework=$Framework",
     '--arg', "httpBase=$fixtureBase",
     '--output-dir', $ResultDirectory

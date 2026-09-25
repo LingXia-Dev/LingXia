@@ -53,8 +53,8 @@ received artifacts. Keep the following invariants when changing these layers:
   not an alternate result model.
 - A Runner-side run holds the single automation slot. The run manager cancels
   a run nobody has polled for `CONTROLLER_LEASE` (180s, above lxdev's longest
-  poll gap) through the normal cancel path. `lingxia dev` likewise defers
-  file-watch reloads while it relays an unfinished run.
+  poll gap) through the normal cancel path. `lingxia dev` likewise holds its
+  source watcher while a run is on (below).
 - Fixture nav (`t.app.nav.*` and the `fresh` relaunch) sends `waitUntil: 'ready'`
   unless the spec chose `waitUntil`. The driver then polls the landed instance's
   `ready_dispatched` (`lxapp::automation::wait_page_runtime_ready`) off the Logic
@@ -177,11 +177,50 @@ Development machine: lxdev receives progress, results, and artifacts
   home page, emits a `diagnostic` with `phase: "recovery"` naming the previous
   case and its status, and records an `app.reopen` step on the new case. A
   failed reopen is recorded the same way and the spec then fails on its own.
-- `lingxia dev`'s watcher defers reloads while a relayed `session.test` run is
-  active. The check is repeated in `restart_lxapp` under the command lock
-  that every relayed request holds until its response is observed, so a run
-  that starts during the (seconds-long) rebuild defers the restart instead of
-  having its app replaced mid-spec.
+- Watch pause: before it bundles, `lxdev test` takes a `session.watch.pause`
+  lease (`{ lease, ttl_ms: 300000 }`) from the dev server, and after
+  `session.test.start` renews it with the run's id. The server (not the
+  runtime) holds leases: a relayed `session.test.*` response for the bound
+  run renews it while `running` and removes it on any other state, a lease
+  not renewed within its TTL lapses (a `kill -9`'d client), and `lxdev`
+  sends `session.watch.resume` from the guard's `Drop` and from the second
+  Ctrl-C before `exit(130)`. `watch_paused()` = any live lease, or — for a
+  client that predates the method — an observed active relayed run. The
+  watcher keeps the dirty set while paused and rebuilds once when it clears.
+  `restart_lxapp` repeats the check under the command lock every relayed
+  request holds until its response is observed, so a run that starts during
+  the (seconds-long) rebuild defers the restart instead of having its app
+  replaced mid-spec. A host that answers the pause with an error (it
+  predates it) is not resumed.
+- Run end: after the last spec, unless a spec left async work pending
+  (`contaminated`), the runtime runs the same `reopenAppUnderTest` it runs
+  before each spec. A failed reopen (there or per spec) is a `diagnostic`
+  with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
+  and prints the `Recover:` line, as it does for a `timed_out` or
+  `internal_error` run that was not interrupted.
+- Version check: `lingxia_control_protocol::dev_session::compat`. Components
+  are the CLI (`LXDEV_BUILD_VERSION` / `LINGXIA_BUILD_VERSION`: version plus
+  `(sha[-dirty] date)`), the session owner (`SessionInfo.build`), the runtime
+  (`PeerBuild` from the runtime `hello`, surfaced by `echo` as
+  `runtimeBuild`), and `node_modules/@lingxia/*/package.json` of the project
+  (and, for a host, each local lxapp bundle). Skew is a different major.minor,
+  or — only when both sides name one — a different commit: a package's
+  `+<sha>` build metadata or `"lingxia": { "commit" }`.
+- Session selection: `dev_session::select` (broker feature) is the one
+  resolver; `hint_selector` returns the shortest selector that resolves back
+  to the same session from the same directory (none, name, target,
+  `target@dir-name`, `target@path`) for printed hints. `SessionInfo.name` /
+  `.build` are optional fields; a broker older than them drops them, and the
+  session is then addressable by everything but its name.
+- `lingxia test`: `run_once` over a `SessionOps` (start / run / stop); stop
+  runs from a guard's `Drop`, so `?` and panics stop the session too. The
+  Ctrl-C handler only sets a flag — `lxdev` in the same process group gets
+  the signal and cancels its run — and the result is then 130. The dev
+  session is started through `start_background_session` with explicit
+  `dev …` args (the background child is its own process group) from the
+  nearest directory with `lingxia.yaml`; `lxdev` runs in the invocation
+  directory with `LXDEV_RERUN_PREFIX=lingxia test <flags> --` so its Rerun
+  lines repeat `lingxia test`.
 - Locator actions wait for a unique match, enabled/editable state, stable
   geometry, and an unobscured hit point (after `scrollIntoView`), retrying
   while a navigation is still replacing the page.
@@ -753,15 +792,20 @@ items, the flags in `FORBIDDEN` and `--arg` keys `looks_secret_key` flags
 `--preset`/`--print-args` and masks `--secret-arg` values and credential-named
 `--arg` values. Before splicing, `anchor_paths` makes the preset's relative
 paths absolute against the directory of `lxdev.json`: the positional entry,
-the values of `PATH_FLAGS`, and `--state`/`--save-state` values that name a
-PATH (`test_state::names_a_path`). Which tokens are values comes from clap's
+the values of `PATH_FLAGS`, and a `--profile` value that names a PATH
+(`test_state::names_a_path`). `lxdev.json`'s `test.entry|outputDir|openapi|
+tags` defaults are spliced in first, each only when the preset and the
+command line (`scan`) leave that flag — or the entry — unset, and not for
+`report`, `--cancel-active` or `--list-presets`. Which tokens are values comes from clap's
 own `TestOptions` definition (`takes_values`, optional values only when the
 next token is not a flag), so a new flag cannot be misparsed; a new path flag
 must be added to `PATH_FLAGS`. The command line's own tokens are untouched.
 The `Rerun:` hint (`test::rerun_command`) is built from the parsed options, so
 it carries the preset's flags already anchored; `StateOptions::rerun_flags`
-repeats `--save-state`/`--save-state-on` only for a rolling snapshot (saved to
-the name it was read from). The JSON Schemas for scenario files and `lxdev.json` ship in
+repeats `--profile` and `--profile-save` (a saved profile is always the
+snapshot it was read from, a rolling one). The base command (without
+`--id`) is also written to `report.json` as `meta.rerun` for
+`lxdev test report`. The JSON Schemas for scenario files and `lxdev.json` ship in
 `@lingxia/test` (`schemas/`); `tests/schemas.test.mjs` checks them against
 the same cases the Rust parsers reject.
 

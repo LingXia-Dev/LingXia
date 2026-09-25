@@ -96,7 +96,9 @@ Keep regressions and repeatable business flows as `lxdev test` cases:
 `tests/flows/` for cross-page journeys.
 One-off visual polish needs live verification, not necessarily a permanent test.
 Read [Product testing](./lxapp/testing.md) for a starter spec, common tasks,
-gotchas, CI flags, and external integrations.
+gotchas, CI flags, and external integrations. In CI, `lingxia test` starts a
+session, runs the suite and stops it in one command; `lxdev test report`
+reprints the last run's failures.
 
 Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 
@@ -158,7 +160,7 @@ CLI and the host ship them for you — never add either to a project.
 | iOS Packet Tunnel / Network Extension packaging | [`./cli/lingxia.md`](./cli/lingxia.md#ios-packet-tunnel-extensions) |
 | Product E2E tests: starter spec, APIs, gotchas, CI, external service/browser journeys | [`./lxapp/testing.md`](./lxapp/testing.md) |
 | Put a running app into a named product state (`lxdev scenario`, scenario files) | [`./lxapp/scenarios.md`](./lxapp/scenarios.md) |
-| Drive a running `lingxia dev` session — `lxdev` (browser/app/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
+| Drive a running `lingxia dev` session — `lxdev` (browser/host/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
 | Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
 | Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
 | Adaptive Views: surface size classes, runtime switching, Runner device frames | [`./lxapp/adaptive-ui.md`](./lxapp/adaptive-ui.md) |

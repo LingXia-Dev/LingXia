@@ -238,6 +238,9 @@ provider; commands pick the right credential automatically from the project:
 - `lingxia auth status [--json]` — per-project diagnosis plus the wallet view
 - `lingxia auth forget --platform <channel>` — drop this checkout's automatic
   credential selection so the next command re-resolves
+- `lingxia auth runner [set <LINGXIA_ID> --dev <URL> [--prod <URL>] | clear]`
+  — the cloud identity the standalone lxapp Runner signs in with; without an
+  action it shows the saved one
 
 The concrete flows are in [App signing](#app-signing) above; see
 `lingxia auth login <provider> --help` for flags.

@@ -14,12 +14,18 @@ next runtime-backed `lxdev` command will not race Runner/app startup. Both
 
 **Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop` from the project. Then drive it with `lxdev`.
 
-Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. One live session → used automatically. Several → it **refuses to guess** and prints the candidates; pick one with the global selector (before the subcommand) or the `LXDEV_SESSION` env var:
+Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. Without a selector, `lxdev` uses the one live session whose project contains the current directory, else the only live session. Anything else → it **refuses to guess** and prints a table of candidates (`#`, id, name, target, project, started); pick one with the global selector (before the subcommand, or after `lxdev lxapp`) or the `LXDEV_SESSION` env var:
 
 ```bash
-lxdev --session a1b2 ...         # session-id prefix
+lingxia dev --background --name demo   # name a session when you start it
+lxdev --session demo ...         # its name
 lxdev --session ios ...          # target name, when unique
+lxdev --session macos@my-app ... # target in a project (dir name or path)
+lxdev --session 2 ...            # the # column of `lxdev session list`
+lxdev --session a1b2 ...         # session-id prefix
 ```
+
+Printed hints (a failed spec's `Rerun:` line, the stop command) never carry a session id: they omit `--session` when it is not needed, and otherwise use the name or target.
 
 Crashed sessions disappear from the broker automatically — there is nothing to prune. Closing the Runner or quitting a desktop host ends that session the same way; hiding a host window to the tray does not. Re-running `lingxia dev` for the same target in a project stops the previous session and takes over; different targets run side by side.
 
@@ -55,15 +61,15 @@ Logic contexts; rotation and resizing keep the existing feature set.
 
 Switching between desktop and handheld presets replaces live Logic contexts, including background apps, and waits for retained documents to reload. This resets app Logic state so frozen feature snapshots match the new host.
 
-**`app`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
+**`host`** — the selected dev session's host surface. Use this only when the target is the host window rather than an lxapp page:
 - `doctor` — report screenshot/input support, coordinate units, and keyboard-modifier reliability
-- `windows` — enumerate top-level host windows; the id feeds `--window` on the other `app` commands
+- `windows` — enumerate top-level host windows; the id feeds `--window` on the other `host` commands
 - `screenshot` — capture the full host surface, including native controls, overlays, and composited WebViews
 - `mouse move|down|up|click|drag|scroll` — raw input in platform window-content units
 - `key type|press` — keyboard input to the host window's focused control
 - `applink <url>` — inject an inbound link (same entry as OS and push; scans are narrower). Warm `onShow`, `scene === 8003`. Any path works — pass the real product URL. Product host must match `appLinks.hosts`; Runner has none, so any URL is accepted. Returns when accepted, not when navigation finishes.
 
-Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `app mouse`.
+Mobile reports one host window. Desktop hosts may report several (for example macOS AppUI surfaces); omit `--window` to use the focused/main window. App screenshot JSON always returns the resolved `window_id`, content dimensions, and pixel scale. Mouse coordinates use content pixels on Windows and content points on macOS, so Retina screenshot positions must be divided by the reported scale before feeding them back to `host mouse`.
 
 **`browser`** — the host app's browser tabs (arbitrary web content, including external URL and URL-callback surfaces; Playwright-like):
 - `open` / `tabs` / `current` / `activate` / `close` / `reload` / `back` / `forward`
@@ -79,14 +85,31 @@ host automation runtime. See [Product testing](../lxapp/testing.md) for a
 starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
 test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
 contract (`--openapi`) and recording (`--record-network`) are covered there.
+`lxdev test` attaches to a live session; for CI, `lingxia test` starts a
+session, runs it and stops it in one command.
 - `--preset NAME` — prepend a named argument list from `lxdev.json`
   (`test.presets`) in the project root; the command line's own flags come
   after it and win. A preset's relative paths are relative to `lxdev.json`,
   not the current directory. `--list-presets` lists them, `--print-args`
   prints the effective arguments with secrets masked. See
   [presets](../lxapp/testing.md#presets).
+- `--profile empty|NAME|PATH` / `--profile-save[=pass|always]` — run on an
+  isolated data profile ([App data](../lxapp/testing.md#isolated-app-data)).
+- `--secrets-file .env.test`, `LXDEV_SECRET_<KEY>` / `LXDEV_ARG_<KEY>` —
+  secret and plain args from outside the command line.
+- `--format text|json|jsonl` (`--pretty` for json) — output.
+- `--last-failed` — rerun what failed in the last run (`test-results/latest`).
+- `report [DIR|latest] [--failures] [--format json|junit]` — print an
+  earlier run's summary, failures and `Rerun:` lines again, no session needed.
 
-Use `lxdev test --help` for arguments and flags.
+While a run is active the session's watcher is paused: a save neither
+rebuilds nor reloads the app under a spec; saves made meanwhile rebuild once
+when the run ends. The run starts and ends with the app under test running.
+
+`lxdev test --help` groups the flags (Selection, Execution, Inputs, App data,
+Contract, Output) and lists examples and exit codes: `0` passed, `1` a spec
+failed or timed out / the run was incomplete / it could not run, `2` invalid
+arguments, `130` interrupted.
 
 **`scenario`** — put the running app into a named product state from
 `tests/scenarios/`, outside a test run (development hosts and the Runner
@@ -113,9 +136,10 @@ mixed. `--json` keeps the complete event. `-f` exits when the `lingxia dev`
 owner process is gone; mobile app closure and hiding to the tray keep it alive. It does not
 follow a later session's new log file — start `lxdev logs -f` again.
 
-**`session`** — list live sessions (id, target, project path). Lifecycle stays
-with the owner CLI: use `lingxia dev stop` from that session's project rather
-than stopping it through `lxdev`.
+**`session`** — list live sessions: `#` (the ordinal `--session` accepts), id,
+name, target, state, the host's LingXia version and dev protocol, and the
+mounted project. Lifecycle stays with the owner CLI: use `lingxia dev stop`
+from that session's project rather than stopping it through `lxdev`.
 
 **`desktop`** — local desktop inspection and automation, independent of a dev
 session. It covers windows, screenshots, accessibility, pixels, clipboard,
@@ -128,7 +152,7 @@ background input is not implemented by the current backend. Without a target,
 input goes to the foreground app. Window screenshots remain
 occlusion-independent, but separate native popups may require their own capture.
 
-Prefer `browser` or `lxapp page` for WebView content, `app` for the selected
+Prefer `browser` or `lxapp page` for WebView content, `host` for the selected
 session's native host surface, and `desktop` for arbitrary local OS chrome.
 Owner-drawn Win32 controls may not expose accessibility nodes.
 
@@ -152,6 +176,7 @@ accepted.
 ## Output contract
 
 - Default is human-readable text; `--json` gives compact machine output, `--pretty` indented JSON.
+- `lxdev test` picks its output with `--format text|json|jsonl` (`--pretty` indents `json`); its 0.18 `--json` / `--jsonl` still work but are deprecated.
 - `eval` / `query` commands always emit JSON (flags only pick compact vs pretty); `eval` prints nothing for `null`.
 - Mutating commands (`click`, `type`, `close`, …) print nothing by default. With `--json` they return a non-empty acknowledgement containing the action and resolved target.
 - Exit `0` on success. Failures are human-readable on stderr by default; when the command uses `--json` or `--pretty`, stderr contains a structured `{error:{code,message,causes,exit_code}}` envelope.
@@ -161,6 +186,7 @@ accepted.
 | Symptom | Fix |
 |---|---|
 | `No live dev session found` | Run `lingxia dev` in the project. |
-| `Multiple LingXia dev sessions are live` | Add `--session <id-prefix\|target>`. |
+| `Several dev sessions could be meant` | Add `--session <name\|target\|target@dir\|#>` from the printed table. |
+| `version skew: … — fix: …` | Run the printed fix (`npm install …` or `lingxia upgrade`); `lingxia doctor --project` shows every version. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |
 | Commands connect but hang | Host app lost its bridge — use `lingxia dev stop` from the project, then start `lingxia dev` again. |

@@ -43,29 +43,12 @@ echo 'Building automation CLIs from the current checkout...'
 
 for framework_index in "${!frameworks[@]}"; do
   current_framework=${frameworks[$framework_index]}
-  dev_args=(dev --background --platform macos --framework "$current_framework")
+  test_args=(test --preset macos --platform macos --framework "$current_framework"
+    --name "showcase-macos-$current_framework" --keep-session)
   if (( framework_index > 0 )); then
     # Both renderers use the same native host; only restage the Vue lxapp.
-    dev_args+=(--skip-native)
+    test_args+=(--skip-native)
   fi
-
-  echo "Starting macOS Showcase ($current_framework)..."
-  (cd "$showcase_root" && "$lingxia" "${dev_args[@]}")
-  ready_deadline=$((SECONDS + 1800))
-  ready=false
-  while (( SECONDS < ready_deadline )); do
-    status_json=$(cd "$showcase_root" && "$lingxia" dev status --json)
-    if grep -Eq '"runtime_connected"[[:space:]]*:[[:space:]]*true' <<<"$status_json"; then
-      ready=true
-      break
-    fi
-    sleep 5
-  done
-  if [[ "$ready" != true ]]; then
-    echo 'macOS dev session did not become ready within 1800 seconds.' >&2
-    exit 1
-  fi
-  echo "$status_json"
 
   result_dir="$lxapp_root/test-results/automation/macos-$current_framework"
   mkdir -p "$result_dir"
@@ -73,9 +56,11 @@ for framework_index in "${!frameworks[@]}"; do
   set +e
   (
     cd "$lxapp_root"
-    # The macos preset of lxapp/lxdev.json: the entry, --forbid-only and
-    # the platform arg.
-    "$lxdev" test --preset macos \
+    # `lingxia test` starts the session from the showcase root (the nearest
+    # lingxia.yaml), runs the macos preset of lxapp/lxdev.json (the entry,
+    # --forbid-only and the platform arg) with the flags after `--`, and
+    # keeps the session for the diagnostics below.
+    "$lingxia" "${test_args[@]}" -- \
       --timeout-secs "$timeout_seconds" \
       --arg "framework=$current_framework" \
       ${fixture_base:+--arg "httpBase=$fixture_base"} \
@@ -83,6 +68,7 @@ for framework_index in "${!frameworks[@]}"; do
   )
   test_status=$?
   set -e
+  (cd "$showcase_root" && "$lingxia" dev status --json) || true
 
   if (( test_status != 0 )); then
     # Capture the blocked native thread before cleanup kills the host. Limit
@@ -105,7 +91,8 @@ for framework_index in "${!frameworks[@]}"; do
   fi
 
   echo "Stopping macOS Showcase ($current_framework)..."
-  (cd "$showcase_root" && "$lingxia" dev stop macos)
+  # By the name `lingxia test --name` gave it.
+  (cd "$showcase_root" && "$lingxia" dev stop "showcase-macos-$current_framework")
 done
 
 trap - EXIT
