@@ -46,11 +46,11 @@ tungstenite = { version = "0.30", optional = true, default-features = false, fea
 swift-bridge = "0.1.59"
 
 [target.'cfg(target_os = "macos")'.dependencies]
-lingxia-automation = { workspace = true, optional = true, features = ["runtime-interrupt"] }
+lingxia-automation = { workspace = true, optional = true, features = ["runtime"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "ios")'.dependencies]
-lingxia-automation = { workspace = true, optional = true, features = ["runtime-interrupt"] }
+lingxia-automation = { workspace = true, optional = true, features = ["runtime"] }
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]

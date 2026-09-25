@@ -3606,135 +3606,55 @@ impl WebViewInner {
             .await
     }
 
+    /// Run `body` in the page (as an async function body) for its effect.
+    async fn run_input_script(&self, body: &str) -> Result<(), WebViewInputError> {
+        self.call_async_javascript_envelope(body)
+            .await
+            .map(|_| ())
+            .map_err(|err| match err {
+                WebViewScriptError::Destroyed => WebViewInputError::Destroyed,
+                other => WebViewInputError::Platform(other.to_string()),
+            })
+    }
+
+    /// Wait until the page has painted: two animation frames, the second one
+    /// after the frame that picked up earlier changes.
     async fn wait_presentation_update(&self) -> Result<(), WebViewInputError> {
-        let webview_retained_addr = self.retain_webview_for_dispatch();
-        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
-        DispatchQueue::main().exec_async(move || unsafe {
-            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
-            let responds: objc2::runtime::Bool =
-                msg_send![webview, respondsToSelector: objc2::sel!(_doAfterNextPresentationUpdate:)];
-            if !responds.as_bool() {
-                let _ = tx.send(Ok(()));
-                return;
-            }
-
-            let tx_state = Arc::new(Mutex::new(Some(tx)));
-            let tx_state_for_block = Arc::clone(&tx_state);
-            let completion = StackBlock::new(move || {
-                let sender = tx_state_for_block
-                    .lock()
-                    .ok()
-                    .and_then(|mut guard| guard.take());
-                if let Some(sender) = sender {
-                    let _ = sender.send(Ok(()));
-                }
-            })
-            .copy();
-            let _: () = msg_send![webview, _doAfterNextPresentationUpdate: &*completion];
-        });
-
-        match timeout(EVAL_TIMEOUT, rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
-            Err(_) => Err(WebViewInputError::Platform(
-                "Timed out waiting for WebKit presentation update".to_string(),
-            )),
-        }
+        self.run_input_script(
+            "await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); return '';",
+        )
+        .await
     }
 
+    /// Wait until the web process has handled the mouse events sent so far.
+    /// Script evaluation is ordered after input already delivered to the
+    /// page, so a round trip that also yields one frame is enough.
     async fn wait_pending_mouse_events(&self) -> Result<(), WebViewInputError> {
-        let webview_retained_addr = self.retain_webview_for_dispatch();
-        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
-        DispatchQueue::main().exec_async(move || unsafe {
-            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
-            let responds: objc2::runtime::Bool =
-                msg_send![webview, respondsToSelector: objc2::sel!(_doAfterProcessingAllPendingMouseEvents:)];
-            if !responds.as_bool() {
-                let _ = tx.send(Ok(()));
-                return;
-            }
-
-            let tx_state = Arc::new(Mutex::new(Some(tx)));
-            let tx_state_for_block = Arc::clone(&tx_state);
-            let completion = StackBlock::new(move || {
-                let sender = tx_state_for_block
-                    .lock()
-                    .ok()
-                    .and_then(|mut guard| guard.take());
-                if let Some(sender) = sender {
-                    let _ = sender.send(Ok(()));
-                }
-            })
-            .copy();
-            let _: () = msg_send![webview, _doAfterProcessingAllPendingMouseEvents: &*completion];
-        });
-
-        match timeout(EVAL_TIMEOUT, rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
-            Err(_) => Err(WebViewInputError::Platform(
-                "Timed out waiting for WebKit mouse event queue".to_string(),
-            )),
-        }
+        self.run_input_script(
+            "await new Promise((resolve) => requestAnimationFrame(resolve)); return '';",
+        )
+        .await
     }
 
+    /// An editing command on the focused element, through the page's
+    /// `document.execCommand`.
     async fn execute_edit_command(
         &self,
         command: &'static str,
         argument: String,
     ) -> Result<(), WebViewInputError> {
-        let webview_retained_addr = self.retain_webview_for_dispatch();
-        let (tx, rx) = oneshot::channel::<Result<(), WebViewInputError>>();
-        DispatchQueue::main().exec_async(move || unsafe {
-            let (_webview_retained, webview) = dispatched_webview(webview_retained_addr);
-            let responds: objc2::runtime::Bool =
-                msg_send![webview, respondsToSelector: objc2::sel!(_executeEditCommand:argument:completion:)];
-            if !responds.as_bool() {
-                let _ = tx.send(Err(WebViewInputError::Unsupported(
-                    "WKWebView edit commands are unavailable",
-                )));
-                return;
-            }
-
-            let command = NSString::from_str(command);
-            let argument = NSString::from_str(&argument);
-            let tx_state = Arc::new(Mutex::new(Some(tx)));
-            let tx_state_for_block = Arc::clone(&tx_state);
-            let completion = StackBlock::new(move |success: objc2::runtime::Bool| {
-                let sender = tx_state_for_block
-                    .lock()
-                    .ok()
-                    .and_then(|mut guard| guard.take());
-                let Some(sender) = sender else {
-                    return;
-                };
-
-                let result = if success.as_bool() {
-                    Ok(())
-                } else {
-                    Err(WebViewInputError::Platform(
-                        "WebKit edit command failed".to_string(),
-                    ))
-                };
-                let _ = sender.send(result);
-            })
-            .copy();
-
-            let _: () = msg_send![
-                webview,
-                _executeEditCommand: &*command,
-                argument: &*argument,
-                completion: Some(&*completion)
-            ];
-        });
-
-        match timeout(EVAL_TIMEOUT, rx).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(WebViewInputError::Destroyed),
-            Err(_) => Err(WebViewInputError::Platform(format!(
-                "Timed out waiting for WebKit edit command `{command}`"
-            ))),
-        }
+        let command = match command {
+            "SelectAll" => "selectAll",
+            "DeleteBackward" => "delete",
+            "InsertText" => "insertText",
+            other => other,
+        };
+        let body = format!(
+            "if (!document.execCommand({}, false, {})) {{ throw new Error('edit command failed'); }} return '';",
+            serde_json::to_string(command).unwrap_or_default(),
+            serde_json::to_string(&argument).unwrap_or_default(),
+        );
+        self.run_input_script(&body).await
     }
 
     fn post_mouse_click_at_on_main(
@@ -3816,11 +3736,16 @@ impl WebViewInner {
             let bounds = view.bounds();
             let center = NSPoint::new(bounds.size.width / 2.0, bounds.size.height / 2.0);
             let window_point = view.convertPoint_toView(center, None);
-            let screen_point = window.convertPointToScreen(window_point);
+            let _ = &window;
             let main_display_height = CGDisplayBounds(CGMainDisplayID()).size.height;
+            // An NSEvent made from a CGEvent has no window, so AppKit reports
+            // its screen location as `locationInWindow`, and WebKit reads that
+            // as window coordinates. Place the event at the window point
+            // (flipped to CoreGraphics' top-left origin) so the view sees it
+            // where the page is.
             let cg_point = CGPoint {
-                x: screen_point.x,
-                y: main_display_height - screen_point.y,
+                x: window_point.x,
+                y: main_display_height - window_point.y,
             };
 
             // CGEventCreateScrollWheelEvent's wheel order is vertical, then horizontal.

@@ -706,6 +706,22 @@ mod tests {
     #[test]
     fn interrupts_non_yielding_javascript_at_the_deadline() {
         let runtime = AutomationRuntime::new().expect("automation runtime");
+        // Bind the worker, then ask whether its engine can preempt at all:
+        // JavaScriptCore has no public API for it.
+        let warmup = start(&runtime, "true", 5_000);
+        wait_for_terminal(&runtime, &warmup.run_id);
+        let preemptive = runtime
+            .inner
+            .state
+            .lock()
+            .unwrap()
+            .interrupt
+            .as_ref()
+            .is_some_and(|handle| handle.mode().is_preemptive());
+        if !preemptive {
+            eprintln!("skipping: the engine cannot preempt running JavaScript");
+            return;
+        }
         let started_at = Instant::now();
         let timed_out = start(&runtime, "while (true) {}", MIN_TIMEOUT_MS);
         assert_eq!(

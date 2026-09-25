@@ -46,10 +46,6 @@ unsafe extern "C" {
     ) -> i32;
     fn AXValueGetValue(value: *const c_void, the_type: u32, value_ptr: *mut c_void) -> bool;
     fn AXValueCreate(the_type: u32, value_ptr: *const c_void) -> *const c_void;
-    // Private but long-stable: maps an AX window element to its CGWindowID, the
-    // only reliable bridge between the CGWindowList and AX views of a window
-    // (geometry matching is ambiguous when windows overlap exactly).
-    fn _AXUIElementGetWindow(element: *mut c_void, out: *mut u32) -> i32;
 }
 
 unsafe extern "C-unwind" {
@@ -317,13 +313,6 @@ impl AxEl {
             }
         }
         out
-    }
-
-    /// The `CGWindowID` of an AX window element, if it is a window.
-    pub(super) fn window_id(&self) -> Option<u32> {
-        let mut id: u32 = 0;
-        let rc = unsafe { _AXUIElementGetWindow(self.0, &mut id) };
-        (rc == AX_SUCCESS && id != 0).then_some(id)
     }
 
     /// A new owned handle to the same element (retains +1).
