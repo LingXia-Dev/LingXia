@@ -81,8 +81,9 @@ test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
 contract (`--openapi`) and recording (`--record-network`) are covered there.
 - `--preset NAME` — prepend a named argument list from `lxdev.json`
   (`test.presets`) in the project root; the command line's own flags come
-  after it and win. `--list-presets` lists them, `--print-args` prints the
-  effective arguments with secrets masked. See
+  after it and win. A preset's relative paths are relative to `lxdev.json`,
+  not the current directory. `--list-presets` lists them, `--print-args`
+  prints the effective arguments with secrets masked. See
   [presets](../lxapp/testing.md#presets).
 
 Use `lxdev test --help` for arguments and flags.

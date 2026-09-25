@@ -697,7 +697,17 @@ items, the flags in `FORBIDDEN` and `--arg` keys `looks_secret_key` flags
 (the Rust port of `@lingxia/test`'s `looksSecretKey`). `--list-presets` and
 `--print-args` run before a session is resolved; `effective_args` drops
 `--preset`/`--print-args` and masks `--secret-arg` values and credential-named
-`--arg` values. The JSON Schemas for scenario files and `lxdev.json` ship in
+`--arg` values. Before splicing, `anchor_paths` makes the preset's relative
+paths absolute against the directory of `lxdev.json`: the positional entry,
+the values of `PATH_FLAGS`, and `--state`/`--save-state` values that name a
+PATH (`test_state::names_a_path`). Which tokens are values comes from clap's
+own `TestOptions` definition (`takes_values`, optional values only when the
+next token is not a flag), so a new flag cannot be misparsed; a new path flag
+must be added to `PATH_FLAGS`. The command line's own tokens are untouched.
+The `Rerun:` hint (`test::rerun_command`) is built from the parsed options, so
+it carries the preset's flags already anchored; `StateOptions::rerun_flags`
+repeats `--save-state`/`--save-state-on` only for a rolling snapshot (saved to
+the name it was read from). The JSON Schemas for scenario files and `lxdev.json` ship in
 `@lingxia/test` (`schemas/`); `tests/schemas.test.mjs` checks them against
 the same cases the Rust parsers reject.
 

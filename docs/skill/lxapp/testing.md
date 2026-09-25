@@ -601,7 +601,7 @@ lxdev test tests/ --grep checkout
   "test": {
     "presets": {
       "ci": ["tests/", "--tag", "unit,routed", "--openapi", "api/openapi.yaml", "--isolate"],
-      "nightly": ["tests/", "--state", "demo", "--save-state-on", "always"]
+      "nightly": ["tests/", "--state", "demo", "--save-state", "demo", "--save-state-on", "always"]
     }
   }
 }
@@ -619,6 +619,16 @@ lxdev test --list-presets
   given on the command line wins.
 - `lxdev.json` is found in the project root of the current directory (the
   directory with `package.json`, `lxapp.json` or `lingxia.yaml`).
+- Relative paths in a preset — the entry, `--openapi`, `--covers-manifest`,
+  `--record-network`, `--output-dir`, `--last-failed`, and a PATH given to
+  `--state`/`--save-state` — are relative to the directory holding
+  `lxdev.json`, so a preset runs the same from any subdirectory. Paths typed on
+  the command line stay relative to the current directory. `--print-args`
+  shows them resolved.
+- A missing `--openapi` document fails the run before it starts: a contract
+  check that silently switched itself off would make a green run mean less.
+  When the document is not always present, keep it out of the shared preset
+  and add `--openapi PATH` on the command line, or in a second preset.
 - Presets are committed, so they may not hold `--secret-arg`, credential-named
   `--arg` keys, `--preset` or `--cancel-active`; pass those on the command
   line. `--print-args` shows secret values as `***`.
