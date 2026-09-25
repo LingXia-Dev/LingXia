@@ -573,7 +573,16 @@ pub async fn lxapp_dev_restart(
     timeout: std::time::Duration,
 ) -> Result<LxAppDevPageInfo, String> {
     let appid = resolve_dev_appid(appid)?;
-    let app = resolve_dev_lxapp(&appid)?;
+    let app = match resolve_dev_lxapp(&appid) {
+        Ok(app) => app,
+        // A development bundle whose last load failed — a reopen that found
+        // the build output mid-rebuild — is not live. The rebuild that asks
+        // for this restart is what makes it loadable again, so open it.
+        Err(_) if lxapp::is_dev_bundle_appid(&appid) => {
+            return open_unloaded_dev_lxapp(&appid, timeout).await;
+        }
+        Err(err) => return Err(err),
+    };
     let previous_session = app.runtime_info().session_id;
     let previous_page = app.current_page().map_err(|error| error.to_string())?;
     let previous_page_id = previous_page.instance_id_string();
@@ -628,6 +637,45 @@ pub async fn lxapp_dev_restart(
         if now >= deadline {
             return Err(format!(
                 "timed out after {}ms waiting for lxapp {appid} to reload",
+                timeout.as_millis()
+            ));
+        }
+        tokio::time::sleep(std::cmp::min(
+            std::time::Duration::from_millis(50),
+            deadline.saturating_duration_since(now),
+        ))
+        .await;
+    }
+}
+
+/// Open a development lxapp that is not live on its initial page and wait
+/// for that page to be ready.
+async fn open_unloaded_dev_lxapp(
+    appid: &str,
+    timeout: std::time::Duration,
+) -> Result<LxAppDevPageInfo, String> {
+    let runtime = crate::runtime::platform().map_err(|err| err.to_string())?;
+    sync::sync_dev_home_bundle(runtime)?;
+    log::info!("{appid} is not loaded; opening it after the rebuild");
+    let app = lxapp::open_lxapp(appid, lxapp::LxAppStartupOptions::new(""))
+        .map_err(|err| format!("failed to open {appid}: {err}"))?;
+    let deadline = tokio::time::Instant::now()
+        .checked_add(timeout)
+        .ok_or_else(|| "restart timeout is too large".to_string())?;
+    loop {
+        if let Ok((page, name)) = resolve_dev_page(&app, None) {
+            let state = page.automation_state();
+            if let Some(error) = state.webview_error {
+                return Err(format!("reopened page WebView failed: {error}"));
+            }
+            if state.ready {
+                return Ok(dev_page_info(&app, &page, name.as_deref()));
+            }
+        }
+        let now = tokio::time::Instant::now();
+        if now >= deadline {
+            return Err(format!(
+                "timed out after {}ms waiting for lxapp {appid} to open",
                 timeout.as_millis()
             ));
         }

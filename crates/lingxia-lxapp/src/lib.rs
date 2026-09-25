@@ -109,7 +109,7 @@ pub use lxapp::{
     find_page_by_instance_id, get_current_lxapp, get_platform, host_appearance_dark,
     host_appearance_state, host_class, init, initialize_display_language,
     initialize_host_appearance, install_display_language_session_override, installed_lxapp_path,
-    is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
+    is_dev_bundle_appid, is_dev_session, is_public_network_address, is_pull_down_refresh_enabled,
     keep_responsive_for_development, list_lxapps, mark_lxapp_active, navbar,
     next_surface_context_revision, notify_lxapp_host_visibility, notify_page_host_visibility,
     notify_page_instance, notify_page_instance_by_id, on_low_memory, open_control_lxapp_page,

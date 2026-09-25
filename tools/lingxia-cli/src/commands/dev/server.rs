@@ -146,6 +146,11 @@ pub(crate) struct DevServerState {
     next_runtime_id: AtomicU64,
     pending_results: Mutex<std::collections::HashMap<String, Sender<DevSessionMessage>>>,
     command_lock: Mutex<()>,
+    /// Held while an lxapp is rebuilt, and by a relayed `session.test` start
+    /// until it is answered. A start may move the app onto an isolated
+    /// profile, which closes and reopens it from its build output; a rebuild
+    /// empties that output while it runs, so the two must not overlap.
+    build_lock: Mutex<()>,
     /// When set (non-loopback bind), every peer must present this token in
     /// its `Hello` and HTTP requests must carry it as `?token=`.
     auth_token: Option<String>,
@@ -181,6 +186,7 @@ impl DevServerState {
             next_runtime_id: AtomicU64::new(1),
             pending_results: Mutex::new(std::collections::HashMap::new()),
             command_lock: Mutex::new(()),
+            build_lock: Mutex::new(()),
             auth_token,
             runtime_rejected: AtomicBool::new(false),
             end_on_runtime_gone,
@@ -275,6 +281,27 @@ impl DevServerState {
         self.command_lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn lock_build(&self) -> std::sync::MutexGuard<'_, ()> {
+        self.build_lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// The locks relaying `method` holds until its response: every request
+    /// takes the command lock; a test start first waits out a rebuild in
+    /// progress (see `build_lock`). Always build lock, then command lock.
+    fn lock_for_relay(
+        &self,
+        method: &str,
+    ) -> (
+        Option<std::sync::MutexGuard<'_, ()>>,
+        std::sync::MutexGuard<'_, ()>,
+    ) {
+        let build = (method == lingxia_control_protocol::methods::session::test::START)
+            .then(|| self.lock_build());
+        (build, self.lock_command_forwarding())
     }
 
     fn request_shutdown(&self) {
@@ -418,6 +445,7 @@ impl DevServerState {
         if let Some(framework) = framework {
             args["framework"] = serde_json::json!(framework);
         }
+        let _build = self.lock_build();
         run_lxapp_build(&self.project_root, Some(&args))
     }
 
@@ -1055,7 +1083,11 @@ fn handle_client_connection(
     // forwarding to the runtime (which has no build toolchain). Works even with
     // no app attached.
     if method.as_str() == lingxia_control_protocol::methods::lxapp::BUILD {
-        let payload = match run_lxapp_build(&state.project_root, params.as_ref()) {
+        let built = {
+            let _build = state.lock_build();
+            run_lxapp_build(&state.project_root, params.as_ref())
+        };
+        let payload = match built {
             Ok(()) => DevSessionMessage::success(id, None),
             Err(err) => DevSessionMessage::error(id, "build_failed", format!("{err:#}")),
         };
@@ -1114,7 +1146,7 @@ fn handle_client_connection(
         return Ok(());
     };
 
-    let _command_guard = state.lock_command_forwarding();
+    let _relay_guards = state.lock_for_relay(&method);
     let command_timeout = command_timeout(params.as_ref());
     let relayed_method = method.clone();
     let (result_tx, result_rx) = mpsc::channel::<DevSessionMessage>();
@@ -1461,6 +1493,34 @@ mod tests {
             super::RestartOutcome::Deferred
         );
         assert!(rx.try_recv().is_err(), "no restart reaches the runtime");
+    }
+
+    #[test]
+    fn a_test_start_waits_for_a_rebuild_in_progress() {
+        use lingxia_control_protocol::methods::session::test;
+        let state = Arc::new(authenticated_state());
+        let rebuilding = state.lock_build();
+        let relay = |method: &'static str| {
+            let state = Arc::clone(&state);
+            let (tx, rx) = mpsc::channel();
+            std::thread::spawn(move || {
+                let _guards = state.lock_for_relay(method);
+                tx.send(()).unwrap();
+            });
+            rx
+        };
+        // Other requests are not held up by a rebuild.
+        relay(test::POLL)
+            .recv_timeout(Duration::from_secs(5))
+            .expect("a poll is relayed during a rebuild");
+        // A start would move the app onto an isolated profile, reopening it
+        // from a half-written build output: it waits for the rebuild.
+        let start = relay(test::START);
+        assert!(start.recv_timeout(Duration::from_millis(200)).is_err());
+        drop(rebuilding);
+        start
+            .recv_timeout(Duration::from_secs(5))
+            .expect("the start is relayed once the rebuild ends");
     }
 
     #[test]

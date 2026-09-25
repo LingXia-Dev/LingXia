@@ -473,9 +473,17 @@ pub async fn prepare_lxapp_open(
         .map(str::to_string)
         .ok_or_else(|| LxAppError::Runtime("host app config is not initialized".to_string()))?;
 
-    let home_lxapp = lxapp_runtime::try_get(&home_appid).ok_or_else(|| {
-        LxAppError::ResourceNotFound(format!("home lxapp '{home_appid}' not found"))
-    })?;
+    let Some(home_lxapp) = lxapp_runtime::try_get(&home_appid) else {
+        // Opening the home app itself after its session failed to load
+        // (say, a development bundle caught mid-rebuild) is how it recovers;
+        // it ships with the host and has nothing to install.
+        if target_appid == home_appid {
+            return Ok(());
+        }
+        return Err(LxAppError::ResourceNotFound(format!(
+            "home lxapp '{home_appid}' not found"
+        )));
+    };
 
     // A suspended app must not open, installed or not, so the registry gate
     // runs before the installer would otherwise fetch it to disk.
