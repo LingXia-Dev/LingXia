@@ -58,7 +58,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read page Logic `data` | `t.app.logic.data<T>({ page? })`; see [below](#reading-app-logic) |
 | Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)` |
-| Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)`, `t.app.view.eval({ page }, fn, ...args)` |
+| Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)`; options first: `{ timeout }`, `{ page }` |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `t.expect(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
 | Wait for a faked call | `await route.waitForCall()`, `await scenario.waitForCall({ http })` |
@@ -130,6 +130,10 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   page WebView with `{ document, window }`. Without the DOM lib they are
   `ViewDocument`/`ViewWindow`: `querySelector`, `textContent`, `value`,
   `getAttribute` read without casts.
+- An eval may take a third of the spec's budget, at most 10 s. Work that
+  legitimately takes longer passes a timeout first:
+  `t.app.logic.eval({ timeout: 30_000 }, fn, ...args)`, `t.app.view.eval({
+  page, timeout }, fn, ...args)`; it is clamped to the spec's remaining time.
 - `logic.call<Page>(method)` accepts only `Page`'s methods; add the method as
   a second type argument to type the result. Types are declared, not
   validated.
