@@ -25,7 +25,7 @@ recoverable from the code alone.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
-- [`scenario-worker-provider.md`](docs/internal/scenario-worker-provider.md) — design note (not implemented): the contract a Worker-backed `lxdev scenario` section would follow.
+- [`scenario-companion-protocol.md`](docs/internal/scenario-companion-protocol.md) — how scenario `function` rules reach the dev session's companion: capability, `scenario.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
 - [`logging.md`](docs/internal/logging.md) · [`env-version.md`](docs/internal/env-version.md) · [`release-versioning.md`](docs/internal/release-versioning.md) — log pipeline, host env vs lxapp channel, release version rules.
 
 ## Example projects

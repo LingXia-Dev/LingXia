@@ -122,16 +122,19 @@ arguments, `130` interrupted.
 **`scenario`** — put the running app into a named product state from
 `tests/scenarios/`, outside a test run (development hosts and the Runner
 only); see [Scenarios](../lxapp/scenarios.md):
-- `list` — names (the path without `.json`), sections, `name`/`description`
-- `use <name|file> [--appid]` — install until `clear`, another `use`, or the
-  end of the session
-- `status` — the active scenario per section, what it answered, and the last
-  one cleared (why and when)
+- `list` — each usable `name` and `name:variant`, with descriptions
+- `use <name[:variant]|file[:variant]> [--appid] [--watch]` — validate, then
+  install until `clear`, another `use`, or the end of the session; `--watch`
+  reinstalls on every save and keeps the last valid version
+- `status` — the active `name:variant`, each rule's hits, a hint when no
+  request reached it, and the last one cleared (why and when)
 - `clear`
 
 **`network`** — the network panel for the running lxapp's Logic `fetch` and
 `Rong.SSE` (development hosts and the Runner only):
-- `status` — the routes answering and the recording in progress
+- `status` — the active scenario, the recording in progress, and recent
+  calls with who answered each (`rule k (name:variant)`, a test route,
+  `real`, or `companion default`)
 - `record start [--match <glob>]` / `record stop --out <file.json> [--name <name>] [--redact <value>]`
   — capture real traffic into a scenario file for `lxdev scenario use`
 
