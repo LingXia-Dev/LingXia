@@ -42,9 +42,10 @@ lxdev test tests/pages/notes.test.ts
   `expect`) checks once. `expect(locator)` throws: a locator needs `t.expect`.
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
   a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes
-  `tsconfig.tests.json`). `import '@lingxia/test'` types the `lx` test
-  global; a file that uses `lx` without it adds
-  `types: ["@lingxia/types/automation-test-globals"]`.
+  `tsconfig.tests.json`). `import '@lingxia/test'` types the test context
+  (timers, `fetch`, `console`). A spec program declares no `lx` of its own:
+  specs that import product Logic modules type-check with the app's `lx`,
+  in any include order.
 
 ## Common tasks
 
@@ -85,8 +86,9 @@ lxdev test tests/pages/notes.test.ts
 | External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
 
 The automation root is typed by `@lingxia/types/automation`; platform support
-and selectors follow [lxdev](../cli/lxdev.md). In a test program
-`lx.automation()` is `HostRunAutomation`; app Logic gets the narrower
+and selectors follow [lxdev](../cli/lxdev.md). In a test program the root
+(`t.automation`, or `rawAutomation()` from `@lingxia/test`) is
+`HostRunAutomation`; app Logic's `lx.automation()` is the narrower
 `Automation`, which has no `network`, nav `waitUntil: 'ready'`, or eval call
 tracing. Browser automation targets host browser tabs; desktop automation
 requires a macOS/Windows host built with it, such as the Runner. `t.app.surfaceLayout()` reads the host render plan. Restore any existing
@@ -94,13 +96,20 @@ shell pins or device settings changed by a test.
 
 ## Context and assertions
 
-The test context has `lx.automation()`, `console`, timers, and `fetch`, but no
-app `lx.*`, DOM, filesystem, Node built-ins, or dynamic `import()`. Importing
-product source does not run it in the app: use the eval helpers below.
+The test context has `console`, timers, and `fetch`, but no app `lx.*`, DOM,
+filesystem, Node built-ins, or dynamic `import()`. Importing product source
+does not run it in the app: use the eval helpers below.
 
 Trigger the behavior under test through UI actions; setup, eval, and backend
-calls do not replace that product path. Use `t.app`/`t.automation`, not raw
-`lx.automation()`, which bypasses tracing and fixture guards.
+calls do not replace that product path. Use `t.app`/`t.automation`, not
+`rawAutomation()`, which bypasses tracing and fixture guards; keep it for a
+setup file that runs before any spec, or a deliberate raw-driver check:
+
+```ts
+import { rawAutomation } from '@lingxia/test';
+
+const info = await rawAutomation().lxapp('com.example.app').info();
+```
 
 ## Reading app Logic
 
@@ -141,7 +150,7 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   `SyntaxError` (override with `retryIf`); other thrown errors retry. On
   timeout it rejects with `E_TIMEOUT` naming the last value.
 - The fixture takes functions only; a script string is for the raw driver
-  (`lx.automation().lxapp().eval({ script })`).
+  (`rawAutomation().lxapp().eval({ script })`).
 
 ## Faking the network
 

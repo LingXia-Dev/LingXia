@@ -291,9 +291,16 @@ Development machine: lxdev receives progress, results, and artifacts
 - `@lingxia/types/automation` describes the raw host drivers. Keep Logic eval,
   WebView eval, browser tabs, and OS input as separate targets. Locators and
   retry policy belong to `@lingxia/test`, not the product automation runtime.
+- A test program declares no ambient `lx`. The host still injects the root as
+  `lx.automation()` in the test context, but only `runtime.ts` reads it; specs
+  reach it as `rawAutomation()` or the traced `t.automation`. A second global
+  `lx` type collides with the app's `const lx: Lx` as soon as a spec imports
+  product Logic, and `skipLibCheck` hides the collision; the
+  `tests/types-coexist` fixture compiles both in either include order with
+  `skipLibCheck` off.
 - One runtime object, two typed roots. `Automation` (the global `lx.automation()`
   of app Logic) returns `LogicLxAppDriver`; `HostRunAutomation` (the
-  `automation-test-globals` root) returns `LxAppDriver`, which adds `network`,
+  test-program root, `rawAutomation()` / `t.automation`) returns `LxAppDriver`, which adds `network`,
   nav `waitUntil: 'ready'`, and `captureCalls`. Those members reject from Logic
   at runtime: `network` needs a run scope, `ready` is refused without
   `HostAutomationAuthority`. `captureCalls`/`LxAppEvalTrace` are `@internal`

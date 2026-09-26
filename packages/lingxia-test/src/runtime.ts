@@ -354,12 +354,26 @@ function suiteOf(file: string): string {
   return cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
 }
 
-function automationRoot() {
+function automationRoot(): HostRunAutomation {
+  // The host injects the root as `lx.automation()` in the test context; that
+  // binding is the transport, not a typed global of the test program, so a
+  // spec that type-checks app Logic sees one meaning of `lx`: the app's.
   const lx = (globalThis as { lx?: { automation?: () => HostRunAutomation } }).lx;
   if (!lx || typeof lx.automation !== "function") {
-    throw new Error("lx.automation() is not available in this runtime");
+    throw new Error("The automation root is not available: rawAutomation() runs only inside an lxdev test run");
   }
   return lx.automation();
+}
+
+/**
+ * The untraced automation root of this run, with host authority. Specs drive
+ * the app through `t.app` / `t.automation`, which trace every call and stop
+ * with the spec; use this only where no fixture exists (a setup file that
+ * waits for the app before the first spec) or to reach the raw driver, e.g.
+ * `rawAutomation().lxapp().eval({ script })`.
+ */
+export function rawAutomation(): HostRunAutomation {
+  return automationRoot();
 }
 
 function pinApp(appId?: string): LxAppDriver {

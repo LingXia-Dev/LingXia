@@ -1,4 +1,4 @@
-import { expect, spec } from '@lingxia/test';
+import { expect, rawAutomation, spec } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
@@ -15,10 +15,10 @@ function automationSurfaceOrAbsent(name: string): unknown {
 }
 
 // The automation layer's shape is the raw driver's own, so it is walked on
-// `lx.automation()` itself rather than through the fixture's wrappers.
+// `rawAutomation()` itself rather than through the fixture's wrappers.
 function automationSurface(name: string): unknown {
   try {
-    const automation = lx.automation();
+    const automation = rawAutomation();
     switch (name) {
       case 'Automation': return automation;
       case 'ShellDriver': return automation.shell;

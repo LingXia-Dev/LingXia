@@ -1,3 +1,4 @@
+import { rawAutomation } from '@lingxia/test';
 import { SHOWCASE_APP_ID } from './helpers/app.js';
 
 // Before the first spec: the showcase is open and its current page is ready,
@@ -11,7 +12,7 @@ let ready = false;
 
 while (Date.now() < deadline) {
   try {
-    const app = lx.automation().lxapp(SHOWCASE_APP_ID);
+    const app = rawAutomation().lxapp(SHOWCASE_APP_ID);
     const info = await app.info();
     ready = info.appid === SHOWCASE_APP_ID && (await app.nav.current()).ready;
     if (ready) break;
