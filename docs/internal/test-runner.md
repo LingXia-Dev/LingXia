@@ -186,14 +186,13 @@ Development machine: lxdev receives progress, results, and artifacts
   run renews it while `running` and removes it on any other state, a lease
   not renewed within its TTL lapses (a `kill -9`'d client), and `lxdev`
   sends `session.watch.resume` from the guard's `Drop` and from the second
-  Ctrl-C before `exit(130)`. `watch_paused()` = any live lease, or — for a
-  client that predates the method — an observed active relayed run. The
-  watcher keeps the dirty set while paused and rebuilds once when it clears.
-  `restart_lxapp` repeats the check under the command lock every relayed
-  request holds until its response is observed, so a run that starts during
-  the (seconds-long) rebuild defers the restart instead of having its app
-  replaced mid-spec. A host that answers the pause with an error (it
-  predates it) is not resumed.
+  Ctrl-C before `exit(130)`. `watch_paused()` = any live lease; a session
+  that cannot pause fails the run before it bundles. The watcher keeps the
+  dirty set while paused and rebuilds once when it clears. `restart_lxapp`
+  repeats the check under the command lock every relayed request holds
+  until its response is observed, so a run whose lease was taken during the
+  (seconds-long) rebuild defers the restart instead of having its app
+  replaced mid-spec.
 - Run end: after the last spec, unless a spec left async work pending
   (`contaminated`), the runtime runs the same `reopenAppUnderTest` it runs
   before each spec. A failed reopen (there or per spec) is a `diagnostic`
@@ -985,6 +984,5 @@ the same cases the Rust parsers reject.
   the violations appended. Real-server mismatches are `contract.warnings` on
   the case, `openapi.warnings` (at most 100) and a `contract` diagnostic;
   unmatched requests, undocumented statuses and skipped responses (no
-  schema, not JSON, empty, truncated) are only counted. A host without
-  `captureResponses` sets `openapi.capture` to `unavailable: …` once and the
-  run continues with `toMatchSchema` only.
+  schema, not JSON, empty, truncated) are only counted. A host that cannot
+  capture responses fails the run: there is no contract run without them.

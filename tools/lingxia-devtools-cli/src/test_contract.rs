@@ -591,7 +591,7 @@ pub fn summary_lines(report: &Value) -> Vec<(bool, String)> {
             .as_array()
             .map(|items| items.iter().map(|item| num(&item["count"])).sum())
             .unwrap_or(0);
-        let mut line = format!(
+        let line = format!(
             "openapi: {}/{} responses validated; routed {} failed, server {} mismatched (warnings), {} unmatched",
             num(&openapi["validated"]),
             num(&openapi["responses"]),
@@ -599,11 +599,6 @@ pub fn summary_lines(report: &Value) -> Vec<(bool, String)> {
             num(&openapi["network"]["mismatched"]),
             unmatched,
         );
-        if let Some(capture) = openapi["capture"].as_str()
-            && capture != "ok"
-        {
-            line.push_str(&format!(" — capture {capture}"));
-        }
         lines.push((
             num(&openapi["routed"]["failed"]) == 0 && num(&openapi["network"]["mismatched"]) == 0,
             line,

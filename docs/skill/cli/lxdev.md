@@ -187,7 +187,7 @@ accepted.
 ## Output contract
 
 - Default is human-readable text; `--json` gives compact machine output, `--pretty` indented JSON.
-- `lxdev test` picks its output with `--format text|json|jsonl` (`--pretty` indents `json`); its 0.18 `--json` / `--jsonl` still work but are deprecated.
+- `lxdev test` picks its output with `--format text|json|jsonl` only; `--pretty` indents `--format json`.
 - `eval` / `query` commands always emit JSON (flags only pick compact vs pretty); `eval` prints nothing for `null`.
 - Mutating commands (`click`, `type`, `close`, …) print nothing by default. With `--json` they return a non-empty acknowledgement containing the action and resolved target.
 - Exit `0` on success. Failures are human-readable on stderr by default; when the command uses `--json` or `--pretty`, stderr contains a structured `{error:{code,message,causes,exit_code}}` envelope.
