@@ -349,18 +349,11 @@ mod tests {
         ));
 
         assert!(
-            Cli::try_parse_from([
-                "lxdev",
-                "browser",
-                "user-agent",
-                "show",
-                "--json",
-                "--pretty",
-            ])
-            .is_err()
+            Cli::try_parse_from(["lxdev", "browser", "ua", "show", "--json", "--pretty",]).is_err()
         );
         assert!(Cli::try_parse_from(["lxdev", "browser", "ua", "reset", "--reload"]).is_ok());
-        assert!(Cli::try_parse_from(["lxdev", "browser", "user-agent", "show"]).is_ok());
+        // One name: the `user-agent` alias is gone.
+        assert!(Cli::try_parse_from(["lxdev", "browser", "user-agent", "show"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "browser", "ua", "show", "--tab", "docs"]).is_err());
         assert!(
             Cli::try_parse_from(["lxdev", "browser", "ua", "configure", "TestAgent/1.0"]).is_err()

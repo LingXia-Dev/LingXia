@@ -32,6 +32,20 @@ impl Component {
         }
     }
 
+    /// A peer that answered without its version: a build from before peers
+    /// reported one, so older than any line that checks.
+    pub fn unreported(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            version: String::new(),
+            commit: None,
+        }
+    }
+
+    fn is_unreported(&self) -> bool {
+        self.version.is_empty()
+    }
+
     pub fn with_commit(mut self, commit: Option<&str>) -> Self {
         if let Some(commit) = commit.map(str::trim).filter(|commit| is_commit(commit)) {
             self.commit = Some(commit.to_string());
@@ -40,6 +54,9 @@ impl Component {
     }
 
     fn label(&self) -> String {
+        if self.is_unreported() {
+            return format!("{} (too old to report its version)", self.name);
+        }
         match &self.commit {
             Some(commit) => format!("{} {} ({})", self.name, self.version, short(commit)),
             None => format!("{} {}", self.name, self.version),
@@ -153,7 +170,13 @@ pub fn check(cli: &Component, hosts: &[Component], packages: &[Component]) -> Re
         .iter()
         .filter(|package| !off_line(package) && off_commit(package))
         .collect();
-    let off_hosts: Vec<&Component> = hosts.iter().filter(|host| off_line(host)).collect();
+    let older_host = |host: &Component| {
+        host.is_unreported() || line(&host.version).is_some_and(|l| l < cli_line)
+    };
+    let off_hosts: Vec<&Component> = hosts
+        .iter()
+        .filter(|host| host.is_unreported() || off_line(host))
+        .collect();
     if old_packages.is_empty()
         && new_packages.is_empty()
         && commit_packages.is_empty()
@@ -188,10 +211,7 @@ pub fn check(cli: &Component, hosts: &[Component], packages: &[Component]) -> Re
     {
         fixes.push("lingxia upgrade".to_string());
     }
-    if off_hosts
-        .iter()
-        .any(|host| line(&host.version).is_some_and(|l| l < cli_line))
-    {
+    if off_hosts.iter().any(|host| older_host(host)) {
         fixes.push("restart the session with this CLI (`lingxia dev`)".to_string());
     }
 
@@ -291,6 +311,18 @@ mod tests {
             "{skew}"
         );
         assert!(skew.contains("restart the session"), "{skew}");
+    }
+
+    #[test]
+    fn a_host_that_reports_no_version_is_too_old() {
+        let skew = check(&cli(), &[Component::unreported("Runner")], &[])
+            .unwrap_err()
+            .message;
+        assert!(
+            skew.starts_with("version skew: Runner (too old to report its version) vs CLI"),
+            "{skew}"
+        );
+        assert!(skew.contains("restart the session with this CLI"), "{skew}");
     }
 
     #[test]
