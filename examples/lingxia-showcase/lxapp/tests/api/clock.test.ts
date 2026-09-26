@@ -1,4 +1,4 @@
-import { expect, rawAutomation, spec } from '@lingxia/test';
+import { expect, spec } from '@lingxia/test';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -103,7 +103,7 @@ spec("reject the test clock from inside app Logic", {
 
   // App Logic's driver type has no `clock`; the member is still readable.
   const rejection = await app.logic.eval(async ({ lx }) => {
-    const clock = (rawAutomation().lxapp() as unknown as { clock: { install(): Promise<unknown> } }).clock;
+    const clock = (lx.automation().lxapp() as unknown as { clock: { install(): Promise<unknown> } }).clock;
     try {
       await clock.install();
       return { readable: typeof clock.install === 'function', rejected: false };

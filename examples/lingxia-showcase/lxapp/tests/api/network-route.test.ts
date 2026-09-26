@@ -1,4 +1,4 @@
-import { expect, rawAutomation, spec } from '@lingxia/test';
+import { expect, spec } from '@lingxia/test';
 import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
@@ -105,7 +105,7 @@ spec("reject network routes from inside app Logic", {
   const rejection = await app.logic.eval(async ({ lx }) => {
     // Reading the driver works; only calls reject outside a host run. Logic's
     // typings leave `network` out for that reason, so the probe reaches past them.
-    const driver = rawAutomation().lxapp() as unknown as {
+    const driver = lx.automation().lxapp() as unknown as {
       network: { route(pattern: string, handler: { status: number }): Promise<unknown> };
     };
     const network = driver.network;
