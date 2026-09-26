@@ -6,6 +6,22 @@ export const SHOWCASE_APP_ID = 'lingxia-showcase';
 const EVAL_BUDGET_MS = 10_000;
 
 /**
+ * A member read off a raw driver, methods bound to it. Native driver objects
+ * are callable (`typeof` is `function`), so a namespace a getter returns
+ * (`nav`, `pointer`, …) must be returned as is, never bound as a method.
+ */
+function member(target: object, prop: PropertyKey): unknown {
+  const value = Reflect.get(target, prop, target);
+  let owner: object | null = target;
+  while (owner) {
+    const descriptor = Object.getOwnPropertyDescriptor(owner, prop);
+    if (descriptor) return typeof descriptor.get === 'function' || typeof value !== 'function' ? value : value.bind(target);
+    owner = Object.getPrototypeOf(owner);
+  }
+  return value;
+}
+
+/**
  * The raw `lx.automation()` driver of an app, for what the fixture does not
  * take: Logic and page scripts given as strings — this suite's contract
  * probes pass arguments the typings refuse on purpose — and raw page reads.
@@ -28,17 +44,15 @@ export function rawApp(appId: string = SHOWCASE_APP_ID): LxAppDriver {
       if (prop === 'page') {
         const page = driver.page;
         return new Proxy(page, {
-          get(target, member) {
-            if (member === 'eval') {
+          get(target, prop) {
+            if (prop === 'eval') {
               return (options: Parameters<typeof page.eval>[0]) => target.eval(withBudget(options));
             }
-            const value = Reflect.get(target, member, target);
-            return typeof value === 'function' ? value.bind(target) : value;
+            return member(target, prop);
           },
         });
       }
-      const value = Reflect.get(driver, prop, driver);
-      return typeof value === 'function' ? value.bind(driver) : value;
+      return member(driver, prop);
     },
   });
 }
