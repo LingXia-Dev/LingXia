@@ -1,49 +1,48 @@
-import type { PageInfo, LxAppDriver } from '@lingxia/types/automation';
+import type { PageInfo } from '@lingxia/types/automation';
+import type { Fixture, TestApp } from '@lingxia/test';
 import { eventually } from './poll.js';
 
+// These waits read the first match of `css`, as the page checks they replace
+// did; a selector the page renders once needs no `.first()` of its own. They
+// wait on `t.app` unless given another handle of the app (one reopened since).
+
 export async function waitForElementEnabled(
-  app: LxAppDriver,
+  t: Fixture,
   page: string,
   css: string,
   timeoutMs = 10_000,
+  app: TestApp = t.app,
 ): Promise<void> {
-  await app.page.waitFor({ page, css, state: 'enabled', timeoutMs });
+  await t.expect(app.view.css(css, { page }).first()).toBeEnabled({ timeout: timeoutMs });
 }
 
 export async function waitForElementAttribute(
-  app: LxAppDriver,
+  t: Fixture,
   page: string,
   css: string,
   attribute: string,
   expected: string,
   timeoutMs = 10_000,
+  app: TestApp = t.app,
 ): Promise<void> {
-  await eventually(
-    () => app.page.eval({
-      page,
-      script: `document.querySelector(${JSON.stringify(css)})?.getAttribute(${JSON.stringify(attribute)}) ?? null`,
-    }),
-    (actual) => actual === expected,
-    {
-      timeoutMs,
-      describe: `${page} ${css} ${attribute}=${JSON.stringify(expected)}`,
-    });
+  await t.expect(app.view.css(css, { page }).first()).toHaveAttribute(attribute, expected, { timeout: timeoutMs });
 }
 
 export async function waitForElementText(
-  app: LxAppDriver,
+  t: Fixture,
   page: string,
   css: string,
   predicate: (text: string) => boolean,
   timeoutMs = 10_000,
+  app: TestApp = t.app,
 ): Promise<string> {
-  const text = await eventually(
+  const element = app.view.css(css, { page }).first();
+  const text = await t.waitFor(
     async () => {
-      const element = await app.page.query({ page, css, full: true });
-      return element.exists ? element.text : null;
+      const found = await element.query();
+      return found.exists ? found.text : null;
     },
-    (value) => value !== null && predicate(value),
-    { timeoutMs, describe: `${page} ${css} text` });
+    { until: (value) => value !== null && predicate(value), timeout: timeoutMs });
   if (text === null) throw new Error(`Element disappeared after wait: ${page} ${css}`);
   return text;
 }
@@ -53,7 +52,7 @@ function isCurrentPageTransition(error: unknown): boolean {
 }
 
 /** Current page lookup that treats an empty relaunch-transition stack as absent. */
-export async function currentPageOrNull(app: LxAppDriver): Promise<PageInfo | null> {
+export async function currentPageOrNull(app: TestApp): Promise<PageInfo | null> {
   try {
     return await app.nav.current();
   } catch (error) {
@@ -63,7 +62,7 @@ export async function currentPageOrNull(app: LxAppDriver): Promise<PageInfo | nu
 }
 
 export async function waitForCurrentPage(
-  app: LxAppDriver,
+  app: TestApp,
   page: string,
   timeoutMs = 10_000,
 ): Promise<PageInfo> {
@@ -78,7 +77,7 @@ export async function waitForCurrentPage(
 }
 
 export async function waitForCurrentPageVisible(
-  app: LxAppDriver,
+  app: TestApp,
   page: string,
   css: string,
   timeoutMs = 10_000,
@@ -91,6 +90,6 @@ export async function waitForCurrentPageVisible(
       describe: `current page '${page}' to become active`,
       retryIf: isCurrentPageTransition,
     });
-  await app.page.waitFor({ page, css, state: 'visible', timeoutMs });
+  await app.view.css(css, { page }).first().waitFor({ state: 'visible', timeout: timeoutMs });
   return current;
 }

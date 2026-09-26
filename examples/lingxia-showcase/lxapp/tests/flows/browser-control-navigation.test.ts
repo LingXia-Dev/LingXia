@@ -1,9 +1,4 @@
 import { expect, spec } from '@lingxia/test';
-import { rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
-
 // Run against a host registering Settings and Downloads, with the device awake,
 // unlocked and host foregrounded. Override URLs/selectors/RPC via --arg for a
 // different host; the clicks must target real product links, not injected links.
@@ -24,7 +19,7 @@ spec('control-page links retain trusted bridge authority', {
   const before = await browser.tabs();
   // Internal browser pages require the sealed host entrypoint. browser.open
   // deliberately rejects lingxia:// URLs and must not be used as a shortcut.
-  await raw.eval({ script: "return lx.shell.openBuiltin('downloads')" });
+  await t.app.logic.eval(({ lx }) => lx.shell.openBuiltin('downloads'));
   await t.expect(async () => (await browser.current())?.current_url,
     { timeout: 12_000 }).toContain('lingxia://downloads');
   const opened = await browser.current();

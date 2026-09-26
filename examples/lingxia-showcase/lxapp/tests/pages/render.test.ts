@@ -1,5 +1,5 @@
-import type { LxAppDriver } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import type { TestApp } from '@lingxia/test';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 
 import { waitForCurrentPage } from '../helpers/page.js';
@@ -9,9 +9,6 @@ import {
   SHOWCASE_PAGE_TITLES,
   SHOWCASE_PAGES,
 } from './manifest.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 interface DocumentState {
   title: string;
@@ -31,28 +28,25 @@ function isTransientPageReadinessError(error: unknown): boolean {
 }
 
 async function waitForRenderedFeature(
-  app: LxAppDriver,
+  app: TestApp,
   page: string,
   expectedTitle: string,
   expectedText: string | readonly string[],
 ): Promise<DocumentState> {
   const expectedTexts = typeof expectedText === 'string' ? [expectedText] : expectedText;
   const state = await eventually(
-    () => app.page.eval({
-        page,
-        script: `(() => {
-          const body = document.body;
-          if (!body) return null;
-          const text = body.innerText.trim();
-          return {
-            title: document.title,
-            text,
-            isNotFound: document.title === '404'
-              || text.includes('Page Not Found')
-              || text.includes('not_found'),
-          };
-        })()`,
-      }) as Promise<DocumentState | null>,
+    () => app.view.eval({ page }, ({ document }) => {
+      const body = document.body;
+      if (!body) return null;
+      const text = (body.innerText ?? '').trim();
+      return {
+        title: document.title,
+        text,
+        isNotFound: document.title === '404'
+          || text.includes('Page Not Found')
+          || text.includes('not_found'),
+      };
+    }),
     (candidate) => (
         candidate !== null
         && candidate.title === expectedTitle
@@ -91,15 +85,10 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       const current = await app.nav.current();
       expect(current.name).toBe(expectation.page);
 
-      await raw.page.waitFor({
-        page: expectation.page,
-        css: 'body',
-        state: 'attached',
-        timeoutMs: 20_000,
-      });
+      await app.view.css('body', { page: expectation.page }).first().waitFor({ state: 'attached', timeout: 20_000 });
 
       const documentState = await waitForRenderedFeature(
-        raw,
+        app,
         expectation.page,
         SHOWCASE_PAGE_TITLES[expectation.page],
         expectation.text,
@@ -107,12 +96,12 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
       expect(documentState.text.length).toBeGreaterThan(0);
       expect(documentState.isNotFound).toBeFalsy();
-      const ready = await waitForCurrentPage(raw, expectation.page, 30_000);
+      const ready = await waitForCurrentPage(app, expectation.page, 30_000);
       expect(ready.name).toBe(expectation.page);
       expect(ready.ready).toBeTruthy();
     } catch (error) {
       try {
-        const screenshot = await raw.page.screenshot({ page: expectation.page });
+        const screenshot = await app.view.screenshot({ page: expectation.page });
         await attachShot(t, `page-${expectation.page}.png`, {
           mimeType: 'image/png',
           base64: screenshot.base64,

@@ -1,11 +1,8 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 /** A host that did not build a driver throws on the getter rather than
  *  answering undefined; that is absence, not a broken shape. */
@@ -17,6 +14,8 @@ function automationSurfaceOrAbsent(name: string): unknown {
   }
 }
 
+// The automation layer's shape is the raw driver's own, so it is walked on
+// `lx.automation()` itself rather than through the fixture's wrappers.
 function automationSurface(name: string): unknown {
   try {
     const automation = lx.automation();
@@ -70,7 +69,7 @@ function inspectSurface(
   properties: readonly string[],
 ): { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt: string[] } {
   const available = target !== null && typeof target !== 'undefined';
-  if (!available) return { available, missing: [...members], wrongKinds: [], unbuilt: [] };
+  if (!available) return { available, missing: Array.from<string>(members), wrongKinds: [], unbuilt: [] };
   const record = target as Record<string, unknown>;
   const read = members.map((name) => ({ name, ...readMember(record, name) }));
   const present = read.filter((member) => !member.unbuilt);
@@ -126,29 +125,34 @@ spec('publish every public runtime and returned-object member', {
           surface.members.filter((name) => !optionalMembers.includes(name)),
           propertyNames,
         )
-        : await raw.eval({
-          script: `
-            const target = ${surface.expression};
-            const members = ${JSON.stringify(surface.members)};
-            const optionalMembers = ${JSON.stringify(optionalMembers)};
-            const properties = ${JSON.stringify(propertyNames)};
-            return {
-              available: target !== null && typeof target !== 'undefined',
-              missing: target == null
-                ? members
-                : members.filter((name) => (
-                  typeof target[name] === 'undefined' && !optionalMembers.includes(name)
-                )),
-              wrongKinds: target == null
-                ? []
-                : members.filter((name) => !optionalMembers.includes(name) && (
-                  properties.includes(name)
-                    ? target[name] === null
-                    : typeof target[name] !== 'function'
-                )),
-            };
-          `,
-        }) as { available: boolean; missing: string[]; wrongKinds: string[]; unbuilt?: string[] };
+        : await app.logic.eval(({ lx }, expression, members, optionalMembers, properties) => {
+          // `expression` is a member path such as `lx.host.control?.displayLanguage`
+          // or `lx.getStorage()`; walk it on this runtime's `lx`.
+          let target: unknown = lx;
+          for (const part of expression.replace(/\?\./g, '.').split('.').slice(1)) {
+            if (target === null || target === undefined) break;
+            const call = part.endsWith('()');
+            const owner = target as Record<string, unknown>;
+            target = owner[call ? part.slice(0, -2) : part];
+            if (call && typeof target === 'function') target = (target as () => unknown).call(owner);
+          }
+          const record = target as Record<string, unknown> | null | undefined;
+          return {
+            available: record !== null && typeof record !== 'undefined',
+            missing: record == null
+              ? members
+              : members.filter((name) => (
+                typeof record[name] === 'undefined' && !optionalMembers.includes(name)
+              )),
+            wrongKinds: record == null
+              ? []
+              : members.filter((name) => !optionalMembers.includes(name) && (
+                properties.includes(name)
+                  ? record[name] === null
+                  : typeof record[name] !== 'function'
+              )),
+          };
+        }, surface.expression, Array.from<string>(surface.members), Array.from<string>(optionalMembers), Array.from<string>(propertyNames));
     } catch (error) {
       failures.push(`${surface.name}: ${String(error)}`);
       continue;
@@ -168,28 +172,23 @@ spec('publish every public runtime and returned-object member', {
     if (surface.fixture !== 'runtime-safe' || ('optional' in surface && surface.optional)) continue;
     const fixtureName: string = surface.name;
     if (fixtureName === 'LxFile') {
-      const result = await raw.eval({
-        script: `
-          const target = lx.fs.file('lx://userdata/__shape__/managed-file');
-          const members = ${JSON.stringify(surface.members)};
-          const properties = ${JSON.stringify(surface.properties)};
-          const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
-          return {
-            available: target !== null && typeof target !== 'undefined',
-            missing: target == null
-              ? members
-              : members.filter((name) => (
-                typeof target[name] === 'undefined' && !optionalProperties.includes(name)
-              )),
-            wrongKinds: target == null
-              ? []
-              : members.filter((name) => properties.includes(name)
-                ? target[name] === null
-                  || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
-                : typeof target[name] !== 'function'),
-          };
-        `,
-      }) as { available: boolean; missing: string[]; wrongKinds: string[] };
+      const result = await app.logic.eval(({ lx }, members, properties, optionalProperties) => {
+        const target = lx.fs.file('lx://userdata/__shape__/managed-file') as unknown as Record<string, unknown> | null | undefined;
+        return {
+          available: target !== null && typeof target !== 'undefined',
+          missing: target == null
+            ? members
+            : members.filter((name) => (
+              typeof target[name] === 'undefined' && !optionalProperties.includes(name)
+            )),
+          wrongKinds: target == null
+            ? []
+            : members.filter((name) => properties.includes(name)
+              ? target[name] === null
+                || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
+              : typeof target[name] !== 'function'),
+        };
+      }, Array.from<string>(surface.members), Array.from<string>(surface.properties), Array.from<string>(surface.optionalProperties));
 
       if (!result.available || result.missing.length > 0 || result.wrongKinds.length > 0) {
         failures.push(`LxFile: available=${result.available} missing=${result.missing.join(',')} wrong=${result.wrongKinds.join(',')}`);
@@ -205,20 +204,17 @@ spec('publish every public runtime and returned-object member', {
     });
     defer(async () => {
       await app.nav.relaunch({ page: 'home' });
-      await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+      await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
     });
-    await raw.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'attached' });
+    await app.view.css('#lx-video-shape-fixture', { page: 'video' }).first().waitFor({ state: 'attached', timeout: 30_000 });
     let stableRectSamples = 0;
     let previousRect = '';
     await eventually(
-      () => raw.page.eval({
-        page: 'video',
-        script: `(() => {
-          const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
-          return rect && rect.width > 1 && rect.height > 1
-            ? [rect.x, rect.y, rect.width, rect.height].map(Math.round).join(',')
-            : '';
-        })()`,
+      () => app.view.eval({ page: 'video' }, ({ document }) => {
+        const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
+        return rect && rect.width > 1 && rect.height > 1
+          ? [rect.left, rect.top, rect.width, rect.height].map(Math.round).join(',')
+          : '';
       }),
       (rect) => {
         if (typeof rect !== 'string' || rect.length === 0) {
@@ -232,12 +228,8 @@ spec('publish every public runtime and returned-object member', {
       },
       { timeoutMs: 5_000, describe: 'native video fixture layout to settle' });
     const result = await eventually(
-      () => raw.eval({
-        script: `
-          const target = lx.createVideoContext('lx-video-shape-fixture');
-          const members = ${JSON.stringify(surface.members)};
-          const properties = ${JSON.stringify(surface.properties)};
-          const optionalProperties = ${JSON.stringify(surface.optionalProperties)};
+      () => app.logic.eval(({ lx }, members, properties, optionalProperties) => {
+          const target = lx.createVideoContext('lx-video-shape-fixture') as unknown as Record<string, unknown> | null | undefined;
           return {
             available: target !== null && typeof target !== 'undefined',
             missing: target == null
@@ -252,8 +244,7 @@ spec('publish every public runtime and returned-object member', {
                   || (typeof target[name] === 'undefined' && !optionalProperties.includes(name))
                 : typeof target[name] !== 'function'),
           };
-        `,
-      }) as Promise<{ available: boolean; missing: string[]; wrongKinds: string[] }>,
+        }, Array.from<string>(surface.members), Array.from<string>(surface.properties), Array.from<string>(surface.optionalProperties)),
       () => true,
       {
         timeoutMs: 5_000,

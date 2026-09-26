@@ -2,10 +2,7 @@ import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface DevicePageState {
   deviceInfo: { osName?: string } | null;
@@ -20,17 +17,16 @@ interface DevicePageState {
 }
 
 async function deviceState(app: TestApp): Promise<DevicePageState> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/device/'));
-      return {
-        deviceInfo: page?.data?.deviceInfo ?? null,
-        screenInfo: page?.data?.screenInfo ?? null,
-        networkInfo: page?.data?.networkInfo ?? null,
-        networkListening: !!page?.data?.networkListening,
-      };
-    `,
-  }) as Promise<DevicePageState>;
+  return app.logic.eval(({ getCurrentPages }): DevicePageState => {
+    const page = getCurrentPages().find((candidate) => candidate.route.includes('/device/'));
+    const data = (page?.data ?? {}) as Partial<DevicePageState>;
+    return {
+      deviceInfo: data.deviceInfo ?? null,
+      screenInfo: data.screenInfo ?? null,
+      networkInfo: data.networkInfo ?? null,
+      networkListening: !!data.networkListening,
+    };
+  });
 }
 
 async function waitForState(
@@ -46,21 +42,16 @@ async function waitForState(
 spec("render device and screen API results after real UI actions", { id: "DEVICE-001", covers: ['lx.getDeviceInfo', 'lx.getScreenInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-001");
 
-
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-get-info"]' });
+  await app.view.testId('device-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
   await app.view.testId("device-get-info", { page: 'device' }).click();
   const device = await waitForState(app, (state) => !!state.deviceInfo?.osName);
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-info-result"]' });
-  const deviceResult = await raw.page.query({
-    page: 'device',
-    css: '[data-testid="device-info-result"]',
-    full: true,
-  });
+  await app.view.testId('device-info-result', { page: 'device' }).waitFor({ timeout: 30_000 });
+  const deviceResult = await app.view.testId('device-info-result', { page: 'device' }).query();
   expect(deviceResult.exists && deviceResult.text).toContain(device.deviceInfo?.osName);
 
   await app.nav.relaunch({ page: 'device', query: { type: 'screen' } });
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-screen-get-info"]' });
+  await app.view.testId('device-screen-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
   await app.view.testId("device-screen-get-info", { page: 'device' }).click();
   const screen = await waitForState(
     app,
@@ -69,17 +60,16 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
       && Number(state.screenInfo.height) > 0
       && Number(state.screenInfo.scale) > 0,
   );
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-screen-result"]' });
+  await app.view.testId('device-screen-result', { page: 'device' }).waitFor({ timeout: 30_000 });
   expect(Number(screen.screenInfo?.width)).toBeGreaterThan(0);
 });
 
 spec("keep network query and listener behavior equivalent across renderers", { id: "DEVICE-002", covers: ['lx.getNetworkInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "DEVICE-002");
 
-
   for (const type of ['networkType', 'localIP'] as const) {
     await app.nav.relaunch({ page: 'device', query: { type } });
-    await raw.page.waitFor({ page: 'device', css: '[data-testid="device-network-get-info"]' });
+    await app.view.testId('device-network-get-info', { page: 'device' }).waitFor({ timeout: 30_000 });
     await app.view.testId("device-network-get-info", { page: 'device' }).click();
     const state = await waitForState(
       app,
@@ -88,20 +78,16 @@ spec("keep network query and listener behavior equivalent across renderers", { i
     );
     expect(Array.isArray(state.networkInfo?.ipv4)).toBeTruthy();
     expect(Array.isArray(state.networkInfo?.ipv6)).toBeTruthy();
-    const result = await raw.page.query({
-      page: 'device',
-      css: '[data-testid="device-network-result"]',
-      full: true,
-    });
+    const result = await app.view.testId('device-network-result', { page: 'device' }).query();
     expect(result.exists && result.text.trim().length > 0).toBeTruthy();
   }
 
   await app.nav.relaunch({ page: 'device', query: { type: 'networkStatus' } });
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-network-listen-start"]' });
+  await app.view.testId('device-network-listen-start', { page: 'device' }).waitFor({ timeout: 30_000 });
   await app.view.testId("device-network-listen-start", { page: 'device' }).click();
   await waitForState(app, (state) => state.networkListening);
   await waitForElementText(
-    raw,
+    t,
     'device',
     '[data-testid="device-network-status"]',
     (text) => text.includes('Yes'),
@@ -111,7 +97,7 @@ spec("keep network query and listener behavior equivalent across renderers", { i
   await app.view.testId("device-network-listen-stop", { page: 'device' }).click();
   await waitForState(app, (state) => !state.networkListening);
   await waitForElementText(
-    raw,
+    t,
     'device',
     '[data-testid="device-network-status"]',
     (text) => text.includes('No'),
@@ -121,26 +107,16 @@ spec("keep network query and listener behavior equivalent across renderers", { i
 
 spec('publishes every device mode in the rendered API menu', {
   timeout: 60_000,
+  app: SHOWCASE_APP_ID,
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.app;
   await app.nav.relaunch({ page: 'api' });
-  await raw.page.waitFor({
-    page: 'api',
-    css: '[data-testid="api-device-section"]',
-    state: 'visible',
-  });
+  await app.view.testId('api-device-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
   await app.view.testId("api-device-section", { page: 'api' }).click();
-  await raw.page.waitFor({
-    page: 'api',
-    css: '[data-testid="api-device-section"]',
-    state: 'visible',
-  });
+  await app.view.testId('api-device-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
 
   const text = await eventually(
-    () => raw.page.eval({
-      page: 'api',
-      script: 'document.body.innerText',
-    }) as Promise<string>,
+    () => app.view.eval({ page: 'api' }, ({ document }) => document.body.innerText ?? ''),
     (body) => [
       'Device Info',
       'Screen Info',

@@ -2,10 +2,8 @@ import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
 import { waitForElementEnabled } from '../helpers/page.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import type { ProbeElement } from '../helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
   ?? {} as Record<string, string>;
@@ -29,16 +27,15 @@ interface BannerPageState {
 }
 
 async function systemState(app: TestApp): Promise<SystemPageState> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
-      return {
-        appBaseInfo: page?.data?.appBaseInfo ?? null,
-        displayLanguage: page?.data?.displayLanguage ?? null,
-        systemSetting: page?.data?.systemSetting ?? null,
-      };
-    `,
-  }) as Promise<SystemPageState>;
+  return app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+    const data = page?.data as Partial<SystemPageState> | undefined;
+    return {
+      appBaseInfo: data?.appBaseInfo ?? null,
+      displayLanguage: data?.displayLanguage ?? undefined,
+      systemSetting: data?.systemSetting ?? null,
+    };
+  });
 }
 
 async function waitForSystemState(
@@ -56,34 +53,28 @@ spec("render host app and system information through page actions", { id: "SYSTE
 
 
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
-  await raw.page.waitFor({ page: 'system', css: '[data-testid="system-base-info"]' });
+  await app.view.testId('system-base-info', { page: 'system' }).waitFor({ timeout: 30_000 });
   await app.view.testId("system-base-info", { page: 'system' }).click();
   const base = await waitForSystemState(
     app,
     (state) => !!state.appBaseInfo?.os && !!state.appBaseInfo?.productName
       && typeof state.displayLanguage === 'string' && state.displayLanguage.length > 0,
   );
-  await raw.page.waitFor({ page: 'system', css: '[data-testid="system-base-result"]' });
-  const baseResult = await raw.page.query({
-    page: 'system',
-    css: '[data-testid="system-base-result"]',
-    full: true,
-  });
+  const baseResultLocator = app.view.testId('system-base-result', { page: 'system' });
+  await baseResultLocator.waitFor({ timeout: 30_000 });
+  const baseResult = await baseResultLocator.query();
   expect(baseResult.exists && baseResult.text).toContain(base.appBaseInfo?.productName);
 
   await app.nav.relaunch({ page: 'system', query: { type: 'systemSetting' } });
-  await raw.page.waitFor({ page: 'system', css: '[data-testid="system-setting-info"]' });
+  await app.view.testId('system-setting-info', { page: 'system' }).waitFor({ timeout: 30_000 });
   await app.view.testId("system-setting-info", { page: 'system' }).click();
   await waitForSystemState(
     app,
     (state) => typeof state.systemSetting?.wifiEnabled === 'boolean',
   );
-  await raw.page.waitFor({ page: 'system', css: '[data-testid="system-setting-result"]' });
-  const settingResult = await raw.page.query({
-    page: 'system',
-    css: '[data-testid="system-setting-result"]',
-    full: true,
-  });
+  const settingResultLocator = app.view.testId('system-setting-result', { page: 'system' });
+  await settingResultLocator.waitFor({ timeout: 30_000 });
+  const settingResult = await settingResultLocator.query();
   expect(settingResult.exists && settingResult.text).toContain('WiFi Enabled');
 });
 
@@ -95,47 +86,31 @@ spec('opens the product cache panel from the rendered API menu', {
   const { app } = bindFixture(t, 'SYSTEM-CACHE-001');
 
   await app.nav.relaunch({ page: 'api' });
-  await raw.page.waitFor({
-    page: 'api',
-    css: '[data-testid="api-system-section"]',
-    state: 'visible',
-  });
+  await app.view.testId('api-system-section', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
   await app.view.testId("api-system-section", { page: 'api' }).click();
-  await raw.page.waitFor({
-    page: 'api',
-    css: '[data-testid="api-system-cache"]',
-    state: 'visible',
-  });
-  // The banner demo row sits above this item; without a scroll the Windows
-  // hit lands on chrome / the tab bar and navigation never starts.
-  await raw.page.scrollTo({ page: 'api', css: '[data-testid="api-system-cache"]' });
+  await app.view.testId('api-system-cache', { page: 'api' }).waitFor({ state: 'visible', timeout: 30_000 });
+  // The banner demo row sits above this item; the click scrolls it into view
+  // first, or the Windows hit lands on chrome / the tab bar and navigation
+  // never starts.
   await app.view.testId("api-system-cache", { page: 'api' }).click();
-  await raw.page.waitFor({
-    page: 'system',
-    css: '[data-testid="system-cache-panel"]',
-    state: 'visible',
-  });
+  const panelLocator = app.view.testId('system-cache-panel', { page: 'system' });
+  await panelLocator.waitFor({ state: 'visible', timeout: 30_000 });
 
-  const panel = await raw.page.query({
-    page: 'system',
-    css: '[data-testid="system-cache-panel"]',
-    full: true,
-  });
+  const panel = await panelLocator.query();
   expect(panel.exists && panel.text).toContain('Product Cache');
 });
 
 async function bannerPageState(app: TestApp): Promise<BannerPageState> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
-      return {
-        bannerLast: page?.data?.bannerLast ?? '',
-        bannerBusy: !!page?.data?.bannerBusy,
-        bannerActiveId: page?.data?.bannerActiveId ?? '',
-        bannerSupported: !!page?.data?.bannerSupported,
-      };
-    `,
-  }) as Promise<BannerPageState>;
+  return app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+    const data = page?.data as Partial<BannerPageState> | undefined;
+    return {
+      bannerLast: data?.bannerLast ?? '',
+      bannerBusy: !!data?.bannerBusy,
+      bannerActiveId: data?.bannerActiveId ?? '',
+      bannerSupported: !!data?.bannerSupported,
+    };
+  });
 }
 
 bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page', {
@@ -147,30 +122,24 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
 }, async (t) => {
   const { app } = bindFixture(t, 'SYSTEM-BANNER-001');
   t.defer(async () => {
-    await raw.eval({
-      script: `try {
-        await lx.host.banner.dismiss('showcase-banner-toast');
-        await lx.host.banner.dismiss('showcase-banner-prompt');
+    await app.logic.eval(async ({ lx }) => {
+      try {
+        await lx.host.banner?.dismiss('showcase-banner-toast');
+        await lx.host.banner?.dismiss('showcase-banner-prompt');
       } catch {}
-      return true;`,
+      return true;
     });
   });
 
   await app.nav.relaunch({ page: 'system', query: { type: 'banner' } });
-  await raw.page.waitFor({
-    page: 'system',
-    css: '[data-testid="system-banner-panel"]',
-    state: 'visible',
-  });
+  await app.view.testId('system-banner-panel', { page: 'system' }).waitFor({ state: 'visible', timeout: 30_000 });
 
   // Re-read only refreshes support — seed a false so the click is proven.
-  await raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
-      if (!page) throw new Error('system page missing');
-      page.setData({ bannerLast: 'probe-cleared', bannerSupported: false, bannerBusy: false });
-      return page.data.bannerLast;
-    `,
+  await app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages().find((candidate) => candidate.route.includes('/system/'));
+    if (!page) throw new Error('system page missing');
+    page.setData({ bannerLast: 'probe-cleared', bannerSupported: false, bannerBusy: false });
+    return page.data.bannerLast;
   });
 
   await app.view.testId("system-banner-reread", { page: 'system' }).click();
@@ -191,16 +160,13 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
 
   // After Prompt the native card is WS_EX_TOPMOST over the WebView. Windows
   // CDP clicks then miss the page button; fire the same control from the DOM.
-  await waitForElementEnabled(raw, 'system', '[data-testid="system-banner-dismiss"]');
-  await raw.page.eval({
-    page: 'system',
-    script: `
-      const button = document.querySelector('[data-testid="system-banner-dismiss"]');
-      if (!(button instanceof HTMLButtonElement) || button.disabled) {
-        throw new Error('dismiss is not clickable');
-      }
-      button.click();
-    `,
+  await waitForElementEnabled(t, 'system', '[data-testid="system-banner-dismiss"]');
+  await app.view.eval({ page: 'system' }, ({ document }) => {
+    const button = document.querySelector('[data-testid="system-banner-dismiss"]') as ProbeElement | null;
+    if (!button || button.tagName !== 'BUTTON' || button.disabled) {
+      throw new Error('dismiss is not clickable');
+    }
+    button.click();
   });
   const dismissed = await eventually(
     () => bannerPageState(app),

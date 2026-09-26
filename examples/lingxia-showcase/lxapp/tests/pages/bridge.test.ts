@@ -1,11 +1,9 @@
-import type { TestApp } from '@lingxia/test';
+import type { Fixture, TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import type { ProbeWindow } from '../helpers/view.js';
 
 // Document port handshake across the ways a page document comes to exist:
 // a hidden preloaded tab, a pushed page, a covered page coming back, a
@@ -23,64 +21,63 @@ const anyTransition = () => true;
 
 async function bridgeReady(app: TestApp, page: string): Promise<boolean> {
   return eventually(
-    async () => (await raw.page.eval({
-      page,
-      script: 'window.LingXiaBridge?.isReady?.() === true',
+    async () => (await app.view.eval({ page }, ({ window }) => {
+      const bridge = window.LingXiaBridge as { isReady?: () => boolean } | undefined;
+      return bridge?.isReady?.() === true;
     })) === true,
     (ready) => ready,
     { timeoutMs: 15_000, describe: `${page} bridge handshake`, retryIf: anyTransition },
   );
 }
 
-async function expectBootstrap(app: TestApp): Promise<void> {
-  await raw.page.waitFor({
-    page: REPRO,
-    css: '[data-testid="bridge-repro-page"][data-automation-contract="bridge-v1"]',
-    timeoutMs: 20_000,
-  });
+async function expectBootstrap(t: Fixture, app: TestApp): Promise<void> {
+  await app.view.css('[data-testid="bridge-repro-page"][data-automation-contract="bridge-v1"]', { page: REPRO }).first().waitFor({ timeout: 20_000 });
   // The page reports FAIL once its 5 s deadline passes and flips to PASS if the
   // handshake completes later, so only PASS ends the wait.
-  expect(await waitForElementText(raw, REPRO, '#bootstrap-verdict', (text) => text.includes('PASS'), 20_000))
+  expect(await waitForElementText(t, REPRO, '#bootstrap-verdict', (text) => text.includes('PASS'), 20_000, app))
     .toContain('PASS');
 }
 
-async function expectEcho(app: TestApp, n: number): Promise<void> {
+async function expectEcho(t: Fixture, app: TestApp, n: number): Promise<void> {
   await app.view.css('#btn-echo', { page: REPRO }).click();
-  expect(await waitForElementText(raw, REPRO, '#stat-echo', (text) => text.includes(`echo #${n} `), 10_000))
+  expect(await waitForElementText(t, REPRO, '#stat-echo', (text) => text.includes(`echo #${n} `), 10_000, app))
     .toContain(`echo #${n} ok`);
 }
 
-async function expectGapFreeStream(app: TestApp): Promise<void> {
+async function expectGapFreeStream(t: Fixture, app: TestApp): Promise<void> {
   await app.view.css('#btn-restart', { page: REPRO }).click();
   await waitForElementText(
-    raw,
+    t,
     REPRO,
     '#stat-received',
     (text) => Number.parseInt(text.replace(/\D+/g, ''), 10) >= 20,
     20_000,
+    app,
   );
-  expect(await waitForElementText(raw, REPRO, '#stream-verdict', (text) => /PASS|FAIL/.test(text)))
+  expect(await waitForElementText(t, REPRO, '#stream-verdict', (text) => /PASS|FAIL/.test(text), 10_000, app))
     .toContain('PASS');
-  expect(await waitForElementText(raw, REPRO, '#stat-gaps', () => true)).toContain('none');
+  expect(await waitForElementText(t, REPRO, '#stat-gaps', () => true, 10_000, app)).toContain('none');
   await app.view.css('#btn-stop', { page: REPRO }).click();
 }
 
 async function markDocument(app: TestApp, page: string): Promise<void> {
-  await raw.page.eval({ page, script: `(window.${DOCUMENT_MARK} = true, true)` });
+  await app.view.eval({ page }, ({ window }, mark) => {
+    (window as ProbeWindow)[mark] = true;
+  }, DOCUMENT_MARK);
 }
 
 async function isMarkedDocument(app: TestApp, page: string): Promise<boolean> {
-  return (await raw.page.eval({ page, script: `window.${DOCUMENT_MARK} === true` })) === true;
+  return app.view.eval({ page }, ({ window }, mark) => window[mark] === true, DOCUMENT_MARK);
 }
 
 async function enterRepro(app: TestApp): Promise<void> {
   await app.nav.to({ page: REPRO });
-  await waitForCurrentPage(raw, REPRO, 20_000);
+  await waitForCurrentPage(app, REPRO, 20_000);
 }
 
 async function startAtHome(app: TestApp): Promise<void> {
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home', 20_000);
+  await waitForCurrentPage(app, 'home', 20_000);
 }
 
 spec('hand every preloaded tab a working port once it is shown', {
@@ -102,11 +99,11 @@ spec('hand every preloaded tab a working port once it is shown', {
 
   for (const tab of TABS) {
     await app.nav.switchTab({ page: tab });
-    await waitForCurrentPage(raw, tab, 20_000);
+    await waitForCurrentPage(app, tab, 20_000);
     expect(await bridgeReady(app, tab)).toBe(true);
   }
   await app.nav.switchTab({ page: 'home' });
-  await waitForCurrentPage(raw, 'home', 20_000);
+  await waitForCurrentPage(app, 'home', 20_000);
   expect(await bridgeReady(app, 'home')).toBe(true);
 });
 
@@ -123,9 +120,9 @@ spec('bootstrap a pushed page through its own port', {
 
   await startAtHome(app);
   await enterRepro(app);
-  await expectBootstrap(app);
-  await expectEcho(app, 1);
-  await expectGapFreeStream(app);
+  await expectBootstrap(t, app);
+  await expectEcho(t, app, 1);
+  await expectGapFreeStream(t, app);
 });
 
 spec("keep a covered page's port across navigateTo and back", {
@@ -141,17 +138,17 @@ spec("keep a covered page's port across navigateTo and back", {
 
   await startAtHome(app);
   await enterRepro(app);
-  await expectBootstrap(app);
-  await expectEcho(app, 1);
+  await expectBootstrap(t, app);
+  await expectEcho(t, app, 1);
 
   await app.nav.to({ page: 'device', query: { type: 'screen' } });
-  await waitForCurrentPage(raw, 'device', 20_000);
+  await waitForCurrentPage(app, 'device', 20_000);
   await app.nav.back();
-  await waitForCurrentPage(raw, REPRO, 20_000);
+  await waitForCurrentPage(app, REPRO, 20_000);
 
   // The same document and page instance: its echo counter continues.
   expect(await bridgeReady(app, REPRO)).toBe(true);
-  await expectEcho(app, 2);
+  await expectEcho(t, app, 2);
 });
 
 spec('bootstrap a re-entered route as a fresh document', {
@@ -167,11 +164,11 @@ spec('bootstrap a re-entered route as a fresh document', {
 
   await startAtHome(app);
   await enterRepro(app);
-  await expectBootstrap(app);
+  await expectBootstrap(t, app);
   await markDocument(app, REPRO);
 
   await app.nav.back();
-  await waitForCurrentPage(raw, 'home', 20_000);
+  await waitForCurrentPage(app, 'home', 20_000);
   await enterRepro(app);
 
   // Same URL, new document: a port bound to the previous one must not serve it.
@@ -180,8 +177,8 @@ spec('bootstrap a re-entered route as a fresh document', {
     (marked) => !marked,
     { timeoutMs: 15_000, describe: 're-entered bridge-repro to be a new document', retryIf: anyTransition },
   );
-  await expectBootstrap(app);
-  await expectEcho(app, 1);
+  await expectBootstrap(t, app);
+  await expectEcho(t, app, 1);
 });
 
 spec('settle on a working port after rapid re-entry', {
@@ -202,12 +199,12 @@ spec('settle on a working port after rapid re-entry', {
     await app.nav.to({ page: REPRO });
     await app.nav.back();
   }
-  await waitForCurrentPage(raw, 'home', 20_000);
+  await waitForCurrentPage(app, 'home', 20_000);
 
   await enterRepro(app);
-  await expectBootstrap(app);
-  await expectEcho(app, 1);
-  await expectGapFreeStream(app);
+  await expectBootstrap(t, app);
+  await expectEcho(t, app, 1);
+  await expectGapFreeStream(t, app);
 });
 
 spec('bring the bridge back up after the app restarts', {
@@ -227,7 +224,7 @@ spec('bring the bridge back up after the app restarts', {
 
   await startAtHome(before);
   await enterRepro(before);
-  await expectBootstrap(before);
+  await expectBootstrap(t, before);
 
   await t.automation.lxapps.restart({ app: SHOWCASE_APP_ID });
   // `restart` resolves before the replacement instance exists, so resolve a
@@ -241,8 +238,8 @@ spec('bring the bridge back up after the app restarts', {
   expect(await bridgeReady(app, 'home')).toBe(true);
 
   await enterRepro(app);
-  await expectBootstrap(app);
-  await expectEcho(app, 1);
+  await expectBootstrap(t, app);
+  await expectEcho(t, app, 1);
 });
 
 spec('re-enter a route the moment it bootstraps without stalling its port', {
@@ -263,7 +260,7 @@ spec('re-enter a route the moment it bootstraps without stalling its port', {
   // race is timing dependent, so it gets several rounds.
   for (let round = 0; round < 4; round += 1) {
     await enterRepro(app);
-    await expectBootstrap(app);
+    await expectBootstrap(t, app);
     await markDocument(app, REPRO);
     await app.nav.back();
     await enterRepro(app);
@@ -272,11 +269,11 @@ spec('re-enter a route the moment it bootstraps without stalling its port', {
       (marked) => !marked,
       { timeoutMs: 15_000, describe: `round ${round}: re-entered bridge-repro to be a new document`, retryIf: anyTransition },
     );
-    await expectBootstrap(app);
-    const probe = await waitForElementText(raw, REPRO, '#bootstrap-probe', (text) => /\(\d+ ms\)/.test(text), 20_000);
+    await expectBootstrap(t, app);
+    const probe = await waitForElementText(t, REPRO, '#bootstrap-probe', (text) => /\(\d+ ms\)/.test(text), 20_000);
     const latency = Number.parseInt(probe.replace(/^[\s\S]*\((\d+) ms\)[\s\S]*$/, '$1'), 10);
     expect(latency <= 5_000 ? 'no port stall' : `round ${round}: port stalled ${latency} ms`).toBe('no port stall');
     await app.nav.back();
-    await waitForCurrentPage(raw, 'home', 20_000);
+    await waitForCurrentPage(app, 'home', 20_000);
   }
 });

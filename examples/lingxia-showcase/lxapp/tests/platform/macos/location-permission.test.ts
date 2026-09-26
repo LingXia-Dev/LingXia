@@ -6,10 +6,6 @@ import type {
   DesktopWindowInfo,
 } from '@lingxia/types/automation';
 import { runtimePlatform } from '../../helpers/platform.js';
-import { rawApp } from '../../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 function locationPrompt(windows: DesktopWindowInfo[]): DesktopWindowInfo | undefined {
   return windows.find((window) => (
@@ -91,13 +87,13 @@ locationTest('handles the macOS location permission sheet when it appears', {
   const auto = t.automation;
   const app = auto.lxapp();
   // This case claims lx.getLocation; a silent pass elsewhere would credit it falsely.
-  const platform = await runtimePlatform(raw);
+  const platform = await runtimePlatform(app);
   if (platform !== 'macos') throw new Error(`macOS location case ran against ${platform || 'unknown'}`);
   const doctor = await auto.desktop.doctor();
   const { permissions } = doctor;
 
   await app.nav.relaunch({ page: 'location' });
-  await raw.page.waitFor({ page: 'location', css: 'button', state: 'visible' });
+  await app.view.css('button', { page: 'location' }).first().waitFor({ state: 'visible', timeout: 30_000 });
   await app.view.css('button', { page: 'location', index: 0 }).click();
 
   // Budget: CoreLocation may only settle via its own ~10s timeout on hosts
@@ -122,16 +118,15 @@ locationTest('handles the macOS location permission sheet when it appears', {
       promptHandled = true;
     }
 
-    const state = await raw.eval({
-      script: `
-        const page = getCurrentPages().find((candidate) => candidate.route.includes('/location/'));
-        return {
-          loading: !!page?.data?.isLoading,
-          location: page?.data?.location ?? null,
-          error: String(page?.data?.locationError ?? ''),
-        };
-      `,
-    }) as { loading: boolean; location: unknown; error: string };
+    const state = await app.logic.eval(({ getCurrentPages }) => {
+      const page = getCurrentPages().find((candidate) => candidate.route.includes('/location/'));
+      const data = (page?.data ?? {}) as { isLoading?: boolean; location?: unknown; locationError?: unknown };
+      return {
+        loading: !!data.isLoading,
+        location: data.location ?? null,
+        error: String(data.locationError ?? ''),
+      };
+    });
     requestStarted ||= state.loading;
     const requestSettled = !state.loading
       && (state.location !== null || state.error.length > 0);

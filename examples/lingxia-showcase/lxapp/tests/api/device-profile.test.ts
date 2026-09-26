@@ -1,9 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 /**
  * Capability profile for device APIs whose contract differs by platform. On a
@@ -15,12 +12,6 @@ const platform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<s
 const DESKTOP = ['macos', 'windows'];
 const desktopSpec = platform && DESKTOP.includes(platform) ? spec : spec.skip;
 
-interface Outcome {
-  threw: boolean;
-  code?: string;
-  message?: string;
-}
-
 desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
   id: 'DEVICE-ABSENT-001',
   covers: ['lx.vibrateShort', 'lx.vibrateLong', 'lx.makePhoneCall'],
@@ -30,19 +21,20 @@ desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
   const { app } = bindFixture(t, 'DEVICE-ABSENT-001');
   const stackBefore = (await app.nav.stack()).map((page) => page.name);
 
-  const outcomes = await raw.eval({
-    script: `
-      const attempt = (fn) => {
-        try { fn(); return { threw: false }; }
-        catch (error) { return { threw: true, code: error && error.code, message: String(error && error.message) }; }
-      };
-      return {
-        vibrateShort: attempt(() => lx.vibrateShort()),
-        vibrateLong: attempt(() => lx.vibrateLong()),
-        makePhoneCall: attempt(() => lx.makePhoneCall({ phoneNumber: '10086' })),
-      };
-    `,
-  }) as Record<'vibrateShort' | 'vibrateLong' | 'makePhoneCall', Outcome>;
+  const outcomes = await app.logic.eval(({ lx }) => {
+    const attempt = (fn: () => unknown): { threw: boolean; code?: string; message?: string } => {
+      try { fn(); return { threw: false }; }
+      catch (error) {
+        const failure = error as { code?: string; message?: string } | null;
+        return { threw: true, code: failure?.code, message: String(failure?.message) };
+      }
+    };
+    return {
+      vibrateShort: attempt(() => lx.vibrateShort()),
+      vibrateLong: attempt(() => lx.vibrateLong()),
+      makePhoneCall: attempt(() => lx.makePhoneCall({ phoneNumber: '10086' })),
+    };
+  });
 
   for (const [name, outcome] of Object.entries(outcomes)) {
     // Synchronous, not a rejected promise: a caller with no try/catch sees it immediately.
@@ -70,22 +62,22 @@ spec('accept both device orientations and reject an unknown one', {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
   const supported = ORIENTATION_SUPPORT[platform ?? ''] ?? true;
   defer(async () => {
-    await raw.eval({ script: `lx.setDeviceOrientation('portrait'); return true;` }).catch(() => undefined);
+    await app.logic.eval(({ lx }) => { lx.setDeviceOrientation('portrait'); return true; }).catch(() => undefined);
   });
 
-  const result = await raw.eval({
-    script: `
-      const attempt = (value) => {
-        try { return { ok: true, value: lx.setDeviceOrientation(value) }; }
-        catch (error) { return { ok: false, code: error && error.code }; }
-      };
-      return {
-        landscape: attempt('landscape'),
-        portrait: attempt('portrait'),
-        invalid: attempt('sideways'),
-      };
-    `,
-  }) as Record<'landscape' | 'portrait' | 'invalid', { ok: boolean; value?: unknown; code?: string }>;
+  const result = await app.logic.eval(({ lx }) => {
+    // 'sideways' is not an orientation: the probe passes it on purpose.
+    const setOrientation = lx.setDeviceOrientation as (value: string) => unknown;
+    const attempt = (value: string): { ok: boolean; value?: unknown; code?: string } => {
+      try { return { ok: true, value: setOrientation(value) }; }
+      catch (error) { return { ok: false, code: (error as { code?: string } | null)?.code }; }
+    };
+    return {
+      landscape: attempt('landscape'),
+      portrait: attempt('portrait'),
+      invalid: attempt('sideways'),
+    };
+  });
 
   if (!supported) {
     // Absent-proven: a host without orientation rejects with a stable code

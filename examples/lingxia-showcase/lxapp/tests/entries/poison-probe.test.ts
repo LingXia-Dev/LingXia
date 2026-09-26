@@ -3,10 +3,10 @@
 // whether `home` still boots — reproduces the Harmony post-navigation
 // bridge-poisoning without the lifecycle fixtures.
 import { expect, spec } from '@lingxia/test';
-import { showcaseApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-spec('relaunch/push/pop churn leaves home bootable', async () => {
-  const app = showcaseApp();
+spec('relaunch/push/pop churn leaves home bootable', { app: SHOWCASE_APP_ID }, async (t) => {
+  const app = t.app;
   for (let i = 0; i < 6; i += 1) {
     await app.nav.relaunch({ page: 'home' });
     await app.nav.to({ page: 'ui' });
@@ -14,12 +14,7 @@ spec('relaunch/push/pop churn leaves home bootable', async () => {
     await app.nav.relaunch({ page: 'device' });
   }
   await app.nav.relaunch({ page: 'home' });
-  await app.page.waitFor({
-    page: 'home',
-    css: '[data-testid="home-page"]',
-    state: 'visible',
-    timeoutMs: 8_000,
-  });
+  await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 8_000 });
   const current = await app.nav.current();
   expect(current.ready).toBe(true);
 });

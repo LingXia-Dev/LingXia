@@ -1,38 +1,29 @@
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-005");
 
-  const result = await raw.eval({
-    script: `
-      const files = lx.fs;
-      const storage = lx.getStorage();
-      const missing = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)} + '/missing.txt';
-      const rejects = async (operation) => {
-        try {
-          await operation();
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      const oversized = 'x'.repeat(5 * 1024 * 1024 + 1);
-      return {
-        readMissing: await rejects(() => files.file(missing).text()),
-        statMissing: await rejects(() => files.stat(missing)),
-        oversizedValue: await rejects(() => storage.set(${JSON.stringify(namespace)} + '-oversized', oversized)),
-      };
-    `,
-  }) as {
-    readMissing: boolean;
-    statMissing: boolean;
-    oversizedValue: boolean;
-  };
+  const result = await app.logic.eval(async ({ lx }, namespace) => {
+    const files = lx.fs;
+    const storage = lx.getStorage();
+    const missing = lx.env.USER_CACHE_PATH + '/' + namespace + '/missing.txt';
+    const rejects = async (operation: () => unknown) => {
+      try {
+        await operation();
+        return false;
+      } catch {
+        return true;
+      }
+    };
+    const oversized = 'x'.repeat(5 * 1024 * 1024 + 1);
+    return {
+      readMissing: await rejects(() => files.file(missing).text()),
+      statMissing: await rejects(() => files.stat(missing)),
+      oversizedValue: await rejects(() => storage.set(namespace + '-oversized', oversized)),
+    };
+  }, namespace);
 
   expect(result.readMissing).toBeTruthy();
   expect(result.statMissing).toBeTruthy();
@@ -42,37 +33,30 @@ spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", 
 spec("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "MEDIA-INFO-001");
 
-  const result = await raw.eval({
-    script: `
-      const files = lx.fs;
-      const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
-      const fixture = root + '/fixture.png';
-      // 1x1 red pixel PNG.
-      const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
-      const rejects = async (operation) => {
-        try {
-          await operation();
-          return false;
-        } catch {
-          return true;
-        }
-      };
-      await files.mkdir(root, { recursive: true });
+  const result = await app.logic.eval(async ({ lx }, namespace) => {
+    const files = lx.fs;
+    const root = lx.env.USER_CACHE_PATH + '/' + namespace;
+    const fixture = root + '/fixture.png';
+    // 1x1 red pixel PNG.
+    const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const rejects = async (operation: () => unknown) => {
       try {
-        await files.write(fixture, base64, { encoding: 'base64' });
-        const info = await lx.getImageInfo({ path: fixture });
-        const missingRejected = await rejects(() => lx.getImageInfo({ path: root + '/missing.png' }));
-        return { width: info.width, height: info.height, type: info.type, missingRejected };
-      } finally {
-        await files.remove(root, { recursive: true });
+        await operation();
+        return false;
+      } catch {
+        return true;
       }
-    `,
-  }) as {
-    width: number;
-    height: number;
-    type: string;
-    missingRejected: boolean;
-  };
+    };
+    await files.mkdir(root, { recursive: true });
+    try {
+      await files.write(fixture, base64, { encoding: 'base64' });
+      const info = await lx.getImageInfo({ path: fixture });
+      const missingRejected = await rejects(() => lx.getImageInfo({ path: root + '/missing.png' }));
+      return { width: info.width, height: info.height, type: String(info.type), missingRejected };
+    } finally {
+      await files.remove(root, { recursive: true });
+    }
+  }, namespace);
 
   expect(result.width).toBe(1);
   expect(result.height).toBe(1);

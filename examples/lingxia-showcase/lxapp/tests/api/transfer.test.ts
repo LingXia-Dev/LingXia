@@ -1,9 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-import { bindFixture, evalCaught } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture, type Caught } from '../helpers/poll.js';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 /**
  * The fixture server is started outside the runtime (see tests/harness). With
@@ -24,30 +22,21 @@ transferSpec('download a body and read the bytes back out of the sandbox', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-DOWNLOAD-001');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const task = lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/a.bin?size=4096`)} });
-      const awaited = await task.result;
-      // task.result settles once, so a second await observes that same
-      // transfer rather than starting or re-reporting another one.
-      const reawaited = await task.result;
-      const stat = await lx.fs.stat(awaited.uri);
-      return {
-        awaitedSize: awaited.sizeBytes,
-        reawaitedSize: reawaited.sizeBytes,
-        sameUri: reawaited.uri === awaited.uri,
-        onDisk: stat.size,
-        managed: awaited.uri.startsWith('lx://'),
-      };
-    `,
-  }) as {
-    awaitedSize: number;
-    reawaitedSize: number;
-    sameUri: boolean;
-    onDisk: number;
-    managed: boolean;
-  };
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl) => {
+    const task = lx.downloadFile({ url: sourceUrl });
+    const awaited = await task.result;
+    // task.result settles once, so a second await observes that same
+    // transfer rather than starting or re-reporting another one.
+    const reawaited = await task.result;
+    const stat = await lx.fs.stat(awaited.uri);
+    return {
+      awaitedSize: awaited.sizeBytes,
+      reawaitedSize: reawaited.sizeBytes,
+      sameUri: reawaited.uri === awaited.uri,
+      onDisk: stat.size,
+      managed: awaited.uri.startsWith('lx://'),
+    };
+  }, `${httpBase}/file/a.bin?size=4096`);
 
   expect(result.awaitedSize).toBe(4096);
   expect(result.reawaitedSize).toBe(4096);
@@ -65,13 +54,19 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-ABORT-001');
 
-  const outcome = await evalCaught(raw, `
-    const task = lx.downloadFile({
-      url: ${JSON.stringify(`${httpBase}/slow?size=400000&chunks=40&delayMs=100`)},
-    });
-    setTimeout(() => task.cancel(), 300);
-    return await task.result;
-  `);
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
+      const task = lx.downloadFile({
+        url: slowUrl,
+      });
+      setTimeout(() => task.cancel(), 300);
+      const value = await task.result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/slow?size=400000&chunks=40&delayMs=100`);
 
   expect(outcome.ok).toBeFalsy();
   expect(outcome.code).toBe('E_ABORT');
@@ -85,9 +80,10 @@ transferSpec('stream monotonic download progress across pause and resume', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-PROGRESS-001');
 
-  const outcome = await evalCaught(raw, `
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
       const task = lx.downloadFile({
-        url: ${JSON.stringify(`${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`)},
+        url: slowUrl,
       });
       const events = [];
       let pauseRequested = false;
@@ -103,7 +99,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
           downloaded: event.downloadedBytes ?? null,
           total: event.totalBytes ?? null,
           progress: event.progress ?? null,
-          resultSize: event.result?.sizeBytes ?? null,
+          resultSize: event.kind === 'completed' ? event.result.sizeBytes : null,
         });
 
         if (event.kind === 'progress' && !pauseRequested) {
@@ -111,7 +107,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
           await task.pause();
         } else if (event.kind === 'paused' && !resumeRequested) {
           resumeRequested = true;
-          await new Promise((resolve) => setTimeout(resolve, 150));
+          await new Promise<void>((resolve) => setTimeout(resolve, 150));
           await task.resume();
         } else if (event.kind === 'completed') {
           break;
@@ -119,8 +115,13 @@ transferSpec('stream monotonic download progress across pause and resume', {
       }
 
       const waited = await task.result;
-      return { events, waitedSize: waited.sizeBytes };
-  `);
+      const value = { events, waitedSize: waited.sizeBytes };
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`);
   if (!outcome.ok) {
     throw new Error(`download progress failed: ${JSON.stringify(outcome)}`);
   }
@@ -168,24 +169,32 @@ transferSpec('stop download iteration without canceling the transfer promise', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-RETURN-001');
 
-  const outcome = await evalCaught(raw, `
-      const task = lx.downloadFile({
-        url: ${JSON.stringify(`${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`)},
-      });
-      const progress = task.progress[Symbol.asyncIterator]();
-      const first = await progress.next();
-      const returned = await progress.return();
-      const afterReturn = await progress.next();
-      let finallyCount = 0;
-      const completed = await task.result.finally(() => { finallyCount += 1; });
-      return {
-        firstKind: first.value?.kind ?? null,
-        returnedDone: returned.done,
-        afterReturnDone: afterReturn.done,
-        completedSize: completed.sizeBytes,
-        finallyCount,
-      };
-  `);
+  const outcome = await app.logic.eval(async ({ lx }, slowUrl): Promise<Caught> => {
+    try {
+      const value = await (async () => {
+        const task = lx.downloadFile({
+          url: slowUrl,
+        });
+        const progress = task.progress[Symbol.asyncIterator]();
+        const first = await progress.next();
+        const returned = await progress.return!();
+        const afterReturn = await progress.next();
+        let finallyCount = 0;
+        const completed = await task.result.finally(() => { finallyCount += 1; });
+        return {
+          firstKind: first.value?.kind ?? null,
+          returnedDone: returned.done,
+          afterReturnDone: afterReturn.done,
+          completedSize: completed.sizeBytes,
+          finallyCount,
+        };
+      })();
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`);
   if (!outcome.ok) {
     throw new Error(`download iterator return failed: ${JSON.stringify(outcome)}`);
   }
@@ -212,26 +221,23 @@ transferSpec('cancel a download through its promise helpers', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-CANCEL-001');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const task = lx.downloadFile({
-        url: ${JSON.stringify(`${httpBase}/slow.bin?size=400000&chunks=40&delayMs=100&case=${encodeURIComponent(namespace)}`)},
-      });
-      let finallyCount = 0;
-      const finalized = task.result.finally(() => { finallyCount += 1; }).catch(() => undefined);
-      setTimeout(() => task.cancel(), 300);
-      const caught = await task.result.catch((error) => ({
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, slowUrl) => {
+    const task = lx.downloadFile({
+      url: slowUrl,
+    });
+    let finallyCount = 0;
+    const finalized = task.result.finally(() => { finallyCount += 1; }).catch(() => undefined);
+    setTimeout(() => task.cancel(), 300);
+    const caught = await task.result.then(
+      () => ({ code: '', message: 'resolved' }),
+      (error: { code?: string; message?: string } | null) => ({
         code: String(error?.code || ''),
         message: String(error?.message || error),
-      }));
-      await finalized;
-      return { caught, finallyCount };
-    `,
-  }) as {
-    caught: { code: string; message: string };
-    finallyCount: number;
-  };
+      }),
+    );
+    await finalized;
+    return { caught, finallyCount };
+  }, `${httpBase}/slow.bin?size=400000&chunks=40&delayMs=100&case=${encodeURIComponent(namespace)}`);
 
   expect(result.caught.code).toBe('E_ABORT');
   expect(result.caught.message).toContain('canceled');
@@ -248,11 +254,17 @@ transferSpec('report the server status a failed download saw', {
 
   for (const status of [404, 500, 503]) {
     await t.step(`http ${status}`, async () => {
-      const outcome = await evalCaught(raw, `
-        return await lx.downloadFile({
-          url: ${JSON.stringify(`${httpBase}/status?code=`)} + ${status},
-        }).result;
-      `);
+      const outcome = await app.logic.eval(async ({ lx }, statusUrl, status): Promise<Caught> => {
+        try {
+          const value = await lx.downloadFile({
+            url: `${statusUrl}${status}`,
+          }).result;
+          return { ok: true, value };
+        } catch (error) {
+          const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+          return { ok: false, code, message: String(message ?? error), data };
+        }
+      }, `${httpBase}/status?code=`, status);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_NETWORK');
       // The status has to reach the caller, or a 404 is indistinguishable
@@ -270,29 +282,18 @@ transferSpec('upload a managed file as multipart and read the server echo', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-001');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/up.bin?size=1024`)} }).result;
-      const response = await lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.uri,
-        name: 'asset',
-        fileName: 'up.bin',
-        formData: { note: 'spec' },
-        headers: { 'x-lx-test': 'echo' },
-      }).result;
-      return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
-    `,
-  }) as {
-    statusCode: number;
-    echo: {
-      ok: boolean;
-      file: { field: string; filename: string; bytes: number };
-      fields: Record<string, string>;
-      headerEcho: string;
-    };
-  };
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
+    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    const response = await lx.uploadFile({
+      url: uploadUrl,
+      filePath: source.uri,
+      name: 'asset',
+      fileName: 'up.bin',
+      formData: { note: 'spec' },
+      headers: { 'x-lx-test': 'echo' },
+    }).result;
+    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+  }, `${httpBase}/file/up.bin?size=1024`, `${httpBase}/upload`);
 
   expect(result.statusCode).toBe(200);
   expect(result.echo.ok).toBeTruthy();
@@ -312,33 +313,23 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-002');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/env.bin?size=512`)} }).result;
-      // Content-Type carries the boundary the server parses by, so a caller
-      // header must not reach it -- unlike bodyMode 'raw', where it must.
-      // user-agent is the runtime's to state, and content-length is derived.
-      const response = await lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.uri,
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'text/plain',
-          'User-Agent': 'spoofed/1.0',
-          'Content-Length': '1',
-        },
-      }).result;
-      return JSON.parse(response.data);
-    `,
-  }) as {
-    ok: boolean;
-    method: string;
-    contentType: string;
-    userAgent: string;
-    received: number;
-    file: { bytes: number } | null;
-  };
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadUrl) => {
+    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    // Content-Type carries the boundary the server parses by, so a caller
+    // header must not reach it -- unlike bodyMode 'raw', where it must.
+    // user-agent is the runtime's to state, and content-length is derived.
+    const response = await lx.uploadFile({
+      url: uploadUrl,
+      filePath: source.uri,
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'text/plain',
+        'User-Agent': 'spoofed/1.0',
+        'Content-Length': '1',
+      },
+    }).result;
+    return JSON.parse(response.data);
+  }, `${httpBase}/file/env.bin?size=512`, `${httpBase}/upload`);
 
   expect(result.ok).toBeTruthy();
   // method is orthogonal to body shape: PUT with a multipart envelope is legal.
@@ -358,44 +349,37 @@ transferSpec('stream upload progress that ends on a completed event', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-PROGRESS-001');
 
-  const result = await raw.eval({
-    timeoutMs: 60_000,
-    script: `
-      const collect = async (options) => {
-        const events = [];
-        const task = lx.uploadFile(options);
-        for await (const event of task.progress) {
-          events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
-        }
-        await task.result;
-        return events;
-      };
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/prog.bin?size=1500000`)} }).result;
-      const raw = await collect({
-        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.uri,
-        method: 'PUT',
-        bodyMode: 'raw',
-      });
-      const multipart = await collect({
-        url: ${JSON.stringify(`${httpBase}/upload`)},
-        filePath: source.uri,
-      });
-      return { raw, multipart, size: source.sizeBytes };
-    `,
-  }) as {
-    raw: { kind: string; uploaded: number; total: number }[];
-    multipart: { kind: string; uploaded: number; total: number }[];
-    size: number;
-  };
+  const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadRawUrl, uploadUrl) => {
+    const collect = async (options: Parameters<typeof lx.uploadFile>[0]) => {
+      const events: { kind: string; uploaded?: number; total?: number }[] = [];
+      const task = lx.uploadFile(options);
+      for await (const event of task.progress) {
+        events.push({ kind: event.kind, uploaded: event.uploadedBytes, total: event.totalBytes });
+      }
+      await task.result;
+      return events;
+    };
+    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    const raw = await collect({
+      url: uploadRawUrl,
+      filePath: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+    const multipart = await collect({
+      url: uploadUrl,
+      filePath: source.uri,
+    });
+    return { raw, multipart, size: source.sizeBytes };
+  }, `${httpBase}/file/prog.bin?size=1500000`, `${httpBase}/upload-raw`, `${httpBase}/upload`);
 
   // One shape per mode, so a failure names the property that moved rather than
   // just the assertion that tripped. Progress that goes backwards is worse
   // than no progress at all, and the stream has to end on a terminal event.
-  const shape = (events: { kind: string; uploaded: number; total: number }[]) => ({
+  const shape = (events: { kind: string; uploaded?: number; total?: number }[]) => ({
     streamed: events.length > 1,
     terminal: events[events.length - 1].kind,
-    monotonic: events.every((event, i) => i === 0 || event.uploaded >= events[i - 1].uploaded),
+    monotonic: events.every((event, i) => i === 0 || Number(event.uploaded) >= Number(events[i - 1].uploaded)),
     finished: events[events.length - 1].uploaded === events[events.length - 1].total,
   });
   const complete = { streamed: true, terminal: 'completed', monotonic: true, finished: true };
@@ -416,59 +400,51 @@ transferSpec('stop upload iteration and observe rejected promise helpers', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-UPLOAD-HELPERS-001');
 
-  const result = await raw.eval({
-    timeoutMs: 60_000,
-    script: `
-      const source = await lx.downloadFile({
-        url: ${JSON.stringify(`${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`)},
-      }).result;
+  const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, sourceUrl, uploadUrl, uploadRawUrl) => {
+    const source = await lx.downloadFile({
+      url: sourceUrl,
+    }).result;
 
-      const completing = lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`)},
-        filePath: source.uri,
-      });
-      const completingProgress = completing.progress[Symbol.asyncIterator]();
-      const first = await completingProgress.next();
-      const returned = await completingProgress.return();
-      const afterReturn = await completingProgress.next();
-      let successFinallyCount = 0;
-      const completed = await completing.result.finally(() => { successFinallyCount += 1; });
+    const completing = lx.uploadFile({
+      url: uploadUrl,
+      filePath: source.uri,
+    });
+    const completingProgress = completing.progress[Symbol.asyncIterator]();
+    const first = await completingProgress.next();
+    const returned = await completingProgress.return!();
+    const afterReturn = await completingProgress.next();
+    let successFinallyCount = 0;
+    const completed = await completing.result.finally(() => { successFinallyCount += 1; });
 
-      const rejecting = lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`)},
-        filePath: source.uri,
-        method: 'PUT',
-        bodyMode: 'raw',
-      });
-      let rejectFinallyCount = 0;
-      const finalized = rejecting.result
-        .finally(() => { rejectFinallyCount += 1; })
-        .catch(() => undefined);
-      const caught = await rejecting.result.catch((error) => ({
+    const rejecting = lx.uploadFile({
+      url: uploadRawUrl,
+      filePath: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+    });
+    let rejectFinallyCount = 0;
+    const finalized = rejecting.result
+      .finally(() => { rejectFinallyCount += 1; })
+      .catch(() => undefined);
+    const caught = await rejecting.result.then(
+      () => ({ code: '', detail: 'resolved' }),
+      (error: { code?: string; data?: { detail?: string } } | null) => ({
         code: String(error?.code || ''),
         detail: String(error?.data?.detail || ''),
-      }));
-      await finalized;
+      }),
+    );
+    await finalized;
 
-      return {
-        firstKind: first.value?.kind ?? null,
-        returnedDone: returned.done,
-        afterReturnDone: afterReturn.done,
-        completedStatus: completed.statusCode,
-        successFinallyCount,
-        caught,
-        rejectFinallyCount,
-      };
-    `,
-  }) as {
-    firstKind: string | null;
-    returnedDone: boolean;
-    afterReturnDone: boolean;
-    completedStatus: number;
-    successFinallyCount: number;
-    caught: { code: string; detail: string };
-    rejectFinallyCount: number;
-  };
+    return {
+      firstKind: first.value?.kind ?? null,
+      returnedDone: returned.done,
+      afterReturnDone: afterReturn.done,
+      completedStatus: completed.statusCode,
+      successFinallyCount,
+      caught,
+      rejectFinallyCount,
+    };
+  }, `${httpBase}/file/helpers.bin?size=1500000&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload?holdMs=500&case=${encodeURIComponent(namespace)}`, `${httpBase}/upload-raw?reject=403&case=${encodeURIComponent(namespace)}`);
 
   expect(result.firstKind).toBe('progress');
   expect(result.returnedDone).toBeTruthy();
@@ -488,47 +464,32 @@ transferSpec('upload a raw body with PUT for presigned endpoints', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-001');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=2048`)} }).result;
-      const response = await lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.uri,
-        method: 'PUT',
-        bodyMode: 'raw',
-        mimeType: 'application/x-lingxia-test',
-        headers: { 'x-lx-test': 'echo' },
-      }).result;
-      // A presigned signature covers Content-Type, so an explicit header has
-      // to win over mimeType rather than be rewritten by the runtime.
-      const overridden = await lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: source.uri,
-        method: 'PUT',
-        bodyMode: 'raw',
-        mimeType: 'application/x-lingxia-test',
-        headers: { 'Content-Type': 'image/avif' },
-      }).result;
-      return {
-        statusCode: response.statusCode,
-        echo: JSON.parse(response.data),
-        overriddenContentType: JSON.parse(overridden.data).contentType,
-      };
-    `,
-  }) as {
-    statusCode: number;
-    echo: {
-      ok: boolean;
-      method: string;
-      received: number;
-      contentType: string;
-      contentLength: number;
-      firstBytes: string;
-      headerEcho: string;
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
+    const source = await lx.downloadFile({ url: sourceUrl }).result;
+    const response = await lx.uploadFile({
+      url: uploadRawUrl,
+      filePath: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+      mimeType: 'application/x-lingxia-test',
+      headers: { 'x-lx-test': 'echo' },
+    }).result;
+    // A presigned signature covers Content-Type, so an explicit header has
+    // to win over mimeType rather than be rewritten by the runtime.
+    const overridden = await lx.uploadFile({
+      url: uploadRawUrl,
+      filePath: source.uri,
+      method: 'PUT',
+      bodyMode: 'raw',
+      mimeType: 'application/x-lingxia-test',
+      headers: { 'Content-Type': 'image/avif' },
+    }).result;
+    return {
+      statusCode: response.statusCode,
+      echo: JSON.parse(response.data),
+      overriddenContentType: JSON.parse(overridden.data).contentType,
     };
-    overriddenContentType: string;
-  };
+  }, `${httpBase}/file/raw.bin?size=2048`, `${httpBase}/upload-raw`);
 
   expect(result.statusCode).toBe(200);
   expect(result.echo.method).toBe('PUT');
@@ -552,26 +513,40 @@ transferSpec('reject multipart-only options when the body is raw', {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-002');
 
   // Dropping these silently would leave the lxapp believing they were sent.
-  const rejectedFormData = await evalCaught(raw, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
-    return await lx.uploadFile({
-      url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-      filePath: source.uri,
-      method: 'PUT',
-      bodyMode: 'raw',
-      formData: { note: 'spec' },
-    }).result;
-  `);
-  const rejectedName = await evalCaught(raw, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
-    return await lx.uploadFile({
-      url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-      filePath: source.uri,
-      method: 'PUT',
-      bodyMode: 'raw',
-      name: 'asset',
-    }).result;
-  `);
+  const rejectedFormData = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      // Multipart-only options under a raw body: the typings refuse them on purpose.
+      const value = await (lx.uploadFile as (options: object) => ReturnType<typeof lx.uploadFile>)({
+        url: uploadRawUrl,
+        filePath: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+        formData: { note: 'spec' },
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
+  const rejectedName = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      // Multipart-only options under a raw body: the typings refuse them on purpose.
+      const value = await (lx.uploadFile as (options: object) => ReturnType<typeof lx.uploadFile>)({
+        url: uploadRawUrl,
+        filePath: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+        name: 'asset',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/file/raw.bin?size=64`, `${httpBase}/upload-raw`);
 
   expect(rejectedFormData.ok).toBeFalsy();
   expect(String(rejectedFormData.code)).toBe('E_INVALID_ARG');
@@ -590,15 +565,21 @@ transferSpec('report the refusing status when a raw upload is rejected mid-body'
   // How a presigned URL refuses a signature: answer, then hang up before the
   // body is done. The status has to survive that, or the lxapp cannot tell a
   // rejected signature from a flaky network.
-  const outcome = await evalCaught(raw, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/reject.bin?size=8000000`)} }).result;
-    return await lx.uploadFile({
-      url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403`)},
-      filePath: source.uri,
-      method: 'PUT',
-      bodyMode: 'raw',
-    }).result;
-  `);
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadRawUrl): Promise<Caught> => {
+    try {
+      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      const value = await lx.uploadFile({
+        url: uploadRawUrl,
+        filePath: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/file/reject.bin?size=8000000`, `${httpBase}/upload-raw?reject=403`);
 
   expect(outcome.ok).toBeFalsy();
   expect(String((outcome.data as { detail?: string } | undefined)?.detail)).toContain('403');
@@ -612,24 +593,18 @@ transferSpec('accept PATCH and an empty file as a raw body', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-004');
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      // Zero bytes is only reachable with a raw body -- multipart always has an
-      // envelope -- and it must still be a well-formed request, not a hang.
-      const empty = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/empty.bin?size=0`)} }).result;
-      const response = await lx.uploadFile({
-        url: ${JSON.stringify(`${httpBase}/upload-raw`)},
-        filePath: empty.uri,
-        method: 'PATCH',
-        bodyMode: 'raw',
-      }).result;
-      return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
-    `,
-  }) as {
-    statusCode: number;
-    echo: { method: string; received: number; contentType: string; contentLength: number };
-  };
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, sourceUrl, uploadRawUrl) => {
+    // Zero bytes is only reachable with a raw body -- multipart always has an
+    // envelope -- and it must still be a well-formed request, not a hang.
+    const empty = await lx.downloadFile({ url: sourceUrl }).result;
+    const response = await lx.uploadFile({
+      url: uploadRawUrl,
+      filePath: empty.uri,
+      method: 'PATCH',
+      bodyMode: 'raw',
+    }).result;
+    return { statusCode: response.statusCode, echo: JSON.parse(response.data) };
+  }, `${httpBase}/file/empty.bin?size=0`, `${httpBase}/upload-raw`);
 
   expect(result.statusCode).toBe(200);
   expect(result.echo.method).toBe('PATCH');
@@ -649,15 +624,21 @@ transferSpec('deny an upload to a host the lxapp never trusted', {
 
   // The host network grant governs uploads exactly as it governs downloads,
   // and the file resolving first must not be mistaken for permission to send it.
-  const outcome = await evalCaught(raw, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} }).result;
-    return await lx.uploadFile({
-      url: 'https://not-trusted.example/upload',
-      filePath: source.uri,
-      method: 'PUT',
-      bodyMode: 'raw',
-    }).result;
-  `);
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl): Promise<Caught> => {
+    try {
+      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      const value = await lx.uploadFile({
+        url: 'https://not-trusted.example/upload',
+        filePath: source.uri,
+        method: 'PUT',
+        bodyMode: 'raw',
+      }).result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/file/auth.bin?size=64`);
 
   expect(outcome.ok).toBeFalsy();
   expect(String(outcome.code)).toBe('E_PERMISSION_DENIED');
@@ -671,16 +652,22 @@ transferSpec('cancel an upload and reject rather than resolve', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-CANCEL-001');
 
-  const outcome = await evalCaught(raw, `
-    const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/big.bin?size=2000000`)} }).result;
-    // holdMs keeps the request open long enough for a cancel to be meaningful.
-    const task = lx.uploadFile({
-      url: ${JSON.stringify(`${httpBase}/upload?holdMs=3000`)},
-      filePath: source.uri,
-    });
-    setTimeout(() => task.cancel(), 200);
-    return await task.result;
-  `);
+  const outcome = await app.logic.eval(async ({ lx }, sourceUrl, uploadUrl): Promise<Caught> => {
+    try {
+      const source = await lx.downloadFile({ url: sourceUrl }).result;
+      // holdMs keeps the request open long enough for a cancel to be meaningful.
+      const task = lx.uploadFile({
+        url: uploadUrl,
+        filePath: source.uri,
+      });
+      setTimeout(() => task.cancel(), 200);
+      const value = await task.result;
+      return { ok: true, value };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, `${httpBase}/file/big.bin?size=2000000`, `${httpBase}/upload?holdMs=3000`);
 
   expect(outcome.ok).toBeFalsy();
   // A cancel that reports as a connection error is indistinguishable from the

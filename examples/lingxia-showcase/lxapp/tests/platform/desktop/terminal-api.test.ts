@@ -1,10 +1,16 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
+import type { AppSurface, TerminalSettingsApi } from '@lingxia/types';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+/** What the settings probe keeps on the terminal app's Logic `globalThis`. */
+interface TerminalProbeState {
+  overrides: Parameters<TerminalSettingsApi['update']>[0] | null;
+  off: (() => void) | null;
+  events: number[];
+}
+type TerminalProbeStates = Record<string, TerminalProbeState | undefined>;
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
@@ -56,7 +62,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   timeout: 60_000,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'TERMINAL-API-001');
-  const platform = await runtimePlatform(raw);
+  const platform = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`terminal settings require macOS or Windows; got ${platform || 'unknown'}`);
   }
@@ -69,20 +75,16 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   // Keep the handle: closing the lxapp leaves its entry in the main switcher,
   // and the surface handle is what closes the workspace with it.
   const surfaceKey = `${stateKey}_surface`;
-  await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      globalThis[${JSON.stringify(surfaceKey)}] =
-        await lx.shell.openApp(${JSON.stringify(TERMINAL_APP_ID)}, { as: 'main' });
-    `,
-  });
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, appId) => {
+    (globalThis as unknown as Record<string, AppSurface | undefined>)[key] =
+      await lx.shell.openApp(appId, { as: 'main' });
+  }, surfaceKey, TERMINAL_APP_ID);
   await eventually(currentApp, (appid) => appid === TERMINAL_APP_ID, {
     describe: 'terminal settings to become the current lxapp',
     timeoutMs: 20_000,
   });
-  // Raw: its probes are scripts; see `rawApp`.
-  const terminal = rawApp(TERMINAL_APP_ID);
-  await eventually(() => terminal.eval({ script: 'return true', timeoutMs: 5_000 }), (ready) => ready === true, {
+  const terminal = t.apps.lxapp(TERMINAL_APP_ID);
+  await eventually(() => terminal.logic.eval({ timeout: 5_000 }, () => true), (ready) => ready === true, {
     describe: 'terminal settings Logic runtime to answer',
     timeoutMs: 20_000,
     retryIf: () => true,
@@ -97,88 +99,82 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   await t.step('the ControlSurface follows host language updates', async () => {
     // The heading exists only in the settings document itself, not in the
     // blank document a WebView shows before its first navigation commits.
-    await terminal.page.waitFor({ page: 'settings', css: '#type-heading', state: 'visible' });
-    const preference = await raw.eval({
-      script: 'return lx.host.control.displayLanguage.getPreference()',
-    }) as string;
+    await terminal.view.css('#type-heading', { page: 'settings' }).first().waitFor({ state: 'visible', timeout: 30_000 });
+    const preference = await app.logic.eval(({ lx }) => lx.host.control!.displayLanguage.getPreference());
     try {
       for (const language of ['zh-CN', 'en-US']) {
-        await raw.eval({
-          script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
-        });
+        await app.logic.eval(async ({ lx }, language) => {
+          await lx.host.control!.displayLanguage.setPreference(language);
+        }, language);
         await eventually(
-          () => terminal.page.eval({
-            page: 'settings',
-            // The bridge also writes the HTML language tag. Check translated
-            // content to prove the screen re-rendered, not just that the
-            // document was stamped.
-            script: "document.querySelector('#type-heading')?.textContent",
-          }),
+          // The bridge also writes the HTML language tag. Check translated
+          // content to prove the screen re-rendered, not just that the
+          // document was stamped.
+          () => terminal.view.eval({ page: 'settings' }, ({ document }) => (
+            document.querySelector('#type-heading')?.textContent
+          )),
           (heading) => heading === (language === 'zh-CN' ? '字体' : 'Type'),
           { describe: `terminal settings to render ${language}`, timeoutMs: 10_000 },
         );
       }
     } finally {
-      await raw.eval({
-        script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(preference)})`,
-      });
+      await app.logic.eval(async ({ lx }, preference) => {
+        await lx.host.control!.displayLanguage.setPreference(preference);
+      }, preference);
     }
   });
 
-  const result = await terminal.eval({
-    timeoutMs: 30_000,
-    script: `
-      const t = lx.terminal;
-      const state = { overrides: null, off: null, events: [] };
-      globalThis[${JSON.stringify(stateKey)}] = state;
+  const result: SettingsRoundTrip = await terminal.logic.eval({ timeout: 30_000 }, async ({ lx }, key, probeScheme) => {
+    const t = lx.terminal!;
+    const state: TerminalProbeState = { overrides: null, off: null, events: [] };
+    (globalThis as unknown as TerminalProbeStates)[key] = state;
 
-      const first = await t.settings.get();
-      state.overrides = JSON.parse(JSON.stringify(first.overrides));
-      state.off = t.settings.onChange((snapshot) => state.events.push(snapshot.revision));
+    const first = await t.settings.get();
+    state.overrides = JSON.parse(JSON.stringify(first.overrides));
+    state.off = t.settings.onChange((snapshot) => state.events.push(snapshot.revision));
 
-      const nextSize = first.value.font.size + 1;
-      const updated = await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
+    const nextSize = first.value.font.size + 1;
+    const updated = await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
 
-      let stale = null;
-      try {
-        await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
-      } catch (error) {
-        stale = { code: error && error.code };
-      }
+    let stale = null;
+    try {
+      await t.settings.update({ font: { size: nextSize } }, { ifRevision: first.revision });
+    } catch (error) {
+      stale = { code: (error as { code?: string } | null)?.code };
+    }
 
-      const reset = await t.settings.reset({ ifRevision: updated.revision, scope: 'font' });
+    const reset = await t.settings.reset({ ifRevision: updated.revision, scope: 'font' });
 
-      const fonts = await t.fonts.list();
-      const schemes = await t.colorSchemes.list();
-      const source = schemes[0];
-      const imported = await t.colorSchemes.import({
-        text: JSON.stringify(source.scheme),
-        name: ${JSON.stringify(PROBE_SCHEME)},
-        overwrite: true,
-      });
-      const listed = (await t.colorSchemes.list()).some((entry) => entry.name === ${JSON.stringify(PROBE_SCHEME)});
+    const fonts = await t.fonts.list();
+    const schemes = await t.colorSchemes.list();
+    const source = schemes[0];
+    const imported = await t.colorSchemes.import({
+      text: JSON.stringify(source.scheme),
+      name: probeScheme,
+      overwrite: true,
+    });
+    const listed = (await t.colorSchemes.list()).some((entry) => entry.name === probeScheme);
 
-      const preview = t.colorSchemes.createPreview();
-      await preview.show(source.name);
-      await preview.clear();
-      await preview.close();
+    const preview = t.colorSchemes.createPreview();
+    await preview.show(source.name);
+    await preview.clear();
+    await preview.close();
 
-      return {
-        revision: first.revision,
-        size: first.value.font.size,
-        defaultSize: first.defaults.font.size,
-        hasOverrides: Object.keys(first.overrides).length > 0,
-        updated: { revision: updated.revision, size: updated.value.font.size },
-        stale,
-        reset: { revision: reset.revision, size: reset.value.font.size, fontOverride: reset.overrides.font ?? null },
-        fonts: { count: fonts.length, monospace: fonts.every((font) => typeof font.monospace === 'boolean'), family: fonts[0]?.family ?? '' },
-        schemes: { count: schemes.length, first: source.name, background: source.scheme.background },
-        imported: { name: imported.name, source: imported.source, listed },
-        preview: 'shown, cleared, closed',
-        windows: typeof t.windows,
-      };
-    `,
-  }) as SettingsRoundTrip;
+    return {
+      revision: first.revision,
+      size: first.value.font.size,
+      defaultSize: first.defaults.font.size,
+      hasOverrides: Object.keys(first.overrides).length > 0,
+      updated: { revision: updated.revision, size: updated.value.font.size },
+      stale,
+      reset: { revision: reset.revision, size: reset.value.font.size, fontOverride: reset.overrides.font ?? null },
+      fonts: { count: fonts.length, monospace: fonts.every((font) => typeof font.monospace === 'boolean'), family: fonts[0]?.family ?? '' },
+      schemes: { count: schemes.length, first: source.name, background: source.scheme.background },
+      imported: { name: imported.name, source: imported.source, listed },
+      preview: 'shown, cleared, closed',
+      windows: typeof t.windows,
+    };
+  }, stateKey, PROBE_SCHEME);
 
   await t.step('settings: revision-checked update, change event, stale rejection, scoped reset', async () => {
     expect(typeof result.revision).toBe('number');
@@ -187,7 +183,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     // onChange is delivered after the writes return and coalesces to the latest
     // snapshot, so the reset's revision is what a listener must eventually see.
     const events = await eventually(
-      () => terminal.eval({ script: `return globalThis[${JSON.stringify(stateKey)}]?.events ?? []` }) as Promise<number[]>,
+      () => terminal.logic.eval((_, key) => (globalThis as unknown as TerminalProbeStates)[key]?.events ?? [], stateKey),
       (revisions) => revisions.includes(result.reset.revision),
       { describe: 'onChange to report the latest revision', timeoutMs: 10_000 },
     );
@@ -215,26 +211,22 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   });
 
   await t.step('hand the host back its own settings and its root main', async () => {
-    await terminal.eval({
-      timeoutMs: 15_000,
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        if (state?.off) state.off();
-        if (state?.overrides) {
-          const latest = await lx.terminal.settings.get();
-          await lx.terminal.settings.update(state.overrides, { ifRevision: latest.revision });
-        }
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    });
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const surface = globalThis[${JSON.stringify(surfaceKey)}];
-        if (surface) await surface.close();
-        delete globalThis[${JSON.stringify(surfaceKey)}];
-      `,
-    });
+    await terminal.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
+      const states = globalThis as unknown as TerminalProbeStates;
+      const state = states[key];
+      state?.off?.();
+      if (state?.overrides) {
+        const latest = await lx.terminal!.settings.get();
+        await lx.terminal!.settings.update(state.overrides, { ifRevision: latest.revision });
+      }
+      delete states[key];
+    }, stateKey);
+    await app.logic.eval({ timeout: 20_000 }, async (_, key) => {
+      const surfaces = globalThis as unknown as Record<string, AppSurface | undefined>;
+      const surface = surfaces[key];
+      if (surface) await surface.close();
+      delete surfaces[key];
+    }, surfaceKey);
     await eventually(currentApp, (appid) => appid === SHOWCASE_APP_ID, {
       describe: 'showcase to be current again after closing terminal settings',
       timeoutMs: 15_000,

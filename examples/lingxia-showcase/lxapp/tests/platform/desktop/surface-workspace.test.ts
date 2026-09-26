@@ -10,12 +10,11 @@ import type {
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
 } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { attachShot } from '../../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
+import type { AppSurface } from '@lingxia/types';
 
 function isLocalizedSettingsLabel(name: string): boolean {
   const trimmed = name.trim();
@@ -32,6 +31,9 @@ interface VisibilityEvent {
   source: string;
 }
 
+/** Shell handles carry `role` and `presentation` at run time; the published type leaves them out. */
+type WithRole<T> = T & { readonly role?: string; readonly presentation?: string };
+
 interface CloseEvent {
   id: string;
   reason: string;
@@ -47,6 +49,15 @@ interface RetainedAppSurfaceState {
     source?: string;
     reason?: string;
   }>;
+}
+
+/** What the dynamic-main probes keep on Logic's `globalThis` between evals. */
+interface DynamicHandleGlobals {
+  __surfaceSwitcherDynamicHandleGate?: {
+    handle: AppSurface;
+    events: RetainedAppSurfaceState['events'];
+    unsubscribe: Array<() => void>;
+  };
 }
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
@@ -73,7 +84,7 @@ const WINDOWS_RAIL_MIN_DIP = 32;
 
 async function desktopApp(t: Fixture): Promise<TestApp> {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
-  const actual = await runtimePlatform(raw);
+  const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
       `surface-switcher tests require macOS or Windows; got ${actual || 'unknown'}. `
@@ -564,27 +575,21 @@ function expectOverlayCoversMain(
 const ROOT_EDGE_MARKER_ID = 'surface-switcher-root-edge-marker';
 
 async function setRootEdgeMarker(app: TestApp, visible: boolean): Promise<void> {
-  await raw.page.eval({
-    page: 'todo',
-    script: `
-      (() => {
-        const id = ${JSON.stringify(ROOT_EDGE_MARKER_ID)};
-        document.getElementById(id)?.remove();
-        if (!${visible}) return;
-        const marker = document.createElement('div');
-        marker.id = id;
-        Object.assign(marker.style, {
-          position: 'fixed',
-          inset: '0',
-          border: '8px solid rgb(255, 0, 255)',
-          boxSizing: 'border-box',
-          pointerEvents: 'none',
-          zIndex: '2147483647',
-        });
-        document.documentElement.append(marker);
-      })()
-    `,
-  });
+  await app.view.eval({ page: 'todo' }, ({ document }, id, visible) => {
+    (document.getElementById(id) as ProbeElement | null)?.remove();
+    if (!visible) return;
+    const marker = (document as unknown as ProbeDocument).createElement('div');
+    marker.setAttribute('id', id);
+    Object.assign(marker.style, {
+      position: 'fixed',
+      inset: '0',
+      border: '8px solid rgb(255, 0, 255)',
+      boxSizing: 'border-box',
+      pointerEvents: 'none',
+      zIndex: '2147483647',
+    });
+    (document.documentElement as ProbeElement).appendChild(marker);
+  }, ROOT_EDGE_MARKER_ID, visible);
 }
 
 function rootEdgeProbePoints(webview: DesktopWindowInfo): [number, number][] {
@@ -1051,9 +1056,8 @@ async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> 
   // and `openDeclared(..., { as: 'main' })` go through the declared aside
   // surface and the host rejects them with "managed surface request rejected".
   await closeChatSurface(t, app);
-  await raw.eval({
-    timeoutMs: 20_000,
-    script: `await lx.shell.openApp('lingxia-chat', { as: 'main' });`,
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    await lx.shell.openApp('lingxia-chat', { as: 'main' });
   });
 }
 
@@ -1064,12 +1068,9 @@ async function closeDeclaredTerminal(app: TestApp): Promise<void> {
       slot.children.includes('terminal') && slot.visible && !slot.overlay
     ));
   if (!visible) return;
-  await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const handle = await lx.surface.openDeclared('terminal');
-      if (handle.alive) await handle.close();
-    `,
+  await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    const handle = await lx.surface.openDeclared('terminal');
+    if (handle.alive) await handle.close();
   });
   await waitForValue(async () => {
     const candidate = await app.surfaceLayout();
@@ -1085,12 +1086,9 @@ async function closeChatSurface(t: Fixture, app: TestApp): Promise<void> {
   let surfaceCloseError: unknown;
   if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) {
     try {
-      await raw.eval({
-        timeoutMs: 20_000,
-        script: `
-          const handle = await lx.surface.openDeclared('lingxia-chat');
-          await handle.close();
-        `,
+      await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+        const handle = await lx.surface.openDeclared('lingxia-chat');
+        await handle.close();
       });
     } catch (error) {
       surfaceCloseError = error;
@@ -1139,50 +1137,41 @@ async function automationPhase<T>(phase: string, operation: () => Promise<T>): P
 }
 
 async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurfaceState> {
-  return raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const previous = globalThis.__surfaceSwitcherDynamicHandleGate;
-      for (const unsubscribe of previous?.unsubscribe ?? []) unsubscribe();
-      const handle = await lx.shell.openApp('lingxia-chat', { as: 'main' });
-      const events = [];
-      const unsubscribe = [
-        handle.onHide((event) => events.push({ type: 'hide', ...event })),
-        handle.onShow((event) => events.push({ type: 'show', ...event })),
-        handle.onClose((event) => events.push({ type: 'close', ...event })),
-      ];
-      globalThis.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
-      return { id: handle.id, visible: handle.visible, alive: handle.alive, events };
-    `,
-  }) as Promise<RetainedAppSurfaceState>;
+  return app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    const probe = globalThis as unknown as DynamicHandleGlobals;
+    for (const unsubscribe of probe.__surfaceSwitcherDynamicHandleGate?.unsubscribe ?? []) unsubscribe();
+    const handle = await lx.shell.openApp('lingxia-chat', { as: 'main' });
+    const events: RetainedAppSurfaceState['events'] = [];
+    const unsubscribe = [
+      handle.onHide((event) => events.push({ type: 'hide', ...event })),
+      handle.onShow((event) => events.push({ type: 'show', ...event })),
+      handle.onClose((event) => events.push({ type: 'close', ...event })),
+    ];
+    probe.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
+    return { id: handle.id, visible: handle.visible, alive: handle.alive, events };
+  });
 }
 
 async function readRetainedDynamicChatHandle(
   app: TestApp,
 ): Promise<RetainedAppSurfaceState> {
-  return raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
-      return {
-        id: gate.handle.id,
-        visible: gate.handle.visible,
-        alive: gate.handle.alive,
-        events: gate.events.map((event) => ({ ...event })),
-      };
-    `,
-  }) as Promise<RetainedAppSurfaceState>;
+  return app.logic.eval({ timeout: 20_000 }, () => {
+    const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+    if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+    return {
+      id: gate.handle.id,
+      visible: gate.handle.visible,
+      alive: gate.handle.alive,
+      events: gate.events.map((event) => ({ ...event })),
+    };
+  });
 }
 
 async function clearRetainedDynamicChatHandle(app: TestApp): Promise<void> {
-  await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-      for (const unsubscribe of gate?.unsubscribe ?? []) unsubscribe();
-      delete globalThis.__surfaceSwitcherDynamicHandleGate;
-    `,
+  await app.logic.eval({ timeout: 20_000 }, () => {
+    const probe = globalThis as unknown as DynamicHandleGlobals;
+    for (const unsubscribe of probe.__surfaceSwitcherDynamicHandleGate?.unsubscribe ?? []) unsubscribe();
+    delete probe.__surfaceSwitcherDynamicHandleGate;
   });
 }
 
@@ -1201,55 +1190,51 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      const driver = lx.automation().lxapp();
-      const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
-      const before = await snapshot();
-      const existed = before.asideSlots.some((slot) => slot.children.includes('terminal'));
-      const wasVisible = before.asides.some((surface) => surface.id === 'terminal');
-      const terminal = await lx.surface.openDeclared('terminal');
-      const visibility = { hide: [], show: [] };
-      const off = [
-        terminal.onHide((event) => visibility.hide.push(event)),
-        terminal.onShow((event) => visibility.show.push(event)),
-      ];
-      let output;
-      try {
-        const opened = await snapshot();
-        await terminal.hide();
-        await terminal.hide();
-        const hidden = await snapshot();
-        await terminal.show();
-        await terminal.show();
-        await settle();
-        const shown = await snapshot();
-        output = {
-          id: terminal.id,
-          role: terminal.role,
-          presentation: terminal.presentation,
-          opened,
-          hidden,
-          shown,
-          visibility: {
-            hide: visibility.hide.map((event) => ({ ...event })),
-            show: visibility.show.map((event) => ({ ...event })),
-          },
-        };
-      } finally {
-        for (const unsubscribe of off) unsubscribe();
-        if (existed) {
-          if (wasVisible) await terminal.show();
-          else await terminal.hide();
-        } else if (terminal.alive) {
-          await terminal.close();
-        }
+  const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
+    const driver = lx.automation().lxapp();
+    const snapshot = () => driver.surfaceLayout();
+    const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
+    const before = await snapshot();
+    const existed = before.asideSlots.some((slot) => slot.children.includes('terminal'));
+    const wasVisible = before.asides.some((surface) => surface.id === 'terminal');
+    const terminal = await lx.surface.openDeclared('terminal');
+    const visibility: { hide: VisibilityEvent[]; show: VisibilityEvent[] } = { hide: [], show: [] };
+    const off = [
+      terminal.onHide((event) => visibility.hide.push(event)),
+      terminal.onShow((event) => visibility.show.push(event)),
+    ];
+    let output;
+    try {
+      const opened = await snapshot();
+      await terminal.hide();
+      await terminal.hide();
+      const hidden = await snapshot();
+      await terminal.show();
+      await terminal.show();
+      await settle();
+      const shown = await snapshot();
+      output = {
+        id: terminal.id,
+        role: (terminal as WithRole<typeof terminal>).role,
+        presentation: (terminal as WithRole<typeof terminal>).presentation,
+        opened,
+        hidden,
+        shown,
+        visibility: {
+          hide: visibility.hide.map((event) => ({ ...event })),
+          show: visibility.show.map((event) => ({ ...event })),
+        },
+      };
+    } finally {
+      for (const unsubscribe of off) unsubscribe();
+      if (existed) {
+        if (wasVisible) await terminal.show();
+        else await terminal.hide();
+      } else if (terminal.alive) {
+        await terminal.close();
       }
-      output.afterCleanup = await snapshot();
-      return output;
-    `,
+    }
+    return { ...output!, afterCleanup: await snapshot() };
   }) as {
     id: string;
     role: string;
@@ -1289,7 +1274,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
   covers: ['lx.surface.openDeclared', 'lx.shell.openBuiltin', 'TestApp.surfaceLayout'],
 }, async (t) => {
   const app = await desktopApp(t);
-  const platform = await runtimePlatform(raw);
+  const platform = await runtimePlatform(app);
   const automation = t.automation;
   const desktop = automation.desktop;
   const doctor = await desktop.doctor();
@@ -1367,7 +1352,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     }, `${platform} expanded root baseline`);
 
     await app.nav.switchTab({ page: 'api' });
-    await raw.page.waitFor({ page: 'api', css: 'body', timeoutMs: 30_000 });
+    await app.view.css('body', { page: 'api' }).waitFor({ state: 'attached', timeout: 30_000 });
 
     // Cross from expanded into medium so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -1445,12 +1430,9 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       ), 'macOS compact keeps lxapp tab items in the desktop sidebar');
     }
 
-    const opened = await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const handle = await lx.surface.openDeclared('lingxia-chat');
-        return { id: handle.id, visible: handle.visible, alive: handle.alive };
-      `,
+    const opened = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const handle = await lx.surface.openDeclared('lingxia-chat');
+      return { id: handle.id, visible: handle.visible, alive: handle.alive };
     }) as { id: string; visible: boolean; alive: boolean };
     chatOpened = true;
     expect(opened).toEqual({ id: 'lingxia-chat', visible: true, alive: true });
@@ -1521,9 +1503,8 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
     }, `${platform} settings browser main`);
     browserTabId = settingsTab.tab_id;
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('downloads');`,
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.shell.openBuiltin('downloads');
     });
     const downloadsTab = await waitForValue(async () => {
       const current = await browser.current();
@@ -1761,9 +1742,8 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     if (!overlayLayout) {
       // A background terminal can steal SetForegroundWindow; open the same
       // declared Chat aside the footer action would have opened.
-      await raw.eval({
-        timeoutMs: 20_000,
-        script: `await lx.surface.openDeclared('lingxia-chat');`,
+      await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+        await lx.surface.openDeclared('lingxia-chat');
       });
       overlayLayout = await waitForValue(chatAside, 'footer Chat aside after openDeclared');
     }
@@ -1908,7 +1888,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   covers: ['lx.shell.openApp', 'PageSurface.close', 'PageSurface.onClose'],
 }, async (t) => {
   const app = await automationPhase('resolve showcase driver', () => desktopApp(t));
-  const platform = await automationPhase('read runtime platform', () => runtimePlatform(raw));
+  const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
   const automation = t.automation;
   const desktop = automation.desktop;
   const browser = automation.browser;
@@ -1959,65 +1939,68 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   let chatMain: DesktopWindowInfo | undefined;
   let browserTabId: string | undefined;
   try {
-    const rejected = await automationPhase('validate dynamic app surface contract', () => raw.eval({
-      timeoutMs: 30_000,
-      script: `
-        const rejection = (error) => ({
-          code: error?.code ?? '',
-          detail: error?.data?.detail ?? error?.message ?? String(error),
+    const rejected = await automationPhase('validate dynamic app surface contract', () => app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
+      type Rejection = { code: string; detail: string };
+      const rejection = (error: unknown): Rejection => {
+        const failure = error as { code?: string; message?: string; data?: { detail?: string } } | null;
+        return {
+          code: failure?.code ?? '',
+          detail: failure?.data?.detail ?? failure?.message ?? String(error),
+        };
+      };
+      // Each call passes what the typings refuse on purpose: the host must
+      // reject it, not ignore the extra field.
+      const openApp = lx.shell.openApp as (appId: string, options: unknown) => Promise<unknown>;
+      const openPage = lx.surface.openPage as (page: string, options: unknown) => Promise<unknown>;
+      const navigateToApp = lx.navigateToApp as (options: unknown) => Promise<unknown>;
+      const rejected: Partial<Record<'path' | 'navigatePath' | 'float' | 'mainEdge' | 'pageEdge', Rejection>> = {};
+      try {
+        await openApp('lingxia-chat', {
+          as: 'main', path: 'pages/chat/index.tsx',
         });
-        const rejected = {};
-        try {
-          await lx.shell.openApp('lingxia-chat', {
-            as: 'main', path: 'pages/chat/index.tsx',
-          });
-        } catch (error) {
-          rejected.path = rejection(error);
-        }
-        try {
-          await lx.navigateToApp({
-            appId: 'lingxia-chat', path: 'pages/chat/index.tsx',
-          });
-        } catch (error) {
-          rejected.navigatePath = rejection(error);
-        }
-        try {
-          await lx.shell.openApp('lingxia-chat', { as: 'float' });
-        } catch (error) {
-          rejected.float = rejection(error);
-        }
-        try {
-          await lx.shell.openApp('lingxia-chat', { as: 'main', edge: 'left' });
-        } catch (error) {
-          rejected.mainEdge = rejection(error);
-        }
-        try {
-          await lx.surface.openPage('todo', { as: 'float', edge: 'right' });
-        } catch (error) {
-          rejected.pageEdge = rejection(error);
-        }
-        return rejected;
-      `,
+      } catch (error) {
+        rejected.path = rejection(error);
+      }
+      try {
+        await navigateToApp({
+          appId: 'lingxia-chat', path: 'pages/chat/index.tsx',
+        });
+      } catch (error) {
+        rejected.navigatePath = rejection(error);
+      }
+      try {
+        await openApp('lingxia-chat', { as: 'float' });
+      } catch (error) {
+        rejected.float = rejection(error);
+      }
+      try {
+        await openApp('lingxia-chat', { as: 'main', edge: 'left' });
+      } catch (error) {
+        rejected.mainEdge = rejection(error);
+      }
+      try {
+        await openPage('todo', { as: 'float', edge: 'right' });
+      } catch (error) {
+        rejected.pageEdge = rejection(error);
+      }
+      return rejected;
     })) as DynamicSetup['rejected'];
     const afterRejected = await automationPhase(
       'snapshot graph after rejected app surface specs',
       () => app.surfaceLayout(),
     );
-    const openedHandle = await automationPhase('open dynamic Chat main', () => raw.eval({
-      timeoutMs: 30_000,
-      script: `
-        const handle = await lx.shell.openApp('lingxia-chat', {
-          as: 'main', page: 'chat',
-        });
-        const events = [];
-        const unsubscribe = [
-          handle.onHide((event) => events.push({ type: 'hide', ...event })),
-          handle.onShow((event) => events.push({ type: 'show', ...event })),
-          handle.onClose((event) => events.push({ type: 'close', ...event })),
-        ];
-        globalThis.__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
-        return { id: handle.id };
-      `,
+    const openedHandle = await automationPhase('open dynamic Chat main', () => app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
+      const handle = await lx.shell.openApp('lingxia-chat', {
+        as: 'main', page: 'chat',
+      });
+      const events: RetainedAppSurfaceState['events'] = [];
+      const unsubscribe = [
+        handle.onHide((event) => events.push({ type: 'hide', ...event })),
+        handle.onShow((event) => events.push({ type: 'show', ...event })),
+        handle.onClose((event) => events.push({ type: 'close', ...event })),
+      ];
+      (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate = { handle, events, unsubscribe };
+      return { id: handle.id };
     })) as Pick<DynamicSetup, 'id'>;
     const opened = await automationPhase(
       'snapshot graph after dynamic Chat main open',
@@ -2039,27 +2022,23 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       await expectExactMainPresentation(host, baselineMain, chatMain, () => desktop.windows());
     }
 
-    hidden = await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        const rootId = ${JSON.stringify(before.mainSwitcher.rootSurfaceId)};
-        if (!gate || !rootId) throw new Error('dynamic main gate lost its root or handle');
-        await lx.shell.openDeclared(rootId, { as: 'main' });
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          if (!gate.handle.visible
-            && gate.events.filter((event) => event.type === 'hide').length === 1) break;
-          await new Promise((resolve) => setTimeout(() => resolve(), 25));
-        }
-        return {
-          id: gate.handle.id,
-          visible: gate.handle.visible,
-          alive: gate.handle.alive,
-          events: gate.events.map((event) => ({ ...event })),
-        };
-      `,
-    }) as RetainedAppSurfaceState;
+    hidden = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, rootId) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      if (!gate || !rootId) throw new Error('dynamic main gate lost its root or handle');
+      await lx.shell.openDeclared(rootId, { as: 'main' });
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (!gate.handle.visible
+          && gate.events.filter((event) => event.type === 'hide').length === 1) break;
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
+      }
+      return {
+        id: gate.handle.id,
+        visible: gate.handle.visible,
+        alive: gate.handle.alive,
+        events: gate.events.map((event) => ({ ...event })),
+      };
+    }, before.mainSwitcher.rootSurfaceId ?? null) as RetainedAppSurfaceState;
     if (baselineMain) {
       const restoredMain = await waitForDesktopWindow(
         () => desktop.windows(),
@@ -2080,25 +2059,22 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       ), 'dynamic Chat physical main hidden by root switch');
     }
 
-    shown = await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
-        await gate.handle.show();
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          if (gate.handle.visible
-            && gate.events.filter((event) => event.type === 'show').length === 1) break;
-          await new Promise((resolve) => setTimeout(() => resolve(), 25));
-        }
-        return {
-          id: gate.handle.id,
-          visible: gate.handle.visible,
-          alive: gate.handle.alive,
-          events: gate.events.map((event) => ({ ...event })),
-        };
-      `,
+    shown = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+      await gate.handle.show();
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (gate.handle.visible
+          && gate.events.filter((event) => event.type === 'show').length === 1) break;
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
+      }
+      return {
+        id: gate.handle.id,
+        visible: gate.handle.visible,
+        alive: gate.handle.alive,
+        events: gate.events.map((event) => ({ ...event })),
+      };
     }) as RetainedAppSurfaceState;
     await waitForValue(
       () => visibleChatInputAxNode(desktop, host!),
@@ -2149,19 +2125,16 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       ), 'dynamic Chat is physically hidden by browser cover');
     }
 
-    shownOverBrowser = await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
-        await gate.handle.show();
-        return {
-          id: gate.handle.id,
-          visible: gate.handle.visible,
-          alive: gate.handle.alive,
-          events: gate.events.map((event) => ({ ...event })),
-        };
-      `,
+    shownOverBrowser = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+      await gate.handle.show();
+      return {
+        id: gate.handle.id,
+        visible: gate.handle.visible,
+        alive: gate.handle.alive,
+        events: gate.events.map((event) => ({ ...event })),
+      };
     }) as RetainedAppSurfaceState;
     if (baselineMain && chatMain) {
       const restoredFromBrowser = await waitForDesktopWindow(
@@ -2186,35 +2159,29 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     await browser.close({ tab: browserTabId });
     browserTabId = undefined;
 
-    const closedState = await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
-        await gate.handle.close();
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          if (!gate.handle.alive && !gate.handle.visible
-            && gate.events.filter((event) => event.type === 'close').length === 1) break;
-          await new Promise((resolve) => setTimeout(() => resolve(), 25));
-        }
-        return {
-          id: gate.handle.id,
-          visible: gate.handle.visible,
-          alive: gate.handle.alive,
-          events: gate.events.map((event) => ({ ...event })),
-        };
-      `,
+    const closedState = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+      await gate.handle.close();
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (!gate.handle.alive && !gate.handle.visible
+          && gate.events.filter((event) => event.type === 'close').length === 1) break;
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 25));
+      }
+      return {
+        id: gate.handle.id,
+        visible: gate.handle.visible,
+        alive: gate.handle.alive,
+        events: gate.events.map((event) => ({ ...event })),
+      };
     }) as RetainedAppSurfaceState;
     const afterClose = await app.surfaceLayout();
     const revisionAfterClose = afterClose.mainSwitcher.revision;
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        if (!gate) throw new Error('dynamic Chat handle gate is not installed');
-        await gate.handle.close();
-      `,
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      if (!gate) throw new Error('dynamic Chat handle gate is not installed');
+      await gate.handle.close();
     });
     closed = {
       closed: closedState,
@@ -2229,19 +2196,16 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       surfaceFailureDiagnostics(t, app, desktop, host),
       desktop.ax.query({ window: host.id, match: 'Message', all: true })
         .catch((failure) => ({ error: String(failure) })),
-      rawApp('lingxia-chat').page.eval({
-        page: 'chat',
-        script: `JSON.stringify({
-          readyState: document.readyState,
-          input: (() => {
-            const input = document.querySelector('textarea');
-            if (!input) return null;
-            const rect = input.getBoundingClientRect();
-            return { placeholder: input.placeholder, disabled: input.disabled,
-              rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
-          })(),
-        })`,
-      }).catch((failure) => ({ error: String(failure) })),
+      t.apps.lxapp('lingxia-chat').view.eval({ page: 'chat' }, ({ document }) => JSON.stringify({
+        readyState: (document as unknown as ProbeDocument).readyState,
+        input: (() => {
+          const input = document.querySelector('textarea');
+          if (!input) return null;
+          const rect = input.getBoundingClientRect();
+          return { placeholder: input.getAttribute('placeholder'), disabled: input.disabled,
+            rect: { x: rect.left, y: rect.top, width: rect.width, height: rect.height } };
+        })(),
+      })).catch((failure: unknown) => ({ error: String(failure) })),
     ]);
     throw new Error(`${String(error)}; diagnostics: ${JSON.stringify({ surfaces, inputNodes, chatDocument })}`);
   } finally {
@@ -2253,17 +2217,14 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         await browser.close({ tab: tab.tab_id }).catch(() => undefined);
       }
     }
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
-        try {
-          if (gate?.handle?.alive) await gate.handle.close();
-        } finally {
-          for (const off of gate?.unsubscribe ?? []) off();
-          delete globalThis.__surfaceSwitcherDynamicHandleGate;
-        }
-      `,
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      const gate = (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      try {
+        if (gate?.handle?.alive) await gate.handle.close();
+      } finally {
+        for (const off of gate?.unsubscribe ?? []) off();
+        delete (globalThis as unknown as DynamicHandleGlobals).__surfaceSwitcherDynamicHandleGate;
+      }
     }).catch(() => undefined);
     await closeChatSurface(t, app).catch(() => undefined);
   }
@@ -2401,9 +2362,8 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
 
     // Start from the declared entry so this gate covers the difficult case:
     // a Pin must promote the one live aside instance into a main workspace.
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `await lx.surface.openDeclared('lingxia-chat');`,
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.surface.openDeclared('lingxia-chat');
     });
     const declaredAside = await waitForValue(async () => {
       const candidate = await app.surfaceLayout();
@@ -2877,35 +2837,32 @@ desktopTest('rejects stable-root mutations without changing the host model', {
   covers: ['lx.shell.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
-  const result = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const driver = lx.automation().lxapp();
-      const snapshot = () => driver.surfaceLayout();
-      const initial = await snapshot();
-      const rootId = initial.mainSwitcher.rootSurfaceId;
-      if (!rootId) throw new Error('surface graph has no stable root');
-      const root = await lx.shell.openDeclared(rootId, { as: 'main' });
-      const beforeRejections = await snapshot();
-      let closeError = '';
-      try { await root.close(); } catch (error) { closeError = String(error); }
-      let roleError = '';
-      try {
-        await lx.shell.openDeclared(rootId, { as: 'aside', edge: 'right' });
-      } catch (error) {
-        roleError = String(error);
-      }
-      return {
-        rootId,
-        closeError,
-        roleError,
-        role: root.role,
-        visible: root.visible,
-        alive: root.alive,
-        beforeRejections,
-        afterRejections: await snapshot(),
-      };
-    `,
+  const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+    const driver = lx.automation().lxapp();
+    const snapshot = () => driver.surfaceLayout();
+    const initial = await snapshot();
+    const rootId = initial.mainSwitcher.rootSurfaceId;
+    if (!rootId) throw new Error('surface graph has no stable root');
+    const root = await lx.shell.openDeclared(rootId, { as: 'main' });
+    const beforeRejections = await snapshot();
+    let closeError = '';
+    try { await root.close(); } catch (error) { closeError = String(error); }
+    let roleError = '';
+    try {
+      await lx.shell.openDeclared(rootId, { as: 'aside', edge: 'right' });
+    } catch (error) {
+      roleError = String(error);
+    }
+    return {
+      rootId,
+      closeError,
+      roleError,
+      role: (root as WithRole<typeof root>).role,
+      visible: root.visible,
+      alive: root.alive,
+      beforeRejections,
+      afterRejections: await snapshot(),
+    };
   }) as {
     rootId: string;
     closeError: string;
@@ -2940,86 +2897,81 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
   const key = `automation-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const result = await raw.eval({
-    timeoutMs: 45_000,
-    script: `
-      const driver = lx.automation().lxapp();
-      const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
-      const key = ${JSON.stringify(key)};
-      const visibility = { hide: [], show: [] };
-      const closed = [];
-      let surface;
-      const off = [];
-      let output;
-      try {
-        surface = await lx.shell.openDeclared('terminal', {
-          key, as: 'aside', edge: 'right',
-        });
-        off.push(
-          surface.onHide((event) => visibility.hide.push(event)),
-          surface.onShow((event) => visibility.show.push(event)),
-          surface.onClose((event) => closed.push(event)),
-        );
-        const aside = await snapshot();
-        const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
-        const mainLayout = await snapshot();
-        const roleAfterMain = main.role;
-        let hideError = '';
-        try { await main.hide(); } catch (error) { hideError = String(error); }
-        const afterRejectedHide = await snapshot();
-        const docked = await lx.shell.openDeclared('terminal', {
-          key, as: 'aside', edge: 'bottom',
-        });
-        const dockedLayout = await snapshot();
-        await docked.hide();
-        await docked.hide();
-        const hiddenLayout = await snapshot();
-        await docked.show();
-        await docked.show();
-        const shownLayout = await snapshot();
-        await docked.close();
-        await settle();
-        const afterClose = await snapshot();
-        const revisionAfterClose = afterClose.mainSwitcher.revision;
-        await docked.close();
-        await settle();
-        const afterRepeatedClose = await snapshot();
-        output = {
-          id: surface.id,
-          sameMainId: main.id === surface.id,
-          sameMainHandle: main === surface,
-          sameAsideId: docked.id === surface.id,
-          sameAsideHandle: docked === surface,
-          roleAfterMain,
-          roleAfterDock: docked.role,
-          presentationAfterDock: docked.presentation,
-          hideError,
-          aliveAfterClose: docked.alive,
-          visibleAfterClose: docked.visible,
-          aside,
-          mainLayout,
-          afterRejectedHide,
-          dockedLayout,
-          hiddenLayout,
-          shownLayout,
-          afterClose,
-          afterRepeatedClose,
-          revisionAfterClose,
-          visibility: {
-            hide: visibility.hide.map((event) => ({ ...event })),
-            show: visibility.show.map((event) => ({ ...event })),
-          },
-          closed: closed.map((event) => ({ ...event })),
-        };
-      } finally {
-        for (const unsubscribe of off.splice(0)) unsubscribe();
-        if (surface?.alive) await surface.close();
-      }
-      output.afterCleanup = await snapshot();
-      return output;
-    `,
-  }) as {
+  const result = await app.logic.eval({ timeout: 45_000 }, async ({ lx }, key) => {
+    const driver = lx.automation().lxapp();
+    const snapshot = () => driver.surfaceLayout();
+    const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
+    const visibility: { hide: VisibilityEvent[]; show: VisibilityEvent[] } = { hide: [], show: [] };
+    const closed: CloseEvent[] = [];
+    let surface;
+    const off = [];
+    let output;
+    try {
+      surface = await lx.shell.openDeclared('terminal', {
+        key, as: 'aside', edge: 'right',
+      });
+      off.push(
+        surface.onHide((event) => visibility.hide.push(event)),
+        surface.onShow((event) => visibility.show.push(event)),
+        surface.onClose((event) => closed.push(event)),
+      );
+      const aside = await snapshot();
+      const main = await lx.shell.openDeclared('terminal', { key, as: 'main' });
+      const mainLayout = await snapshot();
+      const roleAfterMain = (main as WithRole<typeof main>).role;
+      let hideError = '';
+      try { await main.hide(); } catch (error) { hideError = String(error); }
+      const afterRejectedHide = await snapshot();
+      const docked = await lx.shell.openDeclared('terminal', {
+        key, as: 'aside', edge: 'bottom',
+      });
+      const dockedLayout = await snapshot();
+      await docked.hide();
+      await docked.hide();
+      const hiddenLayout = await snapshot();
+      await docked.show();
+      await docked.show();
+      const shownLayout = await snapshot();
+      await docked.close();
+      await settle();
+      const afterClose = await snapshot();
+      const revisionAfterClose = afterClose.mainSwitcher.revision;
+      await docked.close();
+      await settle();
+      const afterRepeatedClose = await snapshot();
+      output = {
+        id: surface.id,
+        sameMainId: main.id === surface.id,
+        sameMainHandle: main === surface,
+        sameAsideId: docked.id === surface.id,
+        sameAsideHandle: docked === surface,
+        roleAfterMain,
+        roleAfterDock: (docked as WithRole<typeof docked>).role,
+        presentationAfterDock: (docked as WithRole<typeof docked>).presentation,
+        hideError,
+        aliveAfterClose: docked.alive,
+        visibleAfterClose: docked.visible,
+        aside,
+        mainLayout,
+        afterRejectedHide,
+        dockedLayout,
+        hiddenLayout,
+        shownLayout,
+        afterClose,
+        afterRepeatedClose,
+        revisionAfterClose,
+        visibility: {
+          hide: visibility.hide.map((event) => ({ ...event })),
+          show: visibility.show.map((event) => ({ ...event })),
+        },
+        closed: closed.map((event) => ({ ...event })),
+      };
+    } finally {
+      for (const unsubscribe of off.splice(0)) unsubscribe();
+      if (surface?.alive) await surface.close();
+    }
+    return { ...output!, afterCleanup: await snapshot() };
+  }, key) as {
     id: string;
     sameMainId: boolean;
     sameMainHandle: boolean;
@@ -3116,114 +3068,114 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
     second: `${token}-second`,
     concurrent: `${token}-concurrent`,
   };
-  const result = await raw.eval({
-    timeoutMs: 60_000,
-    script: `
-      const driver = lx.automation().lxapp();
-      const snapshot = () => driver.surfaceLayout();
-      const settle = () => new Promise((resolve) => setTimeout(() => resolve(), 100));
-      const waitFor = async (predicate, label) => {
-        const deadline = Date.now() + 5_000;
-        while (Date.now() < deadline) {
-          if (predicate()) return;
-          await new Promise((resolve) => setTimeout(() => resolve(), 20));
-        }
-        throw new Error(label + ' was not observed');
-      };
-      const keys = ${JSON.stringify(keys)};
-      const events = { firstHide: [], firstShow: [], secondHide: [], concurrentClose: [] };
-      const opened = [];
-      const off = [];
-      let output;
-      try {
-        const baseline = await snapshot();
-        const first = await lx.shell.openDeclared('terminal', {
-          key: '  ' + keys.first + '  ', as: 'main',
-        });
-        opened.push(first);
-        off.push(
-          first.onHide((event) => events.firstHide.push(event)),
-          first.onShow((event) => events.firstShow.push(event)),
-        );
-        const afterFirst = await snapshot();
-
-        const second = await lx.shell.openDeclared('terminal', {
-          key: keys.second, as: 'main',
-        });
-        opened.push(second);
-        off.push(second.onHide((event) => events.secondHide.push(event)));
-        await waitFor(() => events.firstHide.length === 1, 'first hide after second open');
-        const afterSecond = await snapshot();
-
-        const reopened = await lx.shell.openDeclared('terminal', {
-          key: keys.first, as: 'main',
-        });
-        opened.push(reopened);
-        await waitFor(
-          () => events.firstShow.length === 1 && events.secondHide.length === 1,
-          'paired show/hide after reopening first',
-        );
-        const afterReopen = await snapshot();
-
-        const [concurrentFirst, concurrentSecond] = await Promise.all([
-          lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
-          lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
-        ]);
-        opened.push(concurrentFirst, concurrentSecond);
-        off.push(concurrentFirst.onClose((event) => events.concurrentClose.push(event)));
-        await waitFor(() => events.firstHide.length === 2, 'first hide after concurrent open');
-        const afterConcurrent = await snapshot();
-
-        await concurrentFirst.close();
-        await waitFor(() => events.concurrentClose.length === 1, 'concurrent close');
-        await settle();
-        const afterClose = await snapshot();
-        await concurrentSecond.close();
-        await settle();
-        const afterRepeatedClose = await snapshot();
-
-        output = {
-          baseline,
-          ids: {
-            first: first.id,
-            second: second.id,
-            concurrent: concurrentFirst.id,
-          },
-          firstState: {
-            role: first.role,
-            presentation: first.presentation,
-            alive: first.alive,
-          },
-          distinctIds: first.id !== second.id && second.id !== concurrentFirst.id,
-          reopenedSameId: reopened.id === first.id,
-          reopenedSameHandle: reopened === first,
-          concurrentSameId: concurrentFirst.id === concurrentSecond.id,
-          concurrentSameHandle: concurrentFirst === concurrentSecond,
-          concurrentAliveAfterClose: concurrentFirst.alive,
-          concurrentVisibleAfterClose: concurrentFirst.visible,
-          afterFirst,
-          afterSecond,
-          afterReopen,
-          afterConcurrent,
-          afterClose,
-          afterRepeatedClose,
-          events: {
-            firstHide: events.firstHide.map((event) => ({ ...event })),
-            firstShow: events.firstShow.map((event) => ({ ...event })),
-            secondHide: events.secondHide.map((event) => ({ ...event })),
-            concurrentClose: events.concurrentClose.map((event) => ({ ...event })),
-          },
-        };
-      } finally {
-        for (const unsubscribe of off.splice(0)) unsubscribe();
-        for (const surface of [...new Set(opened)].reverse()) {
-          if (surface.alive) await surface.close();
-        }
+  const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, keys) => {
+    const driver = lx.automation().lxapp();
+    const snapshot = () => driver.surfaceLayout();
+    const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
+    const waitFor = async (predicate: () => boolean, label: string) => {
+      const deadline = Date.now() + 5_000;
+      while (Date.now() < deadline) {
+        if (predicate()) return;
+        await new Promise<void>((resolve) => setTimeout(() => resolve(), 20));
       }
-      output.afterCleanup = await snapshot();
-      return output;
-    `,
-  }) as {
+      throw new Error(label + ' was not observed');
+    };
+    const events: {
+      firstHide: VisibilityEvent[];
+      firstShow: VisibilityEvent[];
+      secondHide: VisibilityEvent[];
+      concurrentClose: CloseEvent[];
+    } = { firstHide: [], firstShow: [], secondHide: [], concurrentClose: [] };
+    const opened = [];
+    const off = [];
+    let output;
+    try {
+      const baseline = await snapshot();
+      const first = await lx.shell.openDeclared('terminal', {
+        key: '  ' + keys.first + '  ', as: 'main',
+      });
+      opened.push(first);
+      off.push(
+        first.onHide((event) => events.firstHide.push(event)),
+        first.onShow((event) => events.firstShow.push(event)),
+      );
+      const afterFirst = await snapshot();
+
+      const second = await lx.shell.openDeclared('terminal', {
+        key: keys.second, as: 'main',
+      });
+      opened.push(second);
+      off.push(second.onHide((event) => events.secondHide.push(event)));
+      await waitFor(() => events.firstHide.length === 1, 'first hide after second open');
+      const afterSecond = await snapshot();
+
+      const reopened = await lx.shell.openDeclared('terminal', {
+        key: keys.first, as: 'main',
+      });
+      opened.push(reopened);
+      await waitFor(
+        () => events.firstShow.length === 1 && events.secondHide.length === 1,
+        'paired show/hide after reopening first',
+      );
+      const afterReopen = await snapshot();
+
+      const [concurrentFirst, concurrentSecond] = await Promise.all([
+        lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
+        lx.shell.openDeclared('terminal', { key: keys.concurrent, as: 'main' }),
+      ]);
+      opened.push(concurrentFirst, concurrentSecond);
+      off.push(concurrentFirst.onClose((event) => events.concurrentClose.push(event)));
+      await waitFor(() => events.firstHide.length === 2, 'first hide after concurrent open');
+      const afterConcurrent = await snapshot();
+
+      await concurrentFirst.close();
+      await waitFor(() => events.concurrentClose.length === 1, 'concurrent close');
+      await settle();
+      const afterClose = await snapshot();
+      await concurrentSecond.close();
+      await settle();
+      const afterRepeatedClose = await snapshot();
+
+      output = {
+        baseline,
+        ids: {
+          first: first.id,
+          second: second.id,
+          concurrent: concurrentFirst.id,
+        },
+        firstState: {
+          role: (first as WithRole<typeof first>).role,
+          presentation: (first as WithRole<typeof first>).presentation,
+          alive: first.alive,
+        },
+        distinctIds: first.id !== second.id && second.id !== concurrentFirst.id,
+        reopenedSameId: reopened.id === first.id,
+        reopenedSameHandle: reopened === first,
+        concurrentSameId: concurrentFirst.id === concurrentSecond.id,
+        concurrentSameHandle: concurrentFirst === concurrentSecond,
+        concurrentAliveAfterClose: concurrentFirst.alive,
+        concurrentVisibleAfterClose: concurrentFirst.visible,
+        afterFirst,
+        afterSecond,
+        afterReopen,
+        afterConcurrent,
+        afterClose,
+        afterRepeatedClose,
+        events: {
+          firstHide: events.firstHide.map((event) => ({ ...event })),
+          firstShow: events.firstShow.map((event) => ({ ...event })),
+          secondHide: events.secondHide.map((event) => ({ ...event })),
+          concurrentClose: events.concurrentClose.map((event) => ({ ...event })),
+        },
+      };
+    } finally {
+      for (const unsubscribe of off.splice(0)) unsubscribe();
+      for (const surface of [...new Set(opened)].reverse()) {
+        if (surface.alive) await surface.close();
+      }
+    }
+    return { ...output!, afterCleanup: await snapshot() };
+  }, keys) as {
     baseline: SurfaceLayoutSnapshot;
     ids: { first: string; second: string; concurrent: string };
     firstState: { role: string; presentation: string; alive: boolean };

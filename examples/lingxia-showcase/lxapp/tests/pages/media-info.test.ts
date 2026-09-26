@@ -1,9 +1,6 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-import { bindFixture, evalCaught } from '../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { bindFixture, type Caught } from '../helpers/poll.js';
 
 /**
  * Local media processing — info, thumbnail, and compression — needs real bytes,
@@ -45,52 +42,49 @@ mediaSpec('read info, thumbnail, and compress local media', {
 }, async (t) => {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-001');
 
-  const result = await raw.eval({
-    timeoutMs: 45_000,
-    script: `
-      const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
-      const video = await lx.getVideoInfo({ path: vid.uri });
-      const thumb = await lx.extractVideoThumbnail({ path: vid.uri, timeMs: 500 });
-      const compressedImage = await lx.compressImage({ path: png.uri, quality: 60 });
-      const compressedVideo = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result;
-      // Drain task.progress to prove progress events flow before the result settles.
-      let lastProgress = -1;
-      let progressTicks = 0;
-      const progressTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
-      for await (const tick of progressTask.progress) {
-        if (typeof tick.progress === 'number') { lastProgress = tick.progress; progressTicks += 1; }
-      }
-      await progressTask.result;
-      // The result Promise supports: then/finally on success, catch on a bad
-      // path, and an early iterator return leaves nothing dangling.
-      let finallyRan = false;
-      const viaThen = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result
-        .then((r) => r.size)
-        .finally(() => { finallyRan = true; });
-      // A missing source throws synchronously; an aborted task rejects, which
-      // is the path .catch() is for.
-      const cancelled = lx.compressVideo({ path: vid.uri, quality: 'high' });
-      cancelled.cancel();
-      const caught = await cancelled.result.then(() => null).catch((error) => error && error.code);
-      const earlyTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
-      const iterator = earlyTask.progress[Symbol.asyncIterator]();
-      const returned = await iterator.return();
-      await earlyTask.result;
-      return {
-        lastProgress,
-        progressTicks,
-        viaThen,
-        finallyRan,
-        caught,
-        returnedDone: returned.done === true,
-        video: { width: video.width, height: video.height, durationMs: video.durationMs, size: video.size, type: video.type },
-        thumb: { uri: thumb.uri, width: thumb.width, height: thumb.height },
-        compressedImage: { uri: compressedImage.uri },
-        compressedVideo: { uri: compressedVideo.uri, size: compressedVideo.size },
-      };
-    `,
-  }) as MediaResult;
+  const result: MediaResult = await app.logic.eval({ timeout: 45_000 }, async ({ lx }, base) => {
+    const vid = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
+    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
+    const video = await lx.getVideoInfo({ path: vid.uri });
+    const thumb = await lx.extractVideoThumbnail({ path: vid.uri, timeMs: 500 });
+    const compressedImage = await lx.compressImage({ path: png.uri, quality: 60 });
+    const compressedVideo = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result;
+    // Drain task.progress to prove progress events flow before the result settles.
+    let lastProgress = -1;
+    let progressTicks = 0;
+    const progressTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
+    for await (const tick of progressTask.progress) {
+      if (typeof tick.progress === 'number') { lastProgress = tick.progress; progressTicks += 1; }
+    }
+    await progressTask.result;
+    // The result Promise supports: then/finally on success, catch on a bad
+    // path, and an early iterator return leaves nothing dangling.
+    let finallyRan: boolean = false;
+    const viaThen = await lx.compressVideo({ path: vid.uri, quality: 'low' }).result
+      .then((r) => r.size)
+      .finally(() => { finallyRan = true; });
+    // A missing source throws synchronously; an aborted task rejects, which
+    // is the path .catch() is for.
+    const cancelled = lx.compressVideo({ path: vid.uri, quality: 'high' });
+    cancelled.cancel();
+    const caught = await cancelled.result.then(() => null).catch((error: { code?: string } | null) => error?.code ?? null);
+    const earlyTask = lx.compressVideo({ path: vid.uri, quality: 'low' });
+    const iterator = earlyTask.progress[Symbol.asyncIterator]();
+    const returned = await iterator.return!();
+    await earlyTask.result;
+    return {
+      lastProgress,
+      progressTicks,
+      viaThen,
+      finallyRan: finallyRan as boolean,
+      caught,
+      returnedDone: returned.done === true,
+      video: { width: video.width, height: video.height, durationMs: video.durationMs, size: video.size, type: video.type ?? "" },
+      thumb: { uri: thumb.uri, width: thumb.width, height: thumb.height },
+      compressedImage: { uri: compressedImage.uri },
+      compressedVideo: { uri: compressedVideo.uri, size: compressedVideo.size },
+    };
+  }, httpBase);
 
   // The clip is a known 160×90, 4s sample — its metadata is exact, not a guess.
   expect(result.video.width).toBe(160);
@@ -122,14 +116,11 @@ mediaSpec('read info, thumbnail, and compress local media', {
   expect(result.compressedVideo.size).toBeGreaterThan(0);
 
   // A compressed output the lxapp cannot read back is not an output.
-  const sizes = await raw.eval({
-    script: `
-      const image = await lx.fs.stat(${JSON.stringify(result.compressedImage.uri)});
-      const video = await lx.fs.stat(${JSON.stringify(result.compressedVideo.uri)});
-      const thumb = await lx.fs.stat(${JSON.stringify(result.thumb.uri)});
-      return { image: image.size, video: video.size, thumb: thumb.size };
-    `,
-  }) as { image: number; video: number; thumb: number };
+  const sizes = await app.logic.eval(async ({ lx }, image, video, thumb) => ({
+    image: (await lx.fs.stat(image)).size,
+    video: (await lx.fs.stat(video)).size,
+    thumb: (await lx.fs.stat(thumb)).size,
+  }), result.compressedImage.uri, result.compressedVideo.uri, result.thumb.uri);
   expect(sizes.image).toBeGreaterThan(0);
   expect(sizes.video).toBeGreaterThan(0);
   expect(sizes.thumb).toBeGreaterThan(0);
@@ -144,12 +135,17 @@ mediaSpec('cancel an in-flight compressVideo and reject with E_ABORT', {
 }, async (t) => {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-CANCEL-001');
 
-  const outcome = await evalCaught(raw, `
-    const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
-    const task = lx.compressVideo({ path: vid.uri, quality: 'high' });
-    task.cancel();
-    return await task.result;
-  `);
+  const outcome: Caught = await app.logic.eval({ timeout: 30_000 }, async ({ lx }, base) => {
+    try {
+      const vid = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
+      const task = lx.compressVideo({ path: vid.uri, quality: 'high' });
+      task.cancel();
+      return { ok: true, value: await task.result };
+    } catch (error) {
+      const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+      return { ok: false, code, message: String(message ?? error), data };
+    }
+  }, httpBase);
 
   expect(outcome.ok).toBeFalsy();
   expect(outcome.code).toBe('E_ABORT');

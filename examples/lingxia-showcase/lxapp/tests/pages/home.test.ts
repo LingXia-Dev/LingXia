@@ -1,7 +1,7 @@
 import type { TestApp } from '@lingxia/test';
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeTabBarInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { eventually } from '../helpers/poll.js';
 import {
   currentPageOrNull,
@@ -11,9 +11,6 @@ import {
   waitForElementEnabled,
   waitForElementText,
 } from '../helpers/page.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 async function waitForTabBar(
   app: TestApp,
@@ -33,21 +30,21 @@ async function waitForTabBar(
 
 spec('home View MessagePort is up without relaunch', async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
-  const current = await currentPageOrNull(raw);
+  const current = await currentPageOrNull(app);
   if (current?.name !== 'home') {
     await app.nav.switchTab({ page: 'home' });
   }
   // `ready` waits on View handshake. Do not relaunch: that remounts a visible
   // WebView and hides the cold-start MessagePort miss.
-  await waitForCurrentPage(raw, 'home', 20_000);
+  await waitForCurrentPage(app, 'home', 20_000);
 });
 
 spec('greets through real page input and the Logic bridge', async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   await eventually(
-    () => raw.eval({ script: 'return typeof lx.host.displayLanguage.get' }),
+    () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.displayLanguage.get),
     (kind) => kind === 'function',
     { describe: 'home Logic runtime', timeoutMs: 20_000, retryIf: () => true },
   );
@@ -55,17 +52,17 @@ spec('greets through real page input and the Logic bridge', async (t) => {
   const name = `Gate ${Date.now()}`;
   await app.view.testId("home-name", { page: 'home' }).fill(name);
   await waitForElementAttribute(
-    raw,
+    t,
     'home',
     '[data-testid="home-name"]',
     'data-controlled-value',
     name,
   );
-  await waitForElementEnabled(raw, 'home', '[data-testid="home-greet"]');
+  await waitForElementEnabled(t, 'home', '[data-testid="home-greet"]');
   await app.view.testId("home-greet", { page: 'home' }).click();
 
   expect(await waitForElementText(
-    raw,
+    t,
     'home',
     '[data-testid="home-greeting"]',
     (text) => text.includes(name),
@@ -86,23 +83,24 @@ spec('switches display language from the home control', {
 }, async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-language"]');
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(
-    () => raw.eval({ script: 'return typeof lx.host.control?.displayLanguage?.setPreference' }),
+    () => app.logic.eval({ timeout: 20_000 }, ({ lx }) => typeof lx.host.control?.displayLanguage?.setPreference),
     (kind) => kind === 'function',
     { describe: 'home Logic displayLanguage control', timeoutMs: 20_000, retryIf: () => true },
   );
 
-  const original = await raw.eval({
-    script: 'return lx.host.control.displayLanguage.getPreference()',
-  }) as string;
+  const original = await app.logic.eval(({ lx }) => {
+    const control = lx.host.control;
+    if (!control) throw new Error('lx.host.control is not injected');
+    return control.displayLanguage.getPreference();
+  });
 
   try {
-    await raw.page.scrollTo({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
-    await waitForElementEnabled(raw, 'home', '[data-testid="home-language-zh-CN"]');
+    await waitForElementEnabled(t, 'home', '[data-testid="home-language-zh-CN"]');
     await app.view.testId('home-language-zh-CN', { page: 'home' }).click();
     await eventually(
-      () => raw.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
+      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.control?.displayLanguage.getPreference()),
       (preference) => preference === 'zh-CN',
       {
         describe: 'home language control to set zh-CN',
@@ -111,14 +109,14 @@ spec('switches display language from the home control', {
       },
     );
     expect(await waitForElementText(
-      raw,
+      t,
       'home',
       '[data-testid="home-tagline"]',
       (text) => text.includes('轻量应用框架'),
       15_000,
     )).toContain('轻量应用框架');
     await waitForElementAttribute(
-      raw,
+      t,
       'home',
       '[data-testid="home-language-zh-CN"]',
       'data-selected',
@@ -134,11 +132,10 @@ spec('switches display language from the home control', {
       'tab bar labels after zh-CN',
     );
 
-    await raw.page.scrollTo({ page: 'home', css: '[data-testid="home-language-en-US"]' });
-    await waitForElementEnabled(raw, 'home', '[data-testid="home-language-en-US"]');
+    await waitForElementEnabled(t, 'home', '[data-testid="home-language-en-US"]');
     await app.view.testId('home-language-en-US', { page: 'home' }).click();
     await eventually(
-      () => raw.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
+      () => app.logic.eval({ timeout: 15_000 }, ({ lx }) => lx.host.control?.displayLanguage.getPreference()),
       (preference) => preference === 'en-US',
       {
         describe: 'home language control to set en-US',
@@ -147,14 +144,14 @@ spec('switches display language from the home control', {
       },
     );
     expect(await waitForElementText(
-      raw,
+      t,
       'home',
       '[data-testid="home-tagline"]',
       (text) => text.includes('Lightweight Application Framework'),
       15_000,
     )).toContain('Lightweight Application Framework');
     await waitForElementAttribute(
-      raw,
+      t,
       'home',
       '[data-testid="home-language-en-US"]',
       'data-selected',
@@ -170,8 +167,8 @@ spec('switches display language from the home control', {
       'tab bar labels after en-US',
     );
   } finally {
-    await raw.eval({
-      script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(original)})`,
-    });
+    await app.logic.eval(async ({ lx }, original) => {
+      await lx.host.control?.displayLanguage.setPreference(original);
+    }, original);
   }
 });
