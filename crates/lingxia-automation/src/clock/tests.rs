@@ -288,7 +288,10 @@ fn installing_twice_is_refused_and_calls_need_the_owner_token() {
         return {{ first, same, second, foreign, bad }};
         "#
     ));
-    assert_eq!(result["first"], json!({ "ok": true, "now": 0 }));
+    assert_eq!(
+        result["first"],
+        json!({ "ok": true, "now": 0, "pending": 0 })
+    );
     assert_eq!(result["same"], json!({ "error": "installed" }));
     assert_eq!(result["second"], json!({ "error": "installed" }));
     assert_eq!(result["foreign"], json!({ "error": "not_installed" }));
@@ -316,7 +319,10 @@ fn a_clock_whose_lease_ends_uninstalls_itself() {
         return {{ replaced, stillFake, restored: Date === RealDate, state: clock.state({next}) }};
         "#
     ));
-    assert_eq!(result["replaced"], json!({ "ok": true, "now": 0 }));
+    assert_eq!(
+        result["replaced"],
+        json!({ "ok": true, "now": 0, "pending": 0 })
+    );
     assert_eq!(result["stillFake"], true);
     assert_eq!(result["restored"], true);
     assert_eq!(
@@ -518,5 +524,34 @@ fn options_arguments_accept_undefined_and_null() {
     assert_eq!(
         out,
         r#"["none","none","none","now:true","none","none","none","max:Some(3.0)"]"#
+    );
+}
+
+#[test]
+fn install_and_set_system_time_resolve_the_clock_state() {
+    let t = token();
+    let result = eval_clock(&format!(
+        r#"
+        lease({t});
+        const installed = clock.install({t}, 5);
+        setTimeout(() => {{}}, 10);
+        const set = clock.setSystemTime({t}, 50);
+        clock.uninstall();
+        return {{ installed, set }};
+        "#
+    ));
+    assert_eq!(
+        super::state(&result["installed"]),
+        super::ClockState {
+            now: 5.0,
+            pending: 0.0
+        }
+    );
+    assert_eq!(
+        super::state(&result["set"]),
+        super::ClockState {
+            now: 50.0,
+            pending: 1.0
+        }
     );
 }

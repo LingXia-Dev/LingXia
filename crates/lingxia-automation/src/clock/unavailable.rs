@@ -34,7 +34,7 @@ impl JSClockDriver {
     }
 
     #[js_method]
-    async fn install(&self, _options: Optional<JSValue>) -> JSResult<f64> {
+    async fn install(&self, _options: Optional<JSValue>) -> JSResult<()> {
         Err(auto_err(UNAVAILABLE))
     }
 
@@ -49,7 +49,7 @@ impl JSClockDriver {
     }
 
     #[js_method(rename = "setSystemTime")]
-    async fn set_system_time(&self, _time: JSValue) -> JSResult<f64> {
+    async fn set_system_time(&self, _time: JSValue) -> JSResult<()> {
         Err(auto_err(UNAVAILABLE))
     }
 

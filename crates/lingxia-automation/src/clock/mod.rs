@@ -308,6 +308,15 @@ struct RunAllOptions {
     max_timers: Option<f64>,
 }
 
+/// Fake time after `install` / `setSystemTime`.
+#[derive(Debug, Clone, PartialEq, IntoJSObject)]
+pub(crate) struct ClockState {
+    /// Fake epoch milliseconds.
+    pub(crate) now: f64,
+    /// Timers still scheduled on the fake clock.
+    pub(crate) pending: f64,
+}
+
 #[derive(Debug, Clone, IntoJSObject)]
 struct ClockAdvance {
     /// Fake epoch milliseconds after the call.
@@ -327,6 +336,13 @@ struct ClockUninstall {
 
 fn number(value: &Value, key: &str) -> f64 {
     value.get(key).and_then(Value::as_f64).unwrap_or(0.0)
+}
+
+pub(crate) fn state(value: &Value) -> ClockState {
+    ClockState {
+        now: number(value, "now"),
+        pending: number(value, "pending"),
+    }
 }
 
 fn advance(value: Value) -> ClockAdvance {
@@ -374,14 +390,15 @@ impl JSClockDriver {
     }
 
     /// Put the app's Logic on fake time, starting at `now` (default: the
-    /// real current time). Resolves the fake epoch milliseconds.
+    /// real current time). Resolves the fake epoch milliseconds and the
+    /// pending fake timers (none yet).
     #[js_method]
     async fn install(
         &self,
         ctx: JSContext,
         // `Option` inside: an explicit `undefined` or `null` means no options.
         options: Optional<Option<InstallOptions>>,
-    ) -> JSResult<f64> {
+    ) -> JSResult<ClockState> {
         let (app, scope) = self.target(&ctx)?;
         let now = match options.0.flatten().and_then(|options| options.now) {
             Some(now) => time_arg(now)?,
@@ -403,7 +420,7 @@ impl JSClockDriver {
                 // Earlier leases of this run for the app belonged to clocks a
                 // reopen already discarded.
                 release_app(&scope.run_id, &app.appid, Some(token));
-                Ok(number(&value, "now"))
+                Ok(state(&value))
             }
             Ok(other) => {
                 with_leases(|leases| leases.remove(&token));
@@ -459,7 +476,7 @@ impl JSClockDriver {
     /// Set what `Date` reads without firing timers; timer due times and
     /// `performance.now` are unaffected.
     #[js_method(rename = "setSystemTime")]
-    async fn set_system_time(&self, ctx: JSContext, time: JSValue) -> JSResult<f64> {
+    async fn set_system_time(&self, ctx: JSContext, time: JSValue) -> JSResult<ClockState> {
         let (app, scope) = self.target(&ctx)?;
         let time = time_arg(time)?;
         if time.is_null() {
@@ -473,7 +490,7 @@ impl JSClockDriver {
         )
         .await?;
         match outcome(value) {
-            Outcome::Ok(value) => Ok(number(&value, "now")),
+            Outcome::Ok(value) => Ok(state(&value)),
             other => Err(reject(other, "setSystemTime")),
         }
     }
