@@ -36,7 +36,7 @@ spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", 
     const rejection = await app.logic.eval({ timeout: 15_000 }, async ({ lx }) => {
       // The raw driver's `{ script }` eval is what this spec is about.
       try {
-        await rawAutomation().lxapp().eval({ script: 'true', timeoutMs: 1_000 });
+        await lx.automation().lxapp().eval({ script: 'true', timeoutMs: 1_000 });
         return { rejected: false };
       } catch (error) {
         const failure = error as { code?: string; message?: string } | null;

@@ -1,5 +1,5 @@
 import type { TestApp } from '@lingxia/test';
-import { expect, rawAutomation, spec, type Fixture } from '@lingxia/test';
+import { expect, spec, type Fixture } from '@lingxia/test';
 import type {
   AutomationShellPin,
   BrowserDriver,
@@ -1191,7 +1191,7 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
   const result = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
-    const driver = rawAutomation().lxapp();
+    const driver = lx.automation().lxapp();
     const snapshot = () => driver.surfaceLayout();
     const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
     const before = await snapshot();
@@ -2838,7 +2838,7 @@ desktopTest('rejects stable-root mutations without changing the host model', {
 }, async (t) => {
   const app = await desktopApp(t);
   const result = await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
-    const driver = rawAutomation().lxapp();
+    const driver = lx.automation().lxapp();
     const snapshot = () => driver.surfaceLayout();
     const initial = await snapshot();
     const rootId = initial.mainSwitcher.rootSurfaceId;
@@ -2898,7 +2898,7 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   const before = await app.surfaceLayout();
   const key = `automation-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const result = await app.logic.eval({ timeout: 45_000 }, async ({ lx }, key) => {
-    const driver = rawAutomation().lxapp();
+    const driver = lx.automation().lxapp();
     const snapshot = () => driver.surfaceLayout();
     const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
     const visibility: { hide: VisibilityEvent[]; show: VisibilityEvent[] } = { hide: [], show: [] };
@@ -3069,7 +3069,7 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
     concurrent: `${token}-concurrent`,
   };
   const result = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, keys) => {
-    const driver = rawAutomation().lxapp();
+    const driver = lx.automation().lxapp();
     const snapshot = () => driver.surfaceLayout();
     const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
     const waitFor = async (predicate: () => boolean, label: string) => {
