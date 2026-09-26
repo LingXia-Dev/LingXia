@@ -216,6 +216,10 @@ with one line naming the parts and the fix (`npm install …@~M.m.0`, or
 `lingxia upgrade`); `LINGXIA_ALLOW_SKEW=1` downgrades it to a warning, and
 `lingxia doctor --project` prints every version.
 
+The desktop Runner must be this CLI's own build: a released CLI fetches it; a
+CLI built from a checkout needs a Runner built from the same commit
+(`tools/lingxia-runner/macos/install-local-runner.sh`, or `.ps1` on Windows).
+
 While the session is live, `lingxia dev` watches standalone lxapp sources and
 each host `resources.bundles[].path` that is a local lxapp. A save rebuilds
 that bundle and reloads it in place (`pages` / `tabBar` / `navigationStyle`

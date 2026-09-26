@@ -204,7 +204,8 @@ for platform in "${TARGETS[@]}"; do
   echo "========================================"
 
   if [[ "$SKIP_BUILD" -eq 0 ]]; then
-    (cd "$ROOT_DIR" && cargo build -p lingxia-cli -p lingxia-devtools-cli --release --target "$rust_target")
+    # A release CLI runs its version's release Runner (see runner_cache.rs).
+    (cd "$ROOT_DIR" && LINGXIA_RELEASE_BUILD=1 cargo build -p lingxia-cli -p lingxia-devtools-cli --release --target "$rust_target")
   fi
 
   for bin in "${CLI_BINS[@]}"; do

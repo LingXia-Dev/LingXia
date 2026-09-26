@@ -270,6 +270,20 @@ Write-Host "==> Installing Windows Runner to $TargetDir"
 Remove-Item -LiteralPath $TmpTargetDir, $BackupTargetDir -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force -Path $TmpTargetDir | Out-Null
 Copy-Item -LiteralPath $RunnerExe -Destination (Join-Path $TmpTargetDir "lingxia-runner.exe") -Force
+# What this Runner is: `lingxia dev` runs it only for a CLI of the same commit.
+$RunnerStamp = [ordered]@{ version = $RunnerVersion }
+try {
+    $RunnerCommit = (& git -C "$RootDir" rev-parse HEAD 2>$null)
+    if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($RunnerCommit)) {
+        $RunnerStamp.commit = ([string]$RunnerCommit).Trim()
+    }
+} catch {
+    Write-Host "    (no git commit recorded for this Runner: $_)"
+}
+[IO.File]::WriteAllText(
+    (Join-Path $TmpTargetDir "runner-build.json"),
+    ($RunnerStamp | ConvertTo-Json -Compress)
+)
 New-Item -ItemType Directory -Force -Path $TargetParent | Out-Null
 if (Test-Path $TargetDir) {
     Move-Item -LiteralPath $TargetDir -Destination $BackupTargetDir

@@ -423,9 +423,9 @@ fn launch_runner_for_lxapp(
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
     ensure_valid_lxapp_dir(lxapp_path)?;
-    // Provision the runner from the matching release if it isn't installed yet
-    // (end users install only the CLI; this self-heals the first `lingxia dev`).
-    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
+    // This CLI's own Runner build: fetched for a release CLI (end users install
+    // only the CLI; this self-heals the first `lingxia dev`), refused if stale.
+    crate::runner_cache::ensure_matching_runner()?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
 
@@ -488,7 +488,7 @@ fn launch_runner_for_web(
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::apple::ensure_macos()?;
-    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
+    crate::runner_cache::ensure_matching_runner()?;
     let app_path = installed_runner_app_path()?;
     ensure_runner_matches_cli(&app_path)?;
     let pid_file = runner_pid_file(session_root);
@@ -745,8 +745,8 @@ fn launch_windows_runner_for_lxapp(
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
     ensure_valid_lxapp_dir(lxapp_path)?;
-    // Provision the runner from the matching release if it isn't installed yet.
-    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
+    // This CLI's own Runner build (fetched for a release CLI, refused if stale).
+    crate::runner_cache::ensure_matching_runner()?;
     let identity = read_windows_runner_lxapp_identity(lxapp_path)?;
     let assets_dir = prepare_windows_runner_assets(session_root, &identity, ws_url, runner_env)?;
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
@@ -813,7 +813,7 @@ fn launch_windows_runner_for_web(
     runner_env: crate::config::AppEnv,
 ) -> Result<RunnerProcess> {
     platform::host_support::ensure_supported_host(&PlatformType::Windows)?;
-    crate::runner_cache::ensure_runner(REQUIRED_RUNNER_VERSION, false)?;
+    crate::runner_cache::ensure_matching_runner()?;
     let assets_dir = prepare_windows_runner_web_assets(session_root, ws_url, runner_env)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;

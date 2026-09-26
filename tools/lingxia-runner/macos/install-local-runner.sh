@@ -115,6 +115,14 @@ echo "==> Installing $APP_NAME to $TARGET_DIR"
 rm -rf "$TMP_TARGET_DIR" "$BACKUP_TARGET_DIR"
 mkdir -p "$TMP_TARGET_DIR"
 cp -R "$APP_SRC" "$TMP_TARGET_DIR/"
+# What this Runner is: `lingxia dev` runs it only for a CLI of the same commit.
+RUNNER_COMMIT="$(git -C "$ROOT_DIR" rev-parse HEAD 2>/dev/null || true)"
+if [[ -n "$RUNNER_COMMIT" ]]; then
+  printf '{"version":"%s","commit":"%s"}\n' "$RUNNER_VERSION" "$RUNNER_COMMIT" \
+    > "$TMP_TARGET_DIR/runner-build.json"
+else
+  printf '{"version":"%s"}\n' "$RUNNER_VERSION" > "$TMP_TARGET_DIR/runner-build.json"
+fi
 mkdir -p "$TARGET_PARENT"
 if [[ -e "$TARGET_DIR" ]]; then
   mv "$TARGET_DIR" "$BACKUP_TARGET_DIR"
