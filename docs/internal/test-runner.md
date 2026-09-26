@@ -215,6 +215,18 @@ Development machine: lxdev receives progress, results, and artifacts
   fields a build does not know, so a broker passes newer fields through; a
   broker built before `extra` still drops them, which is why a session with a
   `--name` verifies its registration (below).
+- Runner build identity: the version alone does not name a build, so every
+  Runner install writes `runner-build.json` beside the app — `{version,
+  commit}` from `install-local-runner.sh`/`.ps1`, `{version, release: true}`
+  when `runner_cache::ensure_runner` unpacks a release asset.
+  `ensure_matching_runner` compares it with `CliBuild::current()`
+  (`LINGXIA_COMMIT_HASH`, and `LINGXIA_RELEASE_BUILD`, which
+  `scripts/release/cli.sh` sets): a checkout build needs the same commit; a
+  release build accepts its release asset or its commit, and otherwise
+  re-downloads. A CLI without a commit checks the version only.
+  `LINGXIA_ALLOW_SKEW=1` warns instead. `doctor --project` shows the same
+  verdict for a standalone lxapp. In `compat::check` a host that reports a
+  commit (the session's `lingxia`) must match the checking CLI's commit.
 - Session lifecycle: `lingxia dev` starts and stops sessions; `lxdev` never
   starts one. `lingxia dev --background` runs `run_background_owner`: it
   spawns the owner (`lingxia dev …` minus `--background`/`--json`, its own

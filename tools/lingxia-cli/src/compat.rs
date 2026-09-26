@@ -1,7 +1,8 @@
 //! The version check `lingxia dev`, `lingxia build` and `lxdev test` run
-//! before they start, and `lingxia doctor --project` prints: this CLI, the
-//! installed Runner (standalone lxapps) and the project's installed
-//! `@lingxia/*` packages must share a line. See
+//! before they start, and `lingxia doctor --project` prints: this CLI and the
+//! project's installed `@lingxia/*` packages must share a line, and a
+//! standalone lxapp's desktop Runner must be this CLI's build
+//! ([`crate::runner_cache`]). See
 //! [`lingxia_control_protocol::dev_session::compat`].
 
 use anyhow::{Result, anyhow};
@@ -71,7 +72,7 @@ pub fn print_project_report(project_root: &Path) -> bool {
     for package in &packages {
         println!("  {}", describe(package));
     }
-    match compat::check(&cli, &[], &packages) {
+    let mut ok = match compat::check(&cli, &[], &packages) {
         Ok(()) => {
             println!("  {} one version line", "✓".green());
             true
@@ -80,7 +81,18 @@ pub fn print_project_report(project_root: &Path) -> bool {
             println!("  {} {skew}", "✗".red());
             false
         }
+    };
+    // A standalone lxapp runs in the desktop Runner, which must be this
+    // CLI's build (a release CLI replaces another one by itself).
+    if project_root.join("lxapp.json").is_file() && !crate::config::has_host_config(project_root) {
+        let (runner, verdict) = crate::runner_cache::installed_report();
+        println!("  Runner    {runner}");
+        if let Err(reason) = verdict {
+            println!("  {} {reason}", "✗".red());
+            ok = false;
+        }
     }
+    ok
 }
 
 fn describe(component: &Component) -> String {

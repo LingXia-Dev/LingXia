@@ -1,9 +1,9 @@
 //! One version check for the pieces a dev session combines: the CLI, the
 //! host (app or Runner) it drives, and the project's installed `@lingxia/*`
-//! packages. They must share a major.minor line; a locally built package
-//! that records the commit it was built from (`0.19.0+abc1234`, or
-//! `"lingxia": { "commit": … }` in its package.json) must also match the
-//! CLI's commit. Offline and cheap: it reads a few package.json files.
+//! packages. They must share a major.minor line; a piece that records the
+//! commit it was built from — a locally built package (`0.19.0+abc1234`, or
+//! `"lingxia": { "commit": … }` in its package.json), or the session's
+//! `lingxia` — must also match the CLI's commit. Offline and cheap: it reads a few package.json files.
 //!
 //! `LINGXIA_ALLOW_SKEW=1` turns the failure into a warning.
 
@@ -175,7 +175,7 @@ pub fn check(cli: &Component, hosts: &[Component], packages: &[Component]) -> Re
     };
     let off_hosts: Vec<&Component> = hosts
         .iter()
-        .filter(|host| host.is_unreported() || off_line(host))
+        .filter(|host| host.is_unreported() || off_line(host) || off_commit(host))
         .collect();
     if old_packages.is_empty()
         && new_packages.is_empty()
@@ -213,6 +213,16 @@ pub fn check(cli: &Component, hosts: &[Component], packages: &[Component]) -> Re
     }
     if off_hosts.iter().any(|host| older_host(host)) {
         fixes.push("restart the session with this CLI (`lingxia dev`)".to_string());
+    }
+    if off_hosts
+        .iter()
+        .any(|host| !host.is_unreported() && !off_line(host) && off_commit(host))
+    {
+        fixes.push(format!(
+            "use {} and `lingxia` from one build (`lingxia upgrade`, or build both from one \
+             checkout), then restart `lingxia dev`",
+            cli.name
+        ));
     }
 
     let what = if skewed.is_empty() {
@@ -323,6 +333,30 @@ mod tests {
             "{skew}"
         );
         assert!(skew.contains("restart the session with this CLI"), "{skew}");
+    }
+
+    #[test]
+    fn a_session_of_another_commit_is_skew() {
+        let lxdev = Component::new("lxdev", "0.18.0 (ae2f993ab 2026-09-20)");
+        let same = Component::new("lingxia", "0.18.0 (ae2f993ab-dirty 2026-09-21)");
+        assert_eq!(check(&lxdev, &[same], &[]), Ok(()));
+        let other = Component::new("lingxia", "0.18.0 (1234567ab 2026-09-19)");
+        let skew = check(&lxdev, &[other], &[]).unwrap_err().message;
+        assert!(
+            skew.starts_with(
+                "version skew: lingxia 0.18.0 (1234567ab) vs lxdev 0.18.0 (ae2f993ab)"
+            ),
+            "{skew}"
+        );
+        assert!(
+            skew.contains("use lxdev and `lingxia` from one build"),
+            "{skew}"
+        );
+        // A runtime reports no commit: only its line counts.
+        assert_eq!(
+            check(&lxdev, &[Component::new("host", "0.18.2")], &[]),
+            Ok(())
+        );
     }
 
     #[test]

@@ -304,6 +304,16 @@ fn emit_build_metadata_env(repo_root: &Path) {
         git_output(repo_root, &["show", "-s", "--format=%cs", "HEAD"])
             .unwrap_or_else(|| "unknown".to_string())
     );
+    // Set by the release pipeline: this build's Runner is its version's
+    // release asset (see `runner_cache::CliBuild`).
+    println!("cargo:rerun-if-env-changed=LINGXIA_RELEASE_BUILD");
+    println!(
+        "cargo:rustc-env=LINGXIA_RELEASE_BUILD={}",
+        match env::var("LINGXIA_RELEASE_BUILD") {
+            Ok(value) if !value.is_empty() && value != "0" => "1",
+            _ => "",
+        }
+    );
     let dirty = git_tree_dirty(repo_root);
     println!(
         "cargo:rustc-env=LINGXIA_COMMIT_DIRTY={}",

@@ -7,6 +7,12 @@
 //! release, verifies its SHA-256 against `SHASUMS256-<version>.txt`, and unpacks
 //! it into the cache. The unpacked app's existence marks the version installed,
 //! so repeat launches short-circuit with no network (mirrors `sdk_cache.rs`).
+//!
+//! The version alone does not name a build: every commit between two releases
+//! reports the same one. So each install records what it is in
+//! [`BUILD_STAMP`] beside the app — a release asset of its version, or a local
+//! build of a commit (`install-local-runner.sh` / `.ps1`) — and
+//! [`ensure_matching_runner`] runs only a Runner of this CLI's own build.
 
 use crate::github;
 use crate::sdk_cache::{sha256_hex, shasum_for};
@@ -84,6 +90,201 @@ fn runner_path(dir: &Path) -> PathBuf {
     }
 }
 
+/// Beside the Runner in its version dir: which build it is.
+pub const BUILD_STAMP: &str = "runner-build.json";
+
+/// What an installed Runner is, from its [`BUILD_STAMP`].
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RunnerBuild {
+    pub version: String,
+    /// The commit a local build was made from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    /// The published release asset of `version`.
+    #[serde(default)]
+    pub release: bool,
+}
+
+impl RunnerBuild {
+    fn describe(&self) -> String {
+        match (&self.commit, self.release) {
+            (Some(commit), _) => format!("{} built from {}", self.version, short(commit)),
+            (None, true) => format!("{} from its release", self.version),
+            (None, false) => self.version.clone(),
+        }
+    }
+}
+
+/// The build of this CLI a Runner must match.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CliBuild {
+    pub version: String,
+    /// `None` when the CLI was built outside a git checkout: then only the
+    /// version can be checked.
+    pub commit: Option<String>,
+    /// Built by the release pipeline: its Runner is its version's release asset.
+    pub release: bool,
+}
+
+impl CliBuild {
+    pub fn current() -> Self {
+        let commit = env!("LINGXIA_COMMIT_HASH");
+        Self {
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            commit: (commit != "unknown" && !commit.is_empty()).then(|| commit.to_string()),
+            release: !env!("LINGXIA_RELEASE_BUILD").is_empty(),
+        }
+    }
+
+    /// Whether `runner` (its stamp; `None` when it has none) is this build's.
+    pub fn matches(&self, runner: Option<&RunnerBuild>) -> bool {
+        let Some(commit) = &self.commit else {
+            // Nothing to tell builds apart by: the version dir decides.
+            return true;
+        };
+        let Some(runner) = runner.filter(|runner| runner.version == self.version) else {
+            return false;
+        };
+        match &runner.commit {
+            Some(theirs) => same_commit(theirs, commit),
+            None => runner.release && self.release,
+        }
+    }
+
+    fn describe(&self) -> String {
+        match &self.commit {
+            Some(commit) => format!("{} ({})", self.version, short(commit)),
+            None => self.version.clone(),
+        }
+    }
+}
+
+fn same_commit(a: &str, b: &str) -> bool {
+    let (a, b) = (a.trim().to_ascii_lowercase(), b.trim().to_ascii_lowercase());
+    !a.is_empty() && !b.is_empty() && (a.starts_with(&b) || b.starts_with(&a))
+}
+
+fn short(commit: &str) -> &str {
+    &commit[..commit.len().min(9)]
+}
+
+fn read_stamp(dir: &Path) -> Option<RunnerBuild> {
+    let text = fs::read_to_string(dir.join(BUILD_STAMP)).ok()?;
+    serde_json::from_str(&text).ok()
+}
+
+fn write_stamp(dir: &Path, build: &RunnerBuild) -> Result<()> {
+    let path = dir.join(BUILD_STAMP);
+    let text = serde_json::to_string_pretty(build)?;
+    fs::write(&path, text).with_context(|| format!("Failed to write {}", path.display()))
+}
+
+/// The script that builds and installs a Runner from this CLI's checkout.
+fn local_install_command() -> String {
+    let script = if cfg!(target_os = "windows") {
+        "tools/lingxia-runner/windows/install-local-runner.ps1"
+    } else {
+        "tools/lingxia-runner/macos/install-local-runner.sh"
+    };
+    // This CLI's own checkout, when it is still where it was built.
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    match checkout.join(script).canonicalize() {
+        Ok(path) => path.display().to_string(),
+        Err(_) => script.to_string(),
+    }
+}
+
+/// Why `found` (the stamp; `None` if there is none) is not `cli`'s Runner,
+/// and the fix — one line.
+fn mismatch_message(cli: &CliBuild, found: Option<&RunnerBuild>) -> String {
+    let what = match found {
+        Some(build) => format!("the installed Runner is {}, not", build.describe()),
+        None => {
+            "the installed Runner does not record its build, so it cannot be matched to".to_string()
+        }
+    };
+    format!(
+        "{what} this CLI's build {}: rebuild it from this checkout with {} (or {}=1)",
+        cli.describe(),
+        local_install_command(),
+        lingxia_control_protocol::dev_session::compat::ALLOW_SKEW_ENV
+    )
+}
+
+/// The Runner of this CLI's build, installed if it can be: a release CLI
+/// fetches its release asset (replacing a cached Runner of another build,
+/// and saying so); a CLI built from a checkout needs a Runner built from the
+/// same commit, and fails naming the script that builds one.
+/// `LINGXIA_ALLOW_SKEW=1` runs the installed Runner anyway, with a warning.
+pub fn ensure_matching_runner() -> Result<PathBuf> {
+    let cli = CliBuild::current();
+    let dir = runner_root()?.join(&cli.version);
+    let path = runner_path(&dir);
+    let installed = path.exists().then(|| read_stamp(&dir));
+    match &installed {
+        Some(stamp) if cli.matches(stamp.as_ref()) => return Ok(path),
+        Some(stamp) if !cli.release => {
+            let message = mismatch_message(&cli, stamp.as_ref());
+            if lingxia_control_protocol::dev_session::compat::skew_allowed() {
+                eprintln!("warning: {message}");
+                return Ok(path);
+            }
+            bail!("{message}");
+        }
+        Some(stamp) => eprintln!(
+            "Replacing the cached Runner ({}) with this CLI's release Runner {}...",
+            stamp
+                .as_ref()
+                .map_or_else(|| "build not recorded".to_string(), RunnerBuild::describe),
+            cli.version
+        ),
+        None if cli.commit.is_some() && !cli.release => bail!(
+            "LingXia Runner {} is not installed for this CLI build {}: build it from this \
+             checkout with {}",
+            cli.version,
+            cli.describe(),
+            local_install_command()
+        ),
+        None => {}
+    }
+    ensure_runner(&cli.version, installed.is_some())
+}
+
+/// `lingxia doctor --project`: the installed Runner of this CLI's version, and
+/// whether `lingxia dev` runs it (`Err`: the one-line reason and fix).
+pub fn installed_report() -> (String, std::result::Result<(), String>) {
+    let cli = CliBuild::current();
+    let Ok(root) = runner_root() else {
+        return ("unknown".into(), Ok(()));
+    };
+    let dir = root.join(&cli.version);
+    if !runner_path(&dir).exists() {
+        return if cli.commit.is_some() && !cli.release {
+            (
+                "not installed".into(),
+                Err(format!(
+                    "no Runner for this CLI build {}: build it from this checkout with {}",
+                    cli.describe(),
+                    local_install_command()
+                )),
+            )
+        } else {
+            ("not installed (`lingxia dev` fetches it)".into(), Ok(()))
+        };
+    }
+    let stamp = read_stamp(&dir);
+    let label = stamp.as_ref().map_or_else(
+        || format!("{} (build not recorded)", cli.version),
+        RunnerBuild::describe,
+    );
+    // A release CLI replaces another build by itself on the next `lingxia dev`.
+    if cli.matches(stamp.as_ref()) || cli.release {
+        (label, Ok(()))
+    } else {
+        (label, Err(mismatch_message(&cli, stamp.as_ref())))
+    }
+}
+
 /// Ensure the runner for `version` is installed under
 /// `~/.lingxia/runner/<version>/` and return its path. On a cache hit (the app
 /// is present) returns immediately with no network, unless `force`.
@@ -155,6 +356,14 @@ pub fn ensure_runner(version: &str, force: bool) -> Result<PathBuf> {
     if !path.exists() {
         bail!("Runner install incomplete (missing {})", path.display());
     }
+    write_stamp(
+        &dir,
+        &RunnerBuild {
+            version: version.to_string(),
+            commit: None,
+            release: true,
+        },
+    )?;
 
     prune_other_versions(version);
     Ok(path)
@@ -255,6 +464,91 @@ fn extract_zip(bytes: &[u8], out_dir: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cli(commit: Option<&str>, release: bool) -> CliBuild {
+        CliBuild {
+            version: "0.19.0".into(),
+            commit: commit.map(str::to_string),
+            release,
+        }
+    }
+
+    fn local(commit: &str) -> RunnerBuild {
+        RunnerBuild {
+            version: "0.19.0".into(),
+            commit: Some(commit.into()),
+            release: false,
+        }
+    }
+
+    fn release() -> RunnerBuild {
+        RunnerBuild {
+            version: "0.19.0".into(),
+            commit: None,
+            release: true,
+        }
+    }
+
+    #[test]
+    fn a_checkout_build_runs_only_a_runner_of_its_commit() {
+        let dev = cli(Some("abcdef0123456789"), false);
+        assert!(dev.matches(Some(&local("abcdef0"))));
+        assert!(!dev.matches(Some(&local("1234567"))));
+        // Same version, older commit: the stale Runner this check exists for.
+        assert!(!dev.matches(None));
+        assert!(!dev.matches(Some(&release())));
+        let other_version = RunnerBuild {
+            version: "0.18.0".into(),
+            ..local("abcdef0")
+        };
+        assert!(!dev.matches(Some(&other_version)));
+    }
+
+    #[test]
+    fn a_release_build_runs_its_release_runner() {
+        let shipped = cli(Some("abcdef0123456789"), true);
+        assert!(shipped.matches(Some(&release())));
+        assert!(shipped.matches(Some(&local("abcdef0"))));
+        assert!(!shipped.matches(None));
+        assert!(!shipped.matches(Some(&local("1234567"))));
+        // Without a commit only the version dir tells.
+        assert!(cli(None, false).matches(None));
+    }
+
+    #[test]
+    fn a_mismatch_is_one_line_with_the_fix() {
+        let dev = cli(Some("abcdef0123456789"), false);
+        let message = mismatch_message(&dev, Some(&local("1234567890")));
+        assert!(!message.contains('\n'), "{message}");
+        assert!(
+            message.starts_with(
+                "the installed Runner is 0.19.0 built from 123456789, not this CLI's build \
+                 0.19.0 (abcdef012): rebuild it from this checkout with "
+            ),
+            "{message}"
+        );
+        assert!(message.contains("install-local-runner"), "{message}");
+        assert!(message.ends_with("(or LINGXIA_ALLOW_SKEW=1)"), "{message}");
+        assert!(mismatch_message(&dev, None).starts_with(
+            "the installed Runner does not record its build, so it cannot be matched to this \
+                 CLI's build 0.19.0 (abcdef012)"
+        ));
+    }
+
+    #[test]
+    fn the_stamp_round_trips() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(read_stamp(dir.path()), None);
+        write_stamp(dir.path(), &local("abcdef0")).unwrap();
+        assert_eq!(read_stamp(dir.path()), Some(local("abcdef0")));
+        // What the install scripts write.
+        fs::write(
+            dir.path().join(BUILD_STAMP),
+            r#"{"version":"0.19.0","commit":"abcdef0"}"#,
+        )
+        .unwrap();
+        assert_eq!(read_stamp(dir.path()), Some(local("abcdef0")));
+    }
 
     #[test]
     fn release_tag_matches_cli_release() {
