@@ -109,14 +109,14 @@ received artifacts. Keep the following invariants when changing these layers:
   every spec, so ids from older reports can differ for suites with several
   files or with ASCII specs before a non-ASCII one.
 - Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
-  press/waitFor`, locator matchers and `t.expect.poll` clamp their timeout to
+  press/waitFor`, locator matchers and `t.expect(fn)` clamp their timeout to
   `LiveFixture.budgetRoom()` — the spec deadline less a reporting margin
   (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
   clamp in the failure message. Every driver call in those loops (query,
   actionability eval, dispatch, the poll `read`) is raced against the rest of
   the action budget and rejects with a `TimeoutError` naming the call, the
   action and its location, so the action fails before the spec timer. Raw
-  driver calls (`t.app.eval`, nav) carry their own driver timeouts instead.
+  driver calls (`t.app.logic.eval`, nav) carry their own driver timeouts instead.
   The race only stops waiting: a native call that blocks the JS thread cannot
   be preempted from JS, and an abandoned call may still complete in the app.
 - Transient page errors (`isTransientPageError`: code `E_PAGE_NOT_ACTIVE` or
@@ -280,7 +280,49 @@ Development machine: lxdev receives progress, results, and artifacts
   `desktop`, `terminal`) check `host` on property read and throw, so enumerating
   or logging the root throws in a session without it; the drivers' methods
   recheck on every call. Making the getters lazy (like `LxAppDriver.network`)
-  is a Rust change in `lingxia-automation`.
+  is a Rust change in `lingxia-automation`. The fixture hides it:
+  `t.automation.browser/desktop/terminal` are `lazyDriver` proxies
+  (`fixture.ts`) that resolve the getter chain on each call, so the read
+  never throws and the call rejects; a proxy is not a thenable (`then` reads
+  `undefined`).
+- Fixture shapes (`@lingxia/test`) differ from the raw drivers on purpose,
+  so `TestApp` is not assignable to `LxAppDriver`: removers resolve
+  `undefined`; `network.ts` maps `NetworkRouteRequest` (`routeCall`; a plain
+  `continue` answers `real`, the body is parsed when JSON) and `ScenarioCall`
+  (`scenarioCall`; `rule !== null` → `rule`, an `answeredBy` starting with
+  `route` → `route`, a Function call → `companion`, else `real`) to one
+  `NetworkCall`. `waitForCall` keeps a cursor per route handle and per
+  scenario target (JSON of the filter) and hands out `calls[cursor]`, so a
+  call made before the wait counts; it polls silenced inside one traced
+  action and throws a `TimeoutError` listing the last 10 calls.
+  `t.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
+  accepts a bare number from an older host as `{ now, pending }` and
+  reports dropped timers as a `diagnostic` (`phase: "clock"`).
+- `t.app.view` is a plain object (locators, `eval(fn)`, `screenshot`,
+  `scroll`, guarded `pointer`/`key`); `t.app.page` is the 0.18 proxy over
+  the guarded raw page with `testId/css/eval` overridden, kept as a
+  deprecated alias. The fixture's evals take functions only; the string
+  form stays on the raw driver and on the deprecated `t.app.eval`.
+- `t.expect` dispatches on its argument: a branded locator
+  (`Symbol.for("lingxia.test.locator")`) → locator matchers, a function →
+  the retrying poll, anything else → the once-matchers of `expect`. The
+  top-level `expect` throws on a branded locator. `TEST_ERROR_CODES`
+  (`errors.ts`) repeats `AUTOMATION_ERROR_CODES` literally — `@lingxia/test`
+  has no runtime import of `@lingxia/types` — and a compile-time check fails
+  when `TestErrorCode` gains a code the list lacks. Codes that reach a spec
+  are `E_*`; lxdev's snake_case run errors stay in the CLI.
+- Trace events are best effort: `emitTrace` resends a failed
+  `step_started`/`step_finished` once and drops it, so a transport hiccup
+  never fails an action (the report comes from the fixture's records).
+  Idempotent reads (`IDEMPOTENT_READS`, `app.info/pages/surfaceLayout`,
+  `view.screenshot`, locator queries) retry `isTransientTransportError`
+  (`E_TRANSPORT`, `os error 11/35/54/104`, reset, broken pipe, closed
+  channel/WebSocket) twice with backoff; input dispatch never does.
+- `spec.configure` options and a spec's own options are validated at
+  registration but settled at run start (`settle` in `runtime.ts`), once the
+  bundle map attributes each call to its file: own options win, `tags`,
+  `covers` and `requires` merge. An unmet `requires` skips the case before a
+  fixture exists, with the reason in `case.reason`.
 - `t.app`, `t.apps`, and `t.automation` share fixture guards and tracing.
   Test helpers must retain these wrappers instead of acquiring raw drivers.
   Code deliberately evaluated inside product Logic still uses `lx.automation()`.
@@ -292,8 +334,8 @@ Development machine: lxdev receives progress, results, and artifacts
   survive remounts; an instance id targets one live instance. Omitted page targets
   follow the current page on every operation.
 - `eval<T>` declares the caller's expected result, not runtime validation.
-- Function-form eval (`t.app.eval(fn, ...args)`, `t.app.page.eval(fn, ...)`,
-  and `pageData`/`callPage`, built on it) lives in `@lingxia/test`
+- Function-form eval (`t.app.logic.eval(fn, ...args)`, `t.app.view.eval(fn,
+  ...)`, and `logic.data`/`logic.call`, built on it) lives in `@lingxia/test`
   (`remote.ts`); the drivers still receive `{ script }`. The script is one
   call expression, `((__lxFn, __lxArgs) => __lxFn(scope, ...__lxArgs))(<fn
   source>, <JSON args>)`, so the Logic expression-first eval and the WebView
@@ -304,7 +346,7 @@ Development machine: lxdev receives progress, results, and artifacts
   `ReferenceError` is rethrown named `ReferenceError`, with its code/data and
   a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
-  like `t.expect.poll`. Its timeout is clamped to the spec budget left since
+  like `t.expect(fn)`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
   value/error) wins over the bare spec timeout.
   Browser navigation eval returns `{ value, navigation }`; waits require exactly
@@ -345,7 +387,7 @@ Development machine: lxdev receives progress, results, and artifacts
   wrapper pre-cuts to the limit and Rust cuts again on a UTF-8 boundary to
   64 KiB (`MAX_REQUEST_BODY_BYTES`); the process log also caps total body
   bytes. `NetworkDriver.requests()` reads the run-wide log; the fixture's
-  filters it to the spec's route ids.
+  `t.app.network.calls()` filters it to the spec's route ids.
 - Answers and sequences: a `RouteSpec` holds `answers` (never empty) and a
   `served` counter; `decide_route` serves `answers[min(served, len-1)]` and
   counts it before `times` is spent, so `times` still bounds matches.
