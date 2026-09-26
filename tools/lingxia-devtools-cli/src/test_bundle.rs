@@ -180,25 +180,29 @@ fn strip_verbatim(path: &Path) -> PathBuf {
     PathBuf::from(text.trim_start_matches(r"\\?\").trim_start_matches("//?/"))
 }
 
-/// Bundle a test file, or every `*.test.ts` under a directory.
-pub fn bundle_test_path(path: &Path) -> Result<TestBundle> {
-    let path = normalize_path(path)
-        .with_context(|| format!("test entry not found: {}", path.display()))?;
-    if path.is_dir() {
-        let files = collect_test_files(&path)?;
-        bundle_test_entries(&files, &path)
-    } else {
-        bundle_test_entry(&path)
-    }
-}
-
-pub fn bundle_test_entry(entry: &Path) -> Result<TestBundle> {
+#[cfg(test)]
+fn bundle_test_entry(entry: &Path) -> Result<TestBundle> {
     let entry = normalize_path(entry)
         .with_context(|| format!("test entry not found: {}", entry.display()))?;
-    bundle_test_entries(std::slice::from_ref(&entry), &entry)
+    bundle_test_files(std::slice::from_ref(&entry), &entry, Purpose::Run)
 }
 
-fn bundle_test_entries(entries: &[PathBuf], identity: &Path) -> Result<TestBundle> {
+/// What a bundle asks the test framework for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purpose {
+    /// Run the selected specs.
+    Run,
+    /// List the selected specs (`lxdev test --list`).
+    List,
+}
+
+/// Bundle test files into one run. `identity` names the bundle and, through
+/// its project root, the files' source names.
+pub fn bundle_test_files(
+    entries: &[PathBuf],
+    identity: &Path,
+    purpose: Purpose,
+) -> Result<TestBundle> {
     let root = find_project_root(identity);
 
     let mut bundler = TestBundler {
@@ -212,11 +216,8 @@ fn bundle_test_entries(entries: &[PathBuf], identity: &Path) -> Result<TestBundl
         bundler.compile_module(entry.clone())?;
     }
 
-    let bundle_name = format!(
-        "lxdev-test://{}",
-        relative_display(identity, &bundler.root).replace('\\', "/")
-    );
-    let bundle = assemble(bundler.modules, bundle_name);
+    let bundle_name = format!("lxdev-test://{}", source_name(identity, &bundler.root));
+    let bundle = assemble(bundler.modules, bundle_name, purpose);
     if bundle.code.len() > MAX_BUNDLE_BYTES {
         bail!(
             "bundled test is {} bytes; the limit is {MAX_BUNDLE_BYTES}",
@@ -323,7 +324,7 @@ impl TestBundler {
             "const __lx_module_exports = {{ \"default\": JSON.parse({}) }};\n",
             serde_json::to_string(&serde_json::to_string(&value)?)?
         );
-        let display = relative_display(&path, &self.root).replace('\\', "/");
+        let display = source_name(&path, &self.root);
         let mut builder = oxc_sourcemap::SourceMapBuilder::default();
         builder.add_source_and_content(&display, &source);
         let map: SourceMap<'static> = builder.into_owned_sourcemap().into();
@@ -408,7 +409,7 @@ const LINE_PROBE_LINE: u32 = 3;
 /// therefore measures the shift on its first lines, prepends that many empty
 /// lines to the map it installs for `@lingxia/test`, and moves a thrown
 /// error's frames back to bundle lines, which is what lxdev's own map reads.
-fn assemble(modules: Vec<CompiledModule>, bundle_name: String) -> TestBundle {
+fn assemble(modules: Vec<CompiledModule>, bundle_name: String, purpose: Purpose) -> TestBundle {
     let mut code = String::new();
     let mut concat = ConcatSourceMapBuilder::default();
     let mut line = 0u32;
@@ -456,8 +457,20 @@ globalThis.__RONG_TEST_HOST__ = {{\n\
 if (!__lx_test_framework || typeof __lx_test_framework.run !== \"function\") {\n\
   throw new Error('No test framework was registered. Import spec from \"@lingxia/test\" (or test from \"@rongjs/test\").');\n\
 }\n\
-return await __lx_test_framework.run();\n\
-} catch (__lx_error) {\n\
+",
+    );
+    code.push_str(match purpose {
+        Purpose::Run => "return await __lx_test_framework.run();\n",
+        // A framework without `list` would run the specs instead.
+        Purpose::List => {
+            "if (typeof __lx_test_framework.list !== \"function\") {\n\
+  throw new Error('This @lingxia/test cannot list specs; install the version that matches lxdev.');\n\
+}\n\
+return await __lx_test_framework.list();\n"
+        }
+    });
+    code.push_str(
+        "} catch (__lx_error) {\n\
   throw __lx_bundle_lines(__lx_error);\n\
 }\n\
 })()\n",
@@ -1168,7 +1181,7 @@ fn transpile_module(
     let mut map = ret
         .map
         .ok_or_else(|| anyhow!("Codegen produced no source map for {}", path.display()))?;
-    let display = relative_display(path, project_root).replace('\\', "/");
+    let display = source_name(path, project_root);
     map.set_sources([display.as_str()]);
     map.set_source_contents(vec![Some(original_source)]);
     Ok((code, map.into_owned()))
@@ -1208,7 +1221,7 @@ fn is_local_specifier(specifier: &str) -> bool {
     specifier.starts_with("./") || specifier.starts_with("../") || specifier.starts_with('/')
 }
 
-fn module_export_name(name: &ModuleExportName<'_>) -> Option<String> {
+pub(crate) fn module_export_name(name: &ModuleExportName<'_>) -> Option<String> {
     match name {
         ModuleExportName::IdentifierName(identifier) => Some(identifier.name.as_str().to_string()),
         ModuleExportName::IdentifierReference(identifier) => {
@@ -1288,6 +1301,15 @@ pub(crate) fn find_project_root(entry: &Path) -> PathBuf {
     fallback
 }
 
+/// A file's name in the bundle's source map, and so in reports:
+/// `/`-separated, relative to the project root (`.` for the root itself).
+pub(crate) fn source_name(path: &Path, root: &Path) -> String {
+    match relative_display(path, root).replace('\\', "/") {
+        name if name.is_empty() => ".".to_string(),
+        name => name,
+    }
+}
+
 fn relative_display(path: &Path, root: &Path) -> String {
     path.strip_prefix(root)
         .map(|relative| relative.display().to_string())
@@ -1297,6 +1319,14 @@ fn relative_display(path: &Path, root: &Path) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn bundle_dir(dir: &Path) -> Result<TestBundle> {
+        bundle_test_files(
+            &collect_test_files(dir)?,
+            &normalize_path(dir)?,
+            Purpose::Run,
+        )
+    }
     use std::fs;
 
     fn project() -> tempfile::TempDir {
@@ -1711,6 +1741,53 @@ run.then(
         serde_json::from_slice(&output.stdout).expect("node output")
     }
 
+    #[test]
+    fn a_list_bundle_asks_the_framework_to_list_and_never_to_run() {
+        if !node_available() {
+            eprintln!("skipped: node is not installed");
+            return;
+        }
+        let dir = project();
+        let entry = write(&dir, "a.test.ts", "globalThis.__loaded = true;\n");
+        let bundle = bundle_test_files(
+            std::slice::from_ref(&normalize_path(&entry).unwrap()),
+            &entry,
+            Purpose::List,
+        )
+        .unwrap();
+        let bundle_path = dir.path().join("bundle.js");
+        fs::write(&bundle_path, &bundle.code).unwrap();
+        let outcome = |framework: &str| {
+            let script = format!(
+                r#"
+globalThis.__LINGXIA_AUTOMATION_HOST__ = {{ args: {{}}, control: {{}}, emit() {{}} }};
+globalThis.__LINGXIA_TEST__ = {framework};
+require("node:vm").runInThisContext(require("node:fs").readFileSync(process.argv[1], "utf8")).then(
+  (value) => console.log(JSON.stringify({{ value }})),
+  (error) => console.log(JSON.stringify({{ error: String(error.message) }})),
+);
+"#
+            );
+            let output = std::process::Command::new("node")
+                .arg("-e")
+                .arg(script)
+                .arg(&bundle_path)
+                .output()
+                .expect("run node");
+            serde_json::from_slice::<serde_json::Value>(&output.stdout).expect("node output")
+        };
+        assert_eq!(
+            outcome(r#"{ run: async () => "ran", list: async () => "listed" }"#)["value"],
+            "listed"
+        );
+        // A framework that cannot list is not asked to run instead.
+        let old = outcome(r#"{ run: async () => "ran" }"#);
+        assert!(
+            old["error"].as_str().unwrap().contains("cannot list"),
+            "{old}"
+        );
+    }
+
     /// `name:line:column` of the n-th frame in `stack` that points into the bundle.
     fn bundle_frame(stack: &str, name: &str, nth: usize) -> (u32, u32) {
         let rest = stack
@@ -1732,7 +1809,7 @@ run.then(
         }
         let dir = project();
         commented_spec_files(&dir);
-        let bundle = bundle_test_path(&dir.path().join("tests")).expect("bundle");
+        let bundle = bundle_dir(&dir.path().join("tests")).expect("bundle");
         for shift in 0..=2 {
             let result = run_under_node(&dir, &bundle, shift);
             assert!(result.get("error").is_none(), "shift {shift}: {result}");
@@ -1915,7 +1992,7 @@ run.then(
         let dir = project();
         write(&dir, "one.test.ts", "globalThis.__one = true;\n");
         write(&dir, "two.test.ts", "globalThis.__two = true;\n");
-        let bundle = bundle_test_path(dir.path()).expect("bundle dir");
+        let bundle = bundle_dir(dir.path()).expect("bundle dir");
         assert!(bundle.code.contains("__one = true"));
         assert!(bundle.code.contains("__two = true"));
         assert!(!dir.path().join(".lxdev-synthetic-entry.ts").exists());
@@ -1929,9 +2006,9 @@ run.then(
         let reserved = dir.path().join(".lxdev-synthetic-entry.ts");
         fs::create_dir(&reserved).unwrap();
         fs::write(reserved.join("keep"), "user data").unwrap();
-        bundle_test_path(dir.path()).expect("bundle without writing an entry");
+        bundle_dir(dir.path()).expect("bundle without writing an entry");
         write(&dir, "bad.test.ts", "await import('./missing');\n");
-        assert!(bundle_test_path(dir.path()).is_err());
+        assert!(bundle_dir(dir.path()).is_err());
         assert_eq!(
             fs::read_to_string(reserved.join("keep")).unwrap(),
             "user data"
@@ -1956,7 +2033,7 @@ run.then(
             "tests/nested/z.test.ts",
             "import { value } from '../../helpers/shared';\nthrow new Error('nested-' + value);\n",
         );
-        let bundle = bundle_test_path(&dir.path().join("tests")).expect("bundle directory");
+        let bundle = bundle_dir(&dir.path().join("tests")).expect("bundle directory");
         assert_eq!(bundle.code.matches("__sharedOnce = true").count(), 1);
         assert!(
             bundle.code.find("__sharedOnce = true").unwrap()
@@ -1979,8 +2056,8 @@ run.then(
         let dir = project();
         write(&dir, "one.test.ts", "globalThis.__one = true;\n");
         let bundles = std::thread::scope(|scope| {
-            let first = scope.spawn(|| bundle_test_path(dir.path()).unwrap().code);
-            let second = scope.spawn(|| bundle_test_path(dir.path()).unwrap().code);
+            let first = scope.spawn(|| bundle_dir(dir.path()).unwrap().code);
+            let second = scope.spawn(|| bundle_dir(dir.path()).unwrap().code);
             (first.join().unwrap(), second.join().unwrap())
         });
         assert_eq!(bundles.0, bundles.1);

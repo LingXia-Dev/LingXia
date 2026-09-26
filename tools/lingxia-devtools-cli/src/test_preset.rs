@@ -136,7 +136,7 @@ pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
     else {
         return argv;
     };
-    let (has_entry, given) = scan(&rest);
+    let (_, given) = scan(&rest);
     let text = |key: &str| settings[key].as_str().filter(|value| !value.is_empty());
     let mut carried: Vec<String> = Vec::new();
     let mut preset_args: Vec<String> = Vec::new();
@@ -146,11 +146,8 @@ pub fn carry_last_failed(argv: Vec<OsString>, cwd: &Path) -> Vec<OsString> {
             .flatten()
             .and_then(|presets| presets.presets.get(preset).cloned())
             .unwrap_or_default();
-        // Its own entry would be a second one next to the command line's.
-        if !(has_entry && scan(&args).0) {
-            carried.extend(["--preset".to_string(), preset.to_string()]);
-            preset_args = args;
-        }
+        carried.extend(["--preset".to_string(), preset.to_string()]);
+        preset_args = args;
     }
     // The carried preset may set the same profile already.
     let preset_sets_it = flag_value(&preset_args, "--profile", "").as_deref() == text("profile")
@@ -487,6 +484,12 @@ pub fn expand(argv: Vec<OsString>, cwd: &Path) -> Result<Vec<OsString>> {
             )
         })?,
     };
+    // Paths on the command line replace the preset's, like a flag does.
+    let preset_args = if scan(&rest).0 {
+        without_paths(&preset_args)
+    } else {
+        preset_args
+    };
     let starts_no_run = rest
         .iter()
         .take_while(|token| *token != "--")
@@ -566,6 +569,35 @@ fn scan(args: &[String]) -> (bool, std::collections::HashSet<String>) {
         }
     }
     (positional, flags)
+}
+
+/// `args` without their positionals (the test paths).
+fn without_paths(args: &[String]) -> Vec<String> {
+    let mut out = Vec::with_capacity(args.len());
+    let mut tokens = args.iter().peekable();
+    while let Some(token) = tokens.next() {
+        if token == "--" {
+            out.push(token.clone());
+            out.extend(tokens.cloned());
+            break;
+        }
+        if !token.starts_with('-') || token == "-" {
+            continue;
+        }
+        out.push(token.clone());
+        if token.contains('=') {
+            continue;
+        }
+        let consumes = match takes_value(token) {
+            Some(true) => true,
+            Some(false) => tokens.peek().is_some_and(|next| !next.starts_with('-')),
+            None => false,
+        };
+        if consumes && let Some(value) = tokens.next() {
+            out.push(value.clone());
+        }
+    }
+    out
 }
 
 /// Flags whose value is a file or directory. `--profile` takes `empty`, a
@@ -999,6 +1031,16 @@ mod tests {
         assert!(!smoke.contains(&at("tests")), "{smoke:?}");
         assert!(!smoke.contains(&"unit".to_string()), "{smoke:?}");
         assert!(smoke.contains(&at("results")), "{smoke:?}");
+        // Paths on the command line replace the preset's.
+        let one = strings(
+            expand(
+                os(&["lxdev", "test", "--preset", "smoke", "tests/a.test.ts:3"]),
+                root,
+            )
+            .unwrap(),
+        );
+        assert!(!one.contains(&at("tests/smoke.test.ts")), "{one:?}");
+        assert!(one.contains(&"smoke".to_string()), "{one:?}");
         // So does the command line's own entry or flag.
         let own =
             strings(expand(os(&["lxdev", "test", "a.test.ts", "--output-root=o"]), root).unwrap());

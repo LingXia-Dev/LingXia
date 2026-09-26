@@ -107,8 +107,14 @@ pub fn render(report: &Value, run_dir: &Path, failures_only: bool) -> String {
         if let (Some(file), Some(line)) = (case["file"].as_str(), case["line"].as_u64()) {
             let _ = writeln!(out, "  at {file}:{line}");
         }
-        if let (Some(rerun), Some(id)) = (rerun, case["id"].as_str()) {
-            let _ = writeln!(out, "  Rerun: {}", rerun_with_id(rerun, id));
+        if let Some(id) = case["id"].as_str() {
+            let command = report["meta"]["reruns"][id]
+                .as_str()
+                .map(str::to_string)
+                .or_else(|| rerun.map(|rerun| rerun_with_id(rerun, id)));
+            if let Some(command) = command {
+                let _ = writeln!(out, "  Rerun: {command}");
+            }
         }
     }
     if failed == 0 && failures_only {
@@ -133,7 +139,8 @@ mod tests {
         json!({
             "total": 3, "passed": 1, "failed": 1, "skipped": 0, "timeout": 1,
             "xfail": 0, "xpass": 0, "duration_ms": 4200, "partial": false,
-            "meta": { "started_at": "2026-09-25T10:00:00Z", "rerun": "lxdev test 'tests/'" },
+            "meta": { "started_at": "2026-09-25T10:00:00Z", "rerun": "lxdev test tests/",
+                      "reruns": { "B-2": "lxdev test tests/cart.test.ts:12" } },
             "cases": [
                 { "id": "A-1", "full_name": "home loads", "status": "passed" },
                 { "id": "B-2", "full_name": "cart totals", "status": "failed",
@@ -158,14 +165,11 @@ mod tests {
         assert!(text.contains("code: E_ASSERT"), "{text}");
         assert!(text.contains("at tests/cart.test.ts:12"), "{text}");
         assert!(
-            text.contains("Rerun: lxdev test 'tests/' --id 'B-2'"),
+            text.contains("Rerun: lxdev test tests/cart.test.ts:12\n"),
             "{text}"
         );
-        assert!(
-            text.contains("Rerun: lxdev test 'tests/' --id 'C-3'"),
-            "{text}"
-        );
-        assert!(!text.contains("--id 'A-1'"), "{text}");
+        assert!(text.contains("Rerun: lxdev test tests/ --id C-3"), "{text}");
+        assert!(!text.contains("--id A-1"), "{text}");
     }
 
     #[test]

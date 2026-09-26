@@ -17,6 +17,7 @@ mod test_network;
 mod test_preset;
 mod test_report;
 mod test_secrets;
+mod test_select;
 mod test_state;
 
 use project::SessionSelector;
@@ -236,6 +237,11 @@ fn run() -> Result<()> {
                 return test_preset::print_args(&argv, options.machine(), &sources);
             }
             // Before a session is even needed.
+            let selection = if options.paths.is_empty() && options.cancel_active() {
+                None
+            } else {
+                Some(test_select::select(&options.paths, &cwd)?)
+            };
             if test::nothing_to_rerun(&options)? {
                 return Ok(());
             }
@@ -246,7 +252,7 @@ fn run() -> Result<()> {
                     err
                 }
             })?;
-            test::execute(&info, *options)
+            test::execute(&info, *options, selection)
         }
     }
 }
@@ -410,7 +416,8 @@ mod tests {
         let Commands::Test(options) = cli.command else {
             panic!("expected test command");
         };
-        assert_eq!(options.entry, Some(std::path::PathBuf::from("tests/")));
+        assert_eq!(options.paths.len(), 1);
+        assert_eq!(options.paths[0].path, std::path::PathBuf::from("tests/"));
         assert_eq!(options.grep.as_deref(), Some("home"));
         assert!(options.forbid_only);
     }
@@ -497,7 +504,31 @@ mod tests {
         // Neither needs an entry.
         assert!(parse(&["lxdev", "test", "--list-presets"]).list_presets);
         assert!(parse(&["lxdev", "test", "--preset", "ci", "--print-args"]).print_args);
-        assert!(Cli::try_parse_from(["lxdev", "test"]).is_err());
+        // Nor does a run: it has a default.
+        assert!(parse(&["lxdev", "test"]).paths.is_empty());
+        let options = parse(&[
+            "lxdev",
+            "test",
+            "a.test.ts:3",
+            r"C:\x\b.test.ts:42",
+            "dir/",
+            "--list",
+        ]);
+        assert!(options.list);
+        assert_eq!(
+            options
+                .paths
+                .iter()
+                .map(|p| (p.path.to_string_lossy().into_owned(), p.line))
+                .collect::<Vec<_>>(),
+            [
+                ("a.test.ts".into(), Some(3)),
+                (r"C:\x\b.test.ts".into(), Some(42)),
+                ("dir/".into(), None)
+            ]
+        );
+        assert!(Cli::try_parse_from(["lxdev", "test", "a.test.ts:0"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "test", "--list", "--cancel-active"]).is_err());
     }
 
     #[test]

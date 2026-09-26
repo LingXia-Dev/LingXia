@@ -266,6 +266,22 @@ Development machine: lxdev receives progress, results, and artifacts
   `[repeat k/N]` in `full_name`, attachment path `…/repeat-k/attempt-n`), and
   retries key attempts by id and repeat. `run_started` lists every planned
   execution, and lxdev fills the next unstarted entry with a matching name.
+- `FILE:LINE`: lxdev parses the file (Oxc) for spec calls — `spec(…)` and
+  `spec.skip|only|fixme|fail(…)`, under any local name `spec` is imported as
+  — and takes the one whose call spans the line, else every call inside the
+  smallest node around the line that holds any (a loop, a helper). It sends
+  `control.locations`: each bundled file's source name → those calls' line
+  ranges, `null` for a file given whole. The runtime keeps a spec only when
+  its registration frame (source-mapped) is in its file's ranges; a spec
+  registered from a file that is not a key is dropped.
+- `--list` bundles with `Purpose::List`: the bundle calls the framework's
+  `list()` instead of `run()`, and throws when there is none, so an older
+  `@lingxia/test` fails rather than running the suite. `list()` selects as
+  `run()` does, then returns a zero-case report with `listed`. lxdev writes
+  no run directory and leaves `latest`.
+- Rerun lines: `meta.reruns` maps each failed id to its command. `FILE:LINE`
+  when the id is generated (`generated_id`), the file was one of the run's,
+  and no other id shares that line; `--id` on the run's paths otherwise.
 - `PageInfo.ready` means `onReady` ran; `webviewAttached` means the page has a
   WebView. `fresh` relaunches wait for ready but accept a home page that hands
   off to another page.
