@@ -1,9 +1,12 @@
 import { expect, spec } from '@lingxia/test';
 import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import outage from '../fixtures/network/outage.json';
 import status from '../scenarios/route/status.json';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 // Public host: the Showcase keeps the default public-network grant, and a
 // route never fulfills a host the app's policy would refuse.
@@ -102,7 +105,7 @@ spec("reject network routes from inside app Logic", {
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-002");
 
-  const rejection = await app.eval({
+  const rejection = await raw.eval({
     script: `
       // Reading the driver works; only calls reject outside a host run.
       const network = lx.automation().lxapp().network;
@@ -145,7 +148,7 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
   expect(scenario.variant).toBe(null);
   expect(scenario.rules.map((rule) => rule.target)).toEqual(outage.rules.map((rule) => rule.http));
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const base = ${JSON.stringify(BASE)};
       const statuses = [];
@@ -231,7 +234,7 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   // of the real network.
   await app.network.route({ url: `${BASE}/devices/*`, method: 'PATCH' }, { status: 404, json: { error: 'unmatched' } });
 
-  const readStatus = () => app.eval({
+  const readStatus = () => raw.eval({
     script: `
       const response = await fetch(${JSON.stringify(`${BASE}/status`)});
       return { status: response.status, up: (await response.json()).up };
@@ -247,7 +250,7 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   const offline = await app.scenario(status, 'offline');
   expect(await readStatus()).toEqual({ status: 503, up: false });
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const base = ${JSON.stringify(BASE)};
       const rename = async (body) => {
@@ -314,7 +317,7 @@ spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Ev
     ],
   });
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const base = ${JSON.stringify(BASE)};
       const started = Date.now();

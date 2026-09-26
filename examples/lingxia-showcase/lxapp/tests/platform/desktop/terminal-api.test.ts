@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
@@ -53,7 +56,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   timeout: 60_000,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'TERMINAL-API-001');
-  const platform = await runtimePlatform(app);
+  const platform = await runtimePlatform(raw);
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`terminal settings require macOS or Windows; got ${platform || 'unknown'}`);
   }
@@ -66,7 +69,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
   // Keep the handle: closing the lxapp leaves its entry in the main switcher,
   // and the surface handle is what closes the workspace with it.
   const surfaceKey = `${stateKey}_surface`;
-  await app.eval({
+  await raw.eval({
     timeoutMs: 20_000,
     script: `
       globalThis[${JSON.stringify(surfaceKey)}] =
@@ -77,7 +80,8 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     describe: 'terminal settings to become the current lxapp',
     timeoutMs: 20_000,
   });
-  const terminal = t.automation.lxapp(TERMINAL_APP_ID);
+  // Raw: its probes are scripts; see `rawApp`.
+  const terminal = rawApp(TERMINAL_APP_ID);
   await eventually(() => terminal.eval({ script: 'return true', timeoutMs: 5_000 }), (ready) => ready === true, {
     describe: 'terminal settings Logic runtime to answer',
     timeoutMs: 20_000,
@@ -94,12 +98,12 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     // The heading exists only in the settings document itself, not in the
     // blank document a WebView shows before its first navigation commits.
     await terminal.page.waitFor({ page: 'settings', css: '#type-heading', state: 'visible' });
-    const preference = await app.eval({
+    const preference = await raw.eval({
       script: 'return lx.host.control.displayLanguage.getPreference()',
     }) as string;
     try {
       for (const language of ['zh-CN', 'en-US']) {
-        await app.eval({
+        await raw.eval({
           script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
         });
         await eventually(
@@ -115,7 +119,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
         );
       }
     } finally {
-      await app.eval({
+      await raw.eval({
         script: `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(preference)})`,
       });
     }
@@ -223,7 +227,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
         delete globalThis[${JSON.stringify(stateKey)}];
       `,
     });
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const surface = globalThis[${JSON.stringify(surfaceKey)}];

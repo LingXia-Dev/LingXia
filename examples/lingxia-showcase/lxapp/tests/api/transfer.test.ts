@@ -1,6 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /**
  * The fixture server is started outside the runtime (see tests/harness). With
@@ -21,7 +24,7 @@ transferSpec('download a body and read the bytes back out of the sandbox', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-DOWNLOAD-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const task = lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/a.bin?size=4096`)} });
@@ -62,7 +65,7 @@ transferSpec('abort an in-flight download and reject with E_ABORT', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-ABORT-001');
 
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
     const task = lx.downloadFile({
       url: ${JSON.stringify(`${httpBase}/slow?size=400000&chunks=40&delayMs=100`)},
     });
@@ -82,7 +85,7 @@ transferSpec('stream monotonic download progress across pause and resume', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-PROGRESS-001');
 
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
       const task = lx.downloadFile({
         url: ${JSON.stringify(`${httpBase}/slow.bin?size=1200000&chunks=40&delayMs=60&case=${encodeURIComponent(namespace)}`)},
       });
@@ -165,7 +168,7 @@ transferSpec('stop download iteration without canceling the transfer promise', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-RETURN-001');
 
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
       const task = lx.downloadFile({
         url: ${JSON.stringify(`${httpBase}/slow.bin?size=131072&chunks=8&delayMs=40&case=${encodeURIComponent(namespace)}`)},
       });
@@ -209,7 +212,7 @@ transferSpec('cancel a download through its promise helpers', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-CANCEL-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const task = lx.downloadFile({
@@ -245,7 +248,7 @@ transferSpec('report the server status a failed download saw', {
 
   for (const status of [404, 500, 503]) {
     await t.step(`http ${status}`, async () => {
-      const outcome = await evalCaught(app, `
+      const outcome = await evalCaught(raw, `
         return await lx.downloadFile({
           url: ${JSON.stringify(`${httpBase}/status?code=`)} + ${status},
         }).result;
@@ -267,7 +270,7 @@ transferSpec('upload a managed file as multipart and read the server echo', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/up.bin?size=1024`)} }).result;
@@ -309,7 +312,7 @@ transferSpec('keep the multipart envelope intact whatever the caller heads', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-002');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/env.bin?size=512`)} }).result;
@@ -355,7 +358,7 @@ transferSpec('stream upload progress that ends on a completed event', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-PROGRESS-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 60_000,
     script: `
       const collect = async (options) => {
@@ -413,7 +416,7 @@ transferSpec('stop upload iteration and observe rejected promise helpers', {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, 'TRANSFER-UPLOAD-HELPERS-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 60_000,
     script: `
       const source = await lx.downloadFile({
@@ -485,7 +488,7 @@ transferSpec('upload a raw body with PUT for presigned endpoints', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=2048`)} }).result;
@@ -549,7 +552,7 @@ transferSpec('reject multipart-only options when the body is raw', {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-002');
 
   // Dropping these silently would leave the lxapp believing they were sent.
-  const rejectedFormData = await evalCaught(app, `
+  const rejectedFormData = await evalCaught(raw, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw`)},
@@ -559,7 +562,7 @@ transferSpec('reject multipart-only options when the body is raw', {
       formData: { note: 'spec' },
     }).result;
   `);
-  const rejectedName = await evalCaught(app, `
+  const rejectedName = await evalCaught(raw, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/raw.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw`)},
@@ -587,7 +590,7 @@ transferSpec('report the refusing status when a raw upload is rejected mid-body'
   // How a presigned URL refuses a signature: answer, then hang up before the
   // body is done. The status has to survive that, or the lxapp cannot tell a
   // rejected signature from a flaky network.
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/reject.bin?size=8000000`)} }).result;
     return await lx.uploadFile({
       url: ${JSON.stringify(`${httpBase}/upload-raw?reject=403`)},
@@ -609,7 +612,7 @@ transferSpec('accept PATCH and an empty file as a raw body', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-RAW-004');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       // Zero bytes is only reachable with a raw body -- multipart always has an
@@ -646,7 +649,7 @@ transferSpec('deny an upload to a host the lxapp never trusted', {
 
   // The host network grant governs uploads exactly as it governs downloads,
   // and the file resolving first must not be mistaken for permission to send it.
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/auth.bin?size=64`)} }).result;
     return await lx.uploadFile({
       url: 'https://not-trusted.example/upload',
@@ -668,7 +671,7 @@ transferSpec('cancel an upload and reject rather than resolve', {
 }, async (t) => {
   const { app } = bindFixture(t, 'TRANSFER-UPLOAD-CANCEL-001');
 
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
     const source = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/file/big.bin?size=2000000`)} }).result;
     // holdMs keeps the request open long enough for a cancel to be meaningful.
     const task = lx.uploadFile({

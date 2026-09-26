@@ -1,7 +1,10 @@
 import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 spec("expose only host automation authority in the test runtime", { id: "AUT-000", covers: ['lx.automation'], app: SHOWCASE_APP_ID }, (t) => {
     const testLx = lx as unknown as Record<string, unknown>;
@@ -32,7 +35,7 @@ spec("select and inspect the current lxapp", { id: "AUT-001", covers: ['Automati
 spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-005");
 
-    const rejection = await app.eval({
+    const rejection = await raw.eval({
       timeoutMs: 15_000,
       script: `
         try {
@@ -56,7 +59,7 @@ spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", 
 spec("evaluate across the Logic boundary", { id: "AUT-002", covers: ['LxAppDriver.eval'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "AUT-002");
 
-    expect(await app.eval({ script: '21 * 2' })).toBe(42);
+    expect(await raw.eval({ script: '21 * 2' })).toBe(42);
   });
 
 spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003", covers: ['LxAppDriver.surfaceLayout'], app: SHOWCASE_APP_ID }, async (t) => {
@@ -83,14 +86,14 @@ spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003"
 spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.waitFor'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "AUT-004");
 
-    const current = await currentPageOrNull(app);
+    const current = await currentPageOrNull(raw);
     if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-    await waitForCurrentPage(app, 'home');
-    await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
+    await waitForCurrentPage(raw, 'home');
+    await raw.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
 
     const id = `automation-wait-${namespace}`;
     const css = `#${id}`;
-    await app.page.eval({
+    await raw.page.eval({
       page: 'home',
       script: `
         const fixture = document.createElement('input');
@@ -102,35 +105,35 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
       `,
     });
     defer(async () => {
-      await app.page.eval({
+      await raw.page.eval({
         page: 'home',
         script: `document.getElementById(${JSON.stringify(id)})?.remove()`,
       });
     });
 
-    await app.page.waitFor({ page: 'home', css, state: 'attached' });
-    await app.page.waitFor({ page: 'home', css, state: 'hidden' });
+    await raw.page.waitFor({ page: 'home', css, state: 'attached' });
+    await raw.page.waitFor({ page: 'home', css, state: 'hidden' });
     await expectReject(
-      () => app.page.waitFor({ page: 'home', css, state: 'enabled', timeoutMs: 100 }),
+      () => raw.page.waitFor({ page: 'home', css, state: 'enabled', timeoutMs: 100 }),
       { message: 'E_TIMEOUT' });
     await expectReject(
-      () => app.page.waitFor({ page: 'not-a-showcase-page', css, state: 'attached' }),
+      () => raw.page.waitFor({ page: 'not-a-showcase-page', css, state: 'attached' }),
       { message: 'unknown page name' });
-    const visible = app.page.waitFor({ page: 'home', css, state: 'visible' });
-    await app.page.eval({
+    const visible = raw.page.waitFor({ page: 'home', css, state: 'visible' });
+    await raw.page.eval({
       page: 'home',
       script: `document.getElementById(${JSON.stringify(id)}).style.display = 'block'`,
     });
     await visible;
-    const enabled = app.page.waitFor({ page: 'home', css, state: 'enabled' });
-    await app.page.eval({
+    const enabled = raw.page.waitFor({ page: 'home', css, state: 'enabled' });
+    await raw.page.eval({
       page: 'home',
       script: `document.getElementById(${JSON.stringify(id)}).disabled = false`,
     });
     await enabled;
-    await app.page.waitFor({ page: 'home', css, state: 'editable' });
-    const detached = app.page.waitFor({ page: 'home', css, state: 'detached' });
-    await app.page.eval({
+    await raw.page.waitFor({ page: 'home', css, state: 'editable' });
+    const detached = raw.page.waitFor({ page: 'home', css, state: 'detached' });
+    await raw.page.eval({
       page: 'home',
       script: `document.getElementById(${JSON.stringify(id)})?.remove()`,
     });

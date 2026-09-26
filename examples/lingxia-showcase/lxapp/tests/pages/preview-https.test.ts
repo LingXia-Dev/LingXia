@@ -1,6 +1,9 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
@@ -35,7 +38,7 @@ async function presentHttpsPreview(
 ): Promise<void> {
   const { app, namespace, defer } = bindFixture(t, id);
   const stateKey = `__lingxiaPreviewHttps_${namespace.replace(/-/g, '_')}`;
-  const readState = () => app.eval({
+  const readState = () => raw.eval({
     script: `
       const s = globalThis[${JSON.stringify(stateKey)}];
       return {
@@ -49,7 +52,7 @@ async function presentHttpsPreview(
   }) as Promise<HttpsHandleState>;
 
   defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         const s = globalThis[${JSON.stringify(stateKey)}];
         if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
@@ -58,7 +61,7 @@ async function presentHttpsPreview(
     }).catch(() => undefined);
   });
 
-  const started = await app.eval({
+  const started = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const url = ${JSON.stringify(url)};
@@ -88,7 +91,7 @@ async function presentHttpsPreview(
   expect(state.completed).toBe(null);
   expect(state.completedError).toBe(null);
 
-  await app.eval({
+  await raw.eval({
     script: `globalThis[${JSON.stringify(stateKey)}].controller.abort(); return true;`,
   });
   await eventually(

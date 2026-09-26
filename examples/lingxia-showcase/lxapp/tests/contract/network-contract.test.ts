@@ -1,5 +1,8 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 // Contract checks for routed Logic fetch, run with their document:
 //
@@ -20,7 +23,7 @@ spec.beforeEach((t) => {
 const BASE = 'https://api.example.com/lingxia-showcase/contract/v1';
 
 async function fetchJson(t: Fixture, url: string, method = 'GET') {
-  return await t.app.eval<{ status: number; body: unknown }>({
+  return await raw.eval<{ status: number; body: unknown }>({
     script: `
       const response = await fetch(${JSON.stringify(url)}, { method: ${JSON.stringify(method)} });
       return { status: response.status, body: await response.json() };

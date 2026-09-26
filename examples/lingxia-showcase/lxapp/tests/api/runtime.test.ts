@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
 import { waitForCurrentPage } from '../helpers/page.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 spec("read core app, device, screen, network, and system state", { id: "LOGIC-001", covers: [
     'lx.getLxAppInfo',
@@ -14,7 +17,7 @@ spec("read core app, device, screen, network, and system state", { id: "LOGIC-00
   ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-001");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const app = lx.getLxAppInfo();
       const device = lx.getDeviceInfo();
@@ -60,7 +63,7 @@ spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers
   ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-002");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const callback = () => {};
       const unsubscribes = [
@@ -87,7 +90,7 @@ spec("register and remove portable runtime listeners", { id: "LOGIC-002", covers
 spec("answer capability questions consistently with the optional members", { id: "LOGIC-006", covers: ['lx.supports'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "LOGIC-006");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const terminalAgrees = ('terminal' in lx) === lx.supports('terminal');
       const autostartAgrees = !!lx.host.autostart === lx.supports('app.autostart');
@@ -126,7 +129,7 @@ spec("answer capability questions consistently with the optional members", { id:
 spec("round-trip isolated key-value storage", { id: "LOGIC-003", covers: ['lx.getStorage', 'Storage.info', 'Storage.set', 'Storage.get', 'Storage.has', 'Storage.list', 'Storage.delete'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-003");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const storage = lx.getStorage();
       const key = ${JSON.stringify(namespace)};
@@ -195,7 +198,7 @@ spec("round-trip files under lx user cache", { id: "LOGIC-004", covers: [
   ], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-004");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const files = lx.fs;
       const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
@@ -266,7 +269,7 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   const { app, namespace, defer } = bindFixture(t, "LOGIC-007");
   const persistKey = `${namespace}-persist`;
   defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         const storage = lx.getStorage();
         const keys = await storage.list(${JSON.stringify(namespace)});
@@ -275,7 +278,7 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
     }).catch(() => undefined);
   });
 
-  const first = await app.eval({
+  const first = await raw.eval({
     script: `
       const storage = lx.getStorage();
       const ns = ${JSON.stringify(namespace)};
@@ -313,19 +316,19 @@ spec("clear, prefix-list, missing vs null, and persist storage across reLaunch",
   expect(first.persistGone == null).toBeTruthy();
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home', 30_000);
-  const persisted = await app.eval({
+  await waitForCurrentPage(raw, 'home', 30_000);
+  const persisted = await raw.eval({
     script: `return await lx.getStorage().get(${JSON.stringify(persistKey)});`,
   });
   expect(persisted).toEqual({ kept: true });
 
   const oversized = await evalCaught(
-    app,
+    raw,
     `await lx.getStorage().set(${JSON.stringify(namespace)} + '-big', 'x'.repeat(5 * 1024 * 1024 + 1));`,
   );
   expect(oversized.ok).toBeFalsy();
   expect(oversized.code).toBe('E_OUT_OF_RANGE');
-  const leftover = await app.eval({
+  const leftover = await raw.eval({
     script: `return await lx.getStorage().get(${JSON.stringify(namespace)} + '-big');`,
   });
   expect(leftover == null).toBeTruthy();
@@ -338,7 +341,7 @@ spec("read directories, LxFile.exists/path, and deny escaped paths", {
 }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-008");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const files = lx.fs;
       const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};
@@ -388,10 +391,10 @@ spec("read directories, LxFile.exists/path, and deny escaped paths", {
   expect(result.dirStat).toBeTruthy();
   expect(result.overwriteRejected).toBeTruthy();
 
-  const escaped = await evalCaught(app, `await lx.fs.stat('../secret');`);
+  const escaped = await evalCaught(raw, `await lx.fs.stat('../secret');`);
   expect(escaped.ok).toBeFalsy();
   expect(escaped.code).toBe('E_INVALID_ARG');
-  const absolute = await evalCaught(app, `await lx.fs.stat('C:/Windows/System32');`);
+  const absolute = await evalCaught(raw, `await lx.fs.stat('C:/Windows/System32');`);
   expect(absolute.ok).toBeFalsy();
   expect(absolute.code).toBe('E_INVALID_ARG');
 });

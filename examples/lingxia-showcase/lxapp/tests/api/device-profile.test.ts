@@ -1,6 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /**
  * Capability profile for device APIs whose contract differs by platform. On a
@@ -27,7 +30,7 @@ desktopSpec('reject haptics and the dialer with E_NOT_SUPPORTED on a desktop', {
   const { app } = bindFixture(t, 'DEVICE-ABSENT-001');
   const stackBefore = (await app.nav.stack()).map((page) => page.name);
 
-  const outcomes = await app.eval({
+  const outcomes = await raw.eval({
     script: `
       const attempt = (fn) => {
         try { fn(); return { threw: false }; }
@@ -67,10 +70,10 @@ spec('accept both device orientations and reject an unknown one', {
   const { app, defer } = bindFixture(t, 'DEVICE-ORIENTATION-001');
   const supported = ORIENTATION_SUPPORT[platform ?? ''] ?? true;
   defer(async () => {
-    await app.eval({ script: `lx.setDeviceOrientation('portrait'); return true;` }).catch(() => undefined);
+    await raw.eval({ script: `lx.setDeviceOrientation('portrait'); return true;` }).catch(() => undefined);
   });
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const attempt = (value) => {
         try { return { ok: true, value: lx.setDeviceOrientation(value) }; }

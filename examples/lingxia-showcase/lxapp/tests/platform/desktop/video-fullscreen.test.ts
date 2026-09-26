@@ -1,8 +1,11 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
@@ -37,7 +40,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'DESKTOP-VIDEO-FULLSCREEN-001');
   const desktop = t.automation.desktop;
-  const command = (body: string) => app.eval({
+  const command = (body: string) => raw.eval({
     script: `lx.createVideoContext(${JSON.stringify(VIDEO_ID)}).${body}; return true;`,
   });
   // Native fullscreen is a separate window that takes a whole display; the
@@ -48,18 +51,18 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
   ));
   const fullscreenWindows = async (): Promise<DesktopWindowInfo[]> => (await desktop.windows())
     .filter((window) => window.visible && coversADisplay(window));
-  const eventLog = () => app.page.query({ page: 'video', css: '[data-testid="video-event"]', full: true })
+  const eventLog = () => raw.page.query({ page: 'video', css: '[data-testid="video-event"]', full: true })
     .then((element) => (element.exists ? element.text : ''));
 
-  const current = await currentPageOrNull(app);
+  const current = await currentPageOrNull(raw);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   defer(async () => {
     await command('exitFullScreen()').catch(() => undefined);
     await command('stop()').catch(() => undefined);
-    const active = await currentPageOrNull(app);
+    const active = await currentPageOrNull(raw);
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   });
 
   // Desktop chrome cases before this one can leave a split, a surface float,
@@ -68,7 +71,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
   // order comment on preview-https is guarding.
   const layout = await app.surfaceLayout();
   for (const float of layout.floats) {
-    await app.eval({
+    await raw.eval({
       timeoutMs: 15_000,
       script: `
         const handle = lx.surface.getByKey(${JSON.stringify(float.id)});
@@ -81,7 +84,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
       slot.children.includes('terminal') && slot.visible && !slot.overlay
     ));
   if (terminalVisible) {
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const handle = await lx.surface.openDeclared('terminal');
@@ -104,9 +107,9 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
     page: 'video',
     query: { automationFixture: 'video-source', src: `${httpBase}/media/sample.mp4` },
   });
-  await waitForCurrentPage(app, 'video');
-  await app.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
-  await app.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
+  await waitForCurrentPage(raw, 'video');
+  await raw.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
+  await raw.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
   await eventually(async () => {
     await command('play()');
     return eventLog();
@@ -119,7 +122,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
 
   await t.step('requestFullScreen() reports on and presents a display-sized window', async () => {
     await command('requestFullScreen()');
-    await waitForElementText(app, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: on'), 10_000);
+    await waitForElementText(raw, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: on'), 10_000);
     // The physical proof: a window really took a display, not just the event.
     const presented = await eventually(
       async () => (await fullscreenWindows()).filter((window) => !before.has(window.id)),
@@ -131,7 +134,7 @@ fullscreenSpec('enter and leave native video fullscreen from VideoContext', {
 
   await t.step('exitFullScreen() reports off and takes that window down', async () => {
     await command('exitFullScreen()');
-    await waitForElementText(app, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: off'), 10_000);
+    await waitForElementText(raw, 'video', '[data-testid="video-event"]', (text) => text.includes('Fullscreen: off'), 10_000);
     await eventually(
       async () => (await fullscreenWindows()).filter((window) => !before.has(window.id)),
       (windows) => windows.length === 0,

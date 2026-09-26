@@ -1,4 +1,4 @@
-import type { AppDriver } from './app.js';
+import type { LxAppDriver } from '@lingxia/types/automation';
 import { expect, type Fixture, type TestApp } from '@lingxia/test';
 
 export interface EventuallyOptions<T> {
@@ -53,7 +53,7 @@ export type CaughtEval = {
 /** Run Logic and return `{ ok, code, data }` instead of throwing across eval. */
 /** Schedule `lx.reLaunch` without awaiting the torn-down eval context. */
 export async function relaunchFromLogic(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   query?: Record<string, string>,
 ): Promise<void> {
@@ -63,7 +63,7 @@ export async function relaunchFromLogic(
   });
 }
 
-export async function evalCaught(app: AppDriver, body: string): Promise<CaughtEval> {
+export async function evalCaught(app: LxAppDriver, body: string): Promise<CaughtEval> {
   return app.eval({
     script: `
       try {

@@ -1,8 +1,11 @@
 import { expect, spec } from '@lingxia/test';
 import type { LxAppRuntimeInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const CHAT_APP_ID = 'lingxia-chat';
 
@@ -46,7 +49,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
     (name) => name === 'home',
     { describe: 'home to stay the current page before the hop', timeoutMs: 30_000 },
   );
-  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   defer(async () => {
     if (isOpen(await rows(), CHAT_APP_ID)) {
       await manager.close({ app: CHAT_APP_ID }).catch(() => undefined);
@@ -64,14 +67,14 @@ hopSpec('hop to the bundled chat lxapp and back', {
   }
   const stateKey = `__lingxiaNavApp_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
-    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
+    await raw.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
   });
 
   await t.step('navigateToApp makes the target current and keeps the caller alive', async () => {
     // Fire without awaiting: the promise settles after the main switches away
     // from the caller, which is the transition this eval is part of. Keep the
     // rejection, so a failure names the cause instead of just timing out.
-    await app.eval({
+    await raw.eval({
       script: `
         const state = { settled: null };
         globalThis[${JSON.stringify(stateKey)}] = state;
@@ -84,7 +87,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
     await eventually(
       async () => ({
         current: await currentApp(),
-        settled: await app.eval({ script: `return globalThis[${JSON.stringify(stateKey)}]?.settled ?? null` }) as
+        settled: await raw.eval({ script: `return globalThis[${JSON.stringify(stateKey)}]?.settled ?? null` }) as
           { ok: boolean; code?: string; message?: string } | null,
       }),
       ({ current, settled }) => current === CHAT_APP_ID || (settled !== null && !settled.ok),
@@ -124,11 +127,11 @@ hopSpec('hop to the bundled chat lxapp and back', {
       describe: 'chat to close after navigateBackApp',
       timeoutMs: 10_000,
     });
-    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   });
 
   await t.step('navigateToApp rejects an unknown page name without leaving the caller', async () => {
-    const rejected = await app.eval({
+    const rejected = await raw.eval({
       script: `
         try {
           await lx.navigateToApp({ appId: ${JSON.stringify(CHAT_APP_ID)}, page: 'no-such-page' });

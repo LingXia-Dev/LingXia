@@ -1,6 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /** One rejected call: the expression, and the code an app author branches on. */
 interface Rejection {
@@ -16,7 +19,7 @@ async function assertRejections(
 ): Promise<void> {
   const observed: string[] = [];
   for (const item of cases) {
-    const outcome = await evalCaught(app, `return await ${item.call};`);
+    const outcome = await evalCaught(raw, `return await ${item.call};`);
     observed.push(`${item.label}=${outcome.ok ? 'ACCEPTED' : String(outcome.code)}`);
   }
   // Compare the whole table at once: one failing row then names every other
@@ -101,7 +104,7 @@ spec('answer a missing file with not-found, never an internal error', {
   ]);
 
   // exists() answers the same question without throwing at all.
-  const exists = await app.eval({
+  const exists = await raw.eval({
     script: `return [
       await lx.fs.exists(${JSON.stringify(missing)}),
       await lx.fs.file(${JSON.stringify(missing)}).exists(),

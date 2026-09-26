@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /**
  * `lx.clipboard` is the system clipboard, not a runtime-private buffer. The
@@ -27,7 +30,7 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
 }, async (t) => {
   const auto = t.automation;
   const { app, namespace } = bindFixture(t, 'DESKTOP-CLIPBOARD-001');
-  const platform = await runtimePlatform(app);
+  const platform = await runtimePlatform(raw);
   if (platform !== 'macos' && platform !== 'windows') {
     throw new Error(`desktop clipboard case ran against ${platform || 'unknown'}`);
   }
@@ -45,7 +48,7 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
 
   const fromOs = `os-to-lx-${namespace}-中文`;
   await desktop.set({ text: fromOs });
-  const seen = await app.eval({
+  const seen = await raw.eval({
     script: `
       const read = await lx.clipboard.readText();
       const types = await lx.clipboard.types();
@@ -63,10 +66,10 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
   expect(seen.types).toContain('text');
 
   const fromLx = `lx-to-os-${namespace}-emoji-✓`;
-  await app.eval({ script: `await lx.clipboard.writeText(${JSON.stringify(fromLx)}); return true;` });
+  await raw.eval({ script: `await lx.clipboard.writeText(${JSON.stringify(fromLx)}); return true;` });
   expect((await desktop.get()).text).toBe(fromLx);
 
-  await app.eval({ script: `await lx.clipboard.clear(); return true;` });
+  await raw.eval({ script: `await lx.clipboard.clear(); return true;` });
   const afterClear = await desktop.get();
   expect(afterClear.text ?? '').toBe('');
 });

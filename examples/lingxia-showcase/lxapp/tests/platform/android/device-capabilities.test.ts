@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, evalCaught } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
@@ -33,12 +36,12 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
   reason: 'needs a device with Wi-Fi on, location services on, and the location permission granted',
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-WIFI-001');
-  expect(await runtimePlatform(app)).toBe('android');
+  expect(await runtimePlatform(raw)).toBe('android');
   defer(async () => {
-    await app.eval({ script: 'await lx.stopWifi();' }).catch(() => undefined);
+    await raw.eval({ script: 'await lx.stopWifi();' }).catch(() => undefined);
   });
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       await lx.startWifi();
@@ -87,11 +90,11 @@ androidMediaSpec('save an image and a video into the photo library', {
   reason: 'needs the HTTP fixture reachable from the device (adb reverse) and an Android host',
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-PHOTOS-001');
-  expect(await runtimePlatform(app)).toBe('android');
+  expect(await runtimePlatform(raw)).toBe('android');
 
   // Android 10+ writes an app's own media through MediaStore with no permission
   // prompt, so this is a complete contract with no external UI.
-  const saved = await app.eval({
+  const saved = await raw.eval({
     timeoutMs: 40_000,
     script: `
       const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
@@ -105,7 +108,7 @@ androidMediaSpec('save an image and a video into the photo library', {
   expect(saved.video).toBeGreaterThan(0);
 
   await t.step('a missing source rejects instead of reporting a save', async () => {
-    const rejected = await evalCaught(app, `
+    const rejected = await evalCaught(raw, `
       await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' });
     `);
     expect(rejected.ok).toBeFalsy();
@@ -119,11 +122,11 @@ androidSpec('fire both haptics without a dialog', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-HAPTICS-001');
-  expect(await runtimePlatform(app)).toBe('android');
+  expect(await runtimePlatform(raw)).toBe('android');
 
   // Whether the motor moved is not observable from here; that the call is
   // supported and resolves — where a desktop rejects it — is.
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const short = await lx.vibrateShort();
       const long = await lx.vibrateLong();

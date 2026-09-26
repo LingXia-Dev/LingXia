@@ -1,8 +1,11 @@
 import { expect, spec } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { runtimePlatform } from '../helpers/platform.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 spec('open the clipboard demo from the API menu and round-trip text', {
   id: 'UI-CLIPBOARD-001',
@@ -17,25 +20,25 @@ spec('open the clipboard demo from the API menu and round-trip text', {
   const { app } = bindFixture(t, 'UI-CLIPBOARD-001');
 
   await app.nav.relaunch({ page: 'api' });
-  await app.page.waitFor({
+  await raw.page.waitFor({
     page: 'api',
     css: '[data-testid="api-device-section"]',
     state: 'visible',
   });
   await app.view.testId("api-device-section", { page: 'api' }).click();
   // Clipboard sits at the end of the long Device list, below the fold.
-  await app.page.waitFor({ page: 'api', css: '[data-testid="api-clipboard"]', state: 'attached' });
-  await app.page.eval({
+  await raw.page.waitFor({ page: 'api', css: '[data-testid="api-clipboard"]', state: 'attached' });
+  await raw.page.eval({
     page: 'api',
     script: `document.querySelector('[data-testid="api-clipboard"]')?.scrollIntoView({ block: 'center' })`,
   });
-  await app.page.waitFor({
+  await raw.page.waitFor({
     page: 'api',
     css: '[data-testid="api-clipboard"]',
     state: 'visible',
   });
   await app.view.testId("api-clipboard", { page: 'api' }).click();
-  await app.page.waitFor({
+  await raw.page.waitFor({
     page: 'clipboard',
     css: '[data-testid="clipboard-status"]',
     state: 'visible',
@@ -43,7 +46,7 @@ spec('open the clipboard demo from the API menu and round-trip text', {
 
   await app.view.testId("clipboard-write-text", { page: 'clipboard' }).click();
   await waitForElementText(
-    app,
+    raw,
     'clipboard',
     '[data-testid="clipboard-status"]',
     (text) => text.includes('Wrote text'),
@@ -51,10 +54,10 @@ spec('open the clipboard demo from the API menu and round-trip text', {
 
   // HarmonyOS denies the read without READ_PASTEBOARD (see LOGIC-CLIPBOARD-001);
   // the page must say so instead of claiming the clipboard is empty.
-  const readsDenied = await runtimePlatform(app) === 'harmony';
+  const readsDenied = await runtimePlatform(raw) === 'harmony';
   await app.view.testId("clipboard-read-text", { page: 'clipboard' }).click();
   const readStatus = await waitForElementText(
-    app,
+    raw,
     'clipboard',
     '[data-testid="clipboard-status"]',
     (text) => readsDenied
@@ -65,7 +68,7 @@ spec('open the clipboard demo from the API menu and round-trip text', {
 
   await app.view.testId("clipboard-clear", { page: 'clipboard' }).click();
   const cleared = await waitForElementText(
-    app,
+    raw,
     'clipboard',
     '[data-testid="clipboard-status"]',
     (text) => text.includes('Cleared'),

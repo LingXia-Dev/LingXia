@@ -1,4 +1,4 @@
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 import type {
   PageDriver,
@@ -6,6 +6,9 @@ import type {
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
 } from '@lingxia/types/automation';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
 const desktopTerminalTest =
@@ -47,7 +50,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
 }, async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const surfaceId = await app.eval({
+  const surfaceId = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const handle = await lx.shell.openDeclared('terminal', {
@@ -96,7 +99,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
       expect(pane.grid.rows).toBeGreaterThan(0);
     }
   } finally {
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const handle = globalThis.__terminalAutomationHandle;
@@ -116,7 +119,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
-  const surfaceId = await app.eval({
+  const surfaceId = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const handle = await lx.shell.openDeclared('terminal', {
@@ -147,7 +150,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
     const settled = await terminal.snapshot({ surface: surfaceId });
     expect(settled.maximized).toBe(true);
   } finally {
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const handle = globalThis.__terminalTabAutomationHandle;
@@ -168,7 +171,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   // One surface per eval. Opening both in a single script reports only that
   // "eval timed out", which says nothing about which surface never settled —
   // and a native surface and a bundled lxapp settle along different paths.
-  const terminalId = await app.eval({
+  const terminalId = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const terminal = await lx.shell.openDeclared('terminal', {
@@ -181,7 +184,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   }) as string;
   // Opening a bundled lxapp aside has to reach the host and come back, so it
   // is slower than the native surface above and pays a cold start on CI.
-  const settingsId = await app.eval({
+  const settingsId = await raw.eval({
     timeoutMs: 60_000,
     script: `
       const settings = await lx.shell.openApp('app.lingxia.terminal-settings', {
@@ -194,10 +197,11 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   }) as string;
   const refs = { terminal: terminalId, settings: settingsId };
   const terminal = t.automation.terminal;
-  const settingsApp = t.automation.lxapp('app.lingxia.terminal-settings');
+  // Raw: its probes are scripts; see `rawApp`.
+  const settingsApp = rawApp('app.lingxia.terminal-settings');
   const page = settingsApp.page;
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await app.eval({
+  const previousAppearance = await raw.eval({
     script: 'return lx.host.control.appearance.getPreference()',
   }) as string;
 
@@ -241,7 +245,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     // when the current slot cannot offer a second card to click.
     let cards = await themeCards();
     if (cards.length < 2) {
-      await app.eval({
+      await raw.eval({
         script: `await lx.host.control.appearance.setPreference('dark'); return true;`,
       });
       cards = await waitFor(async () => {
@@ -315,7 +319,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     expect(applied.chrome.surface).toBe(previewed.chrome.surface);
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
-    await app.eval({
+    await raw.eval({
       script: `await lx.host.control.appearance.setPreference(${JSON.stringify(previousAppearance)}); return true;`,
     }).catch(() => undefined);
     if (initial) {
@@ -329,7 +333,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
         `,
       });
     }
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const handles = globalThis.__terminalThemeAutomationHandles;

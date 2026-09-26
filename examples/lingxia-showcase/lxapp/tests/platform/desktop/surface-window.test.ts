@@ -3,7 +3,10 @@ import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();
@@ -29,7 +32,7 @@ interface SurfacePageSnapshot {
 
 async function desktopPlatform(t: Fixture): Promise<string> {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
-  const actual = await runtimePlatform(app);
+  const actual = await runtimePlatform(raw);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
       `surface window tests require macOS or Windows; got ${actual || 'unknown'}`,
@@ -42,7 +45,7 @@ async function desktopPlatform(t: Fixture): Promise<string> {
 }
 
 async function closeKeyedSurface(app: TestApp, key: string): Promise<void> {
-  await app.eval({
+  await raw.eval({
     timeoutMs: 15_000,
     script: `
       const handle = lx.surface.getByKey(${JSON.stringify(key)});
@@ -56,7 +59,7 @@ async function openWindow(
   chrome: 'system' | 'full',
   key: string,
 ): Promise<OpenedWindow> {
-  return await app.eval({
+  return await raw.eval({
     timeoutMs: 20_000,
     script: `
       const handle = await lx.surface.openPage('surface', {
@@ -84,14 +87,14 @@ async function waitForSurfacePage(
   fixture: string,
   expectedTopInset: number,
 ): Promise<SurfacePageSnapshot> {
-  await app.page.waitFor({
+  await raw.page.waitFor({
     page: 'surface',
     css: '[data-testid="surface-page"]',
     state: 'visible',
     timeoutMs: 15_000,
   });
   return eventually(
-    () => app.page.eval({
+    () => raw.page.eval({
       page: 'surface',
       script: `(() => {
         const layout = window.lxPageChrome && window.lxPageChrome.layout;
@@ -154,7 +157,7 @@ windowTest('native close disposes a secondary window in the dock and tray host',
   const stateKey = `__surfaceNativeClose_${namespace.replace(/-/g, '_')}`;
   defer(() => closeKeyedSurface(app, key));
   defer(async () => {
-    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}];` });
+    await raw.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}];` });
   });
   const before = await desktop.windows();
   await openWindow(app, 'system', key);
@@ -165,7 +168,7 @@ windowTest('native close disposes a secondary window in the dock and tray host',
     { describe: 'secondary native window to appear', timeoutMs: 10_000 },
   );
   if (!window) throw new Error('secondary native window was not found');
-  await app.eval({
+  await raw.eval({
     script: `
       const handle = lx.surface.getByKey(${JSON.stringify(key)});
       const state = { handle, closed: 0 };
@@ -177,7 +180,7 @@ windowTest('native close disposes a secondary window in the dock and tray host',
   // close handler, rather than merely hiding its HWND because a tray exists.
   await desktop.window.close({ window: window.id });
   const state = await eventually(
-    () => app.eval({
+    () => raw.eval({
       script: `
         const state = globalThis[${JSON.stringify(stateKey)}];
         return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
@@ -208,7 +211,7 @@ windowTest('open a page window with system chrome and with full chrome', {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-001');
   const platform = await desktopPlatform(t);
   const desktop = t.automation.desktop;
-  const fullOffered = await app.eval({
+  const fullOffered = await raw.eval({
     script: `return !!lx.supports('surface.window.fullChrome')`,
   }) as boolean;
   expect(fullOffered).toBeTruthy();
@@ -254,7 +257,7 @@ windowTest('open a page window with system chrome and with full chrome', {
 
     await closeKeyedSurface(app, key);
     await eventually(
-      () => app.eval({
+      () => raw.eval({
         script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
       }),
       (closed) => closed === true,
@@ -371,7 +374,7 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
     const key = `${namespace}-${chrome}`;
     defer(() => closeKeyedSurface(app, key));
     defer(async () => {
-      await app.eval({
+      await raw.eval({
         script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
       });
     });
@@ -428,7 +431,7 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
       );
     }
 
-    await app.eval({
+    await raw.eval({
       script: `
         const handle = lx.surface.getByKey(${JSON.stringify(key)});
         const state = { handle, closed: 0 };
@@ -440,7 +443,7 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
     await desktop.window.activate({ window: closable.id });
     await invokeCaption(desktop, closable, captionButtonNames(platform, 'close'));
     const state = await eventually(
-      () => app.eval({
+      () => raw.eval({
         script: `
           const state = globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];
           return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
@@ -450,7 +453,7 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
       { timeoutMs: 10_000, describe: `${chrome} chrome caption close to dispose the surface` },
     );
     expect(state.closed).toBe(1);
-    await app.eval({
+    await raw.eval({
       script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
     }).catch(() => undefined);
   }
@@ -469,7 +472,7 @@ windowTest('deliver a child page message to its opener before closing', {
 
   defer(() => closeKeyedSurface(app, key));
   defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         const state = globalThis[${JSON.stringify(stateKey)}];
         if (state?.off) state.off();
@@ -482,7 +485,7 @@ windowTest('deliver a child page message to its opener before closing', {
   expect(opened.kind).toBe('page');
   await waitForSurfacePage(app, key, 0);
 
-  await app.eval({
+  await raw.eval({
     script: `
       const handle = lx.surface.getByKey(${JSON.stringify(key)});
       if (!handle) throw new Error('message surface was not registered');
@@ -492,7 +495,7 @@ windowTest('deliver a child page message to its opener before closing', {
     `,
   });
 
-  await app.page.eval({
+  await raw.page.eval({
     page: 'surface',
     script: `(() => {
       const input = document.querySelector('input[placeholder="Message to parent page"]');
@@ -509,7 +512,7 @@ windowTest('deliver a child page message to its opener before closing', {
     })()`,
   });
   await waitForElementAttribute(
-    app,
+    raw,
     'surface',
     'input[placeholder="Message to parent page"]',
     'data-controlled-value',
@@ -518,7 +521,7 @@ windowTest('deliver a child page message to its opener before closing', {
   await app.view.testId("surface-send-message", { page: 'surface' }).click();
 
   const messages = await eventually(
-    () => app.eval({
+    () => raw.eval({
       script: `return globalThis[${JSON.stringify(stateKey)}]?.messages ?? []`,
     }) as Promise<Array<{ message?: string; timestamp?: number }>>,
     (value) => value.some((message) => message.message === marker),
@@ -528,7 +531,7 @@ windowTest('deliver a child page message to its opener before closing', {
   expect(typeof received?.timestamp).toBe('number');
 
   await eventually(
-    () => app.eval({
+    () => raw.eval({
       script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
     }),
     (closed) => closed === true,
@@ -551,7 +554,7 @@ windowTest('push a message from the opener into its page window', {
   expect(opened.alive).toBeTruthy();
   await waitForSurfacePage(app, key, 0);
 
-  await app.eval({
+  await raw.eval({
     script: `
       const handle = lx.surface.getByKey(${JSON.stringify(key)});
       if (!handle) throw new Error('post surface was not registered');
@@ -559,7 +562,7 @@ windowTest('push a message from the opener into its page window', {
     `,
   });
   const inbound = await eventually(
-    () => app.page.eval({
+    () => raw.page.eval({
       page: 'surface',
       script: `(() => {
         const text = document.querySelector('[data-testid="surface-inbound"]');
@@ -575,7 +578,7 @@ windowTest('push a message from the opener into its page window', {
 
   // Closing from the opener flips `alive` on the same handle once the native
   // close lands — after close() itself resolves, so observe rather than read.
-  await app.eval({
+  await raw.eval({
     timeoutMs: 15_000,
     script: `
       const handle = lx.surface.getByKey(${JSON.stringify(key)});
@@ -586,10 +589,10 @@ windowTest('push a message from the opener into its page window', {
     `,
   });
   defer(async () => {
-    await app.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
+    await raw.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
   });
   const closed = await eventually(
-    () => app.eval({
+    () => raw.eval({
       script: `
         const state = globalThis[${JSON.stringify(stateKey)}];
         return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };

@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, evalCaught, eventually } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
@@ -53,11 +56,11 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-TAB-001');
-  const platform = await runtimePlatform(t.apps.lxapp(SHOWCASE_APP_ID));
+  const platform = await runtimePlatform(rawApp());
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`browser tab surfaces require macOS or Windows; got ${platform || 'unknown'}`);
   }
-  const browserOffered = await app.eval({
+  const browserOffered = await raw.eval({
     script: `return !!lx.supports('surface.tab')`,
   }) as boolean;
   expect(browserOffered).toBeTruthy();
@@ -70,7 +73,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
   // the page is written through lx.fs so the whole round trip stays in-process.
   const relative = `${namespace}/tab.html`;
   const url = fileUrl((await app.info()).data_dir, relative);
-  const readState = () => app.eval({
+  const readState = () => raw.eval({
     script: `
       const state = globalThis[${JSON.stringify(stateKey)}];
       return {
@@ -84,7 +87,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
 
   const tabsBefore = new Set((await browser.tabs()).map((tab) => tab.tab_id));
   defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         const state = globalThis[${JSON.stringify(stateKey)}];
         if (state?.off) state.off();
@@ -97,7 +100,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
     }
   });
 
-  await app.eval({
+  await raw.eval({
     script: `
       await lx.fs.mkdir('lx://userdata/' + ${JSON.stringify(namespace)}, { recursive: true });
       await lx.fs.write('lx://userdata/' + ${JSON.stringify(relative)},
@@ -107,7 +110,7 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
     `,
   });
 
-  const opened = await app.eval({
+  const opened = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const tab = await lx.surface.openUrl(${JSON.stringify(url)}, { as: 'tab', key: ${JSON.stringify(key)} });
@@ -150,8 +153,8 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
 
   if (opened.scope === 'tab') {
     await t.step('activate() and close() act on the owned tab', async () => {
-      await app.eval({ script: `await globalThis[${JSON.stringify(stateKey)}].tab.activate();` });
-      await app.eval({ timeoutMs: 15_000, script: `await globalThis[${JSON.stringify(stateKey)}].tab.close();` });
+      await raw.eval({ script: `await globalThis[${JSON.stringify(stateKey)}].tab.activate();` });
+      await raw.eval({ timeoutMs: 15_000, script: `await globalThis[${JSON.stringify(stateKey)}].tab.close();` });
       const state = await eventually(readState, (value) => !value.alive && value.closed >= 1 && !value.registered, {
         describe: 'closed tab surface to report dead, fire onClose, and leave the registry',
         timeoutMs: 10_000,
@@ -164,13 +167,13 @@ tabSpec('open a browser tab from Logic and control it through TabSurface', {
         { describe: 'browser tab to disappear after close()', timeoutMs: 10_000 },
       );
       // Idempotent: a second close after success is not an error.
-      const again = await evalCaught(app, `await globalThis[${JSON.stringify(stateKey)}].tab.close();`);
+      const again = await evalCaught(raw, `await globalThis[${JSON.stringify(stateKey)}].tab.close();`);
       expect(again.ok).toBeTruthy();
     });
   } else {
     await t.step('group scope rejects activate() and close() with unsupported_placement', async () => {
       for (const method of ['activate', 'close']) {
-        const rejected = await evalCaught(app, `await globalThis[${JSON.stringify(stateKey)}].tab.${method}();`);
+        const rejected = await evalCaught(raw, `await globalThis[${JSON.stringify(stateKey)}].tab.${method}();`);
         expect(rejected.ok).toBeFalsy();
         expect((rejected.data as { reason?: string } | undefined)?.reason).toBe('unsupported_placement');
       }

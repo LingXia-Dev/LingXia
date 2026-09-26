@@ -2,7 +2,10 @@ import type { TestApp } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 interface RefreshState {
   count: number;
@@ -10,7 +13,7 @@ interface RefreshState {
 }
 
 async function refreshState(app: TestApp): Promise<RefreshState> {
-  return app.eval({
+  return raw.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
       return { count: page?.data?.refreshCount ?? -1, refreshing: !!page?.data?.isRefreshing };
@@ -30,7 +33,7 @@ async function waitForRefreshState(
 
 async function waitForStatus(app: TestApp, expected: string): Promise<string> {
   return waitForElementText(
-    app,
+    raw,
     'pullToRefresh',
     '[data-testid="pull-refresh-status"]',
     (text) => text.includes(expected),
@@ -42,7 +45,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.relaunch({ page: 'pullToRefresh' });
-  await app.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
+  await raw.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
 
   const before = await refreshState(app);
   await app.view.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
@@ -52,7 +55,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   );
   expect(await waitForStatus(app, 'Refreshing')).toContain('Refreshing');
 
-  const count = await app.page.query({
+  const count = await raw.page.query({
     page: 'pullToRefresh',
     css: '[data-testid="pull-refresh-count"]',
     full: true,
@@ -65,9 +68,9 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
 
   await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
     await app.nav.relaunch({ page: 'home' });
-    await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
+    await raw.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
 
-    const rejected = await evalCaught(app, 'lx.startPullDownRefresh();');
+    const rejected = await evalCaught(raw, 'lx.startPullDownRefresh();');
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_STATE');
     expect((rejected.data as { bizCode?: number } | undefined)?.bizCode).toBe(4004);

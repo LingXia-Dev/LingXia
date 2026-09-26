@@ -1,6 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /**
  * Local media processing — info, thumbnail, and compression — needs real bytes,
@@ -42,7 +45,7 @@ mediaSpec('read info, thumbnail, and compress local media', {
 }, async (t) => {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 45_000,
     script: `
       const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
@@ -119,7 +122,7 @@ mediaSpec('read info, thumbnail, and compress local media', {
   expect(result.compressedVideo.size).toBeGreaterThan(0);
 
   // A compressed output the lxapp cannot read back is not an output.
-  const sizes = await app.eval({
+  const sizes = await raw.eval({
     script: `
       const image = await lx.fs.stat(${JSON.stringify(result.compressedImage.uri)});
       const video = await lx.fs.stat(${JSON.stringify(result.compressedVideo.uri)});
@@ -141,7 +144,7 @@ mediaSpec('cancel an in-flight compressVideo and reject with E_ABORT', {
 }, async (t) => {
   const { app } = bindFixture(t, 'MEDIA-PROCESS-CANCEL-001');
 
-  const outcome = await evalCaught(app, `
+  const outcome = await evalCaught(raw, `
     const vid = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
     const task = lx.compressVideo({ path: vid.uri, quality: 'high' });
     task.cancel();

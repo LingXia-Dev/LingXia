@@ -1,8 +1,11 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
@@ -51,13 +54,13 @@ previewSpec('present a local image and report it through the handle', {
   reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-PREVIEW-MEDIA-001');
-  const platform = await runtimePlatform(app);
+  const platform = await runtimePlatform(raw);
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`native preview requires macOS or Windows; got ${platform || 'unknown'}`);
   }
   const desktop = t.automation.desktop;
   const stateKey = `__lingxiaPreview_${namespace.replace(/-/g, '_')}`;
-  const readState = () => app.eval({
+  const readState = () => raw.eval({
     script: `
       const s = globalThis[${JSON.stringify(stateKey)}];
       return {
@@ -83,12 +86,12 @@ previewSpec('present a local image and report it through the handle', {
   defer(async () => {
     const stray = await strayPanel().catch(() => undefined);
     if (stray) await desktop.window.close({ window: stray.id }).catch(() => undefined);
-    await app.eval({
+    await raw.eval({
       script: `const s = globalThis[${JSON.stringify(stateKey)}]; if (s?.off) s.off(); delete globalThis[${JSON.stringify(stateKey)}];`,
     }).catch(() => undefined);
   });
 
-  const started = await app.eval({
+  const started = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
@@ -119,7 +122,7 @@ previewSpec('present a local image and report it through the handle', {
   });
 
   await t.step('the change subscription is a real handle', async () => {
-    const offTwice = await app.eval({
+    const offTwice = await raw.eval({
       script: `const s = globalThis[${JSON.stringify(stateKey)}]; s.off(); s.off(); return true;`,
     });
     expect(offTwice).toBe(true);
@@ -138,10 +141,10 @@ httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-PREVIEW-HTTPS-SKIP-001');
   // Windows reports no change stream at all, so `current` cannot move there.
-  if (await runtimePlatform(app) !== 'macos') return;
+  if (await runtimePlatform(raw) !== 'macos') return;
   const stateKey = `__lingxiaPreviewSkip_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         const s = globalThis[${JSON.stringify(stateKey)}];
         if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
@@ -150,7 +153,7 @@ httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
     }).catch(() => undefined);
   });
 
-  await app.eval({
+  await raw.eval({
     script: `
       const controller = new AbortController();
       const handle = lx.previewMedia({
@@ -176,7 +179,7 @@ httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
   // The 404 is left out of what the panel shows, yet the item on screen must
   // still be reported by its index in the request, not the panel's own.
   const state = await eventually(
-    () => app.eval({
+    () => raw.eval({
       script: `
         const s = globalThis[${JSON.stringify(stateKey)}];
         return {

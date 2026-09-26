@@ -10,9 +10,12 @@ import type {
   SurfaceLayoutAsideSlot,
   SurfaceLayoutSnapshot,
 } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { attachShot } from '../../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 function isLocalizedSettingsLabel(name: string): boolean {
   const trimmed = name.trim();
@@ -70,7 +73,7 @@ const WINDOWS_RAIL_MIN_DIP = 32;
 
 async function desktopApp(t: Fixture): Promise<TestApp> {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
-  const actual = await runtimePlatform(app);
+  const actual = await runtimePlatform(raw);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
       `surface-switcher tests require macOS or Windows; got ${actual || 'unknown'}. `
@@ -561,7 +564,7 @@ function expectOverlayCoversMain(
 const ROOT_EDGE_MARKER_ID = 'surface-switcher-root-edge-marker';
 
 async function setRootEdgeMarker(app: TestApp, visible: boolean): Promise<void> {
-  await app.page.eval({
+  await raw.page.eval({
     page: 'todo',
     script: `
       (() => {
@@ -1048,7 +1051,7 @@ async function openChatAsMainWorkspace(t: Fixture, app: TestApp): Promise<void> 
   // and `openDeclared(..., { as: 'main' })` go through the declared aside
   // surface and the host rejects them with "managed surface request rejected".
   await closeChatSurface(t, app);
-  await app.eval({
+  await raw.eval({
     timeoutMs: 20_000,
     script: `await lx.shell.openApp('lingxia-chat', { as: 'main' });`,
   });
@@ -1061,7 +1064,7 @@ async function closeDeclaredTerminal(app: TestApp): Promise<void> {
       slot.children.includes('terminal') && slot.visible && !slot.overlay
     ));
   if (!visible) return;
-  await app.eval({
+  await raw.eval({
     timeoutMs: 20_000,
     script: `
       const handle = await lx.surface.openDeclared('terminal');
@@ -1082,7 +1085,7 @@ async function closeChatSurface(t: Fixture, app: TestApp): Promise<void> {
   let surfaceCloseError: unknown;
   if (containsSurface(await app.surfaceLayout(), 'lingxia-chat')) {
     try {
-      await app.eval({
+      await raw.eval({
         timeoutMs: 20_000,
         script: `
           const handle = await lx.surface.openDeclared('lingxia-chat');
@@ -1136,7 +1139,7 @@ async function automationPhase<T>(phase: string, operation: () => Promise<T>): P
 }
 
 async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurfaceState> {
-  return app.eval({
+  return raw.eval({
     timeoutMs: 20_000,
     script: `
       const previous = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -1157,7 +1160,7 @@ async function retainDynamicChatHandle(app: TestApp): Promise<RetainedAppSurface
 async function readRetainedDynamicChatHandle(
   app: TestApp,
 ): Promise<RetainedAppSurfaceState> {
-  return app.eval({
+  return raw.eval({
     timeoutMs: 20_000,
     script: `
       const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -1173,7 +1176,7 @@ async function readRetainedDynamicChatHandle(
 }
 
 async function clearRetainedDynamicChatHandle(app: TestApp): Promise<void> {
-  await app.eval({
+  await raw.eval({
     timeoutMs: 20_000,
     script: `
       const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -1198,7 +1201,7 @@ desktopTest('projects the declared terminal aside and restores its baseline stat
 }, async (t) => {
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const driver = lx.automation().lxapp();
@@ -1286,7 +1289,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
   covers: ['lx.surface.openDeclared', 'lx.shell.openBuiltin', 'TestApp.surfaceLayout'],
 }, async (t) => {
   const app = await desktopApp(t);
-  const platform = await runtimePlatform(app);
+  const platform = await runtimePlatform(raw);
   const automation = t.automation;
   const desktop = automation.desktop;
   const doctor = await desktop.doctor();
@@ -1328,7 +1331,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       host!,
       `${platform} Chat input in native accessibility tree`,
     );
-    await chatApp.page.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
     host = await ensureHostForeground(desktop, host!);
     input = await waitForValue(
       () => visibleChatInputAxNode(desktop, host!),
@@ -1343,17 +1346,14 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     await desktop.key.type({ text: marker });
     await waitForValue(async () => {
       try {
-        const candidate = await chatApp.page.query({
-          page: 'chat',
-          css: 'textarea[placeholder="Message..."]',
-        });
+        const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
         return candidate.exists && candidate.value === marker ? true : undefined;
       } catch (error) {
         if (String(error).includes('page WebView is not ready')) return undefined;
         throw error;
       }
     }, `${platform} physical input delivered to Chat`);
-    await chatApp.page.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
   };
 
   try {
@@ -1367,7 +1367,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
     }, `${platform} expanded root baseline`);
 
     await app.nav.switchTab({ page: 'api' });
-    await app.page.waitFor({ page: 'api', css: 'body', timeoutMs: 30_000 });
+    await raw.page.waitFor({ page: 'api', css: 'body', timeoutMs: 30_000 });
 
     // Cross from expanded into medium so the adaptive rail is freshly
     // projected. Then use the real native expand control and prove the
@@ -1445,7 +1445,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       ), 'macOS compact keeps lxapp tab items in the desktop sidebar');
     }
 
-    const opened = await app.eval({
+    const opened = await raw.eval({
       timeoutMs: 20_000,
       script: `
         const handle = await lx.surface.openDeclared('lingxia-chat');
@@ -1521,7 +1521,7 @@ adaptiveDesktopTest('gates medium sidebar reveal and compact aside chrome on eve
       return current?.current_url?.startsWith('lingxia://settings') ? current : undefined;
     }, `${platform} settings browser main`);
     browserTabId = settingsTab.tab_id;
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `await lx.shell.openBuiltin('downloads');`,
     });
@@ -1761,7 +1761,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     if (!overlayLayout) {
       // A background terminal can steal SetForegroundWindow; open the same
       // declared Chat aside the footer action would have opened.
-      await app.eval({
+      await raw.eval({
         timeoutMs: 20_000,
         script: `await lx.surface.openDeclared('lingxia-chat');`,
       });
@@ -1803,10 +1803,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     const chatApp = automation.lxapp('lingxia-chat');
     const chatInput = await waitForValue(async () => {
       try {
-        const candidate = await chatApp.page.query({
-          page: 'chat',
-          css: 'textarea[placeholder="Message..."]',
-        });
+        const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
         return candidate.exists && candidate.visible && candidate.inViewport !== false
           && candidate.editable
           ? candidate
@@ -1824,7 +1821,7 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
       overlayWindow.bounds.y + Math.round(chatInput.rect.center_y),
     ];
     const inputMarker = 'physical-overlay-front';
-    await chatApp.page.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
     await desktop.pointer.click({ at: inputPoint });
     await waitForValue(async () => {
       const candidate = await visibleChatInputAxNode(desktop, host!);
@@ -1832,13 +1829,10 @@ windowsHostTest('docks the footer Chat WebView physically beside the main after 
     }, 'desktop click focused the Chat overlay input');
     await desktop.key.type({ text: inputMarker });
     await waitForValue(async () => {
-      const candidate = await chatApp.page.query({
-        page: 'chat',
-        css: 'textarea[placeholder="Message..."]',
-      });
+      const candidate = await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).query();
       return candidate.exists && candidate.value === inputMarker ? true : undefined;
     }, 'desktop input delivered to Chat overlay');
-    await chatApp.page.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
+    await chatApp.view.css('textarea[placeholder="Message..."]', { page: 'chat' }).fill('');
 
     host = await resizeHostOnScreen(desktop, host, dockedWidth, 900);
     const dockedLayout = await waitForValue(async () => {
@@ -1914,7 +1908,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   covers: ['lx.shell.openApp', 'PageSurface.close', 'PageSurface.onClose'],
 }, async (t) => {
   const app = await automationPhase('resolve showcase driver', () => desktopApp(t));
-  const platform = await automationPhase('read runtime platform', () => runtimePlatform(app));
+  const platform = await automationPhase('read runtime platform', () => runtimePlatform(raw));
   const automation = t.automation;
   const desktop = automation.desktop;
   const browser = automation.browser;
@@ -1965,7 +1959,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
   let chatMain: DesktopWindowInfo | undefined;
   let browserTabId: string | undefined;
   try {
-    const rejected = await automationPhase('validate dynamic app surface contract', () => app.eval({
+    const rejected = await automationPhase('validate dynamic app surface contract', () => raw.eval({
       timeoutMs: 30_000,
       script: `
         const rejection = (error) => ({
@@ -2009,7 +2003,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       'snapshot graph after rejected app surface specs',
       () => app.surfaceLayout(),
     );
-    const openedHandle = await automationPhase('open dynamic Chat main', () => app.eval({
+    const openedHandle = await automationPhase('open dynamic Chat main', () => raw.eval({
       timeoutMs: 30_000,
       script: `
         const handle = await lx.shell.openApp('lingxia-chat', {
@@ -2045,7 +2039,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       await expectExactMainPresentation(host, baselineMain, chatMain, () => desktop.windows());
     }
 
-    hidden = await app.eval({
+    hidden = await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2086,7 +2080,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       ), 'dynamic Chat physical main hidden by root switch');
     }
 
-    shown = await app.eval({
+    shown = await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2155,7 +2149,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       ), 'dynamic Chat is physically hidden by browser cover');
     }
 
-    shownOverBrowser = await app.eval({
+    shownOverBrowser = await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2192,7 +2186,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     await browser.close({ tab: browserTabId });
     browserTabId = undefined;
 
-    const closedState = await app.eval({
+    const closedState = await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2214,7 +2208,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
     }) as RetainedAppSurfaceState;
     const afterClose = await app.surfaceLayout();
     const revisionAfterClose = afterClose.mainSwitcher.revision;
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2235,7 +2229,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       surfaceFailureDiagnostics(t, app, desktop, host),
       desktop.ax.query({ window: host.id, match: 'Message', all: true })
         .catch((failure) => ({ error: String(failure) })),
-      automation.lxapp('lingxia-chat').page.eval({
+      rawApp('lingxia-chat').page.eval({
         page: 'chat',
         script: `JSON.stringify({
           readyState: document.readyState,
@@ -2259,7 +2253,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
         await browser.close({ tab: tab.tab_id }).catch(() => undefined);
       }
     }
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `
         const gate = globalThis.__surfaceSwitcherDynamicHandleGate;
@@ -2407,7 +2401,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
 
     // Start from the declared entry so this gate covers the difficult case:
     // a Pin must promote the one live aside instance into a main workspace.
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `await lx.surface.openDeclared('lingxia-chat');`,
     });
@@ -2883,7 +2877,7 @@ desktopTest('rejects stable-root mutations without changing the host model', {
   covers: ['lx.shell.openDeclared'],
 }, async (t) => {
   const app = await desktopApp(t);
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const driver = lx.automation().lxapp();
@@ -2946,7 +2940,7 @@ desktopTest('migrates one keyed workspace across aside edges and main exactly on
   const app = await desktopApp(t);
   const before = await app.surfaceLayout();
   const key = `automation-migrate-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 45_000,
     script: `
       const driver = lx.automation().lxapp();
@@ -3122,7 +3116,7 @@ desktopTest('switches, deduplicates concurrent opens, and leaves no ghost rows',
     second: `${token}-second`,
     concurrent: `${token}-concurrent`,
   };
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 60_000,
     script: `
       const driver = lx.automation().lxapp();
