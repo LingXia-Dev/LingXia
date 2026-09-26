@@ -2,7 +2,7 @@
 param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
-  [int]$TimeoutSeconds = 600,
+  [int]$TimeoutSeconds = 900,
   [ValidateRange(1, 64)]
   [int]$BuildJobs = 2,
   [string]$Grep
