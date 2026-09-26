@@ -139,6 +139,9 @@ impl SessionLogWriter {
     }
 }
 
+#[path = "companion_relay.rs"]
+mod companion_relay;
+
 pub(crate) struct DevServerState {
     pub(crate) project_root: PathBuf,
     pub(crate) stop_flag: Arc<AtomicBool>,
@@ -174,6 +177,10 @@ pub(crate) struct DevServerState {
     watch_leases: Mutex<std::collections::HashMap<String, WatchLease>>,
     /// The build the connected runtime reported in its hello.
     runtime_build: Mutex<Option<lingxia_control_protocol::dev_session::PeerBuild>>,
+    /// The session's companion, when one runs.
+    companion: std::sync::OnceLock<Arc<super::companion::CompanionLink>>,
+    /// Scenario owners with `function` rules installed in the companion.
+    companion_owners: Mutex<std::collections::HashSet<String>>,
 }
 
 /// One `session.watch.pause` lease.
@@ -211,6 +218,8 @@ impl DevServerState {
             interrupted_test_run: Mutex::new(None),
             watch_leases: Mutex::new(std::collections::HashMap::new()),
             runtime_build: Mutex::new(None),
+            companion: std::sync::OnceLock::new(),
+            companion_owners: Mutex::new(std::collections::HashSet::new()),
         }
     }
 
@@ -440,6 +449,8 @@ impl DevServerState {
         let Some(epoch) = state.clear_runtime_sender(runtime_id) else {
             return;
         };
+        // A dev scenario fails closed with its connection, on both sides.
+        state.clear_companion_owner(lingxia_control_protocol::scenario::DEV_OWNER.to_string());
         if !state.end_on_runtime_gone {
             return;
         }
@@ -521,6 +532,9 @@ impl DevServerState {
         };
         let running = result.get("state").and_then(serde_json::Value::as_str) == Some("running");
         self.settle_watch_leases(run_id, running);
+        if !running {
+            self.clear_companion_owner(lingxia_control_protocol::scenario::test_owner(run_id));
+        }
         let mut active = self.lock_active_test_run();
         if method == test::START {
             if running {
@@ -708,6 +722,9 @@ fn start_server_on_with_roots(
         auth_token,
         session_ends_on_runtime_gone(platform),
     ));
+    if let Some(companion) = &companion {
+        let _ = state.companion.set(companion.link());
+    }
     let thread_state = state.clone();
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
@@ -1110,7 +1127,7 @@ fn handle_devtool_connection(
                     ParsedWireMessage::Wire(message) => {
                         route_runtime_message(
                             *message,
-                            state.as_ref(),
+                            state,
                             &event_tx,
                             &mut dropped_event_batch_warning,
                         )?;
@@ -1139,7 +1156,7 @@ fn handle_devtool_connection(
 
 fn route_runtime_message(
     message: DevSessionMessage,
-    state: &DevServerState,
+    state: &Arc<DevServerState>,
     event_tx: &mpsc::SyncSender<Vec<DevSessionEvent>>,
     dropped_event_batch_warning: &mut bool,
 ) -> Result<()> {
@@ -1165,6 +1182,21 @@ fn route_runtime_message(
             if let Some(tx) = state.take_pending_result(&id) {
                 let _ = tx.send(payload);
             }
+        }
+        // A host run's `t.app.scenario()` reaches the companion this way;
+        // the relay can wait on it, so it must not hold up this connection.
+        DevSessionMessage::Request(request)
+            if request
+                .method
+                .starts_with(lingxia_control_protocol::methods::session::companion::PREFIX) =>
+        {
+            let state = Arc::clone(state);
+            thread::spawn(move || {
+                let reply = state.companion_reply(request.id, &request.method, request.params);
+                if let Some(sender) = state.runtime_sender() {
+                    let _ = sender.send(reply);
+                }
+            });
         }
         DevSessionMessage::Hello { .. } | DevSessionMessage::Request(_) => {}
     }
@@ -1252,6 +1284,13 @@ fn handle_client_connection(
             | lingxia_control_protocol::methods::session::watch::RESUME
     ) {
         let reply = handle_watch_request(state, &id, &method, params);
+        send_wire_message(&mut websocket, &reply)?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
+
+    if method.starts_with(lingxia_control_protocol::methods::session::companion::PREFIX) {
+        let reply = state.companion_reply(id, &method, params);
         send_wire_message(&mut websocket, &reply)?;
         let _ = websocket.close(None);
         return Ok(());
@@ -1943,7 +1982,7 @@ mod tests {
 
     #[test]
     fn slow_session_log_persistence_does_not_block_runtime_responses() {
-        let state = authenticated_state();
+        let state = Arc::new(authenticated_state());
         let (event_tx, event_rx) = mpsc::sync_channel(1);
         let (persistence_started_tx, persistence_started_rx) = mpsc::channel();
         let (release_persistence_tx, release_persistence_rx) = mpsc::channel();

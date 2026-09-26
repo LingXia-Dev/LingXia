@@ -5,6 +5,7 @@
 //! [`crate::local_control`] instead, which reaches the same [`crate::dispatch`]
 //! without any of the network stack below.
 
+use lingxia_control_protocol::ControlRequest;
 use lingxia_control_protocol::dev_session::{
     DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionLog, DevSessionLogLevel,
     DevSessionMessage, DevSessionRole, PeerBuild, capabilities,
@@ -201,7 +202,17 @@ fn run_dev_bridge(ws_url: String) {
                     }
                 };
 
-                if let Err(err) = bridge_loop(&mut websocket, attached) {
+                #[cfg(feature = "test-runtime")]
+                let outbox = {
+                    crate::bridge_upstream::install();
+                    Some(crate::bridge_upstream::attach())
+                };
+                #[cfg(not(feature = "test-runtime"))]
+                let outbox = None;
+                let result = bridge_loop(&mut websocket, attached, outbox.as_ref());
+                #[cfg(feature = "test-runtime")]
+                crate::bridge_upstream::detach();
+                if let Err(err) = result {
                     log::warn!("Devtool bridge disconnected: {}", err);
                 }
                 // A dev network scenario belongs to the session that set it.
@@ -251,6 +262,7 @@ fn log_connect_failure(attempt: u32, err: &WsError) {
 fn bridge_loop(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     attached: AttachedLogStream,
+    outbox: Option<&std::sync::mpsc::Receiver<ControlRequest>>,
 ) -> Result<(), String> {
     let (recent, mut receiver) = attached.into_parts();
     let mut last_received = Instant::now();
@@ -277,6 +289,15 @@ fn bridge_loop(
 
         if !batch.is_empty() {
             send_log_batch(websocket, &batch)?;
+        }
+
+        // Requests this runtime sends up (a run's companion calls).
+        if let Some(outbox) = outbox {
+            while let Ok(request) = outbox.try_recv() {
+                send_wire_message(websocket, &DevSessionMessage::Request(request))?;
+            }
+            #[cfg(feature = "test-runtime")]
+            crate::bridge_upstream::expire();
         }
 
         match websocket.read() {
@@ -329,10 +350,17 @@ fn handle_incoming_message(
     websocket: &mut WebSocket<MaybeTlsStream<std::net::TcpStream>>,
     message: DevSessionMessage,
 ) -> Result<(), String> {
-    let DevSessionMessage::Request(request) = message else {
-        return Ok(());
-    };
-    send_wire_message(websocket, &DevSessionMessage::Response(dispatch(request)))
+    match message {
+        DevSessionMessage::Request(request) => {
+            send_wire_message(websocket, &DevSessionMessage::Response(dispatch(request)))
+        }
+        #[cfg(feature = "test-runtime")]
+        DevSessionMessage::Response(response) => {
+            crate::bridge_upstream::resolve(response);
+            Ok(())
+        }
+        _ => Ok(()),
+    }
 }
 
 fn send_log_batch(

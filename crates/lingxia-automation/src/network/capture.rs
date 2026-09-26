@@ -199,6 +199,8 @@ pub(crate) struct CallRoute {
     pub patch: bool,
     /// The route came from a dev-session scenario.
     pub dev: bool,
+    /// The scenario rule that answered: `(rule index, "name:variant")`.
+    pub rule: Option<(usize, String)>,
 }
 
 /// Which consumers want an observed call's response body.
@@ -231,6 +233,8 @@ pub(crate) struct Call {
     pub status: Option<u16>,
     pub error: Option<String>,
     pub route: Option<CallRoute>,
+    /// Why no scenario rule answered, when its targets matched.
+    pub no_match: Option<String>,
     pub(crate) raw_url: String,
     /// Who wants this call's response.
     pub(crate) watch: Watch,
@@ -258,8 +262,29 @@ impl Call {
         }
         if let Some(route) = &self.route {
             out["route"] = json!({ "pattern": route.pattern, "action": route.action });
+            if let Some((index, scenario)) = &route.rule {
+                out["route"]["rule"] = json!(index);
+                out["route"]["scenario"] = json!(scenario);
+            }
+        }
+        out["answeredBy"] = json!(self.answered_by());
+        if let Some(no_match) = &self.no_match {
+            out["noMatch"] = json!(no_match);
         }
         out
+    }
+
+    /// `rule 2 (wifi:b)`, `route **/x`, or `real`.
+    pub(crate) fn answered_by(&self) -> String {
+        match &self.route {
+            Some(route) if route.action == "continue" && !route.patch => "real".to_string(),
+            Some(CallRoute {
+                rule: Some((index, scenario)),
+                ..
+            }) => format!("rule {index} ({scenario})"),
+            Some(route) => format!("route {}", route.pattern),
+            None => "real".to_string(),
+        }
     }
 }
 
@@ -310,6 +335,7 @@ impl CallLog {
             status: None,
             error: None,
             route: None,
+            no_match: None,
             raw_url: url.to_string(),
             watch,
             recorder: None,
@@ -337,6 +363,7 @@ impl CallLog {
             action,
             patch: matches!(decision.action, RouteAction::Patch(_)),
             dev: decision.owner == super::registry::DEV_SESSION_OWNER,
+            rule: decision.rule.clone(),
         });
         let fulfilled = matches!(decision.action, RouteAction::Fulfill(_));
         let contract = call.watch.contract && fulfilled;
@@ -504,8 +531,8 @@ impl Recording {
         });
     }
 
-    /// The scenario file this recording amounts to: one route per method
-    /// and URL, in first-seen order, answering what the network answered —
+    /// The scenario file this recording amounts to: one `http` rule per
+    /// method and URL, in first-seen order, answering what the network answered —
     /// a `sequence` when the answers differed. Credentials are redacted.
     pub(crate) fn to_scenario(&self, name: &str) -> Value {
         let mut routes: Vec<(String, String, Vec<Value>, Vec<String>)> = Vec::new();
@@ -536,8 +563,7 @@ impl Recording {
             .into_iter()
             .map(|(method, url, mut answers, mut notes)| {
                 let mut route = Map::new();
-                route.insert("url".into(), json!(url));
-                route.insert("method".into(), json!(method));
+                route.insert("http".into(), json!(format!("{method} {url}")));
                 // Replay must answer the n-th call as recorded, so only a
                 // run of identical answers collapses into one.
                 if answers.windows(2).all(|pair| pair[0] == pair[1]) {
@@ -577,7 +603,7 @@ impl Recording {
         json!({
             "name": name,
             "description": description,
-            "routes": routes,
+            "rules": routes,
         })
     }
 }

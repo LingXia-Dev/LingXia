@@ -21,9 +21,20 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 .get("scenario")
                 .ok_or_else(|| "(usage): scenario is required".to_string())?;
             let explicit = text("appid");
-            let appid = target_appid(explicit.clone())?;
-            let mut status = network::use_scenario(&appid, scenario, text("source").as_deref())
-                .map_err(|err| format!("(usage): invalid scenario: {err}"))?;
+            let dry_run = args.get("dryRun").and_then(Value::as_bool) == Some(true);
+            let appid = if dry_run {
+                explicit.clone().unwrap_or_default()
+            } else {
+                target_appid(explicit.clone())?
+            };
+            let mut status = network::use_scenario(
+                &appid,
+                scenario,
+                text("variant").as_deref(),
+                text("source").as_deref(),
+                dry_run,
+            )
+            .map_err(|err| format!("(usage): invalid scenario: {err}"))?;
             if let Some(warning) = explicit.and_then(|appid| unknown_app_warning(&appid)) {
                 status["warning"] = json!(warning);
             }
@@ -101,33 +112,63 @@ mod tests {
     #[test]
     fn a_dev_scenario_reports_why_it_stopped_answering() {
         let appid = "control.runtime.scenario.test";
-        let scenario = |http: Value| {
+        let scenario = |rules: Value| {
             Some(json!({
-                "scenario": { "name": "offline", "http": http },
-                "source": "qoe/offline",
+                "scenario": {
+                    "name": "Wi-Fi",
+                    "rules": rules,
+                    "variants": { "offline": { "rules": [{ "http": "GET https://h.invalid/wifi", "status": 503 }] } }
+                },
+                "variant": "offline",
+                "source": "wifi",
                 "appid": appid,
             }))
         };
         let status = handle(
             method::SCENARIO_USE,
-            scenario(json!({ "routes": [{ "url": "https://h.invalid/**", "status": 503 }] })),
+            scenario(json!([
+                { "http": "* https://h.invalid/**", "status": 200 },
+                { "function": "orders.submit", "fault": "unknown" }
+            ])),
         )
         .unwrap()
         .unwrap();
         assert_eq!(status["active"], true);
-        assert_eq!(status["scenario"]["source"], "qoe/offline");
+        assert_eq!(status["scenario"]["source"], "wifi");
+        assert_eq!(status["scenario"]["label"], "Wi-Fi:offline");
+        let rules = status["scenario"]["rules"].as_array().unwrap();
+        assert_eq!(rules.len(), 3);
+        assert_eq!(rules[0]["target"], "GET https://h.invalid/wifi");
+        assert_eq!(rules[0]["hits"], 0);
+        assert_eq!(rules[2]["kind"], "function");
+        assert!(rules[2].get("hits").is_none());
 
-        // An invalid file leaves the active scenario answering.
-        let err = handle(method::SCENARIO_USE, scenario(json!({ "routes": [] }))).unwrap_err();
-        assert!(err.contains("http.routes must not be empty"), "{err}");
+        // An invalid file leaves the active scenario answering, and a dry
+        // run installs nothing.
+        let err = handle(
+            method::SCENARIO_USE,
+            scenario(json!([{ "http": "GET x", "stauts": 1 }])),
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("rules[0]: unknown route handler option 'stauts'"),
+            "{err}"
+        );
+        let mut dry = scenario(json!([])).unwrap();
+        dry["dryRun"] = json!(true);
+        dry["scenario"]["name"] = json!("other");
+        let checked = handle(method::SCENARIO_USE, Some(dry)).unwrap().unwrap();
+        assert_eq!(checked["valid"], true);
         let status = handle(method::STATUS, None).unwrap().unwrap();
         assert_eq!(status["active"], true);
+        assert_eq!(status["scenario"]["label"], "Wi-Fi:offline");
 
         session_ended();
         let status = handle(method::STATUS, None).unwrap().unwrap();
         assert_eq!(status["active"], false);
         assert_eq!(status["lastCleared"]["reason"], "session_ended");
-        assert_eq!(status["lastCleared"]["source"], "qoe/offline");
+        assert_eq!(status["lastCleared"]["source"], "wifi");
+        assert_eq!(status["lastCleared"]["label"], "Wi-Fi:offline");
         assert!(status["lastCleared"]["clearedAt"].is_string());
     }
 

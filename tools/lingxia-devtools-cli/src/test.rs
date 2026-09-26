@@ -212,7 +212,7 @@ pub struct TestOptions {
     verbose: bool,
 
     /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
-    /// a scenario file `t.app.network.scenario()` and `lxdev scenario use`
+    /// a scenario file `t.app.scenario()` and `lxdev scenario use`
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,
@@ -444,8 +444,6 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let Some(entry) = options.entry.clone() else {
         return cancel_active_only(info, &options);
     };
-    // A dev scenario section that cannot stand aside would steer the run.
-    crate::scenario::refuse_test_while_blocking(&crate::scenario::providers(&info.ws_url))?;
     let started_at = chrono::Utc::now().to_rfc3339();
     // A bad output path must fail before the run exists: afterwards the
     // Runner would keep it active with nobody polling.

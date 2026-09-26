@@ -7,6 +7,8 @@ pub mod invocation {
     pub const CLI_ARGUMENT: &str = "--cli";
 }
 
+pub mod scenario;
+
 /// Text helpers shared by the test runtime and `lxdev`.
 pub mod text {
     /// Decode `%XX` escapes in `text`; an invalid escape is kept as written.
@@ -151,14 +153,35 @@ pub mod methods {
             pub const RESUME: &str = "session.watch.resume";
         }
 
+        /// The dev session's companion (`.lingxia/dev-companion.json`).
+        /// Handled by the dev server, which forwards `scenario.*` requests
+        /// to a companion that declared
+        /// [`crate::dev_session::capabilities::SCENARIO_FUNCTION`]; both a
+        /// client and the runtime may send them.
+        pub mod companion {
+            /// `{ companion: bool, capabilities: [..] }`.
+            pub const CAPABILITIES: &str = "session.companion.capabilities";
+            /// The prefix the dev server strips before forwarding
+            /// (`session.companion.scenario.use` → `scenario.use`).
+            pub const PREFIX: &str = "session.companion.";
+            pub const SCENARIO_USE: &str = "session.companion.scenario.use";
+            pub const SCENARIO_CLEAR: &str = "session.companion.scenario.clear";
+            pub const SCENARIO_STATUS: &str = "session.companion.scenario.status";
+            pub const SCENARIO_CALLS: &str = "session.companion.scenario.calls";
+            /// Error code when no companion handles `function` rules.
+            pub const UNSUPPORTED: &str = "companion_unsupported";
+        }
+
         /// Network scenarios and recordings for a running lxapp's Logic
-        /// `fetch` and `Rong.SSE` outside test runs: the HTTP section of
+        /// `fetch` and `Rong.SSE` outside test runs: the HTTP rules of
         /// `lxdev scenario`, and `lxdev network`.
         /// Runtime-owned and present only in hosts built with the test
         /// runtime; a release build answers "unknown method".
         pub mod network {
-            /// Install a scenario until cleared or the session ends. Args:
-            /// `{ scenario, source?, appid? }`; returns the status.
+            /// Install a scenario file's HTTP rules until cleared or the
+            /// session ends. Args: `{ scenario, variant?, source?, appid?,
+            /// dryRun? }` — the whole file; `function` rules are counted, not
+            /// installed. `dryRun` only validates. Returns the status.
             pub const SCENARIO_USE: &str = "session.network.scenario.use";
             /// Remove the dev scenario. Returns `{ cleared }`.
             pub const SCENARIO_CLEAR: &str = "session.network.scenario.clear";
@@ -524,6 +547,9 @@ pub mod dev_session {
     pub mod capabilities {
         pub const REQUESTS: &str = "requests";
         pub const LOG_EVENTS: &str = "events.log";
+        /// A companion that answers scenario `function` rules: it handles
+        /// [`crate::scenario::companion`] requests.
+        pub const SCENARIO_FUNCTION: &str = "scenario.function";
     }
 
     pub mod event_kinds {
@@ -620,6 +646,9 @@ pub mod dev_session {
         pub active: bool,
         #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
         pub runtime_env: BTreeMap<String, String>,
+        /// Capabilities known only once prepared; added to the `hello` ones.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        pub capabilities: Vec<String>,
     }
 
     /// `session.watch.pause` arguments.

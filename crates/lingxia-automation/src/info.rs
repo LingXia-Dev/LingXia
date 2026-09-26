@@ -119,6 +119,20 @@ impl JSLxAppDriver {
             .instance(crate::network::JSNetworkDriver::new(self.lxapp.clone())))
     }
 
+    /// Install a scenario file (a `variant` of it) for this lxapp in the
+    /// host run: its `http` rules answer Logic `fetch`, its `function` rules
+    /// go to the dev session's companion. Replaces the scenario the run
+    /// installed for this app before; the run's end removes it.
+    #[js_method]
+    async fn scenario(
+        &self,
+        ctx: JSContext,
+        definition: JSObject,
+        variant: rong::function::Optional<String>,
+    ) -> JSResult<JSObject> {
+        crate::network::install_scenario(ctx, &self.lxapp, definition, variant.0).await
+    }
+
     /// Checkpoint and roll back the isolated data profile of a host run.
     /// Reading the property never throws; calls outside an isolated run
     /// reject with `E_PROFILE_NOT_ISOLATED`.

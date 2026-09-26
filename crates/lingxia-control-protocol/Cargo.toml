@@ -10,6 +10,7 @@ repository.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 interprocess = { version = "2", optional = true }
+regex = { version = "1", optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { workspace = true, optional = true, features = [
@@ -23,3 +24,5 @@ windows = { workspace = true, optional = true, features = [
 # Per-user dev-session broker (local IPC). Only the CLI binaries enable this;
 # the app runtime consumes the wire types without pulling in interprocess.
 broker = ["dep:interprocess", "dep:windows"]
+# `scenario::Matcher`: the `match` semantics of scenario rules.
+scenario-match = ["dep:regex"]

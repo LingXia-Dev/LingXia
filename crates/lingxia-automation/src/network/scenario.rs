@@ -1,15 +1,15 @@
-//! Declarative scenario files and relative-time templates.
+//! Scenario files served to Logic `fetch` and `Rong.SSE`, and
+//! relative-time templates.
 //!
-//! A scenario is JSON: `{ name?, description?, routes: [...] }`, or the
-//! sectioned form `{ name?, description?, http: { routes: [...] } }` that
-//! `lxdev scenario` files use; a `worker` section is reserved and rejected
-//! until a provider for it exists. Each route
-//! is `{ url, method?, times?, note? }` plus one answer in the route handler
-//! shape (`status`/`json`/`body`/…, `abort`, `continue`, `hang`, `sse`) or a
-//! `sequence` of them, served in call order with the last one repeating.
-//! Files may also carry `bodyBase64` for a binary body. String values may
+//! The file format (rules, variants, targets, `match`) is
+//! [`lingxia_control_protocol::scenario`]; this module turns the `http`
+//! rules of one resolved variant into routes. An `http` rule's answer is the
+//! route handler shape (`status`/`json`/`body`/…, `abort`, `continue`,
+//! `hang`, `sse`) or a `sequence` of them, served in call order with the
+//! last one repeating; files may also carry `bodyBase64`. String values may
 //! contain `{{now}}`, `{{now-2h}}`, `{{now+30m}}` (ISO-8601 UTC) and
-//! `{{nowMs}}`, rendered each time the answer is served.
+//! `{{nowMs}}`, rendered each time the answer is served. `function` rules
+//! belong to the dev session's companion.
 
 use super::parse_handler_value;
 use super::registry::{
@@ -17,141 +17,72 @@ use super::registry::{
 };
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
+use lingxia_control_protocol::scenario::{self as format, Matcher, Resolved, Target};
 use serde_json::Value;
 
-/// Routes one scenario may install.
-pub(crate) const MAX_SCENARIO_ROUTES: usize = 200;
 /// Answers one `sequence` may list.
-pub(crate) const MAX_SEQUENCE: usize = 100;
+pub(crate) const MAX_SEQUENCE: usize = format::MAX_SEQUENCE;
 
-const SCENARIO_KEYS: [&str; 5] = ["$schema", "name", "description", "routes", "http"];
-const HTTP_KEYS: [&str; 1] = ["routes"];
-const ROUTE_KEYS: [&str; 5] = ["url", "method", "times", "note", "description"];
-
-/// A parsed scenario, routes in file order.
+/// A scenario file with one variant applied, its `http` rules compiled.
 #[derive(Debug, Clone)]
 pub(crate) struct Scenario {
-    pub name: Option<String>,
-    pub routes: Vec<RouteSpec>,
+    pub resolved: Resolved,
+    /// `(rule index, route)` for every `http` rule, in precedence order.
+    pub http: Vec<(usize, RouteSpec)>,
 }
 
-/// Parse and validate a scenario file. Errors name the offending route as
-/// `routes[i]` (or `http.routes[i]` in the sectioned form).
-pub(crate) fn parse_scenario(value: &Value) -> Result<Scenario, String> {
-    let Value::Object(fields) = value else {
-        return Err("a scenario must be a JSON object with a routes array".into());
-    };
-    if fields.contains_key("worker") {
-        return Err(
-            "the worker section of a scenario is not supported yet; only http routes can be installed"
-                .into(),
-        );
+impl Scenario {
+    pub(crate) fn has_function_rules(&self) -> bool {
+        self.resolved.function_rules().next().is_some()
     }
-    if let Some(unknown) = fields
-        .keys()
-        .find(|key| !SCENARIO_KEYS.contains(&key.as_str()))
-    {
-        return Err(format!(
-            "unknown scenario field '{unknown}' (allowed: {})",
-            SCENARIO_KEYS.join(", ")
-        ));
-    }
-    let name = match fields.get("name") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(name)) => Some(name.clone()),
-        Some(_) => return Err("scenario name must be a string".into()),
-    };
-    if !matches!(
-        fields.get("description"),
-        None | Some(Value::Null) | Some(Value::String(_))
-    ) {
-        return Err("scenario description must be a string".into());
-    }
-    let (routes, path) = match (fields.get("routes"), fields.get("http")) {
-        (Some(_), Some(_)) => {
-            return Err(
-                "a scenario lists its routes at the top level or under http, not both".into(),
-            );
-        }
-        (Some(routes), None) => (routes, "routes"),
-        (None, Some(Value::Object(http))) => {
-            if let Some(unknown) = http.keys().find(|key| !HTTP_KEYS.contains(&key.as_str())) {
-                return Err(format!(
-                    "unknown http section field '{unknown}' (allowed: {})",
-                    HTTP_KEYS.join(", ")
-                ));
-            }
-            match http.get("routes") {
-                Some(routes) => (routes, "http.routes"),
-                None => return Err("the http section needs a routes array".into()),
-            }
-        }
-        (None, Some(_)) => return Err("the http section must be an object".into()),
-        (None, None) => return Err("a scenario needs a routes array (or http.routes)".into()),
-    };
-    let routes = match routes {
-        Value::Array(routes) if !routes.is_empty() => routes,
-        Value::Array(_) => return Err(format!("scenario {path} must not be empty")),
-        _ => return Err(format!("scenario {path} must be an array")),
-    };
-    if routes.len() > MAX_SCENARIO_ROUTES {
-        return Err(format!(
-            "a scenario may list at most {MAX_SCENARIO_ROUTES} routes, got {}",
-            routes.len()
-        ));
-    }
-    let routes = routes
-        .iter()
-        .enumerate()
-        .map(|(index, route)| parse_route(route).map_err(|err| format!("{path}[{index}]: {err}")))
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Scenario { name, routes })
 }
 
-fn parse_route(value: &Value) -> Result<RouteSpec, String> {
-    let Value::Object(fields) = value else {
-        return Err("a route must be an object with a url".into());
-    };
-    let url = match fields.get("url") {
-        Some(Value::String(url)) => url,
-        Some(_) => return Err("url must be a glob or a /regex/flags string".into()),
-        None => return Err("a route needs a url".into()),
+/// Parse a scenario file, resolve `variant`, and compile its `http` rules.
+/// Errors name the rule: `rules[2]: …`, `variants.b.rules[0]: …`.
+pub(crate) fn parse_scenario(value: &Value, variant: Option<&str>) -> Result<Scenario, String> {
+    let file = format::parse_file(value)?;
+    let resolved = file.resolve(variant)?;
+    let http = resolved
+        .http_rules()
+        .map(|rule| {
+            parse_http_rule(&rule.target, &rule.value)
+                .map(|spec| (rule.index, spec))
+                .map_err(|err| format!("{}: {err}", rule.path))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    Ok(Scenario { resolved, http })
+}
+
+fn parse_http_rule(target: &Target, value: &Value) -> Result<RouteSpec, String> {
+    let Target::Http { method, url } = target else {
+        unreachable!("only http rules are compiled");
     };
     let matcher = parse_url_string(url)?;
-    let method = match fields.get("method") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(method)) => parse_method(method)?,
-        Some(_) => return Err("method must be a string".into()),
+    let method = match method {
+        Some(method) => parse_method(method)?,
+        None => None,
     };
-    let times = match fields.get("times") {
-        None | Some(Value::Null) => None,
-        Some(Value::Number(n)) => Some(
-            n.as_u64()
-                .filter(|times| (1..=u64::from(u32::MAX)).contains(times))
-                .map(|times| times as u32)
-                .ok_or_else(|| format!("times must be a positive integer, got {n}"))?,
-        ),
-        Some(other) => return Err(format!("times must be a positive integer, got {other}")),
+    let Value::Object(fields) = value else {
+        unreachable!("checked by parse_file");
     };
-    if !matches!(
-        fields.get("note"),
-        None | Some(Value::Null) | Some(Value::String(_))
-    ) {
-        return Err("note must be a string".into());
-    }
+    let times = fields
+        .get("times")
+        .and_then(Value::as_u64)
+        .map(|times| times as u32);
+    let body_match = fields
+        .get("match")
+        .and_then(|matcher| matcher.get("json"))
+        .map(|json| Matcher::compile(json, "match.json"))
+        .transpose()?;
     let answer: serde_json::Map<String, Value> = fields
         .iter()
-        .filter(|(key, _)| !ROUTE_KEYS.contains(&key.as_str()))
+        .filter(|(key, _)| !format::RULE_KEYS.contains(&key.as_str()))
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect();
-    if answer.is_empty() {
-        return Err(
-            "a route needs an answer (status/json/body, abort, continue, hang, sse) or a sequence"
-                .into(),
-        );
-    }
     let answers = parse_file_answers(&Value::Object(answer))?;
-    Ok(RouteSpec::new(matcher, method, times, answers))
+    let mut spec = RouteSpec::new(matcher, method, times, answers);
+    spec.body_match = body_match;
+    Ok(spec)
 }
 
 /// Upper-case method, `None` for any. Shared with `route()` patterns.

@@ -3,6 +3,7 @@
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
 use super::capture::{CallLog, Captures, Observed, Recording, Settled, Source, Watch};
+use lingxia_control_protocol::scenario::Matcher;
 use regex::Regex;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -317,6 +318,18 @@ pub(crate) struct RouteSpec {
     pub answers: Vec<RouteAction>,
     /// Requests this route answered so far.
     pub served: usize,
+    /// A scenario rule's `match.json`: the request body must match.
+    pub body_match: Option<Matcher>,
+    /// The scenario rule this route serves.
+    pub origin: Option<RuleOrigin>,
+}
+
+/// Which rule of which installed scenario a route serves.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RuleOrigin {
+    pub scenario: u64,
+    /// 1-based rule index in the resolved scenario.
+    pub index: usize,
 }
 
 impl RouteSpec {
@@ -333,6 +346,8 @@ impl RouteSpec {
             times,
             answers,
             served: 0,
+            body_match: None,
+            origin: None,
         }
     }
 
@@ -351,16 +366,99 @@ pub(crate) struct Decision {
     pub owner: String,
     pub route_id: u64,
     pub pattern: String,
+    /// The scenario rule that answered, as `(rule index, "name:variant")`.
+    pub rule: Option<(usize, String)>,
 }
 
-/// The routes a dev session installed from a scenario file.
+/// Scenario rules whose target a request hit but whose `match` it failed,
+/// when nothing else answered it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct NoMatch {
+    /// Owners of the scenarios involved.
+    pub owners: Vec<String>,
+    /// `no rule matched POST … (2 rules for this target: rule 2 …; rule 3 …)`.
+    pub message: String,
+}
+
+/// Calls one installed scenario keeps for `calls()` and `status`.
+pub(crate) const MAX_SCENARIO_CALLS: usize = 200;
+
+/// A request that reached an installed scenario: one of its rules answered,
+/// or its targets matched and every `match` failed.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ScenarioCall {
+    pub time_ms: u64,
+    pub method: String,
+    /// As requested; redact before it leaves a test run.
+    pub url: String,
+    /// The request's JSON body, or its text when it is not JSON.
+    pub body: Option<serde_json::Value>,
+    /// The rule that answered; `None` when the request went on to the
+    /// network.
+    pub rule: Option<usize>,
+    /// `fulfill`, `abort`, `continue`, `hang`, or `none`.
+    pub action: &'static str,
+    pub status: Option<u16>,
+    pub no_match: Option<String>,
+}
+
+/// One rule of an installed scenario, for status and reports.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RuleSlot {
+    pub index: usize,
+    /// `GET **/wifi/main`, `function orders.submit`.
+    pub target: String,
+    /// `http` or `function`.
+    pub kind: &'static str,
+    /// The route serving an `http` rule.
+    pub route_id: Option<u64>,
+    /// Requests it answered (`http` rules; the companion counts `function`).
+    pub hits: u64,
+}
+
+/// A scenario installed by a dev session or a test run.
 #[derive(Debug, Clone)]
-pub(crate) struct DevScenario {
-    pub name: Option<String>,
-    pub source: Option<String>,
+pub(crate) struct InstalledScenario {
+    pub id: u64,
+    pub owner: String,
     pub appid: String,
-    pub route_ids: Vec<u64>,
+    pub name: Option<String>,
+    pub variant: Option<String>,
+    pub source: Option<String>,
+    pub rules: Vec<RuleSlot>,
     pub installed_ms: u64,
+    pub calls: VecDeque<ScenarioCall>,
+    /// Every call that reached it, including those `calls` dropped.
+    pub calls_total: u64,
+    /// Its `function` rules are installed in the dev session's companion.
+    pub companion: bool,
+}
+
+impl InstalledScenario {
+    /// `name:variant`, the source (or `unnamed`) standing in for a name.
+    pub(crate) fn label(&self) -> String {
+        let name = self
+            .name
+            .as_deref()
+            .or(self.source.as_deref())
+            .unwrap_or("unnamed");
+        match &self.variant {
+            Some(variant) => format!("{name}:{variant}"),
+            None => name.to_string(),
+        }
+    }
+
+    fn push_call(&mut self, call: ScenarioCall) {
+        if self.calls.len() >= MAX_SCENARIO_CALLS {
+            self.calls.pop_front();
+        }
+        self.calls_total += 1;
+        self.calls.push_back(call);
+    }
+
+    pub(crate) fn route_ids(&self) -> impl Iterator<Item = u64> + '_ {
+        self.rules.iter().filter_map(|rule| rule.route_id)
+    }
 }
 
 /// Why a dev scenario stopped answering.
@@ -388,7 +486,7 @@ impl DevClearReason {
 /// The last dev scenario that stopped answering, for `status`.
 #[derive(Debug, Clone)]
 pub(crate) struct ClearedDevScenario {
-    pub scenario: DevScenario,
+    pub scenario: InstalledScenario,
     pub reason: DevClearReason,
     pub cleared_ms: u64,
 }
@@ -468,7 +566,10 @@ pub(crate) struct Registry {
     /// Host automation runs in progress. While any exists, dev-session
     /// routes stand aside and Logic `fetch` calls are logged.
     active_runs: Vec<String>,
-    pub(crate) dev: Option<DevScenario>,
+    pub(crate) dev: Option<InstalledScenario>,
+    /// Scenarios host runs installed (`t.app.scenario()`), one per run and
+    /// app at a time.
+    pub(crate) run_scenarios: Vec<InstalledScenario>,
     /// The dev scenario cleared last, and why.
     pub(crate) dev_cleared: Option<ClearedDevScenario>,
     pub(crate) calls: CallLog,
@@ -534,6 +635,79 @@ impl Registry {
         Ok(installed)
     }
 
+    /// Install a resolved scenario for `owner` and `appid`, replacing the
+    /// scenario that owner installed for the app before (a dev session's,
+    /// or the run's previous `t.app.scenario()`). All or nothing.
+    /// `routes` are `(rule index, spec)` of its `http` rules in precedence
+    /// order; `rules` lists every rule. Returns the installed scenario.
+    pub(crate) fn install_scenario(
+        &mut self,
+        owner: &str,
+        appid: &str,
+        mut installed: InstalledScenario,
+        routes: Vec<(usize, RouteSpec)>,
+        run_active: impl FnOnce() -> bool,
+    ) -> Result<InstalledScenario, String> {
+        if !run_active() {
+            return Err("the automation run that owns this driver has ended".into());
+        }
+        self.next_id += 1;
+        installed.id = self.next_id;
+        installed.owner = owner.to_string();
+        installed.appid = appid.to_string();
+        let (indexes, mut specs): (Vec<usize>, Vec<RouteSpec>) = routes.into_iter().unzip();
+        for (spec, index) in specs.iter_mut().zip(&indexes) {
+            spec.origin = Some(RuleOrigin {
+                scenario: installed.id,
+                index: *index,
+            });
+        }
+        let ids = self.install_all(owner, appid, specs, || true)?;
+        for (index, (id, _)) in indexes.iter().zip(ids) {
+            if let Some(slot) = installed.rules.iter_mut().find(|slot| slot.index == *index) {
+                slot.route_id = Some(id);
+            }
+        }
+        if owner != DEV_SESSION_OWNER {
+            self.remove_run_scenario(owner, appid);
+            self.run_scenarios.push(installed.clone());
+        }
+        Ok(installed)
+    }
+
+    /// Remove the scenario `owner` installed for `appid` in a run, and its
+    /// routes. Returns it.
+    pub(crate) fn remove_run_scenario(
+        &mut self,
+        owner: &str,
+        appid: &str,
+    ) -> Option<InstalledScenario> {
+        let position = self
+            .run_scenarios
+            .iter()
+            .position(|scenario| scenario.owner == owner && scenario.appid == appid)?;
+        let scenario = self.run_scenarios.remove(position);
+        for id in scenario.route_ids() {
+            self.remove(owner, id);
+        }
+        Some(scenario)
+    }
+
+    /// The installed scenario with this id, dev or run.
+    pub(crate) fn scenario(&self, id: u64) -> Option<&InstalledScenario> {
+        self.dev
+            .iter()
+            .chain(self.run_scenarios.iter())
+            .find(|scenario| scenario.id == id)
+    }
+
+    fn scenario_mut(&mut self, id: u64) -> Option<&mut InstalledScenario> {
+        self.dev
+            .iter_mut()
+            .chain(self.run_scenarios.iter_mut())
+            .find(|scenario| scenario.id == id)
+    }
+
     /// Open a call-log entry for a Logic request when a run or a recording
     /// watches it: `(id, who wants its response)`. Only a `fetch` response
     /// is captured for a contract check.
@@ -555,7 +729,9 @@ impl Registry {
             record: recorder.is_some(),
             contract: kind == "fetch" && self.captures.capturing(appid),
         };
-        if !watch.wants_body() && self.active_runs.is_empty() {
+        // A dev scenario is logged too, so `lxdev network status` can say
+        // who answered each call.
+        if !watch.wants_body() && self.active_runs.is_empty() && self.dev.is_none() {
             return None;
         }
         let id = self.calls.begin(appid, kind, method, url, watch);
@@ -654,6 +830,8 @@ impl Registry {
         if run_id == DEV_SESSION_OWNER {
             self.dev = None;
         }
+        self.run_scenarios
+            .retain(|scenario| scenario.owner != run_id);
         self.held.retain(|held| held.run_id != run_id);
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
@@ -667,7 +845,7 @@ impl Registry {
         &mut self,
         reason: DevClearReason,
         now_ms: u64,
-    ) -> Option<DevScenario> {
+    ) -> Option<InstalledScenario> {
         let dev = self.dev.clone();
         self.clear_run(DEV_SESSION_OWNER);
         if let Some(scenario) = &dev {
@@ -691,15 +869,20 @@ impl Registry {
         allowed: impl FnOnce() -> bool,
     ) -> Option<RouteAction> {
         self.decide_route(appid, method, url, request, allowed, 0)
+            .0
             .map(|decision| decision.action)
     }
 
     /// The route answering a request, and how. The most recently installed
-    /// matching route wins; a sequence advances by one answer. `allowed`
-    /// reports whether the app's network policy admits the URL: a
-    /// fulfillment never answers a request the real `fetch` would have
-    /// refused. `call` is the [`CallLog`] id of the request, or 0 when it is
-    /// not observed.
+    /// matching route wins; a scenario's rules were installed so its first
+    /// rule is the most recent; a route whose `match.json` the body fails is
+    /// passed over. A sequence advances by one answer. `allowed` reports
+    /// whether the app's network policy admits the URL: a fulfillment never
+    /// answers a request the real `fetch` would have refused. `call` is the
+    /// [`CallLog`] id of the request, or 0 when it is not observed.
+    ///
+    /// The second value explains a request that hit scenario rules' targets
+    /// but none of their `match`es, when nothing else answered it.
     pub(crate) fn decide_route(
         &mut self,
         appid: &str,
@@ -708,19 +891,59 @@ impl Registry {
         request: impl FnOnce() -> SentRequest,
         allowed: impl FnOnce() -> bool,
         call: u64,
-    ) -> Option<Decision> {
+    ) -> (Option<Decision>, Option<NoMatch>) {
         // A test run is never steered by a scenario a developer left on.
         let dev_aside = !self.active_runs.is_empty();
-        let index = self.routes.iter().rposition(|route| {
-            route.appid == appid
+        let mut request = Some(request);
+        let mut sent: Option<SentRequest> = None;
+        let mut body: Option<Result<serde_json::Value, String>> = None;
+        // `(scenario, rule, reason)` of routes whose target matched but whose
+        // `match` did not.
+        let mut misses: Vec<(u64, usize, String)> = Vec::new();
+        let mut chosen = None;
+        for index in (0..self.routes.len()).rev() {
+            let route = &self.routes[index];
+            let targeted = route.appid == appid
                 && !(dev_aside && route.run_id == DEV_SESSION_OWNER)
                 && route
                     .spec
                     .method
                     .as_deref()
                     .is_none_or(|expected| expected.eq_ignore_ascii_case(method))
-                && route.spec.matcher.is_match(url)
-        })?;
+                && route.spec.matcher.is_match(url);
+            if !targeted {
+                continue;
+            }
+            if let Some(matcher) = &route.spec.body_match {
+                let sent = sent.get_or_insert_with(|| {
+                    request
+                        .take()
+                        .map_or_else(SentRequest::default, |read| read())
+                });
+                let body = body.get_or_insert_with(|| request_json(sent));
+                let outcome = match body {
+                    Ok(json) => matcher.check(json, "match.json").map_err(|m| m.to_string()),
+                    Err(reason) => Err(format!("match.json: {reason}")),
+                };
+                if let Err(reason) = outcome {
+                    if let Some(origin) = route.spec.origin {
+                        misses.push((origin.scenario, origin.index, reason));
+                    }
+                    continue;
+                }
+            }
+            chosen = Some(index);
+            break;
+        }
+        let mut sent = move || {
+            sent.take()
+                .or_else(|| request.take().map(|read| read()))
+                .unwrap_or_default()
+        };
+        let Some(index) = chosen else {
+            let no_match = self.record_misses(method, url, &misses, &mut sent, None, call);
+            return (None, no_match);
+        };
         let route = &mut self.routes[index];
         let mut action = super::scenario::render_action(&route.spec.next_answer(), now_ms());
         // Neither an answer nor a stall may stand in for a host the real
@@ -747,27 +970,31 @@ impl Registry {
                 route_id: route.id,
             });
         }
+        let status = match &action {
+            RouteAction::Fulfill(fulfill) => Some(fulfill.status),
+            RouteAction::Sse(_) => Some(200),
+            _ => None,
+        };
+        let request = sent();
+        let origin = route.spec.origin;
         let entry = RequestEntry {
             route_id: route.id,
             pattern: route.spec.matcher.label(),
             method: method.to_ascii_uppercase(),
             url: url.to_string(),
             action: action.kind(),
-            status: match &action {
-                RouteAction::Fulfill(fulfill) => Some(fulfill.status),
-                RouteAction::Sse(_) => Some(200),
-                _ => None,
-            },
-            request: request(),
+            status,
+            request: request.clone(),
             timestamp_ms: now_ms(),
             run_id: route.run_id.clone(),
             appid: route.appid.clone(),
         };
-        let decision = Decision {
+        let mut decision = Decision {
             action: action.clone(),
             owner: route.run_id.clone(),
             route_id: route.id,
             pattern: entry.pattern.clone(),
+            rule: None,
         };
         if let Some(times) = route.spec.times.as_mut() {
             *times = times.saturating_sub(1);
@@ -775,6 +1002,38 @@ impl Registry {
                 self.routes.remove(index);
             }
         }
+        if let Some(origin) = origin
+            && let Some(scenario) = self.scenario_mut(origin.scenario)
+        {
+            if let Some(slot) = scenario
+                .rules
+                .iter_mut()
+                .find(|slot| slot.index == origin.index)
+            {
+                slot.hits += 1;
+            }
+            decision.rule = Some((origin.index, scenario.label()));
+            scenario.push_call(ScenarioCall {
+                time_ms: entry.timestamp_ms,
+                method: entry.method.clone(),
+                url: url.to_string(),
+                body: request_value(&request),
+                rule: Some(origin.index),
+                action: entry.action,
+                status,
+                no_match: None,
+            });
+        }
+        // Rules of other scenarios that this request passed over.
+        let mut request_again = || request.clone();
+        self.record_misses(
+            method,
+            url,
+            &misses,
+            &mut request_again,
+            origin.map(|origin| origin.scenario),
+            0,
+        );
         if call != 0
             && let Some(observed) = self.calls.routed(call, &decision)
             && let RouteAction::Fulfill(fulfill) = &decision.action
@@ -812,7 +1071,80 @@ impl Registry {
         }
         self.log_body_bytes += body_len;
         self.log.push_back(entry);
-        Some(decision)
+        (Some(decision), None)
+    }
+
+    /// Note, in each scenario whose rules a request passed over, that none of
+    /// them matched. `answered_by` is the scenario that answered it anyway
+    /// (its earlier rules missing is not news). Returns the diagnostic when
+    /// nothing answered.
+    fn record_misses(
+        &mut self,
+        method: &str,
+        url: &str,
+        misses: &[(u64, usize, String)],
+        request: &mut dyn FnMut() -> SentRequest,
+        answered_by: Option<u64>,
+        call: u64,
+    ) -> Option<NoMatch> {
+        if misses.is_empty() {
+            return None;
+        }
+        let method = method.to_ascii_uppercase();
+        let mut scenarios: Vec<u64> = misses.iter().map(|(id, _, _)| *id).collect();
+        scenarios.sort_unstable();
+        scenarios.dedup();
+        let mut ordered: Vec<&(u64, usize, String)> = misses.iter().collect();
+        ordered.sort_by_key(|(id, index, _)| (*id, *index));
+        let message = |rules: &[&(u64, usize, String)]| {
+            format!(
+                "no rule matched {method} {} ({} rule{} for this target: {})",
+                super::capture::redact_url(url, super::capture::REDACTED),
+                rules.len(),
+                if rules.len() == 1 { "" } else { "s" },
+                rules
+                    .iter()
+                    .map(|(_, index, reason)| format!("rule {index} {reason}"))
+                    .collect::<Vec<_>>()
+                    .join("; ")
+            )
+        };
+        let body = request_value(&request());
+        let mut owners = Vec::new();
+        for id in scenarios.into_iter().filter(|id| Some(*id) != answered_by) {
+            let rules: Vec<&(u64, usize, String)> = ordered
+                .iter()
+                .copied()
+                .filter(|(scenario, _, _)| *scenario == id)
+                .collect();
+            let text = message(&rules);
+            if let Some(scenario) = self.scenario_mut(id) {
+                owners.push(scenario.owner.clone());
+                scenario.push_call(ScenarioCall {
+                    time_ms: now_ms(),
+                    method: method.clone(),
+                    url: url.to_string(),
+                    body: body.clone(),
+                    rule: None,
+                    action: "none",
+                    status: None,
+                    no_match: Some(text),
+                });
+            }
+        }
+        if answered_by.is_some() || owners.is_empty() {
+            return None;
+        }
+        let text = message(&ordered);
+        if call != 0
+            && let Some(observed) = self.calls.find(call)
+        {
+            observed.no_match = Some(text.clone());
+        }
+        Some(NoMatch {
+            owners,
+            message: text,
+        })
     }
 
     /// Whether a `hang` route still holds the request behind `token`.
@@ -826,14 +1158,6 @@ impl Registry {
             .filter(|entry| entry.run_id == run_id && entry.appid == appid)
             .cloned()
             .collect()
-    }
-
-    /// Requests the route `id` of `owner` answered, as far as the log holds.
-    pub(crate) fn hits(&self, owner: &str, id: u64) -> usize {
-        self.log
-            .iter()
-            .filter(|entry| entry.run_id == owner && entry.route_id == id)
-            .count()
     }
 
     /// Route ids of `owner` still installed, with the answers left in
@@ -860,6 +1184,26 @@ impl Registry {
     }
 }
 
+/// The request body as JSON for `match.json`.
+fn request_json(sent: &SentRequest) -> Result<serde_json::Value, String> {
+    let Some(text) = sent.body.as_deref() else {
+        return Err("the request has no body".into());
+    };
+    serde_json::from_str(text).map_err(|_| {
+        if sent.body_truncated {
+            "the request body is larger than the part a rule can read".to_string()
+        } else {
+            "the request body is not JSON".to_string()
+        }
+    })
+}
+
+/// The request body for a scenario's calls: JSON when it parses.
+fn request_value(sent: &SentRequest) -> Option<serde_json::Value> {
+    let text = sent.body.as_deref()?;
+    Some(serde_json::from_str(text).unwrap_or_else(|_| serde_json::Value::String(text.to_string())))
+}
+
 pub(crate) fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -874,6 +1218,7 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     held: Vec::new(),
     active_runs: Vec::new(),
     dev: None,
+    run_scenarios: Vec::new(),
     dev_cleared: None,
     calls: CallLog::new(),
     dev_recording: None,

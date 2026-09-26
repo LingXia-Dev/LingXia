@@ -414,6 +414,7 @@ mod tests {
             vec!["lxdev", "scenario", "list"],
             vec!["lxdev", "scenario", "list", "--json"],
             vec!["lxdev", "scenario", "use", "qoe/offline"],
+            vec!["lxdev", "scenario", "use", "wifi:offline", "--watch"],
             vec![
                 "lxdev",
                 "scenario",
@@ -429,6 +430,10 @@ mod tests {
             assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
         }
         assert!(Cli::try_parse_from(["lxdev", "scenario", "use"]).is_err());
+        // A variant is named `name:variant`, never with a flag.
+        assert!(
+            Cli::try_parse_from(["lxdev", "scenario", "use", "wifi", "--variant", "b"]).is_err()
+        );
         let Commands::Scenario(options) = Cli::try_parse_from(["lxdev", "scenario", "list"])
             .unwrap()
             .command

@@ -8,11 +8,16 @@
 
 use super::capture::{self, REPORT_CALLS, Recording};
 use super::registry::{
-    self, DEV_SESSION_OWNER, DevClearReason, DevScenario, Registry, RouteAction, now_ms,
+    self, DEV_SESSION_OWNER, DevClearReason, InstalledScenario, Registry, RouteAction, RuleSlot,
+    now_ms,
 };
 use super::scenario;
 use lingxia_log::{LogBuilder, LogLevel, LogTag};
 use serde_json::{Value, json};
+use std::collections::VecDeque;
+
+/// Calls `status` lists.
+const STATUS_CALLS: usize = 20;
 
 pub(crate) fn warn(appid: &str, message: String) {
     LogBuilder::new(LogTag::Native, message)
@@ -20,12 +25,12 @@ pub(crate) fn warn(appid: &str, message: String) {
         .with_level(LogLevel::Warn);
 }
 
-/// `'name' (file)` for log lines.
-pub(crate) fn label(dev: &DevScenario) -> String {
-    let name = dev.name.as_deref().unwrap_or("unnamed");
+/// `'name:variant' (file)` for log lines.
+pub(crate) fn label(dev: &InstalledScenario) -> String {
+    let name = dev.label();
     match &dev.source {
-        Some(source) => format!("'{name}' ({source})"),
-        None => format!("'{name}'"),
+        Some(source) if dev.name.is_some() => format!("'{name}' ({source})"),
+        _ => format!("'{name}'"),
     }
 }
 
@@ -40,21 +45,60 @@ pub(crate) fn describe(action: &RouteAction) -> String {
     }
 }
 
-/// Install `scenario` for `appid` until [`clear_scenario`] or the session
-/// ends, replacing a scenario installed earlier. Returns [`status`].
-pub fn use_scenario(appid: &str, scenario: &Value, source: Option<&str>) -> Result<Value, String> {
-    let parsed = scenario::parse_scenario(scenario)?;
-    let count = parsed.routes.len();
+/// An installed scenario before the table assigns its id and owner.
+pub(crate) fn installed(parsed: &scenario::Scenario, source: Option<&str>) -> InstalledScenario {
+    InstalledScenario {
+        id: 0,
+        owner: String::new(),
+        appid: String::new(),
+        name: parsed.resolved.name.clone(),
+        variant: parsed.resolved.variant.clone(),
+        source: source.map(str::to_string),
+        rules: parsed
+            .resolved
+            .rules
+            .iter()
+            .map(|rule| RuleSlot {
+                index: rule.index,
+                target: rule.target.label(),
+                kind: rule.target.kind(),
+                route_id: None,
+                hits: 0,
+            })
+            .collect(),
+        installed_ms: now_ms(),
+        calls: VecDeque::new(),
+        calls_total: 0,
+        companion: false,
+    }
+}
+
+/// Install the `http` rules of `scenario` (a whole scenario file, `variant`
+/// applied) for `appid` until [`clear_scenario`] or the session ends,
+/// replacing a scenario installed earlier. `function` rules are listed in
+/// the status but served by the dev session's companion. With `dry_run`
+/// the file is only validated. Returns [`status`].
+pub fn use_scenario(
+    appid: &str,
+    scenario: &Value,
+    variant: Option<&str>,
+    source: Option<&str>,
+    dry_run: bool,
+) -> Result<Value, String> {
+    let parsed = scenario::parse_scenario(scenario, variant)?;
+    if dry_run {
+        return Ok(json!({
+            "valid": true,
+            "rules": parsed.resolved.rules.len(),
+            "http": parsed.http.len(),
+        }));
+    }
+    let slot = installed(&parsed, source);
+    let http = parsed.http.len();
+    let functions = parsed.resolved.rules.len() - http;
     let (dev, replaced) = registry::with_registry(|routes| {
         let replaced = routes.end_dev_scenario(DevClearReason::Replaced, now_ms());
-        let installed = routes.install_all(DEV_SESSION_OWNER, appid, parsed.routes, || true)?;
-        let dev = DevScenario {
-            name: parsed.name,
-            source: source.map(str::to_string),
-            appid: appid.to_string(),
-            route_ids: installed.iter().map(|(id, _)| *id).collect(),
-            installed_ms: now_ms(),
-        };
+        let dev = routes.install_scenario(DEV_SESSION_OWNER, appid, slot, parsed.http, || true)?;
         routes.dev = Some(dev.clone());
         Ok::<_, String>((dev, replaced))
     })?;
@@ -68,16 +112,28 @@ pub fn use_scenario(appid: &str, scenario: &Value, source: Option<&str>) -> Resu
             ),
         );
     }
+    let companion = if functions > 0 {
+        format!(
+            " ({functions} function rule{} answered by the companion)",
+            plural(functions)
+        )
+    } else {
+        String::new()
+    };
     warn(
         appid,
         format!(
-            "dev scenario {} is ACTIVE: {count} route{} answer this app's Logic fetch \
+            "dev scenario {} is ACTIVE: {http} http rule{} answer this app's Logic fetch{companion} \
              until `lxdev scenario clear` or the dev session ends",
             label(&dev),
-            if count == 1 { "" } else { "s" }
+            plural(http)
         ),
     );
     Ok(status())
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
 }
 
 /// Remove the dev scenario (`lxdev scenario clear`). Returns whether one was
@@ -105,48 +161,72 @@ pub fn status() -> Value {
     registry::with_registry(|routes| status_of(routes))
 }
 
+/// Per-rule status of an installed scenario.
+pub(crate) fn rules_json(scenario: &InstalledScenario, routes: &Registry) -> Vec<Value> {
+    scenario
+        .rules
+        .iter()
+        .map(|rule| {
+            let mut entry = json!({
+                "index": rule.index,
+                "target": rule.target,
+                "kind": rule.kind,
+            });
+            if let Some(id) = rule.route_id {
+                let remaining = routes.remaining(&scenario.owner, id);
+                entry["hits"] = json!(rule.hits);
+                entry["installed"] = json!(remaining.is_some());
+                entry["timesLeft"] = json!(remaining.flatten());
+            }
+            entry
+        })
+        .collect()
+}
+
+/// A scenario's calls for a report: URL credentials redacted, no bodies.
+pub(crate) fn scenario_calls_json(scenario: &InstalledScenario, limit: usize) -> Vec<Value> {
+    let skip = scenario.calls.len().saturating_sub(limit);
+    scenario
+        .calls
+        .iter()
+        .skip(skip)
+        .map(|call| {
+            let mut entry = json!({
+                "time": scenario::iso_utc(call.time_ms as i64),
+                "method": call.method,
+                "url": capture::redact_url(&call.url, capture::REDACTED),
+                "rule": call.rule,
+                "action": call.action,
+                "status": call.status,
+            });
+            if let Some(no_match) = &call.no_match {
+                entry["noMatch"] = json!(no_match);
+            }
+            entry
+        })
+        .collect()
+}
+
 pub(crate) fn status_of(routes: &Registry) -> Value {
     let scenario = routes.dev.as_ref().map(|dev| {
-        let entries: Vec<Value> = dev
-            .route_ids
-            .iter()
-            .map(|id| {
-                let remaining = routes.remaining(DEV_SESSION_OWNER, *id);
-                json!({
-                    "id": id,
-                    "installed": remaining.is_some(),
-                    "timesLeft": remaining.flatten(),
-                    "hits": routes.hits(DEV_SESSION_OWNER, *id),
-                })
-            })
-            .collect();
-        let patterns = routes.requests(DEV_SESSION_OWNER, &dev.appid);
         json!({
             "name": dev.name,
+            "variant": dev.variant,
+            "label": dev.label(),
             "source": dev.source,
             "appid": dev.appid,
             "installedAt": scenario::iso_utc(dev.installed_ms as i64),
-            "routes": entries,
-            "requests": patterns.len(),
-            "lastRequests": patterns
-                .iter()
-                .rev()
-                .take(10)
-                .rev()
-                .map(|entry| json!({
-                    "method": entry.method,
-                    "url": capture::redact_url(&entry.url, capture::REDACTED),
-                    "pattern": entry.pattern,
-                    "action": entry.action,
-                    "status": entry.status,
-                    "time": scenario::iso_utc(entry.timestamp_ms as i64),
-                }))
-                .collect::<Vec<_>>(),
+            "installedMs": dev.installed_ms,
+            "rules": rules_json(dev, routes),
+            "requests": dev.calls_total,
+            "lastRequests": scenario_calls_json(dev, 10),
         })
     });
     let last_cleared = routes.dev_cleared.as_ref().map(|cleared| {
         json!({
             "name": cleared.scenario.name,
+            "variant": cleared.scenario.variant,
+            "label": cleared.scenario.label(),
             "source": cleared.scenario.source,
             "appid": cleared.scenario.appid,
             "reason": cleared.reason.as_str(),
@@ -171,11 +251,13 @@ pub(crate) fn status_of(routes: &Registry) -> Value {
         });
     json!({
         "active": scenario.is_some(),
-        // Dev routes stand aside while a test run is active.
+        // Dev routes stand aside while a test run is active, and answer
+        // again when it ends.
         "suspended": scenario.is_some() && routes.runs_active(),
         "scenario": scenario,
         "lastCleared": last_cleared,
         "recording": recording,
+        "calls": routes.calls.recent(0, STATUS_CALLS, &[]),
     })
 }
 

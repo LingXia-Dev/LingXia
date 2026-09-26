@@ -16,6 +16,8 @@ mod apple_host_stubs;
 mod app;
 #[cfg(feature = "dev-bridge")]
 mod bridge;
+#[cfg(all(feature = "dev-bridge", feature = "test-runtime"))]
+mod bridge_upstream;
 mod browser;
 #[cfg(feature = "computer-use")]
 mod desktop;
