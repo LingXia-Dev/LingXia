@@ -374,7 +374,6 @@ export class ContractLedger {
         ...(doc.title ? { title: doc.title } : {}),
         operations: doc.operations,
       })),
-      capture: "ok",
       responses: 0,
       validated: 0,
       routed: { validated: 0, failed: 0 },

@@ -82,7 +82,6 @@ export type {
   TagSummary,
   TestApp,
   TestAutomation,
-  TestPage,
   WaitForOptions,
 } from "./types.js";
 export type { AutomationErrorCode, ClockAdvance, ClockState } from "@lingxia/types/automation";

@@ -30,10 +30,8 @@ export interface QueryMatch {
   count: number;
   index?: number;
   visible?: boolean;
-  /** Rendered and intersecting the viewport; absent from an older runtime. */
+  /** Rendered and intersecting the viewport. */
   inViewport?: boolean;
-  /** `inViewport` as a runtime between 0.18 and its rename sent it. */
-  in_viewport?: boolean;
   text?: string;
   value?: string | null;
   enabled?: boolean;
@@ -281,7 +279,7 @@ export class PageLocator implements Locator {
         visibleCount: 1,
         attached: true,
         visible: true,
-        inViewport: inViewport(unique),
+        inViewport: unique.inViewport === true,
         text: unique.text ?? "",
         value: unique.value ?? null,
         index: unique.index ?? items.indexOf(unique),
@@ -501,16 +499,6 @@ export function textMatches(text: string, expected: string | RegExp): boolean {
   }
   const normalize = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
   return normalize(text).includes(normalize(expected));
-}
-
-/**
- * The runtime's `inViewport` (`in_viewport` before its rename); an older
- * runtime has neither, and its `visible` was already viewport-aware.
- */
-function inViewport(item: QueryMatch): boolean {
-  if (typeof item.inViewport === "boolean") return item.inViewport;
-  if (typeof item.in_viewport === "boolean") return item.in_viewport;
-  return item.visible === true;
 }
 
 export function sleep(ms: number): Promise<void> {

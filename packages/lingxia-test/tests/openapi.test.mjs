@@ -269,6 +269,7 @@ test("toMatchSchema fails clearly without --openapi, and checks with it", async 
   assert.throws(() => expect({}).not.toMatchSchema("Device"), /toMatchSchema needs an OpenAPI document/);
 
   const world = createWorld();
+  world.app.network = capturingNetwork([]);
   installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
   const seen = [];
   spec("schema assertions", async () => {
@@ -307,7 +308,9 @@ test("t.openapi names the run's documents; without them a spec can skip itself",
   assert.match(report.cases[0].reason, /needs its OpenAPI document/);
 
   reset();
-  installFakeHost(createWorld(), { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
+  const withContract = createWorld();
+  withContract.app.network = capturingNetwork([]);
+  installFakeHost(withContract, { control: { openapi: JSON.stringify([{ name: "devices.yaml", doc: API }]) } });
   let documents;
   spec("contract only", async (t) => {
     documents = t.openapi?.documents;
@@ -379,7 +382,6 @@ test("routed mismatches fail the spec; the server's are warnings", async () => {
 
   const summary = report.openapi;
   assert.deepEqual(summary.documents, [{ name: "devices.yaml", version: "3.0.3", title: "Devices", operations: 2 }]);
-  assert.equal(summary.capture, "ok");
   assert.equal(summary.responses, 5);
   assert.deepEqual(summary.routed, { validated: 3, failed: 2 });
   assert.deepEqual(summary.network, { validated: 1, mismatched: 1 });
@@ -391,14 +393,11 @@ test("routed mismatches fail the spec; the server's are warnings", async () => {
   assert.match(warning.message, /live-list: GET \/devices → 200 from the server does not match/);
 });
 
-test("a host without response capture still runs, and says so", async () => {
+test("a host that cannot capture responses fails the run instead of skipping the contract", async () => {
   const world = createWorld();
   world.app.network = capturingNetwork([], { unsupported: true });
-  const { events } = installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "api.json", doc: API }]) } });
+  installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "api.json", doc: API }]) } });
   spec("one", async () => {});
-  spec("two", async () => {});
-  const report = await run();
-  assert.equal(report.passed, 2);
-  assert.match(report.openapi.capture, /^unavailable: /);
-  assert.equal(events.filter((event) => event.type === "diagnostic" && event.phase === "contract").length, 1);
+  await assert.rejects(() => run(), /captureResponses is not a function/);
 });
+

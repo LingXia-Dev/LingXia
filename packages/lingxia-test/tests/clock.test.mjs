@@ -197,7 +197,7 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
     t.defer(async () => {
       // Longer than the 2s post-timeout budget; a healthy spec must still finish.
       await new Promise((resolve) => setTimeout(resolve, 2_600));
-      await t.app.eval({ script: "1" });
+      await t.app.logic.eval(() => 1);
       cleaned.push("healthy");
     });
   });
@@ -205,7 +205,7 @@ test("cleanup gets the spec's budget, and only a wedged spec gets the short one"
   spec("wedged spec bails out of cleanup", { timeout: 60 }, async (t) => {
     t.defer(async () => {
       await new Promise((resolve) => setTimeout(resolve, 2_600));
-      await t.app.eval({ script: "1" });
+      await t.app.logic.eval(() => 1);
       cleaned.push("wedged");
     });
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -225,7 +225,7 @@ test("a cleanup failure after a timeout keeps the timeout verdict", async () => 
     t.defer(async () => {
       // Outlives the post-timeout cleanup budget, as a wedged app's would.
       await new Promise((resolve) => setTimeout(resolve, 3_000));
-      await t.app.eval({ script: "1" });
+      await t.app.logic.eval(() => 1);
     });
     await new Promise((resolve) => setTimeout(resolve, 400));
   });
@@ -249,7 +249,7 @@ test("cleanup is not charged to a short spec's own budget", async () => {
     t.defer(async () => {
       // A relaunch-and-wait routinely outruns a spec this short.
       await new Promise((resolve) => setTimeout(resolve, 2_600));
-      await t.app.eval({ script: "1" });
+      await t.app.logic.eval(() => 1);
       cleaned = true;
     });
   });

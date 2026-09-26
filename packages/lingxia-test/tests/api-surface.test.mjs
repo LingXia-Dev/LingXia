@@ -33,7 +33,7 @@ test("t.expect(value) checks once; t.expect(fn) retries until the matcher passes
   assert.ok(Date.now() - started < 1_000);
 });
 
-test("t.expect(locator) retries; the deprecated t.expect.poll still works", async () => {
+test("t.expect(locator) retries; there is no t.expect.poll", async () => {
   const world = createWorld();
   const save = world.add({ testId: "save", visible: false });
   setTimeout(() => { save.visible = true; }, 30);
@@ -42,12 +42,12 @@ test("t.expect(locator) retries; the deprecated t.expect.poll still works", asyn
 
   spec("locator", { forensics: false }, async (t) => {
     await t.expect(t.app.view.testId("save")).toBeVisible({ timeout: 1_000 });
-    await t.expect.poll(() => ++polled, { interval: 5 }).toBe(2);
+    polled = typeof t.expect.poll;
   });
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.equal(polled, 2);
+  assert.equal(polled, "undefined");
 });
 
 test("expect(locator) refuses, pointing at t.expect", async () => {
@@ -65,7 +65,7 @@ test("expect(locator) refuses, pointing at t.expect", async () => {
   assert.match(report.cases[0].error.message, /expect\(locator\) checks once and cannot read the element; use t\.expect\(locator\)/);
 });
 
-test("t.app.view has locators, not raw element methods; the page alias keeps 0.18's", async () => {
+test("t.app.view has locators, not raw element methods; there is no t.app.page or t.app.eval", async () => {
   const world = createWorld();
   const save = world.add({ testId: "save" });
   installFakeHost(world);
@@ -75,17 +75,18 @@ test("t.app.view has locators, not raw element methods; the page alias keeps 0.1
     seen.viewClick = typeof t.app.view.click;
     seen.viewWaitFor = typeof t.app.view.waitFor;
     seen.viewQuery = typeof t.app.view.query;
+    seen.page = typeof t.app.page;
+    seen.eval = typeof t.app.eval;
     await t.app.view.testId("save").click();
-    // Deprecated, still working.
-    await t.app.page.click({ css: '[data-testid="save"]' });
-    await t.app.page.testId("save").click();
+    await t.app.view.css('[data-testid="save"]').click();
     seen.shot = (await t.app.view.screenshot()).format;
   });
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.deepEqual([seen.viewClick, seen.viewWaitFor, seen.viewQuery], ["undefined", "undefined", "undefined"]);
-  assert.equal(save.clicked, 3);
+  assert.deepEqual([seen.page, seen.eval], ["undefined", "undefined"]);
+  assert.equal(save.clicked, 2);
   assert.equal(seen.shot, "png");
 });
 

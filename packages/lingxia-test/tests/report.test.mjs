@@ -191,7 +191,7 @@ test("spec.fail with expected grades only the matching failure xfail", async () 
     throw new Error("quota exceeded");
   });
   spec.fail("other failure", { expected: { code: "E_QUOTA", message: "quota" } }, async (t) => {
-    await t.app.page.testId("mistyped").click({ timeout: 20, interval: 5 });
+    await t.app.view.testId("mistyped").click({ timeout: 20, interval: 5 });
   });
   spec.fail("known but passes", { expected: { code: "E_QUOTA" } }, async () => {});
 
@@ -234,7 +234,7 @@ test("spec.fail grades a body assertion xfail, a pass xpass, and a timeout timeo
   });
   spec.fail("timeout is not xfail", { timeout: 40 }, async (t) => {
     await new Promise((resolve) => setTimeout(resolve, 200));
-    await t.app.eval({ script: "1" });
+    await t.app.logic.eval(() => 1);
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -436,7 +436,7 @@ test("a passing spec that never reaches its tag is not credited with it", async 
     id: "COV-CLAIM",
     covers: ["lx.getStorage", "lx.tray"],
   }, async (t) => {
-    await t.app.eval({ script: "probe" });
+    await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
   });
 
@@ -463,7 +463,7 @@ test("returned-object tags are not claimed against lx.* call records", async () 
     id: "COV-OBJ",
     covers: ["lx.getStorage", "Storage.set", "DownloadTask.wait", "LxFile.text"],
   }, async (t) => {
-    await t.app.eval({ script: "probe" });
+    await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
   });
 
@@ -488,7 +488,7 @@ test("a parent lx.* path does not prove a primitive member", async () => {
     id: "COV-ENV-PARENT",
     covers: ["lx.env", "lx.env.USER_DATA_PATH"],
   }, async (t) => {
-    await t.app.eval({ script: "probe" });
+    await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
   });
 
@@ -508,7 +508,7 @@ test("a primitive lx.* member path in calls is behaviour", async () => {
     id: "COV-ENV-MEMBER",
     covers: ["lx.env", "lx.env.USER_DATA_PATH"],
   }, async (t) => {
-    await t.app.eval({ script: "probe" });
+    await t.app.logic.eval(() => "probe");
     expect(1).toBe(1);
   });
 
@@ -532,7 +532,7 @@ test("an eval whose script returns undefined yields undefined, not the envelope"
   let seen = "unset";
   let observed = null;
   spec("reads an undefined result", { id: "COV-UNDEF", covers: ["lx.getStorage"] }, async (t) => {
-    seen = await t.app.eval({ script: "returns undefined" });
+    seen = await t.app.logic.eval(() => "returns undefined");
     observed = [...t.observed];
   });
 
@@ -655,8 +655,8 @@ test("a spec that never calls t.step still records what it did", async () => {
 
   spec("flat spec", { id: "TRACE-1" }, async (t) => {
     await t.app.nav.relaunch({ page: "home" });
-    await t.app.page.testId("home-name").fill("Ada");
-    await t.app.eval({ script: "return 1 + 1;" });
+    await t.app.view.testId("home-name").fill("Ada");
+    await t.app.logic.eval(() => 1 + 1);
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -665,13 +665,13 @@ test("a spec that never calls t.step still records what it did", async () => {
 
   assert.deepEqual(
     trace.map((entry) => `${entry.kind} ${entry.name} ${entry.detail}`),
-    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"]', "action app.eval return 1 + 1;"],
+    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"]', "action logic.eval () => 1 + 1"],
   );
   assert.ok(trace.every((entry) => entry.status === "passed"));
 
   const html = decodeAttachment(attachments, "report.html");
   assert.match(html, /nav\.relaunch/);
-  assert.match(html, /app\.eval/);
+  assert.match(html, /logic\.eval/);
 });
 
 test("a retry loop records one action, not one per poll", async () => {
@@ -683,7 +683,7 @@ test("a retry loop records one action, not one per poll", async () => {
     await t.step("wait for the value", async () => {
       await t.expect(async () => {
         reads += 1;
-        await t.app.eval({ script: "return 1;" });
+        await t.app.logic.eval(() => 1);
         return reads;
       }, { timeout: 800, interval: 20 }).toBe(5);
     });
@@ -707,7 +707,7 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
     for (let attempt = 0; attempt < 6; attempt += 1) {
       await t.app.nav.current();
     }
-    await t.app.eval({ script: "return 1;" });
+    await t.app.logic.eval(() => 1);
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -717,7 +717,7 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
   assert.equal(trace.length, 2, JSON.stringify(trace.map((s) => s.name)));
   assert.equal(trace[0].name, "nav.current");
   assert.equal(trace[0].repeat, 6);
-  assert.equal(trace[1].name, "app.eval");
+  assert.equal(trace[1].name, "logic.eval");
   assert.equal(trace[1].repeat, undefined);
 
   const html = decodeAttachment(attachments, "report.html");
@@ -754,7 +754,7 @@ test("a spec timeout marks the action that never returned", async () => {
   driver.eval = () => new Promise(() => {});
 
   spec("hangs in a driver call", { id: "HANG-1", timeout: 120 }, async (t) => {
-    await t.app.eval({ script: "return 1;" });
+    await t.app.logic.eval(() => 1);
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -762,7 +762,7 @@ test("a spec timeout marks the action that never returned", async () => {
 
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   const action = report.cases[0].steps[0];
-  assert.equal(action.name, "app.eval");
+  assert.equal(action.name, "logic.eval");
   // A hung call rendered as an instant success is the one thing the trace
   // exists to prevent.
   assert.equal(action.status, "timeout");

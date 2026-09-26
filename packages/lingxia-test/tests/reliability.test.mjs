@@ -43,7 +43,7 @@ test('a timed-out body cannot regain access through cleanup', async () => {
   assert.equal(report.timeout, 1);
   assert.equal(cleanup, false);
   assert.equal(next, false);
-  await assert.rejects(() => fixture.app.eval({ script: '1' }), /closed/);
+  await assert.rejects(() => fixture.app.logic.eval(() => 1), /closed/);
 });
 
 test('retries require a reset and preserve every attempt and flaky status', async () => {
@@ -84,7 +84,7 @@ test('locator waits for enabled state, geometry stability and hit testing', asyn
   installFakeHost(world);
   spec('waits', async t => {
     const change = (async () => { await delay(30); el.enabled = true; await delay(30); hit = true; })();
-    await t.app.page.testId('save').click({timeout:500, interval:10});
+    await t.app.view.testId('save').click({timeout:500, interval:10});
     await change;
   });
   assert.equal((await run()).passed, 1);
@@ -97,7 +97,7 @@ test('input transport errors are not blindly retried', async () => {
   let dispatched = 0;
   world.app.page.click = async () => { dispatched++; throw new Error('connection lost after dispatch'); };
   installFakeHost(world);
-  spec('one submission', {forensics:false}, t => t.app.page.testId('save').click({interval:1}));
+  spec('one submission', {forensics:false}, t => t.app.view.testId('save').click({interval:1}));
   const report = await run();
   assert.equal(dispatched, 1);
   assert.equal(report.failed, 1);
@@ -129,12 +129,12 @@ test('state matchers distinguish absent, hidden, disabled and editable targets',
   world.add({testId:'input', enabled:true, editable:true});
   installFakeHost(world);
   spec('states', async t => {
-    await t.expect(t.app.page.testId('absent')).toBeHidden();
-    await t.expect(t.app.page.testId('hidden')).toBeAttached();
-    await t.expect(t.app.page.testId('hidden')).toBeDisabled();
-    await t.expect(t.app.page.testId('hidden')).not.toBeEditable();
-    await t.expect(t.app.page.testId('input')).toBeEnabled();
-    await t.expect(t.app.page.testId('input')).toBeEditable();
+    await t.expect(t.app.view.testId('absent')).toBeHidden();
+    await t.expect(t.app.view.testId('hidden')).toBeAttached();
+    await t.expect(t.app.view.testId('hidden')).toBeDisabled();
+    await t.expect(t.app.view.testId('hidden')).not.toBeEditable();
+    await t.expect(t.app.view.testId('input')).toBeEnabled();
+    await t.expect(t.app.view.testId('input')).toBeEditable();
   });
   assert.equal((await run()).passed, 1);
 });
@@ -149,7 +149,7 @@ test('a native pre-dispatch rejection is retried safely', async () => {
     await click(options);
   };
   installFakeHost(world);
-  spec('state changed before dispatch', t => t.app.page.testId('save').click({timeout:500, interval:1}));
+  spec('state changed before dispatch', t => t.app.view.testId('save').click({timeout:500, interval:1}));
   assert.equal((await run()).passed, 1);
   assert.equal(element.clicked, 1);
 });
@@ -166,7 +166,7 @@ test('page-scoped indexed locators preserve target on every read and input', asy
   world.app.page.press = async options => { calls.push(['press', options]); };
   installFakeHost(world);
   spec('scoped input', async t => {
-    const input = t.app.page.testId('field', {page:'editor-instance'}).nth(1);
+    const input = t.app.view.testId('field', {page:'editor-instance'}).nth(1);
     await input.fill('hello');
     await input.press('Enter');
     const result = await input.query();
@@ -187,8 +187,8 @@ test('hidden duplicates remain ambiguous and invalid indexes fail early', async 
   world.add({testId:'duplicate',visible:false});
   installFakeHost(world);
   spec('strict selection',{forensics:false},async t => {
-    assert.throws(() => t.app.page.css('button').nth(-1), /non-negative integer/);
-    await assert.rejects(t.app.page.testId('duplicate').click({timeout:20,interval:2}), /2 matches/);
+    assert.throws(() => t.app.view.css('button').nth(-1), /non-negative integer/);
+    await assert.rejects(t.app.view.testId('duplicate').click({timeout:20,interval:2}), /2 matches/);
   });
   assert.equal((await run()).failed,0);
 });
@@ -216,9 +216,10 @@ test('host drivers are traced and retained references stop with the fixture', as
 
 test('automation error codes and JSON data survive into reports', async () => {
   const world=createWorld();
+  world.add({tag:'button'});
   world.app.page.click=async()=>{throw Object.assign(new Error('permission denied'), {code:'E_DENIED', data:{target:'page'}});};
   installFakeHost(world);
-  spec('structured failure',{forensics:false},async t=>{await t.app.page.click({css:'button'});});
+  spec('structured failure',{forensics:false},async t=>{await t.app.view.css('button').click({timeout:500});});
   const error=(await run()).cases[0].error;
   assert.equal(error.code,'E_DENIED');
   assert.deepEqual(error.data,{target:'page'});

@@ -524,6 +524,7 @@ async function run(): Promise<ProtocolReport> {
 
   const grep = control.grep;
   const recordNetwork = control.recordNetwork === "1";
+  if (recordNetwork && !host.networkRecord) throw new Error("--record-network needs a host that records network traffic");
   const pattern = grep ? new RegExp(grep) : undefined;
   const forbidOnly = control.forbidOnly === "1" || control["forbid-only"] === "1";
   const hasOnly = specs.some((item) => item.annotation === "only");
@@ -716,14 +717,8 @@ async function run(): Promise<ProtocolReport> {
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
     const recordingNetwork = recordNetwork && await startNetworkRecording(host);
-    if (ledger && ledger.summary.capture === "ok") {
-      try {
-        await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS, "captureResponses timed out");
-      } catch (captureError) {
-        ledger.summary.capture = `unavailable: ${captureError instanceof Error ? captureError.message : String(captureError)}`;
-        await host.emit({ type: "diagnostic", phase: "contract",
-          message: `--openapi cannot capture Logic fetch responses on this host (${ledger.summary.capture}); only toMatchSchema checks run.` });
-      }
+    if (ledger) {
+      await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS, "captureResponses timed out");
     }
 
     const shouldRelaunch = item.fresh || item.restoreProfile || forceRelaunchNext;
@@ -860,7 +855,7 @@ async function run(): Promise<ProtocolReport> {
     // Routed responses that break the contract fail the spec like a body
     // failure would, so `spec.fail({ expected: { code: 'E_OPENAPI_CONTRACT' } })`
     // can declare one.
-    if (ledger && ledger.summary.capture === "ok") {
+    if (ledger) {
       const checked = await checkContract(ledger, fixture, id, host);
       if (checked) {
         record.contract = checked;
@@ -1151,12 +1146,8 @@ function withFunctionCalls(calls: FailureNetworkCall[], functions: ScenarioCall[
 
 /** `--record-network`: capture this spec's real Logic traffic. */
 async function startNetworkRecording(host: ResolvedHost): Promise<boolean> {
-  if (!host.networkRecord) {
-    await host.emit({ type: "diagnostic", phase: "record-network", message: "this host cannot record network traffic; rebuild it from this LingXia revision" });
-    return false;
-  }
   try {
-    host.networkRecord("start");
+    host.networkRecord!("start");
     return true;
   } catch (error) {
     await host.emit({ type: "diagnostic", phase: "record-network", message: String((error as Error)?.message ?? error) });

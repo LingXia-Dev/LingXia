@@ -44,7 +44,6 @@ import type {
   SourceLocation,
   StepRecord,
   TestApp,
-  TestPage,
   JsonValue,
   LogicDataOptions,
   LogicScope,
@@ -183,21 +182,8 @@ export class LiveFixture implements Fixture {
       restore: (checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions) => {
         const id = checkpointId(checkpoint, "t.profile.restore");
         return this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
-          this.reopening(async (driver) => {
-            if (!options?.keep?.length) {
-              // An older host resolves nothing.
-              const result = await driver.profile.restore(id);
-              return { kept: Array.isArray(result?.kept) ? result.kept : [] };
-            }
-            // A host that predates `keep` would ignore it and hand the app
-            // the rolled-back keys. `keep` shipped with the test clock, so a
-            // host without `clock` is refused before anything is restored.
-            const outdated = "this host cannot keep storage keys across a profile rollback; update the LingXia host";
-            if ((driver as { clock?: unknown }).clock === undefined) throw new Error(outdated);
-            const result = await driver.profile.restore(id, { keep: [...options.keep] });
-            if (!result || !Array.isArray(result.kept)) throw new Error(outdated);
-            return result;
-          }));
+          this.reopening((driver) =>
+            options?.keep?.length ? driver.profile.restore(id, { keep: [...options.keep] }) : driver.profile.restore(id)));
       },
       drop: (checkpoint: ProfileCheckpoint | string) => {
         const id = checkpointId(checkpoint, "t.profile.drop");
@@ -289,8 +275,6 @@ export class LiveFixture implements Fixture {
       }
       return immediateExpect(subject);
     }) as FixtureExpect;
-    fn.poll = <T>(read: () => T | Promise<T>, options?: ExpectOptions) =>
-      this.pollMatchers(read, options, false, "t.expect.poll") as never;
     return fn;
   }
 
@@ -723,11 +707,9 @@ export class LiveFixture implements Fixture {
   private wrapApp(driver: LxAppDriver): TestApp {
     const fixture = this;
     const view = this.wrapView(driver.page);
-    const page = this.wrapPage(driver.page);
     const logic = this.wrapLogic(driver);
     return {
       view,
-      page,
       logic,
       nav: guardObject(landingNav(driver.nav), this, "nav."),
       // Lazy and non-throwing: a host without test routing fails the call,
@@ -754,12 +736,6 @@ export class LiveFixture implements Fixture {
       info: () => this.act("app.info", "", () => this.readRetrying(() => driver.info())),
       pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver.pages())),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver.surfaceLayout())),
-      // 0.18's string form, kept working; the function form lives on `logic`.
-      eval: (options: unknown, ...args: unknown[]) => {
-        if (typeof options === "function") return logic.eval(options as never, ...(args as never[]));
-        return this.act("app.eval", summarise(options), () =>
-          this.evalLogic(driver, options as { script: string; timeoutMs?: number }));
-      },
     } as TestApp;
   }
 
@@ -860,31 +836,6 @@ export class LiveFixture implements Fixture {
       get pointer() { return guarded.pointer; },
       get key() { return guarded.key; },
     };
-  }
-
-  /** `t.app.page`: the view plus 0.18's raw page driver methods. */
-  private wrapPage(page: PageDriver): TestPage {
-    const view = this.wrapView(page);
-    // Every override lives in the proxy's `get` trap. Assigning onto the proxy
-    // would write straight through to the real driver — `page.eval` would then
-    // call itself forever.
-    const overrides: Record<string, unknown> = {
-      testId: view.testId,
-      css: view.css,
-      screenshot: view.screenshot,
-      eval: (options: unknown, ...args: unknown[]) => {
-        if (typeof options === "function") return this.viewEval(page, options, args, "t.app.page.eval");
-        return this.act("page.eval", summarise(options), () =>
-          page.eval(this.withEvalBudget(options as { script: string; timeoutMs?: number })));
-      },
-    };
-    const guarded = guardObject(page, this, "page.", Object.keys(overrides));
-    return new Proxy(guarded, {
-      get(target, prop, receiver) {
-        if (typeof prop === "string" && prop in overrides) return overrides[prop];
-        return Reflect.get(target, prop, receiver);
-      },
-    }) as unknown as TestPage;
   }
 
   private locator(page: PageDriver, selector: string, location: SourceLocation, options?: LocatorOptions): Locator {

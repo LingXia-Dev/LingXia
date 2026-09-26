@@ -17,22 +17,13 @@ export interface ClockHost {
   diagnostic(phase: string, message: string): void | Promise<void>;
 }
 
-/**
- * A host that predates `ClockState` resolves the bare `Date.now()` from
- * `install` and `setSystemTime`.
- */
-function clockState(value: unknown, pending = 0): ClockState {
-  if (typeof value === "number") return { now: value, pending };
-  const record = (value ?? {}) as { now?: unknown; pending?: unknown };
-  return {
-    now: typeof record.now === "number" ? record.now : Number.NaN,
-    pending: typeof record.pending === "number" ? record.pending : pending,
-  };
+/** The host's record, as a plain object of exactly these keys. */
+function clockState({ now, pending }: ClockState): ClockState {
+  return { now, pending };
 }
 
-function clockAdvance(value: unknown): ClockAdvance {
-  const record = (value ?? {}) as { fired?: unknown };
-  return { ...clockState(value), fired: typeof record.fired === "number" ? record.fired : 0 };
+function clockAdvance({ now, pending, fired }: ClockAdvance): ClockAdvance {
+  return { now, pending, fired };
 }
 
 function droppedNote(dropped: number, when: string): string {
@@ -91,11 +82,7 @@ export function wrapClock(
   scope: ClockScope,
   automation: () => HostRunAutomation,
 ): TestClock {
-  const driver = (): ClockDriver => {
-    const clock = resolve().driver;
-    if (!clock) throw new Error("t.app.clock is not supported by this host; update the LingXia host");
-    return clock;
-  };
+  const driver = (): ClockDriver => resolve().driver as ClockDriver;
   return {
     install: (options?: ClockInstallOptions) =>
       host.act("clock.install", describeTime(options?.now), async () => {
@@ -113,7 +100,7 @@ export function wrapClock(
         clockAdvance(await (options === undefined ? driver().runAll() : driver().runAll(options)))),
     setSystemTime: (time: ClockTime) =>
       host.act("clock.setSystemTime", describeTime(time), async () =>
-        clockState(await driver().setSystemTime(toWire(time)), Number.NaN)),
+        clockState(await driver().setSystemTime(toWire(time)))),
     uninstall: () =>
       host.act("clock.uninstall", "", async () => {
         const result = await driver().uninstall();

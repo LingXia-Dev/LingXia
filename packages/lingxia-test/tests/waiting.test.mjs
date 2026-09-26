@@ -39,7 +39,7 @@ test("locator click miss names nothing, hidden, and N matches", async () => {
     setup(world);
     const { attachments } = installFakeHost(world);
     spec(`miss ${kind}`, async (t) => {
-      await t.app.page.testId("home-greet").click({ timeout: 80 });
+      await t.app.view.testId("home-greet").click({ timeout: 80 });
     });
     await globalThis.__LINGXIA_TEST__.run();
     const message = failedMessage(attachments);
@@ -55,7 +55,7 @@ test("retrying t.expect reports matcher and last actual, not expected true got f
   const { attachments } = installFakeHost(world);
 
   spec("greeting text", async (t) => {
-    await t.expect(t.app.page.testId("home-greeting")).toHaveText("hello", { timeout: 80 });
+    await t.expect(t.app.view.testId("home-greeting")).toHaveText("hello", { timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -74,7 +74,7 @@ test("default 5s assertion budget fails faster than the 30s spec budget", async 
   const { attachments } = installFakeHost(world);
 
   spec("missing greeting", { timeout: DEFAULT_SPEC_TIMEOUT_MS }, async (t) => {
-    await t.expect(t.app.page.testId("home-greeting")).toBeVisible();
+    await t.expect(t.app.view.testId("home-greeting")).toBeVisible();
   });
 
   const started = Date.now();
@@ -98,7 +98,7 @@ test("timeout aborts later fixture operations", async () => {
       await new Promise((resolve) => setTimeout(resolve, 120));
       ops.push("after-sleep");
       try {
-        await t.app.eval({ script: "1" });
+        await t.app.logic.eval(() => 1);
         ops.push("eval-ok");
       } catch (error) {
         ops.push(error.name);
@@ -132,14 +132,14 @@ test("locator re-resolves across mutations", async () => {
       node.visible = true;
       node.text = "Hello, Ada!";
     }, 40);
-    await t.expect(t.app.page.testId("home-greeting")).toHaveText("Hello, Ada!", { timeout: 400 });
+    await t.expect(t.app.view.testId("home-greeting")).toHaveText("Hello, Ada!", { timeout: 400 });
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 1, decodeAttachment(attachments, "report.json"));
 });
 
-test("an eval gets a share of the spec budget unless the caller pins its own", async () => {
+test("an eval gets a share of the spec budget", async () => {
   const world = createWorld();
   installFakeHost(world);
   const seen = [];
@@ -151,19 +151,15 @@ test("an eval gets a share of the spec budget unless the caller pins its own", a
   };
 
   spec("takes a third of the spec budget", { timeout: 12_000 }, async (t) => {
-    await t.app.eval({ script: "1" });
+    await t.app.logic.eval(() => 1);
   });
   spec("caps at the eval ceiling", { timeout: 600_000 }, async (t) => {
-    await t.app.eval({ script: "1" });
+    await t.app.logic.eval(() => 1);
   });
-  spec("honours an explicit budget", async (t) => {
-    await t.app.eval({ script: "1", timeoutMs: 250 });
-  });
-
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.failed, 0);
   // Never the whole budget: a call that eats it leaves no room to retry.
-  assert.deepEqual(seen, [4_000, 10_000, 250]);
+  assert.deepEqual(seen, [4_000, 10_000]);
 });
 
 test("wrapping the page driver never writes back onto the driver", async () => {
@@ -180,9 +176,9 @@ test("wrapping the page driver never writes back onto the driver", async () => {
 
   spec("uses the page driver", { timeout: 9_000 }, async (t) => {
     // Recursion here would blow the stack instead of failing an assertion.
-    const value = await t.app.page.eval({ script: "1" });
+    const value = await t.app.view.eval(() => 1);
     assert.equal(value, "ok");
-    assert.ok(typeof t.app.page.testId("x").click === "function");
+    assert.ok(typeof t.app.view.testId("x").click === "function");
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -200,15 +196,15 @@ test("visible means rendered: an out-of-viewport match is visible, not in the vi
   const { attachments } = installFakeHost(world);
 
   spec("below the fold", async (t) => {
-    const confirm = t.app.page.testId("sheet-confirm");
+    const confirm = t.app.view.testId("sheet-confirm");
     await confirm.waitFor({ state: "attached", timeout: 80 });
     await confirm.waitFor({ state: "visible", timeout: 80 });
     await t.expect(confirm).toBeVisible({ timeout: 80 });
     await t.expect(confirm).not.toBeHidden({ timeout: 80 });
     await t.expect(confirm).not.toBeInViewport({ timeout: 80 });
-    await t.expect(t.app.page.testId("collapsed")).toBeHidden({ timeout: 80 });
-    await t.expect(t.app.page.testId("missing")).toHaveCount(0);
-    await t.app.page.testId("missing").waitFor({ state: "detached", timeout: 80 });
+    await t.expect(t.app.view.testId("collapsed")).toBeHidden({ timeout: 80 });
+    await t.expect(t.app.view.testId("missing")).toHaveCount(0);
+    await t.app.view.testId("missing").waitFor({ state: "detached", timeout: 80 });
     await confirm.waitFor({ state: "inViewport", timeout: 80 });
   });
 
@@ -225,7 +221,7 @@ test("toBeInViewport passes once the match scrolls into the viewport", async () 
 
   spec("scrolls in", async (t) => {
     setTimeout(() => { row.inViewport = true; }, 40);
-    await t.expect(t.app.page.testId("row")).toBeInViewport({ timeout: 1_000 });
+    await t.expect(t.app.view.testId("row")).toBeInViewport({ timeout: 1_000 });
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -240,15 +236,15 @@ test("click({ force }) skips the viewport and hit-test waits but not enabled", a
   const { attachments } = installFakeHost(world);
 
   spec("forced", async (t) => {
-    await t.reject(() => t.app.page.testId("sheet-confirm").click({ timeout: 120 }), { message: /obscured/ });
+    await t.reject(() => t.app.view.testId("sheet-confirm").click({ timeout: 120 }), { message: /obscured/ });
     assert.equal(confirm.clicked, undefined);
-    await t.app.page.testId("sheet-confirm").click({ force: true, timeout: 500 });
+    await t.app.view.testId("sheet-confirm").click({ force: true, timeout: 500 });
     assert.equal(confirm.clicked, 1);
     assert.equal(confirm.forced, true);
-    await t.app.page.testId("sheet-note").fill("hello", { force: true, timeout: 500 });
+    await t.app.view.testId("sheet-note").fill("hello", { force: true, timeout: 500 });
     assert.equal(field.value, "hello");
     assert.equal(field.forced, true);
-    await t.app.page.testId("sheet-locked").click({ force: true, timeout: 120 });
+    await t.app.view.testId("sheet-locked").click({ force: true, timeout: 120 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -264,7 +260,7 @@ test("filter, first and last narrow the matches and act on the right DOM node", 
   const { events } = installFakeHost(world);
 
   spec("narrowed", async (t) => {
-    const rows = t.app.page.css("li");
+    const rows = t.app.view.css("li");
     await t.expect(rows).toHaveCount(4);
     await t.expect(rows.filter({ hasText: "BANANA" })).toHaveCount(2);
     await t.expect(rows.filter({ hasText: /^Cherry$/ })).toHaveCount(1);
@@ -292,8 +288,8 @@ test("toHaveAttribute and toContainText failures name what was found", async () 
   const { attachments } = installFakeHost(world);
 
   spec("attribute miss", async (t) => {
-    await t.expect(t.app.page.testId("badge")).toContainText("unread", { timeout: 80 });
-    await t.expect(t.app.page.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
+    await t.expect(t.app.view.testId("badge")).toContainText("unread", { timeout: 80 });
+    await t.expect(t.app.view.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();

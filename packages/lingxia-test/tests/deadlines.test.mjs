@@ -22,7 +22,7 @@ test("a query that never returns fails the click by name, not the spec", async (
   world.app.page.query = hang;
   installFakeHost(world);
 
-  spec("hung query", { timeout: 5_000, forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 120 }));
+  spec("hung query", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
 
   const started = Date.now();
   const result = await runOne();
@@ -41,7 +41,7 @@ test("a click that never returns fails the click by name", async () => {
   world.app.page.click = hang;
   installFakeHost(world);
 
-  spec("hung dispatch", { timeout: 5_000, forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 120 }));
+  spec("hung dispatch", { timeout: 5_000, forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 120 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -70,7 +70,7 @@ test("a locator read that never returns fails the locator assertion", async () =
   installFakeHost(world);
 
   spec("hung locator read", { timeout: 5_000, forensics: false }, (t) =>
-    t.expect(t.app.page.testId("banner")).toBeVisible({ timeout: 120 }));
+    t.expect(t.app.view.testId("banner")).toBeVisible({ timeout: 120 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -82,7 +82,7 @@ test("an assertion timeout longer than the spec's remaining budget is clamped, v
   installFakeHost(createWorld());
 
   spec("clamped assertion", { timeout: 400, forensics: false }, (t) =>
-    t.expect(t.app.page.testId("absent")).toBeVisible({ timeout: 5_000 }));
+    t.expect(t.app.view.testId("absent")).toBeVisible({ timeout: 5_000 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed", "the assertion, not the spec timer, ends the spec");
@@ -94,7 +94,7 @@ test("an action timeout longer than the spec's remaining budget is clamped, visi
   installFakeHost(createWorld());
 
   spec("clamped click", { timeout: 400, forensics: false }, (t) =>
-    t.app.page.testId("absent").click({ timeout: 5_000 }));
+    t.app.view.testId("absent").click({ timeout: 5_000 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -126,7 +126,7 @@ for (const transient of ["page is not active: detail", "page WebView is not read
     };
     installFakeHost(world);
 
-    spec("mid-transition click", (t) => t.app.page.testId("save").click({ timeout: 1_000, interval: 5 }));
+    spec("mid-transition click", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
 
     const result = await runOne();
     assert.equal(result.status, "passed", JSON.stringify(result.error));
@@ -140,7 +140,7 @@ test("a transient error that outlasts the budget is reported as the reason", asy
   world.app.page.query = async () => { throw new Error("page is not active: detail"); };
   installFakeHost(world);
 
-  spec("never lands", { forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 100, interval: 5 }));
+  spec("never lands", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -157,7 +157,7 @@ test("a non-transient query error still fails the action at once", async () => {
   };
   installFakeHost(world);
 
-  spec("bad selector", { forensics: false }, (t) => t.app.page.css("[").click({ timeout: 1_000, interval: 5 }));
+  spec("bad selector", { forensics: false }, (t) => t.app.view.css("[").click({ timeout: 1_000, interval: 5 }));
 
   const started = Date.now();
   const result = await runOne();
@@ -178,7 +178,7 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
     return click(options);
   };
   installFakeHost(world);
-  spec("retried", (t) => t.app.page.testId("save").click({ timeout: 1_000, interval: 5 }));
+  spec("retried", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
   assert.equal((await runOne()).status, "passed");
   assert.equal(element.clicked, 1);
 
@@ -189,7 +189,7 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
     throw new Error("ExecuteScript failed: 0x8007139F");
   };
   installFakeHost(world);
-  spec("ambiguous", { forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 1_000, interval: 5 }));
+  spec("ambiguous", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
   assert.equal((await runOne()).status, "failed");
   assert.equal(dispatched, 1, "an ambiguous dispatch failure must not resubmit the input");
 });
@@ -206,7 +206,7 @@ test("waitFor retries a page that is not ready yet", async () => {
   };
   installFakeHost(world);
 
-  spec("waits across the transition", (t) => t.app.page.testId("sheet").waitFor({ timeout: 1_000, interval: 5 }));
+  spec("waits across the transition", (t) => t.app.view.testId("sheet").waitFor({ timeout: 1_000, interval: 5 }));
 
   assert.equal((await runOne()).status, "passed");
 });

@@ -54,18 +54,6 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
   assert.match(world.evaluated[0], /^\(\(__lxFn, __lxArgs\) => __lxFn\(/);
 });
 
-test("the deprecated string form still works on t.app.eval", async () => {
-  const world = createWorld();
-  world.setEval("return 1", 1);
-  installFakeHost(world);
-  let value;
-  const result = await runOne(async (t) => {
-    value = await t.app.eval({ script: "return 1" });
-  });
-  assert.equal(result.status, "passed");
-  assert.equal(value, 1);
-});
-
 test("a closure over spec variables fails with an explanation", async () => {
   const world = logicWorld();
   installFakeHost(world);
@@ -126,14 +114,13 @@ test("the fixture takes eval functions; a script string names the raw driver", a
         messages.push(error.message);
       }
     }
-    // The deprecated page alias keeps both forms.
-    messages.push(await t.app.page.eval(({ document }) => document.title));
+    messages.push(await t.app.view.eval(({ document }) => document.title));
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.match(messages[0], /t\.app\.logic\.eval\(fn, \.\.\.args\) takes a function.*lx\.automation\(\)\.lxapp\(\)\.eval\(\{ script \}\)/);
   assert.match(messages[1], /t\.app\.view\.eval\(fn, \.\.\.args\) takes a function/);
   assert.equal(messages[2], "Home");
-  // Only the page alias reached a target.
+  // Only the function reached a target.
   assert.equal(world.evaluated.length, 1);
 });
 
