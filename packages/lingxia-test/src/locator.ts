@@ -118,6 +118,7 @@ export class PageLocator implements Locator {
     private readonly options: LocatorOptions = {},
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
+    private readonly probeOnce: ProbeOnce = (probe) => probe(),
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -130,7 +131,7 @@ export class PageLocator implements Locator {
 
   nth(index: number): Locator {
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      { ...this.options, index }, this.room, { ...this.refine, last: false });
+      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.probeOnce);
   }
 
   first(): Locator {
@@ -140,7 +141,7 @@ export class PageLocator implements Locator {
   last(): Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      options, this.room, { ...this.refine, last: true });
+      options, this.room, { ...this.refine, last: true }, this.probeOnce);
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -149,7 +150,7 @@ export class PageLocator implements Locator {
       throw new TypeError("filter() needs { hasText: string | RegExp }");
     }
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      this.options, this.room, { ...this.refine, hasText });
+      this.options, this.room, { ...this.refine, hasText }, this.probeOnce);
   }
 
   async press(key: string, options?: ExpectOptions): Promise<void> {
@@ -359,9 +360,14 @@ export class PageLocator implements Locator {
 
   /**
    * After a wait timed out: the page's visibility, when it explains the miss.
-   * Best-effort and bounded; skipped when the spec has no room left for it.
+   * Never on the happy path, at most once per spec (`probeOnce`), bounded,
+   * and skipped when the spec has no room left for it.
    */
-  async hiddenPageNote(): Promise<string | undefined> {
+  hiddenPageNote(): Promise<string | undefined> {
+    return this.probeOnce(() => this.probeVisibility());
+  }
+
+  private async probeVisibility(): Promise<string | undefined> {
     if (!this.page.eval || this.room() < VISIBILITY_PROBE_BUDGET_MS) return undefined;
     try {
       const probe = new ActionDeadline(VISIBILITY_PROBE_BUDGET_MS, this.room());
@@ -522,6 +528,9 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
 }
 
 /** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
+/** Runs the hidden-page probe, or answers what an earlier run of it said. */
+export type ProbeOnce = (probe: () => Promise<string | undefined>) => Promise<string | undefined>;
+
 /** How long the visibility probe waits for an animation frame. */
 const VISIBILITY_FRAME_WAIT_MS = 300;
 /** The probe's whole budget: a hidden page also throttles its timers. */

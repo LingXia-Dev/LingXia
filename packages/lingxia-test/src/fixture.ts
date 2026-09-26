@@ -107,6 +107,8 @@ export class LiveFixture implements Fixture {
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
+  /** The spec's one hidden-page probe, run the first time a wait times out. */
+  private hiddenProbe: Promise<string | undefined> | undefined;
   private readonly inFlight = new Set<{ name: string; detail: string; started: number }>();
   cleanupUntil = 0;
   cleanupActive = false;
@@ -902,6 +904,8 @@ export class LiveFixture implements Fixture {
       location,
       options,
       () => this.budgetRoom(),
+      {},
+      (probe) => (this.hiddenProbe ??= probe()),
     );
   }
 
