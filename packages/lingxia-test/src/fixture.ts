@@ -22,6 +22,7 @@ import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolve
 import {
   PageLocator,
   isLocator,
+  normalizeText,
   sleep,
   testIdSelector,
   type LocatorResolve,
@@ -1312,7 +1313,7 @@ function matchLocator(
   }
   if (matcher === "toContainText") {
     if (expected instanceof RegExp) applyMatcher("toMatch", resolved.text, expected, inverted);
-    else applyMatcher("toContain", resolved.text, expected, inverted);
+    else applyMatcher("toContain", resolved.text, typeof expected === "string" ? normalizeText(expected) : expected, inverted);
     return;
   }
   if (matcher === "toHaveAttribute" && expected instanceof AttributeExpectation) {
@@ -1335,7 +1336,7 @@ function matchLocator(
   }
   if (matcher === "toHaveText") {
     if (expected instanceof RegExp) applyMatcher("toMatch", resolved.text, expected, inverted);
-    else applyMatcher("toBe", resolved.text, expected, inverted);
+    else applyMatcher("toBe", resolved.text, typeof expected === "string" ? normalizeText(expected) : expected, inverted);
     return;
   }
   if (matcher === "toHaveValue") {

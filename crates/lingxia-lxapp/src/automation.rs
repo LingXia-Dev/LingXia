@@ -630,7 +630,7 @@ pub fn build_query_script(
       rect.top < window.innerHeight &&
       rect.left < window.innerWidth;
     const hasValue = "value" in el;
-    const text = truncate(el.innerText || el.textContent || "");
+    const text = truncate(String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim());
     const value = hasValue ? truncate(el.value ?? "") : null;
     return {{
       exists: true,
@@ -715,6 +715,17 @@ mod tests {
         assert!(script.contains("      inViewport,\n"));
         assert!(script.contains("inViewport: false"));
         assert!(!script.contains("in_viewport"), "the field is camelCase");
+    }
+
+    #[test]
+    fn query_text_is_whitespace_normalised() {
+        // WebKit's innerText of a flex row ends in "\n": matchers must see
+        // the words, not the engine's layout-dependent line breaks.
+        let script = build_query_script("[data-testid=x]", None, true, None).unwrap();
+        assert!(
+            script.contains(r#".replace(/\s+/g, " ").trim())"#),
+            "text must collapse whitespace and trim"
+        );
     }
 
     fn runtime_page(

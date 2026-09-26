@@ -130,7 +130,7 @@ fn build_browser_query_script(
     style.display !== "none" &&
     Number(style.opacity || "1") !== 0;
   const hasValue = "value" in el;
-  const text = truncate(el.innerText || el.textContent || "");
+  const text = truncate(String(el.innerText || el.textContent || "").replace(/\s+/g, " ").trim());
   const value = hasValue ? truncate(el.value ?? "") : null;
   return {{
     exists: true,
@@ -768,6 +768,15 @@ pub async fn browser_scroll_to(tab_id: &str, selector: &str) -> Result<(), Brows
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn query_text_is_whitespace_normalised() {
+        let script = build_browser_query_script("[data-testid=x]", None).unwrap();
+        assert!(
+            script.contains(r#".replace(/\s+/g, " ").trim())"#),
+            "text must collapse whitespace and trim"
+        );
+    }
 
     #[test]
     fn cookie_filter_context_handles_ipv6_urls() {
