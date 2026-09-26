@@ -1,25 +1,25 @@
 # Product testing with `lxdev test`
 
 `lxdev test` runs `@lingxia/test` specs inside the target App/Runner, on a test
-JS worker separate from lxapp Logic and WebViews. Specs drive the app through
-`t.app` and read its Logic state through typed helpers.
+JS worker separate from lxapp Logic and WebViews. Specs drive the page through
+`t.app.view` and read the app's Logic through `t.app.logic`.
 
 ## First spec
 
 ```ts
 // tests/pages/notes.test.ts
-import { spec, expect } from '@lingxia/test';
+import { spec } from '@lingxia/test';
 
 interface NotesData { notes: { id: string; title: string }[] }
 
 spec('saving a note lists it', async (t) => {
   await t.app.nav.relaunch({ page: 'notes' });
-  await t.app.page.testId('note-title').fill('Groceries');
-  await t.app.page.testId('note-save').click();
-  await t.expect(t.app.page.testId('note-saved')).toBeVisible();
+  await t.app.view.testId('note-title').fill('Groceries');
+  await t.app.view.testId('note-save').click();
+  await t.expect(t.app.view.testId('note-saved')).toBeVisible();
 
-  const data = await t.app.pageData<NotesData>();
-  expect(data.notes.map((note) => note.title)).toContain('Groceries');
+  const data = await t.app.logic.data<NotesData>();
+  t.expect(data.notes.map((note) => note.title)).toContain('Groceries');
 });
 ```
 
@@ -37,9 +37,13 @@ lxdev test tests/pages/notes.test.ts
   relaunches the home page instead. Neither resets app or backend data.
 - Actions and `t.expect(...)` retry for 5 s by default (`{ timeout }` per call);
   a spec has 30 s (`spec(title, { timeout }, body)`). Await every action and assertion.
-- `t.expect(locator)` / `t.expect.poll(read)` retry; imported `expect(value)` checks once.
+- One waiting assertion: `t.expect(locator)` and `t.expect(() => read())`
+  retry until the matcher passes; `t.expect(value)` (like the imported
+  `expect`) checks once. `expect(locator)` throws: a locator needs `t.expect`.
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
-  a separate test tsconfig with `lib: ["ES2020"]` and
+  a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes
+  `tsconfig.tests.json`). `import '@lingxia/test'` types the `lx` test
+  global; a file that uses `lx` without it adds
   `types: ["@lingxia/types/automation-test-globals"]`.
 
 ## Common tasks
@@ -48,21 +52,24 @@ lxdev test tests/pages/notes.test.ts
 |---|---|
 | Start on a known page | `t.app.nav.relaunch({ page, query? })`; `{ fresh: true }` for home |
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
-| Find an element | `t.app.page.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`, `{ page }` option |
+| Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`, `{ page }` option |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `{ force: true }` on click/fill, see [gotchas](#gotchas) |
 | Assert UI | `t.expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
-| Read page Logic `data` | `t.app.pageData<T>({ page? })`; see [below](#reading-app-logic) |
-| Call a page method | `t.app.callPage<R>(method, ...args)` |
-| Run code in Logic / page DOM | `t.app.eval(fn, ...args)` / `t.app.page.eval(fn, ...args)` |
-| Wait until a value is ready | `t.waitFor(read, accept?)` returns it; `t.expect.poll(read).toBe(x)` asserts it |
-| Expect a rejection | `await t.reject(() => op(), { code?, message? })` |
+| Read page Logic `data` | `t.app.logic.data<T>({ page? })`; see [below](#reading-app-logic) |
+| Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)` |
+| Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)` |
+| Wait until a value is ready | `t.waitFor(read, { until })` returns it; `t.expect(read).toBe(x)` asserts it |
+| Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
+| Wait for a faked call | `await route.waitForCall()`, `await scenario.waitForCall({ http })` |
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#faking-the-network) |
 | Put the app into a product state from a scenario file | `t.app.scenario(json, variant?)`; see [below](#scenarios-in-specs) |
 | Put the app into a product state by hand | `lxdev scenario use <name>`; see [Scenarios](./scenarios.md) |
 | Name a set of `lxdev test` flags | `lxdev.json` presets, `lxdev test --preset ci`; see [presets](#presets) |
 | Check responses against an API contract | `lxdev test --openapi api.yaml`, `expect(value).toMatchSchema('Name')`; see [below](#api-contract-checks) |
 | Tag specs, run a layer | `spec(title, { tags }, body)`, `spec.configure({ tags })`; `lxdev test --tag`; see [below](#tags-and-layers) |
+| File defaults | `spec.configure({ timeout, fresh, tags, requires, … })`: any spec option but `id` |
+| Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
 | Fast-forward Logic timers and `Date` | `t.app.clock.install()` / `.tick(ms)`; see [below](#test-clock) |
 | Inputs and secrets | `--arg k=v` / `--secret-arg k=v`, `--secrets-file .env.test`, `LXDEV_SECRET_K` / `LXDEV_ARG_K`; read with `t.arg('k')`; see [secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, runs on success or failure); `spec.afterEach` |
@@ -74,7 +81,7 @@ lxdev test tests/pages/notes.test.ts
 | App lifecycle and inbound links | `t.automation.lxapps` |
 | External web pages, auth/payment callback tabs | `t.automation.browser` |
 | Runner presets/appearance | `t.automation.device`; [adaptive testing](adaptive-ui.md#test-runtime-switching) |
-| Host shell, terminal, or local OS integration | `t.automation.shell`, `.terminal`, `.desktop` where supported |
+| Host shell, terminal, or local OS integration | `t.automation.shell`, `.terminal`, `.desktop` where supported (a host without one rejects the call) |
 | External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
 
 The automation root is typed by `@lingxia/types/automation`; platform support
@@ -98,25 +105,38 @@ calls do not replace that product path. Use `t.app`/`t.automation`, not raw
 ## Reading app Logic
 
 ```ts
+import { type LogicPage } from '@lingxia/test';
+
 interface DevicesData { devices: { id: string; name: string }[] }
+interface DevicesPage extends LogicPage<DevicesData> {
+  refresh(): Promise<void>;
+  rename(id: string, name: string): Promise<boolean>;
+}
 
 const { devices } = await t.waitFor(
-  () => t.app.pageData<DevicesData>(),
-  (data) => data.devices.length > 0,
+  () => t.app.logic.data<DevicesData>(),
+  { until: (data) => data.devices.length > 0 },
 );
-await t.app.callPage('refresh');
-const path = await t.app.eval(({ lx }) => lx.env.USER_DATA_PATH);
-const route = await t.app.eval(({ getCurrentPages }, index) => getCurrentPages()[index].route, 0);
-const title = await t.app.page.eval(({ document }) => (document as { title: string }).title);
+await t.app.logic.call<DevicesPage>('refresh');
+const renamed = await t.app.logic.call<DevicesPage, 'rename'>('rename', devices[0].id, 'Office'); // boolean
+const path = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
+const route = await t.app.logic.eval(({ getCurrentPages }, index) => getCurrentPages()[index].route, 0);
+const label = await t.app.view.eval(({ document }) => document.querySelector('#total')?.textContent);
 ```
 
-- `t.app.eval(fn, ...args)` runs `fn` in the app's Logic with `{ lx, getApp,
-  getCurrentPages }`; `t.app.page.eval(fn, ...args)` runs it in the page
-  WebView with `{ document, window }` (`unknown` without the DOM lib: cast).
-- `T`/`R` in `pageData<T>` / `callPage<R>` are declared, not validated.
+- `t.app.logic.eval(fn, ...args)` runs `fn` in the app's Logic with `{ lx,
+  getApp, getCurrentPages }`; `t.app.view.eval(fn, ...args)` runs it in the
+  page WebView with `{ document, window }`. Without the DOM lib they are
+  `ViewDocument`/`ViewWindow`: `querySelector`, `textContent`, `value`,
+  `getAttribute` read without casts.
+- `logic.call<Page>(method)` accepts only `Page`'s methods; add the method as
+  a second type argument to type the result. Types are declared, not
+  validated.
 - `t.waitFor` fails at once on `TypeError`, `ReferenceError`, and
-  `SyntaxError` (override with `retryIf`); other thrown errors retry.
-- Prefer these over the string form `t.app.eval({ script })`.
+  `SyntaxError` (override with `retryIf`); other thrown errors retry. On
+  timeout it rejects with `E_TIMEOUT` naming the last value.
+- The fixture takes functions only; a script string is for the raw driver
+  (`lx.automation().lxapp().eval({ script })`).
 
 ## Faking the network
 
@@ -135,11 +155,11 @@ spec('rename shows the not-implemented error', async (t) => {
     { status: 501, json: { error: 'not_implemented' }, delay: 300 },
   );
   await t.app.network.route('**/v1/clients', { abort: 'failed' });
-  await t.app.page.testId('rename-input').fill('Office');
-  await t.app.page.testId('rename-save').click();
-  await t.expect(t.app.page.testId('rename-error')).toBeVisible();
-  const [sent] = await patch.requests();
-  expect(JSON.parse(sent.body ?? '{}')).toEqual({ name: 'Office' });
+  await t.app.view.testId('rename-input').fill('Office');
+  await t.app.view.testId('rename-save').click();
+  await t.expect(t.app.view.testId('rename-error')).toBeVisible();
+  const sent = await patch.waitForCall();
+  t.expect(sent.body).toEqual({ name: 'Office' });
 });
 ```
 
@@ -159,11 +179,18 @@ spec('rename shows the not-implemented error', async (t) => {
   await t.app.network.route('**/v1/devices', { continue: true, patchJson: { items: [], total: 0 } });
   await t.app.network.route('**/v1/status', { hang: true });
   ```
-- `route()` returns `{ id, pattern, unroute(), requests() }`; requests report
-  `{ method, url, headers, body, bodyTruncated, action, status }` (`body` cut
-  to 64 KiB, `null` for streams, `Blob`, `FormData`).
-- Routes last one spec and work only in a `lxdev test` run;
-  `t.app.network.requests()` lists only this spec's routes.
+- `route()` returns `{ id, pattern, unroute(), calls(), waitForCall() }`.
+  Every call list (`route.calls()`, `t.app.network.calls()`,
+  `scenario.calls()`) holds one record: `{ time, kind, method, url, status,
+  body, headers, answeredBy: 'rule' | 'route' | 'real' | 'companion', rule? }`
+  (`body` parsed when JSON, cut to 64 KiB, `null` for streams, `Blob`,
+  `FormData`).
+- `waitForCall({ timeout? })` resolves with the next call the route handled
+  that no earlier wait returned, including one made before the wait; on
+  timeout it rejects with `E_TIMEOUT` listing the recent calls.
+- `unroute()` and `unrouteAll()` resolve nothing. Routes last one spec and
+  work only in a `lxdev test` run; `t.app.network.calls()` lists only this
+  spec's routes.
 
 ### Sequences and relative times
 
@@ -198,15 +225,15 @@ const live = await t.app.network.route('**/v1/events', {
     { sse: [{ event: 'status', data: { online: 4 }, id: 'e2' }] },
   ],
 });
-await t.expect(t.app.page.testId('online-count')).toHaveText('4');
-const [first, reconnect] = await live.requests();
-expect(reconnect.headers['last-event-id']).toBe('e1');
+await t.expect(t.app.view.testId('online-count')).toHaveText('4');
+const [first, reconnect] = await live.calls();
+t.expect(reconnect.headers?.['last-event-id']).toBe('e1');
 ```
 
 - `Rong.SSE` in Logic receives the events as it would from a server: `retry`
   and `id` apply, and after a `drop` it reconnects with `Last-Event-ID` (the
-  next answer of a `sequence` serves the reconnect). A request log entry is
-  recorded for every connection attempt. An `sse` answer to Logic `fetch`
+  next answer of a `sequence` serves the reconnect). A call is recorded for
+  every connection attempt. An `sse` answer to Logic `fetch`
   delivers the same bytes as the response body.
 - Consume event streams in Logic with `Rong.SSE`, not `fetch`: Logic `fetch`
   hands a streamed body over in large chunks, so `response.body.getReader()`
@@ -232,24 +259,25 @@ import checkout from '../scenarios/checkout.json';
 spec('an unknown payment result settles as paid', async (t) => {
   const scenario = await t.app.scenario(checkout, 'unknown');
   await t.app.nav.relaunch({ page: 'checkout' });
-  await t.app.page.testId('pay').click();
-  await t.expect(t.app.page.testId('paid')).toBeVisible();
-  const submits = await scenario.calls({ function: 'orders.submit' });
-  expect(submits.length).toBe(1);
+  await t.app.view.testId('pay').click();
+  await t.expect(t.app.view.testId('paid')).toBeVisible();
+  const submit = await scenario.waitForCall({ function: 'orders.submit' });
+  t.expect(submit.answeredBy).toBe('rule');
   const renames = await scenario.calls({ http: 'PATCH **/devices/*' });
-  expect(renames[0].body).toEqual({ name: 'Office' });
+  t.expect(renames[0].body).toEqual({ name: 'Office' });
 });
 ```
 
 - One scenario per spec: a second `t.app.scenario()` replaces the first (to
   switch variants mid-spec), and the spec's end removes it. Routes added with
   `route()` take precedence over its rules.
-- It returns `{ name, variant, rules, calls(filter?), unroute() }`. `rules`
-  lists `{ index, target, hits }`; `calls()` lists every call that reached
-  the scenario, oldest first — which `rule` answered (or `null`),
-  `answeredBy`, the request `body` or Function `args`, and `noMatch` when
-  rules targeted it but none matched. Filter with `{ http: 'METHOD url' }`,
-  `{ function: 'name' }` or `{ rule: n }`.
+- It returns `{ name, variant, rules, calls(filter?), waitForCall(target),
+  remove() }`. `rules` lists `{ index, target, hits }`; `calls()` lists every
+  call that reached the scenario, oldest first, as the `NetworkCall` above:
+  `answeredBy` (`rule` with its `rule` number, `route`, `real`, or the
+  companion's default), the request `body` or Function arguments, and
+  `noMatch` when rules targeted it but none matched. Filter (and wait) with
+  `{ http: 'METHOD url' }`, `{ function: 'name' }` or `{ rule: n }`.
 - A failed spec reports the scenario (`name:variant`), each rule's hits, and
   the last 20 calls with who answered each.
 - Invalid files reject with the rule's path (`rules[2]: …`). `function`
@@ -327,19 +355,17 @@ lxdev test tests/ --tag routed --openapi api/openapi.yaml
 Assert a value directly with `toMatchSchema`:
 
 ```ts
-const data = await t.app.pageData<{ devices: unknown[] }>();
-expect(data.devices[0]).toMatchSchema('Device');                   // #/components/schemas/Device
-expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
+const data = await t.app.logic.data<{ devices: unknown[] }>();
+t.expect(data.devices[0]).toMatchSchema('Device');                 // #/components/schemas/Device
+t.expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
 ```
 
 - Without `--openapi`, `toMatchSchema` fails saying so. A spec that only means
-  something against the contract skips itself instead; `t.openapi` lists the
-  loaded documents, or is `undefined`:
+  something against the contract declares it and is skipped, with the reason,
+  when the run has none; `t.openapi` lists the loaded documents:
 
   ```ts
-  spec.beforeEach((t) => {
-    if (!t.openapi) t.skip('needs its OpenAPI document: run with --openapi api/openapi.yaml');
-  });
+  spec.configure({ requires: { openapi: true } });   // every spec in the file
   ```
 - Declare a known contract break with
   `spec.fail(title, { expected: { code: 'E_OPENAPI_CONTRACT' } }, body)`.
@@ -359,7 +385,7 @@ spec('lists devices', { tags: ['smoke'] }, async (t) => { /* … */ });  // rout
 
 | Layer | Talks to | Typical run |
 |---|---|---|
-| `unit` | nothing: pure Logic helpers through `t.app.eval`, time through `t.app.clock` | every change |
+| `unit` | nothing: pure Logic helpers through `t.app.logic.eval`, time through `t.app.clock` | every change |
 | `routed` | the UI, with every backend call faked by routes or scenarios | every change and CI, with `--openapi` so fixtures cannot drift from the contract |
 | `live` | a real backend or device | nightly, before release; `--openapi` turns server drift into warnings |
 
@@ -376,6 +402,13 @@ lxdev test tests/ --tag unit,routed --tag smoke   # (unit or routed) and smoke
 - `--tag` combines with `--grep`, `--id`, `--last-failed` and `--shard`.
 - Tags use letters, digits and `_ . : / -`. `spec.configure` applies to the
   file that calls it and adds to the spec's own `tags`.
+- `spec.configure` takes every spec option but `id` as the file's defaults
+  (`timeout`, `fresh`, `restoreProfile`, `app`, `forensics`, `covers`,
+  `requires`, …); a spec's own option wins, and `tags`, `covers` and
+  `requires` add to the file's.
+- `requires: { args: ['PASSWORD'], openapi: true }` reports a spec
+  `skipped` with the missing input (`requires --arg PASSWORD=<value> (or
+  --secret-arg)`) instead of running it.
 - Reports show each spec's tags and a per-tag table (`tag_summary` in
   `report.json`, `tag:<name>` properties in `junit.xml`), so a failing `live`
   group does not hide a clean `routed` one; untagged specs appear as
@@ -418,8 +451,8 @@ spec('status refreshes every 3 s', async (t) => {
   await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
   await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
   const { fired } = await t.app.clock.tick(9_000);  // three polls, in order
-  expect(fired).toBe(3);
-  await t.expect(t.app.page.testId('status')).toHaveText('Online');
+  t.expect(fired).toBe(3);
+  await t.expect(t.app.view.testId('status')).toHaveText('Online');
 });
 ```
 
@@ -428,7 +461,8 @@ spec('status refreshes every 3 s', async (t) => {
   time. Timers fire only from `tick(ms)` (each at its own time, in order) or
   `runAll()` (until none is left; rejects after `maxTimers`, default 1000, so
   use `tick` with a `setInterval`). `setSystemTime(t)` moves `Date` without
-  firing anything. `tick`/`runAll` resolve `{ now, fired, pending }`.
+  firing anything. `install`/`setSystemTime` resolve `{ now, pending }`,
+  `tick`/`runAll` `{ now, pending, fired }`.
 - After each timer fires, promise chains it started settle before the next
   one: an async poll that awaits a routed `fetch` and `res.json()` re-arms
   within the same `tick`. Work waiting on real I/O does not settle inside a
@@ -446,7 +480,8 @@ spec('status refreshes every 3 s', async (t) => {
   returns it to real time. The runner's own timers and spec timeout are never
   faked.
 - `install` twice rejects with `E_CLOCK_INSTALLED`; `tick` without a clock with
-  `E_CLOCK_NOT_INSTALLED`. `uninstall()` resolves `{ uninstalled, dropped }`.
+  `E_CLOCK_NOT_INSTALLED`. `uninstall()` resolves nothing; the timers it
+  dropped are listed in the run's diagnostics.
 
 ## Isolated app data
 
@@ -471,8 +506,8 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 - Sign in once: a setup spec signs in through the UI only when the app shows it
   is signed out; later runs start from the saved state.
 - `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
-  that spec (implies `fresh`); `t.profile.checkpoint()` / `restore(id)` /
-  `drop(id)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
+  that spec (implies `fresh`); `const cp = await t.profile.checkpoint()`
+  (`{ id }`) / `restore(cp)` (`{ kept }`) / `drop(cp)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
   and both reject with `E_PROFILE_NOT_ISOLATED` without `--profile`.
 - A reopen resolves once the app has settled: `App.onLaunch` has finished
   (its promise included), a page is ready, and the current page has not
@@ -487,7 +522,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 
   ```ts
   spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
-  await t.profile.restore(id, { keep: ['auth.*', 'session.token'] }); // resolves { kept }
+  await t.profile.restore(cp, { keep: ['auth.*', 'session.token'] }); // resolves { kept }
   ```
 
   Globs match whole keys: `*` any run of characters (dots included), `?` one.
@@ -503,10 +538,14 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   `toBeHidden` fails for it; assert placement with `toBeInViewport()`. Actions
   scroll their target into view themselves.
 - **`force` is for unreachable content.** When no scroll brings an element
-  under the pointer (the lower part of an overflowing sheet), `click({ force:
-  true })` / `fill(text, { force: true })` dispatch to it directly; it must
-  still be one enabled match. It proves less than a normal click, so use it
-  only where that fails with `element is obscured`.
+  under the pointer (the lower part of an overflowing sheet), or another
+  window covers a desktop app window, `click({ force: true })` / `fill(text,
+  { force: true })` dispatch DOM events to it directly; it must still be one
+  enabled match. It proves less than a normal click, so use it only where
+  that fails with `element is obscured`.
+- **`fill` works on framework-controlled inputs.** It sets the value through
+  the element's native value setter and dispatches `input` and `change`, so
+  React/Vue state follows; assert the state, not only the DOM value.
 - **Fixture nav waits for `onReady`** (`timeoutMs`, default 15000) and rejects
   if the app replaces the page first, e.g. with its own `lx.reLaunch`. Pass
   `waitUntil: 'commit'` to resolve once the stack changed, then assert the
@@ -537,6 +576,12 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   `lxdev scenario use` stands aside during a run and answers again after it.
 - **A timeout never outlives the spec.** A longer action timeout is clamped to
   the spec's remaining time, and the error says so.
+- **`t.app.page` and `t.app.eval({ script })` are 0.18 names**, kept as
+  deprecated aliases: use `t.app.view` (locators instead of raw
+  `click/query/waitFor`) and `t.app.logic.eval(fn)`. `t.expect.poll(fn)` is
+  `t.expect(fn)`. A fixture `t.app` is not a raw `LxAppDriver`; type shared
+  helpers against `TestApp`, or `Pick<LxAppDriver, 'page' | 'nav' | 'eval'>`
+  for helpers that also take a raw driver.
 
 ## Running and CI
 
@@ -604,9 +649,10 @@ lingxia test --preset ci              # CI: start a session, run, stop it
   when they do not (`LINGXIA_ALLOW_SKEW=1` makes that a warning).
 - Statuses: `timeout`, `xfail`, and `xpass` stay distinct; an unexpected pass
   fails the run. `spec.fail` without `expected` accepts any body failure.
-- Driver rejections carry stable codes (`E_PAGE_NOT_ACTIVE`,
-  `E_ELEMENT_NOT_FOUND`, `E_EVAL_SCRIPT`, …; `AUTOMATION_ERROR_CODES`) for
-  `t.reject(op, { code })` and `expected.code`. `report.json` `failures[]`
+- Rejections carry stable codes, typed as `TestErrorCode` (`TEST_ERROR_CODES`):
+  the driver's (`E_PAGE_NOT_ACTIVE`, `E_ELEMENT_NOT_FOUND`, `E_EVAL_SCRIPT`,
+  …), `E_TIMEOUT` (a fixture wait or budget), `E_OPENAPI_CONTRACT` and
+  `E_SKIPPED`, for `t.reject(op, { code })` and `expected.code`. `report.json` `failures[]`
   names each failure's action, page instance and code.
 - A failed spec also lists the app's last Logic network calls; see
   [the network log](#the-network-log-of-a-failed-spec).
@@ -713,9 +759,9 @@ spec('submission reaches the external service', async (t) => {
     const response = await fetch(cleanupUrl, { method: 'DELETE' });
     if (!response.ok) throw new Error(`Cleanup failed: ${response.status}`);
   });
-  await t.app.page.testId('submit-order').click();
-  await t.expect(t.app.page.testId('order-confirmation')).toBeVisible();
-  await t.expect.poll(async () => (await (await fetch(statusUrl)).json()).status)
+  await t.app.view.testId('submit-order').click();
+  await t.expect(t.app.view.testId('order-confirmation')).toBeVisible();
+  await t.expect(async () => (await (await fetch(statusUrl)).json()).status)
     .toBe('submitted');
 });
 ```
