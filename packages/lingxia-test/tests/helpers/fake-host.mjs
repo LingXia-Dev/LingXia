@@ -22,6 +22,8 @@ export function createWorld(options = {}) {
   let logicGlobals;
   let pageGlobals;
   const evaluated = [];
+  // The `page` each page eval named (`undefined`: the current page).
+  const evaluatedPages = [];
   const keyFor = (map, script) => map.has(script) ? script : [...map.keys()].find((key) => script.includes(key));
 
   // Mirror the targets: a script is evaluated as JS against the given
@@ -90,7 +92,8 @@ export function createWorld(options = {}) {
     async screenshot() {
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
     },
-    async eval({ script }) {
+    async eval({ script, page: target }) {
+      evaluatedPages.push(target);
       if (pageGlobals) return evaluate(pageGlobals, script);
       // The locator's read-only attribute probe.
       const probe = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*for \(const name of (\[.*?\])\)/);
@@ -247,6 +250,7 @@ export function createWorld(options = {}) {
     },
     /** Every script actually evaluated, in order. */
     evaluated,
+    evaluatedPages,
     unblock() {
       blocked = false;
     },

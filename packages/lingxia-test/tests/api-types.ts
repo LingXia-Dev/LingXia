@@ -112,6 +112,10 @@ spec('typed Logic access', async t => {
   value?.toUpperCase();
   const disabled = await t.app.view.eval(({ document }) => document.querySelector('button')?.getAttribute('aria-disabled'));
   disabled?.toUpperCase();
+  const surfaceTitle: string = await t.app.view.eval({ page: 'surface' }, ({ document }, suffix: string) => document.title + suffix, '!');
+  surfaceTitle.toUpperCase();
+  // @ts-expect-error A page target is `{ page }`.
+  await t.app.view.eval({ css: '#x' }, ({ document }) => document.title);
   // @ts-expect-error ViewDocument is minimal: no DOM writes without the DOM lib.
   await t.app.view.eval(({ document }) => document.write('x'));
   // @ts-expect-error The view takes functions; a script string is for the raw driver.

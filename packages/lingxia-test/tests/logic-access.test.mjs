@@ -101,6 +101,22 @@ test("view function eval gets document and window", async () => {
   assert.ok(result.steps.some((step) => step.name === "view.eval"));
 });
 
+test("view eval takes a page target before the function", async () => {
+  const world = createWorld();
+  world.usePage({ document: { title: "Surface" }, window: {} });
+  installFakeHost(world);
+  const values = [];
+  const result = await runOne(async (t) => {
+    values.push(await t.app.view.eval({ page: "surface" }, ({ document }, suffix) => document.title + suffix, "!"));
+    values.push(await t.app.view.eval(({ document }) => document.title));
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.deepEqual(values, ["Surface!", "Surface"]);
+  assert.deepEqual(world.evaluatedPages, ["surface", undefined]);
+  const actions = result.steps.filter((step) => step.name === "view.eval");
+  assert.match(actions[0].detail, /^surface /);
+});
+
 test("the fixture takes eval functions; a script string names the raw driver", async () => {
   const world = logicWorld();
   world.usePage({ document: { title: "Home" }, window: {} });

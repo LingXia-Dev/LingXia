@@ -335,7 +335,9 @@ Development machine: lxdev receives progress, results, and artifacts
 - `eval<T>` declares the caller's expected result, not runtime validation.
 - Function-form eval (`t.app.logic.eval(fn, ...args)`, `t.app.view.eval(fn,
   ...)`, and `logic.data`/`logic.call`, built on it) lives in `@lingxia/test`
-  (`remote.ts`); the drivers still receive `{ script }`. The script is one
+  (`remote.ts`); the drivers still receive `{ script }`. `view.eval({ page },
+  fn, ...args)` passes `page` to the driver's `page.eval`; an object with a
+  `script` key is not a target, so a script string still fails as one. The script is one
   call expression, `((__lxFn, __lxArgs) => __lxFn(scope, ...__lxArgs))(<fn
   source>, <JSON args>)`, so the Logic expression-first eval and the WebView
   `await (expr)` path read it the same way and neither body heuristic
