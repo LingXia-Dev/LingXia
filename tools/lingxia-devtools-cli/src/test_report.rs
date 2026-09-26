@@ -95,6 +95,9 @@ pub fn render(report: &Value, run_dir: &Path, failures_only: bool) -> String {
             if let Some(line) = failed_at(detail) {
                 let _ = writeln!(out, "  {line}");
             }
+            for line in crate::test_network::scenario_lines(detail) {
+                let _ = writeln!(out, "  {line}");
+            }
             for field in ["code", "phase", "step", "location", "expected", "actual"] {
                 if let Some(value) = detail.get(field).and_then(Value::as_str) {
                     let _ = writeln!(out, "  {field}: {value}");

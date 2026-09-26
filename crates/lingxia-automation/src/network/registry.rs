@@ -399,7 +399,18 @@ pub(crate) struct ScenarioCall {
     /// `fulfill`, `abort`, `continue`, `hang`, or `none`.
     pub action: &'static str,
     pub status: Option<u16>,
+    /// `rule 2 (name:variant)` or `route <pattern>`; `None` for the network.
+    pub answered_by: Option<String>,
     pub no_match: Option<String>,
+}
+
+/// What answered a request some scenario rules passed over.
+struct Answered {
+    /// The scenario whose rule answered, if one did.
+    scenario: Option<u64>,
+    by: String,
+    action: &'static str,
+    status: Option<u16>,
 }
 
 /// One rule of an installed scenario, for status and reports.
@@ -1021,18 +1032,31 @@ impl Registry {
                 rule: Some(origin.index),
                 action: entry.action,
                 status,
+                answered_by: decision
+                    .rule
+                    .as_ref()
+                    .map(|(index, label)| format!("rule {index} ({label})")),
                 no_match: None,
             });
         }
         // Rules of other scenarios that this request passed over.
+        let answered = Answered {
+            scenario: origin.map(|origin| origin.scenario),
+            by: match &decision.rule {
+                Some((index, label)) => format!("rule {index} ({label})"),
+                None => format!("route {}", decision.pattern),
+            },
+            action: entry.action,
+            status,
+        };
         let mut request_again = || request.clone();
-        self.record_misses(
+        let no_match = self.record_misses(
             method,
             url,
             &misses,
             &mut request_again,
-            origin.map(|origin| origin.scenario),
-            0,
+            Some(answered),
+            call,
         );
         if call != 0
             && let Some(observed) = self.calls.routed(call, &decision)
@@ -1071,20 +1095,20 @@ impl Registry {
         }
         self.log_body_bytes += body_len;
         self.log.push_back(entry);
-        (Some(decision), None)
+        (Some(decision), no_match)
     }
 
     /// Note, in each scenario whose rules a request passed over, that none of
-    /// them matched. `answered_by` is the scenario that answered it anyway
-    /// (its earlier rules missing is not news). Returns the diagnostic when
-    /// nothing answered.
+    /// them matched, and what answered it instead (`None`: the network). A
+    /// scenario whose own rule answered is not told its earlier rules
+    /// missed. Returns the diagnostic when no scenario rule answered.
     fn record_misses(
         &mut self,
         method: &str,
         url: &str,
         misses: &[(u64, usize, String)],
         request: &mut dyn FnMut() -> SentRequest,
-        answered_by: Option<u64>,
+        answered: Option<Answered>,
         call: u64,
     ) -> Option<NoMatch> {
         if misses.is_empty() {
@@ -1111,6 +1135,7 @@ impl Registry {
         };
         let body = request_value(&request());
         let mut owners = Vec::new();
+        let answered_by = answered.as_ref().and_then(|answered| answered.scenario);
         for id in scenarios.into_iter().filter(|id| Some(*id) != answered_by) {
             let rules: Vec<&(u64, usize, String)> = ordered
                 .iter()
@@ -1126,8 +1151,9 @@ impl Registry {
                     url: url.to_string(),
                     body: body.clone(),
                     rule: None,
-                    action: "none",
-                    status: None,
+                    action: answered.as_ref().map_or("none", |answered| answered.action),
+                    status: answered.as_ref().and_then(|answered| answered.status),
+                    answered_by: answered.as_ref().map(|answered| answered.by.clone()),
                     no_match: Some(text),
                 });
             }

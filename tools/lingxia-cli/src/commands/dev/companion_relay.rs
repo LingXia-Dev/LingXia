@@ -6,10 +6,10 @@
 //! its test run ends or the runtime connection drops.
 
 use super::DevServerState;
+use lingxia_control_protocol::ControlResponse;
 use lingxia_control_protocol::dev_session::{DevSessionMessage, capabilities};
 use lingxia_control_protocol::methods::session::companion as method;
 use lingxia_control_protocol::scenario::companion as protocol;
-use lingxia_control_protocol::ControlResponse;
 use std::time::Duration;
 
 /// How long a companion may take to install or report rules.
@@ -96,6 +96,31 @@ impl DevServerState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
+    /// A test run started while a dev scenario has `function` rules: give
+    /// the run an empty owner, which sits above `dev`, so the dev rules
+    /// stand aside until the run ends — as its `http` rules do.
+    pub(super) fn hide_companion_dev_scenario(&self, owner: String) {
+        if !self
+            .lock_companion_owners()
+            .contains(lingxia_control_protocol::scenario::DEV_OWNER)
+        {
+            return;
+        }
+        let Some(link) = self.companion.get().cloned() else {
+            return;
+        };
+        self.lock_companion_owners().insert(owner.clone());
+        std::thread::spawn(move || {
+            let params = serde_json::json!({ "owner": owner, "scenario": {}, "rules": [] });
+            if let Err(error) = link.request(protocol::USE, Some(params), COMPANION_TIMEOUT) {
+                eprintln!(
+                    "[lingxia dev] could not set the dev scenario's function rules aside for {owner}: {}",
+                    error.message
+                );
+            }
+        });
+    }
+
     /// Clear `owner`'s rules in the companion if it has any: its test run
     /// ended, or (for `dev`) the runtime connection dropped. Off the calling
     /// thread, which may be the connection's reader.
@@ -122,8 +147,8 @@ impl DevServerState {
 mod tests {
     use super::*;
     use crate::commands::dev::companion::DevCompanion;
-    use lingxia_control_protocol::ControlError;
     use crate::commands::dev::server::SessionLogWriter;
+    use lingxia_control_protocol::ControlError;
     use lingxia_control_protocol::dev_session::DevSessionMessage;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
@@ -279,6 +304,36 @@ mod tests {
         );
         // Clearing an owner with nothing installed sends nothing.
         state.clear_companion_owner("dev".into());
+
+        // A dev scenario with function rules stands aside during a run.
+        state.hide_companion_dev_scenario("test:run-2".into());
+        assert!(
+            !state.lock_companion_owners().contains("test:run-2"),
+            "no dev scenario, nothing to hide"
+        );
+        let dev = serde_json::json!({ "owner": "dev", "scenario": {}, "rules": [{ "function": "f", "result": 1 }] });
+        result_of(state.companion_reply("8".into(), method::SCENARIO_USE, Some(dev)));
+        state.hide_companion_dev_scenario("test:run-2".into());
+        assert!(state.lock_companion_owners().contains("test:run-2"));
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let requests = loop {
+            let text = std::fs::read_to_string(&log).unwrap_or_default();
+            if text.lines().count() >= 4 {
+                break text;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "the hiding owner never arrived: {text}"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        let hidden: serde_json::Value =
+            serde_json::from_str(requests.lines().nth(3).unwrap()).unwrap();
+        assert_eq!(hidden["method"], protocol::USE);
+        assert_eq!(
+            hidden["params"],
+            serde_json::json!({ "owner": "test:run-2", "scenario": {}, "rules": [] })
+        );
         drop(companion);
     }
 

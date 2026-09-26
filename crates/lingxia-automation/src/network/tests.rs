@@ -1364,6 +1364,44 @@ mod scenarios {
     }
 
     #[test]
+    fn a_missed_request_records_what_answered_it_instead() {
+        let mut registry = Registry::default();
+        // Installed before the scenario, so the scenario's rules come first.
+        let fallback = RouteSpec::new(
+            UrlMatcher::glob("**/devices/*").unwrap(),
+            Some("PATCH".into()),
+            None,
+            vec![parse_handler_value(&json!({ "status": 404 }), None).unwrap()],
+        );
+        registry.install("run", "app", fallback, || true).unwrap();
+        let scenario = parse_scenario(
+            &json!({ "name": "Devices", "rules": [
+                { "http": "PATCH **/devices/*", "match": { "json": { "name": "Office" } }, "status": 409 }
+            ] }),
+            None,
+        )
+        .unwrap();
+        let slot = super::super::dev::installed(&scenario, None);
+        let installed = registry
+            .install_scenario("run", "app", slot, scenario.http, || true)
+            .unwrap();
+        let (decision, no_match) = registry.decide_route(
+            "app",
+            "PATCH",
+            "https://h/devices/1",
+            body_request(r#"{"name":"Den"}"#),
+            || true,
+            0,
+        );
+        assert_eq!(fulfill_status(&decision.unwrap().action), 404);
+        assert!(no_match.unwrap().message.contains("rule 1 match.json.name"));
+        let call = &registry.scenario(installed.id).unwrap().calls[0];
+        assert_eq!(call.rule, None);
+        assert_eq!(call.answered_by.as_deref(), Some("route **/devices/*"));
+        assert_eq!(call.status, Some(404));
+    }
+
+    #[test]
     fn a_sequence_and_times_hold_per_rule() {
         let scenario = parse_scenario(
             &json!({ "rules": [
