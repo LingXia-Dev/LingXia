@@ -26,7 +26,8 @@ themselves.
 `lxdev test --preset macos --arg framework=react` (the npm
 `test:automation:*` scripts use them; `--list-presets` shows them).
 `scenarios/` holds dev-time product states for `lxdev scenario use`, which
-specs may import too (`route/status-offline` is `AUT-NET-007`'s).
+specs may import too (`route/status`, with its `online` and `offline`
+variants, is `AUT-NET-007`'s: `lxdev scenario use route/status:offline`).
 
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility

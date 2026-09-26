@@ -35,7 +35,7 @@ import {
   VERSION,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation, LxAppDriver } from "@lingxia/types/automation";
+import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/types/automation";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -727,6 +727,10 @@ async function run(): Promise<ProtocolReport> {
       }
     };
     if (status !== "passed" && status !== "skipped") await collectEvidence();
+    // Before the defers remove it: the scenario and what reached it.
+    const scenarioEvidence = status !== "passed" && status !== "skipped"
+      ? await fixture.scenarioScope.report(SCENARIO_EVIDENCE_MS)
+      : undefined;
 
     phase = "defer";
     const deferErrors: unknown[] = [];
@@ -840,8 +844,9 @@ async function run(): Promise<ProtocolReport> {
       }
       const page = failurePage ?? pageFromErrorData(record.error.data);
       if (page) record.error.page = page;
-      const calls = networkCalls(host, caseStarted);
+      const calls = withFunctionCalls(networkCalls(host, caseStarted), scenarioEvidence?.functionCalls ?? []);
       if (calls.length > 0) record.error.network = calls;
+      if (scenarioEvidence) record.error.scenario = scenarioEvidence.scenario;
     }
     const history = attempts.get(key) ?? [];
     history.push(record);
@@ -1008,6 +1013,7 @@ export function failureRecords(cases: CaseRecord[]): FailureRecord[] {
         page: error?.page,
         screenshot,
         ...(error?.network && error.network.length > 0 ? { network: error.network } : {}),
+        ...(error?.scenario ? { scenario: error.scenario } : {}),
       };
     });
 }
@@ -1027,6 +1033,28 @@ function networkCalls(host: ResolvedHost, since: number): NetworkCall[] {
     // The call log is evidence; it never replaces the failure.
     return [];
   }
+}
+
+/** How long a failed spec waits for its scenario's calls. */
+const SCENARIO_EVIDENCE_MS = 2_000;
+
+/** The Logic calls and the scenario's Function calls, newest 20 by time. */
+function withFunctionCalls(calls: NetworkCall[], functions: ScenarioCall[]): NetworkCall[] {
+  if (functions.length === 0) return calls;
+  const converted: NetworkCall[] = functions.map((call) => ({
+    time: call.time,
+    kind: "function",
+    method: "",
+    url: "",
+    function: call.function,
+    outcome: call.outcome,
+    status: null,
+    durationMs: null,
+    source: call.rule === null ? "network" : "route",
+    answeredBy: call.answeredBy,
+    ...(call.noMatch ? { noMatch: call.noMatch } : {}),
+  }));
+  return [...calls, ...converted].sort((a, b) => a.time - b.time).slice(-REPORTED_NETWORK_CALLS);
 }
 
 /** `--record-network`: capture this spec's real Logic traffic. */

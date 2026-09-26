@@ -4,6 +4,7 @@ import type {
   CaseRecord,
   JsonReport,
   NetworkCall,
+  ScenarioReport,
   ReportError,
   SpecStatus,
   StepRecord,
@@ -681,7 +682,7 @@ function renderError(item: CaseRecord): string {
   return `<div class="failure">
     <h3>${escapeHtml(error.name)}${error.matcher ? ` &middot; <code>${escapeHtml(error.matcher)}</code>` : ""}</h3>
     <pre class="message">${escapeHtml(error.message)}</pre>
-    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}${renderNetwork(error.network)}
+    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}${renderScenario(error.scenario)}${renderNetwork(error.network)}
   </div>`;
 }
 
@@ -690,6 +691,20 @@ function renderError(item: CaseRecord): string {
  * relative to the first, what it asked, what came back and whether a route
  * or the real network answered.
  */
+/** The scenario a failed spec had installed: each rule and its hits. */
+export function renderScenario(scenario: ScenarioReport | undefined): string {
+  if (!scenario) return "";
+  const rows = scenario.rules.map((rule) => `<tr>
+      <td>rule ${rule.index}</td>
+      <td><code>${escapeHtml(rule.target)}</code></td>
+      <td class="${rule.hits === 0 ? "fail" : ""}">answered ${rule.hits}×</td>
+    </tr>`).join("");
+  return `<details class="network" open>
+    <summary>Scenario ${escapeHtml(scenario.label)} &middot; ${scenario.rules.length} rule${scenario.rules.length === 1 ? "" : "s"}</summary>
+    <table class="net"><tbody>${rows}</tbody></table>
+  </details>`;
+}
+
 export function renderNetwork(calls: NetworkCall[] | undefined): string {
   if (!calls || calls.length === 0) return "";
   const first = calls[0].time;
@@ -698,14 +713,18 @@ export function renderNetwork(calls: NetworkCall[] | undefined): string {
       ? String(call.status)
       : call.error ?? "pending";
     const failed = call.error !== undefined || (typeof call.status === "number" && call.status >= 400);
+    const answeredBy = call.answeredBy ?? (call.source === "route" ? "route" : "network");
+    const title = call.noMatch ?? call.route?.pattern ?? "";
     const source = call.source === "route"
-      ? `<span class="net-route" title="${escapeHtml(call.route?.pattern ?? "")}">route</span>`
-      : `<span class="net-real">network</span>`;
+      ? `<span class="net-route" title="${escapeHtml(title)}">${escapeHtml(answeredBy)}</span>`
+      : `<span class="net-real" title="${escapeHtml(title)}">${escapeHtml(answeredBy)}</span>`;
+    const isFunction = call.kind === "function";
+    const outcomeText = isFunction ? call.outcome ?? outcome : outcome;
     return `<tr>
       <td class="net-time">+${Math.max(0, call.time - first)}ms</td>
-      <td><code>${escapeHtml(call.method)}</code>${call.kind === "sse" ? " <span class=\"net-kind\">sse</span>" : ""}</td>
-      <td class="net-url">${escapeHtml(call.url)}</td>
-      <td class="${failed ? "fail" : ""}">${escapeHtml(outcome)}</td>
+      <td><code>${isFunction ? "fn" : escapeHtml(call.method)}</code>${call.kind === "sse" ? " <span class=\"net-kind\">sse</span>" : ""}</td>
+      <td class="net-url">${escapeHtml(isFunction ? call.function ?? "" : call.url)}</td>
+      <td class="${failed ? "fail" : ""}">${escapeHtml(outcomeText)}</td>
       <td class="net-time">${call.durationMs === null || call.durationMs === undefined ? "—" : `${call.durationMs}ms`}</td>
       <td>${source}</td>
     </tr>`;

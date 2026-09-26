@@ -11,6 +11,8 @@ import type {
   PageEvalOptions,
   PageQueryResult,
   PageTarget,
+  Scenario,
+  ScenarioInput,
 } from "@lingxia/types/automation";
 
 export type SpecStatus =
@@ -244,6 +246,14 @@ export interface TestApp extends Omit<LxAppDriver, "eval" | "page"> {
    * spans the whole run).
    */
   readonly network: NetworkDriver;
+  /**
+   * Put the app into a product state from a scenario file (and one of its
+   * variants): `http` rules answer Logic `fetch`, `function` rules go to the
+   * dev session's companion. Spec-scoped: a second call replaces the first,
+   * and the spec's end removes it. A failed spec reports its per-rule hits
+   * and the calls that reached it.
+   */
+  scenario(definition: ScenarioInput, variant?: string): Promise<Scenario>;
   /**
    * Test clock for the app's Logic (`Date`, timers, `performance.now`).
    * Spec-scoped: a clock still installed when the spec ends is uninstalled,
@@ -490,9 +500,15 @@ export interface FailurePage {
 export interface NetworkCall {
   /** Epoch milliseconds when the request started. */
   time: number;
-  kind: "fetch" | "sse";
+  /** `function`: a Worker Function call the dev session's companion saw. */
+  kind: "fetch" | "sse" | "function";
+  /** Empty for a `function` call. */
   method: string;
+  /** Empty for a `function` call. */
   url: string;
+  /** `function` calls: the Function and `result`/`error`/`fault`/`default`. */
+  function?: string;
+  outcome?: string;
   /** Response status; `null` when it failed or has not answered. */
   status: number | null;
   /** The rejection, e.g. `TypeError: fetch failed`. */
@@ -501,7 +517,20 @@ export interface NetworkCall {
   /** `route` when a test route answered; `network` when the request was real. */
   source: "route" | "network";
   /** The route that matched, including a `continue` pass-through. */
-  route?: { pattern: string; action: string };
+  route?: { pattern: string; action: string; rule?: number; scenario?: string };
+  /** `rule 2 (name:variant)`, `route <pattern>`, `real`, or `companion default`. */
+  answeredBy?: string;
+  /** Why no scenario rule answered, when rules targeted the call. */
+  noMatch?: string;
+}
+
+/** The scenario a failed spec had installed, and what each rule answered. */
+export interface ScenarioReport {
+  /** `name:variant`. */
+  label: string;
+  name: string | null;
+  variant: string | null;
+  rules: { index: number; target: string; kind: "http" | "function"; hits: number }[];
 }
 
 export interface ReportError {
@@ -510,6 +539,8 @@ export interface ReportError {
   phase?: string;
   /** The app's last Logic network calls before the failure, oldest first. */
   network?: NetworkCall[];
+  /** The scenario installed with `t.app.scenario()` when the spec failed. */
+  scenario?: ScenarioReport;
   /** The recorded driver action that failed, e.g. `page.click [data-testid=save]`. */
   failedAction?: string;
   /** The page that was current when the spec failed. */
@@ -708,6 +739,8 @@ export interface FailureRecord {
   screenshot?: string;
   /** The app's last Logic network calls before the failure (up to 20). */
   network?: NetworkCall[];
+  /** The scenario installed when the spec failed. */
+  scenario?: ScenarioReport;
 }
 
 export interface JsonReport {

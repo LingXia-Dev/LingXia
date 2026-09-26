@@ -2,61 +2,76 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://lingxia.app/schemas/scenario.schema.json",
   "title": "LingXia scenario",
-  "description": "A product state for `lxdev scenario use` and `t.app.network.scenario()`: HTTP routes that answer the lxapp's Logic fetch and Rong.SSE. Routes sit at the top level or under `http.routes`.",
+  "description": "A product state for `lxdev scenario use` and `t.app.scenario()`: rules that answer the lxapp's HTTP requests (`http`) and Worker Function calls (`function`), tried in file order, and named variants whose rules go before the shared ones.",
   "type": "object",
   "properties": {
     "$schema": { "type": "string" },
-    "name": { "type": "string", "description": "Shown by `lxdev scenario list|status` and in the session log." },
+    "name": { "type": "string", "description": "Shown by `lxdev scenario list|status`, in the session log and in failure reports." },
     "description": { "type": "string", "description": "Shown by `lxdev scenario list`." },
-    "routes": { "$ref": "#/$defs/routes" },
-    "http": {
+    "rules": { "$ref": "#/$defs/rules", "description": "Shared by every variant. The first rule that matches a call answers it; nothing matched goes to the real backend." },
+    "variants": {
       "type": "object",
-      "description": "The HTTP section: routes answering Logic fetch and Rong.SSE.",
-      "properties": { "routes": { "$ref": "#/$defs/routes" } },
-      "required": ["routes"],
+      "description": "States of this scenario: `lxdev scenario use <name>:<variant>`, `t.app.scenario(file, '<variant>')`.",
+      "patternProperties": {
+        "^[A-Za-z0-9._-]+$": {
+          "type": "object",
+          "properties": {
+            "description": { "type": "string" },
+            "rules": { "$ref": "#/$defs/rules", "minItems": 1 }
+          },
+          "required": ["rules"],
+          "additionalProperties": false
+        }
+      },
       "additionalProperties": false
-    },
-    "worker": {
-      "description": "Reserved for Worker-backed state. Not supported yet: a scenario with this section is rejected."
     }
   },
   "additionalProperties": false,
-  "oneOf": [
-    { "required": ["routes"], "not": { "required": ["http"] } },
-    { "required": ["http"], "not": { "required": ["routes"] } }
+  "anyOf": [
+    { "required": ["rules"], "properties": { "rules": { "minItems": 1 } } },
+    { "required": ["variants"] }
   ],
   "$defs": {
-    "routes": {
+    "rules": {
       "type": "array",
-      "minItems": 1,
       "maxItems": 200,
-      "description": "The first matching route answers.",
-      "items": { "$ref": "#/$defs/route" }
+      "items": { "$ref": "#/$defs/rule" }
     },
-    "route": {
+    "rule": {
+      "oneOf": [{ "$ref": "#/$defs/httpRule" }, { "$ref": "#/$defs/functionRule" }]
+    },
+    "httpRule": {
       "type": "object",
-      "required": ["url"],
+      "required": ["http"],
       "properties": {
-        "url": { "type": "string", "description": "A URL glob (`**/v1/status`) or a regex written `/source/flags`." },
-        "method": { "type": "string", "description": "HTTP method; omitted or `*` matches any." },
-        "times": { "type": "integer", "minimum": 1, "description": "Stop matching after this many requests." },
+        "http": {
+          "type": "string",
+          "pattern": "^\\s*(\\*|[A-Za-z-]+)\\s+\\S",
+          "description": "`METHOD url`: `GET **/wifi/main`, `* **/wifi/*` for any method; the URL is a glob or `/regex/flags`."
+        },
+        "match": {
+          "type": "object",
+          "properties": { "json": { "description": "Deep subset of the request's JSON body: listed keys must match, arrays exactly, `\"/regex/\"` strings match text." } },
+          "required": ["json"],
+          "additionalProperties": false
+        },
+        "times": { "$ref": "#/$defs/times" },
         "note": { "type": "string" },
-        "description": { "type": "string" },
         "sequence": {
           "type": "array",
           "minItems": 1,
           "maxItems": 100,
           "description": "Answers served in call order; the last one repeats.",
-          "items": { "$ref": "#/$defs/answer" }
+          "items": { "$ref": "#/$defs/httpAnswer" }
         },
         "status": true, "statusText": true, "headers": true, "body": true, "json": true,
         "bodyBase64": true, "contentType": true, "delay": true,
         "abort": true, "continue": true, "hang": true, "patchJson": true, "sse": true
       },
       "additionalProperties": false,
-      "allOf": [{ "$ref": "#/$defs/answerFields" }]
+      "allOf": [{ "$ref": "#/$defs/httpAnswerFields" }]
     },
-    "answer": {
+    "httpAnswer": {
       "type": "object",
       "properties": {
         "status": true, "statusText": true, "headers": true, "body": true, "json": true,
@@ -64,9 +79,9 @@
         "abort": true, "continue": true, "hang": true, "patchJson": true, "sse": true
       },
       "additionalProperties": false,
-      "allOf": [{ "$ref": "#/$defs/answerFields" }]
+      "allOf": [{ "$ref": "#/$defs/httpAnswerFields" }]
     },
-    "answerFields": {
+    "httpAnswerFields": {
       "properties": {
         "status": { "type": "integer", "minimum": 200, "maximum": 599 },
         "statusText": { "type": "string" },
@@ -75,7 +90,7 @@
         "json": { "description": "Serialized as the JSON body." },
         "bodyBase64": { "type": "string", "description": "A binary body." },
         "contentType": { "type": "string" },
-        "delay": { "type": "integer", "minimum": 0, "maximum": 30000, "description": "Milliseconds before the answer." },
+        "delay": { "$ref": "#/$defs/delay" },
         "abort": { "const": "failed" },
         "continue": { "const": true },
         "hang": { "const": true },
@@ -87,6 +102,67 @@
         }
       }
     },
+    "functionRule": {
+      "type": "object",
+      "required": ["function"],
+      "properties": {
+        "function": {
+          "type": "string",
+          "pattern": "^[^\\s*?{}\\[\\]]+$",
+          "description": "The Worker Function this rule answers, e.g. `orders.submit`. Answered by the dev session's companion."
+        },
+        "match": {
+          "type": "object",
+          "properties": { "args": { "description": "Deep subset of the call's arguments." } },
+          "required": ["args"],
+          "additionalProperties": false
+        },
+        "times": { "$ref": "#/$defs/times" },
+        "note": { "type": "string" },
+        "sequence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "description": "Answers served in call order; the last one repeats.",
+          "items": { "$ref": "#/$defs/functionAnswer" }
+        },
+        "result": { "description": "The Function's result." },
+        "error": { "$ref": "#/$defs/functionError" },
+        "fault": { "$ref": "#/$defs/fault" },
+        "delay": { "$ref": "#/$defs/delay" }
+      },
+      "additionalProperties": false,
+      "oneOf": [
+        { "required": ["sequence"] },
+        { "required": ["result"] },
+        { "required": ["error"] },
+        { "required": ["fault"] }
+      ],
+      "not": { "required": ["sequence", "delay"] }
+    },
+    "functionAnswer": {
+      "type": "object",
+      "properties": {
+        "result": {},
+        "error": { "$ref": "#/$defs/functionError" },
+        "fault": { "$ref": "#/$defs/fault" },
+        "delay": { "$ref": "#/$defs/delay" }
+      },
+      "additionalProperties": false,
+      "oneOf": [{ "required": ["result"] }, { "required": ["error"] }, { "required": ["fault"] }]
+    },
+    "functionError": {
+      "type": "object",
+      "description": "A business error the Function declares.",
+      "properties": { "code": { "type": "string", "minLength": 1 } },
+      "required": ["code"]
+    },
+    "fault": {
+      "enum": ["notRun", "unknown"],
+      "description": "`notRun`: the call failed before the Function ran. `unknown`: the outcome was lost."
+    },
+    "times": { "type": "integer", "minimum": 1, "description": "Answer this many matching calls, then stand aside." },
+    "delay": { "type": "integer", "minimum": 0, "maximum": 30000, "description": "Milliseconds before the answer." },
     "sseStep": {
       "type": "object",
       "properties": {

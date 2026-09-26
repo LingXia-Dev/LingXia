@@ -11,6 +11,7 @@ import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
+import { ScenarioScope, installScenario } from "./scenario.js";
 import { ClockScope, wrapClock } from "./clock.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError } from "./deadline.js";
@@ -58,7 +59,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver, ScenarioInput } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -111,6 +112,8 @@ export class LiveFixture implements Fixture {
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
   private readonly networkScope = new NetworkScope();
+  /** The scenario this spec installed; removed when it ends. */
+  readonly scenarioScope = new ScenarioScope();
   /** Test clocks this spec installed; uninstalled when it ends. */
   readonly clockScope = new ClockScope();
   /** When the spec's own timer fires; see `budgetRoom()`. */
@@ -670,6 +673,8 @@ export class LiveFixture implements Fixture {
       get network() {
         return wrapNetwork(() => driver.network, fixture, fixture.networkScope);
       },
+      scenario: (definition: ScenarioInput, variant?: string) =>
+        installScenario(() => driver, fixture, fixture.scenarioScope, definition, variant),
       // The same as `t.profile`: it re-selects the app after a switch.
       get profile() {
         return fixture.profile;
