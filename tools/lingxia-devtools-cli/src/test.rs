@@ -2026,6 +2026,9 @@ fn report(
             if let Some(line) = failed_at(&error.detail) {
                 eprintln!("  {line}");
             }
+            for line in crate::test_network::scenario_lines(&error.detail) {
+                eprintln!("  {line}");
+            }
             for field in ["code", "phase", "step", "location", "expected", "actual"] {
                 if let Some(value) = error.detail.get(field).and_then(|v| v.as_str()) {
                     match field {
@@ -2347,6 +2350,7 @@ pub(crate) fn failure_records(cases: &[serde_json::Value]) -> serde_json::Value 
                 ("failedAction", &error["failedAction"]),
                 ("page", &error["page"]),
                 ("network", &error["network"]),
+                ("scenario", &error["scenario"]),
             ] {
                 if !value.is_null() {
                     record.insert(key.into(), value.clone());

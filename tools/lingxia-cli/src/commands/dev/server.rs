@@ -532,8 +532,11 @@ impl DevServerState {
         };
         let running = result.get("state").and_then(serde_json::Value::as_str) == Some("running");
         self.settle_watch_leases(run_id, running);
+        let owner = lingxia_control_protocol::scenario::test_owner(run_id);
         if !running {
-            self.clear_companion_owner(lingxia_control_protocol::scenario::test_owner(run_id));
+            self.clear_companion_owner(owner);
+        } else if method == test::START {
+            self.hide_companion_dev_scenario(owner);
         }
         let mut active = self.lock_active_test_run();
         if method == test::START {

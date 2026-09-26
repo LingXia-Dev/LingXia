@@ -110,9 +110,11 @@ async fn use_functions(owner: &str, resolved: &Resolved) -> Result<(), String> {
 }
 
 async fn clear_functions(owner: &str) {
-    // The dev server also clears a run's owner when the run ends; a failure
-    // here only delays that.
-    let _ = companion::request(method::SCENARIO_CLEAR, json!({ "owner": owner })).await;
+    // Emptied, not cleared: the run's owner keeps a dev scenario's function
+    // rules aside until the run ends, when the dev server clears it. A
+    // failure here only leaves the rules until then.
+    let params = json!({ "owner": owner, "scenario": {}, "rules": [] });
+    let _ = companion::request(method::SCENARIO_USE, params).await;
 }
 
 /// Handle returned by `scenario()`.
@@ -154,10 +156,7 @@ impl JSScenario {
                     "url": call.url,
                     "rule": call.rule,
                     "status": call.status,
-                    "answeredBy": match call.rule {
-                        Some(index) => format!("rule {index} ({})", self.label),
-                        None => "real".to_string(),
-                    },
+                    "answeredBy": call.answered_by.clone().unwrap_or_else(|| "real".to_string()),
                 });
                 if let Some(body) = &call.body {
                     entry["body"] = body.clone();

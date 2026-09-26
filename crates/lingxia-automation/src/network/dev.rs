@@ -199,6 +199,9 @@ pub(crate) fn scenario_calls_json(scenario: &InstalledScenario, limit: usize) ->
                 "action": call.action,
                 "status": call.status,
             });
+            if let Some(by) = &call.answered_by {
+                entry["answeredBy"] = json!(by);
+            }
             if let Some(no_match) = &call.no_match {
                 entry["noMatch"] = json!(no_match);
             }

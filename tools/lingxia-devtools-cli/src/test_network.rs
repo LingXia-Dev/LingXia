@@ -137,6 +137,44 @@ pub fn network_lines(calls: &Value) -> Vec<String> {
         .collect()
 }
 
+/// What a failed spec prints about the scenario it had installed: the
+/// scenario, each rule's hits, and the calls before the failure with who
+/// answered them. Empty when it had none.
+pub fn scenario_lines(detail: &serde_json::Map<String, Value>) -> Vec<String> {
+    let Some(scenario) = detail
+        .get("scenario")
+        .filter(|scenario| scenario.is_object())
+    else {
+        return Vec::new();
+    };
+    let rules = scenario["rules"].as_array().cloned().unwrap_or_default();
+    let plural = |n: usize| if n == 1 { "" } else { "s" };
+    let mut lines = vec![format!(
+        "scenario {} ({} rule{})",
+        scenario["label"].as_str().unwrap_or("unnamed"),
+        rules.len(),
+        plural(rules.len())
+    )];
+    for rule in &rules {
+        lines.push(format!(
+            "  rule {} {} answered {}×",
+            rule["index"],
+            rule["target"].as_str().unwrap_or(""),
+            rule["hits"].as_u64().unwrap_or(0)
+        ));
+    }
+    let calls = network_lines(detail.get("network").unwrap_or(&Value::Null));
+    if !calls.is_empty() {
+        lines.push(format!(
+            "last {} call{} before the failure:",
+            calls.len(),
+            plural(calls.len())
+        ));
+        lines.extend(calls.into_iter().map(|line| format!("  {line}")));
+    }
+    lines
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,6 +270,30 @@ mod tests {
             std::fs::read_to_string(out.join("a-b-3.json")).unwrap(),
             "{\"n\":2}"
         );
+    }
+
+    #[test]
+    fn a_failed_spec_names_its_scenario_rule_hits_and_calls() {
+        let detail = json!({
+            "scenario": { "label": "Wi-Fi:b", "rules": [
+                { "index": 1, "target": "GET **/wifi/main", "kind": "http", "hits": 0 },
+                { "index": 2, "target": "function orders.submit", "kind": "function", "hits": 1 }
+            ] },
+            "network": [
+                { "method": "GET", "url": "https://h/wifi/other", "status": 200, "answeredBy": "real" }
+            ]
+        });
+        assert_eq!(
+            scenario_lines(detail.as_object().unwrap()),
+            [
+                "scenario Wi-Fi:b (2 rules)",
+                "  rule 1 GET **/wifi/main answered 0×",
+                "  rule 2 function orders.submit answered 1×",
+                "last 1 call before the failure:",
+                "  GET https://h/wifi/other → 200  answered by: real",
+            ]
+        );
+        assert!(scenario_lines(json!({ "network": [] }).as_object().unwrap()).is_empty());
     }
 
     #[test]
