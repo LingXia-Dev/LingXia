@@ -40,11 +40,13 @@ lxdev test tests/pages/notes.test.ts
 - One waiting assertion: `t.expect(locator)` and `t.expect(() => read())`
   retry until the matcher passes; `t.expect(value)` (like the imported
   `expect`) checks once. `expect(locator)` throws: a locator needs `t.expect`.
+- Text matchers read whitespace-normalised text (runs collapsed to one space, ends trimmed).
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
   a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes
-  `tsconfig.tests.json`). `import '@lingxia/test'` types the `lx` test
-  global; a file that uses `lx` without it adds
-  `types: ["@lingxia/types/automation-test-globals"]`.
+  `tsconfig.tests.json`). `import '@lingxia/test'` types the test context
+  (timers, `fetch`, `console`). A spec program declares no `lx` of its own:
+  specs that import product Logic modules type-check with the app's `lx`,
+  in any include order.
 
 ## Common tasks
 
@@ -85,8 +87,9 @@ lxdev test tests/pages/notes.test.ts
 | External HTTP fixtures, callback collectors, service results | Test-context `fetch` |
 
 The automation root is typed by `@lingxia/types/automation`; platform support
-and selectors follow [lxdev](../cli/lxdev.md). In a test program
-`lx.automation()` is `HostRunAutomation`; app Logic gets the narrower
+and selectors follow [lxdev](../cli/lxdev.md). In a test program the root
+(`t.automation`, or `rawAutomation()` from `@lingxia/test`) is
+`HostRunAutomation`; app Logic's `lx.automation()` is the narrower
 `Automation`, which has no `network`, nav `waitUntil: 'ready'`, or eval call
 tracing. Browser automation targets host browser tabs; desktop automation
 requires a macOS/Windows host built with it, such as the Runner. `t.app.surfaceLayout()` reads the host render plan. Restore any existing
@@ -94,13 +97,20 @@ shell pins or device settings changed by a test.
 
 ## Context and assertions
 
-The test context has `lx.automation()`, `console`, timers, and `fetch`, but no
-app `lx.*`, DOM, filesystem, Node built-ins, or dynamic `import()`. Importing
-product source does not run it in the app: use the eval helpers below.
+The test context has `console`, timers, and `fetch`, but no app `lx.*`, DOM,
+filesystem, Node built-ins, or dynamic `import()`. Importing product source
+does not run it in the app: use the eval helpers below.
 
 Trigger the behavior under test through UI actions; setup, eval, and backend
-calls do not replace that product path. Use `t.app`/`t.automation`, not raw
-`lx.automation()`, which bypasses tracing and fixture guards.
+calls do not replace that product path. Use `t.app`/`t.automation`, not
+`rawAutomation()`, which bypasses tracing and fixture guards; keep it for a
+setup file that runs before any spec, or a deliberate raw-driver check:
+
+```ts
+import { rawAutomation } from '@lingxia/test';
+
+const info = await rawAutomation().lxapp('com.example.app').info();
+```
 
 ## Reading app Logic
 
@@ -141,7 +151,7 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   `SyntaxError` (override with `retryIf`); other thrown errors retry. On
   timeout it rejects with `E_TIMEOUT` naming the last value.
 - The fixture takes functions only; a script string is for the raw driver
-  (`lx.automation().lxapp().eval({ script })`).
+  (`rawAutomation().lxapp().eval({ script })`).
 
 ## Faking the network
 
@@ -546,7 +556,9 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   window covers a desktop app window, `click({ force: true })` / `fill(text,
   { force: true })` dispatch DOM events to it directly; it must still be one
   enabled match. It proves less than a normal click, so use it only where
-  that fails with `element is obscured`.
+  that fails with `element is obscured`. A wait that adds `page hidden (window
+  covered or display asleep)` is not the app: WebKit pauses animations there;
+  keep the host window uncovered (a run keeps the macOS display awake).
 - **`fill` works on framework-controlled inputs.** It sets the value through
   the element's native value setter and dispatches `input` and `change`, so
   React/Vue state follows; assert the state, not only the DOM value.
@@ -648,6 +660,12 @@ lxdev test --list                 # list specs (file:line, id, title, tags) with
 - A run starts and ends with the app under test running: a spec that leaves
   it closed has it reopened before the next spec, and the run reopens it at
   the end. When a reopen fails, lxdev prints `Recover: … lxdev lxapp restart`.
+- A spec that times out fails alone. If its body is still awaiting something
+  (or its cleanup overran), its cleanup is skipped, its leftover timers are
+  cancelled, and the app is relaunched on its home page before the next spec;
+  the `recovery` diagnostic names the pending work (`timer`, `interval`,
+  `fetch`, `eval`, `action`) and the spec. Only if that recovery fails are the
+  remaining specs reported as not run, with the same `Recover:` line.
 - Before a run, lxdev checks that it, the session's host and the project's
   installed `@lingxia/*` packages share a version line, and stops with the fix
   when they do not (`LINGXIA_ALLOW_SKEW=1` makes that a warning).

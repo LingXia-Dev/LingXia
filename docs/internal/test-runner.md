@@ -5,8 +5,23 @@
 received artifacts. Keep the following invariants when changing these layers:
 
 - New test contexts do not reset product state. Retrying requires a file-scoped
-  `spec.reset` hook. A still-pending body or teardown makes the run partial and
-  prevents subsequent bodies; reopening that fixture would admit zombie actions.
+  `spec.reset` hook. A body still pending after its timeout (plus
+  `WEDGED_DEFER_BUDGET_MS`), a cleanup past its budget, or timed-out evidence
+  capture fails that spec only: its cleanup is not run (that would reopen the
+  fixture to zombie actions), the fixture stays aborted and closed, the
+  spec's leftover test-context timers are cancelled, and the runtime recovers
+  the app with the per-spec recovery (`reopenAppUnderTest`, then a home
+  relaunch) before the next spec, reporting a `recovery` diagnostic that names
+  the stuck work. Only a failed recovery (or an unrolled `restoreProfile`)
+  makes the run partial: the rest are not run, with a reason naming the work
+  and `Recover: lxdev lxapp restart`.
+- Pending work is attributed by `pending.ts`: during a run it wraps the test
+  context's `setTimeout`/`setInterval`/`fetch`, and `rawAutomation()` returns
+  a proxy that records promise-returning driver calls (`eval` as eval), each
+  under the spec that owns the context; fixture calls in flight come from
+  `LiveFixture.pendingCalls()`. Runner-internal timers must use
+  `runnerSetTimeout`/`runnerClearTimeout` so they are never reported or
+  cancelled as spec work.
 - The spec, cleanup, evidence, run, and transport have separate deadlines.
   Cleanup has a hard timer around arbitrary user promises, not just checks in
   driver methods. JS deadlines stop waiting, not arbitrary external side effects.
@@ -193,8 +208,8 @@ Development machine: lxdev receives progress, results, and artifacts
   until its response is observed, so a run whose lease was taken during the
   (seconds-long) rebuild defers the restart instead of having its app
   replaced mid-spec.
-- Run end: after the last spec, unless a spec left async work pending
-  (`contaminated`), the runtime runs the same `reopenAppUnderTest` it runs
+- Run end: after the last spec, unless the run stopped because a recovery
+  failed (`contaminated`), the runtime runs the same `reopenAppUnderTest` it runs
   before each spec. A failed reopen (there or per spec) is a `diagnostic`
   with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
   and prints the `Recover:` line, as it does for a `timed_out` or
@@ -291,9 +306,16 @@ Development machine: lxdev receives progress, results, and artifacts
 - `@lingxia/types/automation` describes the raw host drivers. Keep Logic eval,
   WebView eval, browser tabs, and OS input as separate targets. Locators and
   retry policy belong to `@lingxia/test`, not the product automation runtime.
+- A test program declares no ambient `lx`. The host still injects the root as
+  `lx.automation()` in the test context, but only `runtime.ts` reads it; specs
+  reach it as `rawAutomation()` or the traced `t.automation`. A second global
+  `lx` type collides with the app's `const lx: Lx` as soon as a spec imports
+  product Logic, and `skipLibCheck` hides the collision; the
+  `tests/types-coexist` fixture compiles both in either include order with
+  `skipLibCheck` off.
 - One runtime object, two typed roots. `Automation` (the global `lx.automation()`
   of app Logic) returns `LogicLxAppDriver`; `HostRunAutomation` (the
-  `automation-test-globals` root) returns `LxAppDriver`, which adds `network`,
+  test-program root, `rawAutomation()` / `t.automation`) returns `LxAppDriver`, which adds `network`,
   nav `waitUntil: 'ready'`, and `captureCalls`. Those members reject from Logic
   at runtime: `network` needs a run scope, `ready` is refused without
   `HostAutomationAuthority`. `captureCalls`/`LxAppEvalTrace` are `@internal`
@@ -740,7 +762,7 @@ test: no test writes into its storage and app code has no test branch.
   to the old one. `LiveFixture` re-selects the lxapp after `checkpoint` /
   `restore`. `restoreProfile` checkpoints before the implied relaunch and
   registers restore + drop as the first defer; if it does not complete, the
-  run is contaminated (partial), like a stuck cleanup.
+  run is contaminated (partial): relaunching cannot undo the data.
 - `restore(id, { keep })` (and `restoreProfile: { keep }`) merges inside the
   same closed-app window: `replace_live_keeping` reads the live
   `storage.redb` entries whose keys match the globs (`KeepKeys`: `*`, `?`, ≤ 64

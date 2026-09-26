@@ -7,6 +7,7 @@ import {
   setAssertionSink,
 } from "./expect.js";
 import { formatValue, truncate } from "./format.js";
+import type { PendingWork } from "./pending.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
@@ -21,6 +22,7 @@ import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolve
 import {
   PageLocator,
   isLocator,
+  normalizeText,
   sleep,
   testIdSelector,
   type LocatorResolve,
@@ -105,6 +107,7 @@ export class LiveFixture implements Fixture {
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
+  private readonly inFlight = new Set<{ name: string; detail: string; started: number }>();
   cleanupUntil = 0;
   cleanupActive = false;
   lastStepPath: string | undefined;
@@ -499,6 +502,30 @@ export class LiveFixture implements Fixture {
    * would otherwise bury the report in a hundred identical rows.
    */
   async act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
+    const call = { name, detail, started: Date.now() };
+    this.inFlight.add(call);
+    try {
+      return await this.recordAct(name, detail, op);
+    } finally {
+      this.inFlight.delete(call);
+    }
+  }
+
+  /**
+   * Fixture calls that have not returned, e.g. a hung `t.app.logic.eval` a
+   * timed-out body still awaits. Unlike the trace rows, this includes calls
+   * made from silenced retry loops.
+   */
+  pendingCalls(): PendingWork[] {
+    return [...this.inFlight].map((call) => ({
+      kind: /^(logic|view)\.(eval|data|call)$/.test(call.name) ? "eval" as const : "action" as const,
+      detail: call.detail ? `${call.name} ${call.detail}` : call.name,
+      owner: this.specId,
+      at_ms: call.started - this.startedAt,
+    }));
+  }
+
+  private async recordAct<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
     if (this.actionSilence > 0) return this.guard(op);
     // Past the cap, keep recording failures: the action that finally breaks is
     // the one row worth having, and dropping it leaves nothing pointing at it.
@@ -745,7 +772,7 @@ export class LiveFixture implements Fixture {
       eval: (...input: unknown[]) => {
         const { options, fn, args } = evalInput(input);
         if (typeof fn !== "function") {
-          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().eval({ script }))");
+          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().eval({ script }) from @lingxia/test)");
         }
         const script = logicScript(fn, args, "t.app.logic.eval");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
@@ -832,7 +859,7 @@ export class LiveFixture implements Fixture {
   private viewEval(page: PageDriver, input: unknown[], api: string): Promise<unknown> {
     const { options, fn, args } = evalInput<ViewEvalOptions>(input);
     if (typeof fn !== "function") {
-      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().page.eval({ script }))`);
+      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test)`);
     }
     if (options?.page !== undefined && typeof options.page !== "string") {
       throw new TypeError(`${api}({ page }, fn, ...args) takes a page name or instance id`);
@@ -981,6 +1008,10 @@ export class LiveFixture implements Fixture {
         this.resumeActions();
       }
       const duration = deadline.elapsed();
+      const miss = lastResolved && locator instanceof PageLocator ? locator.missText(lastResolved) : undefined;
+      // A wait for the page to change that never saw it change: say when the
+      // page was hidden and its animations paused.
+      const hidden = !inverted && locator instanceof PageLocator ? await locator.hiddenPageNote() : undefined;
       throw this.retryFailure({
         clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
@@ -989,7 +1020,7 @@ export class LiveFixture implements Fixture {
         duration,
         location,
         lastError,
-        extra: lastResolved && locator instanceof PageLocator ? locator.missText(lastResolved) : undefined,
+        extra: [miss, hidden].filter(Boolean).join("\n") || undefined,
       });
     });
   }
@@ -1286,7 +1317,7 @@ function matchLocator(
   }
   if (matcher === "toContainText") {
     if (expected instanceof RegExp) applyMatcher("toMatch", resolved.text, expected, inverted);
-    else applyMatcher("toContain", resolved.text, expected, inverted);
+    else applyMatcher("toContain", resolved.text, typeof expected === "string" ? normalizeText(expected) : expected, inverted);
     return;
   }
   if (matcher === "toHaveAttribute" && expected instanceof AttributeExpectation) {
@@ -1309,7 +1340,7 @@ function matchLocator(
   }
   if (matcher === "toHaveText") {
     if (expected instanceof RegExp) applyMatcher("toMatch", resolved.text, expected, inverted);
-    else applyMatcher("toBe", resolved.text, expected, inverted);
+    else applyMatcher("toBe", resolved.text, typeof expected === "string" ? normalizeText(expected) : expected, inverted);
     return;
   }
   if (matcher === "toHaveValue") {

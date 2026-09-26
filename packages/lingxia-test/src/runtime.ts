@@ -28,7 +28,9 @@ import type {
   SpecOptions,
   SpecRequirements,
   SpecStatus,
+  PageVisibility,
 } from "./types.js";
+import { VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, pageVisibility } from "./locator.js";
 import {
   DEFAULT_SPEC_TIMEOUT_MS,
   FORENSICS_BUDGET_MS,
@@ -38,6 +40,7 @@ import {
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/types/automation";
+import { cancelTimersOf, describePending, installPendingTracker, pendingOf, runnerClearTimeout, runnerSetTimeout, setPendingOwner, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -354,12 +357,26 @@ function suiteOf(file: string): string {
   return cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
 }
 
-function automationRoot() {
+function automationRoot(): HostRunAutomation {
+  // The host injects the root as `lx.automation()` in the test context; that
+  // binding is the transport, not a typed global of the test program, so a
+  // spec that type-checks app Logic sees one meaning of `lx`: the app's.
   const lx = (globalThis as { lx?: { automation?: () => HostRunAutomation } }).lx;
   if (!lx || typeof lx.automation !== "function") {
-    throw new Error("lx.automation() is not available in this runtime");
+    throw new Error("The automation root is not available: rawAutomation() runs only inside an lxdev test run");
   }
   return lx.automation();
+}
+
+/**
+ * The untraced automation root of this run, with host authority. Specs drive
+ * the app through `t.app` / `t.automation`, which trace every call and stop
+ * with the spec; use this only where no fixture exists (a setup file that
+ * waits for the app before the first spec) or to reach the raw driver, e.g.
+ * `rawAutomation().lxapp().eval({ script })`.
+ */
+export function rawAutomation(): HostRunAutomation {
+  return trackAutomationRoot(automationRoot());
 }
 
 function pinApp(appId?: string): LxAppDriver {
@@ -387,7 +404,7 @@ async function reopenAppUnderTest(appId: string | undefined): Promise<{ appId: s
     let current = await status();
     const deadline = Date.now() + REOPEN_CLOSING_WAIT_MS;
     while (current === "closing" && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise<void>((resolve) => { runnerSetTimeout(resolve, 100); });
       current = await status();
     }
     if (current === "opened" || current === "opening" || current === "restarting") return undefined;
@@ -401,6 +418,27 @@ async function reopenAppUnderTest(appId: string | undefined): Promise<{ appId: s
     return { appId };
   } catch (error) {
     return { appId, error: String((error as Error)?.message ?? error) };
+  }
+}
+
+/** How long recovering the app under test may take before the run stops. */
+const RECOVERY_BUDGET_MS = 20_000;
+const RECOVER_COMMAND = "lxdev lxapp restart";
+
+/**
+ * After a spec left work pending: the same recovery a spec start and the run
+ * start use — reopen the app if it is closed, then relaunch its home page.
+ * Resolves `undefined` when the app is back, otherwise why it is not.
+ */
+async function recoverAppUnderTest(appId: string | undefined): Promise<string | undefined> {
+  const reopened = await reopenAppUnderTest(appId);
+  if (reopened?.error) return reopened.error;
+  try {
+    await within(relaunchHome(pinApp(appId)), RECOVERY_BUDGET_MS,
+      `relaunching the home page did not finish within ${RECOVERY_BUDGET_MS}ms`);
+    return undefined;
+  } catch (error) {
+    return String((error as Error)?.message ?? error);
   }
 }
 
@@ -619,9 +657,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const subject = await describeSubject();
   const cases: CaseRecord[] = [];
   forceRelaunchNext = false;
+  // Set only when the run cannot go on safely: recovering the app after a
+  // spec left work pending failed, or a restoreProfile rollback did not run.
   let contaminated = false;
   let contaminationReason: string | undefined;
 
+  installPendingTracker();
   const queue = [...plan];
   const attempts = new Map<string, CaseRecord[]>();
   const executionKey = (id: string, repeat: number) => `${id}#${repeat}`;
@@ -674,7 +715,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       ? undefined
       : unmetRequirements(item, args, openapi !== undefined);
     if (budgetExhausted || contaminated || unmet !== undefined || item.annotation === "skip" || item.annotation === "fixme") {
-      if (contaminated) record.reason = contaminationReason ?? "Not run: a previous spec left asynchronous work pending; restart the run.";
+      if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
       else if (unmet !== undefined) record.reason = unmet;
       record.status = "skipped";
@@ -725,6 +766,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // `restoreProfile`: snapshot the isolated profile now and roll back to it
     // after the spec. Registered as the first cleanup, so it runs last.
     let profileRestored = false;
+    // Timers and fetches from here on belong to this spec, so one it leaves
+    // pending can be named.
+    setPendingOwner(record.full_name);
+    const stuckWork = (): PendingWork[] => [
+      ...fixture.pendingCalls().map((work) => ({ ...work, owner: record.full_name })),
+      ...pendingOf(record.full_name),
+    ];
+    // Work this spec left pending when the run stopped waiting for it.
+    let stuck: { what: string; work: PendingWork[] } | undefined;
     const bodyPromise = (async () => {
       if (item.restoreProfile) {
         phase = "beforeEach";
@@ -758,9 +808,9 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     let timedOut = false;
     let bodySettled = false;
     void bodyResult.then(() => { bodySettled = true; });
-    let timerHandle: ReturnType<typeof setTimeout> | undefined;
+    let timerHandle: unknown;
     const timer = new Promise<"timeout">((resolve) => {
-      timerHandle = setTimeout(() => {
+      timerHandle = runnerSetTimeout(() => {
         timedOut = true;
         fixture.abort(timeoutError);
         resolve("timeout");
@@ -775,7 +825,11 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         phase = "timeout";
         forceRelaunchNext = true;
         try { await within(bodyResult, WEDGED_DEFER_BUDGET_MS, "body did not settle after timeout"); }
-        catch { contaminated = true; }
+        catch {
+          const work = stuckWork();
+          stuck = { what: "its timed-out body", work };
+          timeoutError.message += `\nThe body did not settle; still pending: ${describePending(work)}.`;
+        }
       } else if (!winner.ok) {
         if (timedOut || fixture.aborted) {
           status = "timeout";
@@ -794,7 +848,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         status = "skipped";
       }
     } finally {
-      if (timerHandle !== undefined) clearTimeout(timerHandle);
+      if (timerHandle !== undefined) runnerClearTimeout(timerHandle);
     }
 
     let evidenceCollected = false;
@@ -808,7 +862,9 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         failurePage = await within(captureForensics(fixture), FORENSICS_BUDGET_MS, "failure evidence timed out");
       } catch (forensicsError) {
         // Evidence failures must never replace the product failure.
-        if (forensicsError instanceof TimeoutError) contaminated = true;
+        if (forensicsError instanceof TimeoutError) {
+          stuck ??= { what: "failure evidence capture", work: [{ kind: "action", detail: "screenshot, page and log capture", owner: record.full_name }] };
+        }
         await host.emit({ type: "diagnostic", phase: "forensics", message: String(forensicsError) });
       }
     };
@@ -836,7 +892,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         const task = Promise.resolve().then(cleanup).finally(() => { settled = true; });
         try { await within(task, Math.max(0, deadline - Date.now()), "fixture cleanup budget exceeded"); }
         catch (err) { deferErrors.push(err); }
-        if (!settled) { contaminated = true; break; }
+        if (!settled) { stuck ??= { what: "its cleanup (t.defer / afterEach)", work: stuckWork() }; break; }
       }
     } else if (hasCleanup) {
       deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
@@ -942,10 +998,33 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const previous = cases.findIndex(item => item.id === id && (item.repeat ?? 1) === repeat);
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);
     await finishCase(host, finished);
+    if (stuck && !contaminated) {
+      // The fixture is fenced (aborted and closed), so the abandoned work can
+      // no longer act through it. Recover the app the way a spec start does,
+      // then go on; only a failed recovery ends the run.
+      let cancelled = cancelTimersOf(record.full_name);
+      const failure = await recoverAppUnderTest(item.app ?? subject?.appid);
+      cancelled += cancelTimersOf(record.full_name);
+      const summary = `"${record.full_name}" left ${stuck.what} pending: ${describePending(stuck.work)}` +
+        (cancelled > 0 ? `; cancelled its ${cancelled} pending ${cancelled === 1 ? "timer" : "timers"}` : "");
+      if (failure === undefined) {
+        forceRelaunchNext = false;
+        await host.emit({ type: "diagnostic", phase: "recovery",
+          message: `${summary}. Relaunched the app under test on its home page; the run continues.` });
+      } else {
+        contaminated = true;
+        contaminationReason = `Not run: ${summary}, and recovering the app failed: ${failure}. Recover: ${RECOVER_COMMAND}`;
+        await host.emit({ type: "diagnostic", phase: "recovery_failed",
+          message: `${summary}, and recovering the app failed: ${failure}. The remaining specs are not run. Recover: ${RECOVER_COMMAND}` });
+      }
+    }
+    setPendingOwner(undefined);
     if (!contaminated && (status === "failed" || status === "timeout") && history.length <= retries) {
       queue.splice(queue.indexOf(planned) + 1, 0, { item: { ...item }, repeat });
     }
   }
+
+  uninstallPendingTracker();
 
   // The run ends as each spec starts: with the app under test running, so
   // what comes next (a rerun, `lxdev lxapp`, a developer) does not meet a
@@ -1187,10 +1266,18 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
   } catch {
     info = undefined;
   }
+  let visibility: PageVisibility | undefined;
+  try {
+    visibility = pageVisibility(await fixture.raw.page.eval({
+      script: VISIBILITY_PROBE_SCRIPT, timeoutMs: VISIBILITY_PROBE_BUDGET_MS }));
+  } catch {
+    visibility = undefined;
+  }
   const forensics = {
     route,
     info,
     step: fixture.currentStepPath() ?? null,
+    visibility: visibility ?? null,
   };
   await fixture.attachRaw("forensics.json", forensics);
 
@@ -1198,7 +1285,8 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
   if (logs !== undefined) {
     await fixture.attachRaw("logs.txt", logs);
   }
-  return toFailurePage(route);
+  const page = toFailurePage(route);
+  return page && visibility?.note ? { ...page, hidden: visibility.note } : page;
 }
 
 async function fixtureHostLogs(): Promise<string | undefined> {
@@ -1222,6 +1310,7 @@ function reset(): void {
   resetHooks.length = 0;
   trackSurface = false;
   forceRelaunchNext = false;
+  uninstallPendingTracker();
   clearInline();
   setAssertionSink();
 }
@@ -1282,12 +1371,12 @@ async function checkContract(
 }
 
 async function within<T>(task: Promise<T>, ms: number, message: string): Promise<T> {
-  let handle: ReturnType<typeof setTimeout> | undefined;
+  let handle: unknown;
   try {
     return await Promise.race([task, new Promise<never>((_, reject) => {
-      handle = setTimeout(() => reject(new TimeoutError(message)), ms);
+      handle = runnerSetTimeout(() => reject(new TimeoutError(message)), ms);
     })]);
-  } finally { if (handle !== undefined) clearTimeout(handle); }
+  } finally { if (handle !== undefined) runnerClearTimeout(handle); }
 }
 
 /**

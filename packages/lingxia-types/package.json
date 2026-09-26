@@ -27,9 +27,6 @@
       "import": "./dist/esm/automation/index.js",
       "require": "./dist/automation/index.js"
     },
-    "./automation-test-globals": {
-      "types": "./dist/automation-test-globals.d.ts"
-    },
     "./testing": {
       "types": "./dist/testing/public-api.d.ts",
       "import": "./dist/esm/testing/public-api.js",

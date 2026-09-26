@@ -255,6 +255,8 @@ pub mod platform {
             BRIDGE_DOWNSTREAM_CSP_SOURCE, BRIDGE_DOWNSTREAM_URL,
             configure_user_agent_override_for_webviews, keep_responsive_for_development,
         };
+        #[cfg(target_os = "macos")]
+        pub use crate::apple::{DisplayAwake, keep_display_awake};
     }
 
     #[cfg(all(target_os = "linux", target_env = "ohos"))]

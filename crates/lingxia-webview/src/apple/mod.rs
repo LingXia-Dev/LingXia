@@ -33,6 +33,25 @@ pub fn keep_responsive_for_development() {
     webview::begin_development_activity();
 }
 
+/// Keeps the display awake while it lives. An automation run holds one:
+/// WebKit stops animation frames for a page whose display is asleep, so
+/// rAF- and transition-driven UI would never move under a spec.
+#[cfg(target_os = "macos")]
+pub struct DisplayAwake {
+    _activity: webview::DisplayAwakeActivity,
+}
+
+/// Public API only: an `NSProcessInfo` activity with
+/// `NSActivityIdleDisplaySleepDisabled`, ended when the guard drops. It
+/// does not help a page in a fully covered window; WebKit pauses its
+/// animation frames and nothing public changes that.
+#[cfg(target_os = "macos")]
+pub fn keep_display_awake(reason: &str) -> Option<DisplayAwake> {
+    webview::begin_display_awake_activity(reason).map(|activity| DisplayAwake {
+        _activity: activity,
+    })
+}
+
 pub(crate) fn keeps_responsive_for_development() -> bool {
     KEEP_RESPONSIVE_FOR_DEVELOPMENT.load(Ordering::Acquire)
 }

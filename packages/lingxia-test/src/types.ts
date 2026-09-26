@@ -1,5 +1,5 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
-/// <reference types="@lingxia/types/automation-test-globals" preserve="true" />
+/// <reference types="@lingxia/types/logic-globals" preserve="true" />
 import type {
   Automation,
   AutomationErrorCode,
@@ -797,6 +797,20 @@ export interface AttachmentRef {
 export interface FailurePage {
   name: string | null;
   instanceId: string | null;
+  /**
+   * Set when the page was hidden at the failure (window covered, minimized
+   * or display asleep): WebKit pauses animation frames, so rAF- and
+   * transition-driven UI never moved.
+   */
+  hidden?: string;
+}
+
+/** `document.visibilityState` and whether an animation frame arrived. */
+export interface PageVisibility {
+  state: string;
+  animationFrames: boolean;
+  /** The explanation, when the page was hidden or got no frame. */
+  note?: string;
 }
 
 /**
