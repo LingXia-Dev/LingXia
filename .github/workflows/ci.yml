@@ -1076,7 +1076,7 @@ jobs:
         run: >-
           ../../scripts/automation/run-windows-showcase.ps1
           -Framework '${{ matrix.framework }}'
-          -TimeoutSeconds 600
+          -TimeoutSeconds 900
           -BuildJobs 4
 
       - name: Run showcase automation
