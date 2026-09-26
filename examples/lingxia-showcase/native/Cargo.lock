@@ -2481,6 +2481,7 @@ dependencies = [
 name = "lingxia-control-protocol"
 version = "0.18.0"
 dependencies = [
+ "regex",
  "serde",
  "serde_json",
 ]
