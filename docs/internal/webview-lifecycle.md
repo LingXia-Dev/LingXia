@@ -813,6 +813,12 @@ in the `page_svc_map` *before* the stack moves, so
 service registration (`flush_page_reset_awaited()`). That wait is safe because
 in-Logic handlers run off the worker's message pump — the queued `CreatePage`
 still executes; the later `OnLoad` flush then finds the reset already claimed.
+Automation evals (`ServiceMessage::Eval`, behind `LxApp::eval_logic`) run off
+the pump the same way: an eval awaiting a View round trip (a page method that
+calls `setData` then `flush()`) needs the pump to deliver the View's answer,
+and one awaited on the pump used to hold every later message until its caller
+timed out, leaving the context wedged for the next spec.
+`an_awaiting_eval_leaves_the_message_pump_free` covers it.
 
 `PageState.reset` holding `AwaitingEntry` also suppresses the bridge-ready
 auto-request in `notify_bridge_ready`, so a handshake racing the entry cannot
