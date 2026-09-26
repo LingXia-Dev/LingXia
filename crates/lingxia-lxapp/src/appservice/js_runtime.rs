@@ -1132,25 +1132,30 @@ pub(crate) async fn lxapp_service_handler(
             script,
             tx,
         } => {
-            let result = if let Some(ctx) = current_ctx.as_ref() {
-                let same_app = LxApp::from_ctx(ctx)
-                    .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
-                    .unwrap_or(false);
-                if same_app {
-                    eval_logic_script_inner(ctx, &script, capture_calls).await
-                } else {
-                    Err(LxAppError::Runtime(format!(
-                        "logic runtime is bound to a different lxapp than {}",
-                        lxapp.appid
-                    )))
-                }
-            } else {
-                Err(LxAppError::Runtime(format!(
+            let Some(ctx) = current_ctx.as_ref() else {
+                let _ = tx.send(Err(LxAppError::Runtime(format!(
                     "logic runtime is not ready for {}",
                     lxapp.appid
-                )))
+                ))));
+                return;
             };
-            let _ = tx.send(result);
+            let same_app = LxApp::from_ctx(ctx)
+                .map(|ctx_app| ctx_app.session.id == lxapp.session.id)
+                .unwrap_or(false);
+            if !same_app {
+                let _ = tx.send(Err(LxAppError::Runtime(format!(
+                    "logic runtime is bound to a different lxapp than {}",
+                    lxapp.appid
+                ))));
+                return;
+            }
+            // Off the message pump, like event handlers: a script that awaits
+            // a View round trip (`page.flush()` after `setData`) needs the
+            // pump to deliver the View's answer, and awaiting the eval here
+            // would hold that answer behind it until the caller timed out.
+            context_lifecycle::spawn(ctx, move |ctx| async move {
+                let _ = tx.send(eval_logic_script_inner(&ctx, &script, capture_calls).await);
+            });
         }
     }
 }
@@ -1505,6 +1510,82 @@ mod worker_assignment_tests {
                 assert!(current.is_none());
                 assert!(dropped.load(Ordering::SeqCst));
                 assert_eq!(*app.logic_contexts.borrow(), 0);
+            })
+            .await;
+    }
+
+    /// An eval must not hold the worker's message pump: a script that waits
+    /// for something only a later message delivers (a View answer to
+    /// `page.flush()`, here a second eval) would otherwise wait until its
+    /// caller gave up, and every message behind it with it.
+    #[tokio::test(flavor = "current_thread")]
+    async fn an_awaiting_eval_leaves_the_message_pump_free() {
+        use rong::{JSEngine, RongJS};
+        tokio::task::LocalSet::new()
+            .run_until(async {
+                let root = tempfile::tempdir().unwrap();
+                let platform = Arc::new(
+                    lingxia_platform::Platform::new(
+                        root.path().join("data").display().to_string(),
+                        root.path().join("cache").display().to_string(),
+                        "en-US".to_string(),
+                    )
+                    .unwrap(),
+                );
+                let appid = format!("app.lingxia.logic-eval.{}", uuid::Uuid::new_v4());
+                crate::lxapp::register_synthetic_lxapp(appid.clone());
+                let app = Arc::new(
+                    crate::LxApp::new_with_session_class_for_test(
+                        appid,
+                        platform,
+                        crate::appservice::LxAppWorkers::init(1),
+                        crate::lxapp::AppSessionClass::StandardApp,
+                    )
+                    .unwrap(),
+                );
+                app.bind_arc();
+                let runtime = RongJS::runtime();
+                let ctx = runtime.context();
+                super::register_app_ctx(&ctx, &app);
+                let mut current = Some(ctx);
+                let eval = |script: &str| {
+                    let (tx, rx) = tokio::sync::oneshot::channel();
+                    let message = super::ServiceMessage::Eval {
+                        capture_calls: false,
+                        lxapp: app.clone(),
+                        script: script.to_string(),
+                        tx,
+                    };
+                    (message, rx)
+                };
+
+                let (waiting, waiting_rx) =
+                    eval("new Promise((resolve) => { globalThis.__release = resolve; })");
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    super::lxapp_service_handler(0, runtime.clone(), waiting, &mut current),
+                )
+                .await
+                .expect("the pump took the next message while the eval waited");
+
+                let (release, release_rx) = eval("(globalThis.__release('seven'), 'released')");
+                super::lxapp_service_handler(0, runtime.clone(), release, &mut current).await;
+                assert_eq!(
+                    tokio::time::timeout(Duration::from_secs(5), release_rx)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .unwrap(),
+                    "\"released\""
+                );
+                assert_eq!(
+                    tokio::time::timeout(Duration::from_secs(5), waiting_rx)
+                        .await
+                        .unwrap()
+                        .unwrap()
+                        .unwrap(),
+                    "\"seven\""
+                );
             })
             .await;
     }
