@@ -402,7 +402,7 @@ export interface PageElement {
    * Rendered and intersecting the viewport. Absent from a runtime that
    * predates it.
    */
-  in_viewport?: boolean;
+  inViewport?: boolean;
   enabled: boolean;
   editable: boolean;
   text: string;
@@ -418,7 +418,7 @@ export interface PageElementMiss {
   index: number;
   count: number;
   visible: false;
-  in_viewport?: false;
+  inViewport?: false;
   enabled: false;
   editable: false;
 }

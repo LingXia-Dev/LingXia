@@ -70,9 +70,11 @@ received artifacts. Keep the following invariants when changing these layers:
 - The page query payload (`lxapp::automation::build_query_script`) reports
   `visible` as rendered — non-empty box, not `display:none`,
   `visibility:hidden` or `opacity:0` — independent of scroll, and
-  `in_viewport` as rendered and intersecting `window.inner*`. Before this
+  `inViewport` as rendered and intersecting `window.inner*` (the one
+  camelCase field of that otherwise 0.18-shaped snake_case record; it was
+  `in_viewport` before 0.19, which the fixture still reads). Before this
   split `visible` was viewport-aware; `@lingxia/test` treats a missing
-  `in_viewport` (older runtime) as `visible`. The Browser driver's own query
+  `inViewport` (older runtime) as `visible`. The Browser driver's own query
   script still reports the viewport-aware `visible`. Native input paths keep
   their own viewport + hit-test refusal, which is actionability, not
   visibility.

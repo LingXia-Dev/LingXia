@@ -198,7 +198,7 @@ export function createWorld(options = {}) {
       aria_label: null,
       placeholder: null,
       visible: element.visible !== false,
-      in_viewport: element.visible !== false && element.inViewport !== false,
+      inViewport: element.visible !== false && element.inViewport !== false,
       enabled: element.enabled !== false,
       editable: element.editable !== false,
       text: element.text ?? "",
