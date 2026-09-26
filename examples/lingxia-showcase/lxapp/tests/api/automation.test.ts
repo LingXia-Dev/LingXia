@@ -1,5 +1,5 @@
 import { currentPageOrNull, waitForCurrentPage } from '../helpers/page.js';
-import { expect, spec } from '@lingxia/test';
+import { expect, rawAutomation, spec } from '@lingxia/test';
 import { bindFixture, expectReject, specNamespace } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import type { ProbeDocument, ProbeElement } from '../helpers/view.js';
@@ -36,7 +36,7 @@ spec("reject re-entrant self-eval from the app Logic runtime", { id: "AUT-005", 
     const rejection = await app.logic.eval({ timeout: 15_000 }, async ({ lx }) => {
       // The raw driver's `{ script }` eval is what this spec is about.
       try {
-        await lx.automation().lxapp().eval({ script: 'true', timeoutMs: 1_000 });
+        await rawAutomation().lxapp().eval({ script: 'true', timeoutMs: 1_000 });
         return { rejected: false };
       } catch (error) {
         const failure = error as { code?: string; message?: string } | null;
@@ -57,7 +57,7 @@ spec("evaluate across the Logic boundary", { id: "AUT-002", covers: ['LxAppDrive
   const { app } = bindFixture(t, "AUT-002");
 
     // The raw driver's `{ script }` eval is what this spec covers.
-    expect(await lx.automation().lxapp(SHOWCASE_APP_ID).eval({ script: '21 * 2' })).toBe(42);
+    expect(await rawAutomation().lxapp(SHOWCASE_APP_ID).eval({ script: '21 * 2' })).toBe(42);
   });
 
 spec("read the host surface plan with JavaScript-shaped fields", { id: "AUT-003", covers: ['LxAppDriver.surfaceLayout'], app: SHOWCASE_APP_ID }, async (t) => {
@@ -89,7 +89,7 @@ spec("wait for every page element state", { id: "AUT-004", covers: ['PageDriver.
     await waitForCurrentPage(app, 'home');
     await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 30_000 });
     // The raw page driver's own wait states are what this spec covers.
-    const page = lx.automation().lxapp(SHOWCASE_APP_ID).page;
+    const page = rawAutomation().lxapp(SHOWCASE_APP_ID).page;
 
     const id = `automation-wait-${namespace}`;
     const css = `#${id}`;

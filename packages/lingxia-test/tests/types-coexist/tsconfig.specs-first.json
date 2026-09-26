@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.base.json",
+  "include": ["probe.test.ts", "app-logic.ts", "app-globals.d.ts"]
+}

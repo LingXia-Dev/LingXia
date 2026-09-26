@@ -7,6 +7,6 @@
     "allowJs": true,
     "checkJs": false
   },
-  "include": ["**/*.ts", "globals.d.ts"],
+  "include": ["**/*.ts"],
   "exclude": []
 }

@@ -1,5 +1,5 @@
 import {
-  spec, expect, TEST_ERROR_CODES, TimeoutError,
+  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError,
   type AnyLogicPage, type AutomationErrorCode, type ClockAdvance, type ClockState, type FailureRecord, type JsonReport,
   type LogicPage, type NetworkCall, type ProfileCheckpoint, type TagSummary, type TestApp, type TestErrorCode,
 } from '../dist/index.js';
@@ -298,3 +298,14 @@ spec('host tiers', async (t) => {
 spec('trap', async (t) => {
   expect(t.app.view.testId('x'));
 });
+
+// The raw root is an import with host authority, never an ambient `lx`.
+const rawRoot = rawAutomation();
+void rawRoot.lxapp('example').network;
+void rawRoot.lxapps.list();
+// @ts-expect-error The test program has no ambient `lx`; import rawAutomation instead.
+void lx.automation();
+// The test context's runtime globals stay typed without app types.
+void setTimeout(() => {}, 1);
+void fetch;
+void console;

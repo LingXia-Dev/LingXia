@@ -745,7 +745,7 @@ export class LiveFixture implements Fixture {
       eval: (...input: unknown[]) => {
         const { options, fn, args } = evalInput(input);
         if (typeof fn !== "function") {
-          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().eval({ script }))");
+          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().eval({ script }) from @lingxia/test)");
         }
         const script = logicScript(fn, args, "t.app.logic.eval");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
@@ -832,7 +832,7 @@ export class LiveFixture implements Fixture {
   private viewEval(page: PageDriver, input: unknown[], api: string): Promise<unknown> {
     const { options, fn, args } = evalInput<ViewEvalOptions>(input);
     if (typeof fn !== "function") {
-      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().page.eval({ script }))`);
+      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test)`);
     }
     if (options?.page !== undefined && typeof options.page !== "string") {
       throw new TypeError(`${api}({ page }, fn, ...args) takes a page name or instance id`);

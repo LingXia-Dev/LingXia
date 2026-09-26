@@ -4,7 +4,6 @@ await mkdir(new URL('../dist/generated/', import.meta.url), { recursive: true })
 await mkdir(new URL('../dist/esm/', import.meta.url), { recursive: true });
 await Promise.all([
   copyFile(new URL('../src/logic-globals.d.ts', import.meta.url), new URL('../dist/logic-globals.d.ts', import.meta.url)),
-  copyFile(new URL('../automation-test-globals.d.ts', import.meta.url), new URL('../dist/automation-test-globals.d.ts', import.meta.url)),
   copyFile(new URL('../src/generated/logic-web.d.ts', import.meta.url), new URL('../dist/generated/logic-web.d.ts', import.meta.url)),
 ]);
 

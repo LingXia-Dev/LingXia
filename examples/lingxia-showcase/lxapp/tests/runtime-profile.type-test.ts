@@ -1,9 +1,8 @@
-void lx.automation();
+import { rawAutomation } from '@lingxia/test';
 
-// @ts-expect-error The automation test runtime does not expose app Logic APIs.
-void lx.host;
-// @ts-expect-error The automation test runtime does not expose lxapp storage.
-void lx.getStorage;
+// The automation root is an import; `lx` in a spec program means only the app's.
+void rawAutomation().lxapp().network;
+
 // @ts-expect-error The automation test runtime is not a page WebView.
 void document;
 // @ts-expect-error The automation test runtime does not expose Node globals.

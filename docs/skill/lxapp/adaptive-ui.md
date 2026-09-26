@@ -167,17 +167,17 @@ LingXia Runner device-frame changes report a new surface viewport. Exercise
 them in one session through automation:
 
 ```ts
-const auto = lx.automation();
-const app = auto.lxapp();
-const devices = await auto.device.list();
-const phone = devices.find((device) => device.group === 'phone')!;
-const desktop = devices.find((device) => device.group === 'desktop')!;
+spec('switches Compact and Workspace views', async (t) => {
+  const devices = await t.automation.device.list();
+  const phone = devices.find((device) => device.group === 'phone')!;
+  const desktop = devices.find((device) => device.group === 'desktop')!;
 
-await auto.device.set({ id: phone.id });
-await app.page.waitFor({ css: '[data-view="compact"]' });
+  await t.automation.device.set({ id: phone.id });
+  await t.expect(t.app.view.css('[data-view="compact"]')).toBeVisible();
 
-await auto.device.set({ id: desktop.id });
-await app.page.waitFor({ css: '[data-view="workspace"]' });
+  await t.automation.device.set({ id: desktop.id });
+  await t.expect(t.app.view.css('[data-view="workspace"]')).toBeVisible();
+});
 ```
 
 Switching form factor re-serves the page (`isMobile` / `isDesktop` are fixed

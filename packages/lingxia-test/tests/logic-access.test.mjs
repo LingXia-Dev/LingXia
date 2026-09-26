@@ -153,7 +153,7 @@ test("the fixture takes eval functions; a script string names the raw driver", a
     messages.push(await t.app.view.eval(({ document }) => document.title));
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
-  assert.match(messages[0], /t\.app\.logic\.eval\(fn, \.\.\.args\) takes a function.*lx\.automation\(\)\.lxapp\(\)\.eval\(\{ script \}\)/);
+  assert.match(messages[0], /t\.app\.logic\.eval\(fn, \.\.\.args\) takes a function.*rawAutomation\(\)\.lxapp\(\)\.eval\(\{ script \}\) from @lingxia\/test/);
   assert.match(messages[1], /t\.app\.view\.eval\(fn, \.\.\.args\) takes a function/);
   assert.equal(messages[2], "Home");
   // Only the function reached a target.

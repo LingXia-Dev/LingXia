@@ -1,5 +1,5 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
-/// <reference types="@lingxia/types/automation-test-globals" preserve="true" />
+/// <reference types="@lingxia/types/logic-globals" preserve="true" />
 import type {
   Automation,
   AutomationErrorCode,

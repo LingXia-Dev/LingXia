@@ -106,8 +106,8 @@ export interface Automation {
 }
 
 /**
- * Automation root of a host automation run — the `lx` global of an
- * `lxdev test` program (`@lingxia/types/automation-test-globals`). The run
+ * Automation root of a host automation run — `rawAutomation()` (and, traced,
+ * `t.automation`) from `@lingxia/test` in an `lxdev test` program. The run
  * carries host authority, so no selector needs a privilege grant, and the
  * selected lxapp driver adds the test-run-only members.
  */
