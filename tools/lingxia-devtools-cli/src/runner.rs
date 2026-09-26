@@ -105,7 +105,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             if json {
                 print_json(&data, false)?;
             } else {
-                print_state(&data);
+                print_state(&data)?;
             }
         }
         RunnerCommand::Set {
@@ -145,7 +145,7 @@ pub fn execute(info: &SessionInfo, options: RunnerOptions) -> Result<()> {
             if json {
                 print_json(&data, false)?;
             } else {
-                print_state(&data);
+                print_state(&data)?;
             }
         }
     }
@@ -186,10 +186,14 @@ fn print_presets(data: &Value) {
     }
 }
 
-fn print_state(data: &Value) {
+fn print_state(data: &Value) -> Result<()> {
+    println!("{}", describe_state(data)?);
+    Ok(())
+}
+
+fn describe_state(data: &Value) -> Result<String> {
     if data.is_null() {
-        println!("No environment reported by the session.");
-        return;
+        return Ok("No environment reported by the session.".to_string());
     }
     let name = data.get("name").and_then(Value::as_str).unwrap_or("");
     let id = data.get("id").and_then(Value::as_str).unwrap_or("-");
@@ -204,14 +208,14 @@ fn print_state(data: &Value) {
         .get("appearance")
         .and_then(Value::as_str)
         .unwrap_or("system");
-    // Old runners predate the field; absent means the pill is in its default
-    // shown state, so print nothing rather than a guess.
     let capsule = match data.get("capsule").and_then(Value::as_bool) {
-        Some(true) => "  capsule: on",
-        Some(false) => "  capsule: off",
-        None => "",
+        Some(true) => "on",
+        Some(false) => "off",
+        None => anyhow::bail!("the Runner reported its environment without `capsule`"),
     };
-    println!("{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}{capsule}");
+    Ok(format!(
+        "{name} ({id})  {width}x{height}  {orientation}  appearance: {appearance}  capsule: {capsule}"
+    ))
 }
 
 fn print_json(value: &Value, pretty: bool) -> Result<()> {
@@ -222,4 +226,24 @@ fn print_json(value: &Value, pretty: bool) -> Result<()> {
     };
     println!("{encoded}");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_environment_always_names_the_capsule() {
+        let state = json!({
+            "name": "iPhone 15 Pro", "id": "iphone-15-pro", "width": 393, "height": 852,
+            "landscape": false, "appearance": "dark", "capsule": false,
+        });
+        assert_eq!(
+            describe_state(&state).unwrap(),
+            "iPhone 15 Pro (iphone-15-pro)  393x852  portrait  appearance: dark  capsule: off"
+        );
+        let mut without = state.clone();
+        without.as_object_mut().unwrap().remove("capsule");
+        assert!(describe_state(&without).is_err());
+    }
 }
