@@ -1,10 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture } from '../../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 /**
  * `lx.clipboard` is the system clipboard, not a runtime-private buffer. The
@@ -30,7 +27,7 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
 }, async (t) => {
   const auto = t.automation;
   const { app, namespace } = bindFixture(t, 'DESKTOP-CLIPBOARD-001');
-  const platform = await runtimePlatform(raw);
+  const platform = await runtimePlatform(app);
   if (platform !== 'macos' && platform !== 'windows') {
     throw new Error(`desktop clipboard case ran against ${platform || 'unknown'}`);
   }
@@ -48,28 +45,32 @@ spec('lx.clipboard reads and writes the same clipboard the OS sees', {
 
   const fromOs = `os-to-lx-${namespace}-中文`;
   await desktop.set({ text: fromOs });
-  const seen = await raw.eval({
-    script: `
-      const read = await lx.clipboard.readText();
-      const types = await lx.clipboard.types();
-      return {
-        status: read.status,
-        empty: (read.status === 'canceled') ? null : (read.status === 'empty'),
-        text: read.status !== 'canceled' && !(read.status === 'empty') ? read.text : null,
-        types,
-      };
-    `,
-  }) as { status: 'ok' | 'canceled' | 'empty'; empty: boolean | null; text: string | null; types: string[] };
+  const seen = await app.logic.eval(async ({ lx }) => {
+    const read = await lx.clipboard.readText();
+    const types = await lx.clipboard.types();
+    return {
+      status: read.status,
+      empty: (read.status === 'canceled') ? null : (read.status === 'empty'),
+      text: read.status !== 'canceled' && !(read.status === 'empty') ? read.text : null,
+      types,
+    };
+  });
   expect(seen.status === 'canceled').toBe(false);
   expect(seen.empty).toBe(false);
   expect(seen.text).toBe(fromOs);
   expect(seen.types).toContain('text');
 
   const fromLx = `lx-to-os-${namespace}-emoji-✓`;
-  await raw.eval({ script: `await lx.clipboard.writeText(${JSON.stringify(fromLx)}); return true;` });
+  await app.logic.eval(async ({ lx }, text) => {
+    await lx.clipboard.writeText(text);
+    return true;
+  }, fromLx);
   expect((await desktop.get()).text).toBe(fromLx);
 
-  await raw.eval({ script: `await lx.clipboard.clear(); return true;` });
+  await app.logic.eval(async ({ lx }) => {
+    await lx.clipboard.clear();
+    return true;
+  });
   const afterClear = await desktop.get();
   expect(afterClear.text ?? '').toBe('');
 });

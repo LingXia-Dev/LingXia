@@ -3,10 +3,8 @@ import type { DesktopAxNode, DesktopWindowInfo } from '@lingxia/types/automation
 import { runtimePlatform } from '../../helpers/platform.js';
 import { waitForElementAttribute } from '../../helpers/page.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import type { ProbeElement, ProbeWindow } from '../../helpers/view.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const targetPlatform = testArgs.platform?.toLocaleLowerCase();
@@ -24,6 +22,25 @@ interface OpenedWindow {
   chrome: string;
 }
 
+/** The members of a page surface handle these probes use. */
+interface SurfaceHandle {
+  readonly id: string;
+  readonly alive: boolean;
+  readonly visible: boolean;
+  close(): Promise<void>;
+  postMessage(message: unknown): void;
+  onClose(handler: (event: { id?: string }) => void): () => void;
+  onMessage(handler: (message: { message?: string; timestamp?: number }) => void): () => void;
+}
+
+/** What a spec keeps on Logic's `globalThis` between evals. */
+interface HeldSurface {
+  handle?: SurfaceHandle | null;
+  closed?: number | Array<{ id?: string }>;
+  messages?: Array<{ message?: string; timestamp?: number }>;
+  off?: (() => void) | null;
+}
+
 interface SurfacePageSnapshot {
   text: string;
   topInset: number;
@@ -32,7 +49,7 @@ interface SurfacePageSnapshot {
 
 async function desktopPlatform(t: Fixture): Promise<string> {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
-  const actual = await runtimePlatform(raw);
+  const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
       `surface window tests require macOS or Windows; got ${actual || 'unknown'}`,
@@ -45,13 +62,10 @@ async function desktopPlatform(t: Fixture): Promise<string> {
 }
 
 async function closeKeyedSurface(app: TestApp, key: string): Promise<void> {
-  await raw.eval({
-    timeoutMs: 15_000,
-    script: `
-      const handle = lx.surface.getByKey(${JSON.stringify(key)});
-      if (handle) await handle.close();
-    `,
-  });
+  await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key) => {
+    const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
+    if (handle) await handle.close();
+  }, key);
 }
 
 async function openWindow(
@@ -59,27 +73,24 @@ async function openWindow(
   chrome: 'system' | 'full',
   key: string,
 ): Promise<OpenedWindow> {
-  return await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const handle = await lx.surface.openPage('surface', {
-        as: 'window',
-        chrome: ${JSON.stringify(chrome)},
-        key: ${JSON.stringify(key)},
-        size: { width: 480, height: 640 },
-        query: { fixture: ${JSON.stringify(key)}, chrome: ${JSON.stringify(chrome)} },
-      });
-      return {
-        id: handle.id,
-        key: handle.key,
-        kind: handle.kind,
-        realized: handle.realized,
-        visible: handle.visible,
-        alive: handle.alive,
-        chrome: ${JSON.stringify(chrome)},
-      };
-    `,
-  }) as OpenedWindow;
+  return await app.logic.eval({ timeout: 20_000 }, async ({ lx }, chrome, key): Promise<OpenedWindow> => {
+    const handle = await lx.surface.openPage('surface', {
+      as: 'window',
+      chrome,
+      key,
+      size: { width: 480, height: 640 },
+      query: { fixture: key, chrome },
+    });
+    return {
+      id: handle.id,
+      key: handle.key,
+      kind: handle.kind,
+      realized: handle.realized,
+      visible: handle.visible,
+      alive: handle.alive,
+      chrome,
+    };
+  }, chrome, key);
 }
 
 async function waitForSurfacePage(
@@ -87,25 +98,18 @@ async function waitForSurfacePage(
   fixture: string,
   expectedTopInset: number,
 ): Promise<SurfacePageSnapshot> {
-  await raw.page.waitFor({
-    page: 'surface',
-    css: '[data-testid="surface-page"]',
-    state: 'visible',
-    timeoutMs: 15_000,
-  });
+  await app.view.testId('surface-page', { page: 'surface' }).waitFor({ state: 'visible', timeout: 15_000 });
   return eventually(
-    () => raw.page.eval({
-      page: 'surface',
-      script: `(() => {
-        const layout = window.lxPageChrome && window.lxPageChrome.layout;
-        const show = document.querySelector('[data-testid="surface-show-count"]');
-        return {
-          text: document.body ? document.body.innerText : '',
-          topInset: layout ? layout.topInset : -1,
-          showCount: Number((show && show.textContent.trim()) || 0),
-        };
-      })()`,
-    }) as Promise<SurfacePageSnapshot>,
+    () => app.view.eval({ page: 'surface' }, ({ document, window }): SurfacePageSnapshot => {
+      const chrome = window.lxPageChrome as { layout?: { topInset: number } } | undefined;
+      const layout = chrome && chrome.layout;
+      const show = document.querySelector('[data-testid="surface-show-count"]');
+      return {
+        text: document.body ? document.body.innerText ?? '' : '',
+        topInset: layout ? layout.topInset : -1,
+        showCount: Number((show && show.textContent?.trim()) || 0),
+      };
+    }),
     (snapshot) => (
       typeof snapshot?.text === 'string'
       && snapshot.text.includes('Surface Page')
@@ -157,7 +161,7 @@ windowTest('native close disposes a secondary window in the dock and tray host',
   const stateKey = `__surfaceNativeClose_${namespace.replace(/-/g, '_')}`;
   defer(() => closeKeyedSurface(app, key));
   defer(async () => {
-    await raw.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}];` });
+    await app.logic.eval((_, stateKey) => { delete (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]; }, stateKey);
   });
   const before = await desktop.windows();
   await openWindow(app, 'system', key);
@@ -168,24 +172,20 @@ windowTest('native close disposes a secondary window in the dock and tray host',
     { describe: 'secondary native window to appear', timeoutMs: 10_000 },
   );
   if (!window) throw new Error('secondary native window was not found');
-  await raw.eval({
-    script: `
-      const handle = lx.surface.getByKey(${JSON.stringify(key)});
-      const state = { handle, closed: 0 };
-      handle.onClose(() => state.closed++);
-      globalThis[${JSON.stringify(stateKey)}] = state;
-    `,
-  });
+  await app.logic.eval(({ lx }, key, stateKey) => {
+    const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle;
+    const state = { handle, closed: 0 };
+    handle.onClose(() => state.closed++);
+    (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = state;
+  }, key, stateKey);
   // Showcase declares a nonexclusive tray. Native close must reach the surface
   // close handler, rather than merely hiding its HWND because a tray exists.
   await desktop.window.close({ window: window.id });
   const state = await eventually(
-    () => raw.eval({
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
-      `,
-    }) as Promise<{ alive: boolean; visible: boolean; closed: number }>,
+    () => app.logic.eval((_, stateKey) => {
+      const state = (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]!;
+      return { alive: state.handle!.alive, visible: state.handle!.visible, closed: state.closed as number };
+    }, stateKey),
     (state) => !state.alive && !state.visible && state.closed > 0,
     { describe: 'native close to dispose the surface and notify its owner', timeoutMs: 10_000 },
   );
@@ -211,9 +211,7 @@ windowTest('open a page window with system chrome and with full chrome', {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-SURFACE-WINDOW-001');
   const platform = await desktopPlatform(t);
   const desktop = t.automation.desktop;
-  const fullOffered = await raw.eval({
-    script: `return !!lx.supports('surface.window.fullChrome')`,
-  }) as boolean;
+  const fullOffered = await app.logic.eval(({ lx }) => !!lx.supports('surface.window.fullChrome'));
   expect(fullOffered).toBeTruthy();
 
   const chromes: Array<'system' | 'full'> = ['system', 'full'];
@@ -257,9 +255,7 @@ windowTest('open a page window with system chrome and with full chrome', {
 
     await closeKeyedSurface(app, key);
     await eventually(
-      () => raw.eval({
-        script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
-      }),
+      () => app.logic.eval(({ lx }, key) => lx.surface.getByKey(key) == null, key),
       (closed) => closed === true,
       { describe: `${chrome} chrome surface to close`, timeoutMs: 10_000 });
   }
@@ -373,10 +369,9 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
   for (const chrome of chromes) {
     const key = `${namespace}-${chrome}`;
     defer(() => closeKeyedSurface(app, key));
+    const captionKey = `__surfaceCaption_${namespace}_${chrome}`;
     defer(async () => {
-      await raw.eval({
-        script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
-      });
+      await app.logic.eval((_, captionKey) => { delete (globalThis as unknown as Record<string, HeldSurface | undefined>)[captionKey]; }, captionKey);
     });
     const before = await desktop.windows();
     await openWindow(app, chrome, key);
@@ -431,31 +426,26 @@ windowTest('caption buttons stay on top and can close both chrome modes', {
       );
     }
 
-    await raw.eval({
-      script: `
-        const handle = lx.surface.getByKey(${JSON.stringify(key)});
-        const state = { handle, closed: 0 };
-        handle.onClose(() => state.closed++);
-        globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}] = state;
-      `,
-    });
+    await app.logic.eval(({ lx }, key, captionKey) => {
+      const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle;
+      const state = { handle, closed: 0 };
+      handle.onClose(() => state.closed++);
+      (globalThis as unknown as Record<string, HeldSurface | undefined>)[captionKey] = state;
+    }, key, captionKey);
     const closable = await desktop.window.status({ window: opened.id });
     await desktop.window.activate({ window: closable.id });
     await invokeCaption(desktop, closable, captionButtonNames(platform, 'close'));
     const state = await eventually(
-      () => raw.eval({
-        script: `
-          const state = globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];
-          return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
-        `,
-      }) as Promise<{ alive: boolean; visible: boolean; closed: number }>,
+      () => app.logic.eval((_, captionKey) => {
+        const state = (globalThis as unknown as Record<string, HeldSurface | undefined>)[captionKey]!;
+        return { alive: state.handle!.alive, visible: state.handle!.visible, closed: state.closed as number };
+      }, captionKey),
       (state) => !state.alive && !state.visible && state.closed > 0,
       { timeoutMs: 10_000, describe: `${chrome} chrome caption close to dispose the surface` },
     );
     expect(state.closed).toBe(1);
-    await raw.eval({
-      script: `delete globalThis[${JSON.stringify(`__surfaceCaption_${namespace}_${chrome}`)}];`,
-    }).catch(() => undefined);
+    await app.logic.eval((_, captionKey) => { delete (globalThis as unknown as Record<string, HeldSurface | undefined>)[captionKey]; }, captionKey)
+      .catch(() => undefined);
   }
 });
 
@@ -472,47 +462,45 @@ windowTest('deliver a child page message to its opener before closing', {
 
   defer(() => closeKeyedSurface(app, key));
   defer(async () => {
-    await raw.eval({
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        if (state?.off) state.off();
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    }).catch(() => undefined);
+    await app.logic.eval((_, stateKey) => {
+      const held = globalThis as unknown as Record<string, HeldSurface | undefined>;
+      const state = held[stateKey];
+      if (state?.off) state.off();
+      delete held[stateKey];
+    }, stateKey).catch(() => undefined);
   });
 
   const opened = await openWindow(app, 'system', key);
   expect(opened.kind).toBe('page');
   await waitForSurfacePage(app, key, 0);
 
-  await raw.eval({
-    script: `
-      const handle = lx.surface.getByKey(${JSON.stringify(key)});
-      if (!handle) throw new Error('message surface was not registered');
-      const state = { messages: [], off: null };
-      state.off = handle.onMessage((message) => state.messages.push(message));
-      globalThis[${JSON.stringify(stateKey)}] = state;
-    `,
-  });
+  await app.logic.eval(({ lx }, key, stateKey) => {
+    const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
+    if (!handle) throw new Error('message surface was not registered');
+    const state: HeldSurface = { messages: [], off: null };
+    state.off = handle.onMessage((message) => state.messages!.push(message));
+    (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = state;
+  }, key, stateKey);
 
-  await raw.page.eval({
-    page: 'surface',
-    script: `(() => {
-      const input = document.querySelector('input[placeholder="Message to parent page"]');
-      if (!(input instanceof HTMLInputElement)) throw new Error('surface message input missing');
-      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
-      if (!setter) throw new Error('HTMLInputElement value setter missing');
-      setter.call(input, ${JSON.stringify(marker)});
-      input.dispatchEvent(new InputEvent('input', {
-        bubbles: true,
-        data: ${JSON.stringify(marker)},
-        inputType: 'insertText',
-      }));
-      return input.value;
-    })()`,
-  });
+  await app.view.eval({ page: 'surface' }, ({ document, window }, marker) => {
+    const page = window as unknown as ProbeWindow & {
+      HTMLInputElement: (new () => unknown) & { prototype: object };
+      InputEvent: new (type: string, init: { bubbles?: boolean; data?: string; inputType?: string }) => unknown;
+    };
+    const input = document.querySelector('input[placeholder="Message to parent page"]') as ProbeElement | null;
+    if (!(input instanceof page.HTMLInputElement)) throw new Error('surface message input missing');
+    const setter = Object.getOwnPropertyDescriptor(page.HTMLInputElement.prototype, 'value')?.set;
+    if (!setter) throw new Error('HTMLInputElement value setter missing');
+    setter.call(input, marker);
+    input.dispatchEvent(new page.InputEvent('input', {
+      bubbles: true,
+      data: marker,
+      inputType: 'insertText',
+    }));
+    return input.value ?? null;
+  }, marker);
   await waitForElementAttribute(
-    raw,
+    t,
     'surface',
     'input[placeholder="Message to parent page"]',
     'data-controlled-value',
@@ -521,9 +509,7 @@ windowTest('deliver a child page message to its opener before closing', {
   await app.view.testId("surface-send-message", { page: 'surface' }).click();
 
   const messages = await eventually(
-    () => raw.eval({
-      script: `return globalThis[${JSON.stringify(stateKey)}]?.messages ?? []`,
-    }) as Promise<Array<{ message?: string; timestamp?: number }>>,
+    () => app.logic.eval((_, stateKey) => (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]?.messages ?? [], stateKey),
     (value) => value.some((message) => message.message === marker),
     { describe: 'surface message delivered to opener', timeoutMs: 10_000 },
   );
@@ -531,9 +517,7 @@ windowTest('deliver a child page message to its opener before closing', {
   expect(typeof received?.timestamp).toBe('number');
 
   await eventually(
-    () => raw.eval({
-      script: `return lx.surface.getByKey(${JSON.stringify(key)}) == null`,
-    }),
+    () => app.logic.eval(({ lx }, key) => lx.surface.getByKey(key) == null, key),
     (closed) => closed === true,
     { describe: 'messaging surface to close itself', timeoutMs: 10_000 },
   );
@@ -554,22 +538,17 @@ windowTest('push a message from the opener into its page window', {
   expect(opened.alive).toBeTruthy();
   await waitForSurfacePage(app, key, 0);
 
-  await raw.eval({
-    script: `
-      const handle = lx.surface.getByKey(${JSON.stringify(key)});
-      if (!handle) throw new Error('post surface was not registered');
-      handle.postMessage({ ping: ${JSON.stringify(namespace)} });
-    `,
-  });
+  await app.logic.eval(({ lx }, key, namespace) => {
+    const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle | null;
+    if (!handle) throw new Error('post surface was not registered');
+    handle.postMessage({ ping: namespace });
+  }, key, namespace);
   const inbound = await eventually(
-    () => raw.page.eval({
-      page: 'surface',
-      script: `(() => {
-        const text = document.querySelector('[data-testid="surface-inbound"]');
-        const count = document.querySelector('[data-testid="surface-inbound-count"]');
-        return { text: text ? text.textContent.trim() : '', count: count ? count.textContent.trim() : '' };
-      })()`,
-    }) as Promise<{ text: string; count: string }>,
+    () => app.view.eval({ page: 'surface' }, ({ document }) => {
+      const text = document.querySelector('[data-testid="surface-inbound"]');
+      const count = document.querySelector('[data-testid="surface-inbound-count"]');
+      return { text: text?.textContent?.trim() ?? '', count: count?.textContent?.trim() ?? '' };
+    }),
     (value) => value.text.includes(namespace),
     { describe: 'opener message to reach the surface page', timeoutMs: 10_000 },
   );
@@ -578,26 +557,26 @@ windowTest('push a message from the opener into its page window', {
 
   // Closing from the opener flips `alive` on the same handle once the native
   // close lands — after close() itself resolves, so observe rather than read.
-  await raw.eval({
-    timeoutMs: 15_000,
-    script: `
-      const handle = lx.surface.getByKey(${JSON.stringify(key)});
-      const state = { handle, closed: [] };
-      handle.onClose((event) => state.closed.push(event));
-      globalThis[${JSON.stringify(stateKey)}] = state;
-      await handle.close();
-    `,
-  });
+  await app.logic.eval({ timeout: 15_000 }, async ({ lx }, key, stateKey) => {
+    const handle = lx.surface.getByKey(key) as unknown as SurfaceHandle;
+    const closed: Array<{ id?: string }> = [];
+    handle.onClose((event) => closed.push(event));
+    (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey] = { handle, closed };
+    await handle.close();
+  }, key, stateKey);
   defer(async () => {
-    await raw.eval({ script: `delete globalThis[${JSON.stringify(stateKey)}]` }).catch(() => undefined);
+    await app.logic.eval((_, stateKey) => { delete (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]; }, stateKey)
+      .catch(() => undefined);
   });
   const closed = await eventually(
-    () => raw.eval({
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        return { alive: state.handle.alive, visible: state.handle.visible, closed: state.closed };
-      `,
-    }) as Promise<{ alive: boolean; visible: boolean; closed: Array<{ id?: string }> }>,
+    () => app.logic.eval((_, stateKey) => {
+      const state = (globalThis as unknown as Record<string, HeldSurface | undefined>)[stateKey]!;
+      return {
+        alive: state.handle!.alive,
+        visible: state.handle!.visible,
+        closed: (state.closed as Array<{ id?: string }>).map((event) => ({ id: event.id ?? null })),
+      };
+    }, stateKey),
     (state) => !state.alive && !state.visible && state.closed.length >= 1,
     { describe: 'closed surface handle to report alive=false, visible=false, and fire onClose', timeoutMs: 10_000 },
   );

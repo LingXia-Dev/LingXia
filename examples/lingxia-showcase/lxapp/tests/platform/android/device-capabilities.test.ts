@@ -1,10 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
-import { bindFixture, evalCaught } from '../../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { bindFixture, type Caught } from '../../helpers/poll.js';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
@@ -36,40 +33,37 @@ androidSpec('scan, read, and observe Wi-Fi on a real radio', {
   reason: 'needs a device with Wi-Fi on, location services on, and the location permission granted',
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'ANDROID-WIFI-001');
-  expect(await runtimePlatform(raw)).toBe('android');
+  expect(await runtimePlatform(app)).toBe('android');
   defer(async () => {
-    await raw.eval({ script: 'await lx.stopWifi();' }).catch(() => undefined);
+    await app.logic.eval(async ({ lx }) => { await lx.stopWifi(); }).catch(() => undefined);
   });
 
-  const result = await raw.eval({
-    timeoutMs: 30_000,
-    script: `
-      await lx.startWifi();
-      const list = await lx.getWifiList();
-      const connected = await lx.getConnectedWifi();
-      // A listener handle must be a function and stay inert after unsubscribe.
-      const off = lx.onWifiConnected(() => {});
-      const listener = typeof off;
-      off();
-      off();
-      await lx.stopWifi();
-      return {
-        started: true,
-        list: {
-          count: list.length,
-          named: list.filter((entry) => typeof entry.ssid === 'string').length,
-          sample: list[0] ? String(list[0].ssid) : '',
-        },
-        connected: {
-          ssid: String(connected.ssid ?? ''),
-          frequency: Number(connected.frequency ?? 0),
-          signal: Number(connected.signalStrength ?? -1),
-        },
-        listener,
-        stopped: true,
-      };
-    `,
-  }) as WifiRoundTrip;
+  const result: WifiRoundTrip = await app.logic.eval({ timeout: 30_000 }, async ({ lx }) => {
+    await lx.startWifi();
+    const list = await lx.getWifiList();
+    const connected = await lx.getConnectedWifi();
+    // A listener handle must be a function and stay inert after unsubscribe.
+    const off = lx.onWifiConnected(() => {});
+    const listener = typeof off;
+    off();
+    off();
+    await lx.stopWifi();
+    return {
+      started: true,
+      list: {
+        count: list.length,
+        named: list.filter((entry) => typeof entry.ssid === 'string').length,
+        sample: list[0] ? String(list[0].ssid) : '',
+      },
+      connected: {
+        ssid: String(connected.ssid ?? ''),
+        frequency: Number(connected.frequency ?? 0),
+        signal: Number(connected.signalStrength ?? -1),
+      },
+      listener,
+      stopped: true,
+    };
+  });
 
   // A scan on a real radio sees the networks around it, and every entry is shaped.
   expect(result.list.count).toBeGreaterThan(0);
@@ -90,27 +84,29 @@ androidMediaSpec('save an image and a video into the photo library', {
   reason: 'needs the HTTP fixture reachable from the device (adb reverse) and an Android host',
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-PHOTOS-001');
-  expect(await runtimePlatform(raw)).toBe('android');
+  expect(await runtimePlatform(app)).toBe('android');
 
   // Android 10+ writes an app's own media through MediaStore with no permission
   // prompt, so this is a complete contract with no external UI.
-  const saved = await raw.eval({
-    timeoutMs: 40_000,
-    script: `
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
-      const mp4 = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.mp4`)} }).result;
-      await lx.saveImageToPhotosAlbum({ filePath: png.uri });
-      await lx.saveVideoToPhotosAlbum({ filePath: mp4.uri });
-      return { image: png.sizeBytes, video: mp4.sizeBytes };
-    `,
-  }) as { image: number; video: number };
+  const saved = await app.logic.eval({ timeout: 40_000 }, async ({ lx }, base) => {
+    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
+    const mp4 = await lx.downloadFile({ url: base + '/media/sample.mp4' }).result;
+    await lx.saveImageToPhotosAlbum({ filePath: png.uri });
+    await lx.saveVideoToPhotosAlbum({ filePath: mp4.uri });
+    return { image: png.sizeBytes, video: mp4.sizeBytes };
+  }, httpBase ?? '');
   expect(saved.image).toBeGreaterThan(0);
   expect(saved.video).toBeGreaterThan(0);
 
   await t.step('a missing source rejects instead of reporting a save', async () => {
-    const rejected = await evalCaught(raw, `
-      await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' });
-    `);
+    const rejected: Caught = await app.logic.eval(async ({ lx }) => {
+      try {
+        return { ok: true, value: await lx.saveImageToPhotosAlbum({ filePath: 'lx://temp/does-not-exist.png' }) };
+      } catch (error) {
+        const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+        return { ok: false, code, message: String(message ?? error), data };
+      }
+    });
     expect(rejected.ok).toBeFalsy();
     expect(typeof rejected.code).toBe('string');
   });
@@ -122,17 +118,15 @@ androidSpec('fire both haptics without a dialog', {
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, 'ANDROID-HAPTICS-001');
-  expect(await runtimePlatform(raw)).toBe('android');
+  expect(await runtimePlatform(app)).toBe('android');
 
   // Whether the motor moved is not observable from here; that the call is
   // supported and resolves — where a desktop rejects it — is.
-  const result = await raw.eval({
-    script: `
-      const short = await lx.vibrateShort();
-      const long = await lx.vibrateLong();
-      return { short, long };
-    `,
-  }) as { short: unknown; long: unknown };
+  const result = await app.logic.eval(async ({ lx }) => {
+    const short: unknown = await lx.vibrateShort();
+    const long: unknown = await lx.vibrateLong();
+    return { short, long };
+  });
   expect(result.short).toBe(true);
   expect(result.long).toBe(true);
 });

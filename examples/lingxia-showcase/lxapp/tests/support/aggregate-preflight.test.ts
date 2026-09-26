@@ -1,9 +1,7 @@
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { runtimePlatform } from '../helpers/platform.js';
 
 const args = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 
@@ -19,9 +17,7 @@ spec("match the aggregate entry to the running platform and framework", { id: "T
     throw new Error(`Unsupported aggregate framework '${expectedFramework}'`);
   }
 
-  const actualPlatform = await raw.eval({
-    script: 'return String(lx.host.getBaseInfo().os || "").toLowerCase()',
-  });
+  const actualPlatform = await runtimePlatform(app);
   expect(actualPlatform).toBe(expectedPlatform);
 
   const expectedExtension = expectedFramework === 'react' ? '.tsx' : '.vue';

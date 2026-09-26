@@ -1,8 +1,5 @@
-import type { LxAppDriver } from '@lingxia/types/automation';
+import type { TestApp } from '@lingxia/test';
 
-
-export async function runtimePlatform(app: LxAppDriver): Promise<string> {
-  return app.eval({
-    script: 'return String(lx.host.getBaseInfo().os || "").toLowerCase()',
-  }) as Promise<string>;
+export async function runtimePlatform(app: TestApp): Promise<string> {
+  return app.logic.eval(({ lx }) => String(lx.host.getBaseInfo().os || '').toLowerCase());
 }

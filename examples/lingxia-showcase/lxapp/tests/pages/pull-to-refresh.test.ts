@@ -1,11 +1,8 @@
-import type { TestApp } from '@lingxia/test';
+import type { Fixture, TestApp } from '@lingxia/test';
 import { waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
-import { bindFixture, evalCaught, eventually, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { bindFixture, eventually, type Caught } from '../helpers/poll.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
 interface RefreshState {
   count: number;
@@ -13,12 +10,11 @@ interface RefreshState {
 }
 
 async function refreshState(app: TestApp): Promise<RefreshState> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
-      return { count: page?.data?.refreshCount ?? -1, refreshing: !!page?.data?.isRefreshing };
-    `,
-  }) as Promise<RefreshState>;
+  return app.logic.eval(({ getCurrentPages }): RefreshState => {
+    const page = getCurrentPages().find((candidate) => candidate.route.includes('/pulltorefresh/'));
+    const data = (page?.data ?? {}) as { refreshCount?: number; isRefreshing?: boolean };
+    return { count: data.refreshCount ?? -1, refreshing: !!data.isRefreshing };
+  });
 }
 
 async function waitForRefreshState(
@@ -31,9 +27,9 @@ async function waitForRefreshState(
   });
 }
 
-async function waitForStatus(app: TestApp, expected: string): Promise<string> {
+async function waitForStatus(t: Fixture, expected: string): Promise<string> {
   return waitForElementText(
-    raw,
+    t,
     'pullToRefresh',
     '[data-testid="pull-refresh-status"]',
     (text) => text.includes(expected),
@@ -45,7 +41,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   const { app } = bindFixture(t, "PULL-001");
 
   await app.nav.relaunch({ page: 'pullToRefresh' });
-  await raw.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
+  await app.view.testId('pull-refresh-page', { page: 'pullToRefresh' }).waitFor({ timeout: 30_000 });
 
   const before = await refreshState(app);
   await app.view.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
@@ -53,24 +49,27 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
     app,
     (state) => state.refreshing && state.count > before.count,
   );
-  expect(await waitForStatus(app, 'Refreshing')).toContain('Refreshing');
+  expect(await waitForStatus(t, 'Refreshing')).toContain('Refreshing');
 
-  const count = await raw.page.query({
-    page: 'pullToRefresh',
-    css: '[data-testid="pull-refresh-count"]',
-    full: true,
-  });
+  const count = await app.view.testId('pull-refresh-count', { page: 'pullToRefresh' }).query();
   expect(count.exists && Number(count.text)).toBe(refreshing.count);
 
   await app.view.testId("pull-refresh-stop", { page: 'pullToRefresh' }).click();
   await waitForRefreshState(app, (state) => !state.refreshing && state.count === refreshing.count);
-  expect(await waitForStatus(app, 'Idle')).toContain('Idle');
+  expect(await waitForStatus(t, 'Idle')).toContain('Idle');
 
   await t.step('start rejects when the current page has not enabled pull-down refresh', async () => {
     await app.nav.relaunch({ page: 'home' });
-    await raw.page.waitFor({ page: 'home', css: '[data-testid="home-page"]' });
+    await app.view.testId('home-page', { page: 'home' }).waitFor({ timeout: 30_000 });
 
-    const rejected = await evalCaught(raw, 'lx.startPullDownRefresh();');
+    const rejected: Caught = await app.logic.eval(async ({ lx }) => {
+      try {
+        return { ok: true, value: await lx.startPullDownRefresh() };
+      } catch (error) {
+        const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+        return { ok: false, code, message: String(message ?? error), data };
+      }
+    });
     expect(rejected.ok).toBeFalsy();
     expect(rejected.code).toBe('E_INVALID_STATE');
     expect((rejected.data as { bizCode?: number } | undefined)?.bizCode).toBe(4004);

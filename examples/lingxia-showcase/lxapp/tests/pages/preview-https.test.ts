@@ -1,9 +1,7 @@
 import { expect, spec, type Fixture } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import type { PreviewMediaHandle } from '@lingxia/types';
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const selectedGate = testArgs.gate?.toLocaleLowerCase();
@@ -14,6 +12,16 @@ const HTTPS_IMAGE =
   'https://cn.bing.com/th?id=OHR.BulgariaRocks_EN-US3184562282_UHD.jpg';
 const HTTPS_VIDEO =
   'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+
+/** What the probe keeps on Logic's `globalThis` under its spec's key. */
+interface HttpsPreviewSession {
+  handle: PreviewMediaHandle;
+  controller: AbortController;
+  presented: boolean;
+  completed: { reason: string; index: number } | null;
+  completedError: { name: string; message: string } | null;
+}
+type Sessions = Record<string, HttpsPreviewSession | undefined>;
 
 interface HttpsHandleState {
   presented: boolean;
@@ -38,45 +46,40 @@ async function presentHttpsPreview(
 ): Promise<void> {
   const { app, namespace, defer } = bindFixture(t, id);
   const stateKey = `__lingxiaPreviewHttps_${namespace.replace(/-/g, '_')}`;
-  const readState = () => raw.eval({
-    script: `
-      const s = globalThis[${JSON.stringify(stateKey)}];
-      return {
-        presented: !!s?.presented,
-        currentIndex: s?.handle.current.index ?? -1,
-        currentPath: s?.handle.current.source.path ?? '',
-        completed: s?.completed ?? null,
-        completedError: s?.completedError ?? null,
-      };
-    `,
-  }) as Promise<HttpsHandleState>;
+  const readState = () => app.logic.eval((_, key): HttpsHandleState => {
+    const s = (globalThis as unknown as Sessions)[key];
+    return {
+      presented: !!s?.presented,
+      currentIndex: s?.handle.current.index ?? -1,
+      currentPath: s?.handle.current.source.path ?? '',
+      completed: s?.completed ?? null,
+      completedError: s?.completedError ?? null,
+    };
+  }, stateKey);
 
   defer(async () => {
-    await raw.eval({
-      script: `
-        const s = globalThis[${JSON.stringify(stateKey)}];
-        if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    }).catch(() => undefined);
+    await app.logic.eval((_, key) => {
+      const sessions = globalThis as unknown as Sessions;
+      const s = sessions[key];
+      if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
+      delete sessions[key];
+    }, stateKey).catch(() => undefined);
   });
 
-  const started = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const url = ${JSON.stringify(url)};
-      const controller = new AbortController();
-      const handle = lx.previewMedia({ path: url, type: ${JSON.stringify(type)}, signal: controller.signal });
-      const state = { handle, controller, presented: false, completed: null, completedError: null };
-      globalThis[${JSON.stringify(stateKey)}] = state;
-      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
-      handle.completed.then(
-        (result) => { state.completed = { reason: result.reason, index: result.index }; },
-        (error) => { state.completedError = { name: error && error.name, message: String(error && error.message || error) }; }
-      );
-      return { index: handle.current.index, sourcePath: handle.current.source.path };
-    `,
-  }) as { index: number; sourcePath: string };
+  const started = await app.logic.eval({ timeout: 20_000 }, ({ lx }, key, url, type) => {
+    const controller = new AbortController();
+    const handle = lx.previewMedia({ path: url, type, signal: controller.signal });
+    const state: HttpsPreviewSession = { handle, controller, presented: false, completed: null, completedError: null };
+    (globalThis as unknown as Sessions)[key] = state;
+    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.completed.then(
+      (result) => { state.completed = { reason: result.reason, index: result.index }; },
+      (error: { name?: string; message?: string } | null) => {
+        state.completedError = { name: String(error?.name), message: String(error?.message ?? error) };
+      },
+    );
+    return { index: handle.current.index, sourcePath: handle.current.source.path };
+  }, stateKey, url, type);
   expect(started.index).toBe(0);
   expect(started.sourcePath).toBe(url);
 
@@ -91,9 +94,10 @@ async function presentHttpsPreview(
   expect(state.completed).toBe(null);
   expect(state.completedError).toBe(null);
 
-  await raw.eval({
-    script: `globalThis[${JSON.stringify(stateKey)}].controller.abort(); return true;`,
-  });
+  await app.logic.eval((_, key) => {
+    (globalThis as unknown as Sessions)[key]?.controller.abort();
+    return true;
+  }, stateKey);
   await eventually(
     readState,
     (value) => value.completedError != null || value.completed != null,

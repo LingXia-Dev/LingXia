@@ -1,11 +1,9 @@
-import type { TestApp } from '@lingxia/test';
+import type { Fixture, LogicPage, TestApp } from '@lingxia/test';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import type { ProbeElement } from '../helpers/view.js';
 
 interface SurfaceLifecycleState {
   showCount: number;
@@ -21,26 +19,25 @@ spec('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-
 
   await app.nav.relaunch({ page: 'home' });
   await app.nav.to({ page: 'bridge-repro' });
-  await waitForCurrentPage(raw, 'bridge-repro');
+  await waitForCurrentPage(app, 'bridge-repro');
   await app.nav.to({ page: 'feedback' });
-  await waitForCurrentPage(raw, 'feedback');
+  await waitForCurrentPage(app, 'feedback');
   await app.nav.back();
-  await waitForCurrentPage(raw, 'bridge-repro');
+  await waitForCurrentPage(app, 'bridge-repro');
 });
 
 async function surfaceLifecycleState(app: TestApp): Promise<SurfaceLifecycleState | null> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/surface/'));
-      return page
-        ? {
-            showCount: page.data.showCount ?? -1,
-            hideCount: page.data.hideCount ?? -1,
-            lastLifecycle: page.data.lastLifecycle ?? '',
-          }
-        : null;
-    `,
-  }) as Promise<SurfaceLifecycleState | null>;
+  return app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages<LogicPage<Partial<SurfaceLifecycleState>>>()
+      .find((candidate) => candidate.route.includes('/surface/'));
+    return page
+      ? {
+          showCount: page.data.showCount ?? -1,
+          hideCount: page.data.hideCount ?? -1,
+          lastLifecycle: page.data.lastLifecycle ?? '',
+        }
+      : null;
+  });
 }
 
 async function waitForSurfaceLifecycle(
@@ -64,7 +61,7 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   await app.nav.to({ page: 'surface' });
   const shown = await waitForSurfaceLifecycle(app, (
@@ -74,14 +71,14 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
 
   // Pushing another page hides the surface page without unloading it.
   await app.nav.to({ page: 'feedback' });
-  await waitForCurrentPage(raw, 'feedback');
+  await waitForCurrentPage(app, 'feedback');
   const hidden = await waitForSurfaceLifecycle(app, ({ hideCount }) => hideCount === 1);
   expect(hidden.lastLifecycle).toContain('onHide');
   expect(hidden.showCount).toBe(1);
 
   // Popping back re-shows the same instance: counters keep accumulating.
   await app.nav.back();
-  await waitForCurrentPage(raw, 'surface');
+  await waitForCurrentPage(app, 'surface');
   const reshown = await waitForSurfaceLifecycle(app, (
     { showCount, hideCount },
   ) => showCount === 2 && hideCount === 1);
@@ -96,25 +93,24 @@ interface ResetDemoState {
 }
 
 async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
-  return raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
-      return page
-        ? {
-            instanceTag: page.data.instanceTag ?? '',
-            previousInstanceTag: page.data.previousInstanceTag ?? '',
-            logicCounter: page.data.logicCounter ?? -1,
-            moduleCounter: page.data.moduleCounter ?? -1,
-          }
-        : null;
-    `,
-  }) as Promise<ResetDemoState | null>;
+  return app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages<LogicPage<Partial<ResetDemoState>>>()
+      .find((candidate) => candidate.route.includes('/ui/'));
+    return page
+      ? {
+          instanceTag: page.data.instanceTag ?? '',
+          previousInstanceTag: page.data.previousInstanceTag ?? '',
+          logicCounter: page.data.logicCounter ?? -1,
+          moduleCounter: page.data.moduleCounter ?? -1,
+        }
+      : null;
+  });
 }
 
 async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
   await app.nav.to({ page: 'ui' });
-  await waitForCurrentPage(raw, 'ui');
-  await raw.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
+  await waitForCurrentPage(app, 'ui');
+  await app.view.testId('ui-navigate-to', { page: 'ui' }).waitFor({ timeout: 30_000 });
   const state = await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate !== null
@@ -126,8 +122,8 @@ async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
   return state;
 }
 
-const waitForViewCounter = (app: TestApp, expected: string) => waitForElementText(
-  raw,
+const waitForViewCounter = (t: Fixture, expected: string) => waitForElementText(
+  t,
   'ui',
   '[data-testid="lifecycle-view-counter"]',
   (text) => text.trim() === expected,
@@ -141,7 +137,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
   expect(first.logicCounter).toBe(0);
@@ -149,24 +145,24 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   // Dirty both layers plus the DOM, and the module-scoped counter that
   // must NOT reset.
   const moduleBase = first.moduleCounter;
-  await raw.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]', state: 'attached' });
-  await raw.page.eval({
-    page: 'ui',
-    script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
+  await app.view.testId('lifecycle-open-popup', { page: 'ui' }).waitFor({ state: 'attached', timeout: 30_000 });
+  await app.view.eval({ page: 'ui' }, ({ document }) => {
+    (document.querySelector('[data-testid="lifecycle-open-popup"]') as ProbeElement | null)
+      ?.scrollIntoView({ block: 'center' });
   });
   await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
   await app.view.testId("lifecycle-bump-view", { page: 'ui' }).click();
   await app.view.testId("lifecycle-bump-module", { page: 'ui' }).click();
   await app.view.testId("lifecycle-open-popup", { page: 'ui' }).click();
-  await raw.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
+  await app.view.testId('lifecycle-popup', { page: 'ui' }).waitFor({ state: 'visible', timeout: 30_000 });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
-  await waitForViewCounter(app, '1');
+  await waitForViewCounter(t, '1');
 
   // Leaving ends the instance; the teardown lands after the pop transition.
   await app.nav.back();
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   // Past the deferred-teardown delay, so this covers the timer path rather
   // than the teardown being flushed by a fast re-entry.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
@@ -177,12 +173,9 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   expect(second.logicCounter).toBe(0);
   // Module scope survives the instance: the fresh entry sees the bump.
   expect(second.moduleCounter).toBe(moduleBase + 1);
-  await waitForViewCounter(app, '0');
+  await waitForViewCounter(t, '0');
 
-  const popup = await raw.page.query({
-    page: 'ui',
-    css: '[data-testid="lifecycle-popup"]',
-  });
+  const popup = await app.view.css('[data-testid="lifecycle-popup"]', { page: 'ui' }).first().query();
   expect(popup.exists).toBe(false);
 });
 
@@ -193,19 +186,18 @@ spec("stack two live instances of one route and unwind them independently", { id
     await app.nav.relaunch({ page: 'home' });
   });
 
-  const topDemoState = async (): Promise<ResetDemoState | null> => raw.eval({
-    script: `
-      const page = getCurrentPages().at(-1);
-      return page && page.route.includes('/ui/')
-        ? {
-            instanceTag: page.data.instanceTag ?? '',
-            previousInstanceTag: page.data.previousInstanceTag ?? '',
-            logicCounter: page.data.logicCounter ?? -1,
-            moduleCounter: page.data.moduleCounter ?? -1,
-          }
-        : null;
-    `,
-  }) as Promise<ResetDemoState | null>;
+  const topDemoState = async (): Promise<ResetDemoState | null> => app.logic.eval(({ getCurrentPages }) => {
+    const pages = getCurrentPages<LogicPage<Partial<ResetDemoState>>>();
+    const page = pages[pages.length - 1];
+    return page && page.route.includes('/ui/')
+      ? {
+          instanceTag: page.data.instanceTag ?? '',
+          previousInstanceTag: page.data.previousInstanceTag ?? '',
+          logicCounter: page.data.logicCounter ?? -1,
+          moduleCounter: page.data.moduleCounter ?? -1,
+        }
+      : null;
+  });
   const waitForTopDemo = () => eventually(topDemoState, (
     candidate,
   ) => candidate !== null && candidate.instanceTag !== '', {
@@ -213,9 +205,9 @@ spec("stack two live instances of one route and unwind them independently", { id
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   await app.nav.to({ page: 'ui' });
-  await waitForCurrentPage(raw, 'ui');
+  await waitForCurrentPage(app, 'ui');
   const first = await waitForTopDemo();
   if (first === null) throw new Error('first drill-down entry left the stack');
 
@@ -236,9 +228,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   if (second === null) throw new Error('second drill-down entry left the stack');
   expect(second.logicCounter).toBe(0);
 
-  const stack = await raw.eval({
-    script: 'return getCurrentPages().map((page) => page.route);',
-  }) as string[];
+  const stack = await app.logic.eval(({ getCurrentPages }) => getCurrentPages().map((page) => page.route));
   expect(stack.filter((route) => route.includes('/ui/')).length).toBe(2);
 
   // Unwinding lands on the first instance with its own state intact.
@@ -252,7 +242,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   expect(unwound.logicCounter).toBe(1);
 
   await app.nav.back();
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 });
 
 spec('deliver exactly one onLoad and one onReady to a re-entered page', {
@@ -266,11 +256,11 @@ spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
   await app.nav.back();
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   // Let the off-screen teardown complete: the rebuild at re-entry must
   // deliver exactly one lifecycle, never a second one of its own.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
@@ -283,12 +273,11 @@ spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   // misread a late event as a missing one.
   const events = await eventually(
     async () => {
-      const state = await raw.eval({
-        script: `
-          const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
-          return page ? page.data.events ?? [] : null;
-        `,
-      }) as string[] | null;
+      const state = await app.logic.eval(({ getCurrentPages }) => {
+        const page = getCurrentPages<LogicPage<{ events?: string[] }>>()
+          .find((candidate) => candidate.route.includes('/ui/'));
+        return page ? page.data.events ?? [] : null;
+      });
       return state;
     },
     (candidate) => Array.isArray(candidate)
@@ -310,20 +299,17 @@ spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
   await app.nav.back();
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   // Past the teardown delay: the document must now be parked blank. Anything
   // still rendered here means page code ran off-screen — mount hooks, native
   // components, media — with nobody on the page.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
-  const parked = await raw.page.query({
-    page: 'ui',
-    css: '[data-testid="ui-navigate-to"]',
-  });
+  const parked = await app.view.css('[data-testid="ui-navigate-to"]', { page: 'ui' }).first().query();
   expect(parked.exists).toBe(false);
 
   // The rebuild belongs to the entry: coming back renders a fresh document.
@@ -342,29 +328,28 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   // Let preloaded tab WebViews handshake. The bug fired onLoad off that
   // handshake, so switching too early would miss it.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 2_000));
 
-  const apiLoadCount = async (): Promise<number | null> => raw.eval({
-    script: `
-      const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
-      return page ? page.data.loadCount ?? -1 : null;
-    `,
-  }) as Promise<number | null>;
+  const apiLoadCount = async (): Promise<number | null> => app.logic.eval(({ getCurrentPages }) => {
+    const page = getCurrentPages<LogicPage<{ loadCount?: number }>>()
+      .find((candidate) => candidate.route.includes('/API/'));
+    return page ? page.data.loadCount ?? -1 : null;
+  });
 
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(raw, 'api');
+  await waitForCurrentPage(app, 'api');
   const first = await eventually(apiLoadCount, (count) => count === 1, {
     describe: 'first switchTab onto api to deliver exactly one onLoad',
   });
   expect(first).toBe(1);
 
   await app.nav.switchTab({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(raw, 'api');
+  await waitForCurrentPage(app, 'api');
   const second = await eventually(apiLoadCount, (count) => count != null, {
     describe: 'api tab to still report its load count after a second switchTab',
   });
@@ -379,7 +364,7 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
   await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
@@ -390,10 +375,8 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   // switchTab keeps the tab pages it leaves warm, but a pushed page drops off
   // the stack for good — that is a departure, and departures end instances.
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(raw, 'api');
-  const stack = await raw.eval({
-    script: 'return getCurrentPages().map((page) => page.route);',
-  }) as string[];
+  await waitForCurrentPage(app, 'api');
+  const stack = await app.logic.eval(({ getCurrentPages }) => getCurrentPages().map((page) => page.route));
   expect(stack.some((route) => route.includes('/ui/'))).toBe(false);
 
   const second = await enterResetDemo(app);

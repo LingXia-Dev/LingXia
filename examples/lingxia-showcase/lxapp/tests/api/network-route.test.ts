@@ -1,12 +1,9 @@
 import { expect, spec } from '@lingxia/test';
 import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import outage from '../fixtures/network/outage.json';
 import status from '../scenarios/route/status.json';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 // Public host: the Showcase keeps the default public-network grant, and a
 // route never fulfills a host the app's policy would refuse.
@@ -105,23 +102,26 @@ spec("reject network routes from inside app Logic", {
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-002");
 
-  const rejection = await raw.eval({
-    script: `
-      // Reading the driver works; only calls reject outside a host run.
-      const network = lx.automation().lxapp().network;
-      try {
-        await network.route('**', { status: 200 });
-        return { readable: typeof network.route === 'function', rejected: false };
-      } catch (error) {
-        return {
-          readable: typeof network.route === 'function',
-          rejected: true,
-          code: String(error?.code || ''),
-          message: String(error?.message || error),
-        };
-      }
-    `,
-  }) as { readable: boolean; rejected: boolean; code?: string; message?: string };
+  const rejection = await app.logic.eval(async ({ lx }) => {
+    // Reading the driver works; only calls reject outside a host run. Logic's
+    // typings leave `network` out for that reason, so the probe reaches past them.
+    const driver = lx.automation().lxapp() as unknown as {
+      network: { route(pattern: string, handler: { status: number }): Promise<unknown> };
+    };
+    const network = driver.network;
+    try {
+      await network.route('**', { status: 200 });
+      return { readable: typeof network.route === 'function', rejected: false };
+    } catch (error) {
+      const failure = error as { code?: string; message?: string } | null;
+      return {
+        readable: typeof network.route === 'function',
+        rejected: true,
+        code: String(failure?.code || ''),
+        message: String(failure?.message || error),
+      };
+    }
+  });
 
   expect(rejection.readable).toBe(true);
   expect(rejection.rejected).toBeTruthy();
@@ -148,27 +148,20 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
   expect(scenario.variant).toBe(null);
   expect(scenario.rules.map((rule) => rule.target)).toEqual(outage.rules.map((rule) => rule.http));
 
-  const result = await raw.eval({
-    script: `
-      const base = ${JSON.stringify(BASE)};
-      const statuses = [];
-      let recovered = null;
-      for (let i = 0; i < 4; i += 1) {
-        const response = await fetch(base + '/status');
-        statuses.push(response.status);
-        if (response.ok) recovered = await response.json();
-      }
-      const device = await (await fetch(base + '/devices/d1')).json();
-      const special = (await fetch(base + '/devices/special')).status;
-      return { statuses, recovered, device, special, now: Date.now() };
-    `,
-  }) as {
-    statuses: number[];
-    recovered: { up: boolean; checkedAt: string } | null;
-    device: { id: string; lastSeen: string; lastSeenMs: string; expires: string };
-    special: number;
-    now: number;
-  };
+  const result = await app.logic.eval(async (_scope, base) => {
+    const statuses: number[] = [];
+    let recovered: { up: boolean; checkedAt: string } | null = null;
+    for (let i = 0; i < 4; i += 1) {
+      const response = await fetch(base + '/status');
+      statuses.push(response.status);
+      if (response.ok) recovered = await response.json() as { up: boolean; checkedAt: string };
+    }
+    const device = await (await fetch(base + '/devices/d1')).json() as {
+      id: string; lastSeen: string; lastSeenMs: string; expires: string;
+    };
+    const special = (await fetch(base + '/devices/special')).status;
+    return { statuses, recovered, device, special, now: Date.now() };
+  }, BASE);
 
   // Answers follow call order; the last one repeats.
   expect(result.statuses).toEqual([503, 502, 200, 200]);
@@ -234,12 +227,10 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   // of the real network.
   await app.network.route({ url: `${BASE}/devices/*`, method: 'PATCH' }, { status: 404, json: { error: 'unmatched' } });
 
-  const readStatus = () => raw.eval({
-    script: `
-      const response = await fetch(${JSON.stringify(`${BASE}/status`)});
-      return { status: response.status, up: (await response.json()).up };
-    `,
-  }) as Promise<{ status: number; up: boolean }>;
+  const readStatus = () => app.logic.eval(async (_scope, url) => {
+    const response = await fetch(url);
+    return { status: response.status, up: (await response.json() as { up: boolean }).up };
+  }, `${BASE}/status`);
 
   const online = await app.scenario(status, 'online');
   expect(online.variant).toBe('online');
@@ -250,34 +241,25 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   const offline = await app.scenario(status, 'offline');
   expect(await readStatus()).toEqual({ status: 503, up: false });
 
-  const result = await raw.eval({
-    script: `
-      const base = ${JSON.stringify(BASE)};
-      const rename = async (body) => {
-        const response = await fetch(base + '/devices/d1', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        });
-        return [response.status, await response.json()];
-      };
-      const device = await (await fetch(base + '/devices/d1')).json();
-      return {
-        device,
-        taken: await rename({ name: 'Office', floor: 3 }),
-        lab: await rename({ name: 'Lab-12', tags: ['lab', 'floor-2'] }),
-        // One tag short: arrays match exactly.
-        missed: await rename({ name: 'Lab-12', tags: ['lab'] }),
-        now: Date.now(),
-      };
-    `,
-  }) as {
-    device: { online: boolean; lastSeen: string };
-    taken: [number, { error: string }];
-    lab: [number, { renamed: boolean }];
-    missed: [number, { error: string }];
-    now: number;
-  };
+  const result = await app.logic.eval(async (_scope, base) => {
+    const rename = async <T>(body: object): Promise<[number, T]> => {
+      const response = await fetch(base + '/devices/d1', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return [response.status, await response.json() as T];
+    };
+    const device = await (await fetch(base + '/devices/d1')).json() as { online: boolean; lastSeen: string };
+    return {
+      device,
+      taken: await rename<{ error: string }>({ name: 'Office', floor: 3 }),
+      lab: await rename<{ renamed: boolean }>({ name: 'Lab-12', tags: ['lab', 'floor-2'] }),
+      // One tag short: arrays match exactly.
+      missed: await rename<{ error: string }>({ name: 'Lab-12', tags: ['lab'] }),
+      now: Date.now(),
+    };
+  }, BASE);
   expect(result.device.online).toBe(false);
   expect(Math.abs(Date.parse(result.device.lastSeen) - (result.now - 6 * 3600_000)) < 120_000).toBeTruthy();
   expect(result.taken).toEqual([409, { error: 'name_taken' }]);
@@ -317,24 +299,28 @@ spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Ev
     ],
   });
 
-  const result = await raw.eval({
-    script: `
-      const base = ${JSON.stringify(BASE)};
-      const started = Date.now();
-      const feed = await fetch(base + '/feed');
-      const feedType = feed.headers.get('content-type');
-      const feedText = await feed.text();
-      const feedMs = Date.now() - started;
+  const result = await app.logic.eval(async (_scope, base) => {
+    const started = Date.now();
+    const feed = await fetch(base + '/feed');
+    const feedType = feed.headers.get('content-type');
+    const feedText = await feed.text();
+    const feedMs = Date.now() - started;
 
-      const sse = new Rong.SSE(base + '/live', { reconnect: { baseDelayMs: 10, maxDelayMs: 100 } });
-      const events = [];
-      for await (const event of sse) {
-        events.push([event.type, event.data, event.id]);
-        if (events.length === 3) break;
-      }
-      return { feedType, feedText, feedMs, events };
-    `,
-  }) as { feedType: string | null; feedText: string; feedMs: number; events: string[][] };
+    // `Rong` is a Logic global the test context's typings do not declare.
+    const { Rong } = globalThis as unknown as {
+      Rong: {
+        SSE: new (url: string, options: { reconnect: { baseDelayMs: number; maxDelayMs: number } }) =>
+          AsyncIterable<{ type: string; data: string; id: string }>;
+      };
+    };
+    const sse = new Rong.SSE(base + '/live', { reconnect: { baseDelayMs: 10, maxDelayMs: 100 } });
+    const events: string[][] = [];
+    for await (const event of sse) {
+      events.push([event.type, event.data, event.id]);
+      if (events.length === 3) break;
+    }
+    return { feedType, feedText, feedMs, events };
+  }, BASE);
 
   expect(result.feedType).toBe('text/event-stream');
   expect(result.feedText).toBe('event: ready\nid: 1\ndata: {"n":1}\n\n: keepalive\ndata: bye\n\n');

@@ -1,4 +1,3 @@
-import type { LxAppDriver } from '@lingxia/types/automation';
 import { expect, type Fixture, type TestApp } from '@lingxia/test';
 
 export interface EventuallyOptions<T> {
@@ -42,43 +41,36 @@ export async function eventually<T>(
   throw new Error(`Timed out waiting for ${options.describe}; last observed: ${observed}`);
 }
 
-export type CaughtEval = {
-  ok: boolean;
-  value?: unknown;
-  code?: unknown;
-  message?: string;
-  data?: unknown;
-};
+/**
+ * What a Logic probe that catches its own rejection resolves to. A rejection
+ * thrown inside `t.app.logic.eval(fn)` reaches the spec as the eval's own
+ * failure, so a probe that checks an API's error code catches it in `fn`:
+ *
+ * ```ts
+ * const outcome: Caught = await t.app.logic.eval(async ({ lx }) => {
+ *   try {
+ *     return { ok: true, value: await lx.host.setBadge(2) };
+ *   } catch (error) {
+ *     const { code, message, data } = error as { code?: string; message?: string; data?: unknown };
+ *     return { ok: false, code, message: String(message ?? error), data };
+ *   }
+ * });
+ * ```
+ */
+export type Caught<T = unknown> =
+  | { ok: true; value?: T; code?: undefined; message?: undefined; data?: undefined }
+  | { ok: false; value?: undefined; code?: string; message: string; data?: unknown };
 
-/** Run Logic and return `{ ok, code, data }` instead of throwing across eval. */
 /** Schedule `lx.reLaunch` without awaiting the torn-down eval context. */
 export async function relaunchFromLogic(
-  app: LxAppDriver,
+  app: TestApp,
   page: string,
   query?: Record<string, string>,
 ): Promise<void> {
-  const queryLiteral = query === undefined ? '' : `, query: ${JSON.stringify(query)}`;
-  await app.eval({
-    script: `void lx.reLaunch({ page: ${JSON.stringify(page)}${queryLiteral} }); return 'scheduled';`,
-  });
-}
-
-export async function evalCaught(app: LxAppDriver, body: string): Promise<CaughtEval> {
-  return app.eval({
-    script: `
-      try {
-        const value = await (async () => { ${body} })();
-        return { ok: true, value };
-      } catch (error) {
-        return {
-          ok: false,
-          code: error && error.code,
-          message: String(error && error.message || error),
-          data: error && error.data,
-        };
-      }
-    `,
-  }) as Promise<CaughtEval>;
+  await app.logic.eval(({ lx }, page, query) => {
+    void lx.reLaunch(query === null ? { page } : { page, query });
+    return 'scheduled';
+  }, page, query ?? null);
 }
 
 export async function expectReject(

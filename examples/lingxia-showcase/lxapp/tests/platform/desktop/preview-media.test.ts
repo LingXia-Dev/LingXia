@@ -1,11 +1,20 @@
 import { expect, spec } from '@lingxia/test';
 import type { DesktopWindowInfo } from '@lingxia/types/automation';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import { bindFixture, eventually } from '../../helpers/poll.js';
+import type { PreviewMediaHandle } from '@lingxia/types';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+/** What the probes keep on Logic's `globalThis` under their spec's key. */
+interface PreviewSession {
+  handle: PreviewMediaHandle;
+  controller?: AbortController;
+  presented: boolean;
+  changes?: number;
+  completed: unknown;
+  off?: (() => void) | null;
+}
+type Sessions = Record<string, PreviewSession | undefined>;
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>;
 const httpBase = testArgs.httpBase;
@@ -54,24 +63,22 @@ previewSpec('present a local image and report it through the handle', {
   reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-PREVIEW-MEDIA-001');
-  const platform = await runtimePlatform(raw);
+  const platform = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(platform)) {
     throw new Error(`native preview requires macOS or Windows; got ${platform || 'unknown'}`);
   }
   const desktop = t.automation.desktop;
   const stateKey = `__lingxiaPreview_${namespace.replace(/-/g, '_')}`;
-  const readState = () => raw.eval({
-    script: `
-      const s = globalThis[${JSON.stringify(stateKey)}];
-      return {
-        presented: !!s?.presented,
-        currentIndex: s?.handle.current.index ?? -1,
-        currentPath: s?.handle.current.source.path ?? '',
-        changes: s?.changes ?? 0,
-        completed: s?.completed ?? null,
-      };
-    `,
-  }) as Promise<HandleState>;
+  const readState = () => app.logic.eval((_, key): HandleState => {
+    const s = (globalThis as unknown as Sessions)[key];
+    return {
+      presented: !!s?.presented,
+      currentIndex: s?.handle.current.index ?? -1,
+      currentPath: s?.handle.current.source.path ?? '',
+      changes: s?.changes ?? 0,
+      completed: (s?.completed ?? null) as HandleState['completed'],
+    };
+  }, stateKey);
 
   // Best effort only: leaving the panel up would sit on the developer's screen,
   // but failing to take it down is not this case's contract.
@@ -86,24 +93,23 @@ previewSpec('present a local image and report it through the handle', {
   defer(async () => {
     const stray = await strayPanel().catch(() => undefined);
     if (stray) await desktop.window.close({ window: stray.id }).catch(() => undefined);
-    await raw.eval({
-      script: `const s = globalThis[${JSON.stringify(stateKey)}]; if (s?.off) s.off(); delete globalThis[${JSON.stringify(stateKey)}];`,
-    }).catch(() => undefined);
+    await app.logic.eval((_, key) => {
+      const sessions = globalThis as unknown as Sessions;
+      sessions[key]?.off?.();
+      delete sessions[key];
+    }, stateKey).catch(() => undefined);
   });
 
-  const started = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const png = await lx.downloadFile({ url: ${JSON.stringify(`${httpBase}/media/sample.png`)} }).result;
-      const handle = lx.previewMedia({ path: png.uri, type: 'image' });
-      const state = { handle, presented: false, changes: 0, completed: null, off: null };
-      globalThis[${JSON.stringify(stateKey)}] = state;
-      state.off = handle.onChange(() => { state.changes += 1; });
-      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
-      handle.completed.then((result) => { state.completed = { reason: result.reason, index: result.index }; });
-      return { path: png.uri, index: handle.current.index, sourcePath: handle.current.source.path };
-    `,
-  }) as { path: string; index: number; sourcePath: string };
+  const started = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, key, base) => {
+    const png = await lx.downloadFile({ url: base + '/media/sample.png' }).result;
+    const handle = lx.previewMedia({ path: png.uri, type: 'image' });
+    const state: PreviewSession = { handle, presented: false, changes: 0, completed: null, off: null };
+    (globalThis as unknown as Sessions)[key] = state;
+    state.off = handle.onChange(() => { state.changes = (state.changes ?? 0) + 1; });
+    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.completed.then((result) => { state.completed = { reason: result.reason, index: result.index }; });
+    return { path: png.uri, index: handle.current.index, sourcePath: handle.current.source.path };
+  }, stateKey, httpBase ?? '');
   // `current` is synchronous and already describes the first source.
   expect(started.index).toBe(0);
   expect(started.sourcePath).toBe(started.path);
@@ -122,9 +128,12 @@ previewSpec('present a local image and report it through the handle', {
   });
 
   await t.step('the change subscription is a real handle', async () => {
-    const offTwice = await raw.eval({
-      script: `const s = globalThis[${JSON.stringify(stateKey)}]; s.off(); s.off(); return true;`,
-    });
+    const offTwice = await app.logic.eval((_, key) => {
+      const s = (globalThis as unknown as Sessions)[key]!;
+      s.off!();
+      s.off!();
+      return true;
+    }, stateKey);
     expect(offTwice).toBe(true);
   });
 });
@@ -141,55 +150,50 @@ httpsPreviewSpec('skip an unreachable https item and keep request indexes', {
 }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, 'DESKTOP-PREVIEW-HTTPS-SKIP-001');
   // Windows reports no change stream at all, so `current` cannot move there.
-  if (await runtimePlatform(raw) !== 'macos') return;
+  if (await runtimePlatform(app) !== 'macos') return;
   const stateKey = `__lingxiaPreviewSkip_${namespace.replace(/-/g, '_')}`;
   defer(async () => {
-    await raw.eval({
-      script: `
-        const s = globalThis[${JSON.stringify(stateKey)}];
-        if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    }).catch(() => undefined);
+    await app.logic.eval((_, key) => {
+      const sessions = globalThis as unknown as Sessions;
+      const s = sessions[key];
+      if (s?.controller && !s.controller.signal.aborted) s.controller.abort();
+      delete sessions[key];
+    }, stateKey).catch(() => undefined);
   });
 
-  await raw.eval({
-    script: `
-      const controller = new AbortController();
-      const handle = lx.previewMedia({
-        sources: [
-          { path: ${JSON.stringify(HTTPS_MISSING_IMAGE)}, type: 'image' },
-          { path: ${JSON.stringify(HTTPS_IMAGE)}, type: 'image', durationMs: 60000 },
-        ],
-        startIndex: 0,
-        advance: 'next',
-        signal: controller.signal,
-      });
-      const state = { handle, controller, presented: false, completed: null };
-      globalThis[${JSON.stringify(stateKey)}] = state;
-      handle.presented.then((outcome) => { state.presented = outcome.status === "presented"; });
-      handle.completed.then(
-        (result) => { state.completed = result.reason; },
-        () => { state.completed = 'rejected'; },
-      );
-      return true;
-    `,
-  });
+  await app.logic.eval(({ lx }, key, missing, image) => {
+    const controller = new AbortController();
+    const handle = lx.previewMedia({
+      sources: [
+        { path: missing, type: 'image' },
+        { path: image, type: 'image', durationMs: 60000 },
+      ],
+      startIndex: 0,
+      advance: 'next',
+      signal: controller.signal,
+    });
+    const state: PreviewSession = { handle, controller, presented: false, completed: null };
+    (globalThis as unknown as Sessions)[key] = state;
+    handle.presented.then((outcome) => { state.presented = outcome.status === 'presented'; });
+    handle.completed.then(
+      (result) => { state.completed = result.reason; },
+      () => { state.completed = 'rejected'; },
+    );
+    return true;
+  }, stateKey, HTTPS_MISSING_IMAGE, HTTPS_IMAGE);
 
   // The 404 is left out of what the panel shows, yet the item on screen must
   // still be reported by its index in the request, not the panel's own.
   const state = await eventually(
-    () => raw.eval({
-      script: `
-        const s = globalThis[${JSON.stringify(stateKey)}];
-        return {
-          presented: !!s?.presented,
-          index: s?.handle.current.index ?? -1,
-          path: s?.handle.current.source.path ?? '',
-          completed: s?.completed ?? null,
-        };
-      `,
-    }) as Promise<{ presented: boolean; index: number; path: string; completed: string | null }>,
+    () => app.logic.eval((_, key) => {
+      const s = (globalThis as unknown as Sessions)[key];
+      return {
+        presented: !!s?.presented,
+        index: s?.handle.current.index ?? -1,
+        path: s?.handle.current.source.path ?? '',
+        completed: (s?.completed ?? null) as string | null,
+      };
+    }, stateKey),
     (value) => value.presented && value.index === 1,
     { describe: 'the preview to open on the reachable item as index 1', timeoutMs: 30_000 },
   );

@@ -581,13 +581,14 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   `lxdev scenario use` stands aside during a run and answers again after it.
 - **A timeout never outlives the spec.** A longer action timeout is clamped to
   the spec's remaining time, and the error says so.
-- **The fixture takes functions, not script strings.** A probe that must be
-  a string (it passes arguments the typings refuse) goes to the raw driver,
-  `lx.automation().lxapp(id).eval({ script, timeoutMs })` or
-  `.page.eval({ page, script })`; raw calls are not traced or stopped with
-  the spec. A fixture `t.app` is not a raw `LxAppDriver`: type shared
-  helpers against `TestApp`, or against `LxAppDriver` and pass them a raw
-  driver.
+- **The fixture takes functions, not script strings.** Pass values as JSON
+  arguments, never by building source text. A probe that checks how an API
+  rejects bad input casts the call inside `fn`, not the input:
+  `t.app.logic.eval(({ lx }, bad) => (lx.fs.stat as (path: unknown) =>
+  Promise<unknown>)(bad), 42)`. An error thrown inside `fn` reaches the spec
+  as the eval's failure (`E_EVAL_SCRIPT`), so catch it in `fn` to assert the
+  API's own `code`. A fixture `t.app` is not a raw `LxAppDriver`: type shared
+  helpers against `TestApp`.
 
 ## Running and CI
 

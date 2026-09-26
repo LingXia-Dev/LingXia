@@ -1,12 +1,10 @@
 import { waitForCurrentPage } from '../../helpers/page.js';
 import { expect, spec, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
-import type { DesktopDriver, DesktopWindowInfo, LxAppDriver } from '@lingxia/types/automation';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+import type { DesktopDriver, DesktopWindowInfo } from '@lingxia/types/automation';
+import type { TestApp } from '@lingxia/test';
 
 /// Showcase sidebar actions besides the host's typed Settings: Downloads in
 /// the header, four footer actions.
@@ -95,8 +93,11 @@ function windowsStaticSettingsPoint(
   ];
 }
 
+/** The spoofed sidebar actions count their calls on Logic's `globalThis`. */
+type SpoofGlobals = { __staticSettingsSpoofCalls?: number };
+
 async function clickStaticSettings(
-  app: LxAppDriver,
+  app: TestApp,
   platform: string,
   desktop: DesktopDriver,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
@@ -141,40 +142,38 @@ async function clickStaticSettings(
 
 async function openHostSettings(
   t: Fixture,
-  app: LxAppDriver,
+  app: TestApp,
   platform: string,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
   await clickStaticSettings(app, platform, t.automation.desktop, actions);
 }
 
-async function restoreShowcaseSidebarActions(app: LxAppDriver): Promise<void> {
-  await app.eval({
-    script: `
-      lx.shell.sidebarActions.replace([
-        {
-          id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
-          onActivate() { void lx.shell.openBuiltin('downloads'); },
-        },
-        {
-          id: 'chat', placement: 'footer', icon: 'public/activator.svg', label: 'chat',
-          onActivate() { void lx.surface.openDeclared('lingxia-chat'); },
-        },
-        {
-          id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal Settings',
-          onActivate() { void lx.shell.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
-        },
-        {
-          id: 'terminal', placement: 'footer', icon: 'public/activator.svg', label: 'Terminal',
-          onActivate() { void lx.surface.openDeclared('terminal'); },
-        },
-        {
-          id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
-          onActivate() { lx.showToast({ title: 'sidebar action clicked', icon: 'success' }); },
-        },
-      ]);
-      delete globalThis.__staticSettingsSpoofCalls;
-    `,
+async function restoreShowcaseSidebarActions(app: TestApp): Promise<void> {
+  await app.logic.eval(({ lx }) => {
+    lx.shell.sidebarActions.replace([
+      {
+        id: 'downloads', placement: 'header', icon: 'public/sidebar-downloads.svg', label: 'Downloads',
+        onActivate() { void lx.shell.openBuiltin('downloads'); },
+      },
+      {
+        id: 'chat', placement: 'footer', icon: 'public/activator.svg', label: 'chat',
+        onActivate() { void lx.surface.openDeclared('lingxia-chat'); },
+      },
+      {
+        id: 'terminal-settings', placement: 'footer', icon: 'public/sidebar-terminal.svg', label: 'Terminal Settings',
+        onActivate() { void lx.shell.openApp('app.lingxia.terminal-settings', { as: 'aside', edge: 'right' }); },
+      },
+      {
+        id: 'terminal', placement: 'footer', icon: 'public/activator.svg', label: 'Terminal',
+        onActivate() { void lx.surface.openDeclared('terminal'); },
+      },
+      {
+        id: 'ping', placement: 'footer', icon: 'public/activator.svg', label: 'Ping',
+        onActivate() { lx.showToast({ title: 'sidebar action clicked', icon: 'success' }); },
+      },
+    ]);
+    delete (globalThis as SpoofGlobals).__staticSettingsSpoofCalls;
   });
 }
 
@@ -189,15 +188,14 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
     const browser = t.automation.browser;
-    const platform = await runtimePlatform(raw);
-    const renderedBodyLength = async (): Promise<number> => Number(await raw.page.eval({
-      page: 'home',
-      script: 'document.body ? document.body.innerText.length : -1',
-    }));
+    const platform = await runtimePlatform(app);
+    const renderedBodyLength = async (): Promise<number> => app.view.eval({ page: 'home' }, ({ document }) => (
+      document.body ? (document.body.innerText ?? '').length : -1
+    ));
 
     await app.nav.switchTab({ page: 'home' });
-    await waitForCurrentPage(raw, 'home');
-    await raw.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
+    await waitForCurrentPage(app, 'home');
+    await app.view.testId('home-page', { page: 'home' }).waitFor({ state: 'visible', timeout: 30_000 });
     await eventually(renderedBodyLength, (length) => length > 0, {
       describe: 'baseline home page to render',
     });
@@ -207,37 +205,36 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       const freshTabs = (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id));
       for (const tab of freshTabs) await browser.close({ tab: tab.tab_id });
     });
-    defer(() => restoreShowcaseSidebarActions(raw));
+    defer(() => restoreShowcaseSidebarActions(app));
 
-    await raw.eval({
-      script: `
-        globalThis.__staticSettingsSpoofCalls = 0;
-        const spoof = () => { globalThis.__staticSettingsSpoofCalls += 1; };
-        lx.shell.sidebarActions.replace([
-          { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate: spoof },
-          { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate: spoof },
-          { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate: spoof },
-        ]);
-      `,
+    await app.logic.eval(({ lx }) => {
+      const probe = globalThis as SpoofGlobals;
+      probe.__staticSettingsSpoofCalls = 0;
+      const spoof = () => { probe.__staticSettingsSpoofCalls = (probe.__staticSettingsSpoofCalls ?? 0) + 1; };
+      lx.shell.sidebarActions.replace([
+        { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate: spoof },
+        { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate: spoof },
+        { id: 'icon-spoof', placement: 'footer', icon: 'public/sidebar-settings.svg', label: 'Icon spoof', onActivate: spoof },
+      ]);
     });
     // Three runtime footer items beside the separately typed static item.
     // Presentation strings may match, but the static click must never
     // dispatch their callbacks.
-    await openHostSettings(t, raw, platform, { header: 0, footer: 3 });
+    await openHostSettings(t, app, platform, { header: 0, footer: 3 });
     const settings = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
       { describe: 'static Settings destination to open', timeoutMs: 15_000 },
     );
     if (!settings) throw new Error('static Settings destination did not produce a current tab');
-    expect(await raw.eval({ script: `return globalThis.__staticSettingsSpoofCalls;` })).toBe(0);
-    await restoreShowcaseSidebarActions(raw);
+    expect(await app.logic.eval(() => (globalThis as SpoofGlobals).__staticSettingsSpoofCalls)).toBe(0);
+    await restoreShowcaseSidebarActions(app);
 
     await browser.eval({
       tab: settings.tab_id,
       js: `globalThis.__staticSettingsReloadProbe = 'stale'`,
     });
-    await openHostSettings(t, raw, platform);
+    await openHostSettings(t, app, platform);
     await eventually(
       () => browser.eval({
         tab: settings.tab_id,
@@ -254,7 +251,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       (tab) => tab?.current_url === 'about:blank',
       { describe: 'external navigation away from Settings', timeoutMs: 15_000 },
     );
-    await openHostSettings(t, raw, platform);
+    await openHostSettings(t, app, platform);
     const restored = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
@@ -262,9 +259,8 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     );
     if (!restored) throw new Error('static Settings destination did not restore a current tab');
     expect(restored.tab_id).toBe(settings.tab_id);
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `await lx.shell.openBuiltin('downloads');`,
+    await app.logic.eval({ timeout: 20_000 }, async ({ lx }) => {
+      await lx.shell.openBuiltin('downloads');
     });
     const downloads = await eventually(
       () => browser.current(),

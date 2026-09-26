@@ -1,14 +1,13 @@
-import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
-import { expect, spec } from '@lingxia/test';
+import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { expect, spec, type Fixture, type JsonValue, type TestApp } from '@lingxia/test';
 import type {
-  PageDriver,
   TerminalPaneSnapshot,
   TerminalPaneTree,
   TerminalWorkspaceSnapshot,
 } from '@lingxia/types/automation';
+import type { ProbeDocument, ProbeElement } from '../../helpers/view.js';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+const SETTINGS_APP_ID = 'app.lingxia.terminal-settings';
 
 const targetPlatform = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {} as Record<string, string>).platform?.toLocaleLowerCase();
 const desktopTerminalTest =
@@ -36,11 +35,23 @@ async function waitFor<T>(operation: () => Promise<T | undefined>, label: string
   throw new Error(`${label} was not observed`);
 }
 
-async function waitForSave(page: PageDriver, enabled: boolean): Promise<void> {
+async function waitForSave(settings: TestApp, enabled: boolean): Promise<void> {
   await waitFor(async () => {
-    const save = await page.query({ css: '#save' });
+    const save = await settings.view.css('#save').first().query();
     return save.exists && save.enabled === enabled ? true : undefined;
   }, enabled ? 'dirty Terminal Settings' : 'applied Terminal Settings');
+}
+
+/** Close the surface handles Logic keeps under `key`, and forget them. */
+async function closeHandles(app: TestApp, key: string): Promise<void> {
+  await app.logic.eval({ timeout: 20_000 }, async (_, key) => {
+    const held = globalThis as unknown as Record<string, Record<string, { alive: boolean; close(): Promise<void> } | undefined> | undefined>;
+    const handles = held[key];
+    delete held[key];
+    for (const handle of Object.values(handles ?? {})) {
+      if (handle?.alive) await handle.close();
+    }
+  }, key);
 }
 
 desktopTerminalTest('publishes and mutates the native nested pane tree without deferred layout', {
@@ -50,17 +61,11 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
 }, async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  const surfaceId = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const handle = await lx.shell.openDeclared('terminal', {
-        key: ${JSON.stringify(token)},
-        as: 'main',
-      });
-      globalThis.__terminalAutomationHandle = handle;
-      return handle.id;
-    `,
-  }) as string;
+  const surfaceId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+    const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
+    (globalThis as unknown as Record<string, unknown>).__terminalAutomationHandles = { terminal: handle };
+    return handle.id;
+  }, token);
 
   const terminal = t.automation.terminal;
   try {
@@ -99,14 +104,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
       expect(pane.grid.rows).toBeGreaterThan(0);
     }
   } finally {
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const handle = globalThis.__terminalAutomationHandle;
-        delete globalThis.__terminalAutomationHandle;
-        if (handle?.alive) await handle.close();
-      `,
-    });
+    await closeHandles(app, '__terminalAutomationHandles');
   }
 });
 
@@ -119,18 +117,11 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
-  const surfaceId = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const handle = await lx.shell.openDeclared('terminal', {
-        key: ${JSON.stringify(token)},
-        as: 'aside',
-        edge: 'bottom',
-      });
-      globalThis.__terminalTabAutomationHandle = handle;
-      return handle.id;
-    `,
-  }) as string;
+  const surfaceId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+    const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'aside', edge: 'bottom' });
+    (globalThis as unknown as Record<string, unknown>).__terminalTabAutomationHandles = { terminal: handle };
+    return handle.id;
+  }, token);
 
   const terminal = t.automation.terminal;
   try {
@@ -150,14 +141,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
     const settled = await terminal.snapshot({ surface: surfaceId });
     expect(settled.maximized).toBe(true);
   } finally {
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const handle = globalThis.__terminalTabAutomationHandle;
-        delete globalThis.__terminalTabAutomationHandle;
-        if (handle?.alive) await handle.close();
-      `,
-    });
+    await closeHandles(app, '__terminalTabAutomationHandles');
   }
 });
 
@@ -168,85 +152,60 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
 }, async (t) => {
   const app = t.apps.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  // One surface per eval. Opening both in a single script reports only that
-  // "eval timed out", which says nothing about which surface never settled —
-  // and a native surface and a bundled lxapp settle along different paths.
-  const terminalId = await raw.eval({
-    timeoutMs: 20_000,
-    script: `
-      const terminal = await lx.shell.openDeclared('terminal', {
-        key: ${JSON.stringify(token)},
-        as: 'main',
-      });
-      globalThis.__terminalThemeAutomationHandles = { terminal };
-      return terminal.id;
-    `,
-  }) as string;
+  // One surface per open. Opening both at once reports only that it timed
+  // out, which says nothing about which surface never settled — and a native
+  // surface and a bundled lxapp settle along different paths.
+  const terminalId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
+    const terminal = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
+    (globalThis as unknown as Record<string, unknown>).__terminalThemeAutomationHandles = { terminal };
+    return terminal.id;
+  }, token);
   // Opening a bundled lxapp aside has to reach the host and come back, so it
   // is slower than the native surface above and pays a cold start on CI.
-  const settingsId = await raw.eval({
-    timeoutMs: 60_000,
-    script: `
-      const settings = await lx.shell.openApp('app.lingxia.terminal-settings', {
-        as: 'aside',
-        edge: 'right',
-      });
-      globalThis.__terminalThemeAutomationHandles.settings = settings;
-      return settings.id;
-    `,
-  }) as string;
+  const settingsId = await app.logic.eval({ timeout: 60_000 }, async ({ lx }, settingsAppId) => {
+    const settings = await lx.shell.openApp(settingsAppId, { as: 'aside', edge: 'right' });
+    const held = globalThis as unknown as Record<string, Record<string, unknown>>;
+    held.__terminalThemeAutomationHandles.settings = settings;
+    return settings.id;
+  }, SETTINGS_APP_ID);
   const refs = { terminal: terminalId, settings: settingsId };
   const terminal = t.automation.terminal;
-  // Raw: its probes are scripts; see `rawApp`.
-  const settingsApp = rawApp('app.lingxia.terminal-settings');
-  const page = settingsApp.page;
+  const settingsApp = t.apps.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
-  const previousAppearance = await raw.eval({
-    script: 'return lx.host.control.appearance.getPreference()',
-  }) as string;
+  const previousAppearance = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
 
   try {
     // The action bar is intentionally hidden until the draft becomes dirty;
     // its button is still a reliable page-readiness marker once attached.
-    await page.waitFor({ css: '#save', state: 'attached', timeoutMs: 10_000 });
-    await page.waitFor({
-      css: 'button[data-theme][aria-pressed="true"]',
-      state: 'visible',
-      timeoutMs: 10_000,
+    await settingsApp.view.css('#save').first().waitFor({ state: 'attached', timeout: 10_000 });
+    await settingsApp.view.css('button[data-theme][aria-pressed="true"]').first()
+      .waitFor({ state: 'visible', timeout: 10_000 });
+    await waitForSave(settingsApp, false);
+    const runtime = await settingsApp.logic.eval(async ({ lx }) => {
+      const settings = await lx.terminal!.settings.get();
+      return {
+        terminal: typeof lx.terminal?.settings?.get,
+        fileSystem: typeof lx.fs,
+        appearance: settings.effective.appearance,
+      };
     });
-    await waitForSave(page, false);
-    const runtime = await settingsApp.eval({
-      script: `
-        const settings = await lx.terminal.settings.get();
-        return {
-          terminal: typeof lx.terminal?.settings?.get,
-          fileSystem: typeof lx.fs,
-          appearance: settings.effective.appearance,
-        };
-      `,
-    }) as {
-      terminal: string;
-      fileSystem: string;
-      appearance: 'light' | 'dark';
-    };
     expect(runtime.terminal).toBe('function');
     expect(runtime.fileSystem).toBe('undefined');
 
     const themeCards = async (): Promise<Array<{ name: string; pressed: boolean }>> =>
-      page.eval({
-        script: `Array.from(document.querySelectorAll('button[data-theme]')).map((el) => ({
-          name: el.dataset.theme,
-          pressed: el.getAttribute('aria-pressed') === 'true',
-        }))`,
-      }) as Promise<Array<{ name: string; pressed: boolean }>>;
+      settingsApp.view.eval(({ document }) => Array.from(document.querySelectorAll('button[data-theme]')).map((el) => ({
+        name: el.getAttribute('data-theme') ?? '',
+        pressed: el.getAttribute('aria-pressed') === 'true',
+      })));
 
     // The product owns light/dark; this screen only lists schemes for the
     // active slot. Light ships one built-in, dark ships several, so pin dark
     // when the current slot cannot offer a second card to click.
     let cards = await themeCards();
     if (cards.length < 2) {
-      await raw.eval({
-        script: `await lx.host.control.appearance.setPreference('dark'); return true;`,
+      await app.logic.eval(async ({ lx }) => {
+        await lx.host.control!.appearance.setPreference('dark');
+        return true;
       });
       cards = await waitFor(async () => {
         const next = await themeCards();
@@ -257,39 +216,33 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     initial = await terminal.snapshot({ surface: refs.terminal });
     // Imported aliases can have the same palette as an unselected built-in.
     // Choose a visibly different background: identical colors do not repaint.
-    const target = await page.eval<string | null>({
-      script: `(() => {
-        const current = document.createElement('span');
-        current.style.backgroundColor = ${JSON.stringify(initial.chrome.surface)};
-        const card = Array.from(document.querySelectorAll('button[data-theme]')).find(el =>
-          el.getAttribute('aria-pressed') !== 'true'
-          && el.style.backgroundColor !== current.style.backgroundColor);
-        return card?.dataset.theme ?? null;
-      })()`,
-    });
+    const target = await settingsApp.view.eval(({ document }, surface) => {
+      const current = (document as unknown as ProbeDocument).createElement('span');
+      current.style.backgroundColor = surface;
+      const card = (Array.from(document.querySelectorAll('button[data-theme]')) as ProbeElement[]).find((el) =>
+        el.getAttribute('aria-pressed') !== 'true'
+        && el.style.backgroundColor !== current.style.backgroundColor);
+      return card?.dataset.theme ?? null;
+    }, initial.chrome.surface);
     if (!target) throw new Error('terminal settings did not publish a visually distinct color scheme');
-    const slot = await settingsApp.eval({
-      script: `return (await lx.terminal.settings.get()).effective.appearance`,
-    }) as 'light' | 'dark';
+    const slot = await settingsApp.logic.eval(async ({ lx }) => (await lx.terminal!.settings.get()).effective.appearance);
 
     // Click through the settings document: an OS pointer click can miss the
     // aside WebView even when the card is in the page DOM.
-    const clicked = await page.eval({
-      script: `(() => {
-        const el = document.querySelector(${JSON.stringify(`button[data-theme="${target}"]`)});
-        if (!el) return { ok: false, reason: 'missing' };
-        el.scrollIntoView({ block: 'center', inline: 'nearest' });
-        el.click();
-        return {
-          ok: true,
-          saveDisabled: document.getElementById('save')?.disabled === true,
-        };
-      })()`,
-    }) as { ok: boolean; reason?: string; saveDisabled?: boolean };
+    const clicked = await settingsApp.view.eval(({ document }, css) => {
+      const el = document.querySelector(css) as ProbeElement | null;
+      if (!el) return { ok: false, reason: 'missing' };
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      el.click();
+      return {
+        ok: true,
+        saveDisabled: document.getElementById('save')?.disabled === true,
+      };
+    }, `button[data-theme="${target}"]`);
     if (!clicked.ok) {
       throw new Error(`color scheme ${target} was not in the settings document`);
     }
-    await waitForSave(page, true);
+    await waitForSave(settingsApp, true);
 
     const previewed = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
@@ -299,15 +252,13 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     }, 'native terminal preview chrome');
     expect(previewed.configGeneration).toBe(initial.configGeneration);
 
-    await page.eval({
-      script: `(() => {
-        const save = document.getElementById('save');
-        if (!save) throw new Error('Apply is missing');
-        save.click();
-        return true;
-      })()`,
+    await settingsApp.view.eval(({ document }) => {
+      const save = document.getElementById('save') as ProbeElement | null;
+      if (!save) throw new Error('Apply is missing');
+      save.click();
+      return true;
     });
-    await waitForSave(page, false);
+    await waitForSave(settingsApp, false);
     const applied = await waitFor(async () => {
       const snapshot = await terminal.snapshot({ surface: refs.terminal });
       const theme = snapshot.config.theme as { light?: string; dark?: string } | undefined;
@@ -319,28 +270,18 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
     expect(applied.chrome.surface).toBe(previewed.chrome.surface);
     expect(applied.chrome.cursor).toBe(previewed.chrome.cursor);
   } finally {
-    await raw.eval({
-      script: `await lx.host.control.appearance.setPreference(${JSON.stringify(previousAppearance)}); return true;`,
-    }).catch(() => undefined);
+    await app.logic.eval(async ({ lx }, previous) => {
+      if (previous !== null) await lx.host.control?.appearance.setPreference(previous);
+      return true;
+    }, previousAppearance).catch(() => undefined);
     if (initial) {
-      await settingsApp.eval({
-        timeoutMs: 20_000,
-        script: `
-          const current = await lx.terminal.settings.get();
-          await lx.terminal.settings.update(
-            ${JSON.stringify(initial.config)},
-            { ifRevision: current.revision });
-        `,
-      });
+      // Restores the workspace snapshot's config as the settings patch it was.
+      await settingsApp.logic.eval({ timeout: 20_000 }, async ({ lx }, config) => {
+        const settings = lx.terminal!.settings;
+        const current = await settings.get();
+        await settings.update(config as Parameters<typeof settings.update>[0], { ifRevision: current.revision });
+      }, initial.config as unknown as JsonValue);
     }
-    await raw.eval({
-      timeoutMs: 20_000,
-      script: `
-        const handles = globalThis.__terminalThemeAutomationHandles;
-        delete globalThis.__terminalThemeAutomationHandles;
-        if (handles?.settings?.alive) await handles.settings.close();
-        if (handles?.terminal?.alive) await handles.terminal.close();
-      `,
-    });
+    await closeHandles(app, '__terminalThemeAutomationHandles');
   }
 });

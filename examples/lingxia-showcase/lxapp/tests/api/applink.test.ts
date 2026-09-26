@@ -1,10 +1,7 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import { waitForCurrentPage, waitForElementAttribute } from '../helpers/page.js';
 import { bindFixture, expectReject } from '../helpers/poll.js';
-
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
 
 spec('route a warm AppLink onto the query page once', {
   id: 'APPLINK-001',
@@ -18,18 +15,18 @@ spec('route a warm AppLink onto the query page once', {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
-  const result = await lx.automation().lxapps.applink({
+  const result = await t.automation.lxapps.applink({
     url: 'https://applink.lingxia.app/lxapp/open?page=device&type=screen',
   });
   expect(result.accepted).toBe(true);
   expect(result.code).toBe(1);
 
-  await waitForCurrentPage(raw, 'device', 30_000);
-  await raw.page.waitFor({ page: 'device', css: '[data-testid="device-page"]' });
+  await waitForCurrentPage(app, 'device', 30_000);
+  await app.view.testId('device-page', { page: 'device' }).waitFor({ timeout: 30_000 });
   await waitForElementAttribute(
-    raw,
+    t,
     'device',
     '[data-testid="device-page"]',
     'data-mode',
@@ -38,7 +35,7 @@ spec('route a warm AppLink onto the query page once', {
   expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home', 'device']);
 
   await expectReject(
-    () => lx.automation().lxapps.applink({
+    () => t.automation.lxapps.applink({
       url: 'https://evil.example/lxapp/open?page=todo',
     }),
     { message: 'host is not in appLinks.hosts' },
@@ -58,18 +55,18 @@ spec('route a warm AppLink from a product path', {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(raw, 'home');
+  await waitForCurrentPage(app, 'home');
 
   // No `/lxapp/` prefix: the host is the only gate, and Logic routes from the
   // pathname. A stray `path` param stays in the page query.
-  const result = await lx.automation().lxapps.applink({
+  const result = await t.automation.lxapps.applink({
     url: 'https://applink.lingxia.app/showcase/device?type=screen&path=/ignored',
   });
   expect(result.accepted).toBe(true);
 
-  await waitForCurrentPage(raw, 'device', 30_000);
+  await waitForCurrentPage(app, 'device', 30_000);
   await waitForElementAttribute(
-    raw,
+    t,
     'device',
     '[data-testid="device-page"]',
     'data-mode',

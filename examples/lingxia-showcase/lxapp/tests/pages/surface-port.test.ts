@@ -1,5 +1,5 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import {
   currentPageOrNull,
   waitForCurrentPage,
@@ -8,9 +8,16 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
+import type { PageMessagePort } from '@lingxia/types';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+/** What the probe keeps on Logic's `globalThis` under its spec's key. */
+interface PortState {
+  port: PageMessagePort | null;
+  messages: Array<{ message?: string; timestamp?: number }>;
+  off: (() => void) | null;
+  error: string | null;
+}
+type PortStates = Record<string, PortState | undefined>;
 
 const MESSAGE_INPUT = 'input[placeholder="Message to parent page"]';
 
@@ -23,53 +30,49 @@ spec('exchange messages over the port navigateTo returns', {
   const stateKey = `__lingxiaNavPort_${namespace.replace(/-/g, '_')}`;
   const outbound = `port-up-${namespace}`;
 
-  const current = await currentPageOrNull(raw);
+  const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
-    await raw.eval({
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        if (state?.off) state.off();
-        delete globalThis[${JSON.stringify(stateKey)}];
-      `,
-    }).catch(() => undefined);
-    const active = await currentPageOrNull(raw);
+    await app.logic.eval((_, key) => {
+      const states = globalThis as unknown as PortStates;
+      states[key]?.off?.();
+      delete states[key];
+    }, stateKey).catch(() => undefined);
+    const active = await currentPageOrNull(app);
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   });
 
   // The opener keeps the port; the pushed page sees it as `this.opener`.
   // Navigation must not be awaited inside the eval that starts it: the
   // promise settles only after the new page is ready, which this eval blocks.
-  await raw.eval({
-    script: `
-      const state = { port: null, messages: [], off: null, error: null };
-      globalThis[${JSON.stringify(stateKey)}] = state;
-      lx.navigateTo({ page: 'surface', query: { fixture: ${JSON.stringify(namespace)} } })
-        .then((port) => {
-          state.port = port;
-          state.off = port.onMessage((message) => state.messages.push(message));
-        })
-        .catch((error) => { state.error = String(error && error.message || error); });
-      return 'scheduled';
-    `,
-  });
+  await app.logic.eval(({ lx }, key, fixture) => {
+    const state: PortState = { port: null, messages: [], off: null, error: null };
+    (globalThis as unknown as PortStates)[key] = state;
+    lx.navigateTo({ page: 'surface', query: { fixture } })
+      .then((port) => {
+        state.port = port;
+        state.off = port.onMessage((message) => {
+          state.messages.push(message as PortState['messages'][number]);
+        });
+      })
+      .catch((error: { message?: string } | null) => { state.error = String(error?.message ?? error); });
+    return 'scheduled';
+  }, stateKey, namespace);
   // Desktop only preloads the landing tab. This spec is the first visit to
   // `surface`, and Windows CI has taken >10s to create that WebView and fire
   // onReady (the page was already current). Match the other cold-nav specs.
-  await waitForCurrentPage(raw, 'surface', 30_000);
-  await raw.page.waitFor({ page: 'surface', css: '[data-testid="surface-page"]', state: 'visible' });
+  await waitForCurrentPage(app, 'surface', 30_000);
+  await app.view.testId('surface-page', { page: 'surface' }).waitFor({ state: 'visible', timeout: 30_000 });
   const port = await eventually(
-    () => raw.eval({
-      script: `
-        const state = globalThis[${JSON.stringify(stateKey)}];
-        return {
-          error: state?.error ?? null,
-          shape: state?.port ? typeof state.port.postMessage === 'function' && typeof state.port.onMessage === 'function' : null,
-        };
-      `,
-    }) as Promise<{ error: string | null; shape: boolean | null }>,
+    () => app.logic.eval((_, key) => {
+      const state = (globalThis as unknown as PortStates)[key];
+      return {
+        error: state?.error ?? null,
+        shape: state?.port ? typeof state.port.postMessage === 'function' && typeof state.port.onMessage === 'function' : null,
+      };
+    }, stateKey),
     (value) => value.error !== null || value.shape !== null,
     { describe: 'navigateTo to settle with a message port', timeoutMs: 10_000 },
   );
@@ -77,18 +80,18 @@ spec('exchange messages over the port navigateTo returns', {
   expect(port.shape).toBe(true);
 
   await t.step('opener → page', async () => {
-    await raw.eval({
-      script: `globalThis[${JSON.stringify(stateKey)}].port.postMessage({ ping: ${JSON.stringify(namespace)} });`,
-    });
+    await app.logic.eval((_, key, ping) => {
+      (globalThis as unknown as PortStates)[key]?.port?.postMessage({ ping });
+    }, stateKey, namespace);
     const inbound = await waitForElementText(
-      raw,
+      t,
       'surface',
       '[data-testid="surface-inbound"]',
       (text) => text.includes(namespace),
     );
     expect(JSON.parse(inbound)).toEqual({ ping: namespace });
     expect(await waitForElementText(
-      raw,
+      t,
       'surface',
       '[data-testid="surface-inbound-count"]',
       (text) => text.trim() === '1',
@@ -97,19 +100,17 @@ spec('exchange messages over the port navigateTo returns', {
 
   await t.step('page → opener, then the page pops itself', async () => {
     await app.view.css(MESSAGE_INPUT, { page: 'surface' }).fill(outbound);
-    await waitForElementAttribute(raw, 'surface', MESSAGE_INPUT, 'data-controlled-value', outbound);
+    await waitForElementAttribute(t, 'surface', MESSAGE_INPUT, 'data-controlled-value', outbound);
     await app.view.testId("surface-send-message", { page: 'surface' }).click();
 
     const messages = await eventually(
-      () => raw.eval({
-        script: `return globalThis[${JSON.stringify(stateKey)}]?.messages ?? []`,
-      }) as Promise<Array<{ message?: string; timestamp?: number }>>,
+      () => app.logic.eval((_, key) => (globalThis as unknown as PortStates)[key]?.messages ?? [], stateKey),
       (value) => value.some((message) => message.message === outbound),
       { describe: 'page message delivered to the opener port', timeoutMs: 10_000 },
     );
     expect(typeof messages.find((message) => message.message === outbound)?.timestamp).toBe('number');
 
-    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
     expect((await app.nav.stack()).map((page) => page.name)).toEqual(['home']);
   });
 });

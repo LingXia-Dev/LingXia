@@ -7,10 +7,49 @@ import {
   waitForElementText,
 } from '../helpers/page.js';
 import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import type { ProbeDocument, ProbeElement, ProbeWindow } from '../helpers/view.js';
 
-// String scripts and raw page reads go to the raw driver; see `rawApp`.
-const raw = rawApp();
+/** A node of a native island's compiled tree, as its probes read it. */
+interface NativeNode {
+  kind: string;
+  authorType?: string;
+  authorId?: string;
+  automationId?: string;
+  text?: string;
+  props: {
+    pointerEvents?: string;
+    scrimPaint?: { scrim?: string };
+    coverPreset?: { position?: string; inset?: number };
+    role?: string;
+    nativeStyle?: Record<string, string>;
+    content?: { icon?: { name?: string }; text?: string };
+    intent?: string;
+    emphasis?: string;
+  };
+  children: NativeNode[];
+}
+
+interface NativeCompileResult {
+  ok: boolean;
+  root: { children: NativeNode[] };
+  diagnostics: Array<{ code?: string; message: string }>;
+}
+
+/** `<lx-native-root>` as the probes drive it. */
+interface NativeRoot extends ProbeElement {
+  lastCompileResult?: () => NativeCompileResult | null;
+  compileNow(): NativeCompileResult;
+}
+
+/** Page globals the frame-starving probe parks on `window`. */
+interface FrameProbeWindow extends ProbeWindow {
+  __nativeIslandScrollCompiles?: number;
+  __nativeIslandOriginalRaf?: ProbeWindow['requestAnimationFrame'];
+  __nativeIslandDeferredRafs?: Array<(time: number) => void>;
+  readonly performance: { now(): number };
+  readonly KeyboardEvent: new (type: string, init: { key: string; bubbles?: boolean; cancelable?: boolean }) => unknown;
+}
 
 const testGlobals = globalThis as typeof globalThis & {
   __LINGXIA_TEST__?: { run: () => Promise<unknown> };
@@ -32,34 +71,35 @@ function isWindowsNativeAccent(pixel: { r: number; g: number; b: number }): bool
 
 spec("hand an H5 menu press to a native menu above the island video", { id: "NATIVE-ISLAND-001", covers: ['lx.createVideoContext', 'NavDriver.to'], app: SHOWCASE_APP_ID, timeout: 30_000 }, async (t) => {
   const { app, defer } = bindFixture(t, "NATIVE-ISLAND-001");
-  const current = await currentPageOrNull(raw);
+  const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
-    const active = await currentPageOrNull(raw);
+    const active = await currentPageOrNull(app);
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
   });
 
   await app.nav.relaunch({ page: 'video' });
-  await waitForCurrentPage(raw, 'video');
-  await raw.page.waitFor({ page: 'video', css: 'lx-native-root', state: 'attached' });
+  await waitForCurrentPage(app, 'video');
+  await app.view.css('lx-native-root', { page: 'video' }).first().waitFor({ state: 'attached', timeout: 30_000 });
   const wrapped = await eventually(
-    () => raw.page.eval({
-      page: 'video',
-      script:
-        '(() => { const root = document.querySelector("#video-native-root"); const video = root && root.querySelector(":scope > lx-video"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { hasRoot: !!root, videoIsDirectChild: !!video, videoId: video && video.getAttribute("id"), compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasCover: children.some((child) => child.authorType === "LxNativeCover") }; })()',
+    () => app.view.eval({ page: 'video' }, ({ document }) => {
+      const root = document.querySelector('#video-native-root') as NativeRoot | null;
+      const video = root && root.querySelector(':scope > lx-video');
+      const compiled = root && typeof root.lastCompileResult === 'function' ? root.lastCompileResult() : null;
+      const children = compiled && compiled.ok ? compiled.root.children : [];
+      return {
+        hasRoot: !!root,
+        videoIsDirectChild: !!video,
+        videoId: video && video.getAttribute('id'),
+        compileOk: !!(compiled && compiled.ok),
+        kinds: children.map((child) => child.kind),
+        hasCover: children.some((child) => child.authorType === 'LxNativeCover'),
+      };
     }),
-    (value) => (value as { compileOk?: boolean; kinds?: string[] } | null)?.compileOk === true
-      && (value as { kinds: string[] }).kinds.join(',') === 'video',
+    (value) => value?.compileOk === true && value.kinds.join(',') === 'video',
     { timeoutMs: 5_000, describe: 'native video without the default overlay' },
-  ) as {
-    hasRoot: boolean;
-    videoIsDirectChild: boolean;
-    videoId: string | null;
-    compileOk: boolean;
-    kinds: string[];
-    hasCover: boolean;
-  };
+  );
   expect(wrapped.hasRoot).toBeTruthy();
   expect(wrapped.videoIsDirectChild).toBeTruthy();
   expect(wrapped.videoId).toBe('lx-video-1');
@@ -67,14 +107,14 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(wrapped.kinds.join(',')).toBe('video');
   expect(wrapped.hasCover).toBeFalsy();
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-state"]',
     (text) => text === 'closed',
     5_000,
   )).toBe('closed');
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-js-result"]',
     (text) => text.includes('Tap Menu'),
@@ -83,51 +123,70 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
 
   await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-state"]',
     (text) => text === 'open',
     5_000,
   )).toBe('open');
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-js-result"]',
     (text) => text === 'H5 mounted the native menu.',
     5_000,
   )).toBe('H5 mounted the native menu.');
   const nativeMenu = await eventually(
-    () => raw.page.eval({
-      page: 'video',
-      script:
-        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; const cover = children.find((child) => child.authorType === "LxNativeCover"); const menu = cover && cover.children.find((child) => child.authorId === "video-native-menu"); const more = menu && menu.children.find((child) => child.authorId === "video-native-menu-more"); const close = menu && menu.children.find((child) => child.authorId === "video-native-menu-close"); return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), cover: cover && { authorType: cover.authorType, automationId: cover.automationId, pointerEvents: cover.props.pointerEvents, scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim, coverPosition: cover.props.coverPreset && cover.props.coverPreset.position, coverInset: cover.props.coverPreset && cover.props.coverPreset.inset, childKinds: cover.children.map((child) => child.kind) }, menu: menu && { authorType: menu.authorType, automationId: menu.automationId, role: menu.props.role, pointerEvents: menu.props.pointerEvents, nativeStyle: menu.props.nativeStyle, childKinds: menu.children.map((child) => child.kind), childText: menu.children.filter((child) => child.kind === "text").map((child) => child.text) }, more: more && { icon: more.props.content && more.props.content.icon && more.props.content.icon.name, label: more.props.content && more.props.content.text, intent: more.props.intent, emphasis: more.props.emphasis, nativeStyle: more.props.nativeStyle }, close: close && { icon: close.props.content && close.props.content.icon && close.props.content.icon.name, label: close.props.content && close.props.content.text, emphasis: close.props.emphasis, nativeStyle: close.props.nativeStyle } }; })()',
+    () => app.view.eval({ page: 'video' }, ({ document }) => {
+      const root = document.querySelector('#video-native-root') as NativeRoot | null;
+      const compiled = root && typeof root.lastCompileResult === 'function' ? root.lastCompileResult() : null;
+      const children = compiled && compiled.ok ? compiled.root.children : [];
+      const cover = children.find((child) => child.authorType === 'LxNativeCover');
+      const menu = cover && cover.children.find((child) => child.authorId === 'video-native-menu');
+      const more = menu && menu.children.find((child) => child.authorId === 'video-native-menu-more');
+      const close = menu && menu.children.find((child) => child.authorId === 'video-native-menu-close');
+      return {
+        compileOk: !!(compiled && compiled.ok),
+        kinds: children.map((child) => child.kind),
+        cover: cover && {
+          authorType: cover.authorType,
+          automationId: cover.automationId,
+          pointerEvents: cover.props.pointerEvents,
+          scrim: cover.props.scrimPaint && cover.props.scrimPaint.scrim,
+          coverPosition: cover.props.coverPreset && cover.props.coverPreset.position,
+          coverInset: cover.props.coverPreset && cover.props.coverPreset.inset,
+          childKinds: cover.children.map((child) => child.kind),
+        },
+        menu: menu && {
+          authorType: menu.authorType,
+          automationId: menu.automationId,
+          role: menu.props.role,
+          pointerEvents: menu.props.pointerEvents,
+          nativeStyle: menu.props.nativeStyle ?? {},
+          childKinds: menu.children.map((child) => child.kind),
+          childText: menu.children.filter((child) => child.kind === 'text').map((child) => child.text),
+        },
+        more: more && {
+          icon: more.props.content && more.props.content.icon && more.props.content.icon.name,
+          label: more.props.content && more.props.content.text,
+          intent: more.props.intent,
+          emphasis: more.props.emphasis,
+          nativeStyle: more.props.nativeStyle ?? {},
+        },
+        close: close && {
+          icon: close.props.content && close.props.content.icon && close.props.content.icon.name,
+          label: close.props.content && close.props.content.text,
+          emphasis: close.props.emphasis,
+          nativeStyle: close.props.nativeStyle ?? {},
+        },
+      };
     }),
-    (value) => (value as { menu?: { authorType?: unknown } } | null)?.menu?.authorType === 'LxNativeView',
-      { timeoutMs: 5_000, describe: 'H5 menu trigger mounted the native menu view' },
-  ) as {
-    compileOk: boolean;
-    kinds: string[];
-    cover: {
-      authorType: string;
-      automationId: string;
-      pointerEvents: string;
-      scrim: string;
-      coverPosition: string;
-      coverInset: number;
-      childKinds: string[];
-    };
-    menu: {
-      authorType: string;
-      automationId: string;
-      role: string;
-      pointerEvents: string;
-      nativeStyle: Record<string, string>;
-      childKinds: string[];
-      childText: string[];
-    };
-    more: { icon: string; label: string; intent: string; emphasis: string; nativeStyle: Record<string, string> };
-    close: { icon: string; label: string; emphasis: string; nativeStyle: Record<string, string> };
-  };
+    (value) => value?.menu?.authorType === 'LxNativeView',
+    { timeoutMs: 5_000, describe: 'H5 menu trigger mounted the native menu view' },
+  );
+  if (!nativeMenu.cover || !nativeMenu.menu || !nativeMenu.more || !nativeMenu.close) {
+    throw new Error(`native menu tree is incomplete: ${JSON.stringify(nativeMenu)}`);
+  }
   expect(nativeMenu.compileOk).toBeTruthy();
   expect(nativeMenu.kinds.join(',')).toBe('video,view');
   expect(nativeMenu.cover.authorType).toBe('LxNativeCover');
@@ -156,10 +215,23 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(nativeMenu.close.emphasis).toBe('secondary');
   expect(nativeMenu.close.nativeStyle.borderRadius).toBe('10px');
 
-  const accessibleMenu = await raw.page.eval({
-    page: 'video',
-    script: '(() => { const menu = document.querySelector("#video-native-menu"); const more = document.querySelector("#video-native-menu-more"); const close = document.querySelector("#video-native-menu-close"); const rect = menu?.getBoundingClientRect(); return { menuRole: menu?.getAttribute("role"), moreRole: more?.getAttribute("role"), closeRole: close?.getAttribute("role"), moreAriaLabel: more?.getAttribute("aria-label"), closeAriaLabel: close?.getAttribute("aria-label"), moreTabIndex: more?.getAttribute("tabindex"), closeTabIndex: close?.getAttribute("tabindex"), visible: !!rect && rect.top >= 0 && rect.left >= 0 && rect.bottom <= window.innerHeight && rect.right <= window.innerWidth }; })()',
-  }) as { menuRole: string; moreRole: string; closeRole: string; moreAriaLabel: string; closeAriaLabel: string; moreTabIndex: string; closeTabIndex: string; visible: boolean };
+  const accessibleMenu = await app.view.eval({ page: 'video' }, ({ document, window }) => {
+    const menu = document.querySelector('#video-native-menu');
+    const more = document.querySelector('#video-native-menu-more');
+    const close = document.querySelector('#video-native-menu-close');
+    const rect = menu?.getBoundingClientRect();
+    return {
+      menuRole: menu?.getAttribute('role'),
+      moreRole: more?.getAttribute('role'),
+      closeRole: close?.getAttribute('role'),
+      moreAriaLabel: more?.getAttribute('aria-label'),
+      closeAriaLabel: close?.getAttribute('aria-label'),
+      moreTabIndex: more?.getAttribute('tabindex'),
+      closeTabIndex: close?.getAttribute('tabindex'),
+      visible: !!rect && rect.top >= 0 && rect.left >= 0
+        && rect.top + rect.height <= window.innerHeight && rect.left + rect.width <= window.innerWidth,
+    };
+  });
   expect(accessibleMenu.menuRole).toBe('menu');
   expect(accessibleMenu.moreRole).toBe('button');
   expect(accessibleMenu.closeRole).toBe('button');
@@ -169,104 +241,116 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(accessibleMenu.closeTabIndex).toBe('0');
   expect(accessibleMenu.visible).toBeTruthy();
 
-  const contract = await raw.page.eval({
-    page: 'video',
-    script: `(() => {
-      const root = document.querySelector('#video-native-root');
-      const more = document.querySelector('#video-native-menu-more');
-      const css = document.createElement('style');
-      css.textContent = '.native-contract-shadow { box-shadow: 0 2px 4px black; }';
-      document.head.appendChild(css);
-      const errors = [];
-      const onError = (event) => errors.push(event.detail);
-      root.addEventListener('error', onError);
-      try {
-        more.setAttribute('icon', 'play');
-        more.classList.add('native-contract-shadow');
-        const first = root.compileNow();
-        const count = errors.length;
-        root.compileNow();
-        const deduplicated = errors.length === count;
-        more.classList.remove('native-contract-shadow');
-        const restored = root.compileNow();
-        return {
-          combined: first.ok,
-          diagnosed: errors.some((error) => error.code === 'NATIVE_ROOT_UNSUPPORTED_STYLE'
-            && error.message.includes('video-native-menu-more') && error.message.includes('boxShadow')),
-          deduplicated,
-          recovered: restored.ok && !restored.diagnostics.some((error) => error.message.includes('boxShadow')),
-        };
-      } finally {
-        more.setAttribute('icon', 'more');
-        more.classList.remove('native-contract-shadow');
-        css.remove();
-        root.removeEventListener('error', onError);
-        root.compileNow();
-      }
-    })()`,
-  }) as { combined: boolean; diagnosed: boolean; deduplicated: boolean; recovered: boolean };
+  const contract = await app.view.eval({ page: 'video' }, ({ document }) => {
+    const page = document as unknown as ProbeDocument;
+    const root = document.querySelector('#video-native-root') as NativeRoot;
+    const more = document.querySelector('#video-native-menu-more') as ProbeElement;
+    const css = page.createElement('style');
+    Object.assign(css, { textContent: '.native-contract-shadow { box-shadow: 0 2px 4px black; }' });
+    page.head.appendChild(css);
+    const errors: Array<{ code?: string; message: string }> = [];
+    const onError = (event: unknown) => errors.push((event as { detail: { code?: string; message: string } }).detail);
+    root.addEventListener('error', onError);
+    try {
+      more.setAttribute('icon', 'play');
+      more.classList.add('native-contract-shadow');
+      const first = root.compileNow();
+      const count = errors.length;
+      root.compileNow();
+      const deduplicated = errors.length === count;
+      more.classList.remove('native-contract-shadow');
+      const restored = root.compileNow();
+      return {
+        combined: first.ok,
+        diagnosed: errors.some((error) => error.code === 'NATIVE_ROOT_UNSUPPORTED_STYLE'
+          && error.message.includes('video-native-menu-more') && error.message.includes('boxShadow')),
+        deduplicated,
+        recovered: restored.ok && !restored.diagnostics.some((error) => error.message.includes('boxShadow')),
+      };
+    } finally {
+      more.setAttribute('icon', 'more');
+      more.classList.remove('native-contract-shadow');
+      css.remove();
+      root.removeEventListener('error', onError);
+      root.compileNow();
+    }
+  });
   expect(contract.combined).toBeTruthy();
   expect(contract.diagnosed).toBeTruthy();
   expect(contract.deduplicated).toBeTruthy();
   expect(contract.recovered).toBeTruthy();
 
-  const moreDispatched = await raw.page.eval({
-    page: 'video',
-    script:
-      '(() => { const more = document.querySelector("#video-native-menu-more"); if (!more) return false; more.dispatchEvent(new CustomEvent("press", { bubbles: true, detail: { source: "automation" } })); return true; })()',
-  });
+  const moreDispatched = await app.view.eval({ page: 'video' }, ({ document, window }, id) => {
+    const target = document.querySelector(id) as ProbeElement | null;
+    if (!target) return false;
+    const page = window as unknown as ProbeWindow;
+    target.dispatchEvent(new page.CustomEvent('press', { bubbles: true, detail: { source: 'automation' } }));
+    return true;
+  }, '#video-native-menu-more');
   expect(moreDispatched).toBeTruthy();
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-state"]',
     (text) => text === 'closed',
     5_000,
   )).toBe('closed');
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-js-result"]',
     (text) => text === 'More handled by View JS.',
     5_000,
   )).toBe('More handled by View JS.');
   const menuRemoved = await eventually(
-    () => raw.page.eval({
-      page: 'video',
-      script:
-        '(() => { const root = document.querySelector("#video-native-root"); const compiled = root && typeof root.lastCompileResult === "function" ? root.lastCompileResult() : null; const children = compiled && compiled.ok ? compiled.root.children : []; return { compileOk: !!(compiled && compiled.ok), kinds: children.map((child) => child.kind), hasMenu: children.some((child) => child.authorType === "LxNativeCover") }; })()',
+    () => app.view.eval({ page: 'video' }, ({ document }) => {
+      const root = document.querySelector('#video-native-root') as NativeRoot | null;
+      const compiled = root && typeof root.lastCompileResult === 'function' ? root.lastCompileResult() : null;
+      const children = compiled && compiled.ok ? compiled.root.children : [];
+      return {
+        compileOk: !!(compiled && compiled.ok),
+        kinds: children.map((child) => child.kind),
+        hasMenu: children.some((child) => child.authorType === 'LxNativeCover'),
+      };
     }),
-    (value) => (value as { compileOk?: boolean; hasMenu?: boolean } | null)?.compileOk === true
-      && (value as { hasMenu: boolean }).hasMenu === false,
+    (value) => value?.compileOk === true && value.hasMenu === false,
     { timeoutMs: 5_000, describe: 'native menu removed from compiled island' },
-  ) as { compileOk: boolean; kinds: string[]; hasMenu: boolean };
+  );
   expect(menuRemoved.kinds.join(',')).toBe('video');
 
-  await raw.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
+  // The click scrolls the trigger into view first.
   await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   const menuAfterScroll = await eventually(
-    () => raw.page.eval({
-      page: 'video',
-      script: '(() => { const menu = document.querySelector("#video-native-menu")?.getBoundingClientRect(); const toggle = document.querySelector("[data-testid=native-menu-toggle]")?.getBoundingClientRect(); return menu && toggle ? { menuTop: menu.top, menuBottom: menu.bottom, toggleBottom: toggle.bottom, viewportHeight: window.innerHeight } : null; })()',
+    () => app.view.eval({ page: 'video' }, ({ document, window }) => {
+      const menu = document.querySelector('#video-native-menu')?.getBoundingClientRect();
+      const toggle = document.querySelector('[data-testid=native-menu-toggle]')?.getBoundingClientRect();
+      return menu && toggle
+        ? {
+          menuTop: menu.top,
+          menuBottom: menu.top + menu.height,
+          toggleBottom: toggle.top + toggle.height,
+          viewportHeight: window.innerHeight,
+        }
+        : null;
     }),
-    (value) => {
-      const rect = value as { menuTop?: number; menuBottom?: number; toggleBottom?: number; viewportHeight?: number } | null;
-      return rect != null
-        && typeof rect.menuTop === 'number'
-        && rect.menuTop >= 0
-        && rect.menuBottom! <= rect.viewportHeight!
-        && rect.menuTop >= rect.toggleBottom!;
-    },
+    (rect) => rect != null
+      && rect.menuTop >= 0
+      && rect.menuBottom <= rect.viewportHeight
+      && rect.menuTop >= rect.toggleBottom,
     { timeoutMs: 5_000, describe: 'native menu remains visible when opened after scrolling to its H5 trigger' },
-  ) as { menuTop: number; menuBottom: number; toggleBottom: number; viewportHeight: number };
+  );
+  if (!menuAfterScroll) throw new Error('native menu geometry is missing');
   expect(menuAfterScroll.menuTop >= menuAfterScroll.toggleBottom).toBeTruthy();
-  const closeDispatched = await raw.page.eval({
-    page: 'video',
-    script: '(() => { const close = document.querySelector("#video-native-menu-close"); if (!close) return false; close.dispatchEvent(new CustomEvent("press", { bubbles: true, detail: { source: "automation" } })); return true; })()',
-  });
+  const closeDispatched = await app.view.eval({ page: 'video' }, ({ document, window }, id) => {
+    const target = document.querySelector(id) as ProbeElement | null;
+    if (!target) return false;
+    const page = window as unknown as ProbeWindow;
+    target.dispatchEvent(new page.CustomEvent('press', { bubbles: true, detail: { source: 'automation' } }));
+    return true;
+  }, '#video-native-menu-close');
   expect(closeDispatched).toBeTruthy();
   expect(await waitForElementText(
-    raw,
+    t,
     'video',
     '[data-testid="native-menu-state"]',
     (text) => text === 'closed',
@@ -275,19 +359,16 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
 
   const playing = await eventually(
     () =>
-      raw.page.eval({
-        page: 'video',
-        script:
-          'document.querySelector("lx-video") && document.querySelector("lx-video").getAttribute("data-lx-playing")',
-      }),
+      app.view.eval({ page: 'video' }, ({ document }) =>
+        document.querySelector('lx-video')?.getAttribute('data-lx-playing') ?? null),
     (value) => value === 'true',
     { timeoutMs: 20_000, describe: 'lx-video data-lx-playing' },
   );
   expect(playing).toBe('true');
-  await raw.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
   await app.view.testId("native-menu-toggle", { page: 'video' }).click();
+  const moreButton = app.view.css('#video-native-menu-more', { page: 'video' }).first();
   let nativeButton = await eventually(
-    () => raw.page.query({ page: 'video', css: '#video-native-menu-more' }),
+    () => moreButton.query(),
     (button) => button.exists && button.visible && button.inViewport !== false,
     { timeoutMs: 5_000, describe: 'native menu More button mounted over the video' },
   );
@@ -297,32 +378,44 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   const beforeScrollCenterY = nativeButton.rect.center_y;
   // A phone fits the whole video page in one screen, so there would be nothing
   // to scroll. Pad the document so geometry always has somewhere to follow.
-  await raw.page.eval({
-    page: 'video',
-    script: `(() => {
-      const spacer = document.createElement('div');
-      spacer.id = 'native-island-scroll-spacer';
-      spacer.style.height = '100vh';
-      document.body.appendChild(spacer);
-      return true;
-    })()`,
+  await app.view.eval({ page: 'video' }, ({ document }) => {
+    const page = document as unknown as ProbeDocument;
+    const spacer = page.createElement('div');
+    spacer.setAttribute('id', 'native-island-scroll-spacer');
+    spacer.style.height = '100vh';
+    page.body.appendChild(spacer);
+    return true;
   });
   defer(async () => {
-    await raw.page.eval({
-      page: 'video',
-      script: `document.querySelector('#native-island-scroll-spacer')?.remove(); window.scrollTo(0, 0); true`,
+    await app.view.eval({ page: 'video' }, ({ document, window }) => {
+      (document.querySelector('#native-island-scroll-spacer') as ProbeElement | null)?.remove();
+      (window as unknown as ProbeWindow).scrollTo(0, 0);
+      return true;
     }).catch(() => {});
   });
   const starveAnimationFrames = testArgs.platform?.toLocaleLowerCase() === 'windows';
   if (starveAnimationFrames) {
-    const scrollY = await raw.page.eval({
-      page: 'video',
-      script: 'globalThis.__nativeIslandScrollCompiles = 0; document.querySelector("#video-native-root")?.addEventListener("lxnativecompiled", () => { globalThis.__nativeIslandScrollCompiles += 1; }); globalThis.__nativeIslandOriginalRaf = window.requestAnimationFrame; globalThis.__nativeIslandDeferredRafs = []; window.requestAnimationFrame = (callback) => { globalThis.__nativeIslandDeferredRafs.push(callback); return 2147483647 + globalThis.__nativeIslandDeferredRafs.length; }; window.scrollTo(0, Math.min(80, document.documentElement.scrollHeight - window.innerHeight)); window.scrollY',
+    const scrollY = await app.view.eval({ page: 'video' }, ({ document, window }) => {
+      const page = window as unknown as FrameProbeWindow;
+      page.__nativeIslandScrollCompiles = 0;
+      (document.querySelector('#video-native-root') as ProbeElement | null)?.addEventListener('lxnativecompiled', () => {
+        page.__nativeIslandScrollCompiles = (page.__nativeIslandScrollCompiles ?? 0) + 1;
+      });
+      page.__nativeIslandOriginalRaf = page.requestAnimationFrame;
+      const deferred: Array<(time: number) => void> = [];
+      page.__nativeIslandDeferredRafs = deferred;
+      page.requestAnimationFrame = (callback) => {
+        deferred.push(callback);
+        return 2147483647 + deferred.length;
+      };
+      page.scrollTo(0, Math.min(80, (document.documentElement as ProbeElement).scrollHeight - window.innerHeight));
+      return window.scrollY;
     });
     nativeButton = await eventually(
       async () => ({
-        button: await raw.page.query({ page: 'video', css: '#video-native-menu-more' }),
-        compiles: await raw.page.eval({ page: 'video', script: 'globalThis.__nativeIslandScrollCompiles' }),
+        button: await moreButton.query(),
+        compiles: await app.view.eval({ page: 'video' }, ({ window }) =>
+          (window as unknown as FrameProbeWindow).__nativeIslandScrollCompiles ?? null),
       }),
       (value) => value.button.exists
         && value.button.visible
@@ -332,25 +425,27 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
         && value.compiles > 0,
       { timeoutMs: 5_000, describe: `native island geometry published without an animation frame (scrollY=${scrollY})` },
     ).then((value) => value.button);
-    await raw.page.eval({
-      page: 'video',
-      script: 'const deferred = globalThis.__nativeIslandDeferredRafs || []; window.requestAnimationFrame = globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandOriginalRaf; delete globalThis.__nativeIslandDeferredRafs; deferred.forEach((callback) => callback(performance.now()));',
+    await app.view.eval({ page: 'video' }, ({ window }) => {
+      const page = window as unknown as FrameProbeWindow;
+      const deferred = page.__nativeIslandDeferredRafs || [];
+      if (page.__nativeIslandOriginalRaf) page.requestAnimationFrame = page.__nativeIslandOriginalRaf;
+      delete page.__nativeIslandOriginalRaf;
+      delete page.__nativeIslandDeferredRafs;
+      deferred.forEach((callback) => callback(page.performance.now()));
+      return true;
     });
   } else {
     // macOS `page.scroll` posts a wheel at the WebView center, which the
     // island consumes. Move the document itself so geometry has to follow.
-    const scrollY = await raw.page.eval({
-      page: 'video',
-      script: `(() => {
-        const y = window.scrollY;
-        const max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        const next = y + 80 <= max ? y + 80 : Math.max(0, y - 80);
-        window.scrollTo(0, next);
-        return window.scrollY;
-      })()`,
-    }) as number;
+    const scrollY = await app.view.eval({ page: 'video' }, ({ document, window }) => {
+      const y = window.scrollY;
+      const max = Math.max(0, (document.documentElement as ProbeElement).scrollHeight - window.innerHeight);
+      const next = y + 80 <= max ? y + 80 : Math.max(0, y - 80);
+      (window as unknown as ProbeWindow).scrollTo(0, next);
+      return window.scrollY;
+    });
     nativeButton = await eventually(
-      () => raw.page.query({ page: 'video', css: '#video-native-menu-more' }),
+      () => moreButton.query(),
       (button) => button.exists
         && button.visible
         && button.inViewport !== false
@@ -407,7 +502,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       { timeoutMs: 5_000, describe: `native island visual followed scroll (${inputDiagnostic})` },
     );
     expect(accentSamples >= 4).toBeTruthy();
-    nativeButton = await raw.page.query({ page: 'video', css: '#video-native-menu-more' });
+    nativeButton = await moreButton.query();
     if (!nativeButton.exists) {
       throw new Error('native menu More button disappeared before pointer click');
     }
@@ -416,41 +511,39 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       at: [nativeButton.rect.center_x, nativeButton.rect.center_y],
     });
     const pressSource = await eventually(
-      () => raw.page.eval({
-        page: 'video',
-        script: 'document.querySelector("[data-testid=native-press-source]")?.textContent',
-      }),
+      () => app.view.eval({ page: 'video' }, ({ document }) =>
+        document.querySelector('[data-testid=native-press-source]')?.textContent ?? null),
       (value) => value === 'pointer',
       { timeoutMs: 5_000, describe: `native button press source (${inputDiagnostic})` },
     );
     expect(pressSource).toBe('pointer');
     expect(await waitForElementText(
-      raw,
+      t,
       'video',
       '[data-testid="native-menu-js-result"]',
       (text) => text === 'More handled by View JS.',
       5_000,
     )).toBe('More handled by View JS.');
 
-    await raw.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
     await app.view.testId("native-menu-toggle", { page: 'video' }).click();
     await eventually(
-      () => raw.page.query({ page: 'video', css: '#video-native-menu-more' }),
+      () => moreButton.query(),
       (button) => button.exists && button.visible,
       { timeoutMs: 5_000, describe: 'native menu remounted for keyboard activation' },
     );
     await desktop.ax.focus({ window: host.id, match: 'name:More native menu actions' });
     await eventually(
-      () => raw.page.eval({ page: 'video', script: 'document.activeElement?.id' }),
+      () => app.view.eval({ page: 'video', timeout: 5_000 }, ({ document }) => document.activeElement?.id ?? null),
       (value) => value === 'video-native-menu-more',
       { timeoutMs: 5_000, describe: 'Windows UIA focus reached the native menu More element' },
     );
-    await raw.page.eval({
-      page: 'video',
-      script: 'document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }))',
+    await app.view.eval({ page: 'video' }, ({ document, window }) => {
+      const page = window as unknown as FrameProbeWindow;
+      return (document.activeElement as ProbeElement | null)
+        ?.dispatchEvent(new page.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })) ?? null;
     });
     expect(await waitForElementText(
-      raw,
+      t,
       'video',
       '[data-testid="native-press-source"]',
       (text) => text === 'keyboard',
@@ -463,22 +556,22 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
 spec("hide the native video overlay before the next page becomes interactive", { id: "NATIVE-VIDEO-001", covers: ['lx.createVideoContext', 'VideoContext.pause', 'NavDriver.to', 'NavDriver.back'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace, defer } = bindFixture(t, "NATIVE-VIDEO-001");
 
-  const current = await currentPageOrNull(raw);
+  const current = await currentPageOrNull(app);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   defer(async () => {
-    const active = await currentPageOrNull(raw);
+    const active = await currentPageOrNull(app);
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   });
 
   await app.nav.to({
     page: 'video',
     query: { automationFixture: 'video-context-shape' },
   });
-  await waitForCurrentPage(raw, 'video');
-  await raw.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
-  await raw.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'visible' });
+  await waitForCurrentPage(app, 'video');
+  await app.view.testId('video-page', { page: 'video' }).waitFor({ state: 'visible', timeout: 30_000 });
+  await app.view.css('#lx-video-shape-fixture', { page: 'video' }).first().waitFor({ state: 'visible', timeout: 30_000 });
   // The shape fixture loads no media, and only Apple emits a pause event
   // without a playing transition; just exercise the pause command itself.
   await app.view.testId("video-pause", { page: 'video' }).click();
@@ -486,13 +579,13 @@ spec("hide the native video overlay before the next page becomes interactive", {
 
   const hiddenAt = Date.now();
   await app.nav.back();
-  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]', 5_000);
+  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]', 5_000);
 
   const name = `Native overlay ${namespace}`;
   await app.view.testId("home-name", { page: 'home' }).fill(name);
   await app.view.testId("home-greet", { page: 'home' }).click();
   expect(await waitForElementText(
-    raw,
+    t,
     'home',
     '[data-testid="home-greeting"]',
     (text) => text.includes(name),
