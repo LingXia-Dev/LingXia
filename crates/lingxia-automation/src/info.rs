@@ -128,9 +128,17 @@ impl JSLxAppDriver {
         &self,
         ctx: JSContext,
         definition: JSObject,
-        variant: rong::function::Optional<String>,
+        variant: rong::function::Optional<JSValue>,
     ) -> JSResult<JSObject> {
-        crate::network::install_scenario(ctx, &self.lxapp, definition, variant.0).await
+        // `undefined` and `null` mean no variant, not the text "undefined".
+        let variant = match variant.0 {
+            Some(value) if value.is_string() => Some(value.to_rust::<String>()?),
+            Some(value) if !value.is_undefined() && !value.is_null() => {
+                return Err(crate::auto_err("scenario variant must be a string"));
+            }
+            _ => None,
+        };
+        crate::network::install_scenario(ctx, &self.lxapp, definition, variant).await
     }
 
     /// Checkpoint and roll back the isolated data profile of a host run.
