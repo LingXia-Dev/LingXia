@@ -347,3 +347,30 @@ test("a fresh relaunch tolerates the home page handing off, not a timeout", asyn
     assert.equal(report.cases[0].status, expected, message);
   }
 });
+
+test("text matchers see whitespace-normalised text, as the user reads it", async () => {
+  const world = createWorld();
+  // WebKit's innerText of a flex row ends in a line break.
+  world.add({ testId: "band", text: "Good\n" });
+  world.add({ testId: "status", text: "  Following\n\n   up\t" });
+  world.add({ testId: "miss", text: "Good\nnight" });
+  const { attachments } = installFakeHost(world);
+  const seen = [];
+
+  spec("normalised", async (t) => {
+    const view = t.app.view;
+    await t.expect(view.testId("band")).toHaveText("Good");
+    await t.expect(view.testId("band")).toHaveText(/^Good$/);
+    await t.expect(view.testId("status")).toHaveText("Following up");
+    await t.expect(view.testId("status")).toHaveText(" Following   up ");
+    await t.expect(view.testId("status")).toContainText("Following up");
+    await t.expect(view.testId("status")).toHaveText(/^Following up$/);
+    seen.push("passed");
+    await t.expect(view.testId("miss")).toHaveText("Good", { timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(seen, ["passed"]);
+  const message = failedMessage(attachments);
+  assert.match(message, /Expected: "Good"\nReceived: "Good night"/);
+});

@@ -40,6 +40,7 @@ lxdev test tests/pages/notes.test.ts
 - One waiting assertion: `t.expect(locator)` and `t.expect(() => read())`
   retry until the matcher passes; `t.expect(value)` (like the imported
   `expect`) checks once. `expect(locator)` throws: a locator needs `t.expect`.
+- Text matchers read whitespace-normalised text (runs collapsed to one space, ends trimmed).
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
   a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes
   `tsconfig.tests.json`). `import '@lingxia/test'` types the test context

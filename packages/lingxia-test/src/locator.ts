@@ -235,7 +235,14 @@ export class PageLocator implements Locator {
     );
     const raw = Array.isArray(all.items) ? all.items : all.exists ? [all] : [];
     // Every match keeps its DOM index: the driver addresses `css` + index.
-    const indexed = raw.map((item, position) => ({ ...item, index: item.index ?? position }));
+    // Text is read as the user sees it: `innerText` line breaks depend on
+    // layout (WebKit ends a flex row's text in "\n"), so whitespace is
+    // collapsed and trimmed before any matcher sees it.
+    const indexed = raw.map((item, position) => ({
+      ...item,
+      index: item.index ?? position,
+      ...(typeof item.text === "string" ? { text: normalizeText(item.text) } : {}),
+    }));
     const hasText = this.refine.hasText;
     const matches = hasText === undefined ? indexed : indexed.filter((item) => textMatches(item.text ?? "", hasText));
     const pick = this.refine.last ? matches.length - 1 : this.options.index;
@@ -493,13 +500,17 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
 }
 
 /** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
+/** Collapse every run of whitespace (newlines included) to one space and trim. */
+export function normalizeText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
 export function textMatches(text: string, expected: string | RegExp): boolean {
   if (expected instanceof RegExp) {
     expected.lastIndex = 0;
     return expected.test(text);
   }
-  const normalize = (value: string) => value.replace(/\s+/g, " ").trim().toLowerCase();
-  return normalize(text).includes(normalize(expected));
+  return normalizeText(text).toLowerCase().includes(normalizeText(expected).toLowerCase());
 }
 
 export function sleep(ms: number): Promise<void> {
