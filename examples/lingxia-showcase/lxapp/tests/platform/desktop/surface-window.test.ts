@@ -515,7 +515,7 @@ windowTest('deliver a child page message to its opener before closing', {
     'data-controlled-value',
     marker,
   );
-  await app.page.testId("surface-send-message", { page: 'surface' }).click();
+  await app.view.testId("surface-send-message", { page: 'surface' }).click();
 
   const messages = await eventually(
     () => app.eval({

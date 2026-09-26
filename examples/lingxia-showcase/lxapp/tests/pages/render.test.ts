@@ -1,6 +1,6 @@
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, type AppDriver } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
-import type { LxAppDriver } from '@lingxia/types/automation';
+
 import { waitForCurrentPage } from '../helpers/page.js';
 import { attachShot, eventually } from '../helpers/poll.js';
 import {
@@ -27,7 +27,7 @@ function isTransientPageReadinessError(error: unknown): boolean {
 }
 
 async function waitForRenderedFeature(
-  app: LxAppDriver,
+  app: AppDriver,
   page: string,
   expectedTitle: string,
   expectedText: string | readonly string[],

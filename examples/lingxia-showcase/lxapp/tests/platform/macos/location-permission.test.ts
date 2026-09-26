@@ -94,7 +94,7 @@ locationTest('handles the macOS location permission sheet when it appears', {
 
   await app.nav.relaunch({ page: 'location' });
   await app.page.waitFor({ page: 'location', css: 'button', state: 'visible' });
-  await app.page.css('button', { page: 'location', index: 0 }).click();
+  await app.view.css('button', { page: 'location', index: 0 }).click();
 
   // Budget: CoreLocation may only settle via its own ~10s timeout on hosts
   // with no position fix, and a settled request still holds a 5s window for

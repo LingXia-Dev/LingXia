@@ -12,7 +12,7 @@ spec('streams a complete response from real page input', async (t) => {
   await app.page.waitFor({ page: 'stream', css: '[data-testid="stream-page"]' });
 
   const prompt = `gate stream ${Date.now()}`;
-  await app.page.testId("stream-input", { page: 'stream' }).fill(prompt);
+  await app.view.testId("stream-input", { page: 'stream' }).fill(prompt);
   await waitForElementAttribute(
     app,
     'stream',
@@ -21,7 +21,7 @@ spec('streams a complete response from real page input', async (t) => {
     prompt,
   );
   await waitForElementEnabled(app, 'stream', '[data-testid="stream-send"]');
-  await app.page.testId("stream-send", { page: 'stream' }).click();
+  await app.view.testId("stream-send", { page: 'stream' }).click();
 
   expect(await waitForElementText(
     app,

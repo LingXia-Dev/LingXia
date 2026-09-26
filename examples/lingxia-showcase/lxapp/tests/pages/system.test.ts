@@ -54,7 +54,7 @@ spec("render host app and system information through page actions", { id: "SYSTE
 
   await app.nav.relaunch({ page: 'system', query: { type: 'appBaseInfo' } });
   await app.page.waitFor({ page: 'system', css: '[data-testid="system-base-info"]' });
-  await app.page.testId("system-base-info", { page: 'system' }).click();
+  await app.view.testId("system-base-info", { page: 'system' }).click();
   const base = await waitForSystemState(
     app,
     (state) => !!state.appBaseInfo?.os && !!state.appBaseInfo?.productName
@@ -70,7 +70,7 @@ spec("render host app and system information through page actions", { id: "SYSTE
 
   await app.nav.relaunch({ page: 'system', query: { type: 'systemSetting' } });
   await app.page.waitFor({ page: 'system', css: '[data-testid="system-setting-info"]' });
-  await app.page.testId("system-setting-info", { page: 'system' }).click();
+  await app.view.testId("system-setting-info", { page: 'system' }).click();
   await waitForSystemState(
     app,
     (state) => typeof state.systemSetting?.wifiEnabled === 'boolean',
@@ -97,7 +97,7 @@ spec('opens the product cache panel from the rendered API menu', {
     css: '[data-testid="api-system-section"]',
     state: 'visible',
   });
-  await app.page.testId("api-system-section", { page: 'api' }).click();
+  await app.view.testId("api-system-section", { page: 'api' }).click();
   await app.page.waitFor({
     page: 'api',
     css: '[data-testid="api-system-cache"]',
@@ -106,7 +106,7 @@ spec('opens the product cache panel from the rendered API menu', {
   // The banner demo row sits above this item; without a scroll the Windows
   // hit lands on chrome / the tab bar and navigation never starts.
   await app.page.scrollTo({ page: 'api', css: '[data-testid="api-system-cache"]' });
-  await app.page.testId("api-system-cache", { page: 'api' }).click();
+  await app.view.testId("api-system-cache", { page: 'api' }).click();
   await app.page.waitFor({
     page: 'system',
     css: '[data-testid="system-cache-panel"]',
@@ -170,7 +170,7 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
     `,
   });
 
-  await app.page.testId("system-banner-reread", { page: 'system' }).click();
+  await app.view.testId("system-banner-reread", { page: 'system' }).click();
   const reread = await eventually(
     () => bannerPageState(app),
     (state) => state.bannerSupported && state.bannerLast === 'probe-cleared',
@@ -179,7 +179,7 @@ bannerPageSpec('drive banner re-read, prompt, and dismiss from the system page',
   expect(reread.bannerSupported).toBe(true);
   expect(reread.bannerLast).toBe('probe-cleared');
 
-  await app.page.testId("system-banner-prompt", { page: 'system' }).click();
+  await app.view.testId("system-banner-prompt", { page: 'system' }).click();
   await eventually(
     () => bannerPageState(app),
     (state) => state.bannerBusy && state.bannerActiveId === 'showcase-banner-prompt',

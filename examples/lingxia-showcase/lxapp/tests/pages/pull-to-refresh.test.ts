@@ -45,7 +45,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   await app.page.waitFor({ page: 'pullToRefresh', css: '[data-testid="pull-refresh-page"]' });
 
   const before = await refreshState(app);
-  await app.page.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
+  await app.view.testId("pull-refresh-start", { page: 'pullToRefresh' }).click();
   const refreshing = await waitForRefreshState(
     app,
     (state) => state.refreshing && state.count > before.count,
@@ -59,7 +59,7 @@ spec("start, render, and stop the native pull-to-refresh lifecycle", { id: "PULL
   });
   expect(count.exists && Number(count.text)).toBe(refreshing.count);
 
-  await app.page.testId("pull-refresh-stop", { page: 'pullToRefresh' }).click();
+  await app.view.testId("pull-refresh-stop", { page: 'pullToRefresh' }).click();
   await waitForRefreshState(app, (state) => !state.refreshing && state.count === refreshing.count);
   expect(await waitForStatus(app, 'Idle')).toContain('Idle');
 

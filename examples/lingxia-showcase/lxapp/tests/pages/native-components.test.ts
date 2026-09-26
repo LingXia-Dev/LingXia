@@ -78,7 +78,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     5_000,
   )).toContain('Tap Menu');
 
-  await app.page.testId("native-menu-toggle", { page: 'video' }).click();
+  await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   expect(await waitForElementText(
     app,
     'video',
@@ -240,7 +240,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   expect(menuRemoved.kinds.join(',')).toBe('video');
 
   await app.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
-  await app.page.testId("native-menu-toggle", { page: 'video' }).click();
+  await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   const menuAfterScroll = await eventually(
     () => app.page.eval({
       page: 'video',
@@ -282,7 +282,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   );
   expect(playing).toBe('true');
   await app.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
-  await app.page.testId("native-menu-toggle", { page: 'video' }).click();
+  await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   let nativeButton = await eventually(
     () => app.page.query({ page: 'video', css: '#video-native-menu-more' }),
     (button) => button.exists && button.visible && button.in_viewport !== false,
@@ -430,7 +430,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
     )).toBe('More handled by View JS.');
 
     await app.page.scrollTo({ page: 'video', css: '[data-testid="native-menu-toggle"]' });
-    await app.page.testId("native-menu-toggle", { page: 'video' }).click();
+    await app.view.testId("native-menu-toggle", { page: 'video' }).click();
     await eventually(
       () => app.page.query({ page: 'video', css: '#video-native-menu-more' }),
       (button) => button.exists && button.visible,
@@ -478,7 +478,7 @@ spec("hide the native video overlay before the next page becomes interactive", {
   await app.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'visible' });
   // The shape fixture loads no media, and only Apple emits a pause event
   // without a playing transition; just exercise the pause command itself.
-  await app.page.testId("video-pause", { page: 'video' }).click();
+  await app.view.testId("video-pause", { page: 'video' }).click();
   await attachWindow(t, 'native-video-active.png');
 
   const hiddenAt = Date.now();
@@ -486,8 +486,8 @@ spec("hide the native video overlay before the next page becomes interactive", {
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]', 5_000);
 
   const name = `Native overlay ${namespace}`;
-  await app.page.testId("home-name", { page: 'home' }).fill(name);
-  await app.page.testId("home-greet", { page: 'home' }).click();
+  await app.view.testId("home-name", { page: 'home' }).fill(name);
+  await app.view.testId("home-greet", { page: 'home' }).click();
   expect(await waitForElementText(
     app,
     'home',

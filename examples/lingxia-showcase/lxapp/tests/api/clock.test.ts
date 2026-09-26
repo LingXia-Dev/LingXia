@@ -13,26 +13,26 @@ spec("advance a Logic polling loop with the test clock", {
   const { app } = bindFixture(t, "AUT-CLOCK-001");
   await app.network.route(STATUS, { json: { online: true } });
 
-  expect(await app.clock.install({ now: START })).toBe(START);
+  expect(await app.clock.install({ now: START })).toEqual({ now: START, pending: 0 });
 
   // A poll every 3 s that awaits a routed fetch and its body before it
   // re-arms, as an app's status page would.
-  await app.eval({
-    script: `
-      const state = globalThis.__clockPolls = { at: [], online: [], timer: null };
-      const poll = async () => {
-        const response = await fetch(${JSON.stringify(STATUS)});
-        const body = await response.json();
-        state.at.push(Date.now());
-        state.online.push(body.online);
-        state.timer = setTimeout(poll, 3000);
-      };
+  await app.logic.eval((_scope, url) => {
+    const state = { at: [] as number[], online: [] as boolean[], timer: null as unknown };
+    (globalThis as unknown as { __clockPolls: typeof state }).__clockPolls = state;
+    const poll = async () => {
+      const response = await fetch(url);
+      const body = await response.json() as { online: boolean };
+      state.at.push(Date.now());
+      state.online.push(body.online);
       state.timer = setTimeout(poll, 3000);
-      return new Date().toISOString();
-    `,
-  });
-  const polls = () => app.eval<{ at: number[]; online: boolean[] }>({
-    script: '({ at: globalThis.__clockPolls.at, online: globalThis.__clockPolls.online })',
+    };
+    state.timer = setTimeout(poll, 3000);
+    return new Date().toISOString();
+  }, STATUS);
+  const polls = () => app.logic.eval(() => {
+    const state = (globalThis as unknown as { __clockPolls: { at: number[]; online: boolean[] } }).__clockPolls;
+    return { at: state.at, online: state.online };
   });
 
   // Nothing fires on real time while the clock is installed, and the runner's
@@ -40,17 +40,14 @@ spec("advance a Logic polling loop with the test clock", {
   await new Promise<void>((resolve) => setTimeout(resolve, 100));
   expect((await polls()).at).toEqual([]);
 
-  const first = await app.clock.tick(9_000);
-  expect(first.fired).toBe(3);
-  expect(first.pending).toBe(1);
-  expect(first.now).toBe(START + 9_000);
+  expect(await app.clock.tick(9_000)).toEqual({ now: START + 9_000, fired: 3, pending: 1 });
   expect(await polls()).toEqual({
     at: [START + 3_000, START + 6_000, START + 9_000],
     online: [true, true, true],
   });
 
   // A time jump moves Date, not the timers.
-  expect(await app.clock.setSystemTime(START + 60_000)).toBe(START + 60_000);
+  expect(await app.clock.setSystemTime(START + 60_000)).toEqual({ now: START + 60_000, pending: 1 });
   const jumped = await app.clock.tick(2_999);
   expect(jumped.fired).toBe(0);
   const next = await app.clock.tick(1);
@@ -58,9 +55,9 @@ spec("advance a Logic polling loop with the test clock", {
   const after = (await polls()).at;
   expect(after[after.length - 1]).toBe(START + 60_000 + 3_000);
 
-  const removed = await app.clock.uninstall();
-  expect(removed).toEqual({ uninstalled: true, dropped: 1 });
-  const realNow = await app.eval<number>({ script: 'Date.now()' });
+  // The pending poll is dropped, never fired; the report's diagnostics say so.
+  expect(await app.clock.uninstall()).toBeUndefined();
+  const realNow = await app.logic.eval(() => Date.now());
   expect(Math.abs(realNow - Date.now()) < 60_000).toBeTruthy();
 });
 
@@ -75,22 +72,24 @@ spec("refuse a second install and calls without a clock", {
   await app.clock.install();
   await t.reject(() => app.clock.install(), { code: 'E_CLOCK_INSTALLED' });
 
-  await app.eval({
-    script: `
-      globalThis.__clockLog = [];
-      setTimeout(() => {
-        globalThis.__clockLog.push('outer');
-        setTimeout(() => globalThis.__clockLog.push('inner'), 500);
-      }, 1000);
-      return true;
-    `,
+  await app.logic.eval(() => {
+    const log: string[] = [];
+    (globalThis as unknown as { __clockLog: string[] }).__clockLog = log;
+    setTimeout(() => {
+      log.push('outer');
+      setTimeout(() => log.push('inner'), 500);
+    }, 1000);
+    return true;
   });
   const drained = await app.clock.runAll();
   expect(drained.fired).toBe(2);
   expect(drained.pending).toBe(0);
-  expect(await app.eval({ script: 'globalThis.__clockLog' })).toEqual(['outer', 'inner']);
+  expect(await app.logic.eval(() => (globalThis as unknown as { __clockLog: string[] }).__clockLog)).toEqual(['outer', 'inner']);
 
-  await app.eval({ script: 'globalThis.__clockBeat = setInterval(() => {}, 10); return true;' });
+  await app.logic.eval(() => {
+    (globalThis as unknown as { __clockBeat: unknown }).__clockBeat = setInterval(() => {}, 10);
+    return true;
+  });
   await t.reject(() => app.clock.runAll({ maxTimers: 20 }), { message: /still pending/ });
   // Left installed on purpose: the spec's end uninstalls it.
 });
@@ -102,22 +101,22 @@ spec("reject the test clock from inside app Logic", {
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-CLOCK-003");
 
-  const rejection = await app.eval({
-    script: `
-      const clock = lx.automation().lxapp().clock;
-      try {
-        await clock.install();
-        return { readable: typeof clock.install === 'function', rejected: false };
-      } catch (error) {
-        return {
-          readable: typeof clock.install === 'function',
-          rejected: true,
-          code: String(error?.code || ''),
-          message: String(error?.message || error),
-        };
-      }
-    `,
-  }) as { readable: boolean; rejected: boolean; code?: string; message?: string };
+  // App Logic's driver type has no `clock`; the member is still readable.
+  const rejection = await app.logic.eval(async ({ lx }) => {
+    const clock = (lx.automation().lxapp() as unknown as { clock: { install(): Promise<unknown> } }).clock;
+    try {
+      await clock.install();
+      return { readable: typeof clock.install === 'function', rejected: false };
+    } catch (error) {
+      const failure = error as { code?: unknown; message?: unknown } | undefined;
+      return {
+        readable: typeof clock.install === 'function',
+        rejected: true,
+        code: String(failure?.code || ''),
+        message: String(failure?.message || error),
+      };
+    }
+  });
 
   expect(rejection.readable).toBe(true);
   expect(rejection.rejected).toBeTruthy();

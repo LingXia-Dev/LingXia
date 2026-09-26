@@ -22,17 +22,17 @@ spec('keeps bootstrap, calls, and streams healthy across the page bridge', async
     expect(await waitForText(app, '#bootstrap-verdict', (text) => text.includes('PASS')))
       .toContain('PASS');
 
-    await app.page.css('#btn-echo', { page: 'bridge-repro' }).click();
+    await app.view.css('#btn-echo', { page: 'bridge-repro' }).click();
     expect(await waitForText(app, '#stat-echo', (text) => text.includes('echo #1 ok')))
       .toContain('echo #1 ok');
 
-    await app.page.css('#btn-restart', { page: 'bridge-repro' }).click();
+    await app.view.css('#btn-restart', { page: 'bridge-repro' }).click();
     await waitForText(app, '#stat-received', (text) => Number.parseInt(text.replace(/\D+/g, ''), 10) >= 2);
     expect(await waitForText(app, '#stream-verdict', (text) => text.includes('PASS')))
       .toContain('PASS');
     expect(await waitForText(app, '#stat-gaps', (text) => text.includes('none'))).toContain('none');
     expect(await waitForText(app, '#stat-error', (text) => text.includes('none'))).toContain('none');
-    await app.page.css('#btn-stop', { page: 'bridge-repro' }).click();
+    await app.view.css('#btn-stop', { page: 'bridge-repro' }).click();
     await new Promise<void>((resolve) => setTimeout(() => resolve(), 100));
   } catch (error) {
     try {

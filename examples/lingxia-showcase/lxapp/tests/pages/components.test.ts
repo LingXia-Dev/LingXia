@@ -17,7 +17,7 @@ spec("open every component demo through rendered UI and the Logic bridge", { id:
   await app.page.waitFor({ page: 'components', css: '[data-testid="components-page"]' });
 
   for (const [testId, destination] of destinations) {
-    await app.page.css(`[data-testid="${testId}"]`, { page: 'components' }).click();
+    await app.view.css(`[data-testid="${testId}"]`, { page: 'components' }).click();
     await waitForCurrentPage(app, destination, 30_000);
     expect((await app.nav.current()).name).toBe(destination);
 

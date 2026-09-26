@@ -1,10 +1,10 @@
-import type { LxAppDriver, PageInfo } from '@lingxia/types/automation';
+import type { PageInfo } from '@lingxia/types/automation';
 import { currentPageOrNull, waitForElementAttribute } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, evalCaught, eventually, relaunchFromLogic, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, type AppDriver } from '../helpers/app.js';
 
-async function waitForCurrent(app: LxAppDriver, name: string): Promise<PageInfo> {
+async function waitForCurrent(app: AppDriver, name: string): Promise<PageInfo> {
   return eventually(
     () => app.nav.current(),
     (current) => current.name === name && current.ready,
@@ -153,7 +153,7 @@ interface ApiPageProbe {
   logicMarker: string | null;
 }
 
-async function apiPageProbe(app: LxAppDriver): Promise<ApiPageProbe | null> {
+async function apiPageProbe(app: AppDriver): Promise<ApiPageProbe | null> {
   return app.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
@@ -165,7 +165,7 @@ async function apiPageProbe(app: LxAppDriver): Promise<ApiPageProbe | null> {
 }
 
 /** Visit the api tab, then mark its Logic page object and its document. */
-async function markWarmApiTab(app: LxAppDriver, marker: string): Promise<PageInfo> {
+async function markWarmApiTab(app: AppDriver, marker: string): Promise<PageInfo> {
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrent(app, 'home');
   await app.nav.switchTab({ page: 'api' });
@@ -187,7 +187,7 @@ async function markWarmApiTab(app: LxAppDriver, marker: string): Promise<PageInf
   return warm;
 }
 
-async function expectFreshApiTab(app: LxAppDriver, stale: PageInfo, landed?: PageInfo): Promise<void> {
+async function expectFreshApiTab(app: AppDriver, stale: PageInfo, landed?: PageInfo): Promise<void> {
   // A relaunch scheduled from Logic empties the stack before it lands.
   const current = await eventually(
     () => app.nav.current(),
