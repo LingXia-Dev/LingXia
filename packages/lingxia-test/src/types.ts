@@ -1071,12 +1071,25 @@ export interface JsonReport {
   coverage?: CoverageSummary;
   /** `--openapi` contract summary. */
   openapi?: OpenApiSummary;
+  /** `lxdev test --list`: the selected specs; nothing ran. */
+  listed?: ListedSpec[];
+}
+
+/** A spec `lxdev test --list` shows. */
+export interface ListedSpec {
+  id: string;
+  title: string;
+  file: string;
+  line: number;
+  tags: string[];
 }
 
 export type ProtocolReport = JsonReport;
 
 export interface LingxiaTestController {
   run(): Promise<ProtocolReport>;
+  /** The specs `run()` would run, in `listed`, without running them. */
+  list(): Promise<ProtocolReport>;
   readonly version: string;
   /** Clears the registry. Used by this package's own Node tests. */
   reset(): void;

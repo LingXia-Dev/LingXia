@@ -1,4 +1,4 @@
-export { spec, expect, run, reset, trackPublicSurface } from "./runtime.js";
+export { spec, expect, run, list, reset, trackPublicSurface } from "./runtime.js";
 export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
 export { TEST_ERROR_CODES } from "./errors.js";
@@ -31,6 +31,7 @@ export type {
   Fixture,
   FixtureExpect,
   JsonReport,
+  ListedSpec,
   JsonValue,
   LogicApp,
   LogicFunction,

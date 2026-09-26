@@ -19,6 +19,7 @@ import type {
   Fixture,
   JsonReport,
   LingxiaTestController,
+  ListedSpec,
   FailureNetworkCall,
   ProtocolReport,
   RejectExpected,
@@ -478,7 +479,17 @@ function secretKeys(listed: string | undefined): string[] {
   return parsed.filter((key): key is string => typeof key === "string");
 }
 
-async function run(): Promise<ProtocolReport> {
+/** Run the selected specs. */
+function run(): Promise<ProtocolReport> {
+  return runSpecs(false);
+}
+
+/** `lxdev test --list`: the selected specs, in `listed`; nothing runs. */
+function list(): Promise<ProtocolReport> {
+  return runSpecs(true);
+}
+
+async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   warnVersionSkew();
   const rawHost = resolveHost();
   const { args, control } = rawHost;
@@ -539,8 +550,10 @@ async function run(): Promise<ProtocolReport> {
   const selectedIds: string[] | undefined = control.ids ? JSON.parse(control.ids) : undefined;
   const shard = control.shard?.split("/").map(Number);
   if (shard && (shard.length !== 2 || shard.some(n => !Number.isInteger(n) || n < 1) || shard[0]! > shard[1]!)) throw new Error("shard must be INDEX/TOTAL (1-based)");
+  const locations = parseLocations(control.locations);
   const selected = specs.filter((item) => {
     if (hasOnly && item.annotation !== "only") return false;
+    if (locations && !atLocation(sourceOf(item), locations)) return false;
     if (selectedIds && !selectedIds.includes(resolvedId(item))) return false;
     if (shard && stableHash(resolvedId(item)) % shard[1]! !== shard[0]! - 1) return false;
     if (control.id && resolvedId(item) !== control.id) return false;
@@ -550,6 +563,9 @@ async function run(): Promise<ProtocolReport> {
     return pattern!.test(item.title) || pattern!.test(id);
   });
 
+  if (listOnly) {
+    return listing(selected.map((item) => ({ id: resolvedId(item), title: item.title, ...sourceOf(item), tags: tagsOf(item) })));
+  }
   if (selected.length === 0 && control.passWithNoTests !== "1") {
     throw new Error("No tests matched this selection. Check the entry and filters, or use --pass-with-no-tests.");
   }
@@ -965,7 +981,7 @@ async function run(): Promise<ProtocolReport> {
       ...(repeatEach > 1 ? { repeat_each: repeatEach } : {}),
     },
     partial: contaminated || budgetExhausted !== undefined,
-    filtered: Boolean(grep || control.id || control.ids || shard || tagFilter.length > 0) || hasOnly,
+    filtered: Boolean(grep || control.id || control.ids || shard || locations || tagFilter.length > 0) || hasOnly,
     duration_ms,
     ...counts,
     cases: redact.deep(cases),
@@ -1212,6 +1228,7 @@ function reset(): void {
 
 const controller: LingxiaTestController = {
   run,
+  list,
   version: VERSION,
   reset,
 };
@@ -1225,7 +1242,7 @@ if (!globalThis.__LINGXIA_TEST__) {
   });
 }
 
-export { spec, expect, run, reset, resolvedId, trackPublicSurface };
+export { spec, expect, run, list, reset, resolvedId, trackPublicSurface };
 export type { SpecOptions, SpecBody, Fixture };
 
 /** Bound on the capture driver calls a contract check makes. */
@@ -1271,6 +1288,56 @@ async function within<T>(task: Promise<T>, ms: number, message: string): Promise
       handle = setTimeout(() => reject(new TimeoutError(message)), ms);
     })]);
   } finally { if (handle !== undefined) clearTimeout(handle); }
+}
+
+/**
+ * `control.locations`, sent for `lxdev test FILE:LINE`: every entry file,
+ * mapped to the line ranges of the spec calls it selects, or `null` for the
+ * whole file. A spec registered from any other file is not selected.
+ */
+type Locations = Map<string, Array<[number, number]> | null>;
+
+function parseLocations(raw: string | undefined): Locations | undefined {
+  if (raw === undefined) return undefined;
+  const parsed: unknown = JSON.parse(raw);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`the host's locations control is not an object: ${JSON.stringify(raw)}`);
+  }
+  const out: Locations = new Map();
+  for (const [file, ranges] of Object.entries(parsed as Record<string, unknown>)) {
+    if (ranges !== null && !(Array.isArray(ranges) && ranges.every((r) =>
+      Array.isArray(r) && r.length === 2 && r.every((n) => Number.isInteger(n))))) {
+      throw new Error(`the host's locations control has a bad range for ${file}`);
+    }
+    out.set(normalizeFile(file), ranges as Array<[number, number]> | null);
+  }
+  return out;
+}
+
+function normalizeFile(file: string): string {
+  return file.replace(/\\/g, "/");
+}
+
+function atLocation(source: { file: string; line: number }, locations: Locations): boolean {
+  const file = normalizeFile(source.file);
+  if (!locations.has(file)) return false;
+  const ranges = locations.get(file);
+  return ranges === null || ranges!.some(([from, to]) => source.line >= from && source.line <= to);
+}
+
+/** `lxdev test --list`: the selection, with nothing run. */
+function listing(listed: ListedSpec[]): ProtocolReport {
+  return {
+    schema_version: 1,
+    framework: { name: PACKAGE_NAME, version: VERSION },
+    meta: { started_at: new Date().toISOString(), duration_ms: 0, args: {} },
+    partial: false,
+    filtered: true,
+    total: 0, passed: 0, failed: 0, skipped: 0, xfail: 0, xpass: 0, timeout: 0,
+    duration_ms: 0,
+    cases: [],
+    listed,
+  };
 }
 
 function stableHash(value: string): number {
