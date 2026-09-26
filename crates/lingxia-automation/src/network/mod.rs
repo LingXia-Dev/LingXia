@@ -14,9 +14,13 @@
 //! one read of a response body.
 
 mod capture;
+pub(crate) mod companion;
 pub(crate) mod dev;
 mod registry;
 mod scenario;
+mod test_scenario;
+
+pub(crate) use test_scenario::{JSScenario, install as install_scenario};
 
 use crate::auto_err;
 use crate::resolve::{json_to_js, upgrade_authorized};
@@ -183,34 +187,6 @@ impl JSNetworkDriver {
         )
     }
 
-    /// Install every route of a scenario at once. The first matching entry
-    /// of the scenario answers; routes added later still take precedence.
-    #[js_method]
-    async fn scenario(&self, ctx: JSContext, scenario: JSObject) -> JSResult<JSObject> {
-        let app = upgrade_authorized(&ctx, &self.lxapp)?;
-        let scope = run_scope(&ctx)?;
-        let json = scenario
-            .to_json_string()
-            .map_err(|err| auto_err(format!("scenario must be JSON-compatible: {err}")))?;
-        let value: Value = serde_json::from_str(&json)
-            .map_err(|err| auto_err(format!("scenario must be JSON-compatible: {err}")))?;
-        let parsed =
-            scenario::parse_scenario(&value).map_err(|err| auto_err(format!("scenario: {err}")))?;
-        let appid = app.appid.clone();
-        let routes = registry::with_registry(|routes| {
-            routes.install_all(&scope.run_id, &appid, parsed.routes, || (scope.active)())
-        })
-        .map_err(auto_err)?;
-        Ok(
-            Class::lookup::<JSNetworkScenario>(&ctx)?.instance(JSNetworkScenario {
-                name: parsed.name,
-                run_id: scope.run_id,
-                appid,
-                routes,
-            }),
-        )
-    }
-
     /// Remove every route this run installed for the app.
     #[js_method(rename = "unrouteAll")]
     async fn unroute_all(&self, ctx: JSContext) -> JSResult<u32> {
@@ -349,80 +325,6 @@ impl JSNetworkRoute {
     async fn requests(&self, ctx: JSContext) -> JSResult<JSValue> {
         self.owned_scope(&ctx)?;
         requests_js(&ctx, &self.run_id, &self.appid, Some(self.id))
-    }
-}
-
-/// Handle returned by `scenario()`: its routes, removable together.
-#[js_class(clone)]
-pub(crate) struct JSNetworkScenario {
-    name: Option<String>,
-    run_id: String,
-    appid: String,
-    /// `(route id, pattern)` in file order.
-    routes: Vec<(u64, String)>,
-}
-
-#[js_class(rename = "NetworkScenario")]
-impl JSNetworkScenario {
-    #[js_method(constructor)]
-    fn _ctor() -> JSResult<()> {
-        Err(HostError::new(
-            rong::error::E_ILLEGAL_CONSTRUCTOR,
-            "Use lx.automation().lxapp().network.scenario()",
-        )
-        .into())
-    }
-
-    #[js_method(getter, enumerable)]
-    fn name(&self) -> Option<String> {
-        self.name.clone()
-    }
-
-    /// One route handle per scenario entry, in file order.
-    #[js_method(getter, enumerable)]
-    fn routes(&self, ctx: JSContext) -> JSResult<rong::JSArray> {
-        let array = rong::JSArray::new(&ctx)?;
-        for (id, pattern) in &self.routes {
-            array.push(
-                Class::lookup::<JSNetworkRoute>(&ctx)?.instance(JSNetworkRoute {
-                    id: *id,
-                    run_id: self.run_id.clone(),
-                    appid: self.appid.clone(),
-                    pattern: pattern.clone(),
-                }),
-            )?;
-        }
-        Ok(array)
-    }
-
-    /// Remove every route of the scenario; resolves how many were still
-    /// installed.
-    #[js_method]
-    async fn unroute(&self, ctx: JSContext) -> JSResult<u32> {
-        owned_run(&ctx, &self.run_id)?;
-        Ok(registry::with_registry(|routes| {
-            self.routes
-                .iter()
-                .filter(|(id, _)| routes.remove(&self.run_id, *id))
-                .count() as u32
-        }))
-    }
-
-    /// Requests any route of the scenario handled, oldest first.
-    #[js_method]
-    async fn requests(&self, ctx: JSContext) -> JSResult<JSValue> {
-        owned_run(&ctx, &self.run_id)?;
-        let ids: Vec<u64> = self.routes.iter().map(|(id, _)| *id).collect();
-        requests_js_filtered(&ctx, &self.run_id, &self.appid, &|id| ids.contains(&id))
-    }
-}
-
-fn owned_run(ctx: &JSContext, run_id: &str) -> JSResult<()> {
-    let scope = run_scope(ctx)?;
-    if scope.run_id == run_id {
-        Ok(())
-    } else {
-        Err(auto_err("this route belongs to another automation run"))
     }
 }
 
@@ -1543,8 +1445,8 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                     let headers = serde_json::from_str(&headers).unwrap_or_default();
                     SentRequest::new(headers, body, overflow)
                 };
-                let (decision, dev_label) = registry::with_registry(|routes| {
-                    let decision = routes.decide_route(
+                let (decision, dev_label, dev_no_match) = registry::with_registry(|routes| {
+                    let (decision, no_match) = routes.decide_route(
                         &target.appid,
                         &method,
                         &url,
@@ -1556,8 +1458,23 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                         .as_ref()
                         .filter(|decision| decision.owner == registry::DEV_SESSION_OWNER)
                         .and_then(|_| routes.dev.as_ref().map(dev::label));
-                    (decision, dev_label)
+                    let dev_no_match = no_match
+                        .filter(|no_match| {
+                            no_match
+                                .owners
+                                .iter()
+                                .any(|owner| owner == registry::DEV_SESSION_OWNER)
+                        })
+                        .and_then(|no_match| {
+                            routes.dev.as_ref().map(|dev| {
+                                format!("dev scenario {}: {}", dev::label(dev), no_match.message)
+                            })
+                        });
+                    (decision, dev_label, dev_no_match)
                 });
+                if let Some(message) = dev_no_match {
+                    dev::warn(&target.appid, message);
+                }
                 let action = decision.map(|decision| decision.action);
                 if let (Some(label), Some(action)) = (dev_label, &action) {
                     dev::warn(

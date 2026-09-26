@@ -287,7 +287,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     #[cfg(feature = "runtime")]
     ctx.register_hidden_class::<network::JSNetworkRoute>()?;
     #[cfg(feature = "runtime")]
-    ctx.register_hidden_class::<network::JSNetworkScenario>()?;
+    ctx.register_hidden_class::<network::JSScenario>()?;
     ctx.register_hidden_class::<profile::JSProfileDriver>()?;
     ctx.register_hidden_class::<clock::JSClockDriver>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;

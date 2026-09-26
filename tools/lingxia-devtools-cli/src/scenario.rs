@@ -1,31 +1,46 @@
 //! `lxdev scenario`: put the running app into a named product state
-//! ("gateway offline", "stale data") in a dev session, outside any test run.
+//! ("gateway offline", "coupon expired") in a dev session, outside any test
+//! run.
 //!
-//! A scenario file has one section per provider. `http` (or top-level
-//! `routes`) answers the app's Logic `fetch` and `Rong.SSE` through the
-//! host's `session.network.scenario.*` methods; `worker` is reserved and
-//! refused until a provider exists. lxdev splits the file and installs each
-//! section through its provider, rolling back on failure, so the host
-//! protocol only ever sees HTTP routes.
+//! A scenario file is a list of rules (see
+//! [`lingxia_control_protocol::scenario`]). `http` rules answer the app's
+//! Logic `fetch` and `Rong.SSE` through the host's
+//! `session.network.scenario.*` methods; `function` rules go through the dev
+//! server to the session's companion (`session.companion.scenario.*`), which
+//! must have declared that it handles them. `use` validates everything
+//! before it changes anything, so an invalid file leaves the active scenario
+//! answering.
 
+use crate::client::{self, CommandError};
 use crate::network;
 use crate::project::SessionInfo;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use lingxia_control_protocol::dev_session::broker::SessionContent;
+use lingxia_control_protocol::dev_session::capabilities::SCENARIO_FUNCTION;
+use lingxia_control_protocol::methods::session::companion as companion_method;
 use lingxia_control_protocol::methods::session::network as method;
+use lingxia_control_protocol::scenario::{
+    self as format, DEV_OWNER, Resolved, ScenarioFile, companion,
+};
 use owo_colors::OwoColorize;
-use serde_json::{Map, Value, json};
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
+use std::io::IsTerminal;
 use std::path::{Component, Path, PathBuf};
+use std::time::{Duration, Instant};
 
 /// Where named scenarios live, relative to a project directory.
 pub const SCENARIO_DIR: &str = "tests/scenarios";
 
-/// Sections a scenario file may have, in install order: a provider that
-/// cannot be rolled back cheaply goes first.
-const SECTIONS: [&str; 2] = ["worker", "http"];
-const FILE_KEYS: [&str; 6] = ["$schema", "name", "description", "routes", "http", "worker"];
+/// How long `use` waits for a first request before it hints at app caches.
+const FIRST_REQUEST_WAIT: Duration = Duration::from_secs(4);
+/// How often `--watch` looks at the file.
+const WATCH_INTERVAL: Duration = Duration::from_millis(300);
+
+/// The hint when nothing reached an installed scenario.
+pub(crate) const IDLE_HINT: &str = "no request reached this scenario yet — the app may serve its \
+     own cache; reload the page or `lxdev lxapp restart`";
 
 #[derive(Args, Clone)]
 pub struct ScenarioOptions {
@@ -35,25 +50,32 @@ pub struct ScenarioOptions {
 
 #[derive(Subcommand, Clone)]
 enum ScenarioCommand {
-    /// List the scenarios under tests/scenarios/ of the session's project
+    /// List the scenarios (and each `name:variant`) under tests/scenarios/
     List {
         /// Print JSON output
         #[arg(long)]
         json: bool,
     },
-    /// Install a scenario by name (`qoe/offline`) or path until `clear`,
-    /// another `use`, or the end of the dev session
+    /// Install a scenario by name (`wifi`, `wifi:offline`) or path until
+    /// `clear`, another `use`, or the end of the dev session
     Use {
-        /// Scenario name under tests/scenarios/ (without `.json`), or a file
+        /// `name` or `name:variant` under tests/scenarios/ (without
+        /// `.json`), or a file (`path.json:variant`)
         scenario: String,
         /// Target lxapp (default: the home lxapp, else the current one)
         #[arg(long)]
         appid: Option<String>,
+        /// Keep running and reinstall the scenario whenever the file is
+        /// saved; an invalid save is reported and the last valid version
+        /// keeps answering
+        #[arg(long)]
+        watch: bool,
         /// Print JSON output
         #[arg(long)]
         json: bool,
     },
-    /// Show the active scenario per section, and the last one cleared
+    /// Show the active scenario, what each rule answered, and the last one
+    /// cleared
     Status {
         /// Print JSON output
         #[arg(long)]
@@ -75,73 +97,15 @@ impl ScenarioOptions {
 
 // ------------------------------- the file -------------------------------
 
-/// A scenario file split into sections.
-#[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct ScenarioFile {
-    pub name: Option<String>,
-    pub description: Option<String>,
-    /// Section name → its content. Top-level `routes` is `http: { routes }`.
-    pub sections: BTreeMap<String, Value>,
+/// A scenario file as written, and parsed.
+#[derive(Debug, Clone)]
+pub(crate) struct Loaded {
+    pub value: Value,
+    pub file: ScenarioFile,
 }
 
-pub(crate) fn parse_file(value: &Value) -> Result<ScenarioFile, String> {
-    let Value::Object(fields) = value else {
-        return Err("a scenario must be a JSON object".into());
-    };
-    if let Some(unknown) = fields.keys().find(|key| !FILE_KEYS.contains(&key.as_str())) {
-        return Err(format!(
-            "unknown scenario field '{unknown}' (allowed: {})",
-            FILE_KEYS.join(", ")
-        ));
-    }
-    let text = |key: &str| match fields.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(text)) => Ok(Some(text.clone())),
-        Some(_) => Err(format!("scenario {key} must be a string")),
-    };
-    let mut file = ScenarioFile {
-        name: text("name")?,
-        description: text("description")?,
-        sections: BTreeMap::new(),
-    };
-    match (fields.get("routes"), fields.get("http")) {
-        (Some(_), Some(_)) => {
-            return Err(
-                "a scenario lists its routes at the top level or under http, not both".into(),
-            );
-        }
-        (Some(routes), None) => {
-            file.sections
-                .insert("http".into(), json!({ "routes": routes }));
-        }
-        (None, Some(Value::Object(http))) => {
-            if let Some(unknown) = http.keys().find(|key| key.as_str() != "routes") {
-                return Err(format!(
-                    "unknown http section field '{unknown}' (allowed: routes)"
-                ));
-            }
-            let routes = http
-                .get("routes")
-                .ok_or("the http section needs a routes array")?;
-            file.sections
-                .insert("http".into(), json!({ "routes": routes }));
-        }
-        (None, Some(_)) => return Err("the http section must be an object".into()),
-        (None, None) => {}
-    }
-    if let Some(worker) = fields.get("worker") {
-        file.sections.insert("worker".into(), worker.clone());
-    }
-    if file.sections.is_empty() {
-        return Err("a scenario needs an http section (or top-level routes)".into());
-    }
-    Ok(file)
-}
-
-pub(crate) fn read_file(path: &Path) -> Result<ScenarioFile> {
-    let text = std::fs::read_to_string(path)
-        .with_context(|| format!("cannot read scenario {}", path.display()))?;
-    let value: Value = serde_json::from_str(&text).map_err(|err| {
+pub(crate) fn parse_text(path: &Path, text: &str) -> Result<Loaded> {
+    let value: Value = serde_json::from_str(text).map_err(|err| {
         anyhow!(
             "{} is not valid JSON (line {}, column {}): {err}",
             path.display(),
@@ -149,7 +113,14 @@ pub(crate) fn read_file(path: &Path) -> Result<ScenarioFile> {
             err.column()
         )
     })?;
-    parse_file(&value).map_err(|err| anyhow!("{}: {err}", path.display()))
+    let file = format::parse_file(&value).map_err(|err| anyhow!("{}: {err}", path.display()))?;
+    Ok(Loaded { value, file })
+}
+
+pub(crate) fn read_file(path: &Path) -> Result<Loaded> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("cannot read scenario {}", path.display()))?;
+    parse_text(path, &text)
 }
 
 // ------------------------------- discovery -------------------------------
@@ -203,6 +174,24 @@ pub(crate) struct Found {
     pub file: Result<ScenarioFile, String>,
 }
 
+impl Found {
+    /// What `use` takes for this file: `name` when it has shared rules,
+    /// and `name:variant` per variant.
+    pub(crate) fn usable(&self) -> Vec<String> {
+        let Ok(file) = &self.file else {
+            return vec![self.name.clone()];
+        };
+        file.usable_without_variant()
+            .then(|| self.name.clone())
+            .into_iter()
+            .chain(
+                file.variant_names()
+                    .map(|variant| format!("{}:{variant}", self.name)),
+            )
+            .collect()
+    }
+}
+
 /// Every `*.json` under `roots`, by name; an earlier root shadows a later
 /// one.
 pub(crate) fn discover(roots: &[PathBuf]) -> Vec<Found> {
@@ -215,7 +204,9 @@ pub(crate) fn discover(roots: &[PathBuf]) -> Vec<Found> {
                 continue;
             };
             found.entry(name.clone()).or_insert_with(|| Found {
-                file: read_file(&path).map_err(|err| format!("{err:#}")),
+                file: read_file(&path)
+                    .map(|loaded| loaded.file)
+                    .map_err(|err| format!("{err:#}")),
                 name,
                 path,
             });
@@ -255,14 +246,37 @@ fn scenario_name(root: &Path, path: &Path) -> Option<String> {
     Some(parts.join("/"))
 }
 
-/// A scenario argument: a file that exists, else a name under `roots`.
-/// Returns the file and the label the host logs it by.
-pub(crate) fn resolve(arg: &str, roots: &[PathBuf], cwd: &Path) -> Result<(PathBuf, String)> {
+/// What a `use` argument names.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Target {
+    pub path: PathBuf,
+    /// The name (or path, as given) the host logs it by.
+    pub source: String,
+    pub variant: Option<String>,
+}
+
+/// A scenario argument: a file that exists (optionally `file:variant`),
+/// else `name[:variant]` under `roots`.
+pub(crate) fn resolve(arg: &str, roots: &[PathBuf], cwd: &Path) -> Result<Target> {
     let as_path = cwd.join(arg);
     if as_path.is_file() {
-        return Ok((as_path, arg.to_string()));
+        return Ok(Target {
+            path: as_path,
+            source: arg.to_string(),
+            variant: None,
+        });
     }
-    let name = arg.replace('\\', "/");
+    let (base, variant) = format::split_variant(arg);
+    let variant = variant.map(str::to_string);
+    let as_path = cwd.join(base);
+    if variant.is_some() && as_path.is_file() {
+        return Ok(Target {
+            path: as_path,
+            source: base.to_string(),
+            variant,
+        });
+    }
+    let name = base.replace('\\', "/");
     let name = name.strip_suffix(".json").unwrap_or(&name);
     let valid = !name.is_empty()
         && Path::new(name)
@@ -272,14 +286,15 @@ pub(crate) fn resolve(arg: &str, roots: &[PathBuf], cwd: &Path) -> Result<(PathB
         for root in roots {
             let candidate = root.join(format!("{name}.json"));
             if candidate.is_file() {
-                return Ok((candidate, name.to_string()));
+                return Ok(Target {
+                    path: candidate,
+                    source: name.to_string(),
+                    variant,
+                });
             }
         }
     }
-    let names: Vec<String> = discover(roots)
-        .into_iter()
-        .map(|found| found.name)
-        .collect();
+    let names: Vec<String> = discover(roots).iter().flat_map(Found::usable).collect();
     let looked = roots
         .iter()
         .map(|root| root.display().to_string())
@@ -295,205 +310,285 @@ pub(crate) fn resolve(arg: &str, roots: &[PathBuf], cwd: &Path) -> Result<(PathB
     )
 }
 
-// ------------------------------- providers -------------------------------
+// ------------------------------- the session -------------------------------
 
-/// Installs one section of a scenario file into the running app.
-pub(crate) trait SectionProvider {
-    /// The file section it owns (`http`, `worker`).
-    fn section(&self) -> &'static str;
-    /// Whether its state stands aside by itself while an `lxdev test` run
-    /// is active. A provider that cannot keeps test runs from starting.
-    fn suspendable(&self) -> bool;
-    fn install(
-        &self,
-        file: &ScenarioFile,
-        section: &Value,
-        source: &str,
-        appid: Option<&str>,
-    ) -> Result<Value>;
-    /// Remove its state; `{ cleared: bool }`.
-    fn clear(&self) -> Result<Value>;
-    /// `{ active: bool, … }`.
-    fn status(&self) -> Result<Value>;
-    fn print_status(&self, status: &Value) {
-        println!("{}: {status}", self.section());
-    }
+/// A failed request, as the dev server answered it.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CallError {
+    pub code: String,
+    pub message: String,
+    pub data: Option<Value>,
 }
 
-/// The `http` section: the host's dev-session route table.
-struct HttpProvider {
-    ws: String,
+/// What `lxdev scenario` needs from a dev session.
+pub(crate) trait Session {
+    /// A `session.network.*` request to the app host.
+    fn host(&self, method: &str, params: Option<Value>) -> Result<Value>;
+    /// A `session.companion.*` request to the dev server.
+    fn companion(&self, method: &str, params: Option<Value>) -> Result<Value, CallError>;
 }
 
-impl SectionProvider for HttpProvider {
-    fn section(&self) -> &'static str {
-        "http"
+/// The live session over its websocket.
+pub(crate) struct Live {
+    pub ws: String,
+}
+
+impl Session for Live {
+    fn host(&self, method: &str, params: Option<Value>) -> Result<Value> {
+        network::call(&self.ws, method, params)
     }
 
-    fn suspendable(&self) -> bool {
-        // Dev routes stand aside while a run is active (the host checks).
-        true
-    }
-
-    fn install(
-        &self,
-        file: &ScenarioFile,
-        section: &Value,
-        source: &str,
-        appid: Option<&str>,
-    ) -> Result<Value> {
-        let mut scenario = Map::new();
-        if let Some(name) = &file.name {
-            scenario.insert("name".into(), json!(name));
+    fn companion(&self, method: &str, params: Option<Value>) -> Result<Value, CallError> {
+        match client::execute_command(&self.ws, method, params) {
+            Ok(value) => Ok(value.unwrap_or(Value::Null)),
+            Err(err) => Err(match err.downcast_ref::<CommandError>() {
+                Some(command) => CallError {
+                    code: command.code.clone(),
+                    message: command.message.clone(),
+                    data: command.data.clone(),
+                },
+                None => CallError {
+                    code: "transport".into(),
+                    message: format!("{err:#}"),
+                    data: None,
+                },
+            }),
         }
-        if let Some(description) = &file.description {
-            scenario.insert("description".into(), json!(description));
+    }
+}
+
+/// Whether the session's companion answers `function` rules, and if not,
+/// why.
+pub(crate) fn companion_support(session: &dyn Session) -> Result<(), String> {
+    match session.companion(companion_method::CAPABILITIES, None) {
+        Ok(caps) => {
+            let declared = caps["capabilities"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|cap| cap == SCENARIO_FUNCTION));
+            if declared {
+                Ok(())
+            } else if caps["companion"] == true {
+                Err(
+                    "the dev session's companion does not answer function rules yet (it did not \
+                     declare the `scenario.function` capability)"
+                        .into(),
+                )
+            } else {
+                Err(
+                    "this dev session has no companion (.lingxia/dev-companion.json), so nothing \
+                     answers function rules"
+                        .into(),
+                )
+            }
         }
-        // The host takes the flat form; the section holds only `routes`.
-        scenario.insert("routes".into(), section["routes"].clone());
-        network::call(
-            &self.ws,
-            method::SCENARIO_USE,
-            Some(json!({ "scenario": scenario, "source": source, "appid": appid })),
-        )
-    }
-
-    fn clear(&self) -> Result<Value> {
-        network::call(&self.ws, method::SCENARIO_CLEAR, None)
-    }
-
-    fn status(&self) -> Result<Value> {
-        network::call(&self.ws, method::STATUS, None)
-    }
-
-    fn print_status(&self, status: &Value) {
-        network::print_status(status);
+        // A `lingxia dev` from before function rules relays the method to
+        // the runtime, which does not know it.
+        Err(err) if err.code == "unknown_method" || err.message.contains("unknown") => {
+            Err("this `lingxia dev` predates function rules; update LingXia".into())
+        }
+        Err(err) => Err(err.message),
     }
 }
 
-pub(crate) type Providers = Vec<Box<dyn SectionProvider>>;
-
-/// The providers this lxdev has, in install order.
-pub(crate) fn providers(ws_url: &str) -> Providers {
-    vec![Box::new(HttpProvider {
-        ws: ws_url.to_string(),
-    })]
+/// The host's `session.network.scenario.use` arguments.
+fn host_args(loaded: &Loaded, target: &Target, appid: Option<&str>, dry_run: bool) -> Value {
+    json!({
+        "scenario": loaded.value,
+        "variant": target.variant,
+        "source": target.source,
+        "appid": appid,
+        "dryRun": dry_run,
+    })
 }
 
-fn ordered(providers: &[Box<dyn SectionProvider>]) -> Vec<&dyn SectionProvider> {
-    let mut ordered: Vec<&dyn SectionProvider> =
-        providers.iter().map(|provider| provider.as_ref()).collect();
-    ordered.sort_by_key(|provider| {
-        SECTIONS
-            .iter()
-            .position(|section| *section == provider.section())
-            .unwrap_or(SECTIONS.len())
-    });
-    ordered
-}
-
-/// Install every section of `file`, replacing the active scenario. When a
-/// section fails, the sections installed before it are cleared again.
+/// Install `loaded` (with `target.variant`) as the dev scenario, replacing
+/// the active one. Everything is validated first; `function` rules are
+/// installed before `http` rules and rolled back if those fail, so a
+/// failure leaves no part of the new scenario installed. Returns the
+/// status.
 pub(crate) fn install(
-    providers: &[Box<dyn SectionProvider>],
-    file: &ScenarioFile,
-    source: &str,
+    session: &dyn Session,
+    loaded: &Loaded,
+    target: &Target,
     appid: Option<&str>,
-) -> Result<Map<String, Value>> {
-    if let Some(section) = file
-        .sections
-        .keys()
-        .find(|section| !providers.iter().any(|p| p.section() == section.as_str()))
-    {
-        bail!(
-            "{source}: the {section} section is not supported yet; this lxdev installs only \
-             http routes"
-        );
-    }
-    let mut installed: Vec<(&dyn SectionProvider, Value)> = Vec::new();
-    for provider in ordered(providers) {
-        let Some(section) = file.sections.get(provider.section()) else {
-            continue;
-        };
-        match provider.install(file, section, source, appid) {
-            Ok(status) => installed.push((provider, status)),
-            Err(err) => {
-                let mut rollback = Vec::new();
-                for (done, _) in installed.iter().rev() {
-                    if let Err(undo) = done.clear() {
-                        rollback.push(format!("{}: {undo:#}", done.section()));
-                    }
-                }
-                let err = err.context(format!(
-                    "the {} section of {source} failed; nothing of it stays installed",
-                    provider.section()
-                ));
-                if rollback.is_empty() {
-                    return Err(err);
-                }
-                return Err(err.context(format!(
-                    "rolling back also failed ({}); run `lxdev scenario clear`",
-                    rollback.join("; ")
-                )));
-            }
+) -> Result<Value> {
+    let source = &target.source;
+    let resolved = loaded
+        .file
+        .resolve(target.variant.as_deref())
+        .map_err(|err| anyhow!("{source}: {err}"))?;
+    session
+        .host(
+            method::SCENARIO_USE,
+            Some(host_args(loaded, target, appid, true)),
+        )
+        .with_context(|| format!("{source} is not a valid scenario"))?;
+    let functions = resolved.function_rules().count();
+    let support = companion_support(session);
+    if functions > 0 {
+        if let Err(reason) = &support {
+            bail!("{source}: {}", resolved.functions_unsupported(reason));
         }
+        let params = serde_json::to_value(resolved.companion_use(DEV_OWNER, Some(source)))?;
+        session
+            .companion(companion_method::SCENARIO_USE, Some(params))
+            .map_err(|err| anyhow!("{source}: {}", companion_failure(&resolved, &err)))?;
+    } else if support.is_ok() {
+        // The previous scenario's function rules must not outlive it.
+        session
+            .companion(
+                companion_method::SCENARIO_CLEAR,
+                Some(json!({ "owner": DEV_OWNER })),
+            )
+            .map_err(|err| {
+                anyhow!(
+                    "cannot clear the companion's previous scenario: {}",
+                    err.message
+                )
+            })?;
     }
-    // The file replaces the active scenario as a whole: a section it lacks
-    // must not keep answering from the previous one.
-    for provider in ordered(providers) {
-        if !file.sections.contains_key(provider.section()) {
-            provider.clear()?;
-        }
-    }
-    Ok(installed
-        .into_iter()
-        .map(|(provider, status)| (provider.section().to_string(), status))
-        .collect())
-}
-
-/// Clear every section; every provider is asked even when one fails.
-pub(crate) fn clear(providers: &[Box<dyn SectionProvider>]) -> Result<Map<String, Value>> {
-    let mut results = Map::new();
-    let mut first_err = None;
-    for provider in ordered(providers) {
-        match provider.clear() {
-            Ok(result) => {
-                results.insert(provider.section().into(), result);
-            }
-            Err(err) => {
-                first_err.get_or_insert(
-                    err.context(format!("cannot clear the {} section", provider.section())),
+    match session.host(
+        method::SCENARIO_USE,
+        Some(host_args(loaded, target, appid, false)),
+    ) {
+        Ok(status) => Ok(status),
+        Err(err) => {
+            if functions > 0 {
+                let _ = session.companion(
+                    companion_method::SCENARIO_CLEAR,
+                    Some(json!({ "owner": DEV_OWNER })),
                 );
             }
+            Err(err.context(format!(
+                "{source} failed to install; nothing of it stays installed"
+            )))
         }
-    }
-    match first_err {
-        Some(err) => Err(err),
-        None => Ok(results),
     }
 }
 
-pub(crate) fn status(providers: &[Box<dyn SectionProvider>]) -> Result<Map<String, Value>> {
-    ordered(providers)
+fn companion_failure(resolved: &Resolved, err: &CallError) -> String {
+    if err.code == companion_method::UNSUPPORTED {
+        resolved.functions_unsupported(&err.message)
+    } else {
+        resolved.companion_error(&err.code, &err.message, err.data.as_ref())
+    }
+}
+
+/// The host's status with the companion's hit counts on `function` rules.
+pub(crate) fn status(session: &dyn Session) -> Result<Value> {
+    let mut status = session.host(method::STATUS, None)?;
+    let companion = companion_support(session)
+        .ok()
+        .and_then(|()| {
+            session
+                .companion(companion_method::SCENARIO_STATUS, Some(json!({})))
+                .ok()
+        })
+        .and_then(|value| serde_json::from_value::<companion::StatusResult>(value).ok());
+    if let Some(companion) = &companion {
+        merge_function_hits(&mut status, companion);
+    }
+    Ok(status)
+}
+
+/// Put the dev owner's per-rule hits on the `function` rules, in order.
+pub(crate) fn merge_function_hits(status: &mut Value, companion: &companion::StatusResult) {
+    let Some(dev) = companion
+        .owners
+        .iter()
+        .find(|owner| owner.owner == DEV_OWNER)
+    else {
+        return;
+    };
+    let Some(rules) = status["scenario"]["rules"].as_array_mut() else {
+        return;
+    };
+    for (rule, hits) in rules
+        .iter_mut()
+        .filter(|rule| rule["kind"] == "function")
+        .zip(&dev.rules)
+    {
+        rule["hits"] = json!(hits.hits);
+    }
+    status["scenario"]["companionActive"] = json!(dev.active);
+}
+
+/// Requests (and Function calls) that reached the active scenario.
+pub(crate) fn reached(status: &Value) -> u64 {
+    let requests = status["scenario"]["requests"].as_u64().unwrap_or(0);
+    let functions: u64 = status["scenario"]["rules"]
+        .as_array()
         .into_iter()
-        .map(|provider| Ok((provider.section().to_string(), provider.status()?)))
-        .collect()
+        .flatten()
+        .filter(|rule| rule["kind"] == "function")
+        .filter_map(|rule| rule["hits"].as_u64())
+        .sum();
+    requests + functions
 }
 
-/// `lxdev test` refuses to start while a section that cannot stand aside
-/// during a run is active: it would steer the tests.
-pub(crate) fn refuse_test_while_blocking(providers: &[Box<dyn SectionProvider>]) -> Result<()> {
-    for provider in providers.iter().filter(|provider| !provider.suspendable()) {
-        let status = provider.status()?;
-        if status["active"] == true {
-            bail!(
-                "scenario_active: the dev scenario's {} section is active and cannot stand aside \
-                 during a test run; clear it with `lxdev scenario clear`, then run the tests",
-                provider.section()
-            );
+/// Clear the dev scenario on both sides; both are asked even when one
+/// fails.
+pub(crate) fn clear(session: &dyn Session) -> Result<Value> {
+    let host = session.host(method::SCENARIO_CLEAR, None);
+    let companion = match companion_support(session) {
+        Ok(()) => Some(session.companion(
+            companion_method::SCENARIO_CLEAR,
+            Some(json!({ "owner": DEV_OWNER })),
+        )),
+        Err(_) => None,
+    };
+    let host = host?;
+    let companion_cleared = match companion {
+        Some(Ok(result)) => result["cleared"] == true,
+        Some(Err(err)) => bail!("cannot clear the companion's scenario: {}", err.message),
+        None => false,
+    };
+    Ok(json!({
+        "cleared": host["cleared"] == true || companion_cleared,
+        "http": host["cleared"],
+        "function": companion_cleared,
+    }))
+}
+
+// -------------------------------- --watch --------------------------------
+
+/// What one look at the watched file found.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) enum WatchEvent {
+    /// The file changed and installed.
+    Installed(Value),
+    /// The file changed but did not install; the last valid one answers.
+    Rejected(String),
+}
+
+/// Reinstall `target` whenever its content changes, until `stop`.
+/// `initial` is the content installed (or rejected) before watching.
+pub(crate) fn watch(
+    session: &dyn Session,
+    target: &Target,
+    appid: Option<&str>,
+    initial: Option<String>,
+    interval: Duration,
+    stop: &dyn Fn() -> bool,
+    report: &mut dyn FnMut(WatchEvent),
+) {
+    let mut last = initial;
+    while !stop() {
+        std::thread::sleep(interval);
+        let Ok(text) = std::fs::read_to_string(&target.path) else {
+            continue;
+        };
+        if last.as_deref() == Some(text.as_str()) {
+            continue;
         }
+        last = Some(text.clone());
+        let installed = parse_text(&target.path, &text)
+            .and_then(|loaded| install(session, &loaded, target, appid));
+        report(match installed {
+            Ok(status) => WatchEvent::Installed(status),
+            Err(err) => WatchEvent::Rejected(format!("{err:#}")),
+        });
     }
-    Ok(())
 }
 
 // -------------------------------- command --------------------------------
@@ -509,50 +604,97 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
     }
     let info =
         info.ok_or_else(|| anyhow!("No live dev session found. Run `lingxia dev` first."))?;
-    let providers = providers(&info.ws_url);
+    let session = Live {
+        ws: info.ws_url.clone(),
+    };
     match options.command {
         ScenarioCommand::List { .. } => unreachable!("handled above"),
         ScenarioCommand::Use {
             scenario,
             appid,
+            watch: watching,
             json,
         } => {
-            let (path, source) = resolve(&scenario, &roots, &cwd)?;
-            let file = read_file(&path)?;
-            let sections = install(&providers, &file, &source, appid.as_deref())?;
-            let value = json!({ "source": source, "path": path, "sections": sections });
-            network::print(&value, json, |_| {
-                for provider in ordered(&providers) {
-                    if let Some(status) = sections.get(provider.section()) {
-                        provider.print_status(status);
-                        network::print_warning(status);
-                    }
+            let target = resolve(&scenario, &roots, &cwd)?;
+            let initial = std::fs::read_to_string(&target.path).ok();
+            let installed = read_file(&target.path)
+                .and_then(|loaded| install(&session, &loaded, &target, appid.as_deref()));
+            let status = match installed {
+                Ok(status) => status,
+                Err(err) if watching => {
+                    eprintln!("{} {err:#}", "error".red().bold());
+                    Value::Null
                 }
+                Err(err) => return Err(err),
+            };
+            if !status.is_null() {
+                let status = if json {
+                    status
+                } else {
+                    self::status(&session)?
+                };
+                let value = json!({ "source": target.source, "variant": target.variant, "path": target.path, "status": status });
+                network::print(&value, json, |value| {
+                    print_status(&value["status"]);
+                    network::print_warning(&value["status"]);
+                    eprintln!(
+                        "{} the app answers from this scenario until `lxdev scenario clear`, \
+                         another `lxdev scenario use`, or the end of the dev session",
+                        "warning".yellow().bold()
+                    );
+                })?;
+                if !json && !watching && std::io::stderr().is_terminal() {
+                    wait_for_first_request(&session);
+                }
+            }
+            if watching {
                 eprintln!(
-                    "{} the app answers from this scenario until `lxdev scenario clear`, another \
-                     `lxdev scenario use`, or the end of the dev session",
-                    "warning".yellow().bold()
+                    "watching {} — saving it reinstalls the scenario; Ctrl-C stops watching \
+                     (the scenario stays installed)",
+                    target.path.display()
                 );
-            })
+                watch(
+                    &session,
+                    &target,
+                    appid.as_deref(),
+                    initial,
+                    WATCH_INTERVAL,
+                    &|| false,
+                    &mut |event| match event {
+                        WatchEvent::Installed(status) => {
+                            if json {
+                                println!("{}", json!({ "event": "installed", "status": status }));
+                            } else {
+                                let label =
+                                    status["scenario"]["label"].as_str().unwrap_or("scenario");
+                                let rules =
+                                    status["scenario"]["rules"].as_array().map_or(0, Vec::len);
+                                println!("reinstalled '{label}' ({rules} rule{})", plural(rules));
+                            }
+                        }
+                        WatchEvent::Rejected(error) => {
+                            if json {
+                                println!("{}", json!({ "event": "rejected", "error": error }));
+                            } else {
+                                eprintln!(
+                                    "{} {error}\n  the last valid version keeps answering",
+                                    "error".red().bold()
+                                );
+                            }
+                        }
+                    },
+                );
+            }
+            Ok(())
         }
         ScenarioCommand::Status { json } => {
-            let sections = status(&providers)?;
-            let active = sections.values().any(|status| status["active"] == true);
-            let value = json!({ "active": active, "sections": sections });
-            network::print(&value, json, |_| {
-                for provider in ordered(&providers) {
-                    if let Some(status) = sections.get(provider.section()) {
-                        provider.print_status(status);
-                    }
-                }
-            })
+            let status = self::status(&session)?;
+            network::print(&status, json, print_status)
         }
         ScenarioCommand::Clear { json } => {
-            let sections = clear(&providers)?;
-            let cleared = sections.values().any(|result| result["cleared"] == true);
-            let value = json!({ "cleared": cleared, "sections": sections });
-            network::print(&value, json, |_| {
-                if cleared {
+            let result = clear(&session)?;
+            network::print(&result, json, |result| {
+                if result["cleared"] == true {
                     println!("scenario cleared; the app reaches its real backends again");
                 } else {
                     println!("no scenario was active");
@@ -560,6 +702,123 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
             })
         }
     }
+}
+
+fn plural(n: usize) -> &'static str {
+    if n == 1 { "" } else { "s" }
+}
+
+/// Wait briefly for a first request; say why none may come.
+fn wait_for_first_request(session: &dyn Session) {
+    let deadline = Instant::now() + FIRST_REQUEST_WAIT;
+    while Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(250));
+        match status(session) {
+            Ok(status) if status["active"] != true || reached(&status) > 0 => return,
+            Ok(_) => {}
+            Err(_) => return,
+        }
+    }
+    eprintln!("{} {IDLE_HINT}", "hint".cyan().bold());
+}
+
+pub(crate) fn print_status(status: &Value) {
+    match status
+        .get("scenario")
+        .filter(|scenario| scenario.is_object())
+    {
+        Some(scenario) => {
+            let label = scenario["label"].as_str().unwrap_or("unnamed");
+            let source = scenario["source"]
+                .as_str()
+                .filter(|source| *source != label)
+                .map(|source| format!(" ({source})"))
+                .unwrap_or_default();
+            println!(
+                "{} scenario '{label}'{source} for {} since {}",
+                "ACTIVE".yellow().bold(),
+                scenario["appid"].as_str().unwrap_or("?"),
+                scenario["installedAt"].as_str().unwrap_or("?"),
+            );
+            for line in rule_lines(scenario) {
+                println!("  {line}");
+            }
+            let requests = scenario["requests"].as_u64().unwrap_or(0);
+            println!(
+                "  {requests} request{} reached it",
+                plural(requests as usize)
+            );
+            for request in scenario["lastRequests"].as_array().into_iter().flatten() {
+                println!("  {}", request_line(request));
+            }
+            if status["suspended"] == true {
+                println!(
+                    "  (standing aside while a test run is active; it answers again when the run ends)"
+                );
+            } else if reached(status) == 0 {
+                println!("  {} {IDLE_HINT}", "hint".cyan().bold());
+            }
+        }
+        None => {
+            println!("no scenario is active");
+            network::print_last_cleared(status);
+        }
+    }
+    network::print_recording(status);
+}
+
+/// `rule 1 GET **/wifi/main answered 2×` per rule.
+pub(crate) fn rule_lines(scenario: &Value) -> Vec<String> {
+    let rules = scenario["rules"].as_array().cloned().unwrap_or_default();
+    let width = rules
+        .iter()
+        .map(|rule| rule["target"].as_str().unwrap_or("").len())
+        .max()
+        .unwrap_or(0);
+    rules
+        .iter()
+        .map(|rule| {
+            let target = rule["target"].as_str().unwrap_or("");
+            let answered = match rule["hits"].as_u64() {
+                Some(hits) => format!("answered {hits}×"),
+                None => "answered ?× (the companion does not report)".to_string(),
+            };
+            let expired = if rule["installed"] == false {
+                " (times used up)"
+            } else {
+                ""
+            };
+            format!(
+                "rule {} {target:<width$}  {answered}{expired}",
+                rule["index"],
+                width = width
+            )
+        })
+        .collect()
+}
+
+fn request_line(request: &Value) -> String {
+    let answered = match request["rule"].as_u64() {
+        Some(rule) => format!(
+            "rule {rule} {}{}",
+            request["action"].as_str().unwrap_or(""),
+            request["status"]
+                .as_u64()
+                .map(|status| format!(" {status}"))
+                .unwrap_or_default()
+        ),
+        None => "no rule matched → real".to_string(),
+    };
+    let mut line = format!(
+        "{} {} {} → {answered}",
+        request["time"].as_str().unwrap_or(""),
+        request["method"].as_str().unwrap_or(""),
+        request["url"].as_str().unwrap_or(""),
+    );
+    if let Some(no_match) = request["noMatch"].as_str() {
+        line.push_str(&format!("\n    {no_match}"));
+    }
+    line
 }
 
 fn list(roots: &[PathBuf], json: bool) -> Result<()> {
@@ -572,7 +831,13 @@ fn list(roots: &[PathBuf], json: bool) -> Result<()> {
                 "path": found.path,
                 "title": file.name,
                 "description": file.description,
-                "sections": file.sections.keys().collect::<Vec<_>>(),
+                "use": found.usable(),
+                "variants": file.variants.iter().map(|(name, variant)| json!({
+                    "name": name,
+                    "description": variant.description,
+                    "rules": variant.rules.len(),
+                })).collect::<Vec<_>>(),
+                "rules": file.rules.len(),
             }),
             Err(err) => json!({ "name": found.name, "path": found.path, "error": err }),
         })
@@ -588,93 +853,71 @@ fn list(roots: &[PathBuf], json: bool) -> Result<()> {
             println!("no scenarios in {looked}");
             return;
         }
-        let width = found
-            .iter()
-            .map(|found| found.name.len())
-            .max()
-            .unwrap_or(0);
-        for found in &found {
-            match &found.file {
-                Ok(file) => {
-                    let sections = file.sections.keys().cloned().collect::<Vec<_>>().join(",");
-                    let about = match (&file.name, &file.description) {
-                        (Some(name), Some(description)) => format!("{name} — {description}"),
-                        (Some(text), None) | (None, Some(text)) => text.clone(),
-                        (None, None) => String::new(),
-                    };
-                    println!(
-                        "{:<width$}  [{sections}]  {about}",
-                        found.name,
-                        width = width
-                    );
-                }
-                Err(err) => println!(
+        for line in list_lines(&found) {
+            println!("{line}");
+        }
+    })
+}
+
+/// One line per usable `name` and `name:variant`.
+pub(crate) fn list_lines(found: &[Found]) -> Vec<String> {
+    let width = found
+        .iter()
+        .flat_map(Found::usable)
+        .map(|name| name.len())
+        .max()
+        .unwrap_or(0);
+    let mut lines = Vec::new();
+    for found in found {
+        let file = match &found.file {
+            Ok(file) => file,
+            Err(err) => {
+                lines.push(format!(
                     "{:<width$}  {} {err}",
                     found.name,
                     "invalid".red(),
                     width = width
-                ),
+                ));
+                continue;
             }
+        };
+        let about = match (&file.name, &file.description) {
+            (Some(name), Some(description)) => format!("{name} — {description}"),
+            (Some(text), None) | (None, Some(text)) => text.clone(),
+            (None, None) => String::new(),
+        };
+        if file.usable_without_variant() {
+            lines.push(format!(
+                "{:<width$}  {} rule{}  {about}",
+                found.name,
+                file.rules.len(),
+                plural(file.rules.len()),
+                width = width
+            ));
+        } else if !about.is_empty() {
+            lines.push(format!("{:<width$}  {about}", found.name, width = width));
         }
-    })
+        for (name, variant) in &file.variants {
+            let rules = variant.rules.len() + file.rules.len();
+            lines.push(format!(
+                "{:<width$}  {rules} rule{}  {}",
+                format!("{}:{name}", found.name),
+                plural(rules),
+                variant.description.as_deref().unwrap_or(""),
+                width = width
+            ));
+        }
+    }
+    lines
+        .iter()
+        .map(|line| line.trim_end().to_string())
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::cell::RefCell;
-    use std::rc::Rc;
-
-    #[test]
-    fn a_file_splits_into_sections() {
-        let flat = parse_file(&json!({
-            "$schema": "x", "name": "offline", "routes": [{ "url": "**", "status": 503 }]
-        }))
-        .unwrap();
-        assert_eq!(flat.name.as_deref(), Some("offline"));
-        assert_eq!(
-            flat.sections["http"],
-            json!({ "routes": [{ "url": "**", "status": 503 }] })
-        );
-
-        let sectioned = parse_file(&json!({
-            "description": "d",
-            "http": { "routes": [{ "url": "**", "status": 503 }] },
-            "worker": { "state": {} }
-        }))
-        .unwrap();
-        assert_eq!(
-            sectioned.sections.keys().collect::<Vec<_>>(),
-            vec!["http", "worker"]
-        );
-        assert_eq!(sectioned.description.as_deref(), Some("d"));
-
-        for (file, expected) in [
-            (json!([]), "JSON object"),
-            (json!({ "route": [] }), "unknown scenario field 'route'"),
-            (json!({ "routes": [], "http": {} }), "not both"),
-            (json!({ "http": [] }), "must be an object"),
-            (json!({ "http": {} }), "needs a routes array"),
-            (
-                json!({ "http": { "routes": [], "x": 1 } }),
-                "unknown http section field 'x'",
-            ),
-            (json!({ "name": 1, "routes": [] }), "name must be a string"),
-            (json!({ "name": "empty" }), "needs an http section"),
-        ] {
-            let err = parse_file(&file).unwrap_err();
-            assert!(err.contains(expected), "{file}: {err}");
-        }
-    }
-
-    #[test]
-    fn a_bad_scenario_file_names_where_it_broke() {
-        let dir = tempfile::tempdir().unwrap();
-        let file = dir.path().join("bad.json");
-        std::fs::write(&file, "{\n  \"routes\": [,]\n}").unwrap();
-        let err = read_file(&file).unwrap_err().to_string();
-        assert!(err.contains("line 2"), "{err}");
-    }
 
     fn write(path: &Path, text: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -682,21 +925,43 @@ mod tests {
     }
 
     #[test]
-    fn names_resolve_against_the_roots_in_order() {
+    fn a_bad_scenario_file_names_where_it_broke() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bad.json");
+        std::fs::write(&file, "{\n  \"rules\": [,]\n}").unwrap();
+        let err = read_file(&file).unwrap_err().to_string();
+        assert!(err.contains("line 2"), "{err}");
+        std::fs::write(&file, r#"{ "http": { "routes": [] } }"#).unwrap();
+        let err = read_file(&file).unwrap_err().to_string();
+        assert!(err.contains("'http' is the old scenario format"), "{err}");
+    }
+
+    const WIFI: &str = r#"{
+        "name": "Wi-Fi",
+        "rules": [{ "http": "GET **/wifi/clients", "json": [] }],
+        "variants": {
+            "a": { "rules": [{ "http": "GET **/wifi/main", "json": { "ssid": "A" } }] },
+            "b": { "description": "the B network", "rules": [{ "http": "GET **/wifi/main", "json": { "ssid": "B" } }] }
+        }
+    }"#;
+
+    #[test]
+    fn names_and_variants_resolve_against_the_roots_in_order() {
         let dir = tempfile::tempdir().unwrap();
         let content = dir.path().join("app/tests/scenarios");
         let project = dir.path().join("tests/scenarios");
         write(
             &content.join("qoe/offline.json"),
-            r#"{ "name": "content offline", "routes": [{ "url": "**", "status": 503 }] }"#,
+            r#"{ "name": "content offline", "rules": [{ "http": "* **", "status": 503 }] }"#,
         );
         write(
             &project.join("qoe/offline.json"),
-            r#"{ "name": "project offline", "routes": [{ "url": "**", "status": 503 }] }"#,
+            r#"{ "name": "project offline", "rules": [{ "http": "* **", "status": 503 }] }"#,
         );
+        write(&project.join("wifi.json"), WIFI);
         write(
-            &project.join("stale.json"),
-            r#"{ "http": { "routes": [{ "url": "**", "json": {} }] } }"#,
+            &project.join("only-variants.json"),
+            r#"{ "variants": { "x": { "rules": [{ "http": "GET y", "status": 200 }] } } }"#,
         );
         write(&project.join("broken.json"), "{");
         write(&project.join(".hidden.json"), "{}");
@@ -705,33 +970,67 @@ mod tests {
 
         let found = discover(&roots);
         let names: Vec<&str> = found.iter().map(|found| found.name.as_str()).collect();
-        assert_eq!(names, vec!["broken", "qoe/offline", "stale"]);
+        assert_eq!(
+            names,
+            vec!["broken", "only-variants", "qoe/offline", "wifi"]
+        );
         // The content directory shadows the project root.
         assert_eq!(
-            found[1].file.as_ref().unwrap().name.as_deref(),
+            found[2].file.as_ref().unwrap().name.as_deref(),
             Some("content offline")
         );
         assert!(found[0].file.is_err());
+        let usable: Vec<String> = found.iter().flat_map(Found::usable).collect();
+        assert_eq!(
+            usable,
+            [
+                "broken",
+                "only-variants:x",
+                "qoe/offline",
+                "wifi",
+                "wifi:a",
+                "wifi:b"
+            ]
+        );
+        let lines = list_lines(&found);
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("wifi:b") && line.contains("2 rules  the B network")),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"only-variants:x  1 rule".to_string()),
+            "{lines:?}"
+        );
+        assert!(
+            lines.contains(&"wifi             1 rule  Wi-Fi".to_string()),
+            "{lines:?}"
+        );
 
         let cwd = dir.path();
-        let (path, source) = resolve("qoe/offline", &roots, cwd).unwrap();
-        assert_eq!(path, content.join("qoe/offline.json"));
-        assert_eq!(source, "qoe/offline");
+        let target = resolve("qoe/offline", &roots, cwd).unwrap();
+        assert_eq!(target.path, content.join("qoe/offline.json"));
+        assert_eq!(target.source, "qoe/offline");
+        assert_eq!(target.variant, None);
+        let target = resolve("wifi:b", &roots, cwd).unwrap();
+        assert_eq!(target.path, project.join("wifi.json"));
         assert_eq!(
-            resolve("stale.json", &roots, cwd).unwrap().0,
-            project.join("stale.json")
+            (target.source.as_str(), target.variant.as_deref()),
+            ("wifi", Some("b"))
         );
-        // A path wins, and is logged as given.
-        let (path, source) = resolve("tests/scenarios/stale.json", &roots, cwd).unwrap();
-        assert_eq!(path, cwd.join("tests/scenarios/stale.json"));
-        assert_eq!(source, "tests/scenarios/stale.json");
+        // A path wins, and is logged as given; a variant may follow it.
+        let target = resolve("tests/scenarios/wifi.json:a", &roots, cwd).unwrap();
+        assert_eq!(target.path, cwd.join("tests/scenarios/wifi.json"));
+        assert_eq!(target.source, "tests/scenarios/wifi.json");
+        assert_eq!(target.variant.as_deref(), Some("a"));
 
         let err = resolve("qoe/online", &roots, cwd).unwrap_err().to_string();
         assert!(
-            err.contains("available: broken, qoe/offline, stale"),
+            err.contains("available: broken, only-variants:x, qoe/offline, wifi, wifi:a, wifi:b"),
             "{err}"
         );
-        assert!(resolve("../scenarios/stale", &roots, &content).is_err());
+        assert!(resolve("../scenarios/wifi", &roots, &content).is_err());
     }
 
     #[test]
@@ -761,7 +1060,6 @@ mod tests {
             search_roots(&info, &lxapp),
             vec![project.join(SCENARIO_DIR), lxapp.join(SCENARIO_DIR)]
         );
-        // A directory outside the session adds nothing.
         let elsewhere = tempfile::tempdir().unwrap();
         assert_eq!(
             search_roots(&info, elsewhere.path()),
@@ -769,149 +1067,304 @@ mod tests {
         );
     }
 
-    /// Records what it was asked, and fails `install` when told to.
+    /// A session that records what it was asked. The host validates with
+    /// the shared format only; `companion` is `None` for no companion, or
+    /// its capabilities.
     struct Fake {
-        section: &'static str,
-        suspendable: bool,
-        fail: bool,
-        active: bool,
-        log: Rc<RefCell<Vec<String>>>,
+        log: RefCell<Vec<String>>,
+        companion: Option<Vec<&'static str>>,
+        host_fails: bool,
+        companion_error: Option<CallError>,
+        status: Value,
     }
 
-    impl SectionProvider for Fake {
-        fn section(&self) -> &'static str {
-            self.section
-        }
-        fn suspendable(&self) -> bool {
-            self.suspendable
-        }
-        fn install(&self, _: &ScenarioFile, _: &Value, _: &str, _: Option<&str>) -> Result<Value> {
-            self.log
-                .borrow_mut()
-                .push(format!("install {}", self.section));
-            if self.fail {
-                bail!("{} refused", self.section);
+    impl Fake {
+        fn new(companion: Option<Vec<&'static str>>) -> Self {
+            Self {
+                log: RefCell::new(Vec::new()),
+                companion,
+                host_fails: false,
+                companion_error: None,
+                status: json!({ "active": true, "scenario": { "rules": [] } }),
             }
-            Ok(json!({ "active": true }))
         }
-        fn clear(&self) -> Result<Value> {
-            self.log
-                .borrow_mut()
-                .push(format!("clear {}", self.section));
+
+        fn log(&self) -> Vec<String> {
+            self.log.borrow().clone()
+        }
+    }
+
+    impl Session for Fake {
+        fn host(&self, method: &str, params: Option<Value>) -> Result<Value> {
+            let params = params.unwrap_or_default();
+            if method == method::SCENARIO_USE {
+                let dry = params["dryRun"] == true;
+                self.log
+                    .borrow_mut()
+                    .push(format!("host use{}", if dry { " (dry run)" } else { "" }));
+                format::parse_file(&params["scenario"])
+                    .and_then(|file| file.resolve(params["variant"].as_str()))
+                    .map_err(|err| anyhow!("invalid scenario: {err}"))?;
+                if !dry && self.host_fails {
+                    bail!("host refused");
+                }
+                return Ok(json!({ "active": !dry }));
+            }
+            self.log.borrow_mut().push(format!("host {method}"));
+            if method == method::STATUS {
+                return Ok(self.status.clone());
+            }
             Ok(json!({ "cleared": true }))
         }
-        fn status(&self) -> Result<Value> {
+
+        fn companion(&self, method: &str, params: Option<Value>) -> Result<Value, CallError> {
+            if method == companion_method::CAPABILITIES {
+                return Ok(json!({
+                    "companion": self.companion.is_some(),
+                    "capabilities": self.companion.clone().unwrap_or_default(),
+                }));
+            }
+            let owner = params
+                .as_ref()
+                .map(|p| p["owner"].clone())
+                .unwrap_or_default();
             self.log
                 .borrow_mut()
-                .push(format!("status {}", self.section));
-            Ok(json!({ "active": self.active }))
+                .push(format!("companion {method} {owner}"));
+            if method == companion_method::SCENARIO_USE
+                && let Some(err) = &self.companion_error
+            {
+                return Err(err.clone());
+            }
+            if method == companion_method::SCENARIO_STATUS {
+                return Ok(
+                    json!({ "owners": [{ "owner": "dev", "active": true, "rules": [{ "hits": 3 }] }] }),
+                );
+            }
+            Ok(json!({ "installed": 1, "cleared": true }))
         }
     }
 
-    fn fake(
-        section: &'static str,
-        log: &Rc<RefCell<Vec<String>>>,
-        configure: impl FnOnce(&mut Fake),
-    ) -> Box<dyn SectionProvider> {
-        let mut fake = Fake {
-            section,
-            suspendable: true,
-            fail: false,
-            active: false,
-            log: log.clone(),
-        };
-        configure(&mut fake);
-        Box::new(fake)
+    fn loaded(text: &str) -> Loaded {
+        parse_text(Path::new("s.json"), text).unwrap()
     }
 
-    fn both() -> ScenarioFile {
-        parse_file(&json!({
-            "http": { "routes": [{ "url": "**", "status": 503 }] },
-            "worker": { "state": {} }
-        }))
-        .unwrap()
+    fn target(variant: Option<&str>) -> Target {
+        Target {
+            path: PathBuf::from("s.json"),
+            source: "checkout".into(),
+            variant: variant.map(str::to_string),
+        }
+    }
+
+    const CHECKOUT: &str = r#"{
+        "name": "Checkout",
+        "rules": [
+            { "http": "GET **/cart", "json": { "items": 1 } },
+            { "function": "orders.submit", "fault": "unknown" }
+        ]
+    }"#;
+
+    #[test]
+    fn function_rules_need_a_companion_that_declared_them_and_nothing_installs_otherwise() {
+        for (companion, reason) in [
+            (None, "this dev session has no companion"),
+            (
+                Some(vec!["requests"]),
+                "did not declare the `scenario.function` capability",
+            ),
+        ] {
+            let session = Fake::new(companion);
+            let err = install(&session, &loaded(CHECKOUT), &target(None), None)
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains("1 function rule (rule 2 function orders.submit) cannot be installed"),
+                "{err}"
+            );
+            assert!(err.contains(reason), "{err}");
+            assert!(err.contains("Nothing was installed"), "{err}");
+            // Only the dry run happened.
+            assert_eq!(session.log(), ["host use (dry run)"]);
+        }
     }
 
     #[test]
-    fn sections_install_worker_first_and_roll_back_on_failure() {
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let providers = vec![
-            fake("http", &log, |fake| fake.fail = true),
-            fake("worker", &log, |_| {}),
-        ];
-        let err = install(&providers, &both(), "qoe/offline", None).unwrap_err();
+    fn a_capable_companion_gets_the_function_rules_first_and_loses_them_on_failure() {
+        let session = Fake::new(Some(vec!["requests", SCENARIO_FUNCTION]));
+        install(&session, &loaded(CHECKOUT), &target(None), None).unwrap();
+        assert_eq!(
+            session.log(),
+            [
+                "host use (dry run)",
+                "companion session.companion.scenario.use \"dev\"",
+                "host use"
+            ]
+        );
+
+        let mut failing = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        failing.host_fails = true;
+        let err = install(&failing, &loaded(CHECKOUT), &target(None), None).unwrap_err();
         assert!(
-            format!("{err:#}").contains("http section of qoe/offline failed"),
+            format!("{err:#}").contains("nothing of it stays installed"),
             "{err:#}"
         );
         assert_eq!(
-            *log.borrow(),
-            vec!["install worker", "install http", "clear worker"]
+            failing.log(),
+            [
+                "host use (dry run)",
+                "companion session.companion.scenario.use \"dev\"",
+                "host use",
+                "companion session.companion.scenario.clear \"dev\""
+            ]
         );
 
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let providers = vec![fake("http", &log, |_| {}), fake("worker", &log, |_| {})];
-        let flat = parse_file(&json!({ "routes": [{ "url": "**", "status": 503 }] })).unwrap();
-        let sections = install(&providers, &flat, "offline", None).unwrap();
-        assert_eq!(sections.keys().collect::<Vec<_>>(), vec!["http"]);
-        // A section the new file lacks stops answering from the old one.
-        assert_eq!(*log.borrow(), vec!["install http", "clear worker"]);
-    }
-
-    #[test]
-    fn a_section_without_a_provider_is_not_supported_yet() {
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let providers = vec![fake("http", &log, |_| {})];
-        let err = install(&providers, &both(), "qoe/offline", None).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("the worker section is not supported yet"),
-            "{err}"
-        );
-        assert!(log.borrow().is_empty(), "nothing is installed");
-        // The real provider set has no worker provider either.
-        assert!(
-            providers_for_test()
-                .iter()
-                .all(|provider| provider.section() != "worker")
-        );
-    }
-
-    fn providers_for_test() -> Providers {
-        providers("ws://127.0.0.1:1")
-    }
-
-    #[test]
-    fn a_test_run_refuses_to_start_under_an_active_non_suspendable_section() {
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let providers = vec![
-            fake("http", &log, |fake| fake.active = true),
-            fake("worker", &log, |fake| {
-                fake.suspendable = false;
-                fake.active = true;
-            }),
-        ];
-        let err = refuse_test_while_blocking(&providers)
+        // Companion validation errors name the rule in the file.
+        let mut refusing = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        refusing.companion_error = Some(CallError {
+            code: companion::INVALID_RULES.into(),
+            message: "invalid".into(),
+            data: Some(json!({ "errors": [{ "rule": 0, "message": "unknown Function" }] })),
+        });
+        let err = install(&refusing, &loaded(CHECKOUT), &target(None), None)
             .unwrap_err()
             .to_string();
-        assert!(err.starts_with("scenario_active:"), "{err}");
-        assert!(err.contains("lxdev scenario clear"), "{err}");
-        // A suspendable section is never asked.
-        assert_eq!(*log.borrow(), vec!["status worker"]);
-
-        let idle = vec![fake("worker", &log, |fake| fake.suspendable = false)];
-        refuse_test_while_blocking(&idle).unwrap();
-        // HTTP stands aside by itself, so today's providers never block and
-        // never cost a round trip.
-        refuse_test_while_blocking(&providers_for_test()).unwrap();
+        assert_eq!(
+            err,
+            "checkout: rule 2 (rules[1]) function orders.submit: unknown Function"
+        );
+        assert!(!refusing.log().contains(&"host use".to_string()));
     }
 
     #[test]
-    fn clearing_asks_every_provider() {
-        let log = Rc::new(RefCell::new(Vec::new()));
-        let providers = vec![fake("http", &log, |_| {}), fake("worker", &log, |_| {})];
-        let cleared = clear(&providers).unwrap();
-        assert_eq!(cleared.len(), 2);
-        assert_eq!(*log.borrow(), vec!["clear worker", "clear http"]);
+    fn an_http_only_scenario_clears_the_previous_function_rules() {
+        let session = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        install(&session, &loaded(WIFI), &target(Some("b")), None).unwrap();
+        assert_eq!(
+            session.log(),
+            [
+                "host use (dry run)",
+                "companion session.companion.scenario.clear \"dev\"",
+                "host use"
+            ]
+        );
+        // Without a companion there is nothing to clear.
+        let plain = Fake::new(None);
+        install(&plain, &loaded(WIFI), &target(Some("b")), None).unwrap();
+        assert_eq!(plain.log(), ["host use (dry run)", "host use"]);
+        // An unknown variant fails before anything is sent.
+        let err = install(&plain, &loaded(WIFI), &target(Some("c")), None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("no variant 'c' (variants: a, b)"), "{err}");
+    }
+
+    #[test]
+    fn status_puts_companion_hits_on_function_rules_and_says_when_nothing_arrived() {
+        let mut session = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        session.status = json!({
+            "active": true,
+            "suspended": false,
+            "scenario": {
+                "label": "Checkout", "requests": 0,
+                "rules": [
+                    { "index": 1, "target": "GET **/cart", "kind": "http", "hits": 0, "installed": true },
+                    { "index": 2, "target": "function orders.submit", "kind": "function" }
+                ]
+            }
+        });
+        let status = status(&session).unwrap();
+        assert_eq!(status["scenario"]["rules"][1]["hits"], 3);
+        assert_eq!(reached(&status), 3);
+        let lines = rule_lines(&status["scenario"]);
+        assert_eq!(lines[0], "rule 1 GET **/cart             answered 0×");
+        assert_eq!(lines[1], "rule 2 function orders.submit  answered 3×");
+
+        let idle =
+            json!({ "scenario": { "requests": 0, "rules": [{ "kind": "http", "hits": 0 }] } });
+        assert_eq!(reached(&idle), 0);
+    }
+
+    #[test]
+    fn clear_asks_both_sides() {
+        let session = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        let result = clear(&session).unwrap();
+        assert_eq!(result["cleared"], true);
+        assert_eq!(
+            session.log(),
+            [
+                "host session.network.scenario.clear",
+                "companion session.companion.scenario.clear \"dev\""
+            ]
+        );
+        let plain = Fake::new(None);
+        clear(&plain).unwrap();
+        assert_eq!(plain.log(), ["host session.network.scenario.clear"]);
+    }
+
+    #[test]
+    fn watch_reinstalls_valid_saves_and_keeps_the_last_valid_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("wifi.json");
+        std::fs::write(&path, WIFI).unwrap();
+        let session = Fake::new(None);
+        let target = Target {
+            path: path.clone(),
+            source: "wifi".into(),
+            variant: Some("a".into()),
+        };
+        let saves = [
+            // An edit that installs.
+            WIFI.replace("\"A\"", "\"A2\""),
+            // An invalid edit: reported, nothing installed.
+            WIFI.replace(
+                "\"GET **/wifi/main\", \"json\": { \"ssid\": \"A\" }",
+                "\"**/wifi/main\", \"json\": {}",
+            ),
+            // Broken JSON.
+            "{".to_string(),
+            // Fixed again.
+            WIFI.to_string(),
+        ];
+        let step = RefCell::new(0usize);
+        let mut events = Vec::new();
+        watch(
+            &session,
+            &target,
+            None,
+            Some(WIFI.to_string()),
+            Duration::from_millis(1),
+            &|| {
+                let mut step = step.borrow_mut();
+                if *step >= saves.len() * 2 {
+                    return true;
+                }
+                // Write a new version every other poll; an unchanged file
+                // is not reinstalled.
+                if step.is_multiple_of(2) {
+                    std::fs::write(&path, &saves[*step / 2]).unwrap();
+                }
+                *step += 1;
+                false
+            },
+            &mut |event| events.push(event),
+        );
+        assert_eq!(events.len(), 4, "{events:?}");
+        assert!(matches!(events[0], WatchEvent::Installed(_)));
+        let WatchEvent::Rejected(invalid) = &events[1] else {
+            panic!("expected a rejection: {events:?}");
+        };
+        assert!(invalid.contains("variants.a.rules[0]"), "{invalid}");
+        let WatchEvent::Rejected(broken) = &events[2] else {
+            panic!("expected a rejection: {events:?}");
+        };
+        assert!(broken.contains("is not valid JSON"), "{broken}");
+        assert!(matches!(events[3], WatchEvent::Installed(_)));
+        let installs = session
+            .log()
+            .iter()
+            .filter(|line| *line == "host use")
+            .count();
+        assert_eq!(installs, 2);
     }
 }

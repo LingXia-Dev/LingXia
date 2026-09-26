@@ -777,18 +777,17 @@ ${{error && error.stack}}` }});
         assert_eq!(out["realStatus"], 200);
         assert_eq!(out["fake"], 418);
         // Tests share the process route table: pick this test's routes.
-        let routes: Vec<&Value> = out["scenario"]["routes"]
+        let routes: Vec<&Value> = out["scenario"]["rules"]
             .as_array()
             .unwrap()
             .iter()
             .filter(|route| {
-                let url = route["url"].as_str().unwrap_or_default();
-                url.starts_with(&base) || url.ends_with("/closed") || url.contains("api.test/fake")
+                let url = route["http"].as_str().unwrap_or_default();
+                url.contains(&base) || url.ends_with("/closed") || url.contains("api.test/fake")
             })
             .collect();
         assert_eq!(routes.len(), 2, "{out}");
-        assert_eq!(routes[0]["url"], format!("{base}/me?token=*"));
-        assert_eq!(routes[0]["method"], "GET");
+        assert_eq!(routes[0]["http"], format!("GET {base}/me?token=*"));
         assert_eq!(routes[0]["json"]["user"], "ada");
         assert_eq!(routes[0]["json"]["access_token"], "***");
         assert_eq!(routes[1]["abort"], "failed");
@@ -994,6 +993,7 @@ mod scenarios {
     use super::super::registry::{DEV_SESSION_OWNER, Registry, SseStep};
     use super::super::scenario::{iso_utc, parse_scenario, render_action, render_templates};
     use super::super::*;
+    use serde_json::Value;
     use serde_json::json;
 
     fn fulfill_status(action: &RouteAction) -> u16 {
@@ -1038,43 +1038,58 @@ mod scenarios {
         assert!(err.starts_with("sequence[1]:"), "{err}");
     }
 
+    fn routes(scenario: &super::super::scenario::Scenario) -> Vec<&RouteSpec> {
+        scenario.http.iter().map(|(_, spec)| spec).collect()
+    }
+
     #[test]
     fn a_scenario_file_parses_every_answer_shape() {
-        let scenario = parse_scenario(&json!({
-            "$schema": "./scenario.schema.json",
-            "name": "outage",
-            "description": "the status API fails, then recovers",
-            "routes": [
-                { "url": "**/v1/status", "method": "get", "times": 3,
-                  "sequence": [{ "status": 503 }, { "json": { "up": true } }] },
-                { "url": "/devices\\/\\w+$/i", "status": 404, "note": "gone" },
-                { "url": "**/icon", "bodyBase64": "iVBORw==", "contentType": "image/png" },
-                { "url": "**/events", "sse": [
-                    { "event": "ready", "data": { "n": 1 }, "id": "1" },
-                    { "comment": "keepalive" },
-                    { "delayMs": 50 },
-                    { "data": "bye" },
-                    { "drop": true }
-                ] },
-                { "url": "**/slow", "hang": true },
-                { "url": "**/real", "continue": true, "patchJson": { "x": null } },
-                { "url": "**/down", "abort": "failed" }
-            ]
-        }))
+        let scenario = parse_scenario(
+            &json!({
+                "$schema": "./scenario.schema.json",
+                "name": "outage",
+                "description": "the status API fails, then recovers",
+                "rules": [
+                    { "http": "get **/v1/status", "times": 3,
+                      "sequence": [{ "status": 503 }, { "json": { "up": true } }] },
+                    { "http": "* /devices\\/\\w+$/i", "status": 404, "note": "gone" },
+                    { "http": "GET **/icon", "bodyBase64": "iVBORw==", "contentType": "image/png" },
+                    { "http": "GET **/events", "sse": [
+                        { "event": "ready", "data": { "n": 1 }, "id": "1" },
+                        { "comment": "keepalive" },
+                        { "delayMs": 50 },
+                        { "data": "bye" },
+                        { "drop": true }
+                    ] },
+                    { "http": "GET **/slow", "hang": true },
+                    { "http": "GET **/real", "continue": true, "patchJson": { "x": null } },
+                    { "http": "POST **/down", "abort": "failed" },
+                    { "function": "orders.submit", "fault": "unknown" }
+                ]
+            }),
+            None,
+        )
         .unwrap();
-        assert_eq!(scenario.name.as_deref(), Some("outage"));
-        assert_eq!(scenario.routes.len(), 7);
-        let status = &scenario.routes[0];
+        assert_eq!(scenario.resolved.name.as_deref(), Some("outage"));
+        assert!(scenario.has_function_rules());
+        let routes = routes(&scenario);
+        assert_eq!(routes.len(), 7);
+        assert_eq!(
+            scenario
+                .http
+                .iter()
+                .map(|(index, _)| *index)
+                .collect::<Vec<_>>(),
+            [1, 2, 3, 4, 5, 6, 7]
+        );
+        let status = routes[0];
         assert_eq!(status.method.as_deref(), Some("GET"));
         assert_eq!(status.times, Some(3));
         assert_eq!(status.answers.len(), 2);
-        assert!(scenario.routes[1].matcher.is_match("https://h/DEVICES/abc"));
-        assert!(
-            !scenario.routes[1]
-                .matcher
-                .is_match("https://h/devices/abc/x")
-        );
-        match &scenario.routes[2].answers[0] {
+        assert_eq!(routes[1].method, None);
+        assert!(routes[1].matcher.is_match("https://h/DEVICES/abc"));
+        assert!(!routes[1].matcher.is_match("https://h/devices/abc/x"));
+        match &routes[2].answers[0] {
             RouteAction::Fulfill(fulfill) => {
                 assert_eq!(
                     fulfill.body,
@@ -1083,7 +1098,7 @@ mod scenarios {
             }
             other => panic!("expected a binary fulfillment, got {other:?}"),
         }
-        match &scenario.routes[3].answers[0] {
+        match &routes[3].answers[0] {
             RouteAction::Sse(sse) => {
                 assert!(!sse.stays_open());
                 assert_eq!(sse.steps.len(), 5);
@@ -1106,122 +1121,309 @@ mod scenarios {
     }
 
     #[test]
-    fn scenario_errors_name_the_route_and_the_problem() {
+    fn scenario_errors_name_the_rule_and_the_problem() {
+        let rules = |rules: Value| json!({ "rules": rules });
         let cases = [
             (json!([]), "JSON object"),
-            (json!({ "routes": [] }), "must not be empty"),
-            (json!({ "route": [] }), "unknown scenario field 'route'"),
+            (json!({ "rules": [] }), "non-empty rules array"),
             (
-                json!({ "routes": [{ "status": 200 }] }),
-                "routes[0]: a route needs a url",
+                json!({ "routes": [] }),
+                "'routes' is the old scenario format",
             ),
             (
-                json!({ "routes": [{ "url": "**/a" }] }),
-                "routes[0]: a route needs an answer",
+                rules(json!([{ "status": 200 }])),
+                "rules[0]: a rule needs a target",
             ),
             (
-                json!({ "routes": [{ "url": "**/a", "status": 200 }, { "url": "**/b", "stauts": 200 }] }),
-                "routes[1]: unknown route handler option 'stauts'",
+                rules(json!([{ "http": "GET **/a" }])),
+                "rules[0]: an http rule needs an answer",
             ),
             (
-                json!({ "routes": [{ "url": "**/{a,b", "status": 200 }] }),
+                rules(
+                    json!([{ "http": "GET **/a", "status": 200 }, { "http": "GET **/b", "stauts": 200 }]),
+                ),
+                "rules[1]: unknown route handler option 'stauts'",
+            ),
+            (
+                rules(json!([{ "http": "GET **/{a,b", "status": 200 }])),
                 "unclosed",
             ),
             (
-                json!({ "routes": [{ "url": "/(?=x)/", "status": 200 }] }),
+                rules(json!([{ "http": "GET /(?=x)/", "status": 200 }])),
                 "not supported",
             ),
             (
-                json!({ "routes": [{ "url": "**", "times": 0, "status": 200 }] }),
+                rules(json!([{ "http": "GET **", "times": 0, "status": 200 }])),
                 "times",
             ),
             (
-                json!({ "routes": [{ "url": "**", "method": "GE T", "status": 200 }] }),
+                rules(json!([{ "http": "GE7 **", "status": 200 }])),
                 "method",
             ),
             (
-                json!({ "routes": [{ "url": "**", "bodyBase64": "***", "status": 200 }] }),
+                rules(json!([{ "http": "GET **", "bodyBase64": "***", "status": 200 }])),
                 "base64",
             ),
             (
-                json!({ "routes": [{ "url": "**", "bodyBase64": "AA==", "body": "x" }] }),
+                rules(json!([{ "http": "GET **", "bodyBase64": "AA==", "body": "x" }])),
                 "one of body, json, or bodyBase64",
             ),
+            (
+                rules(
+                    json!([{ "http": "POST **", "match": { "json": { "a": "/(/" } }, "status": 200 }]),
+                ),
+                "rules[0]: match.json.a: /(/ is not a supported regex",
+            ),
+            (
+                json!({ "variants": { "b": { "rules": [{ "http": "GET **", "stauts": 1 }] } } }),
+                "variants.b.rules[0]: unknown route handler option 'stauts'",
+            ),
         ];
         for (file, expected) in cases {
-            let err = parse_scenario(&file).unwrap_err();
+            let variant = file.get("variants").map(|_| "b");
+            let err = parse_scenario(&file, variant).unwrap_err();
             assert!(err.contains(expected), "{file}: {err}");
         }
     }
 
     #[test]
-    fn a_sectioned_scenario_installs_its_http_routes() {
-        let scenario = parse_scenario(&json!({
-            "$schema": "../schemas/scenario.schema.json",
-            "name": "gateway offline",
-            "description": "the status card shows offline",
-            "http": { "routes": [
-                { "url": "**/v1/status", "status": 503 },
-                { "url": "**/v1/devices/*", "json": { "id": "d1" } }
-            ] }
-        }))
-        .unwrap();
-        assert_eq!(scenario.name.as_deref(), Some("gateway offline"));
-        assert_eq!(scenario.routes.len(), 2);
-        assert!(scenario.routes[0].matcher.is_match("https://h/v1/status"));
-
-        let cases = [
-            (
-                json!({ "worker": {}, "http": { "routes": [{ "url": "**", "status": 200 }] } }),
-                "worker section of a scenario is not supported yet",
-            ),
-            (
-                json!({ "routes": [{ "url": "**", "status": 200 }], "http": { "routes": [] } }),
-                "not both",
-            ),
-            (json!({ "http": [] }), "http section must be an object"),
-            (json!({ "http": {} }), "http section needs a routes array"),
-            (
-                json!({ "http": { "routes": [], "fixtures": {} } }),
-                "unknown http section field 'fixtures'",
-            ),
-            (
-                json!({ "http": { "routes": [] } }),
-                "http.routes must not be empty",
-            ),
-            (
-                json!({ "http": { "routes": [{ "url": "**", "stauts": 200 }] } }),
-                "http.routes[0]: unknown route handler option 'stauts'",
-            ),
-        ];
-        for (file, expected) in cases {
-            let err = parse_scenario(&file).unwrap_err();
-            assert!(err.contains(expected), "{file}: {err}");
-        }
+    fn a_variant_puts_its_rules_before_the_shared_ones() {
+        let file = json!({
+            "name": "Wi-Fi",
+            "rules": [
+                { "http": "GET **/wifi/main", "json": { "ssid": "shared" } },
+                { "http": "GET **/wifi/clients", "json": [] }
+            ],
+            "variants": {
+                "a": { "rules": [{ "http": "GET **/wifi/main", "json": { "ssid": "A" } }] },
+                "b": { "rules": [{ "http": "GET **/wifi/main", "json": { "ssid": "B" } }] }
+            }
+        });
+        let ssid = |variant: Option<&str>| {
+            let scenario = parse_scenario(&file, variant).unwrap();
+            let mut registry = Registry::default();
+            let slot = super::super::dev::installed(&scenario, None);
+            registry
+                .install_scenario("run", "app", slot, scenario.http, || true)
+                .unwrap();
+            match decide(&mut registry, "GET", "https://h/wifi/main").unwrap() {
+                RouteAction::Fulfill(Fulfill {
+                    body: Some(ResponseBody::Text(text)),
+                    ..
+                }) => serde_json::from_str::<Value>(&text).unwrap()["ssid"].clone(),
+                other => panic!("expected json, got {other:?}"),
+            }
+        };
+        assert_eq!(ssid(Some("a")), "A");
+        assert_eq!(ssid(Some("b")), "B");
+        assert_eq!(ssid(None), "shared");
+        let err = parse_scenario(&file, Some("c")).unwrap_err();
+        assert!(err.contains("no variant 'c' (variants: a, b)"), "{err}");
     }
 
     #[test]
-    fn the_first_scenario_entry_answers_before_later_ones() {
-        let scenario = parse_scenario(&json!({ "routes": [
-            { "url": "**/v1/devices/special", "status": 418 },
-            { "url": "**/v1/devices/*", "status": 200 }
-        ] }))
+    fn the_first_scenario_rule_answers_before_later_ones() {
+        let scenario = parse_scenario(
+            &json!({ "rules": [
+                { "http": "GET **/v1/devices/special", "status": 418 },
+                { "http": "GET **/v1/devices/*", "status": 200 }
+            ] }),
+            None,
+        )
         .unwrap();
         let mut registry = Registry::default();
-        let ids = registry
-            .install_all("run", "app", scenario.routes, || true)
+        let slot = super::super::dev::installed(&scenario, None);
+        let installed = registry
+            .install_scenario("run", "app", slot, scenario.http, || true)
             .unwrap();
-        assert_eq!(ids.len(), 2);
-        assert_eq!(ids[0].1, "**/v1/devices/special");
+        assert_eq!(installed.rules.len(), 2);
+        assert!(installed.rules.iter().all(|rule| rule.route_id.is_some()));
         let special = decide(&mut registry, "GET", "https://h/v1/devices/special").unwrap();
         assert_eq!(fulfill_status(&special), 418);
         let other = decide(&mut registry, "GET", "https://h/v1/devices/d1").unwrap();
         assert_eq!(fulfill_status(&other), 200);
+        // A route added later still takes precedence over the scenario.
+        let spec = RouteSpec::new(
+            UrlMatcher::glob("**/v1/devices/special").unwrap(),
+            None,
+            None,
+            vec![parse_handler_value(&json!({ "status": 204 }), None).unwrap()],
+        );
+        registry.install("run", "app", spec, || true).unwrap();
+        let special = decide(&mut registry, "GET", "https://h/v1/devices/special").unwrap();
+        assert_eq!(fulfill_status(&special), 204);
+        let hits: Vec<u64> = registry
+            .scenario(installed.id)
+            .unwrap()
+            .rules
+            .iter()
+            .map(|rule| rule.hits)
+            .collect();
+        assert_eq!(hits, [1, 1]);
+        let slot = super::super::dev::installed(
+            &parse_scenario(
+                &json!({ "rules": [{ "http": "GET x", "status": 200 }] }),
+                None,
+            )
+            .unwrap(),
+            None,
+        );
         assert!(
             registry
-                .install_all("run", "app", vec![], || false)
+                .install_scenario("run", "app", slot, vec![], || false)
                 .is_err()
         );
+    }
+
+    fn body_request(body: &str) -> impl FnOnce() -> SentRequest + '_ {
+        move || SentRequest::new(vec![], Some(body.to_string()), false)
+    }
+
+    #[test]
+    fn match_json_picks_the_rule_and_explains_a_miss() {
+        let scenario = parse_scenario(
+            &json!({
+                "name": "Devices",
+                "rules": [
+                    { "http": "PATCH **/devices/*", "match": { "json": { "name": "Office" } }, "status": 409 },
+                    { "http": "PATCH **/devices/*", "match": { "json": { "tags": ["a", "/^b/"] } }, "status": 202 },
+                    { "http": "GET **/devices/*", "json": {} }
+                ]
+            }),
+            None,
+        )
+        .unwrap();
+        let mut registry = Registry::default();
+        let slot = super::super::dev::installed(&scenario, Some("devices"));
+        let installed = registry
+            .install_scenario("run", "app", slot, scenario.http, || true)
+            .unwrap();
+        let mut patch = |body: &str| {
+            registry.decide_route(
+                "app",
+                "PATCH",
+                "https://h/devices/1",
+                body_request(body),
+                || true,
+                0,
+            )
+        };
+        let (office, _) = patch(r#"{"name":"Office","extra":1}"#);
+        let office = office.unwrap();
+        assert_eq!(fulfill_status(&office.action), 409);
+        assert_eq!(office.rule, Some((1, "Devices".to_string())));
+        let (tagged, _) = patch(r#"{"name":"Den","tags":["a","bee"]}"#);
+        assert_eq!(fulfill_status(&tagged.unwrap().action), 202);
+        let (missed, no_match) = patch(r#"{"name":"Den","tags":["a"]}"#);
+        assert!(missed.is_none());
+        let no_match = no_match.unwrap();
+        assert_eq!(no_match.owners, ["run"]);
+        assert_eq!(
+            no_match.message,
+            "no rule matched PATCH https://h/devices/1 (2 rules for this target: \
+             rule 1 match.json.name: expected \"Office\", got \"Den\"; \
+             rule 2 match.json.tags: expected an array of 2, got 1)"
+        );
+        let (not_json, no_match) = patch("name=Office");
+        assert!(not_json.is_none());
+        assert!(
+            no_match
+                .unwrap()
+                .message
+                .contains("rule 1 match.json: the request body is not JSON")
+        );
+        // A method no rule targets reaches nobody's scenario.
+        let (other, no_match) = registry.decide_route(
+            "app",
+            "DELETE",
+            "https://h/devices/1",
+            body_request("{}"),
+            || true,
+            0,
+        );
+        assert!(other.is_none() && no_match.is_none());
+
+        let scenario = registry.scenario(installed.id).unwrap();
+        assert_eq!(scenario.calls_total, 4);
+        let rules: Vec<Option<usize>> = scenario.calls.iter().map(|call| call.rule).collect();
+        assert_eq!(rules, [Some(1), Some(2), None, None]);
+        assert_eq!(
+            scenario.calls[0].body,
+            Some(json!({ "name": "Office", "extra": 1 }))
+        );
+        assert_eq!(scenario.calls[3].body, Some(json!("name=Office")));
+        assert!(
+            scenario.calls[2]
+                .no_match
+                .as_deref()
+                .unwrap()
+                .starts_with("no rule matched")
+        );
+        let hits: Vec<u64> = scenario.rules.iter().map(|rule| rule.hits).collect();
+        assert_eq!(hits, [1, 1, 0]);
+    }
+
+    #[test]
+    fn a_sequence_and_times_hold_per_rule() {
+        let scenario = parse_scenario(
+            &json!({ "rules": [
+                { "http": "GET **/status", "times": 2, "sequence": [{ "status": 503 }, { "status": 200 }] },
+                { "http": "GET **/status", "status": 204 },
+                { "http": "GET **/other", "sequence": [{ "status": 500 }, { "status": 201 }] }
+            ] }),
+            None,
+        )
+        .unwrap();
+        let mut registry = Registry::default();
+        let slot = super::super::dev::installed(&scenario, None);
+        let installed = registry
+            .install_scenario("run", "app", slot, scenario.http, || true)
+            .unwrap();
+        let statuses: Vec<u16> = (0..4)
+            .map(|_| fulfill_status(&decide(&mut registry, "GET", "https://h/status").unwrap()))
+            .collect();
+        // Rule 1 answers twice, then rule 2 takes over.
+        assert_eq!(statuses, [503, 200, 204, 204]);
+        let other: Vec<u16> = (0..3)
+            .map(|_| fulfill_status(&decide(&mut registry, "GET", "https://h/other").unwrap()))
+            .collect();
+        assert_eq!(other, [500, 201, 201]);
+        let scenario = registry.scenario(installed.id).unwrap();
+        let hits: Vec<u64> = scenario.rules.iter().map(|rule| rule.hits).collect();
+        assert_eq!(hits, [2, 2, 3]);
+        let status = super::super::dev::rules_json(scenario, &registry);
+        assert_eq!(status[0]["installed"], false);
+        assert_eq!(status[1]["timesLeft"], Value::Null);
+    }
+
+    #[test]
+    fn a_run_scenario_replaces_the_runs_previous_one() {
+        let first = parse_scenario(
+            &json!({ "rules": [{ "http": "GET **/a", "status": 201 }] }),
+            None,
+        )
+        .unwrap();
+        let second = parse_scenario(
+            &json!({ "rules": [{ "http": "GET **/b", "status": 202 }] }),
+            None,
+        )
+        .unwrap();
+        let mut registry = Registry::default();
+        let slot = super::super::dev::installed(&first, None);
+        registry
+            .install_scenario("run", "app", slot, first.http, || true)
+            .unwrap();
+        assert!(decide(&mut registry, "GET", "https://h/a").is_some());
+        let slot = super::super::dev::installed(&second, None);
+        registry
+            .install_scenario("run", "app", slot, second.http, || true)
+            .unwrap();
+        assert_eq!(decide(&mut registry, "GET", "https://h/a"), None);
+        assert!(decide(&mut registry, "GET", "https://h/b").is_some());
+        assert_eq!(registry.run_scenarios.len(), 1);
+        registry.clear_run("run");
+        assert!(registry.run_scenarios.is_empty());
+        assert_eq!(decide(&mut registry, "GET", "https://h/b"), None);
     }
 
     #[test]
@@ -1488,7 +1690,7 @@ mod scenarios {
         ] {
             assert!(!text.contains(leaked), "{leaked} leaked: {text}");
         }
-        let routes = scenario["routes"].as_array().unwrap();
+        let routes = scenario["rules"].as_array().unwrap();
         assert_eq!(routes[0]["json"]["user"], "ann");
         assert_eq!(routes[0]["json"]["note"], "Bearer ***");
         assert_eq!(routes[1]["body"], "auth: Bearer *** and id *** end");
@@ -1571,13 +1773,13 @@ mod scenarios {
             },
         );
         let scenario = recording.to_scenario("smoke");
-        let routes = scenario["routes"].as_array().unwrap();
+        let routes = scenario["rules"].as_array().unwrap();
         assert_eq!(scenario["name"], "smoke");
         assert_eq!(routes.len(), 6);
         assert_eq!(
             routes[0],
             json!({
-                "url": "https://api.test/auth/token", "method": "POST", "status": 200,
+                "http": "POST https://api.test/auth/token", "status": 200,
                 "contentType": "application/json; charset=utf-8",
                 "json": { "access_token": "***", "refresh_token": "***", "expires_in": 60 }
             })
@@ -1595,32 +1797,66 @@ mod scenarios {
         );
         assert_eq!(routes[5]["abort"], "failed");
         // What it wrote parses back as a scenario.
-        parse_scenario(&scenario).unwrap();
+        parse_scenario(&scenario, None).unwrap();
+    }
+
+    fn install_dev(registry: &mut Registry, file: Value, variant: Option<&str>) -> u64 {
+        let scenario = parse_scenario(&file, variant).unwrap();
+        let slot = super::super::dev::installed(&scenario, Some("wifi"));
+        let dev = registry
+            .install_scenario(DEV_SESSION_OWNER, "app", slot, scenario.http, || true)
+            .unwrap();
+        let id = dev.id;
+        registry.dev = Some(dev);
+        id
     }
 
     #[test]
-    fn dev_scenario_routes_stand_aside_while_a_run_is_active() {
+    fn dev_scenario_routes_stand_aside_while_a_run_is_active_and_return_after() {
         let mut registry = Registry::default();
-        let scenario =
-            parse_scenario(&json!({ "routes": [{ "url": "**", "status": 299 }] })).unwrap();
-        registry
-            .install_all(DEV_SESSION_OWNER, "app", scenario.routes, || true)
-            .unwrap();
+        install_dev(
+            &mut registry,
+            json!({ "rules": [{ "http": "* **", "status": 299 }] }),
+            None,
+        );
         assert_eq!(
             fulfill_status(&decide(&mut registry, "GET", "https://h/x").unwrap()),
             299
         );
         registry.begin_run("run-1");
+        let status = super::super::dev::status_of(&registry);
+        assert_eq!(status["suspended"], true);
         assert_eq!(decide(&mut registry, "GET", "https://h/x"), None);
+        // The run's own scenario answers meanwhile.
+        let run = parse_scenario(
+            &json!({ "rules": [{ "http": "GET **", "status": 201 }] }),
+            None,
+        )
+        .unwrap();
+        let slot = super::super::dev::installed(&run, None);
+        registry
+            .install_scenario("run-1", "app", slot, run.http, || true)
+            .unwrap();
+        assert_eq!(
+            fulfill_status(&decide(&mut registry, "GET", "https://h/x").unwrap()),
+            201
+        );
         registry.clear_run("run-1");
-        assert!(decide(&mut registry, "GET", "https://h/x").is_some());
+        // The dev scenario is back, untouched.
+        let status = super::super::dev::status_of(&registry);
+        assert_eq!(status["suspended"], false);
+        assert_eq!(status["active"], true);
+        assert_eq!(
+            fulfill_status(&decide(&mut registry, "GET", "https://h/x").unwrap()),
+            299
+        );
         registry.clear_run(DEV_SESSION_OWNER);
         assert_eq!(decide(&mut registry, "GET", "https://h/x"), None);
     }
 
     #[test]
-    fn dev_scenario_status_says_why_and_when_it_was_cleared() {
-        use super::super::registry::{DevClearReason, DevScenario};
+    fn dev_scenario_status_counts_hits_per_rule_and_says_why_it_was_cleared() {
+        use super::super::registry::DevClearReason;
         let mut registry = Registry::default();
         let status = super::super::dev::status_of(&registry);
         assert_eq!(status["active"], false);
@@ -1633,33 +1869,105 @@ mod scenarios {
         );
         assert!(registry.dev_cleared.is_none());
 
-        let scenario =
-            parse_scenario(&json!({ "http": { "routes": [{ "url": "**", "status": 299 }] } }))
-                .unwrap();
-        let installed = registry
-            .install_all(DEV_SESSION_OWNER, "app", scenario.routes, || true)
-            .unwrap();
-        registry.dev = Some(DevScenario {
-            name: Some("offline".into()),
-            source: Some("qoe/offline".into()),
-            appid: "app".into(),
-            route_ids: installed.iter().map(|(id, _)| *id).collect(),
-            installed_ms: 0,
-        });
+        install_dev(
+            &mut registry,
+            json!({
+                "name": "Wi-Fi",
+                "rules": [{ "http": "GET **/wifi/main", "status": 299 }, { "function": "orders.submit", "fault": "unknown" }],
+                "variants": { "b": { "rules": [{ "http": "POST **/wifi/main", "match": { "json": { "ssid": "B" } }, "status": 201 }] } }
+            }),
+            Some("b"),
+        );
+        decide(&mut registry, "GET", "https://h/wifi/main").unwrap();
+        decide(&mut registry, "GET", "https://h/wifi/main").unwrap();
+        let (none, _) = registry.decide_route(
+            "app",
+            "POST",
+            "https://h/wifi/main",
+            body_request(r#"{"ssid":"A"}"#),
+            || true,
+            0,
+        );
+        assert!(none.is_none());
         let status = super::super::dev::status_of(&registry);
         assert_eq!(status["active"], true);
-        assert_eq!(status["scenario"]["source"], "qoe/offline");
+        assert_eq!(status["scenario"]["source"], "wifi");
+        assert_eq!(status["scenario"]["label"], "Wi-Fi:b");
+        assert_eq!(status["scenario"]["variant"], "b");
+        let rules = status["scenario"]["rules"].as_array().unwrap();
+        assert_eq!(
+            rules
+                .iter()
+                .map(|rule| rule["target"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "POST **/wifi/main",
+                "GET **/wifi/main",
+                "function orders.submit"
+            ]
+        );
+        assert_eq!(rules[0]["hits"], 0);
+        assert_eq!(rules[1]["hits"], 2);
+        assert!(rules[2].get("hits").is_none());
+        assert_eq!(status["scenario"]["requests"], 3);
+        let last = status["scenario"]["lastRequests"].as_array().unwrap();
+        assert_eq!(last[2]["rule"], Value::Null);
+        assert!(
+            last[2]["noMatch"]
+                .as_str()
+                .unwrap()
+                .contains("rule 1 match.json.ssid")
+        );
 
         let ended = registry.end_dev_scenario(DevClearReason::SessionEnded, 86_400_000);
-        assert_eq!(ended.unwrap().name.as_deref(), Some("offline"));
-        assert_eq!(decide(&mut registry, "GET", "https://h/x"), None);
+        assert_eq!(ended.unwrap().name.as_deref(), Some("Wi-Fi"));
+        assert_eq!(decide(&mut registry, "GET", "https://h/wifi/main"), None);
         let status = super::super::dev::status_of(&registry);
         assert_eq!(status["active"], false);
         assert_eq!(status["lastCleared"]["reason"], "session_ended");
-        assert_eq!(status["lastCleared"]["name"], "offline");
+        assert_eq!(status["lastCleared"]["label"], "Wi-Fi:b");
         assert_eq!(
             status["lastCleared"]["clearedAt"],
             "1970-01-02T00:00:00.000Z"
+        );
+    }
+
+    #[test]
+    fn calls_say_which_rule_answered_while_a_dev_scenario_is_active() {
+        let mut registry = Registry::default();
+        assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
+        install_dev(
+            &mut registry,
+            json!({ "name": "Wi-Fi", "rules": [
+                { "http": "GET **/a", "status": 201 },
+                { "http": "POST **/a", "match": { "json": { "x": 1 } }, "status": 202 }
+            ] }),
+            None,
+        );
+        let mut call = |method: &str, body: &str| {
+            let (id, _) = registry
+                .observe("app", "fetch", method, "https://h/a")
+                .unwrap();
+            registry.decide_route(
+                "app",
+                method,
+                "https://h/a",
+                body_request(body),
+                || true,
+                id,
+            );
+        };
+        call("GET", "");
+        call("POST", r#"{"x":2}"#);
+        let calls = registry.calls.recent(0, 20, &[]);
+        assert_eq!(calls[0]["answeredBy"], "rule 1 (Wi-Fi)");
+        assert_eq!(calls[0]["route"]["rule"], 1);
+        assert_eq!(calls[1]["answeredBy"], "real");
+        assert!(
+            calls[1]["noMatch"]
+                .as_str()
+                .unwrap()
+                .contains("rule 2 match.json.x: expected 1, got 2")
         );
     }
 
@@ -1697,6 +2005,7 @@ mod scenarios {
         let calls = registry.calls.recent(0, 20, &[]);
         assert_eq!(calls[0]["source"], "route");
         assert_eq!(calls[0]["route"]["pattern"], "**/a");
+        assert_eq!(calls[0]["answeredBy"], "route **/a");
         assert_eq!(calls[0]["status"], 201);
         registry.clear_run("run");
         assert_eq!(registry.observe("app", "fetch", "GET", "https://h/a"), None);
@@ -1835,6 +2144,6 @@ mod scenarios {
         );
         let text = scenario.to_string();
         assert!(!text.contains("s3cr3t"), "{text}");
-        assert_eq!(scenario["routes"][0]["body"], "key=***");
+        assert_eq!(scenario["rules"][0]["body"], "key=***");
     }
 }

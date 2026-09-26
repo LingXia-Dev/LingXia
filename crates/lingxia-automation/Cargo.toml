@@ -29,6 +29,7 @@ runtime = [
     "dep:regex",
     "dep:lingxia-log",
     "dep:lingxia-control-protocol",
+    "lingxia-control-protocol/scenario-match",
     "dep:rong_modules",
     "dep:rong_console",
     "dep:rong_timer",

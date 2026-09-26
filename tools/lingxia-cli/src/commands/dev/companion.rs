@@ -1,6 +1,6 @@
 use anyhow::{Context, Result, anyhow, bail};
 use lingxia_control_protocol::{
-    ControlRequest, ControlResponse,
+    ControlError, ControlRequest, ControlResponse,
     dev_session::{
         DEV_SESSION_PROTOCOL_VERSION, DevSessionEvent, DevSessionMessage, DevSessionPrepareResult,
         DevSessionRole, capabilities,
@@ -8,13 +8,13 @@ use lingxia_control_protocol::{
     methods,
 };
 use serde::Deserialize;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::ffi::OsString;
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -35,10 +35,95 @@ struct CompanionConfig {
     run: Vec<String>,
 }
 
+type PendingReplies = Arc<Mutex<HashMap<String, mpsc::Sender<ControlResponse>>>>;
+
+/// Requests to a running companion, shared with the dev server: the
+/// `session.companion.*` methods reach it through this.
+#[derive(Debug)]
+pub(crate) struct CompanionLink {
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    pending: PendingReplies,
+    capabilities: Vec<String>,
+    next_id: AtomicU64,
+}
+
+impl CompanionLink {
+    pub(crate) fn capabilities(&self) -> &[String] {
+        &self.capabilities
+    }
+
+    pub(crate) fn supports(&self, capability: &str) -> bool {
+        self.capabilities
+            .iter()
+            .any(|declared| declared == capability)
+    }
+
+    /// Send one request and wait for its response.
+    pub(crate) fn request(
+        &self,
+        method: &str,
+        params: Option<serde_json::Value>,
+        timeout: Duration,
+    ) -> std::result::Result<Option<serde_json::Value>, ControlError> {
+        let id = format!("lingxia-{}", self.next_id.fetch_add(1, Ordering::Relaxed));
+        let (reply, answer) = mpsc::channel();
+        lock(&self.pending).insert(id.clone(), reply);
+        let written = {
+            let mut stdin = lock(&self.stdin);
+            match stdin.as_mut() {
+                Some(stdin) => write_message(
+                    stdin,
+                    &DevSessionMessage::Request(ControlRequest {
+                        id: id.clone(),
+                        method: method.to_string(),
+                        params,
+                    }),
+                ),
+                None => Err(anyhow!("the companion has stopped")),
+            }
+        };
+        if let Err(error) = written {
+            lock(&self.pending).remove(&id);
+            return Err(control_error("companion_unavailable", format!("{error:#}")));
+        }
+        match answer.recv_timeout(timeout) {
+            Ok(ControlResponse {
+                error: Some(error), ..
+            }) => Err(error),
+            Ok(ControlResponse { result, .. }) => Ok(result),
+            Err(_) => {
+                lock(&self.pending).remove(&id);
+                Err(control_error(
+                    "request_timeout",
+                    format!(
+                        "the companion did not answer {method} within {}s",
+                        timeout.as_secs()
+                    ),
+                ))
+            }
+        }
+    }
+}
+
+fn control_error(code: &str, message: String) -> ControlError {
+    ControlError {
+        code: code.to_string(),
+        message,
+        data: None,
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 #[derive(Debug)]
 pub(super) struct DevCompanion {
     child: Arc<Mutex<Option<Child>>>,
-    stdin: Option<ChildStdin>,
+    stdin: Arc<Mutex<Option<ChildStdin>>>,
+    link: Arc<CompanionLink>,
     stopping: Arc<AtomicBool>,
     failure: Arc<Mutex<Option<String>>>,
     stdout_reader: Option<thread::JoinHandle<()>>,
@@ -124,7 +209,7 @@ impl DevCompanion {
         let DevSessionMessage::Hello {
             version,
             role,
-            capabilities: peer_capabilities,
+            capabilities: mut peer_capabilities,
             ..
         } = hello
         else {
@@ -206,6 +291,19 @@ impl DevCompanion {
             return Err(error);
         }
         let previous_env = apply_runtime_env(&prepare.runtime_env);
+        for capability in prepare.capabilities {
+            if !peer_capabilities.contains(&capability) {
+                peer_capabilities.push(capability);
+            }
+        }
+        let stdin = Arc::new(Mutex::new(Some(stdin)));
+        let pending: PendingReplies = Arc::new(Mutex::new(HashMap::new()));
+        let link = Arc::new(CompanionLink {
+            stdin: stdin.clone(),
+            pending: pending.clone(),
+            capabilities: peer_capabilities,
+            next_id: AtomicU64::new(1),
+        });
 
         let stopping = Arc::new(AtomicBool::new(false));
         let failure = Arc::new(Mutex::new(None));
@@ -222,8 +320,16 @@ impl DevCompanion {
                         validate_events(&events)?;
                         writer.append_events(&events)
                     }
+                    DevSessionMessage::Response(response) => {
+                        // An answer nobody waits for any more timed out.
+                        if let Some(reply) = lock(&pending).remove(&response.id) {
+                            let _ = reply.send(response);
+                        }
+                        Ok(())
+                    }
                     _ => Err(anyhow!(
-                        "Development companion sent a non-event frame after preparation"
+                        "Development companion sent a frame other than events or responses \
+                         after preparation"
                     )),
                 });
                 if let Err(error) = result {
@@ -253,7 +359,8 @@ impl DevCompanion {
         );
         Ok(Some(Self {
             child,
-            stdin: Some(stdin),
+            stdin,
+            link,
             stopping,
             failure,
             stdout_reader: Some(stdout_reader),
@@ -266,12 +373,16 @@ impl DevCompanion {
     fn failure(&self) -> Option<String> {
         self.failure.lock().ok().and_then(|failure| failure.clone())
     }
+
+    pub(super) fn link(&self) -> Arc<CompanionLink> {
+        self.link.clone()
+    }
 }
 
 impl Drop for DevCompanion {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Release);
-        self.stdin.take();
+        lock(&self.stdin).take();
         if let Ok(mut child) = self.child.lock()
             && let Some(child) = child.as_mut()
         {

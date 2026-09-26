@@ -5,7 +5,9 @@
 
 use crate::auto_err;
 use lxapp::LxApp;
-use rong::{HostError, JSResult, JSValue, function::Optional, js_class, js_method};
+use rong::{
+    HostError, JSContext, JSObject, JSResult, JSValue, function::Optional, js_class, js_method,
+};
 use std::sync::Weak;
 
 const UNAVAILABLE: &str = "network routing is not built into this host; \
@@ -38,11 +40,6 @@ impl JSNetworkDriver {
         Err(auto_err(UNAVAILABLE))
     }
 
-    #[js_method]
-    async fn scenario(&self, _scenario: JSValue) -> JSResult<JSValue> {
-        Err(auto_err(UNAVAILABLE))
-    }
-
     #[js_method(rename = "unrouteAll")]
     async fn unroute_all(&self) -> JSResult<u32> {
         Err(auto_err(UNAVAILABLE))
@@ -62,4 +59,17 @@ impl JSNetworkDriver {
     async fn responses(&self, _options: Optional<JSValue>) -> JSResult<JSValue> {
         Err(auto_err(UNAVAILABLE))
     }
+}
+
+/// `lxapp().scenario()` in a build without the automation runtime.
+pub(crate) async fn install_scenario(
+    _ctx: JSContext,
+    _lxapp: &Weak<LxApp>,
+    _definition: JSObject,
+    _variant: Option<String>,
+) -> JSResult<JSObject> {
+    Err(auto_err(
+        "scenarios are not built into this host; they work only inside a host automation run \
+         (lxdev test)",
+    ))
 }

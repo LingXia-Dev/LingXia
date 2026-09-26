@@ -9,7 +9,9 @@ use crate::client::{self, CommandError};
 use crate::project::SessionInfo;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
+use lingxia_control_protocol::methods::session::companion as companion_method;
 use lingxia_control_protocol::methods::session::network as method;
+use lingxia_control_protocol::scenario::{DEV_OWNER, companion};
 use owo_colors::OwoColorize;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -68,7 +70,22 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
     let ws = info.ws_url.as_str();
     match options.command {
         NetworkCommand::Status { json } => {
-            let status = call(ws, method::STATUS, None)?;
+            let session = crate::scenario::Live { ws: ws.to_string() };
+            let mut status = crate::scenario::status(&session)?;
+            if crate::scenario::companion_support(&session).is_ok()
+                && let Ok(result) = crate::scenario::Session::companion(
+                    &session,
+                    companion_method::SCENARIO_CALLS,
+                    Some(json!({ "since": 0 })),
+                )
+                && let Ok(calls) = serde_json::from_value::<companion::CallsResult>(result)
+            {
+                let mut all = status["calls"].as_array().cloned().unwrap_or_default();
+                all.extend(function_calls(&status, &calls));
+                all.sort_by_key(|call| call["time"].as_u64().unwrap_or_default());
+                let keep = all.len().saturating_sub(20);
+                status["calls"] = Value::Array(all.split_off(keep));
+            }
             print(&status, json, print_status)
         }
         NetworkCommand::Record(RecordCommand::Start {
@@ -104,10 +121,10 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
             let mut result = call(ws, method::RECORD_STOP, Some(json!({ "name": name })))?;
             mask_values(&mut result["scenario"], &redact);
             sink.commit_or_print(&result["scenario"], &mut std::io::stdout())?;
-            let routes = result["scenario"]["routes"].as_array().map_or(0, Vec::len);
+            let routes = result["scenario"]["rules"].as_array().map_or(0, Vec::len);
             print(&result, json, |result| {
                 println!(
-                    "wrote {} ({} route{} from {} request{})",
+                    "wrote {} ({} rule{} from {} request{})",
                     out.display(),
                     routes,
                     if routes == 1 { "" } else { "s" },
@@ -120,17 +137,9 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
                         "warning".yellow().bold()
                     );
                 }
-                for route in result["scenario"]["routes"]
-                    .as_array()
-                    .into_iter()
-                    .flatten()
-                {
-                    if let Some(note) = route["note"].as_str() {
-                        eprintln!(
-                            "note: {} {}: {note}",
-                            route["method"].as_str().unwrap_or(""),
-                            route["url"].as_str().unwrap_or("")
-                        );
+                for rule in result["scenario"]["rules"].as_array().into_iter().flatten() {
+                    if let Some(note) = rule["note"].as_str() {
+                        eprintln!("note: {}: {note}", rule["http"].as_str().unwrap_or(""));
                     }
                 }
             })
@@ -292,52 +301,8 @@ pub(crate) fn print_warning(status: &Value) {
     }
 }
 
-pub(crate) fn print_status(status: &Value) {
-    match status
-        .get("scenario")
-        .filter(|scenario| scenario.is_object())
-    {
-        Some(scenario) => {
-            let name = scenario["name"].as_str().unwrap_or("unnamed");
-            let source = scenario["source"]
-                .as_str()
-                .map(|source| format!(" ({source})"))
-                .unwrap_or_default();
-            println!(
-                "{} scenario '{name}'{source}: http routes for {} since {}",
-                "ACTIVE".yellow().bold(),
-                scenario["appid"].as_str().unwrap_or("?"),
-                scenario["installedAt"].as_str().unwrap_or("?"),
-            );
-            let routes = scenario["routes"].as_array().map_or(0, Vec::len);
-            println!(
-                "  {routes} route{}, {} request{} answered",
-                if routes == 1 { "" } else { "s" },
-                scenario["requests"],
-                if scenario["requests"] == 1 { "" } else { "s" },
-            );
-            for request in scenario["lastRequests"].as_array().into_iter().flatten() {
-                println!(
-                    "  {} {} {} → {}{}",
-                    request["time"].as_str().unwrap_or(""),
-                    request["method"].as_str().unwrap_or(""),
-                    request["url"].as_str().unwrap_or(""),
-                    request["action"].as_str().unwrap_or(""),
-                    request["status"]
-                        .as_u64()
-                        .map(|status| format!(" {status}"))
-                        .unwrap_or_default(),
-                );
-            }
-            if status["suspended"] == true {
-                println!("  (standing aside while a test run is active)");
-            }
-        }
-        None => {
-            println!("no scenario answers Logic requests");
-            print_last_cleared(status);
-        }
-    }
+/// The recording, if one runs.
+pub(crate) fn print_recording(status: &Value) {
     if let Some(recording) = status
         .get("recording")
         .filter(|recording| recording.is_object())
@@ -355,6 +320,123 @@ pub(crate) fn print_status(status: &Value) {
     }
 }
 
+/// The dev scenario's Function calls from the companion, shaped like the
+/// host's call log, their rule positions turned into rule numbers.
+pub(crate) fn function_calls(status: &Value, calls: &companion::CallsResult) -> Vec<Value> {
+    let label = status["scenario"]["label"].as_str().unwrap_or("scenario");
+    let function_rules: Vec<u64> = status["scenario"]["rules"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|rule| rule["kind"] == "function")
+        .filter_map(|rule| rule["index"].as_u64())
+        .collect();
+    calls
+        .calls
+        .iter()
+        .map(|call| {
+            let rule = call
+                .rule
+                .filter(|_| call.owner.as_deref() == Some(DEV_OWNER))
+                .and_then(|position| function_rules.get(position).copied());
+            let answered_by = match (rule, call.owner.as_deref()) {
+                (Some(index), _) => format!("rule {index} ({label})"),
+                (None, Some(owner)) if owner != DEV_OWNER => format!("{owner} scenario"),
+                _ => "companion default".to_string(),
+            };
+            let mut entry = json!({
+                "time": call.time,
+                "kind": "function",
+                "function": call.function,
+                "outcome": call.outcome,
+                "answeredBy": answered_by,
+            });
+            if let Some(no_match) = &call.no_match {
+                entry["noMatch"] = json!(no_match);
+            }
+            entry
+        })
+        .collect()
+}
+
+/// One line per call: `GET https://… → 200  rule 1 (wifi:b)`.
+pub(crate) fn call_lines(calls: &[Value]) -> Vec<String> {
+    calls
+        .iter()
+        .map(|call| {
+            let what = if call["kind"] == "function" {
+                format!(
+                    "function {} → {}",
+                    call["function"].as_str().unwrap_or(""),
+                    call["outcome"].as_str().unwrap_or("")
+                )
+            } else {
+                let outcome = match (call["status"].as_u64(), call["error"].as_str()) {
+                    (Some(status), _) => status.to_string(),
+                    (None, Some(error)) => error.to_string(),
+                    (None, None) => "pending".to_string(),
+                };
+                format!(
+                    "{} {} → {outcome}",
+                    call["method"].as_str().unwrap_or("GET"),
+                    call["url"].as_str().unwrap_or("")
+                )
+            };
+            let mut line = format!(
+                "{what}  answered by: {}",
+                call["answeredBy"].as_str().unwrap_or("real")
+            );
+            if let Some(no_match) = call["noMatch"].as_str() {
+                line.push_str(&format!("\n    {no_match}"));
+            }
+            line
+        })
+        .collect()
+}
+
+pub(crate) fn print_status(status: &Value) {
+    match status
+        .get("scenario")
+        .filter(|scenario| scenario.is_object())
+    {
+        Some(scenario) => {
+            println!(
+                "{} scenario '{}' ({} rule{}; `lxdev scenario status` for per-rule hits)",
+                "ACTIVE".yellow().bold(),
+                scenario["label"].as_str().unwrap_or("unnamed"),
+                scenario["rules"].as_array().map_or(0, Vec::len),
+                if scenario["rules"].as_array().map_or(0, Vec::len) == 1 {
+                    ""
+                } else {
+                    "s"
+                },
+            );
+            if status["suspended"] == true {
+                println!("  (standing aside while a test run is active)");
+            }
+        }
+        None => {
+            println!("no scenario is active");
+            print_last_cleared(status);
+        }
+    }
+    print_recording(status);
+    let calls = status["calls"].as_array().cloned().unwrap_or_default();
+    if calls.is_empty() {
+        if status["active"] == true {
+            println!(
+                "no calls yet — the app may serve its own cache; reload the page or `lxdev lxapp restart`"
+            );
+        }
+        return;
+    }
+    println!("recent calls, oldest first:");
+    for line in call_lines(&calls) {
+        println!("  {line}");
+    }
+    println!("(an app cache can answer without a request; such calls are not listed)");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -362,11 +444,47 @@ mod tests {
     #[test]
     fn values_are_masked_everywhere_in_a_scenario() {
         let mut scenario = json!({
-            "routes": [{ "url": "https://h/a?key=s3cret", "json": { "echo": "s3cret-x" } }]
+            "rules": [{ "http": "GET https://h/a?key=s3cret", "json": { "echo": "s3cret-x" } }]
         });
         mask_values(&mut scenario, &["s3cret".to_string(), String::new()]);
-        assert_eq!(scenario["routes"][0]["url"], "https://h/a?key=***");
-        assert_eq!(scenario["routes"][0]["json"]["echo"], "***-x");
+        assert_eq!(scenario["rules"][0]["http"], "GET https://h/a?key=***");
+        assert_eq!(scenario["rules"][0]["json"]["echo"], "***-x");
+    }
+
+    #[test]
+    fn calls_say_who_answered_them() {
+        let status = json!({ "scenario": { "label": "Checkout:expired", "rules": [
+            { "index": 1, "kind": "http" },
+            { "index": 2, "kind": "function" },
+            { "index": 3, "kind": "function" }
+        ] } });
+        let calls: companion::CallsResult = serde_json::from_value(json!({ "calls": [
+            { "time": 5, "function": "orders.submit", "owner": "dev", "rule": 1, "outcome": "fault" },
+            { "time": 6, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" },
+            { "time": 7, "function": "orders.status", "owner": "test:r1", "rule": 0, "outcome": "result" }
+        ] })).unwrap();
+        let functions = function_calls(&status, &calls);
+        assert_eq!(functions[0]["answeredBy"], "rule 3 (Checkout:expired)");
+        assert_eq!(functions[1]["answeredBy"], "companion default");
+        assert_eq!(functions[2]["answeredBy"], "test:r1 scenario");
+        let mut all = vec![json!({
+            "time": 4, "kind": "fetch", "method": "GET", "url": "https://h/cart",
+            "status": 200, "answeredBy": "rule 1 (Checkout:expired)"
+        })];
+        all.extend(functions);
+        let lines = call_lines(&all);
+        assert_eq!(
+            lines[0],
+            "GET https://h/cart → 200  answered by: rule 1 (Checkout:expired)"
+        );
+        assert_eq!(
+            lines[1],
+            "function orders.submit → fault  answered by: rule 3 (Checkout:expired)"
+        );
+        assert_eq!(
+            lines[2],
+            "function orders.status → default  answered by: companion default\n    rule 0 match.args.id: missing"
+        );
     }
 
     #[test]
@@ -381,11 +499,11 @@ mod tests {
         let out = dir.path().join("nested/rec.json");
         let sink = ScenarioSink::prepare(&out).unwrap();
         let mut stdout = Vec::new();
-        sink.commit_or_print(&json!({ "routes": [] }), &mut stdout)
+        sink.commit_or_print(&json!({ "rules": [] }), &mut stdout)
             .unwrap();
         assert!(stdout.is_empty());
         let written: Value = serde_json::from_str(&std::fs::read_to_string(&out).unwrap()).unwrap();
-        assert_eq!(written, json!({ "routes": [] }));
+        assert_eq!(written, json!({ "rules": [] }));
         // No placeholder is left behind.
         let left: Vec<_> = std::fs::read_dir(dir.path().join("nested"))
             .unwrap()

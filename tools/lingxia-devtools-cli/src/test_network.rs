@@ -113,15 +113,26 @@ pub fn network_lines(calls: &Value) -> Vec<String> {
                 .as_u64()
                 .map(|ms| format!(" {ms}ms"))
                 .unwrap_or_default();
-            let source = match call["source"].as_str() {
-                Some("route") => " [route]",
-                _ => "",
+            let source = match (call["answeredBy"].as_str(), call["source"].as_str()) {
+                (Some(by), _) => format!("  answered by: {by}"),
+                (None, Some("route")) => " [route]".to_string(),
+                _ => String::new(),
             };
-            format!(
-                "{} {} → {outcome}{duration}{source}",
-                call["method"].as_str().unwrap_or("GET"),
-                call["url"].as_str().unwrap_or(""),
-            )
+            let what = if call["kind"] == "function" {
+                format!("function {}", call["function"].as_str().unwrap_or(""))
+            } else {
+                format!(
+                    "{} {}",
+                    call["method"].as_str().unwrap_or("GET"),
+                    call["url"].as_str().unwrap_or("")
+                )
+            };
+            let outcome = call["outcome"].as_str().map_or(outcome, str::to_string);
+            let mut line = format!("{what} → {outcome}{duration}{source}");
+            if let Some(no_match) = call["noMatch"].as_str() {
+                line.push_str(&format!(" ({no_match})"));
+            }
+            line
         })
         .collect()
 }
@@ -227,13 +238,19 @@ mod tests {
     fn network_calls_read_as_one_line_each() {
         let lines = network_lines(&json!([
             { "method": "GET", "url": "https://h/a", "status": 200, "durationMs": 12, "source": "network" },
-            { "method": "POST", "url": "https://h/b", "status": null, "error": "TypeError: fetch failed", "source": "route" }
+            { "method": "POST", "url": "https://h/b", "status": null, "error": "TypeError: fetch failed", "source": "route" },
+            { "method": "GET", "url": "https://h/c", "status": 200, "answeredBy": "rule 2 (Wi-Fi:b)" },
+            { "method": "PATCH", "url": "https://h/d", "status": 204, "answeredBy": "real", "noMatch": "no rule matched PATCH https://h/d (1 rule for this target: rule 1 match.json.name: missing)" },
+            { "kind": "function", "function": "orders.submit", "outcome": "fault", "answeredBy": "rule 3 (Checkout)" }
         ]));
         assert_eq!(
             lines,
             vec![
                 "GET https://h/a → 200 12ms".to_string(),
                 "POST https://h/b → TypeError: fetch failed [route]".to_string(),
+                "GET https://h/c → 200  answered by: rule 2 (Wi-Fi:b)".to_string(),
+                "PATCH https://h/d → 204  answered by: real (no rule matched PATCH https://h/d (1 rule for this target: rule 1 match.json.name: missing))".to_string(),
+                "function orders.submit → fault  answered by: rule 3 (Checkout)".to_string(),
             ]
         );
     }
