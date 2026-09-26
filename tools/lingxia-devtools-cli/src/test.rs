@@ -5,8 +5,11 @@
 use crate::client::CommandError;
 use crate::client::{CommandTimeout, execute_command, execute_command_until, max_poll_wait};
 use crate::project::SessionInfo;
-use crate::test_bundle::{MappedPosition, TestBundle, bundle_test_path, find_project_root};
+use crate::test_bundle::{
+    MappedPosition, Purpose, TestBundle, bundle_test_files, find_project_root,
+};
 use crate::test_secrets::{ArgSources, RunSecrets, SECRET_ARGS_KEY};
+use crate::test_select::Selection;
 use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -35,14 +38,17 @@ pub use lingxia_control_protocol::dev_session::select::NO_SESSION_HINT;
 
 const TEST_AFTER_HELP: &str = "\
 Examples:
-  lxdev test tests/                              run every *.test.ts under tests/
-  lxdev test tests/ --grep checkout --tag '!slow'
-  lxdev test --preset ci                         arguments from lxdev.json (test.presets)
-  lxdev test tests/ --profile auth --profile-save  run on a saved sign-in, refresh it on pass
-  lxdev test tests/ --secrets-file .env.test     secret args from a gitignored dotenv file
-  lxdev test tests/ --last-failed                rerun what failed in test-results/latest
-  lxdev test report --failures                   show the last run's failures again
-  lxdev test --cancel-active                     release a run left by a dead client
+  lxdev test                        everything (lxdev.json test.entry; else tests/)
+  lxdev test tests/cart.test.ts     one file; several paths allowed
+  lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
+  lxdev test --grep \"empty cart\"    by title (or --id ID)
+  lxdev test --last-failed          what failed last time
+  lxdev test --list                 list specs without running them
+  lxdev test --preset ci            arguments from lxdev.json (test.presets)
+  lxdev test --profile auth --profile-save   run on a saved sign-in, refresh it on pass
+  lxdev test --secrets-file .env.test        secret args from a gitignored dotenv file
+  lxdev test report --failures      show the last run's failures again
+  lxdev test --cancel-active        release a run left by a dead client
 
 Specs import `spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and
 `LXDEV_SECRET_<KEY>` environment variables add --arg / --secret-arg values.
@@ -88,13 +94,15 @@ pub struct TestOptions {
     #[command(subcommand)]
     pub command: Option<TestCommand>,
 
-    /// Test entry file, or a directory of `*.test.ts` files. Omit it with
-    /// `--cancel-active` to only cancel the session's active run
-    #[arg(
-        required_unless_present_any = ["cancel_active", "list_presets", "print_args"],
-        help_heading = "Selection"
-    )]
-    pub entry: Option<PathBuf>,
+    /// Test files and directories of `*.test.ts`; `FILE:LINE` runs the spec
+    /// at that line. Default: lxdev.json `test.entry`, else `tests/`
+    #[arg(value_name = "PATH[:LINE]", value_parser = crate::test_select::parse_test_path, help_heading = "Selection")]
+    pub paths: Vec<crate::test_select::TestPath>,
+
+    /// List the selected specs (file:line, id, title, tags) without running
+    /// them; `--format json` for JSON
+    #[arg(long, conflicts_with = "cancel_active", help_heading = "Selection")]
+    pub list: bool,
 
     /// Run only specs whose title or id matches this regex
     #[arg(long, value_name = "PATTERN", help_heading = "Selection")]
@@ -149,7 +157,7 @@ pub struct TestOptions {
 
     /// Cancel an automation run left active by an earlier `lxdev test`, then
     /// start. Only needed when a previous run's client died mid-run. Without
-    /// an entry, only cancel the active run
+    /// a path, only cancel the active run
     #[arg(long, help_heading = "Execution")]
     cancel_active: bool,
 
@@ -271,6 +279,11 @@ impl TestOptions {
     /// The output format (`text` unless `--format` says otherwise).
     pub fn output(&self) -> OutputFormat {
         self.format.unwrap_or(OutputFormat::Text)
+    }
+
+    /// `--cancel-active`: without a path, it only cancels.
+    pub fn cancel_active(&self) -> bool {
+        self.cancel_active
     }
 
     /// Whether the output is for a machine (no live text on stderr).
@@ -409,8 +422,12 @@ where
 }
 
 /// Owns process exit: the run state is the exit code, not an `Err`.
-pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
-    execute_inner(info, options).map_err(|err| {
+pub fn execute(
+    info: &SessionInfo,
+    options: TestOptions,
+    selection: Option<Selection>,
+) -> Result<()> {
+    execute_inner(info, options, selection).map_err(|err| {
         if looks_unreachable(&err) {
             anyhow!(NO_SESSION_HINT)
         } else {
@@ -432,12 +449,19 @@ pub fn looks_unreachable(err: &anyhow::Error) -> bool {
         || text.contains("broken pipe")
 }
 
-fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
+fn execute_inner(
+    info: &SessionInfo,
+    options: TestOptions,
+    selection: Option<Selection>,
+) -> Result<()> {
     let machine = options.machine();
     options.check_output()?;
-    let Some(entry) = options.entry.clone() else {
+    let Some(selection) = selection else {
         return cancel_active_only(info, &options);
     };
+    if options.list {
+        return list(info, &options, &selection);
+    }
     let started_at = chrono::Utc::now().to_rfc3339();
     // A bad output path must fail before the run exists: afterwards the
     // Runner would keep it active with nobody polling.
@@ -452,16 +476,16 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         .map(|run| resolve_report_path(run, &results_root))
         .transpose()?;
     let sources = ArgSources::gather(std::env::vars(), options.secrets_file.as_deref())?;
-    check_versions(info, &entry, machine)?;
+    check_versions(info, &selection.root, machine)?;
     // Held until the run ends: a save during the run neither rebuilds the
     // app's output nor reloads the app under a spec.
     let watch_pause = WatchPause::acquire(&info.ws_url)?;
-    let bundle = bundle_test_path(&entry)?;
+    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::Run)?;
     if !machine {
         eprintln!(
             "{} bundled {} ({})",
             "test".cyan(),
-            entry.display(),
+            selection.shown.join(" "),
             human_bytes(bundle.code.len())
         );
     }
@@ -469,9 +493,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let secrets = RunSecrets::with_sources(&options.args, &options.secret_args, sources);
     let args = secrets.spec_args();
     let mut control = run_control(&options, &info.target, &secrets)?;
-    if let Some(ids) = last_failed.as_deref().map(failed_ids).transpose()? {
-        control.insert("ids".to_string(), serde_json::to_string(&ids)?);
-    }
+    selection_controls(&mut control, &selection, last_failed.as_deref())?;
     let inputs = crate::test_contract::RunInputs::load(
         options.covers_manifest.as_deref(),
         &options.openapi,
@@ -480,12 +502,8 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     // What reports show: file names, not the documents.
     let reported_control = crate::test_contract::reported_control(&control);
     // Isolation is settled (and a seed uploaded) before the run exists.
-    let isolation = crate::test_state::prepare(
-        &info.ws_url,
-        &options.state,
-        &find_project_root(&entry),
-        machine,
-    )?;
+    let isolation =
+        crate::test_state::prepare(&info.ws_url, &options.state, &selection.root, machine)?;
     if let Some(isolation) = &isolation {
         control.extend(isolation.control.iter().cloned());
     }
@@ -671,8 +689,8 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
             }
         }
     }
-    let rerun = rerun_base(info, &entry, &options, &secrets);
-    record_rerun(
+    let rerun = Rerun::new(info, &selection, &options, &secrets);
+    let reruns = record_rerun(
         &output_dir.join("report.json"),
         &rerun,
         &options.run_settings(),
@@ -682,7 +700,15 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     // `latest` in the results root names the last run wherever it went.
     update_latest(&results_root, &output_dir);
     let interrupted = interrupts.load(Ordering::SeqCst) > 0;
-    report(&outcome, &bundle, &run_id, &output_dir, &options, &rerun);
+    report(
+        &outcome,
+        &bundle,
+        &run_id,
+        &output_dir,
+        &options,
+        &rerun,
+        &reruns,
+    );
     if !machine && needs_recovery(&outcome, interrupted) {
         eprintln!(
             "{} the app under test may not be running; restart it with `lxdev lxapp restart`",
@@ -698,6 +724,128 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
         outcome.partial = true;
     }
     std::process::exit(exit_code(&outcome, interrupted));
+}
+
+/// How long a `--list` run may take: it only loads the specs.
+const LIST_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// `lxdev test --list`: the runtime loads the specs and selects them as for
+/// a run, then returns the selection without running it. No results are
+/// written and `latest` stays.
+fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Result<()> {
+    let machine = options.machine();
+    if options.output() == OutputFormat::Jsonl {
+        return Err(crate::test_select::usage(
+            "--list prints text or --format json",
+        ));
+    }
+    let last_failed = options
+        .last_failed
+        .as_deref()
+        .map(|run| resolve_report_path(run, &options.results_root()?))
+        .transpose()?;
+    check_versions(info, &selection.root, machine)?;
+    let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
+    let secrets = RunSecrets::with_sources(
+        &options.args,
+        &options.secret_args,
+        ArgSources::gather(std::env::vars(), options.secrets_file.as_deref())?,
+    );
+    let mut control = run_control(options, &info.target, &secrets)?;
+    selection_controls(&mut control, selection, last_failed.as_deref())?;
+    let start_args = TestStartArgs {
+        source: bundle.code.clone(),
+        source_name: Some(bundle.bundle_name.clone()),
+        timeout_ms: Some(LIST_TIMEOUT.as_millis() as u64),
+        args: secrets.spec_args(),
+        control,
+        profile: None,
+    };
+    let start = start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
+    let run = ActiveRun::new(&info.ws_url, &start.run_id);
+    let deadline = Instant::now() + LIST_TIMEOUT + WATCHDOG_GRACE;
+    let mut after_seq = 0;
+    let poll = loop {
+        let poll = execute_poll(
+            &info.ws_url,
+            &TestPollArgs {
+                run_id: run.run_id().to_string(),
+                after_seq,
+            },
+            poll_wait(Instant::now(), deadline),
+            &|| false,
+        )?;
+        after_seq = poll
+            .events
+            .iter()
+            .map(|event| event.seq)
+            .fold(after_seq, u64::max);
+        if poll.state.is_terminal() {
+            run.settled();
+            break poll;
+        }
+        if Instant::now() >= deadline {
+            bail!(
+                "listing the specs took longer than {}s",
+                LIST_TIMEOUT.as_secs()
+            );
+        }
+        std::thread::sleep(POLL_INTERVAL);
+    };
+    let result = poll.result.unwrap_or(TestRunResult {
+        duration_ms: 0,
+        error: None,
+        report: None,
+    });
+    if let Some(error) = &result.error {
+        let stack = error
+            .stack
+            .as_deref()
+            .map(|stack| format!("\n{}", bundle.remap_stack(stack).0))
+            .unwrap_or_default();
+        bail!("{}: {}{stack}", error.name, error.message);
+    }
+    let listed = result
+        .report
+        .as_ref()
+        .and_then(|report| report.detail.get("listed"))
+        .and_then(|listed| listed.as_array())
+        .ok_or_else(|| {
+            anyhow!(
+                "the run returned no listing ({}); is @lingxia/test as new as lxdev?",
+                poll.state.as_str()
+            )
+        })?;
+    let cwd = std::env::current_dir()?;
+    let specs: Vec<serde_json::Value> = listed
+        .iter()
+        .map(|spec| {
+            let file = spec["file"].as_str().unwrap_or_default();
+            let mut spec = spec.clone();
+            spec["file"] = json!(crate::test_select::display_path(
+                &selection.root.join(file),
+                &cwd
+            ));
+            spec
+        })
+        .collect();
+    if machine {
+        let value = json!({ "schema_version": 1, "kind": "list", "specs": specs });
+        let encoded = if options.pretty {
+            serde_json::to_string_pretty(&value)
+        } else {
+            serde_json::to_string(&value)
+        }?;
+        println!("{encoded}");
+        return Ok(());
+    }
+    print!("{}", crate::test_select::format_listing(&specs));
+    match specs.len() {
+        0 => eprintln!("{} no specs match this selection", "test".cyan()),
+        1 => eprintln!("{} 1 spec", "test".cyan()),
+        n => eprintln!("{} {n} specs", "test".cyan()),
+    }
+    Ok(())
 }
 
 /// The process exit code of a finished run (see the `--help` table).
@@ -847,7 +995,7 @@ pub const RUN_SETTINGS_KEY: &str = "run_settings";
 /// `--last-failed` of a run in which nothing failed: say so and start no
 /// run — `latest` keeps pointing at that run. `true` when that is the case.
 pub fn nothing_to_rerun(options: &TestOptions) -> Result<bool> {
-    let (Some(last), Some(_)) = (&options.last_failed, &options.entry) else {
+    let Some(last) = &options.last_failed else {
         return Ok(false);
     };
     let report = resolve_report_path(last, &options.results_root()?)?;
@@ -1012,6 +1160,25 @@ fn run_control(
         control.insert("recordNetwork".to_string(), "1".to_string());
     }
     Ok(control)
+}
+
+/// The controls that narrow a run beyond its flags: the `FILE:LINE` ranges,
+/// and the ids `--last-failed` reruns.
+fn selection_controls(
+    control: &mut HashMap<String, String>,
+    selection: &Selection,
+    last_failed: Option<&Path>,
+) -> Result<()> {
+    if let Some(locations) = &selection.locations {
+        control.insert("locations".to_string(), serde_json::to_string(locations)?);
+    }
+    if let Some(report) = last_failed {
+        control.insert(
+            "ids".to_string(),
+            serde_json::to_string(&failed_ids(report)?)?,
+        );
+    }
+    Ok(())
 }
 
 /// A run polled this recently still has a client reading it.
@@ -1865,7 +2032,8 @@ fn report(
     run_id: &str,
     output_dir: &Path,
     options: &TestOptions,
-    rerun: &str,
+    rerun: &Rerun,
+    reruns: &HashMap<String, String>,
 ) {
     let machine = options.machine();
     let duration_ms = outcome
@@ -2034,7 +2202,11 @@ fn report(
                 );
             }
             if let Some(id) = case.detail.get("id").and_then(|v| v.as_str()) {
-                eprintln!("  Rerun: {}", rerun_with_id(rerun, id));
+                let command = reruns
+                    .get(id)
+                    .cloned()
+                    .unwrap_or_else(|| rerun_with_id(&rerun.selection(), id));
+                eprintln!("  Rerun: {command}");
             }
             if options.verbose
                 && let Some(stack) = &error.stack
@@ -2055,69 +2227,195 @@ fn report(
     print_artifact_index(output_dir, &outcome.artifacts);
 }
 
-/// The command that reruns this run's selection with its effective flags —
-/// a preset's included, since they were expanded into `options` — and no
-/// secret values; append `--id <id>` for one spec. `--session` only when the
-/// default resolution would not reach this session, and never as an id.
-fn rerun_base(
-    info: &SessionInfo,
-    entry: &Path,
-    options: &TestOptions,
-    secrets: &RunSecrets,
-) -> String {
-    let prefix = match crate::project::hint_selector(info) {
-        Some(selector) => format!("lxdev --session {} test", shell_quote(&selector)),
-        None => "lxdev test".to_string(),
-    };
-    rerun_command(&prefix, entry, options, secrets)
+/// Rerun commands: the run's own selection with its effective flags — a
+/// preset's included, since they were expanded into `options` — and no
+/// secret values. `--session` only when the default resolution would not
+/// reach this session, and never as an id.
+struct Rerun {
+    /// `lxdev test` with any `--session`.
+    prefix: String,
+    /// The flags after the paths, each with its leading space.
+    flags: String,
+    /// The paths as given.
+    paths: String,
+    /// The files of the run, to tell whether a case's file was one.
+    files: Vec<PathBuf>,
+    root: PathBuf,
 }
 
-fn rerun_command(
-    prefix: &str,
-    entry: &Path,
-    options: &TestOptions,
-    secrets: &RunSecrets,
-) -> String {
-    let mut command = format!("{prefix} {}", shell_quote(&entry.to_string_lossy()));
+impl Rerun {
+    fn new(
+        info: &SessionInfo,
+        selection: &Selection,
+        options: &TestOptions,
+        secrets: &RunSecrets,
+    ) -> Self {
+        let prefix = match crate::project::hint_selector(info) {
+            Some(selector) => format!("lxdev --session {} test", shell_quote(&selector)),
+            None => "lxdev test".to_string(),
+        };
+        Self {
+            prefix,
+            flags: rerun_flags(options, secrets),
+            paths: selection
+                .shown
+                .iter()
+                .map(|path| shell_quote(path))
+                .collect::<Vec<_>>()
+                .join(" "),
+            files: selection.files.clone(),
+            root: selection.root.clone(),
+        }
+    }
+
+    /// The whole selection again.
+    fn selection(&self) -> String {
+        format!("{} {}{}", self.prefix, self.paths, self.flags)
+    }
+
+    /// One failed case of `cases` (report.json's): `FILE:LINE` when the spec
+    /// has no id of its own, its file was one the run was given, and no
+    /// other spec was registered on that line; `--id` otherwise.
+    fn case(&self, case: &serde_json::Value, cases: &[serde_json::Value]) -> Option<String> {
+        let id = case["id"].as_str()?;
+        let by_line = (|| {
+            let file = case["file"].as_str()?;
+            let line = case["line"].as_u64()?;
+            let title = case["title"].as_str().unwrap_or_default();
+            if !generated_id(id, title, file) {
+                return None;
+            }
+            let path = std::fs::canonicalize(self.root.join(file)).ok()?;
+            if !self.files.contains(&path) {
+                return None;
+            }
+            let shared = cases.iter().any(|other| {
+                other["file"].as_str() == Some(file)
+                    && other["line"].as_u64() == Some(line)
+                    && other["id"].as_str() != Some(id)
+            });
+            if shared {
+                return None;
+            }
+            let cwd = std::env::current_dir().ok()?;
+            let shown = crate::test_select::display_path(&path, &cwd);
+            Some(format!(
+                "{} {}{}",
+                self.prefix,
+                shell_quote(&format!("{shown}:{line}")),
+                self.flags
+            ))
+        })();
+        Some(by_line.unwrap_or_else(|| rerun_with_id(&self.selection(), id)))
+    }
+}
+
+/// Whether `id` is the one `@lingxia/test` makes up for a spec without an
+/// `id` option: its title's slug, or `<file stem>-<n>` for a title that has
+/// none.
+fn generated_id(id: &str, title: &str, file: &str) -> bool {
+    match slug_title(title) {
+        Some(slug) => slug == id,
+        None => id
+            .strip_prefix(&format!("{}-", file_stem(file)))
+            .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit())),
+    }
+}
+
+/// `slugTitle` of `@lingxia/test`.
+fn slug_title(title: &str) -> Option<String> {
+    if !title.is_ascii() {
+        return None;
+    }
+    let mut slug = String::new();
+    for c in title.to_ascii_lowercase().chars() {
+        if c.is_ascii_alphanumeric() {
+            slug.push(c);
+        } else if !slug.ends_with('-') {
+            slug.push('-');
+        }
+    }
+    let slug = slug.trim_matches('-');
+    (!slug.is_empty()).then(|| slug.to_string())
+}
+
+/// `fileStem` of `@lingxia/test`.
+fn file_stem(file: &str) -> String {
+    let base = file.rsplit(['/', '\\']).next().unwrap_or(file);
+    let lower = base.to_ascii_lowercase();
+    let mut stem = base;
+    for ext in [".ts", ".mts", ".js", ".mjs"] {
+        if lower.ends_with(ext) {
+            stem = &base[..base.len() - ext.len()];
+            if stem.to_ascii_lowercase().ends_with(".test") {
+                stem = &stem[..stem.len() - ".test".len()];
+            }
+            break;
+        }
+    }
+    if stem.is_empty() { "spec" } else { stem }.to_string()
+}
+
+/// The flags a rerun repeats, each with a leading space.
+fn rerun_flags(options: &TestOptions, secrets: &RunSecrets) -> String {
+    let mut flags = String::new();
     if let Some(secs) = options.timeout_secs {
-        command.push_str(&format!(" --timeout-secs {secs}"));
+        flags.push_str(&format!(" --timeout-secs {secs}"));
     }
     for spec in &options.openapi {
-        command.push_str(&format!(
+        flags.push_str(&format!(
             " --openapi {}",
             shell_quote(&spec.to_string_lossy())
         ));
     }
-    command.push_str(&secrets.rerun_flags(shell_quote));
-    command.push_str(&options.state.rerun_flags(shell_quote));
-    command
+    flags.push_str(&secrets.rerun_flags(shell_quote));
+    flags.push_str(&options.state.rerun_flags(shell_quote));
+    flags
 }
 
 pub(crate) fn rerun_with_id(base: &str, id: &str) -> String {
     format!("{base} --id {}", shell_quote(id))
 }
 
-/// Keep the rerun command in report.json (`meta.rerun`), so `lxdev test
-/// report` can print Rerun lines later, and the settings `--last-failed`
-/// carries over (`meta.run_settings`).
-fn record_rerun(report: &Path, rerun: &str, settings: &serde_json::Value) {
+/// Keep the rerun commands in report.json — `meta.rerun` for the selection,
+/// `meta.reruns` by failed spec id — so `lxdev test report` can print Rerun
+/// lines later, and the settings `--last-failed` carries over
+/// (`meta.run_settings`). Returns `meta.reruns`.
+fn record_rerun(
+    report: &Path,
+    rerun: &Rerun,
+    settings: &serde_json::Value,
+) -> HashMap<String, String> {
+    let mut reruns = HashMap::new();
     let Ok(bytes) = std::fs::read(report) else {
-        return;
+        return reruns;
     };
     let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
-        return;
+        return reruns;
     };
+    let cases = value["cases"].as_array().cloned().unwrap_or_default();
+    for case in &cases {
+        if matches!(
+            case["status"].as_str(),
+            Some("failed" | "timeout" | "xpass")
+        ) && let (Some(id), Some(command)) = (case["id"].as_str(), rerun.case(case, &cases))
+        {
+            reruns.insert(id.to_string(), command);
+        }
+    }
     let Some(root) = value.as_object_mut() else {
-        return;
+        return reruns;
     };
     let meta = root.entry("meta").or_insert_with(|| json!({}));
     if let Some(meta) = meta.as_object_mut() {
-        meta.insert("rerun".to_string(), json!(rerun));
+        meta.insert("rerun".to_string(), json!(rerun.selection()));
+        meta.insert("reruns".to_string(), json!(reruns));
         meta.insert(RUN_SETTINGS_KEY.to_string(), settings.clone());
     }
     if let Ok(bytes) = serde_json::to_vec_pretty(&value) {
         let _ = std::fs::write(report, bytes);
     }
+    reruns
 }
 
 /// The report is the deliverable, so name it last and name it absolutely —
@@ -2882,7 +3180,15 @@ fn escape_markup(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 
+/// `value` as one shell word: as is when it needs no quoting.
 fn shell_quote(value: &str) -> String {
+    if !value.is_empty()
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-./:@+=,".contains(&b))
+    {
+        return value.to_string();
+    }
     #[cfg(not(windows))]
     let escaped = value.replace('\'', "'\\''");
     #[cfg(windows)]
@@ -3080,35 +3386,105 @@ mod lifecycle_tests {
             "unit",
         ]);
         let secrets = RunSecrets::new(&options.args, &options.secret_args);
-        let base = rerun_command(
-            "lxdev test",
-            options.entry.as_deref().unwrap(),
-            &options,
-            &secrets,
-        );
-        let command = rerun_with_id(&base, "HOME-001");
+        let rerun = Rerun {
+            prefix: "lxdev test".into(),
+            flags: rerun_flags(&options, &secrets),
+            paths: shell_quote(&options.paths[0].raw),
+            files: vec![],
+            root: PathBuf::from("/project"),
+        };
+        let command = rerun_with_id(&rerun.selection(), "HOME-001");
         assert_eq!(
             command,
-            "lxdev test '/project/tests/all.test.ts' --timeout-secs 60 \
-             --openapi '/contract.yaml' --arg 'platform=<platform>' \
-             --secret-arg 'token=<token>' --profile 'auth' --profile-save=always \
-             --id 'HOME-001'"
+            "lxdev test /project/tests/all.test.ts --timeout-secs 60 \
+             --openapi /contract.yaml --arg 'platform=<platform>' \
+             --secret-arg 'token=<token>' --profile auth --profile-save=always \
+             --id HOME-001"
         );
         assert!(!command.contains("abc123"));
         assert!(!command.contains("--session"), "no session id is taught");
     }
 
     #[test]
+    fn a_failed_spec_reruns_by_its_line_unless_it_has_an_id_of_its_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::create_dir_all(root.join("tests")).unwrap();
+        std::fs::write(root.join("tests/cart.test.ts"), "").unwrap();
+        let rerun = Rerun {
+            prefix: "lxdev test".into(),
+            flags: " --profile auth".into(),
+            paths: "tests/".into(),
+            files: vec![root.join("tests/cart.test.ts")],
+            root: root.clone(),
+        };
+        let case = |id: &str, title: &str, file: &str, line: u64| json!({"id": id, "title": title, "file": file, "line": line, "status": "failed"});
+        let cases = [
+            case("empty-cart", "empty cart", "tests/cart.test.ts", 12),
+            case("CART-2", "totals", "tests/cart.test.ts", 20),
+            case("a", "a", "tests/cart.test.ts", 30),
+            case("b", "b", "tests/cart.test.ts", 30),
+            case("helper-made", "helper made", "tests/helpers.ts", 3),
+        ];
+        let line = |index: usize| rerun.case(&cases[index], &cases).unwrap();
+        let shown = crate::test_select::display_path(
+            &root.join("tests/cart.test.ts"),
+            &std::env::current_dir().unwrap(),
+        );
+        assert_eq!(
+            line(0),
+            format!("lxdev test {}:12 --profile auth", shell_quote(&shown))
+        );
+        assert_eq!(line(1), "lxdev test tests/ --profile auth --id CART-2");
+        // Two specs on one line (a loop): only the id tells them apart.
+        assert_eq!(line(2), "lxdev test tests/ --profile auth --id a");
+        // Not a file the run was given.
+        assert_eq!(line(4), "lxdev test tests/ --profile auth --id helper-made");
+    }
+
+    #[test]
+    fn generated_ids_are_told_from_ids_of_a_specs_own() {
+        assert!(generated_id(
+            "empty-cart",
+            "Empty cart!",
+            "tests/cart.test.ts"
+        ));
+        assert!(!generated_id("CART-1", "Empty cart!", "tests/cart.test.ts"));
+        assert!(generated_id("cart-2", "空的购物车", "tests/cart.test.ts"));
+        assert!(generated_id("cart-2", "空的购物车", r"tests\cart.test.mjs"));
+        assert!(!generated_id("CART-2", "空的购物车", "tests/cart.test.ts"));
+        assert_eq!(file_stem("a/b/home.ts"), "home");
+        assert_eq!(slug_title("  Hello, World  "), Some("hello-world".into()));
+        assert_eq!(slug_title("--"), None);
+    }
+
+    #[test]
     fn the_rerun_command_is_kept_in_the_report() {
         let dir = tempfile::tempdir().unwrap();
         let report = dir.path().join("report.json");
-        std::fs::write(&report, r#"{"cases":[],"meta":{"args":{}}}"#).unwrap();
+        std::fs::write(
+            &report,
+            r#"{"cases":[{"id":"X-1","title":"x","status":"failed"},{"id":"y","status":"passed"}],"meta":{"args":{}}}"#,
+        )
+        .unwrap();
         let settings =
             options(&["t", "--preset", "ci", "--profile", "auth", "--profile-save"]).run_settings();
-        record_rerun(&report, "lxdev test 'tests/'", &settings);
+        let rerun = Rerun {
+            prefix: "lxdev test".into(),
+            flags: String::new(),
+            paths: "tests/".into(),
+            files: vec![],
+            root: dir.path().to_path_buf(),
+        };
+        let reruns = record_rerun(&report, &rerun, &settings);
         let value: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&report).unwrap()).unwrap();
-        assert_eq!(value["meta"]["rerun"], "lxdev test 'tests/'");
+        assert_eq!(value["meta"]["rerun"], "lxdev test tests/");
+        assert_eq!(
+            value["meta"]["reruns"],
+            json!({"X-1": "lxdev test tests/ --id X-1"})
+        );
+        assert_eq!(reruns["X-1"], "lxdev test tests/ --id X-1");
         assert_eq!(
             value["meta"][RUN_SETTINGS_KEY],
             json!({"preset": "ci", "profile": "auth", "profile_save": "pass"})
@@ -3118,7 +3494,7 @@ mod lifecycle_tests {
         let by_path = options(&["t", "--profile", "snapshots/a.lxstate"]).run_settings();
         assert!(Path::new(by_path["profile"].as_str().unwrap()).is_absolute());
         // No report, nothing to do.
-        record_rerun(&dir.path().join("missing.json"), "x", &json!({}));
+        assert!(record_rerun(&dir.path().join("missing.json"), &rerun, &json!({})).is_empty());
     }
 
     #[test]
@@ -3476,9 +3852,17 @@ mod lifecycle_tests {
 
         // No session is listening: reaching the Runner would fail differently.
         let session: SessionInfo = serde_json::from_value(json!({"session_id":"test","project_root":".","target":"macos","pid":1,"ws_url":"ws://127.0.0.1:9","log_file":""})).unwrap();
+        let selection = Selection {
+            files: vec![],
+            identity: dir.path().to_path_buf(),
+            root: dir.path().to_path_buf(),
+            locations: None,
+            shown: vec![],
+        };
         let error = execute_inner(
             &session,
-            options(&["missing.test.ts", "--output-dir", target.to_str().unwrap()]),
+            options(&["--output-dir", target.to_str().unwrap()]),
+            Some(selection),
         )
         .unwrap_err();
         assert!(
@@ -3511,8 +3895,7 @@ mod lifecycle_tests {
     #[test]
     fn cancel_active_needs_no_entry() {
         let parsed = options(&["--cancel-active"]);
-        assert!(parsed.cancel_active && parsed.entry.is_none());
-        assert!(Harness::try_parse_from(["test"]).is_err());
+        assert!(parsed.cancel_active && parsed.paths.is_empty());
     }
 
     #[test]

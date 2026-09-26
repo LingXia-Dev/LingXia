@@ -404,7 +404,6 @@ lxdev test tests/ --tag unit,routed --tag smoke   # (unit or routed) and smoke
   tag"; several `--tag` flags must all hold.
 - An untagged spec has no tags: `--tag routed` leaves it out, `--tag '!live'`
   keeps it. Tag every file (`spec.configure`) so no spec falls between layers.
-- `--tag` combines with `--grep`, `--id`, `--last-failed` and `--shard`.
 - Tags use letters, digits and `_ . : / -`. `spec.configure` applies to the
   file that calls it and adds to the spec's own `tags`.
 - `spec.configure` takes every spec option but `id` as the file's defaults
@@ -593,11 +592,19 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 ## Running and CI
 
 ```bash
-lxdev test tests/                     # every *.test.ts, recursively
-lxdev test tests/ --grep checkout
-lxdev test tests/ --last-failed       # what failed last time
-lxdev test report --failures          # the last run's failures, again
+lxdev test                        # everything (lxdev.json test.entry; else tests/ if it exists)
+lxdev test tests/cart.test.ts     # one file; several paths allowed
+lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
+lxdev test --grep "empty cart"    # by title (or --id ID)
+lxdev test --last-failed          # what failed last time
+lxdev test --list                 # list specs (file:line, id, title, tags) without running them
 ```
+
+- Each combines with `--preset`, `--tag` and the other flags. A directory
+  runs its `*.test.ts` recursively; a line in a loop or helper around spec
+  calls selects all of them. `--list` needs the running app.
+- A failed spec's `Rerun:` line uses `--id` when the spec sets an `id`, else
+  `FILE:LINE`.
 
 - `lxdev test` runs against the app `lingxia dev` is running; for CI see
   [Running specs in CI](#running-specs-in-ci).
@@ -615,10 +622,9 @@ lxdev test report --failures          # the last run's failures, again
 - Exit codes: `0` passed; `1` a spec failed or timed out, the run was
   incomplete, or it could not run; `2` invalid arguments; `130` interrupted.
 - Empty selections fail; opt out with `--pass-with-no-tests`.
-- Select with `--id ID`, `--last-failed [REPORT|DIR]` (default: the last run),
-  `--tag EXPR`, or `--shard 1/3`; shards need separate sessions and output
-  directories. Give non-ASCII titles an `id` so `--id`/`--last-failed` survive
-  reordering.
+- `--last-failed` takes a report or run directory (default: the last run).
+  `--shard 1/3` needs separate sessions and output directories. Give
+  non-ASCII titles an `id` so `--id`/`--last-failed` survive reordering.
 - `--last-failed` reruns on the previous run's terms: its `--preset` and its
   `--profile` (with `--profile-save`) carry over unless the command line gives
   them — a new `--preset` brings its own profile — and lxdev prints what it
@@ -718,7 +724,8 @@ lxdev test --list-presets
 
 - A preset is the arguments it lists, placed before the command line's:
   repeatable flags (`--tag`, `--openapi`, `--arg`) add up, any other flag
-  given on the command line wins.
+  given on the command line wins, and paths on the command line replace the
+  preset's.
 - `test.entry`, `test.outputDir`, `test.openapi` and `test.tags` are defaults
   for every run, with or without a preset. `test.outputDir` is the results
   root (`--output-root`): each run gets its own `<run-id>/` in it and

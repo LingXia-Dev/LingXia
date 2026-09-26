@@ -83,6 +83,8 @@ test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
 contract (`--openapi`) and recording (`--record-network`) are covered there.
 `lxdev test` runs against the running app; for CI see
 [Running specs in CI](../lxapp/testing.md#running-specs-in-ci).
+- `[PATH[:LINE]...]`, `--grep`, `--id`, `--last-failed`, `--list` — what to
+  run; see [Running and CI](../lxapp/testing.md#running-and-ci).
 - `--preset NAME` — prepend a named argument list from `lxdev.json`
   (`test.presets`) in the project root; the command line's own flags come
   after it and win. A preset's relative paths are relative to `lxdev.json`,
@@ -100,9 +102,6 @@ contract (`--openapi`) and recording (`--record-network`) are covered there.
   `DIR/latest` points at the last run. Default: `test.outputDir` of
   `lxdev.json`, else `test-results/` beside `lxdev.json`, else
   `./test-results`. `--output-dir PATH` writes one run into PATH as is.
-- `--last-failed` — rerun what failed in the last run (`latest` in the
-  results root), with that run's `--preset` and `--profile`; with nothing
-  failed it runs nothing and exits 0.
 - `report [DIR|latest] [--failures] [--format json|junit]` — print an
   earlier run's summary, failures and `Rerun:` lines again, no session needed.
 
