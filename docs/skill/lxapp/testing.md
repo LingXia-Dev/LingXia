@@ -615,8 +615,7 @@ lingxia test --preset ci              # CI: start a session, run, stop it
   `report.json`; it needs no session.
 - Exit codes: `0` passed; `1` a spec failed or timed out, the run was
   incomplete, or it could not run; `2` invalid arguments; `130` interrupted.
-- Empty selections fail; opt out with `--pass-with-no-tests` (alias
-  `--allow-no-tests`).
+- Empty selections fail; opt out with `--pass-with-no-tests`.
 - Select with `--id ID`, `--last-failed [REPORT|DIR]` (default: the last run),
   `--tag EXPR`, or `--shard 1/3`; shards need separate sessions and output
   directories. Give non-ASCII titles an `id` so `--id`/`--last-failed` survive

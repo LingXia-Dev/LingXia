@@ -66,6 +66,16 @@ pub enum OutputFormat {
     Jsonl,
 }
 
+impl OutputFormat {
+    fn name(self) -> &'static str {
+        match self {
+            Self::Text => "text",
+            Self::Json => "json",
+            Self::Jsonl => "jsonl",
+        }
+    }
+}
+
 #[derive(Args)]
 // A preset's arguments come first: the command line may repeat a flag of
 // it, and the last one wins.
@@ -132,7 +142,7 @@ pub struct TestOptions {
     pub forbid_only: bool,
 
     /// Allow a selection with no matching specs
-    #[arg(long, visible_alias = "allow-no-tests", help_heading = "Execution")]
+    #[arg(long, help_heading = "Execution")]
     pass_with_no_tests: bool,
 
     /// Cancel an automation run left active by an earlier `lxdev test`, then
@@ -204,7 +214,7 @@ pub struct TestOptions {
     format: Option<OutputFormat>,
 
     /// Indent `--format json`
-    #[arg(long, help_heading = "Output")]
+    #[arg(long, requires = "format", help_heading = "Output")]
     pub pretty: bool,
 
     /// Include steps, console messages and individual artifact transfers
@@ -216,14 +226,6 @@ pub struct TestOptions {
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,
-
-    /// Deprecated: use `--format json`
-    #[arg(long, hide = true, conflicts_with_all = ["jsonl", "format"])]
-    pub json: bool,
-
-    /// Deprecated: use `--format jsonl`
-    #[arg(long, hide = true, conflicts_with_all = ["json", "format"])]
-    jsonl: bool,
 }
 
 /// `lxdev test <subcommand>`.
@@ -264,15 +266,9 @@ pub enum ReportFormat {
 pub const LATEST: &str = "latest";
 
 impl TestOptions {
-    /// The output format, with the deprecated flags mapped onto it.
+    /// The output format (`text` unless `--format` says otherwise).
     pub fn output(&self) -> OutputFormat {
-        match (self.format, self.json, self.jsonl, self.pretty) {
-            (Some(format), ..) => format,
-            (None, true, ..) => OutputFormat::Json,
-            (None, _, true, _) => OutputFormat::Jsonl,
-            (None, _, _, true) => OutputFormat::Json,
-            _ => OutputFormat::Text,
-        }
+        self.format.unwrap_or(OutputFormat::Text)
     }
 
     /// Whether the output is for a machine (no live text on stderr).
@@ -316,20 +312,16 @@ impl TestOptions {
         })
     }
 
-    /// What to say about a deprecated output flag, once, on stderr.
-    pub fn deprecation(&self) -> Option<&'static str> {
-        if self.format.is_some() {
-            return None;
+    /// `--pretty` indents the one JSON result; it means nothing for the
+    /// other formats.
+    fn check_output(&self) -> Result<()> {
+        if self.pretty && self.output() != OutputFormat::Json {
+            bail!(
+                "--pretty indents --format json; it does not apply to --format {}",
+                self.output().name()
+            );
         }
-        if self.json {
-            Some("--json is deprecated; use --format json")
-        } else if self.jsonl {
-            Some("--jsonl is deprecated; use --format jsonl")
-        } else if self.pretty {
-            Some("--pretty without --format is deprecated; use --format json --pretty")
-        } else {
-            None
-        }
+        Ok(())
     }
 }
 
@@ -438,9 +430,7 @@ pub fn looks_unreachable(err: &anyhow::Error) -> bool {
 
 fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     let machine = options.machine();
-    if let Some(line) = options.deprecation() {
-        eprintln!("{} {line}", "warning".yellow());
-    }
+    options.check_output()?;
     let Some(entry) = options.entry.clone() else {
         return cancel_active_only(info, &options);
     };
@@ -461,7 +451,7 @@ fn execute_inner(info: &SessionInfo, options: TestOptions) -> Result<()> {
     check_versions(info, &entry, machine)?;
     // Held until the run ends: a save during the run neither rebuilds the
     // app's output nor reloads the app under a spec.
-    let watch_pause = WatchPause::acquire(&info.ws_url);
+    let watch_pause = WatchPause::acquire(&info.ws_url)?;
     let bundle = bundle_test_path(&entry)?;
     if !machine {
         eprintln!(
@@ -759,8 +749,7 @@ fn check_versions(info: &SessionInfo, entry: &Path, machine: bool) -> Result<()>
 /// Pauses the dev session's source watcher for this run (see
 /// `session.watch.pause`). Every way out resumes it: the drop, the host
 /// seeing the bound run end, and — for a client killed outright — the lease
-/// lapsing. A host that predates the method is left to its older
-/// behaviour (it defers reloads while it sees a run active).
+/// lapsing.
 struct WatchPause {
     ws_url: String,
     lease: String,
@@ -771,7 +760,9 @@ struct WatchPause {
 const WATCH_LEASE_TTL: Duration = Duration::from_secs(300);
 
 impl WatchPause {
-    fn acquire(ws_url: &str) -> Self {
+    /// A session that cannot pause its watcher fails the run: a save during
+    /// it would rebuild and reload the app under a spec.
+    fn acquire(ws_url: &str) -> Result<Self> {
         let lease = format!(
             "lxdev-test-{}-{}",
             std::process::id(),
@@ -780,15 +771,16 @@ impl WatchPause {
                 .map(|elapsed| elapsed.as_nanos())
                 .unwrap_or_default()
         );
-        let held = Self::pause(ws_url, &lease, None);
-        Self {
+        Self::pause(ws_url, &lease, None)
+            .context("the dev session did not pause its source watcher for the run")?;
+        Ok(Self {
             ws_url: ws_url.to_string(),
             lease,
-            held,
-        }
+            held: true,
+        })
     }
 
-    fn pause(ws_url: &str, lease: &str, run_id: Option<&str>) -> bool {
+    fn pause(ws_url: &str, lease: &str, run_id: Option<&str>) -> Result<()> {
         execute_command(
             ws_url,
             methods::session::watch::PAUSE,
@@ -799,14 +791,16 @@ impl WatchPause {
             })
             .ok(),
         )
-        .is_ok()
+        .map(|_| ())
     }
 
     /// Tie the lease to the started run: its polls renew it, its end
     /// releases it.
     fn bind(&self, run_id: &str) {
         if self.held {
-            Self::pause(&self.ws_url, &self.lease, Some(run_id));
+            // A failed renewal is not fatal: the lease still covers the
+            // run until its TTL, and every poll renews it on the host.
+            let _ = Self::pause(&self.ws_url, &self.lease, Some(run_id));
         }
     }
 
@@ -3177,7 +3171,7 @@ mod lifecycle_tests {
     }
 
     #[test]
-    fn output_format_replaces_the_json_flags() {
+    fn output_is_chosen_with_format_alone() {
         assert_eq!(options(&["t"]).output(), OutputFormat::Text);
         assert_eq!(
             options(&["t", "--format", "json"]).output(),
@@ -3188,20 +3182,24 @@ mod lifecycle_tests {
             OutputFormat::Jsonl
         );
         let pretty = options(&["t", "--format", "json", "--pretty"]);
-        assert!(pretty.machine() && pretty.pretty && pretty.deprecation().is_none());
-        // The 0.18 spellings still work, and say what replaces them.
-        let json = options(&["t", "--json"]);
-        assert_eq!(json.output(), OutputFormat::Json);
-        assert!(json.deprecation().unwrap().contains("--format json"));
-        let jsonl = options(&["t", "--jsonl"]);
-        assert_eq!(jsonl.output(), OutputFormat::Jsonl);
-        assert!(jsonl.deprecation().unwrap().contains("--format jsonl"));
-        let bare_pretty = options(&["t", "--pretty"]);
-        assert_eq!(bare_pretty.output(), OutputFormat::Json);
-        assert!(bare_pretty.deprecation().is_some());
+        assert!(pretty.machine() && pretty.pretty && pretty.check_output().is_ok());
+        // `--pretty` indents json and nothing else.
+        assert!(Harness::try_parse_from(["test", "t", "--pretty"]).is_err());
+        let err = options(&["t", "--format", "jsonl", "--pretty"])
+            .check_output()
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("--pretty indents --format json"),
+            "{err}"
+        );
+        // The 0.18 spellings are gone, not aliased.
+        for gone in ["--json", "--jsonl", "--allow-no-tests"] {
+            assert!(
+                Harness::try_parse_from(["test", "t", gone]).is_err(),
+                "{gone}"
+            );
+        }
         assert!(Harness::try_parse_from(["test", "t", "--format", "xml"]).is_err());
-        assert!(Harness::try_parse_from(["test", "t", "--json", "--format", "json"]).is_err());
-        assert!(Harness::try_parse_from(["test", "t", "--json", "--jsonl"]).is_err());
     }
 
     #[test]
@@ -3221,11 +3219,16 @@ mod lifecycle_tests {
         ] {
             assert!(help.contains(heading), "{heading} missing from\n{help}");
         }
-        for hidden in ["--json ", "--jsonl", "--isolate", "--save-state"] {
-            assert!(!help.contains(hidden), "{hidden} is not advertised");
+        for gone in [
+            "--json ",
+            "--jsonl",
+            "--isolate",
+            "--save-state",
+            "--allow-no-tests",
+        ] {
+            assert!(!help.contains(gone), "{gone} is not a flag");
         }
-        assert!(help.contains("--allow-no-tests"));
-        assert!(options(&["t", "--allow-no-tests"]).pass_with_no_tests);
+        assert!(options(&["t", "--pass-with-no-tests"]).pass_with_no_tests);
     }
 
     #[test]
@@ -3457,7 +3460,7 @@ mod lifecycle_tests {
     #[test]
     fn a_run_pauses_the_watcher_binds_it_and_always_resumes_it() {
         let (url, server) = recording_server(3, json!({ "paused": true, "leases": 1 }));
-        let pause = WatchPause::acquire(&url);
+        let pause = WatchPause::acquire(&url).unwrap();
         pause.bind("run-9");
         let lease = pause.lease().to_string();
         // Any way out of the run — success, failure, `?`, a panic — drops it.
@@ -3480,12 +3483,13 @@ mod lifecycle_tests {
     }
 
     #[test]
-    fn a_host_without_watch_pause_is_not_resumed() {
-        // Nothing listens: the pause fails and the drop sends nothing (a send
-        // would fail the same way, but must not even be tried).
-        let pause = WatchPause::acquire("ws://127.0.0.1:9");
-        assert!(!pause.held);
-        drop(pause);
+    fn a_session_that_cannot_pause_the_watcher_fails_the_run() {
+        // Nothing listens: the pause fails, and the run with it.
+        let err = WatchPause::acquire("ws://127.0.0.1:9").err().unwrap();
+        assert!(
+            err.to_string().contains("did not pause its source watcher"),
+            "{err}"
+        );
     }
 
     #[test]

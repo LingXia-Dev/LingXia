@@ -291,10 +291,9 @@ impl DevServerState {
         });
     }
 
-    /// Whether saves must wait: a pause lease holds the watcher, or a relayed
-    /// test run is active (a client that predates `session.watch.pause`).
+    /// Whether saves must wait: a pause lease holds the watcher.
     pub(crate) fn watch_paused(&self) -> bool {
-        Self::watch_status(&mut self.lock_watch_leases()).paused || self.test_run_active()
+        Self::watch_status(&mut self.lock_watch_leases()).paused
     }
 
     fn set_runtime_build(&self, build: Option<lingxia_control_protocol::dev_session::PeerBuild>) {
@@ -550,6 +549,7 @@ impl DevServerState {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn test_run_active(&self) -> bool {
         self.lock_active_test_run()
             .as_ref()
@@ -1674,8 +1674,9 @@ mod tests {
         let state = authenticated_state();
         let (tx, rx) = mpsc::channel();
         state.claim_runtime_sender(tx);
-        // The watcher saw no run and started rebuilding; `lxdev test` started
-        // one meanwhile.
+        // The watcher saw no pause and started rebuilding; `lxdev test` took
+        // its lease and started a run meanwhile.
+        let _ = state.pause_watch(pause("lxdev-test-1", 300_000, None));
         state.observe_test_response(test::START, &test_response("run-1", "running"));
         assert_eq!(
             state.restart_lxapp("demo").unwrap(),

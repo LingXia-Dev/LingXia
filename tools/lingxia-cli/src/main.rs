@@ -206,7 +206,7 @@ struct TestOptions {
     /// windows). Default: what `lingxia dev` would start in the nearest
     /// project — an lxapp directory runs in the Runner, a host project on
     /// its auto-detected platform
-    #[arg(short = 'p', long, visible_alias = "target", value_name = "TARGET")]
+    #[arg(short = 'p', long, value_name = "TARGET")]
     platform: Option<String>,
 
     /// Device ID (required if multiple devices are connected)
@@ -1566,7 +1566,7 @@ mod cli_tests {
             "tests/",
             "--preset",
             "ci",
-            "--target",
+            "--platform",
             "macos",
             "--skip-native",
             "--keep-session",
@@ -1592,6 +1592,8 @@ mod cli_tests {
             ["--grep", "home", "--format", "jsonl"]
         );
         assert!(Cli::try_parse_from(["lingxia", "test"]).is_ok());
+        // One spelling: `-p` / `--platform`.
+        assert!(Cli::try_parse_from(["lingxia", "test", "--target", "macos"]).is_err());
     }
 
     #[test]
