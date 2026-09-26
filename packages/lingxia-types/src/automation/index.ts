@@ -510,9 +510,9 @@ export interface PageInfo {
   /**
    * The page instance. Navigation that replaces a page (even with the same
    * path) gives it a new id. `null` when no live instance backs a stack
-   * entry; absent on hosts that predate it.
+   * entry.
    */
-  instanceId?: string | null;
+  instanceId: string | null;
   current: boolean;
   inStack: boolean;
   /** Whether the page has dispatched `onReady` (what `waitUntil: 'ready'` awaits). */

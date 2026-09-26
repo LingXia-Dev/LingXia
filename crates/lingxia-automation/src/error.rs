@@ -1,10 +1,9 @@
 //! Stable JS error codes for automation driver failures.
 //!
 //! The shared lower half (`lxapp::automation`) reports failures as plain
-//! strings, and older clients parse those strings, so the messages never
-//! change. Each failure a test can act on also gets its own `code`, and a page
-//! failure carries `data` naming the page it concerned. Anything else keeps the
-//! `E_AUTOMATION` fallback.
+//! strings. Each failure a test can act on gets its own `code` — the contract
+//! clients match on; the message is for people — and a page failure carries
+//! `data` naming the page it concerned. Anything else is `E_AUTOMATION`.
 
 use lxapp::{LxApp, automation as auto};
 use rong::{HostError, RongJSError, error::ErrorData};
@@ -49,6 +48,7 @@ pub(crate) fn code_for(message: &str) -> &'static str {
     {
         E_PAGE_NOT_ACTIVE
     } else if message == "page WebView is not ready"
+        || message.to_ascii_lowercase().contains("webview not ready")
         || message.to_ascii_lowercase().contains("no current page")
     {
         E_PAGE_NOT_READY

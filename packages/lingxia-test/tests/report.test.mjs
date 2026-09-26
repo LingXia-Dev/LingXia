@@ -155,17 +155,6 @@ test("run controls stay out of t.args and a user arg never filters the run", asy
   assert.equal(report.meta.args.id, "user-value");
 });
 
-test("an older host's controls inside args still select, and leave t.args", async () => {
-  const world = createWorld();
-  installFakeHost(world, { args: { id: "second", baseUrl: "http://fixture" } });
-  let seen;
-  spec("first", () => {});
-  spec("second", (t) => { seen = { ...t.args }; });
-  const protocol = await globalThis.__LINGXIA_TEST__.run();
-  assert.deepEqual(protocol.cases.map((c) => c.id), ["second"]);
-  assert.deepEqual(seen, { baseUrl: "http://fixture" });
-});
-
 test("credential names match whole trailing words, not substrings", () => {
   for (const key of ["password", "PASSWORD", "DB_PASSWORD", "userPasswd", "pwd", "clientSecret",
     "authToken", "refresh_token", "x-api-key", "apiKey", "APIKey", "API_KEY", "apikey",
@@ -293,7 +282,8 @@ test("omits the log tail when the host has no ring", async () => {
 test("report json and html include run metadata, steps, expected/actual, and no mojibake", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world, {
-    args: { platform: "windows", framework: "react" },
+    args: { framework: "react" },
+    control: { platform: "windows" },
   });
 
   spec("steps and a matcher failure", { id: "UNIT-REPORT-001", covers: ["lx.demo"] }, async (t) => {
@@ -363,7 +353,7 @@ test("t.expect(fn) retries an arbitrary read", async () => {
 
 test("attaches a CI-ingestible junit.xml alongside the HTML report", async () => {
   const world = createWorld();
-  const { attachments } = installFakeHost(world, { args: { platform: "macos" } });
+  const { attachments } = installFakeHost(world, { control: { platform: "macos" } });
 
   spec("passes", { id: "JUNIT-OK", covers: ["lx.getStorage"] }, async () => {
     expect(1).toBe(1);
@@ -726,7 +716,7 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
 
 test("an app name cannot inject markup into the report", async () => {
   const world = createWorld();
-  const { attachments } = installFakeHost(world, { args: { platform: "<b>win</b>" } });
+  const { attachments } = installFakeHost(world, { control: { platform: "<b>win</b>" } });
   globalThis.lx.automation().lxapp().info = async () => ({
     appid: "evil",
     app_name: 'Cats & Dogs <img src=x onerror=alert(1)>',

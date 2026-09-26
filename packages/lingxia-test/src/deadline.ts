@@ -88,24 +88,19 @@ const PAGE_NOT_READY_CODES = new Set(["E_PAGE_NOT_ACTIVE", "E_PAGE_NOT_READY"]);
  * Errors the page drivers raise while a page is being replaced: the target is
  * not the active instance yet, or its WebView is not attached. They occur
  * before anything reaches the page, so retrying them is safe. Matched by code
- * (`E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`); a host that predates the codes
- * rejects with `E_AUTOMATION`, so the message forms of `is_transient_page_error`
- * in `lingxia-automation` (`page.rs`) remain the fallback.
+ * (`E_PAGE_NOT_ACTIVE`, `E_PAGE_NOT_READY`), plus WebView2's
+ * `ERROR_INVALID_STATE` (`0x8007139F`) while a navigation replaces the
+ * document, which carries no code of its own.
  */
 export function isTransientPageError(error: unknown): boolean {
   const code = errorCode(error);
   if (code !== undefined && PAGE_NOT_READY_CODES.has(code)) return true;
+  return isWebView2InvalidState(error);
+}
+
+function isWebView2InvalidState(error: unknown): boolean {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
-  if (!message) return false;
-  const lower = message.toLowerCase();
-  return (
-    lower.includes("page is not active:") ||
-    lower.includes("page webview is not ready") ||
-    lower.includes("webview not ready") ||
-    lower.includes("no current page") ||
-    // WebView2 ERROR_INVALID_STATE while a navigation replaces the document.
-    lower.includes("0x8007139f")
-  );
+  return /0x8007139f/i.test(message);
 }
 
 /**
@@ -115,8 +110,7 @@ export function isTransientPageError(error: unknown): boolean {
  */
 export function isPreDispatchPageError(error: unknown): boolean {
   const code = errorCode(error);
-  if (code !== undefined && PAGE_NOT_READY_CODES.has(code)) return true;
-  return isTransientPageError(error) && !/0x8007139f/i.test(error instanceof Error ? error.message : String(error));
+  return code !== undefined && PAGE_NOT_READY_CODES.has(code);
 }
 
 /**
@@ -125,9 +119,7 @@ export function isPreDispatchPageError(error: unknown): boolean {
  */
 export function isElementRefusal(error: unknown): boolean {
   const code = errorCode(error);
-  if (code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE") return true;
-  const message = error instanceof Error ? error.message : "";
-  return /^Element (?:not found|not interactable):/.test(message);
+  return code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE";
 }
 
 /**

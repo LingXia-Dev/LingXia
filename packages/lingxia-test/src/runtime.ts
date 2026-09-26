@@ -421,16 +421,6 @@ async function relaunchHome(app: LxAppDriver): Promise<void> {
  */
 const PAYLOAD_CONTROL_KEYS = ["openapi", "coversManifest"];
 
-/**
- * Controls lxdev sent inside `args` before it had a channel of its own. Only
- * read from `args` when the host has no `control`; a current host keeps them
- * apart so a user's `--arg id=…` is just an arg.
- */
-const LEGACY_CONTROL_KEYS = new Set([
-  "grep", "retries", "shard", "ids", "id", "passWithNoTests", "forbidOnly", "forbid-only",
-  "platform", "secretArgs",
-]);
-
 /** One planned execution: a spec, and which of its `--repeat-each` runs. */
 interface Planned {
   item: RegisteredSpec;
@@ -473,32 +463,25 @@ export function shuffleWithSeed<T>(items: readonly T[], seed: number): T[] {
   return out;
 }
 
-function splitControl(host: ResolvedHost): { args: Record<string, string>; control: Record<string, string> } {
-  if (host.control) return { args: host.args, control: host.control };
-  const args: Record<string, string> = {};
-  const control: Record<string, string> = {};
-  for (const [key, value] of Object.entries(host.args)) {
-    (LEGACY_CONTROL_KEYS.has(key) ? control : args)[key] = value;
-  }
-  return { args, control };
-}
-
-/** `secretArgs` is a JSON list of `--secret-arg` keys (older lxdev: comma list). */
+/** `secretArgs` is a JSON list of `--secret-arg` keys. */
 function secretKeys(listed: string | undefined): string[] {
   if (!listed) return [];
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(listed);
-    if (Array.isArray(parsed)) return parsed.filter((key): key is string => typeof key === "string");
+    parsed = JSON.parse(listed);
   } catch {
-    // fall through to the comma form
+    throw new Error(`the host's secretArgs control is not a JSON list: ${JSON.stringify(listed)}`);
   }
-  return listed.split(",").map((key) => key.trim()).filter(Boolean);
+  if (!Array.isArray(parsed)) {
+    throw new Error(`the host's secretArgs control is not a JSON list: ${JSON.stringify(listed)}`);
+  }
+  return parsed.filter((key): key is string => typeof key === "string");
 }
 
 async function run(): Promise<ProtocolReport> {
   warnVersionSkew();
   const rawHost = resolveHost();
-  const { args, control } = splitControl(rawHost);
+  const { args, control } = rawHost;
   // Secret args reach the spec through `t.args` but never an event or report.
   const redact = createRedactor(args, secretKeys(control.secretArgs));
   const host: ResolvedHost = {

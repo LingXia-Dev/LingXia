@@ -6,10 +6,10 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 afterEach(() => { reset(); delete globalThis.lx; delete globalThis.__LINGXIA_AUTOMATION_HOST__; });
 
 test('empty selections fail unless explicitly allowed', async () => {
-  const host = installFakeHost(createWorld(), { args: { grep: 'absent' } });
+  const host = installFakeHost(createWorld(), { control: { grep: 'absent' } });
   spec('present', () => { throw new Error('must not run'); });
   await assert.rejects(run, /No tests matched/);
-  host.args.passWithNoTests = '1';
+  host.control.passWithNoTests = '1';
   assert.equal((await run()).total, 0);
 });
 
@@ -47,7 +47,7 @@ test('a timed-out body cannot regain access through cleanup', async () => {
 });
 
 test('retries require a reset and preserve every attempt and flaky status', async () => {
-  const host = installFakeHost(createWorld(), { args: { retries: '1' } });
+  const host = installFakeHost(createWorld(), { control: { retries: '1' } });
   let calls = 0, resets = 0, afters = 0;
   spec('intermittent', { forensics: false }, () => { expect(++calls).toBe(2); });
   await assert.rejects(run, /spec.reset/);
@@ -64,15 +64,15 @@ test('retries require a reset and preserve every attempt and flaky status', asyn
 });
 
 test('exact ids and shards select deterministically without overlap', async () => {
-  const host = installFakeHost(createWorld(), { args: { shard: '1/2', passWithNoTests: '1' } });
+  const host = installFakeHost(createWorld(), { control: { shard: '1/2', passWithNoTests: '1' } });
   for (let i = 0; i < 10; i++) spec(`case ${i}`, { id: `id-${i}` }, () => {});
   const first = (await run()).cases.map(c => c.id);
-  host.args.shard = '2/2';
+  host.control.shard = '2/2';
   const second = (await run()).cases.map(c => c.id);
   assert.equal(new Set([...first, ...second]).size, 10);
   assert.equal(first.length + second.length, 10);
-  delete host.args.shard;
-  host.args.id = 'id-1';
+  delete host.control.shard;
+  host.control.id = 'id-1';
   assert.deepEqual((await run()).cases.map(c => c.id), ['id-1']);
 });
 
@@ -115,10 +115,10 @@ test('afterEach can register cleanup and cleanup failures do not skip remaining 
 });
 
 test('invalid grep is rejected and watchdog includes explicit cleanup budget', async () => {
-  const host = installFakeHost(createWorld(), {args:{grep:'['}});
+  const host = installFakeHost(createWorld(), { control: { grep: '[' } });
   spec('budget', {timeout:100, timeoutCleanup:50_000}, () => {});
   await assert.rejects(run, /regular expression/i);
-  delete host.args.grep;
+  delete host.control.grep;
   await run();
   assert.equal(host.events.find(e => e.type === 'case_started').watchdog_timeout_ms, 62_100);
 });
@@ -145,7 +145,7 @@ test('a native pre-dispatch rejection is retried safely', async () => {
   const click = world.app.page.click;
   let calls = 0;
   world.app.page.click = async options => {
-    if (++calls === 1) throw new Error('Element not interactable: not enabled');
+    if (++calls === 1) throw Object.assign(new Error('Element not interactable: not enabled'), { code: 'E_ELEMENT_NOT_INTERACTABLE' });
     await click(options);
   };
   installFakeHost(world);
