@@ -52,8 +52,8 @@ const PRIV_AUTOMATION: &str = "automation";
 /// Cross-lxapp, browser, and host-window input.
 const PRIV_HOST: &str = "host";
 
-/// Build a JS-facing automation error. The message is kept as is (older
-/// clients parse it); its stable code comes from [`error::code_for`].
+/// Build a JS-facing automation error; its stable code comes from
+/// [`error::code_for`].
 pub(crate) fn auto_err(msg: impl AsRef<str>) -> RongJSError {
     let msg = msg.as_ref();
     error::coded(error::code_for(msg), msg).into()

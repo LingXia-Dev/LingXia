@@ -712,8 +712,7 @@ export class LiveFixture implements Fixture {
       view,
       logic,
       nav: guardObject(landingNav(driver.nav), this, "nav."),
-      // Lazy and non-throwing: a host without test routing fails the call,
-      // never the `t.app` or `t.app.network` read.
+      // Lazy: the driver is read inside each traced call.
       get network() {
         return wrapNetwork(() => driver.network, fixture, fixture.networkScope);
       },
@@ -792,8 +791,10 @@ export class LiveFixture implements Fixture {
       }
       return value;
     }
-    // An older runtime ignores `captureCalls` and returns the bare value.
-    return result;
+    throw new Error(
+      "t.app.logic.eval: the host answered without the call-capture envelope; " +
+        "it is older than this @lingxia/test — run `lingxia upgrade` and restart the session (`lingxia dev`)",
+    );
   }
 
   /**

@@ -170,15 +170,11 @@ export function waitForNextCall(
 }
 
 /**
- * `resolve` reads the raw driver lazily, inside each traced call: a host
- * without test routing then fails that call, never the `t.app.network` read.
+ * `resolve` reads the raw driver lazily, inside each traced call, so an app
+ * that closed since `t.app` was read fails that call, not the read.
  */
-export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: NetworkHost, scope: NetworkScope): TestNetwork {
-  const driver = (): NetworkDriver => {
-    const network = resolve();
-    if (!network) throw new Error("t.app.network is not supported by this host");
-    return network;
-  };
+export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, scope: NetworkScope): TestNetwork {
+  const driver = resolve;
   const wrapRoute = (route: NetworkRoute): TestRoute => {
     const cursor = { taken: 0 };
     const calls = async () => (await route.requests()).map(routeCall);

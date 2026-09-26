@@ -113,15 +113,19 @@ test("a timeout within the spec's budget is not clamped", async () => {
   assert.doesNotMatch(result.error.message, /clamped/);
 });
 
-for (const transient of ["page is not active: detail", "page WebView is not ready", "WebView error: No current page"]) {
-  test(`a click retries while a navigation reports "${transient}"`, async () => {
+for (const [code, transient] of [
+  ["E_PAGE_NOT_ACTIVE", "page is not active: detail"],
+  ["E_PAGE_NOT_READY", "page WebView is not ready"],
+  ["E_PAGE_NOT_READY", "WebView error: No current page"],
+]) {
+  test(`a click retries while a navigation reports ${code} "${transient}"`, async () => {
     const world = createWorld();
     const element = world.add({ testId: "save" });
     const query = world.app.page.query;
     let calls = 0;
     world.app.page.query = async (options) => {
       calls += 1;
-      if (calls <= 3) throw Object.assign(new Error(transient), { code: "E_AUTOMATION" });
+      if (calls <= 3) throw Object.assign(new Error(transient), { code });
       return query(options);
     };
     installFakeHost(world);
@@ -135,9 +139,28 @@ for (const transient of ["page is not active: detail", "page WebView is not read
   });
 }
 
+test("a page error is transient by its code, not its message", async () => {
+  const world = createWorld();
+  world.add({ testId: "save" });
+  let calls = 0;
+  world.app.page.query = async () => {
+    calls += 1;
+    throw Object.assign(new Error("page is not active: detail"), { code: "E_AUTOMATION" });
+  };
+  installFakeHost(world);
+
+  spec("uncoded", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
+
+  const result = await runOne();
+  assert.equal(result.status, "failed");
+  assert.equal(calls, 1);
+});
+
 test("a transient error that outlasts the budget is reported as the reason", async () => {
   const world = createWorld();
-  world.app.page.query = async () => { throw new Error("page is not active: detail"); };
+  world.app.page.query = async () => {
+    throw Object.assign(new Error("page is not active: detail"), { code: "E_PAGE_NOT_ACTIVE" });
+  };
   installFakeHost(world);
 
   spec("never lands", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
@@ -174,7 +197,7 @@ test("a pre-dispatch page error is retried, a WebView2 dispatch error is not", a
   let calls = 0;
   world.app.page.click = async (options) => {
     calls += 1;
-    if (calls === 1) throw new Error("page is not active: detail");
+    if (calls === 1) throw Object.assign(new Error("page is not active: detail"), { code: "E_PAGE_NOT_ACTIVE" });
     return click(options);
   };
   installFakeHost(world);
@@ -201,7 +224,7 @@ test("waitFor retries a page that is not ready yet", async () => {
   let calls = 0;
   world.app.page.query = async (options) => {
     calls += 1;
-    if (calls <= 2) throw new Error("page WebView is not ready");
+    if (calls <= 2) throw Object.assign(new Error("page WebView is not ready"), { code: "E_PAGE_NOT_READY" });
     return query(options);
   };
   installFakeHost(world);

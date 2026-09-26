@@ -115,7 +115,7 @@ test("generated ids count per file, so another file's specs never shift them", a
 
 test("grep filters by title or id and marks the report filtered", async () => {
   const world = createWorld();
-  const { attachments } = installFakeHost(world, { args: { grep: "keep-me|UI-KEEP" } });
+  const { attachments } = installFakeHost(world, { control: { grep: "keep-me|UI-KEEP" } });
   const ran = [];
   spec("keep-me visible", async () => {
     ran.push("title");
@@ -147,7 +147,7 @@ test("spec.only runs only those cases; forbidOnly refuses to start", async () =>
 
   reset();
   const world2 = createWorld();
-  installFakeHost(world2, { args: { forbidOnly: "1" } });
+  installFakeHost(world2, { control: { forbidOnly: "1" } });
   spec.only("must not run", async () => {
     ran.push("only");
   });

@@ -261,13 +261,13 @@ export function installFakeHost(world, options = {}) {
   const events = [];
   const attachments = new Map();
   const args = { ...(options.args ?? {}) };
-  // Omitted, the host predates the control channel and controls ride in args.
-  const control = options.control === undefined ? undefined : { ...options.control };
+  // lxdev's run controls (grep, ids, shard, retries, …), apart from args.
+  const control = { ...(options.control ?? {}) };
   const logs = options.logs;
 
   globalThis.__LINGXIA_AUTOMATION_HOST__ = {
     args,
-    ...(control ? { control } : {}),
+    control,
     async attach(name, artifact) {
       attachments.set(name, artifact);
     },

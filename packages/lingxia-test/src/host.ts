@@ -6,10 +6,10 @@ export interface ResolvedHost {
   /** User `--arg`/`--secret-arg` values: what the spec sees as `t.args`. */
   args: Record<string, string>;
   /**
-   * lxdev's run controls (grep, ids, shard, retries, …). `undefined` when the
-   * host predates the split and still sends them inside `args`.
+   * lxdev's run controls (grep, ids, shard, retries, …), never read from
+   * `args`: a user's `--arg id=…` is just an arg. Empty when the host sent none.
    */
-  control: Record<string, string> | undefined;
+  control: Record<string, string>;
   attach(
     name: string,
     artifact: { mimeType: string; base64: string },
@@ -39,7 +39,7 @@ export function resolveHost(): ResolvedHost {
   const control = automation?.control ?? rong?.control;
   return {
     args: asArgs(raw?.args),
-    control: control && typeof control === "object" ? asArgs(control) : undefined,
+    control: asArgs(control),
     async attach(name, artifact) {
       if (!raw?.attach) return;
       await raw.attach(name, artifact);

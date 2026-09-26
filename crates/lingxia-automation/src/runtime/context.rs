@@ -219,11 +219,9 @@ fn make_host(
         Ok(object)
     };
     host.set("args", string_map(args)?)?;
-    // Absent when the caller sent none: a framework then reads its controls
-    // from `args`, as callers that predate the split still send them.
-    if !control.is_empty() {
-        host.set("control", string_map(control)?)?;
-    }
+    // Always present, empty when the caller sent none: run controls never
+    // travel inside `args`.
+    host.set("control", string_map(control)?)?;
 
     let attach_shared = Arc::downgrade(shared);
     host.set(
