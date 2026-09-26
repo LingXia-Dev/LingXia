@@ -233,7 +233,20 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
   return self;
 }
 
+/** `LOCATOR_BRAND` in `locator.ts`; read by key to keep this module free of it. */
+const LOCATOR_BRAND = Symbol.for("lingxia.test.locator");
+
+/**
+ * Check `actual` once. A locator is refused: a one-time check of a locator
+ * could only compare the object itself, never the element it finds.
+ */
 export function expect<T>(actual: T): Matchers<T> {
+  if (typeof actual === "object" && actual !== null && (actual as { [LOCATOR_BRAND]?: unknown })[LOCATOR_BRAND] === true) {
+    throw new TypeError(
+      "expect(locator) checks once and cannot read the element; use t.expect(locator), " +
+        "which retries the matcher until the element passes (e.g. await t.expect(view.testId('x')).toBeVisible())",
+    );
+  }
   return createMatchers(actual, false);
 }
 

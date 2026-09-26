@@ -15,10 +15,12 @@ import { ScenarioScope, installScenario } from "./scenario.js";
 import { ClockScope, wrapClock } from "./clock.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError } from "./deadline.js";
+import { isTransientTransportError } from "./deadline.js";
 import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
+  isLocator,
   sleep,
   testIdSelector,
   type LocatorResolve,
@@ -44,11 +46,14 @@ import type {
   TestApp,
   TestPage,
   JsonValue,
+  LogicDataOptions,
   LogicScope,
-  PageDataOptions,
+  ProfileCheckpoint,
   ProfileFixture,
   ProfileRestoreOptions,
   OpenApiRun,
+  TestLogic,
+  TestView,
   WaitForOptions,
 } from "./types.js";
 import {
@@ -59,7 +64,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver, ScenarioInput } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -70,6 +75,7 @@ export { TimeoutError };
  */
 export class SkipSignal extends Error {
   override readonly name = "SkipSignal";
+  readonly code = "E_SKIPPED" as const;
   constructor(readonly reason: string) {
     super(`skipped: ${reason}`);
   }
@@ -134,15 +140,19 @@ export class LiveFixture implements Fixture {
     this.args = args;
     this.specDeadline = Date.now() + specBudgetMs;
     setAssertionSink((entry) => this.noteAssertion(entry));
-    const root = guardObject(automation, this, "", ["lxapp"]);
+    const root = guardObject(automation, this, "", ["lxapp", ...HOST_TIERS]);
     this.automation = new Proxy(root, {
       get: (target, prop) => prop === "lxapp"
         ? (appId?: string) => {
           this.assertRunnable();
           return this.wrapApp(appId === undefined ? automation.lxapp() : automation.lxapp(appId));
         }
-        : Reflect.get(target, prop),
-    }) as TestAutomation;
+        // Reading a host tier never throws, even on a host without it; each
+        // call resolves it and rejects there instead.
+        : HOST_TIERS.includes(prop)
+          ? lazyDriver(() => ({ owner: automation as object, value: Reflect.get(automation, prop) }), this, `${String(prop)}.`)
+          : Reflect.get(target, prop),
+    }) as unknown as TestAutomation;
     this.apps = { lxapp: (appId: string) => this.automation.lxapp(appId) };
   }
 
@@ -169,9 +179,10 @@ export class LiveFixture implements Fixture {
   get profile(): ProfileFixture {
     return {
       checkpoint: () => this.act("profile.checkpoint", "", () =>
-        this.reopening((driver) => driver.profile.checkpoint())),
-      restore: (id: string, options?: ProfileRestoreOptions) =>
-        this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
+        this.reopening(async (driver): Promise<ProfileCheckpoint> => ({ id: await driver.profile.checkpoint() }))),
+      restore: (checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions) => {
+        const id = checkpointId(checkpoint, "t.profile.restore");
+        return this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
           this.reopening(async (driver) => {
             if (!options?.keep?.length) {
               // An older host resolves nothing.
@@ -186,8 +197,12 @@ export class LiveFixture implements Fixture {
             const result = await driver.profile.restore(id, { keep: [...options.keep] });
             if (!result || !Array.isArray(result.kept)) throw new Error(outdated);
             return result;
-          })),
-      drop: (id: string) => this.act("profile.drop", id, () => this.rawApp.profile.drop(id)),
+          }));
+      },
+      drop: (checkpoint: ProfileCheckpoint | string) => {
+        const id = checkpointId(checkpoint, "t.profile.drop");
+        return this.act("profile.drop", id, async () => { await this.rawApp.profile.drop(id); });
+      },
     };
   }
 
@@ -218,7 +233,7 @@ export class LiveFixture implements Fixture {
       const parent = this.stepStack[this.stepStack.length - 1];
       (parent ? parent.steps : this.steps).push(record);
       this.stepStack.push(record);
-      await this.host.emit({
+      await this.emitTrace({
         type: "step_started",
         name,
         path: record.path,
@@ -227,7 +242,7 @@ export class LiveFixture implements Fixture {
       try {
         const result = await body();
         record.duration_ms = Date.now() - started;
-        await this.host.emit({
+        await this.emitTrace({
           type: "step_finished",
           name,
           path: record.path,
@@ -239,7 +254,7 @@ export class LiveFixture implements Fixture {
         record.duration_ms = Date.now() - started;
         if (error instanceof SkipSignal) {
           record.status = "skipped";
-          await this.host.emit({
+          await this.emitTrace({
             type: "step_finished",
             name,
             path: record.path,
@@ -251,7 +266,7 @@ export class LiveFixture implements Fixture {
         record.status = error instanceof TimeoutError ? "timeout" : "failed";
         record.error = toReportError(error, record.path);
         this.lastStepPath = record.path;
-        await this.host.emit({
+        await this.emitTrace({
           type: "step_finished",
           name,
           path: record.path,
@@ -267,9 +282,15 @@ export class LiveFixture implements Fixture {
   }
 
   get expect(): FixtureExpect {
-    const fn = ((locator: Locator) => this.locatorMatchers(locator, false)) as FixtureExpect;
+    const fn = ((subject: unknown, options?: ExpectOptions) => {
+      if (isLocator(subject)) return this.locatorMatchers(subject as Locator, false);
+      if (typeof subject === "function") {
+        return this.pollMatchers(subject as () => unknown, options, false, "t.expect(fn)");
+      }
+      return immediateExpect(subject);
+    }) as FixtureExpect;
     fn.poll = <T>(read: () => T | Promise<T>, options?: ExpectOptions) =>
-      this.pollMatchers(read, options, false);
+      this.pollMatchers(read, options, false, "t.expect.poll") as never;
     return fn;
   }
 
@@ -369,12 +390,12 @@ export class LiveFixture implements Fixture {
     );
   }
 
-  waitFor<T>(
-    read: () => T | Promise<T>,
-    accept: (value: T) => boolean = Boolean,
-    options: WaitForOptions = {},
-  ): Promise<T> {
+  waitFor<T>(read: () => T | Promise<T>, options: WaitForOptions<Awaited<T>> = {}): Promise<Awaited<T>> {
     const location = callerLocation();
+    if (typeof options === "function") {
+      throw new TypeError("t.waitFor(read, { until }) takes its acceptance test as `until`, not as a second argument");
+    }
+    const accept: (value: Awaited<T>) => boolean = options.until ?? Boolean;
     const requested = options.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
     // Past the spec budget the spec timer fires first and reports a bare
     // timeout; ending a little earlier keeps the last value in the error.
@@ -383,18 +404,18 @@ export class LiveFixture implements Fixture {
     const interval = options.interval ?? DEFAULT_POLL_INTERVAL_MS;
     const retryIf = options.retryIf ?? isRetryableReadError;
     const detail = truncate(read.name || functionDetail(read), 80);
-    return this.act("waitFor", detail, async () => {
+    return this.act("waitFor", detail, async (): Promise<Awaited<T>> => {
       const started = Date.now();
       let attempts = 0;
       let hasValue = false;
-      let lastValue: T | undefined;
+      let lastValue: Awaited<T> | undefined;
       let lastError: unknown;
       this.silenceActions();
       try {
         for (;;) {
           attempts += 1;
           try {
-            const value = await read();
+            const value = (await read()) as Awaited<T>;
             lastValue = value;
             hasValue = true;
             lastError = undefined;
@@ -414,9 +435,9 @@ export class LiveFixture implements Fixture {
       const last = lastError !== undefined
         ? `Last error: ${errorLine(lastError)}`
         : hasValue
-          ? `Last value: ${formatValue(lastValue)}${accept === Boolean ? " (waiting for a truthy value)" : " (rejected by accept)"}`
+          ? `Last value: ${formatValue(lastValue)}${accept === Boolean ? " (waiting for a truthy value)" : " (rejected by until)"}`
           : "No read completed.";
-      throw new Error(
+      throw new TimeoutError(
         [
           `t.waitFor timed out after ${Date.now() - started}ms (${attempts} ${attempts === 1 ? "read" : "reads"}).`,
           last,
@@ -558,7 +579,7 @@ export class LiveFixture implements Fixture {
     // body, so a record left at its optimistic default would serialise as an
     // instant success — the hung call rendered as the fastest one in the trace.
     this.openActions.add(record);
-    await this.host.emit({ type: "step_started", name, path: record.path });
+    await this.emitTrace({ type: "step_started", name, path: record.path });
     try {
       const result = await this.guard(op);
       record.duration_ms = Date.now() - started;
@@ -572,8 +593,45 @@ export class LiveFixture implements Fixture {
       this.noteFailedAction(name, detail, error);
       throw error;
     } finally {
-      await this.host.emit({ type: "step_finished", name, path: record.path,
+      await this.emitTrace({ type: "step_finished", name, path: record.path,
         status: record.status, duration_ms: record.duration_ms, error: record.error });
+    }
+  }
+
+  /**
+   * A trace event is progress for lxdev, not part of the spec: one the
+   * transport drops is sent once more and then given up, and never fails the
+   * action it describes. The report is built from the fixture's own records.
+   */
+  private async emitTrace(event: Record<string, unknown>): Promise<void> {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await this.host.emit(event);
+        return;
+      } catch {
+        // Next attempt, then give up.
+      }
+    }
+  }
+
+  /** A note beside the trace, e.g. the timers a clock uninstall dropped. */
+  async diagnostic(phase: string, message: string): Promise<void> {
+    await this.emitTrace({ type: "diagnostic", phase, message });
+  }
+
+  /**
+   * An idempotent driver read, retried when the transport between the test
+   * runtime and the app dropped it. Never used for input or other calls with
+   * side effects: those may already have landed.
+   */
+  async readRetrying<T>(read: () => T | Promise<T>): Promise<T> {
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return await read();
+      } catch (error) {
+        if (attempt >= TRANSPORT_RETRIES || !isTransientTransportError(error) || this.aborted) throw error;
+        await sleep(TRANSPORT_RETRY_DELAY_MS * (attempt + 1));
+      }
     }
   }
 
@@ -664,9 +722,13 @@ export class LiveFixture implements Fixture {
 
   private wrapApp(driver: LxAppDriver): TestApp {
     const fixture = this;
+    const view = this.wrapView(driver.page);
     const page = this.wrapPage(driver.page);
+    const logic = this.wrapLogic(driver);
     return {
+      view,
       page,
+      logic,
       nav: guardObject(landingNav(driver.nav), this, "nav."),
       // Lazy and non-throwing: a host without test routing fails the call,
       // never the `t.app` or `t.app.network` read.
@@ -689,32 +751,46 @@ export class LiveFixture implements Fixture {
           () => fixture.hostAutomation,
         );
       },
-      info: () => this.act("app.info", "", () => driver.info()),
-      pages: () => this.act("app.pages", "", () => driver.pages()),
-      surfaceLayout: () => this.act("app.surfaceLayout", "", () => driver.surfaceLayout()),
+      info: () => this.act("app.info", "", () => this.readRetrying(() => driver.info())),
+      pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver.pages())),
+      surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver.surfaceLayout())),
+      // 0.18's string form, kept working; the function form lives on `logic`.
       eval: (options: unknown, ...args: unknown[]) => {
-        if (typeof options === "function") {
-          const script = logicScript(options, args);
-          return this.act("app.eval", summarise(functionDetail(options)), () =>
-            remote("t.app.eval", "logic", () => this.evalLogic(driver, { script })));
-        }
+        if (typeof options === "function") return logic.eval(options as never, ...(args as never[]));
         return this.act("app.eval", summarise(options), () =>
           this.evalLogic(driver, options as { script: string; timeoutMs?: number }));
       },
-      pageData: (options?: PageDataOptions) => {
+    } as TestApp;
+  }
+
+  private wrapLogic(driver: LxAppDriver): TestLogic {
+    return {
+      eval: (fn: unknown, ...args: unknown[]) => {
+        if (typeof fn !== "function") {
+          throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().eval({ script }))");
+        }
+        const script = logicScript(fn, args, "t.app.logic.eval");
+        return this.act("logic.eval", summarise(functionDetail(fn)), () =>
+          remote("t.app.logic.eval", "logic", () => this.evalLogic(driver, { script })));
+      },
+      data: (options?: LogicDataOptions) => {
         const target = options?.page;
-        return this.act("app.pageData", target ?? "", async () => {
+        return this.act("logic.data", target ?? "", async () => {
           const path = target === undefined ? undefined : await pagePath(driver, target);
-          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.pageData");
-          return remote("t.app.pageData", "logic", () => this.evalLogic(driver, { script }));
+          const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.logic.data");
+          return remote("t.app.logic.data", "logic", () => this.evalLogic(driver, { script }));
         });
       },
-      callPage: (method: string, ...args: JsonValue[]) =>
-        this.act("app.callPage", method, () => {
-          const script = logicScript(callPageMethod, [method, args], "t.app.callPage");
-          return remote("t.app.callPage", "logic", () => this.evalLogic(driver, { script }));
-        }),
-    } as TestApp;
+      call: (method: string, ...args: JsonValue[]) => {
+        if (typeof method !== "string" || method.length === 0) {
+          throw new TypeError("t.app.logic.call(method, ...args) needs a method name");
+        }
+        return this.act("logic.call", method, () => {
+          const script = logicScript(callPageMethod, [method, args], "t.app.logic.call");
+          return remote("t.app.logic.call", "logic", () => this.evalLogic(driver, { script }));
+        });
+      },
+    } as TestLogic;
   }
 
   /**
@@ -759,23 +835,45 @@ export class LiveFixture implements Fixture {
     return options;
   }
 
-  private wrapPage(page: PageDriver): TestPage {
+  private viewEval(page: PageDriver, fn: unknown, args: unknown[], api: string): Promise<unknown> {
+    if (typeof fn !== "function") {
+      throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().page.eval({ script }))`);
+    }
+    const script = pageScript(fn, args, api);
+    return this.act("view.eval", summarise(functionDetail(fn)), () =>
+      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; timeoutMs?: number }>({ script }))));
+  }
+
+  private wrapView(page: PageDriver): TestView {
     const location = () => {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
     };
+    const guarded = guardObject(page, this, "page.");
+    return {
+      testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
+      css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
+      eval: ((fn: unknown, ...args: unknown[]) => this.viewEval(page, fn, args, "t.app.view.eval")) as TestView["eval"],
+      screenshot: (options?: PageTarget) =>
+        this.act("page.screenshot", summarise(options), () => this.readRetrying(() => page.screenshot(options))),
+      scroll: (options) => guarded.scroll(options),
+      get pointer() { return guarded.pointer; },
+      get key() { return guarded.key; },
+    };
+  }
+
+  /** `t.app.page`: the view plus 0.18's raw page driver methods. */
+  private wrapPage(page: PageDriver): TestPage {
+    const view = this.wrapView(page);
     // Every override lives in the proxy's `get` trap. Assigning onto the proxy
     // would write straight through to the real driver — `page.eval` would then
     // call itself forever.
     const overrides: Record<string, unknown> = {
-      testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
-      css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
+      testId: view.testId,
+      css: view.css,
+      screenshot: view.screenshot,
       eval: (options: unknown, ...args: unknown[]) => {
-        if (typeof options === "function") {
-          const script = pageScript(options, args);
-          return this.act("page.eval", summarise(functionDetail(options)), () =>
-            remote("t.app.page.eval", "page", () => page.eval(this.withEvalBudget<{ script: string; timeoutMs?: number }>({ script }))));
-        }
+        if (typeof options === "function") return this.viewEval(page, options, args, "t.app.page.eval");
         return this.act("page.eval", summarise(options), () =>
           page.eval(this.withEvalBudget(options as { script: string; timeoutMs?: number })));
       },
@@ -835,11 +933,12 @@ export class LiveFixture implements Fixture {
     read: () => T | Promise<T>,
     options: ExpectOptions | undefined,
     inverted: boolean,
-  ): RetryMatchers<T> {
+    api: string,
+  ): RetryMatchers<Awaited<T>> {
     const run = (matcher: string, expected?: unknown) =>
-      this.retryPoll(read, matcher, inverted, options, expected);
+      this.retryPoll(read, matcher, inverted, options, expected, api);
     const fixture = this;
-    const self: Partial<RetryMatchers<T>> = {
+    const self: Partial<RetryMatchers<Awaited<T>>> = {
       toBe: (expected: unknown) => run("toBe", expected),
       toEqual: (expected: unknown) => run("toEqual", expected),
       toContain: (expected: unknown) => run("toContain", expected),
@@ -855,9 +954,9 @@ export class LiveFixture implements Fixture {
       toBeLessThanOrEqual: (expected: number) => run("toBeLessThanOrEqual", expected),
     };
     Object.defineProperty(self, "not", {
-      get: () => fixture.pollMatchers(read, options, !inverted),
+      get: () => fixture.pollMatchers(read, options, !inverted, api),
     });
-    return self as RetryMatchers<T>;
+    return self as RetryMatchers<Awaited<T>>;
   }
 
   private async retryLocator(
@@ -921,14 +1020,15 @@ export class LiveFixture implements Fixture {
     matcher: string,
     inverted: boolean,
     options: ExpectOptions | undefined,
-    expected?: unknown,
+    expected: unknown,
+    api: string,
   ): Promise<void> {
     await this.guard(async () => {
       const frame = callerLocation();
       const location = { source: frame.file, line: frame.line, column: frame.column };
       const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
       const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-      const context = () => this.deadlineContext(`poll ${inverted ? "not." : ""}${matcher}`, location);
+      const context = () => this.deadlineContext(`${api} ${inverted ? "not." : ""}${matcher}`, location);
       let lastActual: unknown;
       let lastError: unknown;
       pushAssertionSilence();
@@ -936,7 +1036,7 @@ export class LiveFixture implements Fixture {
       try {
         while (!deadline.expired()) {
           try {
-            lastActual = await deadline.call("t.expect.poll read", read, context);
+            lastActual = await deadline.call(`${api} read`, read, context);
             applyMatcher(matcher, lastActual, expected, inverted);
             this.noteAssertion({
               matcher: inverted ? `not.${matcher}` : matcher,
@@ -1018,6 +1118,27 @@ export class LiveFixture implements Fixture {
 /** Room left before the spec timer, so `t.waitFor` reports its own failure. */
 const WAIT_FOR_MARGIN_MS = 100;
 
+/** Extra attempts of an idempotent read the transport dropped, and the backoff step. */
+const TRANSPORT_RETRIES = 2;
+const TRANSPORT_RETRY_DELAY_MS = 100;
+
+/**
+ * Host tiers a host may lack. The fixture resolves them per call, so reading
+ * `t.automation.desktop` never throws.
+ */
+const HOST_TIERS: PropertyKey[] = ["browser", "desktop", "terminal"];
+
+/** Driver reads with no side effect, retried when the transport drops them. */
+const IDEMPOTENT_READS = new Set(["nav.current", "nav.info", "nav.stack", "page.query", "page.screenshot", "lxapps.list", "lxapps.current"]);
+
+function checkpointId(checkpoint: ProfileCheckpoint | string, api: string): string {
+  const id = typeof checkpoint === "string" ? checkpoint : checkpoint?.id;
+  if (typeof id !== "string" || id.length === 0) {
+    throw new TypeError(`${api} needs the checkpoint t.profile.checkpoint() resolved (or its id)`);
+  }
+  return id;
+}
+
 /**
  * `t.waitFor` retries a read that says "not yet" by throwing, but not one
  * that is simply wrong: a TypeError, ReferenceError or SyntaxError will not
@@ -1066,8 +1187,8 @@ function readPageData(scope: LogicScope, name: string | null, path: string | nul
   if (!page) {
     const open = pages.map((candidate) => candidate.route).join(", ") || "none";
     throw new Error(name === null
-      ? "t.app.pageData: no page is open"
-      : `t.app.pageData: page ${JSON.stringify(name)} is not in the page stack (open: ${open})`);
+      ? "t.app.logic.data: no page is open"
+      : `t.app.logic.data: page ${JSON.stringify(name)} is not in the page stack (open: ${open})`);
   }
   return page.data;
 }
@@ -1075,10 +1196,10 @@ function readPageData(scope: LogicScope, name: string | null, path: string | nul
 async function callPageMethod(scope: LogicScope, method: string, args: unknown[]): Promise<unknown> {
   const pages = scope.getCurrentPages();
   const page = pages[pages.length - 1];
-  if (!page) throw new Error("t.app.callPage: no page is open");
+  if (!page) throw new Error("t.app.logic.call: no page is open");
   const member = page[method];
   if (typeof member !== "function") {
-    throw new Error(`t.app.callPage: page ${JSON.stringify(page.route)} has no method ${JSON.stringify(method)}`);
+    throw new Error(`t.app.logic.call: page ${JSON.stringify(page.route)} has no method ${JSON.stringify(method)}`);
   }
   return await member.apply(page, args);
 }
@@ -1092,7 +1213,7 @@ function resolveLocator(
   if (locator instanceof PageLocator) {
     return deadline.call("locator read", () => locator.resolve(undefined, "resolve", attributes), context);
   }
-  throw new Error("t.expect() requires a locator from page.testId() or page.css()");
+  throw new Error("t.expect() requires a locator from view.testId() or view.css()");
 }
 
 /** `toHaveAttribute`'s expectation; formats as the report shows it. */
@@ -1250,8 +1371,10 @@ function guardObject<T extends object>(
       }
       if (typeof value === "function" && !accessor) {
         const name = `${path}${String(prop)}`;
-        const bound = (...args: unknown[]) =>
-          fixture.act(name, summarise(args[0]), () => value.apply(obj, args));
+        const bound = IDEMPOTENT_READS.has(name)
+          ? (...args: unknown[]) =>
+            fixture.act(name, summarise(args[0]), () => fixture.readRetrying(() => value.apply(obj, args)))
+          : (...args: unknown[]) => fixture.act(name, summarise(args[0]), () => value.apply(obj, args));
         cache.set(prop, bound);
         return bound;
       }
@@ -1263,6 +1386,45 @@ function guardObject<T extends object>(
       return value;
     },
   }) as T;
+}
+
+/**
+ * A driver namespace resolved on each call instead of on read. `resolve`
+ * yields the namespace's owner and value; a member read returns another lazy
+ * namespace, and a call resolves the chain, then records the call as an
+ * action. A host that lacks the tier rejects the call, never the read.
+ */
+function lazyDriver(
+  resolve: () => { owner: object; value: unknown },
+  fixture: LiveFixture,
+  path: string,
+): unknown {
+  const cache = new Map<PropertyKey, unknown>();
+  const target = function lazy() {};
+  return new Proxy(target, {
+    get(_, prop) {
+      // Not a thenable: `await t.automation.desktop` must not call `then`.
+      if (prop === "then" || typeof prop === "symbol") return undefined;
+      if (cache.has(prop)) return cache.get(prop);
+      const member = lazyDriver(() => {
+        const { value } = resolve();
+        if (!value || (typeof value !== "object" && typeof value !== "function")) {
+          throw new Error(`${path.slice(0, -1)} is not available on this host`);
+        }
+        return { owner: value as object, value: Reflect.get(value as object, prop, value) };
+      }, fixture, `${path}${String(prop)}.`);
+      cache.set(prop, member);
+      return member;
+    },
+    apply(_, __, args: unknown[]) {
+      const name = path.slice(0, -1);
+      return fixture.act(name, summarise(args[0]), () => {
+        const { owner, value } = resolve();
+        if (typeof value !== "function") throw new TypeError(`${name} is not a function on this host`);
+        return (value as (...params: unknown[]) => unknown).apply(owner, args);
+      });
+    },
+  });
 }
 
 /** The one detail worth showing beside an action: what it acted on. */

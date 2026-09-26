@@ -19,12 +19,13 @@ import type {
   Fixture,
   JsonReport,
   LingxiaTestController,
-  NetworkCall,
+  FailureNetworkCall,
   ProtocolReport,
   RejectExpected,
   RunSubject,
   SpecBody,
   SpecOptions,
+  SpecRequirements,
   SpecStatus,
 } from "./types.js";
 import {
@@ -54,6 +55,14 @@ interface RegisteredSpec {
   app?: string;
   forensics: boolean;
   reason?: string;
+  /** Run inputs the spec needs; unmet, it is skipped. */
+  requires: { args: string[]; openapi: boolean };
+  /**
+   * The options the spec was registered with. The fields above are settled
+   * from them and its file's `spec.configure()` defaults when the run starts
+   * (the file is only known then).
+   */
+  own: SpecOptions;
   /** `spec.fail` only: the failure the body is expected to produce. */
   expected?: RejectExpected;
   annotation: Annotation;
@@ -75,7 +84,7 @@ interface Hook {
 /** A `spec.configure()` call, scoped to its file like a hook. */
 interface FileConfig {
   frames: StackFrame[];
-  tags: string[];
+  options: FileOptions;
 }
 
 const specs: RegisteredSpec[] = [];
@@ -119,6 +128,72 @@ function restoreProfileKeep(option: SpecOptions["restoreProfile"]): string[] | u
   return [...keep];
 }
 
+function validateRequires(requires: unknown, where: string): { args: string[]; openapi: boolean } {
+  if (requires === undefined) return { args: [], openapi: false };
+  if (!requires || typeof requires !== "object") throw new TypeError(`${where} requires must be an object`);
+  const { args, openapi } = requires as SpecRequirements;
+  if (args !== undefined && (!Array.isArray(args) || args.some((key) => typeof key !== "string" || key.length === 0))) {
+    throw new TypeError(`${where} requires.args must be an array of non-empty --arg keys`);
+  }
+  if (openapi !== undefined && typeof openapi !== "boolean") throw new TypeError(`${where} requires.openapi must be a boolean`);
+  return { args: [...new Set(args ?? [])], openapi: openapi === true };
+}
+
+/** Checks what `spec()` and `spec.configure()` accept alike; throws on the first problem. */
+function validateOptions(options: FileOptions, where: string): void {
+  restoreProfileKeep(options.restoreProfile);
+  for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
+    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${where} ${name} must be a positive finite number`);
+  }
+  validateTags(options.tags, where);
+  validateRequires(options.requires, where);
+  if (options.covers !== undefined && (!Array.isArray(options.covers) || options.covers.some((id) => typeof id !== "string"))) {
+    throw new TypeError(`${where} covers must be an array of strings`);
+  }
+}
+
+/**
+ * The spec's settings: its own options over its file's `spec.configure()`
+ * defaults. `tags`, `covers` and `requires` add to the file's.
+ */
+function settle(item: RegisteredSpec, file: FileOptions | undefined): void {
+  const own = item.own;
+  const pick = <K extends keyof FileOptions>(key: K): FileOptions[K] => own[key] !== undefined ? own[key] : file?.[key];
+  const restoreProfile = pick("restoreProfile");
+  const restoreKeep = restoreProfileKeep(restoreProfile);
+  const fileRequires = validateRequires(file?.requires, "spec.configure()");
+  const ownRequires = validateRequires(own.requires, `spec ${JSON.stringify(item.title)}`);
+  item.covers = [...new Set([...(file?.covers ?? []), ...(own.covers ?? [])])];
+  item.tags = [...new Set([...validateTags(file?.tags, "spec.configure()"), ...validateTags(own.tags, `spec ${JSON.stringify(item.title)}`)])];
+  item.timeout = pick("timeout") ?? DEFAULT_SPEC_TIMEOUT_MS;
+  item.timeoutCleanup = pick("timeoutCleanup");
+  item.fresh = pick("fresh") === true;
+  item.restoreProfile = restoreProfile === true || restoreKeep !== undefined;
+  item.restoreKeep = restoreKeep;
+  item.app = pick("app");
+  item.forensics = pick("forensics") !== false;
+  item.reason = pick("reason");
+  item.requires = {
+    args: [...new Set([...fileRequires.args, ...ownRequires.args])],
+    openapi: fileRequires.openapi || ownRequires.openapi,
+  };
+}
+
+/** Why the run cannot give the spec what it `requires`, or `undefined`. */
+function unmetRequirements(
+  item: RegisteredSpec,
+  args: Readonly<Record<string, string | undefined>>,
+  openapi: boolean,
+): string | undefined {
+  const missing = item.requires.args.filter((key) => args[key] === undefined);
+  const needs: string[] = [];
+  if (missing.length > 0) {
+    needs.push(missing.map((key) => `--arg ${key}=<value>`).join(", ") + " (or --secret-arg)");
+  }
+  if (item.requires.openapi && !openapi) needs.push("--openapi <document>");
+  return needs.length === 0 ? undefined : `Not run: requires ${needs.join(" and ")}.`;
+}
+
 function register(annotation: Annotation, title: string, optionsOrBody: SpecOptions | SpecBody, maybeBody?: SpecBody): void {
   if (typeof title !== "string" || title.length === 0) {
     throw new TypeError("spec() requires a non-empty title");
@@ -132,34 +207,31 @@ function register(annotation: Annotation, title: string, optionsOrBody: SpecOpti
       throw new TypeError("spec.fail `expected` needs a code or a message");
     }
   }
-  const restoreKeep = restoreProfileKeep(options.restoreProfile);
-  for (const [name, value] of Object.entries({ timeout: options.timeout, timeoutCleanup: options.timeoutCleanup })) {
-    if (value !== undefined && (!Number.isFinite(value) || value <= 0)) throw new TypeError(`${name} must be a positive finite number`);
-  }
+  validateOptions(options, `spec ${JSON.stringify(title)}`);
   // The bundle map is installed after the modules run, so keep the raw frames;
   // the authored file is only knowable once the run starts. `frames[0]` is a
   // frame inside this package, identical for every caller, so it can order
   // registrations but must never stand in for identity.
-  const tags = validateTags(options.tags, `spec ${JSON.stringify(title)}`);
   const frames = captureFrames();
-  specs.push({
+  const item: RegisteredSpec = {
     title,
     id: options.id,
-    covers: [...(options.covers ?? [])],
-    tags,
-    timeout: options.timeout ?? DEFAULT_SPEC_TIMEOUT_MS,
-    timeoutCleanup: options.timeoutCleanup,
-    fresh: options.fresh === true,
-    restoreProfile: options.restoreProfile === true || restoreKeep !== undefined,
-    restoreKeep,
-    app: options.app,
-    forensics: options.forensics !== false,
-    reason: options.reason,
+    covers: [],
+    tags: [],
+    timeout: DEFAULT_SPEC_TIMEOUT_MS,
+    fresh: false,
+    restoreProfile: false,
+    forensics: true,
+    requires: { args: [], openapi: false },
+    own: { ...options },
     expected,
     annotation,
     body,
     frames,
-  });
+  };
+  // Settled again at run start, with the file's defaults.
+  settle(item, undefined);
+  specs.push(item);
 }
 
 const spec: SpecApi = Object.assign(
@@ -197,10 +269,25 @@ const spec: SpecApi = Object.assign(
     },
     configure(options: FileOptions): void {
       if (!options || typeof options !== "object") throw new TypeError("spec.configure() requires an options object");
-      fileConfigs.push({ frames: captureFrames(), tags: validateTags(options.tags, "spec.configure()") });
+      if ((options as SpecOptions).id !== undefined) throw new TypeError("spec.configure() cannot set `id`: ids are per spec");
+      validateOptions(options, "spec.configure()");
+      fileConfigs.push({ frames: captureFrames(), options: { ...options } });
     },
   },
 );
+
+/** Two `spec.configure()` calls of one file: later keys win; lists add up. */
+function mergeFileOptions(previous: FileOptions | undefined, next: FileOptions): FileOptions {
+  if (!previous) return { ...next };
+  const merged: FileOptions = { ...previous, ...Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)) };
+  merged.tags = [...new Set([...(previous.tags ?? []), ...(next.tags ?? [])])];
+  merged.covers = [...new Set([...(previous.covers ?? []), ...(next.covers ?? [])])];
+  merged.requires = {
+    args: [...new Set([...(previous.requires?.args ?? []), ...(next.requires?.args ?? [])])],
+    openapi: previous.requires?.openapi === true || next.requires?.openapi === true,
+  };
+  return merged;
+}
 
 function sourceOf(item: RegisteredSpec): { file: string; line: number } {
   const origin = resolveOrigin(item.frames);
@@ -450,7 +537,7 @@ async function run(): Promise<ProtocolReport> {
   setActiveOpenApi(openapi);
   const ledger = openapi ? new ContractLedger(openapi) : undefined;
   const specFiles = new Set(specs.map((item) => sourceOf(item).file));
-  const fileTags = new Map<string, string[]>();
+  const fileOptions = new Map<string, FileOptions>();
   for (const config of fileConfigs) {
     const file = resolveOwner(config.frames, specFiles).file;
     if (!specFiles.has(file)) {
@@ -458,9 +545,10 @@ async function run(): Promise<ProtocolReport> {
         message: `spec.configure() called from ${file} applies to no spec: no spec file is on its call stack. Call it from a spec file's top level.` });
       continue;
     }
-    fileTags.set(file, [...new Set([...(fileTags.get(file) ?? []), ...config.tags])]);
+    fileOptions.set(file, mergeFileOptions(fileOptions.get(file), config.options));
   }
-  const tagsOf = (item: RegisteredSpec) => [...new Set([...(fileTags.get(sourceOf(item).file) ?? []), ...item.tags])];
+  for (const item of specs) settle(item, fileOptions.get(sourceOf(item).file));
+  const tagsOf = (item: RegisteredSpec) => item.tags;
 
   const retries = Number(control.retries ?? 0);
   if (!Number.isInteger(retries) || retries < 0 || retries > 10) throw new Error("retries must be between 0 and 10");
@@ -582,9 +670,13 @@ async function run(): Promise<ProtocolReport> {
     });
 
     const caseStarted = Date.now();
-    if (budgetExhausted || contaminated || item.annotation === "skip" || item.annotation === "fixme") {
+    const unmet = item.annotation === "skip" || item.annotation === "fixme"
+      ? undefined
+      : unmetRequirements(item, args, openapi !== undefined);
+    if (budgetExhausted || contaminated || unmet !== undefined || item.annotation === "skip" || item.annotation === "fixme") {
       if (contaminated) record.reason = contaminationReason ?? "Not run: a previous spec left asynchronous work pending; restart the run.";
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
+      else if (unmet !== undefined) record.reason = unmet;
       record.status = "skipped";
       record.duration_ms = Date.now() - caseStarted;
       cases.push(record);
@@ -1024,11 +1116,11 @@ const RECORDED_SCENARIO = "network.scenario.json";
 /** Logic network calls a failed spec reports: the last 20 since it started. */
 const REPORTED_NETWORK_CALLS = 20;
 
-function networkCalls(host: ResolvedHost, since: number): NetworkCall[] {
+function networkCalls(host: ResolvedHost, since: number): FailureNetworkCall[] {
   if (!host.networkLog) return [];
   try {
     const calls = host.networkLog(since, REPORTED_NETWORK_CALLS);
-    return Array.isArray(calls) ? (calls as NetworkCall[]).slice(-REPORTED_NETWORK_CALLS) : [];
+    return Array.isArray(calls) ? (calls as FailureNetworkCall[]).slice(-REPORTED_NETWORK_CALLS) : [];
   } catch {
     // The call log is evidence; it never replaces the failure.
     return [];
@@ -1039,9 +1131,9 @@ function networkCalls(host: ResolvedHost, since: number): NetworkCall[] {
 const SCENARIO_EVIDENCE_MS = 2_000;
 
 /** The Logic calls and the scenario's Function calls, newest 20 by time. */
-function withFunctionCalls(calls: NetworkCall[], functions: ScenarioCall[]): NetworkCall[] {
+function withFunctionCalls(calls: FailureNetworkCall[], functions: ScenarioCall[]): FailureNetworkCall[] {
   if (functions.length === 0) return calls;
-  const converted: NetworkCall[] = functions.map((call) => ({
+  const converted: FailureNetworkCall[] = functions.map((call) => ({
     time: call.time,
     kind: "function",
     method: "",

@@ -28,18 +28,18 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
   const seen = [];
 
   const result = await runOne(async (t) => {
-    seen.push(await t.app.eval(({ lx, getApp, getCurrentPages }, extra, label) => ({
+    seen.push(await t.app.logic.eval(({ lx, getApp, getCurrentPages }, extra, label) => ({
       path: lx.env.USER_DATA_PATH,
       app: getApp().name,
       count: getCurrentPages()[0].data.count + extra.add,
       label,
     }), { add: 3 }, "x \"y"));
     // A leading comment, which the string form's statement detection misses.
-    seen.push(await t.app.eval(() => {
+    seen.push(await t.app.logic.eval(() => {
       // just a comment first
       return 7;
     }));
-    seen.push(await t.app.eval(async () => undefined));
+    seen.push(await t.app.logic.eval(async () => undefined));
   });
 
   assert.equal(result.status, "passed", JSON.stringify(result.error));
@@ -48,13 +48,13 @@ test("function eval runs in Logic with the scope and JSON args", async () => {
     7,
     undefined,
   ]);
-  const action = result.steps.find((step) => step.name === "app.eval");
+  const action = result.steps.find((step) => step.name === "logic.eval");
   assert.match(action.detail, /^\(\{ lx, getApp, getCurrentPages \}, extra, label\) =>/);
   // The script sent is one call expression, not a statement body.
   assert.match(world.evaluated[0], /^\(\(__lxFn, __lxArgs\) => __lxFn\(/);
 });
 
-test("the string form still works beside the function form", async () => {
+test("the deprecated string form still works on t.app.eval", async () => {
   const world = createWorld();
   world.setEval("return 1", 1);
   installFakeHost(world);
@@ -71,7 +71,7 @@ test("a closure over spec variables fails with an explanation", async () => {
   installFakeHost(world);
   const specLocal = 42;
   const result = await runOne(async (t) => {
-    await t.app.eval(() => specLocal + 1);
+    await t.app.logic.eval(() => specLocal + 1);
   });
   assert.equal(result.status, "failed");
   assert.equal(result.error.name, "ReferenceError");
@@ -88,7 +88,7 @@ test("methods and bound functions are rejected before anything is sent", async (
   const result = await runOne(async (t) => {
     for (const fn of [holder.read, (() => 1).bind(null)]) {
       try {
-        await t.app.eval(fn);
+        await t.app.logic.eval(fn);
       } catch (error) {
         messages.push(error.message);
       }
@@ -100,20 +100,44 @@ test("methods and bound functions are rejected before anything is sent", async (
   assert.deepEqual(world.evaluated, []);
 });
 
-test("page function eval gets document and window", async () => {
+test("view function eval gets document and window", async () => {
   const world = createWorld();
   world.usePage({ document: { title: "Home" }, window: { innerWidth: 390 } });
   installFakeHost(world);
   let value;
   const result = await runOne(async (t) => {
-    value = await t.app.page.eval(({ document, window }, suffix) => `${document.title}:${window.innerWidth}${suffix}`, "!");
+    value = await t.app.view.eval(({ document, window }, suffix) => `${document.title}:${window.innerWidth}${suffix}`, "!");
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.equal(value, "Home:390!");
-  assert.ok(result.steps.some((step) => step.name === "page.eval"));
+  assert.ok(result.steps.some((step) => step.name === "view.eval"));
 });
 
-test("pageData reads the current or a named page, callPage invokes a method", async () => {
+test("the fixture takes eval functions; a script string names the raw driver", async () => {
+  const world = logicWorld();
+  world.usePage({ document: { title: "Home" }, window: {} });
+  installFakeHost(world);
+  const messages = [];
+  const result = await runOne(async (t) => {
+    for (const call of [() => t.app.logic.eval({ script: "1" }), () => t.app.view.eval({ script: "1" })]) {
+      try {
+        await call();
+      } catch (error) {
+        messages.push(error.message);
+      }
+    }
+    // The deprecated page alias keeps both forms.
+    messages.push(await t.app.page.eval(({ document }) => document.title));
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.match(messages[0], /t\.app\.logic\.eval\(fn, \.\.\.args\) takes a function.*lx\.automation\(\)\.lxapp\(\)\.eval\(\{ script \}\)/);
+  assert.match(messages[1], /t\.app\.view\.eval\(fn, \.\.\.args\) takes a function/);
+  assert.equal(messages[2], "Home");
+  // Only the page alias reached a target.
+  assert.equal(world.evaluated.length, 1);
+});
+
+test("logic.data reads the current or a named page, logic.call invokes a method", async () => {
   const calls = [];
   const pages = [
     { route: "pages/home/index", data: { greeting: "hi" } },
@@ -130,12 +154,12 @@ test("pageData reads the current or a named page, callPage invokes a method", as
   installFakeHost(world);
   const seen = {};
   const result = await runOne(async (t) => {
-    seen.current = await t.app.pageData();
-    seen.home = await t.app.pageData({ page: "home" });
-    seen.byRoute = await t.app.pageData({ page: "pages/devices/index" });
-    seen.renamed = await t.app.callPage("rename", "d1", { name: "Office" });
-    await t.reject(() => t.app.pageData({ page: "settings" }), { message: "not in the page stack" });
-    await t.reject(() => t.app.callPage("missing"), { message: 'has no method "missing"' });
+    seen.current = await t.app.logic.data();
+    seen.home = await t.app.logic.data({ page: "home" });
+    seen.byRoute = await t.app.logic.data({ page: "pages/devices/index" });
+    seen.renamed = await t.app.logic.call("rename", "d1", { name: "Office" });
+    await t.reject(() => t.app.logic.data({ page: "settings" }), { message: "t.app.logic.data: page \"settings\" is not in the page stack" });
+    await t.reject(() => t.app.logic.call("missing"), { message: 't.app.logic.call: page "/pages/devices/index" has no method "missing"' });
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.deepEqual(seen.current, { devices: [{ id: "d1" }] });
@@ -144,10 +168,10 @@ test("pageData reads the current or a named page, callPage invokes a method", as
   assert.deepEqual(seen.renamed, { ok: true, id: "d1" });
   assert.deepEqual(calls, [["d1", { name: "Office" }]]);
   const names = result.steps.map((step) => step.name);
-  assert.ok(names.includes("app.pageData"));
-  assert.ok(names.includes("app.callPage"));
+  assert.ok(names.includes("logic.data"));
+  assert.ok(names.includes("logic.call"));
   // One row per call: the underlying eval is not traced twice.
-  assert.ok(!names.includes("app.eval"));
+  assert.ok(!names.includes("logic.eval"));
 });
 
 test("waitFor resolves to the accepted value and traces one row", async () => {
@@ -159,7 +183,7 @@ test("waitFor resolves to the accepted value and traces one row", async () => {
       reads += 1;
       if (reads < 2) throw new Error("not loaded yet");
       return reads;
-    }, (count) => count >= 4, { timeout: 1_000, interval: 5 });
+    }, { until: (count) => count >= 4, timeout: 1_000, interval: 5 });
   });
   assert.equal(result.status, "passed", JSON.stringify(result.error));
   assert.equal(value, 4);
@@ -173,7 +197,7 @@ test("waitFor defaults to a truthy value", async () => {
   let reads = 0;
   let value;
   const result = await runOne(async (t) => {
-    value = await t.waitFor(() => (++reads >= 3 ? "ready" : ""), undefined, { interval: 5 });
+    value = await t.waitFor(() => (++reads >= 3 ? "ready" : ""), { interval: 5 });
   });
   assert.equal(result.status, "passed");
   assert.equal(value, "ready");
@@ -202,7 +226,7 @@ test("waitFor honours retryIf", async () => {
     await t.waitFor(() => {
       reads += 1;
       throw new Error("permanent");
-    }, undefined, { retryIf: () => false });
+    }, { retryIf: () => false });
   });
   assert.equal(result.status, "failed");
   assert.equal(result.error.message, "permanent");
@@ -212,17 +236,19 @@ test("waitFor honours retryIf", async () => {
 test("waitFor timeout names the last value and the last error", async () => {
   installFakeHost(createWorld());
   const result = await runOne(async (t) => {
-    await t.waitFor(() => ({ state: "loading" }), (value) => value.state === "done", { timeout: 60, interval: 5 });
+    await t.waitFor(() => ({ state: "loading" }), { until: (value) => value.state === "done", timeout: 60, interval: 5 });
   });
   assert.equal(result.status, "failed");
+  assert.equal(result.error.name, "TimeoutError");
+  assert.equal(result.error.code, "E_TIMEOUT");
   assert.match(result.error.message, /t\.waitFor timed out after \d+ms/);
   assert.match(result.error.message, /Last value: .*loading/);
-  assert.match(result.error.message, /rejected by accept/);
+  assert.match(result.error.message, /rejected by until/);
 
   reset();
   installFakeHost(createWorld());
   const errored = await runOne(async (t) => {
-    await t.waitFor(() => { throw new Error("503 from status"); }, undefined, { timeout: 60, interval: 5 });
+    await t.waitFor(() => { throw new Error("503 from status"); }, { timeout: 60, interval: 5 });
   });
   assert.match(errored.error.message, /Last error: Error: 503 from status/);
 });
@@ -231,13 +257,22 @@ test("waitFor is clamped to the remaining spec budget", async () => {
   installFakeHost(createWorld());
   const started = Date.now();
   const result = await runOne(async (t) => {
-    await t.waitFor(() => false, undefined, { timeout: 10_000, interval: 5 });
+    await t.waitFor(() => false, { timeout: 10_000, interval: 5 });
   }, { timeout: 400 });
   // The wait's own failure, carrying its last value, beats the spec timer.
   assert.equal(result.status, "failed");
   assert.match(result.error.message, /Clamped from 10000ms/);
   assert.match(result.error.message, /Last value: false/);
   assert.ok(Date.now() - started < 2_000);
+});
+
+test("waitFor refuses a positional acceptance callback", async () => {
+  installFakeHost(createWorld());
+  const result = await runOne(async (t) => {
+    await t.waitFor(() => 1, (value) => value > 0);
+  });
+  assert.equal(result.status, "failed");
+  assert.match(result.error.message, /takes its acceptance test as `until`/);
 });
 
 test("t.arg reads, defaults, or names the missing --arg", async () => {

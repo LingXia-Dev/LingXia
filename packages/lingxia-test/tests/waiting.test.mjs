@@ -104,7 +104,7 @@ test("timeout aborts later fixture operations", async () => {
         ops.push(error.name);
       }
       try {
-        await t.expect.poll(() => 1).toBe(1);
+        await t.expect(() => 1).toBe(1);
         ops.push("expected");
       } catch (error) {
         ops.push(error.name);

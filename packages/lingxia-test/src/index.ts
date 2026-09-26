@@ -1,6 +1,7 @@
 export { spec, expect, run, reset, trackPublicSurface } from "./runtime.js";
 export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
+export { TEST_ERROR_CODES } from "./errors.js";
 export { renderJUnit } from "./junit.js";
 export { PUBLIC_CAPABILITIES } from "./inventory.js";
 export type { Capability, CapabilityLayer } from "./inventory.js";
@@ -34,9 +35,28 @@ export type {
   LogicFunction,
   LogicPage,
   LogicScope,
-  PageDataOptions,
-  PageFunction,
-  PageScope,
+  AnyLogicPage,
+  LogicDataOptions,
+  LogicMethodResult,
+  LogicPageMethod,
+  NetworkCall,
+  FailureNetworkCall,
+  ProfileCheckpoint,
+  ScenarioCallTarget,
+  SpecRequirements,
+  TestClock,
+  TestErrorCode,
+  TestLogic,
+  TestNetwork,
+  TestRoute,
+  TestScenario,
+  TestView,
+  ViewDocument,
+  ViewElement,
+  ViewFunction,
+  ViewScope,
+  ViewWindow,
+  WaitForCallOptions,
   ProfileFixture,
   ProfileRestoreOptions,
   RestoreProfileOptions,
@@ -49,7 +69,6 @@ export type {
   LocatorState,
   LocatorWaitOptions,
   Matchers,
-  NetworkCall,
   OpenApiRun,
   ScenarioReport,
   OpenApiSummary,
@@ -66,4 +85,4 @@ export type {
   TestPage,
   WaitForOptions,
 } from "./types.js";
-export type { AutomationErrorCode } from "@lingxia/types/automation";
+export type { AutomationErrorCode, ClockAdvance, ClockState } from "@lingxia/types/automation";

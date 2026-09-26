@@ -124,10 +124,16 @@ test("t.profile re-selects the app after a switch", async () => {
 
   spec("manual", async (t) => {
     const before = selections;
-    const id = await t.profile.checkpoint();
-    await t.app.profile.restore(id);
-    await t.profile.drop(id);
+    const checkpoint = await t.profile.checkpoint();
+    assert.deepEqual(checkpoint, { id: "cp-1" });
+    assert.deepEqual(await t.app.profile.restore(checkpoint), { kept: [] });
+    assert.equal(await t.profile.drop(checkpoint), undefined);
     assert.equal(selections - before, 2, "checkpoint and restore each re-select the app");
+    // The id alone still names it.
+    const again = await t.profile.checkpoint();
+    await t.profile.restore(again.id);
+    await t.profile.drop(again.id);
+    await t.reject(() => t.profile.restore({}), { message: /needs the checkpoint t\.profile\.checkpoint\(\) resolved/ });
   });
 
   const report = await run();

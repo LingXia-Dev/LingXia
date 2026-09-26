@@ -347,7 +347,7 @@ test("report json and html include run metadata, steps, expected/actual, and no 
   assert.doesNotMatch(html, /\u00B7/);
 });
 
-test("t.expect.poll retries an arbitrary read", async () => {
+test("t.expect(fn) retries an arbitrary read", async () => {
   const world = createWorld();
   installFakeHost(world);
   let value = 0;
@@ -355,7 +355,7 @@ test("t.expect.poll retries an arbitrary read", async () => {
     setTimeout(() => {
       value = 3;
     }, 30);
-    await t.expect.poll(() => value, { timeout: 400 }).toBe(3);
+    await t.expect(() => value, { timeout: 400 }).toBe(3);
   });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.passed, 1);
@@ -681,7 +681,7 @@ test("a retry loop records one action, not one per poll", async () => {
 
   spec("polls", { id: "TRACE-2" }, async (t) => {
     await t.step("wait for the value", async () => {
-      await t.expect.poll(async () => {
+      await t.expect(async () => {
         reads += 1;
         await t.app.eval({ script: "return 1;" });
         return reads;
@@ -703,7 +703,7 @@ test("a hand-rolled poll collapses into one row with a count", async () => {
   const { attachments } = installFakeHost(world);
 
   spec("polls by hand", { id: "TRACE-3" }, async (t) => {
-    // No t.expect.poll here — the shape a project's own helper takes.
+    // No t.expect(fn) here — the shape a project's own helper takes.
     for (let attempt = 0; attempt < 6; attempt += 1) {
       await t.app.nav.current();
     }

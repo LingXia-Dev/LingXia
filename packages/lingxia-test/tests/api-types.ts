@@ -1,4 +1,8 @@
-import { spec, expect, type AutomationErrorCode, type FailureRecord, type JsonReport, type TagSummary, type TestApp } from '../dist/index.js';
+import {
+  spec, expect, TEST_ERROR_CODES, TimeoutError,
+  type AnyLogicPage, type AutomationErrorCode, type ClockAdvance, type ClockState, type FailureRecord, type JsonReport,
+  type LogicPage, type NetworkCall, type ProfileCheckpoint, type TagSummary, type TestApp, type TestErrorCode,
+} from '../dist/index.js';
 import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
@@ -77,48 +81,99 @@ spec('plain spec', { expected: { code: 'E_QUOTA' } }, async () => {});
 
 spec('typed Logic access', async t => {
   // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
-  const count: number = await t.app.eval(({ getCurrentPages }) => getCurrentPages().length);
+  const count: number = await t.app.logic.eval(({ getCurrentPages }) => getCurrentPages().length);
   count.toFixed();
-  const route: string = await t.app.eval(async ({ getCurrentPages }, index: number) => {
+  const route: string = await t.app.logic.eval(async ({ getCurrentPages }, index: number) => {
     const pages = getCurrentPages();
     return pages[pages.length - 1 - index].route;
   }, 0);
   route.toUpperCase();
-  const envPath = await t.app.eval(({ lx }) => lx.env.USER_DATA_PATH);
+  const envPath = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
   envPath.valueOf();
   // @ts-expect-error Logic API members are checked against the published `lx`.
-  await t.app.eval(({ lx }) => lx.noSuchApi());
+  await t.app.logic.eval(({ lx }) => lx.noSuchApi());
   // @ts-expect-error Arguments must be JSON values; functions do not cross the boundary.
-  await t.app.eval((_scope, callback: () => void) => callback(), () => {});
+  await t.app.logic.eval((_scope, callback: () => void) => callback(), () => {});
   // @ts-expect-error Arguments are checked against the function's parameters.
-  await t.app.eval((_scope, id: string) => id, 42);
-  // The string form still works and keeps its declared result type.
+  await t.app.logic.eval((_scope, id: string) => id, 42);
+  // @ts-expect-error The fixture takes functions; a script string is for the raw driver.
+  await t.app.logic.eval({ script: 'return true' });
+  // 0.18's string form keeps working on `t.app.eval`, deprecated.
   const ready = await t.app.eval<boolean>({ script: 'return true' });
   ready.valueOf();
+  // @ts-expect-error `t.app.eval` keeps only the deprecated string form.
+  await t.app.eval(() => 1);
 
-  // Page (WebView) eval: without the DOM lib, `document` is unknown and needs a cast.
-  const title = await t.app.page.eval(({ document }) => (document as { title: string }).title);
+  // View (WebView) eval: without the DOM lib, `document` is a minimal ViewDocument.
+  const title: string = await t.app.view.eval(({ document }) => document.title);
   title.toUpperCase();
-  // @ts-expect-error Without the DOM lib, `document` is unknown.
-  await t.app.page.eval(({ document }) => document.title);
+  const label = await t.app.view.eval(({ document }, id: string) => document.querySelector(`#${id}`)?.textContent ?? null, 'save');
+  label?.toUpperCase();
+  const value = await t.app.view.eval(({ document }) => document.querySelector('input')?.value);
+  value?.toUpperCase();
+  const disabled = await t.app.view.eval(({ document }) => document.querySelector('button')?.getAttribute('aria-disabled'));
+  disabled?.toUpperCase();
+  // @ts-expect-error ViewDocument is minimal: no DOM writes without the DOM lib.
+  await t.app.view.eval(({ document }) => document.write('x'));
+  // @ts-expect-error The view takes functions; a script string is for the raw driver.
+  await t.app.view.eval({ script: '1 + 1' });
+  // The deprecated `t.app.page` still takes both forms.
   const raw = await t.app.page.eval<number>({ script: '1 + 1' });
   raw.toFixed();
+  const viaPage: string = await t.app.page.eval(({ document }) => document.title);
+  viaPage.toUpperCase();
+  // @ts-expect-error The view exposes locators, not raw element methods.
+  await t.app.view.click({ css: '#save' });
+  // @ts-expect-error The view exposes locators, not raw element methods.
+  await t.app.view.waitFor({ css: '#save' });
+  await t.app.view.screenshot();
 
   interface Devices { devices: { id: string }[] }
-  const data = await t.app.pageData<Devices>({ page: 'devices' });
+  const data = await t.app.logic.data<Devices>({ page: 'devices' });
   data.devices[0].id.toUpperCase();
-  const renamed = await t.app.callPage<boolean>('rename', 'dev-1', { name: 'Office' });
-  renamed.valueOf();
-  // @ts-expect-error callPage arguments must be JSON values.
-  await t.app.callPage('rename', undefined);
+  // Untyped pages take any method name; the result is unknown.
+  const renamed = await t.app.logic.call('rename', 'dev-1', { name: 'Office' });
+  void renamed;
+  // @ts-expect-error call arguments must be JSON values.
+  await t.app.logic.call('rename', undefined);
+  // A page type restricts the method name and types the result.
+  interface DevicesPage extends LogicPage<Devices> {
+    rename(id: string, patch: { name: string }): Promise<boolean>;
+    count(): number;
+  }
+  const done: boolean = await t.app.logic.call<DevicesPage, 'rename'>('rename', 'dev-1', { name: 'Office' });
+  done.valueOf();
+  const either = await t.app.logic.call<DevicesPage>('count');
+  void either;
+  // @ts-expect-error The method must be one the page type declares.
+  await t.app.logic.call<DevicesPage>('remove');
+  // @ts-expect-error `AnyLogicPage` is the untyped default; it still has to be a page.
+  await t.app.logic.call<{ route: number }>('x');
+  const untyped: AnyLogicPage = null as unknown as AnyLogicPage;
+  void untyped.anything;
 
-  // waitFor resolves to the accepted value.
-  const loaded: Devices = await t.waitFor(() => t.app.pageData<Devices>(), (d) => d.devices.length > 0, { timeout: 2_000 });
+  // waitFor resolves to the accepted value; the test is `until`.
+  const loaded: Devices = await t.waitFor(() => t.app.logic.data<Devices>(), { until: (d) => d.devices.length > 0, timeout: 2_000 });
   loaded.devices.length.toFixed();
   const truthy: string = await t.waitFor(async () => 'ok');
   truthy.toUpperCase();
-  // @ts-expect-error accept receives the read value.
-  await t.waitFor(() => 1, (value: string) => value.length > 0);
+  // @ts-expect-error until receives the read value.
+  await t.waitFor(() => 1, { until: (value: string) => value.length > 0 });
+  // @ts-expect-error No positional callback: pass { until }.
+  await t.waitFor(() => 1, (value: number) => value > 0);
+
+  // One waiting ladder: t.expect(locator) and t.expect(fn) retry, t.expect(value) checks once.
+  await t.expect(t.app.view.testId('save')).toBeVisible();
+  await t.expect(() => t.app.logic.data<Devices>(), { timeout: 2_000 }).toEqual({ devices: [] });
+  await t.expect(async () => 3).toBeGreaterThan(2);
+  t.expect(3).toBe(3);
+  t.expect({ id: 'd1' }).toMatchSchema('Device');
+  // @ts-expect-error A once-check is synchronous: it returns no promise to await on.
+  t.expect(3).toBe(3).then;
+  // @ts-expect-error Locator matchers are not value matchers.
+  await t.expect(t.app.view.testId('save')).toBe(1);
+  // The deprecated alias keeps working.
+  await t.expect.poll(() => 1).toBe(1);
 
   // Args may be missing; t.arg narrows or throws.
   // @ts-expect-error A missing arg is undefined, not a string.
@@ -132,33 +187,73 @@ spec('typed Logic access', async t => {
   void baseUrl; void mode;
 });
 
-// Fixture drivers stay assignable to the raw drivers, so shared helpers typed
-// against `@lingxia/types/automation` keep accepting them.
+// One call record across routes, network and scenarios; removers resolve void.
+spec('network calls', async (t) => {
+  const route = await t.app.network.route('**/devices', { json: [] });
+  const calls: NetworkCall[] = await route.calls();
+  calls[0]?.answeredBy satisfies 'rule' | 'route' | 'real' | 'companion';
+  const first: NetworkCall = await route.waitForCall({ timeout: 2_000 });
+  first.method?.toUpperCase();
+  first.status?.toFixed();
+  const removed: void = await route.unroute();
+  const all: void = await t.app.network.unrouteAll();
+  const spec: NetworkCall[] = await t.app.network.calls();
+  const scenario = await t.app.scenario({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
+  const hit: NetworkCall = await scenario.waitForCall({ http: 'GET **/x' });
+  const fn: NetworkCall = await scenario.waitForCall({ function: 'orders.submit' }, { timeout: 1_000 });
+  hit.rule?.toFixed(); fn.function?.toUpperCase();
+  const scenarioCalls: NetworkCall[] = await scenario.calls({ rule: 1 });
+  // @ts-expect-error A target is an http rule, a function or a rule number.
+  await scenario.waitForCall({ url: '**/x' });
+  const gone: void = await scenario.remove();
+  // @ts-expect-error The raw driver's `requests()` is `calls()` on the fixture.
+  await route.requests();
+  void removed; void all; void spec; void scenarioCalls; void gone;
+});
+
+// The deprecated `t.app.page` stays assignable to the raw page driver, so
+// helpers typed against it keep accepting it. The fixture app has its own
+// shapes (calls, clock state, checkpoints) and is not a raw `LxAppDriver`.
 declare const fixtureApp: TestApp;
-const asRawApp: LxAppDriver = fixtureApp;
 const asRawPage: PageDriver = fixtureApp.page;
+// @ts-expect-error Fixture network, clock and profile resolve their own shapes.
+const asRawApp: LxAppDriver = fixtureApp;
 void asRawApp; void asRawPage;
 
 spec.fail('known inactive page', { expected: { code: 'E_PAGE_NOT_ACTIVE' } }, async () => {});
+spec.fail('known timeout', { expected: { code: 'E_TIMEOUT' } }, async () => {});
+spec.fail('known contract break', { expected: { code: 'E_OPENAPI_CONTRACT' } }, async () => {});
 const knownCode: AutomationErrorCode = AUTOMATION_ERROR_CODES[0];
 // @ts-expect-error Automation codes are a closed union.
 const mistypedCode: AutomationErrorCode = 'E_PAGE_INACTIVE';
+const testCodes: readonly TestErrorCode[] = TEST_ERROR_CODES;
+const timeoutCode: 'E_TIMEOUT' = new TimeoutError('x').code;
+const asTestCode: TestErrorCode = knownCode;
+const skipped: TestErrorCode = 'E_SKIPPED';
+// @ts-expect-error Test error codes are a closed union.
+const mistypedTestCode: TestErrorCode = 'E_TIMED_OUT';
+void testCodes; void timeoutCode; void asTestCode; void skipped; void mistypedTestCode;
 declare const failure: FailureRecord;
 failure.page?.instanceId?.toUpperCase();
 
 // Test clock and rollback that keeps chosen storage keys.
 spec('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
-  const started: number = await t.app.clock.install({ now: new Date(0) });
-  await t.app.clock.install({ now: '2030-01-01T00:00:00Z' });
-  const { now, fired, pending } = await t.app.clock.tick(3_000);
-  await t.app.clock.runAll({ maxTimers: 10 });
-  await t.app.clock.setSystemTime(Date.now());
-  const { uninstalled, dropped } = await t.app.clock.uninstall();
-  const { kept } = await t.profile.restore('cp', { keep: ['auth.*'] });
+  const started: ClockState = await t.app.clock.install({ now: new Date(0) });
+  started.now.toFixed(); started.pending.toFixed();
+  const { now, fired, pending }: ClockAdvance = await t.app.clock.tick(3_000);
+  const ran: ClockAdvance = await t.app.clock.runAll({ maxTimers: 10 });
+  const set: ClockState = await t.app.clock.setSystemTime(Date.now());
+  const off: void = await t.app.clock.uninstall();
+  const checkpoint: ProfileCheckpoint = await t.profile.checkpoint();
+  const { kept } = await t.profile.restore(checkpoint, { keep: ['auth.*'] });
   kept.map((key: string) => key.toUpperCase());
+  await t.profile.restore(checkpoint.id);
+  const dropped: void = await t.profile.drop(checkpoint);
   // @ts-expect-error tick takes milliseconds.
   await t.app.clock.tick('3s');
-  void started; void now; void fired; void pending; void uninstalled; void dropped;
+  // @ts-expect-error install resolves a ClockState, not a number.
+  const asNumber: number = await t.app.clock.install();
+  void now; void fired; void pending; void ran; void set; void off; void dropped; void asNumber;
 });
 // @ts-expect-error keep is a list of globs.
 spec('bad keep', { restoreProfile: { keep: 'auth.*' } }, async () => {});
@@ -179,8 +274,26 @@ expect({}).toMatchSchema({ type: 'object' });
 declare const contractReport: JsonReport;
 contractReport.openapi?.routed.failed.toFixed();
 contractReport.coverage?.uncovered.map((entry) => entry.id);
-// A contract-only spec skips itself without --openapi.
-spec('contract only', async (t) => {
-  if (!t.openapi) return t.skip('needs --openapi');
-  t.openapi.documents.map((doc) => doc.name.toUpperCase());
+// A contract-only spec declares it and is skipped without --openapi.
+spec('contract only', { requires: { openapi: true } }, async (t) => {
+  t.openapi?.documents.map((doc) => doc.name.toUpperCase());
+});
+// File defaults: every SpecOptions key but `id`, plus `requires`.
+spec.configure({ timeout: 60_000, fresh: true, requires: { args: ['PASSWORD'] }, forensics: false, covers: ['DEV-2'] });
+// @ts-expect-error Ids are per spec.
+spec.configure({ id: 'shared' });
+// @ts-expect-error requires.args lists --arg keys.
+spec('bad requires', { requires: { args: 'PASSWORD' } }, async () => {});
+
+// Host tiers read lazily: the read never throws, a call rejects.
+spec('host tiers', async (t) => {
+  await t.automation.desktop.window.status({} as never);
+  await t.automation.terminal.snapshot({ surfaceId: 's' } as never);
+  await t.automation.browser.tabs();
+});
+
+// expect(locator) is refused at run time; the type still takes it, so the
+// message is what guides.
+spec('trap', async (t) => {
+  expect(t.app.view.testId('x'));
 });

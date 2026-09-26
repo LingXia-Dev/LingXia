@@ -3,7 +3,7 @@ import type {
   AssertionRecord,
   CaseRecord,
   JsonReport,
-  NetworkCall,
+  FailureNetworkCall,
   ScenarioReport,
   ReportError,
   SpecStatus,
@@ -705,7 +705,7 @@ export function renderScenario(scenario: ScenarioReport | undefined): string {
   </details>`;
 }
 
-export function renderNetwork(calls: NetworkCall[] | undefined): string {
+export function renderNetwork(calls: FailureNetworkCall[] | undefined): string {
   if (!calls || calls.length === 0) return "";
   const first = calls[0].time;
   const rows = calls.map((call) => {
