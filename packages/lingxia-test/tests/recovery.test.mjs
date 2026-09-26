@@ -124,3 +124,12 @@ test("the runner's own timers are not reported as spec work", async () => {
   const recovery = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
   assert.match(recovery.message, /pending: an awaited promise that no timer/);
 });
+
+test("rawAutomation hands the host tiers out as the native objects", () => {
+  const lxapps = { async list() { return []; } };
+  installFakeHost(createWorld(), { lxapps });
+  const root = rawAutomation();
+  assert.equal(root.lxapps, lxapps, "a host tier is not wrapped");
+  assert.equal(typeof root.lxapp, "function");
+  assert.equal(typeof root.lxapp().eval, "function");
+});

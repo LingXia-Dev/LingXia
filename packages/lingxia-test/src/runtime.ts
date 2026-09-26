@@ -40,7 +40,7 @@ import {
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/types/automation";
-import { cancelTimersOf, describePending, installPendingTracker, pendingOf, runnerClearTimeout, runnerSetTimeout, setPendingOwner, trackDriver, uninstallPendingTracker, type PendingWork } from "./pending.js";
+import { cancelTimersOf, describePending, installPendingTracker, pendingOf, runnerClearTimeout, runnerSetTimeout, setPendingOwner, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -376,7 +376,7 @@ function automationRoot(): HostRunAutomation {
  * `rawAutomation().lxapp().eval({ script })`.
  */
 export function rawAutomation(): HostRunAutomation {
-  return trackDriver(automationRoot(), "rawAutomation().");
+  return trackAutomationRoot(automationRoot());
 }
 
 function pinApp(appId?: string): LxAppDriver {

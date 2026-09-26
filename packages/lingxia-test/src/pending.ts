@@ -152,6 +152,27 @@ export function trackDriver<T extends object>(root: T, path: string): T {
   });
 }
 
+/**
+ * The automation root with its lxapp drivers tracked (`trackDriver`). The
+ * host tiers (`lxapps`, `browser`, `shell`, `device`, `desktop`,
+ * `terminal`) are handed out as the native objects: the Rong host objects
+ * behind them lose their methods when read through a proxy.
+ */
+export function trackAutomationRoot<T extends object>(root: T): T {
+  return new Proxy(root, {
+    get(target, prop) {
+      const value: unknown = Reflect.get(target, prop, target);
+      if (typeof value !== "function") return value;
+      if (prop !== "lxapp") return (value as (...input: unknown[]) => unknown).bind(target);
+      return (...args: unknown[]) => {
+        const driver: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
+        const path = `rawAutomation().lxapp(${args.length > 0 ? JSON.stringify(args[0]) : ""}).`;
+        return driver && typeof driver === "object" ? trackDriver(driver, path) : driver;
+      };
+    },
+  });
+}
+
 /** Put the test context's own timers and `fetch` back. */
 export function uninstallPendingTracker(): void {
   if (!installed) return;
