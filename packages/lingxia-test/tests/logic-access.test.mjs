@@ -117,6 +117,26 @@ test("view eval takes a page target before the function", async () => {
   assert.match(actions[0].detail, /^surface /);
 });
 
+test("an eval's own timeout is sent, clamped to the spec budget", async () => {
+  const world = logicWorld();
+  world.usePage({ document: { title: "Home" }, window: {} });
+  installFakeHost(world);
+  const result = await runOne(async (t) => {
+    await t.app.logic.eval(() => 1);
+    await t.app.logic.eval({ timeout: 20_000 }, (_, n) => n, 2);
+    await t.app.logic.eval({ timeout: 600_000 }, () => 3);
+    await t.app.view.eval({ page: "surface", timeout: 15_000 }, ({ document }) => document.title);
+    assert.throws(() => t.app.logic.eval({ timeout: -1 }, () => 4), /positive number of ms/);
+  }, { timeout: 60_000 });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  const [byDefault, own, clamped, view] = world.evalTimeouts;
+  assert.equal(byDefault, 10_000);
+  assert.equal(own, 20_000);
+  assert.ok(clamped > 50_000 && clamped < 60_000, String(clamped));
+  assert.equal(view, 15_000);
+  assert.equal(world.evaluatedPages.at(-1), "surface");
+});
+
 test("the fixture takes eval functions; a script string names the raw driver", async () => {
   const world = logicWorld();
   world.usePage({ document: { title: "Home" }, window: {} });

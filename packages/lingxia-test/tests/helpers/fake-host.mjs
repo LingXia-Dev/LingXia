@@ -24,6 +24,8 @@ export function createWorld(options = {}) {
   const evaluated = [];
   // The `page` each page eval named (`undefined`: the current page).
   const evaluatedPages = [];
+  // The `timeoutMs` each eval (Logic or page) was sent with.
+  const evalTimeouts = [];
   const keyFor = (map, script) => map.has(script) ? script : [...map.keys()].find((key) => script.includes(key));
 
   // Mirror the targets: a script is evaluated as JS against the given
@@ -92,8 +94,9 @@ export function createWorld(options = {}) {
     async screenshot() {
       return { format: "png", base64: TINY_PNG, width: 1, height: 1 };
     },
-    async eval({ script, page: target }) {
+    async eval({ script, page: target, timeoutMs }) {
       evaluatedPages.push(target);
+      evalTimeouts.push(timeoutMs);
       if (pageGlobals) return evaluate(pageGlobals, script);
       // The locator's read-only attribute probe.
       const probe = script.match(/querySelectorAll\((".*?")\)\[(\d+)\][\s\S]*for \(const name of (\[.*?\])\)/);
@@ -169,7 +172,8 @@ export function createWorld(options = {}) {
     async surfaceLayout() {
       return { sizeClass: "compact", mains: ["main"] };
     },
-    async eval({ script, captureCalls }) {
+    async eval({ script, captureCalls, timeoutMs }) {
+      evalTimeouts.push(timeoutMs);
       if (blocked) throw new Error("fixture should not reach the app after abort");
       let value = script;
       // A seeded key names the script, or text inside the function a spec
@@ -251,6 +255,7 @@ export function createWorld(options = {}) {
     /** Every script actually evaluated, in order. */
     evaluated,
     evaluatedPages,
+    evalTimeouts,
     unblock() {
       blocked = false;
     },

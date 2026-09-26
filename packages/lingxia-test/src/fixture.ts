@@ -45,7 +45,9 @@ import type {
   StepRecord,
   TestApp,
   JsonValue,
+  EvalOptions,
   LogicDataOptions,
+  ViewEvalOptions,
   LogicScope,
   ProfileCheckpoint,
   ProfileFixture,
@@ -740,13 +742,15 @@ export class LiveFixture implements Fixture {
 
   private wrapLogic(driver: LxAppDriver): TestLogic {
     return {
-      eval: (fn: unknown, ...args: unknown[]) => {
+      eval: (...input: unknown[]) => {
+        const { options, fn, args } = evalInput(input);
         if (typeof fn !== "function") {
           throw new TypeError("t.app.logic.eval(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().eval({ script }))");
         }
         const script = logicScript(fn, args, "t.app.logic.eval");
+        const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
         return this.act("logic.eval", summarise(functionDetail(fn)), () =>
-          remote("t.app.logic.eval", "logic", () => this.evalLogic(driver, { script })));
+          remote("t.app.logic.eval", "logic", () => this.evalLogic(driver, { script, timeoutMs })));
       },
       data: (options?: LogicDataOptions) => {
         const target = options?.page;
@@ -812,23 +816,36 @@ export class LiveFixture implements Fixture {
     return options;
   }
 
+  /**
+   * An eval's own `timeout`, clamped to the spec's remaining budget; without
+   * one, `withEvalBudget` picks the default share.
+   */
+  private evalTimeout(options: EvalOptions | undefined, api: string): number | undefined {
+    const timeout = options?.timeout;
+    if (timeout === undefined) return undefined;
+    if (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0) {
+      throw new TypeError(`${api}({ timeout }, fn, ...args) takes a positive number of ms`);
+    }
+    return Math.max(1, Math.min(timeout, this.budgetRoom()));
+  }
+
   private viewEval(page: PageDriver, input: unknown[], api: string): Promise<unknown> {
-    // `eval(fn, ...args)` or `eval({ page }, fn, ...args)`.
-    const targeted = input[0] !== null && typeof input[0] === "object" && !("script" in input[0]);
-    const target = targeted ? input[0] as PageTarget : undefined;
-    const [fn, ...args] = targeted ? input.slice(1) : input;
+    const { options, fn, args } = evalInput<ViewEvalOptions>(input);
     if (typeof fn !== "function") {
       throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().page.eval({ script }))`);
     }
-    if (target !== undefined && target.page !== undefined && typeof target.page !== "string") {
+    if (options?.page !== undefined && typeof options.page !== "string") {
       throw new TypeError(`${api}({ page }, fn, ...args) takes a page name or instance id`);
     }
     const script = pageScript(fn, args, api);
+    const timeoutMs = this.evalTimeout(options, api);
     const detail = summarise(functionDetail(fn));
-    return this.act("view.eval", target?.page ? `${target.page} ${detail}` : detail, () =>
-      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>(
-        target?.page ? { page: target.page, script } : { script },
-      ))));
+    return this.act("view.eval", options?.page ? `${options.page} ${detail}` : detail, () =>
+      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>({
+        script,
+        ...(options?.page ? { page: options.page } : {}),
+        ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+      }))));
   }
 
   private wrapView(page: PageDriver): TestView {
@@ -1114,6 +1131,20 @@ function isRetryableReadError(error: unknown): boolean {
 
 function errorLine(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : formatValue(error);
+}
+
+/**
+ * `eval(fn, ...args)` or `eval(options, fn, ...args)`. An object with a
+ * `script` key is a script string's options, not eval options: it stays the
+ * "function" so the caller refuses it as such.
+ */
+function evalInput<O extends EvalOptions = EvalOptions>(input: unknown[]): { options: O | undefined; fn: unknown; args: unknown[] } {
+  const [first, ...rest] = input;
+  if (first !== null && typeof first === "object" && !("script" in first)) {
+    const [fn, ...args] = rest;
+    return { options: first as O, fn, args };
+  }
+  return { options: undefined, fn: first, args: rest };
 }
 
 async function remote<T>(api: string, target: RemoteTarget, op: () => Promise<T>): Promise<T> {

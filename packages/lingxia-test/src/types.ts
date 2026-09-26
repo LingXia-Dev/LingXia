@@ -323,11 +323,12 @@ export interface TestView {
    */
   eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
   /**
-   * The same in the WebView of `target.page` (a configured page name or live
-   * instance id) instead of the current page's, like a locator's `{ page }`:
-   * a page kept below the current one, or one a surface shows.
+   * The same with options: `page` runs it in that page's WebView (a
+   * configured page name or live instance id) instead of the current page's,
+   * like a locator's `{ page }` — a page kept below the current one, or one a
+   * surface shows; `timeout` see `EvalOptions`.
    */
-  eval<R, A extends JsonValue[]>(target: PageTarget, fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  eval<R, A extends JsonValue[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;
@@ -336,6 +337,21 @@ export interface TestView {
   /** App-window keyboard input. */
   readonly key: PageKey;
 }
+
+/**
+ * Leading options of `t.app.logic.eval(options, fn, ...args)`. Without them
+ * an eval may take a third of the spec's budget, at most 10 s.
+ */
+export interface EvalOptions {
+  /**
+   * How long `fn` may run, in ms, for work that legitimately takes longer
+   * (a download, a transcode). Clamped to the spec's remaining budget.
+   */
+  timeout?: number;
+}
+
+/** Leading options of `t.app.view.eval(options, fn, ...args)`. */
+export interface ViewEvalOptions extends PageTarget, EvalOptions {}
 
 /** `t.app.logic.data()` options. */
 export interface LogicDataOptions {
@@ -363,6 +379,8 @@ export interface TestLogic {
    * JSON result. `fn` must be self-contained (see `LogicFunction`).
    */
   eval<R, A extends JsonValue[]>(fn: LogicFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  /** The same with a `timeout` (see `EvalOptions`). */
+  eval<R, A extends JsonValue[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: A): Promise<Awaited<R>>;
   /** Read the current (or named) page's Logic `data`. `T` is not validated. */
   data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
   /**

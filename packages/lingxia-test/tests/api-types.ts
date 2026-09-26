@@ -114,6 +114,9 @@ spec('typed Logic access', async t => {
   disabled?.toUpperCase();
   const surfaceTitle: string = await t.app.view.eval({ page: 'surface' }, ({ document }, suffix: string) => document.title + suffix, '!');
   surfaceTitle.toUpperCase();
+  const slow: number = await t.app.logic.eval({ timeout: 30_000 }, ({ lx }, n: number) => n + lx.env.USER_DATA_PATH.length, 1);
+  slow.toFixed();
+  await t.app.view.eval({ page: 'surface', timeout: 20_000 }, ({ document }) => document.title);
   // @ts-expect-error A page target is `{ page }`.
   await t.app.view.eval({ css: '#x' }, ({ document }) => document.title);
   // @ts-expect-error ViewDocument is minimal: no DOM writes without the DOM lib.
