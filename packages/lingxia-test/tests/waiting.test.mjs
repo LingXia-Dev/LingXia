@@ -374,3 +374,75 @@ test("text matchers see whitespace-normalised text, as the user reads it", async
   const message = failedMessage(attachments);
   assert.match(message, /Expected: "Good"\nReceived: "Good night"/);
 });
+
+/** Page eval that answers the visibility probe as a hidden page does. */
+function hidePage(world, answer = { state: "hidden", animationFrames: false }) {
+  const original = world.app.page.eval;
+  world.app.page.eval = async (options) =>
+    /visibilityState/.test(options.script) && /requestAnimationFrame/.test(options.script)
+      ? answer
+      : original(options);
+}
+
+test("a timed-out wait on a hidden page says the page is hidden, not only obscured", async () => {
+  const world = createWorld();
+  world.add({ testId: "open-sheet", inViewport: false, text: "Open" });
+  world.add({ testId: "sheet", visible: false, text: "" });
+  hidePage(world);
+  const { attachments } = installFakeHost(world);
+  const messages = [];
+
+  spec("hidden page", { forensics: false }, async (t) => {
+    for (const wait of [
+      () => t.app.view.testId("open-sheet").click({ timeout: 80 }),
+      () => t.app.view.testId("sheet").waitFor({ timeout: 80 }),
+      () => t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 }),
+    ]) {
+      try { await wait(); } catch (error) { messages.push(error.message); }
+    }
+    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(messages.length, 3);
+  for (const message of messages) {
+    assert.match(message,
+      /page hidden \(window covered or display asleep\): animations are paused \(visibilityState "hidden", no animation frame in 300ms\)/);
+  }
+  assert.match(failedMessage(attachments), /page hidden \(window covered or display asleep\)/);
+});
+
+test("a visible page with running frames adds no hidden-page note", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet", visible: false, text: "" });
+  hidePage(world, { state: "visible", animationFrames: true });
+  const { attachments } = installFakeHost(world);
+
+  spec("visible page", { forensics: false }, async (t) => {
+    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.doesNotMatch(failedMessage(attachments), /page hidden/);
+});
+
+test("failure forensics record the page's visibility", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet", visible: false, text: "" });
+  hidePage(world, { state: "visible", animationFrames: false });
+  const { attachments } = installFakeHost(world);
+
+  spec("frames paused", async (t) => {
+    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  const forensics = JSON.parse(decodeAttachment(attachments, "attachments/frames-paused/attempt-0/forensics.json"));
+  assert.deepEqual(
+    { state: forensics.visibility.state, animationFrames: forensics.visibility.animationFrames },
+    { state: "visible", animationFrames: false });
+  assert.match(forensics.visibility.note, /animations are paused/);
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.match(report.cases[0].error.page.hidden, /page hidden/);
+  assert.match(report.failures[0].page.hidden, /no animation frame/);
+});

@@ -18,6 +18,7 @@ import type {
   LocatorOptions,
   LocatorState,
   LocatorWaitOptions,
+  PageVisibility,
   SourceLocation,
 } from "./types.js";
 import {
@@ -199,9 +200,11 @@ export class PageLocator implements Locator {
         if (deadline.expired()) break;
         await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
+      const hidden = await this.hiddenPageNote();
       throw new AssertionError("waitFor", reason, state, [
         `Timed out after ${deadline.elapsed()}ms waiting for ${formatValue(this.selector)} to be ${state}.`,
         reason,
+        hidden,
         deadline.clampNote(),
         `at ${this.where()}`,
       ].filter(Boolean).join("\n"));
@@ -354,6 +357,23 @@ export class PageLocator implements Locator {
     return `while trying to ${verb} ${formatValue(this.selector)}\nat ${this.where()}`;
   }
 
+  /**
+   * After a wait timed out: the page's visibility, when it explains the miss.
+   * Best-effort and bounded; skipped when the spec has no room left for it.
+   */
+  async hiddenPageNote(): Promise<string | undefined> {
+    if (!this.page.eval || this.room() < VISIBILITY_PROBE_BUDGET_MS) return undefined;
+    try {
+      const probe = new ActionDeadline(VISIBILITY_PROBE_BUDGET_MS, this.room());
+      const value = await this.guard(() => probe.call("page.eval (visibility)",
+        () => this.page.eval!({ page: this.options.page, script: VISIBILITY_PROBE_SCRIPT, timeoutMs: VISIBILITY_PROBE_BUDGET_MS }),
+        () => ""));
+      return pageVisibility(value)?.note;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
     const script = `(() => {
@@ -455,9 +475,11 @@ export class PageLocator implements Locator {
         }
         await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
       }
+      const hidden = await this.hiddenPageNote();
       throw withCause(new AssertionError(verb, reason, force ? "attached, enabled element" : "stable, enabled, unobscured element", [
         `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
         reason,
+        hidden,
         deadline.clampNote(),
         `at ${this.where()}`,
       ].filter(Boolean).join("\n")), cause);
@@ -500,6 +522,43 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
 }
 
 /** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
+/** How long the visibility probe waits for an animation frame. */
+const VISIBILITY_FRAME_WAIT_MS = 300;
+/** The probe's whole budget: a hidden page also throttles its timers. */
+export const VISIBILITY_PROBE_BUDGET_MS = 1_500;
+
+/**
+ * Reads `document.visibilityState` and whether an animation frame arrives.
+ * WebKit stops animation frames for a page that is hidden or in a fully
+ * covered window, so rAF- and transition-driven UI (a sheet sliding in)
+ * never moves and actionability reads it as obscured.
+ */
+export const VISIBILITY_PROBE_SCRIPT = `new Promise((resolve) => {
+  let done = false;
+  const finish = (frame) => {
+    if (done) return;
+    done = true;
+    resolve({ state: String(document.visibilityState || "unknown"), animationFrames: frame });
+  };
+  try { requestAnimationFrame(() => finish(true)); } catch (_) { finish(false); }
+  setTimeout(() => finish(false), ${VISIBILITY_FRAME_WAIT_MS});
+})`;
+
+export const HIDDEN_PAGE_NOTE = "page hidden (window covered or display asleep): animations are paused";
+
+/** What the probe saw, or `undefined` for an unreadable answer. */
+export function pageVisibility(value: unknown): PageVisibility | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as { state?: unknown; animationFrames?: unknown };
+  if (typeof record.state !== "string" || typeof record.animationFrames !== "boolean") return undefined;
+  const hidden = record.state === "hidden" || !record.animationFrames;
+  return {
+    state: record.state,
+    animationFrames: record.animationFrames,
+    ...(hidden ? { note: `${HIDDEN_PAGE_NOTE} (visibilityState "${record.state}", ${record.animationFrames ? "animation frames running" : `no animation frame in ${VISIBILITY_FRAME_WAIT_MS}ms`})` } : {}),
+  };
+}
+
 /** Collapse every run of whitespace (newlines included) to one space and trim. */
 export function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();

@@ -556,7 +556,9 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   window covers a desktop app window, `click({ force: true })` / `fill(text,
   { force: true })` dispatch DOM events to it directly; it must still be one
   enabled match. It proves less than a normal click, so use it only where
-  that fails with `element is obscured`.
+  that fails with `element is obscured`. A wait that adds `page hidden (window
+  covered or display asleep)` is not the app: WebKit pauses animations there;
+  keep the host window uncovered (a run keeps the macOS display awake).
 - **`fill` works on framework-controlled inputs.** It sets the value through
   the element's native value setter and dispatches `input` and `change`, so
   React/Vue state follows; assert the state, not only the DOM value.

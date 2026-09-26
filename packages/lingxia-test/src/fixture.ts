@@ -1008,6 +1008,10 @@ export class LiveFixture implements Fixture {
         this.resumeActions();
       }
       const duration = deadline.elapsed();
+      const miss = lastResolved && locator instanceof PageLocator ? locator.missText(lastResolved) : undefined;
+      // A wait for the page to change that never saw it change: say when the
+      // page was hidden and its animations paused.
+      const hidden = !inverted && locator instanceof PageLocator ? await locator.hiddenPageNote() : undefined;
       throw this.retryFailure({
         clampNote: deadline.clampNote(),
         matcher: inverted ? `not.${matcher}` : matcher,
@@ -1016,7 +1020,7 @@ export class LiveFixture implements Fixture {
         duration,
         location,
         lastError,
-        extra: lastResolved && locator instanceof PageLocator ? locator.missText(lastResolved) : undefined,
+        extra: [miss, hidden].filter(Boolean).join("\n") || undefined,
       });
     });
   }

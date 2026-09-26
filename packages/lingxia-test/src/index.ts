@@ -26,6 +26,7 @@ export type {
   ExpectOptions,
   FailOptions,
   FailurePage,
+  PageVisibility,
   FileOptions,
   FailureRecord,
   Fixture,

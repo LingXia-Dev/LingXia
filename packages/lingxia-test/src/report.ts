@@ -747,6 +747,7 @@ export function failedAt(error: Pick<ReportError, "code" | "failedAction" | "pag
     if (error.page.name) line += ` on page ${JSON.stringify(error.page.name)}`;
     else line += " on page";
     if (error.page.instanceId) line += ` (#${error.page.instanceId})`;
+    if (error.page.hidden) line += `; ${error.page.hidden}`;
   }
   if (error.code) line += ` — ${error.code}`;
   return line;
