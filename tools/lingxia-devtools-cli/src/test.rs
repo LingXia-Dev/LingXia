@@ -717,21 +717,30 @@ fn needs_recovery(outcome: &Outcome, interrupted: bool) -> bool {
 }
 
 /// Refuse to run across a version skew between lxdev, the session's host and
-/// the project's `@lingxia/*` packages (see `lingxia doctor --project`).
-fn check_versions(info: &SessionInfo, entry: &Path, machine: bool) -> Result<()> {
+/// the project's `@lingxia/*` packages (see `lingxia doctor --project`). A
+/// `lingxia dev` or a connected host that reports no version predates the
+/// check, and is too old for this lxdev.
+pub(crate) fn check_versions(info: &SessionInfo, entry: &Path, machine: bool) -> Result<()> {
+    use crate::project::SessionState;
     use lingxia_control_protocol::dev_session::compat;
     let cli = compat::Component::new("lxdev", env!("LXDEV_BUILD_VERSION"));
     let mut hosts = Vec::new();
-    if let Some(build) = &info.build {
-        hosts.push(compat::Component::new("lingxia", build.as_str()));
-    }
-    if let Some(build) = crate::project::probe_session(info).runtime_build {
-        let name = if info.target == "lxapp" {
-            "Runner"
-        } else {
-            "host"
-        };
-        hosts.push(compat::Component::new(name, build.version));
+    hosts.push(match &info.build {
+        Some(build) => compat::Component::new("lingxia", build.as_str()),
+        None => compat::Component::unreported("lingxia"),
+    });
+    let name = if info.target == "lxapp" {
+        "Runner"
+    } else {
+        "host"
+    };
+    let probe = crate::project::probe_session(info);
+    match probe.runtime_build {
+        Some(build) => hosts.push(compat::Component::new(name, build.version)),
+        None if probe.state == SessionState::Ready => {
+            hosts.push(compat::Component::unreported(name));
+        }
+        None => {}
     }
     let packages = compat::installed_packages(&find_project_root(entry));
     match compat::check(&cli, &hosts, &packages) {
@@ -1004,37 +1013,37 @@ fn run_control(
 /// A run polled this recently still has a client reading it.
 const LIVE_CLIENT_WINDOW: Duration = Duration::from_secs(15);
 
-/// The run holding the session, as the host describes it. `detail` is `None`
-/// for a host that only names the run in its refusal message.
+/// The run holding the session, as the host describes it.
 struct HeldRun {
     run_id: String,
-    detail: Option<TestActiveRun>,
+    detail: TestActiveRun,
 }
 
 impl HeldRun {
-    fn describe(&self) -> String {
-        match &self.detail {
-            None => format!("run {}", self.run_id),
-            Some(detail) => {
-                let polled = match detail.since_last_poll_ms {
-                    Some(ms) => format!("last polled {} ago", human_age(ms)),
-                    None => "never polled".to_string(),
-                };
-                format!(
-                    "run {} (started {} ago, {polled})",
-                    self.run_id,
-                    human_age(detail.age_ms)
-                )
-            }
+    fn new(detail: TestActiveRun) -> Self {
+        Self {
+            run_id: detail.run_id.clone(),
+            detail,
         }
+    }
+
+    fn describe(&self) -> String {
+        let polled = match self.detail.since_last_poll_ms {
+            Some(ms) => format!("last polled {} ago", human_age(ms)),
+            None => "never polled".to_string(),
+        };
+        format!(
+            "run {} (started {} ago, {polled})",
+            self.run_id,
+            human_age(self.detail.age_ms)
+        )
     }
 
     /// A client is still polling it: cancelling would pull the run out from
     /// under a live `lxdev test`.
     fn owned_by_live_client(&self) -> bool {
         self.detail
-            .as_ref()
-            .and_then(|detail| detail.since_last_poll_ms)
+            .since_last_poll_ms
             .is_some_and(|ms| Duration::from_millis(ms) < LIVE_CLIENT_WINDOW)
     }
 
@@ -1059,25 +1068,15 @@ fn human_age(ms: u64) -> String {
     }
 }
 
-/// The run a refused `session.test.start` names: from the error's data, or
-/// from its message for a host that predates the data.
+/// The run a refused `session.test.start` names, from the error's data.
 fn held_run(error: &anyhow::Error) -> Option<HeldRun> {
-    if let Some(command) = error.downcast_ref::<CommandError>()
-        && command.code == RUN_IN_PROGRESS
-        && let Some(detail) = command
-            .data
-            .clone()
-            .and_then(|data| serde_json::from_value::<TestActiveRun>(data).ok())
-    {
-        return Some(HeldRun {
-            run_id: detail.run_id.clone(),
-            detail: Some(detail),
-        });
+    let command = error.downcast_ref::<CommandError>()?;
+    if command.code != RUN_IN_PROGRESS {
+        return None;
     }
-    active_run_id(&error.to_string()).map(|run_id| HeldRun {
-        run_id,
-        detail: None,
-    })
+    serde_json::from_value::<TestActiveRun>(command.data.clone()?)
+        .ok()
+        .map(HeldRun::new)
 }
 
 /// The host refuses a second run while one is active, which is what keeps a
@@ -1130,14 +1129,6 @@ fn start_run(
             }
         }
     }
-}
-
-/// `automation_run_in_progress: run <id> is active`, the refusal text of a
-/// host that predates the structured error.
-fn active_run_id(message: &str) -> Option<String> {
-    let rest = message.strip_prefix("automation_run_in_progress: run ")?;
-    let id = rest.split_whitespace().next()?;
-    (!id.is_empty()).then(|| id.to_string())
 }
 
 /// Create `dir` and prove a file can be written in it.
@@ -1210,24 +1201,10 @@ impl Drop for ActiveRun {
 /// the session, and cancel it unless a live client is still polling it.
 fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
     let machine = options.machine();
+    check_versions(info, &std::env::current_dir()?, machine)?;
     let active: TestActiveResponse =
-        execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({})).map_err(
-            |error| {
-                if error.to_string().contains("unknown session.test handler") {
-                    anyhow!(
-                        "this host cannot report its active run (it predates \
-                         `session.test.active`). Run `lxdev test <entry> --cancel-active` to \
-                         cancel the run it refuses with, or restart the dev session."
-                    )
-                } else {
-                    error
-                }
-            },
-        )?;
-    let held = active.run.map(|detail| HeldRun {
-        run_id: detail.run_id.clone(),
-        detail: Some(detail),
-    });
+        execute_typed(&info.ws_url, methods::session::test::ACTIVE, &json!({}))?;
+    let held = active.run.map(HeldRun::new);
     let state = match &held {
         None => None,
         Some(held) => {
@@ -1240,7 +1217,7 @@ fn cancel_active_only(info: &SessionInfo, options: &TestOptions) -> Result<()> {
         }
     };
     if machine {
-        let detail = held.as_ref().and_then(|held| held.detail.as_ref());
+        let detail = held.as_ref().map(|held| &held.detail);
         let value = json!({
             "schema_version": 1,
             "kind": "cancel_active",
@@ -2566,17 +2543,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn recognises_an_active_run_and_ignores_other_failures() {
-        assert_eq!(
-            active_run_id("automation_run_in_progress: run 6c72fda1-58ed-4f9c is active")
-                .as_deref(),
-            Some("6c72fda1-58ed-4f9c")
-        );
-        assert!(active_run_id("automation_runtime_unhealthy: restart the host").is_none());
-        assert!(active_run_id("").is_none());
-    }
-
-    #[test]
     fn a_quiet_poll_stops_as_the_deadline_it_reached() {
         let now = Instant::now();
         let later = now + Duration::from_secs(30);
@@ -3737,9 +3703,8 @@ mod lifecycle_tests {
         assert!(live.owned_by_live_client());
         assert!(format!("{:#}", live.refuse_if_live().unwrap_err()).contains("Ctrl-C"));
 
-        let legacy = held_run(&anyhow!("automation_run_in_progress: run old-1 is active")).unwrap();
-        assert_eq!(legacy.run_id, "old-1");
-        assert!(legacy.detail.is_none() && !legacy.owned_by_live_client());
+        // Only the structured refusal names a run; its message text does not.
+        assert!(held_run(&anyhow!("automation_run_in_progress: run old-1 is active")).is_none());
         assert!(held_run(&anyhow!("automation_runtime_unhealthy: restart")).is_none());
     }
 }

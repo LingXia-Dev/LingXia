@@ -381,11 +381,6 @@ pub(crate) fn companion_support(session: &dyn Session) -> Result<(), String> {
                 )
             }
         }
-        // A `lingxia dev` from before function rules relays the method to
-        // the runtime, which does not know it.
-        Err(err) if err.code == "unknown_method" || err.message.contains("unknown") => {
-            Err("this `lingxia dev` predates function rules; update LingXia".into())
-        }
         Err(err) => Err(err.message),
     }
 }
@@ -616,6 +611,7 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
             json,
         } => {
             let target = resolve(&scenario, &roots, &cwd)?;
+            crate::test::check_versions(info, &target.path, json)?;
             let initial = std::fs::read_to_string(&target.path).ok();
             let installed = read_file(&target.path)
                 .and_then(|loaded| install(&session, &loaded, &target, appid.as_deref()));

@@ -129,7 +129,7 @@ pub enum BrowserCommand {
         json: bool,
     },
     /// Inspect or override the browser session's complete user-agent string
-    #[command(name = "ua", visible_alias = "user-agent")]
+    #[command(name = "ua")]
     UserAgent(UserAgentOptions),
     /// Evaluate JavaScript in a browser tab
     Eval {

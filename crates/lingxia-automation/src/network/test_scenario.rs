@@ -90,14 +90,10 @@ async fn use_functions(owner: &str, resolved: &Resolved) -> Result<(), String> {
         serde_json::to_value(resolved.companion_use(owner, None)).map_err(|err| err.to_string())?;
     match companion::request(method::SCENARIO_USE, params).await {
         Ok(_) => Ok(()),
-        Err(UpstreamError { code, message, .. })
-            if code == method::UNSUPPORTED || code == "unknown_method" =>
-        {
-            Err(format!(
-                "scenario: {}",
-                resolved.functions_unsupported(&message)
-            ))
-        }
+        Err(UpstreamError { code, message, .. }) if code == method::UNSUPPORTED => Err(format!(
+            "scenario: {}",
+            resolved.functions_unsupported(&message)
+        )),
         Err(UpstreamError {
             code,
             message,

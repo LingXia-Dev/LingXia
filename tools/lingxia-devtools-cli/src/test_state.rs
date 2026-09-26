@@ -306,23 +306,11 @@ pub fn prepare(
     }))
 }
 
-/// A host that predates isolation would ignore the start field and run on
-/// the developer's real data. Refuse instead.
+/// A host without isolation would ignore the start field and run on the
+/// developer's real data. Refuse instead.
 fn require_profile_capability(ws_url: &str) -> Result<ProfileCapability> {
     let capabilities: TestCapabilities =
-        execute_typed(ws_url, methods::session::test::CAPABILITIES, &json!({})).map_err(
-            |error| {
-                if error.to_string().contains("unknown session.test handler") {
-                    anyhow!(
-                        "this host cannot isolate a test run (it predates \
-                     `session.test.capabilities`); rebuild it with the current LingXia, \
-                     or drop --profile"
-                    )
-                } else {
-                    error
-                }
-            },
-        )?;
+        execute_typed(ws_url, methods::session::test::CAPABILITIES, &json!({}))?;
     capabilities
         .profile
         .ok_or_else(|| anyhow!("this host does not support isolated test runs"))
