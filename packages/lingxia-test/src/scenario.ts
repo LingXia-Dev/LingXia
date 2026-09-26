@@ -94,7 +94,9 @@ export function installScenario(
   variant?: string,
 ): Promise<Scenario> {
   return host.act("scenario", describeScenario(definition, variant), async () => {
-    const raw = await resolve().scenario(definition, variant);
+    const raw = variant === undefined
+      ? await resolve().scenario(definition)
+      : await resolve().scenario(definition, variant);
     const label = scenarioLabel(definition, variant);
     scope.track(host, raw, label);
     const wrapped: Scenario = {
