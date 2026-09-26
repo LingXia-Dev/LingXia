@@ -1,9 +1,12 @@
 import { waitForCurrentPage } from '../../helpers/page.js';
 import { expect, spec, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID, type AppDriver } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
 import type { DesktopDriver, DesktopWindowInfo, LxAppDriver } from '@lingxia/types/automation';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /// Showcase sidebar actions besides the host's typed Settings: Downloads in
 /// the header, four footer actions.
@@ -93,7 +96,7 @@ function windowsStaticSettingsPoint(
 }
 
 async function clickStaticSettings(
-  app: AppDriver,
+  app: LxAppDriver,
   platform: string,
   desktop: DesktopDriver,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
@@ -138,14 +141,14 @@ async function clickStaticSettings(
 
 async function openHostSettings(
   t: Fixture,
-  app: AppDriver,
+  app: LxAppDriver,
   platform: string,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
   await clickStaticSettings(app, platform, t.automation.desktop, actions);
 }
 
-async function restoreShowcaseSidebarActions(app: AppDriver): Promise<void> {
+async function restoreShowcaseSidebarActions(app: LxAppDriver): Promise<void> {
   await app.eval({
     script: `
       lx.shell.sidebarActions.replace([
@@ -186,15 +189,15 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
   const { app, defer } = bindFixture(t, "DESKTOP-BROWSER-001");
 
     const browser = t.automation.browser;
-    const platform = await runtimePlatform(app);
-    const renderedBodyLength = async (): Promise<number> => Number(await app.page.eval({
+    const platform = await runtimePlatform(raw);
+    const renderedBodyLength = async (): Promise<number> => Number(await raw.page.eval({
       page: 'home',
       script: 'document.body ? document.body.innerText.length : -1',
     }));
 
     await app.nav.switchTab({ page: 'home' });
-    await waitForCurrentPage(app, 'home');
-    await app.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
+    await waitForCurrentPage(raw, 'home');
+    await raw.page.waitFor({ page: 'home', css: '[data-testid="home-page"]', state: 'visible' });
     await eventually(renderedBodyLength, (length) => length > 0, {
       describe: 'baseline home page to render',
     });
@@ -204,9 +207,9 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       const freshTabs = (await browser.tabs()).filter((tab) => !tabsBefore.has(tab.tab_id));
       for (const tab of freshTabs) await browser.close({ tab: tab.tab_id });
     });
-    defer(() => restoreShowcaseSidebarActions(app));
+    defer(() => restoreShowcaseSidebarActions(raw));
 
-    await app.eval({
+    await raw.eval({
       script: `
         globalThis.__staticSettingsSpoofCalls = 0;
         const spoof = () => { globalThis.__staticSettingsSpoofCalls += 1; };
@@ -220,21 +223,21 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     // Three runtime footer items beside the separately typed static item.
     // Presentation strings may match, but the static click must never
     // dispatch their callbacks.
-    await openHostSettings(t, app, platform, { header: 0, footer: 3 });
+    await openHostSettings(t, raw, platform, { header: 0, footer: 3 });
     const settings = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
       { describe: 'static Settings destination to open', timeoutMs: 15_000 },
     );
     if (!settings) throw new Error('static Settings destination did not produce a current tab');
-    expect(await app.eval({ script: `return globalThis.__staticSettingsSpoofCalls;` })).toBe(0);
-    await restoreShowcaseSidebarActions(app);
+    expect(await raw.eval({ script: `return globalThis.__staticSettingsSpoofCalls;` })).toBe(0);
+    await restoreShowcaseSidebarActions(raw);
 
     await browser.eval({
       tab: settings.tab_id,
       js: `globalThis.__staticSettingsReloadProbe = 'stale'`,
     });
-    await openHostSettings(t, app, platform);
+    await openHostSettings(t, raw, platform);
     await eventually(
       () => browser.eval({
         tab: settings.tab_id,
@@ -251,7 +254,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
       (tab) => tab?.current_url === 'about:blank',
       { describe: 'external navigation away from Settings', timeoutMs: 15_000 },
     );
-    await openHostSettings(t, app, platform);
+    await openHostSettings(t, raw, platform);
     const restored = await eventually(
       () => browser.current(),
       (tab) => Boolean(tab?.current_url?.startsWith('lingxia://settings')),
@@ -259,7 +262,7 @@ spec("restore rendered home content after closing covering web tabs", { id: "DES
     );
     if (!restored) throw new Error('static Settings destination did not restore a current tab');
     expect(restored.tab_id).toBe(settings.tab_id);
-    await app.eval({
+    await raw.eval({
       timeoutMs: 20_000,
       script: `await lx.shell.openBuiltin('downloads');`,
     });

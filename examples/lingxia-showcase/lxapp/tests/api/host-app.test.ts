@@ -1,6 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { bindFixture, evalCaught } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const testArgs = globalThis.__LINGXIA_AUTOMATION_HOST__?.args
   ?? {} as Record<string, string>;
@@ -22,7 +25,7 @@ spec('publish the lxapp sandbox roots through lx.env', {
 }, async (t) => {
   const { app } = bindFixture(t, 'ENV-001');
 
-  const env = await app.eval({
+  const env = await raw.eval({
     script: `return {
       keys: Object.keys(lx.env).sort(),
       data: lx.env.USER_DATA_PATH,
@@ -46,7 +49,7 @@ spec('capture a host app screenshot into the lxapp sandbox', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SHOT-001');
 
-  const shot = await app.eval({
+  const shot = await raw.eval({
     script: `
       const result = await lx.host.screenshot();
       const stat = await lx.fs.stat(result.uri);
@@ -59,7 +62,7 @@ spec('capture a host app screenshot into the lxapp sandbox', {
     `,
   }) as { path: string; width: number; height: number; bytes: number };
   t.defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `try { await lx.fs.remove(${JSON.stringify(shot.path)}); } catch {} return true;`,
     });
   });
@@ -78,10 +81,10 @@ spec('set and clear the host app badge without leaving one behind', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-001');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
+    await raw.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
-  const painted = await app.eval({
+  const painted = await raw.eval({
     script: `
       const first = await lx.host.setBadge(12);
       const cleared = await lx.host.setBadge(null);
@@ -106,17 +109,17 @@ spec('tell a hidden tray from a shown one in what setBadge reports', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-004');
   t.defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `try { await lx.host.setBadge(null); lx.tray.hide(); } catch {} return true;`,
     });
   });
 
   // A declared tray has a status item from the start but stays hidden until
   // `show()`, so "the item took the value" is not "the user can see it".
-  const hidden = await app.eval({
+  const hidden = await raw.eval({
     script: `try { lx.tray.hide(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });`,
   });
-  const shown = await app.eval({
+  const shown = await raw.eval({
     script: `try { lx.tray.show(); } catch {} return await lx.host.setBadge(4, { surface: 'tray' });`,
   });
 
@@ -134,16 +137,16 @@ spec('report a surface this platform does not have instead of failing', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-003');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
+    await raw.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
   // A named surface that is absent resolves false; it never rejects, so
   // portable code can ask for one without guarding the call.
-  const outcome = await evalCaught(app, `return await lx.host.setBadge(2, { surface: 'tray' });`);
+  const outcome = await evalCaught(raw, `return await lx.host.setBadge(2, { surface: 'tray' });`);
   expect(outcome.ok).toBeTruthy();
   expect(typeof outcome.value).toBe('boolean');
 
-  const bad = await evalCaught(app, `return await lx.host.setBadge(2, { surface: 'dock' });`);
+  const bad = await evalCaught(raw, `return await lx.host.setBadge(2, { surface: 'dock' });`);
   expect(bad.ok).toBeFalsy();
   expect(bad.code).toBe('E_INVALID_ARG');
 });
@@ -155,13 +158,13 @@ spec('reject a badge value that is neither a string, a number, nor null', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BADGE-002');
   t.defer(async () => {
-    await app.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
+    await raw.eval({ script: `try { await lx.host.setBadge(null); } catch {} return true;` });
   });
 
   // Coercing these would paint "[object Object]" on the dock instead of failing.
   for (const literal of ['{ text: \'7\' }', '[1, 2]', 'true', '() => {}']) {
     await t.step(`lx.host.setBadge(${literal})`, async () => {
-      const outcome = await evalCaught(app, `await lx.host.setBadge(${literal}); return 'accepted';`);
+      const outcome = await evalCaught(raw, `await lx.host.setBadge(${literal}); return 'accepted';`);
       expect(outcome.ok).toBeFalsy();
       expect(outcome.code).toBe('E_INVALID_ARG');
     });
@@ -175,7 +178,7 @@ spec('answer checkUpdate with a decision instead of throwing', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-UPDATE-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const decision = await lx.host.checkUpdate();
       const manager = lx.getUpdateManager();
@@ -206,14 +209,14 @@ spec('reject an invalid host display language', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-002');
 
-  const offered = await app.eval({
+  const offered = await raw.eval({
     script: `return typeof lx.host.control?.displayLanguage?.setPreference`,
   }) as string;
   expect(offered).toBe('function');
 
   for (const language of ['', 'en--US']) {
     const rejected = await evalCaught(
-      app,
+      raw,
       `await lx.host.control.displayLanguage.setPreference(${JSON.stringify(language)})`,
     );
     expect(rejected.ok).toBe(false);
@@ -228,7 +231,7 @@ spec('subscribe to and release the display language listener', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-LANG-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const first = lx.host.displayLanguage.watch(() => {});
       const second = lx.host.displayLanguage.watch(() => {});
@@ -257,14 +260,14 @@ spec('request permission and replace local notifications by id', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-NOTIFICATION-001');
 
-  const offered = await app.eval({
+  const offered = await raw.eval({
     script: `return !!(lx.host.notification && typeof lx.host.notification.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
-  const supported = await app.eval({ script: `return !!lx.supports('app.notification')` });
+  const supported = await raw.eval({ script: `return !!lx.supports('app.notification')` });
   expect(supported).toBe(true);
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 30_000,
     script: `
       const n = lx.host.notification;
@@ -358,7 +361,7 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-BANNER-001');
   t.defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `try {
         await lx.host.banner.dismiss('automation-banner-toast');
         await lx.host.banner.dismiss('automation-banner-prompt');
@@ -367,14 +370,14 @@ bannerSpec('show a toast, dismiss a prompt, and reject bad banner options', {
     });
   });
 
-  const offered = await app.eval({
+  const offered = await raw.eval({
     script: `return !!(lx.host.banner && typeof lx.host.banner.show === 'function')`,
   }) as boolean;
   expect(offered).toBe(true);
-  const supported = await app.eval({ script: `return !!lx.supports('app.banner')` });
+  const supported = await raw.eval({ script: `return !!lx.supports('app.banner')` });
   expect(supported).toBe(true);
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 20_000,
     script: `
       const banner = lx.host.banner;
@@ -450,18 +453,18 @@ autostartSpec('report autostart state and accept an idempotent write', {
 
   // Autostart is a login-item concept the inventory marks optional; a phone
   // host does not build it, and asking is how a caller finds out.
-  const offered = await app.eval({
+  const offered = await raw.eval({
     script: `return !!(lx.host.autostart && typeof lx.host.autostart.isEnabled === 'function')`,
   }) as boolean;
   if (!offered) {
-    const supported = await app.eval({ script: `return !!lx.supports('app.autostart')` });
+    const supported = await raw.eval({ script: `return !!lx.supports('app.autostart')` });
     expect(supported).toBe(false);
     return;
   }
 
   // Writing the value the host already holds proves the setter without
   // registering or removing a real login item on the developer's machine.
-  const result = await app.eval({
+  const result = await raw.eval({
     // The macOS login-item service answers well past the 5s eval default.
     timeoutMs: 45_000,
     script: `
@@ -486,7 +489,7 @@ spec('clear product caches while preserving live app storage', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-CACHE-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     timeoutMs: 60_000,
     script: `
       const payload = 'x'.repeat(256 * 1024);
@@ -543,10 +546,10 @@ spec('show, label, and retract the host tray item', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-TRAY-001');
   t.defer(async () => {
-    await app.eval({ script: `try { lx.tray.hide(); } catch {} return true;` });
+    await raw.eval({ script: `try { lx.tray.hide(); } catch {} return true;` });
   });
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       lx.tray.show();
       lx.tray.setTitle('LX');
@@ -584,7 +587,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   const { app } = bindFixture(t, 'HOSTAPP-SIDEBAR-001');
   // The declaration is process-local shell chrome; drop it however the spec ends.
   t.defer(async () => {
-    await app.eval({
+    await raw.eval({
       script: `
         try { lx.shell.sidebarActions.clear(); } catch {}
         if (globalThis.__sidebarProbeIcon) {
@@ -597,7 +600,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('declare a header and a footer action', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       lx.shell.sidebarActions.replace([
         { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
         { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer', onActivate() {} },
@@ -608,7 +611,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('patch presentation of one live id', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       lx.shell.sidebarActions.update('probe-footer', { label: 'Probe footer 2', disabled: true });
       return 'patched';
     `);
@@ -616,7 +619,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('accept a runtime-managed raster icon', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       const shot = await lx.host.screenshot();
       globalThis.__sidebarProbeIcon = shot.uri;
       lx.shell.sidebarActions.update('probe-footer', { icon: shot.uri });
@@ -627,7 +630,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('keep settings-shaped declarations on the generic runtime channel', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       lx.shell.sidebarActions.replace([
         { id: 'settings', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'ID spoof', onActivate() {} },
         { id: 'label-spoof', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Settings', onActivate() {} },
@@ -641,7 +644,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     expect(result.ok).toBeTruthy();
 
     // Restore the live set used by the following rollback assertions.
-    const restored = await evalCaught(app, `
+    const restored = await evalCaught(raw, `
       lx.shell.sidebarActions.replace([
         { id: 'probe-header', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Probe header', onActivate() {} },
         { id: 'probe-footer', placement: 'footer', icon: 'public/showcase-icon.svg', label: 'Probe footer 2', disabled: true, onActivate() {} },
@@ -652,7 +655,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('reject a patch for an id outside the declaration', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       lx.shell.sidebarActions.update('probe-missing', { label: 'nope' });
       return 'patched';
     `);
@@ -661,7 +664,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('reject a third header action without disturbing the live set', async () => {
-    const result = await evalCaught(app, `
+    const result = await evalCaught(raw, `
       lx.shell.sidebarActions.replace([
         { id: 'h1', placement: 'header', icon: 'public/showcase-icon.svg', label: 'One', onActivate() {} },
         { id: 'h2', placement: 'header', icon: 'public/showcase-icon.svg', label: 'Two', onActivate() {} },
@@ -671,7 +674,7 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
     `);
     expect(result.ok).toBeFalsy();
     // The rejected generation must not have replaced the live one.
-    const survivor = await evalCaught(app, `
+    const survivor = await evalCaught(raw, `
       lx.shell.sidebarActions.update('probe-header', { label: 'Probe header 2' });
       return 'patched';
     `);
@@ -679,14 +682,14 @@ spec('declare, patch, and retract runtime sidebar actions atomically', {
   });
 
   await t.step('remove one id, then clear the rest idempotently', async () => {
-    const removed = await evalCaught(app, `lx.shell.sidebarActions.remove('probe-footer'); return 'removed';`);
+    const removed = await evalCaught(raw, `lx.shell.sidebarActions.remove('probe-footer'); return 'removed';`);
     expect(removed.ok).toBeTruthy();
 
-    const removedTwice = await evalCaught(app, `lx.shell.sidebarActions.remove('probe-footer'); return 'removed';`);
+    const removedTwice = await evalCaught(raw, `lx.shell.sidebarActions.remove('probe-footer'); return 'removed';`);
     expect(removedTwice.ok).toBeFalsy();
     expect(removedTwice.code).toBe('E_NOT_FOUND');
 
-    const cleared = await evalCaught(app, `lx.shell.sidebarActions.clear(); lx.shell.sidebarActions.clear(); return 'cleared';`);
+    const cleared = await evalCaught(raw, `lx.shell.sidebarActions.clear(); lx.shell.sidebarActions.clear(); return 'cleared';`);
     expect(cleared.ok).toBeTruthy();
   });
 });
@@ -698,7 +701,7 @@ spec('reject shell surface reconfigure for an id the shell never realized', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SHELL-RECONFIG-001');
 
-  const result = await evalCaught(app, `
+  const result = await evalCaught(raw, `
     await lx.shell.reconfigure('surface-that-was-never-opened', { as: 'aside', edge: 'trailing' });
     return 'reconfigured';
   `);
@@ -715,7 +718,7 @@ spec('subscribe to and release the surface context listener', {
 }, async (t) => {
   const { app } = bindFixture(t, 'HOSTAPP-SURFACE-CTX-001');
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       let context;
       const first = lx.surface.watchContext(value => { context = value; });

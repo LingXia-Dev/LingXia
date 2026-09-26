@@ -2,7 +2,10 @@ import type { TestApp } from '@lingxia/test';
 import { waitForCurrentPage, waitForElementText } from '../helpers/page.js';
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 interface SurfaceLifecycleState {
   showCount: number;
@@ -18,15 +21,15 @@ spec('preserve hyphenated routes through show and ready', { id: 'PAGE-LIFECYCLE-
 
   await app.nav.relaunch({ page: 'home' });
   await app.nav.to({ page: 'bridge-repro' });
-  await waitForCurrentPage(app, 'bridge-repro');
+  await waitForCurrentPage(raw, 'bridge-repro');
   await app.nav.to({ page: 'feedback' });
-  await waitForCurrentPage(app, 'feedback');
+  await waitForCurrentPage(raw, 'feedback');
   await app.nav.back();
-  await waitForCurrentPage(app, 'bridge-repro');
+  await waitForCurrentPage(raw, 'bridge-repro');
 });
 
 async function surfaceLifecycleState(app: TestApp): Promise<SurfaceLifecycleState | null> {
-  return app.eval({
+  return raw.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/surface/'));
       return page
@@ -61,7 +64,7 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 
   await app.nav.to({ page: 'surface' });
   const shown = await waitForSurfaceLifecycle(app, (
@@ -71,14 +74,14 @@ spec("fire onShow/onHide on the same page instance across navigation", { id: "PA
 
   // Pushing another page hides the surface page without unloading it.
   await app.nav.to({ page: 'feedback' });
-  await waitForCurrentPage(app, 'feedback');
+  await waitForCurrentPage(raw, 'feedback');
   const hidden = await waitForSurfaceLifecycle(app, ({ hideCount }) => hideCount === 1);
   expect(hidden.lastLifecycle).toContain('onHide');
   expect(hidden.showCount).toBe(1);
 
   // Popping back re-shows the same instance: counters keep accumulating.
   await app.nav.back();
-  await waitForCurrentPage(app, 'surface');
+  await waitForCurrentPage(raw, 'surface');
   const reshown = await waitForSurfaceLifecycle(app, (
     { showCount, hideCount },
   ) => showCount === 2 && hideCount === 1);
@@ -93,7 +96,7 @@ interface ResetDemoState {
 }
 
 async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
-  return app.eval({
+  return raw.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
       return page
@@ -110,8 +113,8 @@ async function resetDemoState(app: TestApp): Promise<ResetDemoState | null> {
 
 async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
   await app.nav.to({ page: 'ui' });
-  await waitForCurrentPage(app, 'ui');
-  await app.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
+  await waitForCurrentPage(raw, 'ui');
+  await raw.page.waitFor({ page: 'ui', css: '[data-testid="ui-navigate-to"]' });
   const state = await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate !== null
@@ -124,7 +127,7 @@ async function enterResetDemo(app: TestApp): Promise<ResetDemoState> {
 }
 
 const waitForViewCounter = (app: TestApp, expected: string) => waitForElementText(
-  app,
+  raw,
   'ui',
   '[data-testid="lifecycle-view-counter"]',
   (text) => text.trim() === expected,
@@ -138,7 +141,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 
   const first = await enterResetDemo(app);
   expect(first.logicCounter).toBe(0);
@@ -146,8 +149,8 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   // Dirty both layers plus the DOM, and the module-scoped counter that
   // must NOT reset.
   const moduleBase = first.moduleCounter;
-  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]', state: 'attached' });
-  await app.page.eval({
+  await raw.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-open-popup"]', state: 'attached' });
+  await raw.page.eval({
     page: 'ui',
     script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
   });
@@ -155,7 +158,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   await app.view.testId("lifecycle-bump-view", { page: 'ui' }).click();
   await app.view.testId("lifecycle-bump-module", { page: 'ui' }).click();
   await app.view.testId("lifecycle-open-popup", { page: 'ui' }).click();
-  await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
+  await raw.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });
@@ -163,7 +166,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
 
   // Leaving ends the instance; the teardown lands after the pop transition.
   await app.nav.back();
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   // Past the deferred-teardown delay, so this covers the timer path rather
   // than the teardown being flushed by a fast re-entry.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
@@ -176,7 +179,7 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
   expect(second.moduleCounter).toBe(moduleBase + 1);
   await waitForViewCounter(app, '0');
 
-  const popup = await app.page.query({
+  const popup = await raw.page.query({
     page: 'ui',
     css: '[data-testid="lifecycle-popup"]',
   });
@@ -190,7 +193,7 @@ spec("stack two live instances of one route and unwind them independently", { id
     await app.nav.relaunch({ page: 'home' });
   });
 
-  const topDemoState = async (): Promise<ResetDemoState | null> => app.eval({
+  const topDemoState = async (): Promise<ResetDemoState | null> => raw.eval({
     script: `
       const page = getCurrentPages().at(-1);
       return page && page.route.includes('/ui/')
@@ -210,9 +213,9 @@ spec("stack two live instances of one route and unwind them independently", { id
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   await app.nav.to({ page: 'ui' });
-  await waitForCurrentPage(app, 'ui');
+  await waitForCurrentPage(raw, 'ui');
   const first = await waitForTopDemo();
   if (first === null) throw new Error('first drill-down entry left the stack');
 
@@ -233,7 +236,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   if (second === null) throw new Error('second drill-down entry left the stack');
   expect(second.logicCounter).toBe(0);
 
-  const stack = await app.eval({
+  const stack = await raw.eval({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
   expect(stack.filter((route) => route.includes('/ui/')).length).toBe(2);
@@ -249,7 +252,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   expect(unwound.logicCounter).toBe(1);
 
   await app.nav.back();
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 });
 
 spec('deliver exactly one onLoad and one onReady to a re-entered page', {
@@ -263,11 +266,11 @@ spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 
   const first = await enterResetDemo(app);
   await app.nav.back();
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   // Let the off-screen teardown complete: the rebuild at re-entry must
   // deliver exactly one lifecycle, never a second one of its own.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
@@ -280,7 +283,7 @@ spec('deliver exactly one onLoad and one onReady to a re-entered page', {
   // misread a late event as a missing one.
   const events = await eventually(
     async () => {
-      const state = await app.eval({
+      const state = await raw.eval({
         script: `
           const page = getCurrentPages().find((candidate) => candidate.route.includes('/ui/'));
           return page ? page.data.events ?? [] : null;
@@ -307,17 +310,17 @@ spec("park a left page instead of re-rendering it off-screen", { id: "PAGE-LIFEC
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 
   const first = await enterResetDemo(app);
   await app.nav.back();
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   // Past the teardown delay: the document must now be parked blank. Anything
   // still rendered here means page code ran off-screen — mount hooks, native
   // components, media — with nobody on the page.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 1_500));
 
-  const parked = await app.page.query({
+  const parked = await raw.page.query({
     page: 'ui',
     css: '[data-testid="ui-navigate-to"]',
   });
@@ -339,12 +342,12 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   // Let preloaded tab WebViews handshake. The bug fired onLoad off that
   // handshake, so switching too early would miss it.
   await new Promise<void>((resolve) => setTimeout(() => resolve(), 2_000));
 
-  const apiLoadCount = async (): Promise<number | null> => app.eval({
+  const apiLoadCount = async (): Promise<number | null> => raw.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/API/'));
       return page ? page.data.loadCount ?? -1 : null;
@@ -352,16 +355,16 @@ spec("fire onLoad once per tab instance, not on preload or later switchTab", {
   }) as Promise<number | null>;
 
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(app, 'api');
+  await waitForCurrentPage(raw, 'api');
   const first = await eventually(apiLoadCount, (count) => count === 1, {
     describe: 'first switchTab onto api to deliver exactly one onLoad',
   });
   expect(first).toBe(1);
 
   await app.nav.switchTab({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(app, 'api');
+  await waitForCurrentPage(raw, 'api');
   const second = await eventually(apiLoadCount, (count) => count != null, {
     describe: 'api tab to still report its load count after a second switchTab',
   });
@@ -376,7 +379,7 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   });
 
   await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPage(app, 'home');
+  await waitForCurrentPage(raw, 'home');
 
   const first = await enterResetDemo(app);
   await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
@@ -387,8 +390,8 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   // switchTab keeps the tab pages it leaves warm, but a pushed page drops off
   // the stack for good — that is a departure, and departures end instances.
   await app.nav.switchTab({ page: 'api' });
-  await waitForCurrentPage(app, 'api');
-  const stack = await app.eval({
+  await waitForCurrentPage(raw, 'api');
+  const stack = await raw.eval({
     script: 'return getCurrentPages().map((page) => page.route);',
   }) as string[];
   expect(stack.some((route) => route.includes('/ui/'))).toBe(false);

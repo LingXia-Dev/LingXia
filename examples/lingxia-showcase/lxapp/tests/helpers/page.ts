@@ -1,9 +1,8 @@
-import type { AppDriver } from './app.js';
-import type { PageInfo } from '@lingxia/types/automation';
+import type { PageInfo, LxAppDriver } from '@lingxia/types/automation';
 import { eventually } from './poll.js';
 
 export async function waitForElementEnabled(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   css: string,
   timeoutMs = 10_000,
@@ -12,7 +11,7 @@ export async function waitForElementEnabled(
 }
 
 export async function waitForElementAttribute(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   css: string,
   attribute: string,
@@ -32,7 +31,7 @@ export async function waitForElementAttribute(
 }
 
 export async function waitForElementText(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   css: string,
   predicate: (text: string) => boolean,
@@ -54,7 +53,7 @@ function isCurrentPageTransition(error: unknown): boolean {
 }
 
 /** Current page lookup that treats an empty relaunch-transition stack as absent. */
-export async function currentPageOrNull(app: AppDriver): Promise<PageInfo | null> {
+export async function currentPageOrNull(app: LxAppDriver): Promise<PageInfo | null> {
   try {
     return await app.nav.current();
   } catch (error) {
@@ -64,7 +63,7 @@ export async function currentPageOrNull(app: AppDriver): Promise<PageInfo | null
 }
 
 export async function waitForCurrentPage(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   timeoutMs = 10_000,
 ): Promise<PageInfo> {
@@ -79,7 +78,7 @@ export async function waitForCurrentPage(
 }
 
 export async function waitForCurrentPageVisible(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   css: string,
   timeoutMs = 10_000,

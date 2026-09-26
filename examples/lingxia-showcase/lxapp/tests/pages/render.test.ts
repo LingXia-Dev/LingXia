@@ -1,4 +1,5 @@
-import { SHOWCASE_APP_ID, type AppDriver } from '../helpers/app.js';
+import type { LxAppDriver } from '@lingxia/types/automation';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { expect, spec } from '@lingxia/test';
 
 import { waitForCurrentPage } from '../helpers/page.js';
@@ -8,6 +9,9 @@ import {
   SHOWCASE_PAGE_TITLES,
   SHOWCASE_PAGES,
 } from './manifest.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 interface DocumentState {
   title: string;
@@ -27,7 +31,7 @@ function isTransientPageReadinessError(error: unknown): boolean {
 }
 
 async function waitForRenderedFeature(
-  app: AppDriver,
+  app: LxAppDriver,
   page: string,
   expectedTitle: string,
   expectedText: string | readonly string[],
@@ -87,15 +91,15 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       const current = await app.nav.current();
       expect(current.name).toBe(expectation.page);
 
-      await app.page.waitFor({
+      await raw.page.waitFor({
         page: expectation.page,
         css: 'body',
-        state: 'exists',
+        state: 'attached',
         timeoutMs: 20_000,
       });
 
       const documentState = await waitForRenderedFeature(
-        app,
+        raw,
         expectation.page,
         SHOWCASE_PAGE_TITLES[expectation.page],
         expectation.text,
@@ -103,12 +107,12 @@ for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
       expect(documentState.title).toBe(SHOWCASE_PAGE_TITLES[expectation.page]);
       expect(documentState.text.length).toBeGreaterThan(0);
       expect(documentState.isNotFound).toBeFalsy();
-      const ready = await waitForCurrentPage(app, expectation.page, 30_000);
+      const ready = await waitForCurrentPage(raw, expectation.page, 30_000);
       expect(ready.name).toBe(expectation.page);
       expect(ready.ready).toBeTruthy();
     } catch (error) {
       try {
-        const screenshot = await app.page.screenshot({ page: expectation.page });
+        const screenshot = await raw.page.screenshot({ page: expectation.page });
         await attachShot(t, `page-${expectation.page}.png`, {
           mimeType: 'image/png',
           base64: screenshot.base64,

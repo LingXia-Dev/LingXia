@@ -1,11 +1,14 @@
 import { expect, spec } from '@lingxia/test';
 import { bindFixture, specNamespace } from '../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", covers: ['Storage.set', 'LxFile.text', 'lx.fs.stat'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "LOGIC-005");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const files = lx.fs;
       const storage = lx.getStorage();
@@ -39,7 +42,7 @@ spec("reject storage and file operations on invalid inputs", { id: "LOGIC-005", 
 spec("read image info from managed storage and reject a missing image", { id: "MEDIA-INFO-001", covers: ['lx.getImageInfo'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app, namespace } = bindFixture(t, "MEDIA-INFO-001");
 
-  const result = await app.eval({
+  const result = await raw.eval({
     script: `
       const files = lx.fs;
       const root = lx.env.USER_CACHE_PATH + '/' + ${JSON.stringify(namespace)};

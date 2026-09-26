@@ -1,8 +1,11 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { waitForCurrentPageVisible } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
 import { LX_RETURNED_OBJECT_SURFACES, LX_RUNTIME_SURFACES } from './manifest.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 /** A host that did not build a driver throws on the getter rather than
  *  answering undefined; that is absence, not a broken shape. */
@@ -123,7 +126,7 @@ spec('publish every public runtime and returned-object member', {
           surface.members.filter((name) => !optionalMembers.includes(name)),
           propertyNames,
         )
-        : await app.eval({
+        : await raw.eval({
           script: `
             const target = ${surface.expression};
             const members = ${JSON.stringify(surface.members)};
@@ -165,7 +168,7 @@ spec('publish every public runtime and returned-object member', {
     if (surface.fixture !== 'runtime-safe' || ('optional' in surface && surface.optional)) continue;
     const fixtureName: string = surface.name;
     if (fixtureName === 'LxFile') {
-      const result = await app.eval({
+      const result = await raw.eval({
         script: `
           const target = lx.fs.file('lx://userdata/__shape__/managed-file');
           const members = ${JSON.stringify(surface.members)};
@@ -202,13 +205,13 @@ spec('publish every public runtime and returned-object member', {
     });
     defer(async () => {
       await app.nav.relaunch({ page: 'home' });
-      await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+      await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
     });
-    await app.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'attached' });
+    await raw.page.waitFor({ page: 'video', css: '#lx-video-shape-fixture', state: 'attached' });
     let stableRectSamples = 0;
     let previousRect = '';
     await eventually(
-      () => app.page.eval({
+      () => raw.page.eval({
         page: 'video',
         script: `(() => {
           const rect = document.querySelector('#lx-video-shape-fixture')?.getBoundingClientRect();
@@ -229,7 +232,7 @@ spec('publish every public runtime and returned-object member', {
       },
       { timeoutMs: 5_000, describe: 'native video fixture layout to settle' });
     const result = await eventually(
-      () => app.eval({
+      () => raw.eval({
         script: `
           const target = lx.createVideoContext('lx-video-shape-fixture');
           const members = ${JSON.stringify(surface.members)};

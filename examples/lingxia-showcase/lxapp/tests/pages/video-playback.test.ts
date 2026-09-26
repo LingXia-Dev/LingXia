@@ -1,7 +1,10 @@
 import { expect, spec } from '@lingxia/test';
-import { SHOWCASE_APP_ID } from '../helpers/app.js';
+import { SHOWCASE_APP_ID, rawApp } from '../helpers/app.js';
 import { currentPageOrNull, waitForCurrentPage, waitForCurrentPageVisible, waitForElementText } from '../helpers/page.js';
 import { bindFixture, eventually } from '../helpers/poll.js';
+
+// String scripts and raw page reads go to the raw driver; see `rawApp`.
+const raw = rawApp();
 
 const httpBase = (globalThis.__LINGXIA_AUTOMATION_HOST__?.args ?? {}).httpBase;
 const playbackSpec = httpBase ? spec : spec.skip;
@@ -21,7 +24,7 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
   reason: 'needs the HTTP fixture: node tests/harness/http-fixture.mjs, then --arg httpBase=<url>',
 }, async (t) => {
   const { app, defer } = bindFixture(t, 'NATIVE-VIDEO-PLAYBACK-001');
-  const readState = () => app.eval({
+  const readState = () => raw.eval({
     script: `
       const page = getCurrentPages().find((candidate) => candidate.route.includes('/video/'));
       return {
@@ -31,27 +34,27 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
       };
     `,
   }) as Promise<PlaybackState>;
-  const command = (body: string) => app.eval({
+  const command = (body: string) => raw.eval({
     script: `lx.createVideoContext(${JSON.stringify(VIDEO_ID)}).${body}; return true;`,
   });
 
-  const current = await currentPageOrNull(app);
+  const current = await currentPageOrNull(raw);
   if (current?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-  await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+  await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   defer(async () => {
     await command('stop()').catch(() => undefined);
-    const active = await currentPageOrNull(app);
+    const active = await currentPageOrNull(raw);
     if (active?.name !== 'home') await app.nav.relaunch({ page: 'home' });
-    await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
+    await waitForCurrentPageVisible(raw, 'home', '[data-testid="home-page"]');
   });
 
   await app.nav.to({
     page: 'video',
     query: { automationFixture: 'video-source', src: `${httpBase}/media/sample.mp4` },
   });
-  await waitForCurrentPage(app, 'video');
-  await app.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
-  await app.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
+  await waitForCurrentPage(raw, 'video');
+  await raw.page.waitFor({ page: 'video', css: '[data-testid="video-page"]', state: 'visible' });
+  await raw.page.waitFor({ page: 'video', css: `#${VIDEO_ID}`, state: 'visible' });
   // Autoplay is off for this fixture, so the clock has not started. The event
   // label is not the invariant: a native player may already report buffering
   // as it opens the source.
@@ -59,7 +62,7 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
 
   await t.step('play() starts the clock and reports the clip length', async () => {
     await command('play()');
-    await waitForElementText(app, 'video', '[data-testid="video-event"]', (text) => text.includes('Playing'), 15_000);
+    await waitForElementText(raw, 'video', '[data-testid="video-event"]', (text) => text.includes('Playing'), 15_000);
     const playing = await eventually(readState, (state) => state.currentTime > 0 && state.duration > 0, {
       describe: 'timeupdate to advance after play()',
       timeoutMs: 15_000,
@@ -80,7 +83,7 @@ playbackSpec('drive native playback through VideoContext against a local clip', 
   await t.step('stop() ends playback', async () => {
     await command('stop()');
     await waitForElementText(
-      app,
+      raw,
       'video',
       '[data-testid="video-event"]',
       (text) => text.includes('Stopped') || text.includes('Paused') || text.includes('Ended'),

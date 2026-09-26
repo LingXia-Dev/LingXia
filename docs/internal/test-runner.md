@@ -297,13 +297,11 @@ Development machine: lxdev receives progress, results, and artifacts
   call made before the wait counts; it polls silenced inside one traced
   action and throws a `TimeoutError` listing the last 10 calls.
   `t.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
-  accepts a bare number from an older host as `{ now, pending }` and
   reports dropped timers as a `diagnostic` (`phase: "clock"`).
 - `t.app.view` is a plain object (locators, `eval(fn)`, `screenshot`,
-  `scroll`, guarded `pointer`/`key`); `t.app.page` is the 0.18 proxy over
-  the guarded raw page with `testId/css/eval` overridden, kept as a
-  deprecated alias. The fixture's evals take functions only; the string
-  form stays on the raw driver and on the deprecated `t.app.eval`.
+  `scroll`, guarded `pointer`/`key`); there is no raw page on the fixture.
+  The fixture's evals take functions only; the string form is the raw
+  driver's.
 - `t.expect` dispatches on its argument: a branded locator
   (`Symbol.for("lingxia.test.locator")`) → locator matchers, a function →
   the retrying poll, anything else → the once-matchers of `expect`. The
