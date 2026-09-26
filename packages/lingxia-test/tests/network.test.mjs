@@ -37,20 +37,6 @@ function fakeNetwork() {
         async requests() { return log.filter((entry) => entry.routeId === id); },
       };
     },
-    async scenario(definition) {
-      const handles = [];
-      for (const entry of definition.routes ?? definition.http.routes) handles.push(await network.route(entry.url, entry));
-      return {
-        name: definition.name ?? null,
-        get routes() { return [...handles]; },
-        async unroute() {
-          let removed = 0;
-          for (const handle of handles) if (await handle.unroute()) removed += 1;
-          return removed;
-        },
-        async requests() { return log.filter((entry) => handles.some((handle) => handle.id === entry.routeId)); },
-      };
-    },
     async unrouteAll() {
       const count = routes.size;
       routes.clear();
@@ -141,73 +127,142 @@ test("a host without test routing does not break t.app", async () => {
   assert.equal((await run()).failed, 0);
 });
 
-test("a scenario installs its routes for one spec and reports their requests", async () => {
-  const world = createWorld();
-  const network = fakeNetwork();
-  world.app.network = network;
-  installFakeHost(world);
-  let installed;
-  let names;
-  let handleRequests;
-  let specRequests;
-  let seenAfter;
+/**
+ * Mirrors the host's `lxapp().scenario()`: one scenario per run and app,
+ * rules resolved with the variant first, calls kept per scenario.
+ */
+function fakeScenarios(app) {
+  const state = { installed: [], current: null, calls: [], unrouted: 0 };
+  app.scenario = async (definition, variant) => {
+    if (definition.routes) throw new Error("scenario: 'routes' is the old scenario format");
+    const own = variant ? definition.variants?.[variant]?.rules : [];
+    if (variant && !own) throw new Error(`scenario: no variant '${variant}'`);
+    const rules = [...own, ...(definition.rules ?? [])].map((rule, i) => ({
+      index: i + 1,
+      target: rule.http ?? `function ${rule.function}`,
+      kind: rule.http ? "http" : "function",
+      hits: rule.http ? 0 : null,
+    }));
+    const handle = {
+      name: definition.name ?? null,
+      variant: variant ?? null,
+      get rules() { return rules.map((rule) => ({ ...rule })); },
+      async calls(filter) {
+        return state.calls.filter((call) => call.scenario === handle && (!filter?.function || call.function === filter.function));
+      },
+      async unroute() {
+        if (state.current !== handle) return 0;
+        state.current = null;
+        state.unrouted += 1;
+        return rules.length;
+      },
+    };
+    state.current = handle;
+    state.installed.push({ definition, variant, handle, rules });
+    return handle;
+  };
+  state.hit = (index, call) => {
+    const rule = state.installed.at(-1).rules.find((entry) => entry.index === index);
+    if (rule && rule.hits !== null) rule.hits += 1;
+    state.calls.push({ scenario: state.current, rule: index, ...call });
+  };
+  return state;
+}
 
-  spec("scenario", async (t) => {
-    const scenario = await t.app.network.scenario({
-      name: "outage",
-      routes: [
-        { url: "/v1/status", sequence: [{ status: 503 }, { json: { up: true } }] },
-        { url: "/v1/events", sse: [{ data: "hello" }, { drop: true }] },
-      ],
-    });
-    installed = network.routes.size;
-    names = scenario.routes.map((route) => route.pattern);
-    network.hit("https://h/v1/status");
-    handleRequests = (await scenario.requests()).length;
-    specRequests = (await t.app.network.requests()).length;
-    assert.equal(scenario.name, "outage");
+test("t.app.scenario installs a variant for one spec, traces it, and lists its calls", async () => {
+  const world = createWorld();
+  const scenarios = fakeScenarios(world.app);
+  installFakeHost(world);
+  let seen;
+  let replacedBefore;
+  const wifi = {
+    name: "Wi-Fi",
+    rules: [{ http: "GET **/wifi/clients", json: [] }],
+    variants: {
+      a: { rules: [{ http: "GET **/wifi/main", json: { ssid: "A" } }] },
+      b: { rules: [{ http: "GET **/wifi/main", json: { ssid: "B" } }, { function: "orders.submit", fault: "unknown" }] },
+    },
+  };
+
+  spec("variants", async (t) => {
+    const a = await t.app.scenario(wifi, "a");
+    assert.equal(a.variant, "a");
+    // Switching variants mid-spec replaces the first.
+    const b = await t.app.scenario(wifi, "b");
+    replacedBefore = scenarios.current?.variant;
+    assert.deepEqual(b.rules.map((rule) => [rule.index, rule.target]), [
+      [1, "GET **/wifi/main"], [2, "function orders.submit"], [3, "GET **/wifi/clients"],
+    ]);
+    scenarios.hit(2, { kind: "function", function: "orders.submit", time: 1, answeredBy: "rule 2 (Wi-Fi:b)", outcome: "fault" });
+    seen = await b.calls({ function: "orders.submit" });
   });
-  spec("after", async () => {
-    seenAfter = network.routes.size;
-  });
+  spec("after", async () => {});
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.equal(installed, 2);
-  assert.deepEqual(names, ["/v1/status", "/v1/events"]);
-  assert.equal(handleRequests, 1);
-  assert.equal(specRequests, 1);
-  assert.equal(seenAfter, 0, "a scenario route leaked into the next spec");
-  const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
-  assert.equal(step?.detail, "outage (2 routes)");
+  assert.equal(scenarios.installed.length, 2);
+  assert.equal(replacedBefore, "b");
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].answeredBy, "rule 2 (Wi-Fi:b)");
+  assert.equal(scenarios.current, null, "the scenario lasts one spec");
+  const steps = report.cases[0].steps.filter((step) => step.name === "scenario");
+  assert.deepEqual(steps.map((step) => step.detail), ["Wi-Fi:a (2 rules)", "Wi-Fi:b (3 rules)"]);
+  assert.ok(report.cases[0].steps.some((step) => step.name === "scenario.calls"));
 });
 
-test("a sectioned scenario file installs its http routes", async () => {
+test("t.app.scenario rejections reach the spec as they are", async () => {
   const world = createWorld();
-  const network = fakeNetwork();
-  world.app.network = network;
+  fakeScenarios(world.app);
   installFakeHost(world);
-  let name;
-  let installed;
+  let message;
+  spec("old format", async (t) => {
+    try {
+      await t.app.scenario({ routes: [] });
+    } catch (error) {
+      message = error.message;
+    }
+  });
+  await run();
+  assert.match(message ?? "", /'routes' is the old scenario format/);
+});
 
-  spec("sectioned", async (t) => {
-    const scenario = await t.app.network.scenario({
-      $schema: "../../node_modules/@lingxia/test/schemas/scenario.schema.json",
-      name: "gateway offline",
-      description: "the status card shows offline",
-      http: { routes: [{ url: "/v1/status", status: 503 }, { url: "/v1/devices", json: [] }] },
-    });
-    name = scenario.name;
-    installed = network.routes.size;
+test("a failed spec reports its scenario, per-rule hits and who answered each call", async () => {
+  const world = createWorld();
+  const scenarios = fakeScenarios(world.app);
+  installFakeHost(world);
+  globalThis.__LINGXIA_AUTOMATION_HOST__.networkLog = () => [
+    { time: 1000, kind: "fetch", method: "GET", url: "https://h/wifi/main", status: 200, durationMs: 4, source: "route",
+      route: { pattern: "**/wifi/main", action: "fulfill", rule: 1, scenario: "Wi-Fi:b" }, answeredBy: "rule 1 (Wi-Fi:b)" },
+    { time: 1030, kind: "fetch", method: "PATCH", url: "https://h/devices/1", status: 204, durationMs: 9, source: "network",
+      answeredBy: "real", noMatch: "no rule matched PATCH https://h/devices/1 (1 rule for this target: rule 3 match.json.name: missing)" },
+  ];
+
+  spec("shows the wrong network", async (t) => {
+    await t.app.scenario({
+      name: "Wi-Fi",
+      rules: [{ http: "PATCH **/devices/*", match: { json: { name: "Office" } }, status: 409 }],
+      variants: { b: { rules: [{ http: "GET **/wifi/main", json: { ssid: "B" } }, { function: "orders.submit", fault: "unknown" }] } },
+    }, "b");
+    scenarios.hit(1, { kind: "http", time: 1000 });
+    scenarios.hit(2, { kind: "function", function: "orders.submit", time: 1010, rule: 2, answeredBy: "rule 2 (Wi-Fi:b)", outcome: "fault" });
+    throw new Error("expected the B network");
   });
 
   const report = await run();
-  assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.equal(installed, 2);
-  assert.equal(name, "gateway offline");
-  assert.equal(network.routes.size, 0, "the routes last one spec");
-  const step = report.cases[0].steps.find((entry) => entry.name === "network.scenario");
-  assert.equal(step?.detail, "gateway offline (2 routes)");
+  assert.equal(report.failed, 1);
+  const error = report.cases[0].error;
+  assert.equal(error.scenario.label, "Wi-Fi:b");
+  assert.deepEqual(error.scenario.rules.map((rule) => [rule.index, rule.hits]), [[1, 1], [2, 1], [3, 0]]);
+  assert.deepEqual(error.network.map((call) => call.answeredBy), ["rule 1 (Wi-Fi:b)", "rule 2 (Wi-Fi:b)", "real"]);
+  assert.equal(error.network[1].kind, "function");
+  assert.equal(error.network[1].function, "orders.submit");
+  assert.equal(report.failures[0].scenario.label, "Wi-Fi:b");
+  assert.equal(scenarios.unrouted, 1, "the scenario is still removed after the evidence is taken");
+  const html = renderHtml(report);
+  assert.match(html, /Scenario Wi-Fi:b &middot; 3 rules/);
+  assert.match(html, /answered 0×/);
+  assert.match(html, /rule 2 \(Wi-Fi:b\)/);
+  assert.match(html, /no rule matched PATCH/);
 });
 
 test("a failed spec reports the app's last Logic network calls, secrets masked", async () => {
@@ -254,7 +309,7 @@ test("--record-network attaches each spec's scenario and masks secrets", async (
   globalThis.__LINGXIA_AUTOMATION_HOST__.networkRecord = (command, name) => {
     calls.push([command, name]);
     return command === "stop"
-      ? { name, routes: [{ url: "https://h/v1/me?key=tok-12345", method: "GET", status: 200, json: { ok: true } }] }
+      ? { name, rules: [{ http: "GET https://h/v1/me?key=tok-12345", status: 200, json: { ok: true } }] }
       : null;
   };
 
@@ -265,7 +320,7 @@ test("--record-network attaches each spec's scenario and masks secrets", async (
   const artifact = attachments.get("attachments/rec-1/attempt-0/network.scenario.json");
   assert.ok(artifact, [...attachments.keys()].join(", "));
   const scenario = JSON.parse(Buffer.from(artifact.base64, "base64").toString("utf8"));
-  assert.equal(scenario.routes[0].url, "https://h/v1/me?key=***");
+  assert.equal(scenario.rules[0].http, "GET https://h/v1/me?key=***");
   assert.ok(report.cases[0].attachments.some((entry) => entry.name === "network.scenario.json"));
 });
 

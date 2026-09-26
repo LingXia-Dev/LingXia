@@ -51,6 +51,7 @@ export type {
   Matchers,
   NetworkCall,
   OpenApiRun,
+  ScenarioReport,
   OpenApiSummary,
   ProtocolReport,
   RejectExpected,

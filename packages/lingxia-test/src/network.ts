@@ -4,8 +4,6 @@ import type {
   NetworkRouteHandler,
   NetworkRoutePattern,
   NetworkRouteRequest,
-  NetworkScenario,
-  NetworkScenarioInput,
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
 
@@ -61,21 +59,6 @@ export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: Netw
         scope.track(host, route);
         return wrapRoute(route);
       }),
-    scenario: (definition: NetworkScenarioInput) =>
-      host.act("network.scenario", describeScenario(definition), async () => {
-        const scenario = await driver().scenario(definition);
-        // Read once: the host builds new handles on every read.
-        const routes = [...scenario.routes];
-        for (const route of routes) scope.track(host, route);
-        const label = scenario.name ?? "scenario";
-        const wrapped: NetworkScenario = {
-          get name() { return scenario.name; },
-          routes: routes.map(wrapRoute),
-          unroute: () => host.act("network.unroute", label, () => scenario.unroute()),
-          requests: () => host.act("network.requests", label, () => scenario.requests()),
-        };
-        return wrapped;
-      }),
     unrouteAll: () => host.act("network.unrouteAll", "", () => driver().unrouteAll()),
     // Spec-scoped: the host log spans the whole run.
     requests: () =>
@@ -85,14 +68,6 @@ export function wrapNetwork(resolve: () => NetworkDriver | undefined, host: Netw
     captureResponses: (options) => host.act("network.captureResponses", "", () => driver().captureResponses(options)),
     responses: (options) => host.act("network.responses", "", () => driver().responses(options)),
   };
-}
-
-function describeScenario(definition: NetworkScenarioInput): string {
-  const record = definition as { name?: unknown; routes?: unknown; http?: { routes?: unknown } };
-  const name = typeof record.name === "string" ? record.name : "scenario";
-  const routes = record.routes ?? record.http?.routes;
-  const count = Array.isArray(routes) ? routes.length : 0;
-  return truncate(`${name} (${count} route${count === 1 ? "" : "s"})`, 80);
 }
 
 function describePattern(pattern: NetworkRoutePattern): string {

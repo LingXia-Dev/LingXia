@@ -843,54 +843,131 @@ export type NetworkRouteSequence = { sequence: NetworkRouteAnswer[] } &
  */
 export type NetworkRouteHandler = NetworkRouteAnswer | NetworkRouteSequence;
 
+/** `bodyBase64` answers: bytes in a file, instead of `body` or `json`. */
+export type ScenarioHttpBinary = NetworkRouteFulfillFields & { bodyBase64: string } &
+  NetworkRouteForbid<'body' | 'json'>;
+
 /**
- * One scenario route: which requests it matches and how it answers. `url` is
- * a glob or a regex written as `"/source/flags"`. `note` is ignored.
+ * A `match` value: objects match when every listed key is present and
+ * matches (other keys are ignored), arrays match element by element with the
+ * same length, a `"/regex/flags"` string (flags among `imsu`) matches a
+ * scalar whose text it finds, and any other value matches an equal value.
  */
-export type NetworkScenarioRoute = {
-  url: string;
-  method?: string;
+export type ScenarioMatchValue = unknown;
+
+/** Fields every rule may have. */
+type ScenarioRuleCommon = {
+  /** Answer this many matching calls, then stand aside. */
   times?: number;
+  /** Free text, ignored. */
   note?: string;
-  description?: string;
-} & (
-  | NetworkRouteHandler
-  | (NetworkRouteFulfillFields & { bodyBase64: string } & NetworkRouteForbid<'body' | 'json'>)
+};
+
+/**
+ * A rule for the app's Logic `fetch` / `Rong.SSE`: `http` is
+ * `"METHOD url-glob"` (`*` for any method; the URL may be `/regex/flags`),
+ * and the answer is a route handler (or `bodyBase64`).
+ */
+export type ScenarioHttpRule = ScenarioRuleCommon & {
+  http: string;
+  function?: never;
+  /** Match the request's JSON body. */
+  match?: { json: ScenarioMatchValue };
+} & (NetworkRouteHandler | ScenarioHttpBinary);
+
+/** How a `function` rule answers one call. */
+export type ScenarioFunctionAnswer = { delay?: number } & (
+  | { result: unknown; error?: never; fault?: never }
+  | { error: { code: string; [key: string]: unknown }; result?: never; fault?: never }
+  | { fault: 'notRun' | 'unknown'; result?: never; error?: never }
 );
 
 /**
- * A declarative set of routes, usually a JSON file. The first matching entry
- * answers. Unknown fields are rejected. Routes sit at the top level or, in
- * the sectioned form `lxdev scenario` files use, under `http.routes`.
+ * A rule for a Worker Function call, answered by the dev session's
+ * companion: `result`, a declared `error`, or a transport `fault`.
  */
-export type NetworkScenarioDefinition = {
+export type ScenarioFunctionRule = ScenarioRuleCommon & {
+  function: string;
+  http?: never;
+  /** Match the call's arguments. */
+  match?: { args: ScenarioMatchValue };
+} & (
+  | (ScenarioFunctionAnswer & { sequence?: never })
+  | { sequence: ScenarioFunctionAnswer[]; result?: never; error?: never; fault?: never; delay?: never }
+);
+
+export type ScenarioRule = ScenarioHttpRule | ScenarioFunctionRule;
+
+/**
+ * A scenario file: rules tried in file order (the first match answers;
+ * nothing matched goes to the real backend), and named variants whose rules
+ * go before the shared ones. Unknown fields are rejected.
+ */
+export type ScenarioDefinition = {
   $schema?: string;
   name?: string;
   description?: string;
-} & (
-  | { routes: NetworkScenarioRoute[]; http?: never }
-  | { http: { routes: NetworkScenarioRoute[] }; routes?: never }
-);
+  rules?: ScenarioRule[];
+  variants?: Record<string, { description?: string; rules: ScenarioRule[] }>;
+};
 
 /**
  * What `scenario()` accepts: a typed definition, or an imported JSON file,
  * whose literal types TypeScript widens. Either is validated by the host.
  */
-export type NetworkScenarioInput =
-  | NetworkScenarioDefinition
-  | { readonly routes: readonly object[]; readonly [key: string]: unknown }
-  | { readonly http: { readonly routes: readonly object[] }; readonly [key: string]: unknown };
+export type ScenarioInput =
+  | ScenarioDefinition
+  | { readonly rules: readonly object[]; readonly [key: string]: unknown }
+  | { readonly variants: { readonly [variant: string]: { readonly rules: readonly object[] } }; readonly [key: string]: unknown };
+
+/** One rule of an installed scenario. */
+export interface ScenarioRuleInfo {
+  /** 1-based, in precedence order (the variant's rules first). */
+  index: number;
+  /** `GET **\/wifi/main`, `function orders.submit`. */
+  target: string;
+  kind: 'http' | 'function';
+  /** Calls it answered (`http` rules); `null` for `function` rules. */
+  hits: number | null;
+}
+
+/** One call that reached a scenario. */
+export interface ScenarioCall {
+  /** Epoch milliseconds. */
+  time: number;
+  kind: 'http' | 'function';
+  /** `http`: upper-case method and URL. */
+  method?: string;
+  url?: string;
+  /** `http`: the request body, parsed when it is JSON. */
+  body?: unknown;
+  /** `http`: the answered status, `null` for abort/continue/hang or no answer. */
+  status?: number | null;
+  /** `function`: its name, arguments, and `result`/`error`/`fault`/`default`. */
+  function?: string;
+  args?: unknown;
+  outcome?: string;
+  /** The rule that answered, or `null` when none did. */
+  rule: number | null;
+  /** `rule 2 (name:variant)`, `real`, or `companion default`. */
+  answeredBy: string;
+  /** Why no rule matched, when rules targeted the call. */
+  noMatch?: string;
+}
+
+/** `calls()` filter: one rule's target, or its number. */
+export type ScenarioCallFilter = { http: string } | { function: string } | { rule: number };
 
 /** Handle returned by `scenario()`. */
-export interface NetworkScenario {
-  /** The scenario's `name`, or `null`. */
+export interface Scenario {
   readonly name: string | null;
-  /** One route handle per scenario entry, in file order. */
-  readonly routes: NetworkRoute[];
-  /** Remove every route of the scenario; resolves how many were still installed. */
+  readonly variant: string | null;
+  /** Its rules with their hit counts, read when accessed. */
+  readonly rules: ScenarioRuleInfo[];
+  /** Calls that reached the scenario since it was installed, oldest first. */
+  calls(filter?: ScenarioCallFilter): Promise<ScenarioCall[]>;
+  /** Remove the scenario; resolves how many rules were still installed. */
   unroute(): Promise<number>;
-  /** Requests any route of the scenario handled, oldest first. */
-  requests(): Promise<NetworkRouteRequest[]>;
 }
 
 /** One request a route handled, as the app sent it. */
@@ -976,12 +1053,6 @@ export interface NetworkCaptureOptions {
  */
 export interface NetworkDriver {
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<NetworkRoute>;
-  /**
-   * Install every route of a scenario at once, validated as a whole (unknown
-   * fields and bad patterns reject). Within the scenario the first matching
-   * entry answers; routes installed later still take precedence over it.
-   */
-  scenario(scenario: NetworkScenarioInput): Promise<NetworkScenario>;
   /** Remove every route this run installed for the app; resolves the count. */
   unrouteAll(): Promise<number>;
   /**
@@ -1148,6 +1219,16 @@ export interface LxAppDriver extends LogicLxAppDriver {
    * or in a host built without the automation runtime.
    */
   readonly network: NetworkDriver;
+  /**
+   * Install a scenario file (with one of its variants) for the host run:
+   * `http` rules answer Logic `fetch`, `function` rules go to the dev
+   * session's companion. Validated as a whole; it replaces the scenario the
+   * run installed for this app before, and the run's end removes it. Routes
+   * added with `network.route()` take precedence over it.
+   *
+   * @remarks Rejects with `E_AUTOMATION` outside a host test run.
+   */
+  scenario(definition: ScenarioInput, variant?: string): Promise<Scenario>;
   /**
    * Isolated data profile rollback, scoped to the host automation run.
    *

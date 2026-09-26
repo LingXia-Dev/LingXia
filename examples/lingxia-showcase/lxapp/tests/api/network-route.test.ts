@@ -1,9 +1,9 @@
 import { expect, spec } from '@lingxia/test';
-import type { NetworkRouteHandler } from '@lingxia/types/automation';
+import type { NetworkRouteHandler, ScenarioInput } from '@lingxia/types/automation';
 import { bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 import outage from '../fixtures/network/outage.json';
-import statusOffline from '../scenarios/route/status-offline.json';
+import status from '../scenarios/route/status.json';
 
 // Public host: the Showcase keeps the default public-network grant, and a
 // route never fulfills a host the app's policy would refuse.
@@ -136,19 +136,21 @@ spec("reject network routes from inside app Logic", {
 spec("serve a scenario file with a sequence, relative times and file-order precedence", {
   id: "AUT-NET-004",
   covers: [
-    'NetworkDriver.scenario',
-    'NetworkScenario.name',
-    'NetworkScenario.routes',
-    'NetworkScenario.requests',
-    'NetworkScenario.unroute',
+    'LxAppDriver.scenario',
+    'Scenario.name',
+    'Scenario.variant',
+    'Scenario.rules',
+    'Scenario.calls',
+    'Scenario.unroute',
   ],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-004");
 
-  const scenario = await app.network.scenario(outage);
+  const scenario = await app.scenario(outage);
   expect(scenario.name).toBe('showcase-outage');
-  expect(scenario.routes.map((route) => route.pattern)).toEqual(outage.routes.map((route) => route.url));
+  expect(scenario.variant).toBe(null);
+  expect(scenario.rules.map((rule) => rule.target)).toEqual(outage.rules.map((rule) => rule.http));
 
   const result = await app.eval({
     script: `
@@ -182,53 +184,114 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
   expect(Math.abs(Number(result.device.lastSeenMs) - (result.now - 2 * 3600_000)) < 120_000).toBeTruthy();
   expect(result.special).toBe(418);
 
-  const [status] = scenario.routes;
-  expect((await status.requests()).map((entry) => entry.status)).toEqual([503, 502, 200, 200]);
-  expect((await scenario.requests()).length).toBe(6);
+  expect(scenario.rules.map((rule) => rule.hits)).toEqual([4, 1, 1]);
+  const statusCalls = await scenario.calls({ http: `GET ${BASE}/status` });
+  expect(statusCalls.map((call) => call.status)).toEqual([503, 502, 200, 200]);
+  expect(statusCalls.every((call) => call.rule === 1)).toBeTruthy();
+  expect(statusCalls[0].answeredBy).toBe('rule 1 (showcase-outage)');
+  expect((await scenario.calls()).length).toBe(6);
   expect(await scenario.unroute()).toBe(3);
 });
 
-spec("reject a scenario with an unknown field", {
+spec("reject a scenario the host cannot install, naming the rule", {
   id: "AUT-NET-006",
-  covers: ['NetworkDriver.scenario'],
+  covers: ['LxAppDriver.scenario'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-006");
   await t.reject(
-    () => app.network.scenario({ routes: [{ url: `${BASE}/x`, stauts: 200 }] }),
-    { message: "routes[0]: unknown route handler option 'stauts'" },
+    () => app.scenario({ rules: [{ http: `GET ${BASE}/x`, stauts: 200 }] }),
+    { message: "rules[0]: unknown route handler option 'stauts'" },
   );
   await t.reject(
-    () => app.network.scenario({ http: { routes: [{ url: `${BASE}/x`, status: 200 }] }, worker: {} }),
-    { message: 'worker section of a scenario is not supported yet' },
+    // The old `routes` form, as an older file would still have it.
+    () => app.scenario({ routes: [{ url: `${BASE}/x`, status: 200 }] } as object as ScenarioInput),
+    { message: "'routes' is the old scenario format" },
+  );
+  await t.reject(
+    () => app.scenario(status, 'degraded'),
+    { message: "no variant 'degraded' (variants: " },
+  );
+  // Function rules need a companion that answers them; this session has
+  // none, so nothing of the scenario is installed.
+  await t.reject(
+    () => app.scenario({
+      rules: [
+        { http: `GET ${BASE}/status`, status: 200 },
+        { function: 'orders.submit', fault: 'unknown' },
+      ],
+    }),
+    { message: '1 function rule (rule 2 function orders.submit) cannot be installed' },
   );
 });
 
-spec("serve a sectioned scenario file, the form `lxdev scenario use` takes", {
+spec("switch a scenario's variant mid-spec and answer renames by their JSON body", {
   id: "AUT-NET-007",
-  covers: ['NetworkDriver.scenario', 'NetworkScenario.name', 'NetworkScenario.unroute'],
+  covers: ['LxAppDriver.scenario', 'Scenario.variant', 'Scenario.calls', 'Scenario.rules'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-007");
+  // Below the scenario's rules: a rename no rule matches lands here instead
+  // of the real network.
+  await app.network.route({ url: `${BASE}/devices/*`, method: 'PATCH' }, { status: 404, json: { error: 'unmatched' } });
 
-  const scenario = await app.network.scenario(statusOffline);
-  expect(scenario.name).toBe('Status offline');
-  expect(scenario.routes.map((route) => route.pattern)).toEqual(statusOffline.http.routes.map((route) => route.url));
+  const readStatus = () => app.eval({
+    script: `
+      const response = await fetch(${JSON.stringify(`${BASE}/status`)});
+      return { status: response.status, up: (await response.json()).up };
+    `,
+  }) as Promise<{ status: number; up: boolean }>;
+
+  const online = await app.scenario(status, 'online');
+  expect(online.variant).toBe('online');
+  expect(online.rules.map((rule) => rule.target)[0]).toBe(`GET ${BASE}/status`);
+  expect(await readStatus()).toEqual({ status: 200, up: true });
+
+  // The next call answers from the other variant.
+  const offline = await app.scenario(status, 'offline');
+  expect(await readStatus()).toEqual({ status: 503, up: false });
 
   const result = await app.eval({
     script: `
       const base = ${JSON.stringify(BASE)};
-      const status = await fetch(base + '/status');
+      const rename = async (body) => {
+        const response = await fetch(base + '/devices/d1', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        return [response.status, await response.json()];
+      };
       const device = await (await fetch(base + '/devices/d1')).json();
-      return { status: status.status, up: (await status.json()).up, online: device.online, lastSeen: device.lastSeen, now: Date.now() };
+      return {
+        device,
+        taken: await rename({ name: 'Office', floor: 3 }),
+        lab: await rename({ name: 'Lab-12', tags: ['lab', 'floor-2'] }),
+        // One tag short: arrays match exactly.
+        missed: await rename({ name: 'Lab-12', tags: ['lab'] }),
+        now: Date.now(),
+      };
     `,
-  }) as { status: number; up: boolean; online: boolean; lastSeen: string; now: number };
+  }) as {
+    device: { online: boolean; lastSeen: string };
+    taken: [number, { error: string }];
+    lab: [number, { renamed: boolean }];
+    missed: [number, { error: string }];
+    now: number;
+  };
+  expect(result.device.online).toBe(false);
+  expect(Math.abs(Date.parse(result.device.lastSeen) - (result.now - 6 * 3600_000)) < 120_000).toBeTruthy();
+  expect(result.taken).toEqual([409, { error: 'name_taken' }]);
+  expect(result.lab).toEqual([200, { renamed: true }]);
+  expect(result.missed).toEqual([404, { error: 'unmatched' }]);
 
-  expect(result.status).toBe(503);
-  expect(result.up).toBe(false);
-  expect(result.online).toBe(false);
-  expect(Math.abs(Date.parse(result.lastSeen) - (result.now - 6 * 3600_000)) < 120_000).toBeTruthy();
-  expect(await scenario.unroute()).toBe(2);
+  const renames = await offline.calls({ http: `PATCH ${BASE}/devices/*` });
+  expect(renames.map((call) => call.rule)).toEqual([3, 4, null]);
+  expect(renames[0].body).toEqual({ name: 'Office', floor: 3 });
+  expect(renames[2].answeredBy).toBe(`route ${BASE}/devices/*`);
+  expect(renames[2].noMatch ?? '').toContain('rule 4 match.json.tags: expected an array of 2, got 1');
+  // Variant rules come first: rule 1 is offline's status rule.
+  expect(offline.rules.map((rule) => [rule.index, rule.hits])).toEqual([[1, 1], [2, 1], [3, 1], [4, 1]]);
 });
 
 spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Event-ID", {

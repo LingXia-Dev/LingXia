@@ -18,7 +18,7 @@ import type {
   NavDriver,
   NetworkDriver,
   NetworkRoute,
-  NetworkScenario,
+  Scenario,
   PageDriver,
   ProfileDriver,
   PageKey,
@@ -246,12 +246,12 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'scenario', 'surfaceLayout'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
-const NETWORK_DRIVER_API = ['captureResponses', 'requests', 'responses', 'route', 'scenario', 'unrouteAll'] as const;
+const NETWORK_DRIVER_API = ['captureResponses', 'requests', 'responses', 'route', 'unrouteAll'] as const;
 const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'unroute'] as const;
-const NETWORK_SCENARIO_API = ['name', 'requests', 'routes', 'unroute'] as const;
+const SCENARIO_API = ['calls', 'name', 'rules', 'unroute', 'variant'] as const;
 const LXAPP_MANAGER_API = [
   'applink',
   'close',
@@ -592,11 +592,11 @@ export const LX_RUNTIME_SURFACES = [
     properties: ['id', 'pattern'],
   },
   {
-    name: 'NetworkScenario',
+    name: 'Scenario',
     layer: 'automation',
-    expression: 'lx.automation().lxapp().network.scenario()',
-    members: NETWORK_SCENARIO_API,
-    properties: ['name', 'routes'],
+    expression: 'lx.automation().lxapp().scenario()',
+    members: SCENARIO_API,
+    properties: ['name', 'rules', 'variant'],
   },
   { name: 'LxAppManager', layer: 'automation', expression: 'lx.automation().lxapps', members: LXAPP_MANAGER_API },
   { name: 'DeviceDriver', layer: 'automation', expression: 'lx.automation().device', members: DEVICE_DRIVER_API },
@@ -841,7 +841,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NavDriver, typeof NAV_DRIVER_API>>,
   AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,
   AssertTrue<Exact<NetworkRoute, typeof NETWORK_ROUTE_API>>,
-  AssertTrue<Exact<NetworkScenario, typeof NETWORK_SCENARIO_API>>,
+  AssertTrue<Exact<Scenario, typeof SCENARIO_API>>,
   AssertTrue<Exact<ProfileDriver, typeof PROFILE_DRIVER_API>>,
   AssertTrue<Exact<ClockDriver, typeof CLOCK_DRIVER_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,

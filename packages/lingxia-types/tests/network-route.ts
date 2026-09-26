@@ -1,9 +1,11 @@
 import type {
+  LxAppDriver,
   NetworkDriver,
   NetworkRouteHandler,
   NetworkRouteRequest,
-  NetworkScenario,
-  NetworkScenarioDefinition,
+  Scenario,
+  ScenarioCall,
+  ScenarioDefinition,
 } from '../src/automation/index.js';
 
 const fulfill: NetworkRouteHandler = { status: 501, json: { error: 'not_implemented' } };
@@ -70,35 +72,53 @@ const nested: NetworkRouteHandler = { sequence: [{ sequence: [] }] };
 const dropFalse: NetworkRouteHandler = { sse: [{ drop: false }] };
 void [sseWithStatus, sequenceWithStatus, nested, dropFalse];
 
-const outage: NetworkScenarioDefinition = {
+const outage: ScenarioDefinition = {
   name: 'outage',
-  routes: [
-    { url: '**/v1/status', method: 'GET', times: 2, sequence: [{ status: 503 }, { json: { up: true } }] },
-    { url: '/devices\\/\\w+$/i', status: 404, note: 'gone' },
-    { url: '**/icon.png', bodyBase64: 'iVBORw==', contentType: 'image/png' },
-    { url: '**/events', sse: [{ data: 'hello' }] },
+  rules: [
+    { http: 'GET **/v1/status', times: 2, sequence: [{ status: 503 }, { json: { up: true } }] },
+    { http: '* /devices\\/\\w+$/i', status: 404, note: 'gone' },
+    { http: 'GET **/icon.png', bodyBase64: 'iVBORw==', contentType: 'image/png' },
+    { http: 'GET **/events', sse: [{ data: 'hello' }] },
+    { http: 'PATCH **/devices/*', match: { json: { name: 'Office' } }, status: 409, json: { error: 'conflict' } },
+    { function: 'coupons.apply', match: { args: { code: 'SPRING' } }, error: { code: 'COUPON_EXPIRED' } },
+    { function: 'orders.submit', fault: 'unknown', delay: 200 },
+    { function: 'orders.status', sequence: [{ result: { state: 'pending' } }, { result: { state: 'paid' } }] },
   ],
+  variants: {
+    offline: { description: 'the status API is down', rules: [{ http: 'GET **/v1/status', status: 503 }] },
+  },
 };
 // A JSON import widens literals ('failed' becomes string); scenario() takes it as is.
-const imported = { name: 'from-json', routes: [{ url: '**/a', abort: 'failed' as string }] };
-declare const network: NetworkDriver;
-const handles: Promise<NetworkScenario>[] = [network.scenario(outage), network.scenario(imported)];
+const imported = { name: 'from-json', rules: [{ http: 'GET **/a', abort: 'failed' as string }] };
+const importedVariants = { variants: { a: { rules: [{ http: 'GET **/a', status: 503 }] } } };
+declare const app: LxAppDriver;
+const handles: Promise<Scenario>[] = [
+  app.scenario(outage),
+  app.scenario(outage, 'offline'),
+  app.scenario(imported),
+  app.scenario(importedVariants, 'a'),
+];
 void handles;
-// @ts-expect-error a scenario route needs a url
-const noUrl: NetworkScenarioDefinition = { routes: [{ status: 200 }] };
-void noUrl;
-// The sectioned form of `lxdev scenario` files.
-const sectioned: NetworkScenarioDefinition = {
-  $schema: './scenario.schema.json',
-  name: 'gateway offline',
-  http: { routes: [{ url: '**/v1/status', status: 503 }] },
-};
-const importedSectioned = { name: 'from-json', http: { routes: [{ url: '**/a', status: 503 }] } };
-void [network.scenario(sectioned), network.scenario(importedSectioned)];
-// @ts-expect-error routes sit at the top level or under http, not both
-const both: NetworkScenarioDefinition = { routes: [], http: { routes: [] } };
-void both;
-declare const handle: NetworkScenario;
+// @ts-expect-error a rule targets http or a function
+const noTarget: ScenarioDefinition = { rules: [{ status: 200 }] };
+// @ts-expect-error not both
+const both: ScenarioDefinition = { rules: [{ http: 'GET x', function: 'f', status: 200 }] };
+// @ts-expect-error a function rule answers with result, error or fault
+const httpAnswer: ScenarioDefinition = { rules: [{ function: 'f', status: 200 }] };
+// @ts-expect-error an http rule matches its body with match.json
+const argsOnHttp: ScenarioDefinition = { rules: [{ http: 'GET x', match: { args: {} }, status: 200 }] };
+// @ts-expect-error faults are notRun or unknown
+const badFault: ScenarioDefinition = { rules: [{ function: 'f', fault: 'timeout' }] };
+// @ts-expect-error an error needs a code
+const noCode: ScenarioDefinition = { rules: [{ function: 'f', error: {} }] };
+void [noTarget, both, httpAnswer, argsOnHttp, badFault, noCode];
+// The raw network driver has no scenario() any more.
+declare const network: NetworkDriver;
+// @ts-expect-error use lxapp().scenario()
+void network.scenario;
+declare const handle: Scenario;
 const name: string | null = handle.name;
+const variant: string | null = handle.variant;
 const count: Promise<number> = handle.unroute();
-void [name, count, handle.routes[0].requests(), handle.requests()];
+const calls: Promise<ScenarioCall[]> = handle.calls({ function: 'orders.submit' });
+void [name, variant, count, calls, handle.calls({ http: 'PATCH **/devices/*' }), handle.calls({ rule: 2 }), handle.rules[0].hits];
