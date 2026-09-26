@@ -1,71 +1,36 @@
-import type { TestApp } from '@lingxia/test';
-import { expect, spec } from '@lingxia/test';
-import { waitForElementAttribute } from '../helpers/page.js';
-import { attachShot, bindFixture, eventually } from '../helpers/poll.js';
+import { spec, type LogicPage, type TestApp } from '@lingxia/test';
+import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
-async function waitForTodo(app: TestApp, text: string, present: boolean): Promise<number> {
-  return eventually(
-    async () => {
-      const labels = await app.page.query({
-      page: 'todo',
-      css: '[data-testid="todo-label"]',
-      all: true,
-      full: true,
-      });
-      return labels.items.findIndex((label) => label.text === text);
-    },
-    (index) => (index >= 0) === present,
-    { describe: `todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 });
+interface Todo {
+  id: string;
+  text: string;
+  completed: boolean;
 }
 
-async function waitForStoredTodo(
-  app: TestApp,
-  text: string,
-  present: boolean,
-): Promise<void> {
-  await eventually(
-    () => app.eval({
-      script: `
-        const todos = await lx.getStorage().get('todo:todos');
-        return Array.isArray(todos) && todos.some((todo) => todo.text === ${JSON.stringify(text)});
-      `,
-    }),
-    (stored) => stored === present,
-    { describe: `persisted todo to be ${present ? 'present' : 'removed'}: ${text}`, timeoutMs: 30_000 });
+/** The todo page as its Logic declares it, for `t.app.logic.call`/`data`. */
+interface TodoPage extends LogicPage<{ todos: Todo[]; currentFilter: string }> {
+  addTodo(params: { text?: string }): Promise<void>;
+  deleteTodo(params: { id?: string }): Promise<void>;
 }
 
-async function waitForStoredCompleted(
-  app: TestApp,
-  text: string,
-  completed: boolean,
-): Promise<void> {
-  await eventually(
-    () => app.eval({
-      script: `
-        const todos = await lx.getStorage().get('todo:todos');
-        const todo = Array.isArray(todos) && todos.find((item) => item.text === ${JSON.stringify(text)});
-        return todo ? todo.completed === ${completed} : false;
-      `,
-    }),
-    (stored) => stored === true,
-    { describe: `persisted todo completion=${completed}: ${text}`, timeoutMs: 30_000 });
+/** The persisted todo with `text`, or `null`. */
+function storedTodo(app: TestApp, text: string): Promise<{ completed: boolean } | null> {
+  return app.logic.eval(async ({ lx }, wanted) => {
+    const todos = (await lx.getStorage().get('todo:todos')) as Todo[] | undefined;
+    const todo = Array.isArray(todos) ? todos.find((item) => item.text === wanted) : undefined;
+    return todo ? { completed: todo.completed } : null;
+  }, text);
 }
 
 async function cleanupStoredTodo(app: TestApp, text: string): Promise<void> {
-  await app.eval({
-    script: `
-      const storage = lx.getStorage();
-      const todos = await storage.get('todo:todos');
-      if (Array.isArray(todos)) {
-        await storage.set('todo:todos', todos.filter((todo) => todo.text !== ${JSON.stringify(text)}));
-      }
-    `,
-  });
-}
-
-async function clickTodoToggle(app: TestApp, index: number): Promise<void> {
-  await app.page.testId("todo-label", { page: 'todo', index: index }).click();
+  await app.logic.eval(async ({ lx }, wanted) => {
+    const storage = lx.getStorage();
+    const todos = (await storage.get('todo:todos')) as Todo[] | undefined;
+    if (Array.isArray(todos)) {
+      await storage.set('todo:todos', todos.filter((todo) => todo.text !== wanted));
+    }
+  }, text);
 }
 
 let pendingTodo: string | undefined;
@@ -77,8 +42,9 @@ spec.reset(async t => {
 
 spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
+  const view = app.view;
 
-  await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-page"]' });
+  await t.expect(view.testId('todo-page', { page: 'todo' })).toBeVisible();
 
   const text = `automation todo ${Date.now()}`;
   pendingTodo = text;
@@ -86,43 +52,48 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await cleanupStoredTodo(app, text);
     pendingTodo = undefined;
   });
-  const input = '[data-testid="todo-input"]';
   try {
-    await app.page.css(input, { page: 'todo' }).fill(text);
-    await waitForElementAttribute(app, 'todo', input, 'data-controlled-value', text);
-    await app.page.css(input, { page: 'todo' }).press('Enter');
-    await app.page.waitFor({ page: 'todo', css: '[data-testid="todo-item"]' });
+    const input = view.testId('todo-input', { page: 'todo' });
+    await input.fill(text);
+    // `fill` writes through the input's value setter and dispatches
+    // input/change, so the framework-controlled value follows it.
+    await t.expect(input).toHaveAttribute('data-controlled-value', text);
+    await input.press('Enter');
 
-    const index = await waitForTodo(app, text, true);
-    expect(index).toBeGreaterThanOrEqual(0);
-    await waitForStoredTodo(app, text, true);
+    const label = view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
+    await t.expect(label).toBeVisible();
+    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
+    const { todos } = await app.logic.data<{ todos: Todo[] }>({ page: 'todo' });
+    t.expect(todos.some((todo) => todo.text === text)).toBe(true);
 
-    await clickTodoToggle(app, index);
-    await waitForStoredCompleted(app, text, true);
+    await label.click();
+    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: true });
 
-    await app.page.testId("todo-filter-completed", { page: 'todo' }).click();
-    expect(await waitForTodo(app, text, true)).toBeGreaterThanOrEqual(0);
-    await app.page.testId("todo-filter-active", { page: 'todo' }).click();
-    expect(await waitForTodo(app, text, false)).toBe(-1);
-    await app.page.testId("todo-filter-all", { page: 'todo' }).click();
+    await view.testId('todo-filter-completed', { page: 'todo' }).click();
+    await t.expect(label).toBeVisible();
+    await view.testId('todo-filter-active', { page: 'todo' }).click();
+    await t.expect(label).toHaveCount(0);
+    await view.testId('todo-filter-all', { page: 'todo' }).click();
 
-    const completedIndex = await waitForTodo(app, text, true);
-    await clickTodoToggle(app, completedIndex);
-    await waitForStoredCompleted(app, text, false);
+    await label.click();
+    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
 
-    const screenshot = await app.page.screenshot({ page: 'todo' });
+    const screenshot = await view.screenshot({ page: 'todo' });
     await attachShot(t, 'todo-page.png', {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
 
-    const activeIndex = await waitForTodo(app, text, true);
-    await app.page.testId("todo-delete", { page: 'todo', index: activeIndex }).click();
-    expect(await waitForTodo(app, text, false)).toBe(-1);
-    await waitForStoredTodo(app, text, false);
+    // The delete button sits beside the label: find the row by its text.
+    const row = await view.eval(({ document }, wanted) =>
+      Array.from(document.querySelectorAll('[data-testid="todo-label"]'))
+        .findIndex((element) => element.textContent?.trim() === wanted), text);
+    await view.testId('todo-delete', { page: 'todo', index: row }).click();
+    await t.expect(label).toHaveCount(0);
+    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
   } catch (error) {
     try {
-      const screenshot = await app.page.screenshot({ page: 'todo' });
+      const screenshot = await view.screenshot({ page: 'todo' });
       await attachShot(t, 'todo-page-failure.png', {
         mimeType: 'image/png',
         base64: screenshot.base64,
@@ -132,4 +103,29 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     }
     throw error;
   }
+});
+
+spec("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
+  const { app } = bindFixture(t, "TODO-002");
+  await t.expect(app.view.testId('todo-page', { page: 'todo' })).toBeVisible();
+
+  const text = `logic todo ${Date.now()}`;
+  pendingTodo = text;
+  t.defer(async () => {
+    await cleanupStoredTodo(app, text);
+    pendingTodo = undefined;
+  });
+
+  await app.logic.call<TodoPage, 'addTodo'>('addTodo', { text });
+  const label = app.view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
+  await t.expect(label).toBeVisible();
+
+  const added = await t.waitFor(
+    () => app.logic.data<{ todos: Todo[] }>({ page: 'todo' }),
+    { until: (data) => data.todos.some((todo) => todo.text === text), timeout: 10_000 },
+  );
+  const id = added.todos.find((todo) => todo.text === text)!.id;
+  await app.logic.call<TodoPage, 'deleteTodo'>('deleteTodo', { id });
+  await t.expect(label).toHaveCount(0);
+  await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
 });

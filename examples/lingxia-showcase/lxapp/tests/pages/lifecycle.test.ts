@@ -151,10 +151,10 @@ spec("reset logic data and the rendered document when a page is re-entered", { i
     page: 'ui',
     script: `document.querySelector('[data-testid="lifecycle-open-popup"]')?.scrollIntoView({ block: 'center' })`,
   });
-  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
-  await app.page.testId("lifecycle-bump-view", { page: 'ui' }).click();
-  await app.page.testId("lifecycle-bump-module", { page: 'ui' }).click();
-  await app.page.testId("lifecycle-open-popup", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-bump-view", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-bump-module", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-open-popup", { page: 'ui' }).click();
   await app.page.waitFor({ page: 'ui', css: '[data-testid="lifecycle-popup"]', state: 'visible' });
   await eventually(resetDemoState.bind(null, app), (
     candidate,
@@ -217,7 +217,7 @@ spec("stack two live instances of one route and unwind them independently", { id
   if (first === null) throw new Error('first drill-down entry left the stack');
 
   // Distinguish the first instance before drilling deeper.
-  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
   await eventually(topDemoState, (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'first instance counter to reach 1' });
@@ -379,7 +379,7 @@ spec("unload a pushed page dropped by switchTab", { id: "PAGE-LIFECYCLE-006", co
   await waitForCurrentPage(app, 'home');
 
   const first = await enterResetDemo(app);
-  await app.page.testId("lifecycle-bump-logic", { page: 'ui' }).click();
+  await app.view.testId("lifecycle-bump-logic", { page: 'ui' }).click();
   await eventually(resetDemoState.bind(null, app), (
     candidate,
   ) => candidate?.logicCounter === 1, { describe: 'logic counter to reach 1' });

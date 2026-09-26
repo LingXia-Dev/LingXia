@@ -18,16 +18,16 @@ spec('receives channel ticks, switches symbols, and reconnects', async (t) => {
   expect(await waitForText(app, '[data-testid="channel-price"]', (text) => text.startsWith('$')))
     .toContain('$');
 
-  await app.page.css('[data-testid="channel-symbol"][data-symbol="MSFT"]', { page: 'channel' }).click();
+  await app.view.css('[data-testid="channel-symbol"][data-symbol="MSFT"]', { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-active"]', (text) => text === 'MSFT'))
     .toBe('MSFT');
   expect(await waitForText(app, '[data-testid="channel-price"]', (text) => text.startsWith('$')))
     .toContain('$');
 
-  await app.page.testId("channel-disconnect", { page: 'channel' }).click();
+  await app.view.testId("channel-disconnect", { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-status"]', (text) => text === 'Disconnected'))
     .toBe('Disconnected');
-  await app.page.testId("channel-reconnect", { page: 'channel' }).click();
+  await app.view.testId("channel-reconnect", { page: 'channel' }).click();
   expect(await waitForText(app, '[data-testid="channel-status"]', (text) => text === 'Connected'))
     .toBe('Connected');
 });

@@ -21,7 +21,7 @@ spec('control-page links retain trusted bridge authority', {
   // Internal browser pages require the sealed host entrypoint. browser.open
   // deliberately rejects lingxia:// URLs and must not be used as a shortcut.
   await t.app.eval({ script: "return lx.shell.openBuiltin('downloads')" });
-  await t.expect.poll(async () => (await browser.current())?.current_url,
+  await t.expect(async () => (await browser.current())?.current_url,
     { timeout: 12_000 }).toContain('lingxia://downloads');
   const opened = await browser.current();
   if (!opened) throw new Error('host builtin did not open a browser tab');

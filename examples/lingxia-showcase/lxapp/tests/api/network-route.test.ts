@@ -24,43 +24,33 @@ spec("route Logic fetch to a faked error and a transport failure", {
   await app.network.route(`${BASE}/icon`, { body: new Uint8Array([137, 80, 78, 71]), contentType: 'image/png' });
   await app.network.route(`${BASE}/slow`, { status: 202, delay: 200 });
 
-  const result = await app.eval({
-    script: `
-      const patched = await fetch(${JSON.stringify(`${BASE}/devices/d1`)}, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'r-1' },
-        body: JSON.stringify({ name: 'Office' }),
-      });
-      const icon = await fetch(${JSON.stringify(`${BASE}/icon`)});
-      const iconBytes = Array.from(new Uint8Array(await icon.arrayBuffer()));
-      const slowStarted = Date.now();
-      const slow = await fetch(${JSON.stringify(`${BASE}/slow`)});
-      const slowElapsed = Date.now() - slowStarted;
-      let failure = null;
-      try {
-        await fetch(${JSON.stringify(`${BASE}/clients`)});
-      } catch (error) {
-        failure = { name: error.name, message: error.message };
-      }
-      return {
-        status: patched.status,
-        contentType: patched.headers.get('content-type'),
-        body: await patched.json(),
-        failure,
-        iconBytes,
-        slowStatus: slow.status,
-        slowElapsed,
-      };
-    `,
-  }) as {
-    status: number;
-    contentType: string | null;
-    body: { error: string };
-    failure: { name: string; message: string } | null;
-    iconBytes: number[];
-    slowStatus: number;
-    slowElapsed: number;
-  };
+  const result = await app.logic.eval(async (_scope, base) => {
+    const patched = await fetch(`${base}/devices/d1`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'r-1' },
+      body: JSON.stringify({ name: 'Office' }),
+    });
+    const icon = await fetch(`${base}/icon`);
+    const iconBytes = Array.from(new Uint8Array(await icon.arrayBuffer()));
+    const slowStarted = Date.now();
+    const slow = await fetch(`${base}/slow`);
+    const slowElapsed = Date.now() - slowStarted;
+    let failure: { name: string; message: string } | null = null;
+    try {
+      await fetch(`${base}/clients`);
+    } catch (error) {
+      failure = { name: (error as Error).name, message: (error as Error).message };
+    }
+    return {
+      status: patched.status,
+      contentType: patched.headers.get('content-type'),
+      body: await patched.json() as { error: string },
+      failure,
+      iconBytes,
+      slowStatus: slow.status,
+      slowElapsed,
+    };
+  }, BASE);
 
   expect(result.status).toBe(501);
   expect(result.contentType).toBe('application/json');
@@ -70,18 +60,21 @@ spec("route Logic fetch to a faked error and a transport failure", {
   expect(result.slowStatus).toBe(202);
   expect(result.slowElapsed >= 150).toBeTruthy();
 
-  const patched = await patch.requests();
-  expect(patched.map((entry) => [entry.method, entry.action, entry.status])).toEqual([['PATCH', 'fulfill', 501]]);
-  expect(patched[0].headers['x-request-id']).toBe('r-1');
-  expect(JSON.parse(patched[0].body ?? 'null')).toEqual({ name: 'Office' });
-  expect(patched[0].bodyTruncated).toBe(false);
-  const all = await app.network.requests();
+  // The call the route answered, already made: waitForCall hands it out.
+  const call = await patch.waitForCall();
+  expect([call.method, call.url, call.answeredBy, call.status]).toEqual(['PATCH', `${BASE}/devices/d1`, 'route', 501]);
+  expect(call.headers?.['x-request-id']).toBe('r-1');
+  expect(call.body).toEqual({ name: 'Office' });
+  expect(await patch.calls()).toEqual([call]);
+  const all = await app.network.calls();
   // In the order the app sent them: PATCH, icon, slow, then the aborted read.
-  expect(all.map((entry) => entry.action)).toEqual(['fulfill', 'fulfill', 'fulfill', 'abort']);
+  expect(all.map((entry) => [entry.answeredBy, entry.status])).toEqual([
+    ['route', 501], ['route', 200], ['route', 202], ['route', null],
+  ]);
 
-  // `times: 1` already retired the PATCH route; three routes are left.
-  expect(await patch.unroute()).toBe(false);
-  expect(await app.network.unrouteAll()).toBe(3);
+  // `times: 1` already retired the PATCH route; removing it again is no error.
+  expect(await patch.unroute()).toBeUndefined();
+  expect(await app.network.unrouteAll()).toBeUndefined();
 });
 
 spec("reject a route handler that mixes fulfill and abort", {
@@ -187,10 +180,13 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
   expect(scenario.rules.map((rule) => rule.hits)).toEqual([4, 1, 1]);
   const statusCalls = await scenario.calls({ http: `GET ${BASE}/status` });
   expect(statusCalls.map((call) => call.status)).toEqual([503, 502, 200, 200]);
-  expect(statusCalls.every((call) => call.rule === 1)).toBeTruthy();
-  expect(statusCalls[0].answeredBy).toBe('rule 1 (showcase-outage)');
+  expect(statusCalls.every((call) => call.answeredBy === 'rule' && call.rule === 1)).toBeTruthy();
+  // Successive waits hand out successive calls to the target.
+  const first = await scenario.waitForCall({ http: `GET ${BASE}/status` });
+  const second = await scenario.waitForCall({ http: `GET ${BASE}/status` });
+  expect([first.status, second.status]).toEqual([503, 502]);
   expect((await scenario.calls()).length).toBe(6);
-  expect(await scenario.unroute()).toBe(3);
+  expect(await scenario.remove()).toBeUndefined();
 });
 
 spec("reject a scenario the host cannot install, naming the rule", {
@@ -286,9 +282,8 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
   expect(result.missed).toEqual([404, { error: 'unmatched' }]);
 
   const renames = await offline.calls({ http: `PATCH ${BASE}/devices/*` });
-  expect(renames.map((call) => call.rule)).toEqual([3, 4, null]);
+  expect(renames.map((call) => [call.answeredBy, call.rule])).toEqual([['rule', 3], ['rule', 4], ['route', undefined]]);
   expect(renames[0].body).toEqual({ name: 'Office', floor: 3 });
-  expect(renames[2].answeredBy).toBe(`route ${BASE}/devices/*`);
   expect(renames[2].noMatch ?? '').toContain('rule 4 match.json.tags: expected an array of 2, got 1');
   // Variant rules come first: rule 1 is offline's status rule.
   expect(offline.rules.map((rule) => [rule.index, rule.hits])).toEqual([[1, 1], [2, 1], [3, 1], [4, 1]]);
@@ -347,9 +342,9 @@ spec("stream SSE answers to fetch and to Rong.SSE, which reconnects with Last-Ev
     ['late', 'three', 'e3'],
   ]);
 
-  const connections = await live.requests();
+  const connections = await live.calls();
   expect(connections.length).toBe(2);
-  expect(connections[0].headers['accept']).toBe('text/event-stream');
-  expect(connections[0].headers['last-event-id']).toBe(undefined);
-  expect(connections[1].headers['last-event-id']).toBe('e2');
+  expect(connections[0].headers?.['accept']).toBe('text/event-stream');
+  expect(connections[0].headers?.['last-event-id']).toBe(undefined);
+  expect(connections[1].headers?.['last-event-id']).toBe('e2');
 });

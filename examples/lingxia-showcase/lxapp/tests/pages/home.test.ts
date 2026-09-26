@@ -50,7 +50,7 @@ spec('greets through real page input and the Logic bridge', async (t) => {
   );
 
   const name = `Gate ${Date.now()}`;
-  await app.page.testId("home-name", { page: 'home' }).fill(name);
+  await app.view.testId("home-name", { page: 'home' }).fill(name);
   await waitForElementAttribute(
     app,
     'home',
@@ -59,7 +59,7 @@ spec('greets through real page input and the Logic bridge', async (t) => {
     name,
   );
   await waitForElementEnabled(app, 'home', '[data-testid="home-greet"]');
-  await app.page.testId("home-greet", { page: 'home' }).click();
+  await app.view.testId("home-greet", { page: 'home' }).click();
 
   expect(await waitForElementText(
     app,
@@ -97,7 +97,7 @@ spec('switches display language from the home control', {
   try {
     await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-zh-CN"]' });
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-zh-CN"]');
-    await app.page.testId('home-language-zh-CN', { page: 'home' }).click();
+    await app.view.testId('home-language-zh-CN', { page: 'home' }).click();
     await eventually(
       () => app.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'zh-CN',
@@ -133,7 +133,7 @@ spec('switches display language from the home control', {
 
     await app.page.scrollTo({ page: 'home', css: '[data-testid="home-language-en-US"]' });
     await waitForElementEnabled(app, 'home', '[data-testid="home-language-en-US"]');
-    await app.page.testId('home-language-en-US', { page: 'home' }).click();
+    await app.view.testId('home-language-en-US', { page: 'home' }).click();
     await eventually(
       () => app.eval({ script: 'return lx.host.control.displayLanguage.getPreference()' }),
       (preference) => preference === 'en-US',

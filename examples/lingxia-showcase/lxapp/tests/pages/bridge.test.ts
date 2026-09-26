@@ -42,13 +42,13 @@ async function expectBootstrap(app: TestApp): Promise<void> {
 }
 
 async function expectEcho(app: TestApp, n: number): Promise<void> {
-  await app.page.css('#btn-echo', { page: REPRO }).click();
+  await app.view.css('#btn-echo', { page: REPRO }).click();
   expect(await waitForElementText(app, REPRO, '#stat-echo', (text) => text.includes(`echo #${n} `), 10_000))
     .toContain(`echo #${n} ok`);
 }
 
 async function expectGapFreeStream(app: TestApp): Promise<void> {
-  await app.page.css('#btn-restart', { page: REPRO }).click();
+  await app.view.css('#btn-restart', { page: REPRO }).click();
   await waitForElementText(
     app,
     REPRO,
@@ -59,7 +59,7 @@ async function expectGapFreeStream(app: TestApp): Promise<void> {
   expect(await waitForElementText(app, REPRO, '#stream-verdict', (text) => /PASS|FAIL/.test(text)))
     .toContain('PASS');
   expect(await waitForElementText(app, REPRO, '#stat-gaps', () => true)).toContain('none');
-  await app.page.css('#btn-stop', { page: REPRO }).click();
+  await app.view.css('#btn-stop', { page: REPRO }).click();
 }
 
 async function markDocument(app: TestApp, page: string): Promise<void> {

@@ -46,7 +46,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
 
   await app.nav.relaunch({ page: 'device', query: { type: 'device' } });
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-get-info"]' });
-  await app.page.testId("device-get-info", { page: 'device' }).click();
+  await app.view.testId("device-get-info", { page: 'device' }).click();
   const device = await waitForState(app, (state) => !!state.deviceInfo?.osName);
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-info-result"]' });
   const deviceResult = await app.page.query({
@@ -58,7 +58,7 @@ spec("render device and screen API results after real UI actions", { id: "DEVICE
 
   await app.nav.relaunch({ page: 'device', query: { type: 'screen' } });
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-screen-get-info"]' });
-  await app.page.testId("device-screen-get-info", { page: 'device' }).click();
+  await app.view.testId("device-screen-get-info", { page: 'device' }).click();
   const screen = await waitForState(
     app,
     (state) => !!state.screenInfo
@@ -77,7 +77,7 @@ spec("keep network query and listener behavior equivalent across renderers", { i
   for (const type of ['networkType', 'localIP'] as const) {
     await app.nav.relaunch({ page: 'device', query: { type } });
     await app.page.waitFor({ page: 'device', css: '[data-testid="device-network-get-info"]' });
-    await app.page.testId("device-network-get-info", { page: 'device' }).click();
+    await app.view.testId("device-network-get-info", { page: 'device' }).click();
     const state = await waitForState(
       app,
       (candidate) => typeof candidate.networkInfo?.isConnected === 'boolean'
@@ -95,7 +95,7 @@ spec("keep network query and listener behavior equivalent across renderers", { i
 
   await app.nav.relaunch({ page: 'device', query: { type: 'networkStatus' } });
   await app.page.waitFor({ page: 'device', css: '[data-testid="device-network-listen-start"]' });
-  await app.page.testId("device-network-listen-start", { page: 'device' }).click();
+  await app.view.testId("device-network-listen-start", { page: 'device' }).click();
   await waitForState(app, (state) => state.networkListening);
   await waitForElementText(
     app,
@@ -105,7 +105,7 @@ spec("keep network query and listener behavior equivalent across renderers", { i
     30_000,
   );
 
-  await app.page.testId("device-network-listen-stop", { page: 'device' }).click();
+  await app.view.testId("device-network-listen-stop", { page: 'device' }).click();
   await waitForState(app, (state) => !state.networkListening);
   await waitForElementText(
     app,
@@ -126,7 +126,7 @@ spec('publishes every device mode in the rendered API menu', {
     css: '[data-testid="api-device-section"]',
     state: 'visible',
   });
-  await app.page.testId("api-device-section", { page: 'api' }).click();
+  await app.view.testId("api-device-section", { page: 'api' }).click();
   await app.page.waitFor({
     page: 'api',
     css: '[data-testid="api-device-section"]',

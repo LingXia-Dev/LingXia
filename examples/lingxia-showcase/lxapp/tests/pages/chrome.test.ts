@@ -63,7 +63,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   await t.step('drive the ui page presets', async () => {
     await app.nav.relaunch({ page: 'ui', query: { type: 'navbar' } });
     await app.page.waitFor({ page: 'ui', css: '[data-testid="navbar-preset-blue"]', state: 'visible' });
-    await app.page.testId("navbar-preset-blue", { page: 'ui' }).click();
+    await app.view.testId("navbar-preset-blue", { page: 'ui' }).click();
     const styled = await waitForNavBar(
       app,
       (state) => state.title === 'Blue Theme'
@@ -94,7 +94,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('restore the home button from the page control', async () => {
-    await app.page.testId("navbar-home-auto", { page: 'ui' }).click();
+    await app.view.testId("navbar-home-auto", { page: 'ui' }).click();
     await waitForNavBar(app, (state) => state.home_button === 'auto', 'auto home button');
   });
 
@@ -110,7 +110,7 @@ spec("apply navigationBar title, colors, home button, and reset", {
   });
 
   await t.step('reset title and style with null', async () => {
-    await app.page.testId("navbar-reset", { page: 'ui' }).click();
+    await app.view.testId("navbar-reset", { page: 'ui' }).click();
     await waitForNavBar(
       app,
       (state) => state.title === 'User Interface'
@@ -165,7 +165,7 @@ spec("round-trip appearance preference through the ui controls", {
 
   for (const preference of ['light', 'dark', 'auto'] as const) {
     await t.step(`set ${preference}`, async () => {
-      await app.page.css(`[data-testid="ui-appearance-${preference}"]`, { page: 'ui' }).click();
+      await app.view.css(`[data-testid="ui-appearance-${preference}"]`, { page: 'ui' }).click();
       const state = await eventually(
         () => appearanceOf(app),
         (state) => state.preference === preference && (
@@ -195,7 +195,7 @@ spec("round-trip appearance preference through the ui controls", {
   });
 
   await t.step('persist across relaunch', async () => {
-    await app.page.testId("ui-appearance-dark", { page: 'ui' }).click();
+    await app.view.testId("ui-appearance-dark", { page: 'ui' }).click();
     await eventually(() => appearanceOf(app), (state) => state.preference === 'dark', {
       describe: 'dark preference before relaunch',
     });
@@ -278,14 +278,14 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showModal({ title: 'Coverage', content: 'Confirm this', showCancel: true, confirmText: 'OK', cancelText: 'Cancel' });`,
     }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
-    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect((await confirmed).status === 'canceled').toBeFalsy();
 
     const canceled = app.eval({
       script: `return await lx.showModal({ title: 'Coverage', content: 'Cancel this', showCancel: true });`,
     }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-cancel', state: 'visible' });
-    await app.page.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
     expect((await canceled).status === 'canceled').toBeTruthy();
 
     const noCancel = app.eval({
@@ -297,22 +297,22 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `document.querySelectorAll('.lx-modal-btn-cancel').length`,
     });
     expect(cancelCount).toBe(0);
-    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect((await noCancel).status === 'canceled').toBeFalsy();
   });
 
   await t.step('use acknowledgement and boolean dialogs', async () => {
     const alert = app.eval({ script: `await lx.alert({ title: 'Notice' }); return 'acknowledged';` });
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
-    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect(await alert).toBe('acknowledged');
     const confirmed = app.eval({ script: `return await lx.confirm({ title: 'Continue?' });` });
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-confirm', state: 'visible' });
-    await app.page.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-confirm', { page: 'ui' }).click();
     expect(await confirmed).toBe(true);
     const canceled = app.eval({ script: `return await lx.confirm({ title: 'Continue?' });` });
     await app.page.waitFor({ page: 'ui', css: '.lx-modal-btn-cancel', state: 'visible' });
-    await app.page.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
+    await app.view.css('.lx-modal-btn-cancel', { page: 'ui' }).click();
     expect(await canceled).toBe(false);
   });
 
@@ -321,7 +321,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showActionSheet({ items: ['View Details', '查看日志', 'Send Email', '删除'].map((label) => ({ id: label, label })) });`,
     }) as Promise<{ status: 'ok' | 'canceled'; id?: string }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-item', state: 'visible' });
-    await app.page.css('.lx-as-item', { page: 'ui', index: 1 }).click();
+    await app.view.css('.lx-as-item', { page: 'ui', index: 1 }).click();
     const selected = await picked;
     expect(selected.status === 'canceled').toBeFalsy();
     expect(selected.id).toBe('查看日志');
@@ -330,7 +330,7 @@ spec("show, hide, confirm, and cancel in-app feedback overlays", {
       script: `return await lx.showActionSheet({ items: ['One', 'Two'].map((label) => ({ id: label, label })) });`,
     }) as Promise<{ status: 'ok' | 'canceled' }>;
     await app.page.waitFor({ page: 'ui', css: '.lx-as-cancel-btn', state: 'visible' });
-    await app.page.css('.lx-as-cancel-btn', { page: 'ui' }).click();
+    await app.view.css('.lx-as-cancel-btn', { page: 'ui' }).click();
     expect((await dismissed).status === 'canceled').toBeTruthy();
   });
 
@@ -374,17 +374,17 @@ spec("assert tabBar failure codes, resets, and button-driven patches", {
 
   await app.nav.relaunch({ page: 'ui', query: { type: 'tabbar' } });
   await app.page.waitFor({ page: 'ui', css: '[data-testid="tabbar-show"]', state: 'visible' });
-  await app.page.testId("tabbar-show", { page: 'ui' }).click();
+  await app.view.testId("tabbar-show", { page: 'ui' }).click();
   await waitForTabBar(app, (state) => state.effective_visible, 'forced tab bar');
 
   await t.step('drive showcase badge and red-dot buttons', async () => {
-    await app.page.testId("tabbar-reddot-show", { page: 'ui' }).click();
+    await app.view.testId("tabbar-reddot-show", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.red_dot === true, 'red dot from button');
-    await app.page.testId("tabbar-badge-input", { page: 'ui' }).fill('9');
-    await app.page.testId("tabbar-badge-set", { page: 'ui' }).click();
+    await app.view.testId("tabbar-badge-input", { page: 'ui' }).fill('9');
+    await app.view.testId("tabbar-badge-set", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.badge === '9', 'badge from button');
-    await app.page.testId("tabbar-item-text", { page: 'ui' }).fill('API+');
-    await app.page.testId("tabbar-item-update", { page: 'ui' }).click();
+    await app.view.testId("tabbar-item-text", { page: 'ui' }).fill('API+');
+    await app.view.testId("tabbar-item-update", { page: 'ui' }).click();
     await waitForTabBar(app, (state) => state.items[1]?.text === 'API+', 'item text from button');
   });
 

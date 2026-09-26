@@ -1,13 +1,9 @@
 import { waitForCurrentPage } from '../../helpers/page.js';
 import { expect, spec, type Fixture } from '@lingxia/test';
 import { bindFixture, eventually, specNamespace } from '../../helpers/poll.js';
-import { SHOWCASE_APP_ID } from '../../helpers/app.js';
+import { SHOWCASE_APP_ID, type AppDriver } from '../../helpers/app.js';
 import { runtimePlatform } from '../../helpers/platform.js';
-import type {
-  DesktopDriver,
-  DesktopWindowInfo,
-  LxAppDriver,
-} from '@lingxia/types/automation';
+import type { DesktopDriver, DesktopWindowInfo, LxAppDriver } from '@lingxia/types/automation';
 
 /// Showcase sidebar actions besides the host's typed Settings: Downloads in
 /// the header, four footer actions.
@@ -97,7 +93,7 @@ function windowsStaticSettingsPoint(
 }
 
 async function clickStaticSettings(
-  app: LxAppDriver,
+  app: AppDriver,
   platform: string,
   desktop: DesktopDriver,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
@@ -142,14 +138,14 @@ async function clickStaticSettings(
 
 async function openHostSettings(
   t: Fixture,
-  app: LxAppDriver,
+  app: AppDriver,
   platform: string,
   actions = SHOWCASE_SIDEBAR_ACTIONS,
 ): Promise<void> {
   await clickStaticSettings(app, platform, t.automation.desktop, actions);
 }
 
-async function restoreShowcaseSidebarActions(app: LxAppDriver): Promise<void> {
+async function restoreShowcaseSidebarActions(app: AppDriver): Promise<void> {
   await app.eval({
     script: `
       lx.shell.sidebarActions.replace([
