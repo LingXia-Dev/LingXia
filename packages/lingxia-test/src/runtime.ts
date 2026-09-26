@@ -28,7 +28,9 @@ import type {
   SpecOptions,
   SpecRequirements,
   SpecStatus,
+  PageVisibility,
 } from "./types.js";
+import { VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, pageVisibility } from "./locator.js";
 import {
   DEFAULT_SPEC_TIMEOUT_MS,
   FORENSICS_BUDGET_MS,
@@ -1264,10 +1266,18 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
   } catch {
     info = undefined;
   }
+  let visibility: PageVisibility | undefined;
+  try {
+    visibility = pageVisibility(await fixture.raw.page.eval({
+      script: VISIBILITY_PROBE_SCRIPT, timeoutMs: VISIBILITY_PROBE_BUDGET_MS }));
+  } catch {
+    visibility = undefined;
+  }
   const forensics = {
     route,
     info,
     step: fixture.currentStepPath() ?? null,
+    visibility: visibility ?? null,
   };
   await fixture.attachRaw("forensics.json", forensics);
 
@@ -1275,7 +1285,8 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
   if (logs !== undefined) {
     await fixture.attachRaw("logs.txt", logs);
   }
-  return toFailurePage(route);
+  const page = toFailurePage(route);
+  return page && visibility?.note ? { ...page, hidden: visibility.note } : page;
 }
 
 async function fixtureHostLogs(): Promise<string | undefined> {

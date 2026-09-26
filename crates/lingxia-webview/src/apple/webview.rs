@@ -460,6 +460,51 @@ pub(super) fn begin_development_activity() {
     }
 }
 
+/// An `NSProcessInfo` activity that keeps the display (and the system) from
+/// idle sleep until it drops.
+#[cfg(target_os = "macos")]
+pub(super) struct DisplayAwakeActivity(Retained<AnyObject>);
+
+// The token is only passed back to `-[NSProcessInfo endActivity:]`, which is
+// thread-safe.
+#[cfg(target_os = "macos")]
+unsafe impl Send for DisplayAwakeActivity {}
+#[cfg(target_os = "macos")]
+unsafe impl Sync for DisplayAwakeActivity {}
+
+#[cfg(target_os = "macos")]
+impl Drop for DisplayAwakeActivity {
+    fn drop(&mut self) {
+        unsafe {
+            let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+            if !info.is_null() {
+                let _: () = msg_send![info, endActivity: &*self.0];
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(super) fn begin_display_awake_activity(reason: &str) -> Option<DisplayAwakeActivity> {
+    // NSActivityIdleDisplaySleepDisabled | NSActivityUserInitiated
+    const NS_ACTIVITY_IDLE_DISPLAY_SLEEP_DISABLED: u64 = 1 << 40;
+    const NS_ACTIVITY_USER_INITIATED: u64 = 0x00FF_FFFF;
+    objc2::rc::autoreleasepool(|_| unsafe {
+        let info: *mut AnyObject = msg_send![class!(NSProcessInfo), processInfo];
+        if info.is_null() {
+            return None;
+        }
+        let reason = NSString::from_str(reason);
+        let activity: *mut AnyObject = msg_send![
+            info,
+            beginActivityWithOptions: NS_ACTIVITY_IDLE_DISPLAY_SLEEP_DISABLED
+                | NS_ACTIVITY_USER_INITIATED,
+            reason: &*reason
+        ];
+        Retained::retain(activity).map(DisplayAwakeActivity)
+    })
+}
+
 /// The `accept` list of the file input that is about to open the macOS open
 /// panel. WebKit's public `WKOpenPanelParameters` carries only "multiple" and
 /// "directories", so a page script reports the input's `accept` when the

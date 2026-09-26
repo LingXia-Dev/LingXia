@@ -2566,6 +2566,9 @@ pub(crate) fn failed_at(detail: &serde_json::Map<String, serde_json::Value>) -> 
         if let Some(id) = page.get("instanceId").and_then(|v| v.as_str()) {
             line.push_str(&format!(" (#{id})"));
         }
+        if let Some(hidden) = page.get("hidden").and_then(|v| v.as_str()) {
+            line.push_str(&format!("; {hidden}"));
+        }
     }
     if let Some(code) = detail.get("code").and_then(|v| v.as_str()) {
         line.push_str(&format!(" — {code}"));
@@ -2936,6 +2939,16 @@ mod tests {
             ))
             .as_deref(),
             Some("failed on page (#c3d4)")
+        );
+        assert_eq!(
+            failed_at(&detail(json!({
+                "failedAction": "page.click [data-testid=open]",
+                "page": { "name": "home", "instanceId": "e5f6", "hidden": "page hidden (window covered or display asleep): animations are paused" },
+            })))
+            .as_deref(),
+            Some(
+                r#"failed at page.click [data-testid=open] on page "home" (#e5f6); page hidden (window covered or display asleep): animations are paused"#
+            )
         );
         assert_eq!(
             failed_at(&detail(json!({ "failedAction": "page.eval" }))).as_deref(),
