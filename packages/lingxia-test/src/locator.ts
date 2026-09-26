@@ -24,6 +24,7 @@ import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,
 } from "./version.js";
+import { runnerSetTimeout } from "./pending.js";
 
 export interface QueryMatch {
   exists: boolean;
@@ -503,6 +504,6 @@ export function textMatches(text: string, expected: string | RegExp): boolean {
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => {
-    setTimeout(resolve, ms);
+    runnerSetTimeout(resolve, ms);
   });
 }

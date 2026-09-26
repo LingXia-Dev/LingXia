@@ -657,6 +657,12 @@ lxdev test --list                 # list specs (file:line, id, title, tags) with
 - A run starts and ends with the app under test running: a spec that leaves
   it closed has it reopened before the next spec, and the run reopens it at
   the end. When a reopen fails, lxdev prints `Recover: … lxdev lxapp restart`.
+- A spec that times out fails alone. If its body is still awaiting something
+  (or its cleanup overran), its cleanup is skipped, its leftover timers are
+  cancelled, and the app is relaunched on its home page before the next spec;
+  the `recovery` diagnostic names the pending work (`timer`, `interval`,
+  `fetch`, `eval`, `action`) and the spec. Only if that recovery fails are the
+  remaining specs reported as not run, with the same `Recover:` line.
 - Before a run, lxdev checks that it, the session's host and the project's
   installed `@lingxia/*` packages share a version line, and stops with the fix
   when they do not (`LINGXIA_ALLOW_SKEW=1` makes that a warning).
