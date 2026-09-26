@@ -43,24 +43,28 @@ echo 'Building automation CLIs from the current checkout...'
 
 for framework_index in "${!frameworks[@]}"; do
   current_framework=${frameworks[$framework_index]}
-  test_args=(test --preset macos --platform macos --framework "$current_framework"
-    --name "showcase-macos-$current_framework" --keep-session)
+  session_name="showcase-macos-$current_framework"
+  dev_args=(dev --background --platform macos --framework "$current_framework"
+    --name "$session_name")
   if (( framework_index > 0 )); then
     # Both renderers use the same native host; only restage the Vue lxapp.
-    test_args+=(--skip-native)
+    dev_args+=(--skip-native)
   fi
 
   result_dir="$lxapp_root/test-results/automation/macos-$current_framework"
   mkdir -p "$result_dir"
+  echo "Starting macOS Showcase ($current_framework)..."
+  # Returns once the session is ready; a failed or timed-out start has
+  # already stopped what it started and exits non-zero with its log.
+  (cd "$showcase_root" && "$lingxia" "${dev_args[@]}")
+
   echo "Running macOS Showcase automation ($current_framework)..."
   set +e
   (
     cd "$lxapp_root"
-    # With `--platform`, `lingxia test` starts the host app session from the
-    # showcase root (the nearest lingxia.yaml), runs the macos preset of lxapp/lxdev.json (the entry,
-    # --forbid-only and the platform arg) with the flags after `--`, and
-    # keeps the session for the diagnostics below.
-    "$lingxia" "${test_args[@]}" -- \
+    # The macos preset of lxapp/lxdev.json: the entry, --forbid-only and the
+    # platform arg.
+    "$lxdev" --session "$session_name" test --preset macos \
       --timeout-secs "$timeout_seconds" \
       --arg "framework=$current_framework" \
       ${fixture_base:+--arg "httpBase=$fixture_base"} \
@@ -68,7 +72,7 @@ for framework_index in "${!frameworks[@]}"; do
   )
   test_status=$?
   set -e
-  (cd "$showcase_root" && "$lingxia" dev status --json) || true
+  "$lxdev" session || true
 
   if (( test_status != 0 )); then
     # Capture the blocked native thread before cleanup kills the host. Limit
@@ -91,8 +95,7 @@ for framework_index in "${!frameworks[@]}"; do
   fi
 
   echo "Stopping macOS Showcase ($current_framework)..."
-  # By the name `lingxia test --name` gave it.
-  (cd "$showcase_root" && "$lingxia" dev stop "showcase-macos-$current_framework")
+  (cd "$showcase_root" && "$lingxia" dev stop "$session_name")
 done
 
 trap - EXIT

@@ -69,7 +69,7 @@ pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
 }
 
 /// Canonical project identity used in broker records: sessions register it,
-/// project-scoped queries (`lingxia dev status/stop`, duplicate guard) filter
+/// project-scoped queries (`lingxia dev stop`, duplicate guard) filter
 /// by it.
 pub fn canonical_project_root(project_root: &Path) -> String {
     let canonical = fs::canonicalize(project_root).unwrap_or_else(|_| project_root.to_path_buf());
@@ -78,7 +78,7 @@ pub fn canonical_project_root(project_root: &Path) -> String {
 
 /// On Windows `fs::canonicalize` returns extended-length paths (`\\?\C:\…`,
 /// `\\?\UNC\server\share\…`). The verbatim prefix is noise in an identity
-/// that is also shown to users (`lxdev session list`'s PROJECT column) — strip
+/// that is also shown to users (`lxdev session`'s CONTENT column) — strip
 /// it back to the conventional form. Both sides of every comparison come from
 /// this function, so matching stays consistent.
 fn strip_verbatim_prefix(display: &str) -> String {
@@ -485,21 +485,6 @@ pub fn find_live_for_target(project_root: &Path, target: &str) -> Result<Vec<Ses
         .into_iter()
         .filter(|s| s.target.eq_ignore_ascii_case(target))
         .collect())
-}
-
-/// The session of this project a `lingxia dev stop [SELECTOR]` means — the
-/// same rules `lxdev --session` follows (name, target, `target@dir`, #, id
-/// prefix; without one, the only session).
-pub fn resolve_session(project_root: &Path, selector: Option<&str>) -> Result<SessionInfo> {
-    let all = list_sessions(project_root)?;
-    if all.is_empty() {
-        return Err(anyhow!(
-            "No live dev session found for this project. Run `lingxia dev` first."
-        ));
-    }
-    lingxia_control_protocol::dev_session::select::select(&all, selector, project_root)
-        .cloned()
-        .map_err(|err| anyhow!("{err}"))
 }
 
 pub fn request_shutdown(info: &SessionInfo) -> Result<()> {

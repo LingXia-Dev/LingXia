@@ -597,8 +597,8 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
     if let ScenarioCommand::List { json } = options.command {
         return list(&roots, json);
     }
-    let info =
-        info.ok_or_else(|| anyhow!("No live dev session found. Run `lingxia dev` first."))?;
+    let info = info
+        .ok_or_else(|| anyhow!(lingxia_control_protocol::dev_session::select::NO_SESSION_HINT))?;
     let session = Live {
         ws: info.ws_url.clone(),
     };

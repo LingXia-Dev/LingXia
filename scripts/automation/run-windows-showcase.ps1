@@ -3,7 +3,6 @@ param(
   [ValidateSet('react', 'vue', 'all')]
   [string]$Framework = 'all',
   [int]$TimeoutSeconds = 600,
-  [int]$DevReadyTimeoutSeconds = 1800,
   [ValidateRange(1, 64)]
   [int]$BuildJobs = 2,
   [string]$Grep
@@ -79,7 +78,7 @@ function Install-AutomationTools {
   # that pipe open and PowerShell waits forever for EOF.
   Start-Process -FilePath $builtLingXia -ArgumentList 'dev-broker' -WindowStyle Hidden
   Start-Sleep -Milliseconds 500
-  $liveSessionsJson = (& $builtLxdev session list --json | Out-String).Trim()
+  $liveSessionsJson = (& $builtLxdev session --json | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Could not inspect live dev sessions before installing CLIs.' }
   $liveSessions = $liveSessionsJson | ConvertFrom-Json
   if (@($liveSessions).Count -gt 0) {
@@ -237,21 +236,6 @@ function Get-UnexpectedWindowsSessionErrors {
   ($unexpected | ConvertTo-Json -Compress -Depth 8)
 }
 
-function Wait-ShowcaseSessionReady {
-  $readyDeadline = [DateTime]::UtcNow.AddSeconds($DevReadyTimeoutSeconds)
-  do {
-    Start-Sleep -Seconds 5
-    $statusJson = (& $lingxia dev status --json | Out-String).Trim()
-    if ($LASTEXITCODE -ne 0) { throw 'Could not inspect LingXia dev session readiness.' }
-    $ready = -not [string]::IsNullOrWhiteSpace($statusJson) `
-      -and @($statusJson | ConvertFrom-Json | Where-Object { $_.runtime_connected }).Count -gt 0
-  } until ($ready -or [DateTime]::UtcNow -ge $readyDeadline)
-  if (-not $ready) {
-    throw "Windows dev session did not become ready within $DevReadyTimeoutSeconds seconds."
-  }
-  Invoke-Checked $lingxia @('dev', 'status', '--json')
-}
-
 function Start-ShowcaseSession {
   param(
     [string]$Framework,
@@ -261,8 +245,9 @@ function Start-ShowcaseSession {
     'dev', '--background', '--platform', 'windows', '--framework', $Framework
   )
   if ($SkipNative) { $devArguments += '--skip-native' }
+  # Returns once the session is ready; a failed or timed-out start has
+  # already stopped what it started and exits non-zero with its log.
   Invoke-Checked $lingxia $devArguments
-  Wait-ShowcaseSessionReady
 }
 
 function Stop-ShowcaseSession {
@@ -324,10 +309,13 @@ try {
 
   Push-Location $showcaseRoot
   try {
-    $sessionsJson = (& $lingxia dev status --json | Out-String).Trim()
+    $sessionsJson = (& $lxdev session --json | Out-String).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing LingXia dev sessions.' }
-    $sessions = $sessionsJson | ConvertFrom-Json
-    if ($sessions.Where({ $_.target -eq 'windows' }).Count -gt 0) {
+    $projectRoot = (Resolve-Path $showcaseRoot).Path.TrimEnd('\')
+    $sessions = @($sessionsJson | ConvertFrom-Json)
+    if ($sessions.Where({
+      $_.target -eq 'windows' -and ([string]$_.context_root).TrimEnd('\') -ieq $projectRoot
+    }).Count -gt 0) {
       throw 'A Windows dev session already exists for this project. Stop it explicitly before running automation.'
     }
 

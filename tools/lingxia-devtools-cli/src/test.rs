@@ -31,7 +31,7 @@ const DEFAULT_CASE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_ARTIFACT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_ARTIFACT_BASE64_BYTES: usize = MAX_ARTIFACT_BYTES.div_ceil(3) * 4;
 
-pub const NO_SESSION_HINT: &str = "No live dev session found. Start one with `lingxia dev --background`, then re-run `lxdev test` — or run it all at once with `lingxia test`.";
+pub use lingxia_control_protocol::dev_session::select::NO_SESSION_HINT;
 
 const TEST_AFTER_HELP: &str = "\
 Examples:
@@ -46,7 +46,9 @@ Examples:
 
 Specs import `spec` from @lingxia/test. `LXDEV_ARG_<KEY>` and
 `LXDEV_SECRET_<KEY>` environment variables add --arg / --secret-arg values.
-One-shot in CI (start a session, run, stop it): `lingxia test`.
+
+The app must be running: start it with `lingxia dev` (in scripts and CI,
+`lingxia dev --background` before and `lingxia dev stop` after).
 
 Exit codes:
   0    every selected spec passed
@@ -418,9 +420,11 @@ pub fn execute(info: &SessionInfo, options: TestOptions) -> Result<()> {
 }
 
 pub fn looks_unreachable(err: &anyhow::Error) -> bool {
+    if crate::project::is_no_session(err) {
+        return true;
+    }
     let text = format!("{err:#}").to_lowercase();
-    text.contains("no live dev session")
-        || text.contains("websocket")
+    text.contains("websocket")
         || text.contains("connection refused")
         || text.contains("failed to connect")
         || text.contains("os error 10061")
@@ -2051,10 +2055,6 @@ fn report(
     print_artifact_index(output_dir, &outcome.artifacts);
 }
 
-/// Set by `lingxia test` to the command a rerun hint starts with (its own
-/// flags and a `--`), since the session it ran in is gone afterwards.
-pub const RERUN_PREFIX_ENV: &str = "LXDEV_RERUN_PREFIX";
-
 /// The command that reruns this run's selection with its effective flags —
 /// a preset's included, since they were expanded into `options` — and no
 /// secret values; append `--id <id>` for one spec. `--session` only when the
@@ -2065,12 +2065,9 @@ fn rerun_base(
     options: &TestOptions,
     secrets: &RunSecrets,
 ) -> String {
-    let prefix = match std::env::var(RERUN_PREFIX_ENV) {
-        Ok(prefix) if !prefix.trim().is_empty() => prefix.trim().to_string(),
-        _ => match crate::project::hint_selector(info) {
-            Some(selector) => format!("lxdev --session {} test", shell_quote(&selector)),
-            None => "lxdev test".to_string(),
-        },
+    let prefix = match crate::project::hint_selector(info) {
+        Some(selector) => format!("lxdev --session {} test", shell_quote(&selector)),
+        None => "lxdev test".to_string(),
     };
     rerun_command(&prefix, entry, options, secrets)
 }
@@ -2608,10 +2605,14 @@ mod tests {
     }
 
     #[test]
-    fn no_session_hint_points_at_background_dev() {
-        assert!(NO_SESSION_HINT.contains("lingxia dev --background"));
-        assert!(looks_unreachable(&anyhow!(
-            "No live dev session found. Run `lingxia dev` first."
+    fn no_session_hint_points_at_lingxia_dev() {
+        assert_eq!(
+            NO_SESSION_HINT,
+            "No running app session for this project. Start one with `lingxia dev` (or \
+             `lingxia dev --background` in scripts)."
+        );
+        assert!(looks_unreachable(&anyhow::Error::new(
+            lingxia_control_protocol::dev_session::select::SelectError::NoSessions
         )));
         assert!(looks_unreachable(&anyhow!("WebSocket handshake failed")));
         assert!(!looks_unreachable(&anyhow!("duplicate spec id")));
@@ -3095,22 +3096,6 @@ mod lifecycle_tests {
         );
         assert!(!command.contains("abc123"));
         assert!(!command.contains("--session"), "no session id is taught");
-    }
-
-    #[test]
-    fn lingxia_test_sets_the_rerun_command() {
-        let options = options(&["tests/"]);
-        let secrets = RunSecrets::new(&[], &[]);
-        let base = rerun_command(
-            "lingxia test -p macos --",
-            Path::new("tests/"),
-            &options,
-            &secrets,
-        );
-        assert_eq!(
-            rerun_with_id(&base, "A-1"),
-            "lingxia test -p macos -- 'tests/' --id 'A-1'"
-        );
     }
 
     #[test]

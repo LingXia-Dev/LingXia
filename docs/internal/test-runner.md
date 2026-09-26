@@ -215,22 +215,22 @@ Development machine: lxdev receives progress, results, and artifacts
   fields a build does not know, so a broker passes newer fields through; a
   broker built before `extra` still drops them, which is why a session with a
   `--name` verifies its registration (below).
-- `lingxia test`: `run_once` over a `SessionOps` (start / run / stop); stop
-  runs from a guard's `Drop`, so `?` and panics stop the session too. The
-  Ctrl-C handler only sets a flag — `lxdev` in the same process group gets
-  the signal and cancels its run — and the result is then 130. The dev
-  session is started through `start_background_session` with explicit
-  `dev …` args (the background child is its own process group) from
-  `DevProject::resolve(cwd, -p)`: the nearest ancestor `DevProject::at`
-  accepts (the same predicates `lingxia dev` applies to its cwd:
-  `is_standalone_lxapp_project` → Runner, `has_host_config` → host), the
-  nearest lxapp for `-p runner`, the nearest `lingxia.yaml` (else lxapp) for
-  a platform. `--platform runner` is not forwarded (the directory already
-  means the Runner); `lingxia dev -p runner` clears it and requires
-  `resolve_dev_target` to find an lxapp. The live-session check filters by
-  `runner` or the platform. `lxdev` runs in the invocation directory with
-  `LXDEV_RERUN_PREFIX=lingxia test <flags> --` so its Rerun lines repeat
-  `lingxia test`.
+- Session lifecycle: `lingxia dev` starts and stops sessions; `lxdev` never
+  starts one. `lingxia dev --background` runs `run_background_owner`: it
+  spawns the owner (`lingxia dev …` minus `--background`/`--json`, its own
+  process group, output appended to `.lingxia/background/dev-<ms>.log`)
+  and polls for a session of this project registered after the spawn whose
+  runtime answers `echo` with `runtimeConnected`. The owner exiting, the
+  timeout (`BACKGROUND_START_TIMEOUT`, 1800 s) or Ctrl-C (a `ctrlc` flag)
+  ends the wait: the owner's process tree is terminated
+  (`terminate_process_tree`) unless it already exited, and the error carries
+  the log path and its last 30 non-empty lines (`\r`-redrawn progress
+  collapsed to its last frame). The readiness probe is a closure, so unit
+  tests drive it with `sh` owners and a seconds-long timeout.
+- `lingxia dev stop [SESSION]`: `plan_stop` maps `select`'s result —
+  `NoSessions` and `NoMatch` are "nothing to stop" (exit 0), `Ambiguous` is an
+  error with the candidate table; a broker that cannot be queried or a
+  session that will not die is an error too.
 - Locator actions wait for a unique match, enabled/editable state, stable
   geometry, and an unobscured hit point (after `scrollIntoView`), retrying
   while a navigation is still replacing the page.
@@ -557,7 +557,7 @@ Development machine: lxdev receives progress, results, and artifacts
   count, and `shutdown` by exiting only when no session is registered (the
   check holds the session lock). `log_store::ensure_current_broker` probes
   it before registering (and, with `--name`, before the build in the
-  foreground `lingxia dev`/`lingxia test`) and replaces any mismatched
+  foreground `lingxia dev`) and replaces any mismatched
   broker: an idle one is asked to `shutdown`; a busy one is terminated by the
   pid `info` reported (its sessions' `register_session` threads reconnect a
   second later and re-register); one older than `info` is found by a process

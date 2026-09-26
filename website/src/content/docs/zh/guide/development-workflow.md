@@ -18,11 +18,11 @@ LingXia 把 session 生命周期与实时自动化分开：
 lingxia dev
 ```
 
-脚本与 agent 使用后台模式；命令会在 runtime websocket ready 后才返回：
+脚本与 agent 使用后台模式；命令会在 runtime websocket ready 后才返回；构建失败或超时未就绪时，它会停止已启动的进程，打印后台日志末尾并以非零退出：
 
 ```bash
 lingxia dev --background
-lingxia dev status
+lxdev session                # 运行中的 session 及其状态
 ```
 
 再次运行 `lingxia dev` 会接管同一项目、同一平台的旧 session。不同平台可以并行运行。需要停止 owner 时，在项目内执行 `lingxia dev stop`。
@@ -69,7 +69,7 @@ lingxia dev status
 只有一个 live session 时，即使在项目目录之外运行，`lxdev` 也会自动选择。存在多个 session 时，它会拒绝猜测：
 
 ```bash
-lxdev session list
+lxdev session
 lxdev --session ios lxapp current
 ```
 

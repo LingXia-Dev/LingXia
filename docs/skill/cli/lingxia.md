@@ -221,26 +221,20 @@ each host `resources.bundles[].path` that is a local lxapp. A save rebuilds
 that bundle and reloads it in place (`pages` / `tabBar` / `navigationStyle`
 included). Host/app code still needs a new `lingxia dev`.
 
-`lingxia dev` owns the session lifecycle — start, `status`, `stop`. Closing the
-Runner, or quitting a desktop host, ends the session and unregisters it; no
-follow-up `stop` is needed. A host window hidden to the tray keeps its runtime
-and session alive. Mobile sessions also survive closing the device app.
+`lingxia dev` starts and stops the app session; [`lxdev`](./lxdev.md) works
+on the running app. Closing the Runner, or quitting a desktop host, ends the
+session; a host hidden to the tray, or a mobile app closed on the device, keeps
+it.
 
-`stop` is the CLI equivalent when there is no window to close: `--background`,
-another terminal, or a mobile session whose device app is still running (swiping
-the app away is not the end of that session). For automation, start detached
-with `--background` (it returns once the session and its runtime websocket are
-ready); a foreground run blocks the terminal and takes the session down when it
-exits. Either way the session publishes metadata and logs for `lxdev`.
-`lingxia dev status` reports `starting`, `ready`, or `stale` and exposes the
-same state plus `runtime_connected` with `--json`.
+`lingxia dev --background` returns once the session is ready and leaves it
+running (`--json` prints the session). If it fails to start or is not ready
+within 30 minutes, it stops what it started, prints the end of its log, and
+exits non-zero.
 
-`lingxia dev stop [SESSION]` has one terminal-state contract: it requests
-graceful shutdown, waits for the owner to exit, and automatically terminates
-the owner after a bounded timeout. There is no separate force mode. `SESSION`
-takes the same selectors as `lxdev --session` (name, target, `target@dir`,
-`#`, id prefix). Session lifecycle stays with `lingxia`; `lxdev` only connects
-to and drives a live session.
+`lingxia dev stop [SESSION]` ends a session, and exits 0 when none is running.
+`SESSION` takes the selectors of `lxdev --session`. `lxdev session` lists the
+running sessions. For CI, see
+[Running specs in CI](../lxapp/testing.md#running-specs-in-ci).
 
 Desktop and Runner dev websockets stay loopback-only. A physical iOS device is
 the exception: it connects to an authenticated LAN listener using the token in
@@ -261,37 +255,6 @@ See `lingxia dev --help` for the flags.
 > **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
 > automates the running app (browser tabs, lxapp pages, screenshots, logs).
 > The split: `lingxia dev` owns process lifetime, `lxdev` drives.
-
-### `lingxia test`
-
-One command for CI: start a dev session in the background, run
-[`lxdev test`](./lxdev.md) in it, and stop it. The exit code is the test
-run's; the session is stopped whatever happens (pass, failure, error, Ctrl-C)
-unless `--keep-session`.
-
-```bash
-lingxia test --preset ci                        # lxdev.json preset
-lingxia test -p runner tests/                   # the lxapp in the desktop Runner
-lingxia test tests/ -p macos -- --grep checkout # after `--`: lxdev test flags
-lingxia test --keep-session -- --format jsonl   # leave the session up for diagnostics
-```
-
-It starts the session `lingxia dev` would start in the nearest project at or
-above the current directory:
-
-| Run from | No `-p` | `-p runner` | `-p ios` (any platform) |
-|---|---|---|---|
-| an lxapp directory (`lxapp.json`), or below it | the lxapp in the desktop Runner | the Runner | the host app of the enclosing `lingxia.yaml` on iOS |
-| a host project (`lingxia.yaml`), or below it outside the lxapp | the host app, platform auto-detected | error: no lxapp directory | the host app on iOS |
-
-So in `my-app/lxapp/` it runs the lxapp in the Runner — like `lingxia dev`
-there — and `-p macos` (or any platform) runs the host app instead; in a
-standalone lxapp a platform must be the local desktop's. `lxdev.json` is read
-from the current directory's project. It takes the `lingxia dev` flags a
-session needs (`-p/--target`, `--skip-native`, `--release`, `--headless`,
-`--name`, …) and refuses to start while a session of the same target is
-already running — use `lxdev test` against that one. A failed spec's `Rerun:`
-line repeats the `lingxia test` command. See `lingxia test --help`.
 
 `lingxia dev -p runner` asks for the Runner explicitly (an error outside an
 lxapp directory) instead of relying on the directory.

@@ -23,14 +23,21 @@ use project::SessionSelector;
 
 #[derive(Parser)]
 #[command(name = "lxdev")]
-#[command(about = "LingXia devtools client", long_about = None)]
+#[command(
+    about = "Work on a running app session started with `lingxia dev`",
+    long_about = None
+)]
+#[command(
+    after_help = "lxdev never starts a session: start one with `lingxia dev` (or `lingxia dev \
+                  --background` in scripts), end it with `lingxia dev stop`."
+)]
 #[command(version = env!("LXDEV_BUILD_VERSION"))]
 struct Cli {
-    /// Select the dev session: a name (`lingxia dev --name`), a target
+    /// Select the session: a name (`lingxia dev --name`), a target
     /// (android, ios, macos, harmony, windows, lxapp), `target@<project-dir>`,
-    /// the # from `lxdev session list`, or an id prefix. Without it: the
-    /// session of this directory's project, else the only live session.
-    /// Falls back to the LXDEV_SESSION env var
+    /// the # from `lxdev session`, or an id prefix. Without it: the session
+    /// of this directory's project, else the only running session. Falls
+    /// back to the LXDEV_SESSION env var
     #[arg(long, global = true, value_name = "SESSION")]
     session: Option<String>,
 
@@ -40,51 +47,37 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Control browser tabs in the current dev session
-    Browser(lingxia_control_commands::browser::BrowserOptions),
-    /// Manage lxapps in the current dev session
-    Lxapp(lxapp::LxAppOptions),
-    /// Control the simulated environment (device, orientation, appearance);
-    /// runner sessions only
-    Runner(runner::RunnerOptions),
-    /// Query and filter the current dev session log file
+    /// List sessions
+    Session(SessionOptions),
+    /// Read and follow the running app's logs
     Logs(logs::LogsOptions),
-    /// List live dev sessions
-    #[command(alias = "sessions")]
-    Session(SessionCmd),
-    /// Automate the local desktop OS (no dev session required)
-    Desktop(lingxia_control_commands::desktop::DesktopOptions),
-    /// Automate the host surface in the current dev session: windows,
-    /// screenshots, mouse and keyboard input, app links
-    Host(lingxia_control_commands::app::AppOptions),
-    /// Run JavaScript/TypeScript test cases in the current dev session
+    /// Run specs against the running app
     Test(Box<test::TestOptions>),
-    /// Put the running app into a named product state from
-    /// tests/scenarios/ (development hosts only)
-    Scenario(scenario::ScenarioOptions),
-    /// Inspect and record the running lxapp's Logic network traffic
+    /// Put the running app into a product state from a scenario file
     /// (development hosts only)
+    Scenario(scenario::ScenarioOptions),
+    /// See the running app's Logic network calls (fetch, SSE) and who
+    /// answered them; not system packet capture (development hosts only)
     Network(network::NetworkOptions),
+    /// Inspect and drive the running app's lxapps and pages
+    Lxapp(lxapp::LxAppOptions),
+    /// Drive the running app's host windows: screenshots, mouse and keyboard
+    /// input, app links
+    Host(lingxia_control_commands::app::AppOptions),
+    /// Drive the running app's browser tabs
+    Browser(lingxia_control_commands::browser::BrowserOptions),
+    /// Set the Runner's simulated device, orientation and appearance (Runner
+    /// sessions only)
+    Runner(runner::RunnerOptions),
+    /// Automate the local desktop OS (needs no session)
+    Desktop(lingxia_control_commands::desktop::DesktopOptions),
 }
 
 #[derive(Args, Clone)]
-struct SessionCmd {
-    #[command(subcommand)]
-    command: Option<SessionAction>,
-
-    /// Print pretty JSON output (list only — ignored when a subcommand is given)
+struct SessionOptions {
+    /// Print pretty JSON output
     #[arg(long)]
     json: bool,
-}
-
-#[derive(Subcommand, Clone)]
-enum SessionAction {
-    /// List live dev sessions
-    List {
-        /// Print pretty JSON output
-        #[arg(long)]
-        json: bool,
-    },
 }
 
 fn main() {
@@ -194,10 +187,7 @@ fn run() -> Result<()> {
             let info = resolve(&selector)?;
             logs::execute(&info, options)
         }
-        Commands::Session(cmd) => match cmd.command {
-            Some(SessionAction::List { json }) => sessions::execute_list(json),
-            None => sessions::execute_list(cmd.json),
-        },
+        Commands::Session(options) => sessions::execute(options.json),
         // Local OS automation, no dev session. A development tool runs these
         // in its own process: a developer grants lxdev Accessibility once, and
         // there is no product to route to.
@@ -222,11 +212,7 @@ fn run() -> Result<()> {
             // project.
             let info = match resolve(&selector) {
                 Ok(info) => Some(info),
-                Err(err)
-                    if options.is_list() && err.to_string().contains("No live dev session") =>
-                {
-                    None
-                }
+                Err(err) if options.is_list() && project::is_no_session(&err) => None,
                 Err(err) => return Err(err),
             };
             scenario::execute(info.as_ref(), options)
@@ -305,6 +291,62 @@ mod tests {
     fn session_lifecycle_commands_belong_to_lingxia() {
         assert!(Cli::try_parse_from(["lxdev", "stop", "windows"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "session", "stop", "windows"]).is_err());
+    }
+
+    #[test]
+    fn session_has_one_shape() {
+        for argv in [vec!["lxdev", "session"], vec!["lxdev", "session", "--json"]] {
+            assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
+        }
+        let Commands::Session(options) = Cli::try_parse_from(["lxdev", "session", "--json"])
+            .unwrap()
+            .command
+        else {
+            panic!("expected session command");
+        };
+        assert!(options.json);
+        // No subcommands and no alias.
+        assert!(Cli::try_parse_from(["lxdev", "session", "list"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "sessions"]).is_err());
+    }
+
+    #[test]
+    fn help_says_what_each_command_gives() {
+        use clap::CommandFactory;
+        let cli = Cli::command();
+        assert_eq!(
+            cli.get_about().unwrap().to_string(),
+            "Work on a running app session started with `lingxia dev`"
+        );
+        let about = |name: &str| {
+            cli.find_subcommand(name)
+                .and_then(|command| command.get_about())
+                .map(ToString::to_string)
+                .unwrap_or_default()
+        };
+        assert_eq!(about("test"), "Run specs against the running app");
+        assert_eq!(about("session"), "List sessions");
+        assert!(
+            about("scenario")
+                .starts_with("Put the running app into a product state from a scenario file"),
+        );
+        assert!(about("network").starts_with(
+            "See the running app's Logic network calls (fetch, SSE) and who answered them; not \
+             system packet capture"
+        ));
+        // Session lifecycle is `lingxia dev`'s: nothing here starts one.
+        let mut help = Vec::new();
+        Cli::command().write_long_help(&mut help).unwrap();
+        let help = String::from_utf8(help).unwrap();
+        assert!(help.contains("lxdev never starts a session"), "{help}");
+        let names: Vec<&str> = cli.get_subcommands().map(|c| c.get_name()).collect();
+        assert_eq!(
+            names,
+            [
+                "session", "logs", "test", "scenario", "network", "lxapp", "host", "browser",
+                "runner", "desktop"
+            ]
+        );
     }
 
     #[test]
