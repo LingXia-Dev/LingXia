@@ -18,11 +18,11 @@ For an interactive terminal:
 lingxia dev
 ```
 
-For scripts and agents, start in the background. The command returns only after the runtime websocket is ready:
+For scripts and agents, start in the background. The command returns only after the runtime websocket is ready; if the build fails or the app is not ready in time, it stops what it started and exits non-zero with the end of its log:
 
 ```bash
 lingxia dev --background
-lingxia dev status
+lxdev session                # the running sessions and their state
 ```
 
 Re-running `lingxia dev` takes over the same project's same-platform session. Different platforms can run side by side. Stop the owner from the project with `lingxia dev stop`.
@@ -70,7 +70,7 @@ The command set is dynamic by project type. Use `lxdev <family> <command> --help
 One live session is selected automatically, even when `lxdev` runs outside the project directory. If several are live, `lxdev` refuses to guess:
 
 ```bash
-lxdev session list
+lxdev session
 lxdev --session ios lxapp current
 ```
 

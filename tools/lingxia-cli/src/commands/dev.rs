@@ -1,11 +1,10 @@
 use crate::commands::rust::resolve_build_profile;
-use crate::config::{LingXiaConfig, append_native_features, has_host_config};
+use crate::config::{LingXiaConfig, append_native_features};
 use crate::host_assets::{prepare_configured_host_assets, prepare_windows_design_icon_assets};
 use crate::lxapp::ProjectFramework;
 use crate::platform::detector::PlatformType;
 use crate::platform::{self, BuildConfig, BuildProfile, InstallConfig, Platform, RunConfig};
 use anyhow::{Context, Result, anyhow};
-use chrono::{DateTime, Local, TimeZone};
 use colored::Colorize;
 use lingxia_log::now_timestamp_ms;
 use std::collections::HashSet;
@@ -36,7 +35,11 @@ mod windows;
 
 const RUNNER_DEV_WS_URL_ENV: &str = "LINGXIA_DEV_WS_URL";
 const BACKGROUND_CHILD_ENV: &str = "LINGXIA_DEV_BACKGROUND_CHILD";
-const BACKGROUND_START_TIMEOUT: Duration = Duration::from_secs(600);
+/// How long `lingxia dev --background` waits for its session to be ready. A
+/// cold host build in CI takes this long; past it the session is stopped.
+const BACKGROUND_START_TIMEOUT: Duration = Duration::from_secs(1800);
+/// Lines of the background log shown when a background start fails.
+const BACKGROUND_LOG_TAIL_LINES: usize = 30;
 const SESSION_TAKEOVER_GRACE: Duration = Duration::from_secs(2);
 const SESSION_TAKEOVER_FINAL_WAIT: Duration = Duration::from_secs(5);
 
@@ -83,87 +86,23 @@ pub struct DevExecuteOptions {
     /// Keep a Windows web-target Runner window hidden while it remains automatable.
     pub headless: bool,
     pub background: bool,
+    /// `--json` with `--background`: print the ready session as JSON.
+    pub json: bool,
     /// `--name`: a stable alias `--session` accepts.
     pub name: Option<String>,
     pub action: Option<DevSessionAction>,
 }
 
 pub enum DevSessionAction {
-    Status { json: bool },
     Stop { session: Option<String> },
 }
 
 /// `-p runner`: the lxapp in the local desktop Runner — what `lingxia dev`
-/// starts by itself in an lxapp directory. Also the session's target name.
-pub(crate) const RUNNER_TARGET: &str = "runner";
+/// starts by itself in an lxapp directory.
+const RUNNER_TARGET: &str = "runner";
 
-pub(crate) fn is_runner_target(value: &str) -> bool {
+fn is_runner_target(value: &str) -> bool {
     value.trim().eq_ignore_ascii_case(RUNNER_TARGET)
-}
-
-/// What a dev session started in a directory runs. `lingxia dev` decides it
-/// for its working directory; `lingxia test` for the nearest project at or
-/// above its working directory, with the same rules.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum DevProject {
-    /// A standalone lxapp (`lxapp.json`, no `lingxia.yaml` beside it) in the
-    /// local desktop Runner — also the lxapp directory of a host project.
-    Runner(PathBuf),
-    /// A host app project (`lingxia.yaml`), built and run on a platform.
-    Host(PathBuf),
-}
-
-impl DevProject {
-    pub(crate) fn root(&self) -> &Path {
-        match self {
-            Self::Runner(root) | Self::Host(root) => root,
-        }
-    }
-
-    /// What `lingxia dev` run in `dir` starts, if `dir` is a project.
-    pub(crate) fn at(dir: &Path) -> Option<Self> {
-        if runner::is_standalone_lxapp_project(dir) {
-            Some(Self::Runner(dir.to_path_buf()))
-        } else if has_host_config(dir) {
-            Some(Self::Host(dir.to_path_buf()))
-        } else {
-            None
-        }
-    }
-
-    /// The project a session for `target` starts from, looking in `cwd`
-    /// and then its parents:
-    /// - no target: the nearest project, as `lingxia dev` there would run it
-    ///   (an lxapp directory — even inside a host project — is the Runner);
-    /// - `runner`: the nearest lxapp directory, in the Runner;
-    /// - a platform: the nearest host project, else the nearest lxapp (its
-    ///   Runner is the local desktop platform).
-    pub(crate) fn resolve(cwd: &Path, target: Option<&str>) -> Result<Self> {
-        fn runner_at(dir: &Path) -> Option<DevProject> {
-            runner::is_standalone_lxapp_project(dir).then(|| DevProject::Runner(dir.to_path_buf()))
-        }
-        fn host_at(dir: &Path) -> Option<DevProject> {
-            has_host_config(dir).then(|| DevProject::Host(dir.to_path_buf()))
-        }
-        let nearest = |pick: fn(&Path) -> Option<DevProject>| cwd.ancestors().find_map(pick);
-        let found = match target {
-            None => nearest(Self::at),
-            Some(target) if is_runner_target(target) => nearest(runner_at),
-            Some(_) => nearest(host_at).or_else(|| nearest(runner_at)),
-        };
-        found.ok_or_else(|| match target {
-            Some(target) if is_runner_target(target) => anyhow!(
-                "`-p runner` runs an lxapp in the desktop Runner, but there is no lxapp \
-                 directory (lxapp.json) at or above {}",
-                cwd.display()
-            ),
-            _ => anyhow!(
-                "no LingXia project at or above {}: expected an lxapp directory (lxapp.json) \
-                 or a host project (lingxia.yaml)",
-                cwd.display()
-            ),
-        })
-    }
 }
 
 #[derive(Clone)]
@@ -380,7 +319,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     crate::compat::ensure_project(&project_root, &[])?;
 
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
-        return spawn_background_dev(&project_root);
+        return spawn_background_dev(&project_root, options.json);
     }
 
     let stop_requested = Arc::new(AtomicBool::new(false));
@@ -547,35 +486,46 @@ pub fn focus_windows_launch(executable: &Path, excluded_pids: &str) -> Result<()
 
 fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Result<()> {
     match action {
-        DevSessionAction::Status { json } => print_session_status(project_root, json),
-        DevSessionAction::Stop { session } => stop_session(project_root, session),
+        DevSessionAction::Stop { session } => stop_session(project_root, session.as_deref()),
     }
 }
 
-fn spawn_background_dev(project_root: &Path) -> Result<()> {
-    match start_background_session(
+/// `lingxia dev --background`: start the session owner detached, return once
+/// its session is ready. Anything else — the build fails, the owner exits,
+/// it is not ready in time, Ctrl-C — stops what was started and fails with
+/// the background log's tail, so a script never continues without a session
+/// or leaves one starting behind it.
+fn spawn_background_dev(project_root: &Path, json: bool) -> Result<()> {
+    let session = start_background_session(
         project_root,
         background_child_args(),
         BACKGROUND_START_TIMEOUT,
-        false,
-    )? {
-        Some(session) => {
-            println!("Dev session is ready.");
-            println!("  id: {}", session.session_id);
-            if let Some(name) = &session.name {
-                println!("  name: {name}");
-            }
-            println!("  target: {}", session.target);
-            println!("  ws: {}", session.ws_url);
-            println!("  session log: {}", session.log_file);
-            println!("Use `lxdev logs -f` to follow logs.");
-            println!("Use `{}` to stop it.", stop_hint(project_root, &session));
-        }
-        None => {
-            println!("Background dev process is still starting.");
-            println!("Use `lingxia dev status` to check readiness.");
-        }
+    )?;
+    let stop = stop_hint(project_root, &session);
+    if json {
+        let value = serde_json::json!({
+            "session_id": session.session_id,
+            "name": session.name,
+            "target": session.target,
+            "pid": session.pid,
+            "context_root": session.project_root,
+            "content": session.content,
+            "started_at": session.started_at,
+            "ws_url": session.ws_url,
+            "log_file": session.log_file,
+            "state": log_store::DevSessionState::Ready.as_str(),
+            "stop": stop,
+        });
+        println!("{}", serde_json::to_string_pretty(&value)?);
+        return Ok(());
     }
+    println!("Dev session ready.");
+    println!("  id:     {}", session.session_id);
+    if let Some(name) = &session.name {
+        println!("  name:   {name}");
+    }
+    println!("  target: {}", session.target);
+    println!("Stop it with `{stop}`.");
     Ok(())
 }
 
@@ -613,60 +563,183 @@ fn refuse_taken_name(name: &str, project_root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Start `lingxia <child_args>` as a detached background session owner and
-/// wait until its session is ready. `None` if it is still starting after
-/// `ready_within` — when `stop_if_not_ready`, the owner is then terminated
-/// with everything it started, so no session comes up after the caller left.
-pub(crate) fn start_background_session(
+/// Start `lingxia <child_args>` as a detached background session owner in
+/// `project_root` and wait until its session is ready.
+fn start_background_session(
     project_root: &Path,
     child_args: Vec<OsString>,
     ready_within: Duration,
-    stop_if_not_ready: bool,
-) -> Result<Option<log_store::SessionInfo>> {
+) -> Result<log_store::SessionInfo> {
     let log_dir = log_store::dev_dir(project_root).join("background");
     fs::create_dir_all(&log_dir)
         .with_context(|| format!("Failed to create {}", log_dir.display()))?;
     // Prune old background launch logs under the same retention as session logs
-    // so repeated `--background` starts don't grow `.lingxia/dev/background/`
+    // so repeated `--background` starts don't grow `.lingxia/background/`
     // without bound.
     let _ = log_store::cleanup_old_logs(&log_dir, log_store::DEFAULT_LOG_RETENTION_DAYS);
     let started_at = now_timestamp_ms();
     let log_path = log_dir.join(format!("dev-{started_at}.log"));
-    let stdout = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .with_context(|| format!("Failed to open {}", log_path.display()))?;
-    let stderr = stdout
-        .try_clone()
-        .with_context(|| format!("Failed to clone {}", log_path.display()))?;
 
     let mut command = Command::new(env::current_exe().context("Failed to resolve current exe")?);
     command
         .args(child_args)
         .current_dir(project_root)
-        .env(BACKGROUND_CHILD_ENV, "1")
+        .env(BACKGROUND_CHILD_ENV, "1");
+
+    let interrupted = Arc::new(AtomicBool::new(false));
+    {
+        let interrupted = interrupted.clone();
+        // Best effort: without it, Ctrl-C still ends this process, and the
+        // session goes on starting as if the start had succeeded.
+        let _ = ctrlc::set_handler(move || interrupted.store(true, Ordering::Release));
+    }
+    run_background_owner(command, &log_path, ready_within, &interrupted, || {
+        for session in log_store::list_sessions(project_root)? {
+            if session.started_at >= started_at
+                && log_store::session_state(&session) == log_store::DevSessionState::Ready
+            {
+                return Ok(Some(session));
+            }
+        }
+        Ok(None)
+    })
+}
+
+/// Why a background session owner did not produce a ready session.
+#[derive(Debug, PartialEq, Eq)]
+enum BackgroundFailure {
+    /// It exited on its own (a build or launch error, a bad option).
+    Exited(String),
+    /// It was not ready within the timeout; it was stopped.
+    NotReady(Duration),
+    /// Ctrl-C while waiting; it was stopped.
+    Interrupted,
+}
+
+/// Spawn `command` detached, with its output appended to `log_path`, and poll
+/// `ready` until it yields the session. On any failure the owner and every
+/// process it started are gone before this returns the error, which names
+/// the log and shows its last lines.
+fn run_background_owner<T>(
+    mut command: Command,
+    log_path: &Path,
+    ready_within: Duration,
+    interrupted: &AtomicBool,
+    mut ready: impl FnMut() -> Result<Option<T>>,
+) -> Result<T> {
+    let stdout = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .with_context(|| format!("Failed to open {}", log_path.display()))?;
+    let stderr = stdout
+        .try_clone()
+        .with_context(|| format!("Failed to clone {}", log_path.display()))?;
+    command
         .stdin(Stdio::null())
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr));
     configure_background_process(&mut command);
-
     let mut child = command.spawn().with_context(|| {
         format!(
-            "Failed to start background dev process; log path {}",
+            "Failed to start the background dev process (log: {})",
             log_path.display()
         )
     })?;
-    let pid = child.id();
-    println!("Started background dev process pid {pid}.");
-    println!("  log: {}", log_path.display());
+    eprintln!(
+        "Starting the dev session in the background (pid {}, log: {})...",
+        child.id(),
+        log_path.display()
+    );
 
-    let ready = wait_for_background_session(project_root, &mut child, started_at, ready_within)?;
-    if ready.is_none() && stop_if_not_ready {
-        terminate_process_tree(&mut System::new(), sysinfo::Pid::from_u32(child.id()));
-        let _ = child.wait();
+    let deadline = std::time::Instant::now() + ready_within;
+    let failure = loop {
+        if let Some(status) = child
+            .try_wait()
+            .context("Failed to poll the background dev process")?
+        {
+            break BackgroundFailure::Exited(status.to_string());
+        }
+        match ready() {
+            Ok(Some(session)) => return Ok(session),
+            Ok(None) => {}
+            Err(err) => {
+                stop_background_owner(&mut child);
+                return Err(err);
+            }
+        }
+        if interrupted.load(Ordering::Acquire) {
+            break BackgroundFailure::Interrupted;
+        }
+        if std::time::Instant::now() >= deadline {
+            break BackgroundFailure::NotReady(ready_within);
+        }
+        thread::sleep(Duration::from_millis(250));
+    };
+    if !matches!(failure, BackgroundFailure::Exited(_)) {
+        stop_background_owner(&mut child);
     }
-    Ok(ready)
+    Err(anyhow!(background_failure_message(&failure, log_path)))
+}
+
+/// Terminate a background owner that is not ready, with everything it
+/// started (build tools, the app, the Runner), and reap it.
+fn stop_background_owner(child: &mut Child) {
+    terminate_process_tree(&mut System::new(), sysinfo::Pid::from_u32(child.id()));
+    let _ = child.wait();
+}
+
+fn background_failure_message(failure: &BackgroundFailure, log_path: &Path) -> String {
+    let headline = match failure {
+        BackgroundFailure::Exited(status) => {
+            format!("The dev session failed to start: the background process exited ({status}).")
+        }
+        BackgroundFailure::NotReady(timeout) => format!(
+            "The dev session was not ready within {}; stopped it.",
+            describe_duration(*timeout)
+        ),
+        BackgroundFailure::Interrupted => "Interrupted; stopped the starting dev session.".into(),
+    };
+    let tail = log_tail(log_path, BACKGROUND_LOG_TAIL_LINES);
+    let mut message = format!("{headline}\nLog: {}", log_path.display());
+    if !tail.is_empty() {
+        message.push_str("\nLast lines of the log:");
+        for line in &tail {
+            message.push_str(&format!("\n  {line}"));
+        }
+    }
+    message
+}
+
+fn describe_duration(duration: Duration) -> String {
+    let secs = duration.as_secs();
+    if secs >= 60 && secs.is_multiple_of(60) {
+        let minutes = secs / 60;
+        format!("{minutes} minute{}", if minutes == 1 { "" } else { "s" })
+    } else {
+        format!("{secs} second{}", if secs == 1 { "" } else { "s" })
+    }
+}
+
+/// The last `max` non-empty lines of `path`. A progress line redrawn with
+/// `\r` counts as what it last showed.
+fn log_tail(path: &Path, max: usize) -> Vec<String> {
+    let Ok(bytes) = fs::read(path) else {
+        return Vec::new();
+    };
+    let text = String::from_utf8_lossy(&bytes);
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| {
+            line.rsplit('\r')
+                .next()
+                .unwrap_or(line)
+                .trim_end()
+                .to_string()
+        })
+        .filter(|line| !line.trim().is_empty())
+        .collect();
+    lines[lines.len().saturating_sub(max)..].to_vec()
 }
 
 #[cfg(unix)]
@@ -700,104 +773,69 @@ fn background_child_args() -> Vec<OsString> {
         .skip(1)
         .filter(|arg| {
             let value = arg.to_string_lossy();
-            value != "--background" && !value.starts_with("--background=")
+            // The owner runs in the foreground; readiness is reported here.
+            !matches!(value.as_ref(), "--background" | "--json")
+                && !value.starts_with("--background=")
         })
         .collect()
 }
 
-fn wait_for_background_session(
-    project_root: &Path,
-    child: &mut Child,
-    started_at: u64,
-    ready_within: Duration,
-) -> Result<Option<log_store::SessionInfo>> {
-    let deadline = std::time::Instant::now() + ready_within;
-    loop {
-        if let Some(status) = child
-            .try_wait()
-            .context("Failed to poll background dev process")?
-        {
-            return Err(anyhow!(
-                "Background dev process exited before it became ready: {status}"
-            ));
-        }
-
-        for session in log_store::list_sessions(project_root)? {
-            if session.started_at >= started_at
-                && log_store::session_state(&session) == log_store::DevSessionState::Ready
-            {
-                return Ok(Some(session));
-            }
-        }
-
-        if std::time::Instant::now() >= deadline {
-            return Ok(None);
-        }
-
-        thread::sleep(Duration::from_millis(250));
-    }
-}
-
-fn print_session_status(project_root: &Path, json_output: bool) -> Result<()> {
+/// `lingxia dev stop [SESSION]`. Idempotent: when nothing it could mean is
+/// running, there is nothing to do, and that is success. It fails only when
+/// it cannot tell what is running (the broker is unreachable), when the
+/// selector could mean several sessions, or when a session would not stop.
+fn stop_session(project_root: &Path, selector: Option<&str>) -> Result<()> {
     let sessions = log_store::list_sessions(project_root)?;
-    if json_output {
-        let values: Vec<serde_json::Value> = sessions
-            .iter()
-            .map(|session| {
-                let state = log_store::session_state(session);
-                serde_json::json!({
-                    "session_id": session.session_id,
-                    "name": session.name,
-                    "pid": session.pid,
-                    "target": session.target,
-                    "started_at": session.started_at,
-                    "ws_url": session.ws_url,
-                    "log_file": session.log_file,
-                    "state": state.as_str(),
-                    "runtime_connected": state == log_store::DevSessionState::Ready,
-                    "stale": state == log_store::DevSessionState::Stale,
-                })
-            })
-            .collect();
-        println!("{}", serde_json::to_string_pretty(&values)?);
-        return Ok(());
+    match plan_stop(&sessions, selector, project_root)? {
+        StopPlan::Stop(session) => stop_session_info(session),
+        StopPlan::NothingRunning(message) => {
+            println!("{message}");
+            Ok(())
+        }
     }
-
-    if sessions.is_empty() {
-        println!("No active dev sessions.");
-        return Ok(());
-    }
-
-    println!(
-        "{:<8}  {:<12}  {:<8}  {:<8}  {:<19}  {:<22}  PID",
-        "ID", "NAME", "STATE", "TARGET", "STARTED", "WS"
-    );
-    for session in &sessions {
-        let state = log_store::session_state(session).as_str();
-        println!(
-            "{:<8}  {:<12}  {:<8}  {:<8}  {:<19}  {:<22}  {}",
-            session.session_id,
-            session.name.as_deref().unwrap_or("-"),
-            state,
-            session.target,
-            format_started(session.started_at),
-            session.ws_url,
-            session.pid,
-        );
-        println!("  log: {}", session.log_file);
-    }
-    println!();
-    println!("Use `lxdev logs -f` to follow session logs.");
-    Ok(())
 }
 
-fn stop_session(project_root: &Path, selector: Option<String>) -> Result<()> {
-    let session = log_store::resolve_session(project_root, selector.as_deref())?;
-    stop_session_info(&session)
+#[derive(Debug)]
+enum StopPlan<'a> {
+    Stop(&'a log_store::SessionInfo),
+    /// Nothing to stop; the message says so.
+    NothingRunning(String),
 }
+
+/// Which of this project's live `sessions` `lingxia dev stop [selector]`
+/// stops — the rules `lxdev --session` follows.
+fn plan_stop<'a>(
+    sessions: &'a [log_store::SessionInfo],
+    selector: Option<&str>,
+    project_root: &Path,
+) -> Result<StopPlan<'a>> {
+    use lingxia_control_protocol::dev_session::select::{SelectError, select};
+    let selector = selector.map(str::trim).filter(|value| !value.is_empty());
+    match select(sessions, selector, project_root) {
+        Ok(session) => Ok(StopPlan::Stop(session)),
+        Err(SelectError::NoSessions) => Ok(StopPlan::NothingRunning(match selector {
+            Some(query) => format!("No dev session {query:?} is running for this project."),
+            None => "No dev session running for this project.".to_string(),
+        })),
+        Err(SelectError::NoMatch { query, table }) => Ok(StopPlan::NothingRunning(format!(
+            "No dev session {query:?} is running for this project. Running:\n\n{table}"
+        ))),
+        Err(SelectError::Ambiguous { query, table }) => Err(anyhow!(
+            "{}\n\n{table}\n\n{STOP_PICK_HINT}",
+            match query {
+                Some(query) => format!("{query:?} matches several dev sessions of this project:"),
+                None => "Several dev sessions are running for this project; name the one to stop:"
+                    .to_string(),
+            }
+        )),
+    }
+}
+
+const STOP_PICK_HINT: &str = "`lingxia dev stop SESSION` takes a NAME, a TARGET, \
+                              TARGET@<project-dir>, or the # column.";
 
 /// Stop `session`: a graceful shutdown request, then its owner process.
-pub(crate) fn stop_session_info(session: &log_store::SessionInfo) -> Result<()> {
+fn stop_session_info(session: &log_store::SessionInfo) -> Result<()> {
     let session = session.clone();
     println!(
         "Stopping {} dev session {}...",
@@ -942,17 +980,6 @@ fn wait_for_pid_exit(pid: sysinfo::Pid, timeout: Duration) -> bool {
     }
 }
 
-fn format_started(started_at: u64) -> String {
-    let secs = (started_at / 1000) as i64;
-    let nsecs = ((started_at % 1000) * 1_000_000) as u32;
-    match Local.timestamp_opt(secs, nsecs).single() {
-        Some(dt) => {
-            let dt: DateTime<Local> = dt;
-            dt.format("%Y-%m-%d %H:%M:%S").to_string()
-        }
-        None => started_at.to_string(),
-    }
-}
 fn install_ctrlc_handler(stop_requested: Arc<AtomicBool>) -> Result<()> {
     ctrlc::set_handler(move || {
         stop_requested.store(true, Ordering::Release);
@@ -1177,8 +1204,249 @@ fn parse_lxapp_framework(value: &str) -> Result<ProjectFramework> {
 
 #[cfg(test)]
 mod tests {
-    use super::process_executable_matches;
+    use super::*;
+    use lingxia_control_protocol::dev_session::broker::SessionInfo;
     use std::path::Path;
+
+    fn session(id: &str, target: &str, name: Option<&str>) -> SessionInfo {
+        serde_json::from_value(serde_json::json!({
+            "session_id": id,
+            "project_root": "/work/app",
+            "target": target,
+            "pid": 1,
+            "started_at": 1,
+            "ws_url": "ws://127.0.0.1:1",
+            "log_file": "/work/app/.lingxia/logs/x.jsonl",
+            "name": name,
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn stop_with_nothing_running_is_success() {
+        let root = Path::new("/work/app");
+        let StopPlan::NothingRunning(message) = plan_stop(&[], None, root).unwrap() else {
+            panic!("nothing to stop");
+        };
+        assert_eq!(message, "No dev session running for this project.");
+        let StopPlan::NothingRunning(message) = plan_stop(&[], Some("ci"), root).unwrap() else {
+            panic!("nothing to stop");
+        };
+        assert!(message.contains("\"ci\""), "{message}");
+    }
+
+    #[test]
+    fn stop_with_an_unmatched_selector_is_success_and_lists_what_runs() {
+        let live = [session("aaa111", "macos", Some("ci"))];
+        let StopPlan::NothingRunning(message) =
+            plan_stop(&live, Some("nightly"), Path::new("/work/app")).unwrap()
+        else {
+            panic!("nothing to stop");
+        };
+        assert!(message.starts_with("No dev session \"nightly\" is running"));
+        assert!(message.contains("aaa111"), "{message}");
+    }
+
+    #[test]
+    fn stop_picks_the_only_session_or_the_named_one() {
+        let root = Path::new("/work/app");
+        let live = [
+            session("aaa111", "macos", Some("ci")),
+            session("bbb222", "android", None),
+        ];
+        let StopPlan::Stop(found) = plan_stop(&live[..1], None, root).unwrap() else {
+            panic!("the only session");
+        };
+        assert_eq!(found.session_id, "aaa111");
+        let StopPlan::Stop(found) = plan_stop(&live, Some("android"), root).unwrap() else {
+            panic!("by target");
+        };
+        assert_eq!(found.session_id, "bbb222");
+    }
+
+    #[test]
+    fn stop_refuses_to_guess_between_sessions() {
+        let live = [
+            session("aaa111", "macos", None),
+            session("bbb222", "android", None),
+        ];
+        let error = plan_stop(&live, None, Path::new("/work/app"))
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("name the one to stop"), "{error}");
+        assert!(
+            error.contains("aaa111") && error.contains("bbb222"),
+            "{error}"
+        );
+        assert!(error.contains("lingxia dev stop SESSION"), "{error}");
+    }
+
+    #[test]
+    fn the_log_tail_keeps_the_last_lines_as_last_drawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let mut text: String = (1..=40).map(|n| format!("line {n}\n")).collect();
+        text.push_str("\nbuilding 10%\rbuilding 99%\rbuild failed\n\n");
+        fs::write(&log, text).unwrap();
+        let tail = log_tail(&log, 30);
+        assert_eq!(tail.len(), 30);
+        assert_eq!(tail[0], "line 12");
+        assert_eq!(tail.last().unwrap(), "build failed");
+        assert!(log_tail(&dir.path().join("missing.log"), 30).is_empty());
+    }
+
+    #[test]
+    fn durations_read_in_minutes_when_whole() {
+        assert_eq!(describe_duration(BACKGROUND_START_TIMEOUT), "30 minutes");
+        assert_eq!(describe_duration(Duration::from_secs(60)), "1 minute");
+        assert_eq!(describe_duration(Duration::from_secs(1)), "1 second");
+    }
+
+    /// A background owner that prints, starts a grandchild, and never
+    /// becomes ready; its pids land in `dir`.
+    #[cfg(unix)]
+    fn never_ready_owner(dir: &Path) -> Command {
+        let mut command = Command::new("sh");
+        command.arg("-c").arg(format!(
+            "echo $$ > '{0}/owner.pid'; sleep 300 & echo $! > '{0}/child.pid'; \
+             echo compiling; echo still compiling; wait",
+            dir.display()
+        ));
+        command
+    }
+
+    #[cfg(unix)]
+    fn read_pid(path: &Path) -> sysinfo::Pid {
+        for _ in 0..50 {
+            if let Ok(text) = fs::read_to_string(path)
+                && let Ok(pid) = text.trim().parse::<u32>()
+            {
+                return sysinfo::Pid::from_u32(pid);
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+        panic!("no pid in {}", path.display());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_start_not_ready_in_time_is_stopped_and_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let mut polls = 0;
+        let error = run_background_owner::<()>(
+            never_ready_owner(dir.path()),
+            &log,
+            Duration::from_secs(2),
+            &AtomicBool::new(false),
+            || {
+                polls += 1;
+                Ok(None)
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(polls > 0);
+        assert!(error.starts_with("The dev session was not ready within 2 seconds; stopped it."));
+        assert!(
+            error.contains(&format!("Log: {}", log.display())),
+            "{error}"
+        );
+        assert!(error.contains("\n  still compiling"), "{error}");
+        // The owner and what it started are gone.
+        assert!(wait_for_pid_exit(
+            read_pid(&dir.path().join("owner.pid")),
+            Duration::from_secs(5)
+        ));
+        assert!(wait_for_pid_exit(
+            read_pid(&dir.path().join("child.pid")),
+            Duration::from_secs(5)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_interrupted_background_start_is_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let interrupted = AtomicBool::new(false);
+        let mut polls = 0;
+        let error = run_background_owner::<()>(
+            never_ready_owner(dir.path()),
+            &log,
+            Duration::from_secs(60),
+            &interrupted,
+            || {
+                polls += 1;
+                if polls == 4 {
+                    interrupted.store(true, Ordering::Release);
+                }
+                Ok(None)
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.starts_with("Interrupted; stopped the starting dev session."),
+            "{error}"
+        );
+        assert!(wait_for_pid_exit(
+            read_pid(&dir.path().join("owner.pid")),
+            Duration::from_secs(5)
+        ));
+        assert!(wait_for_pid_exit(
+            read_pid(&dir.path().join("child.pid")),
+            Duration::from_secs(5)
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_owner_that_exits_fails_with_its_log() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("echo 'Building...'; echo 'error: build failed' >&2; exit 3");
+        let error = run_background_owner::<()>(
+            command,
+            &log,
+            Duration::from_secs(60),
+            &AtomicBool::new(false),
+            || Ok(None),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.starts_with("The dev session failed to start: the background process exited"),
+            "{error}"
+        );
+        assert!(error.contains("3"), "{error}");
+        assert!(error.contains("\n  error: build failed"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_ready_background_owner_is_left_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let session = run_background_owner(
+            never_ready_owner(dir.path()),
+            &log,
+            Duration::from_secs(60),
+            &AtomicBool::new(false),
+            || Ok(dir.path().join("child.pid").exists().then_some("ready")),
+        )
+        .unwrap();
+        assert_eq!(session, "ready");
+        let owner = read_pid(&dir.path().join("owner.pid"));
+        let child = read_pid(&dir.path().join("child.pid"));
+        assert!(!wait_for_pid_exit(owner, Duration::from_millis(300)));
+        terminate_process_tree(&mut System::new(), owner);
+        assert!(wait_for_pid_exit(owner, Duration::from_secs(5)));
+        assert!(wait_for_pid_exit(child, Duration::from_secs(5)));
+    }
 
     #[test]
     fn process_match_requires_exact_executable_path() {

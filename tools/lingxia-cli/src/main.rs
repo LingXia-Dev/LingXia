@@ -55,6 +55,10 @@ mod wallet;
 #[derive(Parser)]
 #[command(name = "lingxia", version = env!("LINGXIA_BUILD_VERSION"))]
 #[command(about = "LingXia CLI - Build cross-platform apps with ease", long_about = None)]
+#[command(
+    after_help = "Run the app with `lingxia dev`; work on the running app (logs, UI, tests, \
+                  scenarios) with `lxdev`."
+)]
 struct Cli {
     /// Skip automatic skill synchronization, including during upgrade (for CI).
     #[arg(long, global = true, env = "LINGXIA_SKIP_SKILL", value_parser = clap::builder::BoolishValueParser::new())]
@@ -164,13 +168,19 @@ struct DevOptions {
     #[arg(long, value_parser = parse_display_language)]
     display_language: Option<String>,
 
-    /// Run a web URL target without showing the desktop Runner window.
+    /// Hide the desktop Runner window; only for an http(s) URL TARGET
     #[arg(long)]
     headless: bool,
 
-    /// Start the dev session in the background and return after it is ready
+    /// Return once the session is ready and leave it running (scripts, CI).
+    /// If it fails or is not ready in time, what it started is stopped and
+    /// the command fails with the end of its log
     #[arg(long)]
     background: bool,
+
+    /// With --background: print the ready session as JSON
+    #[arg(long, requires = "background")]
+    json: bool,
 
     /// Name the session: `lxdev --session NAME` and `lingxia dev stop NAME`
     /// select it by name, and printed hints use it
@@ -181,103 +191,13 @@ struct DevOptions {
     action: Option<DevAction>,
 }
 
-#[derive(clap::Args, Clone)]
-struct TestOptions {
-    /// Test entry file, or a directory of `*.test.ts` files (else the
-    /// preset's, or lxdev.json's `test.entry`)
-    #[arg(value_name = "ENTRY")]
-    entry: Option<String>,
-
-    /// A preset of lxdev.json (`test.presets`)
-    #[arg(long, value_name = "NAME")]
-    preset: Option<String>,
-
-    /// Run a web URL target without showing the desktop Runner window
-    #[arg(long)]
-    headless: bool,
-
-    /// Leave the dev session running after the run (stop it with `lingxia
-    /// dev stop`)
-    #[arg(long)]
-    keep_session: bool,
-
-    /// What to run the tests in: `runner` (the lxapp in the local desktop
-    /// Runner) or a platform of the host app (android, ios, macos, harmony,
-    /// windows). Default: what `lingxia dev` would start in the nearest
-    /// project — an lxapp directory runs in the Runner, a host project on
-    /// its auto-detected platform
-    #[arg(short = 'p', long, value_name = "TARGET")]
-    platform: Option<String>,
-
-    /// Device ID (required if multiple devices are connected)
-    #[arg(short = 'd', long)]
-    device: Option<String>,
-
-    /// Name the session while it runs (see `lingxia dev --name`)
-    #[arg(long, value_name = "NAME")]
-    name: Option<String>,
-
-    /// Override the effective display language for this Runner session
-    #[arg(long, value_parser = parse_display_language)]
-    display_language: Option<String>,
-
-    #[command(flatten)]
-    build_options: BuildOptions,
-
-    /// Arguments for `lxdev test` (see `lxdev test --help`)
-    #[arg(
-        last = true,
-        value_name = "LXDEV_TEST_ARGS",
-        allow_hyphen_values = true
-    )]
-    lxdev_args: Vec<String>,
-}
-
-impl TestOptions {
-    /// The `lingxia dev` build flags, re-spelled for the session it starts.
-    fn dev_flags(&self) -> Vec<String> {
-        let build = &self.build_options;
-        let mut flags = Vec::new();
-        if build.release {
-            flags.push("--release".to_string());
-        }
-        if build.skip_native {
-            flags.push("--skip-native".to_string());
-        }
-        if let Some(framework) = &build.framework {
-            flags.extend(["--framework".to_string(), framework.clone()]);
-        }
-        if let Some(progress) = &build.progress {
-            flags.extend(["--progress".to_string(), progress.clone()]);
-        }
-        if let Some(env) = &build.env_version {
-            flags.extend(["--env".to_string(), env.clone()]);
-        }
-        for feature in &build.native_features {
-            flags.extend(["--native-feature".to_string(), feature.clone()]);
-        }
-        for provider in &build.with_provider {
-            flags.extend(["--with-provider".to_string(), provider.clone()]);
-        }
-        if let Some(path) = &build.provider_path {
-            flags.extend(["--provider-path".to_string(), path.clone()]);
-        }
-        flags
-    }
-}
-
 #[derive(Subcommand, Clone)]
 enum DevAction {
-    /// List dev sessions for this project
-    Status {
-        /// Print pretty JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stop a dev session for this project
+    /// End a session (a no-op when none is running)
     Stop {
-        /// Session name, target (macos, lxapp, …), `target@<dir>`, # from
-        /// `lxdev session list`, or id prefix. Omit when only one is live.
+        /// Which session of this project: its name (`lingxia dev --name`),
+        /// target (macos, android, …), TARGET@<project-dir>, or id prefix.
+        /// Omit it when only one is running
         session: Option<String>,
     },
 }
@@ -305,13 +225,6 @@ enum TemplateAction {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Show LingXia CLI version information
-    Version {
-        /// Print build, host, toolchain, and LingXia component versions
-        #[arg(long)]
-        verbose: bool,
-    },
-
     /// Create a new LingXia project
     New {
         /// Project name
@@ -364,44 +277,23 @@ enum Commands {
         action: TemplateAction,
     },
 
-    /// Generate or update app icons
-    Icon {
-        /// Path to app icon (PNG, recommended 1024x1024)
-        icon_path: String,
+    /// Run the app and follow code changes (--background: return once the
+    /// session is ready)
+    #[command(after_long_help = "\
+Examples:
+  lingxia dev                          run the app here; Ctrl-C ends the session
+  lingxia dev -p android               the host app on Android
+  lingxia dev ../my-lxapp              an lxapp in the desktop Runner
+  lingxia dev --background             scripts and CI: return once it is ready
+  lingxia dev stop                     end the session (nothing running is fine)
 
-        /// Target platform (if not specified, use all platforms from config)
-        #[arg(short = 'p', long)]
-        platform: Option<String>,
-
-        /// Background color for adaptive icons (hex, e.g., "#FFFFFF")
-        #[arg(short = 'b', long)]
-        background_color: Option<String>,
-
-        /// Generate legacy icons for Android minSdk < 26
-        #[arg(long)]
-        legacy: bool,
-
-        /// Transparent artwork for Android/Harmony layered foregrounds
-        /// (defaults to the main icon, which embeds its own background)
-        #[arg(long)]
-        foreground: Option<String>,
-
-        /// Standalone conversion: write the source icon to this path instead of
-        /// into a project. The extension picks the format — `.ico` (multi-size
-        /// Windows icon) or `.png`. Used to (re)generate committed design assets
-        /// (e.g. the dev-runner icon, favicon.ico, the appicon masters).
-        #[arg(long)]
-        output: Option<String>,
-
-        /// Output size in px for `--output *.png` (default 1024). Ignored for `.ico`.
-        #[arg(long)]
-        size: Option<u32>,
-
-        /// Preview only: analyze the source, render every platform treatment
-        /// (masks, safe zones, small sizes) into icon-preview.html, and write
-        /// nothing into the project.
-        #[arg(long)]
-        check: bool,
+`lingxia dev` starts and stops the app session; `lxdev` works on the running
+app (logs, UI automation, tests, scenarios) and never starts one. There is one
+session per project and target: starting another takes over the old one.
+`lxdev session` lists the running sessions.")]
+    Dev {
+        #[command(flatten)]
+        dev_options: DevOptions,
     },
 
     /// Build the project
@@ -454,9 +346,6 @@ enum Commands {
         native_only: bool,
     },
 
-    /// Remove generated build artifacts
-    Clean,
-
     /// Package release artifacts for publishing or delivery
     Package {
         #[command(flatten)]
@@ -474,6 +363,58 @@ enum Commands {
         /// Package all configured platforms (disabled by default)
         #[arg(long, conflicts_with = "platform")]
         all_platforms: bool,
+    },
+
+    /// Publish a package to the LingXia server
+    ///
+    /// Tokens come from the wallet (`lingxia auth login lingxia`), keyed by
+    /// the server URL + env.
+    Publish {
+        #[command(flatten)]
+        args: PublishArgs,
+    },
+
+    /// Remove generated build artifacts
+    Clean,
+
+    /// Generate or update app icons
+    Icon {
+        /// Path to app icon (PNG, recommended 1024x1024)
+        icon_path: String,
+
+        /// Target platform (if not specified, use all platforms from config)
+        #[arg(short = 'p', long)]
+        platform: Option<String>,
+
+        /// Background color for adaptive icons (hex, e.g., "#FFFFFF")
+        #[arg(short = 'b', long)]
+        background_color: Option<String>,
+
+        /// Generate legacy icons for Android minSdk < 26
+        #[arg(long)]
+        legacy: bool,
+
+        /// Transparent artwork for Android/Harmony layered foregrounds
+        /// (defaults to the main icon, which embeds its own background)
+        #[arg(long)]
+        foreground: Option<String>,
+
+        /// Standalone conversion: write the source icon to this path instead of
+        /// into a project. The extension picks the format — `.ico` (multi-size
+        /// Windows icon) or `.png`. Used to (re)generate committed design assets
+        /// (e.g. the dev-runner icon, favicon.ico, the appicon masters).
+        #[arg(long)]
+        output: Option<String>,
+
+        /// Output size in px for `--output *.png` (default 1024). Ignored for `.ico`.
+        #[arg(long)]
+        size: Option<u32>,
+
+        /// Preview only: analyze the source, render every platform treatment
+        /// (masks, safe zones, small sizes) into icon-preview.html, and write
+        /// nothing into the project.
+        #[arg(long)]
+        check: bool,
     },
 
     /// List connected devices
@@ -538,75 +479,6 @@ enum Commands {
         restart: bool,
     },
 
-    /// Development mode for app and lxapp projects
-    Dev {
-        #[command(flatten)]
-        dev_options: DevOptions,
-    },
-
-    /// Start a dev session, run `lxdev test` in it, and stop it — one
-    /// command for CI. Exits with the test run's code
-    #[command(after_long_help = "\
-Examples:
-  lingxia test --preset ci
-  lingxia test -p runner tests/                 the lxapp in the desktop Runner
-  lingxia test tests/ -p macos -- --grep checkout --format jsonl
-  lingxia test --keep-session -- --timeout-secs 900
-
-It starts the session `lingxia dev` would start in the nearest project at or
-above the current directory: in an lxapp directory (lxapp.json) — also one
-inside a host project — the lxapp in the desktop Runner; in a host project
-(lingxia.yaml) the host app. `-p runner` asks for the Runner, `-p PLATFORM`
-for the host app on that platform. lxdev.json presets are read from the
-current directory's project. It refuses to start while a dev session of the
-same target is already running: then use `lxdev test` against that session.")]
-    Test {
-        #[command(flatten)]
-        test_options: TestOptions,
-    },
-
-    /// Write this binary's agent skill over the installed copy. Run by
-    /// `upgrade` through the newly installed binary, which is the only process
-    /// that carries the new skill.
-    #[command(name = "__sync-skill", hide = true)]
-    SyncSkill,
-
-    /// Fetch the named templates. Started detached by any command that finds
-    /// one due, so nobody waits for git. Name kept in step with
-    /// `template_provider`.
-    #[command(name = "__refresh-templates", hide = true)]
-    RefreshTemplates { slugs: Vec<String> },
-
-    /// Update the CLI, and inside a project offer to upgrade pins and SDKs
-    Upgrade {
-        /// Report what is available and exit without installing anything
-        #[arg(long)]
-        check: bool,
-
-        /// Install this CLI version instead of the newest one, downgrade included
-        #[arg(long, value_name = "VERSION")]
-        version: Option<String>,
-
-        /// Upgrade project pins and SDKs without prompting
-        #[arg(short = 'y', long)]
-        yes: bool,
-        /// Update only lingxia; skip lxdev, Runner, project changes, and skill sync.
-        #[arg(long)]
-        cli_only: bool,
-    },
-
-    /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
-    #[command(hide = true, name = "dev-broker")]
-    DevBroker,
-
-    /// Activate a process window from the signed-in Windows desktop session.
-    #[cfg(target_os = "windows")]
-    #[command(hide = true, name = "dev-focus-window")]
-    DevFocusWindow {
-        executable: String,
-        excluded_pids: String,
-    },
-
     /// Check development environment setup
     Doctor {
         /// Platforms to check (comma-separated). Defaults to configured platforms or all.
@@ -638,20 +510,60 @@ same target is already running: then use `lxdev test` against that session.")]
         action: commands::store::StoreAction,
     },
 
+    /// Update the CLI, and inside a project offer to upgrade pins and SDKs
+    Upgrade {
+        /// Report what is available and exit without installing anything
+        #[arg(long)]
+        check: bool,
+
+        /// Install this CLI version instead of the newest one, downgrade included
+        #[arg(long, value_name = "VERSION")]
+        version: Option<String>,
+
+        /// Upgrade project pins and SDKs without prompting
+        #[arg(short = 'y', long)]
+        yes: bool,
+        /// Update only lingxia; skip lxdev, Runner, project changes, and skill sync.
+        #[arg(long)]
+        cli_only: bool,
+    },
+
+    /// Show LingXia CLI version information
+    Version {
+        /// Print build, host, toolchain, and LingXia component versions
+        #[arg(long)]
+        verbose: bool,
+    },
+
+    /// Write this binary's agent skill over the installed copy. Run by
+    /// `upgrade` through the newly installed binary, which is the only process
+    /// that carries the new skill.
+    #[command(name = "__sync-skill", hide = true)]
+    SyncSkill,
+
+    /// Fetch the named templates. Started detached by any command that finds
+    /// one due, so nobody waits for git. Name kept in step with
+    /// `template_provider`.
+    #[command(name = "__refresh-templates", hide = true)]
+    RefreshTemplates { slugs: Vec<String> },
+
+    /// Per-user dev-session broker (started on demand by `lingxia dev`/`lxdev`)
+    #[command(hide = true, name = "dev-broker")]
+    DevBroker,
+
+    /// Activate a process window from the signed-in Windows desktop session.
+    #[cfg(target_os = "windows")]
+    #[command(hide = true, name = "dev-focus-window")]
+    DevFocusWindow {
+        executable: String,
+        excluded_pids: String,
+    },
+
     /// Internal resource generation helpers
     #[command(hide = true)]
     Gen {
         #[command(subcommand)]
         command: GenCommand,
-    },
-
-    /// Publish a package to the LingXia server
-    ///
-    /// Tokens come from the wallet (`lingxia auth login lingxia`), keyed by
-    /// the server URL + env.
-    Publish {
-        #[command(flatten)]
-        args: PublishArgs,
     },
 }
 
@@ -1142,28 +1054,13 @@ fn main() -> Result<()> {
                 display_language: dev_options.display_language,
                 headless: dev_options.headless,
                 background: dev_options.background,
+                json: dev_options.json,
                 name: dev_options.name,
                 action: dev_options.action.map(|action| match action {
-                    DevAction::Status { json } => commands::dev::DevSessionAction::Status { json },
                     DevAction::Stop { session } => {
                         commands::dev::DevSessionAction::Stop { session }
                     }
                 }),
-            })?;
-        }
-        Commands::Test { test_options } => {
-            let dev_flags = test_options.dev_flags();
-            commands::test::execute(commands::test::TestExecuteOptions {
-                entry: test_options.entry,
-                preset: test_options.preset,
-                headless: test_options.headless,
-                keep_session: test_options.keep_session,
-                platform: test_options.platform,
-                name: test_options.name,
-                device: test_options.device,
-                display_language: test_options.display_language,
-                dev_flags,
-                lxdev_args: test_options.lxdev_args,
             })?;
         }
         Commands::DevBroker => {
@@ -1559,41 +1456,72 @@ mod cli_tests {
     }
 
     #[test]
-    fn test_starts_runs_and_stops_with_its_own_flags() {
-        let cli = Cli::try_parse_from([
-            "lingxia",
-            "test",
-            "tests/",
-            "--preset",
-            "ci",
-            "--platform",
-            "macos",
-            "--skip-native",
-            "--keep-session",
-            "--name",
-            "ci-run",
-            "--",
-            "--grep",
-            "home",
-            "--format",
-            "jsonl",
-        ])
-        .unwrap();
-        let Commands::Test { test_options } = cli.command else {
-            panic!("expected test command");
+    fn one_lifecycle_dev_starts_and_stops_and_nothing_else_does() {
+        // Removed without replacement: `lxdev` works on the running app.
+        for argv in [
+            vec!["lingxia", "test"],
+            vec!["lingxia", "test", "--preset", "ci"],
+            vec!["lingxia", "dev", "status", "--json"],
+        ] {
+            assert!(Cli::try_parse_from(&argv).is_err(), "{argv:?}");
+        }
+        // `status` is no action: it reads as a TARGET directory like any other.
+        let cli = Cli::try_parse_from(["lingxia", "dev", "status"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
         };
-        assert_eq!(test_options.entry.as_deref(), Some("tests/"));
-        assert_eq!(test_options.preset.as_deref(), Some("ci"));
-        assert_eq!(test_options.platform.as_deref(), Some("macos"));
-        assert!(test_options.keep_session);
-        assert_eq!(test_options.dev_flags(), ["--skip-native"]);
+        assert!(dev_options.action.is_none());
+        assert_eq!(dev_options.target.as_deref(), Some("status"));
+        let cli = Cli::try_parse_from(["lingxia", "dev", "--background", "--json"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(dev_options.background && dev_options.json);
+        // `--json` describes the ready session, so only with `--background`.
+        assert!(Cli::try_parse_from(["lingxia", "dev", "--json"]).is_err());
+        let cli = Cli::try_parse_from(["lingxia", "dev", "stop"]).unwrap();
+        let Commands::Dev { dev_options } = cli.command else {
+            panic!("expected dev command");
+        };
+        assert!(matches!(
+            dev_options.action,
+            Some(DevAction::Stop { session: None })
+        ));
+    }
+
+    #[test]
+    fn help_says_what_each_lifecycle_command_gives() {
+        use clap::CommandFactory;
+        let cli = Cli::command();
+        let dev = cli.find_subcommand("dev").unwrap();
         assert_eq!(
-            test_options.lxdev_args,
-            ["--grep", "home", "--format", "jsonl"]
+            dev.get_about().unwrap().to_string(),
+            "Run the app and follow code changes (--background: return once the session is ready)"
         );
-        assert!(Cli::try_parse_from(["lingxia", "test"]).is_ok());
-        // One spelling: `-p` / `--platform`.
-        assert!(Cli::try_parse_from(["lingxia", "test", "--target", "macos"]).is_err());
+        assert_eq!(
+            dev.find_subcommand("stop")
+                .unwrap()
+                .get_about()
+                .unwrap()
+                .to_string(),
+            "End a session (a no-op when none is running)"
+        );
+        let names: Vec<&str> = dev.get_subcommands().map(|c| c.get_name()).collect();
+        assert_eq!(names, ["stop"]);
+        let mut help = Vec::new();
+        Cli::command().write_help(&mut help).unwrap();
+        let help = String::from_utf8(help).unwrap();
+        assert!(help.contains("with `lxdev`"), "{help}");
+        // The story reads start to finish: create, run, ship.
+        let visible: Vec<&str> = cli
+            .get_subcommands()
+            .filter(|c| !c.is_hide_set())
+            .map(|c| c.get_name())
+            .collect();
+        assert_eq!(
+            &visible[..6],
+            ["new", "template", "dev", "build", "package", "publish"]
+        );
     }
 
     #[test]

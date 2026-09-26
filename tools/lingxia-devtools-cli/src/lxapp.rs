@@ -16,10 +16,10 @@ pub struct LxAppOptions {
 
 #[derive(Parser, Clone)]
 #[command(name = "lxdev lxapp")]
-#[command(about = "Manage lxapps in the current dev session", long_about = None)]
+#[command(about = "Inspect and drive the running app's lxapps and pages", long_about = None)]
 struct LxAppCli {
-    /// Select the dev session: a name, target, `target@<project-dir>`, an
-    /// ordinal from `lxdev session list`, or an id prefix. Falls back to
+    /// Select the session: a name, target, `target@<project-dir>`, an
+    /// ordinal from `lxdev session`, or an id prefix. Falls back to
     /// LXDEV_SESSION
     #[arg(long, global = true, value_name = "SESSION")]
     session: Option<String>,
@@ -999,7 +999,7 @@ fn commands_for_project(project_root: &Path) -> &'static [&'static str] {
 }
 
 fn print_dynamic_help(commands: &[&str]) {
-    println!("Manage lxapps in the current dev session");
+    println!("Inspect and drive the running app's lxapps and pages");
     println!();
     println!("Usage: lxdev lxapp <COMMAND>");
     println!();
@@ -1010,7 +1010,7 @@ fn print_dynamic_help(commands: &[&str]) {
     println!("  help        Print this message or the help of the given command(s)");
     println!();
     println!("Options:");
-    println!("      --session <SESSION>  Select the dev session (see `lxdev session list`)");
+    println!("      --session <SESSION>  Select the session (see `lxdev session`)");
     println!("  -h, --help               Print help");
     println!();
     println!("The simulated device, orientation and appearance are `lxdev runner`.");

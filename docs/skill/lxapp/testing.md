@@ -597,18 +597,10 @@ lxdev test tests/                     # every *.test.ts, recursively
 lxdev test tests/ --grep checkout
 lxdev test tests/ --last-failed       # what failed last time
 lxdev test report --failures          # the last run's failures, again
-lingxia test --preset ci              # CI: start a session, run, stop it
 ```
 
-- `lingxia test [ENTRY] [--preset P] [-p runner|PLATFORM] [--keep-session]
-  [-- <lxdev test flags>]` owns the whole lifecycle for CI: it starts a
-  background dev session, runs `lxdev test` in it, and stops the session on
-  every way out — pass, failure, error, Ctrl-C — unless `--keep-session`. Its
-  exit code is the run's. It starts what `lingxia dev` starts in the nearest
-  project: from an lxapp directory (also one inside a host project) the lxapp
-  in the desktop Runner, from a host project the host app; `-p runner` or
-  `-p <platform>` chooses explicitly. `lxdev test` is the same run against a
-  session that is already live.
+- `lxdev test` runs against the app `lingxia dev` is running; for CI see
+  [Running specs in CI](#running-specs-in-ci).
 - Reports land in a run directory under the results root,
   `test-results/<run-id>/`: `report.html`, `report.json`, `junit.xml`, and
   `test-results/latest` points at the last run. `test-results/` is beside
@@ -749,6 +741,24 @@ lxdev test --list-presets
   `--arg` keys, `--preset` or `--cancel-active`; pass those on the command
   line, or keep secrets in a gitignored `--secrets-file` the preset names.
   `--print-args` shows secret values as `***`.
+
+## Running specs in CI
+
+| Command | Does |
+|---|---|
+| `lingxia` | starts and stops the app |
+| `lxdev` | works on the running app |
+
+```bash
+lingxia dev --background
+lxdev test --preset ci
+lingxia dev stop
+```
+
+Run `lingxia dev stop` even when the tests fail (e.g. an `if: always()` step, a
+`trap`, or `finally`). One checkout per job; jobs sharing a checkout name their
+session: `lingxia dev --background --name job-a`, `lxdev --session job-a`,
+`lingxia dev stop job-a`.
 
 ## External integration journeys
 

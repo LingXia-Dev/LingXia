@@ -18,9 +18,10 @@ LingXia ships two binaries. Memorize the split; flags belong to `--help`.
 lingxia --help
 lingxia new --help
 lingxia dev --background
-lingxia dev status
+lingxia dev stop
 
 lxdev --help
+lxdev session
 lxdev lxapp nav --help
 lxdev logs -f
 ```

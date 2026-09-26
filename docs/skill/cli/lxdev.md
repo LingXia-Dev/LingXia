@@ -1,18 +1,14 @@
-# `lxdev` — Drive a running dev session
+# `lxdev` — Work on the running app
 
-`lxdev` drives a live `lingxia dev` session — a session client that connects to the dev websocket, runs one command, prints the result, and exits (except `logs -f`). It never starts a session; `lingxia dev` owns launch, install, and process lifetime. What it can drive is in **Capabilities** below.
+`lxdev` works on a running app session started with `lingxia dev` — a session client that connects to the dev websocket, runs one command, prints the result, and exits (except `logs -f`). It never starts a session; `lingxia dev` starts and stops it. What it can drive is in **Capabilities** below.
 
 This file says **what `lxdev` can do**. For flags and defaults, `lxdev <family> <cmd> --help` is exhaustive and always matches the installed version — the doc does not duplicate it. The command set is dynamic per project type, so `--help` is also the only reliable list for the project you're in.
 
 ## Session selection
 
-`lingxia dev --background` treats the runtime websocket connection as the
-readiness boundary, not merely dev-server registration. Once it returns, the
-next runtime-backed `lxdev` command will not race Runner/app startup. Both
-`lingxia dev status` and `lxdev session list` report `starting`, `ready`, or
-`stale`.
+`lxdev session` lists the running sessions (`--json` for scripts).
 
-**Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; check it with `lingxia dev status`, stop it with `lingxia dev stop` from the project. Then drive it with `lxdev`.
+**Start a session for automation with `lingxia dev --background`.** `lxdev` needs a *live* session, and a session lives only as long as its owning `lingxia dev` process — a foreground `lingxia dev` blocks the terminal, and if an agent backgrounds it and later loses that process, the session dies with it. `--background` builds, launches, and returns once the session is ready; end it with `lingxia dev stop` from the project.
 
 Each `lingxia dev` session registers with a per-user local broker and stays registered for exactly as long as its process lives; `lxdev` queries the broker, so it works from **any directory** — the session may be one you started or one already running. Without a selector, `lxdev` uses the one live session whose project contains the current directory, else the only live session. Anything else → it **refuses to guess** and prints a table of candidates (`#`, id, name, target, project, started); pick one with the global selector (before the subcommand, or after `lxdev lxapp`) or the `LXDEV_SESSION` env var:
 
@@ -21,7 +17,7 @@ lingxia dev --background --name demo   # name a session when you start it
 lxdev --session demo ...         # its name
 lxdev --session ios ...          # target name, when unique
 lxdev --session macos@my-app ... # target in a project (dir name or path)
-lxdev --session 2 ...            # the # column of `lxdev session list`
+lxdev --session 2 ...            # the # column of `lxdev session`
 lxdev --session a1b2 ...         # session-id prefix
 ```
 
@@ -85,8 +81,8 @@ host automation runtime. See [Product testing](../lxapp/testing.md) for a
 starter spec, fixtures, assertions, cross-app/browser/external HTTP journeys,
 test layout, and reports; selection (`--tag`), coverage (`--covers-manifest`),
 contract (`--openapi`) and recording (`--record-network`) are covered there.
-`lxdev test` attaches to a live session; for CI, `lingxia test` starts a
-session, runs it and stops it in one command.
+`lxdev test` runs against the running app; for CI see
+[Running specs in CI](../lxapp/testing.md#running-specs-in-ci).
 - `--preset NAME` — prepend a named argument list from `lxdev.json`
   (`test.presets`) in the project root; the command line's own flags come
   after it and win. A preset's relative paths are relative to `lxdev.json`,
@@ -196,7 +192,7 @@ accepted.
 
 | Symptom | Fix |
 |---|---|
-| `No live dev session found` | Run `lingxia dev` in the project. |
+| `No running app session for this project` | Start one with `lingxia dev` in the project. |
 | `Several dev sessions could be meant` | Add `--session <name\|target\|target@dir\|#>` from the printed table. |
 | `version skew: … — fix: …` | Run the printed fix (`npm install …` or `lingxia upgrade`); `lingxia doctor --project` shows every version. |
 | `eval` returns nothing / wrong scope | Wrong JS context — see the table above. |

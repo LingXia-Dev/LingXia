@@ -1,11 +1,11 @@
 //! Which live dev session a command addresses.
 //!
-//! One resolver for every client (`lxdev`, `lingxia dev stop`, `lingxia
-//! test`), so a selector means the same session everywhere:
+//! One resolver for every client (`lxdev`, `lingxia dev stop`), so a
+//! selector means the same session everywhere:
 //!
 //! - an explicit selector (`--session`, `LXDEV_SESSION`) is, in order, a
 //!   session name (`lingxia dev --name`), a target (`macos`, `lxapp`, …),
-//!   `target@<project-dir>`, an ordinal from `lxdev session list`, or a
+//!   `target@<project-dir>`, an ordinal from `lxdev session`, or a
 //!   session id prefix;
 //! - without one: the single live session whose project contains the
 //!   working directory, else the single live session;
@@ -32,7 +32,7 @@ pub enum SelectError {
 impl fmt::Display for SelectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::NoSessions => write!(f, "No live dev session found. Run `lingxia dev` first."),
+            Self::NoSessions => f.write_str(NO_SESSION_HINT),
             Self::NoMatch { query, table } => write!(
                 f,
                 "No dev session matches --session {query:?}. Live sessions:\n\n{table}\n\n{PICK_HINT}"
@@ -54,6 +54,10 @@ impl fmt::Display for SelectError {
 }
 
 impl std::error::Error for SelectError {}
+
+/// What a command that works on a running app says when none is running.
+pub const NO_SESSION_HINT: &str = "No running app session for this project. Start one with \
+                                   `lingxia dev` (or `lingxia dev --background` in scripts).";
 
 const PICK_HINT: &str = "--session takes a NAME, a TARGET, TARGET@<project-dir>, or the # \
                          column (name a session with `lingxia dev --name NAME`).";
@@ -85,7 +89,7 @@ pub fn validate_name(name: &str) -> Result<(), String> {
 
 const TARGETS: [&str; 6] = ["android", "ios", "macos", "harmony", "windows", "lxapp"];
 
-/// Resolve `query` against `sessions` (ordered as `lxdev session list`
+/// Resolve `query` against `sessions` (ordered as `lxdev session`
 /// prints them) from the working directory `cwd`.
 pub fn select<'a>(
     sessions: &'a [SessionInfo],

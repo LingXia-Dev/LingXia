@@ -98,7 +98,16 @@ pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
     let cwd = std::env::current_dir().unwrap_or_default();
     lingxia_control_protocol::dev_session::select::select(&all, selector.query.as_deref(), &cwd)
         .cloned()
-        .map_err(|err| anyhow::anyhow!("{err}"))
+        .map_err(anyhow::Error::new)
+}
+
+/// Whether `err` is "no session is running" (as opposed to a session that
+/// exists but was not picked).
+pub fn is_no_session(err: &anyhow::Error) -> bool {
+    matches!(
+        err.downcast_ref::<lingxia_control_protocol::dev_session::select::SelectError>(),
+        Some(lingxia_control_protocol::dev_session::select::SelectError::NoSessions)
+    )
 }
 
 /// What to pass as `--session` in a printed hint to reach `info` again from

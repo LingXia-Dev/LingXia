@@ -18,9 +18,10 @@ LingXia 有两条命令。先记住分工；具体 flags 以 `--help` 为准。
 lingxia --help
 lingxia new --help
 lingxia dev --background
-lingxia dev status
+lingxia dev stop
 
 lxdev --help
+lxdev session
 lxdev lxapp nav --help
 lxdev logs -f
 ```

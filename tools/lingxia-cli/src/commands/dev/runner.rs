@@ -1,4 +1,5 @@
 use super::*;
+use crate::config::has_host_config;
 
 #[cfg(target_os = "windows")]
 pub(super) mod windows_interactive;

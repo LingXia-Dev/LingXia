@@ -96,9 +96,9 @@ Keep regressions and repeatable business flows as `lxdev test` cases:
 `tests/flows/` for cross-page journeys.
 One-off visual polish needs live verification, not necessarily a permanent test.
 Read [Product testing](./lxapp/testing.md) for a starter spec, common tasks,
-gotchas, CI flags, and external integrations. In CI, `lingxia test` starts a
-session, runs the suite and stops it in one command; `lxdev test report`
-reprints the last run's failures.
+gotchas, CI flags, and external integrations; for CI see
+[Running specs in CI](./lxapp/testing.md#running-specs-in-ci). `lxdev test
+report` reprints the last run's failures.
 
 Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
 

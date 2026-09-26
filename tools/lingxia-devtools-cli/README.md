@@ -25,7 +25,7 @@ lxdev <family> --help        # commands in a family
 lxdev <family> <cmd> --help  # exact flags, defaults, and which are required
 ```
 
-The main families and what each targets: **`browser`** (the host app's browser tabs), **`host`** (the host windows), **`lxapp`** (the lxapps and their pages), **`logs`** (the dev log stream), **`session`** (the live dev sessions), **`test`** (`@lingxia/test` runs in the session; `lingxia test` wraps start, run and stop for CI).
+The main families and what each targets: **`browser`** (the host app's browser tabs), **`host`** (the host windows), **`lxapp`** (the lxapps and their pages), **`logs`** (the dev log stream), **`session`** (the live dev sessions), **`test`** (`@lingxia/test` runs in the session; in CI, start it with `lingxia dev --background` and end it with `lingxia dev stop`).
 
 Use `lxdev lxapp rebuild` to rebuild the lxapp front-end bundle through the running session, or `lxdev lxapp restart --build` to rebuild and restart the lxapp runtime. Session lifecycle belongs to `lingxia`; use `lingxia dev stop` from the project when the owner should exit.
 

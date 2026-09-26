@@ -256,10 +256,13 @@ try {
   # Start the singleton separately so the status process has no long-lived child.
   Start-Process -FilePath $lingxia -ArgumentList 'dev-broker' -WindowStyle Hidden
   Start-Sleep -Milliseconds 500
-  $sessionsJson = (& $lingxia dev status --json | Out-String).Trim()
+  $sessionsJson = (& $lxdev session --json | Out-String).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Could not inspect existing LingXia dev sessions.' }
+  $projectRoot = (Resolve-Path $showcaseRoot).Path.TrimEnd('\')
   $sessions = @($sessionsJson | ConvertFrom-Json)
-  if ($sessions.Where({ $_.target -eq 'android' }).Count -gt 0) {
+  if ($sessions.Where({
+    $_.target -eq 'android' -and ([string]$_.context_root).TrimEnd('\') -ieq $projectRoot
+  }).Count -gt 0) {
     throw 'An Android dev session already exists for this project. Stop it explicitly before running automation.'
   }
 
@@ -277,9 +280,9 @@ try {
         $currentFramework
       )
       if (-not [string]::IsNullOrWhiteSpace($Device)) { $devArguments += @('--device', $Device) }
+      # Returns once the session is ready, or fails having stopped it.
       Invoke-Checked $lingxia $devArguments
       $started = $true
-      Invoke-Checked $lingxia @('dev', 'status', '--json')
 
       Push-Location $lxappRoot
       try {

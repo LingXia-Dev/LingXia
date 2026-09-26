@@ -3,7 +3,7 @@
 //! `lingxia dev` registers each live session over a local IPC connection and
 //! keeps that connection open; the broker drops the session when the
 //! connection closes, so registration itself is the liveness signal. `lxdev`
-//! (and `lingxia dev status/stop`) query the broker instead of scanning a
+//! (and `lingxia dev stop`) query the broker instead of scanning a
 //! project-local sessions directory.
 //!
 //! Transport: Unix domain socket (macOS/Linux, `~/.lingxia/broker.sock`,
