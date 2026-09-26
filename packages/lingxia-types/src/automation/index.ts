@@ -346,11 +346,7 @@ export type PageWaitState =
   | 'visible'
   | 'hidden'
   | 'enabled'
-  | 'editable'
-  /** @deprecated Use `attached`. */
-  | 'exists'
-  /** @deprecated Use `detached`. */
-  | 'gone';
+  | 'editable';
 
 export interface PageWaitForOptions extends PageTarget {
   css: string;
@@ -398,11 +394,8 @@ export interface PageElement {
    * `visibility:hidden` or `opacity:0`, wherever it is scrolled.
    */
   visible: boolean;
-  /**
-   * Rendered and intersecting the viewport. Absent from a runtime that
-   * predates it.
-   */
-  inViewport?: boolean;
+  /** Rendered and intersecting the viewport. */
+  inViewport: boolean;
   enabled: boolean;
   editable: boolean;
   text: string;
@@ -418,7 +411,7 @@ export interface PageElementMiss {
   index: number;
   count: number;
   visible: false;
-  inViewport?: false;
+  inViewport: false;
   enabled: false;
   editable: false;
 }
