@@ -1133,14 +1133,18 @@ export interface ClockRunAllOptions {
   maxTimers?: number;
 }
 
-/** What `tick` / `runAll` did. */
-export interface ClockAdvance {
+/** Logic's test time after a clock call. */
+export interface ClockState {
   /** Logic's `Date.now()` afterwards. */
   now: number;
-  /** Timers fired by this call. */
-  fired: number;
   /** Timers still scheduled on the test clock. */
   pending: number;
+}
+
+/** What `tick` / `runAll` did. */
+export interface ClockAdvance extends ClockState {
+  /** Timers fired by this call. */
+  fired: number;
 }
 
 export interface ClockUninstallResult {
@@ -1163,10 +1167,11 @@ export interface ClockUninstallResult {
  */
 export interface ClockDriver {
   /**
-   * Put Logic on test time; resolves Logic's `Date.now()`. Rejects with
+   * Put Logic on test time; resolves its state (`pending` is 0: timers
+   * started before `install` keep real time). Rejects with
    * `E_CLOCK_INSTALLED` when a clock is already installed.
    */
-  install(options?: ClockInstallOptions): Promise<number>;
+  install(options?: ClockInstallOptions): Promise<ClockState>;
   /**
    * Advance by `ms`, firing each timer due on the way at its own time. After
    * every firing, promise chains the callback started settle before the next
@@ -1180,9 +1185,9 @@ export interface ClockDriver {
   runAll(options?: ClockRunAllOptions): Promise<ClockAdvance>;
   /**
    * Change what `Date` reads without firing timers; timer due times and
-   * `performance.now()` are unaffected. Resolves the new `Date.now()`.
+   * `performance.now()` are unaffected. Resolves the new state.
    */
-  setSystemTime(time: ClockTime): Promise<number>;
+  setSystemTime(time: ClockTime): Promise<ClockState>;
   /** Return Logic to real time; pending test timers are dropped. */
   uninstall(): Promise<ClockUninstallResult>;
 }

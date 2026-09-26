@@ -200,7 +200,7 @@
     c.watch = realSetInterval(function () {
       if (clock === c && !leased(c.token)) uninstallClock(c);
     }, WATCH_MS);
-    return { ok: true, now: c.wall };
+    return { ok: true, now: c.wall, pending: 0 };
   };
 
   const uninstallClock = function (c) {
