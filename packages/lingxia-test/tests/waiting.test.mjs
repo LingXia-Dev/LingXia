@@ -378,17 +378,22 @@ test("text matchers see whitespace-normalised text, as the user reads it", async
 /** Page eval that answers the visibility probe as a hidden page does. */
 function hidePage(world, answer = { state: "hidden", animationFrames: false }) {
   const original = world.app.page.eval;
-  world.app.page.eval = async (options) =>
-    /visibilityState/.test(options.script) && /requestAnimationFrame/.test(options.script)
-      ? answer
-      : original(options);
+  const probes = { count: 0 };
+  world.app.page.eval = async (options) => {
+    if (/visibilityState/.test(options.script) && /requestAnimationFrame/.test(options.script)) {
+      probes.count += 1;
+      return answer;
+    }
+    return original(options);
+  };
+  return probes;
 }
 
 test("a timed-out wait on a hidden page says the page is hidden, not only obscured", async () => {
   const world = createWorld();
   world.add({ testId: "open-sheet", inViewport: false, text: "Open" });
   world.add({ testId: "sheet", visible: false, text: "" });
-  hidePage(world);
+  const probes = hidePage(world);
   const { attachments } = installFakeHost(world);
   const messages = [];
 
@@ -410,6 +415,25 @@ test("a timed-out wait on a hidden page says the page is hidden, not only obscur
       /page hidden \(window covered or display asleep\): animations are paused \(visibilityState "hidden", no animation frame in 300ms\)/);
   }
   assert.match(failedMessage(attachments), /page hidden \(window covered or display asleep\)/);
+  // Four timed-out waits, one probe: the diagnosis costs one eval per spec.
+  assert.equal(probes.count, 1);
+});
+
+test("waits that pass never probe the page's visibility", async () => {
+  const world = createWorld();
+  world.add({ testId: "ready", text: "Ready" });
+  const probes = hidePage(world, { state: "visible", animationFrames: true });
+  installFakeHost(world);
+
+  spec("happy path", { forensics: false }, async (t) => {
+    await t.app.view.testId("ready").click();
+    await t.app.view.testId("ready").waitFor();
+    await t.expect(t.app.view.testId("ready")).toHaveText("Ready");
+  });
+
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.passed, 1);
+  assert.equal(probes.count, 0);
 });
 
 test("a visible page with running frames adds no hidden-page note", async () => {
