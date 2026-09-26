@@ -17,12 +17,12 @@ function fakeNetwork() {
   let nextId = 0;
   const network = {
     routes,
-    hit(url) {
+    hit(url, { method = "GET", body = null, action = "fulfill", status = 200 } = {}) {
       const route = [...routes.values()].reverse().find((r) => url.includes(r.pattern));
       if (route) {
         log.push({
-          routeId: route.id, pattern: route.pattern, method: "GET", url, headers: {}, body: null,
-          bodyTruncated: false, action: "fulfill", status: 200, timestamp: 0,
+          routeId: route.id, pattern: route.pattern, method, url, headers: { "x-test": "1" }, body,
+          bodyTruncated: false, action, status, timestamp: log.length + 1,
         });
       }
     },
@@ -59,10 +59,16 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
       { url: "/v1/devices", method: "patch", times: 1 },
       { status: 501, json: { error: "unsupported_by_firmware" } },
     );
-    network.hit("https://h/v1/devices/d1");
-    assert.equal((await route.requests()).length, 1);
-    assert.equal((await t.app.network.requests()).length, 1);
+    network.hit("https://h/v1/devices/d1", { method: "PATCH", body: '{"name":"Office"}', status: 501 });
+    const calls = await route.calls();
+    assert.deepEqual(calls, [{
+      time: 1, kind: "http", method: "PATCH", url: "https://h/v1/devices/d1", status: 501,
+      body: { name: "Office" }, headers: { "x-test": "1" }, answeredBy: "route",
+    }]);
+    assert.equal((await t.app.network.calls()).length, 1);
     assert.equal(network.routes.size, 1);
+    assert.equal(await route.unroute(), undefined);
+    assert.equal(await t.app.network.unrouteAll(), undefined);
   });
   spec("second", async (t) => {
     seenAfterFirst = network.routes.size;
@@ -70,10 +76,14 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     await t.app.network.route("/v1/slow", { status: 202, delay: 300 });
     await t.app.network.route("/v1/list", { continue: true, patchJson: { items: [] } });
     await t.app.network.route("/v1/stall", { hang: true });
-    network.hit("https://h/v1/clients");
+    network.hit("https://h/v1/clients", { action: "abort", status: null });
+    network.hit("https://h/v1/list", { action: "continue", status: null, body: "not json" });
     // The run-wide host log holds both specs' hits; the fixture shows only this spec's.
-    const own = await t.app.network.requests();
-    assert.deepEqual(own.map((entry) => entry.pattern), ["/v1/clients"]);
+    const own = await t.app.network.calls();
+    assert.deepEqual(own.map((entry) => [entry.url, entry.answeredBy, entry.body]), [
+      ["https://h/v1/clients", "route", null],
+      ["https://h/v1/list", "real", "not json"],
+    ]);
   });
 
   const report = await run();
@@ -84,7 +94,7 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
   const routeStep = steps.find((step) => step.name === "network.route");
   assert.ok(routeStep, JSON.stringify(steps));
   assert.equal(routeStep.detail, "PATCH /v1/devices → 501");
-  assert.ok(steps.some((step) => step.name === "network.requests"));
+  assert.ok(steps.some((step) => step.name === "network.calls"));
   const secondRoutes = report.cases[1].steps.filter((step) => step.name === "network.route");
   assert.deepEqual(secondRoutes.map((step) => step.detail), [
     "/v1/clients → abort failed",
@@ -92,6 +102,41 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     "/v1/list → continue + patchJson",
     "/v1/stall → hang",
   ]);
+});
+
+test("route.waitForCall hands out calls in order, then times out listing recent calls", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const seen = [];
+  let failure;
+
+  spec("waits", { forensics: false }, async (t) => {
+    const route = await t.app.network.route("/v1/save", { status: 204 });
+    // A call made before the wait is still the first one handed out.
+    network.hit("https://h/v1/save?n=1", { method: "POST", status: 204 });
+    seen.push((await route.waitForCall()).url);
+    setTimeout(() => network.hit("https://h/v1/save?n=2", { method: "POST", status: 204 }), 30);
+    seen.push((await route.waitForCall({ timeout: 1_000, interval: 5 })).url);
+    try {
+      await route.waitForCall({ timeout: 60, interval: 5 });
+    } catch (error) {
+      failure = error;
+    }
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(seen, ["https://h/v1/save?n=1", "https://h/v1/save?n=2"]);
+  assert.equal(failure.name, "TimeoutError");
+  assert.equal(failure.code, "E_TIMEOUT");
+  assert.match(failure.message, /^route \/v1\/save: no new call within \d+ms \(2 earlier calls were already returned by waitForCall\)\./);
+  assert.match(failure.message, /Recent calls:\n  POST https:\/\/h\/v1\/save\?n=1 → 204 \(route\)\n  POST https:\/\/h\/v1\/save\?n=2 → 204 \(route\)/);
+  assert.match(failure.message, /at .*network\.test\.mjs:\d+:\d+/);
+  // One row per wait, not one per poll; identical passing waits collapse.
+  const waits = report.cases[0].steps.filter((step) => step.name === "network.waitForCall");
+  assert.deepEqual(waits.map((step) => [step.status, step.repeat]), [["passed", 2], ["timeout", undefined]]);
 });
 
 test("reading t.app.network never throws; a host without routing fails the call", async () => {
@@ -148,7 +193,14 @@ function fakeScenarios(app) {
       variant: variant ?? null,
       get rules() { return rules.map((rule) => ({ ...rule })); },
       async calls(filter) {
-        return state.calls.filter((call) => call.scenario === handle && (!filter?.function || call.function === filter.function));
+        return state.calls
+          .filter((call) => call.scenario === handle)
+          .filter((call) => !filter
+            || (filter.function !== undefined && call.function === filter.function)
+            || (filter.http !== undefined && call.method === filter.http.split(" ")[0]
+              && call.url?.endsWith(filter.http.split(" ")[1].replaceAll("*", "")))
+            || (filter.rule !== undefined && call.rule === filter.rule))
+          .map(({ scenario: _scenario, ...call }) => call);
       },
       async unroute() {
         if (state.current !== handle) return 0;
@@ -164,7 +216,7 @@ function fakeScenarios(app) {
   state.hit = (index, call) => {
     const rule = state.installed.at(-1).rules.find((entry) => entry.index === index);
     if (rule && rule.hits !== null) rule.hits += 1;
-    state.calls.push({ scenario: state.current, rule: index, ...call });
+    state.calls.push({ scenario: state.current, rule: index, answeredBy: index === null ? "real" : `rule ${index}`, ...call });
   };
   return state;
 }
@@ -174,6 +226,7 @@ test("t.app.scenario installs a variant for one spec, traces it, and lists its c
   const scenarios = fakeScenarios(world.app);
   installFakeHost(world);
   let seen;
+  let removed = "not called";
   let replacedBefore;
   const wifi = {
     name: "Wi-Fi",
@@ -193,8 +246,9 @@ test("t.app.scenario installs a variant for one spec, traces it, and lists its c
     assert.deepEqual(b.rules.map((rule) => [rule.index, rule.target]), [
       [1, "GET **/wifi/main"], [2, "function orders.submit"], [3, "GET **/wifi/clients"],
     ]);
-    scenarios.hit(2, { kind: "function", function: "orders.submit", time: 1, answeredBy: "rule 2 (Wi-Fi:b)", outcome: "fault" });
+    scenarios.hit(2, { kind: "function", function: "orders.submit", args: { id: 7 }, time: 1, answeredBy: "rule 2 (Wi-Fi:b)", outcome: "fault" });
     seen = await b.calls({ function: "orders.submit" });
+    removed = await b.remove();
   });
   spec("after", async () => {});
 
@@ -202,12 +256,55 @@ test("t.app.scenario installs a variant for one spec, traces it, and lists its c
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.equal(scenarios.installed.length, 2);
   assert.equal(replacedBefore, "b");
-  assert.equal(seen.length, 1);
-  assert.equal(seen[0].answeredBy, "rule 2 (Wi-Fi:b)");
+  assert.deepEqual(seen, [{
+    time: 1, kind: "function", function: "orders.submit", body: { id: 7 }, outcome: "fault", answeredBy: "rule", rule: 2,
+  }]);
+  assert.equal(removed, undefined);
   assert.equal(scenarios.current, null, "the scenario lasts one spec");
   const steps = report.cases[0].steps.filter((step) => step.name === "scenario");
   assert.deepEqual(steps.map((step) => step.detail), ["Wi-Fi:a (2 rules)", "Wi-Fi:b (3 rules)"]);
   assert.ok(report.cases[0].steps.some((step) => step.name === "scenario.calls"));
+  assert.ok(report.cases[0].steps.some((step) => step.name === "scenario.remove"));
+});
+
+test("scenario calls name what answered; waitForCall waits per target", async () => {
+  const world = createWorld();
+  const scenarios = fakeScenarios(world.app);
+  installFakeHost(world);
+  const got = {};
+  let failure;
+
+  spec("targets", { forensics: false }, async (t) => {
+    const scenario = await t.app.scenario({
+      name: "Orders",
+      rules: [{ http: "POST **/orders", status: 201, json: {} }, { function: "orders.status", result: "ok" }],
+    });
+    scenarios.hit(null, { kind: "http", method: "GET", url: "https://h/orders/1", status: 200, time: 1, answeredBy: "real",
+      noMatch: "no rule matched GET https://h/orders/1" });
+    scenarios.hit(null, { kind: "http", method: "GET", url: "https://h/other", status: 200, time: 2, answeredBy: "route **/other" });
+    scenarios.hit(null, { kind: "function", function: "orders.cancel", args: [], time: 3, answeredBy: "companion default", outcome: "default" });
+    setTimeout(() => scenarios.hit(1, { kind: "http", method: "POST", url: "https://h/orders", body: { qty: 1 }, status: 201, time: 4,
+      answeredBy: "rule 1 (Orders)" }), 20);
+    got.post = await scenario.waitForCall({ http: "POST **/orders" }, { timeout: 1_000, interval: 5 });
+    got.all = await scenario.calls();
+    try {
+      await scenario.waitForCall({ function: "orders.status" }, { timeout: 40, interval: 5 });
+    } catch (error) {
+      failure = error;
+    }
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(got.post, { time: 4, kind: "http", method: "POST", url: "https://h/orders", status: 201, body: { qty: 1 },
+    answeredBy: "rule", rule: 1 });
+  assert.deepEqual(got.all.map((call) => call.answeredBy), ["real", "route", "companion", "rule"]);
+  assert.equal(got.all[0].noMatch, "no rule matched GET https://h/orders/1");
+  assert.equal(failure.code, "E_TIMEOUT");
+  assert.match(failure.message, /^scenario Orders: function orders\.status: no new call within \d+ms\./);
+  assert.match(failure.message, /Recent calls:\n  GET https:\/\/h\/orders\/1 → 200 \(real\); no rule matched/);
+  assert.match(failure.message, /function orders\.cancel → default \(companion\)/);
+  assert.match(failure.message, /POST https:\/\/h\/orders → 201 \(rule 1\)/);
 });
 
 test("t.app.scenario rejections reach the spec as they are", async () => {

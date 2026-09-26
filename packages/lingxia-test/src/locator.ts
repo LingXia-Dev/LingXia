@@ -1,7 +1,14 @@
 import type { PageQueryResult } from "@lingxia/types/automation";
 import { AssertionError } from "./expect.js";
 import { cssEscape, formatValue } from "./format.js";
-import { ActionDeadline, errorCode, isElementRefusal, isPreDispatchPageError, isTransientPageError } from "./deadline.js";
+import {
+  ActionDeadline,
+  errorCode,
+  isElementRefusal,
+  isPreDispatchPageError,
+  isTransientPageError,
+  isTransientTransportError,
+} from "./deadline.js";
 import { displayLocation } from "./ids.js";
 import type {
   ActionOptions,
@@ -85,12 +92,20 @@ export interface LocatorRefine {
   last?: boolean;
 }
 
+/** Marks a locator across module copies, so `expect(locator)` can refuse it. */
+export const LOCATOR_BRAND = Symbol.for("lingxia.test.locator");
+
+export function isLocator(value: unknown): boolean {
+  return typeof value === "object" && value !== null && (value as { [LOCATOR_BRAND]?: unknown })[LOCATOR_BRAND] === true;
+}
+
 export function testIdSelector(id: string): string {
   return `[data-testid="${cssEscape(id)}"]`;
 }
 
 export class PageLocator implements Locator {
   readonly selector: string;
+  readonly [LOCATOR_BRAND] = true;
 
   constructor(
     private readonly page: PageLike,
@@ -175,8 +190,9 @@ export class PageLocator implements Locator {
           if (reachedState(resolved, state)) return;
           reason = this.missText(resolved);
         } catch (error) {
-          // A page mid-transition is not an answer yet; anything else is.
-          if (!isTransientPageError(error)) throw error;
+          // A page mid-transition, or a read the transport dropped, is not an
+          // answer yet; anything else is.
+          if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
           reason = transientReason(error);
         }
         if (deadline.expired()) break;
@@ -423,7 +439,8 @@ export class PageLocator implements Locator {
           // The page is being replaced (navigation in flight): no read or
           // dispatch reached it, so wait for the new page within the budget.
           if (error instanceof DispatchFailure) throw error.error;
-          if (!isTransientPageError(error)) throw error;
+          // Reads only: a dispatch error is a DispatchFailure, never retried.
+          if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
           reason = transientReason(error);
           cause = error;
           previousRect = undefined;
@@ -454,7 +471,8 @@ class DispatchFailure {
 }
 
 function transientReason(error: unknown): string {
-  return `page not ready: ${error instanceof Error ? error.message : String(error)}`;
+  const text = error instanceof Error ? error.message : String(error);
+  return isTransientTransportError(error) ? `read dropped by the transport: ${text}` : `page not ready: ${text}`;
 }
 
 /** `many` never satisfies `attached`/`visible`: the match is ambiguous. */

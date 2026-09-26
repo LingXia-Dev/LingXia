@@ -1,16 +1,42 @@
 import type {
+  ClockAdvance,
   ClockDriver,
   ClockInstallOptions,
   ClockRunAllOptions,
+  ClockState,
   ClockTime,
   ClockUninstallResult,
   HostRunAutomation,
 } from "@lingxia/types/automation";
+import type { TestClock } from "./types.js";
 
 /** The fixture surface the clock wrapper needs. */
 export interface ClockHost {
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T>;
   defer(cleanup: () => void | Promise<void>): void;
+  diagnostic(phase: string, message: string): void | Promise<void>;
+}
+
+/**
+ * A host that predates `ClockState` resolves the bare `Date.now()` from
+ * `install` and `setSystemTime`.
+ */
+function clockState(value: unknown, pending = 0): ClockState {
+  if (typeof value === "number") return { now: value, pending };
+  const record = (value ?? {}) as { now?: unknown; pending?: unknown };
+  return {
+    now: typeof record.now === "number" ? record.now : Number.NaN,
+    pending: typeof record.pending === "number" ? record.pending : pending,
+  };
+}
+
+function clockAdvance(value: unknown): ClockAdvance {
+  const record = (value ?? {}) as { fired?: unknown };
+  return { ...clockState(value), fired: typeof record.fired === "number" ? record.fired : 0 };
+}
+
+function droppedNote(dropped: number, when: string): string {
+  return `${when} dropped ${dropped} pending test timer${dropped === 1 ? "" : "s"}; they never fired`;
 }
 
 /**
@@ -35,6 +61,7 @@ export class ClockScope {
         try {
           const result: ClockUninstallResult = await automation().lxapp(id).clock.uninstall();
           this.dropped += result.dropped;
+          if (result.dropped > 0) await host.diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`));
         } catch { /* the run end restores real time */ }
       }
       this.apps.clear();
@@ -63,7 +90,7 @@ export function wrapClock(
   host: ClockHost,
   scope: ClockScope,
   automation: () => HostRunAutomation,
-): ClockDriver {
+): TestClock {
   const driver = (): ClockDriver => {
     const clock = resolve().driver;
     if (!clock) throw new Error("t.app.clock is not supported by this host; update the LingXia host");
@@ -78,19 +105,20 @@ export function wrapClock(
         // omit it instead.
         const result = await (now === undefined ? clock.install() : clock.install({ now }));
         scope.track(host, await resolve().appid(), automation);
-        return result;
+        return clockState(result);
       }),
-    tick: (ms: number) => host.act("clock.tick", `${ms}ms`, () => driver().tick(ms)),
+    tick: (ms: number) => host.act("clock.tick", `${ms}ms`, async () => clockAdvance(await driver().tick(ms))),
     runAll: (options?: ClockRunAllOptions) =>
-      host.act("clock.runAll", options?.maxTimers === undefined ? "" : `max ${options.maxTimers}`, () =>
-        options === undefined ? driver().runAll() : driver().runAll(options)),
+      host.act("clock.runAll", options?.maxTimers === undefined ? "" : `max ${options.maxTimers}`, async () =>
+        clockAdvance(await (options === undefined ? driver().runAll() : driver().runAll(options)))),
     setSystemTime: (time: ClockTime) =>
-      host.act("clock.setSystemTime", describeTime(time), () => driver().setSystemTime(toWire(time))),
+      host.act("clock.setSystemTime", describeTime(time), async () =>
+        clockState(await driver().setSystemTime(toWire(time)), Number.NaN)),
     uninstall: () =>
       host.act("clock.uninstall", "", async () => {
         const result = await driver().uninstall();
         scope.dropped += result.dropped;
-        return result;
+        if (result.dropped > 0) await host.diagnostic("clock", droppedNote(result.dropped, "clock.uninstall"));
       }),
   };
 }

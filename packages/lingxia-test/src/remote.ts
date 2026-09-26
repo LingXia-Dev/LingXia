@@ -49,7 +49,7 @@ function argsLiteral(args: readonly unknown[], api: string): string {
  * `getCurrentPages` are read defensively: a missing one must surface as
  * `undefined` in the scope, not as a ReferenceError blamed on the spec.
  */
-export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.eval"): string {
+export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.logic.eval"): string {
   const source = functionSource(fn, api);
   return [
     "((__lxFn, __lxArgs) => __lxFn({",
@@ -63,7 +63,7 @@ export function logicScript(fn: unknown, args: readonly unknown[], api = "t.app.
 }
 
 /** WebView: evaluated as `await (<expression>)`. */
-export function pageScript(fn: unknown, args: readonly unknown[], api = "t.app.page.eval"): string {
+export function pageScript(fn: unknown, args: readonly unknown[], api = "t.app.view.eval"): string {
   const source = functionSource(fn, api);
   return [
     "((__lxFn, __lxArgs) => __lxFn({ document, window }, ...__lxArgs))(",

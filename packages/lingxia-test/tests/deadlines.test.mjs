@@ -48,19 +48,19 @@ test("a click that never returns fails the click by name", async () => {
   assert.match(result.error.message, /page\.click did not return/);
 });
 
-test("a t.expect.poll read that never returns names the assertion", async () => {
+test("a t.expect(fn) read that never returns names the assertion", async () => {
   installFakeHost(createWorld());
 
   spec("hung read", { timeout: 5_000, forensics: false }, async (t) => {
     await t.step("wait for sync", async () => {
-      await t.expect.poll(hang, { timeout: 120 }).toBe(1);
+      await t.expect(hang, { timeout: 120 }).toBe(1);
     });
   });
 
   const result = await runOne();
   assert.equal(result.status, "failed");
-  assert.match(result.error.message, /t\.expect\.poll read did not return within \d+ms/);
-  assert.match(result.error.message, /while retrying poll toBe/);
+  assert.match(result.error.message, /t\.expect\(fn\) read did not return within \d+ms/);
+  assert.match(result.error.message, /while retrying t\.expect\(fn\) toBe/);
   assert.match(result.error.message, /in step "wait for sync"/);
 });
 
@@ -106,7 +106,7 @@ test("a timeout within the spec's budget is not clamped", async () => {
   installFakeHost(createWorld());
 
   spec("unclamped", { timeout: 5_000, forensics: false }, (t) =>
-    t.expect.poll(() => 0, { timeout: 80 }).toBe(1));
+    t.expect(() => 0, { timeout: 80 }).toBe(1));
 
   const result = await runOne();
   assert.equal(result.status, "failed");

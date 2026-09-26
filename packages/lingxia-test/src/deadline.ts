@@ -1,5 +1,10 @@
+/**
+ * A fixture wait or budget ran out: `t.waitFor`, `waitForCall`, a driver
+ * call raced against an action budget, cleanup, or the spec itself.
+ */
 export class TimeoutError extends Error {
   override readonly name = "TimeoutError";
+  readonly code = "E_TIMEOUT" as const;
 }
 
 /**
@@ -123,4 +128,18 @@ export function isElementRefusal(error: unknown): boolean {
   if (code === "E_ELEMENT_NOT_FOUND" || code === "E_ELEMENT_NOT_INTERACTABLE") return true;
   const message = error instanceof Error ? error.message : "";
   return /^Element (?:not found|not interactable):/.test(message);
+}
+
+/**
+ * The transport between the test runtime and the app dropped a call: the
+ * socket would block or was reset, or the channel closed under it. Only an
+ * idempotent read may be retried on it; for input it is ambiguous, since the
+ * call may have landed before the reply was lost.
+ */
+export function isTransientTransportError(error: unknown): boolean {
+  if (errorCode(error) === "E_TRANSPORT") return true;
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  if (!message) return false;
+  return /os error (?:11|35|54|104)\b|resource temporarily unavailable|connection reset|broken pipe|channel closed|websocket (?:closed|disconnected|frame)/i
+    .test(message);
 }

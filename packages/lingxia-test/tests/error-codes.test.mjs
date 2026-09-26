@@ -101,7 +101,7 @@ test("a failure names its action, the current page instance and the code that ke
   const { attachments } = installFakeHost(world);
   spec("save", (t) => t.app.page.testId("save").click({ timeout: 300, interval: 5 }));
   spec("no forensics", { forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 300, interval: 5 }));
-  spec("asserts", { forensics: false }, (t) => t.expect.poll(() => 1, { timeout: 20 }).toBe(2));
+  spec("asserts", { forensics: false }, (t) => t.expect(() => 1, { timeout: 20 }).toBe(2));
   spec.fail("known inactive page", { expected: { code: "E_PAGE_NOT_ACTIVE" }, forensics: false },
     (t) => t.app.page.testId("save").click({ timeout: 100, interval: 5 }));
 

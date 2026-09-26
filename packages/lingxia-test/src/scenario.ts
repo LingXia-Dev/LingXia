@@ -7,8 +7,8 @@ import type {
   ScenarioRuleInfo,
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
-import type { NetworkHost } from "./network.js";
-import type { ScenarioReport } from "./types.js";
+import { scenarioCall, waitForNextCall, type NetworkHost } from "./network.js";
+import type { ScenarioCallTarget, ScenarioReport, TestScenario, WaitForCallOptions } from "./types.js";
 
 /**
  * The scenario one spec installed with `t.app.scenario()`. Installing
@@ -82,6 +82,18 @@ function describeScenario(definition: ScenarioInput, variant: string | undefined
   return truncate(`${scenarioLabel(definition, variant)} (${count} rule${count === 1 ? "" : "s"})`, 80);
 }
 
+function describeTarget(target: ScenarioCallTarget): string {
+  if ("http" in target) return target.http;
+  if ("function" in target) return `function ${target.function}`;
+  return `rule ${target.rule}`;
+}
+
+function validTarget(target: unknown): target is ScenarioCallTarget {
+  if (!target || typeof target !== "object") return false;
+  const record = target as Record<string, unknown>;
+  return typeof record.http === "string" || typeof record.function === "string" || typeof record.rule === "number";
+}
+
 /**
  * `t.app.scenario(file, variant?)`: the host installs it for the run; the
  * fixture removes it when the spec ends and traces every call.
@@ -92,23 +104,35 @@ export function installScenario(
   scope: ScenarioScope,
   definition: ScenarioInput,
   variant?: string,
-): Promise<Scenario> {
+): Promise<TestScenario> {
   return host.act("scenario", describeScenario(definition, variant), async () => {
     const raw = variant === undefined
       ? await resolve().scenario(definition)
       : await resolve().scenario(definition, variant);
     const label = scenarioLabel(definition, variant);
     scope.track(host, raw, label);
-    const wrapped: Scenario = {
+    const read = async (filter?: ScenarioCallFilter) => (await raw.calls(filter)).map(scenarioCall);
+    const cursors = new Map<string, { taken: number }>();
+    const wrapped: TestScenario = {
       get name() { return raw.name; },
       get variant() { return raw.variant; },
       get rules() { return raw.rules; },
       calls: (filter?: ScenarioCallFilter) =>
-        host.act("scenario.calls", filter ? JSON.stringify(filter) : label, () => raw.calls(filter)),
-      unroute: () =>
-        host.act("scenario.unroute", label, async () => {
+        host.act("scenario.calls", filter ? JSON.stringify(filter) : label, () => read(filter)),
+      waitForCall: (target: ScenarioCallTarget, options?: WaitForCallOptions) => {
+        if (!validTarget(target)) {
+          throw new TypeError("scenario.waitForCall needs { http: 'METHOD url' }, { function: 'name' } or { rule: n }");
+        }
+        const key = JSON.stringify(target);
+        let cursor = cursors.get(key);
+        if (!cursor) cursors.set(key, cursor = { taken: 0 });
+        return waitForNextCall(host, "scenario.waitForCall", `scenario ${label}: ${describeTarget(target)}`,
+          () => read(target), () => read(), cursor, options);
+      },
+      remove: () =>
+        host.act("scenario.remove", label, async () => {
           if (scope.current?.raw === raw) scope.current = undefined;
-          return raw.unroute();
+          await raw.unroute();
         }),
     };
     return wrapped;
