@@ -11,6 +11,7 @@ import { truncate } from "./format.js";
 import { callerLocation, displayLocation } from "./ids.js";
 import type { NetworkCall, TestNetwork, TestRoute, WaitForCallOptions } from "./types.js";
 import { DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS } from "./version.js";
+import { runnerSetTimeout } from "./pending.js";
 
 /** The fixture surface the network, scenario and clock wrappers need. */
 export interface NetworkHost {
@@ -146,7 +147,7 @@ export function waitForNextCall(
           return next;
         }
         if (Date.now() - started + interval > timeout) break;
-        await new Promise((resolve) => setTimeout(resolve, interval));
+        await new Promise<void>((resolve) => { runnerSetTimeout(resolve, interval); });
       }
     } finally {
       host.resumeActions();

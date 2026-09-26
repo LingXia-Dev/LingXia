@@ -13,20 +13,24 @@ test('empty selections fail unless explicitly allowed', async () => {
   assert.equal((await run()).total, 0);
 });
 
-test('cleanup has a hard deadline and stops subsequent specs', async () => {
-  installFakeHost(createWorld());
+test('cleanup has a hard deadline; the run recovers the app and continues', async () => {
+  const world = createWorld();
+  const { events } = installFakeHost(world);
   let next = false;
   spec('stalled cleanup', { timeoutCleanup: 30, forensics: false }, t => {
     t.defer(() => new Promise(() => {}));
   });
-  spec('cannot share contaminated state', () => { next = true; });
+  spec('runs on a recovered app', () => { next = true; });
   const report = await run();
-  assert.equal(next, false);
-  assert.equal(report.partial, true);
+  assert.equal(next, true);
+  assert.equal(report.partial, false);
   assert.equal(report.cases[0].status, 'failed');
   assert.equal(report.cases[0].error.phase, 'defer');
   assert.match(report.cases[0].error.message, /cleanup budget/);
-  assert.equal(report.cases[1].status, 'skipped');
+  assert.equal(report.cases[1].status, 'passed');
+  const recovery = events.find(event => event.type === 'diagnostic' && event.phase === 'recovery');
+  assert.match(recovery.message, /^"stalled cleanup" left its cleanup \(t\.defer \/ afterEach\) pending: /);
+  assert.ok(world.navCalls.some(([method]) => method === 'relaunch'));
 });
 
 test('a timed-out body cannot regain access through cleanup', async () => {
@@ -38,11 +42,11 @@ test('a timed-out body cannot regain access through cleanup', async () => {
     t.defer(() => { cleanup = true; });
     return new Promise(() => {});
   });
-  spec('must not run', () => { next = true; });
+  spec('runs after recovery', () => { next = true; });
   const report = await run();
   assert.equal(report.timeout, 1);
   assert.equal(cleanup, false);
-  assert.equal(next, false);
+  assert.equal(next, true);
   await assert.rejects(() => fixture.app.logic.eval(() => 1), /closed/);
 });
 

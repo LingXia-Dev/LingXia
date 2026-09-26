@@ -1,3 +1,5 @@
+import { runnerClearTimeout, runnerSetTimeout } from "./pending.js";
+
 /**
  * A fixture wait or budget ran out: `t.waitFor`, `waitForCall`, a driver
  * call raced against an action budget, cleanup, or the spec itself.
@@ -56,9 +58,9 @@ export class ActionDeadline {
   async call<T>(label: string, op: () => T | Promise<T>, context: () => string): Promise<T> {
     const ms = Math.max(1, this.remaining());
     const task = Promise.resolve().then(op);
-    let handle: ReturnType<typeof setTimeout> | undefined;
+    let handle: unknown;
     const expiry = new Promise<never>((_, reject) => {
-      handle = setTimeout(() => {
+      handle = runnerSetTimeout(() => {
         task.catch(() => {});
         reject(new TimeoutError([
           `${label} did not return within ${ms}ms, the rest of the ${this.timeout}ms action budget.`,
@@ -70,7 +72,7 @@ export class ActionDeadline {
     try {
       return await Promise.race([task, expiry]);
     } finally {
-      if (handle !== undefined) clearTimeout(handle);
+      if (handle !== undefined) runnerClearTimeout(handle);
     }
   }
 }

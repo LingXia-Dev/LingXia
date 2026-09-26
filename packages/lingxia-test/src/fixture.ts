@@ -7,6 +7,7 @@ import {
   setAssertionSink,
 } from "./expect.js";
 import { formatValue, truncate } from "./format.js";
+import type { PendingWork } from "./pending.js";
 import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
@@ -105,6 +106,7 @@ export class LiveFixture implements Fixture {
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
+  private readonly inFlight = new Set<{ name: string; detail: string; started: number }>();
   cleanupUntil = 0;
   cleanupActive = false;
   lastStepPath: string | undefined;
@@ -499,6 +501,30 @@ export class LiveFixture implements Fixture {
    * would otherwise bury the report in a hundred identical rows.
    */
   async act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
+    const call = { name, detail, started: Date.now() };
+    this.inFlight.add(call);
+    try {
+      return await this.recordAct(name, detail, op);
+    } finally {
+      this.inFlight.delete(call);
+    }
+  }
+
+  /**
+   * Fixture calls that have not returned, e.g. a hung `t.app.logic.eval` a
+   * timed-out body still awaits. Unlike the trace rows, this includes calls
+   * made from silenced retry loops.
+   */
+  pendingCalls(): PendingWork[] {
+    return [...this.inFlight].map((call) => ({
+      kind: /^(logic|view)\.(eval|data|call)$/.test(call.name) ? "eval" as const : "action" as const,
+      detail: call.detail ? `${call.name} ${call.detail}` : call.name,
+      owner: this.specId,
+      at_ms: call.started - this.startedAt,
+    }));
+  }
+
+  private async recordAct<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
     if (this.actionSilence > 0) return this.guard(op);
     // Past the cap, keep recording failures: the action that finally breaks is
     // the one row worth having, and dropping it leaves nothing pointing at it.

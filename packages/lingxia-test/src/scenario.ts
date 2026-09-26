@@ -9,6 +9,7 @@ import type {
 import { truncate } from "./format.js";
 import { scenarioCall, waitForNextCall, type NetworkHost } from "./network.js";
 import type { ScenarioCallTarget, ScenarioReport, TestScenario, WaitForCallOptions } from "./types.js";
+import { runnerSetTimeout } from "./pending.js";
 
 /**
  * The scenario one spec installed with `t.app.scenario()`. Installing
@@ -45,7 +46,7 @@ export class ScenarioScope {
       rules = [...current.raw.rules];
       calls = await Promise.race([
         current.raw.calls(),
-        new Promise<ScenarioCall[]>((resolve) => setTimeout(() => resolve([]), budgetMs)),
+        new Promise<ScenarioCall[]>((resolve) => { runnerSetTimeout(() => resolve([]), budgetMs); }),
       ]);
     } catch {
       // Evidence never replaces the failure.
