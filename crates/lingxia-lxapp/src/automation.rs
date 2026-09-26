@@ -566,10 +566,10 @@ pub async fn page_scroll_to(
 /// Build the DOM query IIFE shared by every automation front-end.
 ///
 /// Single-node mode returns the `describe` payload below (`{ exists, index,
-/// count, tag, visible, in_viewport, enabled, editable, text, value, rect, … }`);
+/// count, tag, visible, inViewport, enabled, editable, text, value, rect, … }`);
 /// `all` mode returns `{ count, items: [...] }`. `visible` means rendered — a
 /// non-empty box that is not `display:none`, `visibility:hidden` or
-/// `opacity:0` — wherever it is scrolled; `in_viewport` says whether that box
+/// `opacity:0` — wherever it is scrolled; `inViewport` says whether that box
 /// also intersects the viewport.
 pub fn build_query_script(
     selector: &str,
@@ -644,7 +644,7 @@ pub fn build_query_script(
       aria_label: el.getAttribute("aria-label"),
       placeholder: el.getAttribute("placeholder"),
       visible,
-      in_viewport: inViewport,
+      inViewport,
       enabled: !disabled,
       editable,
       text: text.value,
@@ -677,7 +677,7 @@ pub fn build_query_script(
       index,
       count,
       visible: false,
-      in_viewport: false,
+      inViewport: false,
       enabled: false,
       editable: false
     }};
@@ -712,8 +712,9 @@ mod tests {
             .expect("inViewport expression");
         assert!(in_viewport.starts_with(" visible &&"), "{in_viewport}");
         assert!(in_viewport.contains("window.innerHeight"), "{in_viewport}");
-        assert!(script.contains("in_viewport: inViewport"));
-        assert!(script.contains("in_viewport: false"));
+        assert!(script.contains("      inViewport,\n"));
+        assert!(script.contains("inViewport: false"));
+        assert!(!script.contains("in_viewport"), "the field is camelCase");
     }
 
     fn runtime_page(

@@ -285,7 +285,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
   await app.view.testId("native-menu-toggle", { page: 'video' }).click();
   let nativeButton = await eventually(
     () => app.page.query({ page: 'video', css: '#video-native-menu-more' }),
-    (button) => button.exists && button.visible && button.in_viewport !== false,
+    (button) => button.exists && button.visible && button.inViewport !== false,
     { timeoutMs: 5_000, describe: 'native menu More button mounted over the video' },
   );
   if (!nativeButton.exists || !nativeButton.visible) {
@@ -323,7 +323,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       }),
       (value) => value.button.exists
         && value.button.visible
-        && value.button.in_viewport !== false
+        && value.button.inViewport !== false
         && Math.abs(value.button.rect.center_y - beforeScrollCenterY) >= 40
         && typeof value.compiles === 'number'
         && value.compiles > 0,
@@ -350,7 +350,7 @@ spec("hand an H5 menu press to a native menu above the island video", { id: "NAT
       () => app.page.query({ page: 'video', css: '#video-native-menu-more' }),
       (button) => button.exists
         && button.visible
-        && button.in_viewport !== false
+        && button.inViewport !== false
         && Math.abs(button.rect.center_y - beforeScrollCenterY) >= 40,
       { timeoutMs: 5_000, describe: `native island element followed page scroll (scrollY=${scrollY})` },
     );
