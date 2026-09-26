@@ -150,8 +150,8 @@ struct WaitProbe {
 /// uniqueness-aware states on top and treat "no match" as hidden.
 fn wait_state_satisfied(state: &str, probe: &WaitProbe) -> bool {
     match state {
-        "attached" | "exists" => probe.exists,
-        "detached" | "gone" => !probe.exists,
+        "attached" => probe.exists,
+        "detached" => !probe.exists,
         "visible" => probe.exists && probe.visible,
         "hidden" => probe.exists && !probe.visible,
         "enabled" => probe.exists && probe.enabled,
@@ -324,19 +324,12 @@ impl JSPageDriver {
         let state = options.state.as_deref().unwrap_or("visible");
         if !matches!(
             state,
-            "attached"
-                | "detached"
-                | "visible"
-                | "hidden"
-                | "enabled"
-                | "editable"
-                | "exists"
-                | "gone"
+            "attached" | "detached" | "visible" | "hidden" | "enabled" | "editable"
         ) {
             return Err(auto_err(format!("waitFor: unknown state '{state}'")));
         }
         // Reject a page name that isn't in the config up front, so a typo'd
-        // `page` can't satisfy `gone` below.
+        // `page` can't satisfy `detached` below.
         if !auto::page_name_known(&app, options.page.as_deref()) {
             return Err(auto_err(auto::unknown_page_name(
                 &app,
@@ -367,7 +360,7 @@ impl JSPageDriver {
                 Ok(value) => serde_json::from_value::<WaitProbe>(value)
                     .map_err(|err| auto_err(format!("waitFor decode: {err}")))?,
                 Err(err) if is_transient_page_error(&err) => {
-                    if matches!(state, "detached" | "gone") {
+                    if state == "detached" {
                         return Ok(());
                     }
                     if started.elapsed() >= timeout {
@@ -449,7 +442,7 @@ mod tests {
             editable: false,
         };
         assert!(wait_state_satisfied("attached", &visible));
-        assert!(wait_state_satisfied("exists", &visible));
+        assert!(!wait_state_satisfied("exists", &visible), "not a state");
         assert!(wait_state_satisfied("visible", &visible));
         assert!(wait_state_satisfied("enabled", &visible));
         assert!(!wait_state_satisfied("editable", &visible));
@@ -471,7 +464,7 @@ mod tests {
             editable: false,
         };
         assert!(wait_state_satisfied("detached", &missing));
-        assert!(wait_state_satisfied("gone", &missing));
+        assert!(!wait_state_satisfied("gone", &missing), "not a state");
         assert!(!wait_state_satisfied("hidden", &missing));
     }
 }
