@@ -22,6 +22,7 @@ export function createWorld(options = {}) {
   let logicGlobals;
   let pageGlobals;
   const evaluated = [];
+  const keyFor = (map, script) => map.has(script) ? script : [...map.keys()].find((key) => script.includes(key));
 
   // Mirror the targets: a script is evaluated as JS against the given
   // globals, and a thrown error reaches the test context as a plain Error
@@ -168,16 +169,20 @@ export function createWorld(options = {}) {
     async eval({ script, captureCalls }) {
       if (blocked) throw new Error("fixture should not reach the app after abort");
       let value = script;
-      if (logicGlobals && !evalResults.has(script)) value = await evaluate(logicGlobals, script);
-      if (evalResults.has(script)) {
-        value = evalResults.get(script);
+      // A seeded key names the script, or text inside the function a spec
+      // passed to `t.app.logic.eval`.
+      const seeded = keyFor(evalResults, script);
+      if (logicGlobals && seeded === undefined) value = await evaluate(logicGlobals, script);
+      if (seeded !== undefined) {
+        value = evalResults.get(seeded);
         if (value instanceof Error) throw value;
       }
       // Mirror the runtime: with `captureCalls` the result is wrapped and
       // carries what the script reached. Tests seed that through `setCalls`.
       if (captureCalls) {
         // Mirror the runtime: `value` is absent when the script returns undefined.
-        const envelope = { __lxEval: 1, calls: evalCalls.get(script) ?? [] };
+        const calls = keyFor(evalCalls, script);
+        const envelope = { __lxEval: 1, calls: calls === undefined ? [] : evalCalls.get(calls) };
         if (value !== undefined) envelope.value = value;
         return envelope;
       }

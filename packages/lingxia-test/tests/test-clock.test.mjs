@@ -23,7 +23,7 @@ function fakeClock(world) {
       }
       clock.installed = true;
       clock.now = options?.now ?? 1_000;
-      return clock.legacy ? clock.now : { now: clock.now, pending: 0 };
+      return { now: clock.now, pending: 0 };
     },
     async tick(ms) {
       clock.calls.push(["tick", ms]);
@@ -40,7 +40,7 @@ function fakeClock(world) {
     async setSystemTime(time) {
       clock.calls.push(["setSystemTime", time]);
       clock.now = typeof time === "string" ? Date.parse(time) : time;
-      return clock.legacy ? clock.now : { now: clock.now, pending: clock.pending };
+      return { now: clock.now, pending: clock.pending };
     },
     async uninstall() {
       clock.calls.push(["uninstall"]);
@@ -129,37 +129,6 @@ test("uninstall resolves nothing and notes the timers it dropped", async () => {
   assert.equal(result, undefined);
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
   assert.deepEqual(notes.map((event) => event.message), ["clock.uninstall dropped 2 pending test timers; they never fired"]);
-});
-
-test("a host that resolves a bare time still yields a ClockState", async () => {
-  const world = createWorld();
-  const clock = fakeClock(world);
-  clock.legacy = true;
-  installFakeHost(world);
-  let installed;
-
-  spec("older host", async (t) => {
-    installed = await t.app.clock.install({ now: 5 });
-  });
-
-  const report = await run();
-  assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.deepEqual(installed, { now: 5, pending: 0 });
-});
-
-test("reading t.app.clock never throws; a host without it fails the call", async () => {
-  const world = createWorld();
-  installFakeHost(world);
-  let read;
-
-  spec("old host", async (t) => {
-    read = t.app.clock;
-    await t.reject(() => t.app.clock.install(), { message: /not supported by this host/ });
-  });
-
-  const report = await run();
-  assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.equal(typeof read.tick, "function");
 });
 
 test("clock driver failures keep their codes", async () => {

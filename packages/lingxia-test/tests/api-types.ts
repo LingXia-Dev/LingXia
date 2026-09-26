@@ -7,43 +7,45 @@ import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDri
 
 spec('typed test boundary', async t => {
   const app: TestApp = t.automation.lxapp('example');
-  const input = app.page.testId('input', {page:'editor'}).nth(0);
+  const input = app.view.testId('input', {page:'editor'}).nth(0);
   await input.press('Enter');
   const element: PageQueryResult = await input.query();
   if (element.exists) element.rect.width.toFixed();
-  const state = await app.eval<{ready:boolean}>({script:'return {ready:true}'});
+  const state = await app.logic.eval(() => ({ ready: true }));
   state.ready.valueOf();
-  // @ts-expect-error The fixture unwraps the call trace; specs do not opt in.
-  await app.eval({script:'1', captureCalls:true});
+  // @ts-expect-error The fixture has no string eval; a script string is for the raw driver.
+  await app.eval({script:'1'});
   await t.automation.browser.tabs();
   const landed = await app.nav.to({page:'editor', waitUntil:'commit'});
   landed.webviewAttached.valueOf();
   landed.instanceId?.toUpperCase();
-  await t.reject(() => app.page.click({css:'#save', page:'devices'}), {code:'E_PAGE_NOT_ACTIVE'});
+  await t.reject(() => app.view.css('#save', {page:'devices'}).click(), {code:'E_PAGE_NOT_ACTIVE'});
   await app.nav.back({waitUntil:'ready', timeoutMs:5_000});
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
   await app.nav.to({page:'editor', waitFor:'ready'});
   await input.waitFor({state:'attached'});
   await input.waitFor({state:'inViewport'});
-  const rows = app.page.css('li').filter({hasText:/ready/i});
+  const rows = app.view.css('li').filter({hasText:/ready/i});
   await rows.first().click({force:true, timeout:1_000});
   await rows.last().fill('x', {force:true});
   await t.expect(rows.nth(1)).toBeInViewport();
   await t.expect(rows.first()).toContainText('ready');
   await t.expect(rows.first()).toHaveAttribute('aria-selected', 'true');
   await t.expect(rows.first()).not.toHaveAttribute('disabled');
-  await app.page.click({css:'#save', force:true});
+  await app.view.css('#save').click({force:true});
+  // @ts-expect-error There is no `t.app.page`: the view holds the locators.
+  app.page.testId('input');
   // @ts-expect-error `type` has no forced mode.
   await input.type('x', {force:true});
   // @ts-expect-error filter needs hasText.
-  app.page.css('li').filter({});
+  app.view.css('li').filter({});
   if (!state.ready) t.skip('not ready');
   // @ts-expect-error Test context has no DOM.
   document.querySelector('button');
   // @ts-expect-error Queries read once; they do not accept ignored retry options.
   input.query({timeout:100});
   // @ts-expect-error Locators require an explicit page string.
-  app.page.css('button', {page:123});
+  app.view.css('button', {page:123});
 });
 
 declare const raw: Automation;
@@ -98,10 +100,7 @@ spec('typed Logic access', async t => {
   await t.app.logic.eval((_scope, id: string) => id, 42);
   // @ts-expect-error The fixture takes functions; a script string is for the raw driver.
   await t.app.logic.eval({ script: 'return true' });
-  // 0.18's string form keeps working on `t.app.eval`, deprecated.
-  const ready = await t.app.eval<boolean>({ script: 'return true' });
-  ready.valueOf();
-  // @ts-expect-error `t.app.eval` keeps only the deprecated string form.
+  // @ts-expect-error Logic eval lives on `t.app.logic`.
   await t.app.eval(() => 1);
 
   // View (WebView) eval: without the DOM lib, `document` is a minimal ViewDocument.
@@ -117,11 +116,6 @@ spec('typed Logic access', async t => {
   await t.app.view.eval(({ document }) => document.write('x'));
   // @ts-expect-error The view takes functions; a script string is for the raw driver.
   await t.app.view.eval({ script: '1 + 1' });
-  // The deprecated `t.app.page` still takes both forms.
-  const raw = await t.app.page.eval<number>({ script: '1 + 1' });
-  raw.toFixed();
-  const viaPage: string = await t.app.page.eval(({ document }) => document.title);
-  viaPage.toUpperCase();
   // @ts-expect-error The view exposes locators, not raw element methods.
   await t.app.view.click({ css: '#save' });
   // @ts-expect-error The view exposes locators, not raw element methods.
@@ -172,7 +166,7 @@ spec('typed Logic access', async t => {
   t.expect(3).toBe(3).then;
   // @ts-expect-error Locator matchers are not value matchers.
   await t.expect(t.app.view.testId('save')).toBe(1);
-  // The deprecated alias keeps working.
+  // @ts-expect-error `t.expect(fn)` is the retrying form; there is no `poll`.
   await t.expect.poll(() => 1).toBe(1);
 
   // Args may be missing; t.arg narrows or throws.
@@ -211,11 +205,11 @@ spec('network calls', async (t) => {
   void removed; void all; void spec; void scenarioCalls; void gone;
 });
 
-// The deprecated `t.app.page` stays assignable to the raw page driver, so
-// helpers typed against it keep accepting it. The fixture app has its own
-// shapes (calls, clock state, checkpoints) and is not a raw `LxAppDriver`.
+// The fixture app has its own shapes (view, logic, calls, clock state,
+// checkpoints) and is not a raw `LxAppDriver`; its view is not a raw page.
 declare const fixtureApp: TestApp;
-const asRawPage: PageDriver = fixtureApp.page;
+// @ts-expect-error The view has locators, not the raw page methods.
+const asRawPage: PageDriver = fixtureApp.view;
 // @ts-expect-error Fixture network, clock and profile resolve their own shapes.
 const asRawApp: LxAppDriver = fixtureApp;
 void asRawApp; void asRawPage;

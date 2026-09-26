@@ -29,7 +29,7 @@ for (const code of ["E_PAGE_NOT_ACTIVE", "E_PAGE_NOT_READY"]) {
       return query(options);
     };
     installFakeHost(world);
-    spec("mid-transition click", (t) => t.app.page.testId("save").click({ timeout: 1_000, interval: 5 }));
+    spec("mid-transition click", (t) => t.app.view.testId("save").click({ timeout: 1_000, interval: 5 }));
 
     const protocol = await globalThis.__LINGXIA_TEST__.run();
     assert.equal(protocol.cases[0].status, "passed", JSON.stringify(protocol.cases[0].error));
@@ -47,7 +47,7 @@ test("an element refusal is retried by code; any other coded failure is not", as
     return click(options);
   };
   installFakeHost(world);
-  spec("refused once", (t) => t.app.page.testId("save").click({ timeout: 500, interval: 1 }));
+  spec("refused once", (t) => t.app.view.testId("save").click({ timeout: 500, interval: 1 }));
   assert.equal((await globalThis.__LINGXIA_TEST__.run()).passed, 1);
   assert.equal(element.clicked, 1);
 
@@ -60,7 +60,7 @@ test("an element refusal is retried by code; any other coded failure is not", as
     throw coded("E_EVAL_SCRIPT", "JavaScript error: boom");
   };
   installFakeHost(other);
-  spec("not retried", { forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 500, interval: 1 }));
+  spec("not retried", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 500, interval: 1 }));
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.cases[0].status, "failed");
   assert.equal(protocol.cases[0].error.code, "E_EVAL_SCRIPT");
@@ -72,13 +72,13 @@ test("t.reject and spec.fail pin a driver failure by code", async () => {
   world.app.page.eval = async () => { throw coded("E_EVAL_SCRIPT", "JavaScript error: boom"); };
   installFakeHost(world);
   spec("rejects by code", async (t) => {
-    await t.reject(() => t.automation.lxapp().page.eval({ script: "boom()" }), { code: "E_EVAL_SCRIPT" });
+    await t.reject(() => t.automation.lxapp().view.eval(() => boom()), { code: "E_EVAL_SCRIPT" });
   });
   spec.fail("known failure", { expected: { code: "E_EVAL_SCRIPT" }, forensics: false }, async (t) => {
-    await t.automation.lxapp().page.eval({ script: "boom()" });
+    await t.automation.lxapp().view.eval(() => boom());
   });
   spec.fail("different failure", { expected: { code: "E_PAGE_NOT_ACTIVE" }, forensics: false }, async (t) => {
-    await t.automation.lxapp().page.eval({ script: "boom()" });
+    await t.automation.lxapp().view.eval(() => boom());
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -99,11 +99,11 @@ test("a failure names its action, the current page instance and the code that ke
   const current = world.app.nav.current;
   world.app.nav.current = async () => ({ ...(await current()), instanceId: "a1b2" });
   const { attachments } = installFakeHost(world);
-  spec("save", (t) => t.app.page.testId("save").click({ timeout: 300, interval: 5 }));
-  spec("no forensics", { forensics: false }, (t) => t.app.page.testId("save").click({ timeout: 300, interval: 5 }));
+  spec("save", (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
+  spec("no forensics", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 300, interval: 5 }));
   spec("asserts", { forensics: false }, (t) => t.expect(() => 1, { timeout: 20 }).toBe(2));
   spec.fail("known inactive page", { expected: { code: "E_PAGE_NOT_ACTIVE" }, forensics: false },
-    (t) => t.app.page.testId("save").click({ timeout: 100, interval: 5 }));
+    (t) => t.app.view.testId("save").click({ timeout: 100, interval: 5 }));
 
   await globalThis.__LINGXIA_TEST__.run();
   const report = decode(attachments, "report.json");
@@ -138,7 +138,7 @@ test("an action the spec expected to reject is not blamed for a later failure", 
   world.app.page.eval = async () => { throw coded("E_EVAL_SCRIPT", "JavaScript error: boom"); };
   const { attachments } = installFakeHost(world);
   spec("later assertion", { forensics: false }, async (t) => {
-    await t.reject(() => t.app.page.eval({ script: "boom()" }), { code: "E_EVAL_SCRIPT" });
+    await t.reject(() => t.app.view.eval(() => boom()), { code: "E_EVAL_SCRIPT" });
     throw new Error("unrelated");
   });
 

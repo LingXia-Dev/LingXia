@@ -68,7 +68,6 @@ export function renderContract(openapi: OpenApiSummary | undefined): string {
   if (!openapi) return "";
   const docs = openapi.documents.map((doc) =>
     `<span class="chip"><b>${escapeHtml(doc.name)}</b>${escapeHtml(`${doc.title ? `${doc.title} · ` : ""}OpenAPI ${doc.version} · ${doc.operations} operations`)}</span>`).join("");
-  const capture = openapi.capture === "ok" ? "" : `<p class="warn-line">Responses were not captured: ${escapeHtml(openapi.capture)}</p>`;
   const skipped = Object.entries(openapi.skipped).filter(([, count]) => count > 0)
     .map(([reason, count]) => `${count} ${reason.replace("_", " ")}`).join(", ");
   const list = (title: string, items: string[]) => items.length === 0 ? "" : `<h4>${escapeHtml(title)}</h4><ul class="plain">${items.join("")}</ul>`;
@@ -84,7 +83,7 @@ export function renderContract(openapi: OpenApiSummary | undefined): string {
       <span class="panel-sub">${openapi.validated}/${openapi.responses} responses validated · routed ${openapi.routed.validated - openapi.routed.failed}/${openapi.routed.validated} ok · server ${openapi.network.validated - openapi.network.mismatched}/${openapi.network.validated} ok${skipped ? ` · skipped: ${escapeHtml(skipped)}` : ""}</span></summary>
     <div class="panel-body">
       <div class="chips">${docs}</div>
-      ${capture}${warnings}${undocumented}${unmatched}
+      ${warnings}${undocumented}${unmatched}
     </div>
   </details>`;
 }

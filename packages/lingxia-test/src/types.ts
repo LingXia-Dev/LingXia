@@ -11,24 +11,14 @@ import type {
   ClockTime,
   DesktopDriver,
   HostRunAutomation,
-  LogicLxAppEvalOptions,
   LxAppDriver,
   NetworkRouteHandler,
   NetworkRoutePattern,
-  PageEvalOptions,
   PageKey,
   PagePointer,
-  PageQueryAll,
-  PageQueryOptions,
   PageQueryResult,
-  PagePressOptions,
   PageScrollOptions,
-  PageScrollToOptions,
-  PageClickOptions,
-  PageFillOptions,
-  PageTypeOptions,
   PageTarget,
-  PageWaitForOptions,
   ProfileRestoreResult,
   ScenarioCallFilter,
   ScenarioInput,
@@ -341,36 +331,6 @@ export interface TestView {
   readonly key: PageKey;
 }
 
-/**
- * `t.app.page`: the View under its 0.18 name, with the raw page driver
- * methods it exposed then.
- *
- * @deprecated Use `t.app.view`, and locators instead of the raw methods.
- */
-export interface TestPage extends TestView {
-  eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
-  /** @deprecated Use `t.app.view.eval(fn)`. */
-  eval<T = unknown>(options: PageEvalOptions): Promise<T>;
-  /** @deprecated Use `locator.query()`, or a `t.expect(locator)` matcher. */
-  query(options: PageQueryOptions & { all?: false }): Promise<PageQueryResult>;
-  /** @deprecated Use `locator.query()`, or a `t.expect(locator)` matcher. */
-  query(options: PageQueryOptions & { all: true }): Promise<PageQueryAll>;
-  /** @deprecated Use `locator.query()`, or a `t.expect(locator)` matcher. */
-  query(options: PageQueryOptions): Promise<PageQueryResult | PageQueryAll>;
-  /** @deprecated Use `locator.click()`, which waits until the element can take it. */
-  click(options: PageClickOptions): Promise<void>;
-  /** @deprecated Use `locator.type()`. */
-  type(options: PageTypeOptions): Promise<void>;
-  /** @deprecated Use `locator.fill()`. */
-  fill(options: PageFillOptions): Promise<void>;
-  /** @deprecated Use `locator.press()`. */
-  press(options: PagePressOptions): Promise<void>;
-  /** @deprecated Use a locator action, which scrolls its element into view. */
-  scrollTo(options: PageScrollToOptions): Promise<void>;
-  /** @deprecated Use `locator.waitFor()` or a `t.expect(locator)` matcher. */
-  waitFor(options: PageWaitForOptions): Promise<void>;
-}
-
 /** `t.app.logic.data()` options. */
 export interface LogicDataOptions {
   /** Configured page name or route; defaults to the current page. */
@@ -535,8 +495,6 @@ export interface TestClock {
 export interface TestApp {
   /** The current page's View: locators, `eval(fn)`, screenshots and input. */
   readonly view: TestView;
-  /** @deprecated Use `t.app.view`; the raw page methods have locator equivalents. */
-  readonly page: TestPage;
   /** The app's Logic runtime: `eval(fn)`, page `data()` and `call()`. */
   readonly logic: TestLogic;
   /** Navigation; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
@@ -558,8 +516,6 @@ export interface TestApp {
   info: LxAppDriver["info"];
   pages: LxAppDriver["pages"];
   surfaceLayout: LxAppDriver["surfaceLayout"];
-  /** @deprecated Use `t.app.logic.eval(fn)`. */
-  eval<T = unknown>(options: LogicLxAppEvalOptions): Promise<T>;
 }
 
 /** A checkpoint of the app's isolated data. */
@@ -684,8 +640,6 @@ export interface FixtureExpect {
   (locator: Locator): LocatorMatchers;
   <T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
   <T>(value: T): Matchers<T>;
-  /** @deprecated Use `t.expect(read, options)`. */
-  poll<T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
 }
 
 export interface WaitForOptions<T = unknown> {
@@ -958,8 +912,6 @@ export interface OpenApiRun {
 /** `report.openapi`: what `--openapi` checked across the run. */
 export interface OpenApiSummary {
   documents: Array<{ name: string; version: string; title?: string; operations: number }>;
-  /** `ok`, or why responses could not be captured (older host). */
-  capture: string;
   /** Captured responses. */
   responses: number;
   /** Responses with a documented JSON schema and a body, validated. */

@@ -421,11 +421,10 @@ test("--record-network attaches each spec's scenario and masks secrets", async (
   assert.ok(report.cases[0].attachments.some((entry) => entry.name === "network.scenario.json"));
 });
 
-test("--record-network on a host without recording says so once per spec", async () => {
+test("--record-network on a host without recording fails the run", async () => {
   const world = createWorld();
-  const { events } = installFakeHost(world, { control: { recordNetwork: "1" } });
+  installFakeHost(world, { control: { recordNetwork: "1" } });
   spec("records nothing", async () => {});
-  const report = await run();
-  assert.equal(report.failed, 0);
-  assert.ok(events.some((event) => event.type === "diagnostic" && event.phase === "record-network"));
+  await assert.rejects(() => run(), /--record-network needs a host that records network traffic/);
 });
+

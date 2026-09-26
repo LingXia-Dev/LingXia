@@ -143,7 +143,6 @@ test("t.profile re-selects the app after a switch", async () => {
 test("restoreProfile keep carries chosen keys over the rollback", async () => {
   const world = createWorld();
   const profile = fakeProfile(world);
-  world.app.clock = {};
   profile.data.token = "t0";
   installFakeHost(world);
   let seen;
@@ -162,25 +161,6 @@ test("restoreProfile keep carries chosen keys over the rollback", async () => {
   assert.deepEqual(profile.calls[1], ["restore", "cp-1", { keep: ["token"] }]);
   const restore = report.cases[0].steps.find((step) => step.name === "profile.restore");
   assert.equal(restore.detail, "cp-1 keep token");
-});
-
-test("t.profile.restore keep is refused by a host that would ignore it", async () => {
-  const world = createWorld();
-  const profile = fakeProfile(world);
-  installFakeHost(world);
-
-  spec("old host", async (t) => {
-    const id = await t.profile.checkpoint();
-    profile.data.token = "rotated";
-    await t.reject(() => t.profile.restore(id, { keep: ["token"] }), { message: /update the LingXia host/ });
-    assert.equal(profile.data.token, "rotated", "nothing was rolled back");
-    const plain = await t.profile.restore(id);
-    assert.deepEqual(plain, { kept: [] });
-  });
-
-  const report = await run();
-  assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.deepEqual(profile.calls.map(([name]) => name), ["checkpoint", "restore"]);
 });
 
 test("restoreProfile rejects a malformed keep at registration", () => {
