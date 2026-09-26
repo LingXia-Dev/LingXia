@@ -811,13 +811,23 @@ export class LiveFixture implements Fixture {
     return options;
   }
 
-  private viewEval(page: PageDriver, fn: unknown, args: unknown[], api: string): Promise<unknown> {
+  private viewEval(page: PageDriver, input: unknown[], api: string): Promise<unknown> {
+    // `eval(fn, ...args)` or `eval({ page }, fn, ...args)`.
+    const targeted = input[0] !== null && typeof input[0] === "object" && !("script" in input[0]);
+    const target = targeted ? input[0] as PageTarget : undefined;
+    const [fn, ...args] = targeted ? input.slice(1) : input;
     if (typeof fn !== "function") {
       throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (lx.automation().lxapp().page.eval({ script }))`);
     }
+    if (target !== undefined && target.page !== undefined && typeof target.page !== "string") {
+      throw new TypeError(`${api}({ page }, fn, ...args) takes a page name or instance id`);
+    }
     const script = pageScript(fn, args, api);
-    return this.act("view.eval", summarise(functionDetail(fn)), () =>
-      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; timeoutMs?: number }>({ script }))));
+    const detail = summarise(functionDetail(fn));
+    return this.act("view.eval", target?.page ? `${target.page} ${detail}` : detail, () =>
+      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>(
+        target?.page ? { page: target.page, script } : { script },
+      ))));
   }
 
   private wrapView(page: PageDriver): TestView {
@@ -829,7 +839,7 @@ export class LiveFixture implements Fixture {
     return {
       testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
       css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
-      eval: ((fn: unknown, ...args: unknown[]) => this.viewEval(page, fn, args, "t.app.view.eval")) as TestView["eval"],
+      eval: ((...input: unknown[]) => this.viewEval(page, input, "t.app.view.eval")) as TestView["eval"],
       screenshot: (options?: PageTarget) =>
         this.act("page.screenshot", summarise(options), () => this.readRetrying(() => page.screenshot(options))),
       scroll: (options) => guarded.scroll(options),

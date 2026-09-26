@@ -322,6 +322,12 @@ export interface TestView {
    * its JSON result. `fn` must be self-contained (see `ViewFunction`).
    */
   eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  /**
+   * The same in the WebView of `target.page` (a configured page name or live
+   * instance id) instead of the current page's, like a locator's `{ page }`:
+   * a page kept below the current one, or one a surface shows.
+   */
+  eval<R, A extends JsonValue[]>(target: PageTarget, fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;

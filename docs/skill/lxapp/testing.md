@@ -58,7 +58,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read page Logic `data` | `t.app.logic.data<T>({ page? })`; see [below](#reading-app-logic) |
 | Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)` |
-| Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)` |
+| Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)`, `t.app.view.eval({ page }, fn, ...args)` |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `t.expect(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
 | Wait for a faked call | `await route.waitForCall()`, `await scenario.waitForCall({ http })` |
@@ -122,6 +122,7 @@ const renamed = await t.app.logic.call<DevicesPage, 'rename'>('rename', devices[
 const path = await t.app.logic.eval(({ lx }) => lx.env.USER_DATA_PATH);
 const route = await t.app.logic.eval(({ getCurrentPages }, index) => getCurrentPages()[index].route, 0);
 const label = await t.app.view.eval(({ document }) => document.querySelector('#total')?.textContent);
+const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.title); // a page below the current one
 ```
 
 - `t.app.logic.eval(fn, ...args)` runs `fn` in the app's Logic with `{ lx,
