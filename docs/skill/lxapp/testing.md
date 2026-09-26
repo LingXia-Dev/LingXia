@@ -58,7 +58,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait until a value is ready | `t.waitFor(read, accept?)` returns it; `t.expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })` |
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#faking-the-network) |
-| Replay a set of fake responses from a file | `t.app.network.scenario(json)`; see [scenario files](#scenario-files) |
+| Put the app into a product state from a scenario file | `t.app.scenario(json, variant?)`; see [below](#scenarios-in-specs) |
 | Put the app into a product state by hand | `lxdev scenario use <name>`; see [Scenarios](./scenarios.md) |
 | Name a set of `lxdev test` flags | `lxdev.json` presets, `lxdev test --preset ci`; see [presets](#presets) |
 | Check responses against an API contract | `lxdev test --openapi api.yaml`, `expect(value).toMatchSchema('Name')`; see [below](#api-contract-checks) |
@@ -221,56 +221,41 @@ expect(reconnect.headers['last-event-id']).toBe('e1');
   events.close();
   ```
 
-### Scenario files
+### Scenarios in specs
 
-A scenario is a JSON file of routes, installed together. Keep one per product
-state (`tests/scenarios/outage.json`) and share it between specs and manual
-checks in a dev session.
-
-```json
-{
-  "name": "status-outage",
-  "description": "Status fails twice, then recovers",
-  "routes": [
-    { "url": "**/v1/status", "method": "GET",
-      "sequence": [{ "status": 503 }, { "status": 503 }, { "json": { "up": true, "checkedAt": "{{now}}" } }] },
-    { "url": "**/v1/devices/special", "status": 404, "note": "listed first, so it wins" },
-    { "url": "/\\/v1\\/devices\\/\\w+$/", "json": { "id": "d1", "lastSeen": "{{now-2h}}" } },
-    { "url": "**/v1/events", "sse": [{ "data": "hello" }] },
-    { "url": "**/v1/offline", "abort": "failed" }
-  ]
-}
-```
+A [scenario file](./scenarios.md) (`tests/scenarios/*.json`: `http` and
+`function` rules, `match`, variants) serves specs too:
 
 ```ts
-import outage from '../scenarios/outage.json';
+import checkout from '../scenarios/checkout.json';
 
-spec('the status banner recovers', async (t) => {
-  const scenario = await t.app.network.scenario(outage);
-  await t.app.nav.relaunch({ page: 'home' });
-  await t.expect(t.app.page.testId('status-ok')).toBeVisible();
-  expect((await scenario.routes[0].requests()).length).toBe(3);
+spec('an unknown payment result settles as paid', async (t) => {
+  const scenario = await t.app.scenario(checkout, 'unknown');
+  await t.app.nav.relaunch({ page: 'checkout' });
+  await t.app.page.testId('pay').click();
+  await t.expect(t.app.page.testId('paid')).toBeVisible();
+  const submits = await scenario.calls({ function: 'orders.submit' });
+  expect(submits.length).toBe(1);
+  const renames = await scenario.calls({ http: 'PATCH **/devices/*' });
+  expect(renames[0].body).toEqual({ name: 'Office' });
 });
 ```
 
-- Routes sit at the top level or under `http.routes` (the sectioned form
-  `lxdev scenario` files use); `$schema`, `name` and `description` are
-  optional. A `worker` section is rejected as not supported yet.
-- Each route is `{ url, method?, times?, note? }` plus one answer in the
-  `route()` handler shape, or a `sequence`. `url` is a glob or a regex written
-  `"/source/flags"`. A file may also give a binary body as `bodyBase64`.
-- The first matching route of a scenario answers; routes added later with
-  `route()` still take precedence. Unknown fields and bad patterns reject with
-  the route's index (`routes[2]: …`).
-- `scenario()` returns `{ name, routes, unroute(), requests() }`; its routes
-  are removed when the spec ends, like `route()`.
+- One scenario per spec: a second `t.app.scenario()` replaces the first (to
+  switch variants mid-spec), and the spec's end removes it. Routes added with
+  `route()` take precedence over its rules.
+- It returns `{ name, variant, rules, calls(filter?), unroute() }`. `rules`
+  lists `{ index, target, hits }`; `calls()` lists every call that reached
+  the scenario, oldest first — which `rule` answered (or `null`),
+  `answeredBy`, the request `body` or Function `args`, and `noMatch` when
+  rules targeted it but none matched. Filter with `{ http: 'METHOD url' }`,
+  `{ function: 'name' }` or `{ rule: n }`.
+- A failed spec reports the scenario (`name:variant`), each rule's hits, and
+  the last 20 calls with who answered each.
+- Invalid files reject with the rule's path (`rules[2]: …`). `function`
+  rules need the dev session's companion to support them; otherwise the call
+  rejects and nothing is installed.
 - Import JSON with `resolveJsonModule` in the test tsconfig.
-
-### The same file in a dev session
-
-`lxdev scenario use <name>` installs a scenario file into the running app
-with no test running, for manual checks; it stands aside while `lxdev test`
-runs. See [Scenarios](./scenarios.md).
 
 ### Recording real traffic
 
@@ -301,7 +286,8 @@ lxdev test tests/ --record-network recorded/   # one scenario per spec: recorded
 - Under `--record-network`, specs whose ids map to the same file name get a
   numeric suffix (`<spec id>-2.json`) instead of overwriting each other.
 - Event streams and binary bodies over 64 KiB are noted on the route
-  (`note`) instead of recorded; `Rong.SSE` connections are not recorded.
+  (`note`) instead of recorded; `Rong.SSE` connections and Function calls
+  are not recorded.
   Review a recording before committing it.
 
 ### The network log of a failed spec
@@ -547,8 +533,8 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   masked only in the report's arg list.
 - **`t.arg('k')` throws** naming the missing `--arg`; pass `{ default }` or
   `{ required: false }` to relax it.
-- **Network routes last one spec.** A scenario installed with
-  `lxdev scenario use` stands aside during a run.
+- **Network routes and scenarios last one spec.** A dev scenario from
+  `lxdev scenario use` stands aside during a run and answers again after it.
 - **A timeout never outlives the spec.** A longer action timeout is clamped to
   the spec's remaining time, and the error says so.
 

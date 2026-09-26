@@ -355,18 +355,44 @@ Development machine: lxdev receives progress, results, and artifacts
   cloned answer at serve time, over text bodies, header values, status text,
   `patchJson` strings and SSE fields — never over binary bodies. Unknown
   `{{…}}` text is kept verbatim.
-- Scenarios (`network/scenario.rs`) are parsed and validated in Rust for both
-  `NetworkDriver.scenario()` and `session.network.scenario.use`, so both
-  entries reject the same files. `parse_scenario` takes top-level `routes`
-  or the sectioned `{ http: { routes } }` (errors then name
-  `http.routes[i]`), never both, and rejects a `worker` section as not
-  supported yet. `Registry::install_all` installs a
-  scenario all-or-nothing in reverse order, which makes the first file entry
-  the newest route; `route()` calls made later still win. A file may carry
-  `bodyBase64`; `note`/`description` are ignored. The scenario handle
-  (`JSNetworkScenario`) owns route ids of one run and rebuilds `NetworkRoute`
-  handles on every `routes` read; `@lingxia/test` reads it once and tracks
-  each route in the spec's `NetworkScope`.
+- Scenario files: the format lives in `lingxia_control_protocol::scenario`
+  (`parse_file` → `ScenarioFile`, `resolve(variant)` → `Resolved` with 1-based
+  rule `index`, file `path` and `Target`), so lxdev, the host and a
+  companion read files the same way. `check_rule` checks every rule of every
+  variant at parse time (targets, `match` keys per target, `times`, `note`,
+  the shape of `function` answers); the host checks `http` answers with the
+  route handler parser. `network/scenario.rs::parse_scenario(file, variant)`
+  compiles `http` rules into `RouteSpec`s carrying `body_match`
+  (`scenario::Matcher`, feature `scenario-match`; object keys are checked in
+  sorted order so the first difference reported is stable) and returns
+  `(rule index, spec)` pairs.
+- Installed scenarios (`registry::InstalledScenario`: id, owner, `RuleSlot`s
+  with hits and route id, a bounded `ScenarioCall` log, `companion`):
+  `Registry::install_scenario` sets each spec's `origin` (scenario id, rule
+  index) and installs through `install_all`, which installs in reverse so the
+  first rule is the newest route; `route()` calls made later still win. The
+  dev scenario lives in `Registry::dev`, run scenarios in `run_scenarios`,
+  one per run and app (`remove_run_scenario` replaces; `clear_run` drops
+  them).
+- Matching (`decide_route`): walk routes newest first; a route whose target
+  matches but whose `body_match` fails the request's JSON body is passed
+  over and its reason kept. The request body is read once, lazily, only
+  when a candidate has `match`. The answering route's origin gets a hit and
+  a `ScenarioCall`; every other scenario whose rules were passed over gets a
+  `ScenarioCall` with `no_match` and what answered instead
+  (`Answered`: a rule, `route <pattern>`, or the network). The second return
+  value (`NoMatch`) is set when no scenario rule answered: the interceptor
+  logs it as a warning for the dev owner, and it lands on the call-log entry
+  (`Call::no_match`). `Call::to_json` adds `answeredBy` (`rule k
+  (name:variant)`, `route <pattern>`, `real`).
+- The run API (`network/test_scenario.rs`): `lxapp().scenario(file, variant?)`
+  parses, removes the run's previous scenario for the app, sends `function`
+  rules upstream (below), then installs `http` rules; a failure after the
+  companion accepted clears it again. `JSScenario` keeps the resolved rules
+  and a snapshot; `rules` and `calls()` read the live entry by scenario id.
+  `@lingxia/test`'s `ScenarioScope` tracks the spec's handle, takes the
+  failure evidence (`report()`, before the defers) and unroutes it in a
+  defer.
 - SSE answers (`RouteAction::Sse`) carry frames and fields per step. The
   `fetch` wrapper builds a `ReadableStream` (JS `start` + `setTimeout`) that
   enqueues frames, honours `delayMs`, closes on `drop`, and otherwise polls
@@ -401,37 +427,39 @@ Development machine: lxdev receives progress, results, and artifacts
 - Watching without routes (call log, recording, contract capture): see
   [Network observation](#network-observation).
 - Dev-session scenarios (`network/dev.rs`, `session.network.*` in
-  `lingxia-control-runtime`) install under the owner `@dev-session`. They
-  are skipped by `decide_route` while any run is active, logged with
-  `LogBuilder` warnings on install, replace, clear and every answered
-  request, and cleared when the dev bridge disconnects (`bridge.rs` →
-  `session_ended`, also on a transient reconnect: failing closed). An app
-  relaunch keeps them: routes match by appid, not by context.
-  `Registry::end_dev_scenario(reason)` is the one way a dev scenario ends;
-  it keeps `dev_cleared` (`cleared` / `replaced` / `session_ended` and the
-  time) for `status`'s `lastCleared`. A `use` parses the whole file before
-  touching the active scenario, so an invalid file leaves it answering. The
-  methods exist only with the `test-runtime` feature; lxdev maps
-  `unknown_method` to "built without the automation test runtime".
-- `lxdev scenario` (`tools/lingxia-devtools-cli/src/scenario.rs`) owns the
-  sectioning; the host protocol only sees HTTP routes. `parse_file` splits a
-  file into sections (top-level `routes` becomes `http`). Each section has a
-  `SectionProvider` (`install`/`clear`/`status`, `suspendable`); `providers()`
-  lists the ones this lxdev has (today only `HttpProvider`, which sends the
-  flat `{ name, description, routes }` to `session.network.scenario.use`). A
-  section without a provider fails before anything is installed. `install`
-  runs providers in `SECTIONS` order (`worker` before `http`), clears the
-  ones already installed when a later one fails, then clears providers whose
-  section the new file lacks. `refuse_test_while_blocking` runs before every
-  `lxdev test` start: it asks only non-suspendable providers for their
-  status and fails with `scenario_active` while one is active; with only
-  HTTP it costs nothing. Name resolution: a path that exists wins, else
-  `<root>/<name>.json` over `search_roots` (session content dir, project
-  root, then the lxapp project of the current directory when it lies inside
-  one of those), each joined with `tests/scenarios`. `list` needs no session
-  (it falls back to the current directory's project). The Worker contract a
-  future provider follows is sketched in
-  [scenario-worker-provider.md](scenario-worker-provider.md).
+  `lingxia-control-runtime`) install under the owner `@dev-session`. The
+  host receives the whole file plus `variant` (`dryRun` only validates) and
+  installs its `http` rules; `function` rules are listed in the status for
+  numbering. Dev routes are skipped by `decide_route` while any run is
+  active and answer again when it ends. Install, replace, clear, every
+  answered request and every no-match write `LogBuilder` warnings; the dev
+  bridge disconnecting clears the scenario (`bridge.rs` → `session_ended`,
+  also on a transient reconnect: failing closed). An app relaunch keeps it:
+  routes match by appid, not by context. `Registry::end_dev_scenario(reason)`
+  is the one way a dev scenario ends; it keeps `dev_cleared` for
+  `lastCleared`. While a dev scenario exists `observe` logs every call, so
+  `session.network.status` can return `calls` with `answeredBy`. The methods
+  exist only with the `test-runtime` feature; lxdev maps `unknown_method` to
+  "built without the automation test runtime".
+- `lxdev scenario` (`tools/lingxia-devtools-cli/src/scenario.rs`): `resolve`
+  takes a file that exists, else `name[:variant]` (a file may carry
+  `:variant` too) over `search_roots` (session content dir, project root,
+  then the lxapp project of the current directory when it lies inside one of
+  those), each joined with `tests/scenarios`. `install` resolves the
+  variant, has the host dry-run the file, checks
+  `session.companion.capabilities` when the file has `function` rules (and
+  refuses the whole file without `scenario.function`), sends
+  `scenario.use { owner: "dev" }` through the dev server, then installs the
+  `http` rules; a host failure clears the companion again. A file without
+  `function` rules clears the companion's `dev` owner. `status` merges the
+  companion's per-rule hits onto `function` rules; `reached()` drives the
+  app-cache hint (after `use`, a 4 s wait on a TTY; in `status`, whenever
+  nothing reached it). `--watch` polls the file every 300 ms and reinstalls
+  on a content change (`watch()`, testable with a fake `Session`). `list`
+  needs no session. `lxdev test` no longer consults the dev scenario.
+- The companion side of `function` rules (dev server relay, owner
+  lifecycle, runtime upstream) and its wire contract:
+  [scenario-companion-protocol.md](scenario-companion-protocol.md).
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
@@ -558,8 +586,8 @@ route table (`Registry`) under its one lock.
   during runs, and stores the chosen owner on the call (`Call::recorder`);
   `settle` pushes only into that recording. At most 500 exchanges and 16 MiB
   of bodies per recording; text over
-  1 MiB and binary over 64 KiB are noted. `to_scenario` groups by method and
-  URL, keeps one answer only when all are equal (else a `sequence` of up to
+  1 MiB and binary over 64 KiB are noted. `to_scenario` writes one `http`
+  rule per method and URL, keeps one answer only when all are equal (else a `sequence` of up to
   100, so the n-th replayed call gets the n-th recorded answer), turns
   transport failures into `abort`, drops `AbortError`s, and redacts
   credential-named fields (`redact_json`, `SECRET_NAMES`, compared
