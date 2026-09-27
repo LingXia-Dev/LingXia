@@ -1,12 +1,32 @@
 import { runnerClearTimeout, runnerSetTimeout } from "./pending.js";
 
 /**
- * A fixture wait or budget ran out: `t.waitFor`, `waitForCall`, a driver
- * call raced against an action budget, cleanup, or the spec itself.
+ * A fixture call or budget ran out: `t.waitFor`, `waitForCall`, a driver
+ * call raced against an action budget or timing out itself (its own code is
+ * `cause.code` and `data.driverCode`), cleanup, or the spec itself.
  */
 export class TimeoutError extends Error {
   override readonly name = "TimeoutError";
   readonly code = "E_TIMEOUT" as const;
+  data?: unknown;
+}
+
+/** The driver codes a fixture call reports as `E_TIMEOUT`. */
+const DRIVER_TIMEOUT_CODES = new Set(["E_AUTOMATION_TIMEOUT", "E_EVAL_TIMEOUT"]);
+
+/**
+ * One timeout code at the fixture boundary: a driver rejection that timed
+ * out becomes a `TimeoutError` whose `cause` is the driver's error; anything
+ * else passes through.
+ */
+export function asFixtureTimeout(error: unknown): unknown {
+  const code = errorCode(error);
+  if (code === undefined || !DRIVER_TIMEOUT_CODES.has(code)) return error;
+  const timeout = new TimeoutError(error instanceof Error ? error.message : String(error));
+  const data = (error as { data?: unknown }).data;
+  timeout.data = data && typeof data === "object" ? { ...(data as object), driverCode: code } : { driverCode: code };
+  (timeout as { cause?: unknown }).cause = error;
+  return timeout;
 }
 
 /**

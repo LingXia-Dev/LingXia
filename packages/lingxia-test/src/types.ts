@@ -14,6 +14,7 @@ import type {
   LxAppDriver,
   NetworkRouteHandler,
   NetworkRoutePattern,
+  PageInfo,
   PageKey,
   PagePointer,
   PageQueryResult,
@@ -30,10 +31,15 @@ import type { ProtocolReport } from "./report-types.js";
 
 /**
  * Every `code` a spec can meet on a rejection or a failed spec: the
- * automation driver codes, a broken OpenAPI contract, a fixture wait that ran
- * out of time, and a runtime skip.
+ * automation driver codes, a broken OpenAPI contract, a fixture call that
+ * ran out of time, and a runtime skip. A driver timeout reaches a spec as
+ * `E_TIMEOUT`, with the driver's own code in `error.cause.code`.
  */
-export type TestErrorCode = AutomationErrorCode | "E_OPENAPI_CONTRACT" | "E_TIMEOUT" | "E_SKIPPED";
+export type TestErrorCode =
+  | Exclude<AutomationErrorCode, "E_AUTOMATION_TIMEOUT" | "E_EVAL_TIMEOUT">
+  | "E_OPENAPI_CONTRACT"
+  | "E_TIMEOUT"
+  | "E_SKIPPED";
 
 export interface SpecOptions {
   /** Stable id. ASCII titles slug by default; non-ASCII titles need this or become `file-n`. */
@@ -386,6 +392,49 @@ export interface TestLogic {
   ): Promise<LogicMethodResult<T, K>>;
 }
 
+/** Nav actions' wait. */
+export interface NavWaitOptions {
+  /**
+   * `'ready'` (default) resolves after the landed page's `onReady` and
+   * rejects if the app replaces it first; `'commit'` resolves once the page
+   * stack changed.
+   */
+  waitUntil?: "commit" | "ready";
+  /** Bound for `'ready'` in ms (default 15000), clamped to the spec's remaining budget. */
+  timeout?: number;
+}
+
+/** `t.app.nav.to` / `redirect` / `switchTab` / `relaunch` options. */
+export interface NavOptions extends NavWaitOptions {
+  /** Configured page name (from lxapp.json). */
+  page: string;
+  /** Query forwarded to the destination page. */
+  query?: Record<string, unknown>;
+}
+
+/** `t.app.nav.back` options. */
+export interface NavBackOptions extends NavWaitOptions {
+  /** Number of pages to pop (default 1). */
+  delta?: number;
+}
+
+/** `t.app.nav`: the page stack. Actions resolve to the landed page. */
+export interface TestNav {
+  /** Push a page onto the stack. */
+  to(options: NavOptions): Promise<PageInfo>;
+  /** Replace the current page (rejects tab-bar targets). */
+  redirect(options: NavOptions): Promise<PageInfo>;
+  /** Switch to a configured tab page. */
+  switchTab(options: NavOptions): Promise<PageInfo>;
+  /** Unload every page (cached tab pages included) and open a fresh instance of a page. */
+  relaunch(options: NavOptions): Promise<PageInfo>;
+  back(options?: NavBackOptions): Promise<PageInfo>;
+  current(): Promise<PageInfo>;
+  /** Status of a configured page by name; omit `page` for the current page. */
+  info(options?: PageTarget): Promise<PageInfo>;
+  stack(): Promise<PageInfo[]>;
+}
+
 /**
  * One call the app made, as `route.calls()`, `scenario.calls()` and
  * `t.app.network.calls()` list it.
@@ -515,8 +564,8 @@ export interface TestApp {
   readonly view: TestView;
   /** The app's Logic runtime: `eval(fn)`, page `data()` and `call()`. */
   readonly logic: TestLogic;
-  /** Navigation; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
-  readonly nav: LxAppDriver["nav"];
+  /** The page stack; actions wait for the landed page's `onReady` unless you pass `waitUntil`. */
+  readonly nav: TestNav;
   /** Spec-scoped test routing of Logic `fetch`. */
   readonly network: TestNetwork;
   /**

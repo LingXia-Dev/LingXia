@@ -15,7 +15,7 @@ import { NetworkScope, wrapNetwork } from "./network.js";
 import { ScenarioScope, installScenario } from "./scenario.js";
 import { ClockScope, wrapClock } from "./clock.js";
 import { activeOpenApi } from "./openapi.js";
-import { ActionDeadline, TimeoutError } from "./deadline.js";
+import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
 import { isTransientTransportError } from "./deadline.js";
 import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
@@ -50,6 +50,10 @@ import type {
   ProfileRestoreOptions,
   OpenApiRun,
   TestLogic,
+  TestNav,
+  NavBackOptions,
+  NavOptions,
+  NavWaitOptions,
   TestView,
   WaitForOptions,
 } from "./types.js";
@@ -67,7 +71,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavBackOptions, NavDriver, NavOptions, NavWaitOptions, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -523,7 +527,13 @@ export class LiveFixture implements Fixture {
    * would otherwise bury the report in a hundred identical rows.
    */
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
-    return this.track(name, detail, () => this.recordAct(name, detail, op));
+    return this.track(name, detail, () => this.recordAct(name, detail, async () => {
+      try {
+        return await op();
+      } catch (error) {
+        throw asFixtureTimeout(error);
+      }
+    }));
   }
 
   /**
@@ -834,12 +844,13 @@ export class LiveFixture implements Fixture {
   }
 
   /**
-   * Fixture navigation waits for the landed page's `onReady` unless the
-   * caller picks `waitUntil`; reads retry a dropped transport.
+   * Fixture navigation takes the fixture's option names and waits for the
+   * landed page's `onReady` unless the caller picks `waitUntil: 'commit'`;
+   * reads retry a dropped transport.
    */
-  private wrapNav(nav: () => NavDriver): TestApp["nav"] {
+  private wrapNav(nav: () => NavDriver): TestNav {
     const land = (verb: "to" | "redirect" | "switchTab" | "relaunch") => (options: NavOptions) =>
-      this.act(`nav.${verb}`, summarise(options), () => nav()[verb](untilReady(options)));
+      this.act(`nav.${verb}`, summarise(options), () => nav()[verb](this.navOptions(options, `t.app.nav.${verb}`)));
     const read = <T,>(verb: string, op: () => Promise<T>, detail?: unknown) =>
       this.act(`nav.${verb}`, summarise(detail), () => this.readRetrying(op));
     return {
@@ -847,11 +858,25 @@ export class LiveFixture implements Fixture {
       redirect: land("redirect"),
       switchTab: land("switchTab"),
       relaunch: land("relaunch"),
-      back: (options?: NavBackOptions) => this.act("nav.back", summarise(options), () => nav().back(untilReady(options))),
+      back: (options?: NavBackOptions) =>
+        this.act("nav.back", summarise(options), () => nav().back(this.navOptions(options ?? {}, "t.app.nav.back"))),
       current: () => read("current", () => nav().current()),
       info: (options?: PageTarget) => read("info", () => nav().info(options), options),
       stack: () => read("stack", () => nav().stack()),
     };
+  }
+
+  /** The driver's options for a fixture nav action. */
+  private navOptions<T extends NavWaitOptions>(options: T, api: string): Omit<T, "timeout" | "waitUntil"> & DriverNavWait {
+    if (!options || typeof options !== "object") throw new TypeError(`${api} takes an options object`);
+    if ("timeoutMs" in options) throw new TypeError(`${api} takes { timeout } in ms`);
+    const { timeout, waitUntil = "ready", ...rest } = options;
+    if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
+      throw new TypeError(`${api}({ timeout }) takes a positive number of ms`);
+    }
+    if (waitUntil !== "ready") return { ...rest, waitUntil };
+    const room = Math.max(1, Math.floor(this.budgetRoom()));
+    return { ...rest, waitUntil, timeoutMs: Math.min(timeout ?? NAV_READY_TIMEOUT_MS, room) };
   }
 
   private wrapLogic(driver: () => LxAppDriver): TestLogic {
@@ -1471,14 +1496,13 @@ function matchLocator(
   }
 }
 
-/**
- * A spec almost always wants the page it navigated to, so fixture navigation
- * waits for the landed page's `onReady` unless the caller picks `waitUntil`
- * (`'commit'` resolves once the stack changed).
- */
-function untilReady<T extends NavWaitOptions>(options?: T): T {
-  if (options && typeof options === "object" && options.waitUntil !== undefined) return options;
-  return { ...(options ?? {}), waitUntil: "ready" } as T;
+/** The driver's own bound for `waitUntil: 'ready'`, the fixture's default too. */
+const NAV_READY_TIMEOUT_MS = 15_000;
+
+/** A nav wait as the driver takes it. */
+interface DriverNavWait {
+  waitUntil: "commit" | "ready";
+  timeoutMs?: number;
 }
 
 function guardObject<T extends object>(

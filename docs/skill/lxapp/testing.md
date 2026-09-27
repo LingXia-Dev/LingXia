@@ -562,7 +562,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 - **`fill` works on framework-controlled inputs.** It sets the value through
   the element's native value setter and dispatches `input` and `change`, so
   React/Vue state follows; assert the state, not only the DOM value.
-- **Fixture nav waits for `onReady`** (`timeoutMs`, default 15000) and rejects
+- **Fixture nav waits for `onReady`** (`timeout`, default 15000) and rejects
   if the app replaces the page first, e.g. with its own `lx.reLaunch`. Pass
   `waitUntil: 'commit'` to resolve once the stack changed, then assert the
   landing page.
@@ -674,7 +674,8 @@ lxdev test --list                 # list specs (file:line, id, title, tags) with
   fails the run. `spec.fail` without `expected` accepts any body failure.
 - Rejections carry stable codes, typed as `TestErrorCode` (`TEST_ERROR_CODES`):
   the driver's (`E_PAGE_NOT_ACTIVE`, `E_ELEMENT_NOT_FOUND`, `E_EVAL_SCRIPT`,
-  …), `E_TIMEOUT` (a fixture wait or budget), `E_OPENAPI_CONTRACT` and
+  …), `E_TIMEOUT` (any fixture call that ran out of time; a driver's own
+  timeout code is `error.cause.code`), `E_OPENAPI_CONTRACT` and
   `E_SKIPPED`, for `t.reject(op, { code })` and `expected.code`. `report.json` `failures[]`
   names each failure's action, page instance and code.
 - A failed spec also lists the app's last Logic network calls; see

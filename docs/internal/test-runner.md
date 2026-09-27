@@ -429,6 +429,14 @@ Development machine: lxdev receives progress, results, and artifacts
   Unresolved references are globals and pass; type positions are erased. A
   function passed by name is checked where it is declared. Files under
   `node_modules` are not checked.
+- `t.app.nav` is the fixture's own `TestNav`: fixture option names
+  (`timeout`), `waitUntil: 'ready'` by default, and the ready bound (default
+  15000, the driver's) clamped to `budgetRoom()` and sent as `timeoutMs`; a
+  `timeoutMs` key is refused. `LiveFixture.act` passes every rejection
+  through `asFixtureTimeout` (`deadline.ts`): `E_AUTOMATION_TIMEOUT` and
+  `E_EVAL_TIMEOUT` become a `TimeoutError` (`E_TIMEOUT`) with the driver's
+  error as `cause` and `data.driverCode`, so a spec meets one timeout code;
+  `TestErrorCode` and `TEST_ERROR_CODES` leave the two driver codes out.
 - Every fixture call runs through `LiveFixture.track` (`act`, the locator
   and poll retries): it is in `inFlight` until it settles, with an `Error`
   captured at its start for the spec line. Public fixture methods return
