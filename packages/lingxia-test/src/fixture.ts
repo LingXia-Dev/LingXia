@@ -978,8 +978,12 @@ export class LiveFixture implements Fixture {
     return Math.max(1, Math.min(timeout, this.budgetRoom()));
   }
 
-  private viewEval(page: () => PageDriver, input: unknown[], api: string): Promise<unknown> {
-    const { options, fn, args } = evalInput<ViewEvalOptions>(input);
+  private viewEval(page: () => PageDriver, input: unknown[], api: string, bound?: string): Promise<unknown> {
+    const parsed = evalInput<ViewEvalOptions>(input);
+    const { fn, args } = parsed;
+    const options = bound === undefined || parsed.options?.page !== undefined
+      ? parsed.options
+      : { ...parsed.options, page: bound };
     if (typeof fn !== "function") {
       throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test)`);
     }
@@ -997,7 +1001,8 @@ export class LiveFixture implements Fixture {
       }))));
   }
 
-  private wrapView(page: () => PageDriver): TestView {
+  /** `bound`: the page `view.page(name)` targets unless a call names another. */
+  private wrapView(page: () => PageDriver, bound?: string): TestView {
     const location = () => {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
@@ -1012,13 +1017,23 @@ export class LiveFixture implements Fixture {
       eval: (options) => page().eval(options),
     };
     const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
+    const target = <T extends PageTarget>(options?: T): T | undefined =>
+      bound === undefined || options?.page !== undefined ? options : { ...options, page: bound } as T;
     return {
-      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), options),
-      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), options),
-      eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval")) as TestView["eval"],
-      screenshot: (options?: PageTarget) =>
-        this.act("page.screenshot", summarise(options), () => this.readRetrying(() => page().screenshot(options))),
-      scroll: (options) => input.scroll(options),
+      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), target(options)),
+      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), target(options)),
+      page: (name: string) => {
+        if (typeof name !== "string" || name.length === 0) {
+          throw new TypeError("t.app.view.page(name) takes a configured page name or instance id");
+        }
+        return this.wrapView(page, name);
+      },
+      eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval", bound)) as TestView["eval"],
+      screenshot: (options?: PageTarget) => {
+        const shot = target(options);
+        return this.act("page.screenshot", summarise(shot), () => this.readRetrying(() => page().screenshot(shot)));
+      },
+      scroll: (options) => input.scroll(target(options)),
       get pointer() { return input.pointer; },
       get key() { return input.key; },
     };

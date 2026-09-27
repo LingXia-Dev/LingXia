@@ -42,9 +42,9 @@ spec.reset(async t => {
 
 spec("persist todo edits made through the rendered page", { id: "TODO-001", covers: ['lx.getStorage', 'Storage.get', 'Storage.set'], app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-001");
-  const view = app.view;
+  const todo = app.view.page('todo');
 
-  await expect(view.testId('todo-page', { page: 'todo' })).toBeVisible();
+  await expect(todo.testId('todo-page')).toBeVisible();
 
   const text = `automation todo ${Date.now()}`;
   pendingTodo = text;
@@ -53,14 +53,14 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     pendingTodo = undefined;
   });
   try {
-    const input = view.testId('todo-input', { page: 'todo' });
+    const input = todo.testId('todo-input');
     await input.fill(text);
     // `fill` writes through the input's value setter and dispatches
     // input/change, so the framework-controlled value follows it.
     await expect(input).toHaveAttribute('data-controlled-value', text);
     await input.press('Enter');
 
-    const label = view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
+    const label = todo.testId('todo-label').filter({ hasText: text });
     await expect(label).toBeVisible();
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
     const { todos } = await app.logic.data<{ todos: Todo[] }>({ page: 'todo' });
@@ -69,31 +69,31 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await label.click();
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: true });
 
-    await view.testId('todo-filter-completed', { page: 'todo' }).click();
+    await todo.testId('todo-filter-completed').click();
     await expect(label).toBeVisible();
-    await view.testId('todo-filter-active', { page: 'todo' }).click();
+    await todo.testId('todo-filter-active').click();
     await expect(label).toHaveCount(0);
-    await view.testId('todo-filter-all', { page: 'todo' }).click();
+    await todo.testId('todo-filter-all').click();
 
     await label.click();
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
 
-    const screenshot = await view.screenshot({ page: 'todo' });
+    const screenshot = await todo.screenshot();
     await attachShot(t, 'todo-page.png', {
       mimeType: 'image/png',
       base64: screenshot.base64,
     });
 
     // The delete button sits beside the label: find the row by its text.
-    const row = await view.eval(({ document }, wanted) =>
+    const row = await todo.eval(({ document }, wanted) =>
       Array.from(document.querySelectorAll('[data-testid="todo-label"]'))
         .findIndex((element) => element.textContent?.trim() === wanted), text);
-    await view.testId('todo-delete', { page: 'todo', index: row }).click();
+    await todo.testId('todo-delete').nth(row).click();
     await expect(label).toHaveCount(0);
     await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
   } catch (error) {
     try {
-      const screenshot = await view.screenshot({ page: 'todo' });
+      const screenshot = await todo.screenshot();
       await attachShot(t, 'todo-page-failure.png', {
         mimeType: 'image/png',
         base64: screenshot.base64,
@@ -107,7 +107,8 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
 
 spec("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-002");
-  await expect(app.view.testId('todo-page', { page: 'todo' })).toBeVisible();
+  const todo = app.view.page('todo');
+  await expect(todo.testId('todo-page')).toBeVisible();
 
   const text = `logic todo ${Date.now()}`;
   pendingTodo = text;
@@ -117,7 +118,7 @@ spec("add and delete a todo through the page's Logic methods", { id: "TODO-002",
   });
 
   await app.logic.call<TodoPage, 'addTodo'>('addTodo', { text });
-  const label = app.view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
+  const label = todo.testId('todo-label').filter({ hasText: text });
   await expect(label).toBeVisible();
 
   const added = await t.waitFor(

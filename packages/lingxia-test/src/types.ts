@@ -330,6 +330,12 @@ export interface TestView {
   testId(id: string, options?: LocatorOptions): Locator;
   css(selector: string, options?: LocatorOptions): Locator;
   /**
+   * This view bound to page `name` (a configured page name or live instance
+   * id): its locators, `eval`, `screenshot` and `scroll` target that page
+   * unless a call names another.
+   */
+  page(name: string): TestView;
+  /**
    * Run `fn` in the current page's WebView with JSON `args` and resolve to
    * its JSON result. `fn` must be self-contained (see `ViewFunction`).
    */
