@@ -5,108 +5,75 @@ license: MIT
 allowed-tools: Read, Grep, Glob, Edit, Write, Bash(lingxia:*), Bash(lxdev:*), Bash(npm:*), Bash(npx:*), Bash(test:*), Bash(ls:*), Bash(cat:*), Bash(cargo:*)
 ---
 
-# LingXia App Development
+# LingXia
 
-LingXia is a cross-platform app framework. This skill is the entry router — it carries the decision tree and pointers into supporting reference files. **Read sub-files only when you need them**; do not load the whole tree up front.
+This file routes you to the one doc you need. Read sub-files only when needed.
+Assume `lingxia` is on `PATH` (`lingxia version`), but confirm the project
+shape with Step 0.
 
-When you read this you can usually assume the `lingxia` CLI is on `PATH` (verify with `lingxia version`; installing it is outside this skill's scope) and that you are inside a LingXia project — but **confirm the shape** with the probe in Step 0 rather than guessing.
-
----
+API signatures are never copied into these docs: `@lingxia/types` (and each
+package's own declarations) and every CLI's `--help` are the source of truth.
 
 ## Step 0 — Decide before scaffolding
 
-**Always do this first.** Before generating a single file:
-
-### 0a. Identify what you're inside
+### 0a. What are you inside?
 
 ```bash
 test -f lingxia.yaml   && echo "host-app"
 test -f lxapp.json     && echo "lxapp"
 ```
 
-If one matches, jump to the fast-path for that shape.
+Neither matches: an empty directory, or someone else's project. Scaffold only
+into an empty directory or one the user asked you to initialise; otherwise say
+so and stop. Scaffolding writes pages, config, and dependencies.
 
-If none matches you are in an empty directory or in **someone else's project**;
-the manifest above is what tells those apart. Scaffold only into an empty
-directory, or one the user asked you to initialise — otherwise say so and stop.
-Deleting `lxapp.json` afterwards does not undo it: pages, config, and
-dependencies are written too.
+### 0b. Pick the shape
 
-### 0b. Pick the shape (ask the user or infer)
+1. Standalone lxapp or host app? (A vs B/C)
+2. Host app: which platforms (`android`, `ios`, `macos`, `windows`, `harmony`)?
+3. Host app: lxapp or native terminal/browser as the main experience; lxapp or
+   Rust as host control? (B vs C)
+4. View framework: React, Vue, or HTML — one per project.
 
-1. **Standalone lxapp or host app?** (A vs B/C below)
-2. **If host app:** which platforms? `android`, `ios`, `macos`, `windows`, `harmony`, any combination.
-3. **If host app:** lxapp or terminal/browser as the main experience, and lxapp
-   or native Rust as host control? (B vs C)
-4. **View framework:** React, Vue, or HTML when an lxapp is scaffolded — chosen
-   once; a project has exactly one.
-
-Then scaffold:
+### 0c. Scaffold and read the result
 
 ```bash
-# Shape A — standalone lxapp
-lingxia new my-lxapp -t lxapp -y
-
-# Shape B/C — native host app
-lingxia new my-app -t native-app -p macos --package-id com.example.myapp -y
-# -p accepts: android, ios, macos, windows, harmony, all  (comma-separated)
+lingxia new hello -t lxapp -y                                   # Shape A — standalone lxapp
+lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # Shape B/C — host app
 ```
 
-`lingxia doctor` verifies platform toolchains.
-
----
+The generated tree is the authoritative layout for your CLI version. In
+`pages/home/`, `index.ts` is Logic, `index.tsx` (or `.vue` / `.html`) is the
+View, `index.json` is page config. More forms: [`lingxia new`](./cli/lingxia.md#lingxia-new).
+`lingxia doctor` checks toolchains.
 
 ## The development loop
 
-Two binaries, one split: **`lingxia dev` starts a session** (build → install →
-launch → dev websocket), **`lxdev` connects to that session** and drives it.
-Memorize the split; everything else is detail in the two CLI docs.
-
-After an edit, pick the loop by **what you changed** — this is the decision
-that matters:
+`lingxia dev` starts a session (build → install → launch → dev websocket);
+`lxdev` drives it.
 
 | You changed | Do |
 |---|---|
-| **lxapp code** (View / Logic / `lxapp.json`) — an embedded resource or a standalone lxapp project | save — `lingxia dev` rebuilds and reloads in place (host sessions include embedded lxapps). No new session. |
-| **host/app code** (`lingxia.yaml`, native Rust, platform projects) | re-run `lingxia dev` — it automatically stops the project's previous same-platform session and takes over. |
+| lxapp code (View, Logic, `lxapp.json`), standalone or embedded | Save. The session rebuilds and reloads in place. |
+| host code (`lingxia.yaml`, native Rust, platform projects) | Re-run `lingxia dev`; it takes over the previous session. |
 
 ```bash
 lingxia dev --background     # start (or take over) this project's session; returns when live
-lingxia dev <http(s)://url> --headless --background
+lingxia dev stop
 ```
 
-**A successful edit (or build) is not "done."** Done means you drove the change
-in the running app and watched it behave. Close the loop with `lxdev`:
+**A successful build is not done.** Done means you watched the change work:
 
-1. Apply the change with the loop above (save / dev takeover).
-2. Exercise the change itself: navigate to the page (`lxdev lxapp nav to ...`)
-   and interact with it (`lxdev lxapp page click/type ...`). A new control gets
-   clicked, not just rendered.
-3. Confirm the expected effect where it lives: page DOM via
-   `lxdev lxapp page eval`, Logic state via `lxdev lxapp eval` — assertable
-   values beat screenshot-squinting. Screenshot before/after only when the
-   change is visual.
-4. Check `lxdev logs` for new errors or warnings from the interaction.
+1. Navigate to it (`lxdev lxapp nav to ...`) and use it
+   (`lxdev lxapp page click/type ...`). A new control gets clicked.
+2. Assert the effect: DOM via `lxdev lxapp page eval`, Logic state via
+   `lxdev lxapp eval`. Screenshot only visual changes.
+3. Check `lxdev logs` for new errors.
 
-Any step fails → fix and rerun from step 1. Don't hand back partially verified
-work, and report what you actually observed — not what the edit should do.
+On failure, fix and repeat. Report what you observed, not what the edit should
+do. Keep regressions as `lxdev test` specs: [Testing](./lxapp/testing.md).
 
-Keep regressions and repeatable business flows as `lxdev test` cases:
-`tests/api/` for `lx.*` contracts, `tests/pages/` for page behavior, and
-`tests/flows/` for cross-page journeys.
-One-off visual polish needs live verification, not necessarily a permanent test.
-Read [Product testing](./lxapp/testing.md) for a starter spec, common tasks,
-gotchas, CI flags, and external integrations; for CI see
-[Running specs in CI](./lxapp/testing.md#running-specs-in-ci). `lxdev test
-report` reprints the last run's failures.
-
-Command details: [`lingxia` CLI](./cli/lingxia.md) · [`lxdev`](./cli/lxdev.md).
-
----
-
-## What you build (pick one shape)
-
-Every page is two layers over a bridge — the split every shape below inherits:
+## Shapes
 
 ```
 ┌─────────────────────┐                          ┌──────────────────────┐
@@ -116,8 +83,8 @@ Every page is two layers over a bridge — the split every shape below inherits:
 └─────────────────────┘                          └──────────────────────┘
 ```
 
-View never mutates `data`; it calls an action, and Logic answers with
-`setData`. Shape C swaps the JS Logic for Rust and keeps the same boundary.
+View never mutates `data`; it calls an action and Logic answers with
+`setData`.
 
 | Shape | What it is | Pick when |
 |---|---|---|
@@ -125,104 +92,58 @@ View never mutates `data`; it calls an action, and Logic answers with
 | **B. Host app + JS lxapp** | Native installable app (Android/iOS/macOS/Windows/Harmony) embedding a home lxapp whose Logic is JS. | Most product apps. |
 | **C. Host app + native Rust control** | Either an HTML control lxapp with `logic: false`, or a macOS/Windows terminal/browser main with no bundled lxapp. | Rust-controlled utilities and products whose main experience is a built-in native capability. |
 
-A JS-Logic lxapp that **calls** Rust routes via `#[lingxia::native]` is still B:
-native Rust is an API surface there, not the control layer. Each shape's actual
-setup — which flags, which files — is in "See a real layout" below.
+A JS-Logic lxapp that calls Rust routes is still B. B's id rule:
+[`app`](./app/project.md#app). C's `appService`/`logic` rule:
+[`features`](./app/project.md#features).
 
----
-
-## `@lingxia/*` npm packages at a glance
-
-What an lxapp or host author imports, and from where. Don't guess an import from the package name — use this table.
+## `@lingxia/*` packages
 
 | Package | What it is | Imported by | Typical import |
 |---|---|---|---|
 | `@lingxia/react` | React hooks + framework-wrapped native components | lxapp View (React) | `useLxPage`, `useLxHost`, `useLxStream`, `LxNativeRoot`, `LxVideo`, … |
 | `@lingxia/vue` | Vue composables + framework-wrapped native components | lxapp View (Vue) | same surface as React, Vue-flavored |
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
-| `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, `<lx-input>`, …) | rarely direct — `@lingxia/react`/`vue` re-export wrappers around these | `registerVideoComponent`, `LxVideoElement` |
-| `@lingxia/types` | **TypeScript declarations for the Logic-side `lx.*` API + `Page({})` / `App({})` globals** | lxapp Logic (`pages/*/index.ts`) | install as dev dep; types apply globally |
-| `@lingxia/test` | Authoring SDK and clock for lxapp tests (`spec`, locators, `expect`) | lxapp tests / `lxdev test` | `import { spec } from '@lingxia/test'` |
-| `@lingxia/bridge` | Bridge runtime + low-level invocation helpers | rarely direct (advanced) | only when bypassing the framework wrappers |
-| `@lingxia/native` | Virtual module — points at the **CLI-generated** native client (`#[lingxia::native]` routes) | lxapp View | `import { native } from '@lingxia/native'` — only after a native build runs |
+| `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, …) | rarely direct — react/vue re-export wrappers | `registerVideoComponent`, `LxVideoElement` |
+| `@lingxia/types` | Declarations for Logic `lx.*`, `Page({})`, `App({})` | lxapp Logic (devDependency, global) | [Install typing](./lxapp/lx-api.md#install-typing) |
+| `@lingxia/test` | Spec authoring SDK for `lxdev test` | lxapp tests | `import { spec } from '@lingxia/test'` |
+| `@lingxia/bridge` | Bridge runtime + low-level helpers | rarely direct | types such as `LxStream`, `LxChannel` |
+| `@lingxia/native` | Virtual module for the CLI-generated native client | lxapp View | `import { native } from '@lingxia/native'` |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |
 
-`@lingxia/polyfills` and `@lingxia/terminal-settings` are published too, but the
-CLI and the host ship them for you — never add either to a project.
+The CLI and host ship `@lingxia/polyfills` and `@lingxia/terminal-settings`;
+never add them to a project.
 
-**Logic-side typing**: install `@lingxia/types` as a devDependency (declarations are global — no `import`). Runtime boundaries and typing setup: [`./lxapp/lx-api.md`](./lxapp/lx-api.md).
-
-## Reference map (inside this skill)
+## Reference map
 
 | Need | File |
 |---|---|
-| The `lingxia` CLI — daily commands (build, dev, package, install) | [`./cli/lingxia.md`](./cli/lingxia.md) |
-| iOS Packet Tunnel / Network Extension packaging | [`./cli/lingxia.md`](./cli/lingxia.md#ios-packet-tunnel-extensions) |
-| Product E2E tests: starter spec, APIs, gotchas, CI, external service/browser journeys | [`./lxapp/testing.md`](./lxapp/testing.md) |
-| Put a running app into a named product state (`lxdev scenario`, scenario files) | [`./lxapp/scenarios.md`](./lxapp/scenarios.md) |
-| Drive a running `lingxia dev` session — `lxdev` (browser/host/lxapp/logs automation; run `lxdev <cmd> --help` for exact flags) | [`./cli/lxdev.md`](./cli/lxdev.md) |
-| Ship it: publish to the LingXia server, platform signing, app-store submission, developer accounts | [`./cli/distribution.md`](./cli/distribution.md) |
-| Page authoring: `Page({})`, `useLxPage`, events | [`./lxapp/guide.md`](./lxapp/guide.md) |
-| Adaptive Views: surface size classes, runtime switching, Runner device frames | [`./lxapp/adaptive-ui.md`](./lxapp/adaptive-ui.md) |
-| **Inline native island: `LxNativeRoot` wraps `LxVideo`; plus Cover/View/Text/Button. Presenters: `LxPicker`, `LxMediaSwiper`, `LxNavigator`. Text input is plain `<input>`/`<textarea>`** | [`./lxapp/components.md`](./lxapp/components.md) |
-| **Logic runtime globals and typing setup** | [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
-| Bridge mechanics: `setData`, stream, channel | [`./lxapp/bridge.md`](./lxapp/bridge.md) |
-| Host project: `lingxia.yaml` reference, adaptive `surfaces` | [`./app/project.md`](./app/project.md) |
-| **Which lxapp is trusted: Control app vs control surface vs guest, and what each may call** | [`./app/control-app.md`](./app/control-app.md) |
-| Let a command line or host-owned agent integration drive a shipped product — `appUse` / `computerUse` / `browserUse`, executable discovery | [`./app/agent-control.md`](./app/agent-control.md) |
-| What an lxapp may reach and do, and where that grant comes from | [`./native/permissions.md`](./native/permissions.md) |
-| Native Rust: `HostAddon`, `#[lingxia::native]`, facades, JS extensions | [`./native/development.md`](./native/development.md) |
-| Launch screen (`splash:`) and the per-launch cover hook | [`./native/splash.md`](./native/splash.md) |
-| iOS/macOS SDK embedding, public startup APIs | [`./app/apple-sdk.md`](./app/apple-sdk.md) |
-| Universal links / app links setup | [`./app/applinks.md`](./app/applinks.md) |
-| File API lifecycle (storage classes, downloadFile, `lx.fs`) | [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
+| **Loop** | |
+| `lingxia` commands: new, dev, build, package, devices, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
+| Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
+| Write and run specs (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
+| Scenario files and `lxdev scenario` / `lxdev network` | [lxapp/scenarios.md](./lxapp/scenarios.md) |
+| **Lxapp** | |
+| Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
+| `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |
+| Native components: `LxNativeRoot` + `LxVideo`, `LxPicker`, `LxMediaSwiper`, `LxNavigator`; text inputs | [lxapp/components.md](./lxapp/components.md) |
+| Logic runtime: typing, Web globals, product settings, `lx.supports`, badges, notifications, errors | [lxapp/lx-api.md](./lxapp/lx-api.md) |
+| Size classes and per-size Views | [lxapp/adaptive-ui.md](./lxapp/adaptive-ui.md) |
+| Files: `lx://` storage, `downloadFile`, `lx.fs`, `uploadFile`, quotas | [lxapp/files.md](./lxapp/files.md) |
+| **Host app** | |
+| `lingxia.yaml`: sections, surfaces, tray, theme, update, env | [app/project.md](./app/project.md) |
+| Session classes: Control app vs control surface vs guest | [app/control-app.md](./app/control-app.md) |
+| Agent/CLI control of a shipped product (`appUse`, `computerUse`, `browserUse`) | [app/agent-control.md](./app/agent-control.md) |
+| Apple entry points and embedding | [app/apple-sdk.md](./app/apple-sdk.md) |
+| Android URL player engine | [app/android-sdk.md](./app/android-sdk.md) |
+| Universal links / app links | [app/applinks.md](./app/applinks.md) |
+| **Native Rust** | |
+| `HostAddon`, `#[lingxia::native]`, audience, native client, facades, JS extensions | [native/development.md](./native/development.md) |
+| Network/privilege grants and the app registry | [native/permissions.md](./native/permissions.md) |
+| Campaign launch screen | [native/splash.md](./native/splash.md) |
+| **Ship** | |
+| Publish, update keys, signing, stores, `lingxia auth` | [cli/distribution.md](./cli/distribution.md) |
 
-## See a real layout — scaffold one
-
-Don't reach for a frozen example tree. The CLI emits a working, version-matched project per shape — generate one in a scratch dir and read it:
-
-```bash
-lingxia new hello -t lxapp -y                                   # Shape A — standalone lxapp
-lingxia new hello -t native-app -p macos --package-id com.example.hello -y   # Shape B/C — host app
-```
-
-The output is the authoritative layout for the `lingxia` on your `PATH`; it can't drift the way a hand-written sample does. What to look at per shape:
-
-- **A — standalone lxapp** (JS). In `pages/home/`: `index.ts` is **Logic** (`Page({ data, …actions })`, JS runtime), `index.tsx` is **View** (React + `useLxPage`, WebView), `index.json` is page config. Type View `PageData`/`PageActions` fields as **required**; a `_`-prefixed method stays private to Logic. Network hosts and privilege classes are [host grants](./native/permissions.md), not `lxapp.json` fields.
-- **B — host + JS lxapp** (most product apps). Adds a `lingxia.yaml` with `features.appService: true`. Three ids must line up or the wrong app launches: `app.homeAppId` = a `resources.bundles[].appId` = that bundle's `lxapp.json.appId`, and the launch `main` surface's `lxapp:` key names that same app. View calls Logic through `actions.foo()` from `useLxPage()`.
-- **C — host + Rust control.** An embedded HTML control lxapp uses `features.appService: false`, `lxapp.json` `"logic": false`, `window.native.*`, and `#[lingxia::native]` routes — flip `appService` and `logic` together, and never add `@lingxia/react|vue|html` to a logic-disabled view. A macOS/Windows `native: terminal|browser` main can omit the control lxapp, `homeAppId`, and resources entirely (`lingxia new … --main terminal|browser --control native`). Downloaded lxapps stay guest workspaces, never the control app.
-
-Run any shape with `lingxia dev`. Full recipes: [LxApp page](./lxapp/guide.md#logic-layer--page) · [host `lingxia.yaml`](./app/project.md#minimal-macos-example) · [Rust route](./native/development.md#native-routes).
-
----
-
-## Symptom router — error → file
-
-Jump straight here when the user reports a concrete failure:
-
-| Symptom | Where to look |
-|---|---|
-| A configured `homeAppId` doesn't match a bundle / wrong control app launches | [`./app/project.md`](./app/project.md) → `resources.bundles` |
-| `fetch()` silently fails from an lxapp | [`./lxapp/guide.md`](./lxapp/guide.md) → "Security Policy" (host grant; default allow) |
-| "Is `fetch` / `setTimeout` / `URL` available in Logic?" | [`./lxapp/lx-api.md`](./lxapp/lx-api.md#standard-web-apis-built-in-globals) — yes, full Rong runtime |
-| Need to read/write files (not just `lx.downloadFile`) | `lx.fs` — paths & lifecycle in [`./reference/file-lifecycle.md`](./reference/file-lifecycle.md) |
-| Surface config rejected (`aside` needs `edge`, one `main`, terminal needs capability) | [`./app/project.md`](./app/project.md#surfaces-adaptive-ui) → Rules |
-| `setData` not reflecting in View | [`./lxapp/bridge.md`](./lxapp/bridge.md) → "How replication works" |
-| Native route returns `BRIDGE_METHOD_NOT_FOUND` | [`./native/development.md`](./native/development.md) → Host Addon registration |
-| `#[lingxia::native]` compiles but View can't call it | [`./native/development.md`](./native/development.md) → "Generated Native Client" |
-| Stream cancels never trigger cleanup | [`./lxapp/bridge.md`](./lxapp/bridge.md) → generator `finally`, or `stream.onCancel()` on the explicit handle |
-| `lingxia.yaml` change ignored after rebuild | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia clean`, then rebuild |
-| iOS dev app can't reach Mac dev server | [`./cli/lingxia.md`](./cli/lingxia.md) → `lingxia dev` (LAN reachability) |
-| `Lingxia.initialize(...)` not found | [`./app/apple-sdk.md`](./app/apple-sdk.md) → use `Lingxia.quickStart()` (legacy removed) |
-| TS doesn't know about `lx.foo()` / `Page({})` in Logic | install `@lingxia/types` as a devDependency; see [`./lxapp/lx-api.md`](./lxapp/lx-api.md) |
-| `<LxVideo>` / `<LxPicker>` attribute not recognized by TS or runtime | [`./lxapp/components.md`](./lxapp/components.md) → component attribute table |
-| `lingxia build` rejects `<video>` / `<audio>` / `new Audio()` | [`./lxapp/components.md`](./lxapp/components.md) → `LxVideo` — use `<lx-video>` / `setStreamSource`; audio is not available yet |
-| Event handler on `LxVideo` / island nodes should be payload-first in React/Vue | [`./lxapp/components.md`](./lxapp/components.md) → "Callback shapes by component" |
-| Bare `<LxVideo>` without `LxNativeRoot` is `NATIVE_ROOT_INVALID_STRUCTURE` | [`./lxapp/components.md`](./lxapp/components.md) → inline native island |
-
----
-
-## Where does this code go?
+## Where code goes
 
 | Job | Lives in | Surface |
 |---|---|---|
@@ -235,28 +156,24 @@ Jump straight here when the user reports a concrete failure:
 | Surfaces (windows, asides, sidebar/tray, terminal) | `lingxia.yaml` | `surfaces` |
 | Bundled lxapp sources | folder + `resources.bundles` | `lingxia.yaml` |
 
----
+## Symptom router
 
-## Top pitfalls (one per layer — full lists in the sub-files)
-
-**LxApp** — see [`./lxapp/guide.md` → Common Pitfalls](./lxapp/guide.md#common-pitfalls):
-
-- Generating `.tsx` + `.vue` + `.html` for one page. A project has one view framework — match the existing pages.
-- Guest `fetch()` is allowed unless the app registry returns a grant that constrains it. Check registry logs; `lxapp.json` does not list domains or privileges.
-
-**Host app** — see [`./app/project.md` → Common Pitfalls](./app/project.md#common-pitfalls):
-
-- Editing generated `app.json` / `ui.json` instead of `lingxia.yaml`. They're regenerated every build.
-- A configured `homeAppId` not matching any `resources.bundles[].appId` — build
-  fails or the wrong control app launches.
-
-**Native Rust** — see [`./native/development.md`](./native/development.md):
-
-- Importing internal crates (`lingxia_logic`, `rong`) directly. Use `lingxia::*` facades.
-- `app: Arc<LxApp>` not first, or `HostCancel` not last, in a `#[lingxia::native]` signature. The macro **generates** the `<fn>_host()` registration companion — never write it yourself.
-
----
-
-## Pre-ship checklist
-
-Run the per-layer checklists before shipping: [LxApp](./lxapp/guide.md#pre-ship-checklist) · [Host app](./app/project.md#pre-ship-checklist).
+| Symptom | Where to look |
+|---|---|
+| Wrong control app launches / `homeAppId` matches no bundle | [project.md → `app`](./app/project.md#app) |
+| `fetch()` fails from an lxapp | [permissions.md](./native/permissions.md) (host grant; default allow) |
+| Is `fetch` / `setTimeout` / `URL` available in Logic? | [lx-api.md → Web globals](./lxapp/lx-api.md#web-globals) |
+| Read/write files | [files.md](./lxapp/files.md) |
+| Surface config rejected (`aside` edge, one `main`, terminal capability) | [project.md → Surfaces](./app/project.md#rules) |
+| `setData` not reaching the View | [bridge.md → `setData`](./lxapp/bridge.md#setdata) |
+| Native route returns `BRIDGE_METHOD_NOT_FOUND` | [development.md → Registration](./native/development.md#registration) |
+| `#[lingxia::native]` compiles but the View can't call it | [development.md → Generated native client](./native/development.md#generated-native-client) |
+| Stream cancel never cleans up | [bridge.md → Stream](./lxapp/bridge.md#stream) |
+| `lingxia.yaml` change ignored after rebuild | [`lingxia clean`](./cli/lingxia.md#lingxia-clean) |
+| iOS dev app can't reach the Mac | [`lingxia dev`](./cli/lingxia.md#lingxia-dev) |
+| TS doesn't know `lx.foo()` / `Page({})` | [Install typing](./lxapp/lx-api.md#install-typing) |
+| `<LxVideo>` / `<LxPicker>` prop not recognized | [components.md](./lxapp/components.md) |
+| Build rejects `<video>` / `<audio>` / `new Audio()` | [components.md → LxVideo](./lxapp/components.md#lxvideo) |
+| Handler gets an event instead of a payload (or vice versa) | [Callback shapes](./lxapp/components.md#callback-shapes) |
+| `NATIVE_ROOT_INVALID_STRUCTURE` | [Inline native island](./lxapp/components.md#inline-native-island) |
+| `E_PERMISSION_DENIED` naming a class | [control-app.md → Refusal](./app/control-app.md#refusal) |

@@ -165,5 +165,5 @@ Do not use `lingxia` as a shortcut to runtime internals:
   native chrome or browser-local navigation
 - whole internal crates should not be re-exported just because they exist
 
-For more detail, see [`docs/native-development.md`](../../docs/native-development.md)
+For more detail, see [`docs/skill/native/development.md`](../../docs/skill/native/development.md)
 and [`docs/internal/lingxia-facade-boundary.md`](../../docs/internal/lingxia-facade-boundary.md).

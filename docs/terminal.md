@@ -3,7 +3,7 @@
 LingXia includes a native terminal surface for macOS and Windows. A terminal
 can be the product's main workspace or an aside docked above or below another
 surface. It is enabled with `capabilities.terminal: true` and declared with
-`native: terminal`; see [App Project Configuration](./skill/app/project.md#terminal-surface).
+`native: terminal`; see [App Project Configuration](./skill/app/project.md#terminal-and-browser-mains).
 
 The terminal is implemented as one shared Rust engine over the platform PTY
 (`portable-pty` + `alacritty_terminal`). The macOS and Windows hosts supply the
