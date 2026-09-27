@@ -235,6 +235,10 @@ pub(crate) struct Call {
     pub route: Option<CallRoute>,
     /// Why no scenario rule answered, when its targets matched.
     pub no_match: Option<String>,
+    /// The mock handler key that answered.
+    pub mock: Option<String>,
+    /// The selection routed it to mocks and no handler key matched.
+    pub unhandled: bool,
     pub(crate) raw_url: String,
     /// Who wants this call's response.
     pub(crate) watch: Watch,
@@ -254,6 +258,7 @@ impl Call {
             "durationMs": self.duration_ms,
             "source": match &self.route {
                 Some(route) if route.action != "continue" => "route",
+                _ if self.mock.is_some() || self.unhandled => "mock",
                 _ => "network",
             },
         });
@@ -274,8 +279,19 @@ impl Call {
         out
     }
 
-    /// `rule 2 (wifi:b)`, `route **/x`, or `real`.
+    /// `rule 2 (wifi:b)`, `route **/x`, `mock (GET **/x)`, `unhandled`, or
+    /// `real`.
     pub(crate) fn answered_by(&self) -> String {
+        let passed = self
+            .route
+            .as_ref()
+            .is_none_or(|route| route.action == "continue");
+        if passed && let Some(key) = &self.mock {
+            return format!("mock ({key})");
+        }
+        if passed && self.unhandled {
+            return "unhandled".to_string();
+        }
         match &self.route {
             Some(route) if route.action == "continue" && !route.patch => "real".to_string(),
             Some(CallRoute {
@@ -336,6 +352,8 @@ impl CallLog {
             error: None,
             route: None,
             no_match: None,
+            mock: None,
+            unhandled: false,
             raw_url: url.to_string(),
             watch,
             recorder: None,
@@ -705,6 +723,8 @@ pub(crate) enum Source {
     Patch,
     /// The real server answered (no route, or a plain `continue`).
     Network,
+    /// A `mocks/` handler answered.
+    Mock,
 }
 
 impl Source {
@@ -713,6 +733,7 @@ impl Source {
             Self::Route => "route",
             Self::Patch => "patch",
             Self::Network => "network",
+            Self::Mock => "mock",
         }
     }
 }
@@ -754,6 +775,7 @@ impl<'a> Observed<'a> {
     pub(crate) fn settled(call: &'a Call, settled: &'a Settled) -> Option<Self> {
         let (source, pattern) = match &call.route {
             Some(route) if route.patch => (Source::Patch, Some(route.pattern.clone())),
+            _ if call.mock.is_some() => (Source::Mock, call.mock.clone()),
             _ => (Source::Network, None),
         };
         Some(Self {

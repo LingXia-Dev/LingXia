@@ -3,6 +3,7 @@
 //! JS engine; `super` adapts it to the automation driver and Logic `fetch`.
 
 use super::capture::{CallLog, Captures, Observed, Recording, Settled, Source, Watch};
+use super::mocks::{MOCK_HOLDER, MockDecision, Mocks};
 use lingxia_control_protocol::scenario::Matcher;
 use regex::Regex;
 use std::collections::VecDeque;
@@ -20,7 +21,7 @@ pub(crate) const MAX_REQUEST_BODY_BYTES: usize = 64 * 1024;
 const MAX_LOG_BODY_BYTES: usize = 16 * 1024 * 1024;
 /// Longest fulfillment delay a route may ask for.
 pub(crate) const MAX_DELAY_MS: u32 = 30_000;
-/// Owner of the routes a dev session installed with `lxdev scenario use`. Automation run ids are UUIDs, so it never collides with one.
+/// Owner of the routes a dev session installed with `lxdev mock use`. Automation run ids are UUIDs, so it never collides with one.
 pub(crate) const DEV_SESSION_OWNER: &str = "@dev-session";
 
 #[derive(Debug, Clone)]
@@ -591,6 +592,8 @@ pub(crate) struct Registry {
     pub(crate) run_recording: Option<Recording>,
     /// Contract captures of host runs (`captureResponses()`).
     pub(crate) captures: Captures,
+    /// Every lxapp's `mocks/` handlers and the mock selection.
+    pub(crate) mocks: Mocks,
 }
 
 impl Registry {
@@ -742,7 +745,11 @@ impl Registry {
         };
         // A dev scenario is logged too, so `lxdev network status` can say
         // who answered each call.
-        if !watch.wants_body() && self.active_runs.is_empty() && self.dev.is_none() {
+        if !watch.wants_body()
+            && self.active_runs.is_empty()
+            && self.dev.is_none()
+            && self.mocks.sets.is_empty()
+        {
             return None;
         }
         let id = self.calls.begin(appid, kind, method, url, watch);
@@ -843,6 +850,11 @@ impl Registry {
         }
         self.run_scenarios
             .retain(|scenario| scenario.owner != run_id);
+        self.mocks
+            .selection
+            .drop_owner(&lingxia_control_protocol::mock::MockOwner::Run(
+                run_id.to_string(),
+            ));
         self.held.retain(|held| held.run_id != run_id);
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
@@ -1173,6 +1185,87 @@ impl Registry {
         })
     }
 
+    /// [`Self::decide_route`], then the mock selection when no route or
+    /// rule answered (or one passed the call on with `continue` or
+    /// `patchJson`) and the app's policy admits the URL.
+    pub(crate) fn decide_call(
+        &mut self,
+        appid: &str,
+        method: &str,
+        url: &str,
+        request: impl FnOnce() -> SentRequest,
+        allowed: impl Fn() -> bool,
+        call: u64,
+    ) -> (Option<Decision>, Option<NoMatch>, MockDecision) {
+        let (decision, no_match) = self.decide_route(appid, method, url, request, &allowed, call);
+        let passes = decision.as_ref().is_none_or(|decision| {
+            matches!(
+                decision.action,
+                RouteAction::Continue | RouteAction::Patch(_)
+            )
+        });
+        let next = if passes && allowed() {
+            self.decide_mock(appid, method, url, call)
+        } else {
+            MockDecision::Real
+        };
+        (decision, no_match, next)
+    }
+
+    /// Who answers a call no route or rule answered (or one they passed on
+    /// with `continue`): the mock selection. Notes the answer on call
+    /// `call`. Consult it only for a URL the app's policy admits.
+    pub(crate) fn decide_mock(
+        &mut self,
+        appid: &str,
+        method: &str,
+        url: &str,
+        call: u64,
+    ) -> MockDecision {
+        let run_active = self.runs_active();
+        let decision = self.mocks.decide(appid, method, url, run_active);
+        if call != 0
+            && let Some(observed) = self.calls.find(call)
+        {
+            match &decision {
+                MockDecision::Mock { key } => {
+                    observed.mock = Some(key.clone());
+                    // A recording captures what a server said, not a mock.
+                    observed.watch.record = false;
+                }
+                MockDecision::Unhandled { .. } => {
+                    observed.unhandled = true;
+                    observed.watch.record = false;
+                    observed.watch.contract = false;
+                }
+                MockDecision::Real => {}
+            }
+        }
+        decision
+    }
+
+    /// Hold a request a mock answer keeps open (`hang`, an SSE stream
+    /// without `drop`) until the app's mocks reload or reset. Returns the
+    /// token.
+    pub(crate) fn hold_for_mock(&mut self, appid: &str) -> u64 {
+        self.next_id += 1;
+        self.held.push(Held {
+            token: self.next_id,
+            run_id: MOCK_HOLDER.to_string(),
+            appid: appid.to_string(),
+            route_id: 0,
+        });
+        self.next_id
+    }
+
+    /// Release what mock answers hold open for `appid` (every app when
+    /// `None`).
+    pub(crate) fn release_mock_holds(&mut self, appid: Option<&str>) {
+        self.held.retain(|held| {
+            !(held.run_id == MOCK_HOLDER && appid.is_none_or(|appid| held.appid == appid))
+        });
+    }
+
     /// Whether a `hang` route still holds the request behind `token`.
     pub(crate) fn holds(&self, token: u64) -> bool {
         self.held.iter().any(|held| held.token == token)
@@ -1207,6 +1300,7 @@ impl Registry {
             + usize::from(self.dev_recording.is_some())
             + usize::from(self.run_recording.is_some())
             + self.captures.len()
+            + self.mocks.sets.len()
     }
 }
 
@@ -1250,6 +1344,7 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     dev_recording: None,
     run_recording: None,
     captures: Captures::new(),
+    mocks: Mocks::new(),
 });
 /// Installed routes plus active runs and recordings, mirrored outside the
 /// lock so Logic `fetch` pays one atomic load when nothing watches it.
@@ -1285,6 +1380,154 @@ mod tests {
 
     fn spec(matcher: UrlMatcher, method: Option<&str>, action: RouteAction) -> RouteSpec {
         RouteSpec::new(matcher, method.map(str::to_string), None, vec![action])
+    }
+
+    fn mocked(registry: &mut Registry, mode: &str) {
+        registry
+            .mocks
+            .load(
+                "app",
+                "({})",
+                &["GET **/devices/*".to_string()],
+                Some(&serde_json::json!({ "mock": mode })),
+            )
+            .unwrap();
+    }
+
+    fn next(
+        registry: &mut Registry,
+        url: &str,
+        allowed: bool,
+    ) -> (Option<RouteAction>, MockDecision) {
+        let (decision, _, next) =
+            registry.decide_call("app", "GET", url, SentRequest::default, || allowed, 0);
+        (decision.map(|decision| decision.action), next)
+    }
+
+    #[test]
+    fn routes_and_rules_answer_before_the_mock_selection() {
+        let mut registry = Registry::default();
+        mocked(&mut registry, "all");
+        let mock = MockDecision::Mock {
+            key: "GET **/devices/*".into(),
+        };
+        // No route: the selection answers.
+        assert_eq!(
+            next(&mut registry, "https://h/devices/1", true),
+            (None, mock.clone())
+        );
+        // A fulfilling route answers first; the selection is not consulted.
+        let matcher = UrlMatcher::glob("**/devices/1").unwrap();
+        let id = registry
+            .install(
+                "run",
+                "app",
+                spec(matcher.clone(), None, fulfill(503)),
+                || true,
+            )
+            .unwrap();
+        assert_eq!(
+            next(&mut registry, "https://h/devices/1", true),
+            (Some(fulfill(503)), MockDecision::Real)
+        );
+        assert_eq!(registry.mocks.set("app").unwrap().keys[0].hits, 1);
+        registry.remove("run", id);
+        // `continue` and `patchJson` hand the call to the next layer.
+        let id = registry
+            .install(
+                "run",
+                "app",
+                spec(matcher.clone(), None, RouteAction::Continue),
+                || true,
+            )
+            .unwrap();
+        assert_eq!(
+            next(&mut registry, "https://h/devices/1", true),
+            (Some(RouteAction::Continue), mock.clone())
+        );
+        registry.remove("run", id);
+        let patch = RouteAction::Patch(serde_json::json!({ "a": 1 }));
+        registry
+            .install("run", "app", spec(matcher, None, patch.clone()), || true)
+            .unwrap();
+        assert_eq!(
+            next(&mut registry, "https://h/devices/1", true),
+            (Some(patch), mock)
+        );
+        // A mock never answers a host the app's policy refuses.
+        registry.clear_run("run");
+        assert_eq!(
+            next(&mut registry, "https://h/devices/2", false),
+            (None, MockDecision::Real)
+        );
+        // Under `none` the real backend answers.
+        mocked(&mut registry, "none");
+        assert_eq!(
+            next(&mut registry, "https://h/devices/2", true),
+            (None, MockDecision::Real)
+        );
+    }
+
+    #[test]
+    fn mocks_keep_the_wrapper_watching_and_log_who_answered() {
+        let mut registry = Registry::default();
+        assert_eq!(registry.watched(), 0);
+        mocked(&mut registry, "all");
+        assert_eq!(registry.watched(), 1);
+        let (id, _) = registry
+            .observe("app", "fetch", "GET", "https://h/devices/1")
+            .expect("calls are logged while mocks are loaded");
+        registry.decide_call(
+            "app",
+            "GET",
+            "https://h/devices/1",
+            SentRequest::default,
+            || true,
+            id,
+        );
+        let (other, _) = registry
+            .observe("app", "fetch", "GET", "https://h/other")
+            .unwrap();
+        registry.decide_call(
+            "app",
+            "GET",
+            "https://h/other",
+            SentRequest::default,
+            || true,
+            other,
+        );
+        let calls = registry.calls.recent(0, 10, &[]);
+        assert_eq!(calls[0]["answeredBy"], "mock (GET **/devices/*)");
+        assert_eq!(calls[0]["source"], "mock");
+        assert_eq!(calls[1]["answeredBy"], "unhandled");
+
+        // A mock answer's hold is released by a reload or reset.
+        let token = registry.hold_for_mock("app");
+        assert!(registry.holds(token));
+        registry.release_mock_holds(Some("other"));
+        assert!(registry.holds(token));
+        registry.release_mock_holds(Some("app"));
+        assert!(!registry.holds(token));
+
+        // A run's selection ends with the run.
+        registry.begin_run("r");
+        registry
+            .mocks
+            .select(
+                lingxia_control_protocol::mock::MockOwner::Run("r".into()),
+                lingxia_control_protocol::mock::MockMode::None,
+                Vec::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            next(&mut registry, "https://h/devices/1", true).1,
+            MockDecision::Real
+        );
+        registry.clear_run("r");
+        assert!(matches!(
+            next(&mut registry, "https://h/devices/1", true).1,
+            MockDecision::Mock { .. }
+        ));
     }
 
     #[test]

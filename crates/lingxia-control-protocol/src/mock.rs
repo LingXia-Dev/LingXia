@@ -340,6 +340,10 @@ pub struct Selection {
 }
 
 impl Selection {
+    pub const fn new() -> Self {
+        Self { layers: Vec::new() }
+    }
+
     /// Apply `all` / `none` for `owner`: a whole entry without targets,
     /// else a targets entry.
     pub fn set(&mut self, owner: MockOwner, mode: MockMode, targets: Vec<String>) {

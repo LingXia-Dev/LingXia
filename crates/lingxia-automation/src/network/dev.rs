@@ -1,17 +1,20 @@
-//! Network scenarios and recordings driven by a dev session
-//! (`lxdev scenario …`, `lxdev network record …`) while no test runs, and the recording and call log a
-//! host automation run reads through its host object.
+//! Mocks, network scenarios and recordings driven by a dev session
+//! (`lxdev mock …`, `lxdev network record …`) while no test runs, and the
+//! recording and call log a host automation run reads through its host
+//! object.
 //!
 //! A dev scenario is impossible to miss: installing it, and every request it
 //! answers, logs a warning to the session log, and it stands aside while a
 //! host automation run is active so it never steers a test.
 
 use super::capture::{self, REPORT_CALLS, Recording};
+use super::mocks::Fresh;
 use super::registry::{
     self, DEV_SESSION_OWNER, DevClearReason, InstalledScenario, Registry, RouteAction, RuleSlot,
     now_ms,
 };
 use super::scenario;
+use lingxia_control_protocol::mock::{MockEntry, MockMode, MockOwner};
 use lingxia_log::{LogBuilder, LogLevel, LogTag};
 use serde_json::{Value, json};
 use std::collections::VecDeque;
@@ -124,7 +127,7 @@ pub fn use_scenario(
         appid,
         format!(
             "dev scenario {} is ACTIVE: {http} http rule{} answer this app's Logic fetch{companion} \
-             until `lxdev scenario clear` or the dev session ends",
+             until `lxdev mock clear` or the dev session ends",
             label(&dev),
             plural(http)
         ),
@@ -136,7 +139,7 @@ fn plural(n: usize) -> &'static str {
     if n == 1 { "" } else { "s" }
 }
 
-/// Remove the dev scenario (`lxdev scenario clear`). Returns whether one was
+/// Remove the dev scenario (`lxdev mock clear`). Returns whether one was
 /// installed.
 pub fn clear_scenario() -> bool {
     end_scenario(DevClearReason::Cleared)
@@ -155,7 +158,7 @@ fn end_scenario(reason: DevClearReason) -> bool {
     cleared.is_some()
 }
 
-/// The active dev scenario and recording, for `lxdev scenario status` and
+/// The active dev scenario, mocks and recording, for `lxdev mock` and
 /// `lxdev network status`.
 pub fn status() -> Value {
     registry::with_registry(|routes| status_of(routes))
@@ -260,6 +263,7 @@ pub(crate) fn status_of(routes: &Registry) -> Value {
         "scenario": scenario,
         "lastCleared": last_cleared,
         "recording": recording,
+        "mock": routes.mocks.status(routes.runs_active()),
         "calls": routes.calls.recent(0, STATUS_CALLS, &[]),
     })
 }
@@ -338,13 +342,96 @@ pub fn record_stop(name: Option<&str>) -> Result<Value, String> {
     }))
 }
 
-/// The dev session that owned the scenario went away.
+/// The dev session that owned the scenario went away: its scenario,
+/// recording and mocks go with it (the next session loads its own).
 pub fn session_ended() {
     let had_scenario = end_scenario(DevClearReason::SessionEnded);
     let had_recording = stop_recording(DEV_SESSION_OWNER).is_some();
-    if had_scenario || had_recording {
-        log::warn!("dev session ended: its network scenario and recording were removed");
+    let had_mocks = registry::with_registry(|routes| {
+        let had = !routes.mocks.sets.is_empty();
+        routes.mocks.clear();
+        routes.release_mock_holds(None);
+        had
+    });
+    if had_scenario || had_recording || had_mocks {
+        log::warn!("dev session ended: its network scenario, recording and mocks were removed");
     }
+}
+
+// --------------------------------- mocks ---------------------------------
+
+/// Load an app's `mocks/` handlers (`session.network.mock.load`): `source`
+/// is the bundled `mocks/index.ts`, `keys` its handler keys in order,
+/// `config` the parsed `mocks/config.json` (`None`: no file). `baseline`
+/// (`lingxia dev --mock`) replaces every app's config as a whole. Invalid
+/// input keeps the previous load. Returns `{ handlers, generation }`.
+pub fn mock_load(
+    appid: &str,
+    source: &str,
+    keys: &[String],
+    config: Option<&Value>,
+    baseline: Option<MockMode>,
+) -> Result<Value, String> {
+    let generation = registry::with_registry(|routes| {
+        let generation = routes.mocks.load(appid, source, keys, config)?;
+        match baseline {
+            Some(mode) => routes
+                .mocks
+                .selection
+                .replace(MockOwner::Baseline, vec![MockEntry::Whole(mode)]),
+            None => {
+                routes.mocks.selection.drop_owner(&MockOwner::Baseline);
+            }
+        }
+        routes.release_mock_holds(Some(appid));
+        Ok::<_, String>(generation)
+    })?;
+    Ok(json!({ "handlers": keys.len(), "generation": generation }))
+}
+
+/// `lxdev mock all|none [targets]` for the dev session's owner. Returns
+/// `{ mode, entries }`.
+pub fn mock_set(mode: MockMode, targets: Vec<String>) -> Result<Value, String> {
+    let entries =
+        registry::with_registry(|routes| routes.mocks.select(MockOwner::Dev, mode, targets))?;
+    warn(
+        "*",
+        format!(
+            "dev mock selection: {}",
+            entries
+                .iter()
+                .map(MockEntry::describe)
+                .collect::<Vec<_>>()
+                .join(", then ")
+        ),
+    );
+    Ok(json!({
+        "mode": mode,
+        "entries": entries.iter().map(MockEntry::to_json).collect::<Vec<_>>(),
+    }))
+}
+
+/// Start every app's handler state over; with `drop_dev` also drop the
+/// dev session's selection. Returns `{ generation }` (the newest).
+pub fn mock_reset(drop_dev: bool) -> Value {
+    let generation = registry::with_registry(|routes| {
+        if drop_dev {
+            routes.mocks.selection.drop_owner(&MockOwner::Dev);
+        }
+        routes.release_mock_holds(None);
+        routes
+            .mocks
+            .reset(None, Fresh::Reset)
+            .into_iter()
+            .map(|(_, generation)| generation)
+            .max()
+    });
+    json!({ "generation": generation })
+}
+
+/// `session.network.mock.status`.
+pub fn mock_status() -> Value {
+    registry::with_registry(|routes| routes.mocks.status(routes.runs_active()))
 }
 
 // ------------------------------ host runs ------------------------------
