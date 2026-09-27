@@ -280,6 +280,11 @@ Development machine: lxdev receives progress, results, and artifacts
   `timeout`; lxdev then derives N/M from the streamed cases
   (`budget_exhaustion`). An older runtime ignores the budget controls and
   runs to the host ceiling.
+- Display (macOS): each run declares user activity
+  (`IOPMAssertionDeclareUserActivity`, as `caffeinate -u` does), which wakes a
+  display that is already asleep, and holds an `NSProcessInfo` activity with
+  `NSActivityIdleDisplaySleepDisabled`, which keeps it on; both end with the
+  run. Neither unlocks the screen.
 - Locked screen: the host's `screenLocked()` answers from
   `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
   `undefined` elsewhere. The runtime asks before each spec; the first `true`
