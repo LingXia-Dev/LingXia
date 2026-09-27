@@ -22,6 +22,7 @@ export type {
   LocatorState,
   LocatorWaitOptions,
   LogicApp,
+  LogicCallOptions,
   LogicDataOptions,
   LogicFunction,
   LogicMethodResult,
