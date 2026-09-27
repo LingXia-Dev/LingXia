@@ -252,8 +252,8 @@ const MOCK_DRIVER_API = ['reset', 'use'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
 const NETWORK_DRIVER_API = ['captureResponses', 'requests', 'responses', 'route', 'unrouteAll'] as const;
-const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'unroute'] as const;
-const SCENARIO_API = ['calls', 'name', 'rules', 'unroute', 'variant'] as const;
+const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'requestsAfter', 'unroute'] as const;
+const SCENARIO_API = ['calls', 'callsAfter', 'name', 'rules', 'unroute', 'variant'] as const;
 const LXAPP_MANAGER_API = [
   'applink',
   'close',

@@ -6,12 +6,12 @@ import type {
   NetworkRouteRequest,
   ScenarioCall,
 } from "@lingxia/types/automation";
-import { TimeoutError } from "./deadline.js";
+import { ActionDeadline, TimeoutError } from "./deadline.js";
 import { truncate } from "./format.js";
 import { callerLocation, displayLocation } from "./ids.js";
 import type { NetworkCall, TestNetwork, TestRoute, WaitForCallOptions } from "./types.js";
 import { DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_POLL_INTERVAL_MS } from "./version.js";
-import { runnerSetTimeout } from "./pending.js";
+import { runnerClearTimeout, runnerSetTimeout } from "./pending.js";
 
 /** The fixture surface the network, scenario and clock wrappers need. */
 export interface NetworkHost {
@@ -62,6 +62,7 @@ function parsedBody(body: string | null): unknown {
 /** One request a route handled, as a `NetworkCall`. */
 export function routeCall(request: NetworkRouteRequest): NetworkCall {
   return {
+    seq: request.seq,
     time: request.timestamp,
     kind: "http",
     method: request.method,
@@ -87,7 +88,7 @@ export function scenarioCall(call: ScenarioCall): NetworkCall {
           : call.kind === "function"
             ? "companion"
             : "real";
-  const out: NetworkCall = { time: call.time, kind: call.kind, answeredBy };
+  const out: NetworkCall = { seq: call.seq, time: call.time, kind: call.kind, answeredBy };
   if (call.kind === "function") {
     out.function = call.function;
     if (call.args !== undefined) out.body = call.args;
@@ -114,64 +115,135 @@ export function describeCall(call: NetworkCall): string {
 
 /** How many recent calls a `waitForCall` timeout lists. */
 const LISTED_CALLS = 10;
+/**
+ * The most a `waitForCall` timeout spends reading recent calls for its
+ * message, past its own timeout and never past the spec's budget.
+ */
+const EVIDENCE_MS = 100;
+
+/** Calls after a cursor, and how far the log they come from was trimmed. */
+export interface CallWindowRead {
+  calls: NetworkCall[];
+  /** The highest `seq` the log dropped (0 when none). */
+  droppedThrough: number;
+}
+
+/** Where one handle's (or scenario target's) `waitForCall` stands. */
+export interface CallCursor {
+  /** `seq` of the last call handed out; 0 before the first. */
+  after: number;
+  /** Calls handed out so far. */
+  taken: number;
+}
 
 /**
- * Poll `read` until it lists more than `cursor.taken` calls and hand out the
- * next one. Each handle (and scenario target) keeps its own cursor, so
- * successive waits return successive calls, including ones made before the
- * wait started.
+ * Poll `read(cursor.after)` until it lists a call and hand out the oldest.
+ * Each handle (and scenario target) keeps its own cursor, so successive
+ * waits return successive calls, including ones made before the wait
+ * started. The host logs are bounded; when they dropped calls past the
+ * cursor, the next call cannot be told and the wait says so instead of
+ * handing out a later one.
+ *
+ * Every read and pause shares one deadline: a read that never returns
+ * fails the wait on time, and one that returns after the deadline does not
+ * count. The recent calls a timeout lists get a small slice of their own.
  */
 export function waitForNextCall(
   host: NetworkHost,
   verb: string,
   what: string,
-  read: () => Promise<NetworkCall[]>,
+  read: (after: number) => Promise<CallWindowRead>,
   recent: () => Promise<NetworkCall[]>,
-  cursor: { taken: number },
+  cursor: CallCursor,
   options: WaitForCallOptions = {},
 ): Promise<NetworkCall> {
   const location = callerLocation();
+  const at = `at ${displayLocation(location.file, location.line, location.column)}`;
   const requested = options.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
   const interval = options.interval ?? DEFAULT_POLL_INTERVAL_MS;
   if (!Number.isFinite(requested) || requested <= 0 || !Number.isFinite(interval) || interval <= 0) {
     throw new TypeError("waitForCall timeout and interval must be positive finite numbers");
   }
-  const timeout = Math.max(1, Math.min(requested, host.budgetRoom()));
   return host.act(verb, what, async () => {
-    const started = Date.now();
-    let seen = 0;
+    const deadline = new ActionDeadline(requested, host.budgetRoom());
+    let stalled = false;
     host.silenceActions();
     try {
       for (;;) {
-        const calls = await read();
-        seen = calls.length;
-        const next = calls[cursor.taken];
+        let window: CallWindowRead;
+        try {
+          window = await deadline.call(`${verb} reading calls`, () => read(cursor.after), () => at);
+        } catch (error) {
+          if (!(error instanceof TimeoutError) || !deadline.expired()) throw error;
+          stalled = true;
+          break;
+        }
+        // A read that came back after the deadline does not count.
+        if (deadline.expired()) break;
+        if (window.droppedThrough > cursor.after) {
+          const lost = window.droppedThrough - cursor.after;
+          const skippedFrom = cursor.after;
+          const range = lost === 1 ? `seq ${window.droppedThrough}` : `seq ${skippedFrom + 1}–${window.droppedThrough}`;
+          cursor.after = window.droppedThrough;
+          throw new Error([
+            `${what}: calls after ${skippedFrom === 0 ? "the start" : `the last one waitForCall returned (seq ${skippedFrom})`} ` +
+              `were dropped from a bounded call log before they were read (${range}, ` +
+              `${lost} ${lost === 1 ? "entry" : "entries"} of that log), so the next call cannot be told.`,
+            "Wait for calls as they happen, or make fewer calls between waits; the next waitForCall resumes after the gap.",
+            at,
+          ].join("\n"));
+        }
+        const next = window.calls.find((call) => call.seq > cursor.after);
         if (next) {
+          cursor.after = next.seq;
           cursor.taken += 1;
           return next;
         }
-        if (Date.now() - started + interval > timeout) break;
-        await new Promise<void>((resolve) => { runnerSetTimeout(resolve, interval); });
+        const pause = Math.min(interval, deadline.remaining());
+        if (pause <= 0) break;
+        await new Promise<void>((resolve) => { runnerSetTimeout(resolve, pause); });
       }
     } finally {
       host.resumeActions();
     }
-    let listed: NetworkCall[] = [];
-    try {
-      listed = (await recent()).slice(-LISTED_CALLS);
-    } catch {
-      // The listing explains the timeout; it never replaces it.
-    }
+    const elapsed = deadline.elapsed();
+    // A read that stalled says the driver is not answering; asking it for
+    // recent calls would only spend more time.
+    const evidence = stalled
+      ? "The last read of its calls had not returned when the time ran out, so recent calls were not read."
+      : await recentCalls(recent, Math.min(EVIDENCE_MS, Math.floor(host.budgetRoom())));
+    const seen = cursor.taken;
     throw new TimeoutError([
-      `${what}: no new call within ${Date.now() - started}ms` +
+      `${what}: no new call within ${elapsed}ms` +
         (seen > 0 ? ` (${seen} earlier ${seen === 1 ? "call was" : "calls were"} already returned by waitForCall).` : "."),
-      listed.length > 0
-        ? `Recent calls:\n${listed.map((call) => `  ${describeCall(call)}`).join("\n")}`
-        : "No call reached it.",
-      timeout < requested ? `Clamped from ${requested}ms to the spec's remaining budget.` : undefined,
-      `at ${displayLocation(location.file, location.line, location.column)}`,
+      evidence,
+      deadline.clampNote(),
+      at,
     ].filter(Boolean).join("\n"));
   });
+}
+
+/** The lines listing recent calls for a timeout, read within `ms`. */
+async function recentCalls(recent: () => Promise<NetworkCall[]>, ms: number): Promise<string> {
+  if (ms < 1) return "Recent calls were not read: the spec's budget is spent.";
+  let handle: unknown;
+  const late = new Promise<"late">((resolve) => { handle = runnerSetTimeout(() => resolve("late"), ms); });
+  let listed: NetworkCall[] | "late";
+  try {
+    const task = Promise.resolve().then(recent);
+    task.catch(() => {});
+    listed = await Promise.race([task, late]);
+  } catch {
+    // The listing explains the timeout; it never replaces it.
+    return "Recent calls could not be read.";
+  } finally {
+    runnerClearTimeout(handle);
+  }
+  if (listed === "late") return `Recent calls were not read: the read took longer than ${ms}ms.`;
+  const tail = listed.slice(-LISTED_CALLS);
+  return tail.length > 0
+    ? `Recent calls:\n${tail.map((call) => `  ${describeCall(call)}`).join("\n")}`
+    : "No call reached it.";
 }
 
 /**
@@ -181,15 +253,19 @@ export function waitForNextCall(
 export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, scope: NetworkScope): TestNetwork {
   const driver = resolve;
   const wrapRoute = (route: NetworkRoute): TestRoute => {
-    const cursor = { taken: 0 };
+    const cursor: CallCursor = { after: 0, taken: 0 };
     const calls = async () => (await route.requests()).map(routeCall);
+    const after = async (seq: number): Promise<CallWindowRead> => {
+      const window = await route.requestsAfter(seq);
+      return { calls: window.requests.map(routeCall), droppedThrough: window.droppedThrough };
+    };
     return {
       get id() { return route.id; },
       get pattern() { return route.pattern; },
       remove: () => host.act("network.remove", route.pattern, async () => { await route.unroute(); }),
       calls: () => host.act("network.calls", route.pattern, calls),
       waitForCall: (options?: WaitForCallOptions) =>
-        waitForNextCall(host, "network.waitForCall", `route ${route.pattern}`, calls, calls, cursor, options),
+        waitForNextCall(host, "network.waitForCall", `route ${route.pattern}`, after, calls, cursor, options),
     };
   };
   return {

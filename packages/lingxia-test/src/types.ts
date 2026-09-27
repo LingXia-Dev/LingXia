@@ -491,6 +491,13 @@ export interface TestNav {
  * `t.app.network.calls()` list it.
  */
 export interface NetworkCall {
+  /**
+   * Increasing within the log the call was read from, never reused: calls
+   * in one millisecond differ by it. A route's calls share the host's
+   * request log; a scenario counts its HTTP calls and the companion its
+   * Function calls separately.
+   */
+  seq: number;
   /** Epoch milliseconds. */
   time: number;
   /** `http`: Logic `fetch` or `Rong.SSE`; `function`: a Worker Function call. */
@@ -542,7 +549,11 @@ export interface TestRoute {
   /**
    * Resolve with the oldest call this route handled that an earlier
    * `waitForCall()` did not already return, waiting for it if there is none
-   * yet. On timeout the error lists the route's recent calls.
+   * yet. On timeout the error lists the route's recent calls. The host's
+   * request log is bounded (1000 requests, 16 MiB of bodies, across apps);
+   * when it dropped this route's calls before a wait read them, the wait
+   * fails saying so rather than skip them, and the next one resumes after
+   * the gap.
    */
   waitForCall(options?: WaitForCallOptions): Promise<NetworkCall>;
 }
@@ -591,7 +602,10 @@ export interface TestScenario {
   /**
    * Resolve with the oldest call to `target` that an earlier `waitForCall`
    * for the same target did not already return, waiting for one if needed.
-   * On timeout the error lists the scenario's recent calls.
+   * On timeout the error lists the scenario's recent calls. A scenario
+   * keeps its last 200 HTTP calls and the companion its last Function
+   * calls; when calls were dropped before a wait read them, the wait fails
+   * saying so, and the next one resumes after the gap.
    */
   waitForCall(target: ScenarioCallTarget, options?: WaitForCallOptions): Promise<NetworkCall>;
   /** Remove the scenario before the spec ends. */

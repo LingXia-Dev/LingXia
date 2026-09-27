@@ -388,6 +388,9 @@ pub(crate) const MAX_SCENARIO_CALLS: usize = 200;
 /// or its targets matched and every `match` failed.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ScenarioCall {
+    /// 1-based position among every call that reached the scenario; never
+    /// reused, so it outlives the call's trim. Assigned by `push_call`.
+    pub seq: u64,
     pub time_ms: u64,
     pub method: String,
     /// As requested; redact before it leaves a test run.
@@ -460,12 +463,18 @@ impl InstalledScenario {
         }
     }
 
-    fn push_call(&mut self, call: ScenarioCall) {
+    fn push_call(&mut self, mut call: ScenarioCall) {
         if self.calls.len() >= MAX_SCENARIO_CALLS {
             self.calls.pop_front();
         }
         self.calls_total += 1;
+        call.seq = self.calls_total;
         self.calls.push_back(call);
+    }
+
+    /// The highest `seq` trimmed from `calls`; 0 when none was.
+    pub(crate) fn dropped_through(&self) -> u64 {
+        self.calls_total - self.calls.len() as u64
     }
 
     pub(crate) fn route_ids(&self) -> impl Iterator<Item = u64> + '_ {
@@ -555,6 +564,9 @@ impl SentRequest {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct RequestEntry {
+    /// Increasing across the process log and never reused: two requests in
+    /// one millisecond still differ, and a trim leaves a visible gap.
+    pub seq: u64,
     pub route_id: u64,
     pub pattern: String,
     pub method: String,
@@ -568,12 +580,35 @@ pub(crate) struct RequestEntry {
     appid: String,
 }
 
+/// Log entries of one route that the log's bounds dropped.
+#[derive(Debug, Clone, PartialEq)]
+struct Dropped {
+    route_id: u64,
+    run_id: String,
+    appid: String,
+    through: u64,
+}
+
+/// A route's log entries after some `seq`, and how far its dropped
+/// entries reach.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct RequestWindow {
+    pub entries: Vec<RequestEntry>,
+    /// The highest `seq` of a matching entry the log dropped; 0 when none.
+    pub dropped_through: u64,
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct Registry {
     next_id: u64,
     routes: Vec<Route>,
     log: VecDeque<RequestEntry>,
     log_body_bytes: usize,
+    /// The last `seq` given to a log entry.
+    log_seq: u64,
+    /// Per route, the highest `seq` of its entries the log's bounds
+    /// dropped: a reader past that point knows it lost none.
+    log_dropped: Vec<Dropped>,
     held: Vec<Held>,
     /// Host automation runs in progress. While any exists, dev-session
     /// routes stand aside and Logic `fetch` calls are logged.
@@ -858,6 +893,7 @@ impl Registry {
         self.held.retain(|held| held.run_id != run_id);
         self.routes.retain(|route| route.run_id != run_id);
         self.log.retain(|entry| entry.run_id != run_id);
+        self.log_dropped.retain(|dropped| dropped.run_id != run_id);
         self.log_body_bytes = self.log.iter().map(|entry| entry.request.body_len()).sum();
         self.captures.clear_run(run_id);
     }
@@ -1000,7 +1036,8 @@ impl Registry {
         };
         let request = sent();
         let origin = route.spec.origin;
-        let entry = RequestEntry {
+        let mut entry = RequestEntry {
+            seq: 0,
             route_id: route.id,
             pattern: route.spec.matcher.label(),
             method: method.to_ascii_uppercase(),
@@ -1037,6 +1074,7 @@ impl Registry {
             }
             decision.rule = Some((origin.index, scenario.label()));
             scenario.push_call(ScenarioCall {
+                seq: 0,
                 time_ms: entry.timestamp_ms,
                 method: entry.method.clone(),
                 url: url.to_string(),
@@ -1103,9 +1141,12 @@ impl Registry {
         {
             if let Some(old) = self.log.pop_front() {
                 self.log_body_bytes -= old.request.body_len();
+                self.note_dropped(old);
             }
         }
         self.log_body_bytes += body_len;
+        self.log_seq += 1;
+        entry.seq = self.log_seq;
         self.log.push_back(entry);
         (Some(decision), no_match)
     }
@@ -1158,6 +1199,7 @@ impl Registry {
             if let Some(scenario) = self.scenario_mut(id) {
                 owners.push(scenario.owner.clone());
                 scenario.push_call(ScenarioCall {
+                    seq: 0,
                     time_ms: now_ms(),
                     method: method.clone(),
                     url: url.to_string(),
@@ -1346,6 +1388,53 @@ impl Registry {
             .collect()
     }
 
+    /// Entries of `run_id`'s routes for `appid` (one route, or all) with a
+    /// `seq` above `after`, and how far that route's dropped entries reach.
+    pub(crate) fn requests_after(
+        &self,
+        run_id: &str,
+        appid: &str,
+        route: Option<u64>,
+        after: u64,
+    ) -> RequestWindow {
+        let mine = |id: u64, run: &str, app: &str| {
+            run == run_id && app == appid && route.is_none_or(|route| route == id)
+        };
+        RequestWindow {
+            entries: self
+                .log
+                .iter()
+                .filter(|entry| {
+                    entry.seq > after && mine(entry.route_id, &entry.run_id, &entry.appid)
+                })
+                .cloned()
+                .collect(),
+            dropped_through: self
+                .log_dropped
+                .iter()
+                .filter(|dropped| mine(dropped.route_id, &dropped.run_id, &dropped.appid))
+                .map(|dropped| dropped.through)
+                .max()
+                .unwrap_or(0),
+        }
+    }
+
+    fn note_dropped(&mut self, entry: RequestEntry) {
+        match self
+            .log_dropped
+            .iter_mut()
+            .find(|dropped| dropped.route_id == entry.route_id)
+        {
+            Some(dropped) => dropped.through = entry.seq,
+            None => self.log_dropped.push(Dropped {
+                route_id: entry.route_id,
+                run_id: entry.run_id,
+                appid: entry.appid,
+                through: entry.seq,
+            }),
+        }
+    }
+
     /// Route ids of `owner` still installed, with the answers left in
     /// their `times` budget.
     pub(crate) fn remaining(&self, owner: &str, id: u64) -> Option<Option<u32>> {
@@ -1402,6 +1491,8 @@ static ROUTES: Mutex<Registry> = Mutex::new(Registry {
     routes: Vec::new(),
     log: VecDeque::new(),
     log_body_bytes: 0,
+    log_seq: 0,
+    log_dropped: Vec::new(),
     held: Vec::new(),
     active_runs: Vec::new(),
     dev: None,
@@ -2058,5 +2149,198 @@ mod tests {
         assert!(registry.log_body_bytes <= MAX_LOG_BODY_BYTES);
         registry.clear_run("run");
         assert_eq!(registry.log_body_bytes, 0);
+    }
+
+    fn catch_all(registry: &mut Registry, run: &str, app: &str) -> u64 {
+        registry
+            .install(
+                run,
+                app,
+                spec(UrlMatcher::glob("**").unwrap(), None, RouteAction::Continue),
+                || true,
+            )
+            .unwrap()
+    }
+
+    fn hit(registry: &mut Registry, app: &str, url: &str) {
+        registry.decide(app, "GET", url, SentRequest::default, || true);
+    }
+
+    #[test]
+    fn a_count_trim_reports_how_far_the_route_lost_requests() {
+        let mut registry = Registry::default();
+        let route = catch_all(&mut registry, "run", "app");
+        for i in 0..(MAX_LOG_ENTRIES + 5) {
+            hit(&mut registry, "app", &format!("http://h/{i}"));
+        }
+        let window = registry.requests_after("run", "app", Some(route), 0);
+        assert_eq!(window.dropped_through, 5);
+        assert_eq!(window.entries.len(), MAX_LOG_ENTRIES);
+        assert_eq!(
+            (window.entries[0].seq, window.entries[0].url.as_str()),
+            (6, "http://h/5")
+        );
+        // A reader that had taken through seq 5 lost nothing; one at 3 did.
+        let fresh = registry.requests_after("run", "app", Some(route), 1_000);
+        assert_eq!(
+            fresh
+                .entries
+                .iter()
+                .map(|entry| entry.seq)
+                .collect::<Vec<_>>(),
+            vec![1_001, 1_002, 1_003, 1_004, 1_005]
+        );
+        assert!(fresh.dropped_through <= 1_000);
+    }
+
+    #[test]
+    fn a_byte_trim_reports_how_far_the_route_lost_requests() {
+        let mut registry = Registry::default();
+        let route = catch_all(&mut registry, "run", "app");
+        let body = "x".repeat(MAX_REQUEST_BODY_BYTES);
+        let kept = MAX_LOG_BODY_BYTES / MAX_REQUEST_BODY_BYTES;
+        for i in 0..kept + 3 {
+            registry.decide(
+                "app",
+                "POST",
+                &format!("http://h/{i}"),
+                || SentRequest::new(Vec::new(), Some(body.clone()), false),
+                || true,
+            );
+        }
+        let window = registry.requests_after("run", "app", Some(route), 0);
+        assert_eq!(window.dropped_through, 3);
+        assert_eq!(window.entries.len(), kept);
+        assert_eq!(window.entries[0].seq, 4);
+    }
+
+    #[test]
+    fn another_app_crowding_the_log_is_charged_to_the_routes_it_dropped() {
+        let mut registry = Registry::default();
+        let quiet = catch_all(&mut registry, "run", "a");
+        hit(&mut registry, "a", "http://a/1");
+        let noisy = catch_all(&mut registry, "run", "b");
+        for i in 0..MAX_LOG_ENTRIES {
+            hit(&mut registry, "b", &format!("http://b/{i}"));
+        }
+        // App a's only request is gone, and its route says so.
+        let a = registry.requests_after("run", "a", Some(quiet), 0);
+        assert!(a.entries.is_empty());
+        assert_eq!(a.dropped_through, 1);
+        assert_eq!(
+            registry.requests_after("run", "a", None, 0).dropped_through,
+            1
+        );
+        let b = registry.requests_after("run", "b", Some(noisy), 0);
+        assert_eq!((b.dropped_through, b.entries.len()), (0, MAX_LOG_ENTRIES));
+        // Then app b loses one of its own; a route installed since lost none.
+        hit(&mut registry, "b", "http://b/next");
+        let b = registry.requests_after("run", "b", Some(noisy), 0);
+        assert_eq!((b.dropped_through, b.entries.len()), (2, MAX_LOG_ENTRIES));
+        let late = catch_all(&mut registry, "run", "c");
+        hit(&mut registry, "c", "http://c/1");
+        assert_eq!(
+            registry
+                .requests_after("run", "c", Some(late), 0)
+                .dropped_through,
+            0
+        );
+        // Another run's drops are not this run's.
+        assert_eq!(
+            registry
+                .requests_after("other", "a", None, 0)
+                .dropped_through,
+            0
+        );
+    }
+
+    #[test]
+    fn requests_in_one_millisecond_differ_by_seq() {
+        let mut registry = Registry::default();
+        let route = catch_all(&mut registry, "run", "app");
+        for i in 0..50 {
+            hit(&mut registry, "app", &format!("http://h/{i}"));
+        }
+        let all = registry
+            .requests_after("run", "app", Some(route), 0)
+            .entries;
+        let seqs: Vec<u64> = all.iter().map(|entry| entry.seq).collect();
+        assert_eq!(seqs, (1..=50).collect::<Vec<_>>());
+        // Resuming after any seq hands out exactly the rest, whatever the
+        // timestamps.
+        let rest = registry
+            .requests_after("run", "app", Some(route), 20)
+            .entries;
+        assert_eq!(
+            rest.first().map(|entry| entry.url.as_str()),
+            Some("http://h/20")
+        );
+        assert_eq!(rest.len(), 30);
+    }
+
+    #[test]
+    fn seq_is_never_reused_after_a_run_clears() {
+        let mut registry = Registry::default();
+        catch_all(&mut registry, "one", "app");
+        for i in 0..(MAX_LOG_ENTRIES + 1) {
+            hit(&mut registry, "app", &format!("http://h/{i}"));
+        }
+        registry.clear_run("one");
+        assert!(registry.log_dropped.is_empty());
+        let route = catch_all(&mut registry, "two", "app");
+        hit(&mut registry, "app", "http://h/next");
+        let window = registry.requests_after("two", "app", Some(route), 0);
+        assert_eq!(window.entries[0].seq, MAX_LOG_ENTRIES as u64 + 2);
+        assert_eq!(window.dropped_through, 0);
+    }
+
+    #[test]
+    fn scenario_calls_count_seq_past_their_trim() {
+        let mut scenario = InstalledScenario {
+            id: 1,
+            owner: "run".into(),
+            appid: "app".into(),
+            name: None,
+            variant: None,
+            source: None,
+            rules: Vec::new(),
+            installed_ms: 0,
+            calls: VecDeque::new(),
+            calls_total: 0,
+            companion: false,
+        };
+        let call = ScenarioCall {
+            seq: 0,
+            time_ms: 7,
+            method: "GET".into(),
+            url: "http://h/x".into(),
+            body: None,
+            rule: Some(1),
+            action: "fulfill",
+            status: Some(200),
+            answered_by: None,
+            no_match: None,
+        };
+        for _ in 0..3 {
+            scenario.push_call(call.clone());
+        }
+        assert_eq!(scenario.dropped_through(), 0);
+        assert_eq!(
+            scenario
+                .calls
+                .iter()
+                .map(|call| call.seq)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        for _ in 0..MAX_SCENARIO_CALLS {
+            scenario.push_call(call.clone());
+        }
+        assert_eq!(scenario.dropped_through(), 3);
+        assert_eq!(scenario.calls.front().map(|call| call.seq), Some(4));
+        assert_eq!(
+            scenario.calls.back().map(|call| call.seq),
+            Some(MAX_SCENARIO_CALLS as u64 + 3)
+        );
     }
 }
