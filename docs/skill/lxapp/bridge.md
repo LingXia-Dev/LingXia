@@ -1,30 +1,21 @@
-# Bridge API for JS Developers
+# Bridge
 
-This guide explains how View and Logic communicate through the bridge — covering `setData`, stream, and channel. It is written for developers writing lxapp pages, not for implementers of the bridge itself.
+How View and Logic exchange data: `setData`, streams, and channels. The page
+model itself is in [Lxapp pages](./guide.md).
 
-For a broad introduction to the View/Logic split, see [LxApp Development Guide](./guide.md).
+## Three primitives
 
----
+| Primitive | Direction | Transport | Use for |
+|---|---|---|---|
+| **State** (`setData`) | Logic → View | Diff, batched | Durable page state that outlives a stream or channel: lists, flags, final results |
+| **Stream** (`yield` / `stream.send`) | Logic → View | Payload as sent, immediate, ordered | One View-started operation with incremental output: tokens, progress |
+| **Channel** (`ch.send`) | both | Payload as sent, immediate | Long-lived sessions: live sync, collaboration |
 
-## The Bridge Model
+Never push per-chunk or per-event data with `setData`. Logic subscribes to
+external systems itself and surfaces results through `setData`; View never
+gets subscription APIs.
 
-**Logic** owns all business state and operations. It runs in a native JS runtime, not in the WebView. **View** renders UI and reacts to user input. It runs in the WebView and has no direct access to Logic's data.
-
-The bridge is the only path between them. It carries three categories of data:
-
-| Category | Direction | When to use |
-|---|---|---|
-| **State** (`setData`) | Logic → View | Durable page state: counters, lists, flags |
-| **Stream** (`yield` / `stream.send`) | Logic → View | Incremental output: tokens, progress, chunks |
-| **Channel** (`ch.send`) | bidirectional | Long-lived sessions: real-time sync, collaboration |
-
----
-
-## State — `setData`
-
-`setData` is the primary mechanism for Logic to push data to View. It merges a partial object into `this.data` and replicates the updated state to the WebView.
-
-### Logic side
+## `setData`
 
 ```ts
 // pages/counter/index.ts
@@ -37,103 +28,41 @@ Page({
   increment() {
     this.setData({ count: this.data.count + 1 });
   },
-
-  reset() {
-    this.setData({ count: 0, label: 'Start' });
-  },
 });
 ```
 
-Rules:
-- `this.data` is a read-only view. Never mutate it directly — use `setData`.
-- `setData` accepts a partial object of top-level keys. Only the listed keys are
-  updated; the rest are unchanged. A misspelled or wrongly typed key is a
-  compile error.
-- Nested writes use `setPath(['profile', 'name'], value)` (checked) or
-  `setDataPath('profile.name', value)` (unchecked string path).
-- The call is synchronous on the Logic side. Replication to View is asynchronous; `await this.flush()` waits for the View to acknowledge everything written so far, and rejects if a write was discarded instead — a page the runtime has already parked or cancelled.
-
-### View side
-
-`useLxPage().data` reflects whatever Logic has replicated. It updates reactively — no polling, no manual subscription. (Full View example: [guide → View Layer](./guide.md#view-layer).)
-
-### How replication works
-
-`setData` sends a JSON Patch diff, which View applies before re-rendering. That
-is efficient for low-frequency state transitions and wrong for hot-path payloads
-— use a stream for those.
-
-### When to use `setData`
-
-- Page state that must persist across navigation and be restorable (e.g., a message list, user profile, form values).
-- State that must outlive a stream or channel session (e.g., saving the final output after a stream completes).
-- Any data the View needs to render its initial or resting state.
-
-Do **not** use `setData` for per-chunk stream output. The diff cost and delivery cycle make it unsuitable for hot-path data.
-
----
+- `this.data` is read-only. `setData` takes typed top-level keys; nested
+  writes use `setPath(['profile', 'name'], value)` or
+  `setDataPath('profile.name', value)`.
+- The call is synchronous; replication is asynchronous. `await this.flush()`
+  waits until the View has everything written so far.
+- `useLxPage().data` follows it reactively.
 
 ## Stream
 
-A stream is a one-shot, View-initiated operation where Logic produces a sequence of chunks and terminates. The pattern is `request → events* → done`.
+A View-started operation that yields chunks and ends: `request → events* →
+done`.
 
-Use streams when:
-- Logic performs a long operation and View needs progress updates (file processing, LLM token output, multi-step calculations).
-- The output is incremental and the client should start rendering before completion.
+### Generator form
 
-### Logic side — generator form
-
-The simplest form — no imports, no special API. Write a standard `async *` generator method on your `Page({})` and the runtime detects it automatically via `Symbol.asyncIterator`. Each `yield` becomes an event frame delivered to View; `return` ends the stream.
+An `async *` page method is a stream; each `yield` is a chunk, `return` ends
+it, and `finally` runs on cancel.
 
 ```ts
-type ChatChunk =
-  | { type: 'token'; token: string }
-  | { type: 'artifact'; chart: ChartData };
-
-async function* mockChatStream(): AsyncGenerator<ChatChunk, void> {
-  yield { type: 'token', token: 'Hello ' };
-  yield { type: 'token', token: 'from ' };
-  yield { type: 'token', token: 'LingXia.' };
-}
-
 Page({
-  data: {
-    messages: [] as Message[],
-    isStreaming: false,
-  },
+  data: { messages: [] as Message[], isStreaming: false },
 
   async *onSend(params: { text: string }) {
-    const text = (params?.text ?? '').trim();
-    if (!text || this.data.isStreaming) return;
-
-    const userMsg: Message = {
-      id: `u${Date.now()}`,
-      role: 'user',
-      content: text,
-    };
-    this.setData({
-      messages: [...this.data.messages, userMsg],
-      isStreaming: true,
-    });
-
-    let accumulated = '';
-    let chartData: ChartData | undefined;
-
+    this.setData({ isStreaming: true });
+    let text = '';
     try {
-      for await (const chunk of mockChatStream()) {
-        if (chunk.type === 'token') accumulated += chunk.token;
-        if (chunk.type === 'artifact') chartData = chunk.chart;
+      for await (const chunk of chatStream(params.text)) {
+        if (chunk.type === 'token') text += chunk.token;
         yield chunk;
       }
     } finally {
-      const assistantMsg: Message = {
-        id: `a${Date.now()}`,
-        role: 'assistant',
-        content: accumulated || '(no response)',
-        chart: chartData,
-      };
       this.setData({
-        messages: [...this.data.messages, assistantMsg],
+        messages: [...this.data.messages, { role: 'assistant', content: text }],
         isStreaming: false,
       });
     }
@@ -141,14 +70,16 @@ Page({
 });
 ```
 
-### Logic side — explicit handle form
+### Handle form
 
-Use this when your async source is callback-based rather than an async iterator. You do not import `StreamHandle` — the runtime creates and injects it as the second parameter automatically for methods the build classifies as streams.
+For callback-based sources, take the injected `StreamHandle` as the second
+parameter (no import):
 
 ```ts
 Page({
   async onProcess(params: { fileId: string }, stream: StreamHandle) {
     const job = lx.files.process(params.fileId);
+    stream.onCancel(() => job.abort());
 
     job.on('progress', (pct) => stream.send({ type: 'progress', pct }));
     job.on('done',     (out) => stream.end(out));
@@ -157,226 +88,78 @@ Page({
 });
 ```
 
-`StreamHandle` exposes `send` (a chunk), `end` (final value), and `error` (terminate with an error). For the exact signatures read the `StreamHandle` declaration in `@lingxia/types` — that is authoritative; don't re-copy it here.
+The build classifies a method returning an `AsyncGenerator` or taking the
+handle as a stream; there is nothing to declare.
 
-The explicit handle exposes `onCancel(handler)` (returns unsubscribe). When the View cancels, the runtime invokes that handler, then resolves the call with `BRIDGE_CANCELED`. The generator form still observes cancel in `finally`; use `onCancel` when your source is callback-based.
-
-The runtime classifies each action from its shape at build time — a method
-returning an `AsyncGenerator`, or taking the injected handle, is a stream. There
-is no metadata field to declare.
-
-### View side
+### `useLxStream`
 
 ```tsx
-import { useState } from 'react';
 import { useLxPage, useLxStream } from '@lingxia/react';
 import type { LxStream } from '@lingxia/bridge';
 
-type StreamState = { text: string; chart?: ChartData };
+const { actions } = useLxPage<PageData, {
+  onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
+}>();
 
-export default function ChatPage() {
-  const { data, actions } = useLxPage<
-    { messages: Message[] },
-    {
-      onSend: (params: { text: string }) => LxStream<ChatChunk, void>;
-      onClear: () => void;
-    }
-  >();
+const chat = useLxStream<typeof actions.onSend, { text: string }>(actions.onSend, {
+  params: () => ({ text: input }),
+  manual: true,                 // start with chat.start(); default starts on mount
+  initial: { text: '' },
+  reduce: (acc, chunk) =>
+    chunk.type === 'token' ? { text: acc.text + chunk.token } : acc,
+});
 
-  const [inputText, setInputText] = useState('');
-
-  const chat = useLxStream<typeof actions.onSend, StreamState>(
-    actions.onSend,
-    {
-      params: () => ({ text: inputText }),
-      manual: true,
-      initial: { text: '' },
-      reduce: (acc, chunk) => {
-        if (chunk.type === 'token') return { ...acc, text: acc.text + chunk.token };
-        if (chunk.type === 'artifact') return { ...acc, chart: chunk.chart };
-        return acc;
-      },
-    },
-  );
-
-  const handleSend = () => {
-    const text = inputText.trim();
-    if (!text || chat.streaming) return;
-    chat.start();
-    setInputText('');
-  };
-
-  return (
-    <div>
-      <MessageList messages={data.messages} />
-      {chat.streaming && <StreamingBubble text={chat.data.text} />}
-      <input value={inputText} onChange={e => setInputText(e.target.value)} />
-      <button onClick={handleSend} disabled={chat.streaming}>Send</button>
-      {chat.streaming && <button onClick={() => chat.cancel()}>Stop</button>}
-    </div>
-  );
-}
+// chat.data, chat.result, chat.error, chat.streaming, chat.start(), chat.cancel()
 ```
 
-`useLxStream` returns a `LxStreamState` — `data` (accumulated via `reduce`, or the latest chunk), `result` (final value), `error`, `streaming`, plus `start()` and `cancel()`. The exact field types live in `LxStreamState` / `LxStreamOptions` in `@lingxia/react`; that's the authoritative shape — read it rather than trusting a copy here.
-
-The options worth knowing conceptually:
-- `manual: true` — stream doesn't start until you call `chat.start()`. With `manual: false` (default), it starts on mount and cancels on unmount.
-- `initial` — initial `data` value before the first chunk arrives.
-- `reduce` — accumulator function. If omitted, `data` is simply the latest chunk.
-
-### `setData` vs `yield` — which to use during a stream
-
-Both can push data to View, but they are for different things:
-
-| | `setData` | `yield` / `stream.send` |
-|---|---|---|
-| Transport | JSON Patch diff | Direct payload, no diff |
-| Delivery | Batched state cycle | Immediate |
-| Use for | State that outlives the stream | Per-chunk hot-path data |
-
-**Rule of thumb**: `yield` every chunk. Use `setData` for state transitions that should persist after the stream ends — saving the final message, clearing a loading flag.
-
-Chunks carry a per-`yield` sequence number, so delivery order is guaranteed
-regardless of async timing. An unhandled exception in the generator terminates
-the stream with an error result (surfaced on `chat.error`). `chat.cancel()`
-returns the generator — the `finally` block runs — and settles the call with
-`BRIDGE_CANCELED`.
-
----
+Without `reduce`, `data` is the latest chunk. A thrown generator ends the
+stream with `chat.error`; `chat.cancel()` settles it with `BRIDGE_CANCELED`.
 
 ## Channel
 
-A channel is a long-lived, bidirectional session between View and Logic. Either side can send messages at any time after the channel is open.
-
-Use channels when:
-- The connection must persist for the duration of a user interaction session (collaborative editing, real-time sync, live data feeds).
-- Logic needs to push multiple unsolicited updates while the session is active.
-- View needs to send multiple commands to Logic over time.
-
-### Logic side
-
-You do not import `ChannelHandle` — the runtime creates and injects it as the second parameter when View opens a channel. The runtime routes `ch.open` frames by topic (derived from the method name) and invokes the handler.
+A long-lived, two-way session opened by the View. The handler receives the
+injected `ChannelHandle`:
 
 ```ts
 Page({
   syncSession(params: { sessionId: string }, ch: ChannelHandle) {
-    const session = lx.sessions.open(params.sessionId);
-
-    // Logic → View: push updates when they happen
-    session.onUpdate(update => ch.send({ type: 'update', update }));
-    session.onEvent(event  => ch.send({ type: 'event', event }));
-
-    // Send initial state when channel opens
-    ch.send({ type: 'init', state: session.state, rev: session.rev });
-
-    // Receive messages from View
+    const session = openSession(params.sessionId);
+    ch.send({ type: 'init', state: session.state });
+    session.onUpdate((update) => ch.send({ type: 'update', update }));
     ch.on('data', (msg) => {
-      if (msg.type === 'op') {
-        const result = session.apply(msg.op);
-        ch.send({ type: 'ack', rev: result.rev });
-      }
+      if (msg.type === 'op') ch.send({ type: 'ack', rev: session.apply(msg.op) });
     });
-
-    // Cleanup when channel closes
-    ch.on('close', () => {
-      session.release();
-    });
+    ch.on('close', () => session.release());
   },
 });
 ```
 
-The handler function receives `ChannelHandle` as its second parameter. Use `ch.send()` to push data to View, and `ch.on()` to register listeners for incoming data and close events. This is the same event-listener pattern used throughout LingXia.
+Carry several message types over one channel as a discriminated union.
 
-`ChannelHandle` (injected by the runtime) exposes `send` (push to View), `close`, and `on('data' | 'close', …)` for receiving from View. For the precise generic signatures read the `ChannelHandle` declaration in `@lingxia/types` — authoritative, not re-listed here.
-
-### View side
+### `useLxChannel`
 
 ```tsx
-import { useEffect } from 'react';
-import { useLxPage, useLxChannel } from '@lingxia/react';
-import type { LxChannel } from '@lingxia/bridge';
+import { useLxChannel } from '@lingxia/react';
 
-export default function EditorPage() {
-  const { actions } = useLxPage<
-    {},
-    { syncSession: (p: { sessionId: string }) => Promise<LxChannel<SessionMessage, SessionCommand>> }
-  >();
+const session = useLxChannel(actions.syncSession, {
+  params: () => ({ sessionId: 'doc-123' }),
+});
 
-  const session = useLxChannel(
-    actions.syncSession,
-    { params: () => ({ sessionId: 'doc-123' }) },
-  );
+useEffect(() => {
+  if (session.last?.type === 'update') applyUpdate(session.last.update);
+}, [session.last]);
 
-  // Handle incoming messages from Logic
-  useEffect(() => {
-    if (!session.last) return;
-    const msg = session.last;
-    if (msg.type === 'init')   applyInitialState(msg.state);
-    if (msg.type === 'update') applyUpdate(msg.update);
-  }, [session.last]);
-
-  const sendOp = (op: Op) => {
-    session.send({ type: 'op', op });
-  };
-
-  return (
-    <div>
-      {session.connecting && <p>Connecting...</p>}
-      <Editor onOp={sendOp} />
-      <button onClick={() => session.close()}>End session</button>
-    </div>
-  );
-}
+// session.send(msg), session.close(), session.reopen(),
+// session.connecting, session.connected, session.error
 ```
 
-`useLxChannel` returns a `LxChannelState` — `last` (latest received message), `error`, `connecting`, `connected`, plus `send(payload)`, `close()`, and `reopen()`. The authoritative field types are `LxChannelState` / `LxChannelOptions` in `@lingxia/react`; read those rather than a copy. `connected` flips `true` after the channel acks and `false` after it closes; `reopen()` is useful after an error or with `manual: true`.
+The channel reopens when `params` changes; `{ manual: true }` leaves opening
+to `reopen()`.
 
-The channel re-opens automatically when `params` changes. Pass `{ manual: true }` to control open timing yourself and call `reopen()` manually.
+## Errors
 
-### Push during a channel session: `ch.send`, not `setData`
-
-Within an open channel, Logic-to-View pushes go through `ch.send`. Do not use `setData` for high-frequency in-session events.
-
-`ch.send` delivers directly, without the diff cost or delivery batch of `state.patch`. Use `setData` only for state that must survive the channel — for example, a badge count that reflects an external change that happened while no channel was active.
-
-### Multiplexed message types
-
-One channel carries multiple message types via discriminated union. This avoids opening parallel channels for related concerns.
-
-```ts
-// All of these flow through a single channel:
-ch.send({ type: 'init',   state, rev });
-ch.send({ type: 'update', update });
-ch.send({ type: 'ack',    rev });
-ch.send({ type: 'error',  reason });
-```
-
-On the View side, switch on `msg.type` to route each frame.
-
----
-
-## Choosing the Right Primitive
-
-| Scenario | Use |
-|---|---|
-| Counter, form values, lists | `setData` |
-| LLM token streaming | `stream` (generator) |
-| File processing with progress | `stream` (explicit handle) |
-| Save final output after streaming | `setData` in `finally` block |
-| Real-time collaborative editing | `channel` |
-| Live sensor data feed | `channel` |
-| Device event subscription (internal) | Logic subscribes internally, exposes via `setData` |
-
-**Note on subscriptions**: Logic subscribes to external systems (sensors, push, backend events) internally and surfaces results through `setData`. Subscription APIs are not exposed to View — that would move resource ownership to the wrong layer.
-
----
-
-## Error Handling
-
-All three primitives surface errors via `LxBridgeError` — `{ code: string | number; message?: string; data?: unknown }`, declared authoritatively in `@lingxia/bridge`. The `code` is the part you branch on; the common values are labeled below.
-
-Common error codes:
+All three primitives reject with `LxBridgeError` (`{ code, message?, data? }`);
+branch on `code`.
 
 | Code | Meaning |
 |---|---|
@@ -387,68 +170,5 @@ Common error codes:
 | `BRIDGE_MESSAGE_TOO_LARGE` | the encoded frame exceeded the 64 KiB native message limit — split the payload, or move the bulk through a file or a stream |
 | `BRIDGE_INTERNAL_ERROR` | unexpected error in Logic or Bridge |
 
-For streams, check `chat.error` after `chat.streaming` becomes `false`. For channels, check `session.error` after `session.connected` becomes `false`.
-
----
-
-## Host Facts
-
-A View reads what the host decided for its page from one hook:
-
-```ts
-const { sizeClass, aside, displayLanguage, formFactor, os, runner } = useLxHost();
-```
-
-`@lingxia/react` / `@lingxia/vue`; `getHost()` / `subscribeHost(cb)` in
-`@lingxia/html`; `window.LingXiaBridge.host.get()` / `.subscribe(cb)` in a page
-that bundles nothing. It changes only when one of its fields does — crossing a
-size class, a language switch — never while a window is dragged.
-
-Three different questions, answered separately:
-
-- **How much room is there?** `sizeClass` (`compact` | `regular`), the same value Logic's `lx.surface.watchContext` reports; `aside` says whether the host offers a docked aside. See [adaptive Views](adaptive-ui.md).
-- **Which machine is this?** `formFactor` (`mobile` | `desktop`). Branch on it for anything a phone should not show at all. A narrowed desktop window is still `desktop`; an unfolded fold is still `mobile` (`regular` + mobile, not a workspace). Do not invent a third size class.
-- **Which system is this?** `os` is `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'`. Use it only for genuinely OS-specific behaviour, such as a feature that exists on one platform. `runner` is `true` inside the `lingxia dev` simulator.
-
-`formFactor`, `os` and `runner` are fixed for the life of a page. In the
-simulator a phone frame reports `mobile` while `os` still names the desktop it
-runs on, so a mobile layout can be checked without a device; picking a frame of
-a different form factor re-serves the page, the way a browser's device mode
-reloads on an emulation toggle.
-
-- **Logic**: `lx.device.getDeviceInfo()` → `osName` (async); the tab bar's `showOn: ['mobile' | 'desktop']` picks destinations by form factor declaratively.
-
-## Display Language
-
-One product, one language, one writer — the rule, and the
-`lx.host.control.displayLanguage` writer behind it, are in
-[Logic runtime and typings](./lx-api.md#the-product-owns-its-settings). Read the
-effective language here; never keep a second preference of your own, and never
-offer a language picker inside a page.
-
-- **View**: `useLxHost().displayLanguage` (see [host facts](#host-facts)). The
-  runtime also sets `<html lang>` and `<html dir>` from it, so CSS logical
-  properties and `:dir()` follow a right-to-left language with no page code.
-- **Logic**: `lx.host.displayLanguage.get()` returns the tag in effect;
-  `lx.host.displayLanguage.watch(cb)` follows it and returns an unsubscribe.
-  Logic needs the second one because the strings it hands to native chrome —
-  navigation bar titles, tab bar labels, modal text — are yours, and nothing
-  re-renders them for you.
-
-The two subscriptions differ on purpose. View's `subscribe(cb)` fires **only on
-change**, so it plugs into `useSyncExternalStore` without an extra render; take
-the current value from `get()`. Logic's `watch(cb)` **starts with the current
-value**, and that first call is synchronous — it runs before `watch` returns,
-so the unsubscribe it returns is not yet bound inside it.
-
-Narrowing the tag to the catalogs you ship is yours to do, and is not a
-language setting: `ja-JP` with only `en`/`zh` shipped renders `en`, while the
-product stays in `ja-JP`.
-
-A `lingxia dev --display-language` session shadows the *effective* language
-without touching the preference. Inside that session `get()` and
-`getPreference()` disagree by design, and a `setPreference(...)` persists but
-changes nothing on screen until the shadow is gone — the runtime logs a warning
-saying so. Check a Settings screen's own effect in a session without the flag.
-
-The bridge initializes `document.documentElement.lang`.
+Check `chat.error` once `streaming` is false, and `session.error` once
+`connected` is false.

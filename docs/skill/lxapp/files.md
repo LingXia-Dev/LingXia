@@ -1,13 +1,9 @@
-# LingXia File Lifecycle
+# Files
 
-What an lxapp author needs to know about LingXia-managed files: which storage
-class a returned path belongs to, how `downloadFile`, `lx.fs`, and
-the media APIs place files, and when the runtime may clean them up. A returned
-path tells you whether the file is temporary, cache-managed, or durable.
+LingXia-managed files: storage classes, `downloadFile`, `lx.fs`, uploads,
+media outputs, and cleanup. A returned `lx://` path tells you its lifetime.
 
-## Storage Classes
-
-LingXia exposes three LxApp-owned storage classes:
+## Storage classes
 
 | Class | URI | Lifetime |
 | --- | --- | --- |
@@ -15,33 +11,18 @@ LingXia exposes three LxApp-owned storage classes:
 | User Data | `lx://userdata/<path>` | durable, never auto-cleaned |
 | User Cache | `lx://usercache/<path>` | regenerable, auto-cleaned under capacity pressure |
 
-User-visible downloads are exposed through
-`downloadFile({ destination: "downloads" })`. They are owned by the host
-downloads center, not by LxApp private storage.
+Use only `lx://` URIs, never native paths. Never keep a business reference to a
+temp URI; copy it into userdata first. User-visible downloads belong to the
+host downloads center, not to these classes.
 
-LxApp code must only use `lx://` URIs — never native paths. Physically, temp
-lives under the OS app-cache directory (disposable), while userdata *and*
-usercache live under app data: usercache deliberately so, because LingXia owns
-its cleanup policy rather than the OS. The exact on-disk layout is internal and
-may change between releases.
+## `downloadFile`
 
-## API Semantics
-
-### `downloadFile`
-
-`downloadFile` defaults to app-owned output. Final output depends on
-`destination` and `filePath`. The result reports which one applies as
-`storage` (`temp` | `userdata` | `downloads`); a `downloads` uri is opaque to
-`lx.fs`.
-
-Without `filePath`, the result is temp:
+The result's `storage` (`temp` | `userdata` | `downloads`) says where it went.
 
 ```ts
 const result = await lx.downloadFile({ url, headers, timeoutMs, signal }).result;
 result.uri; // lx://temp/<opaque_id>
 ```
-
-With `filePath`, the destination must be relative or `lx://userdata/...`:
 
 ```ts
 const result = await lx.downloadFile({
@@ -51,11 +32,6 @@ const result = await lx.downloadFile({
 result.uri; // lx://userdata/videos/video.mp4
 ```
 
-With `destination: "downloads"`, the file is saved into the user's Downloads
-directory and appears in the built-in downloads page. `suggestedName` is treated as
-a filename or relative-name hint only; the runtime sanitizes it, prevents
-directory traversal, and avoids overwriting existing files.
-
 ```ts
 const task = lx.downloadFile({
   url,
@@ -64,34 +40,21 @@ const task = lx.downloadFile({
 });
 ```
 
-This requires the host privilege grant for `downloads` (the default allow,
-unless a provider constrains privileges) **and** a native session-bound
-Downloads grant after the host's own policy or user-approval flow. App-owned
-output (`destination: "app"`, the default) does not require that privilege.
-Without the native grant, the operation fails closed. A grant held by a
-closing session cannot be resumed or inherited by a replacement session with
-the same app id.
+- `filePath` is relative or `lx://userdata/...`. Rejected: `lx://usercache`,
+  native absolute or drive paths, backslashes, empty, `.` or `..` segments, and
+  the userdata root.
+- `destination: "downloads"` saves to the user's Downloads (shown in the
+  downloads page) and needs the `downloads` host grant **and** a native session
+  grant ([permissions](../native/permissions.md)); without it the call fails.
+  `suggestedName` is sanitized and never overwrites. A `downloads` URI is
+  opaque to `lx.fs`.
+- A failed or canceled download leaves no partial file; `resume()` continues a
+  paused one.
 
-Rejected destinations:
+## `lx.fs`
 
-- `lx://usercache/...`
-- native absolute paths
-- drive-style paths containing `:`
-- backslash paths
-- empty path segments
-- `.` or `..` segments
-- the `lx://userdata` root itself
-
-Downloads stage in a private location and move into place on success, so a
-failed or canceled download never leaves a partial final file; pausing keeps
-the staging so `resume()` can continue, and identical URLs can download
-concurrently.
-
-### `lx.fs`
-
-`lx.fs` is the LingXia-managed filesystem namespace. `file(path)` creates a
-lazy reference; choose the returned representation with a method, following
-the same model as Web `Blob` and `Rong.file`:
+`lx.fs.file(path)` is a lazy reference; pick the representation with a method,
+as with Web `Blob`:
 
 ```ts
 const file = lx.fs.file("notes.json");
@@ -102,11 +65,17 @@ const buffer = await file.arrayBuffer();    // ArrayBuffer
 const encoded = await file.base64();        // string
 ```
 
-Relative paths resolve under userdata. `lx.env.USER_DATA_PATH` and
-`lx.env.USER_CACHE_PATH` provide the explicit `lx://userdata` and
-`lx://usercache` roots. Read methods also accept `lx://temp/...`.
+- Relative paths resolve under userdata; `lx.env.USER_DATA_PATH` and
+  `lx.env.USER_CACHE_PATH` are the explicit roots. Reads also accept
+  `lx://temp/...`.
+- Each read is limited to 16 MiB. Pass larger files by path to upload,
+  preview, or native APIs.
+- `write(path, data, options?)` takes a string, `ArrayBuffer`, or typed array;
+  `encoding: "base64"` decodes a Base64 input string.
+- `readDir(path)` resolves to entries with `name`, `isFile`, `isDirectory`,
+  `isSymlink`.
 
-### File Copy And Move
+### Copy and move
 
 ```ts
 await lx.fs.copy(
@@ -120,51 +89,20 @@ await lx.fs.rename(
 );
 ```
 
-Rules:
+- Sources: temp, userdata, usercache. Destinations: userdata or usercache.
+- Parent directories are created. `write`, `copy`, and `rename` never
+  overwrite unless `overwrite: true`, and never replace a directory.
+- `rename` moves: a temp download renamed into usercache becomes cache without
+  a second copy.
 
-- `copy` copies from temp, userdata, or usercache into userdata or usercache
-- `rename` moves from temp, userdata, or usercache into userdata or usercache
-- relative destinations resolve under userdata
-- explicit `lx://` destinations may target `lx://userdata` or `lx://usercache`
-- parent directories are created automatically
-- existing destination files are not overwritten
-- final writes use a sibling temp file and rename/replace, so failed writes do not leave final partial files
+## `uploadFile`
 
-### Managed filesystem writes
+Call from Logic; the file streams without entering JavaScript memory.
 
-`write`, `copy`, and `rename` are explicit file management APIs. They
-default to no overwrite and support `overwrite: true` only when requested.
-Overwrite applies to files only; directories are never replaced by file writes.
-
-`write(path, data, options?)` accepts a UTF-8 string, `ArrayBuffer`, or typed
-array. For an existing Base64 payload, pass `encoding: "base64"`; this describes
-how the input string is decoded and does not change the method's return type.
-
-`rename` is move semantics. Moving a temp download into usercache avoids a
-second durable copy and hands the file to cache cleanup.
-
-`lx.fs.readDir(path)` resolves to an array of directory entries with `name`,
-`isFile`, `isDirectory`, and `isSymlink`, so it filters and maps like any other
-list.
-
-`LxFile.text`, `json`, `base64`, `bytes`, and `arrayBuffer` materialize the
-complete result in the lxapp Logic process and are limited to 16 MiB per call.
-Keep larger media and archive files as `lx://`
-paths and pass those paths to streaming, upload, preview, or native file APIs
-instead of reading the whole file into JavaScript memory.
-
-### Upload from a managed path
-
-Call `lx.uploadFile` from Logic; it streams the file without materializing it
-in JavaScript. The endpoint owns the size ceiling. Generated `UploadOptions`
-and `UploadTask` in `@lingxia/types` are authoritative.
-
-- Ordinary form endpoint: default `bodyMode: 'multipart'`, default method
-  `POST`; use `name`, `fileName`, and `formData` for the form envelope. The
-  runtime sets the multipart Content-Type and boundary.
-- Raw endpoint or presigned object-storage URL: `bodyMode: 'raw'`, matching the
-  signed method, headers, and MIME type. Do not send multipart fields; a
-  multipart envelope would become part of the stored object.
+- Form endpoint: default `bodyMode: 'multipart'`, method `POST`; `name`,
+  `fileName`, `formData` build the envelope.
+- Raw or presigned URL: `bodyMode: 'raw'` with the signed method, headers, and
+  MIME type, and no form fields.
 
 ```ts
 const task = lx.uploadFile({
@@ -180,33 +118,21 @@ for await (const event of task.progress) {
 const { statusCode, data } = await task.result;
 ```
 
-`task.result` settles once; `task.progress` has one consumer, and breaking
-out of iteration only detaches it. Attach a rejection handler to `result` when
-observing progress separately. `cancel()` cancels the transfer. The result
-contains HTTP `statusCode` and response text `data`; validate both against the
-endpoint contract before claiming business success.
-`signal` and `timeoutMs` are available. Keep the managed source file alive until
-the transfer finishes. Network grants follow [permissions](../native/permissions.md).
-Cloud/provider upload wrappers define their own protocol; consult their owning
-skill rather than treating them as interchangeable with `lx.uploadFile`.
+- `task.result` settles once; `task.progress` has one consumer. Attach a
+  rejection handler to `result` when consuming progress separately.
+- `cancel()`, `signal`, and `timeoutMs` are available. Keep the source file
+  until the transfer ends.
+- Check `statusCode` and `data` against the endpoint before reporting success.
 
-### Media APIs
+## Media outputs
 
-`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnail APIs
-return temp outputs by default. Use `lx.fs.copy` to keep a copy, or
-`lx.fs.rename` to move it into userdata or usercache.
+`chooseMedia`, `compressImage`, `compressVideo`, and video thumbnails return
+temp files. `lx.fs.copy` keeps a copy; `lx.fs.rename` moves it into userdata or
+usercache.
 
-## `lingxia.yaml` Storage Configuration
+## Cleanup and quotas
 
-Host apps configure storage limits in `lingxia.yaml`:
-
-```yaml
-storage:
-  tempMaxSizeMB: 1024
-  cacheMaxSizeMB: 2048
-  dataMaxSizeMB: 4096
-  appStorageMaxSizeMB: 16384
-```
+Limits come from host [`storage`](../app/project.md#storage):
 
 | Setting | Default | Scope | `0` Means |
 | --- | ---: | --- | --- |
@@ -215,51 +141,23 @@ storage:
 | `dataMaxSizeMB` | 4096 | per LxApp userdata | disable userdata size limit |
 | `appStorageMaxSizeMB` | 16384 | total userdata + usercache budget | disable app-wide storage limit |
 
-## When files get cleaned up
+- **Temp** is removed with its session (stale sessions at open, the current one
+  at destroy) and oldest-first under the cap; the OS may also clear it.
+  Overflow fails with `TEMP_QUOTA_EXCEEDED`.
+- **Usercache** is LRU-evicted from 80 % down to 50 % of the cap, with no age
+  cutoff. Assets a WebView keeps in its own cache stop refreshing their access
+  time; refresh them with `lx.fs.stat(path)` at session start, or keep them in
+  userdata. Overflow fails with `USERCACHE_QUOTA_EXCEEDED`.
+- **Userdata** is never evicted; only explicit deletes, uninstall, or the user
+  clearing app data remove it. Overflow fails with `USERDATA_QUOTA_EXCEEDED`,
+  or `APP_STORAGE_QUOTA_EXCEEDED` after usercache cleanup.
+- On a full disk, writes evict usercache and retry once, then fail; tell the
+  user.
 
-**Temp** is session-scoped: stale sessions are removed when the lxapp opens,
-and the current session's temp is removed on lxapp destroy. Size cleanup
-(oldest-first) runs as temp files are produced; if it can't free enough space
-under `tempMaxSizeMB`, the operation fails with `TEMP_QUOTA_EXCEEDED`. The OS
-may also clear app cache at any time.
+## Host cache
 
-**User cache** eviction is capacity-driven LRU — there is **no age cutoff**
-(files are never deleted just for being old). Cleanup triggers when a cache
-would reach 80% of `cacheMaxSizeMB` and evicts least-recently-used files down
-to 50%, so writes don't thrash the cleaner. It runs at host startup, on
-usercache writes, and app-wide when total storage nears
-`appStorageMaxSizeMB`. A freshly written file is never evicted by the write
-that stored it. If cleanup can't make room, the write fails with
-`USERCACHE_QUOTA_EXCEEDED`.
-
-What counts as "recently used": `LxFile` content reads, `lx.fs.readDir`,
-`stat`, `exists`, and copy/move *from* usercache, plus WebView `lx://usercache`
-resource loads refresh a file's access time. **Gotcha:** a WebView that keeps
-an asset in its internal resource cache never re-hits the scheme handler, so
-that asset's access time goes stale and it becomes the first LRU candidate
-under pressure. If a long-lived asset must survive, put it in userdata — or
-refresh it explicitly with `lx.fs.stat(path)` / `lx.fs.exists(path)` at session
-start.
-
-**User data** is never auto-cleaned to satisfy quota. It is deleted only by
-explicit delete APIs, lxapp uninstall, or the user clearing app data — notably
-*not* by `lx.host.cache.clear()`, which is a cache control and never touches
-userdata. Writes
-that would exceed `dataMaxSizeMB` fail with `USERDATA_QUOTA_EXCEEDED`; writes
-that would exceed `appStorageMaxSizeMB` first trigger usercache cleanup, then
-fail with `APP_STORAGE_QUOTA_EXCEEDED`. Quota failures are ordinary errors to
-handle in app code — existing data is never silently deleted to make a write
-succeed.
-
-**Physical disk full**: quotas are logical caps — the device can hit `ENOSPC`
-first. `lx.fs` writes and `downloadFile` finalization then evict LRU
-usercache (never userdata) and retry once; if the retry still fails, the IO
-error surfaces to the caller and the lxapp should tell the user.
-
-## Clearing the product's cache
-
-`lx.host.cache` is a host-wide API injected only into the Control app, same
-gate as `lx.host.control`. Guests do not have the member.
+`lx.host.cache` exists only in the [Control app](../app/control-app.md), for a
+product-wide "clear cache" setting:
 
 ```ts
 const cache = lx.host.cache;
@@ -269,54 +167,9 @@ const result = await cache.clear();
 // result: { freedBytes, skippedActivePaths, webview, failures }
 ```
 
-The clear removes unprotected lxapp usercache, idle session temp, shared runtime
-artwork, and WebView HTTP cache where supported. Native package maintenance also
-reclaims orphaned installs and staged archives, preserving referenced paths,
-active work, recent writes, and paths with uncertain timestamps.
-
-**Live runtime instances retain their usercache and temp**, including the home
-caller and hidden apps. Protection begins before storage initialization and
-lasts until the instance is released; lingering runtime work may conservatively
-keep a closed app protected. No app is restarted by this API. To clear a running
-app, use its host-provided "clear cache and restart" menu action.
-
-Userdata, KV storage, user Downloads, cookies/site data, valid installs and host
-components such as optional native runtimes are never cleared.
-
-`size()` estimates currently reclaimable managed file bytes, not total product
-storage. `freedBytes` sums estimates for successfully removed paths, rather than
-subtracting two global usage snapshots. Neither includes WebView bytes or
-promises physical disk blocks reclaimed. Concurrent work may change the result;
-partially removed paths that fail deletion are not counted.
-
-`skippedActivePaths` counts protected cache/session directories, not apps.
-`webview` is `cleared`, `unsupported`, or `failed`. `failures` reports errors after
-attempting all categories; a partial clear resolves with this report. Failure to
-initialize or execute the maintenance task rejects. Settings must display
-skipped/failed work and must not promise that all caches were cleared.
-
-## Storage Summary
-
-```text
-storage: temp      -> lx://temp/<opaque_id>
-                      short-lived, session/size scoped
-
-storage: userdata  -> lx://userdata/<path>
-                      durable owner-private data
-
-usercache          -> lx://usercache/<path>
-                      regenerable cache, LRU-evicted under capacity pressure
-```
-
-## Rules for Developers
-
-- Use temp files for immediate preview, upload, transform, or save flows.
-- Use `lx.fs.write(lx.env.USER_CACHE_PATH + "/...", data)` for developer-generated regenerable files.
-- Use `lx.fs.copy(source, destination)` when a temp file must be copied into userdata or usercache.
-- Use `lx.fs.rename(uri, "lx://usercache/...")` when a temp file should become auto-cleaned cache without a second copy.
-- Use `downloadFile({ filePath })` only for durable userdata destinations.
-- Do not pass `lx://usercache`, host download directories, or native paths to `downloadFile.filePath`.
-- Do not store business-critical references to a `storage: 'temp'` uri; copy it
-  into userdata first.
-- Use `lx.host.cache` from the Control app for a product-wide "clear cache"
-  control; guests do not have the member.
+- Clears usercache, idle temp, and the WebView HTTP cache; never userdata, KV
+  storage, Downloads, cookies, or installs.
+- Running lxapps (including the caller) keep their cache; to clear one, use its
+  host "clear cache and restart" action.
+- Sizes are estimates. `webview` is `cleared`, `unsupported`, or `failed`; show
+  skipped and failed work, and never promise everything was cleared.

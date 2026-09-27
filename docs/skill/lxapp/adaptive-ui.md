@@ -1,12 +1,9 @@
-# Adaptive LxApp Views
+# Adaptive UI
 
-Use LingXia's surface context when an lxapp must change its component tree or
-interaction model for different available sizes. Do not infer a device family
-from the user agent, `screen.width`, or a browser-only media query.
+Change an lxapp's component tree by available size. Never infer a device from
+the user agent, `screen.width`, or a browser media query.
 
 ## Surface context
-
-The generated `@lingxia/types` declarations are authoritative:
 
 ```ts
 type SurfaceContext = {
@@ -15,111 +12,45 @@ type SurfaceContext = {
   width: number;
   height: number;
 };
-
-lx.surface.watchContext(
-  handler: (context: SurfaceContext) => void,
-): () => void;
 ```
 
-The subscription invokes the handler immediately, then only when the actual
-surface viewport changes. `width` and `height` use logical pixels. `sizeClass`
-uses the following ranges with platform-managed hysteresis at 600:
-
-| Size class | Actual surface viewport width |
+| Size class | Surface viewport width (logical px) |
 |---|---:|
 | `compact` | less than 600 |
 | `regular` | 600 and above |
 
-Content size class is scoped to the lxapp's own presentation, not the host
-window: an lxapp in a narrow region of a wide desktop shell receives `compact`.
-It is one value per lxapp — a page of that lxapp shown in an aside, float or
-second window sees the main presentation's context, not its own. The shell's own
-`medium` / `expanded` bands drive chrome admission and never reach content.
-`aside` is live host docking availability, decided by the shell rather than
-derived from the content viewport — read it from this context (in Logic or the
-View), never infer it from the viewport.
-
-`regular` is room, not desktop. Pair it with `useLxHost().formFactor`;
-tablets and foldable phones are mobile, and unfolding a fold flips
-`sizeClass` without changing host form:
+- The size class is the lxapp's own presentation, not the window: an lxapp in
+  a narrow region of a wide desktop is `compact`. It is one value per lxapp.
+- `aside` is whether the host offers a docked aside right now; read it, never
+  infer it from width.
+- `regular` is room, not desktop. Pair it with `formFactor`:
 
 | | mobile | desktop |
 |---|---|---|
 | `compact` | folded phone, narrow tablet split | narrow desktop window |
 | `regular` | unfolded fold, tablet | desktop workspace |
 
-Do not add a third size class or View for fold or tablet. Extra width on a
-mobile `regular` surface is page two-pane via CSS; the host shell there stays
-mobile (full tab bar on a tablet, no desktop sidebar).
-
-## Edge-to-edge windows
-
-`lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
-the window edge while the system keeps minimize, maximize, resize, and drag.
-The runtime owns a native drag strip across the top and publishes its height as
-`topInset` on the page-chrome snapshot, so the window stays movable whether or
-not the page cooperates — nothing is asked of the page, and there is no
-opt-in to forget.
-
-```css
-header {
-  padding-top: var(--lx-page-chrome-top-inset);
-}
-```
-
-`chrome` defaults to `'system'`, which is the standard title bar. Ask
-`lx.supports('surface.window.fullChrome')`
-before offering it.
-
-## Runner safe areas and page chrome
-
-Use the host's `--lx-page-chrome-*` CSS variables for native chrome, including
-custom-header pages in Runner; see [page chrome](guide.md#laying-out-under-immersive-chrome).
-Browser `env(safe-area-inset-*)` alone does not describe simulated Runner
-chrome. Do not compensate with a fixed phone/notch height. Capsule geometry
-belongs to the View, through `--lx-page-chrome-capsule-*`.
+Do not add a third size class or View for folds or tablets; extra width on a
+mobile `regular` surface is a CSS two-pane.
 
 ## Read it in the View
 
-A View reads the size class itself: `useLxHost().sizeClass` (and `.aside`) from
-`@lingxia/react` / `@lingxia/vue`, or `getHost()` / `subscribeHost(cb)` from
-`@lingxia/html`. It is the same value `watchContext` delivers to Logic, seeded
-into the page before its first frame and updated when it changes, so a page
-that only picks a layout needs no Logic subscription, no `setData`, nothing in
-its `data` and no gate. It changes only when the size class does — a window
-drag within a class re-renders nothing. The exact width and height are not a
-hook: size spacing and columns with CSS and container queries, which follow
-every pixel without re-rendering. A host older than the release that added it
-reports `compact` forever, so keep `lxapp.json` `minRuntime` at that release or
-later — `lingxia` raises it when the project moves to this line.
+`useLxHost().sizeClass` and `.aside` ([host facts](./guide.md#host-facts)) are
+present before the first frame and change only when the class changes. A page
+that only picks a layout needs no Logic subscription. Size spacing and columns
+with CSS and container queries. Older hosts report `compact`, so keep
+`minRuntime` current.
 
-Subscribe in Logic only when Logic itself acts on the context — say, fetching
-less on `compact`. Then keep the unsubscribe per page instance, never in `data`:
+Logic subscribes with `lx.surface.watchContext(cb)` only when Logic itself acts
+on the context; it is called immediately, then on every viewport change, and
+returns an unsubscribe (tear it down as in
+[`lx.on*` subscriptions](./guide.md#lxon-subscriptions)).
 
-```ts
-const subscriptions = new WeakMap<object, () => void>();
+## CSS or separate Views
 
-Page({
-  onLoad() {
-    subscriptions.set(this, lx.surface.watchContext(({ sizeClass }) => {
-      // Logic's own use of the size class.
-    }));
-  },
-  onUnload() {
-    subscriptions.get(this)?.();
-    subscriptions.delete(this);
-  },
-});
-```
-
-## Choose CSS or separate Views
-
-Use CSS or container queries when only spacing, columns, wrapping, or alignment
-changes. Use separate components when the interaction model or component tree
-changes, such as cards versus a data table, a bottom action bar versus a
-desktop toolbar, or a compact flow that omits workspace-only operations.
-
-For React, keep the registered page entry stable and lazy-load one variant:
+Use CSS when only spacing, columns, or alignment change. Use separate
+components when the interaction model changes (cards vs a data table, bottom
+bar vs toolbar). Keep the page entry stable and lazy-load one variant:
 
 ```tsx
 import { useLxHost } from '@lingxia/react';
@@ -143,28 +74,31 @@ export default function PageView() {
 }
 ```
 
-Workspace is the desktop interaction, not "anything wider than a phone": a
-`regular` mobile surface keeps CompactView.
+- Workspace is the desktop interaction; a `regular` mobile surface keeps
+  CompactView.
+- Switching unmounts local UI state. Keep business state and drafts in Logic;
+  keep hover or an open popover in the View.
+- Size-based availability is a product rule, not authorization: Logic still
+  rejects unavailable actions.
 
-The page mounts once its first state has arrived, so a View reads
-`useLxPage().data` whole, with no gate.
+## Edge-to-edge windows
 
-Only the selected component is mounted. Both dynamic chunks remain part of the
-lxapp package. Confirm build output before claiming a first-load JavaScript
-reduction.
+`lx.surface.openPage(page, { as: 'window', chrome: 'full' })` runs the page to
+the window edge; the system keeps window controls and the runtime keeps a drag
+strip whose height is `--lx-page-chrome-top-inset`. Check
+`lx.supports('surface.window.fullChrome')` first; the default is `'system'`.
 
-Changing the selected component unmounts its local UI state. Keep business
-state, drafts that must survive, locale selection, and feature availability in
-Logic. Keep transient state such as hover or an open popover in the View.
+```css
+header {
+  padding-top: var(--lx-page-chrome-top-inset);
+}
+```
 
-Treat size-derived feature availability as a product rule, not authorization.
-Logic should still reject an unavailable action, and services must enforce
-real permissions.
+Other page-chrome variables: [Page chrome CSS](./guide.md#page-chrome-css).
 
 ## Test runtime switching
 
-LingXia Runner device-frame changes report a new surface viewport. Exercise
-them in one session through automation:
+Runner device changes report a new viewport. Switch in one spec:
 
 ```ts
 spec('switches Compact and Workspace views', async (t) => {
@@ -180,20 +114,8 @@ spec('switches Compact and Workspace views', async (t) => {
 });
 ```
 
-Switching form factor re-serves the page (`isMobile` / `isDesktop` are fixed
-for a page lifetime). A tablet or fold frame is still mobile: expect Compact
-View even when `sizeClass` is `regular`.
-
-`device.set` is a partial update: omit `id` to keep the current device, and
-pass `appearance: "light" | "dark" | "system"` to pin or release the simulated
-color scheme for dual-theme assertions.
-
-Assert that the old View is absent from the DOM and that Logic-owned state is
-still visible after each switch.
-
-On macOS and Windows, switching between phone, tablet, and desktop presets also
-changes the embedded browser identity external websites see. The Runner sends an
-engine-compatible synthetic UA (WebKit on macOS, Chromium/Android on Windows),
-not the branded device name on the frame. That emulation is for website
-compatibility only — lxapps still decide layout and interaction from surface
-context.
+- Switching form factor re-serves the page; a tablet or fold frame is still
+  mobile, so expect CompactView there.
+- `device.set` is partial; `appearance: "light" | "dark" | "system"` pins the
+  simulated scheme.
+- Assert the old View is gone and Logic-owned state survived.
