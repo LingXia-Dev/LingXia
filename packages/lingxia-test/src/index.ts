@@ -52,6 +52,7 @@ export type {
   TestApp,
   TestAutomation,
   TestClock,
+  TestDialogs,
   TestErrorCode,
   AppErrorCodes,
   ExpectedErrorCode,
@@ -71,4 +72,13 @@ export type {
   WaitForCallOptions,
   WaitForOptions,
 } from "./types.js";
-export type { AutomationErrorCode, ClockAdvance, ClockState } from "@lingxia/types/automation";
+export type {
+  ActionSheetAnswer,
+  ActionSheetRecord,
+  AutomationErrorCode,
+  ClockAdvance,
+  ClockState,
+  ModalAnswer,
+  ModalRecord,
+  ToastRecord,
+} from "@lingxia/types/automation";

@@ -18,6 +18,8 @@ use tungstenite::protocol::Message;
 use uuid::Uuid;
 
 pub const DEFAULT_LOG_RETENTION_DAYS: u64 = 7;
+/// Sessions whose logs `.lingxia/logs/` keeps, the newest by last write.
+pub const KEPT_SESSION_LOGS: usize = 10;
 pub const DEV_DIR_NAME: &str = ".lingxia";
 const WS_PROBE_TIMEOUT: Duration = Duration::from_millis(200);
 /// Read/write budget for an interactive command round trip (e.g. shutdown).
@@ -56,6 +58,7 @@ pub fn create_session(project_root: &Path) -> Result<DevLogSession> {
     let dev_dir = dev_dir(project_root);
     let logs_dir = dev_dir.join("logs");
     cleanup_old_logs(&logs_dir, DEFAULT_LOG_RETENTION_DAYS)?;
+    prune_session_logs(&logs_dir, KEPT_SESSION_LOGS)?;
     fs::create_dir_all(&logs_dir)
         .with_context(|| format!("Failed to create {}", logs_dir.display()))?;
 
@@ -620,6 +623,112 @@ fn parse_ws_addr(ws_url: &str) -> Option<String> {
     }
 }
 
+/// A session log capped at `limit` bytes: a write that would pass it moves
+/// the file to `{session}.1.jsonl` first (and `.1` to `.2`, and so on,
+/// dropping the oldest), then starts the file over. Writes are whole
+/// batches of lines, so a line never spans two files.
+pub struct RotatingLog {
+    path: PathBuf,
+    limit: u64,
+    file: Option<fs::File>,
+    size: u64,
+}
+
+impl RotatingLog {
+    pub fn open(path: &Path, limit: u64) -> Result<Self> {
+        let file = open_append(path)?;
+        let size = file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
+        Ok(Self {
+            path: path.to_path_buf(),
+            limit,
+            file: Some(file),
+            size,
+        })
+    }
+
+    pub fn append(&mut self, bytes: &[u8]) -> Result<()> {
+        if self.size > 0 && self.size + bytes.len() as u64 > self.limit {
+            self.rotate()?;
+        }
+        let file = match &mut self.file {
+            Some(file) => file,
+            None => self.file.insert(open_append(&self.path)?),
+        };
+        file.write_all(bytes)
+            .and_then(|()| file.flush())
+            .with_context(|| format!("Failed to write {}", self.path.display()))?;
+        self.size += bytes.len() as u64;
+        Ok(())
+    }
+
+    fn rotate(&mut self) -> Result<()> {
+        use lingxia_control_protocol::dev_session::log_files::{ROTATED_LOGS, rotated_log_path};
+        // Closed before the renames: Windows does not rename an open file.
+        self.file = None;
+        let _ = fs::remove_file(rotated_log_path(&self.path, ROTATED_LOGS));
+        for n in (1..ROTATED_LOGS).rev() {
+            let from = rotated_log_path(&self.path, n);
+            if from.exists() {
+                fs::rename(&from, rotated_log_path(&self.path, n + 1))
+                    .with_context(|| format!("Failed to rotate {}", from.display()))?;
+            }
+        }
+        fs::rename(&self.path, rotated_log_path(&self.path, 1))
+            .with_context(|| format!("Failed to rotate {}", self.path.display()))?;
+        self.file = Some(open_append(&self.path)?);
+        self.size = 0;
+        Ok(())
+    }
+}
+
+fn open_append(path: &Path) -> Result<fs::File> {
+    fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .with_context(|| format!("Failed to open {}", path.display()))
+}
+
+/// Keep the logs of the `keep` sessions written last, and remove every other
+/// session's (its current and rotated files alike). Files that are not a
+/// session's log are left alone.
+pub fn prune_session_logs(logs_dir: &Path, keep: usize) -> Result<()> {
+    use lingxia_control_protocol::dev_session::log_files::log_session_id;
+    if !logs_dir.exists() {
+        return Ok(());
+    }
+    let mut sessions: std::collections::HashMap<String, (SystemTime, Vec<PathBuf>)> =
+        std::collections::HashMap::new();
+    for entry in
+        fs::read_dir(logs_dir).with_context(|| format!("Failed to read {}", logs_dir.display()))?
+    {
+        let entry = entry?;
+        let metadata = entry.metadata()?;
+        if !metadata.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(session) = log_session_id(&name) else {
+            continue;
+        };
+        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let group = sessions
+            .entry(session.to_string())
+            .or_insert((SystemTime::UNIX_EPOCH, Vec::new()));
+        group.0 = group.0.max(modified);
+        group.1.push(entry.path());
+    }
+    let mut sessions: Vec<_> = sessions.into_values().collect();
+    sessions.sort_by_key(|(modified, _)| std::cmp::Reverse(*modified));
+    for (_, files) in sessions.into_iter().skip(keep) {
+        for file in files {
+            fs::remove_file(&file)
+                .with_context(|| format!("Failed to remove {}", file.display()))?;
+        }
+    }
+    Ok(())
+}
+
 pub fn cleanup_old_logs(logs_dir: &Path, retention_days: u64) -> Result<()> {
     if retention_days == 0 || !logs_dir.exists() {
         return Ok(());
@@ -683,6 +792,90 @@ mod tests {
 
         assert!(!old_log.exists());
         assert!(new_log.exists());
+    }
+
+    #[test]
+    fn a_session_log_rotates_at_its_cap_and_keeps_a_fixed_number_of_old_files() {
+        use lingxia_control_protocol::dev_session::log_files::{
+            ROTATED_LOGS, rotated_log_path, session_log_files,
+        };
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("abc123.jsonl");
+        let mut log = RotatingLog::open(&path, 100).unwrap();
+        let line = |n: usize| format!("{{\"n\":{n:02}}}{}\n", " ".repeat(30));
+        // 39-byte lines: two fit in 100 bytes, the third rotates.
+        for n in 0..9 {
+            log.append(line(n).as_bytes()).unwrap();
+        }
+        let files = session_log_files(&path);
+        assert_eq!(files.len(), 1 + ROTATED_LOGS, "{files:?}");
+        assert!(!rotated_log_path(&path, ROTATED_LOGS + 1).exists());
+        for file in &files {
+            assert!(
+                fs::metadata(file).unwrap().len() <= 100,
+                "{}",
+                file.display()
+            );
+        }
+        // Oldest first, every line whole, the newest lines kept.
+        let text: String = files
+            .iter()
+            .map(|file| fs::read_to_string(file).unwrap())
+            .collect();
+        let kept: Vec<usize> = text
+            .lines()
+            .map(|line| line[5..7].parse().unwrap())
+            .collect();
+        assert_eq!(kept, vec![4, 5, 6, 7, 8]);
+
+        // A reopened log (a restarted writer) continues from the file's size.
+        drop(log);
+        let mut log = RotatingLog::open(&path, 100).unwrap();
+        log.append(line(9).as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), line(8) + &line(9));
+
+        // A batch larger than the cap still lands, whole, in a fresh file.
+        let big = "x".repeat(250);
+        log.append(big.as_bytes()).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), big);
+    }
+
+    #[test]
+    fn old_sessions_logs_are_pruned_with_their_rotated_files() {
+        let temp = tempdir().unwrap();
+        let logs = temp.path().join("logs");
+        fs::create_dir_all(&logs).unwrap();
+        let now = SystemTime::now();
+        for (index, session) in ["s0", "s1", "s2", "s3"].iter().enumerate() {
+            for name in [format!("{session}.jsonl"), format!("{session}.1.jsonl")] {
+                let file = logs.join(name);
+                fs::write(&file, "{}\n").unwrap();
+                filetime::set_file_mtime(
+                    &file,
+                    filetime::FileTime::from_system_time(
+                        now - Duration::from_secs(60 * index as u64),
+                    ),
+                )
+                .unwrap();
+            }
+        }
+        fs::write(logs.join("notes.txt"), "keep me").unwrap();
+        prune_session_logs(&logs, 2).unwrap();
+        let mut left: Vec<String> = fs::read_dir(&logs)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        left.sort();
+        assert_eq!(
+            left,
+            [
+                "notes.txt",
+                "s0.1.jsonl",
+                "s0.jsonl",
+                "s1.1.jsonl",
+                "s1.jsonl"
+            ]
+        );
     }
 
     #[test]

@@ -642,6 +642,16 @@ Development machine: lxdev receives progress, results, and artifacts
   companion's function rules via `clear_functions_checked`, a Logic
   `clock.uninstall()` per clock) and refuses installs until the next opens;
   what a program installs before its first attempt belongs to the whole run.
+  A dialog watch (`dialogs/mod.rs`, `lxapp().dialogs.watch()`, keyed by
+  appid) belongs to the attempt that opened it the same way and ends with it
+  (`dialogs::reclaim_attempt`), which also wakes a pending `unanswered()`
+  with `null`. The runner opens it for the app under test before the spec's
+  hooks, races `unanswered()` against the body (a modal or `showActionSheet`
+  with no queued answer fails the spec at once), and `unwatch()`s it after
+  cleanup to fail a passing spec on answers no dialog used. Logic reaches the
+  watch through `lxapp::dialogs::DialogHook`: toasts are reported after the
+  host accepted them, modals and `lx.showActionSheet` ask first (sheets the
+  runtime opens itself, the media source picker, do not).
   The runner ends an abandoned spec's attempt like any other; per-spec
   refusal of its drivers is the JS grant (above). `revoke`, used only when
   the run stops, also makes `HostAutomationAuthority::check` — every

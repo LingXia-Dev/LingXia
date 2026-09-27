@@ -306,6 +306,7 @@ impl RunShared {
         // lock before reading run state.
         crate::network::clear_run(&self.run_id);
         crate::clock::clear_run(&self.run_id);
+        crate::dialogs::clear_run(&self.run_id);
         let inner = self.inner.clone();
         self.profile.begin_teardown(
             &self.run_id,

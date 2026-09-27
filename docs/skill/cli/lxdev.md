@@ -116,7 +116,9 @@ profiles, secrets, reports, and exit codes: [Testing](../lxapp/testing.md).
 The session's JSONL log stream: tail, or `-f` to follow. Filter by origin
 prefix, `--level`, `--path`, `--grep`, or `--app <id>`; `--origins` lists the
 origins; `--json` keeps whole events. `-f` exits when the session ends and
-does not follow a later session.
+does not follow a later session. The log (`.lingxia/logs/<session>.jsonl`)
+rotates at 8 MiB and keeps two older files, which `lxdev logs` reads first;
+only the last 10 sessions' logs are kept.
 
 ## `lxdev desktop`
 

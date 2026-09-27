@@ -6,6 +6,7 @@ use crate::i18n::js_service_unavailable_error;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ToastIcon, ToastOptions, ToastPosition, UserFeedback};
 use lxapp::LxApp;
+use lxapp::dialogs::ToastShown;
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 use rong::JSContextService;
 use rong::{FromJSObject, JSContext, JSFunc, JSObject, JSResult};
@@ -103,9 +104,25 @@ async fn show_toast(ctx: JSContext, options: JSToastOptions) -> JSResult<JSObjec
     let previous = state.fetch_add(1, Ordering::SeqCst);
     let generation = previous + 1;
     // Invalidate older handles before dispatch so they cannot hide a pending replacement.
+    let shown = lxapp::dialogs::dialog_hook().map(|hook| {
+        (
+            hook,
+            ToastShown {
+                title: options.title.clone(),
+                icon: options.icon.clone().unwrap_or_else(|| "none".to_string()),
+                duration_ms: options.duration.unwrap_or(1500.0),
+            },
+        )
+    });
     if let Err(error) = present_toast(ctx.clone(), options).await {
         let _ = state.compare_exchange(generation, previous, Ordering::SeqCst, Ordering::SeqCst);
         return Err(error);
+    }
+    // Observed, never intercepted: the toast was presented as usual.
+    if let Some((hook, toast)) = shown
+        && let Ok(lxapp) = LxApp::from_ctx(&ctx)
+    {
+        hook.toast(&lxapp.appid, &toast);
     }
     let handle = JSObject::new(&ctx);
     handle.set(

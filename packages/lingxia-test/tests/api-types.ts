@@ -209,6 +209,20 @@ spec('typed Logic access', async t => {
   await expect.poll(() => t.app.logic.data<Devices>(), { timeout: 2_000 }).toEqual({ devices: [] });
   await expect.poll(async () => [1, 2]).toHaveLength(2);
   await expect.poll(async () => 3).toBeGreaterThan(2);
+  // Dialogs: toasts are observed, modals and action sheets answered.
+  await expect.poll(() => t.app.dialogs.toasts()).toContainEqual(expect.objectContaining({ title: 'Saved' }));
+  await t.app.dialogs.answerNextModal({ confirm: true });
+  await t.app.dialogs.answerNextActionSheet({ index: 0 });
+  await t.app.dialogs.answerNextActionSheet({ cancel: true });
+  const [modal] = await t.app.dialogs.modals();
+  const confirmed: boolean | undefined = modal?.answer?.confirm;
+  const [sheet] = await t.app.dialogs.actionSheets();
+  const items: string[] | undefined = sheet?.items;
+  // @ts-expect-error A modal answer is { confirm }.
+  await t.app.dialogs.answerNextModal(true);
+  // @ts-expect-error An action sheet answer is { index } or { cancel: true }.
+  await t.app.dialogs.answerNextActionSheet({ cancel: false });
+  expect([{ a: 1 }]).toContainEqual(expect.objectContaining({ a: 1 }));
   expect(3).toBe(3);
   expect([1, 2]).toHaveLength(2);
   expect({ id: 'd1' }).toMatchSchema('Device');

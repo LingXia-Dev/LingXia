@@ -14,8 +14,37 @@ export function isEqual(a: unknown, b: unknown): boolean {
   return equal(a, b, { pairs: new Map(), trail: [] });
 }
 
+/** Marks an asymmetric matcher (`expect.objectContaining`); `format.ts` reads it by key. */
+export const ASYMMETRIC = Symbol.for("lingxia.test.asymmetric");
+
+/**
+ * `expect.objectContaining(sample)`: equal to any object that has every key
+ * of `sample` with an equal value; other keys are ignored. Values compare
+ * like `toEqual`, so a nested `objectContaining` works too.
+ */
+export class ObjectContaining {
+  readonly [ASYMMETRIC] = (): string => `ObjectContaining`;
+  constructor(readonly sample: Record<string, unknown>) {}
+
+  matches(other: unknown, assumed: Assumed): boolean {
+    if (typeof other !== "object" || other === null || Array.isArray(other)) return false;
+    return Object.keys(this.sample).every((key) =>
+      Object.prototype.hasOwnProperty.call(other, key) &&
+      equal((other as Record<string, unknown>)[key], this.sample[key], assumed));
+  }
+}
+
+export function objectContaining(sample: Record<string, unknown>): ObjectContaining {
+  if (typeof sample !== "object" || sample === null || Array.isArray(sample)) {
+    throw new TypeError("expect.objectContaining(sample) takes a plain object");
+  }
+  return new ObjectContaining(sample);
+}
+
 function equal(a: unknown, b: unknown, assumed: Assumed): boolean {
   if (Object.is(a, b)) return true;
+  if (b instanceof ObjectContaining) return b.matches(a, assumed);
+  if (a instanceof ObjectContaining) return a.matches(b, assumed);
   if (typeof a !== typeof b) return false;
   if (a === null || b === null) return a === b;
   if (typeof a !== "object" || typeof b !== "object") return false;

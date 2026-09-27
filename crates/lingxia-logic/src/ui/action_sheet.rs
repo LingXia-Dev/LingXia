@@ -10,6 +10,7 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::UserFeedback;
 use lxapp::LxApp;
+use lxapp::dialogs::{ActionSheetShown, DialogDecision};
 use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -83,12 +84,37 @@ async fn show_action_sheet(
             ));
         }
     }
-    let item_list = items.iter().map(|item| item.label.clone()).collect();
+    let item_list: Vec<String> = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    let Some(index) = present_action_sheet(&lxapp, item_list, None, item_color).await? else {
+    // A test run watching the app answers instead of the user. Only this
+    // public call: sheets the runtime opens itself (a media source picker)
+    // are not the app's dialog.
+    let decision = match lxapp::dialogs::dialog_hook() {
+        Some(hook) if lxapp.is_opened() && !item_list.is_empty() => hook.action_sheet(
+            &lxapp.appid,
+            &ActionSheetShown {
+                items: item_list.clone(),
+            },
+        ),
+        _ => DialogDecision::Present,
+    };
+    let selection = match decision {
+        DialogDecision::Present => {
+            present_action_sheet(&lxapp, item_list, None, item_color).await?
+        }
+        DialogDecision::Answer(selection) => selection,
+        DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
+    };
+    let Some(index) = selection else {
         return canceled(&ctx);
     };
+    if index >= items.len() {
+        return Err(js_internal_error(format!(
+            "ActionSheet answer {index} is outside items length {}",
+            items.len()
+        )));
+    }
 
     let result = completed(&ctx)?;
     result.set("id", items[index].id.as_str())?;

@@ -13,6 +13,13 @@ mod clock;
 mod clock;
 #[cfg(feature = "desktop")]
 mod desktop;
+// Dialogs are watched for a spec of a host run; without the runtime the
+// driver exists but every call rejects.
+#[cfg(feature = "runtime")]
+mod dialogs;
+#[cfg(not(feature = "runtime"))]
+#[path = "dialogs/unavailable.rs"]
+mod dialogs;
 mod error;
 mod host;
 mod info;
@@ -311,6 +318,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<network::JSScenario>()?;
     ctx.register_hidden_class::<profile::JSProfileDriver>()?;
     ctx.register_hidden_class::<clock::JSClockDriver>()?;
+    ctx.register_hidden_class::<dialogs::JSDialogDriver>()?;
     ctx.register_hidden_class::<info::JSLxAppDriver>()?;
     ctx.register_hidden_class::<host::JSLxAppManager>()?;
     ctx.register_hidden_class::<host::JSDeviceDriver>()?;
@@ -356,6 +364,8 @@ impl lx::LxLogicExtension for AutomationExtension {
 /// LxApp JS context is created (same timing as `register_logic_runtime`).
 pub fn register_automation_runtime() {
     lx::register_logic_extension(Box::new(AutomationExtension));
+    #[cfg(feature = "runtime")]
+    dialogs::register_hook();
     // `Rong.SSE` can only be wrapped before lxapp freezes `Rong`.
     #[cfg(feature = "runtime")]
     lx::register_rong_member_wrapper("SSE", network::wrap_logic_sse);

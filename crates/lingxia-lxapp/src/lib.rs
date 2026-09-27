@@ -15,6 +15,8 @@ mod control_document_bootstrap;
 mod delegate;
 /// Simulated-device control shared by the devtool and `lx.automation()`.
 pub mod device;
+/// A test run's view of Logic's toasts, modals and action sheets.
+pub mod dialogs;
 mod error;
 mod executor;
 pub mod host;

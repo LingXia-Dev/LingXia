@@ -10,6 +10,7 @@ use lingxia_platform::error::PlatformError;
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use lingxia_platform::traits::ui::{ModalOptions, UserFeedback};
 use lxapp::LxApp;
+use lxapp::dialogs::{DialogDecision, ModalShown};
 use rong::{FromJSObject, JSContext, JSObject, JSResult, RongJSError};
 use serde::Deserialize;
 use std::sync::Arc;
@@ -69,11 +70,34 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObjec
         ));
     }
 
-    if present_modal(&lxapp, options).await? {
+    let confirmed = match watched_modal(&lxapp.appid, &options) {
+        DialogDecision::Present => present_modal(&lxapp, options).await?,
+        DialogDecision::Answer(confirm) => confirm,
+        DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
+    };
+    if confirmed {
         completed(&ctx)
     } else {
         canceled(&ctx)
     }
+}
+
+/// A test run watching the app answers instead of the user.
+fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> {
+    let Some(hook) = lxapp::dialogs::dialog_hook() else {
+        return DialogDecision::Present;
+    };
+    let show_cancel = options.show_cancel.unwrap_or(true);
+    hook.modal(
+        appid,
+        &ModalShown {
+            title: options.title.clone().unwrap_or_default(),
+            content: options.content.clone().unwrap_or_default(),
+            confirm_text: options.confirm_text.clone(),
+            cancel_text: options.cancel_text.clone().filter(|_| show_cancel),
+            show_cancel,
+        },
+    )
 }
 
 /// Acknowledgement-only dialog. Resolves when the user dismisses it.

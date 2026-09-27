@@ -1249,6 +1249,75 @@ export interface ClockDriver {
   uninstall(): Promise<ClockUninstallResult>;
 }
 
+// ============================== dialogs ==============================
+
+/** A toast Logic presented while watched; the host drew it as usual. */
+export interface ToastRecord {
+  title: string;
+  /** `success` / `error` / `loading` / `none`. */
+  icon: string;
+  /** Milliseconds the toast asked to stay. */
+  duration: number;
+  /** Epoch milliseconds it was presented. */
+  at: number;
+}
+
+export interface ModalAnswer {
+  confirm: boolean;
+}
+
+/** A modal Logic opened while watched; it was answered, never presented. */
+export interface ModalRecord {
+  title: string;
+  content: string;
+  /** Only when the app set it (the default is localized). */
+  confirmText?: string;
+  /** Only when the modal has a cancel button and the app set its text. */
+  cancelText?: string;
+  /** `null`: no answer was queued, the call rejected and the spec failed. */
+  answer: ModalAnswer | null;
+}
+
+/** `{ index }` picks that item; `{ cancel: true }` dismisses the sheet. */
+export type ActionSheetAnswer = { index: number } | { cancel: true };
+
+/** An `lx.showActionSheet` while watched; answered, never presented. */
+export interface ActionSheetRecord {
+  /** Item labels, in order. */
+  items: string[];
+  answer: ActionSheetAnswer | null;
+}
+
+export interface DialogUnwatchResult {
+  /** Modal answers queued that no modal used. */
+  modalAnswers: number;
+  /** Action sheet answers queued that no sheet used. */
+  actionSheetAnswers: number;
+}
+
+/**
+ * The dialogs the selected lxapp's Logic opens while a spec of a host
+ * automation run (`lxdev test`) watches it; outside one every call rejects
+ * with `E_AUTOMATION`. Toasts are recorded and still drawn. Modals
+ * (`showModal`, `alert`, `confirm`) and `showActionSheet` are answered from
+ * the queued answers instead of being presented; one with no answer queued
+ * rejects in Logic and resolves `unanswered()`. An unwatched app presents
+ * every dialog as usual.
+ */
+export interface DialogDriver {
+  /** Start watching for the open spec attempt, with nothing recorded or queued. */
+  watch(): void;
+  /** Stop watching; returns the queued answers no dialog used. */
+  unwatch(): DialogUnwatchResult;
+  /** The first dialog that found no answer, or `null` once the watch ends. */
+  unanswered(): Promise<string | null>;
+  toasts(): ToastRecord[];
+  modals(): ModalRecord[];
+  actionSheets(): ActionSheetRecord[];
+  answerNextModal(answer: ModalAnswer): void;
+  answerNextActionSheet(answer: ActionSheetAnswer): void;
+}
+
 /** Capability for one selected running lxapp, as app Logic sees it. */
 export interface LogicLxAppDriver {
   readonly page: PageDriver;
@@ -1304,6 +1373,13 @@ export interface LxAppDriver extends LogicLxAppDriver {
    * `E_AUTOMATION` outside a host test run (`lxdev test`).
    */
   readonly clock: ClockDriver;
+  /**
+   * The dialogs this lxapp's Logic opens while a spec watches it.
+   *
+   * @remarks Reading the property always works, but every call rejects with
+   * `E_AUTOMATION` outside a host test run (`lxdev test`).
+   */
+  readonly dialogs: DialogDriver;
   /** @internal Test-runner plumbing: resolves to the call-trace envelope. */
   eval<T = unknown>(options: LxAppEvalOptions & { captureCalls: true }): Promise<LxAppEvalTrace<T>>;
   /**

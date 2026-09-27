@@ -67,6 +67,7 @@ lxdev test tests/pages/notes.test.ts
 | Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, fresh, tags, requires, … })` |
 | Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
 | Fast-forward Logic time | `t.app.clock`; [Test clock](#test-clock) |
+| Toasts, confirm dialogs, action sheets | `t.app.dialogs`; [Dialogs](#dialogs) |
 | Inputs | `t.arg('k')` from `--arg` / `--secret-arg`; [Secrets](#secrets) |
 | Cleanup | `t.defer(fn)` (LIFO, always runs); `spec.afterEach` |
 | Restore state before each attempt | `spec.reset(async (t) => { ... })` (required by `--retries`) |
@@ -83,9 +84,9 @@ Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 `rawAutomation()` from `@lingxia/test` bypasses tracing and fixture guards;
 keep it for setup before any spec. Restore shell pins or device settings a
-spec changes. Routes, `t.app.mock.use` scenarios and test clocks a spec
-installs (also through `rawAutomation()`) are removed when it ends; its
-leftover timers are cancelled.
+spec changes. Routes, `t.app.mock.use` scenarios, test clocks and dialog
+answers a spec installs (also through `rawAutomation()`) are removed when it
+ends; its leftover timers are cancelled.
 
 ## Reading Logic
 
@@ -302,6 +303,31 @@ spec('status refreshes every 3 s', async (t) => {
 - A spec's clock is removed when it ends. `install` twice rejects with
   `E_CLOCK_INSTALLED`; `tick` without one with `E_CLOCK_NOT_INSTALLED`.
 
+## Dialogs
+
+During a spec, `t.app.dialogs` sees the dialogs the app's Logic opens:
+
+```ts
+spec('deleting asks first', async (t) => {
+  await t.app.dialogs.answerNextModal({ confirm: true });  // before the tap
+  await t.app.view.testId('delete').click();
+  await expect.poll(() => t.app.dialogs.toasts())
+    .toContainEqual(expect.objectContaining({ title: 'Deleted' }));
+  expect(await t.app.dialogs.modals()).toContainEqual(
+    expect.objectContaining({ title: 'Delete device?', answer: { confirm: true } }));
+});
+```
+
+- Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
+  never stub `lx.showToast` in Logic.
+- `lx.showModal` / `alert` / `confirm` and `lx.showActionSheet` are answered
+  from the queue, never drawn: `answerNextModal({ confirm })`,
+  `answerNextActionSheet({ index } | { cancel: true })`. One with no answer
+  queued rejects in Logic and fails the spec at once, naming its title and
+  content; an answer no dialog used fails the spec when it ends.
+- Each spec starts with nothing recorded or queued. Outside a test run
+  dialogs draw as usual.
+
 ## Isolated app data
 
 ```bash
@@ -331,8 +357,9 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
   use `toBeInViewport()`. Actions scroll their target into view.
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
-  `element is obscured`. A run raises the host window when it starts; keep
-  it uncovered (`lxdev host focus` raises it again).
+  `element is obscured`. A run raises the host window when it starts, and
+  an action or `waitFor` about to fail on a hidden page raises it once more
+  and retries (the trace says so); keep it uncovered (`lxdev host focus`).
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.

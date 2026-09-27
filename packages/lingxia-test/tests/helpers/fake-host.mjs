@@ -6,6 +6,88 @@ function testIdFromCss(css) {
   return match ? match[1].replace(/\\/g, "") : undefined;
 }
 
+/**
+ * Mirrors the host's dialog watch: `driver` is `lxapp().dialogs`, and
+ * `logic` is what the app's Logic does when it calls `lx.showToast`,
+ * `lx.showModal` or `lx.showActionSheet` — recorded, answered or refused
+ * while watched, presented (`"presented"`) otherwise.
+ */
+function createDialogs() {
+  let watch;
+  const end = () => {
+    for (const wake of watch?.waiters ?? []) wake(null);
+    watch = undefined;
+  };
+  const watched = () => {
+    if (!watch) throw new Error("dialogs of demo-app are not watched");
+    return watch;
+  };
+  const fail = (message) => {
+    if (watch.failure !== undefined) return;
+    watch.failure = message;
+    for (const wake of watch.waiters.splice(0)) wake(message);
+  };
+  const driver = {
+    watch() {
+      end();
+      watch = { toasts: [], modals: [], sheets: [], modalAnswers: [], sheetAnswers: [], waiters: [], failure: undefined };
+    },
+    unwatch() {
+      const left = { modalAnswers: watch?.modalAnswers.length ?? 0, actionSheetAnswers: watch?.sheetAnswers.length ?? 0 };
+      end();
+      return left;
+    },
+    async unanswered() {
+      const current = watched();
+      if (current.failure !== undefined) return current.failure;
+      return new Promise((resolve) => current.waiters.push(resolve));
+    },
+    toasts: () => structuredClone(watched().toasts),
+    modals: () => structuredClone(watched().modals),
+    actionSheets: () => structuredClone(watched().sheets),
+    answerNextModal(answer) {
+      if (typeof answer?.confirm !== "boolean" || Object.keys(answer).length !== 1) throw new Error("answerNextModal takes { confirm: true | false }");
+      watched().modalAnswers.push(answer.confirm);
+    },
+    answerNextActionSheet(answer) {
+      const valid = answer && Object.keys(answer).length === 1 &&
+        (answer.cancel === true || (Number.isInteger(answer.index) && answer.index >= 0));
+      if (!valid) throw new Error("answerNextActionSheet takes { index } or { cancel: true }");
+      watched().sheetAnswers.push(answer);
+    },
+  };
+  const logic = {
+    showToast({ title, icon = "none", durationMs = 1500 }) {
+      watch?.toasts.push({ title, icon, duration: durationMs, at: Date.now() });
+      return "presented";
+    },
+    showModal({ title = "", content = "", confirmText, cancelText, showCancel = true }) {
+      if (!watch) return "presented";
+      const confirm = watch.modalAnswers.shift();
+      const record = { title, content, answer: confirm === undefined ? null : { confirm } };
+      if (confirmText !== undefined) record.confirmText = confirmText;
+      if (cancelText !== undefined && showCancel) record.cancelText = cancelText;
+      watch.modals.push(record);
+      if (confirm !== undefined) return { confirm };
+      const message = `a modal appeared with no answer queued: title ${JSON.stringify(title)}, content ${JSON.stringify(content)}`;
+      fail(message);
+      throw new Error(message);
+    },
+    showActionSheet(items) {
+      if (!watch) return "presented";
+      const answer = watch.sheetAnswers.shift();
+      watch.sheets.push({ items, answer: answer ?? null });
+      if (answer?.cancel) return { cancel: true };
+      if (answer && answer.index < items.length) return { index: answer.index };
+      const message = answer ? `the queued action sheet answer { index: ${answer.index} } is outside its ${items.length} items`
+        : `an action sheet appeared with no answer queued: items ${JSON.stringify(items)}`;
+      fail(message);
+      throw new Error(message);
+    },
+  };
+  return { driver, logic, get watching() { return watch !== undefined; } };
+}
+
 export function createWorld(options = {}) {
   const elements = options.elements ? [...options.elements] : [];
   const evalResults = new Map();
@@ -151,9 +233,11 @@ export function createWorld(options = {}) {
     },
   };
 
+  const dialogs = createDialogs();
   const app = {
     page,
     nav,
+    dialogs: dialogs.driver,
     async info() {
       return {
         appid: options.appId ?? "demo-app",
@@ -233,6 +317,8 @@ export function createWorld(options = {}) {
     TINY_PNG,
     elements,
     app,
+    /** The app's Logic opening dialogs (`logic`), and whether the runner watches them. */
+    dialogs,
     navCalls,
     /** Make the next relaunches reject with `error` (undefined restores). */
     failRelaunch(error) {

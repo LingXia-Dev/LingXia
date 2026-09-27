@@ -146,6 +146,15 @@ impl JSLxAppDriver {
             .instance(crate::clock::JSClockDriver::new(self.lxapp.clone())))
     }
 
+    /// The dialogs this lxapp's Logic opens while a spec of a host run
+    /// watches it. Reading the property never throws; calls outside a host
+    /// run reject.
+    #[js_method(getter, enumerable)]
+    fn dialogs(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::dialogs::JSDialogDriver>(&ctx)?
+            .instance(crate::dialogs::JSDialogDriver::new(self.lxapp.clone())))
+    }
+
     #[js_method]
     async fn info(&self, ctx: JSContext) -> JSResult<JSValue> {
         let app = upgrade_authorized(&ctx, &self.lxapp)?;

@@ -454,6 +454,79 @@ test("a timed-out wait on a hidden page says the page is hidden, not only obscur
   assert.equal(probes.count, 1);
 });
 
+test("an action or wait on a hidden page raises the app window and retries once", async () => {
+  const world = createWorld();
+  const sheet = world.add({ testId: "sheet", visible: false, text: "Sheet" });
+  const answer = { state: "hidden", animationFrames: false };
+  hidePage(world, answer);
+  const { events } = installFakeHost(world);
+  let raised = 0;
+  // Raising the window lets the paused animation finish.
+  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => {
+    raised += 1;
+    Object.assign(answer, { state: "visible", animationFrames: true });
+    sheet.visible = true;
+    return true;
+  };
+
+  spec("covered window", { forensics: false }, async (t) => {
+    await t.app.view.testId("sheet").waitFor({ timeout: 80 });
+    await t.app.view.testId("sheet").click({ timeout: 80 });
+  });
+
+  const protocol = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(protocol.passed, 1, JSON.stringify(events.filter((event) => event.type === "case_finished")));
+  assert.equal(raised, 1, "the page is visible once raised: the click needs no second raise");
+  assert.equal(sheet.clicked, 1);
+  const note = events.find((event) => event.type === "diagnostic" && event.phase === "window");
+  assert.match(note.message, /The page looked hidden, so the runner raised the app window and retried once \(up to 80ms\)\. \[data-testid="sheet"\]/);
+});
+
+test("a page still hidden after the raise fails once, saying the window was raised", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet", visible: false, text: "" });
+  hidePage(world);
+  const { attachments } = installFakeHost(world);
+  let raised = 0;
+  globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised += 1; return true; };
+  let message;
+
+  spec("stays covered", { forensics: false }, async (t) => {
+    try { await t.app.view.testId("sheet").click({ timeout: 80 }); } catch (error) { message = error.message; }
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(raised, 1, "one raise and one retry per action");
+  assert.match(message, /Timed out after \d+ms waiting to click/);
+  assert.match(message, /page looked hidden or paused/);
+  assert.match(message, /raised the app window and retried once/);
+  assert.doesNotThrow(() => JSON.parse(decodeAttachment(attachments, "report.json")));
+});
+
+test("the window is not raised for a visible page, a locked screen, or a host that cannot", async () => {
+  for (const setup of ["visible", "locked", "unsupported"]) {
+    reset();
+    const world = createWorld();
+    world.add({ testId: "sheet", visible: false, text: "" });
+    if (setup !== "visible") hidePage(world);
+    else hidePage(world, { state: "visible", animationFrames: true });
+    installFakeHost(world);
+    let raised = 0;
+    globalThis.__LINGXIA_AUTOMATION_HOST__.raiseWindow = async () => { raised += 1; return setup !== "unsupported"; };
+    // Locked mid-spec: a run that starts locked runs nothing.
+    let locked = false;
+    globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
+    let message;
+    spec(`no raise: ${setup}`, { forensics: false }, async (t) => {
+      locked = setup === "locked";
+      try { await t.app.view.testId("sheet").waitFor({ timeout: 80 }); } catch (error) { message = error.message; }
+    });
+    await globalThis.__LINGXIA_TEST__.run();
+    assert.equal(raised, setup === "unsupported" ? 1 : 0, setup);
+    assert.doesNotMatch(message, /raised the app window/, setup);
+  }
+});
+
 /** Page eval that answers the visibility probe per target page. */
 function pageVisibility(world, answerFor) {
   const original = world.app.page.eval;

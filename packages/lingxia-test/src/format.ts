@@ -1,4 +1,6 @@
 const hasOwn = Object.prototype.hasOwnProperty;
+/** `ASYMMETRIC` in `equal.ts`, by key: this module stays free of it. */
+const ASYMMETRIC = Symbol.for("lingxia.test.asymmetric");
 const objectTag = Object.prototype.toString;
 
 export function safeString(value: unknown): string {
@@ -67,6 +69,11 @@ export function formatValue(value: unknown): string {
         return `${current.name}(${JSON.stringify(truncate(current.message, 160))})`;
       }
       if (objectTag.call(current) === "[object RegExp]") return String(current);
+      // `expect.objectContaining(sample)`, named as the spec wrote it.
+      const asymmetric = (current as { [key: symbol]: unknown })[ASYMMETRIC];
+      if (typeof asymmetric === "function") {
+        return `${String(asymmetric.call(current))} ${format((current as { sample?: unknown }).sample, depth + 1)}`;
+      }
       if (isPlainObject(current)) {
         const keys = Object.keys(current);
         const limit = Math.min(keys.length, 12);
