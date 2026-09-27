@@ -26,3 +26,6 @@ windows = { workspace = true, optional = true, features = [
 broker = ["dep:interprocess", "dep:windows"]
 # `scenario::Matcher`: the `match` semantics of scenario rules.
 scenario-match = ["dep:regex"]
+
+[dev-dependencies]
+tempfile = "3"

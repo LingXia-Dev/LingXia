@@ -259,6 +259,9 @@ fn run() -> Result<()> {
                 {
                     return test::list_offline(&options, selection);
                 }
+                // Already the no-session message, with any other project's
+                // sessions named.
+                Err(err) if project::is_no_session(&err) => return Err(err),
                 Err(err) if test::looks_unreachable(&err) => {
                     return Err(anyhow::anyhow!(test::NO_SESSION_HINT));
                 }
