@@ -1,45 +1,30 @@
-# Distribution — publish, signing, stores, accounts
+# Distribution
 
-The low-frequency half of the `lingxia` CLI: getting a built app out the door.
-Publish to the LingXia server, platform signing setup, OS app-store submission,
-and the developer-account plumbing behind them. Daily commands (build, dev,
-install, …) live in [`lingxia.md`](./lingxia.md).
+Getting a built app out: publish to the LingXia server, platform signing, OS
+app stores, and developer accounts. Flags: `lingxia <cmd> --help`.
 
 ## `lingxia publish`
 
-Publish a package to the **LingXia server** (not an OS app store — that's
-`store`). Auto-detects what it's publishing from the project marker file
-(`lxapp.json` → lxapp, `lingxia.yaml` → host app) and reads the id/version from
-it. An lxapp publish packages the current project first. `--env` (`dev` |
-`prod`) selects the upload server and token; `--channel`
-(`release` | `draft`) selects the lxapp line. Omitting
-`--env` defaults to `dev`, which implies channel `draft`. `--env prod`
-implies channel `release` unless `--channel` overrides it. Only host-app
-publish accepts a prebuilt package path; it does not take `--channel` (env
-is read from the packaged `app.json`). Uploads that package to the
-LingXia server: the host build for one platform, or an lxapp/plugin
-build on one channel. Authenticates with a bearer token:
-the `--token` flag, `LINGXIA_PUBLISH_TOKEN`, or the LingXia credential wallet.
+Uploads a package to the LingXia server (OS stores are `lingxia store`).
 
-See `lingxia publish --help` for the flags.
+- Detects the project from `lxapp.json` (lxapp; packaged first) or
+  `lingxia.yaml` (host app) and reads id and version from it.
+- `--env dev|prod` picks server and token (default `dev`). `--channel
+  release|draft` picks the lxapp line (`dev` → `draft`, `prod` → `release`).
+- A host publish takes a prebuilt package path and no `--channel`.
+- Token: `--token`, `LINGXIA_PUBLISH_TOKEN`, or the wallet
+  (`lingxia auth login lingxia --env prod --token …`, keyed by server + env).
 
-**Update signatures:**
+### Update signing keys
 
-The CLI signs the update envelope. Do not hand-build `signed` / `signatures`
-when publishing an app — pass a key file and let `lingxia publish` do it.
-
-Follows `--env`: `dev` may be unsigned; `prod` requires
-`--update-signing-key-file` (or `LINGXIA_UPDATE_SIGNING_KEY_FILE`), including
-`--channel draft`.
+`prod` publishes need `--update-signing-key-file` (or
+`LINGXIA_UPDATE_SIGNING_KEY_FILE`), draft channel included; `dev` may be
+unsigned. A prod host verifies every package, even a draft lxapp. The CLI
+signs; never hand-build `signed` / `signatures`.
 
 The key file is one line: base64url (no `=`) of a 32-byte Ed25519 seed, mode
-`0600` or `0400`. The matching public key is that seed's 32-byte verify key
-in the same encoding. Put 1 or 2 of those under host `update.trustedPublicKeys`.
-`update.channel` / `update.platforms` choose `direct` (self-install) vs
-`store` per platform — see [host `update`](../app/project.md#update). Direct
-prod updates require trusted keys; store updates use only a version and optional
-release notes and do not need keys. `lingxia publish` uploads packages, while
-`lingxia store` handles OS store submission.
+`0600` or `0400`. Put 1 or 2 matching public keys under
+[`update.trustedPublicKeys`](../app/project.md#update); store updates need none.
 
 ```bash
 umask 077
@@ -63,32 +48,12 @@ Paste the printed `public:` value into `update.trustedPublicKeys`, then:
 lingxia publish --env prod --update-signing-key-file ~/.lingxia/update.key
 ```
 
-The envelope is one compact JSON manifest plus 1–2 Ed25519 signatures **over
-those JSON bytes** (not over the base64). `signatures` is an array so a key
-rotation can carry old and new; verify is OR against the embedded public keys.
-The CLI emits one signature today — do not add a second unless you are
-rotating. Host packages sign `channel: ""`.
+### Server default
 
-Verification follows the **host build's** `env`, never the requested channel.
-A `prod` build requires a trusted signature even for a `draft` lxapp opened
-with `lx.navigateToApp({ channel: 'draft' })`.
-
-**Publish tokens (wallet):**
-
-Store the token once with `lingxia auth login lingxia --env prod --token …`;
-it is keyed by the canonical server URL + env, so the project's server and
-`--env` pick the right token automatically. CI sets `LINGXIA_PUBLISH_TOKEN`
-instead.
-
-**Machine-wide server default (`~/.lingxia/cli/config.toml`):**
-
-Set a per-user server default so lxapp projects (which have no `lingxia.yaml`)
-need not pass `--lingxia-server` on every publish. The flag (and project
-`app.lingxiaServer`) take precedence. The value follows the same shape as
-`app.lingxiaServer` in `lingxia.yaml`: a scalar applies to every env, an
-env-keyed map is explicit per env with no fallback for envs it omits. The file
-is CLI-managed — `lingxia auth login lingxia --server …` writes it, hand
-comments are lost.
+Lxapp projects have no `lingxia.yaml`; set a per-user server with
+`lingxia auth login lingxia --server …`, which writes
+`~/.lingxia/cli/config.toml` (same shape as `app.lingxiaServer`). The
+`--lingxia-server` flag and `app.lingxiaServer` win.
 
 ```toml
 [publish.lingxiaServer]
@@ -98,30 +63,27 @@ prod = "https://prod.example.com"
 
 ## App signing
 
-Each platform signs differently; this is what the CLI needs to produce a
-distributable build. One principle everywhere: **sign with the configured
-credentials when present, otherwise fall back to a safe default** (ad-hoc on
-Apple, the debug keystore on Android) so a build always succeeds — but only a
-properly signed build is distributable. Credentials are stored by
-`lingxia auth` under `~/.lingxia/` (mode `0600`); environment variables
-override the stored files, which is the CI path.
+Configured credentials sign; without them the build still succeeds with a safe
+default (ad-hoc on Apple, the debug keystore on Android) that is not
+distributable. `lingxia auth` stores credentials under `~/.lingxia/`;
+environment variables override them.
 
 | Platform | Model | What you provide |
 |---|---|---|
 | macOS | Developer ID + notarization | App Store Connect API key + Developer ID Application certificate |
 | iOS | Provisioning profile + distribution certificate | via your Apple Developer account / Xcode |
 | Android | Self-managed keystore | a release keystore (`keytool`) |
-| Windows | Self-signed (or your own) MSIX | `--self-signed`, or a real code-signing cert |
-| Harmony | AGC certificate + provisioning profile | AGC Connect API client credentials; the CLI manages signing material |
+| Windows | Authenticode, or self-signed MSIX | a code-signing cert, or `--self-signed` |
+| Harmony | AGC certificate + provisioning profile | AGC Connect API client credentials |
 
-### macOS (Developer ID + notarization)
+### macOS
 
-Two independent credentials, which **must belong to the same team**:
+Two credentials from the same team:
 
 | Credential | Used for | Stored by |
 |---|---|---|
-| App Store Connect API key | `notarytool submit` notarization | `lingxia auth login apple --mode key` |
-| Developer ID Application certificate + key | `codesign` signing | login keychain, or `lingxia auth login apple --mode developer-id` |
+| App Store Connect API key | notarization | `lingxia auth login apple --mode key` |
+| Developer ID Application certificate + key | code signing | login keychain, or `lingxia auth login apple --mode developer-id` |
 
 ```bash
 lingxia auth login apple --mode key \
@@ -129,155 +91,90 @@ lingxia auth login apple --mode key \
   --private-key-path AuthKey_XXXX.p8 --team-id <TEAM_ID>
 
 lingxia auth login apple --mode developer-id --p12 DeveloperID.p12   # optional
-# locally — keychain discovery finds an existing Developer ID identity by itself
 ```
 
-To export a `.p12`: Xcode → Settings → Accounts → Manage Certificates → **+** →
-Developer ID Application; then in Keychain Access select the certificate *and*
-its private key and export as `.p12`. No private key under the certificate →
-it was created on another Mac; recreate or export it there.
-
-**CI:** either restore the two wallet files
-(`~/.lingxia/credentials/apple/<team>/asc.json` and `…/developer-id.json`)
-from secrets before building, or set the env groups
-`LINGXIA_APPLE_KEY_PATH` / `_KEY_ID` / `_ISSUER_ID` (each group must be
-complete) and `LINGXIA_APPLE_DEVELOPER_ID_P12` / `_P12_PASSWORD` /
-`_IDENTITY`. Without resolvable credentials the build ad-hoc signs and still
-succeeds.
-
-**Verify:** `codesign --verify --deep --strict "MyApp.app"`,
-`spctl --assess --type execute "MyApp.app"`, `xcrun stapler validate "MyApp.app"`.
+A `.p12` must include the certificate's private key (export both from Keychain
+Access). Env overrides, each group complete: `LINGXIA_APPLE_KEY_PATH` /
+`_KEY_ID` / `_ISSUER_ID`, and `LINGXIA_APPLE_DEVELOPER_ID_P12` /
+`_P12_PASSWORD` / `_IDENTITY`.
 
 ### iOS
 
-Distribution signing uses a **provisioning profile** plus a **distribution
-certificate** from your Apple Developer account, applied at build time. Store
-the account credential with `lingxia auth login apple`; manage profiles and the
-certificate through your Apple Developer account / Xcode.
-
-App Store builds reuse their distribution signing material across CI jobs;
-embedded extensions need matching profiles and capabilities.
+A provisioning profile plus a distribution certificate from your Apple
+Developer account; store the account with `lingxia auth login apple`. Embedded
+extensions need matching profiles and capabilities.
 
 ### Android
 
-Self-managed: generate a keystore once and keep it for the life of the app
-(updates must use the same key):
+Generate a keystore once and keep it for the app's life:
 
 ```bash
 keytool -genkeypair -v -keystore release.jks -storetype PKCS12 \
   -alias upload -keyalg RSA -keysize 2048 -validity 10000
 ```
 
-The generated Gradle build reads `RELEASE_STORE_FILE` / `RELEASE_STORE_PASSWORD`
-/ `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD` from
-**`android/keystore.properties`** (git-ignored, local) first, then **env vars
-of the same names** (CI). All four present → release-signed; otherwise the
-build falls back to the debug keystore (installs for testing, not
-store-distributable). `RELEASE_STORE_FILE` is relative to `android/`.
+The Gradle build reads `RELEASE_STORE_FILE` (relative to `android/`) /
+`RELEASE_STORE_PASSWORD` / `RELEASE_KEY_ALIAS` / `RELEASE_KEY_PASSWORD` from
+`android/keystore.properties` (git-ignored), then from env vars of the same
+names. All four → release-signed; otherwise debug-signed.
 
-**Distribution formats:** sideload and Chinese app stores take the APK signed
-with your key (`--dist sideload`, the default); **Google Play** takes an
-**AAB** signed with this same keystore as the *upload key* (`--dist play`) and
-re-signs with the app signing key it holds.
-
-**Verify:** `apksigner verify --print-certs <apk>`.
+`--dist sideload` (default) builds an APK for sideloading and Chinese stores;
+`--dist play` builds an AAB for Google Play, with this keystore as upload key.
 
 ### Windows
 
-NSIS is the default website distribution; `--format portable` builds a
-self-extracting launcher, and `--format msix` keeps OS-managed deployment.
-NSIS installs per-user under `%LOCALAPPDATA%/Programs/<appId>/app`, registers
-Start Menu/desktop shortcuts and an uninstaller, and preserves user data.
-Shortcuts take the `productNames` entry for the installing user's UI language
-(fallback `productName`). The exe and installer icon is the committed
-`windows/AppIcon.ico`; build never regenerates it, so rerun
-`lingxia icon <AppIcon.png> --platform windows` after changing the app icon.
-NSIS/portable detect WebView2; if missing, they offer to download Microsoft's
-bootstrapper and verify its Microsoft Authenticode signature before running it.
-The first installation therefore needs internet when WebView2 is absent.
-
-For production Authenticode signing, provision a certificate in the current
-user's Windows certificate store and set `LINGXIA_WINDOWS_CERT_SHA1` to its
-40-character thumbprint. `LINGXIA_WINDOWS_REQUIRE_SIGNING=1` makes missing
-credentials fatal. Optional `LINGXIA_SIGNTOOL` selects signtool and
-`LINGXIA_WINDOWS_TIMESTAMP_URL` selects the RFC 3161 server. Payload EXEs/DLLs,
-NSIS uninstallers, final Setup/Portable EXEs and MSIX are signed; artifact
-checksums are computed afterwards. MSIX `windows.publisher` must match the
-certificate subject. Authenticode is separate from LingXia feed signatures.
-
-`--msix --self-signed` retains local MSIX certificate generation and trust.
-Without signing configured, artifacts remain unsigned (unsigned MSIX cannot
-be installed normally). Store delivery uses the Store signing/deployment flow.
-
-Publish `*-windows.zip` for direct host updates. Always build all supported
-direct formats together, e.g. `--format nsis,portable,zip`: the single Windows
-feed archive carries the matching installers. NSIS hosts update through Setup;
-Portable replaces its outer launcher; legacy ZIP installations update their
-runnable directory. MSIX hosts never overwrite their package directory: use
-Store or configure App Installer delivery separately. Packaging does not host
-an `.appinstaller` feed. Artifact architecture is recorded and checked for new
-installed/portable updates; the existing feed still has one entry per platform,
-so separate architecture-specific feeds/identities are needed when distributing
-more than one Windows architecture.
+- Formats: NSIS Setup (default), `--format portable`, `--format msix`. Build
+  every direct format you ship together (`--format nsis,portable,zip`) and
+  publish `*-windows.zip` for direct updates. MSIX updates through the Store or
+  App Installer.
+- The icon is the committed `windows/AppIcon.ico`; after changing the app icon
+  run `lingxia icon <AppIcon.png> --platform windows`.
+- Authenticode: a certificate in the current user's store and
+  `LINGXIA_WINDOWS_CERT_SHA1` (its thumbprint). `LINGXIA_WINDOWS_REQUIRE_SIGNING=1`
+  makes missing credentials fatal; `LINGXIA_SIGNTOOL` and
+  `LINGXIA_WINDOWS_TIMESTAMP_URL` are optional. MSIX `windows.publisher` must
+  match the certificate subject.
+- Unsigned MSIX cannot be installed normally; use `--msix --self-signed` for
+  local tests.
+- The first install downloads WebView2 when it is missing.
 
 ### Harmony
 
-Harmony builds resolve AGC credentials and manage the signing key, certificate,
-and profile; release builds request release signing material.
+The CLI resolves AGC credentials and manages the signing key, certificate, and
+profile.
 
 ## `lingxia auth`
 
-The credential wallet behind signing and developer services. Log in once per
-provider; commands pick the right credential automatically from the project:
+The credential wallet behind signing and developer services:
 
-- `lingxia auth login apple|harmony` — add or refresh credentials (Apple modes:
-  `key`, `password`, `developer-id`)
-- `lingxia auth login/logout lingxia` — add or remove a LingXia Server publish
-  token; `lingxia publish` consumes it
-- `lingxia auth logout apple|harmony` — remove them
-- `lingxia auth status [--json]` — per-project diagnosis plus the wallet view
-- `lingxia auth forget --platform <channel>` — drop this checkout's automatic
-  credential selection so the next command re-resolves
+- `lingxia auth login apple|harmony` — add or refresh (Apple modes `key`,
+  `password`, `developer-id`)
+- `lingxia auth login|logout lingxia` — a LingXia server publish token
+- `lingxia auth logout apple|harmony`
+- `lingxia auth status [--json]` — per-project diagnosis and the wallet
+- `lingxia auth forget --platform <channel>` — re-resolve this checkout's
+  credential selection
 - `lingxia auth runner [set <LINGXIA_ID> --dev <URL> [--prod <URL>] | clear]`
-  — the cloud identity the standalone lxapp Runner signs in with; without an
-  action it shows the saved one
-
-The concrete flows are in [App signing](#app-signing) above; see
-`lingxia auth login <provider> --help` for flags.
+  — the cloud identity the Runner signs in with
 
 ## `lingxia store`
 
-Upload a built installable to an **OS app store**. Talks to stores only — never
-the LingXia server (that's `publish`) and never builds (run `build`/`package`
-first; `submit` consumes the staged `dist/<platform>/` and fails clearly if it's
-missing). `lingxia package` writes store artifacts: Harmony `.app` (not a raw
-HAP), iOS App Store–signed `.ipa`. The CLI does not submit for review; do that
-in the store console.
-The artifact's real bundle/package identity is checked against the
-platform block in `lingxia.yaml` before any credential or network use, so a
-dev-suffixed or wrong-app artifact fails immediately. Credentials come from
-the wallet (`lingxia auth login googleplay|xiaomi|oppo|honor|msstore`, Apple
-and Harmony reuse their `auth login` credentials); each provider's
-`LINGXIA_<PROVIDER>_*` env group overrides the wallet for CI — complete groups
-only, a partial group is an error. Store-record settings (numeric app ids,
-default track) live under the platform blocks in `lingxia.yaml`.
+Uploads a built installable to an OS app store; it never builds and never
+submits for review.
 
-Store-specific release notes and channels remain managed by the store flow.
-
-### CI
-
-Persist signing keys/certificates separately from API credentials. Transfer the
-packaged artifact with its matching project config between jobs.
-
-For Apple/Harmony, gate subsequent steps on processing completion. After a
-timeout, resume querying the same submission instead of uploading again.
-Processing completion does not mean review approval.
+- Run `lingxia package` first; `submit` reads `dist/<platform>/` (Harmony
+  `.app`, iOS App Store–signed `.ipa`).
+- The artifact's identity is checked against `lingxia.yaml` first, so a
+  dev-suffixed or wrong artifact fails immediately.
+- Credentials: `lingxia auth login googleplay|xiaomi|oppo|honor|msstore`;
+  Apple and Harmony reuse theirs. `LINGXIA_<PROVIDER>_*` env groups override
+  (complete groups only).
+- Store records (numeric app ids, default track) live in the platform blocks
+  of `lingxia.yaml`.
+- Processing completion is not review approval.
 
 ## `lingxia ds`
 
-Query **developer services** read-only. `lingxia ds apple` lists Apple Developer
-resources (teams, certificates, bundle identifiers, registered devices,
-provisioning profiles); `lingxia ds harmony` covers Harmony developer services.
-Requires the matching `lingxia auth` credentials.
-
-See `lingxia ds apple --help` / `lingxia ds harmony --help`.
+Read-only developer-service queries: `lingxia ds apple` (teams, certificates,
+bundle ids, devices, profiles) and `lingxia ds harmony`. Needs the matching
+`lingxia auth` credentials.

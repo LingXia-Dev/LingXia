@@ -1,23 +1,13 @@
-# `lingxia` — the LingXia CLI
+# `lingxia` CLI
 
-What the `lingxia` command-line interface can **do** — each command's purpose, the
-capability worth knowing, and when to reach for it. Assumes the CLI is installed
-and you are inside a LingXia project.
+The project lifecycle: scaffold, start dev sessions, build, package. Driving a
+running session is [`lxdev`](./lxdev.md); signing, publishing, and stores are
+in [Distribution](./distribution.md).
 
-`lingxia` owns the project lifecycle: scaffold, build, **start dev sessions**
-(`lingxia dev`), package, sign, publish. Driving a *running* session is the
-other binary's job — [`lxdev`](./lxdev.md). Signing setup, publishing, and
-store submission live in [Distribution](./distribution.md) — read its signing
-section before any device build or store packaging.
+## `--help` is the source of truth
 
----
-
-## `--help` is the source of truth for flags and values
-
-This file teaches the **model** of `lingxia` — what each command is for and the
-non-obvious behavior worth knowing. It deliberately reproduces **no** flags,
-defaults, or value enums: the binary's own `--help` is exhaustive and always
-matches the installed version, so read flags there.
+This file teaches what each command is for. It lists no flags, defaults, or
+value enums; the installed binary's `--help` is exhaustive and current.
 
 ```bash
 lingxia --help               # the command list + global flags
@@ -25,128 +15,106 @@ lingxia <cmd> --help         # exact flags, defaults, and which are required
 lingxia <cmd> <sub> --help   # e.g. lingxia auth login apple --help
 ```
 
-**Platforms.** The platform-aware commands support `android`, `ios`, `macos`,
-`harmony`, and `windows`. Which platforms a given run actually touches depends
-on the project's `lingxia.yaml` and any `--platform` selection.
+Platforms: `android`, `ios`, `macos`, `harmony`, `windows`.
 
----
+## `lingxia new`
 
-## Commands
-
-### `lingxia new`
-
-Scaffold a new LingXia project. Run it interactively to be prompted for project
-type (a native host **app** or a standalone **lxapp**), target platforms, and
-package id, or pass those up front to script it. Can also seed an app icon.
-
-For a native host, `--main lxapp|terminal|browser` selects the product's main
-experience. The default remains `lxapp`. `--control lxapp|native` selects where
-host control logic lives: lxapp main defaults to lxapp control, while terminal
-and browser main default to native Rust control with no bundled lxapp. Native
-main is currently supported on macOS and Windows; when `--yes` is used without
-`--platform`, those two desktop targets are selected automatically.
+Scaffold a project, interactively or scripted:
 
 ```bash
-# Existing product shape: embedded lxapp is both main UI and control app.
-lingxia new my-app -t native-app -p macos,windows -y
-
-# Native terminal product: no homeAppId, resources bundle, or lxapp/ directory.
+lingxia new my-lxapp -t lxapp -y                                   # standalone lxapp
+lingxia new my-app -t native-app -p macos,windows --package-id com.example.myapp -y
 lingxia new my-terminal -t native-app --main terminal --control native -y
-
-# Browser is main, but an embedded lxapp supplies host control logic.
 lingxia new my-browser -t native-app -p windows --main browser --control lxapp -y
 ```
 
-`--main` and `--control` describe a native host; they are rejected for
-standalone `-t lxapp` projects. Native control with lxapp main is also rejected,
-because the visible main lxapp necessarily remains the host's control lxapp.
-
-`--template <name>` scaffolds from an installed template provider instead of
-the embedded template, and implies `-t lxapp` (it is rejected for a native
-host). It names an installed template, not a directory — install one first with
-`lingxia template add`. With providers installed and no `--template`, an
-interactive `lingxia new` offers them next to the built-in template. Arguments
-after `--` are passed unchanged to that template's own create step:
+- `--main lxapp|terminal|browser` picks a host's main experience (default
+  `lxapp`); `--control lxapp|native` picks where host control lives. Terminal
+  and browser mains are macOS/Windows and default to native control. Both flags
+  are host-only, and native control with an lxapp main is rejected.
+- `--template <name>` scaffolds an lxapp from an installed template provider;
+  arguments after `--` go to the template:
 
 ```bash
 lingxia new my-lxapp --template acme-starter --yes -- --preset dashboard
 ```
 
-See `lingxia new --help` for the flags.
+## `lingxia template`
 
-### `lingxia template`
+`add <git-url|local-repo>`, `list`, `update [name]`, `remove <name>` manage
+template providers: repositories with a `lingxia-template.json` manifest that
+may ship project files, CLI commands, and skills.
 
-Manage the Git-backed template providers `lingxia new` can scaffold from:
-`add <git-url|local-repo>`, `list`, `update [name]`, `remove <name>`. A provider
-is a repository carrying a `lingxia-template.json` manifest, and may ship
-project files, CLI commands, and skills as one unit.
+## `lingxia dev`
 
-Installed templates refresh in the background, and the one being scaffolded
-from is always refreshed first — a generated project never starts from a stale
-template.
+Starts a dev session. In a host project it builds, installs, launches, and
+opens the dev websocket `lxdev` connects to; in an lxapp it launches the
+LingXia Runner (macOS/Windows).
 
-### `lingxia build`
+```bash
+lingxia dev                                # this project
+lingxia dev ../my-lxapp                    # Runner target elsewhere; state stays here
+lingxia dev <http(s)://url> --headless --background
+lingxia dev -p runner                      # the Runner explicitly
+lingxia dev --display-language sr-Latn-RS  # or auto; this process only
+```
 
-Build the project. The key distinction to internalize: `--env`
-(`dev` / `prod`) picks the **host environment** — its package-id suffixing and
-per-env server config — while `--release` picks the **compiler profile**. They
-are independent; `lingxia build --env prod --release` is the shippable
-combination. `--env` is not an lxapp channel. Defaults and the per-env
-behavior are documented in
-[App Project → Environment](../app/project.md#environment).
+- **Takeover.** Re-running for the same platform stops that project's session
+  and starts fresh. Different platforms run side by side.
+- **Watch and reload.** Saving a standalone lxapp or a local
+  `resources.bundles[].path` rebuilds and reloads it in place (`pages`,
+  `tabBar`, `navigationStyle` included). Host code needs a new `lingxia dev`.
+- **Background.** `--background` returns once the session is ready (`--json`
+  prints it). On failure or no readiness within 30 minutes it stops what it
+  started, prints the log tail, and exits non-zero.
+- **Names.** `--name NAME` gives a stable alias for `lxdev --session` and
+  `lingxia dev stop`.
+- **Stop.** `lingxia dev stop [SESSION]` ends a session (exit 0 when none).
+  `lxdev session` lists live ones.
+- **Version skew.** `dev`, `build`, and `lxdev test` fail fast when the CLI,
+  the host or Runner, and the project's `@lingxia/*` packages are on different
+  major.minor lines; the message names the fix. `LINGXIA_ALLOW_SKEW=1` turns
+  it into a warning; `lingxia doctor --project` prints every version.
+- **Devices.** Android and Harmony get reverse port forwarding. iOS devices
+  connect over the LAN, so the device must reach the Mac; set
+  `LINGXIA_DEV_HOST` to override the detected address.
+- **Remote machines.** Run `lingxia dev` and `lxdev` on the same machine (over
+  SSH if needed). On Windows over SSH the same account must be signed in to
+  the desktop; use `--background`.
 
-Beyond plain compilation, `build` also drives the per-platform **packaging and
-signing** steps when asked: a signed iOS IPA, a macOS DMG, a Windows MSIX
-(optionally self-signed for local install/test), and the Android distribution
-format (sideloadable APK vs a Google Play AAB). It can also build just the
-native Rust library, reuse existing native binaries, inject optional native
-features or a private provider crate for a single build, and select Android
-ABIs / macOS arch. When a host project has `lingxia.yaml`, `build` additionally
-prepares configured host assets; lxapp builds generate the Native client when
-`lxapp.config.ts` declares `native`.
+## `lingxia build`
 
-Apple host builds temporarily point `Package.swift` at the cached local SDK
-while SwiftPM runs, then restore the manifest after success or failure. A normal
-`build` or `dev` therefore does not leave machine-specific SDK paths or a synced
-macOS deployment target in the project source.
+`--env dev|prod` picks the host environment (package-id suffix, server);
+`--release` picks the compiler profile. They are independent:
+`lingxia build --env prod --release` is shippable. See
+[Environment](../app/project.md#environment).
 
-#### iOS Packet Tunnel extensions
+`build` can also sign and package per platform (iOS IPA, macOS DMG, Windows
+MSIX, Android APK or AAB), build only the native library, reuse native
+binaries, add native features or a provider crate, and pick Android ABIs or
+macOS arch. It generates the native client when `lxapp.config.ts` declares
+`native`, and enforces the [View/Logic boundary](../lxapp/guide.md#build).
+Signing setup: [Distribution](./distribution.md#app-signing).
 
-During an iOS host build, `ios/PacketTunnel/Info.plist` opts the project into
-convention-based Packet Tunnel packaging. Provide a SwiftPM executable
-product/target named `PacketTunnel`; the CLI embeds its arm64 iOS executable as
-`PlugIns/PacketTunnel.appex` and derives the extension bundle ID from the
-environment-specific app bundle ID by appending `.PacketTunnel`.
+### iOS Packet Tunnel extensions
 
-Put extension entitlements at
-`ios/PacketTunnel/PacketTunnel.entitlements` when needed. The signer uses them
-for the extension instead of the app entitlements. Device builds still require
-the Apple Network Extension capability and matching provisioning for both the
-app and extension.
+`ios/PacketTunnel/Info.plist` opts in. Provide a SwiftPM executable
+product/target named `PacketTunnel`; the CLI embeds it as
+`PlugIns/PacketTunnel.appex` with bundle id `<app bundle id>.PacketTunnel`.
+Extension entitlements go in `ios/PacketTunnel/PacketTunnel.entitlements`.
+Device builds need the Network Extension capability and provisioning for app
+and extension.
 
-`build` also enforces the View/Logic boundary — see
-[LxApp → Build](../lxapp/guide.md#build).
+## `lingxia clean`
 
-Flags: `lingxia build --help`. Platform signing setup: [Distribution → App signing](./distribution.md#app-signing).
+Removes generated artifacts (host outputs and platform build directories, or
+an lxapp's `dist/` and caches). Use it when a `lingxia.yaml` change seems
+ignored after a rebuild.
 
-### `lingxia clean`
+## `lingxia package`
 
-Remove generated artifacts for the current project context (host outputs and
-platform build directories in a host app; `dist/` and build caches in an
-lxapp). Reach for it when a `lingxia.yaml` change seems ignored after a
-rebuild.
-
-### `lingxia package`
-
-Package release artifacts for publishing or delivery. Always performs a release
-package build. Like `build` it can choose the Android distribution format and
-inject native features / a provider crate; publishable Android artifacts are
-staged under `dist/android/` and macOS update zips under `dist/macos/`. Use it
-when you want the staged, distributable outputs rather than a plain build.
-
-Windows defaults to NSIS Setup.exe. Install NSIS 3 (`winget install NSIS.NSIS`)
-or set `LINGXIA_MAKENSIS`; MSIX needs the Windows SDK. Select multiple formats
-in one build so the update archive supports every direct distribution you ship:
+A release build staged for delivery: Android under `dist/android/`, macOS
+update zips under `dist/macos/`, Windows under `dist/windows/`.
 
 ```bash
 lingxia package -p windows                         # NSIS + update ZIP
@@ -155,168 +123,25 @@ lingxia package -p windows --format msix             # OS-managed distribution
 lingxia package -p windows --msix --self-signed      # local MSIX testing
 ```
 
-`--format` is Windows-only; `--msix` remains an additive alias for `--format msix`.
-Outputs in `dist/windows/` include version and PE architecture. `*-portable.zip`
-is a runnable folder archive; `*-windows.zip` is the signed-feed update payload
-for `lingxia publish` (contains the selected installers as well as the legacy
-runnable payload). `*-artifacts.json` records filenames, sizes, and SHA-256.
-MSIX-only builds produce no direct-update ZIP. `build -p windows --release`
-continues to produce a runnable `exe + assets/` directory without requiring NSIS.
+Windows needs NSIS 3 (or `LINGXIA_MAKENSIS`) for Setup, the Windows SDK for
+MSIX. Build every direct format you ship in one run; `*-windows.zip` is the
+update payload for `lingxia publish` (MSIX-only builds have none). More:
+[Windows](./distribution.md#windows).
 
-See `lingxia package --help` for the flags.
+## Devices: `devices`, `install`, `uninstall`, `launch`
 
-### `lingxia dev`
+- `lingxia devices` lists devices; pass the id when more than one is connected.
+- `lingxia install` installs a built artifact (auto-detected, or an APK/HAP).
+- `lingxia uninstall` removes the app (id from `lingxia.yaml` by default).
+- `lingxia launch` starts it; `--restart` works on Android and iOS.
 
-Development mode for both app and lxapp projects. In an app project it builds,
-installs, launches the host app, and starts a local dev websocket that `lxdev`
-drives. In a standalone lxapp project it builds the lxapp and launches LingXia
-Runner on macOS/Windows. Networking is handled per platform: Android and
-Harmony get reverse port forwarding so the device reaches the local dev server;
-iOS embeds a LAN dev websocket URL, so the iOS device must be able to reach the
-host Mac over the local network. The LAN address is auto-detected (VPN and
-container ranges are skipped); set `LINGXIA_DEV_HOST` to override it.
+## `lingxia icon`
 
-`dev` also accepts an explicit Runner target, so the current directory remains
-the owner of session state while the launched content lives elsewhere:
+Generates app icons from one full-bleed source image, or converts to a
+standalone `.ico`/`.png`. For Android/Harmony layered icons, keep the
+background colour matched to the source, or pass a transparent foreground.
 
-```bash
-lingxia dev ../my-lxapp
-lingxia dev <http(s)://url> [--headless] [--background]
-```
-
-URL targets support HTTP(S); `--headless` is available on macOS and Windows.
-Session state stays in the directory where `lingxia dev <target>` was invoked.
-
-Override the display language for one Runner session when testing localization:
-
-```bash
-lingxia dev --display-language sr-Latn-RS  # any BCP-47 language tag
-lingxia dev --display-language auto   # system locale
-```
-
-The override applies only to that process; it is not written to host settings
-or lxapp storage.
-
-`dev` chooses native targets from what it launches: Android uses the selected
-device's reported ABI and macOS uses the host architecture. Explicit
-`--android-abis` / `--macos-arch` overrides belong to `build` and `package`,
-where cross-architecture artifacts are intentional.
-
-Re-running `lingxia dev` for the same platform **takes over**: it stops the
-project's existing same-platform session automatically and starts fresh.
-Different platforms don't conflict — `-p android` and `-p ios` run side by
-side. `--name NAME` gives the session a stable alias that `lxdev --session`
-and `lingxia dev stop` accept (and that printed hints use instead of an id).
-
-Before it builds, `lingxia dev` (like `lingxia build`, and `lxdev test` before
-a run) checks that this CLI, the host or Runner it drives, and the project's
-installed `@lingxia/*` packages share a major.minor line — and, for a package
-built locally that records its commit, the CLI's commit. A skew fails fast
-with one line naming the parts and the fix (`npm install …@~M.m.0`, or
-`lingxia upgrade`); `LINGXIA_ALLOW_SKEW=1` downgrades it to a warning, and
-`lingxia doctor --project` prints every version.
-
-The desktop Runner must be this CLI's own build: a released CLI fetches it; a
-CLI built from a checkout needs a Runner built from the same commit
-(`tools/lingxia-runner/macos/install-local-runner.sh`, or `.ps1` on Windows).
-
-While the session is live, `lingxia dev` watches standalone lxapp sources and
-each host `resources.bundles[].path` that is a local lxapp. A save rebuilds
-that bundle and reloads it in place (`pages` / `tabBar` / `navigationStyle`
-included). Host/app code still needs a new `lingxia dev`.
-
-`lingxia dev` starts and stops the app session; [`lxdev`](./lxdev.md) works
-on the running app. Closing the Runner, or quitting a desktop host, ends the
-session; a host hidden to the tray, or a mobile app closed on the device, keeps
-it.
-
-`lingxia dev --background` returns once the session is ready and leaves it
-running (`--json` prints the session). If it fails to start or is not ready
-within 30 minutes, it stops what it started, prints the end of its log, and
-exits non-zero.
-
-`lingxia dev stop [SESSION]` ends a session, and exits 0 when none is running.
-`SESSION` takes the selectors of `lxdev --session`. `lxdev session` lists the
-running sessions. For CI, see
-[Running specs in CI](../lxapp/testing.md#running-specs-in-ci).
-
-Desktop and Runner dev websockets stay loopback-only. A physical iOS device is
-the exception: it connects to an authenticated LAN listener using the token in
-`~/.lingxia/apple/dev-device-token`. On a remote development machine, run both
-`lingxia dev` and `lxdev` there through SSH or the machine's existing
-CI/device-lab agent.
-
-When `lingxia dev` needs a visible window in an SSH session on Windows, the CLI
-bootstraps the native host app or Runner through a temporary interactive-token
-task so its window opens in the signed-in Windows desktop. The same Windows
-account must already be signed in locally or through RDP; otherwise startup
-fails with an actionable error. From the SSH client machine, use `--background`:
-the SSH command returns only after the runtime is connected. Subsequent `lxdev`
-commands should also run on that machine through SSH.
-
-See `lingxia dev --help` for the flags.
-
-> **Drive the live session with [`lxdev`](./lxdev.md)** — a separate binary that
-> automates the running app (browser tabs, lxapp pages, screenshots, logs).
-> The split: `lingxia dev` owns process lifetime, `lxdev` drives.
-
-`lingxia dev -p runner` asks for the Runner explicitly (an error outside an
-lxapp directory) instead of relying on the directory.
-
-`--name` always reaches the session: a dev broker left running by an older
-`lingxia` build is replaced before the session registers (its other sessions
-re-register with the new one), and a session that could not be registered
-under its name fails to start instead of running unnamed.
-
-### `lingxia devices`
-
-List the connected/available devices for a platform (auto-detected, or scope
-with `--platform`). Use it to find the device id you then pass to `install` /
-`launch` / `dev` when more than one is connected.
-
-See `lingxia devices --help`.
-
-### `lingxia install`
-
-Install a built artifact to a device. Auto-detects the artifact and platform, or
-point it at a specific APK/HAP and device. Can reinstall cleanly
-(uninstall-first, best effort) and suppress progress UI for automation.
-
-See `lingxia install --help`.
-
-### `lingxia uninstall`
-
-Remove an installed app from a device. The bundle/package id is inferred from
-`lingxia.yaml` when omitted, or pass it explicitly; target a specific device /
-platform as needed.
-
-See `lingxia uninstall --help`.
-
-### `lingxia launch`
-
-Launch an already-installed app on a device. The bundle id is inferred from
-`lingxia.yaml` when omitted. `--restart` terminates a running instance first
-(best effort) — currently supported on Android and iOS; HarmonyOS supports plain
-launch only.
-
-See `lingxia launch --help`.
-
-### `lingxia icon`
-
-Generate or update app icons from a single full-bleed source image. macOS art
-is normalized automatically (Dock proportions, rounded corners, margin). For
-Android/Harmony layered icons the foreground embeds the source's own background
-by default — keep the background color matched to the source, or pass a
-transparent foreground glyph to render the mark larger. Can also convert
-standalone (write a `.ico`/`.png` master to a path instead of into a project).
-
-See `lingxia icon --help` for the flags.
-
-### `lingxia doctor`
-
-Check development environment setup — prints pass/warn/fail checks for the common
-toolchain plus the configured/target platforms. Scope it with `--platform` when
-a specific platform build complains about missing tools.
+## `lingxia doctor`
 
 ```bash
 lingxia doctor
@@ -324,69 +149,17 @@ lingxia doctor --platform harmony
 lingxia doctor --project   # this CLI vs the project's @lingxia/* packages
 ```
 
-### Setup — `upgrade`
+## `lingxia upgrade`
 
-Low-frequency, and not part of building anything: `upgrade` moves
-the CLI, `lxdev` and the Runner to a newer release when one exists (the same
-replace the daily auto-update performs). **Inside a project** it then compares
-the project's LingXia line — npm `@lingxia/*`, native crate, Android
-`sdkVersion`, Apple cached SDK, Windows git/crate pins, and each
-`lxapp.json` `minRuntime` — with this CLI. The
-safe comparison is **major.minor** (same-line patches are not a new version).
-If the project is on an older line, the pending pin/SDK changes are printed
-and you choose whether to apply them (default yes). `--yes` skips the prompt;
-non-interactive runs skip the project half unless `--yes` is set.
-The skipped non-interactive project half exits nonzero so automation cannot
-mistake missing confirmation for a completed upgrade.
+Updates the CLI, `lxdev`, and the Runner. Inside a project it then moves the
+project's LingXia pins (npm, crates, platform SDKs, `lxapp.json` `minRuntime`)
+to the CLI's major.minor line, after a prompt.
 
-In CI, keep toolchain upgrades separate from host-project dependency upgrades;
-skill synchronization is unnecessary.
+- `--yes` applies without prompting; non-interactive runs need it.
+- `--check` reports drift without writing.
+- Exit 10 means something is still behind; re-run `lingxia upgrade`.
 
-Applying a newer line:
-
-- `@lingxia/*` npm ranges (lockfile refreshed via `npm install`)
-- each `lxapp.json` `minRuntime` raised to the new `M.m.0` (never lowered if you set it higher); a missing one is added even when the project is already on this CLI's line
-- scaffolded LingXia crate requirements in `native/Cargo.toml`, followed by
-  targeted `cargo update -p ...` lockfile refreshes
-- **Android:** gradle `lingxia.sdkVersion` fallback, then the Maven zip into
-  `~/.lingxia/sdk/android-maven/<ver>/` (the same artifact `lingxia build`
-  injects as a repo)
-- **Apple (iOS/macOS):** the SDK source zip into `~/.lingxia/sdk/apple/<ver>/`,
-  then `Package.swift` is pointed at that cache via `.package(path:)` (the SDK
-  uses `unsafeFlags`, so it cannot be a remote SwiftPM URL)
-- **Windows:** `lingxia-windows-sdk` and `lingxia-windows-build` crate
-  requirements, then `cargo update -p lingxia-windows-sdk` /
-  `-p lingxia-windows-build`
-- **Harmony:** the HAR into `~/.lingxia/sdk/harmony/<ver>/`
-
-In-workspace checkouts already depend on SDK source paths and are not
-re-fetched. `--check` reports CLI *and* project-line drift without writing
-(exit 10 when either half is behind). On Windows a CLI self-replace is
-deferred until the process exits — re-run `lingxia upgrade` after that so
-project pins follow the new CLI's line. When that defers the project half, the
-command exits 10 even with `--yes`, so automation knows it must re-run after
-the swap. Builds print a one-line hint when
-the project's line is older than the CLI's. Upgrading also hands this skill to
-the newly installed binary, which writes its own copy where an AI coding tool
-finds it.
-
-Manifest rewrites are followed by their npm/Cargo lockfile and platform SDK
-refreshes. If one fails, `upgrade` exits nonzero and reports what still needs
-attention. A hand-wired Apple `Package.swift` is left alone.
-
-### Distribution — `publish`, `auth`, `store`, `ds`, signing
-
-Low-frequency: publish to the LingXia server, platform signing setup,
-developer-account credentials, OS app-store submission, and developer-service
-queries. All of it lives in [Distribution](./distribution.md).
-
----
-
-## Environment Variables
-
-Required during build/dev for the listed platforms. One-time SDK installation is
-part of toolchain onboarding (out of scope here); the variables below must be
-present in your shell every time you build.
+## Environment variables
 
 | Variable | Used by | Description |
 |----------|---------|-------------|
@@ -395,26 +168,5 @@ present in your shell every time you build.
 | `OHOS_NDK_HOME` | harmony | Harmony command-line tools SDK path |
 | `JAVA_HOME` | android | Java JDK path |
 
-If a platform build complains about missing tools, run
-`lingxia doctor --platform <p>` to see exactly what's missing. Credential and
-signing env overrides (e.g. `LINGXIA_APPLE_*`, `LINGXIA_AUTH_TOKEN`,
-`LINGXIA_UPDATE_SIGNING_KEY_FILE`, `LINGXIA_NATIVE_FEATURES`) are documented
-with their commands and in [Distribution](./distribution.md).
-
----
-
-## Configuration Files
-
-This reference focuses on what commands do. File schemas live in the dedicated guides:
-
-| File | Purpose | Canonical guide |
-|---|---|---|
-| `lingxia.yaml` | Host app metadata, platform config, runtime-facing build inputs | [App Project](../app/project.md) |
-| `lxapp.json` | LxApp runtime metadata such as `appId`, `version`, and `pages` | [LxApp Development Guide](../lxapp/guide.md) |
-| `lxapp.config.ts` | LxApp build config such as aliases, view tooling, and `staticDirs` | [LxApp Development Guide](../lxapp/guide.md) |
-
-Quick reminders:
-
-- `lingxia.yaml` is the source of truth for host app build metadata.
-- `homeAppVersion` is generated into runtime `app.json`; you do not set it manually.
-- Storage/cache limits live under `storage`; set `storage.cacheMaxSizeMB` to `0` to disable usercache size enforcement.
+`lingxia doctor --platform <p>` shows what is missing. Credential and signing
+variables are in [Distribution](./distribution.md).
