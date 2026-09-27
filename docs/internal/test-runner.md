@@ -126,7 +126,7 @@ received artifacts. Keep the following invariants when changing these layers:
   every spec, so ids from older reports can differ for suites with several
   files or with ASCII specs before a non-ASCII one.
 - Action deadlines (`deadline.ts` `ActionDeadline`): locator `click/fill/type/
-  press/waitFor`, locator matchers and `t.expect(fn)` clamp their timeout to
+  press/waitFor`, locator matchers and `expect.poll` clamp their timeout to
   `LiveFixture.budgetRoom()` — the spec deadline less a reporting margin
   (`min(250ms, 5%)`), or the cleanup deadline during cleanup — and put the
   clamp in the failure message. Every driver call in those loops (query,
@@ -352,10 +352,15 @@ Development machine: lxdev receives progress, results, and artifacts
   `scroll`, guarded `pointer`/`key`); there is no raw page on the fixture.
   The fixture's evals take functions only; the string form is the raw
   driver's.
-- `t.expect` dispatches on its argument: a branded locator
-  (`Symbol.for("lingxia.test.locator")`) → locator matchers, a function →
-  the retrying poll, anything else → the once-matchers of `expect`. The
-  top-level `expect` throws on a branded locator. `TEST_ERROR_CODES`
+- `expect` (`expect.ts`) dispatches on its argument: a branded locator
+  (`Symbol.for("lingxia.test.locator")`) → the running fixture's locator
+  matchers, a thenable → `TypeError`, anything else → the once-matchers.
+  `expect.poll(read)` is the fixture's retrying poll. The running fixture is
+  the module's `ExpectScope`, set when a `LiveFixture` is built and cleared
+  when its spec ends; it also records every assertion. Without one, a locator
+  and `poll` throw. The types pick the matchers from the argument
+  (`ExpectResult`: `any` → value, `Locator` → locator, `PromiseLike` →
+  `PromiseNotAllowed`, which has no matchers). `TEST_ERROR_CODES`
   (`errors.ts`) repeats `AUTOMATION_ERROR_CODES` literally — `@lingxia/test`
   has no runtime import of `@lingxia/types` — and a compile-time check fails
   when `TestErrorCode` gains a code the list lacks. Codes that reach a spec
@@ -409,7 +414,7 @@ Development machine: lxdev receives progress, results, and artifacts
   function passed by name is checked where it is declared. Files under
   `node_modules` are not checked.
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
-  like `t.expect(fn)`. Its timeout is clamped to the spec budget left since
+  like `expect.poll`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
   value/error) wins over the bare spec timeout.
   Browser navigation eval returns `{ value, navigation }`; waits require exactly

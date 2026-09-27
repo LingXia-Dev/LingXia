@@ -133,12 +133,12 @@ test('state matchers distinguish absent, hidden, disabled and editable targets',
   world.add({testId:'input', enabled:true, editable:true});
   installFakeHost(world);
   spec('states', async t => {
-    await t.expect(t.app.view.testId('absent')).toBeHidden();
-    await t.expect(t.app.view.testId('hidden')).toBeAttached();
-    await t.expect(t.app.view.testId('hidden')).toBeDisabled();
-    await t.expect(t.app.view.testId('hidden')).not.toBeEditable();
-    await t.expect(t.app.view.testId('input')).toBeEnabled();
-    await t.expect(t.app.view.testId('input')).toBeEditable();
+    await expect(t.app.view.testId('absent')).toBeHidden();
+    await expect(t.app.view.testId('hidden')).toBeAttached();
+    await expect(t.app.view.testId('hidden')).toBeDisabled();
+    await expect(t.app.view.testId('hidden')).not.toBeEditable();
+    await expect(t.app.view.testId('input')).toBeEnabled();
+    await expect(t.app.view.testId('input')).toBeEditable();
   });
   assert.equal((await run()).passed, 1);
 });
@@ -175,7 +175,7 @@ test('page-scoped indexed locators preserve target on every read and input', asy
     await input.press('Enter');
     const result = await input.query();
     expect(result.index).toBe(1);
-    await t.expect(input).toHaveValue('hello');
+    await expect(input).toHaveValue('hello');
   });
   const report = await run();
   assert.equal(report.failed,0);

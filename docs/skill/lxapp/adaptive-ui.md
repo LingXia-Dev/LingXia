@@ -173,10 +173,10 @@ spec('switches Compact and Workspace views', async (t) => {
   const desktop = devices.find((device) => device.group === 'desktop')!;
 
   await t.automation.device.set({ id: phone.id });
-  await t.expect(t.app.view.css('[data-view="compact"]')).toBeVisible();
+  await expect(t.app.view.css('[data-view="compact"]')).toBeVisible();
 
   await t.automation.device.set({ id: desktop.id });
-  await t.expect(t.app.view.css('[data-view="workspace"]')).toBeVisible();
+  await expect(t.app.view.css('[data-view="workspace"]')).toBeVisible();
 });
 ```
 

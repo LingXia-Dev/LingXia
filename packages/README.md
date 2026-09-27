@@ -10,7 +10,7 @@
 - `lingxia-terminal-settings`: SDK-owned settings app for the desktop terminal.
 - `@lingxia/browser-shell-webui` lives next to its crate at `crates/lingxia-browser-shell/webui` (not in this workspace). It is still released by `scripts/release/npm.sh`.
 - `lingxia-types`: Shared TypeScript type definitions for lxapp logic code and runtime contracts.
-- `lingxia-test`: Authoring SDK and clock for lxapp tests (`spec`, locators, `t.expect`). Run by `lxdev test`.
+- `lingxia-test`: Authoring SDK and clock for lxapp tests (`spec`, locators, `expect`). Run by `lxdev test`.
 
 ## Release
 

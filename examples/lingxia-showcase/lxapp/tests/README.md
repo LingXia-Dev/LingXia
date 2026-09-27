@@ -66,7 +66,7 @@ New cases use `spec` from `@lingxia/test`:
 - assign a stable domain ID and list public members in `{ covers }` on the spec;
 - use `bindFixture(t, id)` for a unique `namespace` and `t.defer` cleanup;
 - assert an observable public result, not a private host field;
-- use `t.expect(locator)` / `t.expect(fn)` (or `PageDriver.waitFor` on a raw driver); fixed sleeps are
+- use `expect(locator)` / `expect.poll(fn)` (or `PageDriver.waitFor` on a raw driver); fixed sleeps are
   permitted only for a documented physical stabilization interval;
 - use `app.view.testId('…', { page: 'home' })` for UI actions; select duplicate matches with `.nth(index)` and press keys with `.press('Enter')`;
 - use `t.automation` for host/browser/terminal drivers; keep raw drivers only for deliberate API-boundary checks;

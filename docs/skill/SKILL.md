@@ -142,7 +142,7 @@ What an lxapp or host author imports, and from where. Don't guess an import from
 | `@lingxia/html` | DOM helpers for HTML-only views | lxapp View (HTML) | `pageReady`, `getPage`, `subscribePage`, `getHost`, `subscribeHost` |
 | `@lingxia/elements` | Pure-JS custom elements (`<lx-video>`, `<lx-input>`, …) | rarely direct — `@lingxia/react`/`vue` re-export wrappers around these | `registerVideoComponent`, `LxVideoElement` |
 | `@lingxia/types` | **TypeScript declarations for the Logic-side `lx.*` API + `Page({})` / `App({})` globals** | lxapp Logic (`pages/*/index.ts`) | install as dev dep; types apply globally |
-| `@lingxia/test` | Authoring SDK and clock for lxapp tests (`spec`, locators, `t.expect`) | lxapp tests / `lxdev test` | `import { spec } from '@lingxia/test'` |
+| `@lingxia/test` | Authoring SDK and clock for lxapp tests (`spec`, locators, `expect`) | lxapp tests / `lxdev test` | `import { spec } from '@lingxia/test'` |
 | `@lingxia/bridge` | Bridge runtime + low-level invocation helpers | rarely direct (advanced) | only when bypassing the framework wrappers |
 | `@lingxia/native` | Virtual module — points at the **CLI-generated** native client (`#[lingxia::native]` routes) | lxapp View | `import { native } from '@lingxia/native'` — only after a native build runs |
 | `@lingxia/page-runtime` | Internal — shared impl behind react/vue/html | **don't import directly** | — |

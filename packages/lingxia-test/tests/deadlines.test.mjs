@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, reset } from "../dist/index.js";
+import { spec, reset, expect } from "../dist/index.js";
 
 afterEach(() => {
   reset();
@@ -48,19 +48,19 @@ test("a click that never returns fails the click by name", async () => {
   assert.match(result.error.message, /page\.click did not return/);
 });
 
-test("a t.expect(fn) read that never returns names the assertion", async () => {
+test("an expect.poll read that never returns names the assertion", async () => {
   installFakeHost(createWorld());
 
   spec("hung read", { timeout: 5_000, forensics: false }, async (t) => {
     await t.step("wait for sync", async () => {
-      await t.expect(hang, { timeout: 120 }).toBe(1);
+      await expect.poll(hang, { timeout: 120 }).toBe(1);
     });
   });
 
   const result = await runOne();
   assert.equal(result.status, "failed");
-  assert.match(result.error.message, /t\.expect\(fn\) read did not return within \d+ms/);
-  assert.match(result.error.message, /while retrying t\.expect\(fn\) toBe/);
+  assert.match(result.error.message, /expect\.poll read did not return within \d+ms/);
+  assert.match(result.error.message, /while retrying expect\.poll toBe/);
   assert.match(result.error.message, /in step "wait for sync"/);
 });
 
@@ -70,7 +70,7 @@ test("a locator read that never returns fails the locator assertion", async () =
   installFakeHost(world);
 
   spec("hung locator read", { timeout: 5_000, forensics: false }, (t) =>
-    t.expect(t.app.view.testId("banner")).toBeVisible({ timeout: 120 }));
+    expect(t.app.view.testId("banner")).toBeVisible({ timeout: 120 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed");
@@ -82,7 +82,7 @@ test("an assertion timeout longer than the spec's remaining budget is clamped, v
   installFakeHost(createWorld());
 
   spec("clamped assertion", { timeout: 400, forensics: false }, (t) =>
-    t.expect(t.app.view.testId("absent")).toBeVisible({ timeout: 5_000 }));
+    expect(t.app.view.testId("absent")).toBeVisible({ timeout: 5_000 }));
 
   const result = await runOne();
   assert.equal(result.status, "failed", "the assertion, not the spec timer, ends the spec");
@@ -106,7 +106,7 @@ test("a timeout within the spec's budget is not clamped", async () => {
   installFakeHost(createWorld());
 
   spec("unclamped", { timeout: 5_000, forensics: false }, (t) =>
-    t.expect(() => 0, { timeout: 80 }).toBe(1));
+    expect.poll(() => 0, { timeout: 80 }).toBe(1));
 
   const result = await runOne();
   assert.equal(result.status, "failed");

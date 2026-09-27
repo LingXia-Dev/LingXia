@@ -1,4 +1,4 @@
-import { spec } from '@lingxia/test'
+import { spec, expect } from '@lingxia/test'
 
 // Specs run in the target App/Runner, separate from Logic and WebViews.
 // Drive the page through t.app.view locators; read Logic with t.app.logic.
@@ -14,6 +14,6 @@ spec('home greets by name', async (t) => {
     const view = t.app.view
     await view.testId('home-name').fill('Ada')
     await view.testId('home-greet').click()
-    await t.expect(view.testId('home-greeting')).toBeVisible()
+    await expect(view.testId('home-greeting')).toBeVisible()
   })
 })

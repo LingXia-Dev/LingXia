@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/index.js";
+import { spec, reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS, expect } from "../dist/index.js";
 
 afterEach(() => {
   reset();
@@ -49,13 +49,13 @@ test("locator click miss names nothing, hidden, and N matches", async () => {
   }
 });
 
-test("retrying t.expect reports matcher and last actual, not expected true got false", async () => {
+test("a retrying expect reports matcher and last actual, not expected true got false", async () => {
   const world = createWorld();
   world.add({ testId: "home-greeting", visible: true, text: "hi" });
   const { attachments } = installFakeHost(world);
 
   spec("greeting text", async (t) => {
-    await t.expect(t.app.view.testId("home-greeting")).toHaveText("hello", { timeout: 80 });
+    await expect(t.app.view.testId("home-greeting")).toHaveText("hello", { timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -74,7 +74,7 @@ test("default 5s assertion budget fails faster than the 30s spec budget", async 
   const { attachments } = installFakeHost(world);
 
   spec("missing greeting", { timeout: DEFAULT_SPEC_TIMEOUT_MS }, async (t) => {
-    await t.expect(t.app.view.testId("home-greeting")).toBeVisible();
+    await expect(t.app.view.testId("home-greeting")).toBeVisible();
   });
 
   const started = Date.now();
@@ -104,7 +104,7 @@ test("timeout aborts later fixture operations", async () => {
         ops.push(error.name);
       }
       try {
-        await t.expect(() => 1).toBe(1);
+        await expect.poll(() => 1).toBe(1);
         ops.push("expected");
       } catch (error) {
         ops.push(error.name);
@@ -132,7 +132,7 @@ test("locator re-resolves across mutations", async () => {
       node.visible = true;
       node.text = "Hello, Ada!";
     }, 40);
-    await t.expect(t.app.view.testId("home-greeting")).toHaveText("Hello, Ada!", { timeout: 400 });
+    await expect(t.app.view.testId("home-greeting")).toHaveText("Hello, Ada!", { timeout: 400 });
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -199,11 +199,11 @@ test("visible means rendered: an out-of-viewport match is visible, not in the vi
     const confirm = t.app.view.testId("sheet-confirm");
     await confirm.waitFor({ state: "attached", timeout: 80 });
     await confirm.waitFor({ state: "visible", timeout: 80 });
-    await t.expect(confirm).toBeVisible({ timeout: 80 });
-    await t.expect(confirm).not.toBeHidden({ timeout: 80 });
-    await t.expect(confirm).not.toBeInViewport({ timeout: 80 });
-    await t.expect(t.app.view.testId("collapsed")).toBeHidden({ timeout: 80 });
-    await t.expect(t.app.view.testId("missing")).toHaveCount(0);
+    await expect(confirm).toBeVisible({ timeout: 80 });
+    await expect(confirm).not.toBeHidden({ timeout: 80 });
+    await expect(confirm).not.toBeInViewport({ timeout: 80 });
+    await expect(t.app.view.testId("collapsed")).toBeHidden({ timeout: 80 });
+    await expect(t.app.view.testId("missing")).toHaveCount(0);
     await t.app.view.testId("missing").waitFor({ state: "detached", timeout: 80 });
     await confirm.waitFor({ state: "inViewport", timeout: 80 });
   });
@@ -221,7 +221,7 @@ test("toBeInViewport passes once the match scrolls into the viewport", async () 
 
   spec("scrolls in", async (t) => {
     setTimeout(() => { row.inViewport = true; }, 40);
-    await t.expect(t.app.view.testId("row")).toBeInViewport({ timeout: 1_000 });
+    await expect(t.app.view.testId("row")).toBeInViewport({ timeout: 1_000 });
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -261,20 +261,20 @@ test("filter, first and last narrow the matches and act on the right DOM node", 
 
   spec("narrowed", async (t) => {
     const rows = t.app.view.css("li");
-    await t.expect(rows).toHaveCount(4);
-    await t.expect(rows.filter({ hasText: "BANANA" })).toHaveCount(2);
-    await t.expect(rows.filter({ hasText: /^Cherry$/ })).toHaveCount(1);
+    await expect(rows).toHaveCount(4);
+    await expect(rows.filter({ hasText: "BANANA" })).toHaveCount(2);
+    await expect(rows.filter({ hasText: /^Cherry$/ })).toHaveCount(1);
     await rows.filter({ hasText: "banana" }).last().click();
     await rows.first().click();
     await rows.last().click();
-    await t.expect(rows.filter({ hasText: "banana" }).first()).toHaveText("Banana split");
-    await t.expect(rows.filter({ hasText: "banana" }).nth(1)).toContainText("bread");
-    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", "cherry");
-    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", /^ch/);
-    await t.expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind");
-    await t.expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("aria-busy");
-    await t.expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("data-kind", "apple");
-    await t.expect(rows.first()).not.toContainText("Banana");
+    await expect(rows.filter({ hasText: "banana" }).first()).toHaveText("Banana split");
+    await expect(rows.filter({ hasText: "banana" }).nth(1)).toContainText("bread");
+    await expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", "cherry");
+    await expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind", /^ch/);
+    await expect(rows.filter({ hasText: "Cherry" })).toHaveAttribute("data-kind");
+    await expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("aria-busy");
+    await expect(rows.filter({ hasText: "Cherry" })).not.toHaveAttribute("data-kind", "apple");
+    await expect(rows.first()).not.toContainText("Banana");
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -288,8 +288,8 @@ test("toHaveAttribute and toContainText failures name what was found", async () 
   const { attachments } = installFakeHost(world);
 
   spec("attribute miss", async (t) => {
-    await t.expect(t.app.view.testId("badge")).toContainText("unread", { timeout: 80 });
-    await t.expect(t.app.view.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
+    await expect(t.app.view.testId("badge")).toContainText("unread", { timeout: 80 });
+    await expect(t.app.view.testId("badge")).toHaveAttribute("aria-label", "Outbox", { timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -359,14 +359,14 @@ test("text matchers see whitespace-normalised text, as the user reads it", async
 
   spec("normalised", async (t) => {
     const view = t.app.view;
-    await t.expect(view.testId("band")).toHaveText("Good");
-    await t.expect(view.testId("band")).toHaveText(/^Good$/);
-    await t.expect(view.testId("status")).toHaveText("Following up");
-    await t.expect(view.testId("status")).toHaveText(" Following   up ");
-    await t.expect(view.testId("status")).toContainText("Following up");
-    await t.expect(view.testId("status")).toHaveText(/^Following up$/);
+    await expect(view.testId("band")).toHaveText("Good");
+    await expect(view.testId("band")).toHaveText(/^Good$/);
+    await expect(view.testId("status")).toHaveText("Following up");
+    await expect(view.testId("status")).toHaveText(" Following   up ");
+    await expect(view.testId("status")).toContainText("Following up");
+    await expect(view.testId("status")).toHaveText(/^Following up$/);
     seen.push("passed");
-    await t.expect(view.testId("miss")).toHaveText("Good", { timeout: 80 });
+    await expect(view.testId("miss")).toHaveText("Good", { timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -401,11 +401,11 @@ test("a timed-out wait on a hidden page says the page is hidden, not only obscur
     for (const wait of [
       () => t.app.view.testId("open-sheet").click({ timeout: 80 }),
       () => t.app.view.testId("sheet").waitFor({ timeout: 80 }),
-      () => t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 }),
+      () => expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 }),
     ]) {
       try { await wait(); } catch (error) { messages.push(error.message); }
     }
-    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+    await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -428,7 +428,7 @@ test("waits that pass never probe the page's visibility", async () => {
   spec("happy path", { forensics: false }, async (t) => {
     await t.app.view.testId("ready").click();
     await t.app.view.testId("ready").waitFor();
-    await t.expect(t.app.view.testId("ready")).toHaveText("Ready");
+    await expect(t.app.view.testId("ready")).toHaveText("Ready");
   });
 
   const report = await globalThis.__LINGXIA_TEST__.run();
@@ -443,7 +443,7 @@ test("a visible page with running frames adds no hidden-page note", async () => 
   const { attachments } = installFakeHost(world);
 
   spec("visible page", { forensics: false }, async (t) => {
-    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+    await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();
@@ -457,7 +457,7 @@ test("failure forensics record the page's visibility", async () => {
   const { attachments } = installFakeHost(world);
 
   spec("frames paused", async (t) => {
-    await t.expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
+    await expect(t.app.view.testId("sheet")).toBeVisible({ timeout: 80 });
   });
 
   await globalThis.__LINGXIA_TEST__.run();

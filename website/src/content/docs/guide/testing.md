@@ -22,20 +22,20 @@ Keep it on the same version as your CLI. `lxdev` warns when the two drift apart,
 A case is a `spec` whose async body receives a test handle `t`. Drive the app through locators and retrying assertions:
 
 ```ts
-import { spec } from '@lingxia/test';
+import { spec, expect } from '@lingxia/test';
 
 spec('greets through real page input and the Logic bridge', async (t) => {
   await t.app.nav.relaunch({ page: 'home' });
-  await t.expect(t.app.page.testId('home-page')).toBeVisible();
+  await expect(t.app.view.testId('home-page')).toBeVisible();
 
-  await t.app.page.testId('name').fill('Ada');
-  await t.app.page.testId('greet').click();
+  await t.app.view.testId('name').fill('Ada');
+  await t.app.view.testId('greet').click();
 
-  await t.expect(t.app.page.testId('greeting')).toContain('Ada');
+  await expect(t.app.view.testId('greeting')).toContainText('Ada');
 });
 ```
 
-Give elements a stable `data-testid` rather than matching on styling. `t.app.page.testId(id)` and `t.app.page.css(selector)` return locators; `t.expect(locator)` retries until the condition holds or the spec budget expires. Imported `expect(value)` from `@lingxia/test` checks once and does not retry.
+Give elements a stable `data-testid` rather than matching on styling. `t.app.view.testId(id)` and `t.app.view.css(selector)` return locators; `expect(locator)` retries until the condition holds or its timeout expires; `expect(value)` checks once.
 
 Every interaction is awaited: the case is talking to another process.
 
@@ -44,8 +44,8 @@ Every interaction is awaited: the case is talking to another process.
 The app is live, so state arrives when it arrives. Wait for the condition you actually care about:
 
 ```ts
-await t.expect(t.app.page.testId('total')).toBeVisible();
-await t.expect.poll(async () => {
+await expect(t.app.view.testId('total')).toBeVisible();
+await expect.poll(async () => {
   const response = await fetch(statusUrl);
   return (await response.json()).status;
 }).toBe('submitted');

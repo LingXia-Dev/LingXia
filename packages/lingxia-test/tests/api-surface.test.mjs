@@ -9,17 +9,17 @@ afterEach(() => {
   delete globalThis.lx;
 });
 
-test("t.expect(value) checks once; t.expect(fn) retries until the matcher passes", async () => {
+test("expect(value) checks once; expect.poll(fn) retries until the matcher passes", async () => {
   installFakeHost(createWorld());
   let reads = 0;
   let once;
   const started = Date.now();
 
   spec("ladder", { forensics: false }, async (t) => {
-    await t.expect(() => ++reads, { timeout: 1_000, interval: 5 }).toBeGreaterThanOrEqual(3);
-    t.expect(reads).toBe(3);
+    await expect.poll(() => ++reads, { timeout: 1_000, interval: 5 }).toBeGreaterThanOrEqual(3);
+    expect(reads).toBe(3);
     try {
-      t.expect(reads).toBe(4);
+      expect(reads).toBe(4);
     } catch (error) {
       once = error;
     }
@@ -33,36 +33,59 @@ test("t.expect(value) checks once; t.expect(fn) retries until the matcher passes
   assert.ok(Date.now() - started < 1_000);
 });
 
-test("t.expect(locator) retries; there is no t.expect.poll", async () => {
+test("expect(locator) retries; the fixture has no expect of its own", async () => {
   const world = createWorld();
   const save = world.add({ testId: "save", visible: false });
   setTimeout(() => { save.visible = true; }, 30);
   installFakeHost(world);
-  let polled = 0;
+  let own;
 
   spec("locator", { forensics: false }, async (t) => {
-    await t.expect(t.app.view.testId("save")).toBeVisible({ timeout: 1_000 });
-    polled = typeof t.expect.poll;
+    await expect(t.app.view.testId("save")).toBeVisible({ timeout: 1_000 });
+    own = "expect" in t;
   });
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.equal(polled, "undefined");
+  assert.equal(own, false);
 });
 
-test("expect(locator) refuses, pointing at t.expect", async () => {
-  const world = createWorld();
-  world.add({ testId: "save" });
-  installFakeHost(world);
+test("expect(promise) refuses: await it, or poll a read", async () => {
+  installFakeHost(createWorld());
 
-  spec("trap", { forensics: false }, async (t) => {
-    expect(t.app.view.testId("save")).toBeTruthy();
+  spec("promise", { forensics: false }, async (t) => {
+    expect(t.app.info()).toBeTruthy();
   });
 
   const report = await run();
   assert.equal(report.failed, 1);
   assert.equal(report.cases[0].error.name, "TypeError");
-  assert.match(report.cases[0].error.message, /expect\(locator\) checks once and cannot read the element; use t\.expect\(locator\)/);
+  assert.match(report.cases[0].error.message, /expect\(promise\): await the value first, or retry a read with expect\.poll/);
+});
+
+test("expect(locator) and expect.poll need a running spec; a value check does not", () => {
+  const locator = { [Symbol.for("lingxia.test.locator")]: true, selector: "#x" };
+  assert.throws(() => expect(locator), /expect\(locator\) retries inside a spec's budget/);
+  assert.throws(() => expect.poll(() => 1), /expect\.poll\(read\) retries inside a spec's budget/);
+  assert.throws(() => expect.poll(1), /expect\.poll\(read\) takes a function/);
+  expect([1, 2]).toHaveLength(2);
+  expect("abc").not.toHaveLength(2);
+  assert.throws(() => expect(3).toHaveLength(1), /received value must have a numeric length/);
+  assert.throws(() => expect(() => 1).toBe(1), AssertionError, "a function is a value, not a read");
+});
+
+test("expect.poll(fn).toHaveLength retries until the length matches", async () => {
+  installFakeHost(createWorld());
+  const items = [];
+  const timer = setInterval(() => items.push(items.length), 5);
+
+  spec("length", { forensics: false }, async () => {
+    await expect.poll(() => [...items], { timeout: 1_000, interval: 5 }).toHaveLength(3);
+  });
+
+  const report = await run();
+  clearInterval(timer);
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
 });
 
 test("t.app.view has locators, not raw element methods; there is no t.app.page or t.app.eval", async () => {
