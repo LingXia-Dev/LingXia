@@ -131,6 +131,8 @@ const scenario = await t.app.mock.use(checkout, 'unknown');
   `lingxia dev --background --mock all`, then `lxdev test`.
 - Each spec starts with fresh handler state and no scenario; a second `use`
   replaces the first; the spec's end removes it.
+- With `lxdev test --openapi`, a handler's answer is checked like a routed
+  one: off the contract, it fails the spec with `E_OPENAPI_CONTRACT`.
 - More: [Scenarios in specs](./testing.md#scenarios-in-specs).
 
 ## Scenarios
