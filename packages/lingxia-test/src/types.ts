@@ -114,13 +114,22 @@ export interface FailOptions extends SpecOptions {
 
 export type SpecBody = (t: Fixture) => void | Promise<void>;
 
+/** Retrying assertion and wait options. */
 export interface ExpectOptions {
+  /** Default 5000 ms, clamped to the spec's remaining budget. */
   timeout?: number;
+  /** Poll interval in ms (default 50). */
   interval?: number;
 }
 
+/** `type` / `press` options. */
+export interface InputOptions {
+  /** Default 5000 ms, clamped to the spec's remaining budget. */
+  timeout?: number;
+}
+
 /** `click` / `fill` options. */
-export interface ActionOptions extends ExpectOptions {
+export interface ActionOptions extends InputOptions {
   /**
    * Skip the in-viewport, stability and hit-test waits and dispatch to the
    * element itself; it must still be attached (one match) and enabled. Use it
@@ -185,8 +194,8 @@ export interface Locator {
   waitFor(options?: LocatorWaitOptions): Promise<void>;
   click(options?: ActionOptions): Promise<void>;
   fill(text: string, options?: ActionOptions): Promise<void>;
-  type(text: string, options?: ExpectOptions): Promise<void>;
-  press(key: string, options?: ExpectOptions): Promise<void>;
+  type(text: string, options?: InputOptions): Promise<void>;
+  press(key: string, options?: InputOptions): Promise<void>;
   /** Pick the match at `index` (of the filtered matches, after `.filter()`). */
   nth(index: number): Locator;
   first(): Locator;
@@ -525,7 +534,7 @@ export interface TestRoute {
   readonly id: number;
   readonly pattern: string;
   /** Remove the route. Removing one that already expired is not an error. */
-  unroute(): Promise<void>;
+  remove(): Promise<void>;
   /** Calls this route handled, oldest first. */
   calls(): Promise<NetworkCall[]>;
   /**
@@ -544,7 +553,7 @@ export interface TestNetwork {
   /** The newest matching route handles a request; unmatched requests are untouched. */
   route(pattern: NetworkRoutePattern, handler: NetworkRouteHandler): Promise<TestRoute>;
   /** Remove every route of this run for the app. */
-  unrouteAll(): Promise<void>;
+  removeAll(): Promise<void>;
   /** Calls this spec's routes handled, oldest first. */
   calls(): Promise<NetworkCall[]>;
 }

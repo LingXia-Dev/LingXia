@@ -40,6 +40,10 @@ spec('typed test boundary', async t => {
   await app.view.css('#save').click({force:true});
   // @ts-expect-error There is no `t.app.page`: the view holds the locators.
   app.page.testId('input');
+  // @ts-expect-error Actions do not poll on an interval; assertions do.
+  await input.click({interval:10});
+  // @ts-expect-error A fixture route is removed with `remove()`.
+  await (await app.network.route('**/x', {json:{}})).unroute();
   // @ts-expect-error `type` has no forced mode.
   await input.type('x', {force:true});
   // @ts-expect-error filter needs hasText.
@@ -240,8 +244,8 @@ spec('network calls', async (t) => {
   const first: NetworkCall = await route.waitForCall({ timeout: 2_000 });
   first.method?.toUpperCase();
   first.status?.toFixed();
-  const removed: void = await route.unroute();
-  const all: void = await t.app.network.unrouteAll();
+  const removed: void = await route.remove();
+  const all: void = await t.app.network.removeAll();
   const spec: NetworkCall[] = await t.app.network.calls();
   const scenario = await t.app.scenario({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
   const hit: NetworkCall = await scenario.waitForCall({ http: 'GET **/x' });

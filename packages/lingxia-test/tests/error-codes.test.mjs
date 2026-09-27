@@ -48,7 +48,7 @@ test("an element refusal is retried by code; any other coded failure is not", as
     return click(options);
   };
   installFakeHost(world);
-  spec("refused once", (t) => t.app.view.testId("save").click({ timeout: 500, interval: 1 }));
+  spec("refused once", (t) => t.app.view.testId("save").click({ timeout: 500 }));
   assert.equal((await globalThis.__LINGXIA_TEST__.run()).passed, 1);
   assert.equal(element.clicked, 1);
 
@@ -61,7 +61,7 @@ test("an element refusal is retried by code; any other coded failure is not", as
     throw coded("E_EVAL_SCRIPT", "JavaScript error: boom");
   };
   installFakeHost(other);
-  spec("not retried", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 500, interval: 1 }));
+  spec("not retried", { forensics: false }, (t) => t.app.view.testId("save").click({ timeout: 500 }));
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.equal(protocol.cases[0].status, "failed");
   assert.equal(protocol.cases[0].error.code, "E_EVAL_SCRIPT");

@@ -1050,7 +1050,7 @@ export interface NetworkDriver {
   unrouteAll(): Promise<number>;
   /**
    * Run-scoped: requests any route of this automation run handled for the
-   * app, oldest first, across every spec. `t.app.network.requests()` narrows
+   * app, oldest first, across every spec. `t.app.network.calls()` narrows
    * this to the current spec.
    */
   requests(): Promise<NetworkRouteRequest[]>;
