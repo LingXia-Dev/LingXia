@@ -278,6 +278,23 @@ fn executor_main(runtime: Weak<RuntimeInner>, receiver: mpsc::Receiver<RunReques
     }
 }
 
+/// A fully covered window pauses its page's animation frames as a sleeping
+/// display does. Bring the app's window over other apps' at the start of the
+/// run, without taking keyboard focus from the terminal or editor that started
+/// it; the app orders its own window, so no Accessibility permission is
+/// involved. Nothing public keeps it there if the user covers it again.
+async fn raise_app_window() {
+    use lingxia_platform::error::PlatformError;
+    use lingxia_platform::traits::screenshot::AppScreenshot;
+    let Some(platform) = lxapp::get_platform() else {
+        return;
+    };
+    match platform.bring_app_window_to_front(None, false).await {
+        Ok(_) | Err(PlatformError::NotSupported(_)) => {}
+        Err(err) => warn!("could not raise the app window for the run: {err}"),
+    }
+}
+
 async fn execute_run(
     runtime: Arc<RuntimeInner>,
     rong: &mut Option<Rong<RongJS>>,
@@ -291,6 +308,7 @@ async fn execute_run(
     #[cfg(target_os = "macos")]
     let _display_awake =
         lingxia_webview::platform::apple::keep_display_awake("LingXia automation run");
+    raise_app_window().await;
     let pool = match rong {
         Some(pool) => pool,
         None => match Rong::<RongJS>::builder().shared().workers(1).build() {

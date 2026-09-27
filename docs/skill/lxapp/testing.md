@@ -320,7 +320,8 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
   use `toBeInViewport()`. Actions scroll their target into view.
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
-  `element is obscured`. Keep the host window uncovered.
+  `element is obscured`. A run raises the host window when it starts; keep
+  it uncovered (`lxdev host focus` raises it again).
 - **A locked screen stops the run** on macOS: pages are hidden, so the rest
   are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.

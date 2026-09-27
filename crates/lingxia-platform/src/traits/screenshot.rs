@@ -82,4 +82,21 @@ pub trait AppScreenshot: Send + Sync {
             "app screenshot is not implemented for this platform".to_string(),
         ))
     }
+
+    /// Bring one of the app's own windows (the same default as capture) in
+    /// front of other apps' windows. `focus` also activates the app and makes
+    /// the window key; without it keyboard focus stays where the user left it.
+    ///
+    /// The app acts on its own windows, so no Accessibility permission is
+    /// involved. Returns the window as it is afterwards.
+    async fn bring_app_window_to_front(
+        &self,
+        window_id: Option<&str>,
+        focus: bool,
+    ) -> Result<WindowInfo, PlatformError> {
+        let _ = (window_id, focus);
+        Err(PlatformError::NotSupported(
+            "raising an app window is not implemented for this platform".to_string(),
+        ))
+    }
 }

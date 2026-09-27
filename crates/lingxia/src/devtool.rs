@@ -731,6 +731,21 @@ pub async fn take_app_screenshot_with_info(
     Ok((window, bytes))
 }
 
+/// Bring a host app window in front of other apps' windows, activating the
+/// app and making the window key. The app raises its own window, so this
+/// needs no Accessibility permission. macOS only for now.
+pub async fn focus_app_window(
+    window_id: Option<&str>,
+) -> Result<lingxia_platform::traits::screenshot::WindowInfo, String> {
+    use lingxia_platform::traits::screenshot::AppScreenshot;
+    let platform =
+        lxapp::get_platform().ok_or_else(|| "platform is not initialized".to_string())?;
+    platform
+        .bring_app_window_to_front(window_id, true)
+        .await
+        .map_err(|err| err.to_string())
+}
+
 /// Enumerate the host app's top-level windows. Mobile platforms return a
 /// single entry; desktop platforms return one entry per open window.
 pub async fn list_app_windows()
