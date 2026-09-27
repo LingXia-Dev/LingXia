@@ -134,6 +134,21 @@ spec('typed Logic access', async t => {
   await t.app.view.waitFor({ css: '#save' });
   await t.app.view.screenshot();
 
+  // Results are typed as JSON carries them.
+  const shaped = await t.app.logic.eval(() => ({ id: 'a', at: 1, tags: ['x'] as const, save() {} }));
+  shaped.id.toUpperCase(); shaped.tags[0].toUpperCase();
+  // @ts-expect-error A method does not cross the boundary.
+  shaped.save();
+  const when = await t.app.logic.eval(() => new Date());
+  // @ts-expect-error A Date arrives as a string, so it is typed `never`.
+  when.getTime();
+  const body = await t.app.view.eval(({ document }) => document.body);
+  // @ts-expect-error A DOM element does not cross the boundary.
+  body.tagName;
+  const anyValue = await t.app.logic.eval(() => JSON.parse('1') as any);
+  anyValue.whatever;
+  const maybe = await t.app.view.eval(({ document }) => document.querySelector('x')?.textContent ?? undefined);
+  maybe?.toUpperCase();
   interface Devices { devices: { id: string }[] }
   const data = await t.app.logic.data<Devices>({ page: 'devices' });
   data.devices[0].id.toUpperCase();
