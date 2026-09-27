@@ -27,6 +27,32 @@ fn screen_locked_in(session: &CFDictionary) -> bool {
         .is_some_and(|locked| locked.as_bool())
 }
 
+/// A user-activity assertion: it wakes a display that is already asleep, as
+/// someone touching the keyboard would, and is released when it drops.
+/// Keeping an awake display awake is the display-sleep activity's job.
+pub struct UserActivity(objc2_io_kit::IOPMAssertionID);
+
+impl Drop for UserActivity {
+    fn drop(&mut self) {
+        objc2_io_kit::IOPMAssertionRelease(self.0);
+    }
+}
+
+pub fn declare_user_activity(reason: &str) -> Option<UserActivity> {
+    const IO_RETURN_SUCCESS: objc2_io_kit::IOReturn = 0;
+    let name = CFString::from_str(reason);
+    let mut id: objc2_io_kit::IOPMAssertionID = 0;
+    // SAFETY: `name` is a live CFString and `id` a valid out pointer.
+    let status = unsafe {
+        objc2_io_kit::IOPMAssertionDeclareUserActivity(
+            Some(&name),
+            objc2_io_kit::IOPMUserActiveType::Local,
+            &mut id,
+        )
+    };
+    (status == IO_RETURN_SUCCESS).then_some(UserActivity(id))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -286,7 +286,8 @@ async fn execute_run(
     let shared = request.shared.clone();
     // Specs drive WebViews: WebKit pauses animation frames on a sleeping
     // display, so an rAF- or transition-driven sheet would never slide in.
-    // Held for the run, so `lxdev test` needs no `caffeinate`.
+    // Wakes a display that is already asleep and holds it on for the run,
+    // so `lxdev test` needs no `caffeinate -u`.
     #[cfg(target_os = "macos")]
     let _display_awake =
         lingxia_webview::platform::apple::keep_display_awake("LingXia automation run");
