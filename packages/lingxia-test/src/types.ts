@@ -365,6 +365,15 @@ export interface EvalOptions {
 /** Leading options of `t.app.view.eval(options, fn, ...args)`. */
 export interface ViewEvalOptions extends PageTarget, EvalOptions {}
 
+/** Leading options of `t.app.logic.call(options, method, ...args)`. */
+export interface LogicCallOptions extends EvalOptions {
+  /**
+   * `false` resolves once the method was invoked, without awaiting the
+   * promise it returns; a later rejection is logged in Logic. Default `true`.
+   */
+  wait?: boolean;
+}
+
 /** `t.app.logic.data()` options. */
 export interface LogicDataOptions {
   /** Configured page name or route; defaults to the current page. */
@@ -397,11 +406,22 @@ export interface TestLogic {
   data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
   /**
    * Call a method of the current page's Logic instance and resolve to its
-   * JSON result. With a page type, `method` must be one of its methods:
-   * `call<TodoPage>('addTodo', 'milk')`; `call<TodoPage, 'count'>('count')`
-   * also types the result.
+   * JSON result once the promise it returns settles. With a page type,
+   * `method` must be one of its methods: `call<TodoPage>('addTodo', 'milk')`;
+   * `call<TodoPage, 'count'>('count')` also types the result. Leading
+   * options: `{ timeout }` (see `EvalOptions`), `{ wait: false }`.
    */
   call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
+    method: K,
+    ...args: JsonValue[]
+  ): Promise<LogicMethodResult<T, K>>;
+  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
+    options: LogicCallOptions & { wait: false },
+    method: K,
+    ...args: JsonValue[]
+  ): Promise<void>;
+  call<T extends LogicPage<any> = AnyLogicPage, K extends LogicPageMethod<T> = LogicPageMethod<T>>(
+    options: LogicCallOptions,
     method: K,
     ...args: JsonValue[]
   ): Promise<LogicMethodResult<T, K>>;

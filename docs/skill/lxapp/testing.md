@@ -59,7 +59,7 @@ lxdev test tests/pages/notes.test.ts
 | Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read page Logic `data` | `t.app.logic.data<T>({ page? })`; see [below](#reading-app-logic) |
-| Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)` |
+| Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)`; options first: `{ timeout }`, `{ wait: false }` |
 | Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)`; options first: `{ timeout }`, `{ page }` |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
@@ -146,7 +146,8 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   page, timeout }, fn, ...args)`; it is clamped to the spec's remaining time.
 - `logic.call<Page>(method)` accepts only `Page`'s methods; add the method as
   a second type argument to type the result. Types are declared, not
-  validated.
+  validated. It resolves when the method's promise settles; `{ wait: false }`
+  resolves once it was invoked.
 - `t.waitFor` fails at once on `TypeError`, `ReferenceError`, and
   `SyntaxError` (override with `retryIf`); other thrown errors retry. On
   timeout it rejects with `E_TIMEOUT` naming the last value.

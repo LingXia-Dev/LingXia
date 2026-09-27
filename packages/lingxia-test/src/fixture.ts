@@ -42,6 +42,7 @@ import type {
   TestApp,
   JsonValue,
   EvalOptions,
+  LogicCallOptions,
   LogicDataOptions,
   ViewEvalOptions,
   LogicScope,
@@ -899,13 +900,22 @@ export class LiveFixture implements Fixture {
           return remote("t.app.logic.data", "logic", () => this.evalLogic(driver(), { script }));
         });
       },
-      call: (method: string, ...args: JsonValue[]) => {
+      call: (...input: unknown[]) => {
+        const [first, ...rest] = input;
+        const options = first !== null && typeof first === "object" ? first as LogicCallOptions : undefined;
+        const [method, ...args] = options ? rest : input;
         if (typeof method !== "string" || method.length === 0) {
-          throw new TypeError("t.app.logic.call(method, ...args) needs a method name");
+          throw new TypeError("t.app.logic.call([options,] method, ...args) needs a method name");
         }
-        return this.act("logic.call", method, () => {
-          const script = logicScript(callPageMethod, [method, args], "t.app.logic.call");
-          return remote("t.app.logic.call", "logic", () => this.evalLogic(driver(), { script }));
+        if (options?.wait !== undefined && typeof options.wait !== "boolean") {
+          throw new TypeError("t.app.logic.call({ wait }, method) takes a boolean");
+        }
+        const timeoutMs = this.evalTimeout(options, "t.app.logic.call");
+        const wait = options?.wait !== false;
+        return this.act("logic.call", wait ? method : `${method} (not awaited)`, async () => {
+          const script = logicScript(callPageMethod, [method, args as JsonValue[], wait], "t.app.logic.call");
+          const value = await remote("t.app.logic.call", "logic", () => this.evalLogic(driver(), { script, timeoutMs }));
+          return wait ? value : undefined;
         });
       },
     } as TestLogic;
@@ -1364,7 +1374,7 @@ function readPageData(scope: LogicScope, name: string | null, path: string | nul
   return page.data;
 }
 
-async function callPageMethod(scope: LogicScope, method: string, args: unknown[]): Promise<unknown> {
+async function callPageMethod(scope: LogicScope, method: string, args: unknown[], wait: boolean): Promise<unknown> {
   const pages = scope.getCurrentPages();
   const page = pages[pages.length - 1];
   if (!page) throw new Error("t.app.logic.call: no page is open");
@@ -1372,7 +1382,11 @@ async function callPageMethod(scope: LogicScope, method: string, args: unknown[]
   if (typeof member !== "function") {
     throw new Error(`t.app.logic.call: page ${JSON.stringify(page.route)} has no method ${JSON.stringify(method)}`);
   }
-  return await member.apply(page, args);
+  const result = member.apply(page, args);
+  if (wait) return await result;
+  // Not awaited: a later rejection is the app's to log, never the spec's.
+  Promise.resolve(result).catch((error: unknown) => console.error(`t.app.logic.call ${method}:`, error));
+  return null;
 }
 
 function resolveLocator(

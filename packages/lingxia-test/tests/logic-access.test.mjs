@@ -198,6 +198,37 @@ test("logic.data reads the current or a named page, logic.call invokes a method"
   assert.ok(!names.includes("logic.eval"));
 });
 
+test("logic.call takes { timeout } and { wait: false } first", async () => {
+  let release;
+  const settled = [];
+  const pages = [{
+    route: "pages/sync/index",
+    data: {},
+    sync(label) {
+      return new Promise((resolve) => { release = () => { settled.push(label); resolve(label); }; });
+    },
+    quick(label) { return `done ${label}`; },
+  }];
+  const world = logicWorld(pages);
+  installFakeHost(world);
+  const seen = {};
+  const result = await runOne(async (t) => {
+    seen.fired = await t.app.logic.call({ wait: false }, "sync", "later");
+    seen.pending = settled.length;
+    release();
+    seen.slow = await t.app.logic.call({ timeout: 20_000 }, "quick", "slow");
+    await t.reject(() => t.app.logic.call({ wait: "no" }, "quick"), { message: /takes a boolean/ });
+    await t.reject(() => t.app.logic.call({ timeout: -1 }, "quick"), { message: /positive number of ms/ });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(seen.fired, undefined);
+  assert.equal(seen.pending, 0, "the call resolved before the method's promise settled");
+  assert.deepEqual(settled, ["later"]);
+  assert.equal(seen.slow, "done slow");
+  assert.ok(world.evalTimeouts.includes(20_000), JSON.stringify(world.evalTimeouts));
+  assert.ok(result.steps.some((step) => step.detail === "sync (not awaited)"));
+});
+
 test("waitFor resolves to the accepted value and traces one row", async () => {
   installFakeHost(createWorld());
   let reads = 0;

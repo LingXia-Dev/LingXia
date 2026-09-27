@@ -166,6 +166,12 @@ spec('typed Logic access', async t => {
   done.valueOf();
   const either = await t.app.logic.call<DevicesPage>('count');
   void either;
+  const slowDone: boolean = await t.app.logic.call<DevicesPage, 'rename'>({ timeout: 30_000 }, 'rename', 'dev-1', { name: 'Office' });
+  slowDone.valueOf();
+  const fired: void = await t.app.logic.call<DevicesPage>({ wait: false }, 'rename', 'dev-1', { name: 'Office' });
+  void fired;
+  // @ts-expect-error `wait` is a boolean.
+  await t.app.logic.call({ wait: 'no' }, 'rename');
   // @ts-expect-error The method must be one the page type declares.
   await t.app.logic.call<DevicesPage>('remove');
   // @ts-expect-error `AnyLogicPage` is the untyped default; it still has to be a page.
