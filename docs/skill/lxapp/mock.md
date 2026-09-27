@@ -106,6 +106,7 @@ the effective selection and its source:
 ```text
 mock: none — from lingxia dev --mock (mocks/config.json: all, 2 real overrides — not in effect)
 mock: all — live (lxdev mock all) over lingxia dev --mock none; lxdev mock reset to return
+functions: 1/1 mocked — live (lxdev mock all)
 ```
 
 `lxdev network status` names who answered each call:
