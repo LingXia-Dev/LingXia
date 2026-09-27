@@ -393,6 +393,7 @@ impl RunSecrets {
                     message: format!(
                         "artifact {name} was not saved: it contains a --secret-arg value"
                     ),
+                    level: None,
                 },
             },
             other => self.scrub(other),

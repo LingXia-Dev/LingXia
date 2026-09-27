@@ -1068,6 +1068,14 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         const swept = await within(host.endAttempt!(attempt), RECLAIM_BUDGET_MS,
           `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
         if (swept.droppedTimers > 0) forceRelaunchNext = true;
+        // Left for the host to sweep: installed where the fixture could not
+        // track it (the raw driver), so the spec did not clean it up.
+        if (swept.clocks > 0) {
+          await host.emit({ type: "diagnostic", phase: "clock",
+            message: `"${record.full_name}" left ${swept.clocks} test clock${swept.clocks === 1 ? "" : "s"} installed outside t.app.clock; ` +
+              `the spec's end removed ${swept.clocks === 1 ? "it" : "them"}` +
+              (swept.droppedTimers > 0 ? ` and dropped ${swept.droppedTimers} pending test timer${swept.droppedTimers === 1 ? "" : "s"}; they never fired.` : ".") });
+        }
       } catch (sweepError) {
         reclaimFailures.push(`the host could not remove what the spec installed: ${errorMessage(sweepError)}`);
       }

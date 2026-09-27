@@ -1,9 +1,11 @@
 //! A test run's view of the dialogs an lxapp's Logic opens.
 //!
 //! `lx.showToast` reports each toast it presented; `lx.showModal` (and
-//! `alert` / `confirm`) and `lx.showActionSheet` ask before presenting. With
-//! no hook registered, or a hook that is not watching the app, every dialog
-//! is presented as usual: only a test run that watches the app answers them.
+//! `alert` / `confirm`) and `lx.showActionSheet` ask before presenting and
+//! report how a drawn one closed. With no hook registered, or a hook that is
+//! not watching the app, every dialog is presented as usual; a watching test
+//! run either records a drawn dialog or, once its spec queued answers,
+//! answers it instead of the user.
 
 use std::sync::OnceLock;
 
@@ -40,6 +42,8 @@ pub struct ActionSheetShown {
 pub enum DialogDecision<T> {
     /// Nobody watches: present it.
     Present,
+    /// Present it, then report how it closed with this id.
+    Draw(u64),
     /// Answered without presenting it.
     Answer(T),
     /// Watched but not answered: the call rejects with this message.
@@ -50,8 +54,14 @@ pub trait DialogHook: Send + Sync {
     fn toast(&self, appid: &str, toast: &ToastShown);
     /// `Answer(true)` confirms.
     fn modal(&self, appid: &str, modal: &ModalShown) -> DialogDecision<bool>;
+    /// A modal presented after `Draw(id)` closed: `Some(confirm)`, or `None`
+    /// when presenting it failed.
+    fn modal_closed(&self, appid: &str, id: u64, confirm: Option<bool>);
     /// `Answer(Some(index))` picks an item, `Answer(None)` cancels.
     fn action_sheet(&self, appid: &str, sheet: &ActionSheetShown) -> DialogDecision<Option<usize>>;
+    /// A sheet presented after `Draw(id)` closed: `Some(selection)`, or
+    /// `None` when presenting it failed.
+    fn action_sheet_closed(&self, appid: &str, id: u64, selection: Option<Option<usize>>);
 }
 
 static HOOK: OnceLock<Box<dyn DialogHook>> = OnceLock::new();

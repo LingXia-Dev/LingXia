@@ -13,7 +13,7 @@ import type { TestClock } from "./types.js";
 /** The fixture surface the clock wrapper needs. */
 export interface ClockHost {
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T>;
-  diagnostic(phase: string, message: string): void | Promise<void>;
+  diagnostic(phase: string, message: string, level?: "info"): void | Promise<void>;
 }
 
 /** The host's record, as a plain object of exactly these keys. */
@@ -46,7 +46,7 @@ export class ClockScope {
   }
 
   /** Uninstall every tracked clock; rejects naming those that failed. */
-  async reclaim(diagnostic: (phase: string, message: string) => void | Promise<void>): Promise<void> {
+  async reclaim(diagnostic: (phase: string, message: string, level?: "info") => void | Promise<void>): Promise<void> {
     const automation = this.automation;
     if (!automation) return;
     const failed: string[] = [];
@@ -56,7 +56,8 @@ export class ClockScope {
       try {
         const result: ClockUninstallResult = await automation().lxapp(id).clock.uninstall();
         this.dropped += result.dropped;
-        if (result.dropped > 0) await diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`));
+        // The spec installed this clock: removing it is expected, not a warning.
+        if (result.dropped > 0) await diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`), "info");
         this.apps.delete(id);
       } catch (error) {
         // A closed app took its Logic, and the clock with it.
@@ -118,7 +119,7 @@ export function wrapClock(
       host.act("clock.uninstall", "", async () => {
         const result = await driver().uninstall();
         scope.dropped += result.dropped;
-        if (result.dropped > 0) await host.diagnostic("clock", droppedNote(result.dropped, "clock.uninstall"));
+        if (result.dropped > 0) await host.diagnostic("clock", droppedNote(result.dropped, "clock.uninstall"), "info");
       }),
   };
 }

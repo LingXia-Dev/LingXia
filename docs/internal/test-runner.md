@@ -447,7 +447,7 @@ Development machine: lxdev receives progress, results, and artifacts
   100 ms slice (skipped when the last read stalled or the spec budget is
   spent).
   `t.app.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
-  reports dropped timers as a `diagnostic` (`phase: "clock"`).
+  reports dropped timers as an `info` `diagnostic` (`phase: "clock"`).
 - `t.app.view` is a plain object (locators, `eval(fn)`, `screenshot`,
   `scroll`, guarded `pointer`/`key`); there is no raw page on the fixture.
   The fixture's evals take functions only; the string form is the raw
@@ -646,12 +646,23 @@ Development machine: lxdev receives progress, results, and artifacts
   appid) belongs to the attempt that opened it the same way and ends with it
   (`dialogs::reclaim_attempt`), which also wakes a pending `unanswered()`
   with `null`. The runner opens it for the app under test before the spec's
-  hooks, races `unanswered()` against the body (a modal or `showActionSheet`
-  with no queued answer fails the spec at once), and `unwatch()`s it after
-  cleanup to fail a passing spec on answers no dialog used. Logic reaches the
-  watch through `lxapp::dialogs::DialogHook`: toasts are reported after the
-  host accepted them, modals and `lx.showActionSheet` ask first (sheets the
-  runtime opens itself, the media source picker, do not).
+  hooks, races `unanswered()` against the body, and `unwatch()`s it after
+  cleanup to fail a passing spec on answers no dialog used. Interception is
+  opt-in per kind: until the spec queues a modal (action sheet) answer, the
+  hook answers `DialogDecision::Draw(id)`, Logic presents the dialog and
+  reports its close (`modal_closed` / `action_sheet_closed`), which becomes
+  the record's `answer` (`drawn: true`); existing specs that tap the drawn
+  modal keep working. After the first queued answer of that kind the hook
+  answers from the queue, and one with no answer left refuses and resolves
+  `unanswered()`, failing the spec at once. Logic reaches the watch through
+  `lxapp::dialogs::DialogHook`: toasts are reported after the host accepted
+  them, modals and `lx.showActionSheet` ask first (sheets the runtime opens
+  itself, the media source picker, do not).
+- Diagnostics carry an optional `level`: `info` is expected housekeeping
+  (the timers a spec's own `t.app.clock` dropped when it ended or
+  uninstalled), which lxdev prints only with `--verbose`; anything else is a
+  warning, e.g. a clock the host swept at the attempt's end because it was
+  installed outside `t.app.clock`.
   The runner ends an abandoned spec's attempt like any other; per-spec
   refusal of its drivers is the JS grant (above). `revoke`, used only when
   the run stops, also makes `HostAutomationAuthority::check` — every

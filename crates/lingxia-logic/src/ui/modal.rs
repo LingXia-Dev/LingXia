@@ -72,6 +72,13 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObjec
 
     let confirmed = match watched_modal(&lxapp.appid, &options) {
         DialogDecision::Present => present_modal(&lxapp, options).await?,
+        DialogDecision::Draw(id) => {
+            let result = present_modal(&lxapp, options).await;
+            if let Some(hook) = lxapp::dialogs::dialog_hook() {
+                hook.modal_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+            }
+            result?
+        }
         DialogDecision::Answer(confirm) => confirm,
         DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
     };
@@ -82,7 +89,8 @@ async fn show_modal(ctx: JSContext, options: JSModalOptions) -> JSResult<JSObjec
     }
 }
 
-/// A test run watching the app answers instead of the user.
+/// A test run watching the app records the modal, or answers it instead
+/// of the user once its spec queued answers.
 fn watched_modal(appid: &str, options: &JSModalOptions) -> DialogDecision<bool> {
     let Some(hook) = lxapp::dialogs::dialog_hook() else {
         return DialogDecision::Present;

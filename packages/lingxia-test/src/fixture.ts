@@ -724,9 +724,13 @@ export class LiveFixture implements Fixture {
     }
   }
 
-  /** A note beside the trace, e.g. the timers a clock uninstall dropped. */
-  async diagnostic(phase: string, message: string): Promise<void> {
-    await this.emitTrace({ type: "diagnostic", phase, message });
+  /**
+   * A note beside the trace. A warning unless `level` is `"info"`: expected
+   * housekeeping, such as the timers the spec's own clock dropped, which
+   * lxdev shows only with `--verbose`.
+   */
+  async diagnostic(phase: string, message: string, level?: "info"): Promise<void> {
+    await this.emitTrace({ type: "diagnostic", phase, message, ...(level ? { level } : {}) });
   }
 
   /**
@@ -825,7 +829,7 @@ export class LiveFixture implements Fixture {
     const tasks: Array<() => Promise<void>> = [
       () => this.networkScope.reclaim(),
       () => this.scenarioScope.reclaim(),
-      () => this.clockScope.reclaim((phase, message) => this.diagnostic(phase, message)),
+      () => this.clockScope.reclaim((phase, message, level) => this.diagnostic(phase, message, level)),
     ];
     for (const task of tasks) {
       try { await task(); } catch (error) { failures.push(String((error as Error)?.message ?? error)); }

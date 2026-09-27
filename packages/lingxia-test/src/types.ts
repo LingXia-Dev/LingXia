@@ -658,24 +658,30 @@ export interface TestClock {
 }
 
 /**
- * `t.app.dialogs`: the dialogs the app's Logic opens during this spec.
- * Toasts are recorded and still drawn. Modals (`lx.showModal`, `alert`,
- * `confirm`) and `lx.showActionSheet` are answered from answers the spec
- * queued, never presented: queue the answer before the action that opens
- * the dialog. One that finds no answer queued fails the spec at once, naming
- * it; an answer no dialog used fails the spec when it ends. Each spec starts
+ * `t.app.dialogs`: the dialogs the app's Logic opens during this spec, all
+ * recorded. Toasts are always drawn. Modals (`lx.showModal`, `alert`,
+ * `confirm`) are drawn, for the spec to tap, until it queues a modal answer;
+ * from then on they are answered from the queue, never drawn, and one that
+ * finds no answer fails the spec at once, naming it. Likewise action sheets.
+ * An answer no dialog used fails the spec when it ends. Each spec starts
  * with nothing recorded or queued; outside a test run dialogs draw as usual.
  */
 export interface TestDialogs {
   /** Toasts presented so far, oldest first. Poll it: `expect.poll(() => t.app.dialogs.toasts())`. */
   toasts(): Promise<ToastRecord[]>;
-  /** Modals opened so far, with the answer each got. */
+  /** Modals opened so far, with the answer each got (the user's, when drawn). */
   modals(): Promise<ModalRecord[]>;
   /** `lx.showActionSheet` calls so far, with the answer each got. */
   actionSheets(): Promise<ActionSheetRecord[]>;
-  /** Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }` cancels. */
+  /**
+   * Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }`
+   * cancels. From now on the spec's modals are answered, never drawn.
+   */
   answerNextModal(answer: ModalAnswer): Promise<void>;
-  /** Answer the next action sheet: `{ index }` picks that item, `{ cancel: true }` dismisses it. */
+  /**
+   * Answer the next action sheet: `{ index }` picks that item, `{ cancel: true }`
+   * dismisses it. From now on the spec's action sheets are answered, never drawn.
+   */
   answerNextActionSheet(answer: ActionSheetAnswer): Promise<void>;
 }
 

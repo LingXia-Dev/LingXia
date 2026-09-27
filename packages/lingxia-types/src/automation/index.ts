@@ -1266,7 +1266,10 @@ export interface ModalAnswer {
   confirm: boolean;
 }
 
-/** A modal Logic opened while watched; it was answered, never presented. */
+/**
+ * A modal Logic opened while watched: drawn (`drawn: true`) until the spec
+ * queued a modal answer, answered from the queue after.
+ */
 export interface ModalRecord {
   title: string;
   content: string;
@@ -1274,18 +1277,25 @@ export interface ModalRecord {
   confirmText?: string;
   /** Only when the modal has a cancel button and the app set its text. */
   cancelText?: string;
-  /** `null`: no answer was queued, the call rejected and the spec failed. */
+  /**
+   * The queued answer it got, or the user's choice when drawn. `null`: a
+   * drawn one still open or that failed to present, or (answering) no answer
+   * was queued, so the call rejected and the spec failed.
+   */
   answer: ModalAnswer | null;
+  /** Drawn for the user, not answered from the queue. */
+  drawn?: true;
 }
 
 /** `{ index }` picks that item; `{ cancel: true }` dismisses the sheet. */
 export type ActionSheetAnswer = { index: number } | { cancel: true };
 
-/** An `lx.showActionSheet` while watched; answered, never presented. */
+/** An `lx.showActionSheet` while watched: drawn, or answered like modals. */
 export interface ActionSheetRecord {
   /** Item labels, in order. */
   items: string[];
   answer: ActionSheetAnswer | null;
+  drawn?: true;
 }
 
 export interface DialogUnwatchResult {
@@ -1298,11 +1308,11 @@ export interface DialogUnwatchResult {
 /**
  * The dialogs the selected lxapp's Logic opens while a spec of a host
  * automation run (`lxdev test`) watches it; outside one every call rejects
- * with `E_AUTOMATION`. Toasts are recorded and still drawn. Modals
- * (`showModal`, `alert`, `confirm`) and `showActionSheet` are answered from
- * the queued answers instead of being presented; one with no answer queued
- * rejects in Logic and resolves `unanswered()`. An unwatched app presents
- * every dialog as usual.
+ * with `E_AUTOMATION`. Toasts, modals (`showModal`, `alert`, `confirm`) and
+ * `showActionSheet` are recorded and drawn. Once a modal answer is queued,
+ * modals are answered from the queue instead of drawn, and one with no
+ * answer queued rejects in Logic and resolves `unanswered()`; likewise
+ * action sheets. An unwatched app presents every dialog as usual.
  */
 export interface DialogDriver {
   /** Start watching for the open spec attempt, with nothing recorded or queued. */
