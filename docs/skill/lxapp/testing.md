@@ -305,7 +305,8 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   developer's data returns when the run ends. Keep PATH snapshots
   (`*.lxstate`) out of git: they hold sign-in tokens.
 - `--profile-save` writes the data back after a passing run (`=always` after
-  any run).
+  any run). With it, a missing snapshot starts empty; so does one taken by
+  another install of the host, which is moved to `<file>.stale`.
 - `spec(title, { restoreProfile: true }, body)` rolls data back after that
   spec; `t.app.profile.checkpoint()` / `restore(cp)` / `drop(cp)` do it by
   hand. Both need `--profile` and reopen the app.

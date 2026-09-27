@@ -156,6 +156,17 @@ impl ProfileManifest {
         }
         Ok(())
     }
+
+    /// Whether this is a snapshot of `expected`'s app, in a format this build
+    /// reads, taken under another fingermark: another channel, or a host
+    /// whose device fingerprint changed (a reinstall with other providers).
+    /// It can never be used here, but it is not damaged either.
+    pub fn is_for_another_install(&self, expected: &ProfileManifest) -> bool {
+        self.format == PROFILE_FORMAT
+            && self.storage_format == expected.storage_format
+            && self.appid == expected.appid
+            && self.fingermark != expected.fingermark
+    }
 }
 
 /// The manifest a snapshot of `appid` taken on this host carries now.
@@ -1257,6 +1268,13 @@ mod tests {
         let mut newer = manifest("app.one");
         newer.storage_format = "redb-5".to_string();
         assert!(unpack(&bytes, &target.live(), &newer).is_err());
+        // Only the other device is another install of this app: a client
+        // may set it aside; the rest is misuse.
+        let taken = read_manifest(&bytes).unwrap();
+        assert!(taken.is_for_another_install(&other_device));
+        assert!(!taken.is_for_another_install(&manifest("app.one")));
+        assert!(!taken.is_for_another_install(&manifest("app.two")));
+        assert!(!taken.is_for_another_install(&newer));
         assert!(
             fs::read_dir(target.live()).unwrap().next().is_none(),
             "a refused seed writes nothing"

@@ -177,7 +177,11 @@ fn upload(base: &Path, args: ProfileUploadArgs) -> Result<ProfileUploadResponse,
             state_id: None,
         });
     }
-    let finished = finish_upload(&part, args.sha256.as_deref());
+    // The app a run started now would isolate; start checks it again.
+    let expected = target_appid(None)
+        .ok()
+        .map(|appid| data_profile::manifest_for(&appid));
+    let finished = finish_upload(&part, args.sha256.as_deref(), expected.as_ref());
     if let Err(err) = finished {
         let _ = fs::remove_file(&part);
         return Err(err);
@@ -191,9 +195,15 @@ fn upload(base: &Path, args: ProfileUploadArgs) -> Result<ProfileUploadResponse,
     })
 }
 
-/// Check a complete upload: its digest when given, and that it is a
-/// snapshot at all. Whether it fits the target app is checked at start.
-fn finish_upload(part: &Path, sha256: Option<&str>) -> Result<(), String> {
+/// Check a complete upload: its digest when given, that it is a snapshot at
+/// all, and, against `expected`, that it was not taken by another install of
+/// this host: that one fails `stale`, so a client can set it aside and start
+/// empty. Whether it fits the target app is checked at start.
+fn finish_upload(
+    part: &Path,
+    sha256: Option<&str>,
+    expected: Option<&data_profile::ProfileManifest>,
+) -> Result<(), String> {
     let bytes = fs::read(part).map_err(|err| err.to_string())?;
     if let Some(expected) = sha256 {
         let actual = data_profile::sha256_hex(&bytes);
@@ -203,7 +213,16 @@ fn finish_upload(part: &Path, sha256: Option<&str>) -> Result<(), String> {
             ));
         }
     }
-    data_profile::read_manifest(&bytes).map_err(|err| format!("(usage): {err}"))?;
+    let manifest = data_profile::read_manifest(&bytes).map_err(|err| format!("(usage): {err}"))?;
+    if let Some(expected) = expected
+        && manifest.is_for_another_install(expected)
+    {
+        return Err(format!(
+            "(stale): profile snapshot of {} was taken for another channel or device \
+             fingerprint (a reinstalled host counts as another device)",
+            manifest.appid
+        ));
+    }
     Ok(())
 }
 
@@ -271,13 +290,18 @@ mod tests {
         dir
     }
 
+    /// Unique per test in this process: the clock alone can repeat across
+    /// parallel tests where it only ticks in microseconds.
     fn uuid() -> String {
+        static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
         format!(
-            "{:x}",
+            "{:x}-{}-{}",
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         )
     }
 
@@ -350,6 +374,32 @@ mod tests {
         let junk = upload(&base, chunk("up-3", 0, b"not a snapshot", true, None)).unwrap_err();
         assert!(junk.contains("not a profile snapshot"));
         assert!(staged_file(&base, "../escape", STATE_EXT).is_err());
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_snapshot_of_another_install_is_stale() {
+        let base = scratch();
+        let bytes = snapshot(&base);
+        let part = base.join("whole.part");
+        fs::write(&part, &bytes).unwrap();
+        let here = data_profile::manifest_for("app.lingxia.upload-test");
+        finish_upload(&part, None, Some(&here)).unwrap();
+        finish_upload(&part, None, None).unwrap();
+
+        let reinstalled = data_profile::ProfileManifest {
+            fingermark: format!("{}-other", here.fingermark),
+            ..here.clone()
+        };
+        let stale = finish_upload(&part, None, Some(&reinstalled)).unwrap_err();
+        assert!(stale.starts_with("(stale): "), "{stale}");
+        // Another app's snapshot is not stale: start refuses it as misuse.
+        let other_app = data_profile::ProfileManifest {
+            appid: "app.lingxia.other".into(),
+            fingermark: reinstalled.fingermark.clone(),
+            ..here
+        };
+        finish_upload(&part, None, Some(&other_app)).unwrap();
         let _ = fs::remove_dir_all(base);
     }
 
