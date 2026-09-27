@@ -404,6 +404,10 @@ Development machine: lxdev receives progress, results, and artifacts
   survive remounts; an instance id targets one live instance. Omitted page targets
   follow the current page on every operation.
 - `eval<T>` declares the caller's expected result, not runtime validation.
+  Fixture `eval` and `logic.call` results are `Jsonable<R>`: structural,
+  so interfaces without index signatures pass; function members drop out,
+  and a function, `Date`, `RegExp`, `Map`/`Set`, promise, symbol, bigint or
+  DOM node (`nodeType`, or the `View*` shapes) is `never`.
 - Function-form eval (`t.app.logic.eval(fn, ...args)`, `t.app.view.eval(fn,
   ...)`, and `logic.data`/`logic.call`, built on it) lives in `@lingxia/test`
   (`remote.ts`); the drivers still receive `{ script }`. Leading eval options

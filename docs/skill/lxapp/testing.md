@@ -579,7 +579,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 - **Eval functions are self-contained.** `fn` is sent as source text: it cannot
   use spec variables, imports, or helpers, and `lxdev test` refuses one that
   does (file:line and the name). Pass values as extra arguments; arguments and
-  the result must be JSON.
+  the result must be JSON (a result that is not types as `never`).
 - **Specs run on the target device.** Test `fetch('http://127.0.0.1:...')`
   reaches the device's loopback, not the development machine. Start fixture
   servers from shell/CI and pass reachable URLs with `--arg`.

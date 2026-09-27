@@ -14,6 +14,7 @@ export type {
   FileOptions,
   Fixture,
   JsonValue,
+  Jsonable,
   Locator,
   LocatorFilterOptions,
   LocatorMatchers,

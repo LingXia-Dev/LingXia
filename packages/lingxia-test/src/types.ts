@@ -206,6 +206,21 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
+/**
+ * `R` as it arrives after a JSON round trip: function members are dropped,
+ * and a function, `Date`, `Map`, `Set`, `RegExp`, promise, symbol, bigint or
+ * DOM node is `never`, so using one fails where the eval returns it.
+ */
+export type Jsonable<R> =
+  0 extends 1 & R ? any
+    : R extends string | number | boolean | null | undefined | void ? R
+    : R extends (...args: never[]) => unknown ? never
+    : R extends Date | RegExp | Map<unknown, unknown> | Set<unknown> | WeakMap<object, unknown> | WeakSet<object> | PromiseLike<unknown> | symbol | bigint ? never
+    : R extends { readonly nodeType: number } | ViewElement | ViewDocument | ViewWindow ? never
+    : R extends readonly unknown[] ? { [K in keyof R]: Jsonable<R[K]> }
+    : R extends object ? { [K in keyof R as R[K] extends (...args: never[]) => unknown ? never : K]: Jsonable<R[K]> }
+    : R;
+
 /** A page instance as app Logic sees it (`getCurrentPages()` entries). */
 export interface LogicPage<TData = Record<string, unknown>> {
   readonly route: string;
@@ -318,14 +333,14 @@ export interface TestView {
    * Run `fn` in the current page's WebView with JSON `args` and resolve to
    * its JSON result. `fn` must be self-contained (see `ViewFunction`).
    */
-  eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  eval<R, A extends JsonValue[]>(fn: ViewFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
   /**
    * The same with options: `page` runs it in that page's WebView (a
    * configured page name or live instance id) instead of the current page's,
    * like a locator's `{ page }` — a page kept below the current one, or one a
    * surface shows; `timeout` see `EvalOptions`.
    */
-  eval<R, A extends JsonValue[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  eval<R, A extends JsonValue[]>(options: ViewEvalOptions, fn: ViewFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
   screenshot(options?: PageTarget): Promise<Screenshot>;
   /** Scroll the page DOM by a pixel delta (nearest scrollable container). */
   scroll(options?: PageScrollOptions): Promise<void>;
@@ -364,9 +379,9 @@ export type LogicPageMethod<T> = string extends keyof T
   ? string
   : { [K in keyof T]-?: T[K] extends (...args: any[]) => unknown ? K : never }[keyof T] & string;
 
-/** What `call<T, K>()` resolves to: `K`'s awaited result, `unknown` untyped. */
+/** What `call<T, K>()` resolves to: `K`'s awaited result as JSON carries it, `unknown` untyped. */
 export type LogicMethodResult<T, K> = K extends keyof T
-  ? T[K] extends (...args: any[]) => infer R ? Awaited<R> : unknown
+  ? T[K] extends (...args: any[]) => infer R ? Jsonable<Awaited<R>> : unknown
   : unknown;
 
 /** `t.app.logic`: the app's Logic runtime, read and driven from the spec. */
@@ -375,9 +390,9 @@ export interface TestLogic {
    * Run `fn` in the app's Logic runtime with JSON `args` and resolve to its
    * JSON result. `fn` must be self-contained (see `LogicFunction`).
    */
-  eval<R, A extends JsonValue[]>(fn: LogicFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  eval<R, A extends JsonValue[]>(fn: LogicFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
   /** The same with a `timeout` (see `EvalOptions`). */
-  eval<R, A extends JsonValue[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: A): Promise<Awaited<R>>;
+  eval<R, A extends JsonValue[]>(options: EvalOptions, fn: LogicFunction<R, A>, ...args: A): Promise<Jsonable<Awaited<R>>>;
   /** Read the current (or named) page's Logic `data`. `T` is not validated. */
   data<T = Record<string, unknown>>(options?: LogicDataOptions): Promise<T>;
   /**
