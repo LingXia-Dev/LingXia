@@ -39,8 +39,8 @@ received artifacts. Keep the following invariants when changing these layers:
   `since_last_poll_ms`); a refused `session.test.start` carries the same as
   error `data` under code `automation_run_in_progress`. `--cancel-active`
   refuses a run polled within the last 15s: its client is alive.
-- `session.test.start` sends `args` (user `--arg`/`--secret-arg`, the spec's
-  `t.args`) and `control` (grep, id, ids, shard, retries, passWithNoTests,
+- `session.test.start` sends `args` (user `--arg`/`--secret-arg`, what the
+  spec's `t.arg()` reads) and `control` (grep, id, ids, shard, retries, passWithNoTests,
   forbidOnly, platform, secretArgs) separately. The host exposes `control` on
   `__LINGXIA_AUTOMATION_HOST__` only when non-empty; without it the framework
   reads those keys from `args`, as older lxdev sent them. Reports put controls
@@ -346,7 +346,7 @@ Development machine: lxdev receives progress, results, and artifacts
   scenario target (JSON of the filter) and hands out `calls[cursor]`, so a
   call made before the wait counts; it polls silenced inside one traced
   action and throws a `TimeoutError` listing the last 10 calls.
-  `t.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
+  `t.app.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
   reports dropped timers as a `diagnostic` (`phase: "clock"`).
 - `t.app.view` is a plain object (locators, `eval(fn)`, `screenshot`,
   `scroll`, guarded `pointer`/`key`); there is no raw page on the fixture.
@@ -377,7 +377,8 @@ Development machine: lxdev receives progress, results, and artifacts
   bundle map attributes each call to its file: own options win, `tags`,
   `covers` and `requires` merge. An unmet `requires` skips the case before a
   fixture exists, with the reason in `case.reason`.
-- `t.app`, `t.apps`, and `t.automation` share fixture guards and tracing.
+- `t.app` and `t.automation` (including `t.automation.lxapp(id)`) share
+  fixture guards and tracing.
   Test helpers must retain these wrappers instead of acquiring raw drivers.
   Code deliberately evaluated inside product Logic still uses `lx.automation()`.
 - Native Rong class instances are callable (`typeof === "function"`). Keep the

@@ -29,7 +29,7 @@ async function waitForTabBar(
 }
 
 spec('home View MessagePort is up without relaunch', async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const current = await currentPageOrNull(app);
   if (current?.name !== 'home') {
     await app.nav.switchTab({ page: 'home' });
@@ -40,7 +40,7 @@ spec('home View MessagePort is up without relaunch', async (t) => {
 });
 
 spec('greets through real page input and the Logic bridge', async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-page"]');
   await eventually(
@@ -81,7 +81,7 @@ spec('switches display language from the home control', {
   app: SHOWCASE_APP_ID,
   timeout: 60_000,
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'home' });
   await waitForCurrentPageVisible(app, 'home', '[data-testid="home-language"]');
   await eventually(

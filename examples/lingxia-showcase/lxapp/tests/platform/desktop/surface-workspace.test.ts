@@ -83,7 +83,7 @@ const DESKTOP_CASE_MS = 180_000;
 const WINDOWS_RAIL_MIN_DIP = 32;
 
 async function desktopApp(t: Fixture): Promise<TestApp> {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(
@@ -2196,7 +2196,7 @@ dynamicMainDesktopTest('keeps a dynamic app handle synchronized and closes its w
       surfaceFailureDiagnostics(t, app, desktop, host),
       desktop.ax.query({ window: host.id, match: 'Message', all: true })
         .catch((failure) => ({ error: String(failure) })),
-      t.apps.lxapp('lingxia-chat').view.eval({ page: 'chat' }, ({ document }) => JSON.stringify({
+      t.automation.lxapp('lingxia-chat').view.eval({ page: 'chat' }, ({ document }) => JSON.stringify({
         readyState: (document as unknown as ProbeDocument).readyState,
         input: (() => {
           const input = document.querySelector('textarea');

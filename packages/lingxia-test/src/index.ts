@@ -13,7 +13,6 @@ export {
 } from "./version.js";
 export type {
   ActionOptions,
-  Apps,
   ArgOptions,
   AssertionRecord,
   AttachmentRef,

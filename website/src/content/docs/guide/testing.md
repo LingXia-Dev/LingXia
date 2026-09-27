@@ -72,13 +72,13 @@ lxdev test tests/pages/home.test.ts
 lxdev test tests/ --grep checkout
 ```
 
-Pass values into a run with `--arg` (`t.args`), so one suite can cover several platforms or fixture URLs:
+Pass values into a run with `--arg` (read with `t.arg('name')`), so one suite can cover several platforms or fixture URLs:
 
 ```bash
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-Pass a secret with `--secret-arg key=value`: its value is written as `***` wherever it would appear in reports, events and attachments. Reports also list a run's args; an `--arg` named like a credential (`password`, `apiKey`, `DB_TOKEN`) shows as `***` in that list. The spec still reads the real value from `t.args`.
+Pass a secret with `--secret-arg key=value`: its value is written as `***` wherever it would appear in reports, events and attachments. Reports also list a run's args; an `--arg` named like a credential (`password`, `apiKey`, `DB_TOKEN`) shows as `***` in that list. The spec still reads the real value with `t.arg()`.
 
 Results print as they finish and are written under `test-results/<run-id>/` (`report.html`, `report.json`, `junit.xml`) so CI can keep them as an artifact.
 

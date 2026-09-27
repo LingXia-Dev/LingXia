@@ -216,7 +216,7 @@ impl RunSecrets {
         }
     }
 
-    /// `t.args`: `--arg` values, then `--secret-arg` values over them.
+    /// What `t.arg()` reads: `--arg` values, then `--secret-arg` values over them.
     pub fn spec_args(&self) -> HashMap<String, String> {
         self.args.iter().chain(&self.secret_args).cloned().collect()
     }

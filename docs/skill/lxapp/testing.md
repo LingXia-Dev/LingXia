@@ -79,7 +79,7 @@ lxdev test tests/pages/notes.test.ts
 | Skip at run time | `t.skip(reason)`; at registration `spec.skip` / `spec.fixme` |
 | Known failure | `spec.fail(title, { expected: { code, message } }, body)` |
 | Group trace, add evidence | `t.step(name, fn)`, `t.attach(name, data)` |
-| Another running lxapp | `t.apps.lxapp(appId)` |
+| Another running lxapp | `t.automation.lxapp(appId)` |
 | App lifecycle and inbound links | `t.automation.lxapps` |
 | External web pages, auth/payment callback tabs | `t.automation.browser` |
 | Runner presets/appearance | `t.automation.device`; [adaptive testing](adaptive-ui.md#test-runtime-switching) |
@@ -487,7 +487,7 @@ spec('status refreshes every 3 s', async (t) => {
   started before `install` — install before opening the page under test.
   Routes, recording, the network log and contract checks work the same with a
   clock installed.
-- Only the selected app's Logic (`t.apps.lxapp(id).clock` for another), and
+- Only the selected app's Logic (`t.automation.lxapp(id).clock` for another), and
   only in a `lxdev test` run. A spec's clock is removed when it ends (pending
   test timers are dropped, and the next spec then starts from a relaunched
   home page); the run's end or the app reopening (a profile rollback) also
@@ -520,7 +520,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 - Sign in once: a setup spec signs in through the UI only when the app shows it
   is signed out; later runs start from the saved state.
 - `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
-  that spec (implies `fresh`); `const cp = await t.profile.checkpoint()`
+  that spec (implies `fresh`); `const cp = await t.app.profile.checkpoint()`
   (`{ id }`) / `restore(cp)` (`{ kept }`) / `drop(cp)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
   and both reject with `E_PROFILE_NOT_ISOLATED` without `--profile`.
 - A reopen resolves once the app has settled: `App.onLaunch` has finished
@@ -536,7 +536,7 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
 
   ```ts
   spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { /* ... */ });
-  await t.profile.restore(cp, { keep: ['auth.*', 'session.token'] }); // resolves { kept }
+  await t.app.profile.restore(cp, { keep: ['auth.*', 'session.token'] }); // resolves { kept }
   ```
 
   Globs match whole keys: `*` any run of characters (dots included), `?` one.

@@ -79,11 +79,11 @@ test("declared secret args are masked everywhere but reach the spec", async () =
   });
   let seen;
   spec("logs in", async (t) => {
-    seen = { ...t.args };
-    await t.attach("note.txt", `typed ${t.args.password}`);
-    await t.attach("form.json", { pin: t.args.pin, nested: [`pw:${t.args.password}`] });
-    await t.attach("raw.txt", { mimeType: "text/plain", base64: Buffer.from(`pin=${t.args.pin}`).toString("base64") });
-    expect(`pw=${t.args.password} pin=${t.args.pin}`).toBe("x");
+    seen = { password: t.arg("password"), pin: t.arg("pin") };
+    await t.attach("note.txt", `typed ${t.arg("password")}`);
+    await t.attach("form.json", { pin: t.arg("pin"), nested: [`pw:${t.arg("password")}`] });
+    await t.attach("raw.txt", { mimeType: "text/plain", base64: Buffer.from(`pin=${t.arg("pin")}`).toString("base64") });
+    expect(`pw=${t.arg("password")} pin=${t.arg("pin")}`).toBe("x");
   });
 
   const protocol = await globalThis.__LINGXIA_TEST__.run();
@@ -113,7 +113,7 @@ test("a credential-named --arg is masked in meta.args only", async () => {
     control: {},
   });
   spec("echoes", { forensics: false }, async (t) => {
-    expect(`${t.args.apiKey}/${t.args.maxTokens}`).toBe("x");
+    expect(`${t.arg("apiKey")}/${t.arg("maxTokens")}`).toBe("x");
   });
   await globalThis.__LINGXIA_TEST__.run();
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
@@ -129,7 +129,7 @@ test("report.html stays well-formed when a secret overlaps markup", async () => 
     control: { secretArgs: '["token"]' },
   });
   spec("echoes", { forensics: false }, async (t) => {
-    expect(`x${t.args.token}`).toBe("y");
+    expect(`x${t.arg("token")}`).toBe("y");
   });
   await globalThis.__LINGXIA_TEST__.run();
   const html = decodeAttachment(attachments, "report.html");
@@ -137,7 +137,7 @@ test("report.html stays well-formed when a secret overlaps markup", async () => 
   assert.doesNotMatch(JSON.parse(decodeAttachment(attachments, "report.json")).cases[0].error.message, /<\/script>/);
 });
 
-test("run controls stay out of t.args and a user arg never filters the run", async () => {
+test("run controls stay out of the args and a user arg never filters the run", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world, {
     args: { id: "user-value", grep: "nothing-matches" },
@@ -145,10 +145,10 @@ test("run controls stay out of t.args and a user arg never filters the run", asy
   });
   let seen;
   spec("first", () => {});
-  spec("second", (t) => { seen = { ...t.args }; });
+  spec("second", (t) => { seen = { id: t.arg("id"), grep: t.arg("grep"), platform: t.arg("platform", { required: false }) }; });
   const protocol = await globalThis.__LINGXIA_TEST__.run();
   assert.deepEqual(protocol.cases.map((c) => c.id), ["second"]);
-  assert.deepEqual(seen, { id: "user-value", grep: "nothing-matches" });
+  assert.deepEqual(seen, { id: "user-value", grep: "nothing-matches", platform: undefined });
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.deepEqual(report.meta.run, { id: "second", platform: "ios" });
   assert.equal(report.meta.platform, "ios");

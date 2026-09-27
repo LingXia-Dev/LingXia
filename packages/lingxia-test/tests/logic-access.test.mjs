@@ -305,7 +305,7 @@ test("t.arg reads, defaults, or names the missing --arg", async () => {
     seen.present = t.arg("baseUrl");
     seen.defaulted = t.arg("mode", { default: "mock" });
     seen.optional = t.arg("token", { required: false });
-    seen.missingField = t.args.token;
+    seen.duplicates = ["args", "apps", "profile"].filter((name) => name in t);
     try {
       t.arg("statusUrl");
     } catch (error) {
@@ -316,7 +316,7 @@ test("t.arg reads, defaults, or names the missing --arg", async () => {
   assert.equal(seen.present, "http://fixture");
   assert.equal(seen.defaulted, "mock");
   assert.equal(seen.optional, undefined);
-  assert.equal(seen.missingField, undefined);
+  assert.deepEqual(seen.duplicates, [], "one reader per input: t.arg, t.app.profile, t.automation.lxapp");
   assert.match(seen.error, /Missing test arg "statusUrl": pass --arg statusUrl=<value>/);
   assert.doesNotMatch(seen.error, /case-sensitive/);
 });

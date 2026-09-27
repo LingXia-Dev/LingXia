@@ -59,7 +59,7 @@ desktopTerminalTest('publishes and mutates the native nested pane tree without d
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.terminal'],
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const surfaceId = await app.logic.eval({ timeout: 20_000 }, async ({ lx }, token) => {
     const handle = await lx.shell.openDeclared('terminal', { key: token, as: 'main' });
@@ -113,7 +113,7 @@ desktopTerminalTest('keeps a maximized terminal maximized when a tab opens', {
   timeout: 90_000,
   covers: ['lx.shell.openDeclared'],
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-tab-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // An aside is the shape that can be maximized: `main` already fills the
   // content area, so it could not show the state being clobbered.
@@ -150,7 +150,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   timeout: 90_000,
   covers: ['lx.shell.openDeclared', 'lx.shell.openApp'],
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const token = `automation-terminal-theme-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   // One surface per open. Opening both at once reports only that it timed
   // out, which says nothing about which surface never settled — and a native
@@ -170,7 +170,7 @@ desktopTerminalTest('applies a selected color scheme to native chrome before App
   }, SETTINGS_APP_ID);
   const refs = { terminal: terminalId, settings: settingsId };
   const terminal = t.automation.terminal;
-  const settingsApp = t.apps.lxapp(SETTINGS_APP_ID);
+  const settingsApp = t.automation.lxapp(SETTINGS_APP_ID);
   let initial: TerminalWorkspaceSnapshot | undefined;
   const previousAppearance = await app.logic.eval(({ lx }) => lx.host.control?.appearance.getPreference() ?? null);
 

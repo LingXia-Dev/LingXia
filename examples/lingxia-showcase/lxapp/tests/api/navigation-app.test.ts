@@ -105,7 +105,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
   });
 
   await t.step('guest cache APIs are absent', async () => {
-    const chat = t.apps.lxapp(CHAT_APP_ID);
+    const chat = t.automation.lxapp(CHAT_APP_ID);
     await eventually(() => chat.logic.eval(() => true), (ready) => ready === true, {
       describe: 'chat Logic runtime to answer for cache presence',
       retryIf: () => true,
@@ -115,7 +115,7 @@ hopSpec('hop to the bundled chat lxapp and back', {
   });
 
   await t.step('navigateBackApp from the target returns to the caller and closes the target', async () => {
-    const chat = t.apps.lxapp(CHAT_APP_ID);
+    const chat = t.automation.lxapp(CHAT_APP_ID);
     await eventually(() => chat.logic.eval({ timeout: 20_000 }, () => true), (ready) => ready === true, {
       describe: 'chat Logic runtime to answer',
       timeoutMs: 20_000,

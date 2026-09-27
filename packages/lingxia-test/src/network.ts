@@ -27,7 +27,7 @@ export interface NetworkHost {
 }
 
 /**
- * Routes one spec installed, across every `t.app` / `t.apps` wrapper it
+ * Routes one spec installed, across every `t.app` / `t.automation.lxapp()` wrapper it
  * created. They are removed when the spec ends, so a route never bleeds into
  * the next spec of the same run; the host drops whatever is left at run end.
  */

@@ -184,9 +184,6 @@ spec('typed Logic access', async t => {
   expect(t.app.logic.data()).toEqual({});
 
   // Args may be missing; t.arg narrows or throws.
-  // @ts-expect-error A missing arg is undefined, not a string.
-  const unchecked: string = t.args.baseUrl;
-  void unchecked;
   const baseUrl: string = t.arg('baseUrl');
   const mode: string = t.arg('mode', { default: 'mock' });
   const optional = t.arg('token', { required: false });
@@ -197,6 +194,12 @@ spec('typed Logic access', async t => {
 
 // @ts-expect-error The fixture has no expect of its own: import `expect`.
 type FixtureHasNoExpect = Fixture['expect'];
+// @ts-expect-error One reader per input: `t.arg(name, { required: false })`.
+type FixtureHasNoArgRecord = Fixture['args'];
+// @ts-expect-error Profiles are per app: `t.app.profile`.
+type FixtureHasNoProfile = Fixture['profile'];
+// @ts-expect-error Another lxapp is `t.automation.lxapp(id)`.
+type FixtureHasNoApps = Fixture['apps'];
 
 // One call record across routes, network and scenarios; removers resolve void.
 spec('network calls', async (t) => {
@@ -255,11 +258,11 @@ spec('clock', { restoreProfile: { keep: ['auth.*'] } }, async (t) => {
   const ran: ClockAdvance = await t.app.clock.runAll({ maxTimers: 10 });
   const set: ClockState = await t.app.clock.setSystemTime(Date.now());
   const off: void = await t.app.clock.uninstall();
-  const checkpoint: ProfileCheckpoint = await t.profile.checkpoint();
-  const { kept } = await t.profile.restore(checkpoint, { keep: ['auth.*'] });
+  const checkpoint: ProfileCheckpoint = await t.app.profile.checkpoint();
+  const { kept } = await t.app.profile.restore(checkpoint, { keep: ['auth.*'] });
   kept.map((key: string) => key.toUpperCase());
-  await t.profile.restore(checkpoint.id);
-  const dropped: void = await t.profile.drop(checkpoint);
+  await t.app.profile.restore(checkpoint.id);
+  const dropped: void = await t.app.profile.drop(checkpoint);
   // @ts-expect-error tick takes milliseconds.
   await t.app.clock.tick('3s');
   // @ts-expect-error install resolves a ClockState, not a number.
