@@ -89,6 +89,70 @@ test("methods and bound functions are rejected before anything is sent", async (
   assert.deepEqual(world.evaluated, []);
 });
 
+test("arguments that are not JSON are refused with their path before anything is sent", async () => {
+  const world = logicWorld([{ route: "pages/home/index", data: {}, save() { return 1; } }]);
+  world.usePage({ document: { title: "Home" }, window: {} });
+  installFakeHost(world);
+  class Point { constructor() { this.x = 1; } }
+  const cyclic = { name: "loop" };
+  cyclic.self = cyclic;
+  const messages = [];
+  const result = await runOne(async (t) => {
+    const attempts = [
+      () => t.app.logic.eval((_, a, b) => [a, b], 1, { items: [1, 2, undefined] }),
+      () => t.app.logic.eval((_, a) => a, [() => 1]),
+      () => t.app.logic.eval((_, a) => a, { drop: undefined }),
+      () => t.app.logic.eval((_, a) => a, { total: NaN }),
+      () => t.app.logic.eval((_, a) => a, [1, Infinity]),
+      () => t.app.logic.eval((_, a) => a, { "odd key": { at: new Date(0) } }),
+      () => t.app.logic.eval((_, a) => a, new Point()),
+      () => t.app.logic.eval((_, a) => a, cyclic),
+      () => t.app.logic.eval((_, a) => a, [1, , 3]), // eslint-disable-line no-sparse-arrays
+      () => t.app.logic.eval((_, a) => a, 10n),
+      () => t.app.logic.call("save", { onDone: () => 1 }),
+      () => t.app.view.eval((_, a) => a, { items: [undefined] }),
+    ];
+    for (const attempt of attempts) {
+      try {
+        await attempt();
+        messages.push("sent");
+      } catch (error) {
+        messages.push(`${error.name}: ${error.message.split(" is not JSON")[0]}`);
+      }
+    }
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.deepEqual(messages, [
+    "TypeError: t.app.logic.eval: args[1].items[2]: undefined",
+    "TypeError: t.app.logic.eval: args[0][0]: a function",
+    "TypeError: t.app.logic.eval: args[0].drop: undefined",
+    "TypeError: t.app.logic.eval: args[0].total: NaN",
+    "TypeError: t.app.logic.eval: args[0][1]: Infinity",
+    'TypeError: t.app.logic.eval: args[0]["odd key"].at: a Date',
+    "TypeError: t.app.logic.eval: args[0]: a Point",
+    "TypeError: t.app.logic.eval: args[0].self: a circular reference",
+    "TypeError: t.app.logic.eval: args[0][1]: an array hole",
+    "TypeError: t.app.logic.eval: args[0]: 10n (a bigint)",
+    "TypeError: t.app.logic.call: args[0].onDone: a function",
+    "TypeError: t.app.view.eval: args[0].items[0]: undefined",
+  ]);
+  // Nothing reached either side.
+  assert.deepEqual(world.evaluated, []);
+  assert.deepEqual(world.evaluatedPages, []);
+});
+
+test("JSON arguments cross unchanged, shared references included", async () => {
+  const world = logicWorld();
+  installFakeHost(world);
+  const shared = { id: 1 };
+  let value;
+  const result = await runOne(async (t) => {
+    value = await t.app.logic.eval((_, a) => a, { a: shared, b: shared, list: [null, -1.5, "", false], proto: Object.create(null) });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.deepEqual(value, { a: { id: 1 }, b: { id: 1 }, list: [null, -1.5, "", false], proto: {} });
+});
+
 test("view function eval gets document and window", async () => {
   const world = createWorld();
   world.usePage({ document: { title: "Home" }, window: { innerWidth: 390 } });

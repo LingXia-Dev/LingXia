@@ -390,6 +390,17 @@ pub fn mock_load(
     Ok(json!({ "handlers": keys.len(), "generation": generation }))
 }
 
+/// `session.network.mock.unload`: the app's `mocks/` is gone. Returns
+/// `{ unloaded }`.
+pub fn mock_unload(appid: &str) -> Value {
+    let unloaded = registry::with_registry(|routes| {
+        let unloaded = routes.mocks.unload(appid);
+        routes.release_mock_holds(Some(appid));
+        unloaded
+    });
+    json!({ "unloaded": unloaded })
+}
+
 /// `lxdev mock all|none [targets]` for the dev session's owner. Returns
 /// `{ mode, entries }`.
 pub fn mock_set(mode: MockMode, targets: Vec<String>) -> Result<Value, String> {

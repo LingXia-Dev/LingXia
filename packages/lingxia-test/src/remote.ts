@@ -33,14 +33,66 @@ export function functionSource(fn: unknown, api: string): string {
   return source;
 }
 
-function argsLiteral(args: readonly unknown[], api: string): string {
-  let json: string | undefined;
-  try {
-    json = JSON.stringify(args);
-  } catch (error) {
-    throw new TypeError(`${api}: arguments must be JSON values (${(error as Error).message})`);
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+function describeValue(value: unknown): string {
+  if (value === undefined) return "undefined";
+  if (typeof value === "function") return "a function";
+  if (typeof value === "symbol") return "a symbol";
+  if (typeof value === "bigint") return `${value}n (a bigint)`;
+  if (typeof value === "number") return String(value);
+  const name = (value as object).constructor?.name;
+  return name ? `a ${name}` : "an object";
+}
+
+/**
+ * Throw unless `value` crosses the boundary as itself: `JSON.stringify` would
+ * silently turn `undefined`, functions and non-finite numbers into `null` or
+ * drop them, and a Date, Map or class instance into something else.
+ */
+function checkJson(value: unknown, path: string, api: string, seen: Set<object>): void {
+  const fail = (what: string, at = path): never => {
+    throw new TypeError(`${api}: ${at}: ${what} is not JSON; pass JSON values (string, finite number, boolean, null, array, plain object)`);
+  };
+  if (value === null || typeof value === "string" || typeof value === "boolean") return;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) fail(describeValue(value));
+    return;
   }
-  return json ?? "[]";
+  if (typeof value !== "object") fail(describeValue(value));
+  const object = value as object;
+  if (seen.has(object)) fail("a circular reference");
+  if (Array.isArray(object)) {
+    seen.add(object);
+    for (let index = 0; index < object.length; index++) {
+      if (!(index in object)) fail("an array hole", `${path}[${index}]`);
+      checkJson(object[index], `${path}[${index}]`, api, seen);
+    }
+    seen.delete(object);
+    return;
+  }
+  const proto = Object.getPrototypeOf(object);
+  if (proto !== Object.prototype && proto !== null) fail(describeValue(object));
+  seen.add(object);
+  for (const key of Object.keys(object)) {
+    const child = IDENTIFIER.test(key) ? `${path}.${key}` : `${path}[${JSON.stringify(key)}]`;
+    checkJson((object as Record<string, unknown>)[key], child, api, seen);
+  }
+  seen.delete(object);
+}
+
+/**
+ * Check a call's arguments before anything is sent, naming the first value
+ * that would not arrive as itself (`args[1].items[2]: undefined is not JSON`).
+ */
+export function checkJsonArgs(args: readonly unknown[], api: string): void {
+  const seen = new Set<object>();
+  args.forEach((value, index) => checkJson(value, `args[${index}]`, api, seen));
+}
+
+function argsLiteral(args: readonly unknown[], api: string): string {
+  checkJsonArgs(args, api);
+  return JSON.stringify(args);
 }
 
 /**

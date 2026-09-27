@@ -42,4 +42,16 @@ assert.equal(heard, 1);
 await runtime.whenPageReady({ timeoutMs: 1 });
 stop();
 
+// Outside a dev session the data is left as pushed; in one, a View write
+// throws at the write, at any depth.
+assert.equal(Object.isFrozen(runtime.getPageSnapshot()), false);
+window.__LX_BRIDGE_CFG = { dev: true };
+pushState({ title: 'Dev', items: [{ id: 'a' }] }, { rev: 2, initial: false });
+const dev = runtime.getPageSnapshot();
+assert.throws(() => { dev.title = 'draft'; }, TypeError);
+assert.throws(() => { dev.items.push({ id: 'b' }); }, TypeError);
+assert.throws(() => { dev.items[0].id = 'draft'; }, TypeError);
+assert.deepEqual(dev, { title: 'Dev', items: [{ id: 'a' }] });
+delete window.__LX_BRIDGE_CFG;
+
 console.log('page runtime: ok');

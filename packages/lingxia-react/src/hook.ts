@@ -23,23 +23,25 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   type ActionMap,
+  type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
 /**
  * This page's Logic state and actions — `this.data` and the page's methods.
  * The page mounts once its first state has arrived, so `data` is whole from
- * the first render; it follows every `setData`. `actions` is one object for
- * the page.
+ * the first render; it follows every `setData`. `data` is readonly: Logic
+ * owns it (in a dev session a write throws). `actions` is one object for the
+ * page.
  */
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
->(): { data: TData; actions: TActions } {
+>(): { data: DeepReadonly<TData>; actions: TActions } {
   const data = React.useSyncExternalStore(
     subscribePageSnapshot,
-    getPageSnapshot<TData>,
-    getPageSnapshot<TData>,
+    getPageSnapshot<DeepReadonly<TData>>,
+    getPageSnapshot<DeepReadonly<TData>>,
   );
   return { data, actions: getPageActions<TActions>() };
 }

@@ -324,7 +324,19 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     crate::compat::ensure_project(&project_root, &[])?;
 
     if options.background && env::var_os(BACKGROUND_CHILD_ENV).is_none() {
-        return spawn_background_dev(&project_root, options.json);
+        // The target the child registers, when this command names it; an
+        // auto-detected platform is left to the child.
+        let expected_target = if runner_requested {
+            Some("runner".to_string())
+        } else {
+            match options.platform_arg.as_deref() {
+                Some(platform) => {
+                    Some(platform_session_name(platform.parse::<PlatformType>()?).to_string())
+                }
+                None => None,
+            }
+        };
+        return spawn_background_dev(&project_root, expected_target, options.json);
     }
 
     let stop_requested = Arc::new(AtomicBool::new(false));
@@ -500,10 +512,15 @@ fn execute_session_action(project_root: &Path, action: DevSessionAction) -> Resu
 /// it is not ready in time, Ctrl-C — stops what was started and fails with
 /// the background log's tail, so a script never continues without a session
 /// or leaves one starting behind it.
-fn spawn_background_dev(project_root: &Path, json: bool) -> Result<()> {
+fn spawn_background_dev(
+    project_root: &Path,
+    expected_target: Option<String>,
+    json: bool,
+) -> Result<()> {
     let session = start_background_session(
         project_root,
         background_child_args(),
+        expected_target,
         BACKGROUND_START_TIMEOUT,
     )?;
     let stop = stop_hint(project_root, &session);
@@ -569,10 +586,11 @@ fn refuse_taken_name(name: &str, project_root: &Path) -> Result<()> {
 }
 
 /// Start `lingxia <child_args>` as a detached background session owner in
-/// `project_root` and wait until its session is ready.
+/// `project_root` and wait until the session that child registers is ready.
 fn start_background_session(
     project_root: &Path,
     child_args: Vec<OsString>,
+    expected_target: Option<String>,
     ready_within: Duration,
 ) -> Result<log_store::SessionInfo> {
     let log_dir = log_store::dev_dir(project_root).join("background");
@@ -598,16 +616,51 @@ fn start_background_session(
         // session goes on starting as if the start had succeeded.
         let _ = ctrlc::set_handler(move || interrupted.store(true, Ordering::Release));
     }
-    run_background_owner(command, &log_path, ready_within, &interrupted, || {
-        for session in log_store::list_sessions(project_root)? {
-            if session.started_at >= started_at
-                && log_store::session_state(&session) == log_store::DevSessionState::Ready
-            {
-                return Ok(Some(session));
-            }
-        }
-        Ok(None)
-    })
+    run_background_owner(
+        command,
+        &log_path,
+        ready_within,
+        &interrupted,
+        |child_pid| {
+            let sessions = lingxia_control_protocol::dev_session::broker::list_sessions_spawning(
+                &log_store::spawn_broker,
+            )
+            .context("Failed to query the dev-session broker")?;
+            let owner = BackgroundChild {
+                pid: child_pid,
+                target: expected_target.as_deref(),
+            };
+            Ok(owner.ready_session(sessions, log_store::session_state))
+        },
+    )
+}
+
+/// The background owner this start spawned. Readiness counts only a session
+/// it registered: another start of the same project (another platform, a
+/// foreground `lingxia dev`) being ready says nothing about this one.
+struct BackgroundChild<'a> {
+    /// The owner registers its own process id; while this start holds the
+    /// unreaped child, no other process can have it.
+    pid: u32,
+    /// The target the start named, when it named one.
+    target: Option<&'a str>,
+}
+
+impl BackgroundChild<'_> {
+    fn owns(&self, session: &log_store::SessionInfo) -> bool {
+        session.pid == self.pid && self.target.is_none_or(|target| session.target == target)
+    }
+
+    fn ready_session(
+        &self,
+        sessions: Vec<log_store::SessionInfo>,
+        state: impl Fn(&log_store::SessionInfo) -> log_store::DevSessionState,
+    ) -> Option<log_store::SessionInfo> {
+        sessions
+            .into_iter()
+            .filter(|session| self.owns(session))
+            .find(|session| state(session) == log_store::DevSessionState::Ready)
+    }
 }
 
 /// Why a background session owner did not produce a ready session.
@@ -622,7 +675,7 @@ enum BackgroundFailure {
 }
 
 /// Spawn `command` detached, with its output appended to `log_path`, and poll
-/// `ready` until it yields the session. On any failure the owner and every
+/// `ready` with the child's pid until it yields that child's session. On any failure the owner and every
 /// process it started are gone before this returns the error, which names
 /// the log and shows its last lines.
 fn run_background_owner<T>(
@@ -630,7 +683,7 @@ fn run_background_owner<T>(
     log_path: &Path,
     ready_within: Duration,
     interrupted: &AtomicBool,
-    mut ready: impl FnMut() -> Result<Option<T>>,
+    mut ready: impl FnMut(u32) -> Result<Option<T>>,
 ) -> Result<T> {
     let stdout = OpenOptions::new()
         .create(true)
@@ -665,7 +718,7 @@ fn run_background_owner<T>(
         {
             break BackgroundFailure::Exited(status.to_string());
         }
-        match ready() {
+        match ready(child.id()) {
             Ok(Some(session)) => return Ok(session),
             Ok(None) => {}
             Err(err) => {
@@ -1346,7 +1399,7 @@ mod tests {
             &log,
             Duration::from_secs(2),
             &AtomicBool::new(false),
-            || {
+            |_| {
                 polls += 1;
                 Ok(None)
             },
@@ -1383,7 +1436,7 @@ mod tests {
             &log,
             Duration::from_secs(60),
             &interrupted,
-            || {
+            |_| {
                 polls += 1;
                 if polls == 4 {
                     interrupted.store(true, Ordering::Release);
@@ -1421,7 +1474,7 @@ mod tests {
             &log,
             Duration::from_secs(60),
             &AtomicBool::new(false),
-            || Ok(None),
+            |_| Ok(None),
         )
         .unwrap_err()
         .to_string();
@@ -1443,7 +1496,7 @@ mod tests {
             &log,
             Duration::from_secs(60),
             &AtomicBool::new(false),
-            || Ok(dir.path().join("child.pid").exists().then_some("ready")),
+            |_| Ok(dir.path().join("child.pid").exists().then_some("ready")),
         )
         .unwrap();
         assert_eq!(session, "ready");
@@ -1453,6 +1506,136 @@ mod tests {
         terminate_process_tree(&mut System::new(), owner);
         assert!(wait_for_pid_exit(owner, Duration::from_secs(5)));
         assert!(wait_for_pid_exit(child, Duration::from_secs(5)));
+    }
+
+    fn owned_session(id: &str, target: &str, pid: u32) -> SessionInfo {
+        let mut info = session(id, target, None);
+        info.pid = pid;
+        info
+    }
+
+    /// A broker where another start's session `bbb222` (android, pid 7) is
+    /// ready, and the one `pid` registers (macos) becomes ready only once
+    /// `own_ready` says so.
+    fn fake_registry(
+        pid: u32,
+        own_ready: bool,
+    ) -> (
+        Vec<SessionInfo>,
+        impl Fn(&SessionInfo) -> log_store::DevSessionState,
+    ) {
+        let sessions = vec![
+            owned_session("bbb222", "android", 7),
+            owned_session("aaa111", "macos", pid),
+        ];
+        let state = move |session: &SessionInfo| {
+            if session.session_id == "bbb222" || own_ready {
+                log_store::DevSessionState::Ready
+            } else {
+                log_store::DevSessionState::Starting
+            }
+        };
+        (sessions, state)
+    }
+
+    #[test]
+    fn a_background_start_counts_only_its_own_childs_session() {
+        let child = BackgroundChild {
+            pid: 42,
+            target: Some("macos"),
+        };
+        let (sessions, state) = fake_registry(42, false);
+        assert!(child.ready_session(sessions, state).is_none());
+        let (sessions, state) = fake_registry(42, true);
+        assert_eq!(
+            child.ready_session(sessions, state).unwrap().session_id,
+            "aaa111"
+        );
+        // The child's pid on a target this start did not ask for is not it.
+        let other_target = BackgroundChild {
+            pid: 42,
+            target: Some("ios"),
+        };
+        let (sessions, state) = fake_registry(42, true);
+        assert!(other_target.ready_session(sessions, state).is_none());
+        // Without a named target, the child's pid decides.
+        let any_target = BackgroundChild {
+            pid: 42,
+            target: None,
+        };
+        let (sessions, state) = fake_registry(42, true);
+        assert_eq!(
+            any_target
+                .ready_session(sessions, state)
+                .unwrap()
+                .session_id,
+            "aaa111"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn another_ready_session_does_not_hide_the_childs_failure() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let mut command = Command::new("sh");
+        command
+            .arg("-c")
+            .arg("sleep 1; echo 'error: build failed' >&2; exit 3");
+        let mut polls = 0;
+        let error = run_background_owner(
+            command,
+            &log,
+            Duration::from_secs(60),
+            &AtomicBool::new(false),
+            |pid| {
+                polls += 1;
+                let (sessions, state) = fake_registry(pid, false);
+                let child = BackgroundChild {
+                    pid,
+                    target: Some("macos"),
+                };
+                Ok(child.ready_session(sessions, state))
+            },
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(polls > 1);
+        assert!(
+            error.starts_with("The dev session failed to start: the background process exited"),
+            "{error}"
+        );
+        assert!(error.contains("\n  error: build failed"), "{error}");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_background_start_returns_its_own_session_once_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let log = dir.path().join("dev.log");
+        let mut polls = 0;
+        let session = run_background_owner(
+            never_ready_owner(dir.path()),
+            &log,
+            Duration::from_secs(60),
+            &AtomicBool::new(false),
+            |pid| {
+                polls += 1;
+                // The other start is ready from the first poll; ours from the third.
+                let (sessions, state) = fake_registry(pid, polls >= 3);
+                let child = BackgroundChild {
+                    pid,
+                    target: Some("macos"),
+                };
+                Ok(child.ready_session(sessions, state))
+            },
+        )
+        .unwrap();
+        assert_eq!(session.session_id, "aaa111");
+        assert_eq!(polls, 3);
+        let owner = read_pid(&dir.path().join("owner.pid"));
+        terminate_process_tree(&mut System::new(), owner);
+        assert!(wait_for_pid_exit(owner, Duration::from_secs(5)));
     }
 
     #[test]

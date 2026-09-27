@@ -53,6 +53,8 @@ export type {
   TestAutomation,
   TestClock,
   TestErrorCode,
+  AppErrorCodes,
+  ExpectedErrorCode,
   TestLogic,
   TestMock,
   TestNav,

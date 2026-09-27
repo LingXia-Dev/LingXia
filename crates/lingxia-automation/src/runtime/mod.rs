@@ -23,8 +23,8 @@ pub use manager::AutomationRuntime;
 pub mod network {
     pub use crate::network::companion::{Upstream, UpstreamError, UpstreamFuture, set_upstream};
     pub use crate::network::dev::{
-        clear_scenario, mock_load, mock_reset, mock_set, mock_status, record_start, record_stop,
-        session_ended, status, use_scenario,
+        clear_scenario, mock_load, mock_reset, mock_set, mock_status, mock_unload, record_start,
+        record_stop, session_ended, status, use_scenario,
     };
 }
 pub use profile::{AutomationProfile, ProfileExport, discard_retained, export_retained};

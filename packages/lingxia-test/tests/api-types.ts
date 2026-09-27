@@ -89,7 +89,7 @@ void browserElement;
 spec.fail('known quota failure', { expected: { message: /quota/ } }, async () => {});
 // @ts-expect-error `expected` belongs to spec.fail only.
 spec('plain spec', { expected: { code: 'E_TIMEOUT' } }, async () => {});
-// @ts-expect-error Codes are the closed `TestErrorCode` union; match another failure by `message`.
+// @ts-expect-error An app code is accepted only once the app declares it in `AppErrorCodes`.
 spec.fail('app code', { expected: { code: 'E_QUOTA' } }, async () => {});
 // @ts-expect-error A removed code does not compile: a driver timeout is `E_TIMEOUT`.
 spec.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => {});
@@ -111,6 +111,8 @@ spec('typed Logic access', async t => {
   await t.app.logic.eval((_scope, callback: () => void) => callback(), () => {});
   // @ts-expect-error Arguments are checked against the function's parameters.
   await t.app.logic.eval((_scope, id: string) => id, 42);
+  // @ts-expect-error `undefined` is not JSON; it would arrive as `null` or not at all.
+  await t.app.logic.eval((_scope, ids: (string | undefined)[]) => ids, ['a', undefined]);
   // @ts-expect-error The fixture takes functions; a script string is for the raw driver.
   await t.app.logic.eval({ script: 'return true' });
   // @ts-expect-error Logic eval lives on `t.app.logic`.

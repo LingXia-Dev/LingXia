@@ -43,7 +43,7 @@ import {
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/types/automation";
-import { cancelTimersOf, describePending, installPendingTracker, pendingOf, restoreRawAuthority, revokeRawAuthority, runnerClearTimeout, runnerSetTimeout, setPendingOwner, settleCallsOf, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
+import { cancelTimersOf, describePending, installPendingTracker, pendingOf, restoreRawAuthority, revokeGrant, revokeRawAuthority, runnerClearTimeout, runnerSetTimeout, setPendingOwner, settleCallsOf, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -362,7 +362,33 @@ function suiteOf(file: string): string {
   return cut >= 0 ? trimmed.slice(cut + 1) : trimmed;
 }
 
+/**
+ * During a run, the host's own `lx.automation`: the global is replaced with
+ * one that hands spec code `rawAutomation()`'s fenced root, so a spec cannot
+ * reach around its grant through the global.
+ */
+let hostAutomation: { lx: { automation: () => HostRunAutomation }; automation: () => HostRunAutomation } | undefined;
+
+function fenceGlobalAutomation(): void {
+  const lx = (globalThis as { lx?: { automation?: () => HostRunAutomation } }).lx;
+  if (hostAutomation || !lx || typeof lx.automation !== "function") return;
+  const automation = lx.automation;
+  hostAutomation = { lx: lx as { automation: () => HostRunAutomation }, automation };
+  try {
+    lx.automation = () => trackAutomationRoot(automation.call(lx));
+  } catch {
+    hostAutomation = undefined;
+  }
+}
+
+function unfenceGlobalAutomation(): void {
+  if (!hostAutomation) return;
+  try { hostAutomation.lx.automation = hostAutomation.automation; } catch { /* the context is going away */ }
+  hostAutomation = undefined;
+}
+
 function automationRoot(): HostRunAutomation {
+  if (hostAutomation) return hostAutomation.automation.call(hostAutomation.lx);
   // The host injects the root as `lx.automation()` in the test context; that
   // binding is the transport, not a typed global of the test program, so a
   // spec that type-checks app Logic sees one meaning of `lx`: the app's.
@@ -670,7 +696,11 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
   installPendingTracker();
   restoreRawAuthority();
-  setStrayAssertionSink(strayAssertionSink(host));
+  fenceGlobalAutomation();
+  // Late assertions are charged to the spec the run last abandoned, never
+  // to the one running.
+  let lastAbandoned: string | undefined;
+  setStrayAssertionSink(strayAssertionSink(host, () => lastAbandoned));
   const queue = [...plan];
   const attempts = new Map<string, CaseRecord[]>();
   const executionKey = (id: string, repeat: number) => `${id}#${repeat}`;
@@ -793,7 +823,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     let profileRestored = false;
     // Timers and fetches from here on belong to this spec, so one it leaves
     // pending can be named.
-    setPendingOwner(record.full_name);
+    const grant = setPendingOwner(record.full_name);
     const stuckWork = (): PendingWork[] => [
       ...fixture.pendingCalls().map((work) => ({ ...work, owner: record.full_name })),
       ...pendingOf(record.full_name),
@@ -802,6 +832,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // `spec`: spec code (its body, cleanup or calls it did not await) may
     // still run; the runner's own evidence capture is not spec code.
     let stuck: { what: string; work: PendingWork[]; spec: boolean } | undefined;
+    // The run gives up on spec code: from here its raw drivers refuse, and
+    // what it may still do is decided below.
+    const abandon = (what: string, work: PendingWork[]) => {
+      stuck ??= { what, work, spec: true };
+      revokeGrant(grant, `"${record.full_name}" was abandoned (${what})`);
+    };
     const bodyPromise = (async () => {
       // Each spec starts with fresh mock handler state, before its hooks.
       phase = "beforeEach";
@@ -860,7 +896,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         try { await within(bodyResult, WEDGED_DEFER_BUDGET_MS, "body did not settle after timeout"); }
         catch {
           const work = stuckWork();
-          stuck = { what: "its timed-out body", work, spec: true };
+          abandon("its timed-out body", work);
           timeoutError.message += `\nThe body did not settle; still pending: ${describePending(work)}.`;
         }
       } else if (!winner.ok) {
@@ -868,7 +904,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         // before cleanup all the same.
         if (fixture.unsettledCalls().length > 0 && !timedOut && !fixture.aborted &&
             !await fixture.stopUnsettled(winner.err instanceof Error ? winner.err : new Error(String(winner.err)), WEDGED_DEFER_BUDGET_MS)) {
-          stuck = { what: "fixture calls its body did not await", work: stuckWork(), spec: true };
+          abandon("fixture calls its body did not await", stuckWork());
         }
         if (timedOut || fixture.aborted) {
           status = "timeout";
@@ -893,7 +929,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           error = new Error(unawaitedMessage(item.title, unsettled));
           fixture.failurePhase = "body";
           if (!await fixture.stopUnsettled(error as Error, WEDGED_DEFER_BUDGET_MS)) {
-            stuck = { what: "fixture calls its body did not await", work: stuckWork(), spec: true };
+            abandon("fixture calls its body did not await", stuckWork());
           }
         }
       }
@@ -942,7 +978,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         const task = Promise.resolve().then(cleanup).finally(() => { settled = true; });
         try { await within(task, Math.max(0, deadline - Date.now()), "fixture cleanup budget exceeded"); }
         catch (err) { deferErrors.push(err); }
-        if (!settled) { stuck ??= { what: "its cleanup (t.defer / afterEach)", work: stuckWork(), spec: true }; break; }
+        if (!settled) { abandon("its cleanup (t.defer / afterEach)", stuckWork()); break; }
       }
     } else if (hasCleanup) {
       deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
@@ -955,7 +991,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (!stuck) {
       const open = await settleCallsOf(record.full_name, WEDGED_DEFER_BUDGET_MS);
       if (open.length > 0) {
-        stuck = { what: "calls it did not await", work: open, spec: true };
+        abandon("calls it did not await", open);
         if (status === "passed" || status === "skipped") {
           status = "failed";
           error = new Error(`${JSON.stringify(item.title)} ended while ${describePending(open)} ` +
@@ -987,9 +1023,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     } catch (reclaimError) {
       reclaimFailures.push(errorMessage(reclaimError));
     }
-    // With spec code still running, the attempt stays open until the run
-    // revokes it below: closing it first would open a gap before the revoke.
-    if (attempt !== undefined && !stuck?.spec) {
+    // Closing the attempt removes what it installed and refuses installs
+    // until the next opens, whether or not its code still runs: its drivers
+    // were revoked when it was abandoned.
+    if (attempt !== undefined) {
       try {
         const swept = await within(host.endAttempt!(attempt), RECLAIM_BUDGET_MS,
           `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
@@ -1096,7 +1133,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       if (fixture.failedAction && fixture.failedAction.error === error) {
         record.error.failedAction = fixture.failedAction.action;
       }
-      const page = failurePage ?? pageFromErrorData(record.error.data);
+      // A spec that never reached a page is not "on" the app's current one.
+      const page = (fixture.usedPage || item.fresh ? failurePage : undefined) ?? pageFromErrorData(record.error.data);
       if (page) record.error.page = page;
       const calls = withFunctionCalls(networkCalls(host, caseStarted), scenarioEvidence?.functionCalls ?? []);
       if (calls.length > 0) record.error.network = calls;
@@ -1111,23 +1149,37 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);
     await finishCase(host, finished);
     if (stuck) {
-      // The fixture is fenced (aborted and closed), so the abandoned work can
-      // no longer act through it. Recover the app the way a spec start does.
+      // The fixture is fenced (aborted and closed) and the spec's raw drivers
+      // refuse, so the abandoned code can no longer act through either. What
+      // could still reach a later spec is work already dispatched: a fetch or
+      // driver call that settles later resumes the spec's code, and a host
+      // tier it read is a native object no grant fences. Give dispatched
+      // work a grace period (the spec still owns what it starts meanwhile),
+      // recover the app as a spec start does, and go on unless something is
+      // left the run cannot take back.
+      if (stuck.spec) lastAbandoned = record.full_name;
+      const inFlight = stuck.spec ? await abandonedWorkInFlight(record.full_name, fixture) : [];
       cancelled += cancelTimersOf(record.full_name);
       const failure = await recoverAppUnderTest(item.app ?? subject?.appid);
       cancelled += cancelTimersOf(record.full_name);
+      const unfenced = stuck.spec && grant ? [...grant.unfenced] : [];
       const summary = `"${record.full_name}" left ${stuck.what} pending: ${describePending(stuck.work)}` +
         (cancelled > 0 ? `; cancelled its ${cancelled} pending ${cancelled === 1 ? "timer" : "timers"}` : "");
-      if (stuck.spec) {
-        // Its code may still run, and nothing tells it from a later spec's:
-        // `expect`, `rawAutomation()` and plain JS state are shared. Rather
-        // than let it act on the next spec, the run stops running specs and
-        // revokes spec code's automation access.
-        const revokeError = await revokeSpecAuthority(host, attempt, `${summary}; the run stopped`);
+      const unsafe = [
+        ...(inFlight.length > 0
+          ? [`${describePending(inFlight)} ${inFlight.length === 1 ? "is" : "are"} still running after ${WEDGED_DEFER_BUDGET_MS}ms and would resume its code during a later spec`]
+          : []),
+        ...(unfenced.length > 0
+          ? [`it holds host drivers the run cannot revoke (${unfenced.map((name) => `rawAutomation().${name}`).join(", ")})`]
+          : []),
+      ];
+      if (stuck.spec && unsafe.length > 0) {
+        // Isolation cannot be guaranteed: stop, and revoke all spec code.
+        const revokeError = await revokeSpecAuthority(host, undefined, `${summary}; the run stopped`);
         const recovered = failure === undefined
           ? "Relaunched the app under test on its home page for inspection"
           : `Recovering the app failed: ${failure}`;
-        const reason = `${summary}. Code it may still run could act on later specs, so the run stopped. ${recovered}` +
+        const reason = `${summary}. The run stopped: ${unsafe.join("; ")}. ${recovered}` +
           (revokeError ? `; revoking its automation access failed: ${revokeError}` : "") +
           ". Make the spec settle (await its work), or give it a longer timeout.";
         const recover = failure !== undefined || revokeError ? ` Recover: ${RECOVER_COMMAND}` : "";
@@ -1141,10 +1193,13 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       } else if (failure === undefined) {
         forceRelaunchNext = false;
         await host.emit({ type: "diagnostic", phase: "recovery",
-          message: `${summary}. Relaunched the app under test on its home page; the run continues.` });
+          message: `${summary}.` +
+            (stuck.spec ? " Its automation access was revoked and nothing it started is still running." : "") +
+            " Relaunched the app under test on its home page; the run continues." });
       } else if (!contaminated) {
         contaminated = true;
         contaminationReason = `Not run: ${summary}, and recovering the app failed: ${failure}. Recover: ${RECOVER_COMMAND}`;
+        if (stuck.spec) await revokeSpecAuthority(host, undefined, `${summary}; the run stopped`);
         await host.emit({ type: "diagnostic", phase: "recovery_failed",
           message: `${summary}, and recovering the app failed: ${failure}. The remaining specs are not run. Recover: ${RECOVER_COMMAND}` });
       }
@@ -1156,6 +1211,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   }
 
   uninstallPendingTracker();
+  unfenceGlobalAutomation();
   setStrayAssertionSink();
 
   // The run ends as each spec starts: with the app under test running, so
@@ -1440,20 +1496,40 @@ async function revokeSpecAuthority(host: ResolvedHost, attempt: number | undefin
   }
 }
 
+/**
+ * Work an abandoned spec dispatched that is still running after a grace
+ * period: fetches and raw driver calls (and what their continuations start
+ * meanwhile), and fixture calls the abort could not stop. Empty when all
+ * settled.
+ */
+async function abandonedWorkInFlight(name: string, fixture: LiveFixture): Promise<PendingWork[]> {
+  const deadline = Date.now() + WEDGED_DEFER_BUDGET_MS;
+  const open = await settleCallsOf(name, WEDGED_DEFER_BUDGET_MS);
+  let calls = fixture.pendingCalls();
+  while (calls.length > 0 && Date.now() < deadline) {
+    await new Promise<void>((resolve) => { runnerSetTimeout(resolve, 50); });
+    calls = fixture.pendingCalls();
+  }
+  return [...open, ...calls.map((work) => ({ ...work, owner: name }))];
+}
+
 /** Assertions noted while no spec ran, beyond which they are only counted. */
 const LISTED_STRAY_ASSERTIONS = 5;
 
 /** A diagnostic for each assertion that ran while no spec was running. */
-function strayAssertionSink(host: ResolvedHost): (entry: LoggedAssertion) => void {
+function strayAssertionSink(host: ResolvedHost, abandoned: () => string | undefined): (entry: LoggedAssertion) => void {
   let seen = 0;
   return (entry) => {
     seen += 1;
     if (seen > LISTED_STRAY_ASSERTIONS) return;
+    const from = abandoned();
     const message = `An assertion ran while no spec was running, so no case records it: ` +
       `expect(received).${entry.matcher} ${entry.passed ? "passed" : "failed"} (expected ${entry.expected}, received ${entry.actual}). ` +
-      "Code of a spec the run stopped waiting for is still running." +
+      (from !== undefined
+        ? `It comes from ${JSON.stringify(from)}, which the run abandoned; its verdict stands.`
+        : "Code of a spec the run stopped waiting for is still running.") +
       (seen === LISTED_STRAY_ASSERTIONS ? " Further ones are not listed." : "");
-    void host.emit({ type: "diagnostic", phase: "late_assertion", message }).catch(() => {});
+    void host.emit({ type: "diagnostic", phase: "late_assertion", message, ...(from !== undefined ? { case: from } : {}) }).catch(() => {});
   };
 }
 
@@ -1527,6 +1603,7 @@ function reset(): void {
   trackSurface = false;
   forceRelaunchNext = false;
   uninstallPendingTracker();
+  unfenceGlobalAutomation();
   restoreRawAuthority();
   clearInline();
   setExpectScope();

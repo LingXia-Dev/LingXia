@@ -10,8 +10,10 @@ export function createWorld(options = {}) {
   const elements = options.elements ? [...options.elements] : [];
   const evalResults = new Map();
   const evalCalls = new Map();
+  let instances = 0;
+  // Every landing is a new page instance, as navigation is on a real host.
   const landedPage = (name) =>
-    ({ name, path: `pages/${name}/index`, current: true, inStack: true, ready: true, webviewAttached: true });
+    ({ name, path: `pages/${name}/index`, instanceId: `p${++instances}`, current: true, inStack: true, ready: true, webviewAttached: true });
   let currentPage = landedPage("home");
   const stack = [currentPage];
   /** Every nav action as `[method, options]`, to check what the fixture sent. */
@@ -128,6 +130,12 @@ export function createWorld(options = {}) {
     },
     async current() {
       return currentPage;
+    },
+    async info(options) {
+      const name = options?.page;
+      if (name === undefined) return currentPage;
+      return stack.find((entry) => entry.name === name || entry.instanceId === name)
+        ?? { name, path: `pages/${name}/index`, instanceId: null, current: false, inStack: false, ready: false, webviewAttached: false };
     },
     async to(options) {
       navCalls.push(["to", options]);

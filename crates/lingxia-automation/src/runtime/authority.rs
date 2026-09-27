@@ -5,9 +5,10 @@
 //! host scopes what specs install to *attempts* instead: the runner opens one
 //! per spec, routes, mock scenarios and test clocks installed while it is
 //! open belong to it, and closing it removes them and refuses installs until
-//! the next one opens. When spec code may still run after its spec was
-//! abandoned, the runner revokes the context: every driver call from it is
-//! refused for the rest of the run.
+//! the next one opens. An abandoned spec's attempt is ended like any other
+//! (the runner refuses that spec's drivers on its side); when the runner
+//! cannot isolate what the abandoned spec left running, it revokes the
+//! context: every driver call from it is refused for the rest of the run.
 
 use std::sync::Mutex;
 

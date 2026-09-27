@@ -250,6 +250,18 @@ impl Mocks {
         Ok(generation)
     }
 
+    /// Drop an app's handlers and config (its `mocks/` is gone): the app
+    /// then has no mocks, as if none had been loaded. Whether it had any.
+    pub(crate) fn unload(&mut self, appid: &str) -> bool {
+        let before = self.sets.len();
+        self.sets.retain(|set| set.appid != appid);
+        let removed = self.sets.len() != before;
+        if removed {
+            self.bump();
+        }
+        removed
+    }
+
     /// Start handler state over for `appid`, or for every app. Returns the
     /// new generation of each.
     pub(crate) fn reset(&mut self, appid: Option<&str>, why: Fresh) -> Vec<(String, u64)> {
@@ -710,6 +722,20 @@ mod tests {
         assert_eq!(reset.len(), 1);
         assert!(reset[0].1 > generation);
         assert_eq!(mocks.set("app").unwrap().fresh, Fresh::Spec);
+    }
+
+    #[test]
+    fn an_unloaded_app_has_no_mocks_left() {
+        let mut mocks = loaded(Some(json!({ "mock": "all" })));
+        assert!(mocks.unload("app"));
+        assert!(mocks.set("app").is_none());
+        assert_eq!(mocks.status(false)["apps"], json!([]));
+        // Nothing can answer with mocks for it now.
+        assert!(!matches!(
+            mocks.decide("app", "GET", "https://h/devices/1", false).0,
+            MockDecision::Mock { .. }
+        ));
+        assert!(!mocks.unload("app"), "a second unload has nothing to drop");
     }
 
     #[test]

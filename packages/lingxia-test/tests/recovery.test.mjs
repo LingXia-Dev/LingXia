@@ -17,7 +17,7 @@ function hangingFetch() {
   globalThis.fetch = () => new Promise(() => {});
 }
 
-test("a spec whose body never settles stops the run: the app is relaunched for inspection and the rest are not run", async () => {
+test("a spec abandoned with a fetch still in flight stops the run: the app is relaunched for inspection and the rest are not run", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   hangingFetch();
@@ -48,8 +48,8 @@ test("a spec whose body never settles stops the run: the app is relaunched for i
   const stopped = events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped");
   assert.equal(stopped.length, 1, JSON.stringify(events.filter((e) => e.type === "diagnostic")));
   assert.match(stopped[0].message,
-    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. Code it may still run could act on later specs, so the run stopped\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
-  assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*so the run stopped\./);
+    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. The run stopped: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\) is still running after 2000ms and would resume its code during a later spec\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
+  assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*The run stopped: fetch GET/);
   assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
 
   // The abandoned spec's poll was cancelled, so it never fires into later specs.
@@ -58,19 +58,48 @@ test("a spec whose body never settles stops the run: the app is relaunched for i
   assert.equal(ticks, after);
 });
 
+test("a body that never settles is abandoned and the run continues: its timers are cancelled, the app relaunched, the next spec runs", async () => {
+  const world = createWorld();
+  const { events } = installFakeHost(world);
+  let ticks = 0;
+  let nextRan = false;
+  spec("awaits forever", { timeout: 20, forensics: false }, async (t) => {
+    t.defer(() => {});
+    setInterval(() => { ticks += 1; }, 30);
+    await new Promise(() => {});
+  });
+  spec("runs after it", async (t) => {
+    nextRan = true;
+    await t.app.info();
+  });
+
+  const report = await run();
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
+  assert.equal(nextRan, true);
+  assert.equal(report.partial, false);
+  assert.equal(events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped").length, 0);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
+  assert.match(recovered.message,
+    /^"awaits forever" left its timed-out body pending: interval setInterval 30ms \(started \d+ms into the spec\); cancelled its 1 pending timer\. Its automation access was revoked and nothing it started is still running\. Relaunched the app under test on its home page; the run continues\.$/);
+  assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
+  const after = ticks;
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(ticks, after, "the abandoned spec's poll never fires into later specs");
+});
+
 test("a body awaiting nothing the runtime tracks says so", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   spec("awaits forever", { timeout: 20, forensics: false }, () => new Promise(() => {}));
-  spec("is not run", async () => {});
+  spec("runs next", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
-  const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
+  assert.match(recovered.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
 });
 
-test("a hung raw-driver eval is named as the pending work", async () => {
+test("a hung raw-driver eval cannot be taken back: it is named and the run stops", async () => {
   const world = createWorld();
   world.setEval("hangs forever", new Promise(() => {}));
   const { events } = installFakeHost(world);
@@ -82,7 +111,7 @@ test("a hung raw-driver eval is named as the pending work", async () => {
   const report = await run();
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
   const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\./);
+  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\. The run stopped: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) .* is still running after 2000ms/);
 });
 
 test("when recovery fails, the rest are not run and the reason names the stuck work and the fix", async () => {
@@ -104,7 +133,7 @@ test("when recovery fails, the rest are not run and the reason names the stuck w
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped", "skipped"]);
   for (const skipped of report.cases.slice(1)) {
     assert.match(skipped.reason,
-      /^Not run: "stuck on fetch" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/hang .*so the run stopped\. Recovering the app failed: home page never became ready\. .* Recover: lxdev lxapp restart$/);
+      /^Not run: "stuck on fetch" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/hang .*The run stopped: .*still running .*\. Recovering the app failed: home page never became ready\. .* Recover: lxdev lxapp restart$/);
   }
   const failed = events.filter((e) => e.type === "diagnostic" && e.phase === "recovery_failed");
   assert.equal(failed.length, 1);
@@ -122,9 +151,9 @@ test("the runner's own timers are not reported as spec work", async () => {
   spec("next", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
-  const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
-  assert.match(stopped.message, /pending: an awaited promise that no timer/);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
+  const recovered = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
+  assert.match(recovered.message, /pending: an awaited promise that no timer/);
 });
 
 test("rawAutomation hands the host tiers out as the native objects", () => {

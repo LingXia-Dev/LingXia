@@ -6,6 +6,7 @@ export {
   subscribePageSnapshot,
   whenPageReady,
   type ActionMap,
+  type DeepReadonly,
   type Snapshot,
 } from "./shared/runtime.js";
 export {
