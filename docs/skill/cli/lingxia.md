@@ -153,6 +153,13 @@ lingxia doctor --platform harmony
 lingxia doctor --project   # this CLI vs the project's @lingxia/* packages
 ```
 
+## `lingxia skill install`
+
+Writes the skill to `~/.claude/skills/lingxia/` and refreshes the pointer in
+the nearest `AGENTS.md` that has one. `lingxia new` and `lingxia upgrade` do
+this themselves; afterwards every `lingxia` command keeps the copy in step
+(`--skip-skill` or `LINGXIA_SKIP_SKILL=1` turns that off, for CI).
+
 ## `lingxia upgrade`
 
 Updates the CLI, `lxdev`, and the Runner. Inside a project it then moves the

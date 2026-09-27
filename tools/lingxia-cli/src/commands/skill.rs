@@ -4,9 +4,9 @@
 //! than as a package fetched separately: an installed copy always came from the
 //! binary that wrote it, and cannot describe a version the CLI is not.
 //!
-//! There is no command to install it. Every run reconciles the copy under the
-//! home directory with the one compiled in, so an edit to the skill reaches the
-//! agent as soon as the CLI that carries it runs.
+//! `lingxia new`, `lingxia upgrade` and `lingxia skill install` write it; every
+//! other run reconciles a copy that exists with the one compiled in, so an edit
+//! to the skill reaches the agent as soon as the CLI that carries it runs.
 
 use anyhow::{Context, Result};
 use include_dir::{Dir, include_dir};
@@ -82,6 +82,34 @@ fn skills_root_exists(dest: &Path) -> bool {
     dest.parent().is_some_and(Path::is_dir)
 }
 
+/// `lingxia skill install`: write the skill where the agent looks for it, and
+/// refresh the pointer block of the nearest `AGENTS.md` that already has one --
+/// a pointer an older CLI wrote may name a command that no longer exists.
+pub fn install(cwd: &Path) -> Result<()> {
+    let dest = user_destination()?;
+    match sync(&dest, true)? {
+        Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
+        Sync::Rewritten { .. } => println!("Updated the LingXia skill at {}", dest.display()),
+        Sync::Created | Sync::Skipped => {
+            println!("Installed the LingXia skill to {}", dest.display())
+        }
+    }
+    if let Some(project_dir) = pointer_project(cwd) {
+        write_agents_pointer(&project_dir, &dest)?;
+    }
+    Ok(())
+}
+
+/// The nearest directory at or above `cwd` whose `AGENTS.md` carries this
+/// CLI's pointer block. The search stops at the first `AGENTS.md`: one without
+/// the block belongs to someone else.
+fn pointer_project(cwd: &Path) -> Option<PathBuf> {
+    cwd.ancestors().find_map(|dir| {
+        let text = fs::read_to_string(dir.join("AGENTS.md")).ok()?;
+        Some(text.contains(AGENTS_MARKER).then(|| dir.to_path_buf()))
+    })?
+}
+
 /// Install the skill for a freshly scaffolded project: the body in the home
 /// directory, a committable pointer in the project.
 pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
@@ -108,7 +136,10 @@ pub fn install_summary() -> String {
         return "unknown".to_string();
     };
     if !dest.join("SKILL.md").is_file() {
-        return format!("{} (not installed)", dest.display());
+        return format!(
+            "{} (not installed; run `lingxia skill install`)",
+            dest.display()
+        );
     }
     let digest = read_manifest(&dest)
         .and_then(|manifest| {
@@ -247,7 +278,13 @@ fn write_agents_pointer(project_dir: &Path, dest: &Path) -> Result<()> {
     let block = agents_block(&portable_reference(project_dir, dest));
 
     let body = match fs::read_to_string(&path) {
-        Ok(existing) if existing.contains(AGENTS_MARKER) => replace_block(&existing, &block),
+        Ok(existing) if existing.contains(AGENTS_MARKER) => {
+            let replaced = replace_block(&existing, &block);
+            if replaced == existing {
+                return Ok(());
+            }
+            replaced
+        }
         Ok(existing) => {
             let separator = if existing.ends_with('\n') {
                 "\n"
@@ -291,8 +328,8 @@ This project uses the LingXia cross-platform app framework. The development\n\
 skill -- decision tree, recipes, CLI / component / native API references --\n\
 lives at:\n\n\
     {skill_ref}/SKILL.md\n\n\
-The `lingxia` CLI writes it there and rewrites it whenever it changes, so it\n\
-always describes the CLI installed on this machine.\n\n\
+If it is missing, run `lingxia skill install`. The `lingxia` CLI rewrites it\n\
+whenever it changes, so it always describes the CLI installed on this machine.\n\n\
 Start there. Sub-references are linked from that file using relative paths.\n\
 {AGENTS_MARKER}\n"
     )
@@ -381,6 +418,46 @@ mod tests {
         fs::write(dest.join(MANIFEST_NAME), r#"{"digest":"stale"}"#).unwrap();
         sync(&dest, false).unwrap();
         assert!(!orphan.exists());
+    }
+
+    #[test]
+    fn the_pointer_names_the_install_command() {
+        let block = agents_block("~/.claude/skills/lingxia");
+        assert!(block.contains("run `lingxia skill install`."));
+        assert!(!block.contains("--user"));
+        assert!(!block.contains("npx"));
+    }
+
+    #[test]
+    fn a_stale_pointer_block_is_replaced_in_place() {
+        let project = TempDir::new().unwrap();
+        let agents = project.path().join("AGENTS.md");
+        let stale = format!(
+            "# AGENTS\n\nKeep this.\n\n{AGENTS_MARKER}\n## LingXia\n\nwrite it with:\n\n    lingxia skill install --user\n{AGENTS_MARKER}\n\nAnd this.\n"
+        );
+        fs::write(&agents, &stale).unwrap();
+        let nested = project.path().join("pages").join("home");
+        fs::create_dir_all(&nested).unwrap();
+
+        let found = pointer_project(&nested).expect("the project with the block");
+        assert_eq!(found, project.path());
+        write_agents_pointer(&found, &skill_dir(project.path())).unwrap();
+
+        let written = fs::read_to_string(&agents).unwrap();
+        assert!(written.starts_with("# AGENTS\n\nKeep this.\n\n"));
+        assert!(written.ends_with("\nAnd this.\n"));
+        assert!(written.contains("run `lingxia skill install`."));
+        assert!(!written.contains("--user"));
+        assert_eq!(written.matches(AGENTS_MARKER).count(), 2);
+    }
+
+    #[test]
+    fn an_agents_file_without_the_block_is_not_ours_to_edit() {
+        let project = TempDir::new().unwrap();
+        fs::write(project.path().join("AGENTS.md"), "# Mine\n").unwrap();
+        let nested = project.path().join("src");
+        fs::create_dir_all(&nested).unwrap();
+        assert_eq!(pointer_project(&nested), None);
     }
 
     #[test]

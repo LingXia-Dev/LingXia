@@ -208,6 +208,13 @@ enum DevAction {
 }
 
 #[derive(Subcommand)]
+enum SkillAction {
+    /// Write the skill to ~/.claude/skills/lingxia and refresh this project's
+    /// AGENTS.md pointer
+    Install,
+}
+
+#[derive(Subcommand)]
 enum TemplateAction {
     /// Clone and install a Git-backed template provider
     Add {
@@ -514,6 +521,12 @@ session per project and target: starting another takes over the old one.
     Store {
         #[command(subcommand)]
         action: commands::store::StoreAction,
+    },
+
+    /// The agent skill this CLI carries
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
     },
 
     /// Update the CLI, and inside a project offer to upgrade pins and SDKs
@@ -880,7 +893,10 @@ fn main() -> Result<()> {
     // is that job.
     if !matches!(
         cli.command,
-        Commands::SyncSkill | Commands::RefreshTemplates { .. } | Commands::Upgrade { .. }
+        Commands::SyncSkill
+            | Commands::Skill { .. }
+            | Commands::RefreshTemplates { .. }
+            | Commands::Upgrade { .. }
     ) {
         if !cli.skip_skill {
             update::sync_installed_skill(false);
@@ -921,6 +937,9 @@ fn main() -> Result<()> {
                 no_git,
             )?;
         }
+        Commands::Skill {
+            action: SkillAction::Install,
+        } => commands::skill::install(&std::env::current_dir()?)?,
         Commands::Template { action } => match action {
             TemplateAction::Add { source } => {
                 commands::template_provider::execute_add(&source)?;

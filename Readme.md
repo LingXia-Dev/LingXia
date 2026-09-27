@@ -80,7 +80,7 @@ See [Quick Start](docs/quick-start.md) for Node.js, platform SDK, Android NDK, H
 
 LingXia ships an agent-oriented markdown skill inside the CLI. It contains the decision tree, CLI reference, lxapp recipes, native component docs, `lx.*` API map, host project docs, and Rust native development guide.
 
-There is nothing to install. `lingxia new` writes the skill to `~/.claude/skills/lingxia/`, and every later `lingxia` command rewrites it whenever it differs from the one that CLI carries — so the skill on disk always describes the CLI on this machine.
+`lingxia new` writes the skill to `~/.claude/skills/lingxia/`; for a project you cloned, run `lingxia skill install`. Every later `lingxia` command rewrites the skill whenever it differs from the one that CLI carries, so the skill on disk always describes the CLI on this machine.
 
 `lingxia new` also writes a pointer from `<project>/AGENTS.md` to the installed `SKILL.md`, which is what OpenAI Codex CLI reads. The content is plain markdown, so Cursor, GitHub Copilot, and other tools can use the same files when pointed at `SKILL.md`.
 

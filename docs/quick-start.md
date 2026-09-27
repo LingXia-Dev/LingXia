@@ -122,9 +122,10 @@ lingxia dev
 
 The deep reference for LingXia lives as a portable markdown skill. It documents the decision tree (lxapp vs. host app), every CLI command, page authoring, native components, the `lx.*` Logic API, the Rust native surface, and the bridge mechanics — organized so an AI agent can route to the right section instead of reading everything at once.
 
-The skill ships inside the CLI, so an installed copy always matches the `lingxia` that wrote it and cannot describe commands that version does not have. There is no command to install it:
+The skill ships inside the CLI, so an installed copy always matches the `lingxia` that wrote it and cannot describe commands that version does not have:
 
 - `lingxia new` writes it to `~/.claude/skills/lingxia/` and points the new project's `AGENTS.md` at it.
+- `lingxia skill install` does the same for a project you cloned, and refreshes the project's `AGENTS.md` pointer.
 - Every later `lingxia` command compares the installed copy with the one it carries and rewrites it when they differ — including after `lingxia upgrade`, and including a CLI you built yourself with edited docs.
 - `lingxia version --verbose` prints where it is and whether it is in sync.
 
