@@ -257,6 +257,8 @@ fn configure_native_logic_shell(
     remove_if_exists(&target_dir.join("lxapp.ts"))?;
     remove_if_exists(&target_dir.join("pages").join("home").join("index.ts"))?;
     remove_if_exists(&target_dir.join("pages").join("home").join("index.json"))?;
+    // Mocks answer Logic `fetch`; without Logic nothing calls them.
+    remove_dir_if_exists(&target_dir.join("mocks"))?;
 
     let templates_base = locate_templates_dir()?;
     let native_template_dir = templates_base.join("lxapp-create").join("native");
@@ -379,6 +381,22 @@ mod tests {
                         .contains("tests/pages/")
                 );
                 assert_eq!(package["devDependencies"]["@lingxia/test"], "~0.16.0");
+                // Logic apps get the mocks/ starting point: one handler and
+                // a config that keeps everything real.
+                assert_eq!(app.join("mocks/index.ts").is_file(), mode.enabled());
+                if mode.enabled() {
+                    let handlers = fs::read_to_string(app.join("mocks/index.ts")).unwrap();
+                    assert!(handlers.contains("satisfies Mocks"), "{handlers}");
+                    let config: serde_json::Value = serde_json::from_str(
+                        &fs::read_to_string(app.join("mocks/config.json")).unwrap(),
+                    )
+                    .unwrap();
+                    assert_eq!(config["mock"], "none");
+                    let bundle = crate::lxapp::build_mocks(&app).unwrap().unwrap();
+                    assert_eq!(bundle.keys, ["GET https://api.example.com/greeting"]);
+                    let logic = fs::read_to_string(app.join("tsconfig.logic.json")).unwrap();
+                    assert!(logic.contains("\"mocks/**/*.ts\""), "{logic}");
+                }
             }
         }
     }
