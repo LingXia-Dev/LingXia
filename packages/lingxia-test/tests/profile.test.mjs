@@ -140,6 +140,64 @@ test("t.app.profile re-selects the app after a switch", async () => {
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
 });
 
+test("a saved t.app, and any part of it, follows the app a profile switch reopened", async () => {
+  const world = createWorld();
+  const profile = fakeProfile(world);
+  world.add({ testId: "save" });
+  installFakeHost(world);
+  // Each selection is a driver of the running instance; a switch reopens the
+  // app as a new instance, and the old drivers stop reaching it.
+  let instance = 1;
+  const reopen = (op) => async (...args) => { const result = await op(...args); instance += 1; return result; };
+  profile.checkpoint = reopen(profile.checkpoint);
+  profile.restore = reopen(profile.restore);
+  const automation = globalThis.lx.automation;
+  globalThis.lx.automation = () => {
+    const root = automation();
+    const lxapp = (...args) => {
+      const selected = instance;
+      const live = (value) => new Proxy(value, {
+        get(target, prop) {
+          const member = Reflect.get(target, prop, target);
+          if (typeof member === "function") {
+            return (...callArgs) => {
+              if (selected !== instance && prop !== "checkpoint" && prop !== "restore") {
+                return Promise.reject(Object.assign(new Error(`instance ${selected} is closed`), { code: "E_AUTOMATION" }));
+              }
+              return member.apply(target, callArgs);
+            };
+          }
+          return member && typeof member === "object" ? live(member) : member;
+        },
+      });
+      return live(root.lxapp(...args));
+    };
+    return { ...root, lxapp };
+  };
+  const seen = {};
+
+  spec("follows", async (t) => {
+    const app = t.app;
+    const { view, logic, nav } = app;
+    const save = view.testId("save");
+    seen.same = t.automation.lxapp("demo-app") === app;
+    const checkpoint = await app.profile.checkpoint();
+    await save.click();
+    await nav.current();
+    await view.screenshot();
+    await app.info();
+    seen.data = await logic.eval(() => 1);
+    await t.automation.lxapp("demo-app").profile.restore(checkpoint);
+    await save.click();
+    seen.instance = instance;
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(seen.same, true, "t.automation.lxapp(id) of the pinned app is t.app");
+  assert.equal(seen.instance, 3);
+});
+
 test("restoreProfile keep carries chosen keys over the rollback", async () => {
   const world = createWorld();
   const profile = fakeProfile(world);

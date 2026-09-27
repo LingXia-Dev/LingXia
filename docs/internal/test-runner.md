@@ -379,6 +379,14 @@ Development machine: lxdev receives progress, results, and artifacts
   fixture exists, with the reason in `case.reason`.
 - `t.app` and `t.automation` (including `t.automation.lxapp(id)`) share
   fixture guards and tracing.
+- A fixture app wraps an `AppRef` (`{ appid, driver }`), one per app id, and
+  reads `ref.driver` inside every call; `t.app` and
+  `t.automation.lxapp(sameId)` are the same object. A profile checkpoint or
+  restore reopens the app as a new instance, so `reopening` re-selects the
+  driver of every ref with that app id afterwards: a saved `t.app`, view,
+  locator or nav keeps working. `t.app`'s id comes from the runtime (`app`
+  option, else the run subject); a ref without one learns it at its first
+  switch.
   Test helpers must retain these wrappers instead of acquiring raw drivers.
   Code deliberately evaluated inside product Logic still uses `lx.automation()`.
 - Native Rong class instances are callable (`typeof === "function"`). Keep the

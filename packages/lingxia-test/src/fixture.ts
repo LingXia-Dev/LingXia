@@ -26,6 +26,7 @@ import {
   testIdSelector,
   type LocatorResolve,
   type PageLike,
+  type QueryMatch,
 } from "./locator.js";
 import type {
   ArgOptions,
@@ -64,7 +65,7 @@ import {
   MAX_EVAL_BUDGET_MS,
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
-import type { HostRunAutomation as Automation, LxAppDriver, NavDriver, NavWaitOptions, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
+import type { HostRunAutomation as Automation, LxAppDriver, NavBackOptions, NavDriver, NavOptions, NavWaitOptions, PageDriver, PageTarget, ScenarioInput } from "@lingxia/types/automation";
 
 export { TimeoutError };
 
@@ -117,7 +118,10 @@ export class LiveFixture implements Fixture {
   /** Set by `t.skip()`; survives a body that catches the signal. */
   skipReason: string | undefined;
   private readonly stepStack: StepRecord[] = [];
-  private rawApp: LxAppDriver;
+  /** The app `t.app` is pinned to. */
+  private readonly pinned: AppRef;
+  /** Every app a fixture app reaches; a profile switch re-selects them. */
+  private readonly appRefs: AppRef[] = [];
   private readonly hostAutomation: Automation;
   /** When this spec's budget started; the runtime arms its timer right after construction. */
   private readonly startedAt: number;
@@ -137,8 +141,10 @@ export class LiveFixture implements Fixture {
     automation: Automation,
     private readonly specBudgetMs: number = DEFAULT_SPEC_TIMEOUT_MS,
     private readonly redactor?: Redactor,
+    appId?: string,
   ) {
-    this.rawApp = rawApp;
+    this.pinned = { appid: appId, driver: rawApp };
+    this.appRefs.push(this.pinned);
     this.hostAutomation = automation;
     this.startedAt = Date.now();
     this.argValues = args;
@@ -153,7 +159,7 @@ export class LiveFixture implements Fixture {
       get: (target, prop) => prop === "lxapp"
         ? (appId?: string) => {
           this.assertRunnable();
-          return this.wrapApp(appId === undefined ? automation.lxapp() : automation.lxapp(appId));
+          return this.appOf(appId === undefined ? this.trackRef({ appid: undefined, driver: automation.lxapp() }) : this.refFor(appId));
         }
         // Reading a host tier never throws, even on a host without it; each
         // call resolves it and rejects there instead.
@@ -164,11 +170,26 @@ export class LiveFixture implements Fixture {
   }
 
   get app(): TestApp {
-    return this.wrapApp(this.rawApp);
+    return this.appOf(this.pinned);
   }
 
   get raw(): LxAppDriver {
-    return this.rawApp;
+    return this.pinned.driver;
+  }
+
+  /** One fixture app per reached app, so a saved handle stays the same object. */
+  private appOf(ref: AppRef): TestApp {
+    return ref.app ??= this.wrapApp(ref);
+  }
+
+  private refFor(appid: string): AppRef {
+    return this.appRefs.find((ref) => ref.appid === appid) ??
+      this.trackRef({ appid, driver: this.hostAutomation.lxapp(appid) });
+  }
+
+  private trackRef(ref: AppRef): AppRef {
+    this.appRefs.push(ref);
+    return ref;
   }
 
   get openapi(): OpenApiRun | undefined {
@@ -184,33 +205,38 @@ export class LiveFixture implements Fixture {
   }
 
   /** `t.app.profile`: it re-selects the app after a switch. */
-  private profileFixture(): ProfileFixture {
+  private profileFixture(ref: AppRef): ProfileFixture {
     return {
       checkpoint: () => this.act("profile.checkpoint", "", () =>
-        this.reopening(async (driver): Promise<ProfileCheckpoint> => ({ id: await driver.profile.checkpoint() }))),
+        this.reopening(ref, async (driver): Promise<ProfileCheckpoint> => ({ id: await driver.profile.checkpoint() }))),
       restore: (checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions) => {
         const id = checkpointId(checkpoint, "t.app.profile.restore");
         return this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
-          this.reopening((driver) =>
+          this.reopening(ref, (driver) =>
             options?.keep?.length ? driver.profile.restore(id, { keep: [...options.keep] }) : driver.profile.restore(id)));
       },
       drop: (checkpoint: ProfileCheckpoint | string) => {
         const id = checkpointId(checkpoint, "t.app.profile.drop");
-        return this.act("profile.drop", id, async () => { await this.rawApp.profile.drop(id); });
+        return this.act("profile.drop", id, async () => { await ref.driver.profile.drop(id); });
       },
     };
   }
 
   /**
    * A profile switch closes the app and reopens it as a new instance, which
-   * the old driver no longer reaches: select the same lxapp again after it.
+   * the old driver no longer reaches: select the same lxapp again after it,
+   * for every fixture app that reaches it. Fixture apps read `ref.driver` on
+   * each call, so one saved before the switch follows the reopened app.
    */
-  private async reopening<T>(op: (driver: LxAppDriver) => Promise<T>): Promise<T> {
-    const { appid } = await this.rawApp.info();
+  private async reopening<T>(ref: AppRef, op: (driver: LxAppDriver) => Promise<T>): Promise<T> {
+    const appid = ref.appid ?? (await ref.driver.info()).appid;
+    ref.appid = appid;
     try {
-      return await op(this.rawApp);
+      return await op(ref.driver);
     } finally {
-      this.rawApp = this.hostAutomation.lxapp(appid);
+      for (const reached of this.appRefs) {
+        if (reached.appid === appid) reached.driver = this.hostAutomation.lxapp(appid);
+      }
     }
   }
 
@@ -773,40 +799,60 @@ export class LiveFixture implements Fixture {
     return path ? `in step ${JSON.stringify(path)}` : "";
   }
 
-  private wrapApp(driver: LxAppDriver): TestApp {
+  private wrapApp(ref: AppRef): TestApp {
     const fixture = this;
-    const view = this.wrapView(driver.page);
-    const logic = this.wrapLogic(driver);
+    const driver = () => ref.driver;
     return {
-      view,
-      logic,
-      nav: guardObject(landingNav(driver.nav), this, "nav."),
+      view: this.wrapView(() => driver().page),
+      logic: this.wrapLogic(driver),
+      nav: this.wrapNav(() => driver().nav),
       // Lazy: the driver is read inside each traced call.
       get network() {
-        return wrapNetwork(() => driver.network, fixture, fixture.networkScope);
+        return wrapNetwork(() => driver().network, fixture, fixture.networkScope);
       },
       scenario: (definition: ScenarioInput, variant?: string) =>
-        installScenario(() => driver, fixture, fixture.scenarioScope, definition, variant),
+        installScenario(driver, fixture, fixture.scenarioScope, definition, variant),
       get profile() {
-        return fixture.profileFixture();
+        return fixture.profileFixture(ref);
       },
       // Lazy and non-throwing like `network`; spec-scoped: uninstalled when
       // the spec ends.
       get clock() {
         return wrapClock(
-          () => ({ driver: driver.clock, appid: async () => (await driver.info()).appid }),
+          () => ({ driver: driver().clock, appid: async () => (await driver().info()).appid }),
           fixture,
           fixture.clockScope,
           () => fixture.hostAutomation,
         );
       },
-      info: () => this.act("app.info", "", () => this.readRetrying(() => driver.info())),
-      pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver.pages())),
-      surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver.surfaceLayout())),
+      info: () => this.act("app.info", "", () => this.readRetrying(() => driver().info())),
+      pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver().pages())),
+      surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver().surfaceLayout())),
     } as TestApp;
   }
 
-  private wrapLogic(driver: LxAppDriver): TestLogic {
+  /**
+   * Fixture navigation waits for the landed page's `onReady` unless the
+   * caller picks `waitUntil`; reads retry a dropped transport.
+   */
+  private wrapNav(nav: () => NavDriver): TestApp["nav"] {
+    const land = (verb: "to" | "redirect" | "switchTab" | "relaunch") => (options: NavOptions) =>
+      this.act(`nav.${verb}`, summarise(options), () => nav()[verb](untilReady(options)));
+    const read = <T,>(verb: string, op: () => Promise<T>, detail?: unknown) =>
+      this.act(`nav.${verb}`, summarise(detail), () => this.readRetrying(op));
+    return {
+      to: land("to"),
+      redirect: land("redirect"),
+      switchTab: land("switchTab"),
+      relaunch: land("relaunch"),
+      back: (options?: NavBackOptions) => this.act("nav.back", summarise(options), () => nav().back(untilReady(options))),
+      current: () => read("current", () => nav().current()),
+      info: (options?: PageTarget) => read("info", () => nav().info(options), options),
+      stack: () => read("stack", () => nav().stack()),
+    };
+  }
+
+  private wrapLogic(driver: () => LxAppDriver): TestLogic {
     return {
       eval: (...input: unknown[]) => {
         const { options, fn, args } = evalInput(input);
@@ -816,14 +862,14 @@ export class LiveFixture implements Fixture {
         const script = logicScript(fn, args, "t.app.logic.eval");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.eval");
         return this.act("logic.eval", summarise(functionDetail(fn)), () =>
-          remote("t.app.logic.eval", "logic", () => this.evalLogic(driver, { script, timeoutMs })));
+          remote("t.app.logic.eval", "logic", () => this.evalLogic(driver(), { script, timeoutMs })));
       },
       data: (options?: LogicDataOptions) => {
         const target = options?.page;
         return this.act("logic.data", target ?? "", async () => {
-          const path = target === undefined ? undefined : await pagePath(driver, target);
+          const path = target === undefined ? undefined : await pagePath(driver(), target);
           const script = logicScript(readPageData, [target ?? null, path ?? null], "t.app.logic.data");
-          return remote("t.app.logic.data", "logic", () => this.evalLogic(driver, { script }));
+          return remote("t.app.logic.data", "logic", () => this.evalLogic(driver(), { script }));
         });
       },
       call: (method: string, ...args: JsonValue[]) => {
@@ -832,7 +878,7 @@ export class LiveFixture implements Fixture {
         }
         return this.act("logic.call", method, () => {
           const script = logicScript(callPageMethod, [method, args], "t.app.logic.call");
-          return remote("t.app.logic.call", "logic", () => this.evalLogic(driver, { script }));
+          return remote("t.app.logic.call", "logic", () => this.evalLogic(driver(), { script }));
         });
       },
     } as TestLogic;
@@ -895,7 +941,7 @@ export class LiveFixture implements Fixture {
     return Math.max(1, Math.min(timeout, this.budgetRoom()));
   }
 
-  private viewEval(page: PageDriver, input: unknown[], api: string): Promise<unknown> {
+  private viewEval(page: () => PageDriver, input: unknown[], api: string): Promise<unknown> {
     const { options, fn, args } = evalInput<ViewEvalOptions>(input);
     if (typeof fn !== "function") {
       throw new TypeError(`${api}(fn, ...args) takes a function; a script string is for the raw driver (rawAutomation().lxapp().page.eval({ script }) from @lingxia/test)`);
@@ -907,34 +953,43 @@ export class LiveFixture implements Fixture {
     const timeoutMs = this.evalTimeout(options, api);
     const detail = summarise(functionDetail(fn));
     return this.act("view.eval", options?.page ? `${options.page} ${detail}` : detail, () =>
-      remote(api, "page", () => page.eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>({
+      remote(api, "page", () => page().eval(this.withEvalBudget<{ script: string; page?: string; timeoutMs?: number }>({
         script,
         ...(options?.page ? { page: options.page } : {}),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
       }))));
   }
 
-  private wrapView(page: PageDriver): TestView {
+  private wrapView(page: () => PageDriver): TestView {
     const location = () => {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
     };
-    const guarded = guardObject(page, this, "page.");
+    // Resolved on each call, like the rest of a fixture app.
+    const lazyPage: PageLike = {
+      query: (options) => page().query(options) as Promise<QueryMatch>,
+      click: (options) => page().click(options),
+      fill: (options) => page().fill(options),
+      press: (options) => page().press(options),
+      type: (options) => page().type(options),
+      eval: (options) => page().eval(options),
+    };
+    const input = lazyDriver(() => ({ owner: page() as object, value: page() }), this, "page.") as PageDriver;
     return {
-      testId: (id: string, options?: LocatorOptions) => this.locator(page, testIdSelector(id), location(), options),
-      css: (selector: string, options?: LocatorOptions) => this.locator(page, selector, location(), options),
-      eval: ((...input: unknown[]) => this.viewEval(page, input, "t.app.view.eval")) as TestView["eval"],
+      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), options),
+      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), options),
+      eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval")) as TestView["eval"],
       screenshot: (options?: PageTarget) =>
-        this.act("page.screenshot", summarise(options), () => this.readRetrying(() => page.screenshot(options))),
-      scroll: (options) => guarded.scroll(options),
-      get pointer() { return guarded.pointer; },
-      get key() { return guarded.key; },
+        this.act("page.screenshot", summarise(options), () => this.readRetrying(() => page().screenshot(options))),
+      scroll: (options) => input.scroll(options),
+      get pointer() { return input.pointer; },
+      get key() { return input.key; },
     };
   }
 
-  private locator(page: PageDriver, selector: string, location: SourceLocation, options?: LocatorOptions): Locator {
+  private locator(page: PageLike, selector: string, location: SourceLocation, options?: LocatorOptions): Locator {
     return new PageLocator(
-      page as unknown as PageLike,
+      page,
       (fn) => this.guard(fn),
       <T,>(verb: string, detail: string, op: () => Promise<T>) => this.act(verb, detail, op),
       selector,
@@ -1169,6 +1224,14 @@ export class LiveFixture implements Fixture {
     });
     return new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"));
   }
+}
+
+/** An app the fixture reaches, re-selected when a profile switch reopens it. */
+interface AppRef {
+  /** Learned at the first profile switch when not known up front. */
+  appid: string | undefined;
+  driver: LxAppDriver;
+  app?: TestApp;
 }
 
 interface InFlightCall {
@@ -1406,8 +1469,6 @@ function matchLocator(
   }
 }
 
-const LANDING_NAV = new Set<PropertyKey>(["to", "redirect", "switchTab", "relaunch", "back"]);
-
 /**
  * A spec almost always wants the page it navigated to, so fixture navigation
  * waits for the landed page's `onReady` unless the caller picks `waitUntil`
@@ -1416,17 +1477,6 @@ const LANDING_NAV = new Set<PropertyKey>(["to", "redirect", "switchTab", "relaun
 function untilReady<T extends NavWaitOptions>(options?: T): T {
   if (options && typeof options === "object" && options.waitUntil !== undefined) return options;
   return { ...(options ?? {}), waitUntil: "ready" } as T;
-}
-
-function landingNav(nav: NavDriver): NavDriver {
-  return new Proxy(nav, {
-    get(target, prop) {
-      const value = Reflect.get(target, prop, target);
-      if (typeof value !== "function") return value;
-      if (!LANDING_NAV.has(prop)) return value.bind(target);
-      return (options?: NavWaitOptions) => value.call(target, untilReady(options));
-    },
-  });
 }
 
 function guardObject<T extends object>(

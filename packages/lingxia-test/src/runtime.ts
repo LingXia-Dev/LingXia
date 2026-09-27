@@ -745,6 +745,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       automationRoot(),
       timeout,
       redact,
+      item.app ?? subject?.appid,
     );
 
     if (reopened) {
