@@ -607,7 +607,7 @@ Development machine: lxdev receives progress, results, and artifacts
   needs no session. `lxdev test` no longer consults the dev scenario.
 - The companion side of `function` rules (dev server relay, owner
   lifecycle, runtime upstream) and its wire contract:
-  [scenario-companion-protocol.md](scenario-companion-protocol.md).
+  [companion-protocol.md](companion-protocol.md).
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,

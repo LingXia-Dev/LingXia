@@ -867,7 +867,7 @@ mod matcher {
 
 /// The companion protocol for `function` rules: the dev server forwards
 /// these to a companion that declared [`crate::dev_session::capabilities::SCENARIO_FUNCTION`].
-/// See `docs/internal/scenario-companion-protocol.md`.
+/// See `docs/internal/companion-protocol.md`.
 pub mod companion {
     use serde::{Deserialize, Serialize};
     use serde_json::Value;
@@ -985,6 +985,10 @@ pub mod companion {
         /// Why rules for this Function did not match, when none did.
         #[serde(default, skip_serializing_if = "Option::is_none", rename = "noMatch")]
         pub no_match: Option<String>,
+        /// With `outcome: "default"`: `mock` or `real`, the handler the
+        /// companion's mock selection chose.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub handler: Option<String>,
     }
 
     /// `data` of an [`INVALID_RULES`] error.

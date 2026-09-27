@@ -7,6 +7,7 @@ pub mod invocation {
     pub const CLI_ARGUMENT: &str = "--cli";
 }
 
+pub mod mock;
 pub mod scenario;
 
 /// Text helpers shared by the test runtime and `lxdev`.
@@ -156,8 +157,10 @@ pub mod methods {
         /// The dev session's companion (`.lingxia/dev-companion.json`).
         /// Handled by the dev server, which forwards `scenario.*` requests
         /// to a companion that declared
-        /// [`crate::dev_session::capabilities::SCENARIO_FUNCTION`]; both a
-        /// client and the runtime may send them.
+        /// [`crate::dev_session::capabilities::SCENARIO_FUNCTION`] and
+        /// `mock.*` requests to one that declared
+        /// [`crate::dev_session::capabilities::MOCK`]; both a client and the
+        /// runtime may send them.
         pub mod companion {
             /// `{ companion: bool, capabilities: [..] }`.
             pub const CAPABILITIES: &str = "session.companion.capabilities";
@@ -168,13 +171,16 @@ pub mod methods {
             pub const SCENARIO_CLEAR: &str = "session.companion.scenario.clear";
             pub const SCENARIO_STATUS: &str = "session.companion.scenario.status";
             pub const SCENARIO_CALLS: &str = "session.companion.scenario.calls";
+            pub const MOCK_SET: &str = "session.companion.mock.set";
+            pub const MOCK_STATUS: &str = "session.companion.mock.status";
+            pub const MOCK_RESET: &str = "session.companion.mock.reset";
             /// Error code when no companion handles `function` rules.
             pub const UNSUPPORTED: &str = "companion_unsupported";
         }
 
-        /// Network scenarios and recordings for a running lxapp's Logic
-        /// `fetch` and `Rong.SSE` outside test runs: the HTTP rules of
-        /// `lxdev scenario`, and `lxdev network`.
+        /// Mocks, network scenarios and recordings for a running lxapp's
+        /// Logic `fetch` and `Rong.SSE` outside test runs: the HTTP half of
+        /// `lxdev mock`, and `lxdev network`.
         /// Runtime-owned and present only in hosts built with the test
         /// runtime; a release build answers "unknown method".
         pub mod network {
@@ -194,6 +200,26 @@ pub mod methods {
             /// Stop recording. Args: `{ name? }`; returns
             /// `{ scenario, exchanges, dropped }`.
             pub const RECORD_STOP: &str = "session.network.record.stop";
+            /// Load an lxapp's mock handlers and its `mocks/config.json`
+            /// selection. Args: `{ appid, source, keys, config?: { mock,
+            /// overrides }, baseline?: "all" | "none" }` — `source` is the
+            /// bundled `mocks/index.ts`, a script whose value is its default
+            /// export; `keys` its handler keys in order; no `config` means
+            /// the file is absent. Starts handler state over. Returns
+            /// `{ handlers, generation }`; an invalid load keeps the
+            /// previous one and errors.
+            pub const MOCK_LOAD: &str = "session.network.mock.load";
+            /// Select mocks or real for the dev session. Args: `{ owner?:
+            /// "dev", mode: "all" | "none", targets?: [http target] }`;
+            /// without targets it replaces the owner's entries. Returns
+            /// `{ mode, entries }`.
+            pub const MOCK_SET: &str = "session.network.mock.set";
+            /// Start handler state over for every app. Args: `{ owner? }`
+            /// also drops that owner's selection. Returns `{ generation }`.
+            pub const MOCK_RESET: &str = "session.network.mock.reset";
+            /// The selection, handlers and their hits, unhandled calls and
+            /// handler errors per app.
+            pub const MOCK_STATUS: &str = "session.network.mock.status";
         }
 
         /// Isolated data profiles of `session.test` runs (`lxdev test
@@ -550,6 +576,10 @@ pub mod dev_session {
         /// A companion that answers scenario `function` rules: it handles
         /// [`crate::scenario::companion`] requests.
         pub const SCENARIO_FUNCTION: &str = "scenario.function";
+        /// A companion that selects mock or real Function handlers: it
+        /// handles [`crate::mock::companion`] requests and reads
+        /// [`super::DevSessionPrepareParams::mock`].
+        pub const MOCK: &str = "mock";
     }
 
     pub mod event_kinds {
@@ -638,6 +668,25 @@ pub mod dev_session {
                 return Ok(None);
             }
             serde_json::from_value(self.data.clone()).map(Some)
+        }
+    }
+
+    /// `session.prepare` params a companion receives. Sent only when a
+    /// field is set, so a companion that predates them sees no params.
+    #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+    pub struct DevSessionPrepareParams {
+        /// The session's mock baseline (`lingxia dev --mock`), over the
+        /// companion's own configured selection; absent means its own.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        pub mock: Option<crate::mock::MockMode>,
+    }
+
+    impl DevSessionPrepareParams {
+        /// The params to send, `None` when nothing is set.
+        pub fn to_params(&self) -> Option<serde_json::Value> {
+            (self != &Self::default())
+                .then(|| serde_json::to_value(self).ok())
+                .flatten()
         }
     }
 
@@ -761,6 +810,21 @@ mod tests {
         );
         assert_eq!(token_from_ws_url("ws://h:1/x?a=b"), None);
         assert_eq!(token_from_ws_url("ws://h:1"), None);
+    }
+
+    #[test]
+    fn prepare_params_are_sent_only_when_set() {
+        assert_eq!(DevSessionPrepareParams::default().to_params(), None);
+        let params = DevSessionPrepareParams {
+            mock: Some(crate::mock::MockMode::All),
+        };
+        assert_eq!(
+            params.to_params(),
+            Some(serde_json::json!({ "mock": "all" }))
+        );
+        let parsed: DevSessionPrepareParams =
+            serde_json::from_value(serde_json::json!({ "mock": "none" })).unwrap();
+        assert_eq!(parsed.mock, Some(crate::mock::MockMode::None));
     }
 
     #[test]

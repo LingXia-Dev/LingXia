@@ -24,7 +24,7 @@ recoverable from the code alone.
 - [`lingxia-facade-boundary.md`](docs/internal/lingxia-facade-boundary.md) — what stays behind the `lingxia` crate facade.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
-- [`scenario-companion-protocol.md`](docs/internal/scenario-companion-protocol.md) — how scenario `function` rules reach the dev session's companion: capability, `scenario.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
+- [`companion-protocol.md`](docs/internal/companion-protocol.md) — how scenario `function` rules and the Function half of mocks reach the dev session's companion: capabilities, `scenario.*` and `mock.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
 - [`dev-session.md`](docs/internal/dev-session.md) — `lingxia dev` session registration, dev websocket transport, and `lxdev` platform details.
 - [`native-island.md`](docs/internal/native-island.md) · [`storage.md`](docs/internal/storage.md) · [`update-pipeline.md`](docs/internal/update-pipeline.md) — native island rendering, managed file storage and cache maintenance, update signing and installation.
 - [`logging.md`](docs/internal/logging.md) · [`env-version.md`](docs/internal/env-version.md) · [`release-versioning.md`](docs/internal/release-versioning.md) — log pipeline, host env vs lxapp channel, release version rules.
