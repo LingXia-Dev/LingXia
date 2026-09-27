@@ -936,13 +936,65 @@ fn functions_line(session: &dyn Session) -> Option<String> {
         format!(" ({})", hits.join(", "))
     };
     Some(format!(
-        "functions: {}/{} mocked{hits}",
-        status.mocked, status.total
+        "functions: {}/{} mocked{hits} — {}",
+        status.mocked,
+        status.total,
+        function_layer(&status.owners)
     ))
+}
+
+/// Which layer decides the Function half, as the HTTP line names its own:
+/// the highest active owner with entries (`test:…` over `dev` over the
+/// `lingxia dev --mock` baseline over the companion's configured selection).
+pub(crate) fn function_layer(owners: &[mock_protocol::OwnerStatus]) -> String {
+    let rank = |owner: &str| match owner {
+        "config" => Some(0),
+        "baseline" => Some(1),
+        mock::DEV_OWNER => Some(2),
+        other if other.starts_with("test:") => Some(3),
+        _ => None,
+    };
+    let deciding = owners
+        .iter()
+        .filter(|owner| owner.active && !owner.entries.is_empty())
+        .filter_map(|owner| rank(&owner.owner).map(|rank| (rank, owner)))
+        .max_by_key(|(rank, _)| *rank)
+        .map(|(_, owner)| owner);
+    let describe = |entry: &mock_protocol::Entry| match &entry.targets {
+        Some(targets) if !targets.is_empty() => format!("{} {}", entry.mode, targets.join(" ")),
+        _ => entry.mode.clone(),
+    };
+    let Some(owner) = deciding else {
+        return "from the companion's config".to_string();
+    };
+    match owner.owner.as_str() {
+        "config" => "from the companion's config".to_string(),
+        "baseline" => format!(
+            "from lingxia dev --mock {}",
+            owner.entries.last().map(describe).unwrap_or_default()
+        ),
+        mock::DEV_OWNER => format!(
+            "live ({})",
+            owner
+                .entries
+                .iter()
+                .map(|entry| format!("lxdev mock {}", describe(entry)))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+        _ => "test run".to_string(),
+    }
 }
 
 fn hint() {
     eprintln!("{} {RELOAD_HINT}", "hint".cyan().bold());
+}
+
+/// Whether `lxdev mock all|none` changed anything: the HTTP half was set,
+/// or the companion applied the Function half. Only then do already loaded
+/// pages hold stale data.
+pub(crate) fn select_changed(result: &Value) -> bool {
+    result.get("http").is_some() || result["functions"]["applied"] == true
 }
 
 fn run_select(
@@ -966,7 +1018,9 @@ fn run_select(
         if let Some(line) = result["functionsLine"].as_str() {
             println!("{line}");
         }
-        hint();
+        if select_changed(result) {
+            hint();
+        }
     })?;
     if result["functionsRequired"] == true && result["functions"]["applied"] == false {
         bail!(
@@ -1104,10 +1158,10 @@ pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
             network::print(&result, json, |result| {
                 if result["cleared"] == true {
                     println!("scenario cleared; the selection answers again");
+                    hint();
                 } else {
                     println!("no scenario was active");
                 }
-                hint();
             })
         }
         MockCommand::Reset { json } => {
@@ -1834,6 +1888,23 @@ mod tests {
             ["companion session.companion.mock.set \"all\" [\"orders.submit\"]"]
         );
 
+        // A switch that applied is a change; the reload hint follows it.
+        assert!(select_changed(&result));
+
+        // Only a Function the companion refuses: nothing changed, no hint.
+        let mut refusing = Fake::new(Some(vec![MOCK]));
+        refusing.companion_error = Some(CallError {
+            code: mock_protocol::INVALID_TARGETS.into(),
+            message: "unknown".into(),
+            data: Some(json!({ "unknown": ["nope.fn"] })),
+        });
+        let result = select(&refusing, MockMode::All, &["nope.fn".into()], root).unwrap();
+        assert_eq!(
+            result["functionsLine"],
+            "functions: not switched — unknown Function nope.fn"
+        );
+        assert!(!select_changed(&result));
+
         // A named Function that is not applied is reported as such.
         let scenario_only = Fake::new(Some(vec![SCENARIO_FUNCTION]));
         let result = select(
@@ -1986,5 +2057,50 @@ mod tests {
             .filter(|line| *line == "host use")
             .count();
         assert_eq!(installs, 2);
+    }
+
+    #[test]
+    fn the_function_half_names_the_layer_that_decides_it() {
+        let owners = |value: Value| -> Vec<mock_protocol::OwnerStatus> {
+            serde_json::from_value(value).unwrap()
+        };
+        assert_eq!(function_layer(&[]), "from the companion's config");
+        assert_eq!(
+            function_layer(&owners(json!([
+                { "owner": "config", "active": true, "entries": [{ "mode": "none" }] },
+                { "owner": "dev", "active": true, "entries": [{ "mode": "all" }] }
+            ]))),
+            "live (lxdev mock all)"
+        );
+        assert_eq!(
+            function_layer(&owners(json!([
+                { "owner": "dev", "active": true, "entries": [
+                    { "mode": "all" },
+                    { "mode": "none", "targets": ["orders.submit"] }
+                ] }
+            ]))),
+            "live (lxdev mock all, lxdev mock none orders.submit)"
+        );
+        assert_eq!(
+            function_layer(&owners(json!([
+                { "owner": "config", "active": true, "entries": [{ "mode": "none" }] },
+                { "owner": "baseline", "active": true, "entries": [{ "mode": "all" }] }
+            ]))),
+            "from lingxia dev --mock all"
+        );
+        // `dev` stands aside under a test run.
+        assert_eq!(
+            function_layer(&owners(json!([
+                { "owner": "dev", "active": false, "entries": [{ "mode": "all" }] },
+                { "owner": "test:5b0c", "active": true, "entries": [{ "mode": "none" }] }
+            ]))),
+            "test run"
+        );
+        assert_eq!(
+            function_layer(&owners(json!([
+                { "owner": "dev", "active": false, "entries": [{ "mode": "all" }] }
+            ]))),
+            "from the companion's config"
+        );
     }
 }

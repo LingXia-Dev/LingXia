@@ -226,7 +226,9 @@ answers now, and Functions the project defines.
 while a test owner exists); `handlers` (optional) says per Function which
 handler answers now and how many calls it answered; `reset` says whether
 `mock.reset` can start handler memory over (`fresh`) or not (`shared`).
-`lxdev mock` prints `functions: 7/12 mocked (orders.submit 3×)`.
+`lxdev mock` prints `functions: 7/12 mocked (orders.submit 3×) — live (lxdev mock all)`:
+the layer is the highest active owner with entries (`test:…`, `dev`,
+`baseline`, `config`), else the companion's configured selection.
 
 ### `mock.reset`
 
