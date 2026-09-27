@@ -1,6 +1,8 @@
 mod bridge_transport;
 pub(crate) mod data_store;
 mod schemehandler;
+#[cfg(target_os = "macos")]
+mod session;
 mod webview;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,6 +10,8 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::{UserAgentOverride, WebViewController, WebViewError};
 
+#[cfg(target_os = "macos")]
+pub use session::screen_locked;
 pub(crate) use webview::WebViewInner;
 pub(crate) use webview::apply_http_proxy;
 

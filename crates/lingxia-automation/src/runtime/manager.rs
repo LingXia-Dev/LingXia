@@ -645,6 +645,33 @@ mod tests {
     }
 
     #[test]
+    fn the_host_says_whether_the_screen_is_locked_where_it_can_tell() {
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let source = r#"
+(async () => {
+  const locked = globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked();
+  return locked === undefined ? "unknown" : typeof locked;
+})()
+"#;
+        let started = start(&runtime, source, 5_000);
+        let response = wait_for_terminal(&runtime, &started.run_id);
+        assert_eq!(response.state, AutomationRunState::Succeeded);
+        let answer = response.result.expect("terminal result").output;
+        if cfg!(target_os = "macos") {
+            // A test process may have no window-server session to ask.
+            assert!(
+                matches!(
+                    answer.as_ref().and_then(|v| v.as_str()),
+                    Some("boolean" | "unknown")
+                ),
+                "{answer:?}"
+            );
+        } else {
+            assert_eq!(answer, Some(serde_json::json!("unknown")));
+        }
+    }
+
+    #[test]
     fn rejects_a_second_concurrent_run() {
         let runtime = AutomationRuntime::new().expect("automation runtime");
         let first = start(

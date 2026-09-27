@@ -280,6 +280,15 @@ Development machine: lxdev receives progress, results, and artifacts
   `timeout`; lxdev then derives N/M from the streamed cases
   (`budget_exhaustion`). An older runtime ignores the budget controls and
   runs to the host ceiling.
+- Locked screen: the host's `screenLocked()` answers from
+  `CGSessionCopyCurrentDictionary` (`CGSSessionScreenIsLocked`) on macOS and
+  `undefined` elsewhere. The runtime asks before each spec; the first `true`
+  emits one `diagnostic` (`phase: "screen_locked"`), skips the rest with a
+  "not run" reason, and makes the report partial. It does not wait for an
+  unlock: nothing but a person can unlock, a wait would outlast lxdev's hang
+  watchdog between cases, and results on a hidden page are not results. A
+  spec whose wait times out on a hidden page while the screen is locked
+  names the lock instead of "window covered or display asleep".
 - `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
   is given and prints it); the runtime shuffles the planned executions with a
   seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.

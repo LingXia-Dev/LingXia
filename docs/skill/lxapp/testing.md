@@ -321,6 +321,8 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`force` is a last resort.** `click({ force: true })` / `fill(text, {
   force: true })` dispatch DOM events directly; use only after
   `element is obscured`. Keep the host window uncovered.
+- **A locked screen stops the run** on macOS: pages are hidden, so the rest
+  are reported as not run. Unlock it and run again.
 - **`fill` updates framework state**; assert the state, not only the DOM.
 - **Nav waits for `onReady`** and rejects if the app replaces the page first;
   pass `waitUntil: 'commit'`, then assert the landing page.
