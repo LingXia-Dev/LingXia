@@ -577,8 +577,9 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   to specs in the file that registers them. A shared helper such as
   `installHooks()` registers into the spec file that calls it at top level.
 - **Eval functions are self-contained.** `fn` is sent as source text: it cannot
-  use spec variables, imports, or helpers. Pass values as extra arguments;
-  arguments and the result must be JSON.
+  use spec variables, imports, or helpers, and `lxdev test` refuses one that
+  does (file:line and the name). Pass values as extra arguments; arguments and
+  the result must be JSON.
 - **Specs run on the target device.** Test `fetch('http://127.0.0.1:...')`
   reaches the device's loopback, not the development machine. Start fixture
   servers from shell/CI and pass reachable URLs with `--arg`.

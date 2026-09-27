@@ -25,6 +25,8 @@ use oxc_ast::ast::{
     ModuleExportName, Statement,
 };
 use oxc_ast_visit::Visit;
+
+use crate::test_eval_check::check_eval_functions;
 use oxc_codegen::{Codegen, CodegenOptions};
 use oxc_parser::Parser;
 use oxc_resolver::{ModuleType, ResolveError, ResolveOptions, Resolver};
@@ -270,6 +272,9 @@ impl TestBundler {
         let program = parse_result.program;
 
         reject_dynamic_imports(&program, &source, &path, &self.root)?;
+        if !is_dependency(&path) {
+            check_eval_functions(&program, &source, &relative_display(&path, &self.root))?;
+        }
 
         let imports = collect_imports(&program, &path, &self.root)?;
         let export_dependencies = collect_export_dependencies(&program, &path, &self.root)?;
@@ -337,6 +342,12 @@ impl TestBundler {
         });
         Ok(module_var)
     }
+}
+
+/// A package the project installed, not a file of its own.
+fn is_dependency(path: &Path) -> bool {
+    path.components()
+        .any(|component| component.as_os_str() == "node_modules")
 }
 
 fn is_json_module(path: &Path) -> bool {
@@ -1256,7 +1267,7 @@ fn json_string_literal(value: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| "\"\"".to_string())
 }
 
-fn line_column(source: &str, offset: usize) -> (usize, usize) {
+pub(crate) fn line_column(source: &str, offset: usize) -> (usize, usize) {
     let prefix = &source[..offset.min(source.len())];
     let line = prefix.matches('\n').count() + 1;
     let column = prefix
@@ -1872,6 +1883,43 @@ require("node:vm").runInThisContext(require("node:fs").readFileSync(process.argv
                 "shift {shift}"
             );
         }
+    }
+
+    #[test]
+    fn rejects_an_eval_function_that_closes_over_the_spec() {
+        let dir = project();
+        write(
+            &dir,
+            "tests/helper.ts",
+            "export const label = 'x';\nexport const read = (t: any) => t.app.view.eval(() => label);\n",
+        );
+        let entry = write(
+            &dir,
+            "tests/a.test.ts",
+            "import { read } from './helper';\nconst name = 'Ada';\nconst t: any = {};\nread(t);\nt.app.logic.eval(() => name);\n",
+        );
+        let error = format!(
+            "{:#}",
+            bundle_test_entry(&entry).err().expect("expected error")
+        );
+        assert!(error.contains("closes over `"), "{error}");
+        // Imported helpers are checked in their own file, dependencies are not.
+        write(
+            &dir,
+            "node_modules/pkg/index.js",
+            "const label = 'x';\nexport const read = (view) => view.eval(() => label);\n",
+        );
+        write(
+            &dir,
+            "node_modules/pkg/package.json",
+            r#"{ "name": "pkg", "type": "module", "exports": { ".": "./index.js" } }"#,
+        );
+        let clean = write(
+            &dir,
+            "tests/b.test.ts",
+            "import { read } from 'pkg';\nvoid read;\n",
+        );
+        bundle_test_entry(&clean).expect("a dependency's evals are its own business");
     }
 
     #[test]

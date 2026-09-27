@@ -13,6 +13,7 @@ mod sessions;
 mod test;
 mod test_bundle;
 mod test_contract;
+mod test_eval_check;
 mod test_network;
 mod test_preset;
 mod test_report;
