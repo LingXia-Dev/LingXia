@@ -1,30 +1,21 @@
-# Logic runtime and typings
+# Logic runtime
 
-Every lxapp Logic file (`pages/*/index.ts`) runs against the global `lx`,
-`Page`, and `App` objects.
+The globals every Logic file (`pages/*/index.ts`) runs against: `lx`, `Page`,
+`App`, and the Web profile.
 
 **`@lingxia/types` is the API reference.** Its declarations and JSDoc are
-generated from the runtime's Rust API definitions and are authoritative for
-method signatures, option and result shapes, defaults, restrictions, platform
-support, and task behavior. Do not maintain a second API catalog in Markdown.
-This page only explains how to wire those declarations into a project and how
-the Logic runtime differs from View.
-
-For page mechanics (`data`, `setData`, lifecycle), see [`./guide.md`](./guide.md).
-For stream and channel behavior, see [`./bridge.md`](./bridge.md).
-
----
+generated from the runtime and are authoritative for signatures, options,
+results, defaults, and platform support. The skill docs do not copy them; read
+the declarations (and `@lingxia/react` / `@lingxia/vue` / `@lingxia/bridge` for
+View types). This page covers only what the declarations cannot say.
 
 ## Install typing
 
-The LingXia scaffold configures this automatically. For an existing lxapp,
-install the package at the same version as the `lingxia` CLI:
+The scaffold configures this. For an existing lxapp, match the CLI version:
 
 ```bash
 npm install --save-dev @lingxia/types@<lingxia-version>
 ```
-
-Logic needs both the LingXia globals and the generated portable Web API profile:
 
 ```json
 {
@@ -35,69 +26,48 @@ Logic needs both the LingXia globals and the generated portable Web API profile:
 }
 ```
 
-Keep that configuration in `tsconfig.logic.json`; View uses a separate config
-with the DOM library. The scaffold's root `tsconfig.json` references both so the
-editor applies the correct environment to each file.
-
----
+Keep that in `tsconfig.logic.json`; the View has its own config with the DOM
+library, and the root `tsconfig.json` references both.
 
 ## Find a method or type
 
-- Navigation takes a configured page name, and after a build completion offers
-  only this lxapp's own. A name computed at runtime needs
-  `page as ConfiguredPageName`; another lxapp's page
-  (`lx.navigateToApp`, `lx.shell.openApp`) stays a plain string.
-- Type `lx.` in the editor and hover a member to read its generated JSDoc.
-- Import reusable shapes from the package root, for example
-  `import type { ScanCodeResult } from '@lingxia/types'`.
-  Automation types come from `@lingxia/types/automation`. In Logic,
-  `lx.automation()` needs the `automation` privilege for this app and `host`
-  for other apps and host tiers ([grants](../native/permissions.md)).
-- For the complete declaration, inspect
+- Type `lx.` in the editor and hover for JSDoc; the full declaration is
   `node_modules/@lingxia/types/dist/generated/logic.d.ts`.
+- Import shapes from the root: `import type { ScanCodeResult } from '@lingxia/types'`.
+  Automation types come from `@lingxia/types/automation`; Logic
+  `lx.automation()` needs the `automation` (and, for other apps, `host`)
+  [grant](../native/permissions.md).
+- Navigation takes a configured **page name**, never a path. A name computed
+  at runtime needs `page as ConfiguredPageName`; another lxapp's page
+  (`lx.navigateToApp`, `lx.shell.openApp`) is a plain string.
+- Most methods are flat on `lx`; namespaces include `lx.env`, `lx.host`,
+  `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`, `lx.tray`, `lx.shell`.
 
-Most methods are flat on `lx`. Related capabilities use typed namespaces such
-as `lx.env`, `lx.host`, `lx.clipboard`, `lx.navigationBar`, `lx.tabBar`,
-`lx.tray`, and `lx.shell`; editor completion is the authoritative namespace
-map. Page Chrome geometry is a View concern exposed through the framework
-page-chrome helpers and the low-level `window.lxPageChrome` snapshot.
+## Web globals
 
----
+Logic runs in Rong, not a browser. `@lingxia/types/logic-globals` declares what
+exists: `fetch`, timers, `URL`, streams, abort signals, `console`. No DOM, no
+Node globals, no `WebSocket`. `fetch` follows the host
+[network grant](../native/permissions.md). Process APIs are opt-in:
+[`capabilities.process`](../app/project.md#capabilities).
 
-## Standard Web APIs (built-in globals)
+Consume server-sent events with `Rong.SSE`, not `fetch` (Logic `fetch` hands a
+streamed body over in large chunks):
 
-Logic runs in Rong rather than a browser. Its portable Web globals are declared
-by `@lingxia/types/logic-globals`; this includes APIs such as `fetch`, timers,
-`URL`, streams, abort signals, and `console`, but excludes browser DOM and Node
-globals. If a global is absent from that profile, application Logic must not
-assume it exists.
+```ts
+const events = new (Rong as any).SSE(url, {
+  headers: { Authorization: `Bearer ${token}` },
+  reconnect: { baseDelayMs: 1000, maxDelayMs: 30000 },
+});
+for await (const { type, data, id } of events) { /* … */ }
+events.close();
+```
 
-`fetch` follows the host's network grant — unrestricted unless the app registry
-returns one; see [Security Policy](./guide.md#security-policy). The Logic Web
-profile does not include `WebSocket`.
+## Product settings
 
-OS process APIs are a separate host capability with opt-in declarations at
-`@lingxia/types/process`; see
-[`capabilities.process`](../app/project.md#capabilities-section).
-
----
-
-## Runtime convention
-
-### The product owns its settings
-
-A setting the user recognises as belonging to the whole product — its language,
-its light/dark scheme — has exactly one value and exactly one writer, the
-product's Settings surface. No lxapp, panel, or built-in screen keeps a second
-one, and none offers the user a picker of its own.
-
-Narrowing what the product hands you is a different thing, and is invisible to
-the user: shipping catalogs for two languages and falling back for the rest, or
-declaring in `lxapp.json` that this lxapp's UI only works in dark. Those are
-static properties of your code, not preferences someone chose.
-
-So each of these reads the same way: a pair on `lx.host` that every lxapp
-follows, and a writer behind `lx.host.control` that only the Control app has.
+The product's language and light/dark scheme each have one value and one
+writer: the product's Settings screen in the [Control app](../app/control-app.md).
+No lxapp keeps its own copy or offers its own picker.
 
 ```ts
 lx.host.displayLanguage.get();        lx.host.displayLanguage.watch(cb);
@@ -107,161 +77,102 @@ lx.host.control?.displayLanguage.setPreference('zh-CN');
 lx.host.control?.appearance.setPreference('dark');
 ```
 
-`get`/`watch` answer what is in effect. `getPreference`/`setPreference`/
-`watchPreference` answer what the user chose — a system change under `'auto'`
-moves the first pair and leaves the second quiet.
+- `get`/`watch` report what is in effect; `getPreference` / `setPreference` /
+  `watchPreference` report the user's choice (a system change under `'auto'`
+  moves only the first pair).
+- Logic `watch(cb)` calls `cb` with the current value synchronously, before it
+  returns its unsubscribe. Use it to re-set strings you hand to native chrome
+  (titles, tab labels, modals).
+- View: `useLxHost().displayLanguage`, and `<html lang>` / `<html dir>` are set
+  for you. The View's `subscribe(cb)` fires only on change; read `get()` first.
+- Narrowing to the catalogs you ship is yours: `ja-JP` with only `en`/`zh`
+  renders `en` while the product stays `ja-JP`.
+- `lingxia dev --display-language` shadows the effective language; there
+  `get()` and `getPreference()` disagree and `setPreference` shows no effect.
+  Test a Settings screen without the flag.
+- The starting scheme is the host's `theme.defaultAppearance`; a one-scheme
+  lxapp declares `"appearance"` in `lxapp.json`
+  ([Appearance](./guide.md#appearance)).
 
-### Everything else
-
-Unsupported cosmetic capabilities with no meaningful result, such as desktop
-tray presentation on mobile, are silent no-ops. Result-bearing operations and
-invalid usage reject or throw. Each generated method's JSDoc is authoritative
-for its exact behavior.
-
-Use `lx.supports(feature)` for optional feature contracts:
+## `lx.supports`
 
 ```ts
 if (lx.supports('surface.window.fullChrome')) {
   // offer a window with full chrome
 }
-lx.surface.watchContext(({ aside }) => {
-  // aside is live host docking availability, independent of viewport sizeClass
-});
 ```
 
-The supported set is frozen per Logic context. Unknown strings return false;
-non-strings throw TypeError. `LxFeature` is generated from the runtime registry.
-Required features need an appropriate `lxapp.json` `minRuntime`; optional ones
-use supports and a fallback. Permissions, grants and resource failures are checked at the
-operation, so true is not permission or a promise of success.
-
-`process` is where that gap shows: `lx.supports('process')` is true and
-`lx.process` exists in a Control app that declared `capabilities.process`, but
-every call throws until the native host has granted the process resource.
-
-Optional namespaces and their base feature share the frozen set: `terminal`,
-`app.autostart`, `app.notification`, `app.banner`. For Control app identity
-and its product-wide cache API use `lx.host.control !== undefined`, not a
-feature key. `main` and `float` are baseline surface placements in ordinary
-lxapp Logic; use them directly without a supports query. Focused Terminal
-Settings contexts still omit the general app and surface APIs.
-
-`lx.host.control` holds the product-wide settings and their single writer. It is
-injected only into the app the host sealed as its Control app at build time, so
-the same lxapp opened as a guest elsewhere simply does not have it. Write
-`lx.host.control?.…`.
-
-`lx.terminal.settings`, `colorSchemes`, `fonts`, and Windows terminal control
-are additionally restricted to the host-bundled Terminal Settings session the
-native host assigned as a control surface; not even the Control app reaches
-them. A matching app id or bundled source does not grant this authority.
-
-Which session is which, the full list of Control-app-only calls, and what a
-refusal reads like: [The Control app](../app/control-app.md).
-
----
+- The set is frozen per Logic context. Unknown strings return false;
+  non-strings throw `TypeError`.
+- `true` is not permission: grants and failures surface at the call. With
+  `capabilities.process`, `lx.supports('process')` is true yet every call throws
+  until the host grants the process resource.
+- Optional namespaces share it: `terminal`, `app.autostart`,
+  `app.notification`, `app.banner`.
+- Required features need a matching `minRuntime`; optional ones need a
+  fallback.
+- Use `lx.host.control?.…` for Control-app members, not a feature key
+  ([Control app](../app/control-app.md)).
+- Unsupported cosmetic calls (tray on mobile) are silent no-ops; calls with a
+  result reject.
 
 ## Badges
 
-`lx.host.setBadge(value, options?)` — Control-app only, resolves whether
-anything was painted. Signatures are in `@lingxia/types`; what they do
-not say:
+`lx.host.setBadge(value, options?)` (Control app) resolves whether anything was
+painted:
 
-- One call covers every product-owned surface. `surface: 'auto'` (the default)
-  marks the dock *and* the menu-bar item on macOS, the taskbar *and* the
-  notification-area item on Windows, the home-screen icon on iOS and HarmonyOS.
-  There is no separate tray badge call.
-- A surface with nothing to paint on resolves `false`, never a rejection —
-  no such chrome on this platform, or a macOS tray the product has not shown.
-- The method is always present. Call `await lx.host.setBadge(count)` directly;
-  use its boolean result if the product needs to know whether it painted.
-  There is no separate badge capability query.
-- **Android returns `false`.** There is no cross-vendor launcher badge; what a
-  launcher shows comes from active notifications, not from a standalone count.
-- **Both Apple platforms tie the badge to notification permission**, in
-  different ways. On macOS the label always reaches the system, but the Dock
-  refuses to draw it for an app that is registered with Notification Center
-  and not allowed — so a host that declares `capabilities.notifications` and
-  whose user dismissed or denied the prompt gets `false` and no badge, while
-  a host that never asks is unaffected. Call
-  `lx.host.notification.requestPermission()` before you rely on a count.
-- **iOS needs notification permission** and only accepts a number. The
-  home-screen badge is drawn by the notification system, so a build that never
-  asked cannot paint one, and a non-numeric value is a parameter error rather
-  than a silent clear. That is the OS's rule; a badge is otherwise independent
-  of `lx.host.notification`, which never changes it.
-- A badge is decoration: it never prompts, never interrupts, and posting a
-  notification does not set one.
+- `surface: 'auto'` (default) covers dock and menu bar on macOS, taskbar and
+  tray on Windows, the home-screen icon on iOS and HarmonyOS.
+- Nothing to paint on resolves `false`, never rejects. **Android** always
+  resolves `false`.
+- **Apple**: request notification permission first
+  (`lx.host.notification.requestPermission()`); a denied macOS app gets no Dock
+  badge, and iOS accepts only numbers.
+- A badge never prompts, and a notification never sets one. Pass `null` to
+  clear.
+
+`lx.tray.setIcon` / `setTitle` / `setMenu` / `onClick` / `show` / `hide` change
+the tray item declared in [`lingxia.yaml`](../app/project.md#tray-apps).
 
 ## Desktop banner
 
-`lx.host.banner` — Control-app only, desktop only (macOS / Windows). Not an OS
-notification and not bound to App Link. Presence and
-`lx.supports('app.banner')` always agree; guests and mobile builds
-do not have the member. No yaml capability: this is product-drawn chrome.
+`lx.host.banner` (Control app, macOS/Windows; present exactly when
+`lx.supports('app.banner')`) draws a product card in the top-right corner. No
+yaml capability.
 
-- No `actions`: informational card, auto-dismisses in 5s unless `timeoutMs` is
-  set. The close control resolves `{ status: 'canceled', reason: 'dismissed' }`.
-- With `actions` (at most two): a gate. No close control. Resolves the chosen
-  `action` id, or `canceled` on timeout / replace. Failures to present reject.
-- Same `id` replaces the current card (`reason: 'replaced'`). Different ids
-  queue. Host Rust uses the same primitive: `lingxia::app::banner::show`. That
-  call blocks until the card resolves — from an async Rust task use a blocking
-  worker. Do not call a no-timeout prompt on the macOS main thread: the panel
-  is presented on main, and a click cannot run while `show` holds it.
-- `background` is optional: omit/`system` follows the OS (vibrancy on macOS);
-  `light`/`dark` force chrome; `#RGB` / `#RRGGBB` / `#RRGGBBAA` paints a solid
-  fill and picks title contrast from luminance. Width is fixed at 328 pt.
+- Without `actions`: informational, auto-dismisses after 5 s unless
+  `timeoutMs`; closing resolves `{ status: 'canceled', reason: 'dismissed' }`.
+- With `actions` (at most two): a gate without close control; resolves the
+  chosen `action`, or `canceled` on timeout or replacement.
+- The same `id` replaces (`reason: 'replaced'`); different ids queue.
+- `background`: omitted/`system`, `light`, `dark`, or a `#RGB` / `#RRGGBB` /
+  `#RRGGBBAA` fill. Width is 328 pt.
 
 ## Local notifications
 
-`lx.host.notification` — Control-app only, absent without
-`capabilities.notifications`. Signatures are in `@lingxia/types`; what they do
-not say:
+`lx.host.notification` (Control app, needs `capabilities.notifications`):
 
 - An immediate `show` while the product is frontmost resolves
-  `status: 'suppressed'` and posts nothing. A scheduled one is presented when
-  it fires, frontmost or not.
-- `id` replaces on every path, `'suppressed'` included, and the replaced
-  notification's tap target stops resolving at the same moment.
-- `status: 'posted'` means the OS accepted it for display. Nothing reports that
-  anyone saw, read, or acted on it.
-- `target` decides where a tap goes:
-  - omitted, or `{ kind: 'activate' }` — bring the product forward, nothing else;
-  - `{ kind: 'page', page, query }` — a page of this Control app, same contract
-    as `lx.navigateTo`. Ordinary scene, not an App Link.
-  - `{ kind: 'app', appId, page, query }` — another lxapp, same contract as
-    `lx.navigateToApp`.
-  - `{ kind: 'route', name, params }` — a location the host registered at
-    startup that is not a page. Ask the host which names and parameters exist;
-    an unknown name or an undeclared parameter rejects at `show`.
-  - `{ kind: 'appLink', url }` — an `https://` URL on a configured
-    [App Link](../app/applinks.md) host, delivered as `scene === 8003`. Use this
-    only for a real inbound product URL, not as a stand-in for `page` / `app`.
-- A tap resolves the target again when it happens. A page or route the build no
-  longer has, a cancelled or replaced notification, or cleared app data brings
-  the product forward and reports that it is unavailable — it never falls back
-  to some other target.
-- Limits: Android battery saver can fire a schedule minutes late, and a reboot
-  drops it. HarmonyOS banners are a user-only system toggle, `silent` does
-  nothing there, and `schedule` rejects unless Huawei granted the app the
-  agent-reminder privilege.
+  `status: 'suppressed'` and posts nothing; scheduled ones always present.
+- `id` replaces on every path; the replaced tap target stops resolving.
+- `status: 'posted'` means the OS accepted it, nothing more.
+- `target` decides where a tap goes, resolved at tap time with no fallback:
+  - omitted, or `{ kind: 'activate' }` — bring the product forward;
+  - `{ kind: 'page', page, query }` — a page of this app, as `lx.navigateTo`;
+  - `{ kind: 'app', appId, page, query }` — another lxapp, as `lx.navigateToApp`;
+  - `{ kind: 'route', name, params }` — a host-registered location;
+  - `{ kind: 'appLink', url }` — a URL on a configured
+    [App Link](../app/applinks.md) host, delivered as `scene === 8003`.
+- Android may fire schedules late and drops them on reboot; on HarmonyOS
+  `silent` does nothing and `schedule` needs the agent-reminder privilege.
 
----
+## Errors
 
-## Handling errors
-
-A rejection means the operation failed. It never means the user said no. The
-dismissable APIs — `showActionSheet`, `showModal`, `chooseFile`, `pickFile`,
-`pickFiles`, `chooseDirectory`, `chooseMedia`, `scanCode`, and the `lx.clipboard` reads
-`readText` / `read` (iOS 16+ and macOS 15.4+ may show a paste prompt) — resolve
-a result discriminated on `status`, so dismissal is a branch, not an error
-path.
-
-`lx.share` is the exception: some platforms only observe that the system sheet
-opened and closed, so it reports a three-state `outcome` —
-`'completed' | 'dismissed' | 'unknown'` — rather than claiming a certainty it
-does not have.
+A rejection means the operation failed, never that the user said no.
+Dismissable APIs (`showActionSheet`, `showModal`, `chooseFile`, `pickFile`,
+`pickFiles`, `chooseDirectory`, `chooseMedia`, `scanCode`, `lx.clipboard`
+reads) resolve a result discriminated on `status`. `lx.share` reports
+`outcome: 'completed' | 'dismissed' | 'unknown'`.
 
 ```ts
 const scan = await lx.scanCode()
@@ -269,10 +180,8 @@ if (scan.status === 'canceled') return                   // the user backed out
 lx.showToast({ title: scan.scanResult })    // narrowed: the payload is present
 ```
 
-A rejection carries a numeric code from the runtime's error registry, which is
-generated from the same Rust definitions as the typings. Read that code through
-`@lingxia/types/error`; never branch on the message text, which is localized and
-not a contract:
+Branch on the numeric code through `@lingxia/types/error`, never on the
+localized message:
 
 ```ts
 import { parseLxApiError, formatLxApiError } from '@lingxia/types/error'
@@ -286,19 +195,12 @@ try {
 }
 ```
 
-`parseLxApiError` returns `null` for anything that is not a recognized runtime
-error, so a genuine bug stays distinguishable from a known failure. The
-module also exports `isLxApiError` as a type guard, `requireLxApiError` when an
-unrecognized error should escalate, and `extractLxErrorCode` /
-`infoForLxErrorCode` for direct registry access. A parsed error's `key` is an
-i18n key, so a product with its own copy can look up wording instead of showing
-the runtime's message.
-
----
+The module also exports `isLxApiError`, `requireLxApiError`,
+`extractLxErrorCode`, `infoForLxErrorCode`, and `hostUpgradeRequired`; a parsed
+error's `key` is an i18n key for your own copy.
 
 ## Logic and native APIs
 
-`lx.*` belongs to Logic. Host routes declared with `#[lingxia::native(...)]` are
-called from View through the generated `@lingxia/native` client. To expose a
-host Rust helper to Logic as `lx.<namespace>.*`, define a `lingxia::js`
-extension. See [Native development](../native/development.md) for both models.
+`lx.*` belongs to Logic. `#[lingxia::native]` routes are called from the View
+through `@lingxia/native`; a `lingxia::js` extension adds `lx.<namespace>.*` to
+Logic. Both: [Native development](../native/development.md).

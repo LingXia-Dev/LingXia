@@ -1,32 +1,15 @@
-# LxApp Development Guide
+# Lxapp pages
 
-This guide covers how to write lxapp pages — project layout, the View + Logic architecture, data flow, event handling, and native component integration.
+How to write lxapp pages: layout, the Logic/View split, events, `App({})`, and
+page chrome.
 
-Companion pages in this skill:
-
-- [Adaptive UI](./adaptive-ui.md) - surface size classes, dynamic View
-  selection, and Runner device-frame testing.
-- [Components](./components.md) — inline native island (`LxNativeRoot` wraps `LxVideo`, plus Cover/View/Text/Button) and presenters (`LxPicker`, `LxMediaSwiper`, `LxNavigator`); text input is plain `<input>` / `<textarea>`.
-- [Logic runtime and typings](./lx-api.md) — runtime globals and typing wiring; signatures and behavior live in the generated `@lingxia/types` declarations.
-- [Bridge Guide](./bridge.md) — `setData`, stream, channel mechanics in depth.
-- [App Project](../app/project.md) — host app setup (`lingxia.yaml`, adaptive `surfaces`).
-
----
-
-## Create an LxApp
+## Scaffold
 
 ```bash
 lingxia new my-lxapp -t lxapp -y
 ```
 
-This creates a standalone lxapp project. To create a native host app, use
-`-t native-app` instead. Hosts normally embed a control lxapp, while a desktop
-terminal/browser main may use native control with no bundled lxapp (see [App
-Project](../app/project.md)).
-
----
-
-## Project Layout
+## Layout
 
 ```text
 my-lxapp/
@@ -42,21 +25,22 @@ my-lxapp/
 └── shared/
 ```
 
-`lxapp.json` holds runtime metadata: `appId`, `appName`, `version`, `minRuntime`,
-and `pages`. It declares no network hosts or privileges. `appName` is only the
-fallback for the name hosts show — the app registry's record wins.
-`lxapp.config.ts` holds build config (view tooling, aliases, static asset
-directories).
-
-`minRuntime` is the lowest host SDK that may open this package. `lingxia new`
-writes the project line (`M.m.0`), `lingxia upgrade` raises it, and build and
-publish refuse an lxapp without it. An older host refuses to open or update the
-package; detect that with `hostUpgradeRequired(error)` from
-`@lingxia/types/error` and tell the user to update the host app.
+- `lxapp.json` — `appId`, `appName`, `version`, `minRuntime`, `pages`. `appName`
+  is only a fallback; the app registry's name wins. It declares no network
+  hosts or privileges: those are [host grants](../native/permissions.md),
+  unrestricted by default.
+- `minRuntime` — the lowest host SDK that may open the package; `lingxia new`
+  writes it and `lingxia upgrade` raises it. An older host refuses the
+  package; detect that with `hostUpgradeRequired(error)` from
+  `@lingxia/types/error` and ask the user to update the host app.
+- `lxapp.config.ts` — build config (view tooling, aliases, `staticDirs`).
 
 ### Static assets
 
-Use `staticDirs` in `lxapp.config.ts` to declare root-level directories that should be copied into `dist/` as-is for `html`, `react`, and `vue`.
+`public/` and `assets/` are copied to `dist/` as-is. Declare others in
+`staticDirs`; each must exist, and paths are preserved
+(`view/info-panel.js` → `dist/view/info-panel.js`). Nothing is discovered by
+scanning sources.
 
 ```ts
 export default {
@@ -64,80 +48,17 @@ export default {
 };
 ```
 
-Rules:
-
-- `public/` and `assets/` are the default static directories. If the project root contains either of them, LingXia copies it to `dist/` even when `staticDirs` is omitted.
-- Additional directories must be declared explicitly in `staticDirs`.
-- Explicit `staticDirs` entries must exist at the project root. LingXia treats missing configured directories as build errors.
-- Paths are preserved. For example, `view/info-panel.js` becomes `dist/view/info-panel.js`.
-- LingXia does not scan HTML, manifest files, or arbitrary source strings to discover static assets.
-
-### Security Policy
-
-`lxapp.json` lists no network hosts or privilege classes. The host does,
-like WeChat's server-domain list, and it allows everything until an app
-registry says otherwise. `lingxia.yaml` carries no permission settings either.
-
-- Only an explicit registry grant restricts an lxapp. No provider, an app the
-  registry does not know, an unreachable registry, and an unconstrained half of
-  a grant all leave the default: public network and every privilege class.
-- The host's own home lxapp is unrestricted without any lookup — the host
-  vouched for it by loading it.
-- Host grants use lowercase hosts without scheme, path or port.
-  `*.example.com` matches subdomains. `*` allows every public host and cannot
-  be mixed with named hosts. Non-public addresses stay blocked either way.
-- `downloads` is for `lx.downloadFile({ destination: "downloads" })` and still
-  needs a native session grant. App-owned downloads only need the network
-  grant. `process` also needs the Control app, `lingxia.yaml`
-  `capabilities.process`, and a native Process grant. Camera, location and
-  similar APIs stay on OS permission flows.
-- The runtime resolves the policy once per instance, before Logic and normal
-  page HTML execute. Recreate the instance to pick up a changed grant. It feeds
-  Logic networking, file transfers and native media — it does not replace
-  platform permissions or the WebView CSP.
-
-The development Runner does not grant home trust to a project merely because it
-uses the home slot. Unset, guests stay unrestricted. To constrain:
-
-```sh
-LINGXIA_RUNNER_LXAPP_PERMISSIONS='{"lingxia-chat":{"domains":["www.deepseek.com"]}}' lingxia dev
-```
-
-The JSON maps app ids to `{"domains": [...], "privileges": [...]}`; omitted
-fields stay unconstrained, and an app it does not list is one this registry has
-no policy for, so it stays unrestricted. This is a Runner process setting, never
-a project manifest. See [host permissions](../native/permissions.md) for how a
-registry is registered and what it answers.
-
-### Native client
-
-Views call Rust native APIs through a generated Native client. LxApp projects do not configure Rust source paths. Native host builds generate the client from the native Rust crate's `build.rs` with `lingxia-native-codegen`.
-
-The CLI passes the canonical output path through `LINGXIA_NATIVE_CLIENT_OUT` during native cargo builds. React/Vue projects get `.lingxia/native.ts` and import it through `@lingxia/native`; HTML projects get `.lingxia/native.js`, which the build copies explicitly into `dist/.lingxia/native.js`.
-
 ### Build
 
-- `lingxia build` builds page assets and runtime artifacts into `dist/`.
-- `lingxia build --release --package` produces package archive for publish.
+- `lingxia build` builds into `dist/`; `lingxia build --release --package`
+  produces the publish archive.
+- A View reaching for `lx.*`, or calling an action `Page({})` never defined,
+  fails the build. Other findings are warnings: the artifact is written, the
+  code is still wrong.
 
-The build enforces the View/Logic boundary: a View reaching for `lx.*`, or
-calling an action `Page({})` never defined, fails it. Everything else it reports
-is a warning — the artifact is written, the code is still wrong.
+## Logic — `Page({})`
 
----
-
-## Page Architecture
-
-Every page is split into two layers that talk over a bridge. **View** (WebView,
-React/Vue + `useLxPage`) renders UI. **Logic** (native JS runtime, the `Page({})`
-instance) owns state and business operations: it pushes state to View with
-`setData()`, and View calls back through auto-generated bridge bindings.
-
----
-
-## Logic Layer — `Page({})`
-
-The Logic file exports a `Page({})` call. The `Page` function is provided globally by the runtime — you don't import it.
+`Page` is a runtime global; do not import it.
 
 ```ts
 // pages/home/index.ts
@@ -168,75 +89,41 @@ Page({
 });
 ```
 
-### Key concepts
-
 | API | Description |
 | --- | --- |
-| `this.data` | Current page state. A readonly view — use `setData()` / `setPath()` to change. |
-| `this.setData(patch)` | Merge a top-level partial into `data` and replicate to View. Nested writes use `setPath` (checked) or `setDataPath` (unchecked). |
-| `await this.flush()` | Resolves once every `setData` issued so far is acknowledged by the View; rejects if the page unloads first, or if the runtime discarded a write before the View could receive it. |
-| `this.signal` | An `AbortSignal` aborted as the page unloads, before `onUnload` runs. Pass it to work the page starts — `fetch(url, { signal: this.signal })` — and that work stops with the page, rejecting with an `AbortError`, instead of resolving into one that is gone. It does not fire when the whole lxapp shuts down; its Logic ends with it. |
-| `this.yourMethod()` | Anything else you declare beside the hooks is a page method, reachable through `this`. A name that differs from a lifecycle hook only in case (`onload`) is rejected, because the runtime would never call it. |
-| `lx.*` | Global platform APIs (e.g. `lx.navigationBar.update()`, `lx.createVideoContext()`). |
+| `this.data` | Current state, read-only. Change it with `setData()` / `setPath()`. |
+| `this.setData(patch)` | Merge top-level keys into `data` and replicate to View. Nested writes: `setPath` (checked), `setDataPath` (unchecked). |
+| `await this.flush()` | Resolves once every `setData` so far reached the View; rejects if the page unloads first or a write was discarded. |
+| `this.signal` | `AbortSignal` aborted as the page unloads, before `onUnload`. Pass it to work the page starts: `fetch(url, { signal: this.signal })`. |
+| `this.yourMethod()` | Any other member is a page method. A name differing from a hook only in case (`onload`) is rejected. |
 
-### Page lifecycle
+### Lifecycle
 
 | Hook | When it fires |
 | --- | --- |
-| `onLoad(options)` | Entering the page. `options` carries the query params. |
-| `onShow()` | Becoming visible — on entry, and again every time it comes back. |
-| `onReady()` | The page's document has finished rendering, after the first `onShow`. |
-| `onHide()` | Another page covered it, or the lxapp went to the background. |
-| `onUnload()` | The page left the stack (`lx.navigateBack`, `lx.redirectTo`, a `lx.switchTab` that drops it). |
+| `onLoad(options)` | Entering the page, with its query. |
+| `onShow()` | Becoming visible, on entry and every return. |
+| `onReady()` | The document finished rendering, after the first `onShow`. |
+| `onHide()` | Covered by another page, or the lxapp went to the background. |
+| `onUnload()` | Left the stack (`navigateBack`, `redirectTo`, a `switchTab` that drops it). |
 
-**Leaving a page ends that page instance.** After `onUnload`, entering the same
-page again starts a fresh one: `data` is back to what `Page({ data })` declares,
-and the View is a newly rendered document — a dialog left open, a scroll
-position, or anything else the page accumulated is gone. Put whatever must
-survive in `lx.getStorage()` or in `App({})`.
+- **Leaving unloads.** Entering again starts a fresh instance: `data` is back
+  to its defaults and the View is a new document. Keep what must survive in
+  `lx.getStorage()` or `App({})`.
+- **Hidden keeps state.** A covered or backgrounded page keeps `data`. A
+  desktop host may discard a hidden lxapp's inactive tab WebView: `data` stays,
+  and the next show brings `onShow` and a new `onReady`.
+- `redirectTo` onto the current page keeps the instance and calls `onLoad`
+  again.
+- Every `navigateTo` is its own instance, so `detail?id=1 → detail?id=2`
+  stacks. Tab pages are singletons. Rejections carry `error.data.reason`:
+  `"duplicate_route"` or `"stack_full"` (ten pages).
+- `await lx.navigateBack()` pops one; `lx.navigateBack({ delta: 2 })` pops more.
 
-`onHide` is not `onUnload`. A page covered by another page, or backgrounded with
-the lxapp, keeps its instance and its `data`, and simply gets `onShow` again on
-return. `lx.switchTab` only hides the tab page it leaves — but any page pushed
-on top of a tab is dropped from the stack and unloaded like a `navigateBack`.
+### What resets
 
-On a desktop host the shell may **discard** a hidden lxapp's non-current tab
-WebView — under memory pressure, or after the tab sits idle for a while. That is
-not `onUnload`: Logic `data` stays. The next show rebuilds the document
-(`onShow`, then a new `onReady`), so scroll position and open dialogs in that
-View do not survive. Every tab of the visible lxapp, and every page still on a
-hidden main's stack, stay warm.
-
-`lx.redirectTo` onto the page you are already on is the one exception: the page
-never leaves the screen, so it keeps its instance and simply gets `onLoad` again
-with the new query.
-
-A route can appear on the page stack more than once: every `lx.navigateTo`
-entry is its own page instance with its own data and document, so drill-down
-flows like `detail?id=1 → detail?id=2` stack naturally and unwind one entry at
-a time. Tab pages are the exception — each tab is a warm singleton, so it can
-hold only one stack slot at a time. Navigation rejections carry stable
-metadata in `error.data`: `reason` is `"duplicate_route"` (a tab page already
-on the stack) or `"stack_full"` (the ten-page limit), with the attempted
-`operation` and resolved `target`.
-
-`lx.navigateBack()` pops one page by default; pass `{ delta }` to pop more. It
-returns a promise like the other navigation APIs, resolving once the revealed
-page's WebView is ready:
-
-```ts
-await lx.navigateBack();
-await lx.navigateBack({ delta: 2 });
-```
-
-### What resets, what survives
-
-A page instance resets on every entry — but **module-level variables do not**.
-A page's logic file is a JavaScript module, evaluated once per app session; everything
-declared outside `Page({})` lives in module scope, survives every page
-entry and exit, and is shared by ALL live instances of that route at the same
-time — with duplicate routes, two stacked `detail` pages read and write the
-same module variable.
+Module scope (outside `Page({})`) is evaluated once per app session and is
+shared by every live instance of the route:
 
 ```ts
 let hits = 0;          // module scope: shared by every instance, never resets
@@ -249,89 +136,53 @@ Page({
 });
 ```
 
-Pick the container by lifetime:
-
 | State | Container | Lifetime |
 | --- | --- | --- |
-| Belongs to one entry (form input, counters, request handles, timers) | `data` / `this.xxx` | The page instance — fresh per entry |
-| Shared by every instance of the route (constants, memo caches, a singleton connection) | Module scope (outside `Page({})`) | The app's Logic runtime — until the lxapp restarts |
+| One entry (form input, timers, request handles) | `data` / `this.xxx` | The page instance |
+| Every instance of the route (constants, caches) | Module scope | Until the lxapp restarts |
 | Must survive restarts | `lx.getStorage()` | Persistent |
 
-Never keep per-entry state (request sequence numbers, timer handles,
-in-flight flags) in module scope: it silently couples same-route instances.
+Never keep per-entry state in module scope.
 
 ### Private helpers
 
-The leading `_` is the whole rule: a method starting with `_` stays private,
-and **every** other method becomes a public action the View can call. Nothing
-else is special — a name like `onCheckout` reads as a lifecycle hook but is an
-ordinary action, so name actions for what they do:
-
-```ts
-Page({
-  data: { total: 0 },
-
-  _calculateTotal: function (items) {
-    return items.reduce((sum, item) => sum + item.price, 0);
-  },
-
-  checkout: function (params) {
-    const total = this._calculateTotal(params?.items || []);
-    this.setData({ total });
-  },
-});
-```
-
-TypeScript infers the config's own members, so `this._calculateTotal(...)`
-resolves under `strict` just as it runs in JavaScript.
-
-Name the `data` shape by annotating `data`, not with a type argument on `Page`:
-a type argument leaves the rest of the config uninferred, and `this` loses your
-own methods again.
+A method starting with `_` stays private; every other method is a public
+action the View can call (`onCheckout` too). Name the `data` shape by
+annotating `data`, not with a type argument on `Page`, so `this` keeps your
+methods:
 
 ```ts
 Page({
   data: { total: 0 } as PageData,
+
+  _calculateTotal(items) {
+    return items.reduce((sum, item) => sum + item.price, 0);
+  },
+
   checkout(params) {
     this.setData({ total: this._calculateTotal(params?.items ?? []) });
   },
 });
 ```
 
----
+## View
 
-## View Layer
+A View is a React or Vue component, or an HTML module entry. It renders `data`
+and calls `actions`; it never mutates `data`.
 
-The View file can be a standard React component, a Vue component, or an HTML module entry. The framework packages connect View to the Logic layer and expose:
-
-- `data` — reactive page state replicated from Logic via `setData()`
-- `actions` — public functions exported from `Page({})`
-
-### Typing `PageData` and `PageActions`
-
-A page mounts ready: its View renders only once the page's first state has
-arrived — the host sends it at bridge-ready, before `onLoad`, carrying
-`Page({ data })`'s defaults — so `data` is whole from the first render. There
-is no readiness gate, no `Partial<PageData>`, and no cast. In your product
-contracts:
-
-- **Required by default.** Fields declared in Logic `data: { … }` and public methods are required.
-- **Mark `?:` only when the field is genuinely populated lazily** — for example, a field that starts unset and is filled by `this.setData(…)` after an async fetch in `onLoad`.
-
-Do not make the product contract all-optional or use `actions.foo?.()` to hide
-a missing action. If Logic never delivers the state — it failed to load, or
-threw first — the page shows a panel naming itself instead of staying blank.
-
-A View has two page-level hooks:
+The page mounts once its first state (the `Page({ data })` defaults) has
+arrived, so `data` is whole from the first render. Type `PageData` and
+`PageActions` fields as **required**; use `?:` only for a field filled later.
+Never write `actions.foo?.()`. If Logic fails to deliver state, the page shows
+a panel naming itself.
 
 | Hook | Returns | Changes |
 |---|---|---|
-| `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and methods | on every `setData` |
-| `useLxHost()` | `{ sizeClass, aside, displayLanguage, formFactor, os, runner }` — what the host decided | only when one of them changes; never while a window is dragged |
+| `useLxPage<PageData, PageActions>()` | `{ data, actions }` — this page's Logic state and public methods | on every `setData` |
+| `useLxHost()` | [host facts](#host-facts) | only when a field changes |
 
-Any component may call either; neither needs props passed down. Geometry is
-CSS, not a hook — see [page chrome](#laying-out-under-immersive-chrome) and
-[adaptive Views](adaptive-ui.md).
+Any component may call either. Geometry is CSS, not a hook:
+[page chrome CSS](#page-chrome-css).
 
 ### React
 
@@ -368,7 +219,11 @@ export default function HomePage() {
 
 ### Vue
 
-Identical shape via `@lingxia/vue`: `const { data, actions } = useLxPage<PageData, PageActions>()` and `const host = useLxHost()` in `<script setup lang="ts">`, then bind `{{ data.count }}`, `host.sizeClass` and `@click="actions.increment()"` in the template. `data` is deep-reactive and updated in place, so destructuring it stays live; read `host.sizeClass` rather than destructuring `host`. `lingxia new …` scaffolds the full file.
+The same with `@lingxia/vue` in `<script setup lang="ts">`: `const { data,
+actions } = useLxPage<PageData, PageActions>()`, `const host = useLxHost()`,
+then `{{ data.count }}`, `host.sizeClass`, `@click="actions.increment()"`.
+`data` is deep-reactive, so destructuring it stays live; read `host.sizeClass`
+rather than destructuring `host`.
 
 ### HTML
 
@@ -386,39 +241,41 @@ void pageReady().then(() => {
 });
 ```
 
-`getHost()` / `subscribeHost()` are the HTML form of `useLxHost()`. A page that
-bundles nothing reads `window.LingXiaBridge.host.get()` / `.subscribe(cb)`.
+### Host facts
 
-### What `useLxPage()` returns
+```ts
+const { sizeClass, aside, displayLanguage, formFactor, os, runner } = useLxHost();
+```
 
-- **`data`** — This page's Logic state, updated whenever Logic calls `setData()`. In React this re-renders; in Vue it is a `reactive()` object updated in place.
-- **`actions`** — All public functions from `Page({})` (except lifecycle hooks and `_`-prefixed methods), one object for the page. Each action is a bridge function that calls through to the Logic layer.
+`getHost()` / `subscribeHost(cb)` in `@lingxia/html`;
+`window.LingXiaBridge.host.get()` / `.subscribe(cb)` in a page that bundles
+nothing. It never changes while a window is dragged.
 
-Use typed `PageActions` interfaces so View and Logic stay aligned as your page grows.
+- `sizeClass` (`compact` | `regular`) and `aside` — how much room:
+  [Adaptive UI](./adaptive-ui.md).
+- `formFactor` (`mobile` | `desktop`) — which machine. Branch on it for what a
+  phone must not show. A narrow desktop window is `desktop`; a tablet or
+  unfolded fold is `mobile`.
+- `os` — `'iOS' | 'macOS' | 'Android' | 'Windows' | 'Harmony' | 'unknown'`, for
+  OS-specific features only. `runner` is `true` in the dev Runner.
+- `displayLanguage` — the product language; the runtime also sets
+  `<html lang>` and `<html dir>`. See [Product settings](./lx-api.md#product-settings).
 
----
+`formFactor`, `os`, and `runner` are fixed for a page's life. A Runner phone
+frame reports `mobile` while `os` names the desktop; switching form factor
+re-serves the page. Logic reads the OS with `lx.device.getDeviceInfo()`.
 
-## Data Flow
+## Events
 
-State flows **one way**: Logic `setData()` → bridge replication → View `data` re-render. View never mutates `data` directly — it calls Logic actions, which call `setData()`. Full mechanics (JSON Patch replication, batching, stream/channel): [`./bridge.md`](./bridge.md).
+Use framework syntax (`onX` in React, `@event` in Vue). A handler that is an
+`actions.*` function is delivered straight to Logic; a local View function gets
+a DOM event. Native component callbacks and their payload shapes:
+[Components](./components.md#callback-shapes).
 
----
+### `lx.on*` subscriptions
 
-## Event Handling
-
-LingXia routes component events two ways automatically — a **Logic short path**
-(native → Rust → Logic JS) when the handler is an `actions.*` function, and a
-**View DOM path** (native → WebView `CustomEvent` → handler) when it's a local
-View function. You never choose: use framework-native syntax (`onX` in React,
-`@event` in Vue) and the system routes for you.
-
-### Subscribing to `lx.*` events
-
-Every `lx.on*` subscription returns its own unsubscribe function — that returned
-closure is the *only* way to cancel it, so a page that subscribes must keep it
-and call it. There is no `lx.off*` counterpart: a call that cancelled by
-callback could only match by identity, which silently took out another module's
-handler registered with the same function.
+Every `lx.on*` call returns its unsubscribe function, the only way to cancel
+it. Keep it on the page instance (never in `data`) and call it in `onUnload`:
 
 ```ts
 Page({
@@ -437,79 +294,27 @@ Page({
 });
 ```
 
-Unsubscribe in `onUnload`, and keep the closure on the page instance rather than
-in `data` — `data` crosses the bridge and a function cannot. A route can be open
-more than once, so a subscription left behind is leaked once per page instance,
-not once per app. Calling the returned function twice is safe.
+The same applies to `onWifiConnected`, `onDeviceOrientationChange`,
+`onKeyDown`, `onKeyUp`, `lx.surface.watchContext`, `onUpdateReady`,
+`onUpdateFailed`, and a surface handle's `onMessage` / `onShow` / `onHide` /
+`onClose`. A route can be open more than once, so a leak multiplies per
+instance. Work started with `this.signal` needs no teardown; ignore its
+`AbortError`.
 
-Work the page starts needs no teardown of its own: pass `this.signal`, which the
-runtime aborts before `onUnload` runs, instead of keeping an `AbortController`
-per page. Work it stops rejects with an `AbortError`; ignore that rejection
-rather than reporting it.
-
-The same shape covers `onNetworkChange`, `onWifiConnected`,
-`onDeviceOrientationChange`, `onKeyDown`, `onKeyUp`, `lx.surface.watchContext`,
-`onUpdateReady`, `onUpdateFailed`, and the surface handle's `onMessage` /
-`onShow` / `onHide` / `onClose`.
-
-### Native component events
-
-Native components come from `@lingxia/react` / `@lingxia/vue` (HTML views use the
-raw `<lx-*>` tags) and take framework-native handlers:
-
-**React:**
-
-```tsx
-import { useLxPage, LxPicker, LxNativeRoot, LxVideo } from '@lingxia/react';
-
-const { actions } = useLxPage<PageData, PageActions>();
-
-// Input — read the value off the DOM event
-<input onInput={(e) => actions.onInputChange({ value: e.currentTarget.value })} />
-
-// Picker — handler receives resolved value directly
-<LxPicker
-  columns={[['A', 'B', 'C']]}
-  onConfirm={(value) => actions.onPickerConfirm({ field: 'choice', value })}
-/>
-
-// Video — island node, so the handler receives the payload (here `{}`)
-<LxNativeRoot>
-  <LxVideo src={url} onPlaying={actions.onPlaying} />
-</LxNativeRoot>
-```
-
-Vue is the same with `@lingxia/vue` and `@event` syntax (`@confirm`, `@playing`, `@input`).
-
-Callback payloads differ by component — island nodes and `LxVideo` are payload-first in React/Vue; some presenters still use raw DOM `CustomEvent`. See [Callback shapes by component](./components.md#callback-shapes-by-component) in [`./components.md`](./components.md) for the per-component table and the full attribute/behavior reference (including imperative `LxVideo` control via `lx.createVideoContext()`).
-
----
-
-## Action Shapes
-
-From a page author's perspective, public `Page({})` methods come in three useful shapes:
+## Action shapes
 
 | Logic method shape | Use from View | Typical use |
 | --- | --- | --- |
-| normal function / async function | `actions.foo(...)` from `useLxPage()` | button actions, navigation, one-shot work |
-| async generator | `useLxStream(actions.foo, ...)` | progress, incremental output, chat-style streaming |
-| channel-style session | `useLxChannel(actions.foo, ...)` | long-lived bidirectional sessions |
+| function / async function | `actions.foo(...)` | buttons, navigation, one-shot work |
+| async generator | `useLxStream(actions.foo, ...)` | progress, streaming output |
+| channel handler | `useLxChannel(actions.foo, ...)` | long-lived two-way sessions |
 
-Examples:
+The runtime routes by shape. Details: [Bridge](./bridge.md).
 
-- `increment()` and `updateMessage()` stay in the normal `actions` bucket.
-- `async *onSend(...)` is a stream action and belongs with `useLxStream()`.
-- Session-style logic that stays open over time belongs with `useLxChannel()`.
+## `App({})`
 
-The runtime inspects the Logic method shape and routes it automatically. Use this guide for page authoring; use [Bridge Guide](./bridge.md) for stream/channel lifecycle, cancellation, and transport details.
-
----
-
-## App-wide lifecycle — `App({})`
-
-`Page({})` defines a single page; **`App({})`** defines the **lxapp-wide singleton** — created once when the lxapp boots, shared by every page. Use it for app-scope state, cross-page coordination, and lifecycle hooks that fire regardless of which page is on screen.
-
-Like `Page`, `App` is a runtime-provided global. Define it in a single file at the lxapp root (conventionally `app.ts`). It is **optional** — many lxapps don't need it.
+The optional lxapp-wide singleton, in one root file (conventionally `app.ts`),
+created once at boot and shared by every page:
 
 ```ts
 // app.ts
@@ -547,8 +352,6 @@ App({
 });
 ```
 
-Read app-scope state from any page with `getApp<T>()`:
-
 ```ts
 // pages/profile/index.ts
 Page({
@@ -560,26 +363,18 @@ Page({
 });
 ```
 
-Notes:
+- `globalData` is not reactive; push changes to a page with `setData`.
+- Cold start: `App.onLaunch` → `App.onShow` → `Page.onLoad` → `Page.onShow`.
+  Foregrounding: `App.onShow` → top page's `onShow`.
+- `getCurrentPages()` returns the stack, top last.
 
-- `globalData` is a plain object. **Mutations are not reactive** — pages don't re-render when you change `app.globalData.x`. To propagate changes into the View, write to a page's `data` via `setData`.
-- Lifecycle order on cold start: `App.onLaunch` → `App.onShow` → first page's `Page.onLoad` → `Page.onShow`. On foregrounding: `App.onShow` → top page's `Page.onShow`.
-- `getCurrentPages()` returns the active page stack (top of stack last) when you need to coordinate across pages.
-- Type declarations for `App`, `AppConfig`, `AppInstance`, `AppLaunchOptions`, `AppLifecycleEventArgs`, `getApp`, `getCurrentPages` come from [`@lingxia/types`](./lx-api.md#install-typing).
+## Tab bar and page chrome
 
----
+Page chrome is the native UI around a View: navigation bar with capsule, tab
+bar, appearance. The tab bar is lxapp-internal (`lxapp.json`), unrelated to
+host `surfaces`.
 
-## Tab bar & Page Chrome
-
-**Page Chrome** is the native UI the host renders around a page's View: the navigation bar with its capsule buttons, the tab bar, and the lxapp's light/dark appearance. It is declared in JSON and mutated at runtime through the `lx.*` namespaces below.
-
-A **tab bar** is a persistent navigation strip — typically at the bottom of the screen — that shows the lxapp's primary pages. Tapping a tab switches the active page **without** push/pop semantics: the tab bar stays visible across all tab pages, and tab pages do not stack on each other.
-
-> **Scope.** Tab bar is an **lxapp-internal navigation concept** declared in `lxapp.json`. It has nothing to do with host surfaces — `lingxia.yaml` `surfaces` live one layer up and describe the native shell (windows, asides, sidebar/tray). A host shell renders an lxapp; that lxapp may have its own tab bar inside.
-
-### Declaring the tab bar in `lxapp.json`
-
-Add a `tabBar` block alongside `pages`:
+### Tab bar
 
 ```json
 {
@@ -612,38 +407,25 @@ Add a `tabBar` block alongside `pages`:
 }
 ```
 
-All style keys are optional and inherit the host theme. `backgroundColor`
-paints the **mobile** bar only; on desktop the sidebar uses the host
-`lingxia.yaml` `theme.windowBackgroundColor` instead — a `#FFFFFF` fill
-must not become a white card next to home. `presentation` is `"standard"`
-(the View ends above the bar) or `"immersive"` (the View extends behind
-it). An immersive bar must omit `backgroundColor` and `dividerColor`.
-
-Rules:
-
-- `items` holds **2 to 10** entries.
-- Every `items[].page` must match a `pages[].name`. Paths stay in the catalog;
-  the tab bar does not repeat them.
-- `iconPath` is project-relative — usually under `public/`, so the default
-  static-assets rule copies it verbatim into `dist/`.
-- The first item is initially selected. Placement and dimensions are host-owned.
+- 2 to 10 `items`; each `page` is a `pages[].name`. The first is selected.
+- `presentation`: `"standard"` (View ends above the bar) or `"immersive"` (View
+  extends behind it; omit `backgroundColor` and `dividerColor`).
+- Style keys are optional. Mobile uses them as declared (no OS dark mode by
+  itself); desktop draws the sidebar from the host `theme` and ignores
+  `backgroundColor`. `lx.tabBar.update()` cannot change style.
+- A phone shows the first four items plus **More**; order items by use.
+  Desktop lists all in the sidebar.
+- `"showOn": ["mobile"]` or `["desktop"]` limits an item to one form factor.
+  Indices stay as declared, and each host needs at least two items.
 
 ### Icons
 
-One icon per item; there is no second selected icon to author. Rendering follows
-the file format:
-
-- SVG is a template glyph. The host tints it with `foregroundColor` /
-  `selectedForegroundColor`. A circular highlight behind the icon, with the label outside,
-  marks the active tab.
-- Raster PNG/JPEG/WebP retains its own colours and is center-cropped into the
-  square icon slot. Use square artwork for a logo whose edges must remain visible.
-
-In `lxapp.json`, `iconPath` is a bundled project-relative path. A runtime
-`lx.tabBar.update()` may also use an lxapp-accessible `lx://temp`,
-`lx://usercache`, or `lx://userdata` path. It does not accept a network URL,
-`file:` URL, parent traversal, or a native absolute path from app code. Download
-a remote logo first and pass the returned logical path:
+One icon per item. SVG is a template glyph tinted by the style colours; raster
+PNG/JPEG/WebP keeps its colours and is centre-cropped to a square. In
+`lxapp.json` `iconPath` is project-relative (usually `public/`). At runtime it
+may also be an `lx://temp`, `lx://usercache`, or `lx://userdata` path; network
+URLs, `file:` URLs, `..`, and absolute paths are rejected. Download remote art
+first, and re-download `lx://temp` art after each Logic launch:
 
 ```ts
 const { uri } = await lx.downloadFile({ url: brand.logoUrl }).result;
@@ -652,68 +434,20 @@ await lx.tabBar.update({
 });
 ```
 
-`lx://temp` is temporary. Re-download and reapply it after a later Logic launch;
-do not persist that path as durable application state. Pass `iconPath: null` to
-restore the item icon declared in `lxapp.json`.
+`iconPath: null` restores the declared icon.
 
-### Items that appear on one host class only
+### Switching tabs
 
-A destination bound to a device — a camera scan, or a desktop-only workspace —
-declares the hosts it belongs on:
-
-```json
-{ "text": "Scan", "page": "scan",
-  "iconPath": "public/scan.png", "showOn": ["mobile"] }
-```
-
-`mobile` | `desktop`; omitted means every host. The runtime resolves it from the
-machine, not the window size — a narrowed desktop window is still a desktop —
-and the runner resolves it from the device it is simulating.
-
-Item indices stay as declared, so a badge or `switchTab` targets the same tab on
-every host. Each host is validated on its own: `showOn` may not leave any of
-them fewer than two items.
-
-### More than five tabs
-
-A phone strip fits five slots. Past that the host shows the first four, then a
-**More** slot; tapping it opens the rest in a panel above the bar. A pad strip
-fits the declaration cap (ten), so it does not fold. That is the only pad
-chrome difference: the host is still mobile (no desktop sidebar). Desktop
-hosts list every item in their sidebar instead.
-
-The split is host-owned — nothing to configure, no API to open the panel. What
-follows:
-
-- Order the list by use: the first four are the ones always one tap away.
-- "More" carries the selected tint while a folded page is active, and shows a
-  red dot if any folded item has a badge or dot.
-- Only items holding a slot are warmed at launch, so ten tabs start as fast as
-  four.
-
-### Switching tabs at runtime
-
-From Logic, use `lx.switchTab(...)`. **`lx.navigateTo` and `lx.redirectTo` do not work on tab pages** — the runtime rejects them with errors like `"redirectTo cannot navigate to a tabBar page"`. Switching is the only way in and out of tabs.
-
-Like the whole JavaScript navigation family, it takes the page **name**
-registered in `lxapp.json`. Full routes are runtime implementation details and
-are not accepted as API input; there is no `path` or `url` selector.
+`navigateTo` and `redirectTo` reject tab pages; use `lx.switchTab`. Navigation
+always takes a page name ([lx-api](./lx-api.md#find-a-method-or-type)).
 
 ```ts
 lx.switchTab({ page: 'profile' }); // page name from lxapp.json
 ```
 
-When driving a running app from `lxdev`, use the page name from `lxapp.json` rather than the path:
+### Navigation bar
 
-```bash
-lxdev lxapp nav switch-tab profile
-```
-
-`lx.navigateBack` still works for popping non-tab pages that were pushed on top of the current tab.
-
-### Declaring the navigation bar in page JSON
-
-Each page's `index.json` declares its navigation bar:
+Each page's `index.json`:
 
 ```json
 {
@@ -728,71 +462,41 @@ Each page's `index.json` declares its navigation bar:
 }
 ```
 
-`title` and all `style` keys are optional and inherit the host theme.
-`navigationStyle: "custom"` renders no native bar; on mobile the floating
-capsule buttons remain over the page's own header.
+All keys are optional. `navigationStyle: "custom"` draws no native bar; on
+mobile the capsule stays over the page's header.
 
-### Updating Page Chrome at runtime
+### Runtime updates
 
-`lx.tabBar.update()` **mutates an already-declared tab bar** — it does not create
-or remove tabs. If the lxapp has no `tabBar` in `lxapp.json`, the promise rejects.
+`lx.tabBar.update()` changes a declared tab bar (it rejects without one);
+`lx.navigationBar.update()` patches the current page's bar. Each call is one
+transaction: `null` resets a field, omitted fields stay, an invalid patch
+applies nothing.
 
 ```ts
-await lx.tabBar.update({
-  items: [{ index: 1, text: 'Inbox', badge: '3' }],
-});
+await lx.tabBar.update({ items: [{ index: 1, text: 'Inbox', badge: '3' }] });
 await lx.tabBar.update({ items: [{ index: 1, text: null, badge: null }] });
-await lx.tabBar.update({ visibility: 'hidden' });
-await lx.tabBar.update({ visibility: 'auto' });
-```
-
-Tab bar colors are platform-split, and `lx.tabBar.update()` cannot patch
-them — a `style` field is rejected.
-
-- **Mobile** (iOS / Android / Harmony): the bar sits on the page and keeps
-  static `lxapp.json` `tabBar.style` (then the lxapp's own appearance
-  defaults). It does not follow OS dark mode by itself.
-- **Desktop** (macOS / Windows): the sidebar is host chrome and follows
-  `lingxia.yaml` `theme`. `tabBar.style.backgroundColor` is unused there.
-  Other static keys (`foregroundColor`, `selectedForegroundColor`,
-  `dividerColor`) may tint items while the host is light; a dark host
-  uses the shell theme for every key.
-
-`lx.navigationBar.update()` patches the current page's bar the same way:
-
-```ts
+await lx.tabBar.update({ visibility: 'hidden' });   // or 'auto'
 await lx.navigationBar.update({ title: 'Account' });
-await lx.navigationBar.update({ style: { backgroundColor: '#111827' } });
 await lx.navigationBar.update({ style: null, homeButton: 'auto' });
 ```
 
-Each `update()` is one transaction: `null` resets a field to its declared
-value, omitted fields keep their current state, and an invalid patch rejects
-without applying anything.
+### Appearance
 
-Light/dark is a product setting, not a per-lxapp one. `lx.host.appearance.get()`
-returns the scheme this lxapp renders in, and `.watch(cb)` follows it. An lxapp
-whose UI only works in one scheme declares it once in `lxapp.json`:
+Light/dark is a [product setting](./lx-api.md#product-settings). An lxapp whose
+UI works in only one scheme declares it in `lxapp.json`:
 
 ```json
 { "appearance": "dark" }
 ```
 
-That is a static declaration, like a page's `color-scheme` — not a preference,
-and not something the user picks per app. Editing the product's setting belongs
-to the Settings surface through `lx.host.control?.appearance`; the starting
-scheme is the host's `theme.defaultAppearance`.
+The runtime sets `color-scheme` and `data-theme="light|dark"` on `<html>`. Key
+theme CSS off `[data-theme]`, with a `prefers-color-scheme` fallback for first
+paint.
 
-The runtime projects the resolved scheme into every page as `color-scheme` plus
-a `data-theme="light|dark"` attribute on `<html>` — key theme CSS off
-`[data-theme]` (with a `prefers-color-scheme` fallback for no-JS first paint),
-since platform media queries may lag an in-place switch.
+### Page chrome CSS
 
-### Laying out under immersive chrome
-
-A `standard` tab bar shortens the View, so page CSS needs no tab-bar inset. An
-`immersive` tab bar overlaps the View. Never hard-code its platform height; use
-the page-chrome CSS variables for ordinary layout:
+A `standard` tab bar shortens the View. For an `immersive` one, and for the
+capsule, use the CSS variables; never hard-code platform heights:
 
 ```css
 .page-scroll {
@@ -809,47 +513,29 @@ the page-chrome CSS variables for ordinary layout:
 }
 ```
 
-The capsule's box is CSS too, so a header clears it without JavaScript:
-
 ```css
 .page-header {
   padding-top: calc(var(--lx-page-chrome-capsule-bottom) + 12px);
 }
 ```
 
-`--lx-page-chrome-capsule-{top,right,bottom,left,width,height}` are all `0px`
-when the page has no capsule. There is no hook for chrome geometry: it changes
-with appearance and layout, and CSS follows it without re-rendering. For the
-rare placement that must be computed in JavaScript, `window.lxPageChrome.layout`
-holds the frozen snapshot and the `lxpagechromechange` event reports a change.
-Capsule geometry is View-owned; Logic has no capsule measurement API.
+- `--lx-page-chrome-capsule-{top,right,bottom,left,width,height}` are `0px`
+  without a capsule. `--lx-page-chrome-top-inset` covers a
+  [full-chrome window](./adaptive-ui.md#edge-to-edge-windows).
+- In Runner, `env(safe-area-inset-*)` alone does not describe simulated chrome;
+  use these variables.
+- For JavaScript placement, `window.lxPageChrome.layout` holds the snapshot and
+  `lxpagechromechange` reports changes. Logic has no capsule API.
 
-Full Logic patch shapes are exported by `@lingxia/types`; the `LxHost` type is
-exported by `@lingxia/react`, `@lingxia/vue`, and `@lingxia/html`.
+## Pitfalls
 
----
-
-## Common Pitfalls
-
-- Mixing view logic and page logic in one file; keep `index.tsx` and `index.ts` roles clear.
-- Mutating `data` directly in View instead of calling Logic actions.
-- Touching the DOM from Logic — Logic has no DOM access; use `lx.*` for platform operations and `setData()` for state.
-- Keeping business state in View `useState`/`ref` instead of Logic-managed `setData()` — state drifts across the bridge boundary.
-- Assuming every component's event handler receives the same shape — island nodes are payload-first, `LxPicker` hands you the resolved value, some presenters still pass a raw DOM `CustomEvent`. See [Components](./components.md#callback-shapes-by-component).
-- Skipping `@lingxia/types` in the lxapp's devDependencies and losing intellisense on the entire `lx.*` surface. See [Logic runtime and typings](./lx-api.md).
-- Forgetting that only public `Page({})` methods become actions; lifecycle hooks and `_`-prefixed helpers are not exposed.
-- Mutating `App({}).globalData` and expecting page views to re-render — `globalData` is not reactive. Propagate to a page's `data` via `setData`.
-- Calling `lx.navigateTo` / `lx.redirectTo` on a tab page — rejected by the runtime. Use `lx.switchTab` for tab-page entry; `navigateBack` for non-tab stack pops.
-- Treating the tab bar as a host UI surface — it is an lxapp-internal feature declared in `lxapp.json`, orthogonal to top-level `surfaces:` in `lingxia.yaml`.
-- Dropping the function an `lx.on*` call returns — it is the only handle that cancels the subscription, and the same route can be open more than once, so the leak multiplies per page instance.
-- Using `<video>`, `<audio>`, `video.srcObject`, or `new Audio()` — video is native-owned and audio is not available yet; see [`./components.md`](./components.md) → `LxVideo`.
-
----
-
-## Pre-ship checklist
-
-- [ ] `lxapp.json` lists every page; `appId` set; `version` bumped if shipping.
-- [ ] Network hosts and privilege classes the app uses are granted by the host (home is unrestricted; a guest is unrestricted until a provider constrains it).
-- [ ] One view-framework file per page.
-- [ ] Public actions typed in `PageActions`; private helpers prefixed `_`.
-- [ ] `lingxia dev` runs cleanly.
+- More than one view framework in a project; match the existing pages.
+- Mutating `data` in the View, or keeping business state in `useState`/`ref`.
+- Touching the DOM from Logic; Logic has no DOM.
+- Expecting `_`-prefixed helpers or hooks to be actions.
+- Expecting `App({}).globalData` changes to re-render.
+- `navigateTo` / `redirectTo` on a tab page.
+- Dropping the function an `lx.on*` call returns.
+- Using `<video>`, `<audio>`, or `new Audio()`: see
+  [LxVideo](./components.md#lxvideo).
+- Missing `@lingxia/types`: see [Install typing](./lx-api.md#install-typing).
