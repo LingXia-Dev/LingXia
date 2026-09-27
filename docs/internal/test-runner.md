@@ -1,6 +1,13 @@
 # Test runner
 
 `@lingxia/test` executes sequential specs in the host automation context.
+
+Entry points: `@lingxia/test` is what a spec imports (`spec`, `expect`,
+`rawAutomation`, errors, fixture types); `@lingxia/test/runner` holds the
+runner (`run`, `list`, `reset`, `trackPublicSurface`, `renderJUnit`, the
+capability inventory, version and default budgets), which lxdev reaches
+through the global `__LINGXIA_TEST__` controller instead; and
+`@lingxia/test/report` is types only (`JsonReport` and the records in it).
 `session.test` validates the framework result; `lxdev` journals events and writes
 received artifacts. Keep the following invariants when changing these layers:
 

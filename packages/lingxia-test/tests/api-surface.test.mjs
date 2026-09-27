@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect, reset, run, AssertionError, TEST_ERROR_CODES, TimeoutError } from "../dist/index.js";
+import { spec, expect, AssertionError, TEST_ERROR_CODES, TimeoutError } from "../dist/index.js";
+import { reset, run } from "../dist/runner.js";
 
 afterEach(() => {
   reset();
@@ -259,4 +260,16 @@ test("an idempotent read the transport dropped is retried; input is not", async 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.equal(save.clicked, undefined, "a click the transport lost is never resent");
+});
+
+test("each entry exports only its own job", async () => {
+  const main = await import("@lingxia/test");
+  assert.deepEqual(Object.keys(main).sort(),
+    ["AssertionError", "TEST_ERROR_CODES", "TimeoutError", "expect", "rawAutomation", "spec"]);
+  const runner = await import("@lingxia/test/runner");
+  assert.deepEqual(Object.keys(runner).sort(), [
+    "DEFAULT_ACTION_TIMEOUT_MS", "DEFAULT_SPEC_TIMEOUT_MS", "PACKAGE_NAME", "PUBLIC_CAPABILITIES", "VERSION",
+    "list", "renderJUnit", "reset", "run", "trackPublicSurface",
+  ]);
+  assert.deepEqual(Object.keys(await import("@lingxia/test/report")), []);
 });

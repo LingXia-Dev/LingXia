@@ -11,7 +11,7 @@ import {
   type Dialect,
   type SchemaIssue,
 } from "./schema.js";
-import type { ContractIssue, OpenApiSummary } from "./types.js";
+import type { ContractIssue, OpenApiSummary } from "./report-types.js";
 
 export interface OpenApiSource {
   /** The file name, as lxdev read it. */

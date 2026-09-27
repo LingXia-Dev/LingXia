@@ -1,4 +1,4 @@
-import type { CaseRecord, SpecStatus, TagSummary } from "./types.js";
+import type { CaseRecord, SpecStatus, TagSummary } from "./report-types.js";
 
 /**
  * A tag names a layer or a slice of the suite (`unit`, `routed`, `live`,

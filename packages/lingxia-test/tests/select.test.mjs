@@ -3,7 +3,8 @@ import { fileURLToPath } from "node:url";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
-import { list, spec, reset, run } from "../dist/index.js";
+import { spec } from "../dist/index.js";
+import { list, reset, run } from "../dist/runner.js";
 
 const here = fileURLToPath(import.meta.url);
 

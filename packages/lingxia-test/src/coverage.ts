@@ -1,4 +1,4 @@
-import type { CaseRecord, CoverageSpec, CoverageSummary, SpecStatus } from "./types.js";
+import type { CaseRecord, CoverageSpec, CoverageSummary, SpecStatus } from "./report-types.js";
 
 /** One requirement of a `--covers-manifest` file, as lxdev sends it. */
 export interface ManifestEntry {

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { registerOtherFileSpec } from "./helpers/other-file.mjs";
-import { spec, reset, run, renderJUnit } from "../dist/index.js";
+import { spec } from "../dist/index.js";
+import { reset, run, renderJUnit } from "../dist/runner.js";
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "../dist/tags.js";
 import { coverageSummary, parseManifest } from "../dist/coverage.js";
 

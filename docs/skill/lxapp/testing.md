@@ -628,7 +628,7 @@ lxdev test --list                 # list specs (file:line, id, title, tags) with
   else in the current directory; `test.outputDir` or `--output-root DIR`
   moves the root. `--output-dir PATH` puts one run's files in PATH itself
   (a fixed path for CI to collect); `latest` in the root still points at it.
-  Failures fail the command.
+  Failures fail the command. `report.json` is typed by `@lingxia/test/report`.
 - `lxdev test report [DIR|latest] [--failures] [--format json|junit]` prints a
   finished run's summary, failures and `Rerun:` lines again from its
   `report.json`; it needs no session.
