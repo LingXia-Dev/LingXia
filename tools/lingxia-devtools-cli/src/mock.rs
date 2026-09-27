@@ -1,15 +1,23 @@
-//! `lxdev scenario`: put the running app into a named product state
-//! ("gateway offline", "coupon expired") in a dev session, outside any test
-//! run.
+//! `lxdev mock`: who answers the running app's calls in a dev session,
+//! outside any test run.
 //!
-//! A scenario file is a list of rules (see
-//! [`lingxia_control_protocol::scenario`]). `http` rules answer the app's
-//! Logic `fetch` and `Rong.SSE` through the host's
-//! `session.network.scenario.*` methods; `function` rules go through the dev
-//! server to the session's companion (`session.companion.scenario.*`), which
-//! must have declared that it handles them. `use` validates everything
-//! before it changes anything, so an invalid file leaves the active scenario
-//! answering.
+//! - `all` / `none` switch between the app's `mocks/` handlers and the real
+//!   backend, for everything or for named targets. HTTP targets
+//!   (`'GET **/qoe/*'`) go to the host (`session.network.mock.set`),
+//!   Function names (`orders.submit`) to the session's companion
+//!   (`session.companion.mock.set`), which must have declared that it
+//!   switches mocks.
+//! - `use` puts the app into a scenario state on top (a file under
+//!   `tests/scenarios/`, see [`lingxia_control_protocol::scenario`]): its
+//!   `http` rules answer through `session.network.scenario.*`, its
+//!   `function` rules through the companion. `use` validates everything
+//!   before it changes anything, so an invalid file leaves the active
+//!   scenario answering.
+//! - `reset` returns to the project defaults: the config selection, no
+//!   scenario, fresh handler state.
+//!
+//! All of it is live and session-scoped, affects later calls only, and
+//! stands aside while a test run is active.
 
 use crate::client::{self, CommandError};
 use crate::network;
@@ -17,9 +25,10 @@ use crate::project::SessionInfo;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Args, Subcommand};
 use lingxia_control_protocol::dev_session::broker::SessionContent;
-use lingxia_control_protocol::dev_session::capabilities::SCENARIO_FUNCTION;
+use lingxia_control_protocol::dev_session::capabilities::{MOCK, SCENARIO_FUNCTION};
 use lingxia_control_protocol::methods::session::companion as companion_method;
 use lingxia_control_protocol::methods::session::network as method;
+use lingxia_control_protocol::mock::{self, MockMode, companion as mock_protocol};
 use lingxia_control_protocol::scenario::{
     self as format, DEV_OWNER, Resolved, ScenarioFile, companion,
 };
@@ -42,22 +51,47 @@ const WATCH_INTERVAL: Duration = Duration::from_millis(300);
 pub(crate) const IDLE_HINT: &str = "no request reached this scenario yet — the app may serve its \
      own cache; reload the page or `lxdev lxapp restart`";
 
+/// The hint after every change: it applies to later calls only.
+pub(crate) const RELOAD_HINT: &str =
+    "pages already loaded keep their data; `lxdev lxapp restart` reloads them";
+
 #[derive(Args, Clone)]
-pub struct ScenarioOptions {
+pub struct MockOptions {
     #[command(subcommand)]
-    command: ScenarioCommand,
+    command: Option<MockCommand>,
 }
 
 #[derive(Subcommand, Clone)]
-enum ScenarioCommand {
-    /// List the scenarios (and each `name:variant`) under tests/scenarios/
-    List {
+enum MockCommand {
+    /// Who answers now: the selection and where it comes from, the
+    /// scenario, handler hits, unhandled calls and handler errors (also
+    /// `lxdev mock` alone)
+    Status {
         /// Print JSON output
         #[arg(long)]
         json: bool,
     },
-    /// Install a scenario by name (`wifi`, `wifi:offline`) or path until
-    /// `clear`, another `use`, or the end of the dev session
+    /// Answer with mocks: everything, or only these targets
+    /// ('GET **/path' or a Function name like orders.submit)
+    All {
+        /// HTTP targets ('METHOD url-glob') or Function names
+        #[arg(value_name = "TARGET")]
+        targets: Vec<String>,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Answer with the real backend: everything, or only these targets
+    None {
+        /// HTTP targets ('METHOD url-glob') or Function names
+        #[arg(value_name = "TARGET")]
+        targets: Vec<String>,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Put the app into a scenario state on top (`name`, `name:variant`,
+    /// or a file) until `clear`, another `use`, or the end of the session
     Use {
         /// `name` or `name:variant` under tests/scenarios/ (without
         /// `.json`), or a file (`path.json:variant`)
@@ -74,24 +108,31 @@ enum ScenarioCommand {
         #[arg(long)]
         json: bool,
     },
-    /// Show the active scenario, what each rule answered, and the last one
-    /// cleared
-    Status {
+    /// Drop the scenario state (the selection stays)
+    Clear {
         /// Print JSON output
         #[arg(long)]
         json: bool,
     },
-    /// Remove the active scenario
-    Clear {
+    /// The scenarios under tests/scenarios/ and their variants
+    List {
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
+    /// Back to project defaults: the config selection, no scenario, fresh
+    /// handler state
+    Reset {
         /// Print JSON output
         #[arg(long)]
         json: bool,
     },
 }
 
-impl ScenarioOptions {
+impl MockOptions {
+    /// `list` needs no dev session.
     pub fn is_list(&self) -> bool {
-        matches!(self.command, ScenarioCommand::List { .. })
+        matches!(self.command, Some(MockCommand::List { .. }))
     }
 }
 
@@ -320,7 +361,7 @@ pub(crate) struct CallError {
     pub data: Option<Value>,
 }
 
-/// What `lxdev scenario` needs from a dev session.
+/// What `lxdev mock` needs from a dev session.
 pub(crate) trait Session {
     /// A `session.network.*` request to the app host.
     fn host(&self, method: &str, params: Option<Value>) -> Result<Value>;
@@ -588,13 +629,368 @@ pub(crate) fn watch(
 
 // -------------------------------- command --------------------------------
 
-pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<()> {
+// ------------------------------ the selection ------------------------------
+
+/// Whether the session's companion switches mocks, and if not, why (the
+/// text after `functions: not switched — `).
+pub(crate) fn mock_support(session: &dyn Session) -> Result<(), String> {
+    match session.companion(companion_method::CAPABILITIES, None) {
+        Ok(caps) => {
+            let declared = caps["capabilities"]
+                .as_array()
+                .is_some_and(|list| list.iter().any(|cap| cap == MOCK));
+            if declared {
+                Ok(())
+            } else if caps["companion"] == true {
+                Err("the companion does not switch mocks (no 'mock' capability)".into())
+            } else {
+                Err("this dev session has no companion".into())
+            }
+        }
+        Err(err) => Err(err.message),
+    }
+}
+
+/// The Function half of `all` / `none`: one line, and whether it applied.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct FunctionHalf {
+    pub line: String,
+    pub applied: bool,
+    pub result: Value,
+}
+
+fn not_switched(reason: &str) -> FunctionHalf {
+    FunctionHalf {
+        line: format!("functions: not switched — {reason}"),
+        applied: false,
+        result: json!({ "applied": false, "reason": reason }),
+    }
+}
+
+/// Switch the companion's Functions: every one, or `names`.
+pub(crate) fn function_half(
+    session: &dyn Session,
+    mode: MockMode,
+    names: &[String],
+) -> FunctionHalf {
+    if let Err(reason) = mock_support(session) {
+        return not_switched(&reason);
+    }
+    let params = mock_protocol::SetParams {
+        owner: mock::DEV_OWNER.into(),
+        mode: match mode {
+            MockMode::All => mock_protocol::SetMode::All,
+            MockMode::None => mock_protocol::SetMode::None,
+        },
+        targets: (!names.is_empty()).then(|| names.to_vec()),
+    };
+    let params = serde_json::to_value(params).unwrap_or_default();
+    match session.companion(companion_method::MOCK_SET, Some(params)) {
+        Ok(result) => match serde_json::from_value::<mock_protocol::SetResult>(result.clone()) {
+            Ok(set) => FunctionHalf {
+                line: format!("functions: {}/{} mocked", set.mocked, set.total),
+                applied: true,
+                result,
+            },
+            Err(err) => not_switched(&format!("the companion answered {result}: {err}")),
+        },
+        Err(err) if err.code == mock_protocol::INVALID_TARGETS => {
+            let unknown = err
+                .data
+                .as_ref()
+                .and_then(|data| {
+                    serde_json::from_value::<mock_protocol::InvalidTargets>(data.clone()).ok()
+                })
+                .map(|invalid| invalid.unknown.join(", "))
+                .unwrap_or(err.message);
+            not_switched(&format!("unknown Function {unknown}"))
+        }
+        Err(err) => not_switched(&err.message),
+    }
+}
+
+/// Split targets into HTTP targets and Function names; an invalid one
+/// fails the whole command.
+pub(crate) fn split_targets(targets: &[String]) -> Result<(Vec<String>, Vec<String>)> {
+    let mut http = Vec::new();
+    let mut functions = Vec::new();
+    for target in targets {
+        match mock::parse_target(target).map_err(|err| anyhow!(err))? {
+            mock::MockTarget::Http { .. } => http.push(target.trim().to_string()),
+            mock::MockTarget::Function { name } => functions.push(name),
+        }
+    }
+    Ok((http, functions))
+}
+
+/// `lxdev mock all|none [TARGET…]`: the HTTP half through the host, the
+/// Function half through the companion, one line each. Fails when a
+/// Function target was named and not applied, so nothing is partially
+/// claimed.
+pub(crate) fn select(
+    session: &dyn Session,
+    mode: MockMode,
+    targets: &[String],
+    content_root: &Path,
+) -> Result<Value> {
+    let (http, functions) = split_targets(targets)?;
+    let whole = targets.is_empty();
+    let mut out = json!({});
+    if whole || !http.is_empty() {
+        if mode == MockMode::All {
+            let status = session.host(method::MOCK_STATUS, None)?;
+            if status["apps"].as_array().is_none_or(Vec::is_empty) {
+                bail!(
+                    "no mocks/index.ts in {}; nothing can answer with mocks",
+                    content_root.display()
+                );
+            }
+        }
+        out["http"] = session.host(
+            method::MOCK_SET,
+            Some(json!({ "owner": mock::DEV_OWNER, "mode": mode, "targets": http })),
+        )?;
+        out["status"] = session.host(method::MOCK_STATUS, None)?;
+    }
+    if whole || !functions.is_empty() {
+        let half = function_half(session, mode, &functions);
+        out["functions"] = half.result.clone();
+        out["functionsLine"] = json!(half.line);
+        out["functionsRequired"] = json!(!functions.is_empty());
+    }
+    Ok(out)
+}
+
+/// `lxdev mock reset`: back to the project defaults on both halves — the
+/// config selection, no scenario, fresh handler state.
+pub(crate) fn reset(session: &dyn Session) -> Result<Value> {
+    session.host(
+        method::MOCK_RESET,
+        Some(json!({ "owner": mock::DEV_OWNER })),
+    )?;
+    let cleared = clear(session)?;
+    let mut functions = Value::Null;
+    if mock_support(session).is_ok() {
+        let _ = session.companion(
+            companion_method::MOCK_SET,
+            Some(json!({ "owner": mock::DEV_OWNER, "mode": "default" })),
+        );
+        functions = session
+            .companion(
+                companion_method::MOCK_RESET,
+                Some(json!({ "owner": mock::DEV_OWNER })),
+            )
+            .unwrap_or_else(|err| json!({ "reset": false, "reason": err.message }));
+    }
+    let status = session.host(method::MOCK_STATUS, None)?;
+    Ok(json!({ "scenario": cleared, "functions": functions, "status": status }))
+}
+
+/// `mock: <selection> · N handlers` per app (`<appid>: …` with several).
+pub(crate) fn selection_lines(mock: &Value) -> Vec<String> {
+    let apps = mock["apps"].as_array().cloned().unwrap_or_default();
+    if apps.is_empty() {
+        return vec!["mock: none (no mocks/ loaded)".to_string()];
+    }
+    let several = apps.len() > 1;
+    apps.iter()
+        .map(|app| {
+            let handlers = app["handlers"].as_u64().unwrap_or(0);
+            format!(
+                "mock: {}{} · {handlers} handler{}",
+                if several {
+                    format!("{}: ", app["appid"].as_str().unwrap_or("?"))
+                } else {
+                    String::new()
+                },
+                app["selection"].as_str().unwrap_or("?"),
+                plural(handlers as usize)
+            )
+        })
+        .collect()
+}
+
+/// `12:01:03` of an ISO time.
+fn clock(iso: &Value) -> String {
+    iso.as_str()
+        .and_then(|text| text.split_once('T'))
+        .map(|(_, time)| time.chars().take(8).collect())
+        .unwrap_or_default()
+}
+
+/// The `lxdev mock` status block.
+pub(crate) fn status_lines(status: &Value, functions: Option<&str>) -> Vec<String> {
+    let mock = &status["mock"];
+    let mut lines = selection_lines(mock);
+    if let Some(functions) = functions {
+        lines.push(functions.to_string());
+    }
+    lines.push(
+        match status
+            .get("scenario")
+            .filter(|scenario| scenario.is_object())
+        {
+            Some(scenario) => {
+                let label = scenario["label"].as_str().unwrap_or("unnamed");
+                let source = scenario["source"]
+                    .as_str()
+                    .filter(|source| *source != label)
+                    .map(|source| format!(" ({source})"))
+                    .unwrap_or_default();
+                let rules: Vec<String> = scenario["rules"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .map(|rule| match rule["hits"].as_u64() {
+                        Some(hits) => format!("rule {} answered {hits}×", rule["index"]),
+                        None => format!("rule {} answered ?×", rule["index"]),
+                    })
+                    .collect();
+                format!("scenario: {label}{source} · {}", rules.join(", "))
+            }
+            None => "scenario: none".to_string(),
+        },
+    );
+    for app in mock["apps"].as_array().into_iter().flatten() {
+        let mut keys: Vec<(String, u64)> = app["keys"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|key| {
+                (
+                    key["key"].as_str().unwrap_or("").to_string(),
+                    key["hits"].as_u64().unwrap_or(0),
+                )
+            })
+            .collect();
+        keys.sort_by_key(|(_, hits)| std::cmp::Reverse(*hits));
+        let hit: Vec<String> = keys
+            .iter()
+            .filter(|(_, hits)| *hits > 0)
+            .map(|(key, hits)| format!("{key} {hits}×"))
+            .collect();
+        let idle = keys.iter().filter(|(_, hits)| *hits == 0).count();
+        let mut handlers = hit.join(" · ");
+        if idle > 0 {
+            if !handlers.is_empty() {
+                handlers.push_str(" · ");
+            }
+            handlers.push_str(&if hit.is_empty() {
+                format!("{idle} handler{} 0×", plural(idle))
+            } else {
+                format!("{idle} more 0×")
+            });
+        }
+        lines.push(format!("handlers: {handlers}"));
+        for entry in app["unhandled"].as_array().into_iter().flatten() {
+            lines.push(format!(
+                "unhandled: {} {} {}× (last {})",
+                entry["method"].as_str().unwrap_or(""),
+                entry["url"].as_str().unwrap_or(""),
+                entry["count"],
+                clock(&entry["last"])
+            ));
+        }
+        for entry in app["errors"].as_array().into_iter().flatten() {
+            lines.push(format!(
+                "errors: {} {}× — {} (last {})",
+                entry["key"].as_str().unwrap_or(""),
+                entry["count"],
+                entry["message"].as_str().unwrap_or(""),
+                clock(&entry["last"])
+            ));
+        }
+        lines.push(format!(
+            "state since {} ({})",
+            clock(&app["fresh"]["at"]),
+            app["fresh"]["reason"].as_str().unwrap_or("load")
+        ));
+    }
+    if mock["suspended"] == true || status["suspended"] == true {
+        lines.push(
+            "(live changes stand aside while a test run is active; they answer again when it ends)"
+                .to_string(),
+        );
+    }
+    lines
+}
+
+/// The companion's `functions: 7/12 mocked (orders.submit 3×)`, or why
+/// its Functions are not switched; `None` without the capability.
+fn functions_line(session: &dyn Session) -> Option<String> {
+    mock_support(session).ok()?;
+    let status = session
+        .companion(companion_method::MOCK_STATUS, Some(json!({})))
+        .ok()?;
+    let status: mock_protocol::StatusResult = serde_json::from_value(status).ok()?;
+    let hits: Vec<String> = status
+        .handlers
+        .unwrap_or_default()
+        .iter()
+        .filter(|handler| handler.hits > 0)
+        .map(|handler| format!("{} {}×", handler.function, handler.hits))
+        .collect();
+    let hits = if hits.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", hits.join(", "))
+    };
+    Some(format!(
+        "functions: {}/{} mocked{hits}",
+        status.mocked, status.total
+    ))
+}
+
+fn hint() {
+    eprintln!("{} {RELOAD_HINT}", "hint".cyan().bold());
+}
+
+fn run_select(
+    session: &dyn Session,
+    info: &SessionInfo,
+    mode: MockMode,
+    targets: &[String],
+    json: bool,
+) -> Result<()> {
+    let content_root = match &info.content {
+        Some(SessionContent::Host { path } | SessionContent::LxApp { path }) => PathBuf::from(path),
+        _ => PathBuf::from(&info.project_root),
+    };
+    let result = select(session, mode, targets, &content_root)?;
+    network::print(&result, json, |result| {
+        if result.get("status").is_some() {
+            for line in selection_lines(&result["status"]) {
+                println!("{line}");
+            }
+        }
+        if let Some(line) = result["functionsLine"].as_str() {
+            println!("{line}");
+        }
+        hint();
+    })?;
+    if result["functionsRequired"] == true && result["functions"]["applied"] == false {
+        bail!(
+            "{}; the Function targets were not applied",
+            result["functionsLine"]
+                .as_str()
+                .unwrap_or("functions: not switched")
+        );
+    }
+    Ok(())
+}
+
+// -------------------------------- command --------------------------------
+
+pub fn execute(info: Option<&SessionInfo>, options: MockOptions) -> Result<()> {
     let cwd = std::env::current_dir()?;
     let roots = match info {
         Some(info) => search_roots(info, &cwd),
         None => local_roots(&cwd),
     };
-    if let ScenarioCommand::List { json } = options.command {
+    let command = options
+        .command
+        .unwrap_or(MockCommand::Status { json: false });
+    if let MockCommand::List { json } = command {
         return list(&roots, json);
     }
     let info = info
@@ -602,9 +998,27 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
     let session = Live {
         ws: info.ws_url.clone(),
     };
-    match options.command {
-        ScenarioCommand::List { .. } => unreachable!("handled above"),
-        ScenarioCommand::Use {
+    match command {
+        MockCommand::List { .. } => unreachable!("handled above"),
+        MockCommand::Status { json } => {
+            let status = self::status(&session)?;
+            let functions = functions_line(&session);
+            let mut value = status.clone();
+            value["functions"] = json!(functions);
+            network::print(&value, json, |_| {
+                for line in status_lines(&status, functions.as_deref()) {
+                    println!("{line}");
+                }
+                network::print_recording(&status);
+            })
+        }
+        MockCommand::All { targets, json } => {
+            run_select(&session, info, MockMode::All, &targets, json)
+        }
+        MockCommand::None { targets, json } => {
+            run_select(&session, info, MockMode::None, &targets, json)
+        }
+        MockCommand::Use {
             scenario,
             appid,
             watch: watching,
@@ -634,10 +1048,12 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
                     print_status(&value["status"]);
                     network::print_warning(&value["status"]);
                     eprintln!(
-                        "{} the app answers from this scenario until `lxdev scenario clear`, \
-                         another `lxdev scenario use`, or the end of the dev session",
+                        "{} the app answers from this scenario until `lxdev mock clear`, \
+                         another `lxdev mock use`, `lxdev mock reset`, or the end of the dev \
+                         session",
                         "warning".yellow().bold()
                     );
+                    hint();
                 })?;
                 if !json && !watching && std::io::stderr().is_terminal() {
                     wait_for_first_request(&session);
@@ -683,18 +1099,33 @@ pub fn execute(info: Option<&SessionInfo>, options: ScenarioOptions) -> Result<(
             }
             Ok(())
         }
-        ScenarioCommand::Status { json } => {
-            let status = self::status(&session)?;
-            network::print(&status, json, print_status)
-        }
-        ScenarioCommand::Clear { json } => {
+        MockCommand::Clear { json } => {
             let result = clear(&session)?;
             network::print(&result, json, |result| {
                 if result["cleared"] == true {
-                    println!("scenario cleared; the app reaches its real backends again");
+                    println!("scenario cleared; the selection answers again");
                 } else {
                     println!("no scenario was active");
                 }
+                hint();
+            })
+        }
+        MockCommand::Reset { json } => {
+            let result = reset(&session)?;
+            network::print(&result, json, |result| {
+                println!("back to the project defaults: no scenario, fresh handler state");
+                for line in selection_lines(&result["status"]) {
+                    println!("{line}");
+                }
+                if result["functions"]["reset"] == false {
+                    println!(
+                        "functions: handler state not reset — {}",
+                        result["functions"]["reason"]
+                            .as_str()
+                            .unwrap_or("the companion refused")
+                    );
+                }
+                hint();
             })
         }
     }
@@ -1072,6 +1503,7 @@ mod tests {
         host_fails: bool,
         companion_error: Option<CallError>,
         status: Value,
+        mock_status: Value,
     }
 
     impl Fake {
@@ -1082,6 +1514,12 @@ mod tests {
                 host_fails: false,
                 companion_error: None,
                 status: json!({ "active": true, "scenario": { "rules": [] } }),
+                mock_status: json!({ "apps": [{
+                    "appid": "app", "handlers": 2,
+                    "selection": "all — from mocks/config.json",
+                    "keys": [], "unhandled": [], "errors": [],
+                    "fresh": { "reason": "load", "at": "2026-09-26T12:00:00.000Z" }
+                }] }),
             }
         }
 
@@ -1106,9 +1544,18 @@ mod tests {
                 }
                 return Ok(json!({ "active": !dry }));
             }
+            if method == method::MOCK_SET {
+                self.log
+                    .borrow_mut()
+                    .push(format!("host {method} {}", params["targets"]));
+                return Ok(json!({ "mode": params["mode"], "entries": [] }));
+            }
             self.log.borrow_mut().push(format!("host {method}"));
             if method == method::STATUS {
                 return Ok(self.status.clone());
+            }
+            if method == method::MOCK_STATUS {
+                return Ok(self.mock_status.clone());
             }
             Ok(json!({ "cleared": true }))
         }
@@ -1124,6 +1571,17 @@ mod tests {
                 .as_ref()
                 .map(|p| p["owner"].clone())
                 .unwrap_or_default();
+            if method == companion_method::MOCK_SET {
+                let params = params.clone().unwrap_or_default();
+                self.log.borrow_mut().push(format!(
+                    "companion {method} {} {}",
+                    params["mode"], params["targets"]
+                ));
+                if let Some(err) = &self.companion_error {
+                    return Err(err.clone());
+                }
+                return Ok(json!({ "mocked": 7, "total": 12 }));
+            }
             self.log
                 .borrow_mut()
                 .push(format!("companion {method} {owner}"));
@@ -1131,6 +1589,9 @@ mod tests {
                 && let Some(err) = &self.companion_error
             {
                 return Err(err.clone());
+            }
+            if method == companion_method::MOCK_RESET {
+                return Ok(json!({ "reset": false, "reason": "handlers rebuild" }));
             }
             if method == companion_method::SCENARIO_STATUS {
                 return Ok(
@@ -1296,6 +1757,169 @@ mod tests {
         let plain = Fake::new(None);
         clear(&plain).unwrap();
         assert_eq!(plain.log(), ["host session.network.scenario.clear"]);
+    }
+
+    #[test]
+    fn targets_split_into_http_and_function_names() {
+        let (http, functions) = split_targets(&[
+            "GET **/qoe/*".to_string(),
+            "orders.submit".to_string(),
+            "* **/x".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(http, ["GET **/qoe/*", "* **/x"]);
+        assert_eq!(functions, ["orders.submit"]);
+        let err = split_targets(&["**/qoe/*".to_string()])
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "'**/qoe/*' is not a target: an HTTP target is 'METHOD url-glob' (use '*' for any \
+             method), a Function target is a name like orders.submit"
+        );
+    }
+
+    #[test]
+    fn all_and_none_switch_both_halves_and_claim_nothing_unapplied() {
+        let root = Path::new("/p/app");
+        // No mocks loaded: nothing can answer with mocks.
+        let mut empty = Fake::new(None);
+        empty.mock_status = json!({ "apps": [] });
+        let err = select(&empty, MockMode::All, &[], root)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "no mocks/index.ts in /p/app; nothing can answer with mocks"
+        );
+        // `none` needs no mocks.
+        select(&empty, MockMode::None, &[], root).unwrap();
+
+        // Whole: both halves; without a companion the Function half says why.
+        let plain = Fake::new(None);
+        let result = select(&plain, MockMode::All, &[], root).unwrap();
+        assert_eq!(
+            result["functionsLine"],
+            "functions: not switched — this dev session has no companion"
+        );
+        assert_eq!(result["functionsRequired"], false);
+        assert_eq!(
+            selection_lines(&result["status"]),
+            ["mock: all — from mocks/config.json · 2 handlers"]
+        );
+
+        // Mixed targets: HTTP to the host, names to the companion.
+        let capable = Fake::new(Some(vec![MOCK]));
+        let result = select(
+            &capable,
+            MockMode::None,
+            &["GET **/qoe/*".into(), "orders.submit".into()],
+            root,
+        )
+        .unwrap();
+        assert_eq!(result["functionsLine"], "functions: 7/12 mocked");
+        assert_eq!(
+            capable.log(),
+            [
+                "host session.network.mock.set [\"GET **/qoe/*\"]",
+                "host session.network.mock.status",
+                "companion session.companion.mock.set \"none\" [\"orders.submit\"]"
+            ]
+        );
+        // Only Function names: the host is not touched.
+        let capable = Fake::new(Some(vec![MOCK]));
+        select(&capable, MockMode::All, &["orders.submit".into()], root).unwrap();
+        assert_eq!(
+            capable.log(),
+            ["companion session.companion.mock.set \"all\" [\"orders.submit\"]"]
+        );
+
+        // A named Function that is not applied is reported as such.
+        let scenario_only = Fake::new(Some(vec![SCENARIO_FUNCTION]));
+        let result = select(
+            &scenario_only,
+            MockMode::All,
+            &["orders.submit".into()],
+            root,
+        )
+        .unwrap();
+        assert_eq!(
+            result["functionsLine"],
+            "functions: not switched — the companion does not switch mocks (no 'mock' capability)"
+        );
+        assert_eq!(
+            (
+                result["functionsRequired"].clone(),
+                result["functions"]["applied"].clone()
+            ),
+            (json!(true), json!(false))
+        );
+        let mut unknown = Fake::new(Some(vec![MOCK]));
+        unknown.companion_error = Some(CallError {
+            code: mock_protocol::INVALID_TARGETS.into(),
+            message: "unknown".into(),
+            data: Some(json!({ "unknown": ["orders.submitt"] })),
+        });
+        let result = select(&unknown, MockMode::All, &["orders.submitt".into()], root).unwrap();
+        assert_eq!(
+            result["functionsLine"],
+            "functions: not switched — unknown Function orders.submitt"
+        );
+    }
+
+    #[test]
+    fn reset_returns_both_halves_to_the_project_defaults() {
+        let session = Fake::new(Some(vec![MOCK, SCENARIO_FUNCTION]));
+        let result = reset(&session).unwrap();
+        assert_eq!(
+            session.log(),
+            [
+                "host session.network.mock.reset",
+                "host session.network.scenario.clear",
+                "companion session.companion.scenario.clear \"dev\"",
+                "companion session.companion.mock.set \"default\" null",
+                "companion session.companion.mock.reset \"dev\"",
+                "host session.network.mock.status"
+            ]
+        );
+        assert_eq!(result["functions"]["reason"], "handlers rebuild");
+    }
+
+    #[test]
+    fn the_status_block_says_who_answers_and_what_happened() {
+        let status = json!({
+            "mock": { "apps": [{
+                "appid": "app", "handlers": 14,
+                "selection": "all — from mocks/config.json · live: none 'GET **/qoe/*'; lxdev mock reset to return",
+                "keys": [
+                    { "key": "GET **/sub/locations/*/clients", "hits": 5 },
+                    { "key": "DELETE **/sub/auth/sessions/current", "hits": 1 },
+                    { "key": "GET **/a", "hits": 0 }, { "key": "GET **/b", "hits": 0 }
+                ],
+                "unhandled": [{ "method": "GET", "url": "https://h/sub/insights/weekly", "count": 2, "last": "2026-09-26T12:01:03.000Z" }],
+                "errors": [{ "key": "GET **/sub/locations/*/clients", "count": 1, "message": "Cannot read properties of undefined", "last": "2026-09-26T12:00:41.000Z" }],
+                "fresh": { "reason": "reload", "at": "2026-09-26T12:01:03.000Z" }
+            }] },
+            "scenario": { "label": "qoe:degraded", "source": "tests/scenarios/qoe.json", "rules": [
+                { "index": 1, "hits": 2 }, { "index": 2, "hits": 0 }
+            ] }
+        });
+        assert_eq!(
+            status_lines(&status, Some("functions: 7/12 mocked (orders.submit 3×)")),
+            [
+                "mock: all — from mocks/config.json · live: none 'GET **/qoe/*'; lxdev mock reset \
+                 to return · 14 handlers",
+                "functions: 7/12 mocked (orders.submit 3×)",
+                "scenario: qoe:degraded (tests/scenarios/qoe.json) · rule 1 answered 2×, rule 2 \
+                 answered 0×",
+                "handlers: GET **/sub/locations/*/clients 5× · DELETE **/sub/auth/sessions/current \
+                 1× · 2 more 0×",
+                "unhandled: GET https://h/sub/insights/weekly 2× (last 12:01:03)",
+                "errors: GET **/sub/locations/*/clients 1× — Cannot read properties of undefined \
+                 (last 12:00:41)",
+                "state since 12:01:03 (reload)",
+            ]
+        );
     }
 
     #[test]

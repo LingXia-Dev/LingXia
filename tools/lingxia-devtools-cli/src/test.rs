@@ -232,7 +232,7 @@ pub struct TestOptions {
     verbose: bool,
 
     /// Record each spec's real Logic fetch traffic into DIR/<spec id>.json,
-    /// a scenario file `t.app.scenario()` and `lxdev scenario use`
+    /// a scenario file `t.app.mock.use()` and `lxdev mock use`
     /// can replay. Credentials and secret values are redacted
     #[arg(long, value_name = "DIR", help_heading = "Output")]
     record_network: Option<PathBuf>,
@@ -551,6 +551,11 @@ fn execute_inner(
                 "{} shuffled with seed {seed}; reproduce with --shuffle={seed}",
                 "test".cyan()
             );
+        }
+        // The selection the specs see: the config and `lingxia dev --mock`
+        // (live `lxdev mock` changes stand aside during the run).
+        if let Some(line) = run_mock_line(&info.ws_url) {
+            eprintln!("{} {line}", "test".cyan());
         }
     }
 
@@ -1300,6 +1305,29 @@ fn start_run(
             }
         }
     }
+}
+
+/// `mock: all (lingxia dev --mock)` for the run header, per app with
+/// several; `None` when the host has no mocks loaded (or no test runtime).
+fn run_mock_line(ws_url: &str) -> Option<String> {
+    let status = crate::network::call(ws_url, methods::session::network::MOCK_STATUS, None).ok()?;
+    run_mock_text(&status)
+}
+
+fn run_mock_text(status: &serde_json::Value) -> Option<String> {
+    let apps = status["apps"].as_array()?;
+    let parts: Vec<String> = apps
+        .iter()
+        .map(|app| {
+            let selection = app["runSelection"].as_str().unwrap_or("none (default)");
+            if apps.len() > 1 {
+                format!("{}: {selection}", app["appid"].as_str().unwrap_or("?"))
+            } else {
+                selection.to_string()
+            }
+        })
+        .collect();
+    (!parts.is_empty()).then(|| format!("mock: {}", parts.join(" · ")))
 }
 
 /// Create `dir` and prove a file can be written in it.
@@ -4136,5 +4164,23 @@ mod legacy_report_tests {
         let junit = std::fs::read_to_string(dir.path().join("junit.xml")).unwrap();
         assert!(junit.contains("errors=\"0\""));
         assert!(!junit.contains("<error "));
+    }
+
+    #[test]
+    fn the_run_header_names_the_mock_selection_specs_see() {
+        let one = json!({ "apps": [{ "appid": "a", "runSelection": "all (lingxia dev --mock)" }] });
+        assert_eq!(
+            super::run_mock_text(&one).as_deref(),
+            Some("mock: all (lingxia dev --mock)")
+        );
+        let two = json!({ "apps": [
+            { "appid": "a", "runSelection": "none (mocks/config.json)" },
+            { "appid": "b", "runSelection": "none (default)" }
+        ] });
+        assert_eq!(
+            super::run_mock_text(&two).as_deref(),
+            Some("mock: a: none (mocks/config.json) · b: none (default)")
+        );
+        assert_eq!(super::run_mock_text(&json!({ "apps": [] })), None);
     }
 }

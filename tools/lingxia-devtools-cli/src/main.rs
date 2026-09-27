@@ -4,10 +4,10 @@ use clap::{Args, Parser, Subcommand};
 mod client;
 mod logs;
 mod lxapp;
+mod mock;
 mod network;
 mod project;
 mod runner;
-mod scenario;
 mod screenshot;
 mod sessions;
 mod test;
@@ -55,9 +55,9 @@ enum Commands {
     Logs(logs::LogsOptions),
     /// Run specs against the running app
     Test(Box<test::TestOptions>),
-    /// Put the running app into a product state from a scenario file
-    /// (development hosts only)
-    Scenario(scenario::ScenarioOptions),
+    /// Who answers the running app's calls: mocks/ handlers, the real
+    /// backend, or a scenario state on top (development hosts only)
+    Mock(mock::MockOptions),
     /// See the running app's Logic network calls (fetch, SSE) and who
     /// answered them; not system packet capture (development hosts only)
     Network(network::NetworkOptions),
@@ -209,7 +209,7 @@ fn run() -> Result<()> {
             };
             lingxia_control_commands::app::execute(&context, options)
         }
-        Commands::Scenario(options) => {
+        Commands::Mock(options) => {
             // Listing needs no session: it falls back to this directory's
             // project.
             let info = match resolve(&selector) {
@@ -217,7 +217,7 @@ fn run() -> Result<()> {
                 Err(err) if options.is_list() && project::is_no_session(&err) => None,
                 Err(err) => return Err(err),
             };
-            scenario::execute(info.as_ref(), options)
+            mock::execute(info.as_ref(), options)
         }
         Commands::Network(options) => {
             let info = resolve(&selector)?;
@@ -333,10 +333,10 @@ mod tests {
         };
         assert_eq!(about("test"), "Run specs against the running app");
         assert_eq!(about("session"), "List sessions");
-        assert!(
-            about("scenario")
-                .starts_with("Put the running app into a product state from a scenario file"),
-        );
+        assert!(about("mock").starts_with(
+            "Who answers the running app's calls: mocks/ handlers, the real backend, or a \
+             scenario state on top"
+        ));
         assert!(about("network").starts_with(
             "See the running app's Logic network calls (fetch, SSE) and who answered them; not \
              system packet capture"
@@ -350,8 +350,8 @@ mod tests {
         assert_eq!(
             names,
             [
-                "session", "logs", "test", "scenario", "network", "lxapp", "host", "browser",
-                "runner", "desktop"
+                "session", "logs", "test", "mock", "network", "lxapp", "host", "browser", "runner",
+                "desktop"
             ]
         );
     }
@@ -446,42 +446,48 @@ mod tests {
             assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
         }
         assert!(Cli::try_parse_from(["lxdev", "network", "record", "stop"]).is_err());
-        // Scenarios moved to `lxdev scenario`.
+        // Scenarios are `lxdev mock use` / `clear`.
         assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "use", "s.json"]).is_err());
         assert!(Cli::try_parse_from(["lxdev", "network", "scenario", "clear"]).is_err());
     }
 
     #[test]
-    fn scenario_commands_have_stable_cli_shapes() {
+    fn mock_commands_have_stable_cli_shapes() {
         for argv in [
-            vec!["lxdev", "scenario", "list"],
-            vec!["lxdev", "scenario", "list", "--json"],
-            vec!["lxdev", "scenario", "use", "qoe/offline"],
-            vec!["lxdev", "scenario", "use", "wifi:offline", "--watch"],
+            vec!["lxdev", "mock"],
+            vec!["lxdev", "mock", "status", "--json"],
+            vec!["lxdev", "mock", "all"],
+            vec!["lxdev", "mock", "all", "GET **/qoe/*", "orders.submit"],
+            vec!["lxdev", "mock", "none", "--json"],
+            vec!["lxdev", "mock", "none", "GET **/qoe/*"],
+            vec!["lxdev", "mock", "list"],
+            vec!["lxdev", "mock", "list", "--json"],
+            vec!["lxdev", "mock", "use", "qoe/offline"],
+            vec!["lxdev", "mock", "use", "wifi:offline", "--watch"],
             vec![
                 "lxdev",
-                "scenario",
+                "mock",
                 "use",
                 "tests/scenarios/offline.json",
                 "--appid",
                 "app",
                 "--json",
             ],
-            vec!["lxdev", "scenario", "status", "--json"],
-            vec!["lxdev", "scenario", "clear"],
+            vec!["lxdev", "mock", "clear"],
+            vec!["lxdev", "mock", "reset", "--json"],
         ] {
             assert!(Cli::try_parse_from(&argv).is_ok(), "{argv:?}");
         }
-        assert!(Cli::try_parse_from(["lxdev", "scenario", "use"]).is_err());
+        assert!(Cli::try_parse_from(["lxdev", "mock", "use"]).is_err());
         // A variant is named `name:variant`, never with a flag.
-        assert!(
-            Cli::try_parse_from(["lxdev", "scenario", "use", "wifi", "--variant", "b"]).is_err()
-        );
-        let Commands::Scenario(options) = Cli::try_parse_from(["lxdev", "scenario", "list"])
+        assert!(Cli::try_parse_from(["lxdev", "mock", "use", "wifi", "--variant", "b"]).is_err());
+        // Scenario states are `lxdev mock use|clear|list`; no `scenario` command.
+        assert!(Cli::try_parse_from(["lxdev", "scenario", "list"]).is_err());
+        let Commands::Mock(options) = Cli::try_parse_from(["lxdev", "mock", "list"])
             .unwrap()
             .command
         else {
-            panic!("expected scenario command");
+            panic!("expected mock command");
         };
         assert!(options.is_list());
     }
