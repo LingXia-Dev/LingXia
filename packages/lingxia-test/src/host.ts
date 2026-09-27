@@ -3,7 +3,7 @@ import { PACKAGE_NAME, VERSION } from "./version.js";
 import type { AutomationHost } from "./types.js";
 
 export interface ResolvedHost {
-  /** User `--arg`/`--secret-arg` values: what the spec sees as `t.args`. */
+  /** User `--arg`/`--secret-arg` values: what the spec reads with `t.arg()`. */
   args: Record<string, string>;
   /**
    * lxdev's run controls (grep, ids, shard, retries, …), never read from

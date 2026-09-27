@@ -111,7 +111,7 @@ test("restoreProfile outside an isolated run fails before the body", async () =>
   assert.equal(report.cases[0].error.code, "E_PROFILE_NOT_ISOLATED");
 });
 
-test("t.profile re-selects the app after a switch", async () => {
+test("t.app.profile re-selects the app after a switch", async () => {
   const world = createWorld();
   fakeProfile(world);
   let selections = 0;
@@ -124,16 +124,16 @@ test("t.profile re-selects the app after a switch", async () => {
 
   spec("manual", async (t) => {
     const before = selections;
-    const checkpoint = await t.profile.checkpoint();
+    const checkpoint = await t.app.profile.checkpoint();
     assert.deepEqual(checkpoint, { id: "cp-1" });
     assert.deepEqual(await t.app.profile.restore(checkpoint), { kept: [] });
-    assert.equal(await t.profile.drop(checkpoint), undefined);
+    assert.equal(await t.app.profile.drop(checkpoint), undefined);
     assert.equal(selections - before, 2, "checkpoint and restore each re-select the app");
     // The id alone still names it.
-    const again = await t.profile.checkpoint();
-    await t.profile.restore(again.id);
-    await t.profile.drop(again.id);
-    await t.reject(() => t.profile.restore({}), { message: /needs the checkpoint t\.profile\.checkpoint\(\) resolved/ });
+    const again = await t.app.profile.checkpoint();
+    await t.app.profile.restore(again.id);
+    await t.app.profile.drop(again.id);
+    await t.reject(() => t.app.profile.restore({}), { message: /needs the checkpoint t\.app\.profile\.checkpoint\(\) resolved/ });
   });
 
   const report = await run();

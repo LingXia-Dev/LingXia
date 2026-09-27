@@ -535,7 +535,7 @@ export interface TestApp {
   scenario(definition: ScenarioInput, variant?: string): Promise<TestScenario>;
   /** Spec-scoped test clock for the app's Logic. */
   readonly clock: TestClock;
-  /** The same as `t.profile`. */
+  /** Checkpoint and roll back the app's isolated data. */
   readonly profile: ProfileFixture;
   info: LxAppDriver["info"];
   pages: LxAppDriver["pages"];
@@ -548,7 +548,7 @@ export interface ProfileCheckpoint {
 }
 
 /**
- * `t.profile`: checkpoint and roll back the app's isolated data by hand.
+ * `t.app.profile`: checkpoint and roll back the app's isolated data by hand.
  * Needs an isolated run (`lxdev test --profile`); otherwise every call
  * rejects with `E_PROFILE_NOT_ISOLATED`. `checkpoint` and `restore` close the
  * app and reopen it at its initial page; `t.app` follows the reopened app, a
@@ -567,7 +567,7 @@ export interface ProfileFixture {
   drop(checkpoint: ProfileCheckpoint | string): Promise<void>;
 }
 
-/** `t.profile.restore` options. */
+/** `t.app.profile.restore` options. */
 export interface ProfileRestoreOptions {
   /**
    * `lx.getStorage()` keys whose current state survives the rollback: globs
@@ -583,6 +583,7 @@ export interface ProfileRestoreOptions {
  * spec like `t.app`.
  */
 export interface TestAutomation extends Omit<HostRunAutomation, "lxapp" | "browser" | "desktop" | "terminal"> {
+  /** The current lxapp, or another running one by id, as a fixture app. */
   lxapp(): TestApp;
   lxapp(appId: string): TestApp;
   /**
@@ -606,10 +607,6 @@ export interface TestAutomation extends Omit<HostRunAutomation, "lxapp" | "brows
    * terminal each call rejects.
    */
   readonly terminal: TerminalDriver;
-}
-
-export interface Apps {
-  lxapp(appId: string): TestApp;
 }
 
 /** `expect.poll(read)` matchers: they call `read` until the matcher passes. */
@@ -705,19 +702,15 @@ export interface Fixture {
   /** Guarded host drivers; use these in tests so actions are traced and stop with the fixture. */
   readonly automation: TestAutomation;
   readonly app: TestApp;
-  readonly apps: Apps;
-  readonly profile: ProfileFixture;
   /**
    * The OpenAPI documents this run checks against (`lxdev test --openapi`),
    * or `undefined` without them. A spec that only means something against a
    * contract declares it: `requires: { openapi: true }`.
    */
   readonly openapi: OpenApiRun | undefined;
-  /** `--arg` / `--secret-arg` values; a missing key is `undefined`. */
-  readonly args: Readonly<Record<string, string | undefined>>;
   /**
-   * Read one `--arg` value. Missing, it throws naming the `--arg` to pass,
-   * unless `default` is given or `required` is false.
+   * Read one `--arg` / `--secret-arg` value. Missing, it throws naming the
+   * `--arg` to pass, unless `default` is given or `required` is false.
    */
   arg(name: string, options: { required: false; default?: undefined }): string | undefined;
   arg(name: string, options?: ArgOptions): string;

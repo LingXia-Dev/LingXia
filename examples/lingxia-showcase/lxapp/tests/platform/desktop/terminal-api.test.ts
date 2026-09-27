@@ -83,7 +83,7 @@ terminalSpec('read, revise, reset, and preview terminal settings inside the bund
     describe: 'terminal settings to become the current lxapp',
     timeoutMs: 20_000,
   });
-  const terminal = t.apps.lxapp(TERMINAL_APP_ID);
+  const terminal = t.automation.lxapp(TERMINAL_APP_ID);
   await eventually(() => terminal.logic.eval({ timeout: 5_000 }, () => true), (ready) => ready === true, {
     describe: 'terminal settings Logic runtime to answer',
     timeoutMs: 20_000,

@@ -7,12 +7,12 @@ spec('control-page links retain trusted bridge authority', {
   timeout: 180_000,
 }, async (t) => {
   const browser = t.automation.browser;
-  const fromUrl = t.args.fromUrl || 'lingxia://settings#downloads';
-  const toUrl = t.args.toUrl || 'lingxia://downloads';
-  const forward = t.args.forwardSelector || 'a[href="lingxia://downloads"]';
-  const back = t.args.backSelector || 'a[href="lingxia://settings#downloads"]';
-  const rpc = t.args.rpc || 'downloads.getSettings';
-  const cycles = Number(t.args.cycles || 10);
+  const fromUrl = t.arg('fromUrl', { default: 'lingxia://settings#downloads' });
+  const toUrl = t.arg('toUrl', { default: 'lingxia://downloads' });
+  const forward = t.arg('forwardSelector', { default: 'a[href="lingxia://downloads"]' });
+  const back = t.arg('backSelector', { default: 'a[href="lingxia://settings#downloads"]' });
+  const rpc = t.arg('rpc', { default: 'downloads.getSettings' });
+  const cycles = Number(t.arg('cycles', { default: '10' }));
   if (!Number.isInteger(cycles) || cycles < 1 || cycles > 30) {
     throw new Error('cycles must be an integer from 1 to 30');
   }

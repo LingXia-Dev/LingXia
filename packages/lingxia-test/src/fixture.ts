@@ -28,7 +28,6 @@ import {
   type PageLike,
 } from "./locator.js";
 import type {
-  Apps,
   ArgOptions,
   AttachmentRef,
   ExpectOptions,
@@ -85,9 +84,9 @@ export class SkipSignal extends Error {
 export type FailurePhase = "beforeEach" | "body" | "defer" | "forensics" | "timeout" | "contract";
 
 export class LiveFixture implements Fixture {
-  readonly apps: Apps;
   readonly automation: TestAutomation;
-  readonly args: Readonly<Record<string, string | undefined>>;
+  /** `--arg` / `--secret-arg` values; read through `arg()`. */
+  private readonly argValues: Readonly<Record<string, string | undefined>>;
   readonly steps: StepRecord[] = [];
   /**
    * `lx.*` members this spec's evals actually reached. Collected so the report
@@ -142,7 +141,7 @@ export class LiveFixture implements Fixture {
     this.rawApp = rawApp;
     this.hostAutomation = automation;
     this.startedAt = Date.now();
-    this.args = args;
+    this.argValues = args;
     this.specDeadline = Date.now() + specBudgetMs;
     setExpectScope({
       note: (entry) => this.noteAssertion(entry),
@@ -162,7 +161,6 @@ export class LiveFixture implements Fixture {
           ? lazyDriver(() => ({ owner: automation as object, value: Reflect.get(automation, prop) }), this, `${String(prop)}.`)
           : Reflect.get(target, prop),
     }) as unknown as TestAutomation;
-    this.apps = { lxapp: (appId: string) => this.automation.lxapp(appId) };
   }
 
   get app(): TestApp {
@@ -185,18 +183,19 @@ export class LiveFixture implements Fixture {
     };
   }
 
-  get profile(): ProfileFixture {
+  /** `t.app.profile`: it re-selects the app after a switch. */
+  private profileFixture(): ProfileFixture {
     return {
       checkpoint: () => this.act("profile.checkpoint", "", () =>
         this.reopening(async (driver): Promise<ProfileCheckpoint> => ({ id: await driver.profile.checkpoint() }))),
       restore: (checkpoint: ProfileCheckpoint | string, options?: ProfileRestoreOptions) => {
-        const id = checkpointId(checkpoint, "t.profile.restore");
+        const id = checkpointId(checkpoint, "t.app.profile.restore");
         return this.act("profile.restore", options?.keep?.length ? `${id} keep ${options.keep.join(",")}` : id, () =>
           this.reopening((driver) =>
             options?.keep?.length ? driver.profile.restore(id, { keep: [...options.keep] }) : driver.profile.restore(id)));
       },
       drop: (checkpoint: ProfileCheckpoint | string) => {
-        const id = checkpointId(checkpoint, "t.profile.drop");
+        const id = checkpointId(checkpoint, "t.app.profile.drop");
         return this.act("profile.drop", id, async () => { await this.rawApp.profile.drop(id); });
       },
     };
@@ -355,12 +354,12 @@ export class LiveFixture implements Fixture {
   arg(name: string, options: { required: false; default?: undefined }): string | undefined;
   arg(name: string, options?: ArgOptions): string;
   arg(name: string, options: ArgOptions = {}): string | undefined {
-    const value = this.args[name];
+    const value = this.argValues[name];
     if (value !== undefined) return value;
     if (options.default !== undefined) return options.default;
     if (options.required === false) return undefined;
     // Keys are case-sensitive: `LXDEV_SECRET_PASSWORD` is `PASSWORD`.
-    const other = Object.keys(this.args).find(
+    const other = Object.keys(this.argValues).find(
       (key) => key !== name && key.toLowerCase() === name.toLowerCase(),
     );
     const hint = other === undefined
@@ -788,9 +787,8 @@ export class LiveFixture implements Fixture {
       },
       scenario: (definition: ScenarioInput, variant?: string) =>
         installScenario(() => driver, fixture, fixture.scenarioScope, definition, variant),
-      // The same as `t.profile`: it re-selects the app after a switch.
       get profile() {
-        return fixture.profile;
+        return fixture.profileFixture();
       },
       // Lazy and non-throwing like `network`; spec-scoped: uninstalled when
       // the spec ends.
@@ -1203,7 +1201,7 @@ const IDEMPOTENT_READS = new Set(["nav.current", "nav.info", "nav.stack", "page.
 function checkpointId(checkpoint: ProfileCheckpoint | string, api: string): string {
   const id = typeof checkpoint === "string" ? checkpoint : checkpoint?.id;
   if (typeof id !== "string" || id.length === 0) {
-    throw new TypeError(`${api} needs the checkpoint t.profile.checkpoint() resolved (or its id)`);
+    throw new TypeError(`${api} needs the checkpoint t.app.profile.checkpoint() resolved (or its id)`);
   }
   return id;
 }

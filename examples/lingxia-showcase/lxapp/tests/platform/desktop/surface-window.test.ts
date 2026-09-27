@@ -48,7 +48,7 @@ interface SurfacePageSnapshot {
 }
 
 async function desktopPlatform(t: Fixture): Promise<string> {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   const actual = await runtimePlatform(app);
   if (!['macos', 'windows'].includes(actual)) {
     throw new Error(

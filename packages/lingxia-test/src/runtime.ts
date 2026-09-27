@@ -531,7 +531,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   warnVersionSkew();
   const rawHost = resolveHost();
   const { args, control } = rawHost;
-  // Secret args reach the spec through `t.args` but never an event or report.
+  // Secret args reach the spec through `t.arg()` but never an event or report.
   const redact = createRedactor(args, secretKeys(control.secretArgs));
   const host: ResolvedHost = {
     ...rawHost,
@@ -778,14 +778,14 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const bodyPromise = (async () => {
       if (item.restoreProfile) {
         phase = "beforeEach";
-        const checkpoint = await fixture.profile.checkpoint();
+        const checkpoint = await fixture.app.profile.checkpoint();
         fixture.defer(async () => {
           try {
-            await fixture.profile.restore(checkpoint, item.restoreKeep ? { keep: item.restoreKeep } : undefined);
+            await fixture.app.profile.restore(checkpoint, item.restoreKeep ? { keep: item.restoreKeep } : undefined);
             profileRestored = true;
           } finally {
             // A failed rollback must not leave its copy on disk for the rest of the run.
-            await Promise.resolve(fixture.profile.drop(checkpoint)).catch(() => {});
+            await Promise.resolve(fixture.app.profile.drop(checkpoint)).catch(() => {});
           }
         });
         phase = "body";

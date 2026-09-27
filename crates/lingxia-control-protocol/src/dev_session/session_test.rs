@@ -8,7 +8,7 @@ pub struct TestStartArgs {
     pub source: String,
     pub source_name: Option<String>,
     pub timeout_ms: Option<u64>,
-    /// User `--arg`/`--secret-arg` values: the spec's `t.args`.
+    /// User `--arg`/`--secret-arg` values: what the spec reads with `t.arg()`.
     #[serde(default)]
     pub args: HashMap<String, String>,
     /// lxdev's run controls (grep, ids, shard, retries, …), kept apart from

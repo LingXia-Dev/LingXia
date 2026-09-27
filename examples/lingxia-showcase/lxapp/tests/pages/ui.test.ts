@@ -207,7 +207,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
 spec('rejects invalid native-surface dimensions before opening a host surface', {
   timeout: 60_000,
 }, async (t) => {
-  const app = t.apps.lxapp(SHOWCASE_APP_ID);
+  const app = t.automation.lxapp(SHOWCASE_APP_ID);
   await app.nav.relaunch({ page: 'ui', query: { type: 'surface' } });
   await app.view.testId('open-surface', { page: 'ui' }).waitFor({ timeout: 30_000 });
 

@@ -65,7 +65,7 @@ async function waitForRenderedFeature(
 }
 
 spec('page manifest matches the running lxapp', async (t) => {
-  const pages = await t.apps.lxapp(SHOWCASE_APP_ID).pages();
+  const pages = await t.automation.lxapp(SHOWCASE_APP_ID).pages();
   expect(pages.map((page) => page.name)).toEqual([...SHOWCASE_PAGES]);
   expect(pages.every((page) => (
     page.path.toLowerCase().includes(`pages/${page.name.toLowerCase()}/index.`)
@@ -74,7 +74,7 @@ spec('page manifest matches the running lxapp', async (t) => {
 
 for (const expectation of SHOWCASE_PAGE_EXPECTATIONS) {
   spec(`renders showcase feature: ${expectation.page}`, async (t) => {
-    const app = t.apps.lxapp(SHOWCASE_APP_ID);
+    const app = t.automation.lxapp(SHOWCASE_APP_ID);
     try {
       const landed = await app.nav.relaunch({ page: expectation.page });
       expect(landed.name).toBe(expectation.page);

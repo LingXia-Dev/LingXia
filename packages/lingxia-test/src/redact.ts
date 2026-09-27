@@ -10,7 +10,7 @@
  *   value is not searched for elsewhere: a guess from the name must not blank
  *   every `1000` in a report because someone passed `maxTokens=1000`.
  *
- * The spec always reads the real value from `t.args`.
+ * The spec always reads the real value with `t.arg()`.
  */
 
 import { bytesToBase64 } from "./format.js";
@@ -74,7 +74,7 @@ export interface Redactor {
 }
 
 /**
- * @param args  the user args (`t.args`)
+ * @param args  the user args (`t.arg()`)
  * @param secretKeys  keys passed with `--secret-arg`
  */
 export function createRedactor(

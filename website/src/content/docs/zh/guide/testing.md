@@ -72,13 +72,13 @@ lxdev test tests/pages/home.test.ts
 lxdev test tests/ --grep checkout
 ```
 
-用 `--arg` 向运行传值（`t.args`），让一套用例覆盖多个平台或 fixture URL：
+用 `--arg` 向运行传值（用 `t.arg('name')` 读取），让一套用例覆盖多个平台或 fixture URL：
 
 ```bash
 lxdev test tests/flows/checkout.test.ts --arg platform=macos --arg statusUrl=https://…
 ```
 
-机密值用 `--secret-arg key=value` 传入：它在报告、事件和附件里出现的地方都写成 `***`。报告还会列出运行参数；名字像凭据的 `--arg`（`password`、`apiKey`、`DB_TOKEN`）在这份列表里显示为 `***`。用例从 `t.args` 读到的仍是真实值。
+机密值用 `--secret-arg key=value` 传入：它在报告、事件和附件里出现的地方都写成 `***`。报告还会列出运行参数；名字像凭据的 `--arg`（`password`、`apiKey`、`DB_TOKEN`）在这份列表里显示为 `***`。用例用 `t.arg()` 读到的仍是真实值。
 
 结果边跑边输出，并写到 `test-results/<run-id>/`（`report.html`、`report.json`、`junit.xml`），CI 可以作为产物留存。
 
