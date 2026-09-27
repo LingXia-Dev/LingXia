@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 import { spec, expect } from "../dist/index.js";
-import { reset, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/runner.js";
+import { reset, run, DEFAULT_ACTION_TIMEOUT_MS, DEFAULT_SPEC_TIMEOUT_MS } from "../dist/runner.js";
 
 afterEach(() => {
   reset();
@@ -503,4 +503,35 @@ test("failure forensics record the page's visibility", async () => {
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
   assert.match(report.cases[0].error.page.hidden, /page hidden/);
   assert.match(report.failures[0].page.hidden, /no animation frame/);
+});
+
+test("view.page(name) binds locators, eval, screenshot and scroll to a page; a call can name another", async () => {
+  const world = createWorld();
+  world.add({ testId: "todo-input" });
+  installFakeHost(world);
+  const queried = [];
+  const query = world.app.page.query;
+  world.app.page.query = (options) => { queried.push(options.page); return query(options); };
+  const shots = [];
+  const screenshot = world.app.page.screenshot;
+  world.app.page.screenshot = (options) => { shots.push(options?.page); return screenshot(options); };
+
+  spec("bound", { forensics: false }, async (t) => {
+    const todo = t.app.view.page("todo");
+    await todo.testId("todo-input").fill("milk");
+    await expect(todo.testId("todo-input")).toHaveValue("milk");
+    await expect(todo.testId("todo-input", { page: "other" })).toBeVisible();
+    await todo.eval(({ document }) => document.title);
+    await todo.eval({ page: "cart" }, ({ document }) => document.title);
+    await todo.screenshot();
+    await t.app.view.screenshot();
+    await t.reject(() => Promise.resolve().then(() => t.app.view.page("")), { message: /takes a configured page name/ });
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.ok(queried.includes("todo") && queried.includes("other"), JSON.stringify(queried));
+  assert.ok(!queried.includes(undefined), JSON.stringify(queried));
+  assert.deepEqual(world.evaluatedPages.filter((page) => page === "todo" || page === "cart").slice(-2), ["todo", "cart"]);
+  assert.deepEqual(shots, ["todo", undefined]);
 });

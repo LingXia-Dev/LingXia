@@ -133,6 +133,11 @@ spec('typed Logic access', async t => {
   // @ts-expect-error The view exposes locators, not raw element methods.
   await t.app.view.waitFor({ css: '#save' });
   await t.app.view.screenshot();
+  const cart = t.app.view.page('cart');
+  await cart.testId('total').click();
+  const cartTitle: string = await cart.eval(({ document }) => document.title);
+  cartTitle.toUpperCase();
+  await cart.page('checkout').screenshot();
 
   // Results are typed as JSON carries them.
   const shaped = await t.app.logic.eval(() => ({ id: 'a', at: 1, tags: ['x'] as const, save() {} }));
