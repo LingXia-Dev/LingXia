@@ -399,6 +399,15 @@ Development machine: lxdev receives progress, results, and artifacts
   are rejected before sending (their source is not an expression). A remote
   `ReferenceError` is rethrown named `ReferenceError`, with its code/data and
   a note that `fn` cannot close over spec state; `t.waitFor` then fails fast.
+- The bundler checks those functions before the run (`test_eval_check.rs`):
+  for a call `X.eval(fn, …)` / `X.eval(options, fn, …)` whose `X` is a
+  `….logic`, `….view`, `….view.page(…)`, a destructured `logic`/`view`, or a
+  `const` holding one, it builds `oxc_semantic` for the file and fails on any
+  value reference inside `fn` that resolves to a binding declared outside it
+  (module `const`s, imports, the fixture `t`), naming file:line and the name.
+  Unresolved references are globals and pass; type positions are erased. A
+  function passed by name is checked where it is declared. Files under
+  `node_modules` are not checked.
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
   like `t.expect(fn)`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
