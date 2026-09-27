@@ -181,6 +181,10 @@ pub(crate) struct DevServerState {
     companion: std::sync::OnceLock<Arc<super::companion::CompanionLink>>,
     /// Scenario owners with `function` rules installed in the companion.
     companion_owners: Mutex<std::collections::HashSet<String>>,
+    /// Mock selection owners the companion holds (`dev`, `test:<run>`).
+    companion_mock_owners: Mutex<std::collections::HashSet<String>>,
+    /// Each watched lxapp's last valid `mocks/`.
+    mocks: Mutex<Vec<super::mocks::AppMocks>>,
 }
 
 /// One `session.watch.pause` lease.
@@ -220,7 +224,183 @@ impl DevServerState {
             runtime_build: Mutex::new(None),
             companion: std::sync::OnceLock::new(),
             companion_owners: Mutex::new(std::collections::HashSet::new()),
+            companion_mock_owners: Mutex::new(std::collections::HashSet::new()),
+            mocks: Mutex::new(Vec::new()),
         }
+    }
+
+    fn lock_mocks(&self) -> std::sync::MutexGuard<'_, Vec<super::mocks::AppMocks>> {
+        self.mocks
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    /// Bundle and validate every watched lxapp's `mocks/` and print the
+    /// `Mock:` line. An invalid `mocks/` fails the session start.
+    pub(crate) fn prepare_mocks(&self) -> Result<()> {
+        let baseline = super::mocks::baseline();
+        let roots = super::lxapp_watch::discover_watch_roots(&self.project_root)?;
+        let mut loaded = Vec::new();
+        let mut lines = Vec::new();
+        for root in &roots {
+            match super::mocks::load_app(&root.app_id, &root.path)
+                .with_context(|| format!("lxapp {} ({})", root.app_id, root.path.display()))?
+            {
+                Some(app) => {
+                    lines.push((root.app_id.clone(), app.summary(baseline)));
+                    loaded.push(app);
+                }
+                None => lines.push((root.app_id.clone(), super::mocks::no_mocks_line(baseline))),
+            }
+        }
+        let functions = self.companion_mock_summary();
+        for (app_id, line) in &lines {
+            let prefix = if lines.len() > 1 {
+                format!("{app_id}: ")
+            } else {
+                String::new()
+            };
+            let functions = functions
+                .as_deref()
+                .map(|text| format!(" · {text}"))
+                .unwrap_or_default();
+            println!("  Mock:     {prefix}{line}{functions}");
+        }
+        *self.lock_mocks() = loaded;
+        Ok(())
+    }
+
+    /// `functions 7/12 mocked` when the companion switches mocks.
+    fn companion_mock_summary(&self) -> Option<String> {
+        let link = self.companion.get()?;
+        if !link.supports(lingxia_control_protocol::dev_session::capabilities::MOCK) {
+            return None;
+        }
+        let status = link
+            .request(
+                lingxia_control_protocol::mock::companion::STATUS,
+                Some(serde_json::json!({})),
+                Duration::from_secs(15),
+            )
+            .ok()??;
+        let status: lingxia_control_protocol::mock::companion::StatusResult =
+            serde_json::from_value(status).ok()?;
+        Some(format!(
+            "functions {}/{} mocked",
+            status.mocked, status.total
+        ))
+    }
+
+    /// Send one request to the connected runtime and wait for its answer.
+    fn runtime_request(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+        timeout: Duration,
+    ) -> Result<serde_json::Value> {
+        let sender = self
+            .runtime_sender()
+            .ok_or_else(|| anyhow!("the runtime is not connected"))?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let (tx, rx) = mpsc::channel();
+        self.register_pending_result(id.clone(), tx);
+        let request = DevSessionMessage::Request(ControlRequest {
+            id: id.clone(),
+            method: method.to_string(),
+            params: Some(params),
+        });
+        if sender.send(request).is_err() {
+            let _ = self.take_pending_result(&id);
+            return Err(anyhow!("the runtime disconnected"));
+        }
+        match rx.recv_timeout(timeout) {
+            Ok(DevSessionMessage::Response(response)) => match response.error {
+                Some(error) => Err(anyhow!("{}", error.message)),
+                None => Ok(response.result.unwrap_or_default()),
+            },
+            Ok(_) => Err(anyhow!("unexpected response to {method}")),
+            Err(_) => {
+                let _ = self.take_pending_result(&id);
+                Err(anyhow!("{method} got no answer"))
+            }
+        }
+    }
+
+    /// Push one lxapp's mocks to the runtime.
+    fn push_mocks(&self, app: &super::mocks::AppMocks) -> Result<serde_json::Value> {
+        self.runtime_request(
+            lingxia_control_protocol::methods::session::network::MOCK_LOAD,
+            app.load_params(super::mocks::baseline()),
+            Duration::from_secs(30),
+        )
+    }
+
+    /// A runtime connected: load every lxapp's mocks into it. Failures are
+    /// printed, never fatal.
+    fn push_all_mocks(&self) {
+        let apps = self.lock_mocks().clone();
+        for app in apps {
+            if let Err(error) = self.push_mocks(&app) {
+                eprintln!(
+                    "[lingxia dev] mocks of {} not loaded into the runtime: {error:#}",
+                    app.app_id
+                );
+            }
+        }
+    }
+
+    /// A save under an lxapp's `mocks/`: bundle it again and push it. An
+    /// invalid save keeps the last valid mocks answering. Never rebuilds
+    /// or restarts the app.
+    pub(crate) fn reload_mocks(&self, app_id: &str, root: &Path) {
+        let previous = self
+            .lock_mocks()
+            .iter()
+            .find(|app| app.app_id == app_id)
+            .map(|app| app.bundle.keys.len());
+        let loaded = match super::mocks::load_app(app_id, root) {
+            Ok(Some(app)) => app,
+            Ok(None) => {
+                println!(
+                    "  • {app_id} has no mocks/index.ts any more; the mocks loaded last keep                      answering until the session restarts"
+                );
+                return;
+            }
+            Err(error) => {
+                let kept = match previous {
+                    Some(count) => format!(
+                        "the last valid mocks ({count} handler{}) keep answering",
+                        if count == 1 { "" } else { "s" }
+                    ),
+                    None => "no mocks are loaded".to_string(),
+                };
+                eprintln!("  ✗ {error:#}; {kept}");
+                return;
+            }
+        };
+        let handlers = loaded.bundle.keys.len();
+        let result = if self.runtime_sender().is_some() {
+            Some(self.push_mocks(&loaded))
+        } else {
+            None
+        };
+        match result {
+            Some(Err(error)) => {
+                eprintln!("  ✗ mocks of {app_id} rejected by the runtime — {error:#}");
+                return;
+            }
+            Some(Ok(_)) => println!(
+                "  ✓ mocks reloaded ({handlers} handler{}), state reset",
+                if handlers == 1 { "" } else { "s" }
+            ),
+            None => println!(
+                "  ✓ mocks bundled ({handlers} handler{}; runtime not connected yet)",
+                if handlers == 1 { "" } else { "s" }
+            ),
+        }
+        let mut mocks = self.lock_mocks();
+        mocks.retain(|app| app.app_id != app_id);
+        mocks.push(loaded);
     }
 
     fn lock_watch_leases(
@@ -448,8 +628,10 @@ impl DevServerState {
         let Some(epoch) = state.clear_runtime_sender(runtime_id) else {
             return;
         };
-        // A dev scenario fails closed with its connection, on both sides.
+        // A dev scenario and the live mock selection fail closed with the
+        // connection, on both sides.
         state.clear_companion_owner(lingxia_control_protocol::scenario::DEV_OWNER.to_string());
+        state.drop_companion_mock_owner(lingxia_control_protocol::mock::DEV_OWNER.to_string());
         if !state.end_on_runtime_gone {
             return;
         }
@@ -533,7 +715,8 @@ impl DevServerState {
         self.settle_watch_leases(run_id, running);
         let owner = lingxia_control_protocol::scenario::test_owner(run_id);
         if !running {
-            self.clear_companion_owner(owner);
+            self.clear_companion_owner(owner.clone());
+            self.drop_companion_mock_owner(owner);
         } else if method == test::START {
             self.hide_companion_dev_scenario(owner);
         }
@@ -728,6 +911,7 @@ fn start_server_on_with_roots(
     if let Some(companion) = &companion {
         let _ = state.companion.set(companion.link());
     }
+    state.prepare_mocks()?;
     let thread_state = state.clone();
     let thread_stop_flag = stop_flag.clone();
     let server_thread =
@@ -1111,6 +1295,10 @@ fn handle_devtool_connection(
     if replaced_runtime {
         eprintln!("[lingxia dev] devtool runtime reconnected; replacing stale runtime connection");
     }
+    // The runtime's mocks end with its connection: load them again, off
+    // this thread, which routes the answers.
+    let pushing = Arc::clone(state);
+    thread::spawn(move || pushing.push_all_mocks());
 
     let result = thread::scope(|scope| {
         let (event_tx, event_rx) = mpsc::sync_channel(RUNTIME_EVENT_QUEUE_CAPACITY);

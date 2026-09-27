@@ -239,7 +239,12 @@ impl DevCompanion {
             &DevSessionMessage::Request(ControlRequest {
                 id: PREPARE_REQUEST_ID.to_string(),
                 method: methods::session::PREPARE.to_string(),
-                params: None,
+                // `lingxia dev --mock`, when given; a companion that
+                // predates the params keeps seeing none.
+                params: lingxia_control_protocol::dev_session::DevSessionPrepareParams {
+                    mock: super::mocks::baseline(),
+                }
+                .to_params(),
             }),
         ) {
             stop_child_tree(&mut child);

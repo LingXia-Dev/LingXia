@@ -57,7 +57,7 @@ mod wallet;
 #[command(about = "LingXia CLI - Build cross-platform apps with ease", long_about = None)]
 #[command(
     after_help = "Run the app with `lingxia dev`; work on the running app (logs, UI, tests, \
-                  scenarios) with `lxdev`."
+                  mocks) with `lxdev`."
 )]
 struct Cli {
     /// Skip automatic skill synchronization, including during upgrade (for CI).
@@ -187,6 +187,11 @@ struct DevOptions {
     #[arg(long, value_name = "NAME")]
     name: Option<String>,
 
+    /// Answer every call with mocks (`all`) or the real backend (`none`)
+    /// for this session, from its first request, over mocks/config.json
+    #[arg(long, value_name = "all|none", value_parser = ["all", "none"])]
+    mock: Option<String>,
+
     #[command(subcommand)]
     action: Option<DevAction>,
 }
@@ -285,10 +290,11 @@ Examples:
   lingxia dev -p android               the host app on Android
   lingxia dev ../my-lxapp              an lxapp in the desktop Runner
   lingxia dev --background             scripts and CI: return once it is ready
+  lingxia dev --background --mock all  the same, every call answered from mocks/
   lingxia dev stop                     end the session (nothing running is fine)
 
 `lingxia dev` starts and stops the app session; `lxdev` works on the running
-app (logs, UI automation, tests, scenarios) and never starts one. There is one
+app (logs, UI automation, tests, mocks) and never starts one. There is one
 session per project and target: starting another takes over the old one.
 `lxdev session` lists the running sessions.")]
     Dev {
@@ -1056,6 +1062,10 @@ fn main() -> Result<()> {
                 background: dev_options.background,
                 json: dev_options.json,
                 name: dev_options.name,
+                mock: dev_options
+                    .mock
+                    .as_deref()
+                    .and_then(lingxia_control_protocol::mock::MockMode::parse),
                 action: dev_options.action.map(|action| match action {
                     DevAction::Stop { session } => {
                         commands::dev::DevSessionAction::Stop { session }

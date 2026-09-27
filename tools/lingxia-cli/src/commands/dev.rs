@@ -23,6 +23,7 @@ mod companion;
 pub(crate) mod log_store;
 mod lxapp_manifest;
 mod lxapp_watch;
+mod mocks;
 mod server;
 
 mod android;
@@ -90,6 +91,9 @@ pub struct DevExecuteOptions {
     pub json: bool,
     /// `--name`: a stable alias `--session` accepts.
     pub name: Option<String>,
+    /// `--mock all|none`: the session's mock baseline, over
+    /// `mocks/config.json`.
+    pub mock: Option<lingxia_control_protocol::mock::MockMode>,
     pub action: Option<DevSessionAction>,
 }
 
@@ -293,6 +297,7 @@ pub fn execute(mut options: DevExecuteOptions) -> Result<()> {
     if let Some(action) = options.action {
         return execute_session_action(&project_root, action);
     }
+    mocks::set_baseline(options.mock);
 
     if options
         .runner_device
