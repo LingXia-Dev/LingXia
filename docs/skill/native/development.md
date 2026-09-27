@@ -1,26 +1,12 @@
-# Native Development Guide
+# Native development
 
-This guide covers the Rust native surface for LingXia host apps.
+The Rust side of a host app: the `HostAddon`, `#[lingxia::native]` routes for
+the View, the generated client, `lingxia::*` facades, and `lingxia::js`
+extensions for Logic.
 
-Use this guide when you want to:
+## Host addon
 
-- expose Rust host APIs to pages with `#[lingxia::native]`
-- add optional JS AppService extensions under `lingxia::js`
-- call shared LingXia SDK services from Rust through facade modules such as
-  `lingxia::app`, `lingxia::task`, `lingxia::file`, `lingxia::media`, and
-  `lingxia::update`
-
-For lxapp page development, see [LxApp Development Guide](../lxapp/guide.md).
-For host project configuration, see [App Project](../app/project.md).
-
-For host-granted lxapp networking and the registry that answers it, see
-[Permissions](./permissions.md).
-
-## Host Addon
-
-Every native host library registers a `HostAddon` before runtime initialization.
-The addon is the place to declare product CLI commands, install native routes,
-add optional JS extensions, and start background services.
+Every host library registers one `HostAddon` before the runtime starts:
 
 ```rust
 struct AppHostAddon;
@@ -32,11 +18,8 @@ impl lingxia::HostAddon for AppHostAddon {
     }
 
     fn install_host_apis(&self) {
-        // For each #[lingxia::native] fn, call the macro-generated companion
-        // `<fn>_host()` and pass it to register_host_entry. See "The
-        // macro-generated <fn>_host() companion" below.
-        //
-        // lingxia::host::register_host_entry(pick_document_host());
+        // One register_host_entry call per #[lingxia::native] fn.
+        lingxia::host::register_host_entry(pick_document_host());
     }
 
     fn issue_app_resource_grants(
@@ -68,18 +51,17 @@ fn register_host_addon() {
 }
 ```
 
-`install_product_cli` is the only pre-runtime command-registration hook. Put
-the matching local-control request handler in `install_host_apis`; put neither
-half in `start_services`. See [Driving a Shipped Product](../app/agent-control.md)
-for the command and transport contract.
+- `install_product_cli` is the only pre-runtime command hook; its request
+  handler goes in `install_host_apis` ([Driving a shipped product](../app/agent-control.md)).
+- `issue_app_resource_grants` runs once per session while it is created.
+  Decide from `authority` alone: never prompt, block, or open/close an lxapp
+  there. Privilege classes: [Permissions](./permissions.md).
+- `install_navigation_routes` registers `{ kind: 'route' }` notification
+  targets (native screens, not pages), sealed before the runtime starts.
+- A launch cover per cold start: [Launch screen](./splash.md).
 
-`HostAddon::install_navigation_routes` registers `{ kind: 'route' }` locations
-only — native screens, not pages. The registry is sealed before the runtime
-starts, so nothing installed later and nothing a payload carries can add one. A
-notification that opens a page uses `{ kind: 'page' }` / `{ kind: 'app' }` from
-JS and needs no route here.
-
-Platform entrypoints call that registration function:
+Platform entrypoints call the registration function; the scaffold contains
+this wiring:
 
 ```rust
 #[cfg(target_os = "android")]
@@ -104,15 +86,9 @@ pub fn lingxia_register_host_addon() {
 }
 ```
 
-Generated host templates already contain this wiring.
+## Native routes
 
-Besides the hooks above, an addon can also swap the launch cover per cold
-start — see [Launch cover](./splash.md).
-
-## Native Routes
-
-Native routes expose Rust functions to the View layer. Define them with
-`#[lingxia::native("namespace.method")]` and return `lingxia::Result<T>`.
+`#[lingxia::native("namespace.method")]` exposes a Rust function to the View:
 
 ```rust
 use std::sync::Arc;
@@ -133,28 +109,19 @@ async fn pick_document(
 }
 ```
 
-Supported parameters:
+Parameters, in order, all optional:
 
-- optional first authority parameter: `Arc<lingxia::LxApp>` for compatibility,
-  or `lingxia::host::HostInvocationContext` when the handler must authorize an
-  app-owned or native-granted resource
-- optional JSON payload parameter
-- optional last parameter: `lingxia::host::HostCancel`
+1. an authority: `Arc<lingxia::LxApp>`, or
+   `lingxia::host::HostInvocationContext` to authorize app-owned or granted
+   resources;
+2. one JSON payload (`serde::Deserialize`);
+3. `lingxia::host::HostCancel`, last.
 
-Rules:
+Return `lingxia::Result<T>` with `T: serde::Serialize`. Streams and channels
+take the same authority before their payload and final context.
 
-- The authority parameter must be first when present.
-- `HostCancel` must be last when present.
-- Only one JSON payload parameter is supported.
-- Payload types must implement `serde::Deserialize`.
-- Return values must implement `serde::Serialize`.
-- Handler errors should use `lingxia::Result`.
-
-`HostInvocationContext` is created by native dispatch and cannot be constructed
-from request JSON. For an authenticated lxapp caller, `app_scope()` exposes its
-native identity, storage namespace, and native-issued resource grants. Treat a
-payload app id or resource id only as a selector and authorize it against this
-scope before access:
+`HostInvocationContext` comes from dispatch, never from JSON. Treat a payload
+id only as a selector and authorize it against `app_scope()`:
 
 ```rust
 #[lingxia::native("editor.openGrantedDocument")]
@@ -170,48 +137,19 @@ async fn open_granted_document(
 }
 ```
 
-Streams and channels accept the same optional first authority parameter before
-their payload and final `StreamContext` or `ChannelContext`.
+### Registration
 
-High-risk privilege classes (`process`, `downloads`, `automation`, and
-`host`) are host grants, not `lxapp.json` fields. Their native grants are
-sealed to the session before its Logic runtime starts. `capabilities.process`
-grants `Process` only to the native-assigned ControlApp when the permission
-provider (or the default allow) permitted `process`. A product that supports
-user-approved OS Downloads access must issue `AppResourceGrant::Downloads`
-from `HostAddon::issue_app_resource_grants` after its own policy/consent
-check. Standard and Control sessions otherwise start without privileged
-resource grants, even when their app ids are identical.
+The macro generates `fn <name>_host() -> lingxia::host::HostRegistrationEntry`
+(also for streams and channels). Never write or rename it; pass it to
+`lingxia::host::register_host_entry` in `install_host_apis`. An unregistered
+route returns `BRIDGE_METHOD_NOT_FOUND`. Duplicate route names are rejected.
 
-Loading the process namespace is not a persistent grant. `spawn`, `spawnSync`,
-shell commands, retained child handles, and child stream I/O recheck the exact
-session's live `Process` grant. Closing, restarting, or replacing that session
-revokes its handles and terminates its running process trees; a successor with
-the same app id cannot control them.
+### Route audience
 
-The callback runs once per session while that session is still being created —
-under its creation lock, or on the task that lands its permission snapshot.
-Decide from the authority alone: opening, restarting, or closing an lxapp from
-inside it deadlocks, and never prompt or block on a person there. Sealing a
-session the user already closed grants nothing.
-
-The callback receives an unconstructable `NativeHostRuntimeAuthority`; it
-cannot be called from a route or populated from payload fields. Devtools builds
-use the separate `NativeDevtoolsAuthority`, which can issue only session-bound
-automation grants and cannot grant process or Downloads access.
-
-### Route audience metadata
-
-`#[lingxia::native]` accepts optional registration metadata that describes the
-caller class intended for a route. Ordinary host-defined routes may omit it;
-the macro then records `AppSessionOnly` at compile time:
+`audience` restricts the caller class (see [Control app](../app/control-app.md));
+omitted, it is `app-session-only`:
 
 ```rust
-#[lingxia::native("editor.loadDocument")]
-async fn load_document() -> lingxia::Result<()> {
-    Ok(())
-}
-
 #[lingxia::native("host.setAccount", audience = "control-app-only")]
 fn set_account() -> lingxia::Result<()> {
     Ok(())
@@ -226,8 +164,6 @@ async fn watch_host(
 }
 ```
 
-The accepted string values are fixed by the SDK:
-
 | String | Admits |
 | --- | --- |
 | `app-session-only` | any lxapp session (the default for `native`) |
@@ -237,61 +173,11 @@ The accepted string values are fixed by the SDK:
 | `browser-control-only` | a browser control document only |
 | `control-app-or-browser-only` | the ControlApp session, plus a browser control document |
 
-The classes are disjoint, so a name never implies a superset: the control
-surface is not admitted by `control-app-only`, and the ControlApp is not
-admitted by `control-surface-only`. `any-authenticated` constrains the caller
-class only — it does not make a route read-only.
-
-An unknown value, a non-string value, or duplicate `audience` metadata is a
-compile error. This metadata is fixed in the generated registration companion;
-it is not a client-provided parameter. Registration seals it into the
-production effective route inventory alongside the handler kind. The Ready
-schema and unary, notification, stream, and channel admission all read that
-same caller-filtered inventory.
-
-`#[lingxia::framework_native(...)]` is a doc-hidden framework macro for
-framework-owned routes. It shares the same syntax but requires an explicit
-`audience`; application and extension authors should use `native` instead.
-
-Any duplicate route name is rejected during registration, including a later
-handler that repeats the same kind and audience. Channels are advertised
-separately from `hostMethods`, so older V2 clients can ignore the additional
-schema without mistaking a channel for a call.
-
-### The macro-generated `<fn>_host()` companion
-
-`#[lingxia::native(...)]` is an attribute macro. In addition to wrapping the
-function body, it generates a sibling
-`fn <name>_host() -> lingxia::host::HostRegistrationEntry` that returns the
-registration value the host addon hands to
-`lingxia::host::register_host_entry`. You do not write this companion yourself
-and you cannot rename it.
-
-For `pick_document` above, the macro generates `pick_document_host()`. Use it
-from `HostAddon::install_host_apis`:
-
-```rust
-impl lingxia::HostAddon for AppHostAddon {
-    fn install_host_apis(&self) {
-        lingxia::host::register_host_entry(pick_document_host());
-        lingxia::host::register_host_entry(load_document_host());
-        // …one register_host_entry call per #[lingxia::native] fn
-    }
-    fn start_services(&self) {}
-}
-```
-
-If you forget to register the companion, the View call returns
-`BRIDGE_METHOD_NOT_FOUND` — the route compiled but never made it into the
-runtime's dispatch table. This is the most common cause of that error.
-
-`stream` and `channel` variants of the macro (covered below) also generate
-their respective `<fn>_host()` companion; register them the same way.
+The classes are disjoint: `control-app-only` excludes the control surface.
+`any-authenticated` limits the caller, not what the route may change. An
+unknown or duplicate `audience` is a compile error.
 
 ### Cancellation
-
-Use `HostCancel` for async work that should stop when the page cancels the
-request.
 
 ```rust
 #[lingxia::native("editor.loadDocument")]
@@ -311,8 +197,6 @@ async fn load_document(
 ```
 
 ### Streams
-
-Use `#[lingxia::native(..., stream)]` for incremental results.
 
 ```rust
 #[derive(serde::Serialize)]
@@ -342,8 +226,6 @@ async fn export_pdf(
 ```
 
 ### Channels
-
-Use `#[lingxia::native(..., channel)]` for bidirectional sessions.
 
 ```rust
 #[derive(serde::Deserialize)]
@@ -378,29 +260,17 @@ async fn editor_session(
 }
 ```
 
-## Generated Native Client
+## Generated native client
 
-Generate the View client from the native Rust crate's `build.rs` with
-`lingxia-native-codegen`. This keeps native route discovery next to the crate
-that owns `#[lingxia::native]` handlers, and `cargo build` fails before the
-lxapp is packaged if the generated client drifts.
+The scaffolded native crate's `build.rs` runs `lingxia-native-codegen`, which
+scans `#[lingxia::native]` handlers and their DTOs; `cargo build` fails if the
+client drifts. A hand-rolled crate copies the template's `build.rs` and its
+build-dependency. Lxapps configure no Rust paths.
 
-The `lingxia new` templates already ship this wiring: a `build = "build.rs"`
-manifest entry, a `lingxia-native-codegen` build-dependency (pinned to the
-matching SDK version), and a `build.rs` that invokes the codegen entrypoints.
-Start from a scaffolded native crate rather than reproducing the build script
-here. For a hand-rolled crate, copy the template's `build.rs` and add the
-build-dependency to your `Cargo.toml`; let the scaffolded template define the
-version so it stays in lockstep with the SDK.
-
-The generator scans `#[lingxia::native]` handlers and nearby struct DTOs. It
-supports TypeScript module output (`.ts`) and browser-global output (`.js`).
-
-The CLI sets `LINGXIA_NATIVE_CLIENT_OUT` to the framework-specific generated
-client path during native cargo builds: React/Vue use `.lingxia/native.ts`;
-HTML uses `.lingxia/native.js`.
-
-Use it from View code:
+The CLI passes the output path as `LINGXIA_NATIVE_CLIENT_OUT`: React/Vue get
+`.lingxia/native.ts` (imported as `@lingxia/native`), HTML gets
+`.lingxia/native.js` (copied into `dist/.lingxia/`). `lingxia build` generates
+it when `lxapp.config.ts` declares `native`.
 
 ```ts
 import { native } from "@lingxia/native";
@@ -418,8 +288,6 @@ channel.send({ kind: "cursor", payload: "{}" });
 channel.close();
 ```
 
-For plain HTML views, browser-global output is available at the fixed path:
-
 ```html
 <script src="lingxia://lxapp/.lingxia/native.js"></script>
 <script>
@@ -427,36 +295,22 @@ For plain HTML views, browser-global output is available at the fixed path:
 </script>
 ```
 
-Generated clients handle bridge details internally. Module clients use the
-high-level `@lingxia/bridge` helpers. Browser-global clients use
-`LingXiaBridge.raw.*` because they already generate full `host.*` routes and
-wrap stream/channel handles themselves.
+## Facades
 
-## LingXia Facade Modules
-
-Native route handlers reach shared SDK capabilities through the `lingxia::*`
-facade modules — `lingxia::app`, `lingxia::file`, `lingxia::media`,
-`lingxia::task`, `lingxia::update`, and friends. Each facade re-exports the
-stable, supported surface for one capability area: app state and paths, file
-and media pickers/downloads, runtime task spawning, and host-app update.
-
-Import the facade, never the internal crates behind it (such as
-`lingxia_logic` or `rong`). The facades are the contract; the internals drift.
+Reach SDK services through `lingxia::*` facades (`lingxia::app`,
+`lingxia::file`, `lingxia::media`, `lingxia::task`, `lingxia::update`,
+`lingxia::provider`), never internal crates such as `lingxia_logic` or `rong`.
+Signatures: `cargo doc -p lingxia --open`.
 
 ```rust
 #[lingxia::native("editor.cacheState")]
 async fn cache_state(app: Arc<lingxia::LxApp>) -> lingxia::Result<String> {
-    // Capability calls live behind the facade modules, e.g. lingxia::app::*.
     let state_file = lingxia::app::state_file_for(&app, "editor.json")?;
     Ok(state_file.to_string_lossy().into_owned())
 }
 ```
 
-The product's display language is one preference on that same facade, with one
-writer. `Auto` follows the system locale; `LanguageTag` accepts any canonical
-BCP-47 tag. Every lxapp and every host surface follows the resolved tag —
-narrowing it to the languages you ship is yours to do, and is not a second
-preference.
+The display language ([product settings](../lxapp/lx-api.md#product-settings)):
 
 ```rust
 let tag = lingxia::app::display_language();
@@ -466,23 +320,17 @@ let preference = "zh-CN"
     .parse::<lingxia::app::DisplayLanguagePreference>()
     .expect("valid BCP-47 tag");
 lingxia::app::set_display_language_preference(preference)?;
-lingxia::app::display_language_preference();
 ```
 
-For exact function names, parameters, and return types, read the crate docs
-rather than relying on a list here — they track the code:
+`lingxia::app::banner::show` is the Rust form of the
+[desktop banner](../lxapp/lx-api.md#desktop-banner). It blocks until the card
+resolves: call it from a blocking worker, and never show a no-timeout prompt on
+the macOS main thread.
 
-```sh
-cargo doc -p lingxia --open
-```
+## JS extensions
 
-Provider authors should likewise import provider traits through
-`lingxia::provider`, and media stream providers through `lingxia::media`.
-
-## JS AppService Extensions
-
-JS AppService extensions are optional and are only available with the
-`standard` Cargo feature. They are scoped under `lingxia::js`.
+With the `standard` Cargo feature, `lingxia::js` adds `lx.<namespace>.*` to
+Logic:
 
 ```rust
 #[cfg(feature = "standard")]
@@ -508,25 +356,25 @@ fn load_document(_ctx: rong::JSContext, id: String) -> rong::JSResult<String> {
 }
 ```
 
-Register the extension from `HostAddon::install_logic_extensions`:
+Register it in `install_logic_extensions` (see the addon above). Without
+`features.appService` there is no `standard` feature and no `lingxia::js`
+([`features`](../app/project.md#features)).
 
-```rust
-#[cfg(feature = "standard")]
-fn install_logic_extensions(&self) {
-    lingxia::js::register_logic_extension(Box::new(WorkspaceDocsExtension));
-}
-```
-
-When `features.appService: false` in `lingxia.yaml`, the generated host builds
-without `standard`; `lingxia::js` is not public, and logic-enabled lxapps are
-rejected at runtime. Lxapp manifests must use `logic`, not `appService`.
-
-## Choosing The Surface
+## Choosing the surface
 
 | Surface | Runs in | Called from | Use for |
 | --- | --- | --- | --- |
 | `#[lingxia::native]` | Rust host async runtime | View / generated native client | page-scoped native UI, file pickers, browser controls, native streams/channels |
 | `lingxia::js` extension | JS AppService runtime | Logic layer as `lx.*` | business logic helpers, app-owned data APIs, synchronous JS-facing helpers |
 
-Keep business state and app logic in AppService. Use native routes for
-page-scoped host capabilities and native-owned workflows.
+Keep business state in Logic; use native routes for host capabilities.
+
+## Pitfalls
+
+- Importing `lingxia_logic` or `rong` internals instead of `lingxia::*`
+  facades (JS extensions excepted).
+- Authority not first, or `HostCancel` not last, in a route signature.
+- Writing the `<fn>_host()` companion yourself, or forgetting to register it
+  (`BRIDGE_METHOD_NOT_FOUND`).
+- Trusting an app id or path from the payload instead of `app_scope()`.
+- Prompting or blocking inside `issue_app_resource_grants`.
