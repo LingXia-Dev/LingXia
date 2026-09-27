@@ -299,26 +299,59 @@ test("toHaveAttribute and toContainText failures name what was found", async () 
   assert.match(message, /aria-label="Inbox"/);
 });
 
-test("fixture nav waits for the landed page unless the caller picks waitUntil", async () => {
+test("fixture nav waits for the landed page unless the caller picks waitUntil; it takes { timeout }", async () => {
   const world = createWorld();
   installFakeHost(world);
+  let refused;
 
-  spec("navigates", async (t) => {
+  spec("navigates", { timeout: 10_000 }, async (t) => {
     await t.app.nav.to({ page: "detail" });
     await t.app.nav.to({ page: "other", waitUntil: "commit" });
-    await t.app.nav.to({ page: "slow", timeoutMs: 20_000 });
+    await t.app.nav.to({ page: "slow", timeout: 5_000 });
+    await t.app.nav.to({ page: "slower", timeout: 60_000 });
     await t.app.nav.back();
     const current = await t.app.nav.current();
-    assert.equal(current.name, "detail");
+    assert.equal(current.name, "slow");
+    refused = await t.reject(() => t.app.nav.to({ page: "x", timeoutMs: 1 }));
   });
 
-  await globalThis.__LINGXIA_TEST__.run();
-  assert.deepEqual(world.navCalls, [
-    ["to", { page: "detail", waitUntil: "ready" }],
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  const calls = world.navCalls.map(([verb, options]) => [verb, { ...options, ...(options.timeoutMs ? { timeoutMs: options.timeoutMs <= 10_000 && options.timeoutMs > 9_000 ? "room" : options.timeoutMs } : {}) }]);
+  assert.deepEqual(calls, [
+    ["to", { page: "detail", waitUntil: "ready", timeoutMs: "room" }],
     ["to", { page: "other", waitUntil: "commit" }],
-    ["to", { page: "slow", timeoutMs: 20_000, waitUntil: "ready" }],
-    ["back", { waitUntil: "ready" }],
+    ["to", { page: "slow", waitUntil: "ready", timeoutMs: 5_000 }],
+    ["to", { page: "slower", waitUntil: "ready", timeoutMs: "room" }],
+    ["back", { waitUntil: "ready", timeoutMs: "room" }],
   ]);
+  assert.match(refused.message, /takes \{ timeout \} in ms/);
+});
+
+test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its cause", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  world.app.nav.to = async () => {
+    throw Object.assign(new Error("page did not become ready within 50ms"), { code: "E_AUTOMATION_TIMEOUT", data: { page: "slow" } });
+  };
+  world.app.eval = async () => {
+    throw Object.assign(new Error("eval did not settle"), { code: "E_EVAL_TIMEOUT" });
+  };
+  const seen = {};
+
+  spec("times out", async (t) => {
+    seen.nav = await t.reject(() => t.app.nav.to({ page: "slow", timeout: 50 }), { code: "E_TIMEOUT" });
+    seen.eval = await t.reject(() => t.app.logic.eval({ timeout: 100 }, () => 1), { code: "E_TIMEOUT" });
+  });
+
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.equal(seen.nav.name, "TimeoutError");
+  assert.equal(seen.nav.cause.code, "E_AUTOMATION_TIMEOUT");
+  assert.deepEqual(seen.nav.data, { page: "slow", driverCode: "E_AUTOMATION_TIMEOUT" });
+  assert.match(seen.nav.message, /did not become ready/);
+  assert.equal(seen.eval.cause.code, "E_EVAL_TIMEOUT");
+  assert.deepEqual(seen.eval.data, { driverCode: "E_EVAL_TIMEOUT" });
 });
 
 test("a fresh spec relaunches home and waits for it to be ready", async () => {

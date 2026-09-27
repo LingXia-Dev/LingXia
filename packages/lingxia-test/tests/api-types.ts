@@ -20,7 +20,12 @@ spec('typed test boundary', async t => {
   landed.webviewAttached.valueOf();
   landed.instanceId?.toUpperCase();
   await t.reject(() => app.view.css('#save', {page:'devices'}).click(), {code:'E_PAGE_NOT_ACTIVE'});
-  await app.nav.back({waitUntil:'ready', timeoutMs:5_000});
+  await app.nav.back({waitUntil:'ready', timeout:5_000});
+  await app.nav.relaunch({page:'editor', timeout:5_000});
+  // @ts-expect-error Fixture waits take `timeout`; `timeoutMs` is the raw driver's.
+  await app.nav.to({page:'editor', timeoutMs:5_000});
+  const stack: string[] = (await app.nav.stack()).map((page) => page.path);
+  void stack;
   // @ts-expect-error The nav option is `waitUntil`; `waitFor` is the page/locator method.
   await app.nav.to({page:'editor', waitFor:'ready'});
   await input.waitFor({state:'attached'});
@@ -242,6 +247,9 @@ const knownCode: AutomationErrorCode = AUTOMATION_ERROR_CODES[0];
 const mistypedCode: AutomationErrorCode = 'E_PAGE_INACTIVE';
 const testCodes: readonly TestErrorCode[] = TEST_ERROR_CODES;
 const timeoutCode: 'E_TIMEOUT' = new TimeoutError('x').code;
+// @ts-expect-error A driver timeout reaches a spec as E_TIMEOUT.
+const driverTimeout: TestErrorCode = 'E_EVAL_TIMEOUT';
+void driverTimeout;
 const asTestCode: TestErrorCode = knownCode;
 const skipped: TestErrorCode = 'E_SKIPPED';
 // @ts-expect-error Test error codes are a closed union.
