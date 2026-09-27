@@ -363,7 +363,10 @@ fn setup_ai_tooling(project_dir: &std::path::Path) {
     if let Err(err) = crate::commands::skill::install_for_new_project(project_dir) {
         eprintln!(
             "{}",
-            format!("warning: AI tooling setup did not complete: {err}").yellow()
+            format!(
+                "warning: AI tooling setup did not complete: {err}; retry with `lingxia skill install`"
+            )
+            .yellow()
         );
     }
 }

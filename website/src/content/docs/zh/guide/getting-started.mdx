@@ -103,9 +103,10 @@ lxdev lxapp nav to home
 
 LingXia 的深度参考以可移植的 markdown **技能**形式分发——决策树、每条 CLI 命令、页面编写、原生组件、`lx.*` 逻辑 API 与 Rust 接口，经过编排，让助手直接路由到所需章节。
 
-技能编译在 CLI 内部，写出的副本永远对应你正在运行的那个 `lingxia`。无需安装：`lingxia new` 会把它写入 `~/.claude/skills/lingxia/`，之后任意一条命令只要发现磁盘上的副本与自己携带的不一致就会重写——升级之后如此，你自己编译一个 CLI 之后同样如此。
+技能编译在 CLI 内部，写出的副本永远对应你正在运行的那个 `lingxia`。`lingxia new` 会把它写入 `~/.claude/skills/lingxia/`；克隆来的项目运行 `lingxia skill install`。之后任意一条命令只要发现磁盘上的副本与自己携带的不一致就会重写——升级之后如此，你自己编译一个 CLI 之后同样如此。
 
 ```bash
+lingxia skill install       # 写入技能，并刷新本项目 AGENTS.md 中的指引
 lingxia version --verbose   # 末尾一行：skill: <path> (in sync)
 ```
 

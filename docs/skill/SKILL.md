@@ -118,7 +118,7 @@ never add them to a project.
 | Need | File |
 |---|---|
 | **Loop** | |
-| `lingxia` commands: new, dev, build, package, devices, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
+| `lingxia` commands: new, dev, build, package, devices, skill, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
 | Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
 | Write and run specs (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
 | Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.app.mock.use` | [lxapp/mock.md](./lxapp/mock.md) |
