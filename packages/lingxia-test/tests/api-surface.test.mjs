@@ -72,7 +72,20 @@ test("expect(locator) and expect.poll need a running spec; a value check does no
   expect([1, 2]).toHaveLength(2);
   expect("abc").not.toHaveLength(2);
   assert.throws(() => expect(3).toHaveLength(1), /received value must have a numeric length/);
-  assert.throws(() => expect(() => 1).toBe(1), AssertionError, "a function is a value, not a read");
+  assert.throws(() => expect(() => 1).toBe(1),
+    /expect\(fn\)\.toBe: a function is only called by toThrow; to retry a read until it passes, use expect\.poll\(read\)/);
+  assert.throws(() => expect(() => 1).not.toBeTruthy(), /expect\(fn\)\.toBeTruthy/);
+  expect(() => 1).not.toThrow();
+  assert.throws(() => expect(() => 1).toThrow(), AssertionError);
+});
+
+test("awaiting expect(...) without a matcher rejects, naming the line", async () => {
+  await assert.rejects(async () => { await expect(3); },
+    /expect\(value\) checks nothing until a matcher is called: expect\(value\)\.toBe\(expected\)\nat .*api-surface\.test\.mjs:\d+:\d+/);
+  await assert.rejects(async () => { await expect(3).not; }, /expect\(value\) checks nothing/);
+  await assert.rejects(async () => { await expect(() => 1); }, /expect\(fn\) checks nothing until a matcher is called: expect\(fn\)\.toThrow\(\)/);
+  // A matcher's own result is unaffected: a once-check returns nothing to await.
+  assert.equal(expect(3).toBe(3), undefined);
 });
 
 test("expect.poll(fn).toHaveLength retries until the length matches", async () => {

@@ -35,7 +35,9 @@ lxdev test tests/pages/notes.test.ts
   a page, resolving after its `onReady`. `spec(title, { fresh: true }, body)`
   relaunches home. Neither resets app or backend data.
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
-  the matcher passes; `expect(value)` checks once. Actions and retries wait
+  the matcher passes; `expect(value)` checks once; `expect(fn)` takes only
+  `toThrow`. Every `expect` needs a matcher: `await expect(x)` alone is a
+  type error and fails the spec. Actions and retries wait
   5 s (`{ timeout }` per call); a spec has 30 s (`spec(title, { timeout },
   body)`). Await every action: a body that returns while one still runs fails.
 - Text matchers compare whitespace-normalised text.
@@ -56,7 +58,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read Logic, call a page method, eval | [Reading Logic](#reading-logic) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
-| Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
+| Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode`, anything else matches by `message` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
 | Load a scenario file | `t.app.mock.use(json, variant?)`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |

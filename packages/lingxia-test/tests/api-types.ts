@@ -86,9 +86,13 @@ async function browserElement() {
 }
 void browserElement;
 
-spec.fail('known quota failure', { expected: { code: 'E_QUOTA', message: /quota/ } }, async () => {});
+spec.fail('known quota failure', { expected: { message: /quota/ } }, async () => {});
 // @ts-expect-error `expected` belongs to spec.fail only.
-spec('plain spec', { expected: { code: 'E_QUOTA' } }, async () => {});
+spec('plain spec', { expected: { code: 'E_TIMEOUT' } }, async () => {});
+// @ts-expect-error Codes are the closed `TestErrorCode` union; match another failure by `message`.
+spec.fail('app code', { expected: { code: 'E_QUOTA' } }, async () => {});
+// @ts-expect-error A removed code does not compile: a driver timeout is `E_TIMEOUT`.
+spec.fail('removed code', { expected: { code: 'E_EVAL_TIMEOUT' } }, async () => {});
 
 spec('typed Logic access', async t => {
   // Function-form Logic eval: scope is typed, args are JSON, result is inferred.
@@ -217,6 +221,22 @@ spec('typed Logic access', async t => {
   expect(3).toBeVisible();
   // @ts-expect-error A promise is neither a value nor a read: await it, or poll it.
   expect(t.app.logic.data()).toEqual({});
+  const readCount = () => 1;
+  expect(readCount).not.toThrow();
+  // @ts-expect-error A function is only called by toThrow; a read to retry is expect.poll(read).
+  expect(readCount).toBe(1);
+  // @ts-expect-error Nor does a function subject take other value matchers.
+  expect(readCount).toBeTruthy();
+  // @ts-expect-error `await expect(value)` without a matcher checks nothing.
+  await expect(3);
+  // @ts-expect-error `await expect(locator)` without a matcher checks nothing.
+  await expect(t.app.view.testId('save'));
+  // @ts-expect-error `await expect.poll(read)` without a matcher checks nothing.
+  await expect.poll(() => 1);
+  // @ts-expect-error Nor does `.not` alone.
+  await expect(3).not;
+  // @ts-expect-error A removed code does not compile in `t.reject` either.
+  await t.reject(() => t.app.logic.eval(() => 1), { code: 'E_EVAL_TIMEOUT' });
 
   // Args may be missing; t.arg narrows or throws.
   const baseUrl: string = t.arg('baseUrl');
