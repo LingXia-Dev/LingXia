@@ -2,11 +2,12 @@
 //!
 //! The test runner watches the app under test for each spec. While it does,
 //! toasts are recorded as they are presented (the host still draws them),
-//! and modals and `lx.showActionSheet` are answered from the answers the
-//! spec queued instead of being presented. A modal or sheet with no queued
-//! answer rejects in Logic and is reported to the runner, which fails the
-//! spec at once: nothing is left on screen waiting for a tap that never
-//! comes. A watch belongs to the spec attempt that opened it and ends with
+//! and so are modals and `lx.showActionSheet`: drawn, with how the user
+//! closed them. Once the spec queued a modal answer, modals are answered
+//! from the queue instead of being drawn (likewise action sheets); from then
+//! on one with no queued answer rejects in Logic and is reported to the
+//! runner, which fails the spec at once: nothing is left on screen waiting
+//! for a tap that never comes. A watch belongs to the spec attempt that opened it and ends with
 //! it; an app nobody watches (a dev session, any other run) presents every
 //! dialog as usual.
 
@@ -45,10 +46,16 @@ struct Watch {
     /// The spec attempt that opened it; `None` for the whole run.
     attempt: Option<u64>,
     toasts: VecDeque<Value>,
-    modals: VecDeque<Value>,
-    sheets: VecDeque<Value>,
+    /// With the id a drawn one reports its close by.
+    modals: VecDeque<(u64, Value)>,
+    sheets: VecDeque<(u64, Value)>,
     modal_answers: VecDeque<bool>,
     sheet_answers: VecDeque<SheetAnswer>,
+    /// The spec queued a modal (action sheet) answer: from then on those are
+    /// answered from the queue, never drawn.
+    answering_modals: bool,
+    answering_sheets: bool,
+    next_id: u64,
     /// The first dialog that found no answer. Dropping the sender (the watch
     /// ended) wakes a waiting `unanswered()` with nothing.
     unanswered: watch::Sender<Option<String>>,
@@ -64,6 +71,9 @@ impl Watch {
             sheets: VecDeque::new(),
             modal_answers: VecDeque::new(),
             sheet_answers: VecDeque::new(),
+            answering_modals: false,
+            answering_sheets: false,
+            next_id: 0,
             unanswered: watch::channel(None).0,
         }
     }
@@ -79,11 +89,43 @@ impl Watch {
     }
 }
 
-fn push_record(records: &mut VecDeque<Value>, record: Value) {
+fn push_record<T>(records: &mut VecDeque<T>, record: T) {
     if records.len() == MAX_RECORDS {
         records.pop_front();
     }
     records.push_back(record);
+}
+
+/// Record a dialog; a drawn one gets `drawn: true` and the id its close
+/// reports by.
+fn record_dialog(
+    records: &mut VecDeque<(u64, Value)>,
+    next_id: &mut u64,
+    mut record: Value,
+    drawn: bool,
+) -> u64 {
+    *next_id += 1;
+    if drawn {
+        record["drawn"] = json!(true);
+    }
+    push_record(records, (*next_id, record));
+    *next_id
+}
+
+/// Put how a drawn dialog closed on its record.
+fn close_dialog(
+    appid: &str,
+    id: u64,
+    pick: impl FnOnce(&mut Watch) -> &mut VecDeque<(u64, Value)>,
+    answer: Value,
+) {
+    with_watches(|watches| {
+        if let Some(watch) = watches.get_mut(appid)
+            && let Some((_, record)) = pick(watch).iter_mut().find(|(seen, _)| *seen == id)
+        {
+            record["answer"] = answer;
+        }
+    });
 }
 
 fn watches() -> &'static Mutex<HashMap<String, Watch>> {
@@ -154,7 +196,11 @@ impl DialogHook for Hook {
             if let Some(text) = &modal.cancel_text {
                 record["cancelText"] = json!(text);
             }
-            push_record(&mut watch.modals, record);
+            let drawn = !watch.answering_modals;
+            let id = record_dialog(&mut watch.modals, &mut watch.next_id, record, drawn);
+            if drawn {
+                return DialogDecision::Draw(id);
+            }
             match answer {
                 Some(confirm) => DialogDecision::Answer(confirm),
                 None => {
@@ -177,13 +223,19 @@ impl DialogHook for Hook {
                 return DialogDecision::Present;
             };
             let answer = watch.sheet_answers.pop_front();
-            push_record(
+            let drawn = !watch.answering_sheets;
+            let id = record_dialog(
                 &mut watch.sheets,
+                &mut watch.next_id,
                 json!({
                     "items": sheet.items,
                     "answer": answer.map(SheetAnswer::to_json),
                 }),
+                drawn,
             );
+            if drawn {
+                return DialogDecision::Draw(id);
+            }
             let refused = match answer {
                 Some(SheetAnswer::Cancel) => return DialogDecision::Answer(None),
                 Some(SheetAnswer::Index(index)) if index < sheet.items.len() => {
@@ -204,6 +256,26 @@ impl DialogHook for Hook {
             watch.fail(&refused);
             DialogDecision::Refuse(refused)
         })
+    }
+
+    fn modal_closed(&self, appid: &str, id: u64, confirm: Option<bool>) {
+        if let Some(confirm) = confirm {
+            close_dialog(
+                appid,
+                id,
+                |watch| &mut watch.modals,
+                json!({ "confirm": confirm }),
+            );
+        }
+    }
+
+    fn action_sheet_closed(&self, appid: &str, id: u64, selection: Option<Option<usize>>) {
+        let answer = match selection {
+            Some(Some(index)) => SheetAnswer::Index(index),
+            Some(None) => SheetAnswer::Cancel,
+            None => return,
+        };
+        close_dialog(appid, id, |watch| &mut watch.sheets, answer.to_json());
     }
 }
 
@@ -292,11 +364,9 @@ impl JSDialogDriver {
     fn records(
         &self,
         ctx: &JSContext,
-        pick: impl FnOnce(&Watch) -> &VecDeque<Value>,
+        pick: impl FnOnce(&Watch) -> Vec<Value>,
     ) -> JSResult<JSValue> {
-        let records = self.with_watch(ctx, |watch| {
-            Value::Array(pick(watch).iter().cloned().collect())
-        })?;
+        let records = self.with_watch(ctx, |watch| Value::Array(pick(watch)))?;
         json_to_js(ctx, &records)
     }
 }
@@ -396,23 +466,37 @@ impl JSDialogDriver {
     /// `{ title, icon, duration, at }`.
     #[js_method]
     fn toasts(&self, ctx: JSContext) -> JSResult<JSValue> {
-        self.records(&ctx, |watch| &watch.toasts)
+        self.records(&ctx, |watch| watch.toasts.iter().cloned().collect())
     }
 
     /// Modals since the watch started, oldest first: `{ title, content,
-    /// confirmText?, cancelText?, answer }`.
+    /// confirmText?, cancelText?, answer, drawn? }`; a drawn one's `answer`
+    /// is the user's once it closed.
     #[js_method]
     fn modals(&self, ctx: JSContext) -> JSResult<JSValue> {
-        self.records(&ctx, |watch| &watch.modals)
+        self.records(&ctx, |watch| {
+            watch
+                .modals
+                .iter()
+                .map(|(_, record)| record.clone())
+                .collect()
+        })
     }
 
     /// `lx.showActionSheet` calls since the watch started: `{ items, answer }`.
     #[js_method(rename = "actionSheets")]
     fn action_sheets(&self, ctx: JSContext) -> JSResult<JSValue> {
-        self.records(&ctx, |watch| &watch.sheets)
+        self.records(&ctx, |watch| {
+            watch
+                .sheets
+                .iter()
+                .map(|(_, record)| record.clone())
+                .collect()
+        })
     }
 
-    /// Queue the answer of the next modal: `{ confirm: true | false }`.
+    /// Queue the answer of the next modal: `{ confirm: true | false }`. From
+    /// now until the watch ends, modals are answered, never drawn.
     #[js_method(rename = "answerNextModal")]
     fn answer_next_modal(&self, ctx: JSContext, answer: JSObject) -> JSResult<()> {
         let confirm = parse_modal_answer(&js_object_to_json(&answer)?).map_err(auto_err)?;
@@ -423,12 +507,14 @@ impl JSDialogDriver {
                 )));
             }
             watch.modal_answers.push_back(confirm);
+            watch.answering_modals = true;
             Ok(())
         })?
     }
 
     /// Queue the answer of the next `lx.showActionSheet`: `{ index }` picks
-    /// that item, `{ cancel: true }` dismisses it.
+    /// that item, `{ cancel: true }` dismisses it. From now until the watch
+    /// ends, action sheets are answered, never drawn.
     #[js_method(rename = "answerNextActionSheet")]
     fn answer_next_action_sheet(&self, ctx: JSContext, answer: JSObject) -> JSResult<()> {
         let answer = parse_sheet_answer(&js_object_to_json(&answer)?).map_err(auto_err)?;
@@ -439,6 +525,7 @@ impl JSDialogDriver {
                 )));
             }
             watch.sheet_answers.push_back(answer);
+            watch.answering_sheets = true;
             Ok(())
         })?
     }
@@ -484,12 +571,54 @@ mod tests {
     }
 
     #[test]
+    fn a_spec_that_queues_nothing_sees_dialogs_drawn_and_recorded() {
+        let hook = Hook;
+        watched("dialogs-drawn", "run-d", 1);
+        let DialogDecision::Draw(id) = hook.modal("dialogs-drawn", &modal("Sign out?")) else {
+            panic!("an unarmed watch draws the modal");
+        };
+        let sheet = ActionSheetShown {
+            items: vec!["Edit".into(), "Delete".into()],
+        };
+        let DialogDecision::Draw(sheet_id) = hook.action_sheet("dialogs-drawn", &sheet) else {
+            panic!("an unarmed watch draws the sheet");
+        };
+        let DialogDecision::Draw(failed) = hook.modal("dialogs-drawn", &modal("Broken")) else {
+            panic!("drawn");
+        };
+        hook.modal_closed("dialogs-drawn", id, Some(false));
+        hook.action_sheet_closed("dialogs-drawn", sheet_id, Some(Some(1)));
+        hook.modal_closed("dialogs-drawn", failed, None);
+        let (modals, sheets, unanswered) = with_watches(|watches| {
+            let watch = &watches["dialogs-drawn"];
+            (
+                watch.modals.clone(),
+                watch.sheets.clone(),
+                watch.unanswered.borrow().clone(),
+            )
+        });
+        assert_eq!(
+            modals[0].1,
+            json!({ "title": "Sign out?", "content": "Really?", "confirmText": "Delete", "drawn": true, "answer": { "confirm": false } })
+        );
+        assert_eq!(
+            modals[1].1["answer"],
+            Value::Null,
+            "presentation failed: no answer"
+        );
+        assert_eq!(sheets[0].1["answer"], json!({ "index": 1 }));
+        assert_eq!(unanswered, None, "drawn dialogs never fail the spec");
+        clear_run("run-d");
+    }
+
+    #[test]
     fn queued_answers_answer_modals_in_order_and_a_missing_one_refuses() {
         let hook = Hook;
         watched("dialogs-modal", "run-m", 1);
         with_watches(|watches| {
             let watch = watches.get_mut("dialogs-modal").unwrap();
             watch.modal_answers.extend([true, false]);
+            watch.answering_modals = true;
         });
         let mut receiver = with_watches(|watches| watches["dialogs-modal"].unanswered.subscribe());
         assert_eq!(
@@ -501,7 +630,7 @@ mod tests {
             DialogDecision::Answer(false)
         );
         let DialogDecision::Refuse(message) = hook.modal("dialogs-modal", &modal("Three")) else {
-            panic!("an unanswered modal must refuse");
+            panic!("an unanswered modal must refuse once answering");
         };
         assert!(
             message.contains("\"Three\"") && message.contains("\"Really?\""),
@@ -513,13 +642,21 @@ mod tests {
         );
         let modals = with_watches(|watches| watches["dialogs-modal"].modals.clone());
         assert_eq!(
-            modals[0],
+            modals[0].1,
             json!({ "title": "One", "content": "Really?", "confirmText": "Delete", "answer": { "confirm": true } })
         );
-        assert_eq!(modals[2]["answer"], Value::Null);
+        assert_eq!(modals[2].1["answer"], Value::Null);
         // The first unanswered dialog is the one reported.
         hook.modal("dialogs-modal", &modal("Four"));
         assert!(receiver.borrow().as_deref().unwrap().contains("Three"));
+        // Answering modals leaves action sheets drawn.
+        let sheet = ActionSheetShown {
+            items: vec!["A".into()],
+        };
+        assert!(matches!(
+            hook.action_sheet("dialogs-modal", &sheet),
+            DialogDecision::Draw(_)
+        ));
         assert_eq!(reclaim_attempt("run-m", 1), 1);
         assert_eq!(
             hook.modal("dialogs-modal", &modal("After")),
@@ -538,6 +675,7 @@ mod tests {
                 SheetAnswer::Cancel,
                 SheetAnswer::Index(5),
             ]);
+            watch.answering_sheets = true;
         });
         let sheet = ActionSheetShown {
             items: vec!["Edit".into(), "Delete".into()],

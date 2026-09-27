@@ -9,8 +9,10 @@ function testIdFromCss(css) {
 /**
  * Mirrors the host's dialog watch: `driver` is `lxapp().dialogs`, and
  * `logic` is what the app's Logic does when it calls `lx.showToast`,
- * `lx.showModal` or `lx.showActionSheet` — recorded, answered or refused
- * while watched, presented (`"presented"`) otherwise.
+ * `lx.showModal` or `lx.showActionSheet`. Watched, a dialog is recorded and
+ * drawn until the spec queued an answer of its kind, then answered or
+ * refused. A drawn modal or sheet returns `{ drawn, close(choice) }`: the
+ * user's tap. Unwatched, `"presented"`.
  */
 function createDialogs() {
   let watch;
@@ -30,7 +32,7 @@ function createDialogs() {
   const driver = {
     watch() {
       end();
-      watch = { toasts: [], modals: [], sheets: [], modalAnswers: [], sheetAnswers: [], waiters: [], failure: undefined };
+      watch = { toasts: [], modals: [], sheets: [], modalAnswers: [], sheetAnswers: [], answeringModals: false, answeringSheets: false, waiters: [], failure: undefined };
     },
     unwatch() {
       const left = { modalAnswers: watch?.modalAnswers.length ?? 0, actionSheetAnswers: watch?.sheetAnswers.length ?? 0 };
@@ -48,12 +50,14 @@ function createDialogs() {
     answerNextModal(answer) {
       if (typeof answer?.confirm !== "boolean" || Object.keys(answer).length !== 1) throw new Error("answerNextModal takes { confirm: true | false }");
       watched().modalAnswers.push(answer.confirm);
+      watch.answeringModals = true;
     },
     answerNextActionSheet(answer) {
       const valid = answer && Object.keys(answer).length === 1 &&
         (answer.cancel === true || (Number.isInteger(answer.index) && answer.index >= 0));
       if (!valid) throw new Error("answerNextActionSheet takes { index } or { cancel: true }");
       watched().sheetAnswers.push(answer);
+      watch.answeringSheets = true;
     },
   };
   const logic = {
@@ -68,6 +72,10 @@ function createDialogs() {
       if (confirmText !== undefined) record.confirmText = confirmText;
       if (cancelText !== undefined && showCancel) record.cancelText = cancelText;
       watch.modals.push(record);
+      if (!watch.answeringModals) {
+        record.drawn = true;
+        return { drawn: true, close: (choice) => { record.answer = { confirm: choice }; } };
+      }
       if (confirm !== undefined) return { confirm };
       const message = `a modal appeared with no answer queued: title ${JSON.stringify(title)}, content ${JSON.stringify(content)}`;
       fail(message);
@@ -76,7 +84,12 @@ function createDialogs() {
     showActionSheet(items) {
       if (!watch) return "presented";
       const answer = watch.sheetAnswers.shift();
-      watch.sheets.push({ items, answer: answer ?? null });
+      const record = { items, answer: answer ?? null };
+      watch.sheets.push(record);
+      if (!watch.answeringSheets) {
+        record.drawn = true;
+        return { drawn: true, close: (choice) => { record.answer = choice; } };
+      }
       if (answer?.cancel) return { cancel: true };
       if (answer && answer.index < items.length) return { index: answer.index };
       const message = answer ? `the queued action sheet answer { index: ${answer.index} } is outside its ${items.length} items`

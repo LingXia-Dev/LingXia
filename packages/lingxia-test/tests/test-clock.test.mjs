@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec } from "../dist/index.js";
+import { spec, rawAutomation } from "../dist/index.js";
 import { reset, run } from "../dist/runner.js";
 
 afterEach(() => {
@@ -111,6 +111,25 @@ test("dropping pending test timers relaunches the next spec", async () => {
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
   assert.equal(notes.length, 1);
   assert.match(notes[0].message, /uninstalled the test clock of .* and dropped 1 pending test timer; they never fired/);
+  assert.equal(notes[0].level, "info", "the spec's own clock: expected, not a warning");
+});
+
+test("a clock the spec installed outside t.app.clock is removed with a warning", async () => {
+  const world = createWorld();
+  const clock = fakeClock(world);
+  const { events } = installFakeHost(world, { attempts: true });
+
+  spec("installs through the raw driver", async () => {
+    await rawAutomation().lxapp().clock.install();
+  });
+
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(clock.calls.map(([name]) => name), ["install", "uninstall"]);
+  const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
+  assert.equal(notes.length, 1);
+  assert.match(notes[0].message, /^"installs through the raw driver" left 1 test clock installed outside t\.app\.clock; the spec's end removed it\.$/);
+  assert.equal(notes[0].level, undefined, "a warning");
 });
 
 test("uninstall resolves nothing and notes the timers it dropped", async () => {
@@ -129,7 +148,7 @@ test("uninstall resolves nothing and notes the timers it dropped", async () => {
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
   assert.equal(result, undefined);
   const notes = events.filter((event) => event.type === "diagnostic" && event.phase === "clock");
-  assert.deepEqual(notes.map((event) => event.message), ["clock.uninstall dropped 2 pending test timers; they never fired"]);
+  assert.deepEqual(notes.map((event) => [event.message, event.level]), [["clock.uninstall dropped 2 pending test timers; they never fired", "info"]]);
 });
 
 test("clock driver failures keep their codes", async () => {

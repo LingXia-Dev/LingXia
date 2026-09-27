@@ -320,11 +320,15 @@ spec('deleting asks first', async (t) => {
 
 - Toasts are recorded (`{ title, icon, duration, at }`) and still drawn;
   never stub `lx.showToast` in Logic.
-- `lx.showModal` / `alert` / `confirm` and `lx.showActionSheet` are answered
-  from the queue, never drawn: `answerNextModal({ confirm })`,
-  `answerNextActionSheet({ index } | { cancel: true })`. One with no answer
-  queued rejects in Logic and fails the spec at once, naming its title and
-  content; an answer no dialog used fails the spec when it ends.
+- Modals (`lx.showModal` / `alert` / `confirm`) and `lx.showActionSheet` are
+  drawn until the spec queues an answer of that kind, so a spec can tap them
+  (`.lx-modal-btn-confirm`); `modals()` / `actionSheets()` record them with
+  `drawn: true` and the user's choice as `answer`.
+- After `answerNextModal({ confirm })` (or `answerNextActionSheet({ index } |
+  { cancel: true })`) they are answered from the queue, never drawn, for the
+  rest of the spec. One with no answer left rejects in Logic and fails the
+  spec at once, naming its title and content; an answer no dialog used fails
+  the spec when it ends.
 - Each spec starts with nothing recorded or queued. Outside a test run
   dialogs draw as usual.
 

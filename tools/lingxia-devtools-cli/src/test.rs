@@ -2115,12 +2115,20 @@ fn poll_until_terminal(
                         eprintln!("Running {count} tests");
                     }
                 }
-                TestEventPayload::Diagnostic { phase, message } => {
+                TestEventPayload::Diagnostic {
+                    phase,
+                    message,
+                    level,
+                } => {
                     if phase == "recovery_failed" {
                         app_not_live = true;
                     }
                     if !machine {
-                        eprintln!("warning ({phase}): {message}");
+                        match level.as_deref() {
+                            Some("info") if verbose => eprintln!("note ({phase}): {message}"),
+                            Some("info") => {}
+                            _ => eprintln!("warning ({phase}): {message}"),
+                        }
                     }
                 }
                 TestEventPayload::Console { level, message } => {

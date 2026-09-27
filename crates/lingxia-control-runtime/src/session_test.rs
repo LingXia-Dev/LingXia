@@ -285,6 +285,7 @@ struct FrameworkEvent {
     record: Option<Value>,
     phase: Option<String>,
     message: Option<String>,
+    level: Option<String>,
     #[serde(rename = "type")]
     event_type: String,
     name: Option<String>,
@@ -326,6 +327,7 @@ fn framework_event(value: Value) -> Result<TestEventPayload, String> {
         "diagnostic" => Ok(TestEventPayload::Diagnostic {
             phase: event.phase.unwrap_or_default(),
             message: event.message.unwrap_or_default(),
+            level: event.level,
         }),
         "case_started" => Ok(TestEventPayload::CaseStarted {
             id: event.id,

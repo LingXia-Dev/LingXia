@@ -221,6 +221,10 @@ pub enum TestEventPayload {
     Diagnostic {
         phase: String,
         message: String,
+        /// `info`: expected housekeeping, shown only on request (`lxdev test
+        /// --verbose`). Absent: a warning.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        level: Option<String>,
     },
     Console {
         level: String,

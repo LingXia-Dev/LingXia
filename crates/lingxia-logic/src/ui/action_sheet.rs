@@ -87,7 +87,8 @@ async fn show_action_sheet(
     let item_list: Vec<String> = items.iter().map(|item| item.label.clone()).collect();
     let lxapp = LxApp::from_ctx(&ctx)?;
 
-    // A test run watching the app answers instead of the user. Only this
+    // A test run watching the app records the sheet, or answers it instead
+    // of the user once its spec queued answers. Only this
     // public call: sheets the runtime opens itself (a media source picker)
     // are not the app's dialog.
     let decision = match lxapp::dialogs::dialog_hook() {
@@ -102,6 +103,13 @@ async fn show_action_sheet(
     let selection = match decision {
         DialogDecision::Present => {
             present_action_sheet(&lxapp, item_list, None, item_color).await?
+        }
+        DialogDecision::Draw(id) => {
+            let result = present_action_sheet(&lxapp, item_list, None, item_color).await;
+            if let Some(hook) = lxapp::dialogs::dialog_hook() {
+                hook.action_sheet_closed(&lxapp.appid, id, result.as_ref().ok().copied());
+            }
+            result?
         }
         DialogDecision::Answer(selection) => selection,
         DialogDecision::Refuse(message) => return Err(js_service_unavailable_error(message)),
