@@ -91,8 +91,8 @@ pub fn list_all_sessions() -> Result<Vec<SessionInfo>> {
 /// Resolve which session a `lxdev` subcommand should target: see
 /// [`lingxia_control_protocol::dev_session::select`] for the rules — an
 /// explicit selector (name, target, `target@dir`, ordinal, id prefix), else
-/// the session of this directory's project, else the only session; anything
-/// else is refused with a table of candidates.
+/// the session of this directory's project, else (outside any project) the
+/// only session; anything else is refused with a table of candidates.
 pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
     let all = list_all_sessions()?;
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -101,12 +101,13 @@ pub fn resolve_session(selector: &SessionSelector) -> Result<SessionInfo> {
         .map_err(anyhow::Error::new)
 }
 
-/// Whether `err` is "no session is running" (as opposed to a session that
-/// exists but was not picked).
+/// Whether `err` is "no session is running for this project" (as opposed
+/// to a session that exists but was not picked).
 pub fn is_no_session(err: &anyhow::Error) -> bool {
+    use lingxia_control_protocol::dev_session::select::SelectError;
     matches!(
-        err.downcast_ref::<lingxia_control_protocol::dev_session::select::SelectError>(),
-        Some(lingxia_control_protocol::dev_session::select::SelectError::NoSessions)
+        err.downcast_ref::<SelectError>(),
+        Some(SelectError::NoSessions | SelectError::NoProjectSession { .. })
     )
 }
 

@@ -7,8 +7,11 @@
 //!   session name (`lingxia dev --name`), a target (`macos`, `lxapp`, …),
 //!   `target@<project-dir>`, an ordinal from `lxdev session`, or a
 //!   session id prefix;
-//! - without one: the single live session whose project contains the
-//!   working directory, else the single live session;
+//! - without one: the single live session of the working directory's
+//!   project; inside a project (a directory with `lingxia.yaml` or
+//!   `lxapp.json`, or one of its subdirectories) that is all, since a
+//!   session of another project is never picked for it; outside any
+//!   project, the single live session;
 //! - anything else is refused with a table of the candidates, never guessed.
 
 use super::broker::SessionInfo;
@@ -20,6 +23,9 @@ use std::path::{Path, PathBuf};
 pub enum SelectError {
     /// Nothing is live.
     NoSessions,
+    /// The working directory is in a project that has no live session;
+    /// `elsewhere` names the projects whose sessions are live.
+    NoProjectSession { elsewhere: Vec<(String, usize)> },
     /// The selector matches no live session.
     NoMatch { query: String, table: String },
     /// More than one session fits; `query` is `None` without a selector.
@@ -33,6 +39,24 @@ impl fmt::Display for SelectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoSessions => f.write_str(NO_SESSION_HINT),
+            Self::NoProjectSession { elsewhere } => {
+                f.write_str(NO_SESSION_HINT)?;
+                let count: usize = elsewhere.iter().map(|(_, count)| count).sum();
+                let projects: Vec<_> = elsewhere
+                    .iter()
+                    .map(|(project, _)| abbreviate_home(project))
+                    .collect();
+                write!(
+                    f,
+                    " ({count} {} running for {})",
+                    if count == 1 {
+                        "session is"
+                    } else {
+                        "sessions are"
+                    },
+                    projects.join(", ")
+                )
+            }
             Self::NoMatch { query, table } => write!(
                 f,
                 "No dev session matches --session {query:?}. Live sessions:\n\n{table}\n\n{PICK_HINT}"
@@ -179,9 +203,15 @@ fn select_default<'a>(
     sessions: &'a [SessionInfo],
     cwd: &Path,
 ) -> Result<&'a SessionInfo, SelectError> {
+    let project = enclosing_project(cwd);
     let local: Vec<_> = sessions
         .iter()
-        .filter(|session| contains_cwd(session, cwd))
+        .filter(|session| {
+            contains_cwd(session, cwd)
+                || project
+                    .as_deref()
+                    .is_some_and(|project| within(session, project))
+        })
         .collect();
     match local.as_slice() {
         [only] => return Ok(*only),
@@ -193,6 +223,19 @@ fn select_default<'a>(
             });
         }
     }
+    if project.is_some() {
+        let mut elsewhere: Vec<(String, usize)> = Vec::new();
+        for session in sessions {
+            match elsewhere
+                .iter_mut()
+                .find(|(root, _)| *root == session.project_root)
+            {
+                Some((_, count)) => *count += 1,
+                None => elsewhere.push((session.project_root.clone(), 1)),
+            }
+        }
+        return Err(SelectError::NoProjectSession { elsewhere });
+    }
     match sessions {
         [only] => Ok(only),
         _ => Err(SelectError::Ambiguous {
@@ -200,6 +243,28 @@ fn select_default<'a>(
             table: candidate_table(sessions, &sessions.iter().collect::<Vec<_>>()),
         }),
     }
+}
+
+/// Markers of a LingXia project directory: a host app or an lxapp.
+const PROJECT_MARKERS: [&str; 2] = ["lingxia.yaml", "lxapp.json"];
+
+/// The nearest directory at or above `cwd` that is a project.
+fn enclosing_project(cwd: &Path) -> Option<PathBuf> {
+    let cwd = canonical(cwd);
+    cwd.ancestors()
+        .find(|dir| {
+            PROJECT_MARKERS
+                .iter()
+                .any(|marker| dir.join(marker).is_file())
+        })
+        .map(Path::to_path_buf)
+}
+
+/// Whether one of `session`'s directories lies inside `project`.
+fn within(session: &SessionInfo, project: &Path) -> bool {
+    project_paths(session)
+        .iter()
+        .any(|path| !path.as_os_str().is_empty() && canonical(path).starts_with(project))
 }
 
 /// What a printed hint (a Rerun line, a stop command) should pass as
@@ -497,6 +562,59 @@ mod tests {
             None
         );
         assert_eq!(hint_selector(&live[..1], &live[0], cwd), None);
+    }
+
+    #[test]
+    fn inside_a_project_only_its_own_sessions_are_picked() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = |name: &str| {
+            let path = dir.path().join(name);
+            std::fs::create_dir_all(path.join("src")).unwrap();
+            path
+        };
+        let app = root("app");
+        std::fs::write(app.join("lxapp.json"), "{}").unwrap();
+        let other = root("other");
+        std::fs::write(other.join("lingxia.yaml"), "").unwrap();
+        let outside = root("plain");
+        let other_root = other.to_string_lossy().into_owned();
+        let live = [session("a1b2c3", "lxapp", &other_root, Some("home"))];
+
+        // This project has no session; the other project's is only mentioned.
+        let error = select(&live, None, &app.join("src")).unwrap_err();
+        assert_eq!(
+            error,
+            SelectError::NoProjectSession {
+                elsewhere: vec![(other_root.clone(), 1)]
+            }
+        );
+        let message = error.to_string();
+        assert!(message.starts_with(NO_SESSION_HINT), "{message}");
+        assert!(message.contains("(1 session is running for "), "{message}");
+
+        // Outside any project, the only live session is still the default.
+        assert_eq!(ids(select(&live, None, &outside)), Ok("a1b2c3"));
+        // An explicit selector reaches any project's session.
+        assert_eq!(ids(select(&live, Some("home"), &app)), Ok("a1b2c3"));
+        assert_eq!(ids(select(&live, Some("lxapp"), &app)), Ok("a1b2c3"));
+
+        // A session of this project is found from anywhere in it, including
+        // one started from an lxapp below the project root.
+        let nested = other.join("lxapp");
+        std::fs::create_dir_all(&nested).unwrap();
+        std::fs::write(nested.join("lxapp.json"), "{}").unwrap();
+        let live = [
+            session("d4e5f6", "lxapp", &app.to_string_lossy(), None),
+            session("0a0b0c", "macos", &nested.to_string_lossy(), None),
+        ];
+        assert_eq!(ids(select(&live, None, &app.join("src"))), Ok("d4e5f6"));
+        assert_eq!(ids(select(&live, None, &other.join("src"))), Ok("0a0b0c"));
+        let Err(SelectError::NoProjectSession { elsewhere }) =
+            select(&live[..1], None, &other.join("src"))
+        else {
+            panic!("expected no session for this project");
+        };
+        assert_eq!(elsewhere.len(), 1);
     }
 
     #[test]

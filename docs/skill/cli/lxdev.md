@@ -15,8 +15,9 @@ closing the Runner or quitting a desktop host ends it, while hiding a host to
 the tray or closing a mobile app does not.
 
 `lxdev` works from any directory. Without a selector it uses the live session
-whose project contains the current directory, else the only live session;
-otherwise it refuses to guess and prints the candidates. `lxdev session` lists
+whose project contains the current directory; inside a project it never falls
+back to another project's session. Outside any project it uses the only live
+session; otherwise it refuses to guess and prints the candidates. `lxdev session` lists
 them (`#`, id, name, target, state, versions, project; `--json` for scripts).
 Pick one with `--session` (before the subcommand) or `LXDEV_SESSION`:
 

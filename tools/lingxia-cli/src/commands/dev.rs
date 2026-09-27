@@ -818,10 +818,12 @@ fn plan_stop<'a>(
     let selector = selector.map(str::trim).filter(|value| !value.is_empty());
     match select(sessions, selector, project_root) {
         Ok(session) => Ok(StopPlan::Stop(session)),
-        Err(SelectError::NoSessions) => Ok(StopPlan::NothingRunning(match selector {
-            Some(query) => format!("No dev session {query:?} is running for this project."),
-            None => "No dev session running for this project.".to_string(),
-        })),
+        Err(SelectError::NoSessions | SelectError::NoProjectSession { .. }) => {
+            Ok(StopPlan::NothingRunning(match selector {
+                Some(query) => format!("No dev session {query:?} is running for this project."),
+                None => "No dev session running for this project.".to_string(),
+            }))
+        }
         Err(SelectError::NoMatch { query, table }) => Ok(StopPlan::NothingRunning(format!(
             "No dev session {query:?} is running for this project. Running:\n\n{table}"
         ))),
