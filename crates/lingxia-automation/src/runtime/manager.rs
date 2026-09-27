@@ -1,7 +1,7 @@
 //! One isolated Rong worker per [`AutomationRuntime`] instance.
 
 use super::context;
-use super::profile::TeardownFn;
+use super::profile::{Quarantine, SpawnFn, TeardownFn};
 use super::protocol::*;
 use super::run::RunShared;
 use log::{error, warn};
@@ -40,6 +40,9 @@ struct RuntimeInner {
     sender: mpsc::Sender<RunRequest>,
     lease: Duration,
     teardown: TeardownFn,
+    spawn: SpawnFn,
+    /// Profiles a failed teardown kept aside; while any is held, no run starts.
+    quarantine: Arc<Quarantine>,
 }
 
 /// Reusable host-owned automation executor.
@@ -57,10 +60,14 @@ impl AutomationRuntime {
     }
 
     fn with_controller_lease(lease: Duration) -> Result<Self, String> {
-        Self::with_options(lease, super::profile::DEFAULT_TEARDOWN)
+        Self::with_options(
+            lease,
+            super::profile::DEFAULT_TEARDOWN,
+            super::profile::DEFAULT_SPAWN,
+        )
     }
 
-    fn with_options(lease: Duration, teardown: TeardownFn) -> Result<Self, String> {
+    fn with_options(lease: Duration, teardown: TeardownFn, spawn: SpawnFn) -> Result<Self, String> {
         let (sender, receiver) = mpsc::channel::<RunRequest>();
         let inner = Arc::new(RuntimeInner {
             state: Mutex::new(RuntimeState {
@@ -72,6 +79,8 @@ impl AutomationRuntime {
             sender,
             lease,
             teardown,
+            spawn,
+            quarantine: Arc::default(),
         });
         let runtime = Arc::downgrade(&inner);
         std::thread::Builder::new()
@@ -112,13 +121,23 @@ impl AutomationRuntime {
                 active.run_id
             ));
         }
+        // An app a finished run could not return to its own data must be back
+        // before another run may switch it.
+        self.inner
+            .quarantine
+            .admit(self.inner.teardown, self.inner.spawn)?;
 
         let shared = Arc::new(
             RunShared::new(
                 uuid::Uuid::new_v4().to_string(),
                 Duration::from_millis(timeout_ms),
             )
-            .with_profile(args.profile, self.inner.teardown),
+            .with_profile(
+                args.profile,
+                self.inner.teardown,
+                self.inner.spawn,
+                self.inner.quarantine.clone(),
+            ),
         );
         let request = RunRequest {
             shared: shared.clone(),
@@ -149,7 +168,9 @@ impl AutomationRuntime {
     pub fn cancel(&self, args: AutomationCancelArgs) -> Result<AutomationCancelResponse, String> {
         let run = self.find_run(&args.run_id)?;
         run.touch();
-        if !run.state().is_terminal() {
+        // A finishing run's program has ended: interrupting the worker now
+        // would land on whatever it runs next.
+        if run.accepting() {
             run.request_cancel();
             let state = self.inner.state.lock().unwrap();
             if let Some(active) = &state.active
@@ -201,11 +222,11 @@ fn duration_ms(duration: Duration) -> u64 {
 }
 
 fn retire_completed(state: &mut RuntimeState) {
-    // A finished run whose profile is still being torn down keeps the slot:
-    // the next run must not start while the app is between data roots.
+    // A run turns terminal only after its teardown: one still finishing keeps
+    // the slot, so the next run never starts while the app is between data
+    // roots.
     if let Some(active) = &state.active
         && active.state().is_terminal()
-        && !active.teardown_pending()
     {
         let run = state.active.take().unwrap();
         state.completed.push(run);
@@ -958,8 +979,12 @@ mod tests {
             }
             Ok(())
         }
-        let runtime =
-            AutomationRuntime::with_options(CONTROLLER_LEASE, slow_teardown).expect("runtime");
+        let runtime = AutomationRuntime::with_options(
+            CONTROLLER_LEASE,
+            slow_teardown,
+            super::super::profile::DEFAULT_SPAWN,
+        )
+        .expect("runtime");
         let base = std::env::temp_dir().join(format!(
             "lingxia-automation-barrier-{}",
             uuid::Uuid::new_v4()
@@ -985,16 +1010,18 @@ mod tests {
         let deadline = Instant::now() + Duration::from_secs(5);
         while runtime
             .find_run(&started.run_id)
-            .is_ok_and(|run| !run.state().is_terminal())
+            .is_ok_and(|run| run.accepting())
         {
             assert!(Instant::now() < deadline, "program did not finish");
             std::thread::sleep(Duration::from_millis(10));
         }
+        let finishing = poll_once(&runtime, &started.run_id);
         assert_eq!(
-            poll_once(&runtime, &started.run_id).state,
+            finishing.state,
             AutomationRunState::Running,
             "the ending is reported only after the teardown"
         );
+        assert!(finishing.result.is_none());
         let refused = runtime
             .start(AutomationStartArgs {
                 source: "true".to_string(),
@@ -1023,6 +1050,172 @@ mod tests {
             AutomationRunState::Succeeded
         );
         let _ = std::fs::remove_dir_all(base);
+    }
+
+    fn isolated_start(runtime: &AutomationRuntime, appid: &str) -> (std::path::PathBuf, String) {
+        use super::super::profile::AutomationProfile;
+        let base = std::env::temp_dir().join(format!(
+            "lingxia-automation-teardown-{}",
+            uuid::Uuid::new_v4()
+        ));
+        let profile = lxapp::data_profile::RunProfile::create(&base).expect("profile");
+        let started = runtime
+            .start(AutomationStartArgs {
+                source: "true".to_string(),
+                source_name: None,
+                timeout_ms: Some(5_000),
+                args: HashMap::new(),
+                control: HashMap::new(),
+                profile: Some(AutomationProfile {
+                    appid: appid.to_string(),
+                    profile,
+                    retain: false,
+                }),
+            })
+            .expect("start isolated run");
+        (base, started.run_id)
+    }
+
+    #[test]
+    fn a_failed_teardown_fails_the_run_and_admits_no_run_until_the_app_is_back() {
+        use super::super::profile::AutomationProfile;
+        static RECOVERED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        fn teardown(_: &AutomationProfile) -> Result<(), String> {
+            if RECOVERED.load(std::sync::atomic::Ordering::SeqCst) {
+                Ok(())
+            } else {
+                Err("timed out waiting for app.lingxia.teardown to close".to_string())
+            }
+        }
+        let runtime = AutomationRuntime::with_options(
+            CONTROLLER_LEASE,
+            teardown,
+            super::super::profile::DEFAULT_SPAWN,
+        )
+        .expect("runtime");
+        let (base, run_id) = isolated_start(&runtime, "app.lingxia.teardown");
+        let finished = wait_for_terminal(&runtime, &run_id);
+        assert_eq!(finished.state, AutomationRunState::InternalError);
+        let error = finished
+            .result
+            .expect("result")
+            .error
+            .expect("teardown error");
+        assert_eq!(error.name, "ProfileTeardownError");
+        assert!(error.message.contains("to close"), "{}", error.message);
+        assert!(runtime.active().is_none(), "the slot itself is free");
+
+        let refused = runtime
+            .start(AutomationStartArgs {
+                source: "true".to_string(),
+                source_name: None,
+                timeout_ms: Some(5_000),
+                args: HashMap::new(),
+                control: HashMap::new(),
+                profile: None,
+            })
+            .expect_err("no run while the app may still use the profile");
+        assert!(
+            refused.starts_with("automation_profile_unrecovered"),
+            "{refused}"
+        );
+
+        RECOVERED.store(true, std::sync::atomic::Ordering::SeqCst);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let next = loop {
+            match runtime.start(AutomationStartArgs {
+                source: "true".to_string(),
+                source_name: None,
+                timeout_ms: Some(5_000),
+                args: HashMap::new(),
+                control: HashMap::new(),
+                profile: None,
+            }) {
+                Ok(next) => break next,
+                Err(err) => {
+                    assert!(err.starts_with("automation_profile_unrecovered"), "{err}");
+                    assert!(
+                        Instant::now() < deadline,
+                        "a successful retry readmits runs"
+                    );
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+            }
+        };
+        assert_eq!(
+            wait_for_terminal(&runtime, &next.run_id).state,
+            AutomationRunState::Succeeded
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_teardown_that_cannot_start_fails_the_run() {
+        fn no_threads(_: Box<dyn FnOnce() + Send>) -> std::io::Result<()> {
+            Err(std::io::Error::other("no threads left"))
+        }
+        let runtime = AutomationRuntime::with_options(
+            CONTROLLER_LEASE,
+            super::super::profile::DEFAULT_TEARDOWN,
+            no_threads,
+        )
+        .expect("runtime");
+        let (base, run_id) = isolated_start(&runtime, "app.lingxia.no-threads");
+        let finished = wait_for_terminal(&runtime, &run_id);
+        assert_eq!(finished.state, AutomationRunState::InternalError);
+        let error = finished
+            .result
+            .expect("result")
+            .error
+            .expect("teardown error");
+        assert!(
+            error.message.contains("could not start: no threads left"),
+            "{}",
+            error.message
+        );
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn the_host_opens_closes_and_revokes_attempts() {
+        let runtime = AutomationRuntime::new().expect("automation runtime");
+        let source = r#"
+(async () => {
+  const host = globalThis.__LINGXIA_AUTOMATION_HOST__;
+  const message = (fn) => { try { fn(); return "ok"; } catch (error) { return String(error.message); } };
+  const first = host.beginAttempt();
+  const twice = message(() => host.beginAttempt());
+  const swept = await host.endAttempt(first);
+  let again = "ok";
+  try { await host.endAttempt(first); } catch (error) { again = String(error.message); }
+  const second = host.beginAttempt();
+  const revoked = await host.revoke("abandoned");
+  const after = message(() => host.beginAttempt());
+  return { first, second, twice, swept, again, revoked, after };
+})()
+"#;
+        let started = start(&runtime, source, 5_000);
+        let response = wait_for_terminal(&runtime, &started.run_id);
+        assert_eq!(
+            response.state,
+            AutomationRunState::Succeeded,
+            "{response:?}"
+        );
+        let output = response.result.expect("result").output.expect("output");
+        assert_eq!(output["first"], 1);
+        assert_eq!(output["second"], 2);
+        assert!(output["twice"].as_str().unwrap().contains("still open"));
+        let none =
+            serde_json::json!({ "routes": 0, "scenarios": 0, "clocks": 0, "droppedTimers": 0 });
+        assert_eq!(output["swept"], none);
+        assert!(output["again"].as_str().unwrap().contains("is not open"));
+        assert_eq!(output["revoked"], none);
+        assert!(
+            output["after"]
+                .as_str()
+                .unwrap()
+                .contains("revoked: abandoned")
+        );
     }
 
     #[test]

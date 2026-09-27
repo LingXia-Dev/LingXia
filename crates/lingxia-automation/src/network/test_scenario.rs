@@ -144,9 +144,8 @@ pub(crate) async fn install(
     let mut slot = super::dev::installed(&parsed, None);
     slot.companion = functions;
     let installed = registry::with_registry(|routes| {
-        routes.install_scenario(&scope.run_id, &appid, slot, parsed.http, || {
-            (scope.active)()
-        })
+        routes
+            .install_scenario_admitted(&scope.run_id, &appid, slot, parsed.http, || (scope.admit)())
     });
     let installed = match installed {
         Ok(installed) => installed,
@@ -195,11 +194,24 @@ async fn use_functions(owner: &str, resolved: &Resolved) -> Result<(), String> {
 }
 
 async fn clear_functions(owner: &str) {
-    // Emptied, not cleared: the run's owner keeps a dev scenario's function
-    // rules aside until the run ends, when the dev server clears it. A
-    // failure here only leaves the rules until then.
+    // A failure here only leaves the rules until the run ends, when the dev
+    // server clears its owner.
+    let _ = clear_functions_checked(owner).await;
+}
+
+/// Empty the owner's `function` rules in the companion. Emptied, not
+/// cleared: the run's owner keeps a dev scenario's function rules aside
+/// until the run ends, when the dev server clears it. A host without a dev
+/// session, or a companion without scenarios, holds none.
+pub(crate) async fn clear_functions_checked(owner: &str) -> Result<(), String> {
     let params = json!({ "owner": owner, "scenario": {}, "rules": [] });
-    let _ = companion::request(method::SCENARIO_USE, params).await;
+    match companion::request(method::SCENARIO_USE, params).await {
+        Ok(_) => Ok(()),
+        Err(UpstreamError { code, .. }) if code == method::UNSUPPORTED || code == "unavailable" => {
+            Ok(())
+        }
+        Err(UpstreamError { code, message, .. }) => Err(format!("{code}: {message}")),
+    }
 }
 
 /// Handle returned by `mock.use()`.

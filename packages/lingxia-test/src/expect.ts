@@ -24,10 +24,21 @@ export interface ExpectScope {
 
 let activeScope: ExpectScope | undefined;
 let assertionSilence = 0;
+/** Where an assertion goes that ran while no spec was running. */
+let straySink: ((entry: LoggedAssertion) => void) | undefined;
 
 /** The spec `expect` reports to; `undefined` between specs. */
 export function setExpectScope(scope?: ExpectScope): void {
   activeScope = scope;
+}
+
+/**
+ * During a run, assertions made while no spec runs — a continuation of a
+ * spec the run already finished — are handed here instead of to whichever
+ * spec runs next.
+ */
+export function setStrayAssertionSink(sink?: (entry: LoggedAssertion) => void): void {
+  straySink = sink;
 }
 
 export function pushAssertionSilence(): void {
@@ -39,8 +50,9 @@ export function popAssertionSilence(): void {
 }
 
 function recordAssertion(entry: LoggedAssertion): void {
-  if (assertionSilence > 0 || !activeScope) return;
-  activeScope.note(entry);
+  if (assertionSilence > 0) return;
+  if (activeScope) activeScope.note(entry);
+  else straySink?.(entry);
 }
 
 export class AssertionError extends Error {

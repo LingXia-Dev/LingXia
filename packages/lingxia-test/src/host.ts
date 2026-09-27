@@ -1,6 +1,6 @@
 import { bytesToBase64, utf8ToBase64 } from "./format.js";
 import { PACKAGE_NAME, VERSION } from "./version.js";
-import type { AutomationHost } from "./types.js";
+import type { AttemptReclaim, AutomationHost } from "./types.js";
 
 export interface ResolvedHost {
   /** User `--arg`/`--secret-arg` values: what the spec reads with `t.arg()`. */
@@ -22,6 +22,11 @@ export interface ResolvedHost {
   networkRecord?(command: "start" | "stop", name?: string): unknown;
   /** `true` only when the host knows the screen is locked. */
   screenLocked(): boolean;
+  /** Spec attempts; `undefined` on a host that does not scope resources to them. */
+  beginAttempt?(): number;
+  endAttempt?(token: number): Promise<AttemptReclaim>;
+  /** Refuse spec code's driver calls for the rest of the run; `undefined` on a host without it. */
+  revoke?(reason: string): Promise<AttemptReclaim>;
 }
 
 function asArgs(value: unknown): Record<string, string> {
@@ -63,6 +68,15 @@ export function resolveHost(): ResolvedHost {
       : {}),
     ...(typeof raw?.networkRecord === "function"
       ? { networkRecord: (command: "start" | "stop", name?: string) => raw.networkRecord!(command, name) }
+      : {}),
+    ...(typeof raw?.beginAttempt === "function" && typeof raw.endAttempt === "function"
+      ? {
+        beginAttempt: () => raw.beginAttempt!(),
+        endAttempt: async (token: number) => await raw.endAttempt!(token),
+      }
+      : {}),
+    ...(typeof raw?.revoke === "function"
+      ? { revoke: async (reason: string) => await raw.revoke!(reason) }
       : {}),
     screenLocked() {
       try {

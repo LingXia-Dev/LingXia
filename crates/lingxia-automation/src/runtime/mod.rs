@@ -9,6 +9,7 @@
 //! JavaScript, so interruption is cooperative there: a program that never
 //! yields is timed out and its worker marked unhealthy.
 
+pub(crate) mod authority;
 mod context;
 mod manager;
 mod profile;

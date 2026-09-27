@@ -796,6 +796,25 @@ export class LiveFixture implements Fixture {
 
   close(): void { this.closed = true; }
 
+  /**
+   * Remove what the framework installed for this spec — its routes, mock
+   * scenario and test clocks — apart from the spec's own cleanup, and
+   * whether or not its body settled. Resolves one message per failure; a
+   * resource already gone is removed.
+   */
+  async reclaim(): Promise<string[]> {
+    const failures: string[] = [];
+    const tasks: Array<() => Promise<void>> = [
+      () => this.networkScope.reclaim(),
+      () => this.scenarioScope.reclaim(),
+      () => this.clockScope.reclaim((phase, message) => this.diagnostic(phase, message)),
+    ];
+    for (const task of tasks) {
+      try { await task(); } catch (error) { failures.push(String((error as Error)?.message ?? error)); }
+    }
+    return failures;
+  }
+
   private assertRunnable(): void {
     if (this.closed) throw new Error("Test fixture is closed");
     if (this.cleanupActive) {

@@ -12,8 +12,8 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use lingxia_log::{LogBuilder, LogLevel, LogTag};
 use rong::function::Rest;
 use rong::{
-    Class, FromJSObject, HostError, JSContext, JSFunc, JSObject, JSResult, JSValue, RongJSError,
-    js_class, js_method,
+    Class, FromJSObject, HostError, IntoJSObject, JSContext, JSFunc, JSObject, JSResult, JSValue,
+    RongJSError, js_class, js_method,
 };
 use std::collections::HashMap;
 use std::sync::{Arc, Weak};
@@ -44,21 +44,14 @@ pub(crate) fn init_automation_context(
     // A bare `lx` namespace carrying only the automation factory.
     ctx.global().set("lx", JSObject::new(ctx))?;
     init_automation(ctx, shared)?;
-    let run = Arc::downgrade(shared);
-    crate::network::attach_run_scope(ctx, shared.run_id.clone(), move || {
-        run.upgrade().is_some_and(|run| !run.state().is_terminal())
-    });
-    let run = Arc::downgrade(shared);
-    crate::clock::attach_run_scope(ctx, shared.run_id.clone(), move || {
-        run.upgrade().is_some_and(|run| !run.state().is_terminal())
-    });
+    crate::network::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
+    crate::clock::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     if let Some(profile) = shared.profile() {
-        let run = Arc::downgrade(shared);
         crate::profile::attach_run_scope(
             ctx,
             profile.appid.clone(),
             profile.profile.clone(),
-            move || run.upgrade().is_some_and(|run| !run.state().is_terminal()),
+            live(shared),
         );
     }
 
@@ -76,10 +69,30 @@ pub(crate) fn init_automation_context(
     Ok(())
 }
 
+/// The program still runs and its authority was not revoked.
+fn live(shared: &Arc<RunShared>) -> impl Fn() -> bool + Send + Sync + 'static {
+    let run = Arc::downgrade(shared);
+    move || {
+        run.upgrade()
+            .is_some_and(|run| run.accepting() && run.authority.revoked().is_none())
+    }
+}
+
+/// Whether the context may install now, and for which attempt.
+fn admission(
+    shared: &Arc<RunShared>,
+) -> impl Fn() -> Result<Option<u64>, String> + Send + Sync + 'static {
+    let run = Arc::downgrade(shared);
+    move || match run.upgrade() {
+        Some(run) if run.accepting() => run.authority.admit(),
+        _ => Err("the automation run that owns this driver has ended".to_string()),
+    }
+}
+
 #[cfg(not(test))]
-fn init_automation(ctx: &JSContext, _shared: &RunShared) -> JSResult<()> {
+fn init_automation(ctx: &JSContext, shared: &RunShared) -> JSResult<()> {
     crate::init_automation_context(ctx)?;
-    crate::attach_host_automation_authority(ctx);
+    crate::attach_host_automation_authority(ctx, shared.authority.clone());
     Ok(())
 }
 
@@ -87,8 +100,8 @@ fn init_automation(ctx: &JSContext, _shared: &RunShared) -> JSResult<()> {
 // runtime/report integration test does not drive automation; Runner smoke tests
 // cover the real host authority and driver registration path.
 #[cfg(test)]
-fn init_automation(ctx: &JSContext, _shared: &RunShared) -> JSResult<()> {
-    crate::attach_host_automation_authority(ctx);
+fn init_automation(ctx: &JSContext, shared: &RunShared) -> JSResult<()> {
+    crate::attach_host_automation_authority(ctx, shared.authority.clone());
     Ok(())
 }
 
@@ -261,7 +274,94 @@ fn make_host(
         &shared.run_id,
         secret_values(args, control),
     )?;
+    attach_attempts(ctx, &host, shared)?;
     Ok(host)
+}
+
+/// What closing an attempt removed.
+#[derive(Debug, Default, Clone, PartialEq, IntoJSObject)]
+struct Reclaimed {
+    routes: f64,
+    scenarios: f64,
+    clocks: f64,
+    /// Test timers pending on the removed clocks; they never fired.
+    #[js_name = "droppedTimers"]
+    dropped_timers: f64,
+}
+
+fn attempt_error(message: impl Into<String>) -> RongJSError {
+    HostError::new("E_AUTOMATION_ATTEMPT", message.into()).into()
+}
+
+/// Remove what attempt `attempt` of the run installed. Every kind is tried;
+/// the error names each that failed.
+async fn reclaim(run_id: &str, attempt: u64) -> JSResult<Reclaimed> {
+    let mut reclaimed = Reclaimed::default();
+    let mut failed = Vec::new();
+    match crate::network::reclaim_attempt(run_id, attempt).await {
+        Ok((routes, scenarios)) => {
+            reclaimed.routes = routes as f64;
+            reclaimed.scenarios = scenarios as f64;
+        }
+        Err(err) => failed.push(err),
+    }
+    match crate::clock::reclaim_attempt(run_id, attempt).await {
+        Ok((clocks, dropped)) => {
+            reclaimed.clocks = clocks as f64;
+            reclaimed.dropped_timers = dropped as f64;
+        }
+        Err(err) => failed.push(err),
+    }
+    if failed.is_empty() {
+        Ok(reclaimed)
+    } else {
+        Err(attempt_error(failed.join("; ")))
+    }
+}
+
+/// `beginAttempt()`, `endAttempt(token)` and `revoke(reason)`: see
+/// [`super::authority`].
+fn attach_attempts(ctx: &JSContext, host: &JSObject, shared: &Arc<RunShared>) -> JSResult<()> {
+    let run = Arc::downgrade(shared);
+    host.set(
+        "beginAttempt",
+        JSFunc::new(ctx, move || -> JSResult<f64> {
+            let run = live_run(&run)?;
+            run.authority
+                .begin()
+                .map(|token| token as f64)
+                .map_err(attempt_error)
+        })?,
+    )?;
+    let run = Arc::downgrade(shared);
+    host.set(
+        "endAttempt",
+        JSFunc::new(ctx, move |token: f64| {
+            // Only what the future needs: it must not keep the run alive.
+            let target = live_run(&run).map(|run| (run.run_id.clone(), run.authority.clone()));
+            async move {
+                let (run_id, authority) = target?;
+                let token = token as u64;
+                authority.end(token).map_err(attempt_error)?;
+                reclaim(&run_id, token).await
+            }
+        })?,
+    )?;
+    let run = Arc::downgrade(shared);
+    host.set(
+        "revoke",
+        JSFunc::new(ctx, move |reason: String| {
+            let target = live_run(&run).map(|run| (run.run_id.clone(), run.authority.clone()));
+            async move {
+                let (run_id, authority) = target?;
+                match authority.revoke(reason) {
+                    Some(open) => reclaim(&run_id, open).await,
+                    None => Ok(Reclaimed::default()),
+                }
+            }
+        })?,
+    )?;
+    Ok(())
 }
 
 fn screen_locked() -> Option<bool> {

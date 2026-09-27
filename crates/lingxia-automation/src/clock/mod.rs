@@ -45,6 +45,9 @@ const ADVANCE_TIMEOUT: Duration = Duration::from_secs(60);
 struct Lease {
     run_id: String,
     appid: String,
+    /// The spec attempt of the run that installed the clock; `None` for the
+    /// whole run.
+    attempt: Option<u64>,
 }
 
 fn leases() -> &'static Mutex<HashMap<u64, Lease>> {
@@ -97,17 +100,21 @@ fn lease_for(run_id: &str, appid: &str) -> Option<u64> {
 #[derive(Clone)]
 pub(crate) struct ClockRunScope {
     run_id: String,
-    active: Arc<dyn Fn() -> bool + Send + Sync>,
+    /// The attempt an install belongs to, or why it is refused.
+    admit: Arc<dyn Fn() -> Result<Option<u64>, String> + Send + Sync>,
+    live: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
 pub(crate) fn attach_run_scope(
     ctx: &JSContext,
     run_id: String,
-    active: impl Fn() -> bool + Send + Sync + 'static,
+    admit: impl Fn() -> Result<Option<u64>, String> + Send + Sync + 'static,
+    live: impl Fn() -> bool + Send + Sync + 'static,
 ) {
     ctx.set_state(ClockRunScope {
         run_id,
-        active: Arc::new(active),
+        admit: Arc::new(admit),
+        live: Arc::new(live),
     });
 }
 
@@ -115,10 +122,52 @@ fn run_scope(ctx: &JSContext) -> JSResult<ClockRunScope> {
     let scope = ctx.get_state::<ClockRunScope>().cloned().ok_or_else(|| {
         auto_err("the test clock is available only inside a host automation run (lxdev test)")
     })?;
-    if !(scope.active)() {
+    if !(scope.live)() {
         return Err(auto_err("this automation run has ended"));
     }
     Ok(scope)
+}
+
+/// Uninstall the clocks attempt `attempt` of `run_id` installed. An app
+/// that is no longer running took its clock with its Logic. Resolves how
+/// many clocks and how many pending test timers they dropped.
+pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize, u64), String> {
+    let theirs: Vec<(u64, String)> = with_leases(|leases| {
+        leases
+            .iter()
+            .filter(|(_, lease)| lease.run_id == run_id && lease.attempt == Some(attempt))
+            .map(|(token, lease)| (*token, lease.appid.clone()))
+            .collect()
+    });
+    let (mut clocks, mut dropped) = (0, 0u64);
+    let mut failed = Vec::new();
+    for (token, appid) in theirs {
+        // Dropping the lease alone would leave the clock until its Logic
+        // notices, up to a second later: uninstall it now.
+        let result = match crate::resolve::resolve_lxapp_by_id(&appid) {
+            Ok(app) => call(&app, "clock.uninstall()".to_string(), CALL_TIMEOUT)
+                .await
+                .map(|value| number(&value, "dropped") as u64)
+                .map_err(|err| err.to_string()),
+            Err(_) => Ok(0),
+        };
+        with_leases(|leases| leases.remove(&token));
+        match result {
+            Ok(count) => {
+                clocks += 1;
+                dropped += count;
+            }
+            Err(err) => failed.push(format!("{appid}: {err}")),
+        }
+    }
+    if failed.is_empty() {
+        Ok((clocks, dropped))
+    } else {
+        Err(format!(
+            "test clocks were not uninstalled ({})",
+            failed.join("; ")
+        ))
+    }
 }
 
 // ------------------------------ Logic side ------------------------------
@@ -400,6 +449,7 @@ impl JSClockDriver {
         options: Optional<Option<InstallOptions>>,
     ) -> JSResult<ClockState> {
         let (app, scope) = self.target(&ctx)?;
+        let attempt = (scope.admit)().map_err(auto_err)?;
         let now = match options.0.flatten().and_then(|options| options.now) {
             Some(now) => time_arg(now)?,
             None => Value::Null,
@@ -411,6 +461,7 @@ impl JSClockDriver {
                 Lease {
                     run_id: scope.run_id.clone(),
                     appid: app.appid.clone(),
+                    attempt,
                 },
             )
         });

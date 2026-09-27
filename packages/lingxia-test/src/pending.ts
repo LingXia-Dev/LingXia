@@ -50,8 +50,45 @@ let natives: Natives = captureNatives();
 let installed: Natives | undefined;
 let owner: { name: string; started: number } | undefined;
 const timers = new Map<unknown, PendingWork & { kind: "timer" | "interval" }>();
-const fetches = new Set<PendingWork>();
-const rawCalls = new Set<PendingWork>();
+/** Fetches and raw driver calls in flight, with what settles them. */
+const fetches = new Map<PendingWork, Promise<unknown>>();
+const rawCalls = new Map<PendingWork, Promise<unknown>>();
+
+/**
+ * Raw driver authority handed to spec code. Every proxy `rawAutomation()`
+ * hands out remembers the epoch it was made in; revoking bumps the epoch, so
+ * a proxy an abandoned spec still holds refuses its next call, and
+ * `rawAutomation()` itself refuses until the next run.
+ */
+let authorityEpoch = 0;
+let revokedReason: string | undefined;
+
+/** Stop spec code driving the app through `rawAutomation()` for the rest of the run. */
+export function revokeRawAuthority(reason: string): void {
+  revokedReason = reason;
+  authorityEpoch += 1;
+}
+
+/** A new run: `rawAutomation()` works again (earlier proxies stay dead). */
+export function restoreRawAuthority(): void {
+  revokedReason = undefined;
+}
+
+/** Why spec code may no longer drive the app, or `undefined`. */
+export function rawAuthorityRevoked(): string | undefined {
+  return revokedReason;
+}
+
+function refused(reason: string): Error {
+  return Object.assign(new Error(`The run revoked spec code's automation authority: ${reason}`), {
+    code: "E_AUTOMATION_PRIVILEGE",
+  });
+}
+
+function checkEpoch(epoch: number): void {
+  if (revokedReason !== undefined) throw refused(revokedReason);
+  if (epoch !== authorityEpoch) throw refused("this driver belongs to an earlier, abandoned spec");
+}
 
 /** A runner timer: never recorded as spec work, never cancelled with it. */
 export function runnerSetTimeout(callback: () => void, ms: number): unknown {
@@ -111,9 +148,8 @@ export function installPendingTracker(): void {
       const call = nativeFetch.call(globalThis, input, init);
       const work = entry("fetch", describeRequest(input, init));
       if (work) {
-        fetches.add(work);
         const done = () => { fetches.delete(work); };
-        void Promise.resolve(call).then(done, done);
+        fetches.set(work, Promise.resolve(call).then(done, done));
       }
       return call;
     };
@@ -126,28 +162,28 @@ export function installPendingTracker(): void {
  * timed-out spec still awaits can be named. Getters and methods run against
  * the original object, so native receivers keep working.
  */
-export function trackDriver<T extends object>(root: T, path: string): T {
+export function trackDriver<T extends object>(root: T, path: string, epoch = authorityEpoch): T {
   return new Proxy(root, {
     get(target, prop) {
       const value: unknown = Reflect.get(target, prop, target);
       if (typeof prop !== "string") return value;
       if (typeof value === "function") {
         return (...args: unknown[]) => {
+          checkEpoch(epoch);
           const result: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
           const name = `${path}${prop}`;
           if (result && typeof (result as { then?: unknown }).then === "function") {
             const work = entry(prop === "eval" ? "eval" : "action", `${name}()`);
             if (work) {
-              rawCalls.add(work);
               const done = () => { rawCalls.delete(work); };
-              void Promise.resolve(result).then(done, done);
+              rawCalls.set(work, Promise.resolve(result).then(done, done));
             }
             return result;
           }
-          return result && typeof result === "object" ? trackDriver(result, `${name}().`) : result;
+          return result && typeof result === "object" ? trackDriver(result, `${name}().`, epoch) : result;
         };
       }
-      return value && typeof value === "object" ? trackDriver(value, `${path}${prop}.`) : value;
+      return value && typeof value === "object" ? trackDriver(value, `${path}${prop}.`, epoch) : value;
     },
   });
 }
@@ -159,15 +195,21 @@ export function trackDriver<T extends object>(root: T, path: string): T {
  * behind them lose their methods when read through a proxy.
  */
 export function trackAutomationRoot<T extends object>(root: T): T {
+  if (revokedReason !== undefined) throw refused(revokedReason);
+  const epoch = authorityEpoch;
   return new Proxy(root, {
     get(target, prop) {
+      // A host tier is handed out as the native object and cannot be fenced
+      // here once read; the host refuses its calls after a revoke.
+      checkEpoch(epoch);
       const value: unknown = Reflect.get(target, prop, target);
       if (typeof value !== "function") return value;
       if (prop !== "lxapp") return (value as (...input: unknown[]) => unknown).bind(target);
       return (...args: unknown[]) => {
+        checkEpoch(epoch);
         const driver: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
         const path = `rawAutomation().lxapp(${args.length > 0 ? JSON.stringify(args[0]) : ""}).`;
-        return driver && typeof driver === "object" ? trackDriver(driver, path) : driver;
+        return driver && typeof driver === "object" ? trackDriver(driver, path, epoch) : driver;
       };
     },
   });
@@ -195,7 +237,29 @@ export function setPendingOwner(name: string | undefined): void {
 
 /** Timers, fetches and raw driver calls `name` started that have not fired, been cleared or settled. */
 export function pendingOf(name: string): PendingWork[] {
-  return [...rawCalls, ...fetches, ...timers.values()].filter((work) => work.owner === name);
+  return [...rawCalls.keys(), ...fetches.keys(), ...timers.values()].filter((work) => work.owner === name);
+}
+
+/**
+ * Wait up to `ms` for the fetches and raw driver calls `name` left in flight
+ * to settle, including ones their continuations start meanwhile. Resolves
+ * what is still in flight (empty when all settled).
+ */
+export async function settleCallsOf(name: string, ms: number): Promise<PendingWork[]> {
+  const deadline = Date.now() + ms;
+  for (;;) {
+    const open = [...rawCalls, ...fetches].filter(([work]) => work.owner === name);
+    const left = deadline - Date.now();
+    if (open.length === 0 || left <= 0) return open.map(([work]) => work);
+    let handle: unknown;
+    await Promise.race([
+      Promise.all(open.map(([, settled]) => settled)),
+      new Promise<void>((resolve) => { handle = runnerSetTimeout(resolve, left); }),
+    ]);
+    runnerClearTimeout(handle);
+    // Continuations of what settled run before the next look.
+    await new Promise<void>((resolve) => { runnerSetTimeout(resolve, 0); });
+  }
 }
 
 /**

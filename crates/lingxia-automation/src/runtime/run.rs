@@ -1,10 +1,18 @@
 //! Per-run shared state: the state machine, event buffer, and limits.
+//!
+//! A run is `running` until its program ends, then `finishing` while its
+//! side effects run outside the state lock (network and clock scopes
+//! cleared, the app returned to its own data), and only then terminal. Every
+//! reader — `poll`, slot admission, retention, `export` of a retained
+//! profile — sees the same state, so none can observe an ending whose
+//! teardown has not run.
 
-use super::profile::{AutomationProfile, RunProfileSlot, TeardownFn};
+use super::authority::RunAuthority;
+use super::profile::{AutomationProfile, Quarantine, RunProfileSlot, SpawnFn, TeardownFn};
 use super::protocol::*;
 use std::collections::{HashSet, VecDeque};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
@@ -28,15 +36,31 @@ pub(crate) struct RunShared {
     /// Terminal error recorded by a manager-initiated cancellation, so the
     /// cancelled result says why nobody asked for it.
     cancel_error: Mutex<Option<AutomationRunError>>,
-    inner: Mutex<RunInner>,
+    inner: Arc<Mutex<RunInner>>,
     log_ring: Mutex<VecDeque<String>>,
     /// The isolated profile this run owns, if any, and its teardown.
     profile: RunProfileSlot,
     teardown: TeardownFn,
+    spawn: SpawnFn,
+    quarantine: Arc<Quarantine>,
+    /// Spec attempts and revocation of the run's context.
+    pub(crate) authority: Arc<RunAuthority>,
+}
+
+/// How the program ended, held while the run finishes.
+struct Ending {
+    state: AutomationRunState,
+    error: Option<AutomationRunError>,
+    output: Option<serde_json::Value>,
+    duration_ms: u64,
 }
 
 struct RunInner {
+    /// `Running` until the run is completely finished.
     state: AutomationRunState,
+    /// Set once the program ended; the run is finishing until `state` turns
+    /// terminal.
+    ending: Option<Ending>,
     events: Vec<AutomationEvent>,
     next_seq: u64,
     /// Approximate bytes of retained, undelivered non-artifact events.
@@ -65,8 +89,12 @@ impl RunShared {
             log_ring: Mutex::new(VecDeque::new()),
             profile: RunProfileSlot::new(None),
             teardown: super::profile::DEFAULT_TEARDOWN,
-            inner: Mutex::new(RunInner {
+            spawn: super::profile::DEFAULT_SPAWN,
+            quarantine: Arc::default(),
+            authority: Arc::default(),
+            inner: Arc::new(Mutex::new(RunInner {
                 state: AutomationRunState::Running,
+                ending: None,
                 events: Vec::new(),
                 next_seq: 1,
                 retained_event_bytes: 0,
@@ -76,18 +104,24 @@ impl RunShared {
                 result: None,
                 completed_at: None,
                 last_poll_at: None,
-            }),
+            })),
         }
     }
 
-    /// Give the run the isolated profile its target app runs on.
+    /// Give the run the isolated profile its target app runs on, how to
+    /// return the app to its own data, and where a profile that could not be
+    /// returned is kept aside.
     pub fn with_profile(
         mut self,
         profile: Option<AutomationProfile>,
         teardown: TeardownFn,
+        spawn: SpawnFn,
+        quarantine: Arc<Quarantine>,
     ) -> Self {
         self.profile = RunProfileSlot::new(profile);
         self.teardown = teardown;
+        self.spawn = spawn;
+        self.quarantine = quarantine;
         self
     }
 
@@ -95,14 +129,15 @@ impl RunShared {
         self.profile.profile()
     }
 
-    /// Finished, but its app is not back on its own data yet. Such a run
-    /// still holds the automation slot and polls as running.
-    pub fn teardown_pending(&self) -> bool {
-        self.profile.pending()
-    }
-
+    /// `Running` until the run completely finished, teardown included.
     pub fn state(&self) -> AutomationRunState {
         self.inner.lock().unwrap().state
+    }
+
+    /// The program still runs: it may emit, attach and install.
+    pub fn accepting(&self) -> bool {
+        let inner = self.inner.lock().unwrap();
+        inner.ending.is_none() && !inner.state.is_terminal()
     }
 
     pub fn completed_at(&self) -> Option<Instant> {
@@ -160,7 +195,7 @@ impl RunShared {
 
     pub fn push_console(&self, level: &str, message: String) {
         let mut inner = self.inner.lock().unwrap();
-        if inner.state.is_terminal() {
+        if !inner.accepting() {
             return;
         }
         let mut message = message;
@@ -195,7 +230,7 @@ impl RunShared {
 
     pub fn push_event(&self, value: serde_json::Value) {
         let mut inner = self.inner.lock().unwrap();
-        if inner.state.is_terminal() {
+        if !inner.accepting() {
             return;
         }
         inner.push_retained_event(AutomationEventPayload::Event { value });
@@ -215,7 +250,7 @@ impl RunShared {
             return Err("attachment mimeType must be 1-255 characters".to_string());
         }
         let mut inner = self.inner.lock().unwrap();
-        if inner.state.is_terminal() {
+        if !inner.accepting() {
             return Err("automation run is no longer active".to_string());
         }
         if decoded_len > MAX_ATTACHMENT_BYTES {
@@ -244,8 +279,10 @@ impl RunShared {
         Ok(())
     }
 
-    /// Transition to a terminal state exactly once. Later calls are ignored so
-    /// a watchdog and the worker task can race safely.
+    /// Record how the program ended and finish the run, exactly once; later
+    /// calls are ignored so a watchdog and the worker task can race safely.
+    /// The run turns terminal only once its teardown completed: a teardown
+    /// that failed makes it a failure.
     pub fn finalize(
         &self,
         state: AutomationRunState,
@@ -253,23 +290,30 @@ impl RunShared {
         output: Option<serde_json::Value>,
     ) -> bool {
         debug_assert!(state.is_terminal());
-        let mut inner = self.inner.lock().unwrap();
-        if inner.state.is_terminal() {
-            return false;
+        {
+            let mut inner = self.inner.lock().unwrap();
+            if !inner.accepting() {
+                return false;
+            }
+            inner.ending = Some(Ending {
+                state,
+                error,
+                output,
+                duration_ms: self.started_at.elapsed().as_millis() as u64,
+            });
         }
-        inner.state = state;
-        inner.completed_at = Some(Instant::now());
-        inner.result = Some(AutomationRunResult {
-            duration_ms: self.started_at.elapsed().as_millis() as u64,
-            error,
-            output,
-        });
         // Outside the state lock: route installation takes the route table
         // lock before reading run state.
-        drop(inner);
         crate::network::clear_run(&self.run_id);
         crate::clock::clear_run(&self.run_id);
-        self.profile.begin_teardown(&self.run_id, self.teardown);
+        let inner = self.inner.clone();
+        self.profile.begin_teardown(
+            &self.run_id,
+            self.teardown,
+            self.spawn,
+            &self.quarantine,
+            Box::new(move |teardown| complete(&inner, teardown)),
+        );
         true
     }
 
@@ -285,9 +329,9 @@ impl RunShared {
     }
 
     pub fn poll(&self, after_seq: u64) -> AutomationPollResponse {
-        // Report the ending only once the app is back on its own data, so a
-        // client that exports or starts the next run never races the teardown.
-        let settling = self.teardown_pending();
+        // A finishing run polls as running: its ending is reported only once
+        // the app is back on its own data, so a client that exports or starts
+        // the next run never races the teardown.
         let mut inner = self.inner.lock().unwrap();
         inner.last_poll_at = Some(Instant::now());
         let mut released = 0usize;
@@ -315,11 +359,7 @@ impl RunShared {
             .cloned()
             .collect();
 
-        let state = if settling {
-            AutomationRunState::Running
-        } else {
-            inner.state
-        };
+        let state = inner.state;
         AutomationPollResponse {
             run_id: self.run_id.clone(),
             state,
@@ -334,7 +374,47 @@ impl RunShared {
     }
 }
 
+/// The teardown finished: publish the ending, made a failure when the app
+/// could not be returned to its own data.
+fn complete(inner: &Mutex<RunInner>, teardown: Result<(), String>) {
+    let mut inner = inner.lock().unwrap_or_else(|err| err.into_inner());
+    let Some(ending) = inner.ending.take() else {
+        return;
+    };
+    let mut state = ending.state;
+    let mut error = ending.error;
+    if let Err(message) = teardown {
+        let teardown_error = AutomationRunError {
+            name: "ProfileTeardownError".to_string(),
+            message: format!(
+                "the run's app could not be returned to its own data: {message}; its test profile \
+                 is kept aside and new runs wait until returning it succeeds"
+            ),
+            stack: None,
+            causes: Vec::new(),
+        };
+        match &mut error {
+            Some(error) => error.causes.push(teardown_error),
+            None => error = Some(teardown_error),
+        }
+        if state == AutomationRunState::Succeeded {
+            state = AutomationRunState::InternalError;
+        }
+    }
+    inner.state = state;
+    inner.completed_at = Some(Instant::now());
+    inner.result = Some(AutomationRunResult {
+        duration_ms: ending.duration_ms,
+        error,
+        output: ending.output,
+    });
+}
+
 impl RunInner {
+    fn accepting(&self) -> bool {
+        self.ending.is_none() && !self.state.is_terminal()
+    }
+
     fn push_event(&mut self, payload: AutomationEventPayload) {
         let seq = self.next_seq;
         self.next_seq += 1;
@@ -425,6 +505,135 @@ mod tests {
 
     fn shared() -> RunShared {
         RunShared::new("run".into(), Duration::from_secs(60))
+    }
+
+    fn temp_profile(retain: bool) -> (std::path::PathBuf, AutomationProfile) {
+        let base =
+            std::env::temp_dir().join(format!("lingxia-automation-run-{}", uuid::Uuid::new_v4()));
+        let profile = lxapp::data_profile::RunProfile::create(&base).unwrap();
+        (
+            base,
+            AutomationProfile {
+                appid: "app.lingxia.finishing".to_string(),
+                profile,
+                retain,
+            },
+        )
+    }
+
+    fn wait_terminal(run: &RunShared) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !run.state().is_terminal() {
+            assert!(Instant::now() < deadline, "the run did not finish");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
+    fn a_finishing_run_polls_as_running_until_its_teardown_completed() {
+        use super::super::profile::{DEFAULT_SPAWN, discard_retained, export_retained};
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static RELEASE: AtomicBool = AtomicBool::new(false);
+        fn gated(_: &AutomationProfile) -> Result<(), String> {
+            while !RELEASE.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Ok(())
+        }
+        let (base, profile) = temp_profile(true);
+        let run = RunShared::new("run-finishing".into(), Duration::from_secs(60)).with_profile(
+            Some(profile),
+            gated,
+            DEFAULT_SPAWN,
+            Arc::default(),
+        );
+        run.push_console("info", "before".into());
+        assert!(run.finalize(
+            AutomationRunState::Succeeded,
+            None,
+            Some(serde_json::json!({ "ok": true }))
+        ));
+
+        // The program ended: nothing more is taken, but the ending is not
+        // published while the teardown runs.
+        assert!(!run.accepting());
+        run.push_console("info", "after".into());
+        let finishing = run.poll(0);
+        assert_eq!(finishing.state, AutomationRunState::Running);
+        assert!(finishing.result.is_none());
+        assert_eq!(finishing.events.len(), 1);
+        assert_eq!(run.state(), AutomationRunState::Running);
+        assert!(run.completed_at().is_none(), "retention starts at the end");
+        assert!(
+            export_retained("run-finishing").is_err(),
+            "nothing retained yet"
+        );
+        assert!(
+            !run.finalize(AutomationRunState::Failed, None, None),
+            "one ending"
+        );
+
+        RELEASE.store(true, Ordering::SeqCst);
+        wait_terminal(&run);
+        let done = run.poll(1);
+        assert_eq!(done.state, AutomationRunState::Succeeded);
+        assert_eq!(
+            done.result.expect("result").output,
+            Some(serde_json::json!({ "ok": true }))
+        );
+        assert!(
+            export_retained("run-finishing").is_ok(),
+            "retained before the end"
+        );
+        assert!(discard_retained("run-finishing"));
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_failed_teardown_ends_the_run_as_a_failure() {
+        use super::super::profile::DEFAULT_SPAWN;
+        fn failing(_: &AutomationProfile) -> Result<(), String> {
+            Err("reopen failed".to_string())
+        }
+        for (state, error) in [
+            (AutomationRunState::Succeeded, None),
+            (
+                AutomationRunState::Failed,
+                Some(AutomationRunError {
+                    name: "Error".into(),
+                    message: "spec failed".into(),
+                    stack: None,
+                    causes: Vec::new(),
+                }),
+            ),
+        ] {
+            let (base, profile) = temp_profile(false);
+            let run = RunShared::new("run-teardown-failed".into(), Duration::from_secs(60))
+                .with_profile(Some(profile), failing, DEFAULT_SPAWN, Arc::default());
+            let had_error = error.is_some();
+            run.finalize(state, error, None);
+            wait_terminal(&run);
+            let result = run.poll(0).result.expect("result");
+            let error = result.error.expect("an error");
+            if had_error {
+                assert_eq!(
+                    run.state(),
+                    AutomationRunState::Failed,
+                    "the program's verdict stays"
+                );
+                assert_eq!(error.message, "spec failed");
+                assert_eq!(error.causes[0].name, "ProfileTeardownError");
+            } else {
+                assert_eq!(run.state(), AutomationRunState::InternalError);
+                assert_eq!(error.name, "ProfileTeardownError");
+                assert!(error.message.contains("reopen failed"));
+            }
+            assert!(
+                base.read_dir().unwrap().next().is_some(),
+                "the profile is kept"
+            );
+            let _ = std::fs::remove_dir_all(base);
+        }
     }
 
     #[test]

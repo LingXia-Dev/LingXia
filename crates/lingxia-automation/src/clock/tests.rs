@@ -35,6 +35,7 @@ fn eval_clock(script: &str) -> Value {
                             Lease {
                                 run_id: "clock-test-run".into(),
                                 appid: "clock-test-app".into(),
+                                attempt: None,
                             },
                         )
                     });
@@ -473,6 +474,7 @@ fn leases_are_scoped_to_their_run_and_app() {
                 Lease {
                     run_id: run.into(),
                     appid: app.into(),
+                    attempt: None,
                 },
             )
         });

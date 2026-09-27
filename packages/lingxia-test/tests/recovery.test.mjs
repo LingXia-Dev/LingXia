@@ -17,7 +17,7 @@ function hangingFetch() {
   globalThis.fetch = () => new Promise(() => {});
 }
 
-test("a spec that times out with work pending fails alone; the app is recovered and the next spec runs", async () => {
+test("a spec whose body never settles stops the run: the app is relaunched for inspection and the rest are not run", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   hangingFetch();
@@ -36,19 +36,20 @@ test("a spec that times out with work pending fails alone; the app is recovered 
   });
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  assert.equal(nextRan, true);
-  assert.equal(report.partial, false);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  assert.equal(nextRan, false);
+  assert.equal(report.partial, true);
   const timedOut = report.cases[0];
   assert.match(timedOut.error.message, /spec timed out after 40ms/);
   assert.match(timedOut.error.message, /did not settle; still pending: .*interval setInterval 100ms/);
   assert.match(timedOut.error.message, /fetch GET https:\/\/backend\.example\.test\/slow/);
   assert.match(timedOut.error.message, /Cleanup skipped because the timed-out body is still running/);
 
-  const recovery = events.filter((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.equal(recovery.length, 1, JSON.stringify(events.filter((e) => e.type === "diagnostic")));
-  assert.match(recovery[0].message,
-    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. Relaunched the app under test on its home page; the run continues\.$/);
+  const stopped = events.filter((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.equal(stopped.length, 1, JSON.stringify(events.filter((e) => e.type === "diagnostic")));
+  assert.match(stopped[0].message,
+    /^"leaves work pending" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/slow \(started \d+ms into the spec\), interval setInterval 100ms .*; cancelled its 1 pending timer\. Code it may still run could act on later specs, so the run stopped\. Relaunched the app under test on its home page for inspection\. Make the spec settle \(await its work\), or give it a longer timeout\. The remaining specs are not run\.$/);
+  assert.match(report.cases[1].reason, /^Not run: "leaves work pending" left its timed-out body pending: .*so the run stopped\./);
   assert.ok(world.navCalls.some(([method, options]) => method === "relaunch" && options.page === "home"));
 
   // The abandoned spec's poll was cancelled, so it never fires into later specs.
@@ -61,12 +62,12 @@ test("a body awaiting nothing the runtime tracks says so", async () => {
   const world = createWorld();
   const { events } = installFakeHost(world);
   spec("awaits forever", { timeout: 20, forensics: false }, () => new Promise(() => {}));
-  spec("still runs", async () => {});
+  spec("is not run", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  const recovery = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.match(recovery.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.match(stopped.message, /"awaits forever" left its timed-out body pending: an awaited promise that no timer, fetch or fixture call of the spec backs/);
 });
 
 test("a hung raw-driver eval is named as the pending work", async () => {
@@ -76,12 +77,12 @@ test("a hung raw-driver eval is named as the pending work", async () => {
   spec("hung eval", { timeout: 30, forensics: false }, async () => {
     await rawAutomation().lxapp().eval({ script: "hangs forever" });
   });
-  spec("still runs", async () => {});
+  spec("is not run", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  const recovery = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.match(recovery.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\./);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.match(stopped.message, /^"hung eval" left its timed-out body pending: eval rawAutomation\(\)\.lxapp\(\)\.eval\(\) \(started \d+ms into the spec\)\./);
 });
 
 test("when recovery fails, the rest are not run and the reason names the stuck work and the fix", async () => {
@@ -103,7 +104,7 @@ test("when recovery fails, the rest are not run and the reason names the stuck w
   assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped", "skipped"]);
   for (const skipped of report.cases.slice(1)) {
     assert.match(skipped.reason,
-      /^Not run: "stuck on fetch" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/hang .*, and recovering the app failed: home page never became ready\. Recover: lxdev lxapp restart$/);
+      /^Not run: "stuck on fetch" left its timed-out body pending: fetch GET https:\/\/backend\.example\.test\/hang .*so the run stopped\. Recovering the app failed: home page never became ready\. .* Recover: lxdev lxapp restart$/);
   }
   const failed = events.filter((e) => e.type === "diagnostic" && e.phase === "recovery_failed");
   assert.equal(failed.length, 1);
@@ -121,9 +122,9 @@ test("the runner's own timers are not reported as spec work", async () => {
   spec("next", async () => {});
 
   const report = await run();
-  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "passed"]);
-  const recovery = events.find((e) => e.type === "diagnostic" && e.phase === "recovery");
-  assert.match(recovery.message, /pending: an awaited promise that no timer/);
+  assert.deepEqual(report.cases.map((c) => c.status), ["timeout", "skipped"]);
+  const stopped = events.find((e) => e.type === "diagnostic" && e.phase === "run_stopped");
+  assert.match(stopped.message, /pending: an awaited promise that no timer/);
 });
 
 test("rawAutomation hands the host tiers out as the native objects", () => {

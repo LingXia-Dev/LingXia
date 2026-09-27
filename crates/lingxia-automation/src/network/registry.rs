@@ -447,6 +447,9 @@ pub(crate) struct InstalledScenario {
     pub calls_total: u64,
     /// Its `function` rules are installed in the dev session's companion.
     pub companion: bool,
+    /// The spec attempt of its run that installed it; `None` for the whole
+    /// run (or a dev session).
+    pub attempt: Option<u64>,
 }
 
 impl InstalledScenario {
@@ -517,7 +520,22 @@ struct Route {
     id: u64,
     run_id: String,
     appid: String,
+    /// The spec attempt that installed it; `None` for the whole run.
+    attempt: Option<u64>,
     spec: RouteSpec,
+}
+
+/// Why an install is refused once its run has ended.
+const RUN_ENDED: &str = "the automation run that owns this driver has ended";
+
+fn admit_while(run_active: impl FnOnce() -> bool) -> impl FnOnce() -> Result<Option<u64>, String> {
+    move || {
+        if run_active() {
+            Ok(None)
+        } else {
+            Err(RUN_ENDED.to_string())
+        }
+    }
 }
 
 /// What the app sent, as far as the `fetch` wrapper can read it synchronously.
@@ -635,6 +653,7 @@ impl Registry {
     /// Install a route for `appid` owned by `run_id`. `run_active` is checked
     /// under the table lock, so a run that finalizes concurrently either sees
     /// this route in its `clear_run` or rejects it here.
+    #[cfg(test)]
     pub(crate) fn install(
         &mut self,
         run_id: &str,
@@ -642,15 +661,26 @@ impl Registry {
         spec: RouteSpec,
         run_active: impl FnOnce() -> bool,
     ) -> Result<u64, String> {
-        if !run_active() {
-            return Err("the automation run that owns this driver has ended".into());
-        }
+        self.install_admitted(run_id, appid, spec, admit_while(run_active))
+    }
+
+    /// [`Self::install`] for the attempt `admit` names; refused when it
+    /// refuses. Checked under the table lock like `run_active`.
+    pub(crate) fn install_admitted(
+        &mut self,
+        run_id: &str,
+        appid: &str,
+        spec: RouteSpec,
+        admit: impl FnOnce() -> Result<Option<u64>, String>,
+    ) -> Result<u64, String> {
+        let attempt = admit()?;
         self.next_id += 1;
         let id = self.next_id;
         self.routes.push(Route {
             id,
             run_id: run_id.to_string(),
             appid: appid.to_string(),
+            attempt,
             spec,
         });
         Ok(id)
@@ -664,11 +694,8 @@ impl Registry {
         run_id: &str,
         appid: &str,
         specs: Vec<RouteSpec>,
-        run_active: impl FnOnce() -> bool,
-    ) -> Result<Vec<(u64, String)>, String> {
-        if !run_active() {
-            return Err("the automation run that owns this driver has ended".into());
-        }
+        attempt: Option<u64>,
+    ) -> Vec<(u64, String)> {
         let mut installed = Vec::with_capacity(specs.len());
         for spec in specs.into_iter().rev() {
             self.next_id += 1;
@@ -677,11 +704,12 @@ impl Registry {
                 id: self.next_id,
                 run_id: run_id.to_string(),
                 appid: appid.to_string(),
+                attempt,
                 spec,
             });
         }
         installed.reverse();
-        Ok(installed)
+        installed
     }
 
     /// Install a resolved scenario for `owner` and `appid`, replacing the
@@ -693,17 +721,28 @@ impl Registry {
         &mut self,
         owner: &str,
         appid: &str,
-        mut installed: InstalledScenario,
+        installed: InstalledScenario,
         routes: Vec<(usize, RouteSpec)>,
         run_active: impl FnOnce() -> bool,
     ) -> Result<InstalledScenario, String> {
-        if !run_active() {
-            return Err("the automation run that owns this driver has ended".into());
-        }
+        self.install_scenario_admitted(owner, appid, installed, routes, admit_while(run_active))
+    }
+
+    /// [`Self::install_scenario`] for the attempt `admit` names.
+    pub(crate) fn install_scenario_admitted(
+        &mut self,
+        owner: &str,
+        appid: &str,
+        mut installed: InstalledScenario,
+        routes: Vec<(usize, RouteSpec)>,
+        admit: impl FnOnce() -> Result<Option<u64>, String>,
+    ) -> Result<InstalledScenario, String> {
+        let attempt = admit()?;
         self.next_id += 1;
         installed.id = self.next_id;
         installed.owner = owner.to_string();
         installed.appid = appid.to_string();
+        installed.attempt = attempt;
         let (indexes, mut specs): (Vec<usize>, Vec<RouteSpec>) = routes.into_iter().unzip();
         for (spec, index) in specs.iter_mut().zip(&indexes) {
             spec.origin = Some(RuleOrigin {
@@ -711,7 +750,7 @@ impl Registry {
                 index: *index,
             });
         }
-        let ids = self.install_all(owner, appid, specs, || true)?;
+        let ids = self.install_all(owner, appid, specs, attempt);
         for (index, (id, _)) in indexes.iter().zip(ids) {
             if let Some(slot) = installed.rules.iter_mut().find(|slot| slot.index == *index) {
                 slot.route_id = Some(id);
@@ -855,6 +894,40 @@ impl Registry {
         self.routes
             .retain(|route| !(route.run_id == run_id && route.appid == appid));
         before - self.routes.len()
+    }
+
+    /// Remove what attempt `attempt` of `run_id` installed: its routes and
+    /// scenarios (with their routes). Returns how many routes outside a
+    /// scenario, and the scenarios.
+    pub(crate) fn reclaim_attempt(
+        &mut self,
+        run_id: &str,
+        attempt: u64,
+    ) -> (usize, Vec<InstalledScenario>) {
+        let mut scenarios = Vec::new();
+        let mut index = 0;
+        while index < self.run_scenarios.len() {
+            let scenario = &self.run_scenarios[index];
+            if scenario.owner == run_id && scenario.attempt == Some(attempt) {
+                let scenario = self.run_scenarios.remove(index);
+                for id in scenario.route_ids() {
+                    self.remove(run_id, id);
+                }
+                scenarios.push(scenario);
+            } else {
+                index += 1;
+            }
+        }
+        let theirs: Vec<u64> = self
+            .routes
+            .iter()
+            .filter(|route| route.run_id == run_id && route.attempt == Some(attempt))
+            .map(|route| route.id)
+            .collect();
+        for id in &theirs {
+            self.remove(run_id, *id);
+        }
+        (theirs.len(), scenarios)
     }
 
     /// A host automation run started: its Logic `fetch` calls are logged
@@ -2308,6 +2381,7 @@ mod tests {
             calls: VecDeque::new(),
             calls_total: 0,
             companion: false,
+            attempt: None,
         };
         let call = ScenarioCall {
             seq: 0,

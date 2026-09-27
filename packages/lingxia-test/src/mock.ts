@@ -7,31 +7,34 @@ import type {
   ScenarioRuleInfo,
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
-import { scenarioCall, waitForNextCall, type CallCursor, type NetworkHost } from "./network.js";
+import { errorText, scenarioCall, waitForNextCall, type CallCursor, type NetworkHost } from "./network.js";
 import type { ScenarioCallTarget, TestScenario, WaitForCallOptions } from "./types.js";
 import type { ScenarioReport } from "./report-types.js";
 import { runnerSetTimeout } from "./pending.js";
 
 /**
  * The scenario one spec installed with `t.app.mock.use()`. Installing
- * another replaces it (the host does the same for its run), and it is
- * removed when the spec ends.
+ * another replaces it (the host does the same for its run), and the runner
+ * removes it when the spec ends.
  */
 export class ScenarioScope {
   current: { raw: Scenario; label: string } | undefined;
-  private cleanupRegistered = false;
 
-  track(host: NetworkHost, raw: Scenario, label: string): void {
+  track(raw: Scenario, label: string): void {
     this.current = { raw, label };
-    if (this.cleanupRegistered) return;
-    this.cleanupRegistered = true;
-    host.defer(async () => {
-      const current = this.current;
-      this.current = undefined;
-      // Raw handle: cleanup runs after the fixture closed its action guard;
-      // the run's end removes whatever is left.
-      try { await current?.raw.unroute(); } catch { /* the run end clears it */ }
-    });
+  }
+
+  /** Remove the scenario; one already removed counts as removed. */
+  async reclaim(): Promise<void> {
+    const current = this.current;
+    if (!current) return;
+    // Raw handle: the fixture is closed by now.
+    try {
+      await current.raw.unroute();
+    } catch (error) {
+      throw new Error(`mock scenario ${current.label} was not removed: ${errorText(error)}`);
+    }
+    if (this.current === current) this.current = undefined;
   }
 
   /**
@@ -113,7 +116,7 @@ export function installScenario(
       ? await resolve().mock.use(definition)
       : await resolve().mock.use(definition, variant);
     const label = scenarioLabel(definition, variant);
-    scope.track(host, raw, label);
+    scope.track(raw, label);
     const read = async (filter?: ScenarioCallFilter) => (await raw.calls(filter)).map(scenarioCall);
     const cursors = new Map<string, CallCursor>();
     const wrapped: TestScenario = {
