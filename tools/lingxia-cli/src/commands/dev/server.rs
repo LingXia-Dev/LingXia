@@ -361,9 +361,7 @@ impl DevServerState {
         let loaded = match super::mocks::load_app(app_id, root) {
             Ok(Some(app)) => app,
             Ok(None) => {
-                println!(
-                    "  • {app_id} has no mocks/index.ts any more; the mocks loaded last keep                      answering until the session restarts"
-                );
+                self.unload_mocks(app_id);
                 return;
             }
             Err(error) => {
@@ -401,6 +399,36 @@ impl DevServerState {
         let mut mocks = self.lock_mocks();
         mocks.retain(|app| app.app_id != app_id);
         mocks.push(loaded);
+    }
+
+    /// `mocks/` (or its `index.ts`) is gone: the app has no mocks from now
+    /// on, in the runtime and in what the session reports.
+    fn unload_mocks(&self, app_id: &str) {
+        let had = {
+            let mut mocks = self.lock_mocks();
+            let before = mocks.len();
+            mocks.retain(|app| app.app_id != app_id);
+            mocks.len() != before
+        };
+        if !had {
+            return;
+        }
+        let pushed = self.runtime_sender().is_some().then(|| {
+            self.runtime_request(
+                lingxia_control_protocol::methods::session::network::MOCK_UNLOAD,
+                serde_json::json!({ "appid": app_id }),
+                Duration::from_secs(30),
+            )
+        });
+        match pushed {
+            Some(Err(error)) => eprintln!(
+                "  ✗ mocks of {app_id} removed, but the runtime did not drop them — {error:#}"
+            ),
+            _ => println!(
+                "  ✓ {app_id}: mocks/ removed; mock: {}",
+                super::mocks::no_mocks_line(super::mocks::baseline())
+            ),
+        }
     }
 
     fn lock_watch_leases(
@@ -1731,6 +1759,33 @@ mod tests {
             Some("secret".to_string()),
             false,
         )
+    }
+
+    #[test]
+    fn a_removed_mocks_dir_leaves_the_app_without_mocks() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        std::fs::write(
+            root.join("lxapp.json"),
+            r#"{ "appId": "demo.app", "appName": "Demo", "version": "1.0.0", "pages": [] }"#,
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.join("mocks")).unwrap();
+        std::fs::write(
+            root.join("mocks/index.ts"),
+            "export default { 'GET **/a': { json: {} } };\n",
+        )
+        .unwrap();
+        let state = authenticated_state();
+        // Created after the session started: the reload loads it.
+        state.reload_mocks("demo.app", root);
+        assert_eq!(state.lock_mocks().len(), 1);
+        std::fs::remove_dir_all(root.join("mocks")).unwrap();
+        state.reload_mocks("demo.app", root);
+        assert!(
+            state.lock_mocks().is_empty(),
+            "no mocks/ is reported as none, not the last loaded"
+        );
     }
 
     fn desktop_state(stop: Arc<AtomicBool>) -> Arc<DevServerState> {

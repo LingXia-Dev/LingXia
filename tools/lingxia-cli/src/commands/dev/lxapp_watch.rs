@@ -184,11 +184,18 @@ fn run_watch(
     let (tx, rx) = mpsc::channel();
     let mut watcher = RecommendedWatcher::new(tx, notify::Config::default())
         .context("Failed to create filesystem watcher")?;
+    // Top-level directories watched recursively. One created later (a new
+    // `mocks/`, `pages/`) is added when it appears, and re-added when it is
+    // removed and made again.
+    let mut subtrees: BTreeSet<PathBuf> = BTreeSet::new();
     for root in &roots {
         for (path, mode) in watch_entries(&root.path) {
             watcher
                 .watch(&path, mode)
                 .with_context(|| format!("Failed to watch {}", path.display()))?;
+            if mode == RecursiveMode::Recursive {
+                subtrees.insert(path);
+            }
         }
     }
 
@@ -210,6 +217,21 @@ fn run_watch(
                 for path in event.paths {
                     if is_ignored_path(&path) {
                         continue;
+                    }
+                    if let Some(change) = subtree_change(&roots, &subtrees, &path) {
+                        match change {
+                            SubtreeChange::Appeared => {
+                                if let Err(err) = watcher.watch(&path, RecursiveMode::Recursive) {
+                                    eprintln!("⚠ lxapp watch: {}: {err}", path.display());
+                                } else {
+                                    subtrees.insert(path.clone());
+                                }
+                            }
+                            SubtreeChange::Removed => {
+                                let _ = watcher.unwatch(&path);
+                                subtrees.remove(&path);
+                            }
+                        }
                     }
                     if let Some(root) = root_for_path(&roots, &path) {
                         let path = strip_verbatim_prefix(&path);
@@ -310,6 +332,34 @@ fn reload_one(state: &DevServerState, app_id: &str, options: &LxAppWatchOptions)
     Reload::Done
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum SubtreeChange {
+    Appeared,
+    Removed,
+}
+
+/// Whether `path`, reported by an event, is a top-level directory of a root
+/// that has just appeared (not yet watched recursively) or is gone (and was).
+fn subtree_change(
+    roots: &[WatchRoot],
+    subtrees: &BTreeSet<PathBuf>,
+    path: &Path,
+) -> Option<SubtreeChange> {
+    let parent = path.parent()?;
+    let top_level = roots
+        .iter()
+        .any(|root| strip_verbatim_prefix(&root.path) == strip_verbatim_prefix(parent));
+    if !top_level {
+        return None;
+    }
+    let watched = subtrees.contains(path);
+    match (path.is_dir(), watched) {
+        (true, false) => Some(SubtreeChange::Appeared),
+        (false, true) if !path.exists() => Some(SubtreeChange::Removed),
+        _ => None,
+    }
+}
+
 fn is_reload_event(kind: EventKind) -> bool {
     !matches!(kind, EventKind::Access(_) | EventKind::Other)
 }
@@ -388,6 +438,96 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn a_top_level_directory_made_later_is_watched_and_one_removed_is_dropped() {
+        let temp = tempfile::tempdir().unwrap();
+        let roots = vec![WatchRoot {
+            app_id: "demo".into(),
+            path: temp.path().to_path_buf(),
+        }];
+        let mut subtrees = BTreeSet::new();
+        let mocks = temp.path().join("mocks");
+        // Not there yet: nothing to watch.
+        assert_eq!(subtree_change(&roots, &subtrees, &mocks), None);
+        fs::create_dir_all(mocks.join("fixtures")).unwrap();
+        assert_eq!(
+            subtree_change(&roots, &subtrees, &mocks),
+            Some(SubtreeChange::Appeared)
+        );
+        // Only top-level directories: nested ones are covered recursively.
+        assert_eq!(
+            subtree_change(&roots, &subtrees, &mocks.join("fixtures")),
+            None
+        );
+        subtrees.insert(mocks.clone());
+        assert_eq!(subtree_change(&roots, &subtrees, &mocks), None);
+        fs::remove_dir_all(&mocks).unwrap();
+        assert_eq!(
+            subtree_change(&roots, &subtrees, &mocks),
+            Some(SubtreeChange::Removed)
+        );
+        subtrees.remove(&mocks);
+        // Made again: watched again.
+        fs::create_dir_all(&mocks).unwrap();
+        assert_eq!(
+            subtree_change(&roots, &subtrees, &mocks),
+            Some(SubtreeChange::Appeared)
+        );
+        // A file at the top level is not a subtree.
+        write(&temp.path().join("app.ts"), "");
+        assert_eq!(
+            subtree_change(&roots, &subtrees, &temp.path().join("app.ts")),
+            None
+        );
+    }
+
+    #[test]
+    fn a_new_mocks_dir_is_watched_recursively_by_the_session() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let roots = vec![WatchRoot {
+            app_id: "demo".into(),
+            path: root.clone(),
+        }];
+        let (tx, rx) = mpsc::channel();
+        let mut watcher = RecommendedWatcher::new(tx, notify::Config::default()).unwrap();
+        let mut subtrees = BTreeSet::new();
+        for (path, mode) in watch_entries(&root) {
+            watcher.watch(&path, mode).unwrap();
+        }
+        let mocks = root.join("mocks");
+        fs::create_dir_all(&mocks).unwrap();
+        // The session's loop: a new top-level directory gets a recursive watch.
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !subtrees.contains(&mocks) && std::time::Instant::now() < deadline {
+            if let Ok(Ok(event)) = rx.recv_timeout(Duration::from_millis(100)) {
+                for path in event.paths {
+                    if subtree_change(&roots, &subtrees, &path) == Some(SubtreeChange::Appeared) {
+                        watcher.watch(&path, RecursiveMode::Recursive).unwrap();
+                        subtrees.insert(path);
+                    }
+                }
+            }
+        }
+        assert!(subtrees.contains(&mocks), "the new mocks/ was noticed");
+        // A nested edit inside it is now seen, and it is a mocks path.
+        std::thread::sleep(Duration::from_millis(200));
+        let nested = mocks.join("data/devices.ts");
+        write(&nested, "export default {};");
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        let mut seen = false;
+        while !seen && std::time::Instant::now() < deadline {
+            if let Ok(Ok(event)) = rx.recv_timeout(Duration::from_millis(100)) {
+                seen = event.paths.iter().any(|path| {
+                    path.starts_with(&mocks)
+                        && super::super::mocks::is_mocks_path(&root, path)
+                        && path.ends_with("devices.ts")
+                });
+            }
+        }
+        assert!(seen, "an edit inside the new mocks/ reached the watcher");
     }
 
     #[test]

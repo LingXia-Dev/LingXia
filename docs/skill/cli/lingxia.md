@@ -65,8 +65,9 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
 - **Watch and reload.** Saving a standalone lxapp or a local
   `resources.bundles[].path` rebuilds and reloads it in place (`pages`,
   `tabBar`, `navigationStyle` included). Host code needs a new `lingxia dev`.
-- **Background.** `--background` returns once the session is ready (`--json`
-  prints it). On failure or no readiness within 30 minutes it stops what it
+- **Background.** `--background` returns once the session it started is
+  ready (`--json` prints it); parallel starts of the same project (one per
+  platform) each wait for their own. On failure or no readiness within 30 minutes it stops what it
   started, prints the log tail, and exits non-zero.
 - **Names.** `--name NAME` gives a stable alias for `lxdev --session` and
   `lingxia dev stop`.

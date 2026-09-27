@@ -9,6 +9,7 @@ export {
   type LxChannelState,
 } from "./hook.js";
 export type { LxHost } from "@lingxia/bridge";
+export type { DeepReadonly } from "@lingxia/page-runtime";
 export { default as LxVideo } from "./LxVideo.vue";
 export { default as LxNativeRoot } from "./LxNativeRoot.vue";
 export { default as LxNativeView } from "./LxNativeView.vue";

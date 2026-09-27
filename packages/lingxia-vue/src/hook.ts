@@ -31,6 +31,7 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   type ActionMap,
+  type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
 
@@ -56,22 +57,30 @@ function syncSnapshot(): void {
   Object.assign(reactiveSnapshot, normalized);
 }
 
+// What pages get: Logic owns the data, so a View write is refused (Vue warns
+// in development) while the sync above keeps updating the same object.
+const readonlySnapshot = readonly(reactiveSnapshot);
+
 /**
  * This page's Logic state and actions — `this.data` and the page's methods.
  * The page mounts once its first state has arrived, so `data` is whole from
- * the first render. `data` is deep-reactive and updated in place, so it may be
- * destructured; `actions` is one object for the page. Callable anywhere.
+ * the first render. `data` is deep-reactive, readonly and updated in place, so
+ * it may be destructured; keep editable state in a `ref` and send it with an
+ * action. `actions` is one object for the page. Callable anywhere.
  */
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
->(): { data: TData; actions: TActions } {
+>(): { data: DeepReadonly<TData>; actions: TActions } {
   if (!snapshotSubscribed) {
     snapshotSubscribed = true;
     syncSnapshot();
     subscribePageSnapshot(syncSnapshot);
   }
-  return { data: reactiveSnapshot as TData, actions: getPageActions<TActions>() };
+  return {
+    data: readonlySnapshot as unknown as DeepReadonly<TData>,
+    actions: getPageActions<TActions>(),
+  };
 }
 
 const hostState = reactive<LxHost>({ ...getHost() });

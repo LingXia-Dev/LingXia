@@ -55,28 +55,52 @@ const fetches = new Map<PendingWork, Promise<unknown>>();
 const rawCalls = new Map<PendingWork, Promise<unknown>>();
 
 /**
- * Raw driver authority handed to spec code. Every proxy `rawAutomation()`
- * hands out remembers the epoch it was made in; revoking bumps the epoch, so
- * a proxy an abandoned spec still holds refuses its next call, and
- * `rawAutomation()` itself refuses until the next run.
+ * Raw driver authority handed to spec code, one grant per spec. Every proxy
+ * `rawAutomation()` hands out keeps the grant it was made under: a spec the
+ * run abandons has its grant revoked, so a handle it still holds refuses its
+ * next call while the next spec's own handles keep working. Setup code that
+ * runs before the first spec has a grant of its own; between specs there is
+ * none, so a continuation of an ended spec cannot take a fresh handle then.
+ * Revoking the run (`revokeRawAuthority`) refuses every grant.
  */
-let authorityEpoch = 0;
+export interface Grant {
+  revoked?: string;
+  /** Host tiers read under this grant: native objects it cannot fence. */
+  readonly unfenced: Set<string>;
+}
+
+let setupGrant: Grant = { unfenced: new Set() };
+let currentGrant: Grant | undefined = setupGrant;
+let specsStarted = false;
 let revokedReason: string | undefined;
 
 /** Stop spec code driving the app through `rawAutomation()` for the rest of the run. */
 export function revokeRawAuthority(reason: string): void {
   revokedReason = reason;
-  authorityEpoch += 1;
 }
 
 /** A new run: `rawAutomation()` works again (earlier proxies stay dead). */
 export function restoreRawAuthority(): void {
   revokedReason = undefined;
+  if (setupGrant.revoked === undefined) setupGrant.revoked = "it belongs to an earlier run";
+  setupGrant = { unfenced: new Set() };
+  currentGrant = setupGrant;
+  specsStarted = false;
 }
 
 /** Why spec code may no longer drive the app, or `undefined`. */
 export function rawAuthorityRevoked(): string | undefined {
   return revokedReason;
+}
+
+/** The grant of the spec whose code runs now. */
+export function currentSpecGrant(): Grant | undefined {
+  return currentGrant;
+}
+
+/** The spec holding `grant` was abandoned: its handles refuse from now on. */
+export function revokeGrant(grant: Grant | undefined, reason: string): void {
+  if (grant && grant.revoked === undefined) grant.revoked = reason;
 }
 
 function refused(reason: string): Error {
@@ -85,9 +109,14 @@ function refused(reason: string): Error {
   });
 }
 
-function checkEpoch(epoch: number): void {
+function checkGrant(grant: Grant): void {
   if (revokedReason !== undefined) throw refused(revokedReason);
-  if (epoch !== authorityEpoch) throw refused("this driver belongs to an earlier, abandoned spec");
+  if (grant.revoked !== undefined) throw refused(`this driver belongs to an abandoned spec: ${grant.revoked}`);
+  // A handle setup code took is shared by every spec, so no spec's grant
+  // fences it: the spec using it is one the run cannot fence.
+  if (grant !== currentGrant && currentGrant !== undefined && currentGrant !== setupGrant) {
+    currentGrant.unfenced.add("a rawAutomation() driver taken outside the spec");
+  }
 }
 
 /** A runner timer: never recorded as spec work, never cancelled with it. */
@@ -162,14 +191,14 @@ export function installPendingTracker(): void {
  * timed-out spec still awaits can be named. Getters and methods run against
  * the original object, so native receivers keep working.
  */
-export function trackDriver<T extends object>(root: T, path: string, epoch = authorityEpoch): T {
+export function trackDriver<T extends object>(root: T, path: string, grant: Grant = { unfenced: new Set() }): T {
   return new Proxy(root, {
     get(target, prop) {
       const value: unknown = Reflect.get(target, prop, target);
       if (typeof prop !== "string") return value;
       if (typeof value === "function") {
         return (...args: unknown[]) => {
-          checkEpoch(epoch);
+          checkGrant(grant);
           const result: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
           const name = `${path}${prop}`;
           if (result && typeof (result as { then?: unknown }).then === "function") {
@@ -180,10 +209,10 @@ export function trackDriver<T extends object>(root: T, path: string, epoch = aut
             }
             return result;
           }
-          return result && typeof result === "object" ? trackDriver(result, `${name}().`, epoch) : result;
+          return result && typeof result === "object" ? trackDriver(result, `${name}().`, grant) : result;
         };
       }
-      return value && typeof value === "object" ? trackDriver(value, `${path}${prop}.`, epoch) : value;
+      return value && typeof value === "object" ? trackDriver(value, `${path}${prop}.`, grant) : value;
     },
   });
 }
@@ -196,20 +225,37 @@ export function trackDriver<T extends object>(root: T, path: string, epoch = aut
  */
 export function trackAutomationRoot<T extends object>(root: T): T {
   if (revokedReason !== undefined) throw refused(revokedReason);
-  const epoch = authorityEpoch;
+  const grant = currentGrant;
+  if (!grant) {
+    throw refused("no spec is running; a spec that already ended cannot take a new driver");
+  }
+  checkGrant(grant);
   return new Proxy(root, {
     get(target, prop) {
-      // A host tier is handed out as the native object and cannot be fenced
-      // here once read; the host refuses its calls after a revoke.
-      checkEpoch(epoch);
+      checkGrant(grant);
       const value: unknown = Reflect.get(target, prop, target);
-      if (typeof value !== "function") return value;
-      if (prop !== "lxapp") return (value as (...input: unknown[]) => unknown).bind(target);
+      if (typeof value !== "function") {
+        // A host tier is handed out as the native object and cannot be
+        // fenced here once read: the run notes it, and stops rather than
+        // continue past a spec abandoned while holding one.
+        if (value && typeof value === "object") grant.unfenced.add(String(prop));
+        return value;
+      }
+      if (prop !== "lxapp") {
+        return (...args: unknown[]) => {
+          checkGrant(grant);
+          const result: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
+          if (result && typeof result === "object" && typeof (result as { then?: unknown }).then !== "function") {
+            grant.unfenced.add(`${String(prop)}()`);
+          }
+          return result;
+        };
+      }
       return (...args: unknown[]) => {
-        checkEpoch(epoch);
+        checkGrant(grant);
         const driver: unknown = (value as (...input: unknown[]) => unknown).apply(target, args);
         const path = `rawAutomation().lxapp(${args.length > 0 ? JSON.stringify(args[0]) : ""}).`;
-        return driver && typeof driver === "object" ? trackDriver(driver, path, epoch) : driver;
+        return driver && typeof driver === "object" ? trackDriver(driver, path, grant) : driver;
       };
     },
   });
@@ -231,8 +277,15 @@ export function uninstallPendingTracker(): void {
 }
 
 /** The spec whose code runs from now on, or `undefined` between specs. */
-export function setPendingOwner(name: string | undefined): void {
+export function setPendingOwner(name: string | undefined): Grant | undefined {
   owner = name === undefined ? undefined : { name, started: Date.now() };
+  if (name !== undefined) {
+    specsStarted = true;
+    currentGrant = { unfenced: new Set() };
+  } else {
+    currentGrant = specsStarted ? undefined : setupGrant;
+  }
+  return currentGrant;
 }
 
 /** Timers, fetches and raw driver calls `name` started that have not fired, been cleared or settled. */

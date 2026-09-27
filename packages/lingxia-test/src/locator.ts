@@ -117,7 +117,7 @@ export class PageLocator implements Locator {
     private readonly options: LocatorOptions = {},
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
-    private readonly probeOnce: ProbeOnce = (probe) => probe(),
+    private readonly evidence: PageEvidence = (_target, probe) => probe(),
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -130,7 +130,7 @@ export class PageLocator implements Locator {
 
   nth(index: number): Locator {
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.probeOnce);
+      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence);
   }
 
   first(): Locator {
@@ -140,7 +140,7 @@ export class PageLocator implements Locator {
   last(): Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      options, this.room, { ...this.refine, last: true }, this.probeOnce);
+      options, this.room, { ...this.refine, last: true }, this.evidence);
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -149,7 +149,7 @@ export class PageLocator implements Locator {
       throw new TypeError("filter() needs { hasText: string | RegExp }");
     }
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      this.options, this.room, { ...this.refine, hasText }, this.probeOnce);
+      this.options, this.room, { ...this.refine, hasText }, this.evidence);
   }
 
   // Actions return the fixture's own call, not a wrapper around it: a call
@@ -365,12 +365,13 @@ export class PageLocator implements Locator {
   }
 
   /**
-   * After a wait timed out: the page's visibility, when it explains the miss.
-   * Never on the happy path, at most once per spec (`probeOnce`), bounded,
-   * and skipped when the spec has no room left for it.
+   * After a wait timed out: the visibility of the page this locator targets,
+   * when it explains the miss. Never on the happy path, bounded, skipped when
+   * the spec has no room left for it; `evidence` reuses a recent observation
+   * of the same page instance only.
    */
   hiddenPageNote(): Promise<string | undefined> {
-    return this.probeOnce(() => this.probeVisibility());
+    return this.evidence(this.options.page, () => this.probeVisibility());
   }
 
   private async probeVisibility(): Promise<string | undefined> {
@@ -534,8 +535,15 @@ function reachedState(resolved: LocatorResolve, state: LocatorState): boolean {
 }
 
 /** `hasText`: a substring (case-insensitive, whitespace-normalized) or a RegExp. */
-/** Runs the hidden-page probe, or answers what an earlier run of it said. */
-export type ProbeOnce = (probe: () => Promise<string | undefined>) => Promise<string | undefined>;
+/**
+ * Runs the hidden-page probe for `target` (a page name or instance id; the
+ * current page when undefined), or answers what a recent run of it said about
+ * that same page instance.
+ */
+export type PageEvidence = (
+  target: string | undefined,
+  probe: () => Promise<string | undefined>,
+) => Promise<string | undefined>;
 
 /** How long the visibility probe waits for an animation frame. */
 const VISIBILITY_FRAME_WAIT_MS = 300;
@@ -559,7 +567,12 @@ export const VISIBILITY_PROBE_SCRIPT = `new Promise((resolve) => {
   setTimeout(() => finish(false), ${VISIBILITY_FRAME_WAIT_MS});
 })`;
 
-export const HIDDEN_PAGE_NOTE = "page hidden (window covered or display asleep): animations are paused";
+/**
+ * What the probe can say: what it observed, and what usually causes that. It
+ * cannot see the window, so the cause stays a likely one.
+ */
+export const HIDDEN_PAGE_NOTE = "page looked hidden or paused";
+const HIDDEN_PAGE_CAUSE = "a covered window or a sleeping display pauses a page's animations";
 
 /** Why every page is hidden when the host can tell the screen is locked. */
 export const SCREEN_LOCKED_NOTE = "the screen is locked; unlock it — animations and sheets are paused";
@@ -578,7 +591,7 @@ export function pageVisibility(value: unknown): PageVisibility | undefined {
   return {
     state: record.state,
     animationFrames: record.animationFrames,
-    ...(hidden ? { note: `${HIDDEN_PAGE_NOTE} (visibilityState "${record.state}", ${record.animationFrames ? "animation frames running" : `no animation frame in ${VISIBILITY_FRAME_WAIT_MS}ms`})` } : {}),
+    ...(hidden ? { note: `${HIDDEN_PAGE_NOTE}: visibilityState "${record.state}", ${record.animationFrames ? "animation frames running" : `no animation frame observed within ${VISIBILITY_FRAME_WAIT_MS}ms`} (${HIDDEN_PAGE_CAUSE})` } : {}),
   };
 }
 

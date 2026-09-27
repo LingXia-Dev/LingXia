@@ -17,7 +17,7 @@ import { ClockScope, wrapClock } from "./clock.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
 import { isTransientTransportError } from "./deadline.js";
-import { explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
+import { checkJsonArgs, explainRemoteError, functionDetail, logicScript, pageScript, type RemoteTarget } from "./remote.js";
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
@@ -25,6 +25,7 @@ import {
   sleep,
   testIdSelector,
   type LocatorResolve,
+  type PageEvidence,
   type PageLike,
   type QueryMatch,
 } from "./locator.js";
@@ -112,12 +113,22 @@ export class LiveFixture implements Fixture {
   /** Actions still in flight, so an abort can mark them instead of leaving
    *  them at their optimistic default. */
   private readonly openActions = new Set<StepRecord>();
-  /** The spec's one hidden-page probe, run the first time a wait times out. */
-  private hiddenProbe: Promise<string | undefined> | undefined;
+  /**
+   * Hidden-page observations of this spec, by app and page instance, with
+   * when they were sampled. A navigation is a new instance, so its page is
+   * probed afresh; evidence is never read for another page.
+   */
+  private readonly pageEvidence = new Map<string, { note: string; at: number }>();
   /** Fixture calls that have started and not settled; see `track`. */
   private readonly inFlight = new Set<InFlightCall>();
   cleanupUntil = 0;
   cleanupActive = false;
+  /**
+   * The spec reached an app page (a locator, view, nav or page-bound Logic
+   * call). A failure names the current page only then: a unit spec that
+   * never touched one is not "on" whatever page the app happens to show.
+   */
+  usedPage = false;
   lastStepPath: string | undefined;
   failurePhase: FailurePhase | null = null;
   /** The last recorded action that failed, and the error it failed with. */
@@ -528,6 +539,7 @@ export class LiveFixture implements Fixture {
    * would otherwise bury the report in a hundred identical rows.
    */
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
+    if (PAGE_ACTION.test(name)) this.usedPage = true;
     return this.track(name, detail, () => this.recordAct(name, detail, async () => {
       try {
         return await op();
@@ -835,7 +847,7 @@ export class LiveFixture implements Fixture {
     const fixture = this;
     const driver = () => ref.driver;
     return {
-      view: this.wrapView(() => driver().page),
+      view: this.wrapView(() => driver().page, undefined, (target, probe) => this.pageObservation(driver, target, probe)),
       logic: this.wrapLogic(driver),
       nav: this.wrapNav(() => driver().nav),
       // Lazy: the driver is read inside each traced call.
@@ -931,6 +943,7 @@ export class LiveFixture implements Fixture {
         if (options?.wait !== undefined && typeof options.wait !== "boolean") {
           throw new TypeError("t.app.logic.call({ wait }, method) takes a boolean");
         }
+        checkJsonArgs(args, "t.app.logic.call");
         const timeoutMs = this.evalTimeout(options, "t.app.logic.call");
         const wait = options?.wait !== false;
         return this.act("logic.call", wait ? method : `${method} (not awaited)`, async () => {
@@ -1023,7 +1036,7 @@ export class LiveFixture implements Fixture {
   }
 
   /** `bound`: the page `view.page(name)` targets unless a call names another. */
-  private wrapView(page: () => PageDriver, bound?: string): TestView {
+  private wrapView(page: () => PageDriver, bound: string | undefined, evidence: PageEvidence): TestView {
     const location = () => {
       const frame = callerLocation();
       return { source: frame.file, line: frame.line, column: frame.column };
@@ -1041,13 +1054,13 @@ export class LiveFixture implements Fixture {
     const target = <T extends PageTarget>(options?: T): T | undefined =>
       bound === undefined || options?.page !== undefined ? options : { ...options, page: bound } as T;
     return {
-      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), target(options)),
-      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), target(options)),
+      testId: (id: string, options?: LocatorOptions) => this.locator(lazyPage, testIdSelector(id), location(), evidence, target(options)),
+      css: (selector: string, options?: LocatorOptions) => this.locator(lazyPage, selector, location(), evidence, target(options)),
       page: (name: string) => {
         if (typeof name !== "string" || name.length === 0) {
           throw new TypeError("t.app.view.page(name) takes a configured page name or instance id");
         }
-        return this.wrapView(page, name);
+        return this.wrapView(page, name, evidence);
       },
       eval: ((...args: unknown[]) => this.viewEval(page, args, "t.app.view.eval", bound)) as TestView["eval"],
       screenshot: (options?: PageTarget) => {
@@ -1060,7 +1073,14 @@ export class LiveFixture implements Fixture {
     };
   }
 
-  private locator(page: PageLike, selector: string, location: SourceLocation, options?: LocatorOptions): Locator {
+  private locator(
+    page: PageLike,
+    selector: string,
+    location: SourceLocation,
+    evidence: PageEvidence,
+    options?: LocatorOptions,
+  ): Locator {
+    this.usedPage = true;
     return new PageLocator(
       page,
       (fn) => this.guard(fn),
@@ -1070,8 +1090,43 @@ export class LiveFixture implements Fixture {
       options,
       () => this.budgetRoom(),
       {},
-      (probe) => (this.hiddenProbe ??= probe()),
+      evidence,
     );
+  }
+
+  /**
+   * The hidden-page note for `target` after a wait timed out. A hidden page
+   * throttles its timers, so probing it again costs up to the probe budget;
+   * an observation of the same app and page instance sampled moments ago is
+   * reused, saying how old it is. Anything else — another page, a new
+   * instance after navigation, an older sample, a page whose instance cannot
+   * be named — is probed afresh.
+   */
+  private async pageObservation(
+    driver: () => LxAppDriver,
+    target: string | undefined,
+    probe: () => Promise<string | undefined>,
+  ): Promise<string | undefined> {
+    let identity: string | undefined;
+    try {
+      const app = driver();
+      const info = await this.guard(() => (target === undefined ? app.nav.current() : app.nav.info({ page: target })));
+      const instanceId = (info as { instanceId?: unknown } | undefined)?.instanceId;
+      if (typeof instanceId === "string" && instanceId.length > 0) {
+        identity = `${objectKey(app)}#${instanceId}`;
+      }
+    } catch {
+      identity = undefined;
+    }
+    const cached = identity === undefined ? undefined : this.pageEvidence.get(identity);
+    if (cached) {
+      const age = Date.now() - cached.at;
+      if (age <= PAGE_EVIDENCE_FRESH_MS) return `${cached.note} [observed on this page ${age}ms earlier]`;
+      this.pageEvidence.delete(identity!);
+    }
+    const note = await probe();
+    if (identity !== undefined && note !== undefined) this.pageEvidence.set(identity, { note, at: Date.now() });
+    return note;
   }
 
   private locatorMatchers(locator: Locator, inverted: boolean): LocatorMatchers {
@@ -1551,6 +1606,24 @@ function matchLocator(
 /** The driver's own bound for `waitUntil: 'ready'`, the fixture's default too. */
 const NAV_READY_TIMEOUT_MS = 15_000;
 
+/** Actions that reach a page of the app. */
+const PAGE_ACTION = /^(?:page|view|nav)\.|^logic\.(?:data|call)$/;
+
+/** How long a hidden-page observation stands for the same page instance. */
+const PAGE_EVIDENCE_FRESH_MS = 2_000;
+
+const objectKeys = new WeakMap<object, number>();
+let nextObjectKey = 0;
+/** A stable key for one app driver, so evidence stays with its app. */
+function objectKey(value: object): number {
+  let key = objectKeys.get(value);
+  if (key === undefined) {
+    key = ++nextObjectKey;
+    objectKeys.set(value, key);
+  }
+  return key;
+}
+
 /** A nav wait as the driver takes it. */
 interface DriverNavWait {
   waitUntil: "commit" | "ready";
@@ -1690,7 +1763,7 @@ export function toReportError(error: unknown, step?: string): ReportError {
       matcher: error.matcher,
       expected: formatValue(error.expected),
       actual: formatValue(error.actual),
-      location: firstLocation(stack),
+      location: firstLocation(stack, error),
       step,
     };
   }
@@ -1703,7 +1776,7 @@ export function toReportError(error: unknown, step?: string): ReportError {
       name: error.name,
       message: error.message,
       stack,
-      location: firstLocation(stack),
+      location: firstLocation(stack, error),
       step,
     };
   }
@@ -1719,8 +1792,12 @@ function jsonData(data: unknown): unknown {
   }
 }
 
-function firstLocation(stack: string | undefined): string | undefined {
-  const frames = parseFrames(stack);
+function firstLocation(stack: string | undefined, error: Error): string | undefined {
+  // V8 starts the stack with the message; a message line (a schema issue,
+  // a received value) must not be read as a frame.
+  const header = `${error.name}: ${error.message}`;
+  const frameText = stack?.startsWith(header) ? stack.slice(header.length) : stack;
+  const frames = parseFrames(frameText);
   const frame = frames.length ? resolveOrigin(frames) : undefined;
   return frame && !isFrameworkFrame(frame.file) ? `${frame.file}:${frame.line}:${frame.column}` : undefined;
 }

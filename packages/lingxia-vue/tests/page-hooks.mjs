@@ -37,6 +37,23 @@ assert.deepEqual([...data.items], [1, 2]);
 pushState({ items: [] }, { rev: 3, initial: false });
 assert.equal('title' in data, false, 'a key Logic dropped is dropped');
 
+// Logic owns the data: a View write is refused at every depth, and the next
+// setData still lands in the same object.
+{
+  const warn = console.warn;
+  const warnings = [];
+  console.warn = (...args) => warnings.push(args.join(' '));
+  pushState({ title: 'Third', items: [{ id: 'a' }] }, { rev: 4, initial: false });
+  data.title = 'draft';
+  data.items[0].id = 'draft';
+  console.warn = warn;
+  assert.equal(data.title, 'Third', 'readonly: a View write does not stick');
+  assert.equal(data.items[0].id, 'a', 'readonly at depth');
+  assert.equal(warnings.length, 2, `each write is reported: ${warnings}`);
+  pushState({ title: 'Fourth', items: [] }, { rev: 5, initial: false });
+  assert.equal(data.title, 'Fourth', 'the sync still updates the readonly view');
+}
+
 // The host facts are one readonly reactive object that follows a change.
 const host = useLxHost();
 assert.equal(host.sizeClass, 'compact');

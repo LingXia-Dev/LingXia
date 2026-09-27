@@ -2,6 +2,17 @@ import { type StateInfo } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: never[]) => unknown>;
 export type Snapshot = Record<string, unknown>;
+
+/**
+ * What a View reads of its page's data: Logic owns it, so every level is
+ * readonly. Keep editable state (a form draft) in the View and send it with
+ * an action.
+ */
+export type DeepReadonly<T> = T extends (...args: never[]) => unknown
+  ? T
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
 export type Listener = () => void;
 type BridgeMode = "notify" | "call" | "stream";
 type PageBridgeMetadata = {
@@ -37,8 +48,26 @@ function notifyListeners(): void {
   });
 }
 
+/**
+ * In a dev session the page data is frozen, so a View that writes to it fails
+ * at the write instead of drifting from Logic until the next update. Each
+ * push is a fresh copy, so nothing else holds these objects.
+ */
+function isDevSession(): boolean {
+  return typeof window !== "undefined" && window.__LX_BRIDGE_CFG?.dev === true;
+}
+
+function deepFreeze(value: unknown): void {
+  if (!value || typeof value !== "object" || Object.isFrozen(value)) return;
+  Object.freeze(value);
+  for (const key of Object.keys(value)) {
+    deepFreeze((value as Record<string, unknown>)[key]);
+  }
+}
+
 function updateSnapshot(next: unknown, info: StateInfo): void {
   snapshot = next && typeof next === "object" ? (next as Snapshot) : {};
+  if (isDevSession()) deepFreeze(snapshot);
   stateInfo = info;
   notifyListeners();
 }

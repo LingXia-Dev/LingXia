@@ -768,3 +768,35 @@ test("partial reports cannot appear green in JUnit even with no failed cases", a
   assert.match(xml, /tests="1" failures="0" errors="1"/);
   assert.match(xml, /<error message="The test run did not finish"/);
 });
+
+test("a failed toMatchSchema points at its own line, and a unit spec names no page", async () => {
+  const API = {
+    openapi: "3.1.0",
+    info: { title: "t", version: "1" },
+    paths: {},
+    components: { schemas: { Slot: { type: "object", properties: { "at:10:20": { type: "string" } } } } },
+  };
+  const world = createWorld();
+  world.app.network = { async calls() { return []; }, async captureResponses() { return true; } };
+  installFakeHost(world, { control: { openapi: JSON.stringify([{ name: "slots.yaml", doc: API }]) } });
+  const here = new URL(import.meta.url).pathname;
+  let assertionLine;
+
+  spec("unit schema", { tags: ["unit"] }, async () => {
+    const slot = { "at:10:20": 1 };
+    assertionLine = Number(new Error().stack.split("\n")[1].match(/:(\d+):\d+\)?$/)[1]) + 1;
+    expect(slot).toMatchSchema("Slot");
+  });
+  spec("on a page", async (t) => {
+    await t.app.nav.to({ page: "onboarding" });
+    expect({ "at:10:20": 1 }).toMatchSchema("Slot");
+  });
+
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  const [unit, paged] = report.cases;
+  // The issue line in the message looks like a frame; it is not one.
+  assert.match(unit.error.message, /at \/at:10:20: expected string/);
+  assert.equal(unit.error.location, `${here}:${assertionLine}:18`);
+  assert.equal(unit.error.page, undefined, "a spec that touched no page is on none");
+  assert.equal(paged.error.page?.name, "onboarding");
+});

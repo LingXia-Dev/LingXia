@@ -73,6 +73,10 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
                 .map(Some)
                 .map_err(|err| format!("(usage): {err}"))
         }
+        method::MOCK_UNLOAD => {
+            let appid = text("appid").ok_or("(usage): appid is required")?;
+            Ok(Some(network::mock_unload(&appid)))
+        }
         method::MOCK_SET => {
             if let Some(owner) = text("owner")
                 && owner != DEV_OWNER

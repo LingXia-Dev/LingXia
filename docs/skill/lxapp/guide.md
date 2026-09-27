@@ -184,6 +184,17 @@ a panel naming itself.
 Any component may call either. Geometry is CSS, not a hook:
 [page chrome CSS](#page-chrome-css).
 
+`data` is typed `DeepReadonly<PageData>` (Vue hands out a readonly proxy; in a
+dev session a write throws). Keep what the user edits as View state and submit
+it with an action; Logic's `setData` brings the result back:
+
+```tsx
+const { data, actions } = useLxPage<PageData, PageActions>();
+const [draft, setDraft] = useState(data.message);   // Vue: ref(data.message)
+<input value={draft} onChange={(e) => setDraft(e.target.value)} />
+<button onClick={() => actions.updateMessage({ text: draft })}>Save</button>
+```
+
 ### React
 
 ```tsx
@@ -222,8 +233,8 @@ export default function HomePage() {
 The same with `@lingxia/vue` in `<script setup lang="ts">`: `const { data,
 actions } = useLxPage<PageData, PageActions>()`, `const host = useLxHost()`,
 then `{{ data.count }}`, `host.sizeClass`, `@click="actions.increment()"`.
-`data` is deep-reactive, so destructuring it stays live; read `host.sizeClass`
-rather than destructuring `host`.
+`data` is deep-reactive, so destructuring it stays live; never `v-model` it —
+bind a `ref` draft instead. Read `host.sizeClass` rather than destructuring `host`.
 
 ### HTML
 

@@ -41,6 +41,23 @@ export type TestErrorCode =
   | "E_TIMEOUT"
   | "E_SKIPPED";
 
+/**
+ * The app's own error codes, empty until the app declares them by merging:
+ *
+ * ```ts
+ * declare module '@lingxia/test' {
+ *   interface AppErrorCodes { E_QUOTA: true }
+ * }
+ * ```
+ *
+ * A declared code is then accepted wherever an expected `code` is.
+ */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface AppErrorCodes {}
+
+/** A `code` a spec may expect: LingXia's `TestErrorCode`s and the app's declared ones. */
+export type ExpectedErrorCode = TestErrorCode | Extract<keyof AppErrorCodes, string>;
+
 export interface SpecOptions {
   /** Stable id. ASCII titles slug by default; non-ASCII titles need this or become `file-n`. */
   id?: string;
@@ -154,12 +171,13 @@ export interface LocatorFilterOptions {
 
 export interface RejectExpected {
   /**
-   * The rejection's `code`, one of `TestErrorCode` (driver codes such as
+   * The rejection's `code`: a `TestErrorCode` (driver codes such as
    * `E_PAGE_NOT_ACTIVE`, plus `E_TIMEOUT`, `E_OPENAPI_CONTRACT`; see
-   * `TEST_ERROR_CODES`). The union is closed, so a code that no longer
-   * exists does not compile; match anything else by `message`.
+   * `TEST_ERROR_CODES`) or one the app declared in `AppErrorCodes`. Both are
+   * closed, so a code that no longer exists or was never declared does not
+   * compile.
    */
-  code?: TestErrorCode;
+  code?: ExpectedErrorCode;
   message?: string | RegExp;
 }
 

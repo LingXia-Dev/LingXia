@@ -57,6 +57,9 @@ export default {
   `match` or `bodyBase64`: code handles those. `req` is
   `{ method, url: URL, headers, text(), json() }`; `ctx.fetch` is the
   original `fetch`, so a handler can proxy without being intercepted again.
+- **Reload.** A dev session follows `mocks/` live: saves anywhere under it,
+  a `mocks/` created after the start, and deleting it (the app then has no
+  mocks) — no restart.
 - **State.** Module state lives until a save under `mocks/`,
   `lxdev mock reset`, an app restart, or the next spec.
 - **Errors fail the call, loudly**: a handler that throws, returns

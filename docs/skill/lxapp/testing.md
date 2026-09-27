@@ -60,7 +60,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read Logic, call a page method, eval | [Reading Logic](#reading-logic) |
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
-| Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode`, anything else matches by `message` |
+| Expect a rejection | `await t.reject(() => op(), { code?, message? })`; `code` is a `TestErrorCode` or one the app declared in `AppErrorCodes` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
 | Load a scenario file | `t.app.mock.use(json, variant?)`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
@@ -113,7 +113,9 @@ const kept = await t.app.view.eval({ page: 'cart' }, ({ document }) => document.
   getCurrentPages }`; `view.eval` runs in the page with `{ document, window }`.
 - `fn` is sent as source: it cannot use spec variables, imports, or helpers
   (`lxdev test` refuses one that does). Pass values as extra arguments;
-  arguments and results must be JSON. An error thrown in `fn` fails the eval
+  arguments and results must be JSON — an argument holding `undefined`, a
+  function, `NaN`/`Infinity`, a Date or a class instance is refused before
+  anything is sent, naming its path (`args[1].items[2]`). An error thrown in `fn` fails the eval
   with `E_EVAL_SCRIPT`; catch it inside `fn` to assert an API's own `code`.
 - Options go first: `{ timeout }`, `{ page }` for evals; `{ timeout }`,
   `{ wait: false }` for `call`. An eval gets a third of the spec's budget (at
@@ -345,12 +347,16 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`t.arg('k')` throws** when missing; pass `{ default }` or
   `{ required: false }`.
 - **Timeouts never outlive the spec**; a longer one is clamped.
-- **A spec that never settles stops the run.** When a body (or its cleanup)
-  is still running after its timeout, or calls it left do not settle, its
-  code could act on the next spec, so the rest are reported as not run and
-  its automation access is revoked; the app is relaunched for inspection.
-  Await everything, or raise `timeout`. A route, scenario or clock the run
-  cannot remove after a spec stops it too.
+- **A spec that never settles is abandoned; the run goes on.** Its timers
+  are cancelled, its drivers (`t`, `rawAutomation()` handles) refuse with
+  `E_AUTOMATION_PRIVILEGE`, what it installed is removed, the app is
+  relaunched, and the next spec runs; an `expect` it makes later is a
+  `late_assertion` diagnostic charged to it. The run stops (the rest not run)
+  only when it cannot be isolated: a fetch or driver call it started is still
+  running after 2s, it read a host tier (`rawAutomation().lxapps`, …), or the
+  app could not be recovered — the message names which. A route, scenario or
+  clock the run cannot remove after a spec stops it too. Await everything, or
+  raise `timeout`.
 - **Live `lxdev mock` changes** (scenarios and selections) stand aside
   during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
 
@@ -361,7 +367,7 @@ lxdev test                        # everything (lxdev.json test.entry; else test
 lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
-lxdev test --list                 # list specs without running them (no session needed)
+lxdev test --list                 # list specs; no spec bodies or hooks run (no session needed)
 lxdev test report --failures      # reprint the last run, no session needed
 ```
 
@@ -372,6 +378,9 @@ lxdev test report --failures      # reprint the last run, no session needed
   and is listed as a run error in every report. A full disk still leaves a
   minimal `report.json` saying why.
 - A failed spec prints a `Rerun:` line.
+- `--list` with a session loads every spec module in the app — their
+  top-level code runs — but runs no spec bodies or hooks; it holds the
+  session like a run (Ctrl-C cancels it) and writes no results.
 - `--list` without a session bundles the files (the same checks as a run)
   and reads the specs from the source; `~` marks a computed title, id or
   tag, or a spec registered in a loop, which a run may list differently.
@@ -382,6 +391,8 @@ lxdev test report --failures      # reprint the last run, no session needed
 - The run fails fast on [version skew](../cli/lingxia.md#lingxia-dev).
 - Rejections carry stable `TestErrorCode`s (`E_TIMEOUT`, `E_ELEMENT_NOT_FOUND`,
   `E_EVAL_SCRIPT`, `E_OPENAPI_CONTRACT`, …) for `t.reject` and `expected.code`.
+  Declare the app's own codes once to expect them too:
+  `declare module '@lingxia/test' { interface AppErrorCodes { E_QUOTA: true } }`.
 - For unattended runs, start with `lingxia dev --background`, run, and always
   `lingxia dev stop`; name sessions (`--name`) when several share a checkout.
 

@@ -444,13 +444,105 @@ test("a timed-out wait on a hidden page says the page is hidden, not only obscur
 
   await globalThis.__LINGXIA_TEST__.run();
   assert.equal(messages.length, 3);
-  for (const message of messages) {
-    assert.match(message,
-      /page hidden \(window covered or display asleep\): animations are paused \(visibilityState "hidden", no animation frame in 300ms\)/);
+  assert.match(messages[0],
+    /page looked hidden or paused: visibilityState "hidden", no animation frame observed within 300ms \(a covered window or a sleeping display pauses a page's animations\)$/m);
+  for (const message of messages.slice(1)) {
+    assert.match(message, /page looked hidden or paused: .* \[observed on this page \d+ms earlier\]/);
   }
-  assert.match(failedMessage(attachments), /page hidden \(window covered or display asleep\)/);
-  // Four timed-out waits, one probe: the diagnosis costs one eval per spec.
+  assert.match(failedMessage(attachments), /page looked hidden/);
+  // Four timed-out waits on one page moments apart, one probe.
   assert.equal(probes.count, 1);
+});
+
+/** Page eval that answers the visibility probe per target page. */
+function pageVisibility(world, answerFor) {
+  const original = world.app.page.eval;
+  const probed = [];
+  world.app.page.eval = async (options) => {
+    if (/visibilityState/.test(options.script) && /requestAnimationFrame/.test(options.script)) {
+      probed.push(options.page);
+      return answerFor(options.page);
+    }
+    return original(options);
+  };
+  return probed;
+}
+const HIDDEN = { state: "hidden", animationFrames: false };
+const VISIBLE = { state: "visible", animationFrames: true };
+
+async function missOn(locator) {
+  try {
+    await locator.waitFor({ timeout: 60 });
+    return "found";
+  } catch (error) {
+    return error.message;
+  }
+}
+
+test("hidden-page evidence belongs to the page it was observed on", async () => {
+  const world = createWorld();
+  const probed = pageVisibility(world, (page) => (page === "cart" ? HIDDEN : VISIBLE));
+  installFakeHost(world);
+  const messages = [];
+
+  spec("two pages", { forensics: false }, async (t) => {
+    await t.app.nav.to({ page: "cart" });
+    await t.app.nav.to({ page: "profile" });
+    // Hidden first, then visible: the visible page is not called hidden.
+    messages.push(await missOn(t.app.view.page("cart").testId("missing")));
+    messages.push(await missOn(t.app.view.page("profile").testId("missing")));
+    // Visible first, then hidden again: the hidden page is still named.
+    messages.push(await missOn(t.app.view.page("profile").testId("missing")));
+    messages.push(await missOn(t.app.view.page("cart").testId("missing")));
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.match(messages[0], /page looked hidden/);
+  assert.doesNotMatch(messages[1], /hidden/);
+  assert.doesNotMatch(messages[2], /hidden/);
+  assert.match(messages[3], /page looked hidden or paused: .* \[observed on this page \d+ms earlier\]/);
+  // The visible page is probed each time (cheap); the hidden one once.
+  assert.deepEqual(probed, ["cart", "profile", "profile"]);
+});
+
+test("a navigation invalidates hidden-page evidence", async () => {
+  const world = createWorld();
+  let hidden = true;
+  const probed = pageVisibility(world, () => (hidden ? HIDDEN : VISIBLE));
+  installFakeHost(world);
+  const messages = [];
+
+  spec("navigates", { forensics: false }, async (t) => {
+    messages.push(await missOn(t.app.view.testId("missing")));
+    hidden = false;
+    await t.app.nav.to({ page: "next" });
+    messages.push(await missOn(t.app.view.testId("missing")));
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.match(messages[0], /page looked hidden/);
+  assert.doesNotMatch(messages[1], /hidden/, "the new page instance is probed, not described by the old one");
+  assert.equal(probed.length, 2);
+});
+
+test("a page that became visible is re-observed once the earlier sample is stale", async () => {
+  const world = createWorld();
+  let hidden = true;
+  const probed = pageVisibility(world, () => (hidden ? HIDDEN : VISIBLE));
+  installFakeHost(world);
+  const messages = [];
+
+  spec("hidden then visible", { forensics: false, timeout: 10_000 }, async (t) => {
+    messages.push(await missOn(t.app.view.testId("missing")));
+    hidden = false;
+    await new Promise((resolve) => setTimeout(resolve, 2_100));
+    messages.push(await missOn(t.app.view.testId("missing")));
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.match(messages[0], /page looked hidden/);
+  assert.doesNotMatch(messages[1], /hidden/);
+  assert.equal(probed.length, 2);
 });
 
 test("a hidden page on a locked screen names the lock", async () => {
@@ -470,7 +562,7 @@ test("a hidden page on a locked screen names the lock", async () => {
 
   await globalThis.__LINGXIA_TEST__.run();
   assert.match(message, /the screen is locked; unlock it — animations and sheets are paused/);
-  assert.doesNotMatch(message, /window covered or display asleep/);
+  assert.doesNotMatch(message, /page looked hidden/);
   assert.match(failedMessage(attachments), /the screen is locked; unlock it/);
 });
 
@@ -557,7 +649,7 @@ test("a visible page with running frames adds no hidden-page note", async () => 
   });
 
   await globalThis.__LINGXIA_TEST__.run();
-  assert.doesNotMatch(failedMessage(attachments), /page hidden/);
+  assert.doesNotMatch(failedMessage(attachments), /page looked hidden/);
 });
 
 test("failure forensics record the page's visibility", async () => {
@@ -575,9 +667,9 @@ test("failure forensics record the page's visibility", async () => {
   assert.deepEqual(
     { state: forensics.visibility.state, animationFrames: forensics.visibility.animationFrames },
     { state: "visible", animationFrames: false });
-  assert.match(forensics.visibility.note, /animations are paused/);
+  assert.match(forensics.visibility.note, /no animation frame observed within 300ms \(a covered window or a sleeping display pauses a page's animations\)/);
   const report = JSON.parse(decodeAttachment(attachments, "report.json"));
-  assert.match(report.cases[0].error.page.hidden, /page hidden/);
+  assert.match(report.cases[0].error.page.hidden, /page looked hidden or paused/);
   assert.match(report.failures[0].page.hidden, /no animation frame/);
 });
 

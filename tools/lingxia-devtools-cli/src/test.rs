@@ -43,7 +43,7 @@ Examples:
   lxdev test tests/cart.test.ts:42  the one spec at (or enclosing) line 42
   lxdev test --grep \"empty cart\"    by title (or --id ID)
   lxdev test --last-failed          what failed last time
-  lxdev test --list                 list specs without running them
+  lxdev test --list                 list specs (loads modules; no bodies or hooks)
   lxdev test --preset ci            arguments from lxdev.json (test.presets)
   lxdev test --profile auth --profile-save   run on a saved sign-in, refresh it on pass
   lxdev test --secrets-file .env.test        secret args from a gitignored dotenv file
@@ -59,7 +59,10 @@ The app must be running: start it with `lingxia dev` (in scripts and CI,
 Exit codes:
   0    every selected spec passed and the run finished its own work
   1    a spec failed or timed out, the run was incomplete, it could not run,
-       or saving its profile, recording or reports failed (a run error)
+       or saving its profile, recording or reports failed (a run error).
+       A spec that never settles times out, is abandoned and the run goes
+       on; it stops (the rest not run) only when that spec left work the
+       run cannot take back, or the app could not be recovered
   2    invalid arguments
   130  interrupted (Ctrl-C)";
 
@@ -520,21 +523,23 @@ fn execute_inner(
             .as_ref()
             .map(|isolation| isolation.profile.clone()),
     };
-    let start: TestStartResponse =
-        start_run(&info.ws_url, &start_args, options.cancel_active, machine).inspect_err(|_| {
-            if let Some(isolation) = &isolation {
-                isolation.discard_seed();
-            }
-        })?;
-    let run_id = start.run_id;
-    watch_pause.bind(&run_id);
+    let session = SessionRun::start(
+        &info.ws_url,
+        watch_pause,
+        &start_args,
+        options.cancel_active,
+        machine,
+    )
+    .inspect_err(|_| {
+        if let Some(isolation) = &isolation {
+            isolation.discard_seed();
+        }
+    })?;
+    let run_id = session.run().run_id().to_string();
     // Released after saving; any other way out discards the host's copy.
     let retained_profile = isolation
         .as_ref()
         .and_then(|isolation| isolation.retained(&run_id));
-    // From here every early exit — `?`, a lost session, a local IO error —
-    // must not leave the Runner holding this run.
-    let active_run = ActiveRun::new(&info.ws_url, &run_id);
     if !machine {
         let budget = match options.timeout_secs {
             Some(secs) => format!("timeout {secs}s"),
@@ -566,39 +571,23 @@ fn execute_inner(
         None => results_root.join(&run_id),
     };
 
-    // First Ctrl-C requests a cooperative cancel; the second exits
-    // immediately, still telling the Runner to drop the run.
-    let interrupts = Arc::new(AtomicUsize::new(0));
-    {
-        let interrupts = interrupts.clone();
-        let ws_url = info.ws_url.clone();
-        let run_id = run_id.clone();
-        let lease = watch_pause.lease().to_string();
-        ctrlc::set_handler(move || {
-            if interrupts.fetch_add(1, Ordering::SeqCst) >= 1 {
-                send_cancel(&ws_url, &run_id, "client_interrupt");
-                resume_watch(&ws_url, &lease);
-                std::process::exit(130);
-            }
-        })
-        .context("failed to install Ctrl-C handler")?;
-    }
-
     std::fs::create_dir_all(&output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
     let polled = poll_until_terminal(
         info,
-        &active_run,
+        session.run(),
         &output_dir,
         machine,
         options.verbose,
         options.output() == OutputFormat::Jsonl,
-        &interrupts,
+        session.interrupts(),
         Duration::from_secs(host_budget_secs(&options)),
         &secrets,
     );
-    // Cancel (once) unless the host already finished the run.
-    drop(active_run);
+    let interrupted = session.interrupted();
+    // Cancel (once) unless the host already finished the run; the watcher
+    // stays paused until the reports are written.
+    let watch_pause = session.end_run();
     let mut outcome = polled?;
     if !options.pass_with_no_tests
         && let Some(result) = outcome.result.as_mut()
@@ -683,7 +672,6 @@ fn execute_inner(
     // Last, `latest` in the results root names the finished run wherever it
     // went.
     update_latest(&results_root, &output_dir);
-    let interrupted = interrupts.load(Ordering::SeqCst) > 0;
     report(
         &outcome,
         &bundle,
@@ -844,6 +832,9 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
         .map(|run| resolve_report_path(run, &options.results_root()?))
         .transpose()?;
     check_versions(info, &selection.root, machine)?;
+    // Listing loads every module, so it holds the watcher like a run: a save
+    // meanwhile must not reload the app under the modules' top-level code.
+    let watch_pause = WatchPause::acquire(&info.ws_url)?;
     let bundle = bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
     let secrets = RunSecrets::with_sources(
         &options.args,
@@ -860,20 +851,47 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
         control,
         profile: None,
     };
-    let start = start_run(&info.ws_url, &start_args, options.cancel_active, machine)?;
-    let run = ActiveRun::new(&info.ws_url, &start.run_id);
+    let session = SessionRun::start(
+        &info.ws_url,
+        watch_pause,
+        &start_args,
+        options.cancel_active,
+        machine,
+    )?;
+    let run = session.run();
     let deadline = Instant::now() + LIST_TIMEOUT + WATCHDOG_GRACE;
     let mut after_seq = 0;
     let poll = loop {
-        let poll = execute_poll(
+        if session.interrupted() {
+            // Stuck top-level code must not keep the session's run slot.
+            run.cancel("client_interrupt");
+            let ended = wait_until_terminal(&info.ws_url, run.run_id(), CANCEL_GRACE);
+            drop(session);
+            eprintln!(
+                "{} interrupted; {}",
+                "test".cyan(),
+                if ended.is_some() {
+                    "cancelled the listing"
+                } else {
+                    "asked the host to cancel the listing"
+                }
+            );
+            std::process::exit(130);
+        }
+        let polled = execute_poll(
             &info.ws_url,
             &TestPollArgs {
                 run_id: run.run_id().to_string(),
                 after_seq,
             },
             poll_wait(Instant::now(), deadline),
-            &|| false,
-        )?;
+            &|| session.interrupted(),
+        );
+        let poll = match polled {
+            Ok(poll) => poll,
+            Err(_) if session.interrupted() => continue,
+            Err(error) => return Err(error),
+        };
         after_seq = poll
             .events
             .iter()
@@ -1559,6 +1577,105 @@ impl Drop for ActiveRun {
     fn drop(&mut self) {
         self.cancel("client_gave_up");
     }
+}
+
+/// One run on the session, from the watch lease to its end — what `lxdev
+/// test` and `--list` share, so they differ only in what they start and
+/// what they make of the result. The watcher is paused before the bundle is
+/// built and stays paused until the caller lets go; the run is cancelled on
+/// any way out that did not see it end; the first Ctrl-C asks the caller's
+/// poll to cancel cooperatively, a second cancels, resumes the watcher and
+/// exits.
+struct SessionRun {
+    // Field order is drop order: the run is cancelled before the watcher
+    // resumes.
+    run: ActiveRun,
+    interrupts: Arc<AtomicUsize>,
+    watch_pause: WatchPause,
+}
+
+impl SessionRun {
+    fn start(
+        ws_url: &str,
+        watch_pause: WatchPause,
+        args: &TestStartArgs,
+        cancel_active: bool,
+        machine: bool,
+    ) -> Result<Self> {
+        let start = start_run(ws_url, args, cancel_active, machine)?;
+        watch_pause.bind(&start.run_id);
+        // From here every early exit — `?`, a lost session, a local IO
+        // error — must not leave the Runner holding this run.
+        let run = ActiveRun::new(ws_url, &start.run_id);
+        let interrupts = Arc::new(AtomicUsize::new(0));
+        on_interrupt(InterruptTarget {
+            interrupts: interrupts.clone(),
+            ws_url: ws_url.to_string(),
+            run_id: start.run_id.clone(),
+            lease: watch_pause.lease().to_string(),
+        })?;
+        Ok(Self {
+            run,
+            interrupts,
+            watch_pause,
+        })
+    }
+
+    fn run(&self) -> &ActiveRun {
+        &self.run
+    }
+
+    fn interrupts(&self) -> &AtomicUsize {
+        &self.interrupts
+    }
+
+    fn interrupted(&self) -> bool {
+        self.interrupts.load(Ordering::SeqCst) > 0
+    }
+
+    /// The run is over (cancelled now unless it ended); the watcher stays
+    /// paused until the returned lease drops.
+    fn end_run(self) -> WatchPause {
+        let Self {
+            run, watch_pause, ..
+        } = self;
+        drop(run);
+        watch_pause
+    }
+}
+
+/// What Ctrl-C acts on: the process's current session run.
+struct InterruptTarget {
+    interrupts: Arc<AtomicUsize>,
+    ws_url: String,
+    run_id: String,
+    lease: String,
+}
+
+static INTERRUPT_TARGET: std::sync::Mutex<Option<InterruptTarget>> = std::sync::Mutex::new(None);
+static INTERRUPT_HANDLER: std::sync::OnceLock<Result<(), String>> = std::sync::OnceLock::new();
+
+/// Point Ctrl-C at `target`. The handler is installed once per process.
+fn on_interrupt(target: InterruptTarget) -> Result<()> {
+    INTERRUPT_HANDLER
+        .get_or_init(|| {
+            ctrlc::set_handler(|| {
+                let guard = INTERRUPT_TARGET.lock().unwrap_or_else(|e| e.into_inner());
+                let Some(target) = guard.as_ref() else {
+                    std::process::exit(130);
+                };
+                if target.interrupts.fetch_add(1, Ordering::SeqCst) >= 1 {
+                    send_cancel(&target.ws_url, &target.run_id, "client_interrupt");
+                    resume_watch(&target.ws_url, &target.lease);
+                    std::process::exit(130);
+                }
+            })
+            .map_err(|error| error.to_string())
+        })
+        .clone()
+        .map_err(|error| anyhow!("failed to install Ctrl-C handler: {error}"))?;
+    *INTERRUPT_TARGET.lock().unwrap_or_else(|e| e.into_inner()) = Some(target);
+    Ok(())
 }
 
 /// `lxdev test --cancel-active` with no entry: ask the host which run holds
@@ -4123,6 +4240,46 @@ mod lifecycle_tests {
         assert!(seen[0].1["ttl_ms"].as_u64().unwrap() > max_poll_wait().as_millis() as u64);
         assert_eq!(seen[1].1["run_id"], "run-9");
         assert_eq!(seen[2].1["lease"], lease.as_str());
+    }
+
+    #[test]
+    fn list_and_run_share_one_session_lifecycle() {
+        // Pause, start, bind; an interrupted run that did not end is
+        // cancelled before the watcher resumes.
+        let (url, server) = recording_server(
+            5,
+            json!({ "paused": true, "leases": 1, "run_id": "run-5", "state": "running" }),
+        );
+        let args = TestStartArgs {
+            source: "void 0".into(),
+            source_name: None,
+            timeout_ms: Some(1_000),
+            args: Default::default(),
+            control: Default::default(),
+            profile: None,
+        };
+        let session =
+            SessionRun::start(&url, WatchPause::acquire(&url).unwrap(), &args, false, true)
+                .unwrap();
+        assert_eq!(session.run().run_id(), "run-5");
+        assert!(!session.interrupted());
+        session.interrupts().fetch_add(1, Ordering::SeqCst);
+        assert!(session.interrupted());
+        drop(session);
+        let seen = server.join().unwrap();
+        let methods_seen: Vec<&str> = seen.iter().map(|(method, _)| method.as_str()).collect();
+        assert_eq!(
+            methods_seen,
+            [
+                methods::session::watch::PAUSE,
+                methods::session::test::START,
+                methods::session::watch::PAUSE,
+                methods::session::test::CANCEL,
+                methods::session::watch::RESUME,
+            ]
+        );
+        assert_eq!(seen[2].1["run_id"], "run-5");
+        assert_eq!(seen[3].1["run_id"], "run-5");
     }
 
     #[test]

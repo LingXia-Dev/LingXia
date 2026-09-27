@@ -209,6 +209,10 @@ pub mod methods {
             /// `{ handlers, generation }`; an invalid load keeps the
             /// previous one and errors.
             pub const MOCK_LOAD: &str = "session.network.mock.load";
+            /// Drop an lxapp's mock handlers and config: its `mocks/` is
+            /// gone. Args: `{ appid }`. Returns `{ unloaded }` (false when
+            /// none were loaded).
+            pub const MOCK_UNLOAD: &str = "session.network.mock.unload";
             /// Select mocks or real for the dev session. Args: `{ owner?:
             /// "dev", mode: "all" | "none", targets?: [http target] }`;
             /// without targets it replaces the owner's entries. Returns

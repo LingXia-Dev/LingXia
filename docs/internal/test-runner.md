@@ -14,27 +14,38 @@ received artifacts. Keep the following invariants when changing these layers:
 - New test contexts do not reset product state. Retrying requires a file-scoped
   `spec.reset` hook.
 - Every spec runs in the same JS context, so nothing tells a continuation of
-  an abandoned spec from the next spec's code: `expect`'s scope, the
-  pending-work owner, `rawAutomation()` and plain JS state are shared. So when
-  spec code may still run after the runner stopped waiting for it — a body
-  still pending after its timeout (plus `WEDGED_DEFER_BUDGET_MS`), a cleanup
-  past its budget, fixture calls the body did not await that do not stop, or
+  an abandoned spec from the next spec's code by itself: `expect`'s scope,
+  the pending-work owner and plain JS state are shared. When spec code may
+  still run after the runner stopped waiting for it — a body still pending
+  after its timeout (plus `WEDGED_DEFER_BUDGET_MS`), a cleanup past its
+  budget, fixture calls the body did not await that do not stop, or
   fetches/raw driver calls a returned body left in flight that do not settle
-  within `WEDGED_DEFER_BUDGET_MS` (that spec fails, phase `body`) — the run
-  **stops**: its cleanup is not run (that would reopen the fixture), the
-  fixture stays aborted and closed, its framework resources are reclaimed
-  (below), its timers are cancelled, the app is recovered for inspection
-  (`reopenAppUnderTest`, then a home relaunch), and the runtime revokes spec
-  authority (`revokeSpecAuthority`): `rawAutomation()` and every proxy it
-  handed out refuse (`pending.ts` authority epochs), and the host's
-  `revoke(reason)` refuses every driver call of the context and removes what
-  the open attempt installed. The rest are not run and the run is partial; a
-  `run_stopped` diagnostic (`recovery_failed` when recovery failed) names the
-  work. Only timed-out evidence capture — runner work, not spec code — still
-  recovers and continues. Tests: `isolation.test.mjs` (a body that resumes
-  late, during what would be the next spec).
+  within `WEDGED_DEFER_BUDGET_MS` (that spec fails, phase `body`) — the spec
+  is **abandoned** (`abandon` in `runtime.ts`): its `rawAutomation()` grant
+  is revoked at once (`pending.ts`: one grant per spec; a handle refuses once
+  its grant is revoked, a fresh `rawAutomation()` or the fenced
+  `lx.automation` global takes the current spec's grant, and between specs
+  there is none), its cleanup is not run (that would reopen the fixture), the
+  fixture stays aborted and closed, its host attempt ends (what it installed
+  is removed and installs are refused until the next attempt opens), and its
+  timers are cancelled. The runner then waits up to `WEDGED_DEFER_BUDGET_MS`
+  for work it dispatched (fetches, raw driver calls, fixture calls; the spec
+  still owns what their continuations start), recovers the app
+  (`reopenAppUnderTest`, then a home relaunch) and **continues** with a
+  `recovery` diagnostic. It stops — the rest not run, the run partial, a
+  `run_stopped` diagnostic (`recovery_failed` when recovery failed) naming
+  why, and whole-run revocation (`revokeSpecAuthority`: every grant and the
+  host's `revoke(reason)`) — only when isolation cannot be guaranteed:
+  dispatched work is still running after the grace period (its settling
+  would resume the spec's code during a later spec), the spec read a host
+  tier or used a handle taken outside it (native objects no grant fences),
+  or recovery failed. A continuation that resumes on something the runner
+  cannot see (a plain promise another spec resolves) and calls `expect` or a
+  fresh `rawAutomation()` while a later spec runs is not attributable; that
+  is the residual risk. Tests: `isolation.test.mjs`, `recovery.test.mjs`.
 - An `expect` made while no spec runs (a late continuation) goes to the
-  stray sink: a `late_assertion` diagnostic, never another case. Finished
+  stray sink: a `late_assertion` diagnostic naming the spec the run last
+  abandoned (`case`), never another case's record. Finished
   case records copy the fixture's steps, assertions and attachments.
 - A spec's leftover test-context timers are cancelled when it ends (a
   `cleanup` diagnostic when it otherwise settled), so none fires into the
@@ -329,7 +340,15 @@ Development machine: lxdev receives progress, results, and artifacts
   unlock: nothing but a person can unlock, a wait would outlast lxdev's hang
   watchdog between cases, and results on a hidden page are not results. A
   spec whose wait times out on a hidden page while the screen is locked
-  names the lock instead of "window covered or display asleep".
+  names the lock instead of the observation.
+- Hidden-page evidence: after a locator wait times out, the fixture probes
+  the target page's `visibilityState` and whether an animation frame arrives
+  within 300ms, and reports what it observed ("page looked hidden or
+  paused: …"), the covered-window/sleeping-display cause only as the likely
+  one. An observation is keyed by app driver and page instance (`nav.current`
+  / `nav.info`) and reused for that instance for 2s, marked with its age; a
+  navigation (new instance), another page, an older sample or an instance
+  that cannot be named is probed afresh. A visible answer is not cached.
 - `--shuffle[=SEED]` sends `control.shuffle` (lxdev draws a u32 when no seed
   is given and prints it); the runtime shuffles the planned executions with a
   seeded Fisher–Yates (mulberry32), after `--repeat-each` expansion.
@@ -350,7 +369,11 @@ Development machine: lxdev receives progress, results, and artifacts
   `list()` instead of `run()`, and throws when there is none, so an older
   `@lingxia/test` fails rather than running the suite. `list()` selects as
   `run()` does, then returns a zero-case report with `listed`. lxdev writes
-  no run directory and leaves `latest`.
+  no run directory and leaves `latest`. The modules load, so their top-level
+  code runs; only spec bodies and hooks do not. It goes through the same
+  `SessionRun` as a run: watch lease before bundling, `session.test.start`,
+  the run cancelled on any exit that did not see it end, Ctrl-C (first:
+  cancel and wait `CANCEL_GRACE`, exit 130; second: cancel, resume, exit).
 - `--list` with no session at all (and no `--session`) is offline
   (`test_offline.rs`): lxdev bundles as for a list, so the bundle-time checks
   still run, then reads each file's spec calls with Oxc — title, `id` and
@@ -520,7 +543,7 @@ Development machine: lxdev receives progress, results, and artifacts
   fails at its next guard or retry, waits up to 2 s, then clears the flag so
   cleanup can use the fixture) — and, when the body resolved, fails the spec
   (phase `body`) listing up to five calls with their lines. A call that does
-  not settle in time counts as stuck spec code: the run stops (above).
+  not settle in time counts as stuck spec code: the spec is abandoned (above).
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
   like `expect.poll`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
@@ -619,7 +642,9 @@ Development machine: lxdev receives progress, results, and artifacts
   companion's function rules via `clear_functions_checked`, a Logic
   `clock.uninstall()` per clock) and refuses installs until the next opens;
   what a program installs before its first attempt belongs to the whole run.
-  `revoke` also makes `HostAutomationAuthority::check` — every
+  The runner ends an abandoned spec's attempt like any other; per-spec
+  refusal of its drivers is the JS grant (above). `revoke`, used only when
+  the run stops, also makes `HostAutomationAuthority::check` — every
   `require_host_context`/`require_target_context` and `lx.automation()` —
   refuse with `E_AUTOMATION_PRIVILEGE`.
 - Framework reclamation is not user cleanup: after `afterEach`/`t.defer`
@@ -753,7 +778,10 @@ Development machine: lxdev receives progress, results, and artifacts
   them on every runtime connect (the runtime drops its mocks and the dev
   selection when the bridge disconnects, `dev::session_ended`); the watcher
   sends saves under `mocks/` to `reload_mocks` (bundle, push, keep the last
-  valid on error), deferred while a run pauses the watcher. `--mock` is a
+  valid on error), deferred while a run pauses the watcher. A top-level
+  directory created after the start (a new `mocks/`) gets its own recursive
+  watch when it appears; removing `mocks/` (or `mocks/index.ts`) unloads the
+  app's mocks (`session.network.mock.unload`), so status reads "no mocks/". `--mock` is a
   process-wide baseline sent with every load and as
   `session.prepare { mock }` to the companion.
 - Guard: `LogicBundler::compile_module` refuses a dependency under
