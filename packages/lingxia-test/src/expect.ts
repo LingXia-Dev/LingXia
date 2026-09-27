@@ -2,7 +2,8 @@ import { isEqual } from "./equal.js";
 import { formatValue } from "./format.js";
 import { activeOpenApi, type SchemaTarget } from "./openapi.js";
 import { formatIssues } from "./schema.js";
-import type { Expect, ExpectOptions, Locator, LocatorMatchers, Matchers, RetryMatchers } from "./types.js";
+import { displayLocation, parseFrames, resolveOrigin } from "./ids.js";
+import type { Expect, ExpectOptions, FunctionMatchers, Locator, LocatorMatchers, Matchers, RetryMatchers } from "./types.js";
 
 export interface LoggedAssertion {
   matcher: string;
@@ -247,7 +248,8 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       settle("toThrow", thrown, expected, inverted, pass);
     },
   };
-  return self;
+  // `then` is added where `expect` hands the matchers out (`refuseAwait`).
+  return self as unknown as Matchers<T>;
 }
 
 /** `LOCATOR_BRAND` in `locator.ts`; read by key to keep this module free of it. */
@@ -268,22 +270,80 @@ function runningScope(api: string): ExpectScope {
 }
 
 /**
+ * `expect(fn)`: `toThrow` calls it once. Any other matcher would compare the
+ * function itself, which is never what a spec means: a read to retry is
+ * `expect.poll(read)`.
+ */
+function functionMatchers(fn: unknown, inverted: boolean): FunctionMatchers {
+  const matchers = createMatchers(fn, inverted);
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(matchers)) {
+    if (key === "not") continue;
+    out[key] = key === "toThrow"
+      ? matchers.toThrow
+      : () => {
+        throw new TypeError(`expect(fn).${key}: a function is only called by toThrow; to retry a read until it passes, use expect.poll(read)`);
+      };
+  }
+  Object.defineProperty(out, "not", { get: () => functionMatchers(fn, !inverted), enumerable: true, configurable: true });
+  return out as unknown as FunctionMatchers;
+}
+
+/**
+ * Awaiting the matchers object itself checks nothing. Make it reject, naming
+ * where `expect` was called, instead of passing silently.
+ */
+function refuseAwait<M extends object>(matchers: M, api: string, example: string, origin: Error): M {
+  const not = Object.getOwnPropertyDescriptor(matchers, "not");
+  if (not?.get) {
+    const get = not.get;
+    Object.defineProperty(matchers, "not", {
+      get: () => refuseAwait(get.call(matchers) as object, api, example, origin),
+      enumerable: not.enumerable,
+      configurable: true,
+    });
+  }
+  Object.defineProperty(matchers, "then", {
+    value: (_resolve: unknown, reject?: (reason: unknown) => void) => {
+      const at = resolveOrigin(parseFrames(origin.stack));
+      const error = new TypeError(
+        `${api} checks nothing until a matcher is called: ${example}\nat ${displayLocation(at.file, at.line, at.column)}`,
+      );
+      if (typeof reject === "function") reject(error);
+      else throw error;
+    },
+    enumerable: false,
+    configurable: true,
+  });
+  return matchers;
+}
+
+/**
  * The one assertion entry point: a locator retries its matcher until the
  * element passes, any other value is checked once, and `expect.poll(read)`
  * calls `read` until the matcher passes.
  */
 export const expect: Expect = Object.assign(
   (subject: unknown) => {
-    if (isLocator(subject)) return runningScope("expect(locator)").locator(subject);
+    const origin = new Error();
+    if (isLocator(subject)) {
+      return refuseAwait(runningScope("expect(locator)").locator(subject), "expect(locator)",
+        "await expect(locator).toBeVisible()", origin);
+    }
     if (isThenable(subject)) {
       throw new TypeError("expect(promise): await the value first, or retry a read with expect.poll(() => promise)");
     }
-    return createMatchers(subject, false);
+    if (typeof subject === "function") {
+      return refuseAwait(functionMatchers(subject, false), "expect(fn)", "expect(fn).toThrow()", origin);
+    }
+    return refuseAwait(createMatchers(subject, false), "expect(value)", "expect(value).toBe(expected)", origin);
   },
   {
     poll: (read: () => unknown, options?: ExpectOptions) => {
+      const origin = new Error();
       if (typeof read !== "function") throw new TypeError("expect.poll(read) takes a function to call until the matcher passes");
-      return runningScope("expect.poll(read)").poll(read, options);
+      return refuseAwait(runningScope("expect.poll(read)").poll(read, options), "expect.poll(read)",
+        "await expect.poll(read).toBe(expected)", origin);
     },
   },
 ) as Expect;

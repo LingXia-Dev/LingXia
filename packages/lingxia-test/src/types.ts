@@ -154,11 +154,12 @@ export interface LocatorFilterOptions {
 
 export interface RejectExpected {
   /**
-   * The rejection's `code`: a `TestErrorCode` (driver codes such as
+   * The rejection's `code`, one of `TestErrorCode` (driver codes such as
    * `E_PAGE_NOT_ACTIVE`, plus `E_TIMEOUT`, `E_OPENAPI_CONTRACT`; see
-   * `TEST_ERROR_CODES`) or any other string code the operation rejects with.
+   * `TEST_ERROR_CODES`). The union is closed, so a code that no longer
+   * exists does not compile; match anything else by `message`.
    */
-  code?: TestErrorCode | (string & {});
+  code?: TestErrorCode;
   message?: string | RegExp;
 }
 
@@ -715,8 +716,17 @@ export interface TestAutomation extends Omit<HostRunAutomation, "lxapp" | "brows
   readonly terminal: TerminalDriver;
 }
 
+/**
+ * Awaiting `expect(…)` or `expect.poll(…)` itself checks nothing: this member
+ * makes `await expect(x)` without a matcher a type error, and it rejects at
+ * run time naming the line.
+ */
+export interface NeedsMatcher<Hint extends string> {
+  then(needsAMatcher: Hint): never;
+}
+
 /** `expect.poll(read)` matchers: they call `read` until the matcher passes. */
-export interface RetryMatchers<T> {
+export interface RetryMatchers<T> extends NeedsMatcher<"expect.poll(read) checks nothing until a matcher is called: await expect.poll(read).toBe(expected)"> {
   readonly not: RetryMatchers<T>;
   toBe(expected: unknown): Promise<void>;
   toEqual(expected: unknown): Promise<void>;
@@ -735,7 +745,7 @@ export interface RetryMatchers<T> {
 }
 
 /** `expect(locator)` matchers: they retry until the element passes. */
-export interface LocatorMatchers {
+export interface LocatorMatchers extends NeedsMatcher<"expect(locator) checks nothing until a matcher is called: await expect(locator).toBeVisible()"> {
   readonly not: LocatorMatchers;
   /** One rendered match, in the viewport or scrolled out of it. */
   toBeVisible(options?: ExpectOptions): Promise<void>;
@@ -763,12 +773,23 @@ export interface PromiseNotAllowed {
   readonly "expect(promise)": "await the value first, or retry a read with expect.poll(() => promise)";
 }
 
+/**
+ * What `expect(fn)` gives: `toThrow`, which calls it once. A function is not
+ * a read to retry; that is `expect.poll(read)`.
+ */
+export interface FunctionMatchers extends NeedsMatcher<"expect(fn) checks nothing until a matcher is called: expect(fn).toThrow()"> {
+  readonly not: FunctionMatchers;
+  toThrow(expected?: unknown): void;
+  readonly "expect(fn)": "a function is only called by toThrow; to retry a read until it passes, use expect.poll(read)";
+}
+
 /** The matchers `expect(subject)` gives for a subject of type `T`. */
 export type ExpectResult<T> =
   0 extends 1 & T ? Matchers<any>
     : [T] extends [Locator] ? LocatorMatchers
       : [T] extends [PromiseLike<unknown>] ? PromiseNotAllowed
-        : Matchers<T>;
+        : [T] extends [(...args: never[]) => unknown] ? FunctionMatchers
+          : Matchers<T>;
 
 /**
  * The one assertion entry point:
@@ -848,7 +869,7 @@ export interface Fixture {
 }
 
 /** Matchers that check once, synchronously. */
-export interface Matchers<T> {
+export interface Matchers<T> extends NeedsMatcher<"expect(value) checks nothing until a matcher is called: expect(value).toBe(expected)"> {
   readonly not: Matchers<T>;
   toBe(expected: unknown): void;
   toEqual(expected: unknown): void;

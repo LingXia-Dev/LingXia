@@ -1081,6 +1081,7 @@ export class LiveFixture implements Fixture {
     };
     Object.defineProperty(self, "not", {
       get: () => this.locatorMatchers(locator, !inverted),
+      configurable: true,
     });
     return self as LocatorMatchers;
   }
@@ -1112,6 +1113,7 @@ export class LiveFixture implements Fixture {
     };
     Object.defineProperty(self, "not", {
       get: () => fixture.pollMatchers(read, options, !inverted, api),
+      configurable: true,
     });
     return self as RetryMatchers<Awaited<T>>;
   }
