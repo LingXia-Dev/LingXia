@@ -20,6 +20,8 @@ export interface ResolvedHost {
   networkLog?(sinceMs: number, limit?: number): unknown;
   /** Network recording for `--record-network`; `undefined` on a host without it. */
   networkRecord?(command: "start" | "stop", name?: string): unknown;
+  /** `true` only when the host knows the screen is locked. */
+  screenLocked(): boolean;
 }
 
 function asArgs(value: unknown): Record<string, string> {
@@ -62,6 +64,13 @@ export function resolveHost(): ResolvedHost {
     ...(typeof raw?.networkRecord === "function"
       ? { networkRecord: (command: "start" | "stop", name?: string) => raw.networkRecord!(command, name) }
       : {}),
+    screenLocked() {
+      try {
+        return raw?.screenLocked?.() === true;
+      } catch {
+        return false;
+      }
+    },
   };
 }
 

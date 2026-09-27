@@ -9,6 +9,7 @@ import {
   isTransientPageError,
   isTransientTransportError,
 } from "./deadline.js";
+import { resolveHost } from "./host.js";
 import { displayLocation } from "./ids.js";
 import type {
   ActionOptions,
@@ -379,7 +380,7 @@ export class PageLocator implements Locator {
       const value = await this.guard(() => probe.call("page.eval (visibility)",
         () => this.page.eval!({ page: this.options.page, script: VISIBILITY_PROBE_SCRIPT, timeoutMs: VISIBILITY_PROBE_BUDGET_MS }),
         () => ""));
-      return pageVisibility(value)?.note;
+      return hiddenCause(pageVisibility(value)?.note);
     } catch {
       return undefined;
     }
@@ -559,6 +560,14 @@ export const VISIBILITY_PROBE_SCRIPT = `new Promise((resolve) => {
 })`;
 
 export const HIDDEN_PAGE_NOTE = "page hidden (window covered or display asleep): animations are paused";
+
+/** Why every page is hidden when the host can tell the screen is locked. */
+export const SCREEN_LOCKED_NOTE = "the screen is locked; unlock it — animations and sheets are paused";
+
+/** A hidden-page note, naming the lock when that is the cause. */
+export function hiddenCause(note: string | undefined): string | undefined {
+  return note !== undefined && resolveHost().screenLocked() ? SCREEN_LOCKED_NOTE : note;
+}
 
 /** What the probe saw, or `undefined` for an unreadable answer. */
 export function pageVisibility(value: unknown): PageVisibility | undefined {

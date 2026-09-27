@@ -33,7 +33,7 @@ import type {
   SpecStatus,
   PageVisibility,
 } from "./report-types.js";
-import { VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, pageVisibility } from "./locator.js";
+import { SCREEN_LOCKED_NOTE, VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, hiddenCause, pageVisibility } from "./locator.js";
 import {
   DEFAULT_SPEC_TIMEOUT_MS,
   FORENSICS_BUDGET_MS,
@@ -672,6 +672,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   const attempts = new Map<string, CaseRecord[]>();
   const executionKey = (id: string, repeat: number) => `${id}#${repeat}`;
   let budgetExhausted: { after: number } | undefined;
+  // Set once, when a spec is about to start on a locked screen: every page is
+  // hidden until someone unlocks it, which the run cannot do.
+  let screenLocked: { after: number } | undefined;
+  const executed = () => new Set(cases.map((done) => executionKey(done.id, done.repeat ?? 1))).size;
   for (const planned of queue) {
     const { item, repeat } = planned;
     const id = resolvedId(item);
@@ -680,9 +684,14 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const source = sourceOf(item);
     // Checked between specs: a spec already running keeps its own timeout.
     if (!budgetExhausted && budget && Date.now() - started >= budget.ms) {
-      budgetExhausted = { after: new Set(cases.map((done) => executionKey(done.id, done.repeat ?? 1))).size };
+      budgetExhausted = { after: executed() };
       await host.emit({ type: "diagnostic", phase: "budget",
         message: `Run budget of ${Math.round(budget.ms / 1000)}s exhausted after ${budgetExhausted.after}/${plan.length} specs; the rest are reported as not run. Raise --timeout-secs, or split the suite with --shard.` });
+    }
+    if (!budgetExhausted && !contaminated && !screenLocked && host.screenLocked()) {
+      screenLocked = { after: executed() };
+      await host.emit({ type: "diagnostic", phase: "screen_locked",
+        message: `${capitalize(SCREEN_LOCKED_NOTE)}. Stopped after ${screenLocked.after}/${plan.length} specs; the rest are reported as not run.` });
     }
     const record: CaseRecord = {
       id,
@@ -719,9 +728,10 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const unmet = item.annotation === "skip" || item.annotation === "fixme"
       ? undefined
       : unmetRequirements(item, args, openapi !== undefined);
-    if (budgetExhausted || contaminated || unmet !== undefined || item.annotation === "skip" || item.annotation === "fixme") {
+    if (budgetExhausted || contaminated || screenLocked || unmet !== undefined || item.annotation === "skip" || item.annotation === "fixme") {
       if (contaminated) record.reason = contaminationReason ?? `Not run: an earlier spec left the run unable to continue. Recover: ${RECOVER_COMMAND}`;
       else if (budgetExhausted && budget) record.reason = `Not run: the run budget of ${Math.round(budget.ms / 1000)}s was exhausted after ${budgetExhausted.after}/${plan.length} specs.`;
+      else if (screenLocked) record.reason = `Not run: ${SCREEN_LOCKED_NOTE}.`;
       else if (unmet !== undefined) record.reason = unmet;
       record.status = "skipped";
       record.duration_ms = Date.now() - caseStarted;
@@ -1088,7 +1098,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       ...(shuffleSeed !== undefined ? { shuffle_seed: shuffleSeed } : {}),
       ...(repeatEach > 1 ? { repeat_each: repeatEach } : {}),
     },
-    partial: contaminated || budgetExhausted !== undefined,
+    partial: contaminated || budgetExhausted !== undefined || screenLocked !== undefined,
     filtered: Boolean(grep || control.id || control.ids || shard || locations || tagFilter.length > 0) || hasOnly,
     duration_ms,
     ...counts,
@@ -1178,6 +1188,10 @@ async function describeSubject(): Promise<RunSubject | undefined> {
   } catch {
     return undefined;
   }
+}
+
+function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 function asText(value: unknown): string | undefined {
@@ -1325,7 +1339,8 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
     await fixture.attachRaw("logs.txt", logs);
   }
   const page = toFailurePage(route);
-  return page && visibility?.note ? { ...page, hidden: visibility.note } : page;
+  const hidden = hiddenCause(visibility?.note);
+  return page && hidden ? { ...page, hidden } : page;
 }
 
 async function fixtureHostLogs(): Promise<string | undefined> {

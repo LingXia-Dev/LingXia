@@ -907,6 +907,8 @@ export interface AutomationHost {
   networkLog?: (sinceMs: number, limit?: number) => unknown;
   /** `lxdev test --record-network`: start, or stop and return the scenario. */
   networkRecord?: (command: "start" | "stop", name?: string) => unknown;
+  /** Whether the screen is locked; `undefined` where the host cannot tell. */
+  screenLocked?: () => boolean | undefined;
 }
 
 declare global {

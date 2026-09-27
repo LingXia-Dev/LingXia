@@ -251,6 +251,10 @@ fn make_host(
                 .unwrap_or_default()
         })?,
     )?;
+    // A locked screen hides every page: animation frames stop, so a spec
+    // waiting on a sheet cannot pass. `undefined` where the platform cannot
+    // tell.
+    host.set("screenLocked", JSFunc::new(ctx, screen_locked)?)?;
     crate::network::attach_host_functions(
         ctx,
         &host,
@@ -258,6 +262,17 @@ fn make_host(
         secret_values(args, control),
     )?;
     Ok(host)
+}
+
+fn screen_locked() -> Option<bool> {
+    #[cfg(target_os = "macos")]
+    {
+        lingxia_webview::platform::apple::screen_locked()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
 }
 
 /// The run a host function belongs to, while it is still kept.

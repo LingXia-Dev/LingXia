@@ -453,6 +453,82 @@ test("a timed-out wait on a hidden page says the page is hidden, not only obscur
   assert.equal(probes.count, 1);
 });
 
+test("a hidden page on a locked screen names the lock", async () => {
+  const world = createWorld();
+  world.add({ testId: "sheet", visible: false, text: "" });
+  hidePage(world);
+  const { attachments } = installFakeHost(world);
+  let locked = false;
+  globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
+  let message;
+
+  spec("locks mid-spec", { forensics: false }, async (t) => {
+    locked = true;
+    try { await t.app.view.testId("sheet").waitFor({ timeout: 80 }); } catch (error) { message = error.message; }
+    await t.app.view.testId("sheet").waitFor({ timeout: 80 });
+  });
+
+  await globalThis.__LINGXIA_TEST__.run();
+  assert.match(message, /the screen is locked; unlock it — animations and sheets are paused/);
+  assert.doesNotMatch(message, /window covered or display asleep/);
+  assert.match(failedMessage(attachments), /the screen is locked; unlock it/);
+});
+
+test("a locked screen stops the run once, before the next spec, instead of failing each", async () => {
+  const world = createWorld();
+  world.add({ testId: "ready", text: "Ready" });
+  const { events, attachments } = installFakeHost(world);
+  let locked = false;
+  globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => locked;
+  const ran = [];
+
+  spec("first", async (t) => {
+    ran.push("first");
+    await expect(t.app.view.testId("ready")).toBeVisible();
+    locked = true;
+  });
+  spec("second", async () => { ran.push("second"); });
+  spec("third", async () => { ran.push("third"); });
+
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.deepEqual(ran, ["first"]);
+  const locks = events.filter((event) => event.type === "diagnostic" && event.phase === "screen_locked");
+  assert.equal(locks.length, 1);
+  assert.match(locks[0].message, /^The screen is locked; unlock it — animations and sheets are paused\. Stopped after 1\/3 specs/);
+  assert.equal(report.partial, true);
+  const saved = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(saved.cases.map((item) => item.status), ["passed", "skipped", "skipped"]);
+  assert.match(saved.cases[1].reason, /^Not run: the screen is locked/);
+});
+
+test("a run that starts on a locked screen runs nothing", async () => {
+  const world = createWorld();
+  const { events } = installFakeHost(world);
+  globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = () => true;
+  let ran = false;
+
+  spec("only", async () => { ran = true; });
+
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(ran, false);
+  assert.equal(report.partial, true);
+  assert.equal(events.filter((event) => event.phase === "screen_locked").length, 1);
+});
+
+test("a host that cannot tell, or throws, is never read as locked", async () => {
+  for (const screenLocked of [undefined, () => undefined, () => { throw new Error("no session"); }]) {
+    const world = createWorld();
+    installFakeHost(world);
+    if (screenLocked) globalThis.__LINGXIA_AUTOMATION_HOST__.screenLocked = screenLocked;
+    let ran = false;
+    spec("runs", async () => { ran = true; });
+    const report = await globalThis.__LINGXIA_TEST__.run();
+    assert.equal(ran, true);
+    assert.equal(report.partial, false);
+    reset();
+  }
+});
+
 test("waits that pass never probe the page's visibility", async () => {
   const world = createWorld();
   world.add({ testId: "ready", text: "Ready" });
