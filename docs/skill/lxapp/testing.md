@@ -521,8 +521,8 @@ lxdev test tests/ --profile auth --profile-save   # reuse, refresh on pass
   is signed out; later runs start from the saved state.
 - `spec(title, { restoreProfile: true }, fn)` rolls the app's data back after
   that spec (implies `fresh`); `const cp = await t.app.profile.checkpoint()`
-  (`{ id }`) / `restore(cp)` (`{ kept }`) / `drop(cp)` do it by hand. Both reopen the app, so re-read `t.app` afterwards,
-  and both reject with `E_PROFILE_NOT_ISOLATED` without `--profile`.
+  (`{ id }`) / `restore(cp)` (`{ kept }`) / `drop(cp)` do it by hand. Both reopen the app (a saved `t.app` follows it)
+  and reject with `E_PROFILE_NOT_ISOLATED` without `--profile`.
 - A reopen resolves once the app has settled: `App.onLaunch` has finished
   (its promise included), a page is ready, and the current page has not
   changed for 300 ms. A redirect the app makes at start-up therefore lands

@@ -515,7 +515,10 @@ export interface TestClock {
   uninstall(): Promise<void>;
 }
 
-/** `t.app`: the app under test. */
+/**
+ * `t.app`: the app under test. A saved `t.app` (or any part of it) keeps
+ * reaching the app after a profile checkpoint or restore reopens it.
+ */
 export interface TestApp {
   /** The current page's View: locators, `eval(fn)`, screenshots and input. */
   readonly view: TestView;
@@ -551,8 +554,8 @@ export interface ProfileCheckpoint {
  * `t.app.profile`: checkpoint and roll back the app's isolated data by hand.
  * Needs an isolated run (`lxdev test --profile`); otherwise every call
  * rejects with `E_PROFILE_NOT_ISOLATED`. `checkpoint` and `restore` close the
- * app and reopen it at its initial page; `t.app` follows the reopened app, a
- * `t.app` saved before the call does not.
+ * app and reopen it at its initial page; every fixture app of it, saved or
+ * not, follows the reopened app.
  */
 export interface ProfileFixture {
   /** Snapshot the app's data. */
