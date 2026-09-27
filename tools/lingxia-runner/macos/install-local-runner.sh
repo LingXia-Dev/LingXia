@@ -58,6 +58,8 @@ source "$ROOT_DIR/scripts/lib/lingxia.sh"
 ensure_lingxia "$ROOT_DIR"
 # shellcheck source=../../../scripts/lib/cargo-target-dir.sh
 source "$ROOT_DIR/scripts/lib/cargo-target-dir.sh"
+# shellcheck source=../../../scripts/lib/swift-bridge.sh
+source "$ROOT_DIR/scripts/lib/swift-bridge.sh"
 TARGET_BASE="$(resolve_cargo_target_dir "$SCRIPT_DIR" "$ROOT_DIR/Cargo.toml")"
 APP_SRC="$TARGET_BASE/lingxia/macos/$APP_NAME"
 
@@ -97,6 +99,10 @@ echo "==> Generating apple SDK resources (i18n + icons)"
     --input design/icons/svg \
     --ios-out lingxia-sdk/apple/Sources/Resources/icons
 )
+
+# SwiftPM resolves the apple SDK's generated bridge targets before the build
+# plugin compiles anything, so a fresh checkout needs them first.
+ensure_swift_bridge "$ROOT_DIR"
 
 echo "==> Building Runner"
 # Standalone Swift Package: one `lingxia build` runs the Swift build whose plugin
