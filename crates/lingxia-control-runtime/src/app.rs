@@ -79,6 +79,17 @@ fn handle_app_command_impl(handler: &str, args: Option<Value>) -> Result<Option<
                 .map(Some)
                 .map_err(|err| err.to_string())
         }
+        methods::app::FOCUS => {
+            let parsed: AppScreenshotArgs = match args {
+                Some(value) => serde_json::from_value(value)
+                    .map_err(|e| format!("invalid args for {}: {}", handler, e))?,
+                None => AppScreenshotArgs::default(),
+            };
+            let window = run_async(lingxia::dev::focus_app_window(parsed.window_id.as_deref()))?;
+            serde_json::to_value(window)
+                .map(Some)
+                .map_err(|err| err.to_string())
+        }
         methods::app::APPLINK => {
             let parsed: ApplinkArgs = match args {
                 Some(value) => serde_json::from_value(value)

@@ -180,8 +180,8 @@ pub mod dev {
     pub use crate::devtool::{
         Appearance, DeviceController, DeviceEntry, DeviceState, LxAppDevConfig, LxAppDevIdentity,
         LxAppDevPageInfo, LxAppDevPageWaitResult, LxAppDevPageWaitState, device_get, device_list,
-        device_set, install_lxapp_dev_config, install_lxapp_dev_config_from_env, list_app_windows,
-        lxapp_dev_nav_back, lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch,
+        device_set, focus_app_window, install_lxapp_dev_config, install_lxapp_dev_config_from_env,
+        list_app_windows, lxapp_dev_nav_back, lxapp_dev_nav_redirect, lxapp_dev_nav_relaunch,
         lxapp_dev_nav_switch_tab, lxapp_dev_nav_to, lxapp_dev_page_back, lxapp_dev_page_click,
         lxapp_dev_page_current, lxapp_dev_page_eval, lxapp_dev_page_fill, lxapp_dev_page_info,
         lxapp_dev_page_input_supported, lxapp_dev_page_list, lxapp_dev_page_press,

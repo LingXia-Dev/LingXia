@@ -72,6 +72,17 @@ pub enum AppCommand {
 pub enum DevAppCommand {
     #[command(flatten)]
     Own(AppCommand),
+    /// Bring the host window to the front and make it key. The app raises its
+    /// own window, so no Accessibility permission is needed
+    Focus {
+        /// Specific window id (from the `windows` command); defaults to the
+        /// focused/main window
+        #[arg(long)]
+        window: Option<String>,
+        /// Print JSON output
+        #[arg(long)]
+        json: bool,
+    },
     /// Inject an App Link (warm path)
     Applink {
         /// `https://` AppLink URL
@@ -272,8 +283,34 @@ impl MouseButtonArg {
 pub fn execute(context: &AppContext, options: AppOptions) -> Result<()> {
     match options.command {
         DevAppCommand::Own(command) => execute_own(context, command),
+        DevAppCommand::Focus { window, json } => execute_focus(context, window, json),
         DevAppCommand::Applink { url, json } => execute_applink(context, url, json),
     }
+}
+
+fn execute_focus(context: &AppContext, window: Option<String>, json_output: bool) -> Result<()> {
+    let args = window.map(|window_id| json!({ "window_id": window_id }));
+    let data = context
+        .transport
+        .request(methods::app::FOCUS, args)?
+        .unwrap_or(Value::Null);
+    if json_output {
+        println!("{}", encode_machine_json(&data)?);
+        return Ok(());
+    }
+    let id = data.get("id").and_then(Value::as_str).unwrap_or("-");
+    let focused = data
+        .get("focused")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    if focused {
+        println!("Window {id} is in front and focused.");
+    } else {
+        // Activation is cooperative on macOS: the system may keep another app
+        // active, and the window is then raised without keyboard focus.
+        println!("Window {id} is in front; macOS kept keyboard focus in the active app.");
+    }
+    Ok(())
 }
 
 /// Run one of the product's own window commands.
@@ -598,6 +635,15 @@ mod tests {
                 output: Some(output),
                 json: false,
             }) if window == "42" && output == "capture.png"
+        ));
+    }
+
+    #[test]
+    fn parses_focus_with_a_window() {
+        let cli = TestCli::try_parse_from(["test", "focus", "--window", "42"]).unwrap();
+        assert!(matches!(
+            cli.app.command,
+            DevAppCommand::Focus { window: Some(window), json: false } if window == "42"
         ));
     }
 

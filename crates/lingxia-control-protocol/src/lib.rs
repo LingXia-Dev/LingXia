@@ -324,6 +324,11 @@ pub mod methods {
 
         /// Inject an App Link. Args: `{url}`.
         pub const APPLINK: &str = "app.applink";
+
+        /// Bring a host app window to the front and make it key. Args:
+        /// `{window_id?}`; returns the window. The app raises its own
+        /// window, so no Accessibility permission is involved.
+        pub const FOCUS: &str = "app.focus";
     }
 
     pub mod runner {

@@ -688,6 +688,10 @@ mod tests {
         }
 
         assert!(refuse_for_product("app.future_method", Some(&capabilities)).is_some());
+        assert!(
+            refuse_for_product(methods::app::FOCUS, Some(&capabilities)).is_some(),
+            "raising the window is a development-session command"
+        );
 
         crate::register_control_namespace("allowlist_extra_test", |_, _| Some(Ok(None)));
         assert_eq!(

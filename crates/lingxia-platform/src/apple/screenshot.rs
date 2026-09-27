@@ -31,6 +31,30 @@ impl AppScreenshot for Platform {
         }
     }
 
+    async fn bring_app_window_to_front(
+        &self,
+        window_id: Option<&str>,
+        focus: bool,
+    ) -> Result<WindowInfo, PlatformError> {
+        #[cfg(target_os = "macos")]
+        {
+            let window = self.resolve_app_window(window_id).await?;
+            bring_to_front_macos(&window.id, focus).await?;
+            list_app_windows_macos()
+                .await?
+                .into_iter()
+                .find(|listed| listed.id == window.id)
+                .ok_or_else(|| PlatformError::Platform(format!("window {} closed", window.id)))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = (window_id, focus);
+            Err(PlatformError::NotSupported(
+                "raising an app window is macOS-only on Apple platforms".to_string(),
+            ))
+        }
+    }
+
     async fn take_app_screenshot(&self, window_id: Option<&str>) -> Result<Vec<u8>, PlatformError> {
         #[cfg(target_os = "ios")]
         {
@@ -190,6 +214,80 @@ async fn list_app_windows_macos() -> Result<Vec<WindowInfo>, PlatformError> {
         )),
         Err(_) => Err(PlatformError::Platform(
             "list_app_windows timed out".to_string(),
+        )),
+    }
+}
+
+/// Order this app's window `id` in front of every other app's windows at its
+/// level, on the main queue. Public AppKit acting on the app's own window, so
+/// it needs no Accessibility permission. `orderFrontRegardless` works while
+/// the app is inactive; activation is cooperative on current macOS, so with
+/// `focus` the window may be raised without becoming key if the system
+/// declines to switch apps.
+#[cfg(target_os = "macos")]
+async fn bring_to_front_macos(id: &str, focus: bool) -> Result<(), PlatformError> {
+    use dispatch2::DispatchQueue;
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send};
+
+    const RAISE_TIMEOUT: Duration = Duration::from_secs(2);
+    let number: i64 = id
+        .parse()
+        .map_err(|_| PlatformError::InvalidParameter(format!("not a window id: {id}")))?;
+    let (tx, rx) = oneshot::channel::<Result<(), String>>();
+    let tx_state = Arc::new(Mutex::new(Some(tx)));
+    let tx_state_for_block = Arc::clone(&tx_state);
+
+    DispatchQueue::main().exec_async(move || unsafe {
+        let sender = tx_state_for_block
+            .lock()
+            .ok()
+            .and_then(|mut guard| guard.take());
+        let Some(sender) = sender else { return };
+
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        if app.is_null() {
+            let _ = sender.send(Err("NSApplication.sharedApplication is null".to_string()));
+            return;
+        }
+        let windows: *mut AnyObject = msg_send![app, windows];
+        let count: usize = if windows.is_null() {
+            0
+        } else {
+            msg_send![windows, count]
+        };
+        for index in 0..count {
+            let window: *mut AnyObject = msg_send![windows, objectAtIndex: index];
+            if window.is_null() {
+                continue;
+            }
+            let window_number: i64 = msg_send![window, windowNumber];
+            if window_number != number {
+                continue;
+            }
+            let miniaturized: bool = msg_send![window, isMiniaturized];
+            if miniaturized {
+                let _: () = msg_send![window, deminiaturize: std::ptr::null_mut::<AnyObject>()];
+            }
+            if focus {
+                let _: () = msg_send![app, activateIgnoringOtherApps: true];
+                let _: () =
+                    msg_send![window, makeKeyAndOrderFront: std::ptr::null_mut::<AnyObject>()];
+            }
+            let _: () = msg_send![window, orderFrontRegardless];
+            let _ = sender.send(Ok(()));
+            return;
+        }
+        let _ = sender.send(Err(format!("window {number} no longer exists")));
+    });
+
+    match timeout(RAISE_TIMEOUT, rx).await {
+        Ok(Ok(result)) => result.map_err(PlatformError::Platform),
+        Ok(Err(_)) => Err(PlatformError::Platform(
+            "raising the window was canceled".to_string(),
+        )),
+        Err(_) => Err(PlatformError::Platform(
+            "raising the window timed out".to_string(),
         )),
     }
 }

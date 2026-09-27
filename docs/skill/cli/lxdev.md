@@ -68,6 +68,8 @@ The selected session's native host window, when the target is not a page.
 
 - `doctor` — screenshot/input support and coordinate units
 - `windows` — host windows; the id feeds `--window`
+- `focus` — bring the host window to the front and make it key; the app
+  raises its own window, so no Accessibility grant is needed
 - `screenshot` — the full host surface, native controls included
 - `mouse move|down|up|click|drag|scroll`, `key type|press`
 - `applink <url>` — inject an inbound link ([App links](../app/applinks.md#testing))
@@ -154,3 +156,4 @@ with `lxapp page click`.
 | `version skew: … — fix: …` | Run the printed fix; see [version skew](./lingxia.md#lingxia-dev). |
 | `eval` returns nothing / wrong scope | Wrong JS context — see [JS contexts](#js-contexts). |
 | Commands connect but hang | `lingxia dev stop` from the project, then `lingxia dev` again. |
+| `lxdev desktop window focus` asks for Accessibility again after `lxdev` was rebuilt | For the session's own window use `lxdev host focus`, which needs no grant. |
