@@ -4,6 +4,7 @@ import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
+import { resetMocks } from "./mock.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
 import { coverageSummary, parseManifest } from "./coverage.js";
@@ -97,6 +98,8 @@ const specs: RegisteredSpec[] = [];
 const hooks: Hook[] = [];
 const afterHooks: Hook[] = [];
 const resetHooks: Hook[] = [];
+/** Why a companion does not reset its mock handlers, said once per run. */
+const mockResetReasons = new Set<string>();
 const fileConfigs: FileConfig[] = [];
 let forceRelaunchNext = false;
 let trackSurface = false;
@@ -779,6 +782,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // Work this spec left pending when the run stopped waiting for it.
     let stuck: { what: string; work: PendingWork[] } | undefined;
     const bodyPromise = (async () => {
+      // Each spec starts with fresh mock handler state, before its hooks.
+      phase = "beforeEach";
+      const mockNote = await resetMocks(fixture.raw, mockResetReasons).catch((error: unknown) =>
+        `mock handler state was not reset: ${String((error as Error)?.message ?? error)}`);
+      if (mockNote) await host.emit({ type: "diagnostic", phase: "mock", message: mockNote });
+      phase = "body";
       if (item.restoreProfile) {
         phase = "beforeEach";
         const checkpoint = await fixture.app.profile.checkpoint();

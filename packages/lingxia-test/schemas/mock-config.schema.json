@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://lingxia.app/schemas/mock-config.schema.json",
+  "title": "LingXia mock selection",
+  "description": "mocks/config.json in an lxapp: which calls mocks/index.ts answers in development. Absent, or without mock, everything is real.",
+  "type": "object",
+  "properties": {
+    "$schema": { "type": "string" },
+    "mock": {
+      "enum": ["all", "none"],
+      "description": "all: mocks/index.ts answers every call; none: the real backend does. Default none."
+    },
+    "overrides": {
+      "type": "array",
+      "description": "HTTP targets ('METHOD url-glob', '*' for any method) answered the other way: real under all, mocked under none (each must then be a handler key of mocks/index.ts).",
+      "uniqueItems": true,
+      "items": { "type": "string", "pattern": "^\\s*(\\*|[A-Za-z-]+)\\s+\\S" }
+    }
+  },
+  "additionalProperties": false
+}

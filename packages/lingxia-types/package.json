@@ -22,6 +22,9 @@
     "./process": {
       "types": "./dist/process.d.ts"
     },
+    "./mocks": {
+      "types": "./dist/mocks.d.ts"
+    },
     "./automation": {
       "types": "./dist/automation/index.d.ts",
       "import": "./dist/esm/automation/index.js",

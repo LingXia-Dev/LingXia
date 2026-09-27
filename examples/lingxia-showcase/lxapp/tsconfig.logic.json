@@ -18,6 +18,7 @@
     "shared/lib/native-events.ts",
     "shared/lib/todo-utils.ts",
     "provider.d.ts",
+    "mocks/**/*.ts",
     ".lingxia/types/**/*.d.ts"
   ],
   "exclude": ["node_modules", "dist", "tests"]

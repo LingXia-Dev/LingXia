@@ -13,7 +13,7 @@ import type { ScenarioReport } from "./report-types.js";
 import { runnerSetTimeout } from "./pending.js";
 
 /**
- * The scenario one spec installed with `t.app.scenario()`. Installing
+ * The scenario one spec installed with `t.app.mock.use()`. Installing
  * another replaces it (the host does the same for its run), and it is
  * removed when the spec ends.
  */
@@ -97,8 +97,9 @@ function validTarget(target: unknown): target is ScenarioCallTarget {
 }
 
 /**
- * `t.app.scenario(file, variant?)`: the host installs it for the run; the
- * fixture removes it when the spec ends and traces every call.
+ * `t.app.mock.use(file, variant?)`: the host installs the scenario for the
+ * run, on top of the mock selection; the fixture removes it when the spec
+ * ends and traces every call.
  */
 export function installScenario(
   resolve: () => LxAppDriver,
@@ -107,10 +108,10 @@ export function installScenario(
   definition: ScenarioInput,
   variant?: string,
 ): Promise<TestScenario> {
-  return host.act("scenario", describeScenario(definition, variant), async () => {
+  return host.act("mock.use", describeScenario(definition, variant), async () => {
     const raw = variant === undefined
-      ? await resolve().scenario(definition)
-      : await resolve().scenario(definition, variant);
+      ? await resolve().mock.use(definition)
+      : await resolve().mock.use(definition, variant);
     const label = scenarioLabel(definition, variant);
     scope.track(host, raw, label);
     const read = async (filter?: ScenarioCallFilter) => (await raw.calls(filter)).map(scenarioCall);
@@ -139,4 +140,23 @@ export function installScenario(
     };
     return wrapped;
   });
+}
+
+/**
+ * Each spec starts with fresh mock handler state: the app evaluates
+ * `mocks/index.ts` again on its next call. Returns why a companion could
+ * not do the same for the run's Functions, once per run (`reasons` holds
+ * what was already said).
+ */
+export async function resetMocks(driver: LxAppDriver, reasons: Set<string>): Promise<string | undefined> {
+  const mock = (driver as Partial<LxAppDriver>).mock;
+  // A host that predates mocks has nothing to reset.
+  if (!mock || typeof mock.reset !== "function") return undefined;
+  const result = await mock.reset();
+  const reason = result.function && result.function.reset === false
+    ? result.function.reason ?? "the companion cannot start its handler state over"
+    : undefined;
+  if (reason === undefined || reasons.has(reason)) return undefined;
+  reasons.add(reason);
+  return `mock handler state of the Functions is not reset per spec: ${reason}`;
 }

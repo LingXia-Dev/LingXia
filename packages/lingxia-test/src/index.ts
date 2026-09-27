@@ -52,6 +52,7 @@ export type {
   TestClock,
   TestErrorCode,
   TestLogic,
+  TestMock,
   TestNav,
   TestNetwork,
   TestRoute,

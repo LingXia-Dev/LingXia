@@ -240,14 +240,14 @@ type FixtureHasNoApps = Fixture['apps'];
 spec('network calls', async (t) => {
   const route = await t.app.network.route('**/devices', { json: [] });
   const calls: NetworkCall[] = await route.calls();
-  calls[0]?.answeredBy satisfies 'rule' | 'route' | 'real' | 'companion';
+  calls[0]?.answeredBy satisfies 'rule' | 'route' | 'mock' | 'real' | 'companion';
   const first: NetworkCall = await route.waitForCall({ timeout: 2_000 });
   first.method?.toUpperCase();
   first.status?.toFixed();
   const removed: void = await route.remove();
   const all: void = await t.app.network.removeAll();
   const spec: NetworkCall[] = await t.app.network.calls();
-  const scenario = await t.app.scenario({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
+  const scenario = await t.app.mock.use({ rules: [{ http: 'GET **/x', json: {} }] }, undefined);
   const hit: NetworkCall = await scenario.waitForCall({ http: 'GET **/x' });
   const fn: NetworkCall = await scenario.waitForCall({ function: 'orders.submit' }, { timeout: 1_000 });
   hit.rule?.toFixed(); fn.function?.toUpperCase();
@@ -258,6 +258,14 @@ spec('network calls', async (t) => {
   // @ts-expect-error The raw driver's `requests()` is `calls()` on the fixture.
   await route.requests();
   void removed; void all; void spec; void scenarioCalls; void gone;
+  // The test API selects no mocks: the session's selection applies, and
+  // only a scenario state goes on top.
+  // @ts-expect-error scenarios are `t.app.mock.use()`
+  await t.app['scenario']({ rules: [] });
+  // @ts-expect-error `lxdev mock` and `lingxia dev --mock` select, not specs
+  await t.app.mock.all();
+  // @ts-expect-error each spec starts fresh already
+  await t.app.mock.reset();
 });
 
 // The fixture app has its own shapes (view, logic, calls, clock state,

@@ -132,7 +132,8 @@ spec("reject network routes from inside app Logic", {
 spec("serve a scenario file with a sequence, relative times and file-order precedence", {
   id: "AUT-NET-004",
   covers: [
-    'LxAppDriver.scenario',
+    'LxAppDriver.mock',
+    'MockDriver.use',
     'Scenario.name',
     'Scenario.variant',
     'Scenario.rules',
@@ -143,7 +144,7 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-004");
 
-  const scenario = await app.scenario(outage);
+  const scenario = await app.mock.use(outage);
   expect(scenario.name).toBe('showcase-outage');
   expect(scenario.variant).toBe(null);
   expect(scenario.rules.map((rule) => rule.target)).toEqual(outage.rules.map((rule) => rule.http));
@@ -187,27 +188,27 @@ spec("serve a scenario file with a sequence, relative times and file-order prece
 
 spec("reject a scenario the host cannot install, naming the rule", {
   id: "AUT-NET-006",
-  covers: ['LxAppDriver.scenario'],
+  covers: ['MockDriver.use'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-006");
   await t.reject(
-    () => app.scenario({ rules: [{ http: `GET ${BASE}/x`, stauts: 200 }] }),
+    () => app.mock.use({ rules: [{ http: `GET ${BASE}/x`, stauts: 200 }] }),
     { message: "rules[0]: unknown route handler option 'stauts'" },
   );
   await t.reject(
     // The old `routes` form, as an older file would still have it.
-    () => app.scenario({ routes: [{ url: `${BASE}/x`, status: 200 }] } as object as ScenarioInput),
+    () => app.mock.use({ routes: [{ url: `${BASE}/x`, status: 200 }] } as object as ScenarioInput),
     { message: "'routes' is the old scenario format" },
   );
   await t.reject(
-    () => app.scenario(status, 'degraded'),
+    () => app.mock.use(status, 'degraded'),
     { message: "no variant 'degraded' (variants: " },
   );
   // Function rules need a companion that answers them; this session has
   // none, so nothing of the scenario is installed.
   await t.reject(
-    () => app.scenario({
+    () => app.mock.use({
       rules: [
         { http: `GET ${BASE}/status`, status: 200 },
         { function: 'orders.submit', fault: 'unknown' },
@@ -219,7 +220,7 @@ spec("reject a scenario the host cannot install, naming the rule", {
 
 spec("switch a scenario's variant mid-spec and answer renames by their JSON body", {
   id: "AUT-NET-007",
-  covers: ['LxAppDriver.scenario', 'Scenario.variant', 'Scenario.calls', 'Scenario.rules'],
+  covers: ['MockDriver.use', 'Scenario.variant', 'Scenario.calls', 'Scenario.rules'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
   const { app } = bindFixture(t, "AUT-NET-007");
@@ -232,13 +233,13 @@ spec("switch a scenario's variant mid-spec and answer renames by their JSON body
     return { status: response.status, up: (await response.json() as { up: boolean }).up };
   }, `${BASE}/status`);
 
-  const online = await app.scenario(status, 'online');
+  const online = await app.mock.use(status, 'online');
   expect(online.variant).toBe('online');
   expect(online.rules.map((rule) => rule.target)[0]).toBe(`GET ${BASE}/status`);
   expect(await readStatus()).toEqual({ status: 200, up: true });
 
   // The next call answers from the other variant.
-  const offline = await app.scenario(status, 'offline');
+  const offline = await app.mock.use(status, 'offline');
   expect(await readStatus()).toEqual({ status: 503, up: false });
 
   const result = await app.logic.eval(async (_scope, base) => {

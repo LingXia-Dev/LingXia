@@ -486,7 +486,7 @@ export interface TestNav {
 }
 
 /**
- * One call the app made, as `route.calls()`, `scenario.calls()` and
+ * One call the app made, as `route.calls()`, a scenario's `calls()` and
  * `t.app.network.calls()` list it.
  */
 export interface NetworkCall {
@@ -510,10 +510,11 @@ export interface NetworkCall {
   /** Request headers with lower-case names; calls a route handled only. */
   headers?: Record<string, string>;
   /**
-   * What answered: a scenario `rule`, a test `route`, the `real` backend, or
-   * the dev session's `companion` default for a Function no rule matched.
+   * What answered: a scenario `rule`, a test `route`, a `mock` handler
+   * (`mocks/`), the `real` backend, or the dev session's `companion` for a
+   * Function no rule matched.
    */
-  answeredBy: "rule" | "route" | "real" | "companion";
+  answeredBy: "rule" | "route" | "mock" | "real" | "companion";
   /** The scenario rule that answered (1-based). */
   rule?: number;
   /** `function`: `result`, `error`, `fault` or `default`. */
@@ -561,7 +562,20 @@ export interface TestNetwork {
 /** `scenario.waitForCall()` target: a rule's target as the file writes it, or its number. */
 export type ScenarioCallTarget = ScenarioCallFilter;
 
-/** The scenario `t.app.scenario()` installed, spec-scoped. */
+/** `t.app.mock`. */
+export interface TestMock {
+  /**
+   * Put the app into a product state from a scenario file (and one of its
+   * variants), on top of the mock selection: `http` rules answer Logic
+   * `fetch`, `function` rules go to the dev session's companion.
+   * Spec-scoped: a second call replaces the first, and the spec's end
+   * removes it. A failed spec reports its per-rule hits and the calls that
+   * reached it.
+   */
+  use(definition: ScenarioInput, variant?: string): Promise<TestScenario>;
+}
+
+/** The scenario `t.app.mock.use()` installed, spec-scoped. */
 export interface TestScenario {
   readonly name: string | null;
   readonly variant: string | null;
@@ -619,13 +633,12 @@ export interface TestApp {
   /** Spec-scoped test routing of Logic `fetch`. */
   readonly network: TestNetwork;
   /**
-   * Put the app into a product state from a scenario file (and one of its
-   * variants): `http` rules answer Logic `fetch`, `function` rules go to the
-   * dev session's companion. Spec-scoped: a second call replaces the first,
-   * and the spec's end removes it. A failed spec reports its per-rule hits
-   * and the calls that reached it.
+   * The app's mocks. Specs answer from the session's selection
+   * (`mocks/config.json`, over it `lingxia dev --mock`; live `lxdev mock`
+   * changes stand aside during a run), and each spec starts with fresh
+   * handler state and no scenario.
    */
-  scenario(definition: ScenarioInput, variant?: string): Promise<TestScenario>;
+  readonly mock: TestMock;
   /** Spec-scoped test clock for the app's Logic. */
   readonly clock: TestClock;
   /** Checkpoint and roll back the app's isolated data. */

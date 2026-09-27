@@ -1,0 +1,9 @@
+{
+  "$schema": "../../../../packages/lingxia-test/schemas/mock-config.schema.json",
+  "mock": "none",
+  "overrides": [
+    "GET https://api.example.com/lingxia-showcase/mocks/profile",
+    "PATCH https://api.example.com/lingxia-showcase/mocks/profile",
+    "GET https://api.example.com/lingxia-showcase/mocks/broken"
+  ]
+}
