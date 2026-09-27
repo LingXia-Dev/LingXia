@@ -100,7 +100,8 @@ pub struct TestOptions {
     pub paths: Vec<crate::test_select::TestPath>,
 
     /// List the selected specs (file:line, id, title, tags) without running
-    /// them; `--format json` for JSON
+    /// them; `--format json` for JSON. Without a session, read from the
+    /// source (computed values marked `~`)
     #[arg(long, conflicts_with = "cancel_active", help_heading = "Selection")]
     pub list: bool,
 
@@ -849,6 +850,77 @@ fn list(info: &SessionInfo, options: &TestOptions, selection: &Selection) -> Res
         0 => eprintln!("{} no specs match this selection", "test".cyan()),
         1 => eprintln!("{} 1 spec", "test".cyan()),
         n => eprintln!("{} {n} specs", "test".cyan()),
+    }
+    Ok(())
+}
+
+/// `lxdev test --list` with no session running: bundle the files (which
+/// runs the bundle-time checks), then list the spec calls as the source
+/// states them. Says so, because a computed title, id or tag, or a spec
+/// registered in a loop, is only known to a run.
+pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> {
+    options.check_output()?;
+    let machine = options.machine();
+    if options.output() == OutputFormat::Jsonl {
+        return Err(crate::test_select::usage(
+            "--list prints text or --format json",
+        ));
+    }
+    let ids = options
+        .last_failed
+        .as_deref()
+        .map(|run| resolve_report_path(run, &options.results_root()?))
+        .transpose()?
+        .map(|report| failed_ids(&report))
+        .transpose()?;
+    bundle_test_files(&selection.files, &selection.identity, Purpose::List)?;
+    let filters = crate::test_offline::Filters::new(
+        options.grep.as_deref(),
+        options.id.as_deref(),
+        ids,
+        &options.tags,
+        options.shard.as_deref(),
+        selection.locations.clone(),
+        options.forbid_only,
+    )?;
+    let cwd = std::env::current_dir()?;
+    let specs = crate::test_offline::list(&selection.files, &selection.root, &cwd, &filters)?;
+    let inexact = specs.iter().filter(|spec| !spec.exact).count();
+    if machine {
+        let value = json!({
+            "schema_version": 1,
+            "kind": "list",
+            "offline": true,
+            "specs": specs.iter().map(crate::test_offline::to_json).collect::<Vec<_>>(),
+        });
+        let encoded = if options.pretty {
+            serde_json::to_string_pretty(&value)
+        } else {
+            serde_json::to_string(&value)
+        }?;
+        println!("{encoded}");
+        return Ok(());
+    }
+    let rows: Vec<serde_json::Value> = specs
+        .iter()
+        .map(crate::test_offline::to_listing_row)
+        .collect();
+    print!("{}", crate::test_select::format_listing(&rows));
+    let count = match specs.len() {
+        0 => "no specs match this selection".to_string(),
+        1 => "1 spec".to_string(),
+        n => format!("{n} specs"),
+    };
+    eprintln!(
+        "{} {count}, listed offline from the source (no session is running)",
+        "test".cyan()
+    );
+    if inexact > 0 {
+        eprintln!(
+            "{} {inexact} marked ~: a computed title, id or tag, or registered in a loop; a run \
+             may list them differently. With `lingxia dev` running, --list is exact",
+            "test".cyan()
+        );
     }
     Ok(())
 }

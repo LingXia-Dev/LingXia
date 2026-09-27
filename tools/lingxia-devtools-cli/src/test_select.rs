@@ -5,7 +5,10 @@ use crate::test_bundle::{collect_test_files, find_project_root, source_name};
 use anyhow::{Context, Result, anyhow};
 use oxc_allocator::Allocator;
 use oxc_ast::AstKind;
-use oxc_ast::ast::{Argument, Expression, ImportDeclarationSpecifier};
+use oxc_ast::ast::{
+    Argument, ArrayExpressionElement, Expression, ImportDeclarationSpecifier, ObjectExpression,
+    ObjectPropertyKind,
+};
 use oxc_ast_visit::Visit;
 use oxc_parser::Parser;
 use oxc_span::{GetSpan, SourceType};
@@ -230,20 +233,37 @@ pub fn format_listing(specs: &[serde_json::Value]) -> String {
         .collect()
 }
 
+/// A value read from the source, or one only running the file can tell.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Literal<T> {
+    Known(T),
+    Computed,
+}
+
 /// A spec registration in a source file: `spec(…)`, `spec.only(…)`, ….
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SpecCall {
     pub from: u32,
     pub to: u32,
     pub title: Option<String>,
+    /// `only`, `skip`, `fixme` or `fail`; `None` for a plain `spec(…)`.
+    pub modifier: Option<String>,
+    /// The `id` option: `Known(None)` when the call gives none.
+    pub id: Literal<Option<String>>,
+    /// The `tags` option, without the file's.
+    pub tags: Literal<Vec<String>>,
+    /// Inside a function or a loop: it may register any number of times.
+    pub repeated: bool,
 }
 
 /// Every spec call of a file, and the line span of every other syntax node
 /// that contains one (a loop, a helper function, a grouping call).
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct SpecMap {
     pub calls: Vec<SpecCall>,
     groups: Vec<(u32, u32)>,
+    /// The tags `spec.configure({ tags })` gives every spec in the file.
+    pub file_tags: Literal<Vec<String>>,
 }
 
 const SPEC_MODIFIERS: [&str; 4] = ["skip", "only", "fixme", "fail"];
@@ -278,6 +298,8 @@ impl SpecMap {
             lines: LineIndex::new(source),
             calls: Vec::new(),
             nodes: Vec::new(),
+            file_tags: Literal::Known(Vec::new()),
+            nesting: 0,
         };
         finder.visit_program(&parsed.program);
         let groups = finder
@@ -294,6 +316,7 @@ impl SpecMap {
         Ok(Self {
             calls: finder.calls,
             groups,
+            file_tags: finder.file_tags,
         })
     }
 
@@ -385,17 +408,119 @@ struct SpecFinder {
     lines: LineIndex,
     calls: Vec<SpecCall>,
     nodes: Vec<(u32, u32)>,
+    file_tags: Literal<Vec<String>>,
+    /// Functions and loops around the node being visited.
+    nesting: u32,
+}
+
+/// What a callee on the spec API is.
+enum SpecCallee {
+    /// `spec(…)`, or `spec.MODIFIER(…)` with the modifier.
+    Spec(Option<String>),
+    Configure,
 }
 
 impl SpecFinder {
-    fn is_spec_callee(&self, callee: &Expression<'_>) -> bool {
+    fn spec_callee(&self, callee: &Expression<'_>) -> Option<SpecCallee> {
         let named = |expression: &Expression<'_>| matches!(expression, Expression::Identifier(id) if self.names.iter().any(|name| name == id.name.as_str()));
         match callee {
-            Expression::StaticMemberExpression(member) => {
-                named(&member.object) && SPEC_MODIFIERS.contains(&member.property.name.as_str())
+            Expression::StaticMemberExpression(member) if named(&member.object) => {
+                let property = member.property.name.as_str();
+                if SPEC_MODIFIERS.contains(&property) {
+                    Some(SpecCallee::Spec(Some(property.to_string())))
+                } else if property == "configure" {
+                    Some(SpecCallee::Configure)
+                } else {
+                    None
+                }
             }
-            other => named(other),
+            other if named(other) => Some(SpecCallee::Spec(None)),
+            _ => None,
         }
+    }
+}
+
+fn opens_scope(kind: &AstKind<'_>) -> bool {
+    matches!(
+        kind,
+        AstKind::Function(_)
+            | AstKind::ArrowFunctionExpression(_)
+            | AstKind::ForStatement(_)
+            | AstKind::ForInStatement(_)
+            | AstKind::ForOfStatement(_)
+            | AstKind::WhileStatement(_)
+            | AstKind::DoWhileStatement(_)
+    )
+}
+
+fn string_literal(expression: &Expression<'_>) -> Option<String> {
+    match expression {
+        Expression::StringLiteral(literal) => Some(literal.value.as_str().to_string()),
+        Expression::TemplateLiteral(template) => template
+            .single_quasi()
+            .map(|text| text.as_str().to_string()),
+        _ => None,
+    }
+}
+
+/// `id` and `tags` from an options object literal.
+fn literal_options(
+    object: &ObjectExpression<'_>,
+) -> (Literal<Option<String>>, Literal<Vec<String>>) {
+    let mut id = Literal::Known(None);
+    let mut tags = Literal::Known(Vec::new());
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            // A spread may carry either.
+            return (Literal::Computed, Literal::Computed);
+        };
+        let key = if property.computed {
+            None
+        } else {
+            property.key.static_name()
+        };
+        match key.as_deref() {
+            Some("id") => {
+                id = string_literal(&property.value)
+                    .map_or(Literal::Computed, |id| Literal::Known(Some(id)))
+            }
+            Some("tags") => tags = literal_tags(&property.value),
+            Some(_) => {}
+            None => return (Literal::Computed, Literal::Computed),
+        }
+    }
+    (id, tags)
+}
+
+fn literal_tags(expression: &Expression<'_>) -> Literal<Vec<String>> {
+    let Expression::ArrayExpression(array) = expression else {
+        return Literal::Computed;
+    };
+    let mut tags = Vec::new();
+    for element in &array.elements {
+        let tag = match element {
+            ArrayExpressionElement::StringLiteral(literal) => literal.value.as_str().to_string(),
+            ArrayExpressionElement::TemplateLiteral(template) => match template.single_quasi() {
+                Some(text) => text.as_str().to_string(),
+                None => return Literal::Computed,
+            },
+            _ => return Literal::Computed,
+        };
+        tags.push(tag);
+    }
+    Literal::Known(tags)
+}
+
+/// The options argument of a spec call: `spec(title, options?, body?)`.
+fn call_options(arguments: &[Argument<'_>]) -> (Literal<Option<String>>, Literal<Vec<String>>) {
+    match arguments.get(1) {
+        None
+        | Some(Argument::ArrowFunctionExpression(_))
+        | Some(Argument::FunctionExpression(_)) => {
+            (Literal::Known(None), Literal::Known(Vec::new()))
+        }
+        Some(Argument::ObjectExpression(object)) => literal_options(object),
+        Some(_) => (Literal::Computed, Literal::Computed),
     }
 }
 
@@ -406,24 +531,63 @@ impl<'a> Visit<'a> for SpecFinder {
         }
         let span = kind.span();
         let range = (self.lines.line(span.start), self.lines.line(span.end));
-        if let AstKind::CallExpression(call) = kind
-            && self.is_spec_callee(&call.callee)
-        {
-            let title = match call.arguments.first() {
-                Some(Argument::StringLiteral(literal)) => Some(literal.value.as_str().to_string()),
-                Some(Argument::TemplateLiteral(template)) => template
-                    .single_quasi()
-                    .map(|text| text.as_str().to_string()),
-                _ => None,
-            };
-            self.calls.push(SpecCall {
-                from: range.0,
-                to: range.1,
-                title,
-            });
-            return;
+        let callee = match kind {
+            AstKind::CallExpression(call) => {
+                self.spec_callee(&call.callee).map(|callee| (callee, call))
+            }
+            _ => None,
+        };
+        match callee {
+            Some((SpecCallee::Spec(modifier), call)) => {
+                let title = match call.arguments.first() {
+                    Some(Argument::StringLiteral(literal)) => {
+                        Some(literal.value.as_str().to_string())
+                    }
+                    Some(Argument::TemplateLiteral(template)) => template
+                        .single_quasi()
+                        .map(|text| text.as_str().to_string()),
+                    _ => None,
+                };
+                let (id, tags) = call_options(&call.arguments);
+                self.calls.push(SpecCall {
+                    from: range.0,
+                    to: range.1,
+                    title,
+                    modifier,
+                    id,
+                    tags,
+                    repeated: self.nesting > 0,
+                });
+                return;
+            }
+            Some((SpecCallee::Configure, call)) => {
+                let tags = match call.arguments.first() {
+                    Some(Argument::ObjectExpression(object)) => literal_options(object).1,
+                    _ => Literal::Computed,
+                };
+                self.file_tags = match (
+                    std::mem::replace(&mut self.file_tags, Literal::Computed),
+                    tags,
+                ) {
+                    (Literal::Known(mut all), Literal::Known(more)) if self.nesting == 0 => {
+                        all.extend(more);
+                        Literal::Known(all)
+                    }
+                    _ => Literal::Computed,
+                };
+            }
+            None => {}
+        }
+        if opens_scope(&kind) {
+            self.nesting += 1;
         }
         self.nodes.push(range);
+    }
+
+    fn leave_node(&mut self, kind: AstKind<'a>) {
+        if opens_scope(&kind) {
+            self.nesting -= 1;
+        }
     }
 }
 

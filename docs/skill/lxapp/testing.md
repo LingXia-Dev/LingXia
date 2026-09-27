@@ -345,13 +345,16 @@ lxdev test                        # everything (lxdev.json test.entry; else test
 lxdev test tests/cart.test.ts:42  # the one spec at (or enclosing) line 42
 lxdev test --grep "empty cart"    # by title (or --id ID)
 lxdev test --last-failed          # what failed last time
-lxdev test --list                 # list specs without running them
+lxdev test --list                 # list specs without running them (no session needed)
 lxdev test report --failures      # reprint the last run, no session needed
 ```
 
 - Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
   `junit.xml`); `test-results/latest` is the last run.
 - A failed spec prints a `Rerun:` line.
+- `--list` without a session bundles the files (the same checks as a run)
+  and reads the specs from the source; `~` marks a computed title, id or
+  tag, or a spec registered in a loop, which a run may list differently.
 - `--retries N` needs `spec.reset`; `--shard 1/3` needs separate sessions.
 - `--cancel-active` cancels a run left behind by a client that exited.
 - Saves during a run rebuild once it ends. Keep files that setup generates

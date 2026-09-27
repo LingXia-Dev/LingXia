@@ -3590,6 +3590,7 @@ dependencies = [
  "oxc_sourcemap",
  "oxc_span",
  "oxc_transformer",
+ "regex",
  "serde",
  "serde_json",
  "serde_yaml_ng",
