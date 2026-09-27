@@ -58,7 +58,7 @@ lxdev test tests/pages/notes.test.ts
 | Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
 | Fake Logic `fetch` / `Rong.SSE` | `t.app.network.route(pattern, handler)`; [Faking the network](#faking-the-network) |
-| Load a scenario file | `t.app.scenario(json, variant?)`; [Scenarios in specs](#scenarios-in-specs) |
+| Load a scenario file | `t.app.mock.use(json, variant?)`; [Scenarios in specs](#scenarios-in-specs) |
 | Check responses against OpenAPI | `--openapi`, `toMatchSchema`; [Contract checks](#contract-checks) |
 | Tag specs, file defaults | `spec(title, { tags }, body)`, `spec.configure({ timeout, fresh, tags, requires, … })` |
 | Skip without an input | `spec(title, { requires: { args: ['PASSWORD'], openapi: true } }, body)` |
@@ -200,13 +200,14 @@ answer of the sequence ([consuming SSE](./lx-api.md#web-globals)).
 
 ### Scenarios in specs
 
-A [scenario file](./scenarios.md) serves specs too:
+A [scenario file](./mock.md#scenarios) serves specs too, on top of the
+session's [mock selection](./mock.md):
 
 ```ts
 import checkout from '../scenarios/checkout.json';
 
 spec('an unknown payment result settles as paid', async (t) => {
-  const scenario = await t.app.scenario(checkout, 'unknown');
+  const scenario = await t.app.mock.use(checkout, 'unknown');
   await t.app.nav.relaunch({ page: 'checkout' });
   await t.app.view.testId('pay').click();
   await expect(t.app.view.testId('paid')).toBeVisible();
@@ -216,7 +217,7 @@ spec('an unknown payment result settles as paid', async (t) => {
 ```
 
 - One scenario per spec; a second call replaces it. Routes take precedence
-  over its rules.
+  over its rules. Each spec starts with fresh mock handler state.
 - It returns `{ name, variant, rules, calls(filter?), waitForCall(target),
   remove() }`; filter with `{ http: 'METHOD url' }`, `{ function: 'name' }`,
   or `{ rule: n }`.
@@ -332,7 +333,8 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`t.arg('k')` throws** when missing; pass `{ default }` or
   `{ required: false }`.
 - **Timeouts never outlive the spec**; a longer one is clamped.
-- **A dev scenario** from `lxdev scenario use` stands aside during a run.
+- **Live `lxdev mock` changes** (scenarios and selections) stand aside
+  during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
 
 ## Running
 

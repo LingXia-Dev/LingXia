@@ -121,7 +121,7 @@ never add them to a project.
 | `lingxia` commands: new, dev, build, package, devices, upgrade | [cli/lingxia.md](./cli/lingxia.md) |
 | Drive a running session: `lxdev` lxapp/runner/host/browser/logs | [cli/lxdev.md](./cli/lxdev.md) |
 | Write and run specs (`@lingxia/test`, `lxdev test`) | [lxapp/testing.md](./lxapp/testing.md) |
-| Scenario files and `lxdev scenario` / `lxdev network` | [lxapp/scenarios.md](./lxapp/scenarios.md) |
+| Mocks and scenarios: `mocks/`, `lxdev mock`, `lingxia dev --mock`, `t.app.mock.use` | [lxapp/mock.md](./lxapp/mock.md) |
 | **Lxapp** | |
 | Pages: `Page({})`, View hooks, lifecycle, events, `App({})`, tab bar, page chrome | [lxapp/guide.md](./lxapp/guide.md) |
 | `setData`, streams, channels | [lxapp/bridge.md](./lxapp/bridge.md) |

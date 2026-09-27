@@ -57,6 +57,7 @@ lingxia dev ../my-lxapp                    # Runner target elsewhere; state stay
 lingxia dev <http(s)://url> --headless --background
 lingxia dev -p runner                      # the Runner explicitly
 lingxia dev --display-language sr-Latn-RS  # or auto; this process only
+lingxia dev --background --mock all        # answer from mocks/ (CI against mocks)
 ```
 
 - **Takeover.** Re-running for the same platform stops that project's session
@@ -69,6 +70,9 @@ lingxia dev --display-language sr-Latn-RS  # or auto; this process only
   started, prints the log tail, and exits non-zero.
 - **Names.** `--name NAME` gives a stable alias for `lxdev --session` and
   `lingxia dev stop`.
+- **Mocks.** `--mock all|none` answers the session from `mocks/` handlers or
+  the real backend from its first request, replacing `mocks/config.json`;
+  the ready output prints the selection. [Mocks](../lxapp/mock.md).
 - **Stop.** `lingxia dev stop [SESSION]` ends a session (exit 0 when none).
   `lxdev session` lists live ones.
 - **Version skew.** `dev`, `build`, and `lxdev test` fail fast when the CLI,
