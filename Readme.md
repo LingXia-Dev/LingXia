@@ -93,7 +93,7 @@ Browse the source directly at [docs/skill/SKILL.md](docs/skill/SKILL.md) — tha
 | Install CLI and create the first project | [docs/quick-start.md](docs/quick-start.md) |
 | Agent entrypoint and topic router | [docs/skill/SKILL.md](docs/skill/SKILL.md) |
 | Page authoring, `Page({})`, `useLxPage`, events | [docs/skill/lxapp/guide.md](docs/skill/lxapp/guide.md) |
-| Native components such as `LxInput`, `LxVideo`, `LxPicker` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
+| Native components such as `LxVideo`, `LxPicker` | [docs/skill/lxapp/components.md](docs/skill/lxapp/components.md) |
 | Logic-side `lx.*` API surface | [docs/skill/lxapp/lx-api.md](docs/skill/lxapp/lx-api.md) |
 | Bridge mechanics: `setData`, stream, channel | [docs/skill/lxapp/bridge.md](docs/skill/lxapp/bridge.md) |
 | Host project config and `lingxia.yaml` | [docs/skill/app/project.md](docs/skill/app/project.md) |
