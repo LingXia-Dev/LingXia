@@ -73,8 +73,8 @@ spec("route Logic fetch to a faked error and a transport failure", {
   ]);
 
   // `times: 1` already retired the PATCH route; removing it again is no error.
-  expect(await patch.unroute()).toBeUndefined();
-  expect(await app.network.unrouteAll()).toBeUndefined();
+  expect(await patch.remove()).toBeUndefined();
+  expect(await app.network.removeAll()).toBeUndefined();
 });
 
 spec("reject a route handler that mixes fulfill and abort", {

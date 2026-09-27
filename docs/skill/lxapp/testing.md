@@ -195,7 +195,7 @@ spec('rename shows the not-implemented error', async (t) => {
   await t.app.network.route('**/v1/devices', { continue: true, patchJson: { items: [], total: 0 } });
   await t.app.network.route('**/v1/status', { hang: true });
   ```
-- `route()` returns `{ id, pattern, unroute(), calls(), waitForCall() }`.
+- `route()` returns `{ id, pattern, remove(), calls(), waitForCall() }`.
   Every call list (`route.calls()`, `t.app.network.calls()`,
   `scenario.calls()`) holds one record: `{ time, kind, method, url, status,
   body, headers, answeredBy: 'rule' | 'route' | 'real' | 'companion', rule? }`
@@ -204,7 +204,7 @@ spec('rename shows the not-implemented error', async (t) => {
 - `waitForCall({ timeout? })` resolves with the next call the route handled
   that no earlier wait returned, including one made before the wait; on
   timeout it rejects with `E_TIMEOUT` listing the recent calls.
-- `unroute()` and `unrouteAll()` resolve nothing. Routes last one spec and
+- `remove()` and `removeAll()` resolve nothing. Routes last one spec and
   work only in a `lxdev test` run; `t.app.network.calls()` lists only this
   spec's routes.
 

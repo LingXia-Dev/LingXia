@@ -68,8 +68,8 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     }]);
     assert.equal((await t.app.network.calls()).length, 1);
     assert.equal(network.routes.size, 1);
-    assert.equal(await route.unroute(), undefined);
-    assert.equal(await t.app.network.unrouteAll(), undefined);
+    assert.equal(await route.remove(), undefined);
+    assert.equal(await t.app.network.removeAll(), undefined);
   });
   spec("second", async (t) => {
     seenAfterFirst = network.routes.size;

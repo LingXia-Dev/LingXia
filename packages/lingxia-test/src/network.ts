@@ -182,7 +182,7 @@ export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, sco
     return {
       get id() { return route.id; },
       get pattern() { return route.pattern; },
-      unroute: () => host.act("network.unroute", route.pattern, async () => { await route.unroute(); }),
+      remove: () => host.act("network.remove", route.pattern, async () => { await route.unroute(); }),
       calls: () => host.act("network.calls", route.pattern, calls),
       waitForCall: (options?: WaitForCallOptions) =>
         waitForNextCall(host, "network.waitForCall", `route ${route.pattern}`, calls, calls, cursor, options),
@@ -195,7 +195,7 @@ export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, sco
         scope.track(host, route);
         return wrapRoute(route);
       }),
-    unrouteAll: () => host.act("network.unrouteAll", "", async () => { await driver().unrouteAll(); }),
+    removeAll: () => host.act("network.removeAll", "", async () => { await driver().unrouteAll(); }),
     // Spec-scoped: the host log spans the whole run.
     calls: () =>
       host.act("network.calls", "", async () =>

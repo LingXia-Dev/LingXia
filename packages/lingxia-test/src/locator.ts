@@ -12,7 +12,7 @@ import {
 import { displayLocation } from "./ids.js";
 import type {
   ActionOptions,
-  ExpectOptions,
+  InputOptions,
   Locator,
   LocatorFilterOptions,
   LocatorOptions,
@@ -153,7 +153,7 @@ export class PageLocator implements Locator {
 
   // Actions return the fixture's own call, not a wrapper around it: a call
   // the spec never awaited is then the very promise the runtime stops.
-  press(key: string, options?: ExpectOptions): Promise<void> {
+  press(key: string, options?: InputOptions): Promise<void> {
     if (!this.page.press) return Promise.reject(new Error("This page driver does not support press"));
     return this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }));
   }
@@ -170,7 +170,7 @@ export class PageLocator implements Locator {
       this.page.fill({ page: this.options.page, css, text, index, ...(force ? { force } : {}) }));
   }
 
-  type(text: string, options?: ExpectOptions): Promise<void> {
+  type(text: string, options?: InputOptions): Promise<void> {
     return this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }));
   }
 
@@ -409,9 +409,9 @@ export class PageLocator implements Locator {
   ): Promise<void> {
     const force = options?.force === true;
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
-    const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
-    if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
-      return Promise.reject(new TypeError("Action timeout and interval must be positive finite numbers"));
+    const interval = DEFAULT_POLL_INTERVAL_MS;
+    if (!Number.isFinite(timeout) || timeout <= 0) {
+      return Promise.reject(new TypeError("Action timeout must be a positive finite number"));
     }
     const deadline = new ActionDeadline(timeout, this.room());
     const context = () => this.callContext(verb);

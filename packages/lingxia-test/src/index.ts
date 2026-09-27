@@ -13,6 +13,7 @@ export type {
   FailOptions,
   FileOptions,
   Fixture,
+  InputOptions,
   JsonValue,
   Jsonable,
   Locator,

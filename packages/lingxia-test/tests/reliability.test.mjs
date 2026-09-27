@@ -89,7 +89,7 @@ test('locator waits for enabled state, geometry stability and hit testing', asyn
   installFakeHost(world);
   spec('waits', async t => {
     const change = (async () => { await delay(30); el.enabled = true; await delay(30); hit = true; })();
-    await t.app.view.testId('save').click({timeout:500, interval:10});
+    await t.app.view.testId('save').click({timeout:500});
     await change;
   });
   assert.equal((await run()).passed, 1);
@@ -102,7 +102,7 @@ test('input transport errors are not blindly retried', async () => {
   let dispatched = 0;
   world.app.page.click = async () => { dispatched++; throw new Error('connection lost after dispatch'); };
   installFakeHost(world);
-  spec('one submission', {forensics:false}, t => t.app.view.testId('save').click({interval:1}));
+  spec('one submission', {forensics:false}, t => t.app.view.testId('save').click());
   const report = await run();
   assert.equal(dispatched, 1);
   assert.equal(report.failed, 1);
@@ -154,7 +154,7 @@ test('a native pre-dispatch rejection is retried safely', async () => {
     await click(options);
   };
   installFakeHost(world);
-  spec('state changed before dispatch', t => t.app.view.testId('save').click({timeout:500, interval:1}));
+  spec('state changed before dispatch', t => t.app.view.testId('save').click({timeout:500}));
   assert.equal((await run()).passed, 1);
   assert.equal(element.clicked, 1);
 });
@@ -193,7 +193,7 @@ test('hidden duplicates remain ambiguous and invalid indexes fail early', async 
   installFakeHost(world);
   spec('strict selection',{forensics:false},async t => {
     assert.throws(() => t.app.view.css('button').nth(-1), /non-negative integer/);
-    await assert.rejects(t.app.view.testId('duplicate').click({timeout:20,interval:2}), /2 matches/);
+    await assert.rejects(t.app.view.testId('duplicate').click({timeout:20}), /2 matches/);
   });
   assert.equal((await run()).failed,0);
 });
