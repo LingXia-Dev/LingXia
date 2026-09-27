@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect, reset, trackPublicSurface } from "../dist/index.js";
+import { spec, expect } from "../dist/index.js";
+import { reset, trackPublicSurface } from "../dist/runner.js";
 import { looksSecretKey } from "../dist/redact.js";
 
 afterEach(() => {

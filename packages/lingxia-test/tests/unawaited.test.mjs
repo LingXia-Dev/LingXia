@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { spec, reset, run, expect } from "../dist/index.js";
+import { spec, expect } from "../dist/index.js";
+import { reset, run } from "../dist/runner.js";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 
 afterEach(() => {

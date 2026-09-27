@@ -1,4 +1,4 @@
-import { trackPublicSurface } from '@lingxia/test';
+import { trackPublicSurface } from '@lingxia/test/runner';
 import '../setup.js';
 
 // The Showcase is LingXia's conformance suite: it intends to reach every

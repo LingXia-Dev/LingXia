@@ -8,7 +8,7 @@ import type {
   ReportError,
   SpecStatus,
   StepRecord,
-} from "./types.js";
+} from "./report-types.js";
 import {
   CAPABILITY_INDEX,
   LAYER_TITLE,

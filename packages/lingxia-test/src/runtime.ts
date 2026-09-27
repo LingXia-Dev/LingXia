@@ -11,25 +11,27 @@ import { ContractError, ContractLedger, parseOpenApiControl, setActiveOpenApi } 
 import { matchesTags, parseTagFilter, tagSummary, validateTags } from "./tags.js";
 import type { SpecApi } from "./spec-api.js";
 import type {
-  CaseRecord,
   FailOptions,
   FileOptions,
-  FailurePage,
-  FailureRecord,
   Fixture,
-  JsonReport,
   LingxiaTestController,
-  ListedSpec,
-  FailureNetworkCall,
-  ProtocolReport,
   RejectExpected,
-  RunSubject,
   SpecBody,
   SpecOptions,
   SpecRequirements,
+} from "./types.js";
+import type {
+  CaseRecord,
+  FailurePage,
+  FailureRecord,
+  JsonReport,
+  ListedSpec,
+  FailureNetworkCall,
+  ProtocolReport,
+  RunSubject,
   SpecStatus,
   PageVisibility,
-} from "./types.js";
+} from "./report-types.js";
 import { VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, pageVisibility } from "./locator.js";
 import {
   DEFAULT_SPEC_TIMEOUT_MS,

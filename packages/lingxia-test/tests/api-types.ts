@@ -1,8 +1,8 @@
 import {
-  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError,
-  type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type FailureRecord, type JsonReport,
-  type LogicPage, type NetworkCall, type ProfileCheckpoint, type TagSummary, type TestApp, type TestErrorCode,
+  spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError, type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type LogicPage, type NetworkCall, type ProfileCheckpoint, type TestApp, type TestErrorCode,
 } from '../dist/index.js';
+import type { FailureRecord, JsonReport, TagSummary } from '@lingxia/test/report';
+import { run, trackPublicSurface, VERSION } from '@lingxia/test/runner';
 import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
 
 spec('typed test boundary', async t => {
@@ -317,3 +317,9 @@ void lx.automation();
 void setTimeout(() => {}, 1);
 void fetch;
 void console;
+
+// The main entry is for writing specs; running them and reading reports have their own.
+void run; void trackPublicSurface; VERSION.toUpperCase();
+// @ts-expect-error The runner is `@lingxia/test/runner`.
+import { run as mainRun } from '../dist/index.js';
+void mainRun;

@@ -30,19 +30,15 @@ import {
 } from "./locator.js";
 import type {
   ArgOptions,
-  AttachmentRef,
   ExpectOptions,
   Fixture,
-  AssertionRecord,
   Locator,
   LocatorMatchers,
   LocatorOptions,
   TestAutomation,
   RejectExpected,
   RetryMatchers,
-  ReportError,
   SourceLocation,
-  StepRecord,
   TestApp,
   JsonValue,
   EvalOptions,
@@ -57,6 +53,12 @@ import type {
   TestView,
   WaitForOptions,
 } from "./types.js";
+import type {
+  AttachmentRef,
+  AssertionRecord,
+  ReportError,
+  StepRecord,
+} from "./report-types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,

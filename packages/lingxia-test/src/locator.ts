@@ -18,9 +18,11 @@ import type {
   LocatorOptions,
   LocatorState,
   LocatorWaitOptions,
-  PageVisibility,
   SourceLocation,
 } from "./types.js";
+import type {
+  PageVisibility,
+} from "./report-types.js";
 import {
   DEFAULT_ACTION_TIMEOUT_MS,
   DEFAULT_POLL_INTERVAL_MS,

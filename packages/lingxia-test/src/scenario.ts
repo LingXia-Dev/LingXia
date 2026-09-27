@@ -8,7 +8,8 @@ import type {
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
 import { scenarioCall, waitForNextCall, type NetworkHost } from "./network.js";
-import type { ScenarioCallTarget, ScenarioReport, TestScenario, WaitForCallOptions } from "./types.js";
+import type { ScenarioCallTarget, TestScenario, WaitForCallOptions } from "./types.js";
+import type { ScenarioReport } from "./report-types.js";
 import { runnerSetTimeout } from "./pending.js";
 
 /**

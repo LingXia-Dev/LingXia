@@ -1,4 +1,4 @@
-import type { CaseRecord, JsonReport } from "./types.js";
+import type { CaseRecord, JsonReport } from "./report-types.js";
 import { PACKAGE_NAME } from "./version.js";
 
 /**

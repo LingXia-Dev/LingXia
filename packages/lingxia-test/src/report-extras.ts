@@ -3,7 +3,7 @@
  * `--openapi` contract, kept apart from the core report renderer.
  */
 import { escapeHtml } from "./format.js";
-import type { CaseRecord, ContractIssue, CoverageSummary, JsonReport, OpenApiSummary, TagSummary } from "./types.js";
+import type { CaseRecord, ContractIssue, CoverageSummary, JsonReport, OpenApiSummary, TagSummary } from "./report-types.js";
 
 function toneOf(status: string): string {
   if (status === "passed" || status === "xfail") return "pass";

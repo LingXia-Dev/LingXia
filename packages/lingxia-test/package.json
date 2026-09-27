@@ -11,6 +11,16 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./runner": {
+      "types": "./dist/runner.d.ts",
+      "import": "./dist/runner.js",
+      "default": "./dist/runner.js"
+    },
+    "./report": {
+      "types": "./dist/report-types.d.ts",
+      "import": "./dist/report-types.js",
+      "default": "./dist/report-types.js"
+    },
     "./package.json": "./package.json",
     "./schemas/*": "./schemas/*"
   },
@@ -53,6 +63,7 @@
   },
   "sideEffects": [
     "./dist/index.js",
+    "./dist/runner.js",
     "./dist/runtime.js"
   ]
 }

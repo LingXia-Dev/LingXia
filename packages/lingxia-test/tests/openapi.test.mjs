@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
-import { spec, expect, reset, run } from "../dist/index.js";
+import { spec, expect } from "../dist/index.js";
+import { reset, run } from "../dist/runner.js";
 import { validateSchema } from "../dist/schema.js";
 import { OpenApiIndex, compileTemplate, pathOf, templateMatches } from "../dist/openapi.js";
 

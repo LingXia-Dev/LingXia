@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, test } from 'node:test';
-import { spec, expect, run, reset } from '../dist/index.js';
+import { spec, expect } from '../dist/index.js';
+import { run, reset } from '../dist/runner.js';
 import { createWorld, installFakeHost } from './helpers/fake-host.mjs';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 afterEach(() => { reset(); delete globalThis.lx; delete globalThis.__LINGXIA_AUTOMATION_HOST__; });
