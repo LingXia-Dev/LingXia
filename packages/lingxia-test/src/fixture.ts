@@ -107,7 +107,8 @@ export class LiveFixture implements Fixture {
   private readonly openActions = new Set<StepRecord>();
   /** The spec's one hidden-page probe, run the first time a wait times out. */
   private hiddenProbe: Promise<string | undefined> | undefined;
-  private readonly inFlight = new Set<{ name: string; detail: string; started: number }>();
+  /** Fixture calls that have started and not settled; see `track`. */
+  private readonly inFlight = new Set<InFlightCall>();
   cleanupUntil = 0;
   cleanupActive = false;
   lastStepPath: string | undefined;
@@ -494,14 +495,61 @@ export class LiveFixture implements Fixture {
    * trace of what it did. Retry loops silence themselves: a five-second poll
    * would otherwise bury the report in a hundred identical rows.
    */
-  async act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
-    const call = { name, detail, started: Date.now() };
+  act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T> {
+    return this.track(name, detail, () => this.recordAct(name, detail, op));
+  }
+
+  /**
+   * Run one fixture call while it counts as in flight, so a body that
+   * returns without awaiting it can be named (with where it was started),
+   * and a timed-out body can say what it still awaits.
+   */
+  private track<T>(name: string, detail: string, op: () => Promise<T>, label?: string): Promise<T> {
+    const call: InFlightCall = { name, detail, label, started: Date.now(), origin: new Error() };
     this.inFlight.add(call);
-    try {
-      return await this.recordAct(name, detail, op);
-    } finally {
-      this.inFlight.delete(call);
-    }
+    const promise = (async () => {
+      try {
+        return await op();
+      } finally {
+        this.inFlight.delete(call);
+      }
+    })();
+    call.promise = promise;
+    return promise;
+  }
+
+  /**
+   * The fixture calls still running, as a body that returned without
+   * awaiting them left them: what each is and where the spec started it.
+   */
+  unsettledCalls(): Array<{ call: string; at: string; ageMs: number }> {
+    const now = Date.now();
+    return [...this.inFlight].map((entry) => {
+      const frame = resolveOrigin(parseFrames(entry.origin.stack));
+      return {
+        call: entry.label ?? (entry.detail ? `${entry.name} ${entry.detail}` : entry.name),
+        at: displayLocation(frame.file, frame.line, frame.column),
+        ageMs: now - entry.started,
+      };
+    });
+  }
+
+  /**
+   * Stop the calls a returned body left running: each fails at its next
+   * fixture guard or retry, and its rejection is marked handled (nobody
+   * awaits it). Resolves `true` once they settled, `false` if one is still
+   * waiting on the app after `ms`. The fixture is usable again afterwards,
+   * for cleanup.
+   */
+  async stopUnsettled(reason: Error, ms: number): Promise<boolean> {
+    for (const entry of this.inFlight) entry.promise?.catch(() => {});
+    this.aborted = true;
+    this.abortError = reason;
+    const deadline = Date.now() + ms;
+    while (this.inFlight.size > 0 && Date.now() < deadline) await sleep(10);
+    this.aborted = false;
+    this.abortError = null;
+    return this.inFlight.size === 0;
   }
 
   /**
@@ -961,14 +1009,16 @@ export class LiveFixture implements Fixture {
     return self as RetryMatchers<Awaited<T>>;
   }
 
-  private async retryLocator(
+  private retryLocator(
     locator: Locator,
     matcher: string,
     inverted: boolean,
     options: ExpectOptions | undefined,
     expected?: unknown,
   ): Promise<void> {
-    await this.guard(async () => {
+    const target = locator instanceof PageLocator ? locator.describe() : locator.selector;
+    const assertion = `${inverted ? "not." : ""}${matcher}`;
+    return this.track("expect", `${target} ${assertion}`, () => this.guard(async () => {
       const frame = callerLocation();
       const location = { source: frame.file, line: frame.line, column: frame.column };
       const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
@@ -1018,10 +1068,10 @@ export class LiveFixture implements Fixture {
         lastError,
         extra: [miss, hidden].filter(Boolean).join("\n") || undefined,
       });
-    });
+    }), `expect(${target}).${assertion}`);
   }
 
-  private async retryPoll<T>(
+  private retryPoll<T>(
     read: () => T | Promise<T>,
     matcher: string,
     inverted: boolean,
@@ -1029,7 +1079,9 @@ export class LiveFixture implements Fixture {
     expected: unknown,
     api: string,
   ): Promise<void> {
-    await this.guard(async () => {
+    const source = truncate(read.name || functionDetail(read), 60);
+    const assertion = `${inverted ? "not." : ""}${matcher}`;
+    return this.track(api, `${source} ${assertion}`, () => this.guard(async () => {
       const frame = callerLocation();
       const location = { source: frame.file, line: frame.line, column: frame.column };
       const deadline = new ActionDeadline(options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS, this.budgetRoom());
@@ -1072,7 +1124,7 @@ export class LiveFixture implements Fixture {
         location,
         lastError,
       });
-    });
+    }), `${api}(${source}).${assertion}`);
   }
 
   private deadlineContext(matcher: string, location: SourceLocation): string {
@@ -1119,6 +1171,17 @@ export class LiveFixture implements Fixture {
     });
     return new AssertionError(input.matcher, input.actual, input.expected, lines.join("\n"));
   }
+}
+
+interface InFlightCall {
+  name: string;
+  detail: string;
+  /** How a failure names the call, when not `name detail`. */
+  label?: string;
+  started: number;
+  /** Captured when the call started; its stack names the spec line. */
+  origin: Error;
+  promise?: Promise<unknown>;
 }
 
 /** Room left before the spec timer, so `t.waitFor` reports its own failure. */

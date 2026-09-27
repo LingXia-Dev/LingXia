@@ -149,39 +149,41 @@ export class PageLocator implements Locator {
       this.options, this.room, { ...this.refine, hasText }, this.probeOnce);
   }
 
-  async press(key: string, options?: ExpectOptions): Promise<void> {
-    if (!this.page.press) throw new Error("This page driver does not support press");
-    await this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }));
+  // Actions return the fixture's own call, not a wrapper around it: a call
+  // the spec never awaited is then the very promise the runtime stops.
+  press(key: string, options?: ExpectOptions): Promise<void> {
+    if (!this.page.press) return Promise.reject(new Error("This page driver does not support press"));
+    return this.act("press", options, (css, index) => this.page.press!({ page: this.options.page, css, index, key }));
   }
 
-  async click(options?: ActionOptions): Promise<void> {
+  click(options?: ActionOptions): Promise<void> {
     const force = options?.force === true;
-    await this.act("click", options, (css, index) =>
+    return this.act("click", options, (css, index) =>
       this.page.click({ page: this.options.page, css, index, ...(force ? { force } : {}) }));
   }
 
-  async fill(text: string, options?: ActionOptions): Promise<void> {
+  fill(text: string, options?: ActionOptions): Promise<void> {
     const force = options?.force === true;
-    await this.act("fill", options, (css, index) =>
+    return this.act("fill", options, (css, index) =>
       this.page.fill({ page: this.options.page, css, text, index, ...(force ? { force } : {}) }));
   }
 
-  async type(text: string, options?: ExpectOptions): Promise<void> {
-    await this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }));
+  type(text: string, options?: ExpectOptions): Promise<void> {
+    return this.act("type", options, (css, index) => this.page.type({ page: this.options.page, css, text, index }));
   }
 
-  async waitFor(options?: LocatorWaitOptions): Promise<void> {
+  waitFor(options?: LocatorWaitOptions): Promise<void> {
     const state: LocatorState = options?.state ?? "visible";
     if (!["attached", "detached", "visible", "hidden", "inViewport"].includes(state)) {
-      throw new TypeError(`Unknown locator state: ${String(state)}`);
+      return Promise.reject(new TypeError(`Unknown locator state: ${String(state)}`));
     }
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
     const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
-      throw new TypeError("Wait timeout and interval must be positive finite numbers");
+      return Promise.reject(new TypeError("Wait timeout and interval must be positive finite numbers"));
     }
     const deadline = new ActionDeadline(timeout, this.room());
-    await this.record("page.waitFor", `${this.target()} ${state}`, async () => {
+    return this.record("page.waitFor", `${this.target()} ${state}`, async () => {
       let reason = "";
       while (true) {
         try {
@@ -340,6 +342,11 @@ export class PageLocator implements Locator {
     return `locator ${formatValue(this.selector)} resolved to a visible element`;
   }
 
+  /** The page, selector and narrowing, as the trace and failures show it. */
+  describe(): string {
+    return this.target();
+  }
+
   private target(): string {
     const filter = this.refine.hasText === undefined ? "" : ` filter(hasText=${formatValue(this.refine.hasText)})`;
     const pick = this.refine.last ? " [last]" : this.options.index === undefined ? "" : ` [${this.options.index}]`;
@@ -393,7 +400,7 @@ export class PageLocator implements Locator {
     return result === true ? true : String(result ?? "invalid actionability response");
   }
 
-  private async act(
+  private act(
     verb: string,
     options: ActionOptions | undefined,
     run: (css: string, index: number) => Promise<void>,
@@ -402,11 +409,11 @@ export class PageLocator implements Locator {
     const timeout = options?.timeout ?? DEFAULT_ACTION_TIMEOUT_MS;
     const interval = options?.interval ?? DEFAULT_POLL_INTERVAL_MS;
     if (!Number.isFinite(timeout) || timeout <= 0 || !Number.isFinite(interval) || interval <= 0) {
-      throw new TypeError("Action timeout and interval must be positive finite numbers");
+      return Promise.reject(new TypeError("Action timeout and interval must be positive finite numbers"));
     }
     const deadline = new ActionDeadline(timeout, this.room());
     const context = () => this.callContext(verb);
-    await this.record(`page.${verb}`, this.target(), async () => {
+    return this.record(`page.${verb}`, this.target(), async () => {
       let last: LocatorResolve | undefined;
       let previousRect: string | undefined;
       let reason = "not attached";
