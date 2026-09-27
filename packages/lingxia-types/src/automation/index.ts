@@ -926,6 +926,12 @@ export interface ScenarioRuleInfo {
 
 /** One call that reached a scenario. */
 export interface ScenarioCall {
+  /**
+   * Increasing and never reused within its log: the scenario's for `http`
+   * calls, the dev companion's for `function` calls. Calls in one
+   * millisecond differ by it.
+   */
+  seq: number;
   /** Epoch milliseconds. */
   time: number;
   kind: 'http' | 'function';
@@ -950,6 +956,17 @@ export interface ScenarioCall {
 
 /** `calls()` filter: one rule's target, or its number. */
 export type ScenarioCallFilter = { http: string } | { function: string } | { rule: number };
+
+/**
+ * Calls of one bounded log with a `seq` above the one asked for, oldest
+ * first. The logs drop their oldest entries first: `droppedThrough` is the
+ * highest `seq` a trim took (0 when none), so a reader whose last `seq` is
+ * below it may have missed calls.
+ */
+export interface CallWindow<T> {
+  calls: T[];
+  droppedThrough: number;
+}
 
 /** `mock.reset()` result. */
 export interface MockResetResult {
@@ -989,12 +1006,23 @@ export interface Scenario {
   readonly rules: ScenarioRuleInfo[];
   /** Calls that reached the scenario since it was installed, oldest first. */
   calls(filter?: ScenarioCallFilter): Promise<ScenarioCall[]>;
+  /**
+   * Calls to one target with a `seq` above `after`. `droppedThrough` counts
+   * the log the target's kind reads (HTTP: the scenario's 200 calls;
+   * Function: the companion's log, across every Function).
+   */
+  callsAfter(target: ScenarioCallFilter, after: number): Promise<CallWindow<ScenarioCall>>;
   /** Remove the scenario; resolves how many rules were still installed. */
   unroute(): Promise<number>;
 }
 
 /** One request a route handled, as the app sent it. */
 export interface NetworkRouteRequest {
+  /**
+   * Increasing across the host's request log and never reused: requests in
+   * one millisecond differ by it, and a trim leaves a gap.
+   */
+  seq: number;
   routeId: number;
   /** The route's glob or `/source/flags`. */
   pattern: string;
@@ -1029,6 +1057,12 @@ export interface NetworkRoute {
   unroute(): Promise<boolean>;
   /** Requests this route handled, oldest first. */
   requests(): Promise<NetworkRouteRequest[]>;
+  /**
+   * Requests this route handled with a `seq` above `after`; `droppedThrough`
+   * is the highest `seq` of this route's requests the host log (1000
+   * entries, 16 MiB of bodies, shared by every app and run) dropped.
+   */
+  requestsAfter(after: number): Promise<{ requests: NetworkRouteRequest[]; droppedThrough: number }>;
 }
 
 /**

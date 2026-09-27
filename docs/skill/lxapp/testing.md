@@ -155,9 +155,11 @@ spec('rename shows the not-implemented error', async (t) => {
   - `{ hang: true }` — never answers, for spinners and client timeouts;
   - `{ sequence: [...] }` or `{ sse: [...] }` (below).
 - `route()` returns `{ id, pattern, remove(), calls(), waitForCall() }`. Call
-  records are `{ time, kind, method, url, status, body, headers, answeredBy,
-  rule? }`. `waitForCall({ timeout? })` resolves with the next call not yet
-  returned, including one made before the wait.
+  records are `{ seq, time, kind, method, url, status, body, headers,
+  answeredBy, rule? }`. `waitForCall({ timeout? })` resolves with the next
+  call not yet returned, including one made before the wait. Call logs are
+  bounded (the host's: 1000 requests across apps); if calls were dropped
+  before a wait read them, it fails naming the gap instead of skipping them.
 - Routes last one spec. A failed spec's report lists the app's last 20 Logic
   network calls.
 

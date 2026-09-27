@@ -235,6 +235,7 @@ impl JSScenario {
             .iter()
             .map(|call| {
                 let mut entry = json!({
+                    "seq": call.seq,
                     "time": call.time_ms,
                     "kind": "http",
                     "method": call.method,
@@ -254,14 +255,17 @@ impl JSScenario {
             .collect()
     }
 
-    async fn function_calls(&self, since: u64) -> Result<Vec<Value>, String> {
-        let params = json!({ "since": since, "owner": self.owner });
+    /// Function calls the companion saw since `since` with a `seq` above
+    /// `after`, and how far its log's drops reach.
+    async fn function_calls(&self, since: u64, after: u64) -> Result<(Vec<Value>, u64), String> {
+        let params = json!({ "since": since, "owner": self.owner, "after": after });
         let result = companion::request(method::SCENARIO_CALLS, params)
             .await
             .map_err(|err| format!("scenario calls: {}", err.message))?;
         let calls: protocol::CallsResult =
             serde_json::from_value(result).map_err(|err| format!("scenario calls: {err}"))?;
-        Ok(calls
+        let dropped_through = calls.dropped_through;
+        let list = calls
             .calls
             .into_iter()
             .filter(|call| {
@@ -276,6 +280,7 @@ impl JSScenario {
                     .and_then(|position| self.resolved.function_rule(position))
                     .map(|rule| rule.index);
                 let mut entry = json!({
+                    "seq": call.seq,
                     "time": call.time,
                     "kind": "function",
                     "function": call.function,
@@ -296,7 +301,8 @@ impl JSScenario {
                 }
                 entry
             })
-            .collect())
+            .collect();
+        Ok((list, dropped_through))
     }
 }
 
@@ -408,14 +414,65 @@ impl JSScenario {
         let mut out = self.http_calls(&calls);
         if current.companion && filter.wants_functions() {
             out.extend(
-                self.function_calls(current.installed_ms)
+                self.function_calls(current.installed_ms, 0)
                     .await
-                    .map_err(auto_err)?,
+                    .map_err(auto_err)?
+                    .0,
             );
             out.sort_by_key(|call| call["time"].as_u64().unwrap_or_default());
         }
         out.retain(|call| filter.keeps(call));
         json_to_js(&ctx, &Value::Array(out))
+    }
+
+    /// `{ calls, droppedThrough }` for one target (`{ http }`,
+    /// `{ function }` or `{ rule }`): its calls with a `seq` above `after`,
+    /// oldest first, and the highest `seq` the log they come from dropped
+    /// (0 when none). HTTP calls and Function calls count `seq` in separate
+    /// logs (the scenario's, the companion's), and a target reads one.
+    #[js_method(rename = "callsAfter")]
+    async fn calls_after(&self, ctx: JSContext, target: JSValue, after: f64) -> JSResult<JSValue> {
+        self.owned(&ctx)?;
+        let filter = CallFilter::parse(Some(target))?;
+        let after = if after.is_finite() && after > 0.0 {
+            after as u64
+        } else {
+            0
+        };
+        let current = self.current();
+        let functions = match &filter {
+            CallFilter::Any => {
+                return Err(auto_err(
+                    "callsAfter needs { http }, { function } or { rule } as its target",
+                ));
+            }
+            CallFilter::Http(..) => false,
+            CallFilter::Function(_) => true,
+            CallFilter::Rule(index) => current
+                .rules
+                .iter()
+                .any(|rule| rule.index == *index && rule.kind == "function"),
+        };
+        let (mut calls, dropped_through) = if !functions {
+            let fresh: Vec<ScenarioCall> = current
+                .calls
+                .iter()
+                .filter(|call| call.seq > after)
+                .cloned()
+                .collect();
+            (self.http_calls(&fresh), current.dropped_through())
+        } else if current.companion {
+            self.function_calls(current.installed_ms, after)
+                .await
+                .map_err(auto_err)?
+        } else {
+            (Vec::new(), 0)
+        };
+        calls.retain(|call| filter.keeps(call));
+        json_to_js(
+            &ctx,
+            &json!({ "calls": calls, "droppedThrough": dropped_through }),
+        )
     }
 
     /// Remove the scenario; resolves how many of its rules were still

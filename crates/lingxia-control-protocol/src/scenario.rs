@@ -955,6 +955,9 @@ pub mod companion {
         pub since: u64,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         pub owner: Option<String>,
+        /// Only calls whose `seq` is above it; 0 (the default) for all.
+        #[serde(default)]
+        pub after: u64,
     }
 
     /// `scenario.calls` result.
@@ -962,11 +965,19 @@ pub mod companion {
     pub struct CallsResult {
         #[serde(default)]
         pub calls: Vec<FunctionCall>,
+        /// The highest `seq` the companion's bounded log dropped among
+        /// calls that started at or after `since`, whatever their owner or
+        /// Function; 0 when it dropped none of them.
+        #[serde(rename = "droppedThrough")]
+        pub dropped_through: u64,
     }
 
     /// One Function call the companion saw.
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct FunctionCall {
+        /// Increasing across the companion's log from 1 and never reused,
+        /// so calls in one millisecond still differ.
+        pub seq: u64,
         /// Epoch milliseconds.
         pub time: u64,
         pub function: String,
@@ -1439,19 +1450,31 @@ mod tests {
         assert_eq!(status.owners[0].rules[0].hits, 2);
         let calls: companion::CallsResult = serde_json::from_value(json!({
             "calls": [
-                { "time": 1, "function": "orders.submit", "owner": "dev", "rule": 0, "outcome": "fault" },
-                { "time": 2, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" }
-            ]
+                { "seq": 4, "time": 1, "function": "orders.submit", "owner": "dev", "rule": 0, "outcome": "fault" },
+                { "seq": 5, "time": 2, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" }
+            ],
+            "droppedThrough": 3
         }))
         .unwrap();
+        assert_eq!(calls.dropped_through, 3);
         assert_eq!(
             calls.calls[1].no_match.as_deref(),
             Some("rule 0 match.args.id: missing")
         );
         assert_eq!(
             serde_json::to_value(&calls.calls[0]).unwrap(),
-            json!({ "time": 1, "function": "orders.submit", "owner": "dev", "rule": 0, "outcome": "fault" })
+            json!({ "seq": 4, "time": 1, "function": "orders.submit", "owner": "dev", "rule": 0, "outcome": "fault" })
         );
+        // A call without `seq`, or a result without `droppedThrough`, is refused.
+        assert!(
+            serde_json::from_value::<companion::FunctionCall>(json!({
+                "time": 1, "function": "f", "outcome": "default"
+            }))
+            .is_err()
+        );
+        assert!(serde_json::from_value::<companion::CallsResult>(json!({ "calls": [] })).is_err());
+        let params: companion::CallsParams = serde_json::from_value(json!({ "since": 5 })).unwrap();
+        assert_eq!(params.after, 0);
         let errors = companion::RuleErrors {
             errors: vec![companion::RuleError {
                 rule: 1,

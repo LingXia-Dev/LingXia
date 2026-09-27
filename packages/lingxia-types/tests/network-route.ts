@@ -1,7 +1,9 @@
 import type {
+  CallWindow,
   LxAppDriver,
   MockResetResult,
   NetworkDriver,
+  NetworkRoute,
   NetworkRouteHandler,
   NetworkRouteRequest,
   Scenario,
@@ -127,3 +129,9 @@ const variant: string | null = handle.variant;
 const count: Promise<number> = handle.unroute();
 const calls: Promise<ScenarioCall[]> = handle.calls({ function: 'orders.submit' });
 void [name, variant, count, calls, handle.calls({ http: 'PATCH **/devices/*' }), handle.calls({ rule: 2 }), handle.rules[0].hits];
+const window: Promise<CallWindow<ScenarioCall>> = handle.callsAfter({ rule: 2 }, 0);
+// @ts-expect-error callsAfter reads one target
+void handle.callsAfter(undefined, 0);
+declare const route: NetworkRoute;
+void route.requestsAfter(3).then(({ requests, droppedThrough }) => [requests[0]?.seq, droppedThrough]);
+void window;

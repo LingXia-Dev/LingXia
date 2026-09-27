@@ -7,7 +7,7 @@ import type {
   ScenarioRuleInfo,
 } from "@lingxia/types/automation";
 import { truncate } from "./format.js";
-import { scenarioCall, waitForNextCall, type NetworkHost } from "./network.js";
+import { scenarioCall, waitForNextCall, type CallCursor, type NetworkHost } from "./network.js";
 import type { ScenarioCallTarget, TestScenario, WaitForCallOptions } from "./types.js";
 import type { ScenarioReport } from "./report-types.js";
 import { runnerSetTimeout } from "./pending.js";
@@ -115,7 +115,7 @@ export function installScenario(
     const label = scenarioLabel(definition, variant);
     scope.track(host, raw, label);
     const read = async (filter?: ScenarioCallFilter) => (await raw.calls(filter)).map(scenarioCall);
-    const cursors = new Map<string, { taken: number }>();
+    const cursors = new Map<string, CallCursor>();
     const wrapped: TestScenario = {
       get name() { return raw.name; },
       get variant() { return raw.variant; },
@@ -128,9 +128,13 @@ export function installScenario(
         }
         const key = JSON.stringify(target);
         let cursor = cursors.get(key);
-        if (!cursor) cursors.set(key, cursor = { taken: 0 });
+        if (!cursor) cursors.set(key, cursor = { after: 0, taken: 0 });
+        const after = async (seq: number) => {
+          const window = await raw.callsAfter(target, seq);
+          return { calls: window.calls.map(scenarioCall), droppedThrough: window.droppedThrough };
+        };
         return waitForNextCall(host, "scenario.waitForCall", `scenario ${label}: ${describeTarget(target)}`,
-          () => read(target), () => read(), cursor, options);
+          after, () => read(), cursor, options);
       },
       remove: () =>
         host.act("scenario.remove", label, async () => {

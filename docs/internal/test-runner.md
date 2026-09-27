@@ -373,10 +373,20 @@ Development machine: lxdev receives progress, results, and artifacts
   `continue` answers `real`, the body is parsed when JSON) and `ScenarioCall`
   (`scenarioCall`; `rule !== null` → `rule`, an `answeredBy` starting with
   `route` → `route`, a Function call → `companion`, else `real`) to one
-  `NetworkCall`. `waitForCall` keeps a cursor per route handle and per
-  scenario target (JSON of the filter) and hands out `calls[cursor]`, so a
-  call made before the wait counts; it polls silenced inside one traced
-  action and throws a `TimeoutError` listing the last 10 calls.
+  `NetworkCall`. `waitForCall` keeps a `seq` cursor per route handle and
+  per scenario target (JSON of the filter) and reads
+  `route.requestsAfter(after)` / `scenario.callsAfter(target, after)`, so a
+  call made before the wait counts and calls in one millisecond stay
+  distinct. Each record's `seq` is never reused within its log (the host
+  request log, a scenario's HTTP calls, the companion's Function calls);
+  `droppedThrough` is the highest `seq` the log's bounds trimmed for that
+  reader (per route for the request log), and a wait whose cursor is below
+  it throws, naming the gap, then resumes after it. Reads and pauses share
+  one `ActionDeadline`: a read that never returns fails the wait on time
+  and a late one does not count. It polls silenced inside one traced action
+  and throws a `TimeoutError` listing the last 10 calls, read within a
+  100 ms slice (skipped when the last read stalled or the spec budget is
+  spent).
   `t.app.profile.checkpoint()` wraps the raw id as `{ id }`. The clock wrapper
   reports dropped timers as a `diagnostic` (`phase: "clock"`).
 - `t.app.view` is a plain object (locators, `eval(fn)`, `screenshot`,

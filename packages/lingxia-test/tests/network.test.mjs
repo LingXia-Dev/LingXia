@@ -11,21 +11,33 @@ afterEach(() => {
   delete globalThis.lx;
 });
 
-/** Mirrors the host route table: run-wide log, per-route removal. */
+/**
+ * Mirrors the host route table: run-wide log with a `seq` per entry,
+ * per-route removal, and `drop(n)` for the log's bounds trimming its
+ * oldest entries. `read` stands in for `requestsAfter` when set.
+ */
 function fakeNetwork() {
   const routes = new Map();
   const log = [];
+  const dropped = new Map();
   let nextId = 0;
+  let nextSeq = 0;
   const network = {
     routes,
-    hit(url, { method = "GET", body = null, action = "fulfill", status = 200 } = {}) {
+    read: undefined,
+    recent: undefined,
+    hit(url, { method = "GET", body = null, action = "fulfill", status = 200, timestamp } = {}) {
       const route = [...routes.values()].reverse().find((r) => url.includes(r.pattern));
       if (route) {
+        nextSeq += 1;
         log.push({
-          routeId: route.id, pattern: route.pattern, method, url, headers: { "x-test": "1" }, body,
-          bodyTruncated: false, action, status, timestamp: log.length + 1,
+          seq: nextSeq, routeId: route.id, pattern: route.pattern, method, url, headers: { "x-test": "1" }, body,
+          bodyTruncated: false, action, status, timestamp: timestamp ?? nextSeq,
         });
       }
+    },
+    drop(count) {
+      for (const entry of log.splice(0, count)) dropped.set(entry.routeId, entry.seq);
     },
     async route(pattern, handler) {
       const id = ++nextId;
@@ -35,7 +47,17 @@ function fakeNetwork() {
         id,
         pattern: record.pattern,
         async unroute() { return routes.delete(id); },
-        async requests() { return log.filter((entry) => entry.routeId === id); },
+        async requests() {
+          if (network.recent) return network.recent();
+          return log.filter((entry) => entry.routeId === id);
+        },
+        async requestsAfter(after) {
+          const window = {
+            requests: log.filter((entry) => entry.routeId === id && entry.seq > after),
+            droppedThrough: dropped.get(id) ?? 0,
+          };
+          return network.read ? network.read(window) : window;
+        },
       };
     },
     async unrouteAll() {
@@ -63,7 +85,7 @@ test("routes are traced, scoped to their spec, and removed when it ends", async 
     network.hit("https://h/v1/devices/d1", { method: "PATCH", body: '{"name":"Office"}', status: 501 });
     const calls = await route.calls();
     assert.deepEqual(calls, [{
-      time: 1, kind: "http", method: "PATCH", url: "https://h/v1/devices/d1", status: 501,
+      seq: 1, time: 1, kind: "http", method: "PATCH", url: "https://h/v1/devices/d1", status: 501,
       body: { name: "Office" }, headers: { "x-test": "1" }, answeredBy: "route",
     }]);
     assert.equal((await t.app.network.calls()).length, 1);
@@ -179,7 +201,8 @@ test("a host without test routing does not break t.app", async () => {
  * counts the fresh handler states.
  */
 function fakeScenarios(app) {
-  const state = { installed: [], current: null, calls: [], unrouted: 0, resets: 0 };
+  const state = { installed: [], current: null, calls: [], unrouted: 0, resets: 0, seq: { http: 0, function: 0 },
+    droppedThrough: { http: 0, function: 0 } };
   app.mock = {};
   app.mock.reset = async () => {
     state.resets += 1;
@@ -209,6 +232,13 @@ function fakeScenarios(app) {
             || (filter.rule !== undefined && call.rule === filter.rule))
           .map(({ scenario: _scenario, ...call }) => call);
       },
+      async callsAfter(target, after) {
+        const kind = target.http !== undefined
+          ? "http"
+          : target.function !== undefined ? "function" : rules.find((rule) => rule.index === target.rule)?.kind ?? "http";
+        const calls = (await handle.calls(target)).filter((call) => call.kind === kind && call.seq > after);
+        return { calls, droppedThrough: state.droppedThrough[kind] };
+      },
       async unroute() {
         if (state.current !== handle) return 0;
         state.current = null;
@@ -223,7 +253,8 @@ function fakeScenarios(app) {
   state.hit = (index, call) => {
     const rule = state.installed.at(-1).rules.find((entry) => entry.index === index);
     if (rule && rule.hits !== null) rule.hits += 1;
-    state.calls.push({ scenario: state.current, rule: index, answeredBy: index === null ? "real" : `rule ${index}`, ...call });
+    const seq = ++state.seq[call.kind === "function" ? "function" : "http"];
+    state.calls.push({ scenario: state.current, seq, rule: index, answeredBy: index === null ? "real" : `rule ${index}`, ...call });
   };
   return state;
 }
@@ -264,7 +295,7 @@ test("t.app.mock.use installs a variant for one spec, traces it, and lists its c
   assert.equal(scenarios.installed.length, 2);
   assert.equal(replacedBefore, "b");
   assert.deepEqual(seen, [{
-    time: 1, kind: "function", function: "orders.submit", body: { id: 7 }, outcome: "fault", answeredBy: "rule", rule: 2,
+    seq: 1, time: 1, kind: "function", function: "orders.submit", body: { id: 7 }, outcome: "fault", answeredBy: "rule", rule: 2,
   }]);
   assert.equal(removed, undefined);
   assert.equal(scenarios.current, null, "the scenario lasts one spec");
@@ -303,7 +334,7 @@ test("scenario calls name what answered; waitForCall waits per target", async ()
 
   const report = await run();
   assert.equal(report.failed, 0, JSON.stringify(report.cases));
-  assert.deepEqual(got.post, { time: 4, kind: "http", method: "POST", url: "https://h/orders", status: 201, body: { qty: 1 },
+  assert.deepEqual(got.post, { seq: 3, time: 4, kind: "http", method: "POST", url: "https://h/orders", status: 201, body: { qty: 1 },
     answeredBy: "rule", rule: 1 });
   assert.deepEqual(got.all.map((call) => call.answeredBy), ["real", "route", "companion", "rule"]);
   assert.equal(got.all[0].noMatch, "no rule matched GET https://h/orders/1");
@@ -460,3 +491,159 @@ test("--record-network on a host without recording fails the run", async () => {
   await assert.rejects(() => run(), /--record-network needs a host that records network traffic/);
 });
 
+
+/** Run one spec and hand back what it caught, with the report. */
+async function catching(body) {
+  const caught = {};
+  spec("waits", { forensics: false }, async (t) => { await body(t, caught); });
+  const report = await run();
+  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  return caught;
+}
+
+async function settle(promise) {
+  const started = Date.now();
+  try {
+    return { value: await promise, ms: Date.now() - started };
+  } catch (error) {
+    return { error, ms: Date.now() - started };
+  }
+}
+
+test("waitForCall times out on time while a read of calls never returns", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const route = await t.app.network.route("/v1/save", { status: 204 });
+    network.read = () => new Promise(() => {});
+    caught.result = await settle(route.waitForCall({ timeout: 40, interval: 5 }));
+  });
+  const { error, ms } = caught.result;
+  assert.equal(error?.code, "E_TIMEOUT", String(error));
+  assert.ok(ms < 40 + 60, `took ${ms}ms`);
+  assert.match(error.message, /^route \/v1\/save: no new call within \d+ms\./);
+  assert.match(error.message, /last read of its calls had not returned/);
+});
+
+test("a read that returns after the deadline does not turn the wait into a success", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const route = await t.app.network.route("/v1/save", { status: 204 });
+    network.hit("https://h/v1/save?n=1", { method: "POST", status: 204 });
+    network.read = (window) => new Promise((resolve) => setTimeout(() => resolve(window), 60));
+    caught.late = await settle(route.waitForCall({ timeout: 20, interval: 5 }));
+    network.read = undefined;
+    // Not handed out, so the next wait still returns it.
+    caught.next = await route.waitForCall({ timeout: 200, interval: 5 });
+  });
+  assert.equal(caught.late.error?.code, "E_TIMEOUT", String(caught.late.error));
+  assert.ok(caught.late.ms < 20 + 60, `took ${caught.late.ms}ms`);
+  assert.equal(caught.next.url, "https://h/v1/save?n=1");
+});
+
+test("reading recent calls for a timeout gets a bounded slice", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const route = await t.app.network.route("/v1/save", { status: 204 });
+    network.recent = () => new Promise(() => {});
+    caught.result = await settle(route.waitForCall({ timeout: 30, interval: 5 }));
+  });
+  const { error, ms } = caught.result;
+  assert.equal(error?.code, "E_TIMEOUT", String(error));
+  // 30ms of waiting plus at most the 100ms evidence slice.
+  assert.ok(ms < 30 + 100 + 60, `took ${ms}ms`);
+  assert.match(error.message, /Recent calls were not read: the read took longer than 100ms\./);
+});
+
+test("waitForCall resumes by seq: calls in one millisecond stay distinct", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const route = await t.app.network.route("/v1/burst", { status: 204 });
+    for (const n of [1, 2, 3]) network.hit(`https://h/v1/burst?n=${n}`, { method: "POST", status: 204, timestamp: 1000 });
+    caught.urls = [];
+    for (let i = 0; i < 3; i += 1) caught.urls.push((await route.waitForCall({ timeout: 200, interval: 5 })).url);
+  });
+  assert.deepEqual(caught.urls, ["https://h/v1/burst?n=1", "https://h/v1/burst?n=2", "https://h/v1/burst?n=3"]);
+});
+
+test("a trim of calls already handed out loses nothing; one past the cursor is reported", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const route = await t.app.network.route("/v1/save", { status: 204 });
+    network.hit("https://h/v1/save?n=1", { method: "POST", status: 204 });
+    caught.first = (await route.waitForCall({ timeout: 200, interval: 5 })).url;
+    // The log drops the call already handed out: the cursor is past it.
+    network.hit("https://h/v1/save?n=2", { method: "POST", status: 204 });
+    network.drop(1);
+    caught.second = (await route.waitForCall({ timeout: 200, interval: 5 })).url;
+    // Then it drops two calls nobody read yet, an index cursor would skip them.
+    network.hit("https://h/v1/save?n=3", { method: "POST", status: 204 });
+    network.hit("https://h/v1/save?n=4", { method: "POST", status: 204 });
+    network.hit("https://h/v1/save?n=5", { method: "POST", status: 204 });
+    network.drop(3);
+    caught.lost = await settle(route.waitForCall({ timeout: 200, interval: 5 }));
+    caught.after = (await route.waitForCall({ timeout: 200, interval: 5 })).url;
+  });
+  assert.equal(caught.first, "https://h/v1/save?n=1");
+  assert.equal(caught.second, "https://h/v1/save?n=2");
+  const { error } = caught.lost;
+  assert.ok(error, "the wait must not skip the dropped calls");
+  assert.notEqual(error.code, "E_TIMEOUT");
+  assert.match(error.message, /^route \/v1\/save: calls after the last one waitForCall returned \(seq 2\) were dropped from a bounded call log before they were read \(seq 3–4, 2 entries of that log\)/);
+  assert.equal(caught.after, "https://h/v1/save?n=5");
+});
+
+test("another route's trimmed calls do not fail this route's wait", async () => {
+  const world = createWorld();
+  const network = fakeNetwork();
+  world.app.network = network;
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const noisy = await t.app.network.route("/v1/noisy", { status: 204 });
+    const quiet = await t.app.network.route("/v1/quiet", { status: 204 });
+    for (let i = 0; i < 5; i += 1) network.hit(`https://h/v1/noisy?n=${i}`);
+    network.hit("https://h/v1/quiet");
+    network.drop(5);
+    caught.quiet = (await quiet.waitForCall({ timeout: 200, interval: 5 })).url;
+    caught.noisy = await settle(noisy.waitForCall({ timeout: 200, interval: 5 }));
+  });
+  assert.equal(caught.quiet, "https://h/v1/quiet");
+  assert.match(caught.noisy.error?.message ?? "", /were dropped from a bounded call log before they were read \(seq 1–5/);
+});
+
+test("scenario waits report calls their log dropped per kind", async () => {
+  const world = createWorld();
+  const scenarios = fakeScenarios(world.app);
+  installFakeHost(world);
+  const caught = await catching(async (t, caught) => {
+    const scenario = await t.app.mock.use({
+      name: "Orders",
+      rules: [{ http: "POST **/orders", status: 201, json: {} }, { function: "orders.status", result: "ok" }],
+    });
+    scenarios.hit(1, { kind: "http", method: "POST", url: "https://h/orders", status: 201, time: 1 });
+    scenarios.hit(2, { kind: "function", function: "orders.status", time: 1, outcome: "result" });
+    scenarios.hit(2, { kind: "function", function: "orders.status", time: 1, outcome: "result" });
+    // The companion's log dropped its first Function call; HTTP lost none.
+    scenarios.droppedThrough.function = 1;
+    caught.http = (await scenario.waitForCall({ http: "POST **/orders" }, { timeout: 200, interval: 5 })).seq;
+    caught.lost = await settle(scenario.waitForCall({ rule: 2 }, { timeout: 200, interval: 5 }));
+    caught.next = (await scenario.waitForCall({ rule: 2 }, { timeout: 200, interval: 5 })).seq;
+  });
+  assert.equal(caught.http, 1);
+  assert.match(caught.lost.error?.message ?? "", /^scenario Orders: rule 2: calls after the start were dropped from a bounded call log before they were read \(seq 1, 1 entry/);
+  assert.equal(caught.next, 2);
+});

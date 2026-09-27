@@ -332,6 +332,30 @@ impl JSNetworkRoute {
         self.owned_scope(&ctx)?;
         requests_js(&ctx, &self.run_id, &self.appid, Some(self.id))
     }
+
+    /// `{ requests, droppedThrough }`: requests this route handled with a
+    /// `seq` above `after`, oldest first, and the highest `seq` of its
+    /// requests the bounded log dropped (0 when none).
+    #[js_method(rename = "requestsAfter")]
+    async fn requests_after(&self, ctx: JSContext, after: f64) -> JSResult<JSValue> {
+        self.owned_scope(&ctx)?;
+        let after = if after.is_finite() && after > 0.0 {
+            after as u64
+        } else {
+            0
+        };
+        let window = registry::with_registry(|routes| {
+            routes.requests_after(&self.run_id, &self.appid, Some(self.id), after)
+        });
+        let requests: Vec<Value> = window.entries.into_iter().map(request_json).collect();
+        json_to_js(
+            &ctx,
+            &serde_json::json!({
+                "requests": requests,
+                "droppedThrough": window.dropped_through,
+            }),
+        )
+    }
 }
 
 fn requests_js(
@@ -355,8 +379,14 @@ fn requests_js_filtered(
     let list: Vec<Value> = entries
         .into_iter()
         .filter(|entry| keep(entry.route_id))
-        .map(|entry| {
-            serde_json::json!({
+        .map(request_json)
+        .collect();
+    json_to_js(ctx, &Value::Array(list))
+}
+
+fn request_json(entry: registry::RequestEntry) -> Value {
+    serde_json::json!({
+                "seq": entry.seq,
                 "routeId": entry.route_id,
                 "pattern": entry.pattern,
                 "method": entry.method,
@@ -372,10 +402,7 @@ fn requests_js_filtered(
                 "body": entry.request.body,
                 "bodyTruncated": entry.request.body_truncated,
                 "timestamp": entry.timestamp_ms,
-            })
-        })
-        .collect();
-    json_to_js(ctx, &Value::Array(list))
+    })
 }
 
 type ParsedPattern = (UrlMatcher, Option<String>, Option<u32>);

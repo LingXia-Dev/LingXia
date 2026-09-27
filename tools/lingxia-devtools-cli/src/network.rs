@@ -470,12 +470,12 @@ mod tests {
             { "index": 3, "kind": "function" }
         ] } });
         let calls: companion::CallsResult = serde_json::from_value(json!({ "calls": [
-            { "time": 5, "function": "orders.submit", "owner": "dev", "rule": 1, "outcome": "fault" },
-            { "time": 6, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" },
-            { "time": 7, "function": "orders.status", "owner": "test:r1", "rule": 0, "outcome": "result" },
-            { "time": 8, "function": "orders.list", "outcome": "default", "handler": "mock" },
-            { "time": 9, "function": "orders.list", "outcome": "default", "handler": "real" }
-        ] })).unwrap();
+            { "seq": 1, "time": 5, "function": "orders.submit", "owner": "dev", "rule": 1, "outcome": "fault" },
+            { "seq": 2, "time": 6, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" },
+            { "seq": 3, "time": 7, "function": "orders.status", "owner": "test:r1", "rule": 0, "outcome": "result" },
+            { "seq": 4, "time": 8, "function": "orders.list", "outcome": "default", "handler": "mock" },
+            { "seq": 5, "time": 9, "function": "orders.list", "outcome": "default", "handler": "real" }
+        ], "droppedThrough": 0 })).unwrap();
         let functions = function_calls(&status, &calls);
         assert_eq!(functions[0]["answeredBy"], "rule 3 (Checkout:expired)");
         assert_eq!(functions[1]["answeredBy"], "companion default");

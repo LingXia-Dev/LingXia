@@ -112,18 +112,25 @@ answered. `active` is false while a test owner sits above `dev`.
 
 ### `scenario.calls`
 
-`{ "since": <epoch ms>, "owner"?: "test:…" }` →
+`{ "since": <epoch ms>, "owner"?: "test:…", "after"?: <seq> }` →
 
 ```json
 { "calls": [
-  { "time": 1727260000000, "function": "orders.submit", "args": { "cart": "c1" },
+  { "seq": 41, "time": 1727260000000, "function": "orders.submit", "args": { "cart": "c1" },
     "owner": "test:5b0c…", "rule": 0, "outcome": "fault" },
-  { "time": 1727260000200, "function": "orders.status", "outcome": "default",
-    "handler": "mock", "noMatch": "rule 1 match.args.id: missing" } ] }
+  { "seq": 42, "time": 1727260000200, "function": "orders.status", "outcome": "default",
+    "handler": "mock", "noMatch": "rule 1 match.args.id: missing" } ],
+  "droppedThrough": 0 }
 ```
 
-Every Function call since `since` (all owners when `owner` is absent), oldest
-first, bounded by the companion. `owner`/`rule` name the rule that answered;
+Every Function call since `since` (all owners when `owner` is absent) whose
+`seq` is above `after` (default 0), oldest first, bounded by the companion.
+`seq` (required) numbers the companion's log from 1, increasing and never
+reused, so calls in one millisecond differ. `droppedThrough` (required) is
+the highest `seq` the bounded log dropped among calls that started at or
+after `since`, whatever their owner or Function; 0 when it dropped none of
+them. A test's `waitForCall` resumes by `after` and fails, naming the gap,
+when `droppedThrough` passes its cursor. `owner`/`rule` name the rule that answered;
 both are absent when the project's own handler did (`outcome: "default"`),
 and then `handler` says which one answered, `"mock"` or `"real"` (omit it
 without the `mock` capability). `outcome` is `result`, `error`, `fault` or
