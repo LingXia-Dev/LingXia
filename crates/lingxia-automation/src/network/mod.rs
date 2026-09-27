@@ -16,6 +16,7 @@
 mod capture;
 pub(crate) mod companion;
 pub(crate) mod dev;
+mod mocks;
 mod registry;
 mod scenario;
 mod test_scenario;
