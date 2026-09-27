@@ -254,6 +254,7 @@ jobs:
           bash scripts/ci/test-cli-matrix.sh
           bash scripts/ci/test-cli-fingerprint.sh
           bash scripts/ci/test-control-security-gates.sh
+          bash scripts/ci/test-swift-bridge.sh
       - name: Check skill docs
         # `lingxia skill install` copies docs/skill alone; a link or path
         # outside it is dead once installed.
