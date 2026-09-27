@@ -90,7 +90,189 @@ pub fn build(
 enum ModuleRole {
     Plain,
     App,
-    Page { page_path: String },
+    Page {
+        page_path: String,
+    },
+    /// `mocks/index.ts`: the bundle's value is its default export.
+    Mocks,
+}
+
+/// An lxapp's bundled `mocks/index.ts`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MocksBundle {
+    /// A script whose value is the default export: the handler map.
+    pub source: String,
+    /// Its keys, in object order.
+    pub keys: Vec<String>,
+    /// `mocks/index.ts` or `mocks/index.js`, relative to the lxapp root.
+    pub entry: String,
+}
+
+/// The lxapp's handlers file, when it has one.
+pub fn mocks_entry(root: &Path) -> Result<Option<PathBuf>> {
+    let dir = root.join(lingxia_control_protocol::mock::MOCKS_DIR);
+    let found: Vec<PathBuf> = lingxia_control_protocol::mock::HANDLERS_FILES
+        .iter()
+        .map(|name| dir.join(name))
+        .filter(|path| path.is_file())
+        .collect();
+    match found.as_slice() {
+        [] => Ok(None),
+        [one] => Ok(Some(one.clone())),
+        _ => bail!("mocks/: found both index.ts and index.js; keep one"),
+    }
+}
+
+/// Bundle `mocks/index.ts` with the Logic bundler. Its default export must
+/// be an object literal whose keys are HTTP targets (`'GET **/x'`), so the
+/// complete set of handlers is visible in one place. `None` when the lxapp
+/// has no `mocks/index.ts`.
+pub fn build_mocks(root: &Path) -> Result<Option<MocksBundle>> {
+    let Some(entry) = mocks_entry(root)? else {
+        return Ok(None);
+    };
+    // Mocks are plain modules: no `App()` / `Page()` registration, so the
+    // bundler needs only the root.
+    let project = &Project {
+        root: root.to_path_buf(),
+        kind: ProjectKind::LxApp,
+        framework: crate::lxapp::ProjectFramework::Html,
+        output_dir: root.join("dist"),
+        pages: Vec::new(),
+        page_names: Vec::new(),
+        logic_entry: None,
+        plugin_id: None,
+        package_name: None,
+        version: String::new(),
+    };
+    let label = relative_to(&entry, project.root.as_path());
+    let source = fs::read_to_string(&entry)
+        .with_context(|| format!("Failed to read {}", entry.display()))?;
+    let keys = mock_keys(&entry, &source).map_err(|err| anyhow!("{label}: {err}"))?;
+    let mut bundler = LogicBundler::new(project);
+    let module_var = bundler.add_entry(entry, ModuleRole::Mocks)?;
+    let mut output = String::from("(function() {\n\n");
+    for module in bundler.modules {
+        output.push_str(&module.rendered);
+        output.push('\n');
+    }
+    output.push_str(&format!(
+        "return {};\n}})();\n",
+        module_export_access_expr(&module_var, "default")
+    ));
+    Ok(Some(MocksBundle {
+        source: output,
+        keys,
+        entry: label,
+    }))
+}
+
+/// The handler keys of a `mocks/index.ts` default export, in order.
+fn mock_keys(path: &Path, source: &str) -> Result<Vec<String>> {
+    use lingxia_control_protocol::mock::{SCENARIO_ONLY_FIELDS, parse_handler_key};
+    let allocator = Allocator::default();
+    let source_type = SourceType::from_path(path).map_err(|_| anyhow!("unsupported file type"))?;
+    let parsed = Parser::new(&allocator, source, source_type).parse();
+    if !parsed.diagnostics.is_empty() {
+        bail!(
+            "failed to parse: {}",
+            format_diagnostics(&parsed.diagnostics)
+        );
+    }
+    let program = parsed.program;
+    let shape = "the default export must be an object of handlers: \
+                 export default { 'GET **/path': (req) => ({ json: … }) } satisfies Mocks";
+    let default = program
+        .body
+        .iter()
+        .find_map(|statement| match statement {
+            Statement::ExportDefaultDeclaration(export) => Some(&export.declaration),
+            _ => None,
+        })
+        .ok_or_else(|| anyhow!("{shape}"))?;
+    let expression = default
+        .as_expression()
+        .map(unwrap_expression)
+        .ok_or_else(|| anyhow!("{shape}"))?;
+    // `export default mocks` of a `const mocks = { … }` in the same file.
+    let expression = match expression {
+        Expression::Identifier(identifier) => program
+            .body
+            .iter()
+            .find_map(|statement| {
+                let declaration = match statement {
+                    Statement::VariableDeclaration(declaration) => declaration,
+                    Statement::ExportDeclaration(export) => match &export.declaration {
+                        Declaration::VariableDeclaration(declaration) => declaration,
+                        _ => return None,
+                    },
+                    _ => return None,
+                };
+                declaration.declarations.iter().find_map(|declarator| {
+                    match (&declarator.id, &declarator.init) {
+                        (oxc_ast::ast::BindingPattern::BindingIdentifier(id), Some(init))
+                            if id.name == identifier.name =>
+                        {
+                            Some(unwrap_expression(init))
+                        }
+                        _ => None,
+                    }
+                })
+            })
+            .ok_or_else(|| anyhow!("{shape}"))?,
+        other => other,
+    };
+    let Expression::ObjectExpression(object) = expression else {
+        bail!("{shape}");
+    };
+    let mut keys: Vec<String> = Vec::new();
+    for property in &object.properties {
+        let ObjectPropertyKind::ObjectProperty(property) = property else {
+            bail!(
+                "list every handler in the default export under its own 'METHOD url-glob' key; \
+                 a spread (...) hides which calls it answers"
+            );
+        };
+        let key = match &property.key {
+            PropertyKey::StringLiteral(literal) if !property.computed => {
+                literal.value.as_str().to_string()
+            }
+            PropertyKey::StaticIdentifier(identifier) if !property.computed => {
+                identifier.name.as_str().to_string()
+            }
+            _ => bail!(
+                "a handler key must be a 'METHOD url-glob' string, like 'GET **/devices/*'; \
+                 a computed key hides which calls it answers"
+            ),
+        };
+        parse_handler_key(&key).map_err(|err| anyhow!("{err}"))?;
+        if keys.contains(&key) {
+            bail!("'{key}' is listed twice");
+        }
+        if let Expression::ObjectExpression(answer) = unwrap_expression(&property.value) {
+            for field in &answer.properties {
+                if let ObjectPropertyKind::ObjectProperty(field) = field
+                    && let Some(name) = field.key.static_name()
+                    && SCENARIO_ONLY_FIELDS.contains(&name.as_ref())
+                {
+                    bail!(
+                        "'{key}': '{name}' is a scenario field; a handler returns one answer per \
+                         call"
+                    );
+                }
+            }
+        }
+        keys.push(key);
+    }
+    Ok(keys)
+}
+
+/// The error for product code that imports `mocks/`.
+fn mocks_import_error(importer: &str, imported: &str) -> anyhow::Error {
+    anyhow!(
+        "Logic build failed: {importer} imports from mocks/ ({imported}). Product code never \
+         imports mocks; the app calls fetch and mocks/index.ts answers it in dev."
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -186,9 +368,20 @@ impl<'a> LogicBundler<'a> {
         let export_dependencies =
             collect_export_dependencies(&program, &path, self.project.root.as_path())?;
         let mut dependency_vars = BTreeMap::new();
+        // Mocks never ship: nothing outside `mocks/` may import from it.
+        let mocks_dir = normalize_path(&self.project.root)
+            .unwrap_or_else(|_| self.project.root.clone())
+            .join(lingxia_control_protocol::mock::MOCKS_DIR);
+        let root = normalize_path(&self.project.root).unwrap_or_else(|_| self.project.root.clone());
         for local_path in
             dependency_paths_in_source_order(&program, &imports, &export_dependencies)?
         {
+            if local_path.starts_with(&mocks_dir) && !path.starts_with(&mocks_dir) {
+                return Err(mocks_import_error(
+                    &relative_to(&path, &root),
+                    &relative_to(&local_path, &root),
+                ));
+            }
             let module_var = self.compile_module(local_path.clone(), ModuleRole::Plain)?;
             dependency_vars.insert(local_path, module_var);
         }
@@ -1209,6 +1402,176 @@ mod tests {
             .add_entry(root.join(entry), ModuleRole::App)
             .unwrap();
         bundler.render_bundle(false).unwrap()
+    }
+
+    fn test_project(root: &Path) -> Project {
+        Project {
+            root: root.to_path_buf(),
+            kind: ProjectKind::LxApp,
+            framework: ProjectFramework::Html,
+            output_dir: root.join("dist"),
+            pages: Vec::new(),
+            page_names: Vec::new(),
+            logic_entry: Some("logic.js".to_string()),
+            plugin_id: None,
+            package_name: Some("@test/app".to_string()),
+            version: "1.0.0".to_string(),
+        }
+    }
+
+    fn write(root: &Path, path: &str, text: &str) {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, text).unwrap();
+    }
+
+    #[test]
+    fn mocks_bundle_to_a_script_whose_value_is_the_default_export() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        assert_eq!(build_mocks(root).unwrap(), None);
+        write(
+            root,
+            "shared/format.ts",
+            "export const label = (n: number) => `#${n}`;\n",
+        );
+        write(
+            root,
+            "mocks/fixtures.ts",
+            "export const DEVICES = [{ id: 'd1' }];\n",
+        );
+        write(
+            root,
+            "mocks/index.ts",
+            "import type { Mocks } from '@lingxia/types/mocks';\n\
+             import { DEVICES } from './fixtures';\n\
+             import { label } from '../shared/format';\n\
+             let signedIn = true;\n\
+             export default {\n\
+               'GET **/devices': () => (signedIn ? { json: DEVICES } : { status: 401 }),\n\
+               \"DELETE **/sessions/current\": () => { signedIn = false; return { status: 204 }; },\n\
+               'GET **/label': { json: label(1) },\n\
+             } satisfies Mocks;\n",
+        );
+        let bundle = build_mocks(root).unwrap().unwrap();
+        assert_eq!(bundle.entry, "mocks/index.ts");
+        assert_eq!(
+            bundle.keys,
+            [
+                "GET **/devices",
+                "DELETE **/sessions/current",
+                "GET **/label"
+            ]
+        );
+        assert!(
+            bundle.source.starts_with("(function() {"),
+            "{}",
+            bundle.source
+        );
+        assert!(
+            bundle.source.trim_end().ends_with("[\"default\"];\n})();")
+                || bundle.source.contains("[\"default\"];\n})();"),
+            "{}",
+            bundle.source
+        );
+        assert!(!bundle.source.contains("satisfies"), "{}", bundle.source);
+        assert!(bundle.source.contains("DEVICES"), "{}", bundle.source);
+    }
+
+    #[test]
+    fn mock_keys_must_be_visible_http_targets() {
+        let cases = [
+            (
+                "export default { ...other } ;",
+                "a spread (...) hides which calls it answers",
+            ),
+            (
+                "const k = 'GET **/x'; export default { [k]: {} };",
+                "a computed key hides which calls it answers",
+            ),
+            (
+                "export default { 'GET/x': {} };",
+                "'GET/x' is not a target: a handler key is 'METHOD url-glob'",
+            ),
+            (
+                "export default { 'GET **/x': {}, 'GET **/x': {} };",
+                "'GET **/x' is listed twice",
+            ),
+            (
+                "export default { 'GET **/x': { sequence: [] } };",
+                "'GET **/x': 'sequence' is a scenario field; a handler returns one answer per call",
+            ),
+            (
+                "export default [];",
+                "the default export must be an object of handlers",
+            ),
+            (
+                "export const x = 1;",
+                "the default export must be an object of handlers",
+            ),
+        ];
+        for (source, message) in cases {
+            let err = mock_keys(Path::new("index.ts"), source)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains(message), "{source}: {err}");
+        }
+        assert_eq!(
+            mock_keys(
+                Path::new("index.ts"),
+                "const mocks = { '* **/y': { continue: true } } as const;\nexport default mocks;"
+            )
+            .unwrap(),
+            ["* **/y"]
+        );
+    }
+
+    #[test]
+    fn product_code_that_imports_mocks_fails_every_build() {
+        let temp = TempDir::new().unwrap();
+        let root = temp.path();
+        write(
+            root,
+            "mocks/fixtures.ts",
+            "export const ME = { id: 'me' };\n",
+        );
+        write(
+            root,
+            "pages/home/index.ts",
+            "import { ME } from '../../mocks/fixtures';\nexport const me = ME;\n",
+        );
+        let project = test_project(root);
+        let mut bundler = LogicBundler::new(&project);
+        let err = bundler
+            .add_entry(root.join("pages/home/index.ts"), ModuleRole::App)
+            .unwrap_err()
+            .to_string();
+        assert_eq!(
+            err,
+            "Logic build failed: pages/home/index.ts imports from mocks/ (mocks/fixtures.ts). \
+             Product code never imports mocks; the app calls fetch and mocks/index.ts answers it \
+             in dev."
+        );
+        // Through a shared module too.
+        write(
+            root,
+            "shared/me.ts",
+            "export { ME } from '../mocks/fixtures';\n",
+        );
+        write(
+            root,
+            "lxapp.ts",
+            "import { ME } from './shared/me';\nvoid ME;\n",
+        );
+        let mut bundler = LogicBundler::new(&project);
+        let err = bundler
+            .add_entry(root.join("lxapp.ts"), ModuleRole::App)
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("shared/me.ts imports from mocks/ (mocks/fixtures.ts)"),
+            "{err}"
+        );
     }
 
     #[test]

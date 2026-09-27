@@ -131,6 +131,24 @@ const lingxiaWorkspaceResolver = {
   },
 };
 
+// Mocks never ship: a View module outside `mocks/` may not import from it.
+const mocksDir = path.join(path.resolve(projectRoot), 'mocks') + path.sep;
+const inMocks = (file) => path.resolve(file.split('?')[0]).startsWith(mocksDir);
+const lingxiaMocksGuard = {
+  name: 'lingxia-mocks-guard',
+  enforce: 'pre',
+  async resolveId(source, importer, options) {
+    if (!importer || inMocks(importer)) return null;
+    const resolved = await this.resolve(source, importer, { ...options, skipSelf: true });
+    if (!resolved || resolved.external || !inMocks(resolved.id)) return resolved;
+    const relative = (file) => path.relative(projectRoot, file.split('?')[0]).replaceAll('\\', '/');
+    this.error(
+      `View build failed: ${relative(importer)} imports from mocks/ (${relative(resolved.id)}). ` +
+        'Product code never imports mocks; the app calls fetch and mocks/index.ts answers it in dev.',
+    );
+  },
+};
+
 const alias = [
   { find: /^@\//, replacement: `${projectRoot}/` },
   { find: /^@lingxia\/native$/, replacement: path.resolve(projectRoot, '.lingxia/native.ts') },
@@ -152,7 +170,7 @@ export default defineConfig({
   root: buildDir,
   base: '/',
   logLevel: 'warn',
-  plugins: [lingxiaWorkspaceResolver, ...frameworkPlugins],
+  plugins: [lingxiaWorkspaceResolver, lingxiaMocksGuard, ...frameworkPlugins],
   css,
   resolve: { alias, dedupe: ['react', 'react-dom', 'vue'] },
   build: {
