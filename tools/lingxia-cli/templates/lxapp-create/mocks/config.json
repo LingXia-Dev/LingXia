@@ -1,0 +1,4 @@
+{
+  "$schema": "../node_modules/@lingxia/test/schemas/mock-config.schema.json",
+  "mock": "none"
+}

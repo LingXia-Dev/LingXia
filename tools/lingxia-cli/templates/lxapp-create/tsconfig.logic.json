@@ -19,6 +19,6 @@
       "@lingxia/page-types/*": ["./.lingxia/types/*"]
     }
   },
-  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/**/*.ts", ".lingxia/types/**/*.d.ts"],
+  "include": ["lxapp.ts", "lxapp.config.ts", "pages/**/*.ts", "shared/**/*.ts", "mocks/**/*.ts", ".lingxia/types/**/*.d.ts"],
   "exclude": ["node_modules", "dist", "pages/**/entry.ts"]
 }
