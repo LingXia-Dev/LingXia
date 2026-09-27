@@ -1,28 +1,20 @@
-# Apple SDK Host Guide
+# Apple SDK
 
-> Scope: app-facing Apple SDK APIs for host apps on iOS and macOS.
-> If a symbol is not documented here, it is not part of the supported host-app contract.
+Public Swift entry points for iOS and macOS host apps. A symbol not listed here
+is not part of the host-app contract.
 
-## Integration Paths
-
-Use one of two paths:
+## Paths
 
 | If you are... | Use |
 |---|---|
 | Building a LingXia host app | `Lingxia.quickStart()` + `lingxia.yaml` |
 | Embedding LingXia into an existing native app UI | `Lingxia.initializeRuntime()` + `LxAppController` + `LxAppHostView` |
 
-Most apps should use `Lingxia.quickStart()`. Window shape, menu bar entries,
-sidebar items, toolbar items, titlebar items, startup behavior, and the home
-surface are configured in `lingxia.yaml`.
+Host UI (windows, asides, tray) is declared in `lingxia.yaml` →
+[Surfaces](./project.md#surfaces), never in Swift. Packet Tunnel packaging is a
+CLI convention: [iOS Packet Tunnel extensions](../cli/lingxia.md#ios-packet-tunnel-extensions).
 
-For `lingxia.yaml` configuration, see [App Project Configuration](../app/project.md).
-Packet Tunnel packaging is a CLI build convention rather than an Apple SDK API;
-see [`lingxia build` → iOS Packet Tunnel extensions](../cli/lingxia.md#ios-packet-tunnel-extensions).
-
-## Quick Start
-
-Use `Lingxia.quickStart()` for product apps.
+## Quick start
 
 ```swift
 import AppKit
@@ -58,31 +50,14 @@ app.delegate = delegate
 app.run()
 ```
 
-`quickStart()` loads the bundled `app.json` and generated `ui.json`, initializes
-the runtime, creates the host shell, and opens the launch `main` surface (the
-one with `launch: true`).
+`quickStart()` loads the bundled `app.json` and `ui.json`, starts the runtime,
+creates the shell, and opens the launch `main` surface.
+`quickStart(configuration:)` is not a way to configure product UI.
 
-## UI Configuration
+## Advanced embedding
 
-Host UI belongs in `lingxia.yaml`, not in Swift code — declare it with the
-adaptive `surfaces:` list.
-
-Examples:
-
-- A normal window: a `role: main` surface (with `launch: true`).
-- A docked companion (sidebar/panel): a `role: aside` surface with an `edge`. (There is no `sidebar:` field — sidebar entries are declared at runtime through `lx.shell.sidebarActions`.)
-- A menu-bar app: a `role: main` surface with a `tray:` entry and no `launch: true` (starts hidden, opened from the tray).
-
-See [Surfaces (adaptive UI)](./project.md#surfaces-adaptive-ui) for the full
-configuration model. `LxAppShellConfiguration` and the other `LxAppShell*` types
-are the shell's own plumbing — `quickStart(configuration:)` is not a way to
-configure product UI.
-
-## Advanced Embedding
-
-Use this path only when an existing native app already owns its windows, scenes,
-navigation, split views, panels, or layout, and LingXia should be mounted into
-one native region.
+Only when an existing native app owns its windows and layout, and LingXia is
+mounted into one region:
 
 ```swift
 import AppKit
@@ -111,48 +86,36 @@ func mountLingXia(in containerView: NSView) async throws {
 }
 ```
 
-Rules:
+- One `LxAppController` per native integration flow; one `LxAppHostView` per
+  embedded region.
+- The host owns window and layout; LingXia owns lxapp sessions and WebView
+  attachment.
 
-- Use one `LxAppController` per native integration flow.
-- Use one `LxAppHostView` per embedded visual region.
-- The host app owns native window/layout behavior.
-- LingXia owns lxapp session lifecycle and webview attachment.
+## Symbols
 
-## API Reference — where it lives
-
-Swift signatures are **not** mirrored here — a hand-copied listing drifts. The
-authoritative surface is the `lingxia` SwiftPM package itself: use Xcode
-jump-to-definition / autocomplete, or read the package sources.
-
-The supported host-app contract is exactly these symbols (plus their
-request/event/id types):
+Signatures live in the `lingxia` SwiftPM package (use Xcode jump-to-definition).
+The contract is these symbols plus their request/event/id types:
 
 | Symbol | Role |
 |---|---|
-| `Lingxia` | Entry points and host state: `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
-| `LxAppController` | Session lifecycle for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
-| `LxAppHostView` | The embeddable native view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` wraps it for SwiftUI) |
-| `L10n` | SDK localization lookup for host-owned native chrome: `string(_:)` and formatted `string(_:_:)` |
+| `Lingxia` | `runProductCommandIfInvoked()`, `quickStart()`, `handleAppActivation()`, `initializeRuntime()`, `activate(controller:)`, `enableWebViewDebugging()`, `handleAppLink(url:)`, `displayLanguage` |
+| `LxAppController` | Sessions for advanced embedding: `open` / `openHomeApp` / `navigate` / `close`, `events` stream, interceptors |
+| `LxAppHostView` | Embeddable view: `mount` / `unmount` / `dispatch`, `events` stream (`LxAppHostViewRepresentable` for SwiftUI) |
+| `L10n` | SDK strings for host-owned native chrome: `string(_:)`, `string(_:_:)` |
 
-`Lingxia.initialize()` has been removed. Use `quickStart()` for product apps or
-`initializeRuntime()` for advanced embedding. Most apps should also never touch
-`LxAppRuntime.shared` directly — both entry points wrap it.
+Do not touch `LxAppRuntime.shared`; both entry points wrap it.
 
-Semantics the signatures can't convey:
+## Semantics
 
-- `runProductCommandIfInvoked()` must remain the first call in a macOS product
-  entrypoint. It registers the linked host addon so
-  `HostAddon::install_product_cli` runs before CLI parsing, then returns without
-  runtime initialization when this is a GUI launch.
-- Controller events: `didOpen` / `didClose` carry the affected `LxAppSession`;
-  `.mountInHost(id:)` mounts the opened session into the registered
-  `LxAppHostView`.
-- Host-view events `didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`,
-  `didFinishLoading`, and `didFail` come from the mounted webview;
-  `dispatch(.triggerCapsuleAction(...))` forwards that action into the runtime
-  for the mounted app session.
-- `Lingxia.displayLanguage` is the effective display language after
-  initialization. A language saved in LingXia settings wins; otherwise it is
-  the locale supplied to the Rust runtime by `initializeRuntime()`. `L10n.string`
-  resolves the SDK's `en` or `zh-Hans` resource bundle from this value instead
-  of independently following the process locale.
+- `runProductCommandIfInvoked()` must be the first call in a macOS product
+  entrypoint: it runs `HostAddon::install_product_cli` before CLI parsing and
+  returns without starting the runtime on a GUI launch.
+- Controller events `didOpen` / `didClose` carry the `LxAppSession`;
+  `.mountInHost(id:)` mounts it into the registered `LxAppHostView`.
+- Host-view events (`didChangeTitle`, `didUpdateCanGoBack`, `didStartLoading`,
+  `didFinishLoading`, `didFail`) come from the mounted WebView;
+  `dispatch(.triggerCapsuleAction(...))` forwards a capsule action to the
+  mounted session.
+- `Lingxia.displayLanguage` is the effective display language (saved setting,
+  else the locale passed to `initializeRuntime()`). `L10n.string` resolves
+  `en` / `zh-Hans` from it.
