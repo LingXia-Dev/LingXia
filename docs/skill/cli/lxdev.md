@@ -46,9 +46,10 @@ The lxapps and pages in the session. Commands target the current lxapp
   ([JS contexts](#js-contexts))
 - `page current|list|info` — page instances, including surface pages and
   unopened routes
-- `page wait` — for `ready`, or for a selector to be attached, detached,
-  visible, hidden, enabled, or editable
-- `page query|click|type|fill|press|scroll|scroll-to|back`
+- `page wait [SELECTOR]` — for `ready`, or for the selector to be attached,
+  detached, visible, hidden, enabled, or editable
+- `page query|click|scroll-to SELECTOR`, `page type|fill SELECTOR TEXT`,
+  `page press KEY [SELECTOR]`, `page scroll|back`
 - `page screenshot` — PNG of one page's WebView
 
 ## `lxdev runner`

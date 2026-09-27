@@ -479,10 +479,10 @@ pub async fn lxapp_dev_page_wait(
     let selector = selector.map(str::trim).filter(|value| !value.is_empty());
 
     if state == LxAppDevPageWaitState::Ready && selector.is_some() {
-        return Err("--css cannot be combined with --state ready".to_string());
+        return Err("a selector cannot be combined with --state ready".to_string());
     }
     if state != LxAppDevPageWaitState::Ready && selector.is_none() {
-        return Err(format!("--css is required for --state {}", state.as_str()));
+        return Err(format!("--state {} needs a selector", state.as_str()));
     }
 
     let query_script = selector

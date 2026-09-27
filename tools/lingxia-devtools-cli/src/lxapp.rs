@@ -240,9 +240,9 @@ pub enum PageCommand {
     /// Wait for page readiness or a DOM element state
     Wait {
         /// CSS selector; omit to wait for the lxapp page runtime to be ready
-        #[arg(long = "css")]
+        #[arg(value_name = "SELECTOR")]
         selector: Option<String>,
-        /// DOM state; defaults to ready without --css and attached with --css
+        /// DOM state; defaults to ready without a selector and attached with one
         #[arg(long, value_enum)]
         state: Option<PageWaitState>,
         /// Wait for the nth matching element
@@ -280,7 +280,8 @@ pub enum PageCommand {
     },
     /// Query element information in the page WebView
     Query {
-        #[arg(long = "css")]
+        /// CSS selector of the element
+        #[arg(value_name = "SELECTOR")]
         selector: String,
         /// Return every matching element
         #[arg(long)]
@@ -306,7 +307,8 @@ pub enum PageCommand {
     },
     /// Click an element in the page WebView
     Click {
-        #[arg(long = "css")]
+        /// CSS selector of the element
+        #[arg(value_name = "SELECTOR")]
         selector: String,
         /// Click the nth matching element
         #[arg(long)]
@@ -323,9 +325,11 @@ pub enum PageCommand {
     },
     /// Type text into an element in the page WebView
     Type {
-        #[arg(long = "css")]
+        /// CSS selector of the element
+        #[arg(value_name = "SELECTOR")]
         selector: String,
-        #[arg(long, allow_hyphen_values = true)]
+        /// Text to type
+        #[arg(value_name = "TEXT", allow_hyphen_values = true)]
         text: String,
         /// Type into the nth matching element
         #[arg(long)]
@@ -342,9 +346,11 @@ pub enum PageCommand {
     },
     /// Replace an element's current value in the page WebView
     Fill {
-        #[arg(long = "css")]
+        /// CSS selector of the element
+        #[arg(value_name = "SELECTOR")]
         selector: String,
-        #[arg(long, allow_hyphen_values = true)]
+        /// The new value
+        #[arg(value_name = "TEXT", allow_hyphen_values = true)]
         text: String,
         /// Fill the nth matching element
         #[arg(long)]
@@ -361,10 +367,11 @@ pub enum PageCommand {
     },
     /// Press a key in the page WebView
     Press {
-        #[arg(long)]
+        /// Key to press, e.g. Enter or a
+        #[arg(value_name = "KEY")]
         key: String,
         /// Focus this CSS selector before pressing the key
-        #[arg(long = "css")]
+        #[arg(value_name = "SELECTOR")]
         selector: Option<String>,
         /// Focus the nth matching element
         #[arg(long, requires = "selector")]
@@ -400,8 +407,8 @@ pub enum PageCommand {
     /// Scroll the first matching DOM element into view
     ScrollTo {
         /// CSS selector to scroll into view
-        #[arg(long)]
-        css: String,
+        #[arg(value_name = "SELECTOR")]
+        selector: String,
         /// Page name or runtime instance id; defaults to current page
         #[arg(long)]
         page: Option<String>,
@@ -876,7 +883,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
             print_optional_json(data, json)?;
         }
         PageCommand::ScrollTo {
-            css,
+            selector,
             page,
             app,
             json,
@@ -887,7 +894,7 @@ fn execute_page(ws_url: &str, options: PageOptions) -> Result<()> {
                 Some(json!({
                     "appid": app,
                     "page": page,
-                    "selector": css,
+                    "selector": selector,
                 })),
             )?;
             print_optional_json(data, json)?;
@@ -1108,7 +1115,6 @@ mod tests {
         let cli = parse_lxapp_cli(args(&[
             "page",
             "wait",
-            "--css",
             "#ready",
             "--state",
             "visible",
@@ -1164,26 +1170,80 @@ mod tests {
 
     #[test]
     fn page_type_accepts_leading_hyphen_text() {
-        let cli = parse_lxapp_cli(args(&[
-            "page", "type", "--css", "input", "--text", "-typed",
-        ]))
-        .unwrap();
+        let cli = parse_lxapp_cli(args(&["page", "type", "input", "-typed"])).unwrap();
         let LxAppCommand::Page(options) = cli.command else {
             panic!("expected page command");
         };
         assert!(matches!(
             options.command,
-            PageCommand::Type { text, .. } if text == "-typed"
+            PageCommand::Type { selector, text, .. } if selector == "input" && text == "-typed"
         ));
+    }
+
+    fn page_command(argv: &[&str]) -> PageCommand {
+        let cli = parse_lxapp_cli(args(argv)).unwrap();
+        let LxAppCommand::Page(options) = cli.command else {
+            panic!("expected page command");
+        };
+        options.command
+    }
+
+    #[test]
+    fn page_selectors_are_positional() {
+        assert!(matches!(
+            page_command(&["page", "click", "[data-testid=x]", "--index", "1"]),
+            PageCommand::Click { selector, index: Some(1), .. } if selector == "[data-testid=x]"
+        ));
+        assert!(matches!(
+            page_command(&["page", "fill", "input[type=\"email\"]", "a@b.c"]),
+            PageCommand::Fill { selector, text, .. }
+                if selector == "input[type=\"email\"]" && text == "a@b.c"
+        ));
+        assert!(matches!(
+            page_command(&["page", "query", "li", "--all"]),
+            PageCommand::Query { selector, all: true, .. } if selector == "li"
+        ));
+        assert!(matches!(
+            page_command(&["page", "scroll-to", "#end"]),
+            PageCommand::ScrollTo { selector, .. } if selector == "#end"
+        ));
+        assert!(matches!(
+            page_command(&["page", "press", "Enter", "input", "--index", "0"]),
+            PageCommand::Press { key, selector: Some(selector), index: Some(0), .. }
+                if key == "Enter" && selector == "input"
+        ));
+        assert!(matches!(
+            page_command(&["page", "press", "Escape"]),
+            PageCommand::Press { selector: None, .. }
+        ));
+        // `--index` picks among a selector's matches, so it needs one.
+        assert!(parse_lxapp_cli(args(&["page", "press", "Enter", "--index", "1"])).is_err());
+    }
+
+    #[test]
+    fn a_wrong_page_command_shows_its_usage() {
+        for argv in [
+            &["page", "click"][..],
+            &["page", "fill", "input"],
+            &["page", "click", "--css", "a"],
+        ] {
+            let Err(error) = parse_lxapp_cli(args(argv)) else {
+                panic!("{argv:?} should be refused");
+            };
+            let clap = error.downcast_ref::<clap::Error>().expect("a usage error");
+            let text = clap.render().to_string();
+            assert!(text.contains("Usage: lxdev lxapp page "), "{text}");
+            assert!(text.contains("<SELECTOR>"), "{text}");
+        }
     }
 
     #[test]
     fn a_session_after_lxapp_selects_the_session() {
         let mut options = LxAppOptions {
-            args: args(&["page", "--session", "macos", "query", "--css", "a"]),
+            args: args(&["page", "--session", "macos", "query", "a"]),
         };
         assert_eq!(options.take_session().as_deref(), Some("macos"));
-        assert_eq!(options.args, args(&["page", "query", "--css", "a"]));
+        assert_eq!(options.args, args(&["page", "query", "a"]));
         let mut options = LxAppOptions {
             args: args(&["eval", "--session=demo", "1"]),
         };
