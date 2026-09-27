@@ -5,9 +5,7 @@
 
 use crate::auto_err;
 use lxapp::LxApp;
-use rong::{
-    HostError, JSContext, JSObject, JSResult, JSValue, function::Optional, js_class, js_method,
-};
+use rong::{HostError, JSObject, JSResult, JSValue, function::Optional, js_class, js_method};
 use std::sync::Weak;
 
 const UNAVAILABLE: &str = "network routing is not built into this host; \
@@ -61,15 +59,43 @@ impl JSNetworkDriver {
     }
 }
 
-/// `lxapp().scenario()` in a build without the automation runtime.
-pub(crate) async fn install_scenario(
-    _ctx: JSContext,
-    _lxapp: &Weak<LxApp>,
-    _definition: JSObject,
-    _variant: Option<String>,
-) -> JSResult<JSObject> {
-    Err(auto_err(
-        "scenarios are not built into this host; they work only inside a host automation run \
-         (lxdev test)",
-    ))
+const MOCK_UNAVAILABLE: &str = "mocks and scenarios are not built into this host; they work \
+    only inside a host automation run (lxdev test)";
+
+/// `lxapp().mock` in a build without the automation runtime.
+#[js_class(clone)]
+pub(crate) struct JSMockDriver {
+    _lxapp: Weak<LxApp>,
+}
+
+impl JSMockDriver {
+    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+        Self { _lxapp: lxapp }
+    }
+}
+
+#[js_class(rename = "MockDriver")]
+impl JSMockDriver {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(
+            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            "Use lx.automation().lxapp().mock",
+        )
+        .into())
+    }
+
+    #[js_method(rename = "use")]
+    async fn use_scenario(
+        &self,
+        _definition: JSObject,
+        _variant: Optional<JSValue>,
+    ) -> JSResult<JSObject> {
+        Err(auto_err(MOCK_UNAVAILABLE))
+    }
+
+    #[js_method]
+    async fn reset(&self) -> JSResult<JSValue> {
+        Err(auto_err(MOCK_UNAVAILABLE))
+    }
 }

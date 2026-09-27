@@ -119,26 +119,14 @@ impl JSLxAppDriver {
             .instance(crate::network::JSNetworkDriver::new(self.lxapp.clone())))
     }
 
-    /// Install a scenario file (a `variant` of it) for this lxapp in the
-    /// host run: its `http` rules answer Logic `fetch`, its `function` rules
-    /// go to the dev session's companion. Replaces the scenario the run
-    /// installed for this app before; the run's end removes it.
-    #[js_method]
-    async fn scenario(
-        &self,
-        ctx: JSContext,
-        definition: JSObject,
-        variant: rong::function::Optional<JSValue>,
-    ) -> JSResult<JSObject> {
-        // `undefined` and `null` mean no variant, not the text "undefined".
-        let variant = match variant.0 {
-            Some(value) if value.is_string() => Some(value.to_rust::<String>()?),
-            Some(value) if !value.is_undefined() && !value.is_null() => {
-                return Err(crate::auto_err("scenario variant must be a string"));
-            }
-            _ => None,
-        };
-        crate::network::install_scenario(ctx, &self.lxapp, definition, variant).await
+    /// This lxapp's mocks in the host run: `use(file, variant?)` installs a
+    /// scenario, `reset()` starts handler state over. Reading the property
+    /// never throws; calls outside a host run (or in a build without the
+    /// automation runtime) reject.
+    #[js_method(getter, enumerable)]
+    fn mock(&self, ctx: JSContext) -> JSResult<JSObject> {
+        Ok(Class::lookup::<crate::network::JSMockDriver>(&ctx)?
+            .instance(crate::network::JSMockDriver::new(self.lxapp.clone())))
     }
 
     /// Checkpoint and roll back the isolated data profile of a host run.

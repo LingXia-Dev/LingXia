@@ -1,9 +1,14 @@
-//! `lx.automation().lxapp().scenario(file, variant?)`: a scenario file
-//! installed by a host run. Its `http` rules become routes of the run; its
-//! `function` rules go to the dev session's companion under the run's
-//! owner (`test:<run>`), above any dev scenario there. A run holds one
-//! scenario per app: installing another replaces it, and the run's end
-//! removes it.
+//! `lx.automation().lxapp().mock`: what a host run controls of the app's
+//! mocks.
+//!
+//! - `use(file, variant?)` installs a scenario file. Its `http` rules
+//!   become routes of the run; its `function` rules go to the dev session's
+//!   companion under the run's owner (`test:<run>`), above any dev scenario
+//!   there. A run holds one scenario per app: installing another replaces
+//!   it, and the run's end removes it.
+//! - `reset()` starts the app's mock handler state over (each spec starts
+//!   fresh), and asks a companion that switches mocks to do the same for
+//!   the run's owner.
 
 use super::companion::{self, UpstreamError};
 use super::registry::{self, InstalledScenario, ScenarioCall};
@@ -16,6 +21,90 @@ use rong::{Class, HostError, JSContext, JSObject, JSResult, JSValue, function::O
 use rong::{js_class, js_method};
 use serde_json::{Value, json};
 use std::sync::Weak;
+
+/// `lx.automation().lxapp().mock`.
+#[js_class(clone)]
+pub(crate) struct JSMockDriver {
+    lxapp: Weak<LxApp>,
+}
+
+impl JSMockDriver {
+    /// Authorization is checked per call, so reading `.mock` never throws.
+    pub(crate) fn new(lxapp: Weak<LxApp>) -> Self {
+        Self { lxapp }
+    }
+}
+
+#[js_class(rename = "MockDriver")]
+impl JSMockDriver {
+    #[js_method(constructor)]
+    fn _ctor() -> JSResult<()> {
+        Err(HostError::new(
+            rong::error::E_ILLEGAL_CONSTRUCTOR,
+            "Use lx.automation().lxapp().mock",
+        )
+        .into())
+    }
+
+    /// Install a scenario file (a `variant` of it) for this lxapp in the
+    /// host run: its `http` rules answer Logic `fetch` before the mock
+    /// selection, its `function` rules go to the dev session's companion.
+    /// Replaces the scenario the run installed for this app before; the
+    /// run's end removes it.
+    #[js_method(rename = "use")]
+    async fn use_scenario(
+        &self,
+        ctx: JSContext,
+        definition: JSObject,
+        variant: Optional<JSValue>,
+    ) -> JSResult<JSObject> {
+        // `undefined` and `null` mean no variant, not the text "undefined".
+        let variant = match variant.0 {
+            Some(value) if value.is_string() => Some(value.to_rust::<String>()?),
+            Some(value) if !value.is_undefined() && !value.is_null() => {
+                return Err(auto_err("scenario variant must be a string"));
+            }
+            _ => None,
+        };
+        install(ctx, &self.lxapp, definition, variant).await
+    }
+
+    /// Start the app's mock handler state over: the next intercepted call
+    /// evaluates `mocks/index.ts` again. A companion that switches mocks is
+    /// asked to do the same for the run's owner. Resolves
+    /// `{ generation, function: { reset, reason? } | null }`.
+    #[js_method]
+    async fn reset(&self, ctx: JSContext) -> JSResult<JSValue> {
+        let app = upgrade_authorized(&ctx, &self.lxapp)?;
+        let scope = run_scope(&ctx)?;
+        let appid = app.appid.clone();
+        let generation = registry::with_registry(|routes| {
+            routes.release_mock_holds(Some(&appid));
+            routes
+                .mocks
+                .reset(Some(&appid), super::mocks::Fresh::Spec)
+                .first()
+                .map(|(_, generation)| *generation)
+        });
+        let function = if companion::upstream().is_some() {
+            let owner = format::test_owner(&scope.run_id);
+            match companion::request(method::MOCK_RESET, json!({ "owner": owner })).await {
+                Ok(result) => Some(result),
+                // No companion, or one that does not switch mocks.
+                Err(UpstreamError { code, .. }) if code == method::UNSUPPORTED => None,
+                Err(UpstreamError { message, .. }) => {
+                    Some(json!({ "reset": false, "reason": message }))
+                }
+            }
+        } else {
+            None
+        };
+        json_to_js(
+            &ctx,
+            &json!({ "generation": generation, "function": function }),
+        )
+    }
+}
 
 /// Install `definition` with `variant` for the app, replacing the scenario
 /// this run installed for it before.
@@ -113,7 +202,7 @@ async fn clear_functions(owner: &str) {
     let _ = companion::request(method::SCENARIO_USE, params).await;
 }
 
-/// Handle returned by `scenario()`.
+/// Handle returned by `mock.use()`.
 #[js_class(clone)]
 pub(crate) struct JSScenario {
     id: u64,
@@ -269,7 +358,7 @@ impl JSScenario {
     fn _ctor() -> JSResult<()> {
         Err(HostError::new(
             rong::error::E_ILLEGAL_CONSTRUCTOR,
-            "Use lx.automation().lxapp().scenario()",
+            "Use lx.automation().lxapp().mock.use()",
         )
         .into())
     }

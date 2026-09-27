@@ -1,9 +1,10 @@
-//! `session.network.*`: dev-session network scenarios and recordings
-//! (the HTTP section of `lxdev scenario …`, and `lxdev network …`) over the
-//! automation runtime's route table.
+//! `session.network.*`: dev-session mocks, network scenarios and
+//! recordings (the HTTP half of `lxdev mock …`, and `lxdev network …`) over
+//! the automation runtime's route table.
 
 use lingxia_automation::runtime::network;
 use lingxia_control_protocol::methods::session::network as method;
+use lingxia_control_protocol::mock::{DEV_OWNER, MockMode};
 use serde_json::{Value, json};
 
 pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>, String> {
@@ -58,7 +59,57 @@ pub(crate) fn handle(handler: &str, args: Option<Value>) -> Result<Option<Value>
         method::RECORD_STOP => network::record_stop(text("name").as_deref())
             .map(Some)
             .map_err(|err| format!("(usage): {err}")),
+        method::MOCK_LOAD => {
+            let appid = text("appid").ok_or("(usage): appid is required")?;
+            let source = args
+                .get("source")
+                .and_then(Value::as_str)
+                .ok_or("(usage): source is required")?;
+            let keys: Vec<String> = serde_json::from_value(args["keys"].clone())
+                .map_err(|_| "(usage): keys must be an array of handler keys".to_string())?;
+            let baseline = mode_arg(&args, "baseline")?;
+            let config = args.get("config").filter(|config| !config.is_null());
+            network::mock_load(&appid, source, &keys, config, baseline)
+                .map(Some)
+                .map_err(|err| format!("(usage): {err}"))
+        }
+        method::MOCK_SET => {
+            if let Some(owner) = text("owner")
+                && owner != DEV_OWNER
+            {
+                return Err(format!(
+                    "(usage): a dev session sets the '{DEV_OWNER}' owner, not '{owner}'"
+                ));
+            }
+            let mode =
+                mode_arg(&args, "mode")?.ok_or("(usage): mode must be \"all\" or \"none\"")?;
+            let targets: Vec<String> = match args.get("targets") {
+                None | Some(Value::Null) => Vec::new(),
+                Some(targets) => serde_json::from_value(targets.clone())
+                    .map_err(|_| "(usage): targets must be an array of strings".to_string())?,
+            };
+            network::mock_set(mode, targets)
+                .map(Some)
+                .map_err(|err| format!("(usage): {err}"))
+        }
+        method::MOCK_RESET => Ok(Some(network::mock_reset(
+            text("owner").as_deref() == Some(DEV_OWNER),
+        ))),
+        method::MOCK_STATUS => Ok(Some(network::mock_status())),
         other => Err(format!("(usage): unknown network method {other}")),
+    }
+}
+
+/// `"all"` / `"none"` under `key`, `None` when absent.
+fn mode_arg(args: &Value, key: &str) -> Result<Option<MockMode>, String> {
+    match args.get(key) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(text)) => MockMode::parse(text)
+            .map(Some)
+            .ok_or_else(|| format!("(usage): {key} must be \"all\" or \"none\", got \"{text}\"")),
+        Some(other) => Err(format!(
+            "(usage): {key} must be \"all\" or \"none\", got {other}"
+        )),
     }
 }
 
@@ -109,8 +160,17 @@ pub(crate) fn session_ended() {
 mod tests {
     use super::*;
 
+    /// The route table is process-wide; these tests take turns.
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SERIAL
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     #[test]
     fn a_dev_scenario_reports_why_it_stopped_answering() {
+        let _serial = serial();
         let appid = "control.runtime.scenario.test";
         let scenario = |rules: Value| {
             Some(json!({
@@ -170,6 +230,81 @@ mod tests {
         assert_eq!(status["lastCleared"]["source"], "wifi");
         assert_eq!(status["lastCleared"]["label"], "Wi-Fi:offline");
         assert!(status["lastCleared"]["clearedAt"].is_string());
+    }
+
+    #[test]
+    fn mocks_load_select_reset_and_report() {
+        let _serial = serial();
+        let appid = "control.runtime.mock.test";
+        let load = |keys: Value, config: Value| {
+            handle(
+                method::MOCK_LOAD,
+                Some(json!({
+                    "appid": appid,
+                    "source": "({ 'GET **/devices': { json: [] } })",
+                    "keys": keys,
+                    "config": config,
+                })),
+            )
+        };
+        let loaded = load(json!(["GET **/devices"]), json!({ "mock": "all" }))
+            .unwrap()
+            .unwrap();
+        assert_eq!(loaded["handlers"], 1);
+        let first = loaded["generation"].as_u64().unwrap();
+        // An invalid load keeps the previous one.
+        let err = load(json!(["GET **/devices"]), json!({ "targets": [] })).unwrap_err();
+        assert_eq!(
+            err,
+            "(usage): mocks/config.json: unknown key \"targets\"; the keys are mock and overrides"
+        );
+        let err = load(json!(["**/devices"]), Value::Null).unwrap_err();
+        assert!(err.contains("is not a target"), "{err}");
+
+        let set = handle(
+            method::MOCK_SET,
+            Some(json!({ "mode": "none", "targets": ["GET **/devices"] })),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            set["entries"],
+            json!([{ "mode": "none", "targets": ["GET **/devices"] }])
+        );
+        let err = handle(
+            method::MOCK_SET,
+            Some(json!({ "owner": "test:x", "mode": "all" })),
+        )
+        .unwrap_err();
+        assert!(err.contains("sets the 'dev' owner"), "{err}");
+        let err = handle(method::MOCK_SET, Some(json!({ "mode": "on" }))).unwrap_err();
+        assert!(err.contains("mode must be"), "{err}");
+
+        let status = handle(method::MOCK_STATUS, None).unwrap().unwrap();
+        let app = status["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|app| app["appid"] == appid)
+            .unwrap()
+            .clone();
+        assert_eq!(app["handlers"], 1);
+        assert_eq!(app["generation"].as_u64(), Some(first));
+        assert_eq!(
+            app["selection"],
+            "all — from mocks/config.json · live: none 'GET **/devices'; lxdev mock reset to return"
+        );
+        assert_eq!(
+            status["live"],
+            json!([{ "mode": "none", "targets": ["GET **/devices"] }])
+        );
+
+        let reset = handle(method::MOCK_RESET, Some(json!({ "owner": "dev" })))
+            .unwrap()
+            .unwrap();
+        assert!(reset["generation"].as_u64().unwrap() > first);
+        let status = handle(method::MOCK_STATUS, None).unwrap().unwrap();
+        assert_eq!(status["live"], json!([]));
     }
 
     #[test]
