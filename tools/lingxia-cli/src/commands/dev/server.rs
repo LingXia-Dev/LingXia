@@ -1374,7 +1374,7 @@ fn route_runtime_message(
                 let _ = tx.send(payload);
             }
         }
-        // A host run's `t.app.scenario()` reaches the companion this way;
+        // A host run's `t.app.mock.use()` reaches the companion this way;
         // the relay can wait on it, so it must not hold up this connection.
         DevSessionMessage::Request(request)
             if request

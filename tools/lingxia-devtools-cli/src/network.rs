@@ -1,6 +1,6 @@
 //! `lxdev network`: the network panel of a dev session. It shows what
 //! answers the running lxapp's Logic `fetch` and `Rong.SSE` and records real
-//! traffic into scenario files for `lxdev scenario use`.
+//! traffic into scenario files for `lxdev mock use`.
 //!
 //! Only hosts built with the automation test runtime (development hosts, the
 //! Runner) can do this.
@@ -27,7 +27,8 @@ enum NetworkCommand {
     /// Capture real Logic traffic into a scenario file
     #[command(subcommand)]
     Record(RecordCommand),
-    /// Show the active scenario and recording
+    /// Show who answered each recent call (route, scenario rule, mock or
+    /// real, and the selection layer), the scenario and the recording
     Status {
         /// Print JSON output
         #[arg(long)]
@@ -70,10 +71,10 @@ pub fn execute(info: &SessionInfo, options: NetworkOptions) -> Result<()> {
     let ws = info.ws_url.as_str();
     match options.command {
         NetworkCommand::Status { json } => {
-            let session = crate::scenario::Live { ws: ws.to_string() };
-            let mut status = crate::scenario::status(&session)?;
-            if crate::scenario::companion_support(&session).is_ok()
-                && let Ok(result) = crate::scenario::Session::companion(
+            let session = crate::mock::Live { ws: ws.to_string() };
+            let mut status = crate::mock::status(&session)?;
+            if crate::mock::companion_support(&session).is_ok()
+                && let Ok(result) = crate::mock::Session::companion(
                     &session,
                     companion_method::SCENARIO_CALLS,
                     Some(json!({ "since": 0 })),
@@ -279,8 +280,8 @@ pub(crate) fn print_last_cleared(status: &Value) {
         return;
     };
     let why = match cleared["reason"].as_str() {
-        Some("cleared") => "cleared with `lxdev scenario clear`",
-        Some("replaced") => "replaced by another `lxdev scenario use`",
+        Some("cleared") => "cleared with `lxdev mock clear`",
+        Some("replaced") => "replaced by another `lxdev mock use`",
         Some("session_ended") => "cleared: the dev session disconnected",
         _ => "cleared",
     };
@@ -339,9 +340,11 @@ pub(crate) fn function_calls(status: &Value, calls: &companion::CallsResult) -> 
                 .rule
                 .filter(|_| call.owner.as_deref() == Some(DEV_OWNER))
                 .and_then(|position| function_rules.get(position).copied());
-            let answered_by = match (rule, call.owner.as_deref()) {
-                (Some(index), _) => format!("rule {index} ({label})"),
-                (None, Some(owner)) if owner != DEV_OWNER => format!("{owner} scenario"),
+            let answered_by = match (rule, call.owner.as_deref(), call.handler.as_deref()) {
+                (Some(index), _, _) => format!("rule {index} ({label})"),
+                (None, Some(owner), _) if owner != DEV_OWNER => format!("{owner} scenario"),
+                // The companion's mock selection chose the handler.
+                (None, _, Some(handler)) => format!("function {handler}"),
                 _ => "companion default".to_string(),
             };
             let mut entry = json!({
@@ -401,7 +404,7 @@ pub(crate) fn print_status(status: &Value) {
     {
         Some(scenario) => {
             println!(
-                "{} scenario '{}' ({} rule{}; `lxdev scenario status` for per-rule hits)",
+                "{} scenario '{}' ({} rule{}; `lxdev mock` for per-rule hits)",
                 "ACTIVE".yellow().bold(),
                 scenario["label"].as_str().unwrap_or("unnamed"),
                 scenario["rules"].as_array().map_or(0, Vec::len),
@@ -418,6 +421,14 @@ pub(crate) fn print_status(status: &Value) {
         None => {
             println!("no scenario is active");
             print_last_cleared(status);
+        }
+    }
+    if status["mock"]["apps"]
+        .as_array()
+        .is_some_and(|apps| !apps.is_empty())
+    {
+        for line in crate::mock::selection_lines(&status["mock"]) {
+            println!("{line}");
         }
     }
     print_recording(status);
@@ -461,16 +472,26 @@ mod tests {
         let calls: companion::CallsResult = serde_json::from_value(json!({ "calls": [
             { "time": 5, "function": "orders.submit", "owner": "dev", "rule": 1, "outcome": "fault" },
             { "time": 6, "function": "orders.status", "outcome": "default", "noMatch": "rule 0 match.args.id: missing" },
-            { "time": 7, "function": "orders.status", "owner": "test:r1", "rule": 0, "outcome": "result" }
+            { "time": 7, "function": "orders.status", "owner": "test:r1", "rule": 0, "outcome": "result" },
+            { "time": 8, "function": "orders.list", "outcome": "default", "handler": "mock" },
+            { "time": 9, "function": "orders.list", "outcome": "default", "handler": "real" }
         ] })).unwrap();
         let functions = function_calls(&status, &calls);
         assert_eq!(functions[0]["answeredBy"], "rule 3 (Checkout:expired)");
         assert_eq!(functions[1]["answeredBy"], "companion default");
         assert_eq!(functions[2]["answeredBy"], "test:r1 scenario");
-        let mut all = vec![json!({
-            "time": 4, "kind": "fetch", "method": "GET", "url": "https://h/cart",
-            "status": 200, "answeredBy": "rule 1 (Checkout:expired)"
-        })];
+        assert_eq!(functions[3]["answeredBy"], "function mock");
+        assert_eq!(functions[4]["answeredBy"], "function real");
+        let mut all = vec![
+            json!({
+                "time": 4, "kind": "fetch", "method": "GET", "url": "https://h/cart",
+                "status": 200, "answeredBy": "rule 1 (Checkout:expired)"
+            }),
+            json!({
+                "time": 5, "kind": "fetch", "method": "GET", "url": "https://h/devices",
+                "status": 200, "answeredBy": "mock (GET **/devices) · live target"
+            }),
+        ];
         all.extend(functions);
         let lines = call_lines(&all);
         assert_eq!(
@@ -479,10 +500,14 @@ mod tests {
         );
         assert_eq!(
             lines[1],
-            "function orders.submit → fault  answered by: rule 3 (Checkout:expired)"
+            "GET https://h/devices → 200  answered by: mock (GET **/devices) · live target"
         );
         assert_eq!(
             lines[2],
+            "function orders.submit → fault  answered by: rule 3 (Checkout:expired)"
+        );
+        assert_eq!(
+            lines[3],
             "function orders.status → default  answered by: companion default\n    rule 0 match.args.id: missing"
         );
     }
