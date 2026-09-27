@@ -284,6 +284,7 @@ pub fn init_automation_context(ctx: &JSContext) -> JSResult<()> {
     ctx.register_hidden_class::<input::JSPageKey>()?;
     ctx.register_hidden_class::<nav::JSNavDriver>()?;
     ctx.register_hidden_class::<network::JSNetworkDriver>()?;
+    ctx.register_hidden_class::<network::JSMockDriver>()?;
     #[cfg(feature = "runtime")]
     ctx.register_hidden_class::<network::JSNetworkRoute>()?;
     #[cfg(feature = "runtime")]

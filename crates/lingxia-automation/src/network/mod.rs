@@ -21,7 +21,7 @@ mod registry;
 mod scenario;
 mod test_scenario;
 
-pub(crate) use test_scenario::{JSScenario, install as install_scenario};
+pub(crate) use test_scenario::{JSMockDriver, JSScenario};
 
 use crate::auto_err;
 use crate::resolve::{json_to_js, upgrade_authorized};

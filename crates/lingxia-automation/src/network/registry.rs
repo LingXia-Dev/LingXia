@@ -476,9 +476,9 @@ impl InstalledScenario {
 /// Why a dev scenario stopped answering.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DevClearReason {
-    /// `lxdev scenario clear`.
+    /// `lxdev mock clear`.
     Cleared,
-    /// Another `lxdev scenario use`.
+    /// Another `lxdev mock use`.
     Replaced,
     /// The dev bridge disconnected (the session ended, or a transient
     /// reconnect: dev scenarios fail closed).
@@ -579,7 +579,7 @@ pub(crate) struct Registry {
     /// routes stand aside and Logic `fetch` calls are logged.
     active_runs: Vec<String>,
     pub(crate) dev: Option<InstalledScenario>,
-    /// Scenarios host runs installed (`t.app.scenario()`), one per run and
+    /// Scenarios host runs installed (`t.app.mock.use()`), one per run and
     /// app at a time.
     pub(crate) run_scenarios: Vec<InstalledScenario>,
     /// The dev scenario cleared last, and why.
@@ -651,7 +651,7 @@ impl Registry {
 
     /// Install a resolved scenario for `owner` and `appid`, replacing the
     /// scenario that owner installed for the app before (a dev session's,
-    /// or the run's previous `t.app.scenario()`). All or nothing.
+    /// or the run's previous `t.app.mock.use()`). All or nothing.
     /// `routes` are `(rule index, spec)` of its `http` rules in precedence
     /// order; `rules` lists every rule. Returns the installed scenario.
     pub(crate) fn install_scenario(
