@@ -1223,10 +1223,11 @@ impl Registry {
         call: u64,
     ) -> MockDecision {
         let run_active = self.runs_active();
-        let decision = self.mocks.decide(appid, method, url, run_active);
+        let (decision, layer) = self.mocks.decide(appid, method, url, run_active);
         if call != 0
             && let Some(observed) = self.calls.find(call)
         {
+            observed.selection = layer;
             match &decision {
                 MockDecision::Mock { key } => {
                     observed.mock = Some(key.clone());
@@ -1242,6 +1243,54 @@ impl Registry {
             }
         }
         decision
+    }
+
+    /// A handler of `key` answered call `call` with `action`: `continue`
+    /// hands it to the real backend, and a contract capture keeps a
+    /// fulfilled answer here, where its body is known.
+    pub(crate) fn mock_answered(&mut self, call: u64, key: &str, action: &RouteAction) {
+        if call == 0 {
+            return;
+        }
+        let Some(observed) = self.calls.find(call) else {
+            return;
+        };
+        if matches!(action, RouteAction::Continue) {
+            observed.mock = None;
+            return;
+        }
+        if matches!(action, RouteAction::Patch(_)) {
+            return;
+        }
+        let contract = std::mem::take(&mut observed.watch.contract);
+        let (appid, method, url) = (
+            observed.appid.clone(),
+            observed.method.clone(),
+            observed.raw_url.clone(),
+        );
+        if let (true, RouteAction::Fulfill(fulfill)) = (contract, action) {
+            let content_type = fulfill
+                .headers
+                .iter()
+                .find(|(name, _)| name.eq_ignore_ascii_case("content-type"))
+                .map(|(_, value)| value.as_str());
+            let body = match &fulfill.body {
+                Some(ResponseBody::Text(text)) => Some(text.as_str()),
+                _ => None,
+            };
+            self.captures.record(
+                &appid,
+                Observed {
+                    method: &method,
+                    url: &url,
+                    source: Source::Mock,
+                    pattern: Some(key.to_string()),
+                    status: fulfill.status,
+                    content_type,
+                    body,
+                },
+            );
+        }
     }
 
     /// Hold a request a mock answer keeps open (`hang`, an SSE stream
@@ -1497,9 +1546,9 @@ mod tests {
             other,
         );
         let calls = registry.calls.recent(0, 10, &[]);
-        assert_eq!(calls[0]["answeredBy"], "mock (GET **/devices/*)");
+        assert_eq!(calls[0]["answeredBy"], "mock (GET **/devices/*) · config");
         assert_eq!(calls[0]["source"], "mock");
-        assert_eq!(calls[1]["answeredBy"], "unhandled");
+        assert_eq!(calls[1]["answeredBy"], "unhandled · config");
 
         // A mock answer's hold is released by a reload or reset.
         let token = registry.hold_for_mock("app");
@@ -1528,6 +1577,73 @@ mod tests {
             next(&mut registry, "https://h/devices/1", true).1,
             MockDecision::Mock { .. }
         ));
+    }
+
+    #[test]
+    fn each_call_the_selection_answered_names_its_layer() {
+        use lingxia_control_protocol::mock::{MockEntry, MockMode, MockOwner};
+        let mut registry = Registry::default();
+        mocked(&mut registry, "all");
+        let answered = |registry: &mut Registry, url: &str| {
+            let (id, _) = registry.observe("app", "fetch", "GET", url).unwrap();
+            registry.decide_call("app", "GET", url, SentRequest::default, || true, id);
+            registry.calls.find(id).unwrap().answered_by()
+        };
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/1"),
+            "mock (GET **/devices/*) · config"
+        );
+        // `--mock none` replaces the config entirely.
+        registry
+            .mocks
+            .selection
+            .replace(MockOwner::Baseline, vec![MockEntry::Whole(MockMode::None)]);
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/1"),
+            "real · --mock"
+        );
+        // A live target changes only what it matches.
+        registry
+            .mocks
+            .select(
+                MockOwner::Dev,
+                MockMode::All,
+                vec!["GET **/devices/2".into()],
+            )
+            .unwrap();
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/2"),
+            "mock (GET **/devices/*) · live target"
+        );
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/1"),
+            "real · --mock"
+        );
+        registry
+            .mocks
+            .select(MockOwner::Dev, MockMode::All, Vec::new())
+            .unwrap();
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/1"),
+            "mock (GET **/devices/*) · live"
+        );
+        // A route answers before the selection, which is then not named.
+        registry
+            .install(
+                "run",
+                "app",
+                spec(
+                    UrlMatcher::glob("**/devices/1").unwrap(),
+                    None,
+                    fulfill(200),
+                ),
+                || true,
+            )
+            .unwrap();
+        assert_eq!(
+            answered(&mut registry, "https://h/devices/1"),
+            "route **/devices/1"
+        );
     }
 
     #[test]

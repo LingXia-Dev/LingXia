@@ -182,6 +182,14 @@ mod interceptor {
     const APPID: &str = "network-interceptor-test";
     const RUN: &str = "network-interceptor-run";
 
+    /// Tests that count the process call log take turns.
+    fn serial() -> std::sync::MutexGuard<'static, ()> {
+        static SERIAL: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        SERIAL
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
     /// Evaluate `script` in a context whose `fetch` routes as `appid` in
     /// `run`. `__route(glob, handler)` installs a route through the same
     /// handler parsing as `NetworkDriver.route`.
@@ -268,6 +276,34 @@ mod interceptor {
                         },
                     )?;
                     ctx.global().set("__record", record)?;
+                    // `__mockLoad(source, keys, config?)` loads the app's
+                    // mocks as `session.network.mock.load` does;
+                    // `__mockReset()` starts handler state over.
+                    let mock_load = JSFunc::new(
+                        &ctx,
+                        move |source: String,
+                              keys: Vec<String>,
+                              config: Option<String>|
+                              -> JSResult<f64> {
+                            let config =
+                                config.map(|text| serde_json::from_str::<Value>(&text).unwrap());
+                            registry::with_registry(|routes| {
+                                routes.mocks.load(appid, &source, &keys, config.as_ref())
+                            })
+                            .map(|generation| generation as f64)
+                            .map_err(auto_err)
+                        },
+                    )?;
+                    ctx.global().set("__mockLoad", mock_load)?;
+                    let mock_reset = JSFunc::new(&ctx, move || {
+                        registry::with_registry(|routes| {
+                            routes.release_mock_holds(Some(appid));
+                            routes
+                                .mocks
+                                .reset(Some(appid), super::super::mocks::Fresh::Reset);
+                        });
+                    })?;
+                    ctx.global().set("__mockReset", mock_reset)?;
                     ctx.eval_async::<String>(Source::from_bytes(script)).await
                 })
                 .await
@@ -633,6 +669,176 @@ ${{error && error.stack}}` }});
     }
 
     #[test]
+    fn mocks_answer_from_handlers_with_state_errors_and_the_next_layer() {
+        let _serial = serial();
+        const APP: &str = "network-interceptor-mocks";
+        const OWNER: &str = "network-interceptor-mocks-run";
+        let base = json_server(r#"{"origin":"real"}"#, 3);
+        let script: &'static str = Box::leak(
+            format!(
+                r#"(async () => {{ try {{
+              const out = {{}};
+              const source = `(function () {{
+                let signedIn = false;
+                let signIns = 0;
+                return {{
+                  'POST **/sessions': async (req, ctx) => {{
+                    const {{ email }} = await req.json();
+                    if (!email.includes('@')) return {{ status: 401, json: {{ reason: 'Check your email.' }} }};
+                    signedIn = true;
+                    signIns += 1;
+                    return {{ json: {{ method: req.method, host: req.url.host, header: req.headers.get('x-test'), proxy: typeof ctx.fetch }} }};
+                  }},
+                  'GET **/me': () => (signedIn ? {{ json: {{ signIns }} }} : {{ status: 401 }}),
+                  'GET **/plain': {{ json: [1, 2], headers: {{ 'x-at': '{{{{nowMs}}}}' }} }},
+                  'GET **/throws': () => {{ throw new Error('boom'); }},
+                  'GET **/undefined': () => {{}},
+                  'GET **/sequence': () => ({{ sequence: [{{ status: 200 }}] }}),
+                  'GET **/abort': {{ abort: 'failed' }},
+                  'GET **/events': {{ sse: [{{ data: {{ state: 'done' }} }}, {{ drop: true }}] }},
+                  'GET **/real': {{ continue: true }},
+                  'GET **/proxy': async (req, ctx) => {{
+                    const real = await ctx.fetch('{base}/origin');
+                    return {{ json: {{ proxied: await real.json() }} }};
+                  }},
+                  'GET **/stream': () => ({{ sse: [{{ event: 'ready', data: 'one', id: 'm1' }}, {{ drop: true }}] }}),
+                }};
+              }})()`;
+              __mockLoad(source, [
+                'POST **/sessions', 'GET **/me', 'GET **/plain', 'GET **/throws', 'GET **/undefined',
+                'GET **/sequence', 'GET **/abort', 'GET **/events', 'GET **/real', 'GET **/proxy',
+                'GET **/stream',
+              ], JSON.stringify({{ mock: 'all' }}));
+              const detail = async (url, init) => {{
+                try {{ await fetch(url, init); return 'resolved'; }}
+                catch (error) {{ return `${{error.name}}: ${{error.message}} — ${{error.data && error.data.detail}}`; }}
+              }};
+
+              const bad = await fetch('https://api.test/sessions', {{ method: 'POST', body: JSON.stringify({{ email: 'x' }}) }});
+              out.bad = [bad.status, await bad.json()];
+              const signed = await fetch('https://api.test/sessions', {{
+                method: 'POST', body: JSON.stringify({{ email: 'a@b.c' }}), headers: {{ 'x-test': 'yes' }},
+              }});
+              out.signed = await signed.json();
+              out.me = await (await fetch('https://api.test/me')).json();
+              // A reset starts handler state over: a fresh instance.
+              __mockReset();
+              out.afterReset = (await fetch('https://api.test/me')).status;
+              const plain = await fetch('https://api.test/plain');
+              out.plain = await plain.json();
+              out.renderedAt = Number(plain.headers.get('x-at')) > 0;
+              out.throws = await detail('https://api.test/throws');
+              out.undefined = await detail('https://api.test/undefined');
+              out.sequence = await detail('https://api.test/sequence');
+              out.abort = await detail('https://api.test/abort');
+              out.unhandled = await detail('https://api.test/unknown/path');
+              out.events = await (await fetch('https://api.test/events')).text();
+              out.real = await (await fetch('{base}/real')).json();
+              out.proxy = await (await fetch('https://api.test/proxy')).json();
+              // A route's patch applies over the mock answer below it.
+              __route('https://api.test/plain', {{ continue: true, patchJson: [9] }});
+              out.patched = await (await fetch('https://api.test/plain')).json();
+
+              const sse = new Rong.SSE('https://api.test/stream', {{ reconnect: {{ enabled: false }} }});
+              const events = [];
+              for await (const event of sse) events.push([event.type, event.data, event.id]);
+              out.sse = events;
+              const failing = new Rong.SSE('https://api.test/throws', {{ reconnect: {{ enabled: false }} }});
+              try {{ await failing.next(); out.sseThrows = 'resolved'; }}
+              catch (error) {{ out.sseThrows = error.message; }}
+              return JSON.stringify(out);
+            }} catch (error) {{
+              return JSON.stringify({{ fatal: `${{error}} ${{error && error.data && error.data.detail}}
+${{error && error.stack}}` }});
+            }} }})()"#
+            )
+            .into_boxed_str(),
+        );
+        let out = eval_with_interceptor(APP, OWNER, script);
+        let out: Value = serde_json::from_str(&out).unwrap();
+        assert!(out.get("fatal").is_none(), "{out}");
+        assert_eq!(
+            out["bad"],
+            serde_json::json!([401, { "reason": "Check your email." }])
+        );
+        assert_eq!(
+            out["signed"],
+            serde_json::json!({ "method": "POST", "host": "api.test", "header": "yes", "proxy": "function" })
+        );
+        assert_eq!(out["me"], serde_json::json!({ "signIns": 1 }));
+        assert_eq!(out["afterReset"], 401);
+        assert_eq!(out["plain"], serde_json::json!([1, 2]));
+        assert_eq!(out["renderedAt"], true);
+        assert_eq!(
+            out["throws"],
+            "TypeError: fetch failed — mock handler 'GET **/throws' threw: boom"
+        );
+        assert_eq!(
+            out["undefined"],
+            "TypeError: fetch failed — mock handler 'GET **/undefined' returned undefined; \
+             return an answer or { continue: true }"
+        );
+        assert_eq!(
+            out["sequence"],
+            "TypeError: fetch failed — mock handler 'GET **/sequence' returned an invalid \
+             answer: 'sequence' is a scenario field; a handler returns one answer per call"
+        );
+        assert_eq!(
+            out["abort"],
+            "TypeError: fetch failed — aborted by mock handler 'GET **/abort': failed"
+        );
+        assert_eq!(
+            out["unhandled"],
+            "TypeError: fetch failed — no mock handler for GET https://api.test/unknown/path; \
+             add 'GET **/unknown/path' to mocks/index.ts, or run: lxdev mock none \
+             'GET **/unknown/path'"
+        );
+        assert_eq!(out["events"], "data: {\"state\":\"done\"}\n\n");
+        assert_eq!(out["real"], serde_json::json!({ "origin": "real" }));
+        assert_eq!(
+            out["proxy"],
+            serde_json::json!({ "proxied": { "origin": "real" } })
+        );
+        assert_eq!(out["patched"], serde_json::json!([9]));
+        assert_eq!(out["sse"], serde_json::json!([["ready", "one", "m1"]]));
+        assert_eq!(out["sseThrows"], "mock handler 'GET **/throws' threw: boom");
+
+        let status = registry::with_registry(|routes| routes.mocks.status(false));
+        let app = status["apps"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|app| app["appid"] == APP)
+            .unwrap()
+            .clone();
+        let hits = |key: &str| {
+            app["keys"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|entry| entry["key"] == key)
+                .unwrap()["hits"]
+                .clone()
+        };
+        assert_eq!(hits("POST **/sessions"), 2);
+        assert_eq!(hits("GET **/throws"), 2);
+        assert_eq!(app["unhandled"][0]["url"], "https://api.test/unknown/path");
+        let errors: Vec<&str> = app["errors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["key"].as_str().unwrap())
+            .collect();
+        assert!(errors.contains(&"GET **/throws"), "{errors:?}");
+        assert_eq!(app["fresh"]["reason"], "reset");
+        clear_run(OWNER);
+        registry::with_registry(|routes| {
+            routes.mocks.sets.retain(|set| set.appid != APP);
+            routes.calls.forget_app(APP);
+        });
+    }
+
+    #[test]
     fn rong_sse_is_routed_and_reconnects_with_last_event_id() {
         const APP: &str = "network-interceptor-rong-sse";
         const OWNER: &str = "network-interceptor-rong-sse-run";
@@ -741,6 +947,7 @@ ${{error && error.stack}}` }});
 
     #[test]
     fn records_real_traffic_and_logs_every_call_of_a_run() {
+        let _serial = serial();
         const APP: &str = "network-interceptor-capture";
         const OWNER: &str = "network-interceptor-capture-run";
         let base = json_server(r#"{"user":"ada","access_token":"secret-token"}"#, 1);
@@ -828,6 +1035,7 @@ ${{error && error.stack}}` }});
 
     #[test]
     fn captures_routed_patched_and_real_responses_without_taking_the_body() {
+        let _serial = serial();
         const APP: &str = "network-interceptor-contract";
         const OWNER: &str = "network-interceptor-contract-run";
         let base = json_server(r#"{"items":[{"id":"d1"}],"total":1}"#, 3);

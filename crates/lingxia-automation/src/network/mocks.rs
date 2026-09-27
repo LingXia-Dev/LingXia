@@ -15,8 +15,8 @@
 use super::capture::{REDACTED, redact_url};
 use super::registry::{UrlMatcher, now_ms};
 use lingxia_control_protocol::mock::{
-    MockConfig, MockEntry, MockMode, MockOwner, MockTarget, Selection, parse_handler_key,
-    parse_target,
+    MockConfig, MockEntry, MockMode, MockOwner, MockTarget, Selection, describe_baseline,
+    describe_selection, parse_handler_key, parse_target,
 };
 use serde_json::{Value, json};
 use std::cell::RefCell;
@@ -137,7 +137,8 @@ pub(crate) enum MockDecision {
     /// The handler under this key answers.
     Mock { key: String },
     /// The selection says mock, but no key matches: the call fails.
-    Unhandled { detail: String },
+    /// `first` when this method and URL were not seen unhandled before.
+    Unhandled { detail: String, first: bool },
 }
 
 /// Every lxapp's mocks and the session-wide selection owners.
@@ -300,37 +301,48 @@ impl Mocks {
             })
     }
 
-    /// The mode the selection gives this call of `appid`: the session
-    /// owners first, then the app's config.
-    pub(crate) fn mode(&self, appid: &str, method: &str, url: &str, run_active: bool) -> MockMode {
+    /// The mode the selection gives this call of `appid` — the session
+    /// owners first, then the app's config — and the layer that decided
+    /// (`default` when none did).
+    pub(crate) fn mode(
+        &self,
+        appid: &str,
+        method: &str,
+        url: &str,
+        run_active: bool,
+    ) -> (MockMode, &'static str) {
         let matches = |target: &str| self.target_matches(target, method, url);
-        match self.selection.resolve(run_active, &matches) {
-            (mode, Some(_)) => mode,
-            (_, None) => self.set(appid).map_or(MockMode::None, |set| {
-                set.config_selection.resolve(run_active, &matches).0
-            }),
+        let decided = self.selection.decide(run_active, &matches).or_else(|| {
+            self.set(appid)
+                .and_then(|set| set.config_selection.decide(run_active, &matches))
+        });
+        match decided {
+            Some((owner, entry)) => (entry.mode(), owner.layer(entry)),
+            None => (MockMode::None, "default"),
         }
     }
 
-    /// Who answers a call routes and rules passed on. `None` when `appid`
-    /// has no mocks: they cannot answer, whatever the selection says.
+    /// Who answers a call routes and rules passed on, and the selection
+    /// layer that decided it (`None` when `appid` has no mocks: they cannot
+    /// answer, whatever the selection says).
     pub(crate) fn decide(
         &mut self,
         appid: &str,
         method: &str,
         url: &str,
         run_active: bool,
-    ) -> MockDecision {
+    ) -> (MockDecision, Option<&'static str>) {
         if self.set(appid).is_none() {
-            return MockDecision::Real;
+            return (MockDecision::Real, None);
         }
-        if self.mode(appid, method, url, run_active) == MockMode::None {
-            return MockDecision::Real;
+        let (mode, layer) = self.mode(appid, method, url, run_active);
+        if mode == MockMode::None {
+            return (MockDecision::Real, Some(layer));
         }
         let Some(set) = self.set_mut(appid) else {
-            return MockDecision::Real;
+            return (MockDecision::Real, None);
         };
-        match set.key_index(method, url) {
+        let decision = match set.key_index(method, url) {
             Some(index) => {
                 let key = &mut set.keys[index];
                 key.hits += 1;
@@ -342,6 +354,7 @@ impl Mocks {
                 let method = method.to_ascii_uppercase();
                 let shown = redact_url(url, REDACTED);
                 let now = now_ms();
+                let mut first = false;
                 match set
                     .unhandled
                     .iter_mut()
@@ -352,6 +365,7 @@ impl Mocks {
                         seen.last_ms = now;
                     }
                     None => {
+                        first = true;
                         if set.unhandled.len() >= MAX_DIAGNOSTICS {
                             set.unhandled.remove(0);
                         }
@@ -369,9 +383,11 @@ impl Mocks {
                         "no mock handler for {method} {shown}; add '{suggested}' to \
                          mocks/index.ts, or run: lxdev mock none '{suggested}'"
                     ),
+                    first,
                 }
             }
-        }
+        };
+        (decision, Some(layer))
     }
 
     /// Note a handler failure for status.
@@ -401,80 +417,33 @@ impl Mocks {
         }
     }
 
-    /// `all`, `none`, or `mixed` for an app, and which owner decides it.
-    fn summary(&self, set: &MockSet, run_active: bool) -> (String, String) {
-        // Session owners highest first (dev aside during a run), then the
-        // config: the first with a whole entry decides everything its
-        // targets and those of the owners above do not.
-        let layers: Vec<(MockOwner, &[MockEntry])> = self
-            .selection
-            .owners()
-            .into_iter()
-            .filter(|owner| !(run_active && **owner == MockOwner::Dev))
-            .map(|owner| (owner.clone(), self.selection.entries(owner)))
-            .chain(
-                set.config_selection
-                    .owners()
-                    .into_iter()
-                    .map(|owner| (owner.clone(), set.config_selection.entries(owner))),
-            )
-            .collect();
-        let decider = layers.iter().position(|(_, entries)| {
-            entries
-                .iter()
-                .any(|entry| matches!(entry, MockEntry::Whole(_)))
-        });
-        let considered = decider.map_or(&layers[..], |at| &layers[..=at]);
-        let targeted = considered.iter().any(|(_, entries)| {
-            entries
-                .iter()
-                .any(|entry| matches!(entry, MockEntry::Targets(..)))
-        });
-        let whole = decider.and_then(|at| {
-            layers[at].1.iter().rev().find_map(|entry| match entry {
+    /// The session baseline (`lingxia dev --mock`).
+    pub(crate) fn baseline(&self) -> Option<MockMode> {
+        self.selection
+            .entries(&MockOwner::Baseline)
+            .iter()
+            .rev()
+            .find_map(|entry| match entry {
                 MockEntry::Whole(mode) => Some(*mode),
                 MockEntry::Targets(..) => None,
             })
-        });
-        let mode = match (whole, targeted) {
-            (_, true) => "mixed".to_string(),
-            (Some(mode), false) => mode.to_string(),
-            (None, false) => "none".to_string(),
-        };
-        let source = match decider.map(|at| &layers[at].0) {
-            Some(MockOwner::Run(_)) => "test run".to_string(),
-            Some(MockOwner::Dev) => "lxdev mock".to_string(),
-            Some(MockOwner::Baseline) => "--mock".to_string(),
-            Some(MockOwner::Config) => lingxia_control_protocol::mock::CONFIG_FILE.to_string(),
-            None if set.config.is_none() => "no mocks/config.json".to_string(),
-            None => lingxia_control_protocol::mock::CONFIG_FILE.to_string(),
-        };
-        (mode, source)
     }
 
-    /// `session.network.mock.status`.
+    /// `session.network.mock.status`: per app the effective selection in
+    /// one line (`selection`) and what a test run sees (`runSelection`),
+    /// its handlers and their hits, unhandled calls and handler errors;
+    /// the session's baseline and live entries.
     pub(crate) fn status(&self, run_active: bool) -> Value {
-        let owner_json = |owner: &MockOwner| {
-            json!({
-                "owner": owner.label(),
-                "active": !(run_active && *owner == MockOwner::Dev),
-                "entries": self
-                    .selection
-                    .entries(owner)
-                    .iter()
-                    .map(MockEntry::to_json)
-                    .collect::<Vec<_>>(),
-            })
-        };
+        let baseline = self.baseline();
+        let live = self.selection.entries(&MockOwner::Dev);
         let apps: Vec<Value> = self
             .sets
             .iter()
             .map(|set| {
-                let (mode, source) = self.summary(set, run_active);
                 json!({
                     "appid": set.appid,
-                    "mode": mode,
-                    "source": source,
+                    "selection": describe_selection(set.config.as_ref(), baseline, live),
+                    "runSelection": describe_baseline(set.config.as_ref(), baseline),
                     "config": set.config,
                     "handlers": set.keys.len(),
                     "keys": set.keys.iter().map(|key| json!({ "key": key.key, "hits": key.hits })).collect::<Vec<_>>(),
@@ -500,9 +469,10 @@ impl Mocks {
             .collect();
         json!({
             "apps": apps,
-            "owners": self.selection.owners().into_iter().map(owner_json).collect::<Vec<_>>(),
-            // Dev entries stand aside while a test run is active.
-            "suspended": run_active && !self.selection.entries(&MockOwner::Dev).is_empty(),
+            "baseline": baseline,
+            "live": live.iter().map(MockEntry::to_json).collect::<Vec<_>>(),
+            // Live entries stand aside while a test run is active.
+            "suspended": run_active && !live.is_empty(),
         })
     }
 
@@ -570,13 +540,13 @@ mod tests {
     fn keys_are_tried_in_order_and_counted() {
         let mut mocks = loaded(Some(json!({ "mock": "all" })));
         assert_eq!(
-            mocks.decide("app", "get", "https://h/devices/1", false),
+            mocks.decide("app", "get", "https://h/devices/1", false).0,
             MockDecision::Mock {
                 key: "GET **/devices/*".into()
             }
         );
         assert_eq!(
-            mocks.decide("app", "PATCH", "https://h/devices/1", false),
+            mocks.decide("app", "PATCH", "https://h/devices/1", false).0,
             MockDecision::Mock {
                 key: "* **/devices/**".into()
             }
@@ -586,7 +556,7 @@ mod tests {
         assert_eq!(set.keys[2].hits, 1);
         // Another app has no mocks: the real backend answers it.
         assert_eq!(
-            mocks.decide("other", "GET", "https://h/devices/1", false),
+            mocks.decide("other", "GET", "https://h/devices/1", false).0,
             MockDecision::Real
         );
     }
@@ -594,12 +564,15 @@ mod tests {
     #[test]
     fn an_unhandled_call_names_the_key_to_add() {
         let mut mocks = loaded(Some(json!({ "mock": "all" })));
-        let MockDecision::Unhandled { detail } = mocks.decide(
-            "app",
-            "GET",
-            "https://api.example.com/sub/qoe/summary?token=secret",
-            false,
-        ) else {
+        let MockDecision::Unhandled { detail, first } = mocks
+            .decide(
+                "app",
+                "GET",
+                "https://api.example.com/sub/qoe/summary?token=secret",
+                false,
+            )
+            .0
+        else {
             panic!("expected unhandled");
         };
         assert_eq!(
@@ -608,12 +581,15 @@ mod tests {
              add 'GET **/sub/qoe/summary?*' to mocks/index.ts, or run: lxdev mock none \
              'GET **/sub/qoe/summary?*'"
         );
-        mocks.decide(
-            "app",
-            "GET",
-            "https://api.example.com/sub/qoe/summary?token=secret",
-            false,
-        );
+        assert!(first);
+        let _ = mocks
+            .decide(
+                "app",
+                "GET",
+                "https://api.example.com/sub/qoe/summary?token=secret",
+                false,
+            )
+            .0;
         let set = mocks.set("app").unwrap();
         assert_eq!(set.unhandled.len(), 1);
         assert_eq!(set.unhandled[0].count, 2);
@@ -626,7 +602,7 @@ mod tests {
         // No config: none.
         let mut mocks = loaded(None);
         assert_eq!(
-            mocks.decide("app", "GET", "https://h/devices/1", false),
+            mocks.decide("app", "GET", "https://h/devices/1", false).0,
             MockDecision::Real
         );
         // Config `none` with an override that routes one key to mocks.
@@ -634,11 +610,11 @@ mod tests {
             json!({ "mock": "none", "overrides": ["GET **/devices/*"] }),
         ));
         assert!(matches!(
-            mocks.decide("app", "GET", "https://h/devices/1", false),
+            mocks.decide("app", "GET", "https://h/devices/1", false).0,
             MockDecision::Mock { .. }
         ));
         assert_eq!(
-            mocks.decide("app", "POST", "https://h/sessions", false),
+            mocks.decide("app", "POST", "https://h/sessions", false).0,
             MockDecision::Real
         );
         // A baseline replaces the config as a whole, overrides included.
@@ -646,7 +622,7 @@ mod tests {
             .selection
             .replace(MockOwner::Baseline, vec![MockEntry::Whole(MockMode::None)]);
         assert_eq!(
-            mocks.decide("app", "GET", "https://h/devices/1", false),
+            mocks.decide("app", "GET", "https://h/devices/1", false).0,
             MockDecision::Real
         );
         // Dev targets win for what they match.
@@ -654,12 +630,12 @@ mod tests {
             .select(MockOwner::Dev, MockMode::All, keys(&["POST **/sessions"]))
             .unwrap();
         assert!(matches!(
-            mocks.decide("app", "POST", "https://h/sessions", false),
+            mocks.decide("app", "POST", "https://h/sessions", false).0,
             MockDecision::Mock { .. }
         ));
         // ... but stand aside during a run.
         assert_eq!(
-            mocks.decide("app", "POST", "https://h/sessions", true),
+            mocks.decide("app", "POST", "https://h/sessions", true).0,
             MockDecision::Real
         );
         // A run's own selection applies to it, and is dropped with it.
@@ -667,12 +643,12 @@ mod tests {
             .select(MockOwner::Run("r".into()), MockMode::All, Vec::new())
             .unwrap();
         assert!(matches!(
-            mocks.decide("app", "GET", "https://h/devices/1", true),
+            mocks.decide("app", "GET", "https://h/devices/1", true).0,
             MockDecision::Mock { .. }
         ));
         mocks.selection.drop_runs();
         assert_eq!(
-            mocks.decide("app", "GET", "https://h/devices/1", true),
+            mocks.decide("app", "GET", "https://h/devices/1", true).0,
             MockDecision::Real
         );
         // Function names belong to the companion.
@@ -690,7 +666,7 @@ mod tests {
     fn loads_are_all_or_nothing_and_generations_move() {
         let mut mocks = loaded(Some(json!({ "mock": "all" })));
         let first = mocks.set("app").unwrap().generation;
-        mocks.decide("app", "GET", "https://h/devices/1", false);
+        let _ = mocks.decide("app", "GET", "https://h/devices/1", false).0;
         let err = mocks
             .load("app", "({})", &keys(&["GET/devices"]), None)
             .unwrap_err();
@@ -737,7 +713,7 @@ mod tests {
     }
 
     #[test]
-    fn status_reports_mode_handlers_and_diagnostics() {
+    fn status_reports_the_selection_handlers_and_diagnostics() {
         let mut mocks = loaded(Some(
             json!({ "mock": "all", "overrides": ["GET **/qoe/*"] }),
         ));
@@ -746,8 +722,11 @@ mod tests {
         mocks.failed("app", "GET **/devices/*", "TypeError: x is undefined");
         let status = mocks.status(false);
         let app = &status["apps"][0];
-        assert_eq!(app["mode"], "mixed");
-        assert_eq!(app["source"], "mocks/config.json");
+        assert_eq!(
+            app["selection"],
+            "all — from mocks/config.json · real: GET **/qoe/*"
+        );
+        assert_eq!(app["runSelection"], "all (mocks/config.json, overrides)");
         assert_eq!(app["handlers"], 3);
         assert_eq!(
             app["keys"][1],
@@ -757,19 +736,22 @@ mod tests {
         assert_eq!(app["errors"][0]["count"], 1);
         assert_eq!(app["fresh"]["reason"], "load");
 
-        // A dev whole entry shadows the config's overrides.
         mocks
             .select(MockOwner::Dev, MockMode::None, Vec::new())
             .unwrap();
         let status = mocks.status(false);
-        assert_eq!(status["apps"][0]["mode"], "none");
-        assert_eq!(status["apps"][0]["source"], "lxdev mock");
-        assert_eq!(status["owners"][0]["owner"], "dev");
+        assert_eq!(
+            status["apps"][0]["selection"],
+            "none — live (lxdev mock none) over mocks/config.json: all, 1 real override; lxdev \
+             mock reset to return"
+        );
+        assert_eq!(status["live"], json!([{ "mode": "none" }]));
         assert_eq!(mocks.status(true)["suspended"], true);
 
         let plain = loaded(None);
-        let status = plain.status(false);
-        assert_eq!(status["apps"][0]["mode"], "none");
-        assert_eq!(status["apps"][0]["source"], "no mocks/config.json");
+        assert_eq!(
+            plain.status(false)["apps"][0]["selection"],
+            "none — default (no mocks/config.json)"
+        );
     }
 }

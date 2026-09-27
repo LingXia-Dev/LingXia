@@ -239,6 +239,10 @@ pub(crate) struct Call {
     pub mock: Option<String>,
     /// The selection routed it to mocks and no handler key matched.
     pub unhandled: bool,
+    /// The selection layer that decided mock or real: `config`, `--mock`,
+    /// `live`, `live target`, `default`; `None` when the selection was not
+    /// asked (a route or rule answered, or the app has no mocks).
+    pub selection: Option<&'static str>,
     pub(crate) raw_url: String,
     /// Who wants this call's response.
     pub(crate) watch: Watch,
@@ -279,18 +283,26 @@ impl Call {
         out
     }
 
-    /// `rule 2 (wifi:b)`, `route **/x`, `mock (GET **/x)`, `unhandled`, or
-    /// `real`.
+    /// `rule 2 (wifi:b)`, `route **/x`, `mock (GET **/x) · config`,
+    /// `unhandled · live`, `real · --mock`, or `real`.
     pub(crate) fn answered_by(&self) -> String {
         let passed = self
             .route
             .as_ref()
             .is_none_or(|route| route.action == "continue");
+        let layer = self
+            .selection
+            .filter(|_| passed)
+            .map(|layer| format!(" · {layer}"))
+            .unwrap_or_default();
         if passed && let Some(key) = &self.mock {
-            return format!("mock ({key})");
+            return format!("mock ({key}){layer}");
         }
         if passed && self.unhandled {
-            return "unhandled".to_string();
+            return format!("unhandled{layer}");
+        }
+        if passed && self.selection.is_some() {
+            return format!("real{layer}");
         }
         match &self.route {
             Some(route) if route.action == "continue" && !route.patch => "real".to_string(),
@@ -354,11 +366,18 @@ impl CallLog {
             no_match: None,
             mock: None,
             unhandled: false,
+            selection: None,
             raw_url: url.to_string(),
             watch,
             recorder: None,
         });
         self.next_id
+    }
+
+    /// Forget an app's calls (tests share the process log).
+    #[cfg(test)]
+    pub(crate) fn forget_app(&mut self, appid: &str) {
+        self.calls.retain(|call| call.appid != appid);
     }
 
     pub(crate) fn find(&mut self, id: u64) -> Option<&mut Call> {
