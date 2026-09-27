@@ -172,7 +172,7 @@ function Invoke-SameRouteRelaunchStress {
     Invoke-Checked $lxdev (Get-LxdevArguments @('lxapp', 'nav', 'relaunch', 'home', '--json'))
     Invoke-Checked $lxdev (Get-LxdevArguments @(
       'lxapp', 'page', 'wait', '--page', 'home',
-      '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+      '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
     ))
   }
 }

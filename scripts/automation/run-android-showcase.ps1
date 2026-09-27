@@ -59,7 +59,7 @@ function Invoke-NativeVideoLifecycleProbe {
   )
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'video',
-    '--css', '#lx-video-shape-fixture', '--state', 'visible', '--timeout-ms', '10000'
+    '#lx-video-shape-fixture', '--state', 'visible', '--timeout-ms', '10000'
   )
 
   $description = 'LingXia native component video.native lx-video-shape-fixture'
@@ -80,7 +80,7 @@ function Invoke-NativeVideoLifecycleProbe {
   if ($LASTEXITCODE -ne 0) { throw 'Could not send a physical Android Back key event.' }
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'components',
-    '--css', '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '5000'
+    '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '5000'
   )
 
   $deadline = [DateTime]::UtcNow.AddSeconds(5)
@@ -101,7 +101,7 @@ function Invoke-SameRouteRelaunchStress {
     Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'home',
-      '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+      '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
     )
   }
 }
@@ -113,7 +113,7 @@ function Invoke-ProcessRestoreProbe {
   Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
   Invoke-Checked $lxdev @(
     'lxapp', 'page', 'wait', '--page', 'home',
-    '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+    '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
   )
   $beforeProcess = (& $adb @adbTarget shell pidof $packageId | Out-String).Trim()
   if ([string]::IsNullOrWhiteSpace($beforeProcess)) { throw 'Showcase process is missing before the restore probe.' }
@@ -140,7 +140,7 @@ function Invoke-ProcessRestoreProbe {
     do {
       # The dev transport must reconnect to the fresh process before the
       # regular Showcase drivers can verify its page and Logic runtime.
-      $probe = (& $lxdev lxapp page wait --page home --css '[data-testid="home-page"]' `
+      $probe = (& $lxdev lxapp page wait --page home '[data-testid="home-page"]' `
         --state visible --timeout-ms 2000 2>&1 | Out-String)
       if ($LASTEXITCODE -eq 0) { $restored = $true; break }
       Start-Sleep -Milliseconds 500
@@ -163,12 +163,12 @@ function Invoke-ProcessRestoreProbe {
     Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'components', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'components',
-      '--css', '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '10000'
+      '[data-testid="components-page"]', '--state', 'visible', '--timeout-ms', '10000'
     )
     Invoke-Checked $lxdev @('lxapp', 'nav', 'relaunch', 'home', '--json')
     Invoke-Checked $lxdev @(
       'lxapp', 'page', 'wait', '--page', 'home',
-      '--css', '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
+      '[data-testid="home-page"]', '--state', 'visible', '--timeout-ms', '10000'
     )
     Write-Host "Android process restore passed: PID $beforeProcess -> $afterProcess"
   } finally {
