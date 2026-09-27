@@ -281,9 +281,11 @@ impl JSScenario {
                     "function": call.function,
                     "rule": rule,
                     "outcome": call.outcome,
-                    "answeredBy": match rule {
-                        Some(index) => format!("rule {index} ({})", self.label),
-                        None => "companion default".to_string(),
+                    "answeredBy": match (rule, call.handler.as_deref()) {
+                        (Some(index), _) => format!("rule {index} ({})", self.label),
+                        // The companion's mock selection chose the handler.
+                        (None, Some(handler)) => format!("function {handler}"),
+                        (None, None) => "companion default".to_string(),
                     },
                 });
                 if let Some(args) = call.args {

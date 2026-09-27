@@ -951,7 +951,37 @@ export interface ScenarioCall {
 /** `calls()` filter: one rule's target, or its number. */
 export type ScenarioCallFilter = { http: string } | { function: string } | { rule: number };
 
-/** Handle returned by `scenario()`. */
+/** `mock.reset()` result. */
+export interface MockResetResult {
+  /** The app's new handler generation; `null` when it has no mocks loaded. */
+  generation: number | null;
+  /**
+   * The companion's answer for the run's Functions, `null` when it does not
+   * switch mocks.
+   */
+  function: { reset: boolean; reason?: string } | null;
+}
+
+/** `lx.automation().lxapp().mock` in a host run. */
+export interface MockDriver {
+  /**
+   * Install a scenario file (with one of its variants) for the host run:
+   * `http` rules answer Logic `fetch` before the mock selection, `function`
+   * rules go to the dev session's companion. Validated as a whole; it
+   * replaces the scenario the run installed for this app before, and the
+   * run's end removes it. Routes added with `network.route()` take
+   * precedence over it.
+   */
+  use(definition: ScenarioInput, variant?: string): Promise<Scenario>;
+  /**
+   * Start the app's mock handler state over: the next intercepted call
+   * evaluates `mocks/index.ts` again. A companion that switches mocks is
+   * asked to do the same for the run.
+   */
+  reset(): Promise<MockResetResult>;
+}
+
+/** Handle returned by `mock.use()`. */
 export interface Scenario {
   readonly name: string | null;
   readonly variant: string | null;
@@ -1218,15 +1248,13 @@ export interface LxAppDriver extends LogicLxAppDriver {
    */
   readonly network: NetworkDriver;
   /**
-   * Install a scenario file (with one of its variants) for the host run:
-   * `http` rules answer Logic `fetch`, `function` rules go to the dev
-   * session's companion. Validated as a whole; it replaces the scenario the
-   * run installed for this app before, and the run's end removes it. Routes
-   * added with `network.route()` take precedence over it.
+   * The app's mocks in the host run: scenario states on top of the mock
+   * selection, and a fresh handler state.
    *
-   * @remarks Rejects with `E_AUTOMATION` outside a host test run.
+   * @remarks Reading the property always works, but every call rejects with
+   * `E_AUTOMATION` outside a host test run (`lxdev test`).
    */
-  scenario(definition: ScenarioInput, variant?: string): Promise<Scenario>;
+  readonly mock: MockDriver;
   /**
    * Isolated data profile rollback, scoped to the host automation run.
    *

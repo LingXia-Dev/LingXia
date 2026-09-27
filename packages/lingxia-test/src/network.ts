@@ -80,9 +80,13 @@ export function scenarioCall(call: ScenarioCall): NetworkCall {
     ? "rule"
     : call.answeredBy.startsWith("route")
       ? "route"
-      : call.kind === "function"
-        ? "companion"
-        : "real";
+      : call.answeredBy.startsWith("mock") || call.answeredBy === "function mock"
+        ? "mock"
+        : call.answeredBy === "function real"
+          ? "real"
+          : call.kind === "function"
+            ? "companion"
+            : "real";
   const out: NetworkCall = { time: call.time, kind: call.kind, answeredBy };
   if (call.kind === "function") {
     out.function = call.function;

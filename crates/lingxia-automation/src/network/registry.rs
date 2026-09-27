@@ -1209,6 +1209,24 @@ impl Registry {
         } else {
             MockDecision::Real
         };
+        // Scenario rules this request passed over noted the real backend as
+        // what answered; a mock handler did.
+        if let (Some(no_match), MockDecision::Mock { key }) = (&no_match, &next) {
+            let method = method.to_ascii_uppercase();
+            let by = format!("mock ({key})");
+            for scenario in self.dev.iter_mut().chain(self.run_scenarios.iter_mut()) {
+                if !no_match.owners.contains(&scenario.owner) {
+                    continue;
+                }
+                if let Some(last) = scenario.calls.back_mut()
+                    && last.answered_by.is_none()
+                    && last.method == method
+                    && last.url == url
+                {
+                    last.answered_by = Some(by.clone());
+                }
+            }
+        }
         (decision, no_match, next)
     }
 

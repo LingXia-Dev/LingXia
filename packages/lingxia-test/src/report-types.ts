@@ -111,7 +111,7 @@ export interface ReportError {
   phase?: string;
   /** The app's last Logic network calls before the failure, oldest first. */
   network?: FailureNetworkCall[];
-  /** The scenario installed with `t.app.scenario()` when the spec failed. */
+  /** The scenario installed with `t.app.mock.use()` when the spec failed. */
   scenario?: ScenarioReport;
   /** The recorded driver action that failed, e.g. `page.click [data-testid=save]`. */
   failedAction?: string;

@@ -6,6 +6,7 @@ import { validateSchema } from "../dist/schema.js";
 const load = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), "utf8"));
 const scenarioSchema = load("../schemas/scenario.schema.json");
 const lxdevSchema = load("../schemas/lxdev.schema.json");
+const mockConfigSchema = load("../schemas/mock-config.schema.json");
 
 function issues(value, schema) {
   return validateSchema(value, schema, "#", { root: schema, dialect: "3.1" }).map(
@@ -34,6 +35,7 @@ test("the scenario schema takes rules and variants", () => {
   for (const path of [
     "../../../examples/lingxia-showcase/lxapp/tests/fixtures/network/outage.json",
     "../../../examples/lingxia-showcase/lxapp/tests/scenarios/route/status.json",
+    "../../../examples/lingxia-showcase/lxapp/tests/scenarios/mocks/profile.json",
   ]) {
     assert.deepEqual(issues(load(path), scenarioSchema), [], path);
   }
@@ -89,5 +91,25 @@ test("the lxdev.json schema describes test presets", () => {
     { test: { outputDir: "" } },
   ]) {
     assert.notDeepEqual(issues(bad, lxdevSchema), [], JSON.stringify(bad));
+  }
+});
+
+test("the mock config schema takes a selection and rejects what the CLI rejects", () => {
+  for (const config of [
+    {},
+    { mock: "all" },
+    { $schema: "x", mock: "none", overrides: ["GET **/qoe/*", "* https://h/x"] },
+    load("../../../examples/lingxia-showcase/lxapp/mocks/config.json"),
+  ]) {
+    assert.deepEqual(issues(config, mockConfigSchema), [], JSON.stringify(config));
+  }
+  for (const config of [
+    { mock: "on" },
+    { targets: [] },
+    { mock: "all", overrides: ["**/qoe/*"] },
+    { mock: "all", overrides: ["GET **/a", "GET **/a"] },
+    { mock: "all", overrides: "GET **/a" },
+  ]) {
+    assert.notDeepEqual(issues(config, mockConfigSchema), [], JSON.stringify(config));
   }
 });

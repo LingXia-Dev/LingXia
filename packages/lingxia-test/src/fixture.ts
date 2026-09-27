@@ -12,7 +12,7 @@ import { encodeAttachPayload, remapStack, type ResolvedHost } from "./host.js";
 import type { Redactor } from "./redact.js";
 import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
-import { ScenarioScope, installScenario } from "./scenario.js";
+import { ScenarioScope, installScenario } from "./mock.js";
 import { ClockScope, wrapClock } from "./clock.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
@@ -823,8 +823,10 @@ export class LiveFixture implements Fixture {
       get network() {
         return wrapNetwork(() => driver().network, fixture, fixture.networkScope);
       },
-      scenario: (definition: ScenarioInput, variant?: string) =>
-        installScenario(driver, fixture, fixture.scenarioScope, definition, variant),
+      mock: {
+        use: (definition: ScenarioInput, variant?: string) =>
+          installScenario(driver, fixture, fixture.scenarioScope, definition, variant),
+      },
       get profile() {
         return fixture.profileFixture(ref);
       },

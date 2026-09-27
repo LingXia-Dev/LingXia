@@ -25,9 +25,11 @@ themselves.
 `lxapp/lxdev.json` names each entry's arguments as a preset:
 `lxdev test --preset macos --arg framework=react` (the npm
 `test:automation:*` scripts use them; `--list-presets` shows them).
-`scenarios/` holds dev-time product states for `lxdev scenario use`, which
+`scenarios/` holds dev-time product states for `lxdev mock use`, which
 specs may import too (`route/status`, with its `online` and `offline`
-variants, is `AUT-NET-007`'s: `lxdev scenario use route/status:offline`).
+variants, is `AUT-NET-007`'s: `lxdev mock use route/status:offline`).
+`../mocks/` holds the Showcase's mock handlers, answered in development
+for the calls `mocks/config.json` selects (`AUT-NET-008`).
 
 React and Vue use the same platform entry. The framework is a build argument,
 not a separate test definition. `all.test.ts` remains a shared compatibility

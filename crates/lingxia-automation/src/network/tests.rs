@@ -1610,6 +1610,50 @@ mod scenarios {
     }
 
     #[test]
+    fn a_request_a_scenario_passed_over_names_the_mock_that_answered() {
+        let mut registry = Registry::default();
+        registry
+            .mocks
+            .load(
+                "app",
+                "({})",
+                &["PATCH **/devices/*".to_string()],
+                Some(&json!({ "mock": "all" })),
+            )
+            .unwrap();
+        let scenario = parse_scenario(
+            &json!({ "name": "Devices", "rules": [
+                { "http": "PATCH **/devices/*", "match": { "json": { "name": "Office" } }, "status": 409 }
+            ] }),
+            None,
+        )
+        .unwrap();
+        let slot = super::super::dev::installed(&scenario, None);
+        let installed = registry
+            .install_scenario("run", "app", slot, scenario.http, || true)
+            .unwrap();
+        let (decision, _, next) = registry.decide_call(
+            "app",
+            "PATCH",
+            "https://h/devices/1",
+            body_request(r#"{"name":"Den"}"#),
+            || true,
+            0,
+        );
+        assert_eq!(decision, None);
+        assert!(matches!(
+            next,
+            super::super::mocks::MockDecision::Mock { .. }
+        ));
+        let call = &registry.scenario(installed.id).unwrap().calls[0];
+        assert_eq!(call.rule, None);
+        assert_eq!(
+            call.answered_by.as_deref(),
+            Some("mock (PATCH **/devices/*)")
+        );
+    }
+
+    #[test]
     fn a_sequence_and_times_hold_per_rule() {
         let scenario = parse_scenario(
             &json!({ "rules": [

@@ -15,6 +15,7 @@ import type {
   DeviceDriver,
   LxAppDriver,
   LxAppManager,
+  MockDriver,
   NavDriver,
   NetworkDriver,
   NetworkRoute,
@@ -246,7 +247,8 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'nav', 'network', 'page', 'pages', 'profile', 'scenario', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'mock', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const MOCK_DRIVER_API = ['reset', 'use'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
 const NETWORK_DRIVER_API = ['captureResponses', 'requests', 'responses', 'route', 'unrouteAll'] as const;
@@ -554,8 +556,9 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp()',
     members: LXAPP_DRIVER_API,
-    properties: ['clock', 'nav', 'network', 'page', 'profile'],
+    properties: ['clock', 'mock', 'nav', 'network', 'page', 'profile'],
   },
+  { name: 'MockDriver', layer: 'automation', expression: 'lx.automation().lxapp().mock', members: MOCK_DRIVER_API },
   {
     name: 'PageDriver',
     layer: 'automation',
@@ -594,7 +597,7 @@ export const LX_RUNTIME_SURFACES = [
   {
     name: 'Scenario',
     layer: 'automation',
-    expression: 'lx.automation().lxapp().scenario()',
+    expression: 'lx.automation().lxapp().mock.use()',
     members: SCENARIO_API,
     properties: ['name', 'rules', 'variant'],
   },
@@ -842,6 +845,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<NetworkDriver, typeof NETWORK_DRIVER_API>>,
   AssertTrue<Exact<NetworkRoute, typeof NETWORK_ROUTE_API>>,
   AssertTrue<Exact<Scenario, typeof SCENARIO_API>>,
+  AssertTrue<Exact<MockDriver, typeof MOCK_DRIVER_API>>,
   AssertTrue<Exact<ProfileDriver, typeof PROFILE_DRIVER_API>>,
   AssertTrue<Exact<ClockDriver, typeof CLOCK_DRIVER_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,

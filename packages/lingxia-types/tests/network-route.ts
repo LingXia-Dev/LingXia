@@ -1,5 +1,6 @@
 import type {
   LxAppDriver,
+  MockResetResult,
   NetworkDriver,
   NetworkRouteHandler,
   NetworkRouteRequest,
@@ -88,17 +89,21 @@ const outage: ScenarioDefinition = {
     offline: { description: 'the status API is down', rules: [{ http: 'GET **/v1/status', status: 503 }] },
   },
 };
-// A JSON import widens literals ('failed' becomes string); scenario() takes it as is.
+// A JSON import widens literals ('failed' becomes string); mock.use() takes it as is.
 const imported = { name: 'from-json', rules: [{ http: 'GET **/a', abort: 'failed' as string }] };
 const importedVariants = { variants: { a: { rules: [{ http: 'GET **/a', status: 503 }] } } };
 declare const app: LxAppDriver;
 const handles: Promise<Scenario>[] = [
-  app.scenario(outage),
-  app.scenario(outage, 'offline'),
-  app.scenario(imported),
-  app.scenario(importedVariants, 'a'),
+  app.mock.use(outage),
+  app.mock.use(outage, 'offline'),
+  app.mock.use(imported),
+  app.mock.use(importedVariants, 'a'),
 ];
 void handles;
+const reset: Promise<MockResetResult> = app.mock.reset();
+void reset;
+// @ts-expect-error scenarios are `mock.use()`
+void app.scenario;
 // @ts-expect-error a rule targets http or a function
 const noTarget: ScenarioDefinition = { rules: [{ status: 200 }] };
 // @ts-expect-error not both
@@ -112,9 +117,9 @@ const badFault: ScenarioDefinition = { rules: [{ function: 'f', fault: 'timeout'
 // @ts-expect-error an error needs a code
 const noCode: ScenarioDefinition = { rules: [{ function: 'f', error: {} }] };
 void [noTarget, both, httpAnswer, argsOnHttp, badFault, noCode];
-// The raw network driver has no scenario() any more.
+// The raw network driver has no scenario().
 declare const network: NetworkDriver;
-// @ts-expect-error use lxapp().scenario()
+// @ts-expect-error use lxapp().mock.use()
 void network.scenario;
 declare const handle: Scenario;
 const name: string | null = handle.name;
