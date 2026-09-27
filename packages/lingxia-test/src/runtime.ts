@@ -831,6 +831,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           timeoutError.message += `\nThe body did not settle; still pending: ${describePending(work)}.`;
         }
       } else if (!winner.ok) {
+        // The first error wins; calls the body left running are stopped
+        // before cleanup all the same.
+        if (fixture.unsettledCalls().length > 0 && !timedOut && !fixture.aborted &&
+            !await fixture.stopUnsettled(winner.err instanceof Error ? winner.err : new Error(String(winner.err)), WEDGED_DEFER_BUDGET_MS)) {
+          stuck = { what: "fixture calls its body did not await", work: stuckWork() };
+        }
         if (timedOut || fixture.aborted) {
           status = "timeout";
           error = timeoutError;
@@ -846,6 +852,17 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       } else if (fixture.skipReason !== undefined) {
         // The body caught the signal; the skip was still requested.
         status = "skipped";
+      } else {
+        // A call the body did not await would turn a failure into a pass.
+        const unsettled = fixture.unsettledCalls();
+        if (unsettled.length > 0) {
+          status = "failed";
+          error = new Error(unawaitedMessage(item.title, unsettled));
+          fixture.failurePhase = "body";
+          if (!await fixture.stopUnsettled(error as Error, WEDGED_DEFER_BUDGET_MS)) {
+            stuck = { what: "fixture calls its body did not await", work: stuckWork() };
+          }
+        }
       }
     } finally {
       if (timerHandle !== undefined) runnerClearTimeout(timerHandle);
@@ -1079,6 +1096,16 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   await attachText(host, "junit.xml", renderJUnit(json), "application/xml; charset=utf-8");
 
   return json;
+}
+
+/** Calls a body returned without awaiting; more than this many are counted. */
+const LISTED_UNAWAITED = 5;
+
+function unawaitedMessage(title: string, calls: Array<{ call: string; at: string; ageMs: number }>): string {
+  const count = calls.length === 1 ? "1 fixture call was" : `${calls.length} fixture calls were`;
+  const lines = calls.slice(0, LISTED_UNAWAITED).map((entry) => `  ${entry.call}  at ${entry.at} (started ${entry.ageMs}ms ago)`);
+  if (calls.length > LISTED_UNAWAITED) lines.push(`  … and ${calls.length - LISTED_UNAWAITED} more`);
+  return [`${JSON.stringify(title)} returned while ${count} still running (was it awaited?):`, ...lines].join("\n");
 }
 
 /**

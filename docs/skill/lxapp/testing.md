@@ -38,7 +38,8 @@ lxdev test tests/pages/notes.test.ts
 - One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
   the matcher passes; `expect(value)` checks once. Actions and retries wait
   5 s by default (`{ timeout }` per call); a spec has 30 s
-  (`spec(title, { timeout }, body)`). Await every action and retry.
+  (`spec(title, { timeout }, body)`). Await every action and retry: a body
+  that returns while one still runs fails, naming it and its line.
 - Text matchers read whitespace-normalised text (runs collapsed to one space, ends trimmed).
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
   a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes

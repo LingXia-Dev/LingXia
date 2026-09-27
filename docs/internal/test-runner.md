@@ -413,6 +413,16 @@ Development machine: lxdev receives progress, results, and artifacts
   Unresolved references are globals and pass; type positions are erased. A
   function passed by name is checked where it is declared. Files under
   `node_modules` are not checked.
+- Every fixture call runs through `LiveFixture.track` (`act`, the locator
+  and poll retries): it is in `inFlight` until it settles, with an `Error`
+  captured at its start for the spec line. Public fixture methods return
+  that tracked promise itself, never an `async` wrapper around it. When the
+  body settles with calls still in flight, `runtime.ts` stops them
+  (`stopUnsettled`: marks their promises handled, sets the abort flag so each
+  fails at its next guard or retry, waits up to 2 s, then clears the flag so
+  cleanup can use the fixture) — and, when the body resolved, fails the spec
+  (phase `body`) listing up to five calls with their lines. A call that does
+  not settle in time counts as stuck work and triggers app recovery.
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
   like `expect.poll`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
