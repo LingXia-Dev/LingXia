@@ -32,6 +32,11 @@ without platform services.
   `sha256`. An unsigned version-only store signal has no signed manifest: its
   version and release notes are advisory. Store opening uses only the locally
   configured listing identity and still requires a user action.
+- **Signed envelope.** One compact JSON manifest plus 1–2 Ed25519
+  signatures over those JSON bytes (not the base64). `signatures` is an array
+  so a rotation can carry old and new keys; verification is OR against the
+  embedded public keys. The CLI emits one signature. Host packages sign
+  `channel: ""`.
 - Providers must preserve the exact signed bytes. Request-controlled fields
   must not select the signature verification scheme.
 - After unpacking an lxapp, validate its own `lxapp.json`: expected app id,
@@ -60,6 +65,19 @@ the application directory so they cannot block replacement or extraction
 cleanup. Legacy directory updates exclude `.lingxia-update`; Store and sideloaded
 MSIX updates stay OS-managed. Never mirror into an extracted portable directory.
 
+NSIS installs per user under `%LOCALAPPDATA%/Programs/<appId>/app`, registers
+Start Menu/desktop shortcuts (named from `productNames` for the installing
+user's UI language) and an uninstaller, and preserves user data. NSIS and
+portable builds detect WebView2; when it is missing they offer to download
+Microsoft's bootstrapper and verify its Authenticode signature before running
+it, so a first install then needs internet. Signing covers payload EXEs/DLLs,
+NSIS uninstallers, the final Setup/Portable EXEs, and MSIX; artifact checksums
+are computed afterwards. Authenticode is independent of feed signatures. The
+feed has one entry per platform: artifact architecture is recorded and checked,
+but shipping more than one Windows architecture needs separate feeds or
+identities. MSIX never overwrites its package directory; packaging does not
+host an `.appinstaller` feed.
+
 ### Channel and version signal
 
 Effective channel precedence is: detected store installation, per-platform
@@ -83,6 +101,26 @@ The store update contract is `version` plus optional `releaseNotes`; the host
 ignores other response fields. Direct builds require both `downloadUrl` and
 `sha256`; production direct updates also require `authentication`. Lxapp and
 plugin packages retain their download and signature requirements.
+
+### Store destinations
+
+Listing ids come from the existing store identity (`ios.store.appId`,
+`macos.store.appId`, `harmony.store.appId`, `windows.store.appId`, the Android
+package) and are baked into `app.json` as `storeListingIds`; a `store` platform
+missing one warns at build time.
+
+- Apple opens `itms-apps://apps.apple.com/app/id…`, falling back to the HTTPS
+  listing; the storefront follows the signed-in Apple ID.
+- Android opens the store that installed the APK (Play, Huawei, Honor, Xiaomi,
+  OPPO, vivo, Samsung, Amazon, Yingyongbao): `market://details?id=` addressed
+  to that store's package, then that store's own scheme, then an HTTPS page.
+  The `android.*Store` blocks are publish identity, not listing URLs.
+- Harmony opens `appmarket://details?id=` with the bundle name, falling back
+  to the AppGallery HTTPS page.
+- A store-installed process (Play, App Store, MAS receipt, Microsoft
+  Store-signed package) is always `store`, so a sideloaded Android APK later
+  updated from Play flips channel in place when `applicationId` and signing
+  key match. Sideloaded or developer-signed MSIX keeps the build's channel.
 
 ### Automatic flow and JS ownership
 

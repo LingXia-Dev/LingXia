@@ -4,11 +4,10 @@ LingXia is a cross-platform app runtime monorepo: Rust crates (`crates/`), npm p
 
 The repo ships agent-oriented docs as a skill rooted at [docs/skill/SKILL.md](docs/skill/SKILL.md) — the entrypoint and topic router for building on LingXia. Read it first when working on lxapps, host apps, the CLIs, or Rust native extensions; load sub-files only as it directs:
 
-- `docs/skill/lxapp/` — page authoring, native components, `lx.*` API, bridge mechanics
+- `docs/skill/lxapp/` — page authoring, native components, `lx.*` API, bridge, files, testing
 - `docs/skill/app/` — host app projects, `lingxia.yaml`, Apple SDK embedding, app links
 - `docs/skill/cli/` — `lingxia` and `lxdev` command references, distribution
 - `docs/skill/native/` — Rust native routes and host addons
-- `docs/skill/reference/` — file lifecycle
 
 Skill docs are loaded into an agent's context, so keep them concise: state what to do and the one non-obvious consequence. Leave rationale, history, and edge-case reasoning to the PR and code comments.
 
@@ -26,6 +25,8 @@ recoverable from the code alone.
 - [`shell-ui-spec.md`](docs/internal/shell-ui-spec.md) · [`view-environment-spec.md`](docs/internal/view-environment-spec.md) — surface layout and View environment contracts.
 - [`test-runner.md`](docs/internal/test-runner.md) — test isolation, deadlines, result schema, and interrupted-run reporting.
 - [`scenario-companion-protocol.md`](docs/internal/scenario-companion-protocol.md) — how scenario `function` rules reach the dev session's companion: capability, `scenario.*` messages, owners and their lifetime. Read before changing the relay or implementing a companion.
+- [`dev-session.md`](docs/internal/dev-session.md) — `lingxia dev` session registration, dev websocket transport, and `lxdev` platform details.
+- [`native-island.md`](docs/internal/native-island.md) · [`storage.md`](docs/internal/storage.md) · [`update-pipeline.md`](docs/internal/update-pipeline.md) — native island rendering, managed file storage and cache maintenance, update signing and installation.
 - [`logging.md`](docs/internal/logging.md) · [`env-version.md`](docs/internal/env-version.md) · [`release-versioning.md`](docs/internal/release-versioning.md) — log pipeline, host env vs lxapp channel, release version rules.
 
 ## Example projects
