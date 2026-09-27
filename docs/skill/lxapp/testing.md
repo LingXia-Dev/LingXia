@@ -39,7 +39,9 @@ lxdev test tests/pages/notes.test.ts
   `toThrow`. Every `expect` needs a matcher: `await expect(x)` alone is a
   type error and fails the spec. Actions and retries wait
   5 s (`{ timeout }` per call); a spec has 30 s (`spec(title, { timeout },
-  body)`). Await every action: a body that returns while one still runs fails.
+  body)`). Await every action: a body that returns while one still runs fails,
+  and so does one whose `fetch` or `rawAutomation()` call does not settle
+  soon after it returns.
 - Text matchers compare whitespace-normalised text.
 - Setup: `@lingxia/test` on the project's LingXia line and a test tsconfig
   with `lib: ["ES2020"]` (`lingxia new` writes `tsconfig.tests.json`). The test
@@ -81,7 +83,9 @@ Trigger the behaviour under test through the UI; setup, eval, and backend
 calls do not replace it. Automation types come from `@lingxia/types/automation`.
 `rawAutomation()` from `@lingxia/test` bypasses tracing and fixture guards;
 keep it for setup before any spec. Restore shell pins or device settings a
-spec changes.
+spec changes. Routes, `t.app.mock.use` scenarios and test clocks a spec
+installs (also through `rawAutomation()`) are removed when it ends; its
+leftover timers are cancelled.
 
 ## Reading Logic
 
@@ -341,6 +345,12 @@ spec('edits a device', { restoreProfile: { keep: ['auth.*'] } }, async (t) => { 
 - **`t.arg('k')` throws** when missing; pass `{ default }` or
   `{ required: false }`.
 - **Timeouts never outlive the spec**; a longer one is clamped.
+- **A spec that never settles stops the run.** When a body (or its cleanup)
+  is still running after its timeout, or calls it left do not settle, its
+  code could act on the next spec, so the rest are reported as not run and
+  its automation access is revoked; the app is relaunched for inspection.
+  Await everything, or raise `timeout`. A route, scenario or clock the run
+  cannot remove after a spec stops it too.
 - **Live `lxdev mock` changes** (scenarios and selections) stand aside
   during a run; specs see `mocks/config.json` and `lingxia dev --mock`.
 
@@ -356,7 +366,11 @@ lxdev test report --failures      # reprint the last run, no session needed
 ```
 
 - Reports go to `test-results/<run-id>/` (`report.html`, `report.json`,
-  `junit.xml`); `test-results/latest` is the last run.
+  `junit.xml`); `test-results/latest` is the last run, set after its reports.
+- A failure after the cases (`--profile-save`, `--record-network`, a failed
+  return of the app to its own data) keeps each case's verdict but exits 1
+  and is listed as a run error in every report. A full disk still leaves a
+  minimal `report.json` saying why.
 - A failed spec prints a `Rerun:` line.
 - `--list` without a session bundles the files (the same checks as a run)
   and reads the specs from the source; `~` marks a computed title, id or

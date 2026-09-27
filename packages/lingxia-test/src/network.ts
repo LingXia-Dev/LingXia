@@ -16,7 +16,6 @@ import { runnerClearTimeout, runnerSetTimeout } from "./pending.js";
 /** The fixture surface the network, scenario and clock wrappers need. */
 export interface NetworkHost {
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T>;
-  defer(cleanup: () => void | Promise<void>): void;
   /** Milliseconds left in the spec (or cleanup) budget. */
   budgetRoom(): number;
   /** Stop recording actions while a wait polls; `resumeActions` undoes it. */
@@ -27,26 +26,40 @@ export interface NetworkHost {
 }
 
 /**
- * Routes one spec installed, across every `t.app` / `t.automation.lxapp()` wrapper it
- * created. They are removed when the spec ends, so a route never bleeds into
- * the next spec of the same run; the host drops whatever is left at run end.
+ * Routes one spec installed, across every `t.app` / `t.automation.lxapp()`
+ * wrapper it created. The runner removes them when the spec ends — whether
+ * or not its body settled, apart from the spec's own cleanup — so a route
+ * never bleeds into the next spec of the same run.
  */
 export class NetworkScope {
   readonly routes = new Map<number, NetworkRoute>();
-  private cleanupRegistered = false;
 
-  track(host: NetworkHost, route: NetworkRoute): void {
+  track(route: NetworkRoute): void {
     this.routes.set(route.id, route);
-    if (this.cleanupRegistered) return;
-    this.cleanupRegistered = true;
-    host.defer(async () => {
-      for (const route of this.routes.values()) {
-        // Raw handle: cleanup runs after the fixture closed its action guard,
-        // and a route that already expired resolves false, not an error.
-        try { await route.unroute(); } catch { /* the run end clears it */ }
-      }
-    });
   }
+
+  /**
+   * Remove every tracked route; a route already gone (expired through
+   * `times`, removed by the spec) counts as removed. Rejects naming the
+   * routes whose removal failed.
+   */
+  async reclaim(): Promise<void> {
+    const failed: string[] = [];
+    for (const [id, route] of [...this.routes]) {
+      // Raw handle: the fixture is closed by now.
+      try {
+        await route.unroute();
+        this.routes.delete(id);
+      } catch (error) {
+        failed.push(`${route.pattern}: ${errorText(error)}`);
+      }
+    }
+    if (failed.length > 0) throw new Error(`network routes were not removed (${failed.join("; ")})`);
+  }
+}
+
+export function errorText(error: unknown): string {
+  return String((error as Error)?.message ?? error);
 }
 
 /** A request body as the spec reads it: parsed when it is JSON. */
@@ -272,7 +285,7 @@ export function wrapNetwork(resolve: () => NetworkDriver, host: NetworkHost, sco
     route: (pattern: NetworkRoutePattern, handler: NetworkRouteHandler) =>
       host.act("network.route", describeRoute(pattern, handler), async () => {
         const route = await driver().route(pattern, handler);
-        scope.track(host, route);
+        scope.track(route);
         return wrapRoute(route);
       }),
     removeAll: () => host.act("network.removeAll", "", async () => { await driver().unrouteAll(); }),

@@ -70,6 +70,7 @@ pub(crate) fn installed(parsed: &scenario::Scenario, source: Option<&str>) -> In
             })
             .collect(),
         installed_ms: now_ms(),
+        attempt: None,
         calls: VecDeque::new(),
         calls_total: 0,
         companion: false,

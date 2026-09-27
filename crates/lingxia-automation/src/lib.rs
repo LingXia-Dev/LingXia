@@ -81,16 +81,16 @@ fn require_privilege(app: &LxApp, id: &str) -> JSResult<()> {
 /// Revalidate a retained host-tier driver against the context that invokes it.
 /// This makes every handle fail as soon as its owning lxapp session closes.
 pub(crate) fn require_host_context(ctx: &JSContext) -> JSResult<()> {
-    if host_automation_authority(ctx).is_some() {
-        return Ok(());
+    if let Some(authority) = host_automation_authority(ctx) {
+        return authority.check();
     }
     let app = LxApp::from_ctx(ctx)?;
     require_privilege(&app, PRIV_HOST)
 }
 
 pub(crate) fn require_target_context(ctx: &JSContext, target: &Arc<LxApp>) -> JSResult<()> {
-    if host_automation_authority(ctx).is_some() {
-        return Ok(());
+    if let Some(authority) = host_automation_authority(ctx) {
+        return authority.check();
     }
     let caller = LxApp::from_ctx(ctx)?;
     if Arc::ptr_eq(&caller, target) && caller.session_id() == target.session_id() {
@@ -101,8 +101,27 @@ pub(crate) fn require_target_context(ctx: &JSContext, target: &Arc<LxApp>) -> JS
 }
 
 /// Sealed marker for an isolated context created by `AutomationRuntime`.
-#[derive(Debug, Clone)]
-struct HostAutomationAuthority;
+/// Every driver call of the context passes [`Self::check`], so revoking the
+/// run's authority refuses them all.
+#[derive(Clone)]
+pub(crate) struct HostAutomationAuthority {
+    #[cfg(feature = "runtime")]
+    run: Arc<runtime::authority::RunAuthority>,
+}
+
+impl HostAutomationAuthority {
+    fn check(&self) -> JSResult<()> {
+        #[cfg(feature = "runtime")]
+        if let Some(reason) = self.run.revoked() {
+            return Err(error::coded(
+                error::E_AUTOMATION_PRIVILEGE,
+                format!("automation access of this run was revoked: {reason}"),
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
 
 static NATIVE_TERMINAL_AUTHORITY: OnceLock<
     lxapp::terminal_automation::TerminalAutomationAuthority,
@@ -124,8 +143,8 @@ pub(crate) fn native_terminal_authority()
 }
 
 #[cfg(feature = "runtime")]
-fn attach_host_automation_authority(ctx: &JSContext) {
-    ctx.set_state(HostAutomationAuthority);
+fn attach_host_automation_authority(ctx: &JSContext, run: Arc<runtime::authority::RunAuthority>) {
+    ctx.set_state(HostAutomationAuthority { run });
 }
 
 pub(crate) fn host_automation_authority(ctx: &JSContext) -> Option<&HostAutomationAuthority> {
@@ -265,7 +284,8 @@ fn make_automation(ctx: JSContext, options: Optional<JSValue>) -> JSResult<JSObj
         return Ok(Class::lookup::<JSAutomation>(&ctx)?.instance(JSAutomation::new(&lxapp)));
     }
 
-    if host_automation_authority(&ctx).is_some() {
+    if let Some(authority) = host_automation_authority(&ctx) {
+        authority.check()?;
         return Ok(Class::lookup::<JSAutomation>(&ctx)?.instance(JSAutomation::host_runtime()));
     }
 
@@ -339,4 +359,19 @@ pub fn register_automation_runtime() {
     // `Rong.SSE` can only be wrapped before lxapp freezes `Rong`.
     #[cfg(feature = "runtime")]
     lx::register_rong_member_wrapper("SSE", network::wrap_logic_sse);
+}
+
+#[cfg(all(test, feature = "runtime"))]
+mod authority_tests {
+    use super::*;
+
+    #[test]
+    fn a_revoked_run_refuses_every_driver_check() {
+        let run = Arc::new(runtime::authority::RunAuthority::default());
+        let authority = HostAutomationAuthority { run: run.clone() };
+        assert!(authority.check().is_ok());
+        run.revoke("the spec was abandoned".into());
+        let error = authority.check().unwrap_err().to_string();
+        assert!(error.contains("revoked: the spec was abandoned"), "{error}");
+    }
 }

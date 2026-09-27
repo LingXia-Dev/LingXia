@@ -1216,6 +1216,69 @@ mod scenarios {
     }
 
     #[test]
+    fn a_closed_attempt_takes_what_it_installed_and_nothing_else() {
+        let catch_all = || {
+            RouteSpec::new(
+                UrlMatcher::glob("**/run-wide").unwrap(),
+                None,
+                None,
+                parse_answers(&json!({ "status": 200 }), None).unwrap(),
+            )
+        };
+        let spec_route = || {
+            RouteSpec::new(
+                UrlMatcher::glob("**/spec").unwrap(),
+                None,
+                None,
+                parse_answers(&json!({ "status": 500 }), None).unwrap(),
+            )
+        };
+        let mut registry = Registry::default();
+        // Installed before any spec: the whole run's.
+        registry
+            .install_admitted("run", "app", catch_all(), || Ok(None))
+            .unwrap();
+        registry
+            .install_admitted("run", "app", spec_route(), || Ok(Some(1)))
+            .unwrap();
+        registry
+            .install_admitted("other-run", "other-app", spec_route(), || Ok(Some(1)))
+            .unwrap();
+        let file = json!({ "name": "wifi", "rules": [{ "http": "GET **/wifi", "json": {} }] });
+        let scenario = parse_scenario(&file, None).unwrap();
+        let slot = super::super::dev::installed(&scenario, None);
+        registry
+            .install_scenario_admitted("run", "app", slot, scenario.http, || Ok(Some(1)))
+            .unwrap();
+        // A refused admission installs nothing.
+        assert!(
+            registry
+                .install_admitted("run", "app", spec_route(), || Err(
+                    "no spec is running".into()
+                ))
+                .is_err()
+        );
+
+        let (routes, scenarios) = registry.reclaim_attempt("run", 1);
+        assert_eq!(routes, 1);
+        assert_eq!(scenarios.len(), 1);
+        assert_eq!(scenarios[0].attempt, Some(1));
+        assert!(decide(&mut registry, "GET", "https://h/spec").is_none());
+        assert!(decide(&mut registry, "GET", "https://h/wifi").is_none());
+        assert!(
+            decide(&mut registry, "GET", "https://h/run-wide").is_some(),
+            "the run's route stays"
+        );
+        assert_eq!(
+            registry.reclaim_attempt("run", 1).0,
+            0,
+            "a second close finds nothing"
+        );
+        // Another run's attempt 1 is its own.
+        assert_eq!(registry.reclaim_attempt("other-run", 1).0, 1);
+    }
+
+    #[test]
     fn a_sequence_answers_in_call_order_and_repeats_its_last_answer() {
         let answers = parse_answers(
             &json!({ "sequence": [{ "status": 500 }, { "status": 502 }, { "json": { "ok": true } }] }),

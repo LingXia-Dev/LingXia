@@ -40,15 +40,24 @@ pub struct PageStatus {
 pub fn resolve_lxapp(raw: &str) -> Result<Arc<LxApp>, String> {
     let trimmed = raw.trim();
     let appid = if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("current") {
-        let (appid, _, _) = crate::lxapp::get_current_lxapp();
-        if appid.is_empty() {
-            return Err("no current lxapp".to_string());
-        }
-        appid
+        let (current, _, _) = crate::lxapp::get_current_lxapp();
+        current_or_home(current, lingxia_app_context::home_app_id())?
     } else {
         trimmed.to_string()
     };
     crate::lxapp::try_get(&appid).ok_or_else(|| format!("lxapp is not active: {appid}"))
+}
+
+/// The app "current" names: the front of the navigation stack, or — while
+/// the stack is empty (the host has not shown an app yet after starting or
+/// reconnecting, or the front app closed) — the host's home app, so a caller
+/// learns which app to open instead of that there is none.
+fn current_or_home(current: String, home: Option<&str>) -> Result<String, String> {
+    if !current.is_empty() {
+        return Ok(current);
+    }
+    home.map(str::to_string)
+        .ok_or_else(|| "no current lxapp".to_string())
 }
 
 /// Resolve a page by configured name; `None`/"current" means the current page.
@@ -691,6 +700,22 @@ pub fn build_query_script(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn current_falls_back_to_the_home_app_while_no_app_is_in_front() {
+        assert_eq!(
+            current_or_home("front".into(), Some("home")),
+            Ok("front".into())
+        );
+        assert_eq!(
+            current_or_home(String::new(), Some("home")),
+            Ok("home".into())
+        );
+        assert_eq!(
+            current_or_home(String::new(), None),
+            Err("no current lxapp".to_string())
+        );
+    }
 
     #[test]
     fn query_visibility_is_rendered_and_viewport_is_separate() {

@@ -944,6 +944,31 @@ export interface AutomationHost {
   networkRecord?: (command: "start" | "stop", name?: string) => unknown;
   /** Whether the screen is locked; `undefined` where the host cannot tell. */
   screenLocked?: () => boolean | undefined;
+  /**
+   * Open a spec attempt: routes, mock scenarios and test clocks installed
+   * from now on belong to it. Returns its token.
+   */
+  beginAttempt?: () => number;
+  /**
+   * Close the attempt: installs are refused until the next one opens, and
+   * everything the attempt installed is removed. Rejects when something
+   * could not be removed.
+   */
+  endAttempt?: (token: number) => Promise<AttemptReclaim>;
+  /**
+   * Refuse every further driver call from this run's context and remove
+   * what the open attempt installed: the run stops running spec code.
+   */
+  revoke?: (reason: string) => Promise<AttemptReclaim>;
+}
+
+/** What the host removed when an attempt closed. */
+export interface AttemptReclaim {
+  routes: number;
+  scenarios: number;
+  clocks: number;
+  /** Test timers pending on the removed clocks; they never fired. */
+  droppedTimers: number;
 }
 
 declare global {

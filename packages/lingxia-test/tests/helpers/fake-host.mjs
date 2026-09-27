@@ -262,6 +262,98 @@ export function createWorld(options = {}) {
   };
 }
 
+/** Methods that install something the host scopes to the open attempt. */
+const INSTALLS = new Set(["route", "use", "install"]);
+
+/**
+ * Mirrors the host's spec attempts and revoke: with `options.attempts`, what
+ * a driver installs while an attempt is open belongs to it and is removed
+ * when it ends; installs between attempts are refused; after `revoke` every
+ * driver call of the context rejects with `E_AUTOMATION_PRIVILEGE`.
+ */
+function attemptHost(options) {
+  const state = {
+    next: 0,
+    open: undefined,
+    opened: false,
+    revoked: undefined,
+    /** Every install, `{ attempt, what, handle }`. */
+    installs: [],
+    /** `endAttempt` rejects with this once (a host that cannot remove). */
+    failSweep: undefined,
+    /** Driver calls the host refused, as `path`. */
+    refused: [],
+  };
+  const refuse = (path) => {
+    state.refused.push(path);
+    return Object.assign(new Error(`E_AUTOMATION_PRIVILEGE: automation access of this run was revoked: ${state.revoked}`), {
+      code: "E_AUTOMATION_PRIVILEGE",
+    });
+  };
+  const sweep = async (token) => {
+    const mine = state.installs.filter((entry) => entry.attempt === token);
+    state.installs = state.installs.filter((entry) => entry.attempt !== token);
+    const counts = { routes: 0, scenarios: 0, clocks: 0, droppedTimers: 0 };
+    for (const entry of mine) {
+      if (entry.what === "route") { await entry.handle?.unroute?.(); counts.routes += 1; }
+      else if (entry.what === "use") { await entry.handle?.unroute?.(); counts.scenarios += 1; }
+      else { await entry.driver?.uninstall?.(); counts.clocks += 1; }
+    }
+    return counts;
+  };
+  const gate = (target, path) => new Proxy(target, {
+    get(object, prop) {
+      const value = Reflect.get(object, prop, object);
+      if (typeof prop !== "string") return value;
+      if (typeof value === "function") {
+        return (...args) => {
+          if (state.revoked !== undefined) throw refuse(`${path}${prop}`);
+          const install = options.attempts && INSTALLS.has(prop);
+          if (install && state.opened && state.open === undefined) {
+            throw new Error("no spec is running: the run refuses installs between specs");
+          }
+          const result = value.apply(object, args);
+          if (install) {
+            const entry = { attempt: state.open, what: prop, driver: object };
+            state.installs.push(entry);
+            if (result && typeof result.then === "function") return result.then((handle) => { entry.handle = handle; return handle; });
+            entry.handle = result;
+          }
+          return result && typeof result === "object" && typeof result.then !== "function" ? gate(result, `${path}${prop}().`) : result;
+        };
+      }
+      return value && typeof value === "object" ? gate(value, `${path}${prop}.`) : value;
+    },
+  });
+  const functions = options.attempts ? {
+    beginAttempt() {
+      if (state.revoked !== undefined) throw new Error(`revoked: ${state.revoked}`);
+      if (state.open !== undefined) throw new Error("an attempt is already open");
+      state.next += 1;
+      state.open = state.next;
+      state.opened = true;
+      return state.open;
+    },
+    async endAttempt(token) {
+      if (state.open !== token) throw new Error(`attempt ${token} is not open`);
+      state.open = undefined;
+      if (state.failSweep) {
+        const error = state.failSweep;
+        state.failSweep = undefined;
+        throw error;
+      }
+      return sweep(token);
+    },
+    async revoke(reason) {
+      state.revoked = reason;
+      const token = state.open;
+      state.open = undefined;
+      return token === undefined ? { routes: 0, scenarios: 0, clocks: 0, droppedTimers: 0 } : sweep(token);
+    },
+  } : {};
+  return { state, gate, functions };
+}
+
 export function installFakeHost(world, options = {}) {
   const events = [];
   const attachments = new Map();
@@ -269,6 +361,10 @@ export function installFakeHost(world, options = {}) {
   // lxdev's run controls (grep, ids, shard, retries, …), apart from args.
   const control = { ...(options.control ?? {}) };
   const logs = options.logs;
+  const attempts = attemptHost(options);
+  // `false`: the host has not registered its current lxapp yet (a runtime
+  // that just reconnected); `lxapp()` without an id rejects as the host does.
+  const current = { registered: options.current ?? true };
 
   globalThis.__LINGXIA_AUTOMATION_HOST__ = {
     args,
@@ -282,19 +378,42 @@ export function installFakeHost(world, options = {}) {
     logs: logs === undefined
       ? undefined
       : async () => logs,
+    ...attempts.functions,
   };
 
   globalThis.lx = {
     automation() {
-      return {
+      if (attempts.state.revoked !== undefined) {
+        throw Object.assign(new Error(`E_AUTOMATION_PRIVILEGE: automation access of this run was revoked: ${attempts.state.revoked}`), {
+          code: "E_AUTOMATION_PRIVILEGE",
+        });
+      }
+      const root = {
         lxapp(appId) {
+          if (!appId && !current.registered) throw new Error("no current lxapp");
           if (appId && options.apps?.[appId]) return options.apps[appId];
           return world.app;
         },
         ...(options.lxapps ? { lxapps: options.lxapps } : {}),
       };
+      if (!options.attempts) return root;
+      return {
+        lxapp: (appId) => attempts.gate(root.lxapp(appId), `lxapp(${appId ? JSON.stringify(appId) : ""}).`),
+        ...(options.lxapps ? { lxapps: attempts.gate(options.lxapps, "lxapps.") } : {}),
+      };
     },
   };
 
-  return { events, attachments, args, control };
+  return {
+    events,
+    attachments,
+    args,
+    control,
+    /** The host's attempts: open token, installs, refused calls, revoke reason. */
+    attempts: attempts.state,
+    /** Register (or drop) the host's current lxapp. */
+    setCurrent(registered) {
+      current.registered = registered;
+    },
+  };
 }

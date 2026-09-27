@@ -39,19 +39,26 @@ use serde_json::Value;
 use std::rc::Rc;
 use std::sync::{Arc, Weak};
 
+/// Admission of an install: the attempt it belongs to (`None`: the whole
+/// run), or why it is refused.
+pub(crate) type Admit = Arc<dyn Fn() -> Result<Option<u64>, String> + Send + Sync>;
+
 /// Marks a host automation context with the run that owns its routes.
 #[derive(Clone)]
 pub(crate) struct NetworkRunScope {
     run_id: String,
-    active: Arc<dyn Fn() -> bool + Send + Sync>,
+    admit: Admit,
+    live: Arc<dyn Fn() -> bool + Send + Sync>,
 }
 
-/// Bind a host automation context to its run. Routes installed from this
-/// context belong to `run_id` and are refused once `active` turns false.
+/// Bind a host automation context to its run. Routes and scenarios
+/// installed from this context belong to `run_id` and to the attempt `admit`
+/// names, and are refused when it refuses; captures need `live`.
 pub(crate) fn attach_run_scope(
     ctx: &JSContext,
     run_id: String,
-    active: impl Fn() -> bool + Send + Sync + 'static,
+    admit: impl Fn() -> Result<Option<u64>, String> + Send + Sync + 'static,
+    live: impl Fn() -> bool + Send + Sync + 'static,
 ) {
     registry::with_registry(|routes| {
         routes.begin_run(&run_id);
@@ -67,7 +74,8 @@ pub(crate) fn attach_run_scope(
     });
     ctx.set_state(NetworkRunScope {
         run_id,
-        active: Arc::new(active),
+        admit: Arc::new(admit),
+        live: Arc::new(live),
     });
 }
 
@@ -75,6 +83,26 @@ pub(crate) fn attach_run_scope(
 /// terminal transition of the run.
 pub(crate) fn clear_run(run_id: &str) {
     registry::with_registry(|routes| routes.clear_run(run_id));
+}
+
+/// Remove the routes and scenarios attempt `attempt` of `run_id` installed,
+/// including a scenario's `function` rules in the companion. Resolves how
+/// many of each; a scenario the companion could not clear is an error.
+pub(crate) async fn reclaim_attempt(run_id: &str, attempt: u64) -> Result<(usize, usize), String> {
+    let (routes, scenarios) =
+        registry::with_registry(|registry| registry.reclaim_attempt(run_id, attempt));
+    let owner = lingxia_control_protocol::scenario::test_owner(run_id);
+    for scenario in scenarios.iter().filter(|scenario| scenario.companion) {
+        test_scenario::clear_functions_checked(&owner)
+            .await
+            .map_err(|err| {
+                format!(
+                    "the companion kept the function rules of {}: {err}",
+                    scenario.label()
+                )
+            })?;
+    }
+    Ok((routes, scenarios.len()))
 }
 
 /// Give a host run's `__LINGXIA_AUTOMATION_HOST__` the network plumbing the
@@ -180,7 +208,7 @@ impl JSNetworkDriver {
         let spec = RouteSpec::new(matcher, method, times, answers);
         let appid = app.appid.clone();
         let id = registry::with_registry(|routes| {
-            routes.install(&scope.run_id, &appid, spec, || (scope.active)())
+            routes.install_admitted(&scope.run_id, &appid, spec, || (scope.admit)())
         })
         .map_err(auto_err)?;
         Ok(
@@ -233,7 +261,7 @@ impl JSNetworkDriver {
         registry::with_registry(|routes| {
             routes
                 .captures
-                .enable(&scope.run_id, &app.appid, limit, || (scope.active)())
+                .enable(&scope.run_id, &app.appid, limit, || (scope.live)())
         })
         .map_err(auto_err)
     }

@@ -12,16 +12,33 @@ through the global `__LINGXIA_TEST__` controller instead; and
 received artifacts. Keep the following invariants when changing these layers:
 
 - New test contexts do not reset product state. Retrying requires a file-scoped
-  `spec.reset` hook. A body still pending after its timeout (plus
-  `WEDGED_DEFER_BUDGET_MS`), a cleanup past its budget, or timed-out evidence
-  capture fails that spec only: its cleanup is not run (that would reopen the
-  fixture to zombie actions), the fixture stays aborted and closed, the
-  spec's leftover test-context timers are cancelled, and the runtime recovers
-  the app with the per-spec recovery (`reopenAppUnderTest`, then a home
-  relaunch) before the next spec, reporting a `recovery` diagnostic that names
-  the stuck work. Only a failed recovery (or an unrolled `restoreProfile`)
-  makes the run partial: the rest are not run, with a reason naming the work
-  and `Recover: lxdev lxapp restart`.
+  `spec.reset` hook.
+- Every spec runs in the same JS context, so nothing tells a continuation of
+  an abandoned spec from the next spec's code: `expect`'s scope, the
+  pending-work owner, `rawAutomation()` and plain JS state are shared. So when
+  spec code may still run after the runner stopped waiting for it — a body
+  still pending after its timeout (plus `WEDGED_DEFER_BUDGET_MS`), a cleanup
+  past its budget, fixture calls the body did not await that do not stop, or
+  fetches/raw driver calls a returned body left in flight that do not settle
+  within `WEDGED_DEFER_BUDGET_MS` (that spec fails, phase `body`) — the run
+  **stops**: its cleanup is not run (that would reopen the fixture), the
+  fixture stays aborted and closed, its framework resources are reclaimed
+  (below), its timers are cancelled, the app is recovered for inspection
+  (`reopenAppUnderTest`, then a home relaunch), and the runtime revokes spec
+  authority (`revokeSpecAuthority`): `rawAutomation()` and every proxy it
+  handed out refuse (`pending.ts` authority epochs), and the host's
+  `revoke(reason)` refuses every driver call of the context and removes what
+  the open attempt installed. The rest are not run and the run is partial; a
+  `run_stopped` diagnostic (`recovery_failed` when recovery failed) names the
+  work. Only timed-out evidence capture — runner work, not spec code — still
+  recovers and continues. Tests: `isolation.test.mjs` (a body that resumes
+  late, during what would be the next spec).
+- An `expect` made while no spec runs (a late continuation) goes to the
+  stray sink: a `late_assertion` diagnostic, never another case. Finished
+  case records copy the fixture's steps, assertions and attachments.
+- A spec's leftover test-context timers are cancelled when it ends (a
+  `cleanup` diagnostic when it otherwise settled), so none fires into the
+  next spec.
 - Pending work is attributed by `pending.ts`: during a run it wraps the test
   context's `setTimeout`/`setInterval`/`fetch`, and `rawAutomation()` returns
   a proxy that records promise-returning driver calls (`eval` as eval), each
@@ -39,6 +56,18 @@ received artifacts. Keep the following invariants when changing these layers:
 - Persist events before consuming them. Missing final reports, terminal timeout,
   cancellation and connection loss need client-side partial reports. A JUnit run
   error represents an incomplete run even when every completed case passed.
+- lxdev finishes a run in one order: run-level work first
+  (`--record-network` scenarios, `--profile-save` export and atomic write),
+  then every report once (`write_reports`), then `latest`. A failure of the
+  run-level work is an `Outcome.run_errors` entry: `run_errors` in report.json
+  and the `--json` envelope, a `run error` testcase in JUnit, a banner at the
+  top of the framework's report.html, a `run error:` line on stderr, and exit
+  code 1 — case verdicts stay. A host result error (e.g. a failed profile
+  teardown) is carried the same way. When a report cannot be written (a full
+  disk; the event journal or an artifact failing ends polling as an
+  `internal_error` outcome instead of an error), `write_minimal_report` writes
+  the smallest `report.json` — counts, no cases, `error` and `run_errors`
+  saying why.
 - The host holds one active run per session. Validate anything local (output
   directory) before `session.test.start`; once a run exists, every way the
   client stops without a terminal poll cancels it (`ActiveRun` in lxdev).
@@ -195,6 +224,13 @@ Development machine: lxdev receives progress, results, and artifacts
 - Cleanup order: `spec.afterEach`, then LIFO `t.defer`; `timeoutCleanup`
   bounds both. `restoreProfile`'s rollback is the first defer (so it runs
   last) and drops its checkpoint whether or not the rollback succeeded.
+- App under test: `describeSubject` resolves the host's current lxapp at run
+  start and every spec pins it by appid (`pinApp(item.app ?? subject.appid)`),
+  never "current" again. A host whose runtime just started or reconnected may
+  have no app in front: `lxapp::automation::resolve_lxapp("current")` then
+  falls back to the home app (`current_or_home`), and `describeSubject`
+  waits up to `SUBJECT_WAIT_MS` for `no current lxapp` to clear and opens an
+  app the host names as `lxapp is not active: <id>`.
 - Before each spec that runs, the runtime lists the lxapps; if the app under
   test (`spec.app`, else the app `describeSubject` saw at run start) is
   missing or `closed` (a `closing` one gets 5 s), it opens it, relaunches its
@@ -215,8 +251,8 @@ Development machine: lxdev receives progress, results, and artifacts
   until its response is observed, so a run whose lease was taken during the
   (seconds-long) rebuild defers the restart instead of having its app
   replaced mid-spec.
-- Run end: after the last spec, unless the run stopped because a recovery
-  failed (`contaminated`), the runtime runs the same `reopenAppUnderTest` it runs
+- Run end: after the last spec, unless the run stopped (`contaminated`), the
+  runtime runs the same `reopenAppUnderTest` it runs
   before each spec. A failed reopen (there or per spec) is a `diagnostic`
   with `phase: "recovery_failed"`; lxdev sets `Outcome.app_not_live` from it
   and prints the `Recover:` line, as it does for a `timed_out` or
@@ -484,7 +520,7 @@ Development machine: lxdev receives progress, results, and artifacts
   fails at its next guard or retry, waits up to 2 s, then clears the flag so
   cleanup can use the fixture) — and, when the body resolved, fails the spec
   (phase `body`) listing up to five calls with their lines. A call that does
-  not settle in time counts as stuck work and triggers app recovery.
+  not settle in time counts as stuck spec code: the run stops (above).
 - `t.waitFor` records one `waitFor` action and silences the reads inside it,
   like `expect.poll`. Its timeout is clamped to the spec budget left since
   the fixture was built, minus a 100 ms margin, so its own error (last
@@ -496,8 +532,7 @@ Development machine: lxdev receives progress, results, and artifacts
   table lock; `RunShared::finalize` clears them after releasing its state lock
   (lock order: routes, then run state). Logic `fetch` is wrapped only when the
   `runtime` feature is built, and its no-route path is one atomic load.
-  Fulfillments go through the app's domain policy; the fixture removes a
-  spec's routes in its cleanup. Patterns compile to the Rust `regex` crate
+  Fulfillments go through the app's domain policy. Patterns compile to the Rust `regex` crate
   (globs are translated), so JS lookaround and backreferences are rejected at
   `route()`.
 - Route handlers are validated in Rust (`parse_handler_value`), mirroring the
@@ -573,8 +608,28 @@ Development machine: lxdev receives progress, results, and artifacts
   companion accepted clears it again. `JSScenario` keeps the resolved rules
   and a snapshot; `rules` and `calls()` read the live entry by scenario id.
   `@lingxia/test`'s `ScenarioScope` tracks the spec's handle, takes the
-  failure evidence (`report()`, before the defers) and unroutes it in a
-  defer.
+  failure evidence (`report()`, before the defers) and removes it when the
+  spec ends (framework reclamation, below).
+- Spec attempts (`runtime/authority.rs`, host `beginAttempt()`,
+  `endAttempt(token)`, `revoke(reason)`): the runner opens one attempt per
+  executed spec; routes, run scenarios and test-clock leases installed while
+  it is open carry its token (`Route::attempt`, `InstalledScenario::attempt`,
+  `Lease::attempt`; admission is the scope's `admit`, checked under the route
+  table lock). Closing it removes them (`Registry::reclaim_attempt`, the
+  companion's function rules via `clear_functions_checked`, a Logic
+  `clock.uninstall()` per clock) and refuses installs until the next opens;
+  what a program installs before its first attempt belongs to the whole run.
+  `revoke` also makes `HostAutomationAuthority::check` — every
+  `require_host_context`/`require_target_context` and `lx.automation()` —
+  refuse with `E_AUTOMATION_PRIVILEGE`.
+- Framework reclamation is not user cleanup: after `afterEach`/`t.defer`
+  (which still skip a body that did not settle), the runner stops the
+  `--record-network` recording, runs `LiveFixture.reclaim()` (routes,
+  scenario, clocks through their handles; one already gone counts as
+  removed) and `endAttempt` — whether or not the body settled (with spec
+  code still running, the attempt stays open until the revoke). Any failure
+  is a cleanup error on that case (phase `defer`) and stops the run with a
+  `run_stopped` diagnostic; nothing is left for the run end.
 - SSE answers (`RouteAction::Sse`) carry frames and fields per step. The
   `fetch` wrapper builds a `ReadableStream` (JS `start` + `setTimeout`) that
   enqueues frames, honours `delayMs`, closes on `drop`, and otherwise polls
@@ -895,11 +950,23 @@ test: no test writes into its storage and app code has no test branch.
   unpacks the seed (manifest `format`, `appid`, `fingermark`,
   `storage_format` must match; only regular files under `data/`, 256 MiB cap),
   switches, then starts; a refused start `abandon`s it. The run owns the
-  `AutomationProfile`: `RunShared::finalize` (every terminal path) starts the
-  teardown on its own thread. Until it finishes, `retire_completed` keeps the
-  run in the slot and `poll` reports `running`, so neither the next start nor
-  lxdev's export/rerun races a half-switched app, and the dev server keeps
-  deferring file-watch reloads. Retained profiles expire after 300 s.
+  `AutomationProfile`. `RunShared` is one state machine: `finalize` (every
+  terminal path) records the program's ending under the state lock
+  (`ending`; the run stops accepting events, attachments and installs), then
+  outside it clears network and clock scopes and starts the teardown; only
+  the teardown's completion (`complete`) publishes the terminal state and
+  result. `poll`, `retire_completed` (slot admission), retention and
+  `export_retained` (the profile is retained before completion) all read that
+  one state, so none sees an ending before the teardown ran, and the dev
+  server keeps deferring file-watch reloads. Retained profiles expire after
+  300 s.
+- A teardown that fails (or whose thread cannot start) ends the run
+  non-success: `ProfileTeardownError` (a succeeded run becomes
+  `internal_error`; a failed one keeps its verdict and gains the cause). The
+  profile is not deleted or exported: `Quarantine` holds it, and
+  `AutomationRuntime::start` refuses (`automation_profile_unrecovered`)
+  while any is held, retrying its teardown off-thread; a retry that succeeds
+  deletes the profile and readmits runs.
 - Snapshots travel only over `session.profile.*` (≤ 4 MiB decoded chunks,
   offset-checked, sha256), never the artifact channel, so they stay out of
   `output_dir`, reports and secret scrubbing. lxdev refuses isolation unless
@@ -1067,17 +1134,20 @@ automation context, page WebViews and native code keep real time.
   still queued when its spawn task finishes (likely at delay 0), which would
   stall the settle loop. `tick` caps at 10000 firings, `runAll` at
   `maxTimers`.
-- Leases: `install` inserts `token → (run, appid)` before evaluating;
-  `RunShared::finalize` calls `clock::clear_run`. The controller checks its
+- Leases: `install` inserts `token → (run, appid, attempt)` before
+  evaluating; closing the attempt uninstalls its clocks
+  (`clock::reclaim_attempt`) and `RunShared::finalize` calls
+  `clock::clear_run`. The controller checks its
   lease on a real 1 s interval and uninstalls itself when it is gone, so a
   cancelled, timed-out or disconnected run cannot leave the app on fake time
   and finalization never has to reach into Logic. An install that finds a
   clock whose lease is gone replaces it.
 - A reopened app has a fresh context (real time); its old lease is replaced
-  by the next install or dropped at uninstall/run end. `uninstall` drops
-  pending fake timers and reports the count; `LiveFixture` (`ClockScope`)
-  uninstalls every app a spec installed on, re-selecting it by appid, and
-  sets `forceRelaunchNext` when timers were dropped.
+  by the next install or dropped at uninstall/attempt end/run end.
+  `uninstall` drops pending fake timers and reports the count; the runner's
+  reclamation (`ClockScope.reclaim`) uninstalls every app a spec installed
+  on, re-selecting it by appid (an app no longer running counts as
+  uninstalled), and sets `forceRelaunchNext` when timers were dropped.
 - Framework timers must not be faked: `Page.js` gets `setTimeout` /
   `clearTimeout` for the `setData` debounce through a hidden
   `__lxCaptureTimers` hook that `js_runtime.rs` calls right after

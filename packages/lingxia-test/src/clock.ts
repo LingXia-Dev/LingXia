@@ -13,7 +13,6 @@ import type { TestClock } from "./types.js";
 /** The fixture surface the clock wrapper needs. */
 export interface ClockHost {
   act<T>(name: string, detail: string, op: () => T | Promise<T>): Promise<T>;
-  defer(cleanup: () => void | Promise<void>): void;
   diagnostic(phase: string, message: string): void | Promise<void>;
 }
 
@@ -31,33 +30,47 @@ function droppedNote(dropped: number, when: string): string {
 }
 
 /**
- * Clocks one spec installed, by lxapp id. They are uninstalled when the spec
- * ends, so the next spec starts on real time; the host drops whatever is left
- * at run end, and an app that reopened is back on real time already.
+ * Clocks one spec installed, by lxapp id. The runner uninstalls them when
+ * the spec ends, so the next spec starts on real time; an app that closed or
+ * reopened since is back on real time already.
  */
 export class ClockScope {
   readonly apps = new Set<string>();
   /** Test timers still pending when the spec's clocks were uninstalled. */
   dropped = 0;
-  private cleanupRegistered = false;
+  private automation: (() => HostRunAutomation) | undefined;
 
-  track(host: ClockHost, appid: string, automation: () => HostRunAutomation): void {
+  track(appid: string, automation: () => HostRunAutomation): void {
     this.apps.add(appid);
-    if (this.cleanupRegistered) return;
-    this.cleanupRegistered = true;
-    host.defer(async () => {
-      for (const id of this.apps) {
-        // Select the app again: a profile rollback may have reopened it.
-        // Raw driver: cleanup runs after the fixture closed its action guard.
-        try {
-          const result: ClockUninstallResult = await automation().lxapp(id).clock.uninstall();
-          this.dropped += result.dropped;
-          if (result.dropped > 0) await host.diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`));
-        } catch { /* the run end restores real time */ }
-      }
-      this.apps.clear();
-    });
+    this.automation = automation;
   }
+
+  /** Uninstall every tracked clock; rejects naming those that failed. */
+  async reclaim(diagnostic: (phase: string, message: string) => void | Promise<void>): Promise<void> {
+    const automation = this.automation;
+    if (!automation) return;
+    const failed: string[] = [];
+    for (const id of [...this.apps]) {
+      // Select the app again: a profile rollback may have reopened it.
+      // Raw driver: the fixture is closed by now.
+      try {
+        const result: ClockUninstallResult = await automation().lxapp(id).clock.uninstall();
+        this.dropped += result.dropped;
+        if (result.dropped > 0) await diagnostic("clock", droppedNote(result.dropped, `the spec's end uninstalled the test clock of ${id} and`));
+        this.apps.delete(id);
+      } catch (error) {
+        // A closed app took its Logic, and the clock with it.
+        if (appGone(error)) { this.apps.delete(id); continue; }
+        failed.push(`${id}: ${String((error as Error)?.message ?? error)}`);
+      }
+    }
+    if (failed.length > 0) throw new Error(`test clocks were not uninstalled (${failed.join("; ")})`);
+  }
+}
+
+/** The host's answer for an app that is not running. */
+function appGone(error: unknown): boolean {
+  return /lxapp is not active:/.test(String((error as Error)?.message ?? error));
 }
 
 /** `install({ now })` / `setSystemTime` detail for the trace. */
@@ -91,7 +104,7 @@ export function wrapClock(
         // An explicit `undefined` argument is not "no options" to the host:
         // omit it instead.
         const result = await (now === undefined ? clock.install() : clock.install({ now }));
-        scope.track(host, await resolve().appid(), automation);
+        scope.track(await resolve().appid(), automation);
         return clockState(result);
       }),
     tick: (ms: number) => host.act("clock.tick", `${ms}ms`, async () => clockAdvance(await driver().tick(ms))),

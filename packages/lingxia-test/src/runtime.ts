@@ -1,4 +1,4 @@
-import { expect, setExpectScope } from "./expect.js";
+import { expect, setExpectScope, setStrayAssertionSink, type LoggedAssertion } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
@@ -43,7 +43,7 @@ import {
   WEDGED_DEFER_BUDGET_MS,
 } from "./version.js";
 import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/types/automation";
-import { cancelTimersOf, describePending, installPendingTracker, pendingOf, runnerClearTimeout, runnerSetTimeout, setPendingOwner, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
+import { cancelTimersOf, describePending, installPendingTracker, pendingOf, restoreRawAuthority, revokeRawAuthority, runnerClearTimeout, runnerSetTimeout, setPendingOwner, settleCallsOf, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
 
@@ -381,6 +381,7 @@ function automationRoot(): HostRunAutomation {
  * `rawAutomation().lxapp().eval({ script })`.
  */
 export function rawAutomation(): HostRunAutomation {
+  // Refuses once the run has revoked spec code's automation access.
   return trackAutomationRoot(automationRoot());
 }
 
@@ -668,6 +669,8 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   let contaminationReason: string | undefined;
 
   installPendingTracker();
+  restoreRawAuthority();
+  setStrayAssertionSink(strayAssertionSink(host));
   const queue = [...plan];
   const attempts = new Map<string, CaseRecord[]>();
   const executionKey = (id: string, repeat: number) => `${id}#${repeat}`;
@@ -752,9 +755,15 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           `. Reopened it on its home page${reopened.error ? `, which failed: ${reopened.error}` : ""}.` });
     }
 
+    // What the spec installs from here on — routes, a mock scenario, test
+    // clocks — belongs to this attempt; the host removes it when the
+    // attempt ends, before the next spec starts.
+    const attempt = host.beginAttempt?.();
     const fixture = new LiveFixture(
       `${encodeURIComponent(id)}${repeatEach > 1 ? `/repeat-${repeat}` : ""}/attempt-${record.attempt}`,
-      pinApp(item.app),
+      // The app under test by id: "current" follows whichever app a spec
+      // brought to the front.
+      pinApp(item.app ?? subject?.appid),
       host,
       args,
       automationRoot(),
@@ -790,7 +799,9 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       ...pendingOf(record.full_name),
     ];
     // Work this spec left pending when the run stopped waiting for it.
-    let stuck: { what: string; work: PendingWork[] } | undefined;
+    // `spec`: spec code (its body, cleanup or calls it did not await) may
+    // still run; the runner's own evidence capture is not spec code.
+    let stuck: { what: string; work: PendingWork[]; spec: boolean } | undefined;
     const bodyPromise = (async () => {
       // Each spec starts with fresh mock handler state, before its hooks.
       phase = "beforeEach";
@@ -849,7 +860,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         try { await within(bodyResult, WEDGED_DEFER_BUDGET_MS, "body did not settle after timeout"); }
         catch {
           const work = stuckWork();
-          stuck = { what: "its timed-out body", work };
+          stuck = { what: "its timed-out body", work, spec: true };
           timeoutError.message += `\nThe body did not settle; still pending: ${describePending(work)}.`;
         }
       } else if (!winner.ok) {
@@ -857,7 +868,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         // before cleanup all the same.
         if (fixture.unsettledCalls().length > 0 && !timedOut && !fixture.aborted &&
             !await fixture.stopUnsettled(winner.err instanceof Error ? winner.err : new Error(String(winner.err)), WEDGED_DEFER_BUDGET_MS)) {
-          stuck = { what: "fixture calls its body did not await", work: stuckWork() };
+          stuck = { what: "fixture calls its body did not await", work: stuckWork(), spec: true };
         }
         if (timedOut || fixture.aborted) {
           status = "timeout";
@@ -882,7 +893,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
           error = new Error(unawaitedMessage(item.title, unsettled));
           fixture.failurePhase = "body";
           if (!await fixture.stopUnsettled(error as Error, WEDGED_DEFER_BUDGET_MS)) {
-            stuck = { what: "fixture calls its body did not await", work: stuckWork() };
+            stuck = { what: "fixture calls its body did not await", work: stuckWork(), spec: true };
           }
         }
       }
@@ -902,7 +913,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       } catch (forensicsError) {
         // Evidence failures must never replace the product failure.
         if (forensicsError instanceof TimeoutError) {
-          stuck ??= { what: "failure evidence capture", work: [{ kind: "action", detail: "screenshot, page and log capture", owner: record.full_name }] };
+          stuck ??= { what: "failure evidence capture", work: [{ kind: "action", detail: "screenshot, page and log capture", owner: record.full_name }], spec: false };
         }
         await host.emit({ type: "diagnostic", phase: "forensics", message: String(forensicsError) });
       }
@@ -931,12 +942,73 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         const task = Promise.resolve().then(cleanup).finally(() => { settled = true; });
         try { await within(task, Math.max(0, deadline - Date.now()), "fixture cleanup budget exceeded"); }
         catch (err) { deferErrors.push(err); }
-        if (!settled) { stuck ??= { what: "its cleanup (t.defer / afterEach)", work: stuckWork() }; break; }
+        if (!settled) { stuck ??= { what: "its cleanup (t.defer / afterEach)", work: stuckWork(), spec: true }; break; }
       }
     } else if (hasCleanup) {
       deferErrors.push(new Error("Cleanup skipped because the timed-out body is still running"));
     }
     fixture.endCleanup();
+
+    // A spec that returned with fetches or raw driver calls still in flight
+    // could act on the next spec when they settle: give them a moment, and
+    // stop the run if they do not settle.
+    if (!stuck) {
+      const open = await settleCallsOf(record.full_name, WEDGED_DEFER_BUDGET_MS);
+      if (open.length > 0) {
+        stuck = { what: "calls it did not await", work: open, spec: true };
+        if (status === "passed" || status === "skipped") {
+          status = "failed";
+          error = new Error(`${JSON.stringify(item.title)} ended while ${describePending(open)} ` +
+            `${open.length === 1 ? "was" : "were"} still running, and ${open.length === 1 ? "it" : "they"} did not settle ` +
+            `within ${WEDGED_DEFER_BUDGET_MS}ms (was it awaited?)`);
+          fixture.failurePhase = "body";
+        }
+      }
+    }
+    // Its timers must not fire into the next spec.
+    let cancelled = cancelTimersOf(record.full_name);
+    if (cancelled > 0 && !stuck) {
+      await host.emit({ type: "diagnostic", phase: "cleanup",
+        message: `"${record.full_name}" ended with ${cancelled} test-context ${cancelled === 1 ? "timer" : "timers"} pending; ` +
+          `cancelled so ${cancelled === 1 ? "it never fires" : "they never fire"} into a later spec.` });
+    }
+
+    // Framework cleanup is not the spec's: it runs whether or not the body
+    // settled, and a resource it cannot remove fails the spec and stops the
+    // run — a later spec would run against it.
+    const reclaimFailures: string[] = [];
+    if (recordingNetwork) {
+      const recordingError = await saveNetworkRecording(host, fixture, record.title);
+      if (recordingError !== undefined) reclaimFailures.push(`the network recording was not stopped: ${recordingError}`);
+    }
+    try {
+      reclaimFailures.push(...await within(fixture.reclaim(), RECLAIM_BUDGET_MS,
+        `removing the spec's routes, mock scenario and test clocks did not finish within ${RECLAIM_BUDGET_MS}ms`));
+    } catch (reclaimError) {
+      reclaimFailures.push(errorMessage(reclaimError));
+    }
+    // With spec code still running, the attempt stays open until the run
+    // revokes it below: closing it first would open a gap before the revoke.
+    if (attempt !== undefined && !stuck?.spec) {
+      try {
+        const swept = await within(host.endAttempt!(attempt), RECLAIM_BUDGET_MS,
+          `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
+        if (swept.droppedTimers > 0) forceRelaunchNext = true;
+      } catch (sweepError) {
+        reclaimFailures.push(`the host could not remove what the spec installed: ${errorMessage(sweepError)}`);
+      }
+    }
+    if (reclaimFailures.length > 0) {
+      deferErrors.push(...reclaimFailures.map((failure) => new Error(failure)));
+      if (!contaminated) {
+        contaminated = true;
+        const what = `"${record.full_name}" left test resources the run could not remove (${reclaimFailures.join("; ")}); ` +
+          "a later spec would run against them.";
+        contaminationReason = `Not run: ${what} Recover: ${RECOVER_COMMAND}`;
+        await host.emit({ type: "diagnostic", phase: "run_stopped",
+          message: `${what} The remaining specs are not run. Recover: ${RECOVER_COMMAND}` });
+      }
+    }
     // Test timers dropped with the spec's clock leave the app's polling loops
     // and debounces dead; the next spec starts from a relaunched home page.
     if (fixture.clockScope.dropped > 0) forceRelaunchNext = true;
@@ -1003,15 +1075,16 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     }
 
     if (status !== "passed" && status !== "skipped") await collectEvidence();
-    if (recordingNetwork) await saveNetworkRecording(host, fixture, record.title);
     if (status === "skipped") record.reason = fixture.skipReason ?? record.reason;
     fixture.close();
     record.status = status;
     record.duration_ms = Date.now() - caseStarted;
-    record.steps = fixture.steps;
-    record.assertions = fixture.assertions;
+    // Copies: code of this spec that is still running cannot change a
+    // finished record.
+    record.steps = [...fixture.steps];
+    record.assertions = [...fixture.assertions];
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
-    record.attachments = fixture.attachments;
+    record.attachments = [...fixture.attachments];
     setExpectScope();
     if (error) record.error = toReportError(error, fixture.currentStepPath());
     if (record.error) {
@@ -1037,20 +1110,39 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const previous = cases.findIndex(item => item.id === id && (item.repeat ?? 1) === repeat);
     if (previous >= 0) cases[previous] = finished; else cases.push(finished);
     await finishCase(host, finished);
-    if (stuck && !contaminated) {
+    if (stuck) {
       // The fixture is fenced (aborted and closed), so the abandoned work can
-      // no longer act through it. Recover the app the way a spec start does,
-      // then go on; only a failed recovery ends the run.
-      let cancelled = cancelTimersOf(record.full_name);
+      // no longer act through it. Recover the app the way a spec start does.
+      cancelled += cancelTimersOf(record.full_name);
       const failure = await recoverAppUnderTest(item.app ?? subject?.appid);
       cancelled += cancelTimersOf(record.full_name);
       const summary = `"${record.full_name}" left ${stuck.what} pending: ${describePending(stuck.work)}` +
         (cancelled > 0 ? `; cancelled its ${cancelled} pending ${cancelled === 1 ? "timer" : "timers"}` : "");
-      if (failure === undefined) {
+      if (stuck.spec) {
+        // Its code may still run, and nothing tells it from a later spec's:
+        // `expect`, `rawAutomation()` and plain JS state are shared. Rather
+        // than let it act on the next spec, the run stops running specs and
+        // revokes spec code's automation access.
+        const revokeError = await revokeSpecAuthority(host, attempt, `${summary}; the run stopped`);
+        const recovered = failure === undefined
+          ? "Relaunched the app under test on its home page for inspection"
+          : `Recovering the app failed: ${failure}`;
+        const reason = `${summary}. Code it may still run could act on later specs, so the run stopped. ${recovered}` +
+          (revokeError ? `; revoking its automation access failed: ${revokeError}` : "") +
+          ". Make the spec settle (await its work), or give it a longer timeout.";
+        const recover = failure !== undefined || revokeError ? ` Recover: ${RECOVER_COMMAND}` : "";
+        if (!contaminated) {
+          contaminated = true;
+          contaminationReason = `Not run: ${reason}${recover}`;
+        }
+        forceRelaunchNext = false;
+        await host.emit({ type: "diagnostic", phase: failure === undefined ? "run_stopped" : "recovery_failed",
+          message: `${reason} The remaining specs are not run.${recover}` });
+      } else if (failure === undefined) {
         forceRelaunchNext = false;
         await host.emit({ type: "diagnostic", phase: "recovery",
           message: `${summary}. Relaunched the app under test on its home page; the run continues.` });
-      } else {
+      } else if (!contaminated) {
         contaminated = true;
         contaminationReason = `Not run: ${summary}, and recovering the app failed: ${failure}. Recover: ${RECOVER_COMMAND}`;
         await host.emit({ type: "diagnostic", phase: "recovery_failed",
@@ -1064,6 +1156,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
   }
 
   uninstallPendingTracker();
+  setStrayAssertionSink();
 
   // The run ends as each spec starts: with the app under test running, so
   // what comes next (a rerun, `lxdev lxapp`, a developer) does not meet a
@@ -1174,19 +1267,39 @@ async function finishCase(
   });
 }
 
-/** Best-effort: a run against an unreachable app still reports its cases. */
+/** How long a run start waits for the host to name its current lxapp. */
+const SUBJECT_WAIT_MS = 15_000;
+
+/**
+ * The app under test: the host's current lxapp. A host whose runtime just
+ * (re)connected may not have shown its app yet, so this waits for it, and
+ * opens an app the host names but has not opened. Best-effort: a run
+ * against an unreachable app still reports its cases.
+ */
 async function describeSubject(): Promise<RunSubject | undefined> {
-  try {
-    const info = (await pinApp().info()) as unknown as Record<string, unknown>;
-    return {
-      appid: asText(info.appid),
-      app_name: asText(info.app_name),
-      version: asText(info.version),
-      release_type: asText(info.release_type),
-      pages: typeof info.pages_count === "number" ? info.pages_count : undefined,
-    };
-  } catch {
-    return undefined;
+  const deadline = Date.now() + SUBJECT_WAIT_MS;
+  let opened: string | undefined;
+  for (;;) {
+    try {
+      const info = (await pinApp().info()) as unknown as Record<string, unknown>;
+      return {
+        appid: asText(info.appid),
+        app_name: asText(info.app_name),
+        version: asText(info.version),
+        release_type: asText(info.release_type),
+        pages: typeof info.pages_count === "number" ? info.pages_count : undefined,
+      };
+    } catch (error) {
+      const message = errorMessage(error);
+      const inactive = /lxapp is not active: (\S+)/.exec(message)?.[1];
+      if (inactive !== undefined && opened !== inactive) {
+        opened = inactive;
+        await reopenAppUnderTest(inactive);
+        continue;
+      }
+      if (!(inactive !== undefined || /no current lxapp/.test(message)) || Date.now() >= deadline) return undefined;
+      await new Promise<void>((resolve) => { runnerSetTimeout(resolve, 200); });
+    }
   }
 }
 
@@ -1286,13 +1399,62 @@ async function startNetworkRecording(host: ResolvedHost): Promise<boolean> {
   }
 }
 
-async function saveNetworkRecording(host: ResolvedHost, fixture: LiveFixture, title: string): Promise<void> {
+/** Stop this spec's recording and attach it; resolves why it failed, if it did. */
+async function saveNetworkRecording(host: ResolvedHost, fixture: LiveFixture, title: string): Promise<string | undefined> {
+  let scenario: unknown;
   try {
-    const scenario = host.networkRecord?.("stop", title);
+    scenario = host.networkRecord?.("stop", title);
+  } catch (error) {
+    return errorMessage(error);
+  }
+  try {
     if (scenario && typeof scenario === "object") await fixture.attachRaw(RECORDED_SCENARIO, scenario);
   } catch (error) {
-    await host.emit({ type: "diagnostic", phase: "record-network", message: String((error as Error)?.message ?? error) });
+    // The recording stopped; only its copy in the report is missing.
+    await host.emit({ type: "diagnostic", phase: "record-network", message: errorMessage(error) });
   }
+  return undefined;
+}
+
+/** How long removing one spec's routes, scenario and clocks may take. */
+const RECLAIM_BUDGET_MS = 10_000;
+
+function errorMessage(error: unknown): string {
+  return String((error as Error)?.message ?? error);
+}
+
+/**
+ * Stop spec code of this run from driving the app: `rawAutomation()` and
+ * every proxy it handed out refuse from now on, and the host refuses the
+ * context's driver calls and removes what the open attempt installed.
+ * Resolves why the host could not, if it could not.
+ */
+async function revokeSpecAuthority(host: ResolvedHost, attempt: number | undefined, reason: string): Promise<string | undefined> {
+  revokeRawAuthority(reason);
+  try {
+    if (host.revoke) await within(host.revoke(reason), RECLAIM_BUDGET_MS, `the host did not finish revoking within ${RECLAIM_BUDGET_MS}ms`);
+    else if (attempt !== undefined && host.endAttempt) await within(host.endAttempt(attempt), RECLAIM_BUDGET_MS, `the host did not finish removing what the spec installed within ${RECLAIM_BUDGET_MS}ms`);
+    return undefined;
+  } catch (error) {
+    return errorMessage(error);
+  }
+}
+
+/** Assertions noted while no spec ran, beyond which they are only counted. */
+const LISTED_STRAY_ASSERTIONS = 5;
+
+/** A diagnostic for each assertion that ran while no spec was running. */
+function strayAssertionSink(host: ResolvedHost): (entry: LoggedAssertion) => void {
+  let seen = 0;
+  return (entry) => {
+    seen += 1;
+    if (seen > LISTED_STRAY_ASSERTIONS) return;
+    const message = `An assertion ran while no spec was running, so no case records it: ` +
+      `expect(received).${entry.matcher} ${entry.passed ? "passed" : "failed"} (expected ${entry.expected}, received ${entry.actual}). ` +
+      "Code of a spec the run stopped waiting for is still running." +
+      (seen === LISTED_STRAY_ASSERTIONS ? " Further ones are not listed." : "");
+    void host.emit({ type: "diagnostic", phase: "late_assertion", message }).catch(() => {});
+  };
 }
 
 /** Attach failure evidence; resolves to the page that was current, if known. */
@@ -1365,8 +1527,10 @@ function reset(): void {
   trackSurface = false;
   forceRelaunchNext = false;
   uninstallPendingTracker();
+  restoreRawAuthority();
   clearInline();
   setExpectScope();
+  setStrayAssertionSink();
 }
 
 const controller: LingxiaTestController = {

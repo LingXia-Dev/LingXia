@@ -57,8 +57,9 @@ The app must be running: start it with `lingxia dev` (in scripts and CI,
 `lingxia dev --background` before and `lingxia dev stop` after).
 
 Exit codes:
-  0    every selected spec passed
-  1    a spec failed or timed out, the run was incomplete, or it could not run
+  0    every selected spec passed and the run finished its own work
+  1    a spec failed or timed out, the run was incomplete, it could not run,
+       or saving its profile, recording or reports failed (a run error)
   2    invalid arguments
   130  interrupted (Ctrl-C)";
 
@@ -614,72 +615,9 @@ fn execute_inner(
             detail: Default::default(),
         });
     }
-    if !outcome
-        .artifacts
-        .iter()
-        .any(|(name, _, _)| name == "report.json")
-    {
-        if let Some(framework) = outcome.result.as_ref().and_then(|r| r.report.as_ref()) {
-            let mut value = report_value(framework, &bundle);
-            value["schema_version"] = json!(1);
-            value["partial"] = json!(outcome.partial);
-            value["meta"] = json!({"started_at": started_at, "duration_ms": framework.duration_ms, "args": secrets.meta_args(), "run": reported_control});
-            value["framework"] = json!({"name":"test framework", "version":"unknown"});
-            if let Some(cases) = value["cases"].as_array_mut() {
-                for case in cases {
-                    if case.get("id").is_none() {
-                        case["id"] = case["full_name"].clone();
-                    }
-                    if case.get("title").is_none() {
-                        case["title"] = case["name"].clone();
-                    }
-                    for field in ["steps", "assertions", "attachments", "covers"] {
-                        if case.get(field).is_none() {
-                            case[field] = json!([]);
-                        }
-                    }
-                }
-            }
-            std::fs::write(
-                output_dir.join("report.json"),
-                serde_json::to_vec_pretty(&value)?,
-            )?;
-        } else {
-            outcome.partial = true;
-            write_partial_report(
-                &output_dir,
-                &run_id,
-                &secrets.meta_args(),
-                &reported_control,
-                &started_at,
-                outcome
-                    .result
-                    .as_ref()
-                    .map(|r| r.duration_ms)
-                    .unwrap_or_default(),
-                &outcome.streamed,
-            )?;
-        }
-    }
-    // A report page lxdev withheld for carrying a secret is missing here too.
-    if outcome.partial
-        || ["report.html", "junit.xml"]
-            .iter()
-            .any(|page| !outcome.artifacts.iter().any(|(name, _, _)| name == page))
-    {
-        complete_client_reports(&output_dir, &run_id, &outcome)?;
-        crate::test_contract::refresh_report_file(
-            &output_dir.join("report.json"),
-            inputs.manifest_entries(),
-        )?;
-    }
-    for name in ["report.json", "report.html", "junit.xml"] {
-        let path = output_dir.join(name);
-        if path.exists() && !outcome.artifacts.iter().any(|(n, _, _)| n == name) {
-            let bytes = std::fs::metadata(&path)?.len() as usize;
-            outcome.artifacts.push((name.into(), path, bytes));
-        }
-    }
+
+    // Run-level work first: whatever fails here belongs in every report, so
+    // no report is written before it is done.
     if let Some(dir) = &options.record_network {
         match crate::test_network::save_recorded_scenarios(dir, &outcome.artifacts) {
             Ok(written) if !machine => eprintln!(
@@ -689,10 +627,49 @@ fn execute_inner(
                 dir.display()
             ),
             Ok(_) => {}
-            Err(error) => {
-                eprintln!("{} --record-network: {error:#}", "error".red());
-                outcome.partial = true;
-            }
+            Err(error) => outcome
+                .run_errors
+                .push(format!("--record-network: {error:#}")),
+        }
+    }
+    if let Some(isolation) = &isolation
+        && let Err(error) = isolation.finish(
+            retained_profile,
+            outcome.state,
+            outcome.partial || !outcome.run_errors.is_empty(),
+            machine,
+        )
+    {
+        outcome
+            .run_errors
+            .push(format!("--profile-save: {error:#}"));
+    }
+
+    // Then every report, once. A report that cannot be written (a full disk)
+    // still leaves the smallest one that says why.
+    let finished = FinishedRun {
+        output_dir: &output_dir,
+        run_id: &run_id,
+        started_at: &started_at,
+        meta_args: secrets.meta_args(),
+        control: &reported_control,
+        framework: outcome
+            .result
+            .as_ref()
+            .and_then(|r| r.report.as_ref())
+            .map(|framework| report_value(framework, &bundle)),
+        manifest: inputs.manifest_entries(),
+    };
+    if let Err(error) = write_reports(&finished, &mut outcome, write_file) {
+        outcome
+            .run_errors
+            .push(format!("the reports could not be written: {error:#}"));
+        if let Err(error) = write_minimal_report(&finished, &outcome, write_file) {
+            eprintln!(
+                "{} not even a minimal report.json could be written to {}: {error:#}",
+                "error".red(),
+                output_dir.display()
+            );
         }
     }
     let rerun = Rerun::new(info, &selection, &options, &secrets);
@@ -703,7 +680,8 @@ fn execute_inner(
     );
     // The run is over: saves made meanwhile rebuild once, now.
     drop(watch_pause);
-    // `latest` in the results root names the last run wherever it went.
+    // Last, `latest` in the results root names the finished run wherever it
+    // went.
     update_latest(&results_root, &output_dir);
     let interrupted = interrupts.load(Ordering::SeqCst) > 0;
     report(
@@ -721,15 +699,130 @@ fn execute_inner(
             "Recover:".yellow()
         );
     }
-
-    if let Some(isolation) = &isolation
-        && let Err(error) =
-            isolation.finish(retained_profile, outcome.state, outcome.partial, machine)
-    {
-        eprintln!("{} --profile-save: {error:#}", "error".red());
-        outcome.partial = true;
-    }
     std::process::exit(exit_code(&outcome, interrupted));
+}
+
+/// Writes one report file. Swappable so tests can fill the disk.
+type WriteFile = fn(&Path, &[u8]) -> std::io::Result<()>;
+
+fn write_file(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, bytes)
+}
+
+/// What the reports of a finished run are written from.
+struct FinishedRun<'a> {
+    output_dir: &'a Path,
+    run_id: &'a str,
+    started_at: &'a str,
+    /// Masked `--arg` values.
+    meta_args: HashMap<String, String>,
+    control: &'a HashMap<String, String>,
+    /// The framework's result, when the runtime returned one without
+    /// sending its own report.json.
+    framework: Option<serde_json::Value>,
+    manifest: Option<&'a [crate::test_contract::ManifestEntry]>,
+}
+
+/// Write report.json, report.html and junit.xml from the finished outcome,
+/// run-level errors included, and list them among the artifacts.
+fn write_reports(run: &FinishedRun, outcome: &mut Outcome, write: WriteFile) -> Result<()> {
+    let output_dir = run.output_dir;
+    let has = |outcome: &Outcome, wanted: &str| {
+        outcome.artifacts.iter().any(|(name, _, _)| name == wanted)
+    };
+    if !has(outcome, "report.json") {
+        if let Some(mut value) = run.framework.clone() {
+            value["schema_version"] = json!(1);
+            value["partial"] = json!(outcome.partial);
+            value["meta"] = json!({"started_at": run.started_at, "duration_ms": value["duration_ms"], "args": run.meta_args, "run": run.control});
+            value["framework"] = json!({"name":"test framework", "version":"unknown"});
+            if let Some(cases) = value["cases"].as_array_mut() {
+                for case in cases {
+                    if case.get("id").is_none() {
+                        case["id"] = case["full_name"].clone();
+                    }
+                    if case.get("title").is_none() {
+                        case["title"] = case["name"].clone();
+                    }
+                    for field in ["steps", "assertions", "attachments", "covers"] {
+                        if case.get(field).is_none() {
+                            case[field] = json!([]);
+                        }
+                    }
+                }
+            }
+            let path = output_dir.join("report.json");
+            write(&path, &serde_json::to_vec_pretty(&value)?)
+                .with_context(|| format!("failed to write {}", path.display()))?;
+        } else {
+            outcome.partial = true;
+            write_partial_report(
+                output_dir,
+                run.run_id,
+                &run.meta_args,
+                run.control,
+                run.started_at,
+                outcome
+                    .result
+                    .as_ref()
+                    .map(|r| r.duration_ms)
+                    .unwrap_or_default(),
+                &outcome.streamed,
+                write,
+            )?;
+        }
+    }
+    // A report page lxdev withheld for carrying a secret is missing here too.
+    let run_error = outcome.result.as_ref().is_some_and(|r| r.error.is_some());
+    if outcome.partial
+        || run_error
+        || !outcome.run_errors.is_empty()
+        || !has(outcome, "report.html")
+        || !has(outcome, "junit.xml")
+    {
+        complete_client_reports(output_dir, run.run_id, outcome, write)?;
+        crate::test_contract::refresh_report_file(&output_dir.join("report.json"), run.manifest)?;
+    }
+    for name in ["report.json", "report.html", "junit.xml"] {
+        let path = output_dir.join(name);
+        if path.exists() && !has(outcome, name) {
+            let bytes = std::fs::metadata(&path)?.len() as usize;
+            outcome.artifacts.push((name.into(), path, bytes));
+        }
+    }
+    Ok(())
+}
+
+/// The smallest report.json that still says what happened: the run, its
+/// counts, and why the full reports are missing. No cases.
+fn write_minimal_report(run: &FinishedRun, outcome: &Outcome, write: WriteFile) -> Result<()> {
+    let count = |wanted: &str| {
+        outcome
+            .streamed
+            .iter()
+            .filter(|case| case.status.map(TestCaseStatus::as_str) == Some(wanted))
+            .count()
+    };
+    let value = json!({
+        "schema_version": 1,
+        "partial": true,
+        "run_id": run.run_id,
+        "state": outcome.state.as_str(),
+        "meta": { "started_at": run.started_at },
+        "total": outcome.streamed.len(),
+        "passed": count("passed"),
+        "failed": count("failed"),
+        "skipped": count("skipped"),
+        "xfail": count("xfail"),
+        "xpass": count("xpass"),
+        "timeout": count("timeout"),
+        "error": outcome.result.as_ref().and_then(|r| r.error.as_ref()),
+        "run_errors": outcome.run_errors.iter().map(|message| json!({ "message": message })).collect::<Vec<_>>(),
+        "cases": [],
+    });
+    let path = run.output_dir.join("report.json");
+    write(&path, &serde_json::to_vec(&value)?)
+        .with_context(|| format!("failed to write {}", path.display()))
 }
 
 /// How long a `--list` run may take: it only loads the specs.
@@ -928,7 +1021,7 @@ pub fn list_offline(options: &TestOptions, selection: &Selection) -> Result<()> 
 /// The process exit code of a finished run (see the `--help` table).
 fn exit_code(outcome: &Outcome, interrupted: bool) -> i32 {
     match outcome.state {
-        TestRunState::Passed if !outcome.partial => 0,
+        TestRunState::Passed if !outcome.partial && outcome.run_errors.is_empty() => 0,
         TestRunState::Cancelled if interrupted => 130,
         _ => 1,
     }
@@ -1568,6 +1661,10 @@ struct Outcome {
     artifacts: Vec<(String, PathBuf, usize)>,
     partial: bool,
     streamed: Vec<StreamedCase>,
+    /// Work of the run itself that failed after its cases finished (saving
+    /// the profile, the recorded network, the reports): every report and the
+    /// exit code carry it, while each case keeps its verdict.
+    run_errors: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1752,13 +1849,22 @@ fn poll_until_terminal(
                         "runtime reconnected after {:.1}s; the run continues",
                         since.elapsed().as_secs_f64()
                     );
-                    journal_client_event(
+                    if let Err(err) = journal_client_event(
                         &mut journal,
                         jsonl,
                         run_id,
                         "runtime_reconnected",
                         &message,
-                    )?;
+                    ) {
+                        return Ok(interrupted_outcome(
+                            TestRunState::InternalError,
+                            format!("Cannot write the event journal: {err:#}"),
+                            run_started.elapsed(),
+                            console,
+                            artifacts,
+                            streamed,
+                        ));
+                    }
                     if !machine {
                         eprintln!("{} {message}", "test".cyan());
                     }
@@ -1769,13 +1875,22 @@ fn poll_until_terminal(
                 if runtime_away.is_none() {
                     runtime_away = Some(Instant::now());
                     let message = format!("{err}");
-                    journal_client_event(
+                    if let Err(err) = journal_client_event(
                         &mut journal,
                         jsonl,
                         run_id,
                         "runtime_disconnected",
                         &message,
-                    )?;
+                    ) {
+                        return Ok(interrupted_outcome(
+                            TestRunState::InternalError,
+                            format!("Cannot write the event journal: {err:#}"),
+                            run_started.elapsed(),
+                            console,
+                            artifacts,
+                            streamed,
+                        ));
+                    }
                     if !machine {
                         eprintln!("warning (runtime): {message}");
                     }
@@ -1843,8 +1958,18 @@ fn poll_until_terminal(
             let mut logged = serde_json::to_value(event)?;
             logged["schema_version"] = json!(1);
             logged["run_id"] = json!(run_id);
-            writeln!(journal, "{logged}")?;
-            journal.flush()?;
+            // A full disk ends the run here, with what was polled so far:
+            // the reports still get written, or the smallest one that can be.
+            if let Err(err) = writeln!(journal, "{logged}").and_then(|_| journal.flush()) {
+                return Ok(interrupted_outcome(
+                    TestRunState::InternalError,
+                    format!("Cannot write the event journal: {err}"),
+                    run_started.elapsed(),
+                    console,
+                    artifacts,
+                    streamed,
+                ));
+            }
             if jsonl {
                 println!("{logged}");
             }
@@ -2076,6 +2201,7 @@ fn poll_until_terminal(
                     .and_then(|r| r.report.as_ref())
                     .is_none_or(|r| r.detail.get("partial") == Some(&json!(true))),
                 streamed,
+                run_errors: Vec::new(),
             });
         }
         let watchdog_at = last_event_at + case_budget + WATCHDOG_GRACE;
@@ -2183,6 +2309,7 @@ fn report(
                 .map(|(level, message)| json!({ "level": level, "message": message }))
                 .collect::<Vec<_>>(),
             "budget_exhausted": budget_exhaustion(outcome),
+            "run_errors": outcome.run_errors,
             "artifacts": outcome
                 .artifacts
                 .iter()
@@ -2215,6 +2342,9 @@ fn report(
     }
     if let Some(line) = budget_exhaustion(outcome) {
         eprintln!("{}", line.red());
+    }
+    for run_error in &outcome.run_errors {
+        eprintln!("{} {run_error}", "run error:".red().bold());
     }
     if let Some((error, stack, _)) = &mapped_error {
         eprintln!("{}: {}", error.name.red(), error.message);
@@ -2805,6 +2935,7 @@ fn print_console(level: &str, message: &str) {
 /// A hung run never reaches the in-runtime reporter, so the client writes the
 /// report itself. It keeps `@lingxia/test`'s `report.json` shape so the same
 /// consumers parse both paths; only `partial` tells them apart.
+#[allow(clippy::too_many_arguments)]
 fn write_partial_report(
     output_dir: &Path,
     run_id: &str,
@@ -2813,6 +2944,7 @@ fn write_partial_report(
     started_at: &str,
     duration_ms: u64,
     streamed: &[StreamedCase],
+    write: WriteFile,
 ) -> Result<()> {
     std::fs::create_dir_all(output_dir)
         .with_context(|| format!("failed to create {}", output_dir.display()))?;
@@ -2885,7 +3017,7 @@ fn write_partial_report(
         "cases": cases,
     });
     let path = output_dir.join("report.json");
-    std::fs::write(&path, serde_json::to_vec_pretty(&envelope)?)
+    write(&path, &serde_json::to_vec_pretty(&envelope)?)
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(())
 }
@@ -3111,6 +3243,7 @@ mod tests {
                 covers: vec!["lx.host".into()],
                 steps: vec![json!({ "name": "greet", "path": "greet", "status": "passed" })],
             }],
+            write_file,
         )
         .unwrap();
         let text = std::fs::read_to_string(dir.path().join("report.json")).unwrap();
@@ -3161,10 +3294,20 @@ fn interrupted_outcome(
         artifacts,
         streamed,
         partial: true,
+        run_errors: Vec::new(),
     }
 }
 
-fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Result<()> {
+/// Bring report.json, report.html and junit.xml in line with how the run
+/// ended: interrupted cases regraded, and the run's own error and
+/// run-level errors in each. The framework's report.html is kept and the
+/// errors put at its top.
+fn complete_client_reports(
+    output: &Path,
+    run_id: &str,
+    outcome: &Outcome,
+    write: WriteFile,
+) -> Result<()> {
     let path = output.join("report.json");
     let mut report: serde_json::Value = serde_json::from_slice(&std::fs::read(&path)?)?;
     report["schema_version"] = json!(1);
@@ -3172,10 +3315,19 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
     report["state"] = json!(outcome.state.as_str());
     report["run_id"] = json!(run_id);
     report["error"] = serde_json::to_value(outcome.result.as_ref().and_then(|r| r.error.as_ref()))?;
+    report["run_errors"] = json!(
+        outcome
+            .run_errors
+            .iter()
+            .map(|message| json!({ "message": message }))
+            .collect::<Vec<_>>()
+    );
     let message = report["error"]["message"]
         .as_str()
         .unwrap_or(if outcome.partial {
             "The test run did not finish"
+        } else if !outcome.run_errors.is_empty() {
+            "The cases finished, but the run did not"
         } else {
             "Run completed"
         })
@@ -3224,7 +3376,7 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
     let skipped = cases.iter().filter(|c| c["status"] == "skipped").count();
     let has_run_error =
         outcome.partial || outcome.result.as_ref().is_some_and(|r| r.error.is_some());
-    let errors = usize::from(has_run_error);
+    let errors = usize::from(has_run_error) + outcome.run_errors.len();
     let mut xml = format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?><testsuites><testsuite name=\"lxdev\" tests=\"{}\" errors=\"{errors}\" failures=\"{failures}\" skipped=\"{skipped}\">",
         cases.len() + errors
@@ -3235,6 +3387,13 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
             escape_markup(&message)
         ));
     }
+    for run_error in &outcome.run_errors {
+        xml.push_str(&format!(
+            "<testcase name=\"run error\"><error message=\"{}\"/></testcase>",
+            escape_markup(run_error)
+        ));
+    }
+
     for case in &cases {
         let name = escape_markup(case["full_name"].as_str().unwrap_or("unknown"));
         let status = case["status"].as_str().unwrap_or("skipped");
@@ -3268,17 +3427,59 @@ fn complete_client_reports(output: &Path, run_id: &str, outcome: &Outcome) -> Re
         xml.push_str("</testcase>");
     }
     html.push_str("</table>");
+    html.push_str(&run_errors_html(&outcome.run_errors));
     xml.push_str("</testsuite></testsuites>");
-    std::fs::write(path, serde_json::to_vec_pretty(&report)?)?;
-    if !outcome
+    let json_path = &path;
+    write(json_path, &serde_json::to_vec_pretty(&report)?)
+        .with_context(|| format!("failed to write {}", json_path.display()))?;
+    let html_path = output.join("report.html");
+    let framework_page = outcome
         .artifacts
         .iter()
-        .any(|(name, _, _)| name == "report.html")
-    {
-        std::fs::write(output.join("report.html"), html)?;
+        .any(|(name, _, _)| name == "report.html");
+    if !framework_page {
+        write(&html_path, html.as_bytes())
+            .with_context(|| format!("failed to write {}", html_path.display()))?;
+    } else if has_run_error || !outcome.run_errors.is_empty() {
+        let page = std::fs::read_to_string(&html_path)
+            .with_context(|| format!("failed to read {}", html_path.display()))?;
+        let mut banner = format!(
+            "<section style=\"border:2px solid #dc2626;padding:12px;margin:12px 0\"><strong>{}</strong>",
+            escape_markup(if has_run_error {
+                &message
+            } else {
+                "The cases finished, but the run did not"
+            })
+        );
+        banner.push_str(&run_errors_html(&outcome.run_errors));
+        banner.push_str("</section>");
+        write(&html_path, with_banner(&page, &banner).as_bytes())
+            .with_context(|| format!("failed to write {}", html_path.display()))?;
     }
-    std::fs::write(output.join("junit.xml"), xml)?;
+    let junit_path = output.join("junit.xml");
+    write(&junit_path, xml.as_bytes())
+        .with_context(|| format!("failed to write {}", junit_path.display()))?;
     Ok(())
+}
+
+fn run_errors_html(errors: &[String]) -> String {
+    if errors.is_empty() {
+        return String::new();
+    }
+    let items: String = errors
+        .iter()
+        .map(|error| format!("<li><pre>{}</pre></li>", escape_markup(error)))
+        .collect();
+    format!("<h2>Run errors</h2><ul class=\"run-errors\">{items}</ul>")
+}
+
+/// `page` with `banner` at the top of its body.
+fn with_banner(page: &str, banner: &str) -> String {
+    let at = page
+        .find("<body")
+        .and_then(|start| page[start..].find('>').map(|end| start + end + 1))
+        .unwrap_or(0);
+    format!("{}{banner}{}", &page[..at], &page[at..])
 }
 
 fn escape_markup(value: &str) -> String {
@@ -3374,9 +3575,10 @@ mod recovery_tests {
             "2026-01-01T00:00:00Z",
             1400,
             &outcome.streamed,
+            write_file,
         )
         .unwrap();
-        complete_client_reports(dir.path(), "run", &outcome).unwrap();
+        complete_client_reports(dir.path(), "run", &outcome, write_file).unwrap();
         let report: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.path().join("report.json")).unwrap())
                 .unwrap();
@@ -3802,6 +4004,7 @@ mod lifecycle_tests {
             artifacts: vec![],
             partial: false,
             streamed: vec![],
+            run_errors: Vec::new(),
         };
         assert!(!needs_recovery(
             &outcome(TestRunState::Failed, false),
@@ -4122,6 +4325,7 @@ mod lifecycle_tests {
                 case(None),
                 case(None),
             ],
+            run_errors: Vec::new(),
         };
         let line = budget_exhaustion(&cut).unwrap();
         assert!(line.contains("exhausted after 2/4 specs"), "{line}");
@@ -4226,8 +4430,9 @@ mod legacy_report_tests {
             artifacts: vec![],
             partial: false,
             streamed: vec![],
+            run_errors: Vec::new(),
         };
-        complete_client_reports(dir.path(), "legacy", &outcome).unwrap();
+        complete_client_reports(dir.path(), "legacy", &outcome, write_file).unwrap();
         let report: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.path().join("report.json")).unwrap())
                 .unwrap();
@@ -4236,6 +4441,165 @@ mod legacy_report_tests {
         let junit = std::fs::read_to_string(dir.path().join("junit.xml")).unwrap();
         assert!(junit.contains("errors=\"0\""));
         assert!(!junit.contains("<error "));
+    }
+
+    /// A run whose runtime sent all three reports and whose cases passed.
+    fn finished_passing_run(dir: &Path) -> Outcome {
+        let report = json!({
+            "schema_version": 1, "partial": false, "total": 1, "passed": 1, "failed": 0,
+            "skipped": 0, "timeout": 0, "xfail": 0, "xpass": 0, "duration_ms": 4,
+            "cases": [{ "id": "home", "name": "home", "full_name": "home", "status": "passed", "duration_ms": 4 }]
+        });
+        let mut artifacts = Vec::new();
+        for (name, body) in [
+            ("report.json", serde_json::to_string(&report).unwrap()),
+            ("report.html", "<!doctype html><html><body class=\"report\"><h1>Framework report</h1></body></html>".to_string()),
+            ("junit.xml", "<testsuites/>".to_string()),
+        ] {
+            std::fs::write(dir.join(name), &body).unwrap();
+            artifacts.push((name.to_string(), dir.join(name), body.len()));
+        }
+        Outcome {
+            app_not_live: false,
+            state: TestRunState::Passed,
+            result: Some(TestRunResult {
+                duration_ms: 4,
+                error: None,
+                report: None,
+            }),
+            console: vec![],
+            artifacts,
+            partial: false,
+            streamed: vec![],
+            run_errors: Vec::new(),
+        }
+    }
+
+    fn finished<'a>(dir: &'a Path, control: &'a HashMap<String, String>) -> FinishedRun<'a> {
+        FinishedRun {
+            output_dir: dir,
+            run_id: "run-1",
+            started_at: "2026-01-01T00:00:00Z",
+            meta_args: HashMap::new(),
+            control,
+            framework: None,
+            manifest: None,
+        }
+    }
+
+    #[test]
+    fn a_run_level_failure_after_passing_cases_is_in_every_report_and_the_exit_code() {
+        for failure in [
+            "--profile-save: failed to export the run's test state: run r has no retained profile",
+            "--profile-save: cannot rename /tmp/state.lxstate.tmp to /tmp/state.lxstate: permission denied",
+            "--record-network: cannot copy the recorded scenario a to b: no space left on device",
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let control = HashMap::new();
+            let mut outcome = finished_passing_run(dir.path());
+            outcome.run_errors.push(failure.to_string());
+            write_reports(&finished(dir.path(), &control), &mut outcome, write_file).unwrap();
+
+            let report: serde_json::Value =
+                serde_json::from_slice(&std::fs::read(dir.path().join("report.json")).unwrap())
+                    .unwrap();
+            assert_eq!(
+                report["cases"][0]["status"], "passed",
+                "the case keeps its verdict"
+            );
+            assert_eq!(report["passed"], 1);
+            assert_eq!(report["run_errors"][0]["message"], failure);
+            let html = std::fs::read_to_string(dir.path().join("report.html")).unwrap();
+            assert!(
+                html.contains("<h1>Framework report</h1>"),
+                "the framework page is kept"
+            );
+            let at = html.find("<body class=\"report\">").unwrap();
+            assert!(html[at..].contains(&escape_markup(failure)), "{html}");
+            let junit = std::fs::read_to_string(dir.path().join("junit.xml")).unwrap();
+            assert!(junit.contains("errors=\"1\""), "{junit}");
+            assert!(junit.contains(&format!(
+                "<testcase name=\"run error\"><error message=\"{}\"/>",
+                escape_markup(failure)
+            )));
+            assert_eq!(exit_code(&outcome, false), 1);
+        }
+    }
+
+    #[test]
+    fn a_passing_run_without_run_errors_keeps_the_framework_reports() {
+        let dir = tempfile::tempdir().unwrap();
+        let control = HashMap::new();
+        let mut outcome = finished_passing_run(dir.path());
+        write_reports(&finished(dir.path(), &control), &mut outcome, write_file).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("junit.xml")).unwrap(),
+            "<testsuites/>"
+        );
+        assert_eq!(exit_code(&outcome, false), 0);
+    }
+
+    #[test]
+    fn a_full_disk_still_leaves_a_minimal_report_that_says_why() {
+        fn small_writes_only(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+            if bytes.len() > 900 {
+                return Err(std::io::Error::from_raw_os_error(28));
+            }
+            std::fs::write(path, bytes)
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let control = HashMap::new();
+        let streamed = (0..6)
+            .map(|index| StreamedCase {
+                record: json!({ "started": true }),
+                name: format!("case {index}"),
+                full_name: format!("case {index}"),
+                status: Some(if index == 0 { TestCaseStatus::Failed } else { TestCaseStatus::Passed }),
+                duration_ms: 1,
+                covers: vec![],
+                steps: vec![json!({ "name": "a step with a long enough name to fill the report", "status": "passed" })],
+            })
+            .collect();
+        let mut outcome = interrupted_outcome(
+            TestRunState::InternalError,
+            "Cannot save artifact failure.png: failed to write it: No space left on device (os error 28)".into(),
+            Duration::from_millis(50),
+            vec![],
+            vec![],
+            streamed,
+        );
+        let run = finished(dir.path(), &control);
+        let error = write_reports(&run, &mut outcome, small_writes_only).unwrap_err();
+        outcome
+            .run_errors
+            .push(format!("the reports could not be written: {error:#}"));
+        write_minimal_report(&run, &outcome, small_writes_only).unwrap();
+
+        let report: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("report.json")).unwrap())
+                .unwrap();
+        assert_eq!(report["partial"], true);
+        assert_eq!(report["state"], "internal_error");
+        assert_eq!(
+            (
+                report["total"].as_u64(),
+                report["failed"].as_u64(),
+                report["passed"].as_u64()
+            ),
+            (Some(6), Some(1), Some(5))
+        );
+        assert!(
+            report["error"]["message"]
+                .as_str()
+                .unwrap()
+                .contains("No space left on device")
+        );
+        let why = report["run_errors"][0]["message"].as_str().unwrap();
+        assert!(
+            why.starts_with("the reports could not be written: failed to write"),
+            "{why}"
+        );
+        assert!(why.contains("os error 28"), "{why}");
     }
 
     #[test]
