@@ -578,6 +578,26 @@ Pins are the user's quick entries for lxapps and websites.
   identity and controls belong to the sidebar, not inside the main content.
 - A website Pin opens or selects a main browser tab.
 
+#### Pin and tab routes for the browser webui
+
+Trusted browser webui (and Control apps) call `shell.pins` for `{items, max}`
+— the ordered `{kind: "lxapp" | "bookmark", key}` list and the total budget —
+then `shell.reorderPins({items})` with every current item exactly once. Read
+`max` rather than counting rows: lxapp pins share the budget. Pinning past it
+rejects with `SHELL_PIN_LIMIT` and `data.max`, so the caller localizes the
+message. `bookmarks.reorder` only orders the bookmark manager. Automation uses
+`shell.reorderPins({items})` with the full list from `shell.pins()`.
+
+`browser.bookmarks: false` hides bookmark chrome; `lingxia://bookmarks` and
+full `bookmarks.list/watch` results stay available.
+`tabs.recentlyClosed` lists up to 25 normal website tabs, newest first, for
+the process; `tabs.reopen({id?})` restores one (latest if omitted), excluding
+private tabs and aside/standalone surfaces.
+
+A replacement webui declares `controlProtocolVersion` in its `lxapp.json`,
+equal to the runtime constant (wire `v` for BrowserControl documents).
+Missing, older, and unknown future values fail the build.
+
 ### 4.5 Sidebar actions
 
 A sidebar action is an app-declared runtime shell entry in the header or

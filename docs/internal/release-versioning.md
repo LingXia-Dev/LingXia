@@ -95,6 +95,34 @@ Example: workspace `0.9.0`, CLI already `0.9.1` from a hotfix. `--component all
 0.9.0` → workspace/base npm stay `0.9.0`, CLI rolls to `0.9.2`, CLI metadata →
 `0.9.0`. No collision, no regression.
 
+## `lingxia upgrade` mechanics
+
+The project half compares major.minor only. Applying a newer line rewrites:
+
+- `@lingxia/*` npm ranges, then `npm install` refreshes the lockfile;
+- each `lxapp.json` `minRuntime` to the new `M.m.0` (never lowered; added when
+  missing);
+- scaffolded LingXia crate requirements in `native/Cargo.toml`, then targeted
+  `cargo update -p ...`;
+- Android: gradle `lingxia.sdkVersion`, then the Maven zip into
+  `~/.lingxia/sdk/android-maven/<ver>/` (the repo `lingxia build` injects);
+- Apple: the SDK source zip into `~/.lingxia/sdk/apple/<ver>/`, with
+  `Package.swift` pointed there via `.package(path:)` because the SDK uses
+  `unsafeFlags` and cannot be a remote SwiftPM URL. A hand-wired
+  `Package.swift` is left alone;
+- Windows: `lingxia-windows-sdk` / `lingxia-windows-build` requirements plus
+  `cargo update -p`;
+- Harmony: the HAR into `~/.lingxia/sdk/harmony/<ver>/`.
+
+In-workspace checkouts depend on source paths and are not re-fetched. A
+skipped non-interactive project half exits non-zero. On Windows a CLI
+self-replace is deferred until exit, so the project half is deferred too and
+the command exits 10 even with `--yes`. Upgrading hands the skill to the new
+binary, which writes its own copy.
+
+Apple host builds likewise point `Package.swift` at the cached SDK only while
+SwiftPM runs and restore it afterwards, success or failure.
+
 ## CLI and Runner release assets
 
 The `lingxia-cli-v*` GitHub Release carries both user-installed CLI binaries

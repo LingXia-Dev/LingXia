@@ -40,6 +40,11 @@ creation and sealed before that session's Logic starts.
    audiences are immutable registration metadata resolved before dispatch, not
    a runtime parameter; `#[lingxia::native]` records `AppSessionOnly` unless an
    explicit `audience` is given, so forgetting the attribute fails closed.
+   The doc-hidden `#[lingxia::framework_native(...)]` shares the syntax for
+   framework-owned routes but requires an explicit `audience`. Registration
+   seals each route's kind and audience into the effective route inventory;
+   the Ready schema and every admission path read that caller-filtered
+   inventory, and a duplicate route name is rejected.
 
 ## Where each class comes from
 
@@ -97,6 +102,46 @@ snapshot, which can be after the user closed the lxapp. So a resolver decides
 from the authority alone: no prompt, no blocking on a person, and no opening,
 restarting or closing an lxapp — that deadlocks. Sealing a closed session
 grants nothing; `has_resource_grant` refuses a session that is not live.
+
+## Permission snapshot resolution
+
+Opening a guest checks its registry record first, so a new instance usually
+starts already decided. When the record is missing or its status aged out,
+resolution runs asynchronously: Logic waits without blocking the UI thread,
+page HTML paints, and every network check denies until the decision lands.
+`AppResourceGrant`s are sealed once from that snapshot, never from the pending
+deny (which would stick). Transfers, Worker networking, native media, and
+privileged APIs all read the same instance snapshot.
+
+The snapshot is fixed until the instance is replaced; navigation and a
+Logic-only restart do not refresh it. Shutdown cancels pending Logic startup
+and document loads. A lookup is abandoned after five seconds and its future is
+dropped, so providers must be cancel-safe at every await; a late response
+cannot reach a replacement instance.
+
+An answer the client cannot get is never a restriction: a `404`, an error, or a
+timeout keeps the last known grant, or the default allow. Offline devices stay
+usable, and revocation lands when the record next refreshes (grants and
+statuses share one freshness window), not instantly. An unreadable or invalid
+grant denies the instance: the registry asserted a policy, and guessing would
+widen it. Malformed `LINGXIA_RUNNER_LXAPP_PERMISSIONS` denies every app for the
+same reason. Both Runner entrypoints register their identity before SDK
+initialization, including direct launches without the CLI environment marker.
+
+## Host automation authority and surface handles
+
+Host-owned `AutomationRuntime` programs carry a native runtime authority and do
+not impersonate an lxapp. A manifest `automation` or `host` entry is only a
+request: cross-lxapp, browser, shell, device, terminal, and desktop process
+operations also need a native grant sealed to that session. Retained drivers
+are revalidated on each call and expire when their owner session begins
+teardown.
+
+Native terminal snapshots and commands go through an owner-bound surface
+handle, never a global surface-id string. Platform UI publishes under
+native-host authority; lxapp automation binds a handle only after its sealed
+`AutomationHost` grant is checked. The handle is revalidated for snapshot,
+dispatch, and completion, so a restart or takeover cannot reuse it.
 
 ## Ingress lock discipline
 
