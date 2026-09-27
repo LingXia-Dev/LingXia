@@ -87,17 +87,20 @@ The host app's browser tabs, including URL surfaces:
 - `ua show|set|reset`, `cookies list|set|delete|clear`
 - `screenshot` — the tab's web content
 
-## `lxdev scenario` and `lxdev network`
+## `lxdev mock` and `lxdev network`
 
-Put the running app into a named product state, or inspect and record its
-Logic `fetch` / `Rong.SSE` traffic (development hosts and the Runner):
+Who answers the running app's calls — `mocks/` handlers, the real backend,
+or a scenario state on top — and what each call got (development hosts and
+the Runner):
 
 ```bash
-lxdev scenario use checkout:empty-cart
-lxdev network status
+lxdev mock                        # the selection, its source, hits, errors
+lxdev mock all | none [TARGET…]   # live, until lxdev mock reset
+lxdev mock use checkout:empty-cart
+lxdev network status              # who answered each call
 ```
 
-Everything else: [Scenarios](../lxapp/scenarios.md).
+Everything else: [Mocks](../lxapp/mock.md).
 
 ## `lxdev test`
 

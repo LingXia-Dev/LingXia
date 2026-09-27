@@ -533,7 +533,7 @@ Development machine: lxdev receives progress, results, and artifacts
   logs it as a warning for the dev owner, and it lands on the call-log entry
   (`Call::no_match`). `Call::to_json` adds `answeredBy` (`rule k
   (name:variant)`, `route <pattern>`, `real`).
-- The run API (`network/test_scenario.rs`): `lxapp().scenario(file, variant?)`
+- The run API (`network/test_scenario.rs`): `lxapp().mock.use(file, variant?)`
   parses, removes the run's previous scenario for the app, sends `function`
   rules upstream (below), then installs `http` rules; a failure after the
   companion accepted clears it again. `JSScenario` keeps the resolved rules
@@ -589,7 +589,7 @@ Development machine: lxdev receives progress, results, and artifacts
   `session.network.status` can return `calls` with `answeredBy`. The methods
   exist only with the `test-runtime` feature; lxdev maps `unknown_method` to
   "built without the automation test runtime".
-- `lxdev scenario` (`tools/lingxia-devtools-cli/src/scenario.rs`): `resolve`
+- `lxdev mock use|clear|list` (`tools/lingxia-devtools-cli/src/mock.rs`): `resolve`
   takes a file that exists, else `name[:variant]` (a file may carry
   `:variant` too) over `search_roots` (session content dir, project root,
   then the lxapp project of the current directory when it lies inside one of
@@ -605,9 +605,71 @@ Development machine: lxdev receives progress, results, and artifacts
   nothing reached it). `--watch` polls the file every 300 ms and reinstalls
   on a content change (`watch()`, testable with a fake `Session`). `list`
   needs no session. `lxdev test` no longer consults the dev scenario.
-- The companion side of `function` rules (dev server relay, owner
-  lifecycle, runtime upstream) and its wire contract:
-  [companion-protocol.md](companion-protocol.md).
+- The companion side of `function` rules and of the Function half of mocks
+  (dev server relay, owner lifecycle, runtime upstream) and its wire
+  contract: [companion-protocol.md](companion-protocol.md).
+
+### Mocks
+
+- Model: test route > scenario rule > selection → `mocks/` handler | real.
+  Rust decides, JS executes. `Registry::decide_call` runs `decide_route`,
+  then, when no route or rule answered (or one passed the call on with
+  `continue` / `patchJson`) and the app's policy admits the URL,
+  `decide_mock` → `Mocks::decide` (`network/mocks.rs`): `Real`,
+  `Mock { key }` (hits counted) or `Unhandled { detail }` (recorded per
+  method and URL, warned about once). The interceptor's `decide` returns
+  `{ mock: key }` / `{ unhandled }`, merged into a `{ patch }` object when a
+  route patches the layer below.
+- Selection (`lingxia_control_protocol::mock::Selection`): owners `config` <
+  `baseline` < `dev` < `test:<run>`; each holds entries, a whole (`all` /
+  `none`) or targets. A whole replaces that owner's earlier entries; targets
+  append. For a call: the highest owner with entries (`dev` skipped while a
+  run is active), its entries newest first, the first matching targets entry
+  or the first whole decides; otherwise the next owner down; nothing: `none`.
+  `config` lives per app (`MockSet::config_selection`, from
+  `mocks/config.json`), the others session-wide in `Mocks::selection`. The
+  deciding layer (`config`, `--mock`, `live`, `live target`, `default`) lands
+  on the call (`Call::selection`) and in `answeredBy`
+  (`mock (GET **/x) · config`, `real · --mock`, `unhandled · live`).
+  `describe_selection` / `describe_baseline` render the one-line summary the
+  banner, `lxdev mock` and the `lxdev test` header print.
+- Load (`session.network.mock.load`): the dev server bundles
+  `mocks/index.ts` with the Logic bundler (`ModuleRole::Mocks`, a script
+  whose value is the default export) and reads its keys statically (an
+  object literal with string keys; spreads and computed keys are refused so
+  the set stays visible). The registry compiles the keys, validates the
+  config against them, and bumps the app's `generation`; a load is all or
+  nothing. `watched()` counts mock sets, so the wrapper leaves its fast path
+  and `observe` logs every call while mocks are loaded.
+- Execution: `MOCK_RUNNER` is one object per Logic context
+  (`Symbol.for('lingxia.automation.network.mocks')` on `globalThis`), shared
+  by the `fetch` and `Rong.SSE` wrappers. It asks `host.mockInstance(gen)`,
+  which evaluates the stored source in the context again when the generation
+  moved, so module state lasts until a load, `mock.reset`, a spec start
+  (`mock.reset()` of the driver, `Fresh::Spec`) or a context restart;
+  in-flight handlers finish on the old instance and their timers are not
+  cancelled. The handler's answer goes through `host.mockAnswer`, which
+  refuses scenario-only fields, parses it with the route parser
+  (`parse_handler`, binary bodies included), renders templates, allocates a
+  hold under `MOCK_HOLDER` for `hang` and open SSE streams (released by
+  loads and resets), records contract captures (`Source::Mock`), and returns
+  the hit; `continue` comes back as `{ real: true }`. Throwing, `undefined`
+  and invalid answers go through `host.mockFailed`: counted per key, warned
+  about, rejected as `TypeError: fetch failed` with `data.detail`.
+  `Rong.SSE` gets a `mock` attempt kind whose promise settles into
+  `stream` / `fail` / `real`.
+- Dev session (`lingxia-cli/src/commands/dev/mocks.rs`, `server.rs`):
+  `prepare_mocks` bundles and validates every watched lxapp at start (an
+  error fails the start) and prints the `Mock:` line; `push_all_mocks` loads
+  them on every runtime connect (the runtime drops its mocks and the dev
+  selection when the bridge disconnects, `dev::session_ended`); the watcher
+  sends saves under `mocks/` to `reload_mocks` (bundle, push, keep the last
+  valid on error), deferred while a run pauses the watcher. `--mock` is a
+  process-wide baseline sent with every load and as
+  `session.prepare { mock }` to the companion.
+- Guard: `LogicBundler::compile_module` refuses a dependency under
+  `<root>/mocks/` from a module outside it, in every build; the Vite config
+  template carries the same check (`lingxia-mocks-guard`).
 - Automation errors (`lingxia-automation/src/error.rs`): the lower half returns
   strings that older clients parse, so messages never change; `code_for` /
   `eval_code_for` map them to stable codes (`E_AUTOMATION_PRIVILEGE`,
