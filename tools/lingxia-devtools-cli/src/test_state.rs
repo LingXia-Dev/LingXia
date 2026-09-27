@@ -36,7 +36,8 @@ pub struct StateOptions {
 
     /// Save the isolated data back to the --profile snapshot after the run:
     /// `pass` (the default) only after a passing run, `always` after any run
-    /// that finished. A snapshot that does not exist yet starts empty
+    /// that finished. A snapshot that does not exist yet, or that another
+    /// install of the host took (moved to `<file>.stale`), starts empty
     #[arg(
         long,
         value_enum,
@@ -273,24 +274,53 @@ pub fn prepare(
                 capabilities.max_state_bytes
             );
         }
-        if !machine && let Some(age) = age(seed).filter(|age| *age > STALE_AFTER) {
-            eprintln!(
-                "{} {} is {} days old; its sign-in may have expired",
-                "warning".yellow(),
-                seed.display(),
-                age.as_secs() / 86_400
-            );
-        }
         let digest = sha256_hex(&bytes);
-        let name = seed
-            .file_stem()
-            .map(|stem| stem.to_string_lossy().to_string())
-            .unwrap_or_default();
-        control.push((
-            "profile_seed".to_string(),
-            format!("{name}@{}", &digest[..8]),
-        ));
-        seed_state_id = Some(upload(ws_url, &bytes, &digest, capabilities.chunk_bytes)?);
+        match upload(ws_url, &bytes, &digest, capabilities.chunk_bytes) {
+            Ok(state_id) => {
+                if !machine && let Some(age) = age(seed).filter(|age| *age > STALE_AFTER) {
+                    eprintln!(
+                        "{} {} is {} days old; its sign-in may have expired",
+                        "warning".yellow(),
+                        seed.display(),
+                        age.as_secs() / 86_400
+                    );
+                }
+                let name = seed
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                control.push((
+                    "profile_seed".to_string(),
+                    format!("{name}@{}", &digest[..8]),
+                ));
+                seed_state_id = Some(state_id);
+            }
+            // Taken by another install of this host: unusable here, so it is
+            // treated as missing, and kept aside rather than deleted.
+            Err(err) if is_stale_snapshot(&err) => {
+                let aside = set_aside(seed)?;
+                if save.as_ref() != Some(seed) {
+                    bail!(
+                        "{} does not fit this host ({}); moved it to {}. Add --profile-save to \
+                         create it again, or use --profile {EMPTY_PROFILE}",
+                        seed.display(),
+                        stale_reason(&err),
+                        aside.display()
+                    );
+                }
+                if !machine {
+                    eprintln!(
+                        "{} {} does not fit this host ({}); moved it to {}, starting empty and \
+                         saving it after the run",
+                        "test".cyan(),
+                        seed.display(),
+                        stale_reason(&err),
+                        aside.display()
+                    );
+                }
+            }
+            Err(err) => return Err(err),
+        }
     }
     Ok(Some(PreparedState {
         ws_url: ws_url.to_string(),
@@ -304,6 +334,29 @@ pub fn prepare(
         save,
         save_on: options.profile_save.unwrap_or_default(),
     }))
+}
+
+/// The host refused a snapshot as taken by another install of it.
+fn is_stale_snapshot(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<crate::client::CommandError>()
+        .is_some_and(|error| error.code == "stale")
+}
+
+fn stale_reason(err: &anyhow::Error) -> String {
+    err.downcast_ref::<crate::client::CommandError>()
+        .map_or_else(|| err.to_string(), |error| error.message.clone())
+}
+
+/// Move a snapshot this host cannot use to `<file>.stale`, replacing an
+/// older one there.
+fn set_aside(path: &Path) -> Result<PathBuf> {
+    let mut aside = path.as_os_str().to_owned();
+    aside.push(".stale");
+    let aside = PathBuf::from(aside);
+    let _ = std::fs::remove_file(&aside);
+    std::fs::rename(path, &aside)
+        .with_context(|| format!("failed to move {} aside", path.display()))?;
+    Ok(aside)
 }
 
 /// A host without isolation would ignore the start field and run on the
@@ -764,6 +817,92 @@ mod tests {
         let (method, params) = server.join().unwrap();
         assert_eq!(method, methods::session::profile::DISCARD);
         assert_eq!(params["run_id"], "run-1");
+    }
+
+    /// Answers one command per connection, in order: `Ok` a result,
+    /// `Err((code, message))` an error.
+    fn scripted_server(
+        answers: Vec<Result<serde_json::Value, (&'static str, &'static str)>>,
+    ) -> (String, std::thread::JoinHandle<Vec<String>>) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        let handle = std::thread::spawn(move || {
+            let mut methods = Vec::new();
+            for answer in answers {
+                let (stream, _) = listener.accept().unwrap();
+                let mut socket = tungstenite::accept(stream).unwrap();
+                loop {
+                    let message = socket.read().unwrap();
+                    let Ok(DevSessionMessage::Request(request)) =
+                        serde_json::from_str(message.to_text().unwrap())
+                    else {
+                        continue;
+                    };
+                    methods.push(request.method.clone());
+                    let response = match &answer {
+                        Ok(value) => ControlResponse::success(request.id, Some(value.clone())),
+                        Err((code, text)) => ControlResponse::error(request.id, *code, *text),
+                    };
+                    socket
+                        .send(tungstenite::Message::Text(
+                            serde_json::to_string(&DevSessionMessage::Response(response))
+                                .unwrap()
+                                .into(),
+                        ))
+                        .unwrap();
+                    break;
+                }
+            }
+            methods
+        });
+        (url, handle)
+    }
+
+    #[test]
+    fn a_snapshot_of_another_install_is_set_aside_like_a_missing_one() {
+        let capabilities =
+            json!({ "profile": { "max_state_bytes": 1 << 20, "chunk_bytes": 1 << 20 } });
+        let stale = Err((
+            "stale",
+            "profile snapshot of app.one was taken for another channel or device fingerprint",
+        ));
+        let dir = scratch("stale");
+        let path = dir.join("auth.lxstate");
+        let aside = dir.join("auth.lxstate.stale");
+        let path_arg = path.to_string_lossy().to_string();
+
+        // With --profile-save the run starts empty and saves a new one.
+        std::fs::write(&path, b"old snapshot").unwrap();
+        let (url, server) = scripted_server(vec![Ok(capabilities.clone()), stale.clone()]);
+        let options = parse(&["--profile", &path_arg, "--profile-save=always"]).unwrap();
+        let prepared = prepare(&url, &options, &dir, true).unwrap().unwrap();
+        assert_eq!(
+            server.join().unwrap(),
+            [
+                methods::session::test::CAPABILITIES,
+                methods::session::profile::UPLOAD
+            ]
+        );
+        assert!(prepared.profile.isolate && prepared.profile.retain);
+        assert_eq!(prepared.profile.seed_state_id, None);
+        assert_eq!(prepared.save.as_deref(), Some(path.as_path()));
+        assert!(!path.exists());
+        assert_eq!(std::fs::read(&aside).unwrap(), b"old snapshot");
+
+        // Without it, the run is refused as for a missing snapshot.
+        std::fs::write(&path, b"old again").unwrap();
+        let (url, server) = scripted_server(vec![Ok(capabilities), stale]);
+        let options = parse(&["--profile", &path_arg]).unwrap();
+        let error = prepare(&url, &options, &dir, true)
+            .err()
+            .expect("refused like a missing snapshot")
+            .to_string();
+        server.join().unwrap();
+        assert!(error.contains("--profile-save"), "{error}");
+        assert!(error.contains("another channel or device"), "{error}");
+        assert!(!path.exists());
+        assert_eq!(std::fs::read(&aside).unwrap(), b"old again");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
