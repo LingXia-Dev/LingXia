@@ -315,6 +315,16 @@ Development machine: lxdev receives progress, results, and artifacts
   `@lingxia/test` fails rather than running the suite. `list()` selects as
   `run()` does, then returns a zero-case report with `listed`. lxdev writes
   no run directory and leaves `latest`.
+- `--list` with no session at all (and no `--session`) is offline
+  (`test_offline.rs`): lxdev bundles as for a list, so the bundle-time checks
+  still run, then reads each file's spec calls with Oxc — title, `id` and
+  `tags` when they are literals, `spec.configure({ tags })`, the modifier,
+  and whether the call sits in a function or loop. It applies `.only`,
+  locations, `--id`, `--last-failed` ids, `--shard` (the runtime's FNV-1a
+  over UTF-16), `--tag` and `--grep` (Rust `regex`; a pattern it cannot
+  compile is an error) where the values are known. A spec a filter cannot
+  decide is kept; it and any spec with a computed value are marked inexact
+  (`exact: false` in JSON, `~` in text). The JSON carries `offline: true`.
 - Rerun lines: `meta.reruns` maps each failed id to its command. `FILE:LINE`
   when the id is generated (`generated_id`), the file was one of the run's,
   and no other id shares that line; `--id` on the run's paths otherwise.

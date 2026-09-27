@@ -15,6 +15,7 @@ mod test_bundle;
 mod test_contract;
 mod test_eval_check;
 mod test_network;
+mod test_offline;
 mod test_preset;
 mod test_report;
 mod test_secrets;
@@ -246,13 +247,23 @@ fn run() -> Result<()> {
             if test::nothing_to_rerun(&options)? {
                 return Ok(());
             }
-            let info = resolve(&selector).map_err(|err| {
-                if test::looks_unreachable(&err) {
-                    anyhow::anyhow!(test::NO_SESSION_HINT)
-                } else {
-                    err
+            let info = match resolve(&selector) {
+                Ok(info) => info,
+                // Listing needs only the files: without any session it
+                // reads them instead of asking a run.
+                Err(err)
+                    if options.list
+                        && selector.query.is_none()
+                        && project::is_no_session(&err)
+                        && let Some(selection) = &selection =>
+                {
+                    return test::list_offline(&options, selection);
                 }
-            })?;
+                Err(err) if test::looks_unreachable(&err) => {
+                    return Err(anyhow::anyhow!(test::NO_SESSION_HINT));
+                }
+                Err(err) => return Err(err),
+            };
             test::execute(&info, *options, selection)
         }
     }
