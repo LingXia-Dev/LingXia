@@ -193,9 +193,11 @@ fn run_watch(
     }
 
     let mut dirty: BTreeSet<String> = BTreeSet::new();
+    // Saves under `mocks/` reload the mocks only: no rebuild, no restart.
+    let mut mocks_dirty: BTreeSet<String> = BTreeSet::new();
     let mut deferred = false;
     while !stop_flag.load(Ordering::Acquire) {
-        let timeout = if dirty.is_empty() {
+        let timeout = if dirty.is_empty() && mocks_dirty.is_empty() {
             IDLE_POLL
         } else {
             DEBOUNCE
@@ -210,7 +212,12 @@ fn run_watch(
                         continue;
                     }
                     if let Some(root) = root_for_path(&roots, &path) {
-                        dirty.insert(root.app_id.clone());
+                        let path = strip_verbatim_prefix(&path);
+                        if super::mocks::is_mocks_path(strip_verbatim_prefix(&root.path), path) {
+                            mocks_dirty.insert(root.app_id.clone());
+                        } else {
+                            dirty.insert(root.app_id.clone());
+                        }
                     }
                 }
             }
@@ -218,7 +225,8 @@ fn run_watch(
                 eprintln!("⚠ lxapp watch: {err}");
             }
             Err(RecvTimeoutError::Timeout) => {
-                if dirty.is_empty() || stop_flag.load(Ordering::Acquire) {
+                if (dirty.is_empty() && mocks_dirty.is_empty()) || stop_flag.load(Ordering::Acquire)
+                {
                     continue;
                 }
                 // A test run pauses the watcher (`session.watch.pause`):
@@ -227,16 +235,23 @@ fn run_watch(
                 // changes queued; they rebuild once when the pause ends.
                 if state.watch_paused() {
                     if !deferred {
+                        let waiting: BTreeSet<String> =
+                            dirty.union(&mocks_dirty).cloned().collect();
                         println!(
                             "  {} watcher paused by a test run — rebuild of {} waits until it ends",
                             "•".cyan(),
-                            dirty.iter().cloned().collect::<Vec<_>>().join(", ").cyan()
+                            waiting.into_iter().collect::<Vec<_>>().join(", ").cyan()
                         );
                         deferred = true;
                     }
                     continue;
                 }
                 deferred = false;
+                for app_id in std::mem::take(&mut mocks_dirty) {
+                    if let Some(root) = roots.iter().find(|root| root.app_id == app_id) {
+                        state.reload_mocks(&app_id, &root.path);
+                    }
+                }
                 let app_ids: Vec<String> = dirty.iter().cloned().collect();
                 dirty.clear();
                 for app_id in app_ids {
