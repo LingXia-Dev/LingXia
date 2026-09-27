@@ -1,4 +1,4 @@
-import { spec, type LogicPage, type TestApp } from '@lingxia/test';
+import { spec, type LogicPage, type TestApp, expect } from '@lingxia/test';
 import { attachShot, bindFixture } from '../helpers/poll.js';
 import { SHOWCASE_APP_ID } from '../helpers/app.js';
 
@@ -44,7 +44,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
   const { app } = bindFixture(t, "TODO-001");
   const view = app.view;
 
-  await t.expect(view.testId('todo-page', { page: 'todo' })).toBeVisible();
+  await expect(view.testId('todo-page', { page: 'todo' })).toBeVisible();
 
   const text = `automation todo ${Date.now()}`;
   pendingTodo = text;
@@ -57,26 +57,26 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
     await input.fill(text);
     // `fill` writes through the input's value setter and dispatches
     // input/change, so the framework-controlled value follows it.
-    await t.expect(input).toHaveAttribute('data-controlled-value', text);
+    await expect(input).toHaveAttribute('data-controlled-value', text);
     await input.press('Enter');
 
     const label = view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
-    await t.expect(label).toBeVisible();
-    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
+    await expect(label).toBeVisible();
+    await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
     const { todos } = await app.logic.data<{ todos: Todo[] }>({ page: 'todo' });
-    t.expect(todos.some((todo) => todo.text === text)).toBe(true);
+    expect(todos.some((todo) => todo.text === text)).toBe(true);
 
     await label.click();
-    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: true });
+    await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: true });
 
     await view.testId('todo-filter-completed', { page: 'todo' }).click();
-    await t.expect(label).toBeVisible();
+    await expect(label).toBeVisible();
     await view.testId('todo-filter-active', { page: 'todo' }).click();
-    await t.expect(label).toHaveCount(0);
+    await expect(label).toHaveCount(0);
     await view.testId('todo-filter-all', { page: 'todo' }).click();
 
     await label.click();
-    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
+    await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toEqual({ completed: false });
 
     const screenshot = await view.screenshot({ page: 'todo' });
     await attachShot(t, 'todo-page.png', {
@@ -89,8 +89,8 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
       Array.from(document.querySelectorAll('[data-testid="todo-label"]'))
         .findIndex((element) => element.textContent?.trim() === wanted), text);
     await view.testId('todo-delete', { page: 'todo', index: row }).click();
-    await t.expect(label).toHaveCount(0);
-    await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
+    await expect(label).toHaveCount(0);
+    await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
   } catch (error) {
     try {
       const screenshot = await view.screenshot({ page: 'todo' });
@@ -107,7 +107,7 @@ spec("persist todo edits made through the rendered page", { id: "TODO-001", cove
 
 spec("add and delete a todo through the page's Logic methods", { id: "TODO-002", app: SHOWCASE_APP_ID }, async (t) => {
   const { app } = bindFixture(t, "TODO-002");
-  await t.expect(app.view.testId('todo-page', { page: 'todo' })).toBeVisible();
+  await expect(app.view.testId('todo-page', { page: 'todo' })).toBeVisible();
 
   const text = `logic todo ${Date.now()}`;
   pendingTodo = text;
@@ -118,7 +118,7 @@ spec("add and delete a todo through the page's Logic methods", { id: "TODO-002",
 
   await app.logic.call<TodoPage, 'addTodo'>('addTodo', { text });
   const label = app.view.testId('todo-label', { page: 'todo' }).filter({ hasText: text });
-  await t.expect(label).toBeVisible();
+  await expect(label).toBeVisible();
 
   const added = await t.waitFor(
     () => app.logic.data<{ todos: Todo[] }>({ page: 'todo' }),
@@ -126,6 +126,6 @@ spec("add and delete a todo through the page's Logic methods", { id: "TODO-002",
   );
   const id = added.todos.find((todo) => todo.text === text)!.id;
   await app.logic.call<TodoPage, 'deleteTodo'>('deleteTodo', { id });
-  await t.expect(label).toHaveCount(0);
-  await t.expect(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
+  await expect(label).toHaveCount(0);
+  await expect.poll(() => storedTodo(app, text), { timeout: 30_000 }).toBe(null);
 });

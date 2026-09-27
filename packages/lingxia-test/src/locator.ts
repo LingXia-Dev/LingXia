@@ -94,12 +94,8 @@ export interface LocatorRefine {
   last?: boolean;
 }
 
-/** Marks a locator across module copies, so `expect(locator)` can refuse it. */
+/** Marks a locator across module copies, so `expect(locator)` retries it. */
 export const LOCATOR_BRAND = Symbol.for("lingxia.test.locator");
-
-export function isLocator(value: unknown): boolean {
-  return typeof value === "object" && value !== null && (value as { [LOCATOR_BRAND]?: unknown })[LOCATOR_BRAND] === true;
-}
 
 export function testIdSelector(id: string): string {
   return `[data-testid="${cssEscape(id)}"]`;

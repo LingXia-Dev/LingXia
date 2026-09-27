@@ -196,7 +196,7 @@ export interface Locator {
   last(): Locator;
   /** Narrow the matches; `nth`/`first`/`last` then pick among what is left. */
   filter(options: LocatorFilterOptions): Locator;
-  /** Read once; use t.expect for retrying assertions. */
+  /** Read once; `expect(locator)` retries. */
   query(): Promise<PageQueryResult>;
 }
 
@@ -612,6 +612,7 @@ export interface Apps {
   lxapp(appId: string): TestApp;
 }
 
+/** `expect.poll(read)` matchers: they call `read` until the matcher passes. */
 export interface RetryMatchers<T> {
   readonly not: RetryMatchers<T>;
   toBe(expected: unknown): Promise<void>;
@@ -623,12 +624,14 @@ export interface RetryMatchers<T> {
   toBeDefined(): Promise<void>;
   toBeUndefined(): Promise<void>;
   toBeInstanceOf(expected: Function): Promise<void>;
+  toHaveLength(expected: number): Promise<void>;
   toBeGreaterThan(expected: number): Promise<void>;
   toBeGreaterThanOrEqual(expected: number): Promise<void>;
   toBeLessThan(expected: number): Promise<void>;
   toBeLessThanOrEqual(expected: number): Promise<void>;
 }
 
+/** `expect(locator)` matchers: they retry until the element passes. */
 export interface LocatorMatchers {
   readonly not: LocatorMatchers;
   /** One rendered match, in the viewport or scrolled out of it. */
@@ -652,18 +655,29 @@ export interface LocatorMatchers {
   toHaveValue(expected: string | RegExp, options?: ExpectOptions): Promise<void>;
 }
 
+/** What `expect(promise)` gives: nothing to call. Await the promise, or poll a read. */
+export interface PromiseNotAllowed {
+  readonly "expect(promise)": "await the value first, or retry a read with expect.poll(() => promise)";
+}
+
+/** The matchers `expect(subject)` gives for a subject of type `T`. */
+export type ExpectResult<T> =
+  0 extends 1 & T ? Matchers<any>
+    : [T] extends [Locator] ? LocatorMatchers
+      : [T] extends [PromiseLike<unknown>] ? PromiseNotAllowed
+        : Matchers<T>;
+
 /**
- * `t.expect`, the one waiting assertion:
- * - `t.expect(locator)` retries the locator matcher until it passes;
- * - `t.expect(() => read())` calls `read` until the matcher passes;
- * - `t.expect(value)` checks once, like the top-level `expect`.
- * Each retry ends at `timeout` (default 5000 ms), clamped to the spec's
- * remaining budget.
+ * The one assertion entry point:
+ * - `expect(locator)` retries the matcher until the element passes (await it);
+ * - `expect(value)` checks once, synchronously;
+ * - `expect.poll(() => read())` calls `read` until the matcher passes (await it).
+ * Retries end at `timeout` (default 5000 ms), clamped to the spec's
+ * remaining budget; locators and `poll` need a running spec.
  */
-export interface FixtureExpect {
-  (locator: Locator): LocatorMatchers;
-  <T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
-  <T>(value: T): Matchers<T>;
+export interface Expect {
+  <T>(subject: T): ExpectResult<T>;
+  poll<T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
 }
 
 export interface WaitForOptions<T = unknown> {
@@ -708,7 +722,6 @@ export interface Fixture {
   arg(name: string, options: { required: false; default?: undefined }): string | undefined;
   arg(name: string, options?: ArgOptions): string;
   step<T>(name: string, body: () => T | Promise<T>): Promise<T>;
-  expect: FixtureExpect;
   reject(
     operation: () => unknown | Promise<unknown>,
     expected?: RejectExpected,
@@ -730,6 +743,7 @@ export interface Fixture {
   skip(reason: string): never;
 }
 
+/** Matchers that check once, synchronously. */
 export interface Matchers<T> {
   readonly not: Matchers<T>;
   toBe(expected: unknown): void;
@@ -741,6 +755,8 @@ export interface Matchers<T> {
   toBeDefined(): void;
   toBeUndefined(): void;
   toBeInstanceOf(expected: Function): void;
+  /** A string's or array's `length`. */
+  toHaveLength(expected: number): void;
   toThrow(expected?: unknown): void;
   /** Numeric ordering. Comparing anything but numbers fails the assertion. */
   toBeGreaterThan(expected: number): void;

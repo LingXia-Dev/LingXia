@@ -22,20 +22,20 @@ npm install --save-dev @lingxia/test
 一个用例是带标题的 `spec`，异步函数体收到测试句柄 `t`。用 locator 驱动应用，用可重试断言检查结果：
 
 ```ts
-import { spec } from '@lingxia/test';
+import { spec, expect } from '@lingxia/test';
 
 spec('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
   await t.app.nav.relaunch({ page: 'home' });
-  await t.expect(t.app.page.testId('home-page')).toBeVisible();
+  await expect(t.app.view.testId('home-page')).toBeVisible();
 
-  await t.app.page.testId('name').fill('Ada');
-  await t.app.page.testId('greet').click();
+  await t.app.view.testId('name').fill('Ada');
+  await t.app.view.testId('greet').click();
 
-  await t.expect(t.app.page.testId('greeting')).toContain('Ada');
+  await expect(t.app.view.testId('greeting')).toContainText('Ada');
 });
 ```
 
-给元素加稳定的 `data-testid`，不要靠样式类去匹配。`t.app.page.testId(id)` 与 `t.app.page.css(selector)` 返回 locator；`t.expect(locator)` 会重试直到条件成立或超时。从 `@lingxia/test` 导入的 `expect(value)` 只检查一次，不会重试。
+给元素加稳定的 `data-testid`，不要靠样式类去匹配。`t.app.view.testId(id)` 与 `t.app.view.css(selector)` 返回 locator；`expect(locator)` 会重试直到条件成立或超时；`expect(value)` 只检查一次。
 
 每次交互都要 await：用例是在和另一个进程对话。
 
@@ -44,8 +44,8 @@ spec('通过真实页面输入和 Logic 桥接完成问候', async (t) => {
 应用是活的，状态什么时候到就是什么时候到。等你真正关心的那个条件：
 
 ```ts
-await t.expect(t.app.page.testId('total')).toBeVisible();
-await t.expect.poll(async () => {
+await expect(t.app.view.testId('total')).toBeVisible();
+await expect.poll(async () => {
   const response = await fetch(statusUrl);
   return (await response.json()).status;
 }).toBe('submitted');

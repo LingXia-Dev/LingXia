@@ -1,6 +1,6 @@
 import {
   spec, expect, rawAutomation, TEST_ERROR_CODES, TimeoutError,
-  type AnyLogicPage, type AutomationErrorCode, type ClockAdvance, type ClockState, type FailureRecord, type JsonReport,
+  type AnyLogicPage, type Fixture, type AutomationErrorCode, type ClockAdvance, type ClockState, type FailureRecord, type JsonReport,
   type LogicPage, type NetworkCall, type ProfileCheckpoint, type TagSummary, type TestApp, type TestErrorCode,
 } from '../dist/index.js';
 import { AUTOMATION_ERROR_CODES, type Automation, type LxAppDriver, type PageDriver, type PageQueryResult } from '@lingxia/types/automation';
@@ -28,10 +28,10 @@ spec('typed test boundary', async t => {
   const rows = app.view.css('li').filter({hasText:/ready/i});
   await rows.first().click({force:true, timeout:1_000});
   await rows.last().fill('x', {force:true});
-  await t.expect(rows.nth(1)).toBeInViewport();
-  await t.expect(rows.first()).toContainText('ready');
-  await t.expect(rows.first()).toHaveAttribute('aria-selected', 'true');
-  await t.expect(rows.first()).not.toHaveAttribute('disabled');
+  await expect(rows.nth(1)).toBeInViewport();
+  await expect(rows.first()).toContainText('ready');
+  await expect(rows.first()).toHaveAttribute('aria-selected', 'true');
+  await expect(rows.first()).not.toHaveAttribute('disabled');
   await app.view.css('#save').click({force:true});
   // @ts-expect-error There is no `t.app.page`: the view holds the locators.
   app.page.testId('input');
@@ -163,18 +163,25 @@ spec('typed Logic access', async t => {
   // @ts-expect-error No positional callback: pass { until }.
   await t.waitFor(() => 1, (value: number) => value > 0);
 
-  // One waiting ladder: t.expect(locator) and t.expect(fn) retry, t.expect(value) checks once.
-  await t.expect(t.app.view.testId('save')).toBeVisible();
-  await t.expect(() => t.app.logic.data<Devices>(), { timeout: 2_000 }).toEqual({ devices: [] });
-  await t.expect(async () => 3).toBeGreaterThan(2);
-  t.expect(3).toBe(3);
-  t.expect({ id: 'd1' }).toMatchSchema('Device');
+  // One expect: a locator retries, a value checks once, expect.poll(read) retries.
+  await expect(t.app.view.testId('save')).toBeVisible();
+  await expect.poll(() => t.app.logic.data<Devices>(), { timeout: 2_000 }).toEqual({ devices: [] });
+  await expect.poll(async () => [1, 2]).toHaveLength(2);
+  await expect.poll(async () => 3).toBeGreaterThan(2);
+  expect(3).toBe(3);
+  expect([1, 2]).toHaveLength(2);
+  expect({ id: 'd1' }).toMatchSchema('Device');
+  expect(() => { throw new Error('x'); }).toThrow('x');
+  const loose: any = { length: 1 };
+  expect(loose).toHaveLength(1);
   // @ts-expect-error A once-check is synchronous: it returns no promise to await on.
-  t.expect(3).toBe(3).then;
+  expect(3).toBe(3).then;
   // @ts-expect-error Locator matchers are not value matchers.
-  await t.expect(t.app.view.testId('save')).toBe(1);
-  // @ts-expect-error `t.expect(fn)` is the retrying form; there is no `poll`.
-  await t.expect.poll(() => 1).toBe(1);
+  await expect(t.app.view.testId('save')).toBe(1);
+  // @ts-expect-error Value matchers are not locator matchers.
+  expect(3).toBeVisible();
+  // @ts-expect-error A promise is neither a value nor a read: await it, or poll it.
+  expect(t.app.logic.data()).toEqual({});
 
   // Args may be missing; t.arg narrows or throws.
   // @ts-expect-error A missing arg is undefined, not a string.
@@ -187,6 +194,9 @@ spec('typed Logic access', async t => {
   optional.toUpperCase();
   void baseUrl; void mode;
 });
+
+// @ts-expect-error The fixture has no expect of its own: import `expect`.
+type FixtureHasNoExpect = Fixture['expect'];
 
 // One call record across routes, network and scenarios; removers resolve void.
 spec('network calls', async (t) => {
@@ -293,11 +303,6 @@ spec('host tiers', async (t) => {
   await t.automation.browser.tabs();
 });
 
-// expect(locator) is refused at run time; the type still takes it, so the
-// message is what guides.
-spec('trap', async (t) => {
-  expect(t.app.view.testId('x'));
-});
 
 // The raw root is an import with host authority, never an ambient `lx`.
 const rawRoot = rawAutomation();

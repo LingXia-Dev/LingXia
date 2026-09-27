@@ -1,5 +1,5 @@
 export { spec, expect, run, list, reset, rawAutomation, trackPublicSurface } from "./runtime.js";
-export { AssertionError, logAssertion, setAssertionSink } from "./expect.js";
+export { AssertionError } from "./expect.js";
 export { TimeoutError } from "./fixture.js";
 export { TEST_ERROR_CODES } from "./errors.js";
 export { renderJUnit } from "./junit.js";
@@ -23,14 +23,15 @@ export type {
   CoverageSpec,
   CoverageSummary,
   EvalOptions,
+  Expect,
   ExpectOptions,
+  ExpectResult,
   FailOptions,
   FailurePage,
   PageVisibility,
   FileOptions,
   FailureRecord,
   Fixture,
-  FixtureExpect,
   JsonReport,
   ListedSpec,
   JsonValue,
@@ -76,6 +77,7 @@ export type {
   OpenApiRun,
   ScenarioReport,
   OpenApiSummary,
+  PromiseNotAllowed,
   ProtocolReport,
   RejectExpected,
   RetryMatchers,

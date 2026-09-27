@@ -1,10 +1,10 @@
 import {
   AssertionError,
   applyMatcher,
-  expect as immediateExpect,
+  check,
   popAssertionSilence,
   pushAssertionSilence,
-  setAssertionSink,
+  setExpectScope,
 } from "./expect.js";
 import { formatValue, truncate } from "./format.js";
 import type { PendingWork } from "./pending.js";
@@ -21,7 +21,6 @@ import { explainRemoteError, functionDetail, logicScript, pageScript, type Remot
 import { callerLocation, displayLocation, isFrameworkFrame, parseFrames, resolveOrigin } from "./ids.js";
 import {
   PageLocator,
-  isLocator,
   normalizeText,
   sleep,
   testIdSelector,
@@ -34,7 +33,6 @@ import type {
   AttachmentRef,
   ExpectOptions,
   Fixture,
-  FixtureExpect,
   AssertionRecord,
   Locator,
   LocatorMatchers,
@@ -145,7 +143,11 @@ export class LiveFixture implements Fixture {
     this.startedAt = Date.now();
     this.args = args;
     this.specDeadline = Date.now() + specBudgetMs;
-    setAssertionSink((entry) => this.noteAssertion(entry));
+    setExpectScope({
+      note: (entry) => this.noteAssertion(entry),
+      locator: (locator) => this.locatorMatchers(locator, false),
+      poll: (read, options) => this.pollMatchers(read, options, false, "expect.poll"),
+    });
     const root = guardObject(automation, this, "", ["lxapp", ...HOST_TIERS]);
     this.automation = new Proxy(root, {
       get: (target, prop) => prop === "lxapp"
@@ -274,17 +276,6 @@ export class LiveFixture implements Fixture {
     });
   }
 
-  get expect(): FixtureExpect {
-    const fn = ((subject: unknown, options?: ExpectOptions) => {
-      if (isLocator(subject)) return this.locatorMatchers(subject as Locator, false);
-      if (typeof subject === "function") {
-        return this.pollMatchers(subject as () => unknown, options, false, "t.expect(fn)");
-      }
-      return immediateExpect(subject);
-    }) as FixtureExpect;
-    return fn;
-  }
-
   async reject(
     operation: () => unknown | Promise<unknown>,
     expected: RejectExpected = {},
@@ -341,10 +332,10 @@ export class LiveFixture implements Fixture {
         );
       }
       if (typeof expected.message === "string") {
-        immediateExpect(String(record.message)).toContain(expected.message);
+        check(String(record.message)).toContain(expected.message);
       }
       if (expected.message instanceof RegExp) {
-        immediateExpect(String(record.message)).toMatch(expected.message);
+        check(String(record.message)).toMatch(expected.message);
       }
       this.noteAssertion({
         matcher: "reject",
@@ -958,6 +949,7 @@ export class LiveFixture implements Fixture {
       toBeDefined: () => run("toBeDefined"),
       toBeUndefined: () => run("toBeUndefined"),
       toBeInstanceOf: (expected: Function) => run("toBeInstanceOf", expected),
+      toHaveLength: (expected: number) => run("toHaveLength", expected),
       toBeGreaterThan: (expected: number) => run("toBeGreaterThan", expected),
       toBeGreaterThanOrEqual: (expected: number) => run("toBeGreaterThanOrEqual", expected),
       toBeLessThan: (expected: number) => run("toBeLessThan", expected),
@@ -1241,7 +1233,7 @@ function resolveLocator(
   if (locator instanceof PageLocator) {
     return deadline.call("locator read", () => locator.resolve(undefined, "resolve", attributes), context);
   }
-  throw new Error("t.expect() requires a locator from view.testId() or view.css()");
+  throw new Error("expect(locator) takes a locator from view.testId() or view.css()");
 }
 
 /** `toHaveAttribute`'s expectation; formats as the report shows it. */

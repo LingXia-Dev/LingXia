@@ -1,5 +1,5 @@
 import type { PageInfo } from '@lingxia/types/automation';
-import type { Fixture, TestApp } from '@lingxia/test';
+import { expect, type Fixture, type TestApp } from '@lingxia/test';
 import { eventually } from './poll.js';
 
 // These waits read the first match of `css`, as the page checks they replace
@@ -13,7 +13,7 @@ export async function waitForElementEnabled(
   timeoutMs = 10_000,
   app: TestApp = t.app,
 ): Promise<void> {
-  await t.expect(app.view.css(css, { page }).first()).toBeEnabled({ timeout: timeoutMs });
+  await expect(app.view.css(css, { page }).first()).toBeEnabled({ timeout: timeoutMs });
 }
 
 export async function waitForElementAttribute(
@@ -25,7 +25,7 @@ export async function waitForElementAttribute(
   timeoutMs = 10_000,
   app: TestApp = t.app,
 ): Promise<void> {
-  await t.expect(app.view.css(css, { page }).first()).toHaveAttribute(attribute, expected, { timeout: timeoutMs });
+  await expect(app.view.css(css, { page }).first()).toHaveAttribute(attribute, expected, { timeout: timeoutMs });
 }
 
 export async function waitForElementText(

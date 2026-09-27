@@ -2,7 +2,7 @@ import { isEqual } from "./equal.js";
 import { formatValue } from "./format.js";
 import { activeOpenApi, type SchemaTarget } from "./openapi.js";
 import { formatIssues } from "./schema.js";
-import type { Matchers } from "./types.js";
+import type { Expect, ExpectOptions, Locator, LocatorMatchers, Matchers, RetryMatchers } from "./types.js";
 
 export interface LoggedAssertion {
   matcher: string;
@@ -11,13 +11,22 @@ export interface LoggedAssertion {
   passed: boolean;
 }
 
-type AssertionSink = (entry: LoggedAssertion) => void;
+/**
+ * The running spec, as `expect` needs it: to record assertions, and to run
+ * the retrying forms (`expect(locator)`, `expect.poll`) inside its budget.
+ */
+export interface ExpectScope {
+  note(entry: LoggedAssertion): void;
+  locator(locator: Locator): LocatorMatchers;
+  poll(read: () => unknown, options: ExpectOptions | undefined): RetryMatchers<unknown>;
+}
 
-let assertionSink: AssertionSink | undefined;
+let activeScope: ExpectScope | undefined;
 let assertionSilence = 0;
 
-export function setAssertionSink(sink?: AssertionSink): void {
-  assertionSink = sink;
+/** The spec `expect` reports to; `undefined` between specs. */
+export function setExpectScope(scope?: ExpectScope): void {
+  activeScope = scope;
 }
 
 export function pushAssertionSilence(): void {
@@ -28,9 +37,9 @@ export function popAssertionSilence(): void {
   assertionSilence = Math.max(0, assertionSilence - 1);
 }
 
-export function logAssertion(entry: LoggedAssertion): void {
-  if (assertionSilence > 0 || !assertionSink) return;
-  assertionSink(entry);
+function recordAssertion(entry: LoggedAssertion): void {
+  if (assertionSilence > 0 || !activeScope) return;
+  activeScope.note(entry);
 }
 
 export class AssertionError extends Error {
@@ -84,7 +93,7 @@ function settle(
   extra?: string,
 ): void {
   const ok = pass !== inverted;
-  logAssertion({
+  recordAssertion({
     matcher: inverted ? `not.${matcher}` : matcher,
     expected: inverted ? `not ${formatValue(expected)}` : formatValue(expected),
     actual: formatValue(actual),
@@ -123,7 +132,7 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       // missed, so it fails even under `.not` -- otherwise a misspelled field
       // reads as "correctly not greater" and the spec passes on nothing.
       // Logged under the matcher the spec actually wrote, `.not` included.
-      logAssertion({
+      recordAssertion({
         matcher: inverted ? `not.${matcher}` : matcher,
         expected: formatValue(expected),
         actual: formatValue(actual),
@@ -166,6 +175,14 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       const pass = actual instanceof (expected as new (...args: never[]) => unknown);
       settle("toBeInstanceOf", actual, expected, inverted, pass);
     },
+    toHaveLength(expected: number) {
+      const length = (actual as { length?: unknown } | null | undefined)?.length;
+      if (typeof length !== "number") {
+        recordAssertion({ matcher: inverted ? "not.toHaveLength" : "toHaveLength", expected: formatValue(expected), actual: formatValue(actual), passed: false });
+        fail("toHaveLength", actual, expected, inverted, "received value must have a numeric length");
+      }
+      settle("toHaveLength", length, expected, inverted, length === expected);
+    },
     toBeGreaterThan(expected: number) {
       compare("toBeGreaterThan", expected, (a, b) => a > b);
     },
@@ -194,7 +211,7 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
       if (!result) {
         // A schema that cannot be found is a broken assertion, not a
         // mismatch: it fails under `.not` too.
-        logAssertion({
+        recordAssertion({
           matcher: inverted ? "not.toMatchSchema" : "toMatchSchema",
           expected: formatValue(schema),
           actual: formatValue(actual),
@@ -236,17 +253,43 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
 /** `LOCATOR_BRAND` in `locator.ts`; read by key to keep this module free of it. */
 const LOCATOR_BRAND = Symbol.for("lingxia.test.locator");
 
+function isLocator(value: unknown): value is Locator {
+  return typeof value === "object" && value !== null && (value as { [LOCATOR_BRAND]?: unknown })[LOCATOR_BRAND] === true;
+}
+
+function isThenable(value: unknown): boolean {
+  return (typeof value === "object" || typeof value === "function") && value !== null &&
+    typeof (value as { then?: unknown }).then === "function";
+}
+
+function runningScope(api: string): ExpectScope {
+  if (!activeScope) throw new Error(`${api} retries inside a spec's budget; call it from a running spec`);
+  return activeScope;
+}
+
 /**
- * Check `actual` once. A locator is refused: a one-time check of a locator
- * could only compare the object itself, never the element it finds.
+ * The one assertion entry point: a locator retries its matcher until the
+ * element passes, any other value is checked once, and `expect.poll(read)`
+ * calls `read` until the matcher passes.
  */
-export function expect<T>(actual: T): Matchers<T> {
-  if (typeof actual === "object" && actual !== null && (actual as { [LOCATOR_BRAND]?: unknown })[LOCATOR_BRAND] === true) {
-    throw new TypeError(
-      "expect(locator) checks once and cannot read the element; use t.expect(locator), " +
-        "which retries the matcher until the element passes (e.g. await t.expect(view.testId('x')).toBeVisible())",
-    );
-  }
+export const expect: Expect = Object.assign(
+  (subject: unknown) => {
+    if (isLocator(subject)) return runningScope("expect(locator)").locator(subject);
+    if (isThenable(subject)) {
+      throw new TypeError("expect(promise): await the value first, or retry a read with expect.poll(() => promise)");
+    }
+    return createMatchers(subject, false);
+  },
+  {
+    poll: (read: () => unknown, options?: ExpectOptions) => {
+      if (typeof read !== "function") throw new TypeError("expect.poll(read) takes a function to call until the matcher passes");
+      return runningScope("expect.poll(read)").poll(read, options);
+    },
+  },
+) as Expect;
+
+/** Check `actual` once; the fixture's own checks use it. */
+export function check<T>(actual: T): Matchers<T> {
   return createMatchers(actual, false);
 }
 
@@ -284,6 +327,9 @@ export function applyMatcher(
       return;
     case "toBeInstanceOf":
       assertion.toBeInstanceOf(expected as Function);
+      return;
+    case "toHaveLength":
+      assertion.toHaveLength(expected as number);
       return;
     case "toBeGreaterThan":
       assertion.toBeGreaterThan(expected as number);

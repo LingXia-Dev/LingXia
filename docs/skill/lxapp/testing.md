@@ -8,7 +8,7 @@ JS worker separate from lxapp Logic and WebViews. Specs drive the page through
 
 ```ts
 // tests/pages/notes.test.ts
-import { spec } from '@lingxia/test';
+import { spec, expect } from '@lingxia/test';
 
 interface NotesData { notes: { id: string; title: string }[] }
 
@@ -16,10 +16,10 @@ spec('saving a note lists it', async (t) => {
   await t.app.nav.relaunch({ page: 'notes' });
   await t.app.view.testId('note-title').fill('Groceries');
   await t.app.view.testId('note-save').click();
-  await t.expect(t.app.view.testId('note-saved')).toBeVisible();
+  await expect(t.app.view.testId('note-saved')).toBeVisible();
 
   const data = await t.app.logic.data<NotesData>();
-  t.expect(data.notes.map((note) => note.title)).toContain('Groceries');
+  expect(data.notes.map((note) => note.title)).toContain('Groceries');
 });
 ```
 
@@ -35,11 +35,10 @@ lxdev test tests/pages/notes.test.ts
   page is unloaded, tab pages kept by `switchTab` included, so the page runs
   `onLoad` again. `spec(title, { fresh: true }, body)`
   relaunches the home page instead. Neither resets app or backend data.
-- Actions and `t.expect(...)` retry for 5 s by default (`{ timeout }` per call);
-  a spec has 30 s (`spec(title, { timeout }, body)`). Await every action and assertion.
-- One waiting assertion: `t.expect(locator)` and `t.expect(() => read())`
-  retry until the matcher passes; `t.expect(value)` (like the imported
-  `expect`) checks once. `expect(locator)` throws: a locator needs `t.expect`.
+- One `expect`: `expect(locator)` and `expect.poll(() => read())` retry until
+  the matcher passes; `expect(value)` checks once. Actions and retries wait
+  5 s by default (`{ timeout }` per call); a spec has 30 s
+  (`spec(title, { timeout }, body)`). Await every action and retry.
 - Text matchers read whitespace-normalised text (runs collapsed to one space, ends trimmed).
 - Setup: install `@lingxia/test` matching the project's LingXia line, and keep
   a separate test tsconfig with `lib: ["ES2020"]` (`lingxia new` writes
@@ -56,12 +55,12 @@ lxdev test tests/pages/notes.test.ts
 | Navigate | `t.app.nav.to` / `.redirect` / `.switchTab` / `.back` |
 | Find an element | `t.app.view.testId(id)`, `.css(selector)`, `.nth(i)` / `.first()` / `.last()`, `.filter({ hasText })`, `{ page }` option |
 | Act | `locator.click()` / `.fill(text)` / `.type(text)` / `.press(key)`; `{ force: true }` on click/fill, see [gotchas](#gotchas) |
-| Assert UI | `t.expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
+| Assert UI | `expect(locator).toBeVisible()` / `.toBeInViewport()` / `.toBeAttached()` / `.toHaveText()` / `.toContainText()` / `.toHaveAttribute(name, value?)` / `.toHaveCount()` / `.toHaveValue()` / `.toBeEnabled()`; `.not` |
 | Wait for an element state | `locator.waitFor({ state: 'visible' \| 'inViewport' \| 'attached' \| 'hidden' \| 'detached' })` |
 | Read page Logic `data` | `t.app.logic.data<T>({ page? })`; see [below](#reading-app-logic) |
 | Call a page method | `t.app.logic.call<Page, 'method'>(method, ...args)` |
 | Run code in Logic / page DOM | `t.app.logic.eval(fn, ...args)` / `t.app.view.eval(fn, ...args)`; options first: `{ timeout }`, `{ page }` |
-| Wait until a value is ready | `t.waitFor(read, { until })` returns it; `t.expect(read).toBe(x)` asserts it |
+| Wait until a value is ready | `t.waitFor(read, { until })` returns it; `expect.poll(read).toBe(x)` asserts it |
 | Expect a rejection | `await t.reject(() => op(), { code?, message? })`; codes are `TestErrorCode` |
 | Wait for a faked call | `await route.waitForCall()`, `await scenario.waitForCall({ http })` |
 | Fake Logic `fetch` responses | `t.app.network.route(pattern, handler)`; see [below](#faking-the-network) |
@@ -172,9 +171,9 @@ spec('rename shows the not-implemented error', async (t) => {
   await t.app.network.route('**/v1/clients', { abort: 'failed' });
   await t.app.view.testId('rename-input').fill('Office');
   await t.app.view.testId('rename-save').click();
-  await t.expect(t.app.view.testId('rename-error')).toBeVisible();
+  await expect(t.app.view.testId('rename-error')).toBeVisible();
   const sent = await patch.waitForCall();
-  t.expect(sent.body).toEqual({ name: 'Office' });
+  expect(sent.body).toEqual({ name: 'Office' });
 });
 ```
 
@@ -240,9 +239,9 @@ const live = await t.app.network.route('**/v1/events', {
     { sse: [{ event: 'status', data: { online: 4 }, id: 'e2' }] },
   ],
 });
-await t.expect(t.app.view.testId('online-count')).toHaveText('4');
+await expect(t.app.view.testId('online-count')).toHaveText('4');
 const [first, reconnect] = await live.calls();
-t.expect(reconnect.headers?.['last-event-id']).toBe('e1');
+expect(reconnect.headers?.['last-event-id']).toBe('e1');
 ```
 
 - `Rong.SSE` in Logic receives the events as it would from a server: `retry`
@@ -275,11 +274,11 @@ spec('an unknown payment result settles as paid', async (t) => {
   const scenario = await t.app.scenario(checkout, 'unknown');
   await t.app.nav.relaunch({ page: 'checkout' });
   await t.app.view.testId('pay').click();
-  await t.expect(t.app.view.testId('paid')).toBeVisible();
+  await expect(t.app.view.testId('paid')).toBeVisible();
   const submit = await scenario.waitForCall({ function: 'orders.submit' });
-  t.expect(submit.answeredBy).toBe('rule');
+  expect(submit.answeredBy).toBe('rule');
   const renames = await scenario.calls({ http: 'PATCH **/devices/*' });
-  t.expect(renames[0].body).toEqual({ name: 'Office' });
+  expect(renames[0].body).toEqual({ name: 'Office' });
 });
 ```
 
@@ -371,8 +370,8 @@ Assert a value directly with `toMatchSchema`:
 
 ```ts
 const data = await t.app.logic.data<{ devices: unknown[] }>();
-t.expect(data.devices[0]).toMatchSchema('Device');                 // #/components/schemas/Device
-t.expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
+expect(data.devices[0]).toMatchSchema('Device');                 // #/components/schemas/Device
+expect(problem).toMatchSchema({ ref: '#/components/schemas/Problem', document: 'openapi.yaml' });
 ```
 
 - Without `--openapi`, `toMatchSchema` fails saying so. A spec that only means
@@ -465,8 +464,8 @@ spec('status refreshes every 3 s', async (t) => {
   await t.app.clock.install({ now: '2030-01-01T09:00:00Z' });
   await t.app.nav.relaunch({ page: 'status' });   // start the poll on test time
   const { fired } = await t.app.clock.tick(9_000);  // three polls, in order
-  t.expect(fired).toBe(3);
-  await t.expect(t.app.view.testId('status')).toHaveText('Online');
+  expect(fired).toBe(3);
+  await expect(t.app.view.testId('status')).toHaveText('Online');
 });
 ```
 
@@ -480,7 +479,7 @@ spec('status refreshes every 3 s', async (t) => {
 - After each timer fires, promise chains it started settle before the next
   one: an async poll that awaits a routed `fetch` and `res.json()` re-arms
   within the same `tick`. Work waiting on real I/O does not settle inside a
-  tick; wait for it with `t.waitFor` / `t.expect`, then tick again.
+  tick; wait for it with `t.waitFor` / `expect.poll`, then tick again.
 - Real time still runs for the page WebView, native work and timeouts, real
   network requests, route `delay` / `hang`, SSE `delayMs` and reconnect
   backoff, scenario `{{now}}` templates, `setData` delivery, and timers
@@ -802,8 +801,8 @@ spec('submission reaches the external service', async (t) => {
     if (!response.ok) throw new Error(`Cleanup failed: ${response.status}`);
   });
   await t.app.view.testId('submit-order').click();
-  await t.expect(t.app.view.testId('order-confirmation')).toBeVisible();
-  await t.expect(async () => (await (await fetch(statusUrl)).json()).status)
+  await expect(t.app.view.testId('order-confirmation')).toBeVisible();
+  await expect.poll(async () => (await (await fetch(statusUrl)).json()).status)
     .toBe('submitted');
 });
 ```

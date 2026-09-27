@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { spec, rawAutomation, reset, run } from "../dist/index.js";
+import { spec, rawAutomation, reset, run, expect } from "../dist/index.js";
 import { createWorld, installFakeHost } from "./helpers/fake-host.mjs";
 
 const realFetch = globalThis.fetch;
@@ -114,7 +114,7 @@ test("the runner's own timers are not reported as spec work", async () => {
   world.add({ testId: "late", visible: false });
   const { events } = installFakeHost(world);
   spec("polls, then hangs", { timeout: 300, forensics: false }, async (t) => {
-    await t.expect(t.app.view.testId("late")).toBeVisible({ timeout: 50 }).catch(() => {});
+    await expect(t.app.view.testId("late")).toBeVisible({ timeout: 50 }).catch(() => {});
     await new Promise(() => {});
   });
   spec("next", async () => {});

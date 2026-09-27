@@ -1,4 +1,4 @@
-import { expect, setAssertionSink } from "./expect.js";
+import { expect, setExpectScope } from "./expect.js";
 import { LiveFixture, SkipSignal, TimeoutError, toReportError } from "./fixture.js";
 import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
@@ -973,7 +973,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     record.assertions = fixture.assertions;
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
     record.attachments = fixture.attachments;
-    setAssertionSink();
+    setExpectScope();
     if (error) record.error = toReportError(error, fixture.currentStepPath());
     if (record.error) {
       record.error.phase = status === "timeout" ? "timeout" : fixture.failurePhase ?? phase;
@@ -1312,7 +1312,7 @@ function reset(): void {
   forceRelaunchNext = false;
   uninstallPendingTracker();
   clearInline();
-  setAssertionSink();
+  setExpectScope();
 }
 
 const controller: LingxiaTestController = {
