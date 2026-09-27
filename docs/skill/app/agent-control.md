@@ -1,7 +1,7 @@
-# Driving a Shipped Product
+# Driving a shipped product
 
-Use this reference when a host app exposes local automation on macOS or
-Windows. The product declares the surface and owns user consent.
+Let a command line or agent on the same machine drive a macOS/Windows host
+app. The product declares the surface and owns user consent.
 
 ## Capabilities
 
@@ -12,59 +12,39 @@ capabilities:
   browserUse: true   # this product's in-app browser; requires browser
 ```
 
-- `browserUse` never reaches external browser processes; those require
-  `computerUse`.
-- A refused namespace is final. Do not route around it.
+- `appUse` — screenshot, window list, mouse and keyboard on this product's
+  windows; the executable becomes its own command line.
+- `computerUse` — any window, synthetic input, the accessibility tree. macOS
+  asks the user for Accessibility and Screen Recording for this product.
+- `browserUse` never reaches external browsers; those need `computerUse`.
+- Declaring ships the ability; the endpoint stays closed until the user turns
+  it on. A refused namespace is final. Do not route around it.
 
-## Access lifecycle
+## Enable and disable
 
-LingXia exposes no agent-callable access toggle. From
-`HostAddon::start_services`, call `local_control::install(enabled)` with the
-product preference. Use `set_enabled(bool)` for live changes and `is_enabled()`
-for live state. A product without settings UI may temporarily default to
-`true`. IPC lives under `<app_data>/lingxia/control`, never under host-owned
-`app_state`.
+From `HostAddon::start_services`, call `local_control::install(enabled)` with
+the product preference. Use `set_enabled(bool)` for live changes and
+`is_enabled()` for the live state. LingXia exposes no agent-callable toggle.
 
-Host-owned `AutomationRuntime` programs carry a native runtime authority and
-do not impersonate an lxapp. An lxapp manifest's `automation` or `host` entry
-is only a request; cross-lxapp, browser, shell, device, terminal, and desktop
-process operations additionally require a native grant sealed to that exact
-session. Retained drivers are revalidated on each call and expire when their
-owner session begins teardown.
-
-Native terminal snapshots and commands are addressed through an owner-bound
-surface handle, not by a globally authoritative surface-id string. Platform UI
-publishes under native-host authority; lxapp automation binds a handle only
-after its sealed `AutomationHost` grant is checked. The handle is revalidated
-for snapshot, dispatch, and completion, so restart/takeover cannot reuse it.
-
-The access setting above decides whether agents may act. Pass
-`--allow-destructive` only when the user asked for the destructive effect.
+Pass `--allow-destructive` only when the user asked for the destructive effect.
 
 ## Agent sessions
 
-`local_control::subscribe` reports each request on the product socket as a
-`ControlEvent`: session start, one `Activity` per request (method,
-`Reads`/`Changes`/`Unclassified`), and session end (20 s idle,
-`stop_current_session()`, or access switched off). Host namespaces arrive
-`Unclassified`; the product classifies its own methods.
-While a session runs, the desktop shell frames the window in a pulsing
-border, shows an "An AI assistant is in control · Stop" capsule at the bottom
-of the content, and marks the Dock icon or taskbar button. Stop calls
-`stop_current_session()`. The product draws nothing for that.
+`local_control::subscribe` reports each request as a `ControlEvent`: session
+start, one `Activity` per request (method, `Reads`/`Changes`/`Unclassified`),
+and session end (20 s idle, `stop_current_session()`, or access switched off).
+Host namespaces arrive `Unclassified`; the product classifies its own methods.
+The shell shows its own in-control indicator with a Stop button that calls
+`stop_current_session()`. Draw nothing for it.
 
-## Product command discovery
+## Product command line
 
-Invoke the exact product executable as `<executable> --cli ...`; LingXia has no
-launcher and does not rely on shell `PATH`.
+Invoke the product executable as `<executable> --cli ...`. LingXia has no
+launcher. The product owns its agent skill and locator: a prod build may write
+`current_exe()` to `~/.<product>/path`; dev builds must not replace it (use
+`lingxia::app::{env, AppEnv}`).
 
-The product owns its agent skill and locator. A prod build may atomically
-write `current_exe()` to `~/.<product>/path`. Dev builds must not replace
-that locator; the skill resolves one product-owned environment override first,
-then the prod locator. Use `lingxia::app::{env, AppEnv}` to
-distinguish builds. Their app-data paths already isolate their IPC endpoints.
-
-Register a command and its matching request namespace before services start:
+Register a command and its request namespace before services start:
 
 ```rust
 impl lingxia::HostAddon for AppHostAddon {
@@ -78,17 +58,15 @@ impl lingxia::HostAddon for AppHostAddon {
 }
 ```
 
-The CLI handler receives `product_cli::Transport` and arguments after its
-command name. `start_services` is too late for registration; use it to start
-local control and publish the prod locator.
+The handler receives `product_cli::Transport` and the arguments after its
+command name. `start_services` is too late for registration.
 
-## Agent behavior
+## Agent rules
 
 - Read `<product> --help` and leaf `--help`; prefer `--json`.
-- Stable exits are: 2 usage, 3 not found, 4 ambiguous, 5 timeout, 6 permission
-  or refusal, 7 unsupported, 8 unavailable, 9 stale handle, 10 resolved-target
+- Exit codes: 2 usage, 3 not found, 4 ambiguous, 5 timeout, 6 permission or
+  refusal, 7 unsupported, 8 unavailable, 9 stale handle, 10 resolved-target
   failure.
-- Before `computerUse` on macOS, run
-  `<product> computer permissions --json`. If a grant is missing, ask the user
-  and stop retrying.
-- Never hide or dismiss activity indicators or persistent control disclosure.
+- Before `computerUse` on macOS, run `<product> computer permissions --json`.
+  If a grant is missing, ask the user and stop retrying.
+- Never hide or dismiss activity indicators or control disclosure.
