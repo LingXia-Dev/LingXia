@@ -263,6 +263,18 @@ pub enum MockOwner {
 }
 
 impl MockOwner {
+    /// The layer an entry of this owner is shown as, next to the call it
+    /// decided: `config`, `--mock`, `live`, `live target`, `test`.
+    pub fn layer(&self, entry: &MockEntry) -> &'static str {
+        match (self, entry) {
+            (Self::Config, _) => "config",
+            (Self::Baseline, _) => "--mock",
+            (Self::Dev, MockEntry::Whole(_)) => "live",
+            (Self::Dev, MockEntry::Targets(..)) => "live target",
+            (Self::Run(_), _) => "test",
+        }
+    }
+
     fn rank(&self) -> u8 {
         match self {
             Self::Config => 0,
@@ -415,22 +427,33 @@ impl Selection {
         dev_aside: bool,
         matches: &dyn Fn(&str) -> bool,
     ) -> (MockMode, Option<MockOwner>) {
+        match self.decide(dev_aside, matches) {
+            Some((owner, entry)) => (entry.mode(), Some(owner.clone())),
+            None => (MockMode::None, None),
+        }
+    }
+
+    /// [`Self::resolve`], naming the owner and the entry that decided.
+    pub fn decide(
+        &self,
+        dev_aside: bool,
+        matches: &dyn Fn(&str) -> bool,
+    ) -> Option<(&MockOwner, &MockEntry)> {
         for owner in self.owners() {
             if dev_aside && *owner == MockOwner::Dev {
                 continue;
             }
             for entry in self.entries(owner).iter().rev() {
-                match entry {
-                    MockEntry::Whole(mode) => return (*mode, Some(owner.clone())),
-                    MockEntry::Targets(mode, targets) => {
-                        if targets.iter().any(|target| matches(target)) {
-                            return (*mode, Some(owner.clone()));
-                        }
-                    }
+                let decides = match entry {
+                    MockEntry::Whole(_) => true,
+                    MockEntry::Targets(_, targets) => targets.iter().any(|target| matches(target)),
+                };
+                if decides {
+                    return Some((owner, entry));
                 }
             }
         }
-        (MockMode::None, None)
+        None
     }
 
     /// The entries of `config`: `whole(mock)`, then the overrides the

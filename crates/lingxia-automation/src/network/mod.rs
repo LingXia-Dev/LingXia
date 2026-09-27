@@ -26,6 +26,7 @@ pub(crate) use test_scenario::{JSScenario, install as install_scenario};
 use crate::auto_err;
 use crate::resolve::{json_to_js, upgrade_authorized};
 use lxapp::LxApp;
+use mocks::MockDecision;
 use registry::{
     AbortKind, Fulfill, MAX_DELAY_MS, ResponseBody, RouteAction, RouteSpec, SentRequest, SseAnswer,
     SseStep, UrlMatcher,
@@ -126,8 +127,12 @@ fn run_scope(ctx: &JSContext) -> JSResult<NetworkRunScope> {
 }
 
 fn fetch_failed(kind: AbortKind) -> rong::RongJSError {
-    // Same shape as a transport failure from Rong's `fetch`.
-    let detail = format!("aborted by test route: {}", kind.as_str());
+    fetch_failed_with(format!("aborted by test route: {}", kind.as_str()))
+}
+
+/// `TypeError: fetch failed` with `detail`: the shape of a transport
+/// failure from Rong's `fetch`.
+fn fetch_failed_with(detail: String) -> rong::RongJSError {
     HostError::new(rong::error::E_IO, "fetch failed")
         .with_name("TypeError")
         .with_data(rong::err_data!({ detail: (detail) }))
@@ -814,8 +819,10 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
   'use strict';
   // One wrapper per context: installing twice would observe every call twice.
   const WRAPPED = Symbol.for('lingxia.automation.network.wrapped');
+  const ORIGINAL = Symbol.for('lingxia.automation.network.original');
   if (typeof originalFetch !== 'function' || originalFetch[WRAPPED] === true) return;
   const active = host.active;
+  const mocks = host.mocks;
   const decide = host.decide;
   const observe = host.observe;
   const settle = host.settle;
@@ -982,12 +989,29 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
       },
     });
   };
-  const answer = function (self, args, hit, url, init, id, contract) {
+  const failWith = function (detail) {
+    try { host.fail(detail); } catch (error) { return error; }
+    return new TypeError('fetch failed');
+  };
+  // The layer below a route that passed the call on: the mock selection
+  // named a handler, found none, or left it to the real backend.
+  const nextLayer = function (c, hit) {
+    if (typeof hit.unhandled === 'string') return Promise.reject(failWith(hit.unhandled));
+    if (typeof hit.mock !== 'string') return originalFetch.apply(c.self, c.args);
+    return mocks.run(hit.mock, c.method, c.url, c.input, c.init, c.id).then(function (next) {
+      if (next.real === true) return originalFetch.apply(c.self, c.args);
+      return answer({ self: c.self, args: c.args, url: c.url, init: c.init, id: 0, contract: false, method: c.method, input: c.input }, next);
+    });
+  };
+  const answer = function (c, hit) {
+    const url = c.url;
+    const init = c.init;
+    const id = c.id;
     const signal = init && init.signal;
     if (typeof hit.patch === 'string') {
-      // The patch reads the real body anyway: settle the call with the
+      // The patch reads the answer's body anyway: settle the call with the
       // patched text the app receives.
-      return originalFetch.apply(self, args).then(function (response) {
+      return nextLayer(c, hit).then(function (response) {
         return response.text().then(function (text) {
           const headers = new HeadersCtor(response.headers);
           // The body is re-encoded text of a new length.
@@ -995,7 +1019,7 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
           headers.delete('content-encoding');
           const body = text === '' ? text : host.patchBody(hit.patch, text, response.url || url);
           if (id) {
-            try { settle(id, response.status, null, typeOf(response), contract ? body : null, null); } catch (_) {}
+            try { settle(id, response.status, null, typeOf(response), c.contract ? body : null, null); } catch (_) {}
           }
           const patched = new ResponseCtor(body, {
             status: response.status,
@@ -1089,11 +1113,26 @@ const FETCH_INTERCEPTOR: &str = r#"(function (originalFetch, host) {
     if (hit === undefined || hit === null) {
       return track(originalFetch.apply(this, arguments), id, watch, url);
     }
-    // A route's answer is never recorded, and a fulfilled one is captured
-    // when it is decided; a patch settles with its own body.
-    return track(answer(self, args, hit, url, init, id, watch.contract), id, NO_BODY, url);
+    const c = { self: self, args: args, url: url, init: init, id: id, contract: watch.contract, method: method, input: input };
+    if (typeof hit.unhandled === 'string') {
+      return track(Promise.reject(failWith(hit.unhandled)), id, NO_BODY, url);
+    }
+    if (typeof hit.mock === 'string' && typeof hit.patch !== 'string') {
+      // A mocks/ handler answers; `continue` from it reaches the network.
+      return mocks.run(hit.mock, method, url, input, init, id).then(function (next) {
+        if (next.real === true) return track(originalFetch.apply(self, args), id, watch, url);
+        return track(answer(c, next), id, NO_BODY, url);
+      }, function (error) {
+        if (id) { try { settle(id, 0, errorText(error), null, null, null); } catch (_) {} }
+        throw error;
+      });
+    }
+    // A route's or a mock's answer is never recorded, and a fulfilled one
+    // is captured when it is decided; a patch settles with its own body.
+    return track(answer(c, hit), id, NO_BODY, url);
   };
   Object.defineProperty(fetch, WRAPPED, { value: true });
+  Object.defineProperty(fetch, ORIGINAL, { value: originalFetch });
   globalThis.fetch = fetch;
 })"#;
 
@@ -1112,6 +1151,7 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
   const WRAPPED = Symbol.for('lingxia.automation.network.wrapped');
   if (typeof OriginalSSE !== 'function' || OriginalSSE[WRAPPED] === true) return OriginalSSE;
   const active = host.active;
+  const mocks = host.mocks;
   const decide = host.decide;
   const observe = host.observe;
   const settle = host.settle;
@@ -1198,6 +1238,13 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
     steps.push({ drop: true });
     return steps;
   };
+  // The detail of a `fetch failed` error, else its message.
+  const detailOf = function (error) {
+    try {
+      if (error && error.data && typeof error.data.detail === 'string') return error.data.detail;
+    } catch (_) {}
+    return errorText(error);
+  };
   const attempt = function (href, pairs, lastId) {
     const headers = pairs.slice();
     headers.push(['accept', 'text/event-stream']);
@@ -1211,7 +1258,24 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
     } catch (error) {
       return { kind: 'transport', message: 'sse request failed: ' + errorText(error), call: call, delay: 0 };
     }
-    if (hit === undefined || hit === null || typeof hit.patch === 'string') return { kind: 'real', call: call };
+    if (hit !== undefined && hit !== null && typeof hit.unhandled === 'string') {
+      return { kind: 'fail', status: 0, message: hit.unhandled, call: call, delay: 0 };
+    }
+    if (hit !== undefined && hit !== null && typeof hit.mock === 'string') {
+      // A mocks/ handler answers the connection (a `patchJson` above it
+      // does not apply to a stream): settle into one of the kinds below.
+      const sent = {};
+      headers.forEach(function (pair) { sent[pair[0]] = pair[1]; });
+      const pending = mocks.run(hit.mock, 'GET', href, null, { headers: sent }, call).then(
+        function (next) { return fromHit(next, call); },
+        function (error) { return { kind: 'fail', status: 0, message: detailOf(error), call: call, delay: 0 }; },
+      );
+      return { kind: 'mock', pending: pending, call: call };
+    }
+    return fromHit(hit, call);
+  };
+  const fromHit = function (hit, call) {
+    if (hit === undefined || hit === null || hit.real === true || typeof hit.patch === 'string') return { kind: 'real', call: call };
     if (hit.hang > 0) return { kind: 'hang', token: hit.hang, call: call, delay: 0 };
     if (Array.isArray(hit.sse)) {
       return { kind: 'stream', steps: hit.sse, hold: hit.hold || 0, delay: hit.delay || 0, call: call };
@@ -1294,8 +1358,12 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
         if (closed) return done();
         if (delegate) return delegate.next();
         if (current) {
-          const opening = current;
+          let opening = current;
           current = null;
+          if (opening.kind === 'mock') {
+            opening = await opening.pending;
+            if (closed) return done();
+          }
           if (opening.kind === 'real') {
             const headers = {};
             pairs.forEach(function (pair) { headers[pair[0]] = pair[1]; });
@@ -1406,6 +1474,117 @@ const SSE_INTERCEPTOR: &str = r#"(function (OriginalSSE, host) {
   return SSE;
 })"#;
 
+/// The Logic side of mocks, one per context and shared by the `fetch` and
+/// `Rong.SSE` wrappers: it evaluates the app's `mocks/index.ts` bundle
+/// lazily (again whenever the Rust side's generation moved: a save under
+/// `mocks/`, a reset, a spec start), calls the handler under the key the
+/// selection named with `(req, ctx)`, and hands its answer to
+/// `host.mockAnswer`, which parses it like a route answer and returns the
+/// hit to serve (`{ real: true }` for `continue`). A handler that throws,
+/// returns `undefined` or an invalid answer fails the request through
+/// `host.mockFailed`; nothing falls through to the real backend.
+///
+/// `req` is `{ method, url: URL, headers: Headers, text(), json() }`; the
+/// body reads a string, bytes, `URLSearchParams` or a `Request`'s own body.
+/// `ctx.fetch` is the original `fetch`, so a handler can proxy without
+/// being intercepted again.
+const MOCK_RUNNER: &str = r#"(function (host) {
+  'use strict';
+  const SLOT = Symbol.for('lingxia.automation.network.mocks');
+  const ORIGINAL = Symbol.for('lingxia.automation.network.original');
+  if (globalThis[SLOT]) return globalThis[SLOT];
+  const HeadersCtor = globalThis.Headers;
+  const RequestCtor = globalThis.Request;
+  const URLCtor = globalThis.URL;
+  const Params = globalThis.URLSearchParams;
+  const Decoder = globalThis.TextDecoder;
+  let generation = 0;
+  let handlers = null;
+  const message = function (error) {
+    try {
+      if (error && typeof error === 'object' && 'message' in error) return String(error.message);
+      return String(error);
+    } catch (_) {
+      return 'error';
+    }
+  };
+  const decode = function (bytes) {
+    if (typeof Decoder !== 'function') return Promise.reject(new TypeError('mock handler cannot decode a binary body here'));
+    return Promise.resolve(new Decoder().decode(bytes));
+  };
+  const request = function (method, url, input, init) {
+    const sent = typeof RequestCtor === 'function' && input instanceof RequestCtor ? input : null;
+    let headers = null;
+    if (typeof HeadersCtor === 'function') {
+      try { headers = new HeadersCtor(init && init.headers != null ? init.headers : sent ? sent.headers : undefined); }
+      catch (_) { headers = new HeadersCtor(); }
+    }
+    let parsed = url;
+    if (typeof URLCtor === 'function') { try { parsed = new URLCtor(url); } catch (_) {} }
+    const text = function () {
+      const body = init ? init.body : undefined;
+      if (body == null) {
+        if (sent && typeof sent.clone === 'function') return sent.clone().text();
+        return Promise.resolve('');
+      }
+      if (typeof body === 'string') return Promise.resolve(body);
+      if (typeof Params === 'function' && body instanceof Params) return Promise.resolve(String(body));
+      if (body instanceof ArrayBuffer) return decode(new Uint8Array(body));
+      if (ArrayBuffer.isView(body)) return decode(new Uint8Array(body.buffer, body.byteOffset, body.byteLength));
+      return Promise.reject(new TypeError('mock handler cannot read a stream, Blob or FormData body'));
+    };
+    return {
+      method: method,
+      url: parsed,
+      headers: headers,
+      text: text,
+      json: function () { return text().then(function (body) { return JSON.parse(body); }); },
+    };
+  };
+  const context = Object.freeze({
+    fetch: function fetch() {
+      const current = globalThis.fetch;
+      const original = current && current[ORIGINAL] ? current[ORIGINAL] : current;
+      return original.apply(globalThis, arguments);
+    },
+  });
+  const instance = function () {
+    const fresh = host.mockInstance(generation);
+    if (fresh !== undefined && fresh !== null) {
+      generation = fresh.generation;
+      handlers = fresh.map;
+    }
+    return handlers;
+  };
+  const run = function (key, method, url, input, init, call) {
+    let handler;
+    try {
+      const map = instance();
+      handler = map !== null && typeof map === 'object' ? map[key] : undefined;
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    if (handler === undefined) {
+      return Promise.resolve().then(function () {
+        return host.mockFailed(key, "mock handler '" + key + "' is missing from the default export of mocks/index.ts", call);
+      });
+    }
+    return new Promise(function (resolve) {
+      resolve(typeof handler === 'function' ? handler(request(method, url, input, init), context) : handler);
+    }).then(function (answer) {
+      if (answer === undefined) {
+        return host.mockFailed(key, "mock handler '" + key + "' returned undefined; return an answer or { continue: true }", call);
+      }
+      return host.mockAnswer(key, answer, call);
+    }, function (error) {
+      return host.mockFailed(key, "mock handler '" + key + "' threw: " + message(error), call);
+    });
+  };
+  const runner = Object.freeze({ run: run });
+  Object.defineProperty(globalThis, SLOT, { value: runner });
+  return runner;
+})"#;
+
 /// Which app a Logic context belongs to and whether its network policy
 /// admits a host.
 pub(crate) struct LogicTarget {
@@ -1446,8 +1625,8 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                     let headers = serde_json::from_str(&headers).unwrap_or_default();
                     SentRequest::new(headers, body, overflow)
                 };
-                let (decision, dev_label, dev_no_match) = registry::with_registry(|routes| {
-                    let (decision, no_match) = routes.decide_route(
+                let (decision, dev_label, dev_no_match, next) = registry::with_registry(|routes| {
+                    let (decision, no_match, next) = routes.decide_call(
                         &target.appid,
                         &method,
                         &url,
@@ -1471,10 +1650,17 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                                 format!("dev scenario {}: {}", dev::label(dev), no_match.message)
                             })
                         });
-                    (decision, dev_label, dev_no_match)
+                    (decision, dev_label, dev_no_match, next)
                 });
                 if let Some(message) = dev_no_match {
                     dev::warn(&target.appid, message);
+                }
+                if let MockDecision::Unhandled {
+                    detail,
+                    first: true,
+                } = &next
+                {
+                    dev::warn(&target.appid, detail.clone());
                 }
                 let action = decision.map(|decision| decision.action);
                 if let (Some(label), Some(action)) = (dev_label, &action) {
@@ -1488,14 +1674,14 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                     );
                 }
                 match action {
-                    None | Some(RouteAction::Continue) => Ok(JSValue::undefined(&ctx)),
+                    None | Some(RouteAction::Continue) => next_js(&ctx, next, None),
                     Some(RouteAction::Abort(kind)) => Err(fetch_failed(kind)),
                     Some(RouteAction::Fulfill(fulfill)) => fulfillment_js(&ctx, fulfill),
                     Some(RouteAction::Sse(sse)) => sse_js(&ctx, sse),
                     Some(RouteAction::Patch(patch)) => {
                         let object = JSObject::new(&ctx);
                         object.set("patch", patch.to_string())?;
-                        Ok(object.into_js_value())
+                        next_js(&ctx, next, Some(object))
                     }
                     Some(RouteAction::Hang { token }) => {
                         let object = JSObject::new(&ctx);
@@ -1506,12 +1692,13 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
             },
         )?,
     )?;
+    let observe_target = resolve.clone();
     host.set(
         "observe",
         JSFunc::new(
             ctx,
             move |ctx: JSContext, kind: String, method: String, url: String| -> JSResult<JSValue> {
-                let Some(target) = resolve(&ctx) else {
+                let Some(target) = observe_target(&ctx) else {
                     return Ok(JSValue::null(&ctx));
                 };
                 let kind = if kind == "sse" { "sse" } else { "fetch" };
@@ -1595,7 +1782,187 @@ fn interceptor_host(ctx: &JSContext, resolve: Resolve) -> JSResult<JSObject> {
                 .into())
         })?,
     )?;
+    host.set(
+        "fail",
+        JSFunc::new(ctx, |detail: String| -> JSResult<()> {
+            Err(fetch_failed_with(detail))
+        })?,
+    )?;
+    let instance_target = resolve.clone();
+    host.set(
+        "mockInstance",
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, known: f64| -> JSResult<JSValue> {
+                let Some(target) = instance_target(&ctx) else {
+                    return Err(fetch_failed_with("this context belongs to no lxapp".into()));
+                };
+                mock_instance(&ctx, &target.appid, known as u64)
+            },
+        )?,
+    )?;
+    let answer_target = resolve.clone();
+    host.set(
+        "mockAnswer",
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, key: String, answer: JSValue, call: f64| -> JSResult<JSValue> {
+                let Some(target) = answer_target(&ctx) else {
+                    return Err(fetch_failed_with("this context belongs to no lxapp".into()));
+                };
+                mock_answer(&ctx, &target.appid, &key, answer, call as u64)
+            },
+        )?,
+    )?;
+    let failed_target = resolve.clone();
+    host.set(
+        "mockFailed",
+        JSFunc::new(
+            ctx,
+            move |ctx: JSContext, key: String, detail: String, _call: f64| -> JSResult<JSValue> {
+                let appid = failed_target(&ctx).map(|target| target.appid);
+                Err(mock_failure(appid.as_deref(), &key, detail))
+            },
+        )?,
+    )?;
+    let runner = ctx.eval::<JSFunc>(Source::from_bytes(MOCK_RUNNER))?;
+    host.set("mocks", runner.call::<_, JSValue>(None, (host.clone(),))?)?;
     Ok(host)
+}
+
+/// The decision for the layer below a route: the object to return
+/// (`{ patch }` or a new one) marked `{ mock: key }` or `{ unhandled }`;
+/// `undefined` when the real backend answers and nothing else is set.
+fn next_js(ctx: &JSContext, next: MockDecision, object: Option<JSObject>) -> JSResult<JSValue> {
+    let (key, value) = match next {
+        MockDecision::Real => {
+            return Ok(object.map_or_else(|| JSValue::undefined(ctx), JSObject::into_js_value));
+        }
+        MockDecision::Mock { key } => ("mock", key),
+        MockDecision::Unhandled { detail, .. } => ("unhandled", detail),
+    };
+    let object = object.unwrap_or_else(|| JSObject::new(ctx));
+    object.set(key, value)?;
+    Ok(object.into_js_value())
+}
+
+/// Record a handler failure, warn the session, and build the error the
+/// request rejects with.
+fn mock_failure(appid: Option<&str>, key: &str, detail: String) -> rong::RongJSError {
+    if let Some(appid) = appid {
+        registry::with_registry(|routes| routes.mocks.failed(appid, key, &detail));
+        dev::warn(appid, detail.clone());
+    }
+    fetch_failed_with(detail)
+}
+
+/// `{ generation, map }` when the app's mocks changed since `known` (the
+/// bundle evaluated again: fresh handler state), else `undefined`.
+fn mock_instance(ctx: &JSContext, appid: &str, known: u64) -> JSResult<JSValue> {
+    let Some((generation, source)) = registry::with_registry(|routes| {
+        routes
+            .mocks
+            .set(appid)
+            .map(|set| (set.generation, set.source.clone()))
+    }) else {
+        return Err(fetch_failed_with(format!(
+            "no mocks are loaded for lxapp '{appid}'"
+        )));
+    };
+    if generation == known {
+        return Ok(JSValue::undefined(ctx));
+    }
+    let map = ctx
+        .eval::<JSValue>(Source::from_bytes(source.to_string()))
+        .map_err(|err| {
+            mock_failure(
+                Some(appid),
+                "mocks/index.ts",
+                format!("mocks/index.ts failed to load: {err}"),
+            )
+        })?;
+    if map.clone().into_object().is_none() {
+        return Err(mock_failure(
+            Some(appid),
+            "mocks/index.ts",
+            "mocks/index.ts: the default export must be an object of handlers".into(),
+        ));
+    }
+    let object = JSObject::new(ctx);
+    object.set("generation", generation as f64)?;
+    object.set("map", map)?;
+    Ok(object.into_js_value())
+}
+
+/// Parse what a handler returned as one route answer and turn it into the
+/// hit the wrapper serves.
+fn mock_answer(
+    ctx: &JSContext,
+    appid: &str,
+    key: &str,
+    answer: JSValue,
+    call: u64,
+) -> JSResult<JSValue> {
+    let invalid = |reason: String| {
+        mock_failure(
+            Some(appid),
+            key,
+            format!("mock handler '{key}' returned an invalid answer: {reason}"),
+        )
+    };
+    let Some(object) = answer.into_object() else {
+        return Err(invalid(
+            "an answer is an object like { json }, { status }, { sse }, { abort }, { hang } or              { continue: true }"
+                .into(),
+        ));
+    };
+    for field in lingxia_control_protocol::mock::SCENARIO_ONLY_FIELDS {
+        if object.has_property(field)? {
+            return Err(invalid(format!(
+                "'{field}' is a scenario field; a handler returns one answer per call"
+            )));
+        }
+    }
+    let action = match parse_handler(&object) {
+        Ok(mut answers) if answers.len() == 1 => answers.remove(0),
+        Ok(_) => return Err(invalid("a handler returns one answer per call".into())),
+        Err(err) => return Err(invalid(err.to_string())),
+    };
+    let mut action = scenario::render_action(&action, registry::now_ms());
+    registry::with_registry(|routes| {
+        let hold = match &mut action {
+            RouteAction::Hang { token } => Some(token),
+            RouteAction::Sse(sse) if sse.stays_open() => Some(&mut sse.hold),
+            _ => None,
+        };
+        if let Some(token) = hold {
+            *token = routes.hold_for_mock(appid);
+        }
+        routes.mock_answered(call, key, &action);
+    });
+    match action {
+        RouteAction::Continue => {
+            let object = JSObject::new(ctx);
+            object.set("real", true)?;
+            Ok(object.into_js_value())
+        }
+        RouteAction::Abort(kind) => Err(fetch_failed_with(format!(
+            "aborted by mock handler '{key}': {}",
+            kind.as_str()
+        ))),
+        RouteAction::Fulfill(fulfill) => fulfillment_js(ctx, fulfill),
+        RouteAction::Sse(sse) => sse_js(ctx, sse),
+        RouteAction::Patch(patch) => {
+            let object = JSObject::new(ctx);
+            object.set("patch", patch.to_string())?;
+            Ok(object.into_js_value())
+        }
+        RouteAction::Hang { token } => {
+            let object = JSObject::new(ctx);
+            object.set("hang", token as f64)?;
+            Ok(object.into_js_value())
+        }
+    }
 }
 
 /// Install the route-aware `fetch` wrapper in a context whose `fetch` is
