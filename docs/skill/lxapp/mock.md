@@ -61,7 +61,8 @@ export default {
   a `mocks/` created after the start, and deleting it (the app then has no
   mocks) — no restart.
 - **State.** Module state lives until a save under `mocks/`,
-  `lxdev mock reset`, an app restart, or the next spec.
+  `lxdev mock reset`, an app restart, or the next spec. `lxdev mock` counts
+  handler hits since the last load, save, reset or spec, and says since when.
 - **Errors fail the call, loudly**: a handler that throws, returns
   `undefined`, or returns an invalid answer rejects the `fetch` with
   `TypeError: fetch failed` (`error.data.detail` says which handler and why).

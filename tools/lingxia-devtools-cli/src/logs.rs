@@ -2,11 +2,12 @@ use anyhow::{Context, Result, anyhow};
 use chrono::{DateTime, Local};
 use clap::Args;
 use lingxia_control_protocol::dev_session::broker::{SessionContent, SessionInfo};
+use lingxia_control_protocol::dev_session::log_files::{rotated_log_path, session_log_files};
 use lingxia_control_protocol::dev_session::{DevSessionEvent, DevSessionLog, DevSessionLogLevel};
 use owo_colors::OwoColorize;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Seek, SeekFrom};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::thread;
 use std::time::Duration;
 
@@ -100,30 +101,32 @@ pub fn execute(session: &SessionInfo, options: LogsOptions) -> Result<()> {
         show_appid: matches!(session.content, Some(SessionContent::Host { .. })),
     };
 
-    let end_offset = drain_backlog(log_file, &filters, options.limit, render, options.follow)?;
+    let start = drain_backlog(log_file, &filters, options.limit, render, options.follow)?;
 
     if options.follow {
         if render.pretty {
             println!("{}", "── live (Ctrl+C to exit) ──".dimmed());
         }
-        tail_loop(session, log_file, end_offset, &filters, render)?;
+        tail_loop(session, log_file, start, &filters, render)?;
     }
     Ok(())
 }
 
 fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
-    let file =
-        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
     let mut origins = std::collections::BTreeSet::new();
-    for line in BufReader::new(file).lines() {
-        let line = line.context("Failed to read session event line")?;
-        if line.trim().is_empty() {
-            continue;
-        }
-        let event: DevSessionEvent =
-            serde_json::from_str(&line).context("Failed to parse session event JSON line")?;
-        if event.kind == lingxia_control_protocol::dev_session::event_kinds::LOG {
-            origins.insert(event.origin);
+    for path in existing_log_files(log_file)? {
+        let file =
+            File::open(&path).with_context(|| format!("Failed to open {}", path.display()))?;
+        for line in BufReader::new(file).lines() {
+            let line = line.context("Failed to read session event line")?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let event: DevSessionEvent =
+                serde_json::from_str(&line).context("Failed to parse session event JSON line")?;
+            if event.kind == lingxia_control_protocol::dev_session::event_kinds::LOG {
+                origins.insert(event.origin);
+            }
         }
     }
 
@@ -143,50 +146,135 @@ fn list_origins(log_file: &Path, json: bool, pretty: bool) -> Result<()> {
     Ok(())
 }
 
+/// The session's log files, oldest first (rotated ones, then the current);
+/// an error when there is none at all.
+fn existing_log_files(log_file: &Path) -> Result<Vec<PathBuf>> {
+    let files = session_log_files(log_file);
+    if files.is_empty() {
+        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
+    }
+    Ok(files)
+}
+
+/// Where following starts: the current file's end, and which file that is.
+struct Position {
+    offset: u64,
+    identity: Option<FileIdentity>,
+}
+
 fn drain_backlog(
     log_file: &Path,
     filters: &Filters,
     limit: usize,
     render: RenderOpts,
     follow: bool,
-) -> Result<u64> {
-    let mut file =
-        File::open(log_file).with_context(|| format!("Failed to open {}", log_file.display()))?;
-    let reader = BufReader::new(&file);
-
+) -> Result<Position> {
+    let files = existing_log_files(log_file)?;
+    let end = || -> Result<Position> {
+        match File::open(log_file) {
+            Ok(file) => {
+                let metadata = file.metadata()?;
+                Ok(Position {
+                    offset: metadata.len(),
+                    identity: file_identity(&metadata),
+                })
+            }
+            Err(_) => Ok(Position {
+                offset: 0,
+                identity: None,
+            }),
+        }
+    };
     if follow && limit == 0 {
-        let end = file.seek(SeekFrom::End(0))?;
-        return Ok(end);
+        return end();
     }
 
-    let mut matches = Vec::new();
-    for line in reader.lines() {
-        let line = line.context("Failed to read log line")?;
-        if let Some(entry) = parse_and_filter(&line, filters)? {
-            matches.push(entry);
+    // Rotated files first: the backlog reads as one log.
+    let mut matches = std::collections::VecDeque::new();
+    for path in &files {
+        let file =
+            File::open(path).with_context(|| format!("Failed to open {}", path.display()))?;
+        for line in BufReader::new(file).lines() {
+            let line = line.context("Failed to read log line")?;
+            if let Some(entry) = parse_and_filter(&line, filters)? {
+                if matches.len() == limit {
+                    matches.pop_front();
+                }
+                if limit > 0 {
+                    matches.push_back(entry);
+                }
+            }
         }
     }
-
-    let start = matches.len().saturating_sub(limit);
-    for entry in matches.into_iter().skip(start) {
+    for entry in matches {
         println!("{}", render_entry(&entry, render)?);
     }
+    end()
+}
 
-    let end = file.seek(SeekFrom::End(0))?;
-    Ok(end)
+/// Tell a rotated-away file from its replacement at the same path.
+#[cfg(unix)]
+type FileIdentity = (u64, u64);
+#[cfg(not(unix))]
+type FileIdentity = ();
+
+#[cfg(unix)]
+fn file_identity(metadata: &std::fs::Metadata) -> Option<FileIdentity> {
+    use std::os::unix::fs::MetadataExt;
+    Some((metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn file_identity(_metadata: &std::fs::Metadata) -> Option<FileIdentity> {
+    None
+}
+
+/// Print the complete lines of `file` from `offset`, keeping a trailing
+/// half line in `pending` until the rest arrives.
+fn read_new_lines(
+    file: &File,
+    offset: &mut u64,
+    pending: &mut String,
+    filters: &Filters,
+    render: RenderOpts,
+) -> Result<()> {
+    let mut file = file;
+    file.seek(SeekFrom::Start(*offset))?;
+    let mut reader = BufReader::new(file);
+    loop {
+        let mut buf = String::new();
+        let read = reader.read_line(&mut buf)?;
+        if read == 0 {
+            return Ok(());
+        }
+        pending.push_str(&buf);
+        *offset += read as u64;
+        if !pending.ends_with('\n') {
+            // Half-line; wait for the rest before parsing.
+            return Ok(());
+        }
+        let line = std::mem::take(pending);
+        if let Some(entry) = parse_and_filter(line.trim_end_matches('\n'), filters)? {
+            println!("{}", render_entry(&entry, render)?);
+        }
+    }
 }
 
 fn tail_loop(
     session: &SessionInfo,
     log_file: &Path,
-    mut offset: u64,
+    start: Position,
     filters: &Filters,
     render: RenderOpts,
 ) -> Result<()> {
+    let Position {
+        mut offset,
+        mut identity,
+    } = start;
     let mut pending = String::new();
     let mut polls: u8 = 0;
     loop {
-        let mut file = match File::open(log_file) {
+        let file = match File::open(log_file) {
             Ok(f) => f,
             Err(_) => {
                 if !session_owner_alive(session) {
@@ -198,33 +286,26 @@ fn tail_loop(
             }
         };
 
-        let len = file.metadata()?.len();
-        if len < offset {
-            // Truncation / rotation: replay from the start.
+        let metadata = file.metadata()?;
+        let current = file_identity(&metadata);
+        let replaced = identity.is_some() && current != identity;
+        if replaced || metadata.len() < offset {
+            // Rotated: finish the file we were reading (now the first
+            // rotated one), then read the new one from its start.
+            let previous = rotated_log_path(log_file, 1);
+            if let Ok(rotated) = File::open(&previous)
+                && identity.is_some()
+                && rotated.metadata().ok().as_ref().and_then(file_identity) == identity
+            {
+                read_new_lines(&rotated, &mut offset, &mut pending, filters, render)?;
+            }
             offset = 0;
             pending.clear();
         }
+        identity = current;
 
-        if len > offset {
-            file.seek(SeekFrom::Start(offset))?;
-            let mut reader = BufReader::new(&file);
-            loop {
-                let mut buf = String::new();
-                let read = reader.read_line(&mut buf)?;
-                if read == 0 {
-                    break;
-                }
-                pending.push_str(&buf);
-                offset += read as u64;
-                if !pending.ends_with('\n') {
-                    // Half-line; wait for the rest before parsing.
-                    break;
-                }
-                let line = std::mem::take(&mut pending);
-                if let Some(entry) = parse_and_filter(line.trim_end_matches('\n'), filters)? {
-                    println!("{}", render_entry(&entry, render)?);
-                }
-            }
+        if metadata.len() > offset {
+            read_new_lines(&file, &mut offset, &mut pending, filters, render)?;
         }
 
         polls = polls.wrapping_add(1);

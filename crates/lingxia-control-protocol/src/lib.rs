@@ -567,6 +567,7 @@ pub mod dev_session {
     #[cfg(feature = "broker")]
     pub mod broker;
     pub mod compat;
+    pub mod log_files;
     #[cfg(feature = "broker")]
     pub mod select;
     pub mod session_test;

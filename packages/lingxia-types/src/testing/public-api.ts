@@ -3,6 +3,7 @@ import type {
   BrowserCookies,
   BrowserDriver,
   ClockDriver,
+  DialogDriver,
   DesktopApp,
   DesktopAx,
   DesktopClipboard,
@@ -247,9 +248,19 @@ const AUTOMATION_API = [
 ] as const;
 const SHELL_DRIVER_API = ['pins', 'setPin', 'reorderPins'] as const;
 const TERMINAL_DRIVER_API = ['input', 'newTab', 'setMaximized', 'snapshot', 'split'] as const;
-const LXAPP_DRIVER_API = ['clock', 'eval', 'info', 'mock', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
+const LXAPP_DRIVER_API = ['clock', 'dialogs', 'eval', 'info', 'mock', 'nav', 'network', 'page', 'pages', 'profile', 'surfaceLayout'] as const;
 const MOCK_DRIVER_API = ['reset', 'use'] as const;
 const CLOCK_DRIVER_API = ['install', 'runAll', 'setSystemTime', 'tick', 'uninstall'] as const;
+const DIALOG_DRIVER_API = [
+  'actionSheets',
+  'answerNextActionSheet',
+  'answerNextModal',
+  'modals',
+  'toasts',
+  'unanswered',
+  'unwatch',
+  'watch',
+] as const;
 const PROFILE_DRIVER_API = ['checkpoint', 'drop', 'restore'] as const;
 const NETWORK_DRIVER_API = ['captureResponses', 'requests', 'responses', 'route', 'unrouteAll'] as const;
 const NETWORK_ROUTE_API = ['id', 'pattern', 'requests', 'requestsAfter', 'unroute'] as const;
@@ -556,7 +567,7 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp()',
     members: LXAPP_DRIVER_API,
-    properties: ['clock', 'mock', 'nav', 'network', 'page', 'profile'],
+    properties: ['clock', 'dialogs', 'mock', 'nav', 'network', 'page', 'profile'],
   },
   { name: 'MockDriver', layer: 'automation', expression: 'lx.automation().lxapp().mock', members: MOCK_DRIVER_API },
   {
@@ -586,6 +597,12 @@ export const LX_RUNTIME_SURFACES = [
     layer: 'automation',
     expression: 'lx.automation().lxapp().clock',
     members: CLOCK_DRIVER_API,
+  },
+  {
+    name: 'DialogDriver',
+    layer: 'automation',
+    expression: 'lx.automation().lxapp().dialogs',
+    members: DIALOG_DRIVER_API,
   },
   {
     name: 'NetworkRoute',
@@ -848,6 +865,7 @@ export type LxApiManifestGate = [
   AssertTrue<Exact<MockDriver, typeof MOCK_DRIVER_API>>,
   AssertTrue<Exact<ProfileDriver, typeof PROFILE_DRIVER_API>>,
   AssertTrue<Exact<ClockDriver, typeof CLOCK_DRIVER_API>>,
+  AssertTrue<Exact<DialogDriver, typeof DIALOG_DRIVER_API>>,
   AssertTrue<Exact<DeviceDriver, typeof DEVICE_DRIVER_API>>,
   AssertTrue<Exact<BrowserDriver, typeof BROWSER_DRIVER_API>>,
   AssertTrue<Exact<BrowserCookies, typeof BROWSER_COOKIES_API>>,

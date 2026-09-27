@@ -1,6 +1,8 @@
 /// <reference types="@lingxia/types/testing" preserve="true" />
 /// <reference types="@lingxia/types/logic-globals" preserve="true" />
 import type {
+  ActionSheetAnswer,
+  ActionSheetRecord,
   Automation,
   AutomationErrorCode,
   BrowserDriver,
@@ -12,6 +14,8 @@ import type {
   DesktopDriver,
   HostRunAutomation,
   LxAppDriver,
+  ModalAnswer,
+  ModalRecord,
   NetworkRouteHandler,
   NetworkRoutePattern,
   PageInfo,
@@ -26,6 +30,7 @@ import type {
   ScenarioRuleInfo,
   Screenshot,
   TerminalDriver,
+  ToastRecord,
 } from "@lingxia/types/automation";
 import type { ProtocolReport } from "./report-types.js";
 
@@ -653,6 +658,28 @@ export interface TestClock {
 }
 
 /**
+ * `t.app.dialogs`: the dialogs the app's Logic opens during this spec.
+ * Toasts are recorded and still drawn. Modals (`lx.showModal`, `alert`,
+ * `confirm`) and `lx.showActionSheet` are answered from answers the spec
+ * queued, never presented: queue the answer before the action that opens
+ * the dialog. One that finds no answer queued fails the spec at once, naming
+ * it; an answer no dialog used fails the spec when it ends. Each spec starts
+ * with nothing recorded or queued; outside a test run dialogs draw as usual.
+ */
+export interface TestDialogs {
+  /** Toasts presented so far, oldest first. Poll it: `expect.poll(() => t.app.dialogs.toasts())`. */
+  toasts(): Promise<ToastRecord[]>;
+  /** Modals opened so far, with the answer each got. */
+  modals(): Promise<ModalRecord[]>;
+  /** `lx.showActionSheet` calls so far, with the answer each got. */
+  actionSheets(): Promise<ActionSheetRecord[]>;
+  /** Answer the next modal: `{ confirm: true }` confirms, `{ confirm: false }` cancels. */
+  answerNextModal(answer: ModalAnswer): Promise<void>;
+  /** Answer the next action sheet: `{ index }` picks that item, `{ cancel: true }` dismisses it. */
+  answerNextActionSheet(answer: ActionSheetAnswer): Promise<void>;
+}
+
+/**
  * `t.app`: the app under test. A saved `t.app` (or any part of it) keeps
  * reaching the app after a profile checkpoint or restore reopens it.
  */
@@ -674,6 +701,8 @@ export interface TestApp {
   readonly mock: TestMock;
   /** Spec-scoped test clock for the app's Logic. */
   readonly clock: TestClock;
+  /** Toasts, modals and action sheets the app's Logic opens during the spec. */
+  readonly dialogs: TestDialogs;
   /** Checkpoint and roll back the app's isolated data. */
   readonly profile: ProfileFixture;
   info: LxAppDriver["info"];
@@ -763,6 +792,8 @@ export interface RetryMatchers<T> extends NeedsMatcher<"expect.poll(read) checks
   toBe(expected: unknown): Promise<void>;
   toEqual(expected: unknown): Promise<void>;
   toContain(expected: unknown): Promise<void>;
+  /** An array has an element equal to `expected` (as `toEqual` compares). */
+  toContainEqual(expected: unknown): Promise<void>;
   toMatch(expected: string | RegExp): Promise<void>;
   toBeTruthy(): Promise<void>;
   toBeFalsy(): Promise<void>;
@@ -834,6 +865,11 @@ export type ExpectResult<T> =
 export interface Expect {
   <T>(subject: T): ExpectResult<T>;
   poll<T>(read: () => T | Promise<T>, options?: ExpectOptions): RetryMatchers<Awaited<T>>;
+  /**
+   * Equal (in `toEqual`, `toContainEqual` and friends) to any object with
+   * every key of `sample` equal; other keys are ignored.
+   */
+  objectContaining(sample: Record<string, unknown>): unknown;
 }
 
 export interface WaitForOptions<T = unknown> {
@@ -906,6 +942,8 @@ export interface Matchers<T> extends NeedsMatcher<"expect(value) checks nothing 
   toBe(expected: unknown): void;
   toEqual(expected: unknown): void;
   toContain(expected: unknown): void;
+  /** An array has an element equal to `expected` (as `toEqual` compares). */
+  toContainEqual(expected: unknown): void;
   toMatch(expected: string | RegExp): void;
   toBeTruthy(): void;
   toBeFalsy(): void;
@@ -963,6 +1001,11 @@ export interface AutomationHost {
   /** Whether the screen is locked; `undefined` where the host cannot tell. */
   screenLocked?: () => boolean | undefined;
   /**
+   * Raise the app's window over other apps' windows without taking keyboard
+   * focus; resolves `false` where the host cannot.
+   */
+  raiseWindow?: () => Promise<boolean>;
+  /**
    * Open a spec attempt: routes, mock scenarios and test clocks installed
    * from now on belong to it. Returns its token.
    */
@@ -987,6 +1030,8 @@ export interface AttemptReclaim {
   clocks: number;
   /** Test timers pending on the removed clocks; they never fired. */
   droppedTimers: number;
+  /** Dialog watches the attempt left open. */
+  dialogs?: number;
 }
 
 declare global {

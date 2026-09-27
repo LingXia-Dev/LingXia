@@ -46,6 +46,7 @@ pub(crate) fn init_automation_context(
     init_automation(ctx, shared)?;
     crate::network::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     crate::clock::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
+    crate::dialogs::attach_run_scope(ctx, shared.run_id.clone(), admission(shared), live(shared));
     if let Some(profile) = shared.profile() {
         crate::profile::attach_run_scope(
             ctx,
@@ -268,6 +269,11 @@ fn make_host(
     // waiting on a sheet cannot pass. `undefined` where the platform cannot
     // tell.
     host.set("screenLocked", JSFunc::new(ctx, screen_locked)?)?;
+    // A covered window pauses its pages' animation frames. The app raises
+    // its own window, as `lxdev host focus` does, so no Accessibility grant
+    // is involved; keyboard focus stays where the user left it. `false`
+    // where the platform cannot.
+    host.set("raiseWindow", JSFunc::new(ctx, raise_window)?)?;
     crate::network::attach_host_functions(
         ctx,
         &host,
@@ -287,6 +293,8 @@ struct Reclaimed {
     /// Test timers pending on the removed clocks; they never fired.
     #[js_name = "droppedTimers"]
     dropped_timers: f64,
+    /// Dialog watches the attempt left open.
+    dialogs: f64,
 }
 
 fn attempt_error(message: impl Into<String>) -> RongJSError {
@@ -312,6 +320,7 @@ async fn reclaim(run_id: &str, attempt: u64) -> JSResult<Reclaimed> {
         }
         Err(err) => failed.push(err),
     }
+    reclaimed.dialogs = crate::dialogs::reclaim_attempt(run_id, attempt) as f64;
     if failed.is_empty() {
         Ok(reclaimed)
     } else {
@@ -362,6 +371,23 @@ fn attach_attempts(ctx: &JSContext, host: &JSObject, shared: &Arc<RunShared>) ->
         })?,
     )?;
     Ok(())
+}
+
+async fn raise_window() -> JSResult<bool> {
+    use lingxia_platform::error::PlatformError;
+    use lingxia_platform::traits::screenshot::AppScreenshot;
+    let Some(platform) = lxapp::get_platform() else {
+        return Ok(false);
+    };
+    match platform.bring_app_window_to_front(None, false).await {
+        Ok(_) => Ok(true),
+        Err(PlatformError::NotSupported(_)) => Ok(false),
+        Err(err) => Err(HostError::new(
+            "E_AUTOMATION",
+            format!("could not raise the app window: {err}"),
+        )
+        .into()),
+    }
 }
 
 fn screen_locked() -> Option<bool> {

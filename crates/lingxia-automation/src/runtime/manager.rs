@@ -1205,8 +1205,7 @@ mod tests {
         assert_eq!(output["first"], 1);
         assert_eq!(output["second"], 2);
         assert!(output["twice"].as_str().unwrap().contains("still open"));
-        let none =
-            serde_json::json!({ "routes": 0, "scenarios": 0, "clocks": 0, "droppedTimers": 0 });
+        let none = serde_json::json!({ "routes": 0, "scenarios": 0, "clocks": 0, "droppedTimers": 0, "dialogs": 0 });
         assert_eq!(output["swept"], none);
         assert!(output["again"].as_str().unwrap().contains("is not open"));
         assert_eq!(output["revoked"], none);

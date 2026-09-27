@@ -4,6 +4,7 @@ import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
+import { watchDialogs } from "./dialogs.js";
 import { resetMocks } from "./mock.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
@@ -808,6 +809,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
         duration_ms: Date.now() - reopenStarted, steps: [], attachments: [], assertions: [] });
     }
 
+    // Toasts are recorded and modals / action sheets answered for this spec
+    // only; the attempt's end removes the watch whatever happens below.
+    const dialogWatch = watchDialogs(fixture.raw, (message) => {
+      void host.emit({ type: "diagnostic", phase: "dialogs", message });
+    });
+
     let status: SpecStatus = "passed";
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
@@ -886,9 +893,26 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       }, timeout);
     });
 
+    // A modal or action sheet with no answer queued fails the spec at once,
+    // instead of leaving it waiting on a dialog nobody answers.
+    const unanswered = dialogWatch
+      ? dialogWatch.unanswered.then((message) => ({ unanswered: message }))
+      : new Promise<never>(() => {});
+
     try {
-      const winner = await Promise.race([bodyResult, timer]);
-      if (winner === "timeout") {
+      const winner = await Promise.race([bodyResult, timer, unanswered]);
+      if (typeof winner === "object" && "unanswered" in winner) {
+        const dialogError = new Error(`Unanswered dialog: ${winner.unanswered}`);
+        status = "failed";
+        error = dialogError;
+        fixture.abort(dialogError, "failed");
+        try { await within(bodyResult, WEDGED_DEFER_BUDGET_MS, "body did not settle after an unanswered dialog"); }
+        catch {
+          const work = stuckWork();
+          abandon("its body after an unanswered dialog", work);
+          dialogError.message += `\nThe body did not settle; still pending: ${describePending(work)}.`;
+        }
+      } else if (winner === "timeout") {
         status = "timeout";
         error = timeoutError;
         phase = "timeout";
@@ -1007,6 +1031,19 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       await host.emit({ type: "diagnostic", phase: "cleanup",
         message: `"${record.full_name}" ended with ${cancelled} test-context ${cancelled === 1 ? "timer" : "timers"} pending; ` +
           `cancelled so ${cancelled === 1 ? "it never fires" : "they never fire"} into a later spec.` });
+    }
+
+    // An answer the spec queued that no dialog used: the dialog it expected
+    // never came.
+    const unusedAnswers = stuck ? undefined : await dialogWatch?.end(fixture.raw);
+    if (unusedAnswers !== undefined) {
+      if (status === "passed") {
+        status = "failed";
+        error = new Error(`${JSON.stringify(item.title)}: ${unusedAnswers}.`);
+        fixture.failurePhase = "body";
+      } else if (error instanceof Error) {
+        error.message += `\nAlso: ${unusedAnswers}.`;
+      }
     }
 
     // Framework cleanup is not the spec's: it runs whether or not the body

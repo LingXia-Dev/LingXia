@@ -22,6 +22,8 @@ export interface ResolvedHost {
   networkRecord?(command: "start" | "stop", name?: string): unknown;
   /** `true` only when the host knows the screen is locked. */
   screenLocked(): boolean;
+  /** Raise the app's window without taking keyboard focus; `undefined` on a host without it. */
+  raiseWindow?(): Promise<boolean>;
   /** Spec attempts; `undefined` on a host that does not scope resources to them. */
   beginAttempt?(): number;
   endAttempt?(token: number): Promise<AttemptReclaim>;
@@ -77,6 +79,9 @@ export function resolveHost(): ResolvedHost {
       : {}),
     ...(typeof raw?.revoke === "function"
       ? { revoke: async (reason: string) => await raw.revoke!(reason) }
+      : {}),
+    ...(typeof raw?.raiseWindow === "function"
+      ? { raiseWindow: async () => (await raw.raiseWindow!()) === true }
       : {}),
     screenLocked() {
       try {

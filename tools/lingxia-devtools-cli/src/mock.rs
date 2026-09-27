@@ -900,8 +900,10 @@ pub(crate) fn status_lines(status: &Value, functions: Option<&str>) -> Vec<Strin
                 clock(&entry["last"])
             ));
         }
+        // Hits start over with the handler state (a load, a save under
+        // `mocks/`, `lxdev mock reset`, each spec of a run).
         lines.push(format!(
-            "state since {} ({})",
+            "handler state and hits since {} ({})",
             clock(&app["fresh"]["at"]),
             app["fresh"]["reason"].as_str().unwrap_or("load")
         ));
@@ -1988,7 +1990,7 @@ mod tests {
                 "unhandled: GET https://h/sub/insights/weekly 2× (last 12:01:03)",
                 "errors: GET **/sub/locations/*/clients 1× — Cannot read properties of undefined \
                  (last 12:00:41)",
-                "state since 12:01:03 (reload)",
+                "handler state and hits since 12:01:03 (reload)",
             ]
         );
     }

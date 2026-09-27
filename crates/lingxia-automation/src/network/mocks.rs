@@ -211,14 +211,13 @@ impl Mocks {
         }
         let generation = self.bump();
         let now = now_ms();
+        // Hits count since the handler state started over, so a reload
+        // starts them over with it; unhandled calls and handler errors carry
+        // their own times and stay.
         let previous = self.set_mut(appid).map(|set| {
             (
                 std::mem::take(&mut set.unhandled),
                 std::mem::take(&mut set.errors),
-                set.keys
-                    .iter()
-                    .map(|key| (key.key.clone(), key.hits))
-                    .collect::<Vec<_>>(),
             )
         });
         let fresh = if previous.is_some() {
@@ -226,13 +225,7 @@ impl Mocks {
         } else {
             Fresh::Load
         };
-        let (unhandled, errors, hits) = previous.unwrap_or_default();
-        for key in &mut compiled {
-            key.hits = hits
-                .iter()
-                .find(|(seen, _)| *seen == key.key)
-                .map_or(0, |(_, hits)| *hits);
-        }
+        let (unhandled, errors) = previous.unwrap_or_default();
         let set = MockSet {
             appid: appid.to_string(),
             source: Arc::from(source),
@@ -262,8 +255,8 @@ impl Mocks {
         removed
     }
 
-    /// Start handler state over for `appid`, or for every app. Returns the
-    /// new generation of each.
+    /// Start handler state, and the hits counted since, over for `appid`,
+    /// or for every app. Returns the new generation of each.
     pub(crate) fn reset(&mut self, appid: Option<&str>, why: Fresh) -> Vec<(String, u64)> {
         let now = now_ms();
         let apps: Vec<String> = self
@@ -279,6 +272,9 @@ impl Mocks {
                     set.generation = generation;
                     set.fresh_ms = now;
                     set.fresh = why;
+                    for key in &mut set.keys {
+                        key.hits = 0;
+                    }
                 }
                 (appid, generation)
             })
@@ -443,8 +439,9 @@ impl Mocks {
 
     /// `session.network.mock.status`: per app the effective selection in
     /// one line (`selection`) and what a test run sees (`runSelection`),
-    /// its handlers and their hits, unhandled calls and handler errors;
-    /// the session's baseline and live entries.
+    /// its handlers and their hits since the handler state started over
+    /// (`fresh`), unhandled calls and handler errors; the session's
+    /// baseline and live entries.
     pub(crate) fn status(&self, run_active: bool) -> Value {
         let baseline = self.baseline();
         let live = self.selection.entries(&MockOwner::Dev);
@@ -706,7 +703,7 @@ mod tests {
         let set = mocks.set("app").unwrap();
         assert_eq!((set.generation, set.keys.len()), (first, 3));
 
-        // A reload keeps the hits of keys that stay, and moves the generation.
+        // A reload starts handler state and hits over, and moves the generation.
         let generation = mocks
             .load(
                 "app",
@@ -717,11 +714,14 @@ mod tests {
             .unwrap();
         assert!(generation > first);
         let set = mocks.set("app").unwrap();
-        assert_eq!((set.keys[0].hits, set.fresh), (1, Fresh::Reload));
+        assert_eq!((set.keys[0].hits, set.fresh), (0, Fresh::Reload));
+        mocks.decide("app", "GET", "https://h/devices/1", false);
+        assert_eq!(mocks.set("app").unwrap().keys[0].hits, 1);
         let reset = mocks.reset(None, Fresh::Spec);
         assert_eq!(reset.len(), 1);
         assert!(reset[0].1 > generation);
-        assert_eq!(mocks.set("app").unwrap().fresh, Fresh::Spec);
+        let set = mocks.set("app").unwrap();
+        assert_eq!((set.keys[0].hits, set.fresh), (0, Fresh::Spec));
     }
 
     #[test]

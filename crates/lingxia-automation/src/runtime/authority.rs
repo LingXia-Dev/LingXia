@@ -3,9 +3,9 @@
 //! A test run executes every spec in one JS context, so nothing tells a
 //! continuation of a spec the runner gave up on from the spec after it. The
 //! host scopes what specs install to *attempts* instead: the runner opens one
-//! per spec, routes, mock scenarios and test clocks installed while it is
-//! open belong to it, and closing it removes them and refuses installs until
-//! the next one opens. An abandoned spec's attempt is ended like any other
+//! per spec, routes, mock scenarios, test clocks and dialog watches installed
+//! while it is open belong to it, and closing it removes them and refuses
+//! installs until the next one opens. An abandoned spec's attempt is ended like any other
 //! (the runner refuses that spec's drivers on its side); when the runner
 //! cannot isolate what the abandoned spec left running, it revokes the
 //! context: every driver call from it is refused for the rest of the run.

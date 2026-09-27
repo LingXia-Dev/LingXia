@@ -7,7 +7,6 @@ use lingxia_control_protocol::{
         DevSessionMessage, DevSessionRole,
     },
 };
-use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
@@ -109,33 +108,29 @@ impl DevServerHandle {
 }
 
 pub(super) struct SessionLogWriter {
-    file: Mutex<File>,
+    log: Mutex<super::log_store::RotatingLog>,
 }
 
 impl SessionLogWriter {
     pub(super) fn new(session: &DevLogSession) -> Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&session.log_file)
-            .with_context(|| format!("Failed to open {}", session.log_file.display()))?;
         Ok(Self {
-            file: Mutex::new(file),
+            log: Mutex::new(super::log_store::RotatingLog::open(
+                &session.log_file,
+                lingxia_control_protocol::dev_session::log_files::MAX_LOG_BYTES,
+            )?),
         })
     }
 
     pub(super) fn append_events(&self, events: &[DevSessionEvent]) -> Result<()> {
-        let mut file = self
-            .file
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut lines = Vec::new();
         for event in events {
-            serde_json::to_writer(&mut *file, event).context("Failed to encode event line")?;
-            file.write_all(b"\n")
-                .context("Failed to write log newline")?;
+            serde_json::to_writer(&mut lines, event).context("Failed to encode event line")?;
+            lines.push(b'\n');
         }
-        file.flush().context("Failed to flush log file")?;
-        Ok(())
+        self.log
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .append(&lines)
     }
 }
 

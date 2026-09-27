@@ -14,6 +14,7 @@ import { rememberInline } from "./report.js";
 import { NetworkScope, wrapNetwork } from "./network.js";
 import { ScenarioScope, installScenario } from "./mock.js";
 import { ClockScope, wrapClock } from "./clock.js";
+import { wrapDialogs } from "./dialogs.js";
 import { activeOpenApi } from "./openapi.js";
 import { ActionDeadline, TimeoutError, asFixtureTimeout } from "./deadline.js";
 import { isTransientTransportError } from "./deadline.js";
@@ -512,12 +513,17 @@ export class LiveFixture implements Fixture {
     return ref;
   }
 
-  abort(reason: Error): void {
+  /**
+   * Stop the body: its fixture calls reject with `reason` from now on. A
+   * timeout marks the actions still open as timed out; a failure (an
+   * unanswered dialog) as failed.
+   */
+  abort(reason: Error, as: "timeout" | "failed" = "timeout"): void {
     this.aborted = true;
     this.abortError = reason;
-    this.failurePhase = "timeout";
+    this.failurePhase = as === "timeout" ? "timeout" : "body";
     for (const record of this.openActions) {
-      record.status = "timeout";
+      record.status = as;
       record.error = toReportError(reason, record.path);
       this.noteFailedAction(record.name, record.detail, reason);
     }
@@ -871,6 +877,11 @@ export class LiveFixture implements Fixture {
           () => fixture.hostAutomation,
         );
       },
+      // Lazy and non-throwing like `clock`; the runner watches the app under
+      // test for each spec.
+      get dialogs() {
+        return wrapDialogs(() => driver().dialogs, fixture);
+      },
       info: () => this.act("app.info", "", () => this.readRetrying(() => driver().info())),
       pages: () => this.act("app.pages", "", () => this.readRetrying(() => driver().pages())),
       surfaceLayout: () => this.act("app.surfaceLayout", "", () => this.readRetrying(() => driver().surfaceLayout())),
@@ -1091,6 +1102,7 @@ export class LiveFixture implements Fixture {
       () => this.budgetRoom(),
       {},
       evidence,
+      (message) => { void this.diagnostic("window", message); },
     );
   }
 
@@ -1173,6 +1185,7 @@ export class LiveFixture implements Fixture {
       toBe: (expected: unknown) => run("toBe", expected),
       toEqual: (expected: unknown) => run("toEqual", expected),
       toContain: (expected: unknown) => run("toContain", expected),
+      toContainEqual: (expected: unknown) => run("toContainEqual", expected),
       toMatch: (expected: string | RegExp) => run("toMatch", expected),
       toBeTruthy: () => run("toBeTruthy"),
       toBeFalsy: () => run("toBeFalsy"),

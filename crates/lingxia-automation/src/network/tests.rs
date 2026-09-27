@@ -820,7 +820,10 @@ ${{error && error.stack}}` }});
                 .unwrap()["hits"]
                 .clone()
         };
-        assert_eq!(hits("POST **/sessions"), 2);
+        // Hits start over with the handler state: the reset dropped the two
+        // sessions calls and the first `/me`.
+        assert_eq!(hits("POST **/sessions"), 0);
+        assert_eq!(hits("GET **/me"), 1);
         assert_eq!(hits("GET **/throws"), 2);
         assert_eq!(app["unhandled"][0]["url"], "https://api.test/unknown/path");
         let errors: Vec<&str> = app["errors"]

@@ -60,3 +60,22 @@ test("a withdrawn assumption leaves no false pair for a later comparison", () =>
   assert.equal(isEqual([x, x], [y, y]), false);
   assert.equal(isEqual(new Set([x]), new Set([y])), false);
 });
+
+test("expect.objectContaining matches the keys it names, at any depth, and says what it is", async () => {
+  const { expect, AssertionError } = await import("../dist/index.js");
+  const toast = { title: "Saved", icon: "success", duration: 1500, at: 1 };
+  assert.equal(isEqual(toast, expect.objectContaining({ title: "Saved" })), true);
+  assert.equal(isEqual(expect.objectContaining({ title: "Saved" }), toast), true);
+  assert.equal(isEqual(toast, expect.objectContaining({ title: "Other" })), false);
+  assert.equal(isEqual(toast, expect.objectContaining({ missing: undefined })), false, "a named key must exist");
+  assert.equal(isEqual([toast], [expect.objectContaining({ icon: "success" })]), true);
+  assert.equal(isEqual({ answer: { confirm: true, extra: 1 } }, { answer: expect.objectContaining({ confirm: true }) }), true);
+  assert.equal(isEqual([1], expect.objectContaining({})), false, "an array is not an object sample");
+  assert.throws(() => expect.objectContaining(null), /takes a plain object/);
+
+  expect([toast]).toContainEqual(expect.objectContaining({ title: "Saved" }));
+  expect([toast]).not.toContainEqual(expect.objectContaining({ title: "Other" }));
+  assert.throws(() => expect([toast]).toContainEqual(expect.objectContaining({ title: "Other" })),
+    (error) => error instanceof AssertionError && /Expected: ObjectContaining \{"title": "Other"\}/.test(error.message));
+  assert.throws(() => expect("Saved").not.toContainEqual("x"), /received value must be an array/);
+});

@@ -118,6 +118,8 @@ export class PageLocator implements Locator {
     private readonly room: BudgetRoom = () => Number.POSITIVE_INFINITY,
     private readonly refine: LocatorRefine = {},
     private readonly evidence: PageEvidence = (_target, probe) => probe(),
+    /** A line for the spec's trace (the window was raised). */
+    private readonly note: (message: string) => void = () => {},
   ) {
     this.selector = selector;
     this.options = { ...options };
@@ -130,7 +132,7 @@ export class PageLocator implements Locator {
 
   nth(index: number): Locator {
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence);
+      { ...this.options, index }, this.room, { ...this.refine, last: false }, this.evidence, this.note);
   }
 
   first(): Locator {
@@ -140,7 +142,7 @@ export class PageLocator implements Locator {
   last(): Locator {
     const { index: _index, ...options } = this.options;
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      options, this.room, { ...this.refine, last: true }, this.evidence);
+      options, this.room, { ...this.refine, last: true }, this.evidence, this.note);
   }
 
   filter(options: LocatorFilterOptions): Locator {
@@ -149,7 +151,7 @@ export class PageLocator implements Locator {
       throw new TypeError("filter() needs { hasText: string | RegExp }");
     }
     return new PageLocator(this.page, this.guard, this.record, this.selector, this.location,
-      this.options, this.room, { ...this.refine, hasText }, this.evidence);
+      this.options, this.room, { ...this.refine, hasText }, this.evidence, this.note);
   }
 
   // Actions return the fixture's own call, not a wrapper around it: a call
@@ -188,25 +190,31 @@ export class PageLocator implements Locator {
     const deadline = new ActionDeadline(timeout, this.room());
     return this.record("page.waitFor", `${this.target()} ${state}`, async () => {
       let reason = "";
-      while (true) {
-        try {
-          const resolved = await this.resolve(deadline, "waitFor");
-          if (reachedState(resolved, state)) return;
-          reason = this.missText(resolved);
-        } catch (error) {
-          // A page mid-transition, or a read the transport dropped, is not an
-          // answer yet; anything else is.
-          if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
-          reason = transientReason(error);
+      const until = async (budget: ActionDeadline): Promise<boolean> => {
+        while (true) {
+          try {
+            const resolved = await this.resolve(budget, "waitFor");
+            if (reachedState(resolved, state)) return true;
+            reason = this.missText(resolved);
+          } catch (error) {
+            // A page mid-transition, or a read the transport dropped, is not an
+            // answer yet; anything else is.
+            if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
+            reason = transientReason(error);
+          }
+          if (budget.expired()) return false;
+          await sleep(Math.min(interval, Math.max(1, budget.remaining())));
         }
-        if (deadline.expired()) break;
-        await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
-      }
+      };
+      if (await until(deadline)) return;
       const hidden = await this.hiddenPageNote();
+      const raised = await this.raiseHidden(hidden, timeout);
+      if (raised && await until(raised.retry)) return;
       throw new AssertionError("waitFor", reason, state, [
         `Timed out after ${deadline.elapsed()}ms waiting for ${formatValue(this.selector)} to be ${state}.`,
         reason,
         hidden,
+        raised?.note,
         deadline.clampNote(),
         `at ${this.where()}`,
       ].filter(Boolean).join("\n"));
@@ -387,6 +395,29 @@ export class PageLocator implements Locator {
     }
   }
 
+  /**
+   * After a wait ran out on a page that looked hidden: raise the app's window
+   * (the app orders its own window, so no Accessibility grant) and hand back
+   * a budget for one more try. `undefined` when the page was not hidden, the
+   * screen is locked, the host cannot raise it, or the spec has no room.
+   */
+  private async raiseHidden(hidden: string | undefined, timeout: number): Promise<{ retry: ActionDeadline; note: string } | undefined> {
+    if (hidden === undefined || hidden === SCREEN_LOCKED_NOTE) return undefined;
+    const raise = resolveHost().raiseWindow;
+    if (!raise || this.room() < RAISE_BUDGET_MS + MIN_RAISED_RETRY_MS) return undefined;
+    let raised = false;
+    try {
+      raised = await new ActionDeadline(RAISE_BUDGET_MS, this.room()).call("raise the app window", raise, () => "");
+    } catch {
+      return undefined;
+    }
+    if (!raised) return undefined;
+    const retry = new ActionDeadline(Math.min(timeout, RAISED_RETRY_MS), this.room());
+    const note = `The page looked hidden, so the runner raised the app window and retried once (up to ${retry.timeout}ms).`;
+    this.note(`${note} ${this.target()} at ${this.where()}`);
+    return { retry, note };
+  }
+
   private async actionability(index: number, verb: string, deadline: ActionDeadline): Promise<true | string> {
     if (!this.page.eval) return true;
     const script = `(() => {
@@ -425,74 +456,84 @@ export class PageLocator implements Locator {
       // caused reports its code, so `spec.fail({ expected: { code } })` and
       // the failure line can name it.
       let cause: unknown;
-      while (!deadline.expired()) {
-        try {
-          last = await this.resolve(deadline, verb);
-          reason = this.missText(last);
-          cause = undefined;
-          if (force && last.count === 1) {
-            // Forced: attached and enabled are enough; no viewport, stability
-            // or hit-test wait.
-            if (last.enabled === false) reason = "element is disabled";
-            else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
-            else {
-              try {
-                const index = last.index;
-                await this.guard(() => deadline.call(`page.${verb}`, () => run(this.selector, index), context));
-                return;
-              } catch (error) {
-                if (!isElementRefusal(error) && !isPreDispatchPageError(error)) {
-                  throw new DispatchFailure(error);
-                }
-                reason = error instanceof Error ? error.message : String(error);
-                cause = error;
-              }
-            }
-          } else if (last.kind === "unique") {
-            const rect = JSON.stringify(last.rect);
-            const stable = last.rect === undefined || previousRect === rect;
-            previousRect = rect;
-            if (last.enabled === false) reason = "element is disabled";
-            else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
-            else if (!stable) reason = "element is moving";
-            else {
-              const check = await this.actionability(last.index, verb, deadline);
-              if (check === true) {
+      const until = async (budget: ActionDeadline): Promise<boolean> => {
+        while (!budget.expired()) {
+          try {
+            last = await this.resolve(budget, verb);
+            reason = this.missText(last);
+            cause = undefined;
+            if (force && last.count === 1) {
+              // Forced: attached and enabled are enough; no viewport, stability
+              // or hit-test wait.
+              if (last.enabled === false) reason = "element is disabled";
+              else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
+              else {
                 try {
                   const index = last.index;
-                  await this.guard(() => deadline.call(`page.${verb}`, () => run(this.selector, index), context));
-                  return;
+                  await this.guard(() => budget.call(`page.${verb}`, () => run(this.selector, index), context));
+                  return true;
                 } catch (error) {
-                  // These native errors are raised before input dispatch. A transport
-                  // failure is ambiguous and must never resubmit an action.
                   if (!isElementRefusal(error) && !isPreDispatchPageError(error)) {
                     throw new DispatchFailure(error);
                   }
                   reason = error instanceof Error ? error.message : String(error);
                   cause = error;
-                  previousRect = undefined;
                 }
               }
-              if (check !== true) reason = check;
-            }
-          } else { previousRect = undefined; }
-        } catch (error) {
-          // The page is being replaced (navigation in flight): no read or
-          // dispatch reached it, so wait for the new page within the budget.
-          if (error instanceof DispatchFailure) throw error.error;
-          // Reads only: a dispatch error is a DispatchFailure, never retried.
-          if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
-          reason = transientReason(error);
-          cause = error;
-          previousRect = undefined;
+            } else if (last.kind === "unique") {
+              const rect = JSON.stringify(last.rect);
+              const stable = last.rect === undefined || previousRect === rect;
+              previousRect = rect;
+              if (last.enabled === false) reason = "element is disabled";
+              else if ((verb === "fill" || verb === "type") && last.editable === false) reason = "element is not editable";
+              else if (!stable) reason = "element is moving";
+              else {
+                const check = await this.actionability(last.index, verb, budget);
+                if (check === true) {
+                  try {
+                    const index = last.index;
+                    await this.guard(() => budget.call(`page.${verb}`, () => run(this.selector, index), context));
+                    return true;
+                  } catch (error) {
+                    // These native errors are raised before input dispatch. A transport
+                    // failure is ambiguous and must never resubmit an action.
+                    if (!isElementRefusal(error) && !isPreDispatchPageError(error)) {
+                      throw new DispatchFailure(error);
+                    }
+                    reason = error instanceof Error ? error.message : String(error);
+                    cause = error;
+                    previousRect = undefined;
+                  }
+                }
+                if (check !== true) reason = check;
+              }
+            } else { previousRect = undefined; }
+          } catch (error) {
+            // The page is being replaced (navigation in flight): no read or
+            // dispatch reached it, so wait for the new page within the budget.
+            if (error instanceof DispatchFailure) throw error.error;
+            // Reads only: a dispatch error is a DispatchFailure, never retried.
+            if (!isTransientPageError(error) && !isTransientTransportError(error)) throw error;
+            reason = transientReason(error);
+            cause = error;
+            previousRect = undefined;
+          }
+          await sleep(Math.min(interval, Math.max(1, budget.remaining())));
         }
-        await sleep(Math.min(interval, Math.max(1, deadline.remaining())));
-      }
+        return false;
+      };
+      if (await until(deadline)) return;
       const hidden = await this.hiddenPageNote();
+      const raised = await this.raiseHidden(hidden, timeout);
+      if (raised) {
+        previousRect = undefined;
+        if (await until(raised.retry)) return;
+      }
       throw withCause(new AssertionError(verb, reason, force ? "attached, enabled element" : "stable, enabled, unobscured element", [
         `Timed out after ${deadline.elapsed()}ms waiting to ${verb} ${formatValue(this.selector)}.`,
         reason,
         hidden,
+        raised?.note,
         deadline.clampNote(),
         `at ${this.where()}`,
       ].filter(Boolean).join("\n")), cause);
@@ -544,6 +585,12 @@ export type PageEvidence = (
   target: string | undefined,
   probe: () => Promise<string | undefined>,
 ) => Promise<string | undefined>;
+
+/** How long raising the app window may take. */
+const RAISE_BUDGET_MS = 2_000;
+/** The one retry after raising the window: enough for paused animations to finish. */
+const RAISED_RETRY_MS = 3_000;
+const MIN_RAISED_RETRY_MS = 250;
 
 /** How long the visibility probe waits for an animation frame. */
 const VISIBILITY_FRAME_WAIT_MS = 300;

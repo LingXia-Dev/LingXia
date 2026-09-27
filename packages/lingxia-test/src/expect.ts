@@ -1,4 +1,4 @@
-import { isEqual } from "./equal.js";
+import { isEqual, objectContaining } from "./equal.js";
 import { formatValue } from "./format.js";
 import { activeOpenApi, type SchemaTarget } from "./openapi.js";
 import { formatIssues } from "./schema.js";
@@ -168,6 +168,14 @@ function createMatchers<T>(actual: T, inverted: boolean): Matchers<T> {
     },
     toContain(expected: unknown) {
       settle("toContain", actual, expected, inverted, contains(actual, expected));
+    },
+    toContainEqual(expected: unknown) {
+      if (!Array.isArray(actual)) {
+        // A non-array is a broken assertion: it fails under `.not` too.
+        recordAssertion({ matcher: inverted ? "not.toContainEqual" : "toContainEqual", expected: formatValue(expected), actual: formatValue(actual), passed: false });
+        fail("toContainEqual", actual, expected, inverted, "received value must be an array");
+      }
+      settle("toContainEqual", actual, expected, inverted, actual.some((item) => isEqual(item, expected)));
     },
     toMatch(expected: string | RegExp) {
       settle("toMatch", actual, expected, inverted, matches(actual, expected));
@@ -351,6 +359,7 @@ export const expect: Expect = Object.assign(
     return refuseAwait(createMatchers(subject, false), "expect(value)", "expect(value).toBe(expected)", origin);
   },
   {
+    objectContaining,
     poll: (read: () => unknown, options?: ExpectOptions) => {
       const origin = new Error();
       if (typeof read !== "function") throw new TypeError("expect.poll(read) takes a function to call until the matcher passes");
@@ -381,6 +390,9 @@ export function applyMatcher(
       return;
     case "toContain":
       assertion.toContain(expected);
+      return;
+    case "toContainEqual":
+      assertion.toContainEqual(expected);
       return;
     case "toMatch":
       assertion.toMatch(expected as string | RegExp);
