@@ -20,11 +20,10 @@ const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
-/// `0` hides the simulated host capsule for this launch. A real host draws
-/// none on its home lxapp; the Runner matches that when the parent directory
-/// is that host.
-const RUNNER_CAPSULE_ENV: &str = "LINGXIA_RUNNER_CAPSULE";
-const RUNNER_CAPSULE_ARG: &str = "--capsule";
+/// The host's home lxapp id when the launched lxapp is it: the Runner draws no
+/// capsule on that lxapp, as the real host does, and keeps it on every other.
+const RUNNER_HOST_HOME_ENV: &str = "LINGXIA_RUNNER_HOST_HOME_APP_ID";
+const RUNNER_HOST_HOME_ARG: &str = "--host-home-app-id";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
@@ -463,9 +462,17 @@ fn launch_runner_for_lxapp(
     if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
         command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
     }
-    if runner_hides_capsule(lxapp_path)? {
-        command.env(RUNNER_CAPSULE_ENV, "0");
-        note_hidden_capsule();
+    match read_lxapp_app_id(lxapp_path)
+        .ok()
+        .and_then(|app_id| host_home_app_id(lxapp_path, &app_id))
+    {
+        Some(app_id) => {
+            command.env(RUNNER_HOST_HOME_ENV, app_id);
+            note_host_home();
+        }
+        None => {
+            command.env_remove(RUNNER_HOST_HOME_ENV);
+        }
     }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
@@ -601,47 +608,29 @@ fn manifest_string_field(
         .ok_or_else(|| anyhow!("Missing or empty \"{name}\" in {}", manifest_path.display()))
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct ParentHostConfig {
-    #[serde(default)]
-    app: Option<ParentHostApp>,
+/// The nearest ancestor holding `lingxia.yaml`: the host app an lxapp inside
+/// it belongs to.
+fn host_root_of(lxapp_path: &Path) -> Option<PathBuf> {
+    // Resolved first: a target such as `..` has no meaningful parent.
+    let lxapp_path = PathBuf::from(log_store::canonical_project_root(lxapp_path));
+    lxapp_path
+        .ancestors()
+        .skip(1)
+        .find(|root| root.join(crate::config::HOST_CONFIG_FILE).is_file())
+        .map(Path::to_path_buf)
 }
 
-#[derive(Debug, serde::Deserialize)]
-struct ParentHostApp {
-    #[serde(default, rename = "homeAppId")]
-    home_app_id: Option<String>,
+/// `app_id` when it is the enclosing host's `homeAppId`. Only chrome depends
+/// on it, so an unreadable host config counts as "not the home lxapp".
+fn host_home_app_id(lxapp_path: &Path, app_id: &str) -> Option<String> {
+    let config = LingXiaConfig::load(&host_root_of(lxapp_path)?).ok()?;
+    let home = config.app.as_ref()?.home_app_id.as_deref()?.trim();
+    (home == app_id).then(|| app_id.to_string())
 }
 
-/// Hide the capsule when the directory above this lxapp is a host app whose
-/// `homeAppId` is this lxapp. One level only — a `lingxia.yaml` further up
-/// belongs to a different project.
-fn runner_hides_capsule(lxapp_path: &Path) -> Result<bool> {
-    let Some(parent) = lxapp_path.parent() else {
-        return Ok(false);
-    };
-    let config_path = parent.join(crate::config::HOST_CONFIG_FILE);
-    if !config_path.is_file() {
-        return Ok(false);
-    }
-    let content = std::fs::read_to_string(&config_path)
-        .with_context(|| format!("Failed to read {}", config_path.display()))?;
-    let config: ParentHostConfig = serde_yaml_ng::from_str(&content)
-        .with_context(|| format!("Failed to parse {}", config_path.display()))?;
-    let Some(home_app_id) = config
-        .app
-        .and_then(|app| app.home_app_id)
-        .map(|id| id.trim().to_string())
-        .filter(|id| !id.is_empty())
-    else {
-        return Ok(false);
-    };
-    Ok(read_lxapp_app_id(lxapp_path)? == home_app_id)
-}
-
-fn note_hidden_capsule() {
+fn note_host_home() {
     println!(
-        "{} Capsule hidden (home lxapp of the parent app)",
+        "{} Home lxapp of the enclosing host: no capsule on it",
         "[runner]".cyan()
     );
 }
@@ -824,9 +813,9 @@ fn launch_windows_runner_for_lxapp(
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
-    let hide_capsule = runner_hides_capsule(lxapp_path)?;
-    if hide_capsule {
-        note_hidden_capsule();
+    let host_home = host_home_app_id(lxapp_path, &identity.app_id);
+    if host_home.is_some() {
+        note_host_home();
     }
     let launch_args = windows_runner_launch_args(
         lxapp_path,
@@ -839,7 +828,7 @@ fn launch_windows_runner_for_lxapp(
         display_language,
         runner_env,
         &resource_lxapp_paths,
-        hide_capsule,
+        host_home.as_deref(),
     )?;
 
     #[cfg(target_os = "windows")]
@@ -993,7 +982,7 @@ fn windows_runner_launch_args(
     display_language: Option<&str>,
     runner_env: crate::config::AppEnv,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
-    hide_capsule: bool,
+    host_home_app_id: Option<&str>,
 ) -> Result<Vec<String>> {
     let mut args = vec![
         "--lxapp-path".to_string(),
@@ -1019,9 +1008,9 @@ fn windows_runner_launch_args(
         args.push("--resource-lxapp-paths".to_string());
         args.push(serde_json::to_string(resource_lxapp_paths)?);
     }
-    if hide_capsule {
-        args.push(RUNNER_CAPSULE_ARG.to_string());
-        args.push("0".to_string());
+    if let Some(app_id) = host_home_app_id {
+        args.push(RUNNER_HOST_HOME_ARG.to_string());
+        args.push(app_id.to_string());
     }
     Ok(args)
 }
@@ -1030,14 +1019,10 @@ fn windows_runner_resource_lxapp_paths(
     lxapp_path: &Path,
     identity: &WindowsRunnerLxAppIdentity,
 ) -> Result<Vec<WindowsRunnerResourceLxAppPath>> {
-    let Some(host_root) = lxapp_path
-        .ancestors()
-        .skip(1)
-        .find(|root| root.join(crate::config::HOST_CONFIG_FILE).is_file())
-    else {
+    let Some(host_root) = host_root_of(lxapp_path) else {
         return Ok(Vec::new());
     };
-    let config = LingXiaConfig::load(host_root)?;
+    let config = LingXiaConfig::load(&host_root)?;
     let Some(resources) = config.resources.as_ref() else {
         return Ok(Vec::new());
     };
@@ -1709,7 +1694,7 @@ mod tests {
             Some("zh-CN"),
             crate::config::AppEnv::Dev,
             &resources,
-            false,
+            None,
         )
         .unwrap();
 
@@ -1734,7 +1719,7 @@ mod tests {
                 .any(|pair| pair == ["--display-language", "zh-CN"])
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
-        assert!(!args.iter().any(|arg| arg == "--capsule"));
+        assert!(!args.iter().any(|arg| arg == "--host-home-app-id"));
     }
 
     fn write_lxapp(dir: &std::path::Path, app_id: &str) {
@@ -1745,97 +1730,56 @@ mod tests {
         .unwrap();
     }
 
-    #[test]
-    fn parent_host_home_lxapp_hides_the_capsule() {
-        let temp = tempdir().unwrap();
-        let lxapp = temp.path().join("lxapp");
-        fs::create_dir(&lxapp).unwrap();
-        write_lxapp(&lxapp, "demo-home");
+    fn host_with_home(root: &std::path::Path, home_app_id: &str) {
         fs::write(
-            temp.path().join(HOST_CONFIG_FILE),
-            "app:\n  homeAppId: demo-home\n",
+            root.join(HOST_CONFIG_FILE),
+            format!(
+                "app:\n  projectName: demo\n  packageId: com.example.demo\n  productName: Demo\n  \
+                 productVersion: 0.0.1\n  platforms: [android, ios]\n  homeAppId: {home_app_id}\nandroid: {{}}\nios: {{}}\n"
+            ),
         )
         .unwrap();
-
-        assert!(super::runner_hides_capsule(&lxapp).unwrap());
     }
 
     #[test]
-    fn a_different_home_app_keeps_the_capsule() {
+    fn the_enclosing_hosts_home_lxapp_is_recognized_at_any_depth() {
         let temp = tempdir().unwrap();
-        let lxapp = temp.path().join("lxapp");
-        fs::create_dir(&lxapp).unwrap();
-        write_lxapp(&lxapp, "demo-home");
-        fs::write(
-            temp.path().join(HOST_CONFIG_FILE),
-            "app:\n  homeAppId: other-app\n",
-        )
-        .unwrap();
-
-        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
-    }
-
-    #[test]
-    fn no_parent_host_keeps_the_capsule() {
-        let temp = tempdir().unwrap();
-        let lxapp = temp.path().join("lxapp");
-        fs::create_dir(&lxapp).unwrap();
-        write_lxapp(&lxapp, "demo-home");
-
-        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
-    }
-
-    #[test]
-    fn a_host_two_levels_up_does_not_hide_the_capsule() {
-        let temp = tempdir().unwrap();
-        let lxapp = temp.path().join("pkg").join("lxapp");
+        let lxapp = temp.path().join("apps").join("home");
         fs::create_dir_all(&lxapp).unwrap();
         write_lxapp(&lxapp, "demo-home");
-        fs::write(
-            temp.path().join(HOST_CONFIG_FILE),
-            "app:\n  homeAppId: demo-home\n",
-        )
-        .unwrap();
+        host_with_home(temp.path(), "demo-home");
 
-        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
+        assert_eq!(
+            super::host_home_app_id(&lxapp, "demo-home").as_deref(),
+            Some("demo-home")
+        );
+        // A path that only resolves to the lxapp, like `lingxia dev ..`.
+        let dotted = lxapp.join("pages").join("..");
+        fs::create_dir_all(lxapp.join("pages")).unwrap();
+        assert!(super::host_home_app_id(&dotted, "demo-home").is_some());
     }
 
     #[test]
-    fn built_bundle_app_id_is_what_the_parent_host_matches() {
+    fn another_app_or_no_host_keeps_the_capsule() {
         let temp = tempdir().unwrap();
         let lxapp = temp.path().join("lxapp");
-        fs::create_dir_all(lxapp.join("dist")).unwrap();
-        write_lxapp(&lxapp, "project-id");
-        fs::write(
-            lxapp.join("dist").join("lxapp.json"),
-            r#"{"appId":"demo-home","version":"0.0.1"}"#,
-        )
-        .unwrap();
-        fs::write(
-            temp.path().join(HOST_CONFIG_FILE),
-            "app:\n  homeAppId: demo-home\n",
-        )
-        .unwrap();
+        fs::create_dir(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+        assert!(super::host_home_app_id(&lxapp, "demo-home").is_none());
 
-        assert!(super::runner_hides_capsule(&lxapp).unwrap());
+        host_with_home(temp.path(), "other-app");
+        assert!(super::host_home_app_id(&lxapp, "demo-home").is_none());
     }
 
     #[test]
-    fn windows_runner_launch_args_hide_capsule_for_the_home_lxapp() {
-        let args = windows_runner_launch_args(
-            std::path::Path::new(r"D:\apps\home"),
-            std::path::Path::new(r"D:\apps\assets"),
-            std::path::Path::new(r"D:\sessions\state"),
-            "ws://127.0.0.1:39000/?token=abc",
-            None,
-            None,
-            crate::config::AppEnv::Dev,
-            &[],
-            true,
-        )
-        .unwrap();
+    fn an_unreadable_host_config_does_not_block_the_launch() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("lxapp");
+        fs::create_dir(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+        fs::write(temp.path().join(HOST_CONFIG_FILE), "app: [unclosed\n").unwrap();
 
-        assert!(args.windows(2).any(|pair| pair == ["--capsule", "0"]));
+        assert!(super::host_home_app_id(&lxapp, "demo-home").is_none());
     }
 
     #[test]

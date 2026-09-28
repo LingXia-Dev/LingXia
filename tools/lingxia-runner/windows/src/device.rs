@@ -200,7 +200,8 @@ fn visual_bezel_width(preset: &DevicePreset) -> i32 {
     preset.bezel_width.max(0)
 }
 
-pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
+/// `capsule`: whether the lxapp in this frame gets the simulated host capsule.
+pub(crate) fn frame_spec(index: usize, landscape: bool, capsule: bool) -> WindowsDeviceFrame {
     let preset = &presets()[index];
     // Landscape swaps the screen's long and short edges; the bezel, radii, and
     // toolbar follow the new width automatically.
@@ -245,13 +246,12 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
             rotate_command: Some(ROTATE_COMMAND),
             appearance_command: Some(APPEARANCE_COMMAND),
             appearance_dark: crate::runner::effective_appearance_dark(),
-            capsule_items: if is_phone(index) && crate::runner::capsule_enabled() {
+            capsule_items: if is_phone(index) && capsule {
                 capsule_menu_items()
             } else {
                 Vec::new()
             },
-            capsule_close_command: (is_phone(index) && crate::runner::capsule_enabled())
-                .then_some(CAPSULE_CLOSE_COMMAND),
+            capsule_close_command: (is_phone(index) && capsule).then_some(CAPSULE_CLOSE_COMMAND),
             // Phones/tablets are handheld mockups: the toolbar's macOS-style
             // dots own close/minimize. A simulated desktop keeps the standard
             // Windows caption buttons in the shell chrome instead.
@@ -263,12 +263,7 @@ pub(crate) fn frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
 /// Browser chrome already owns dismissal and tab actions. Keep the simulated
 /// device selector/rotation controls, but do not overlay lxapp capsule actions.
 pub(crate) fn browser_frame_spec(index: usize, landscape: bool) -> WindowsDeviceFrame {
-    let mut frame = frame_spec(index, landscape);
-    if let Some(toolbar) = frame.toolbar.as_mut() {
-        toolbar.capsule_items.clear();
-        toolbar.capsule_close_command = None;
-    }
-    frame
+    frame_spec(index, landscape, false)
 }
 
 #[cfg(test)]
@@ -278,7 +273,7 @@ mod tests {
     #[test]
     fn frame_spec_uses_manifest_device_shell() {
         for (index, preset) in presets().iter().enumerate() {
-            let frame = frame_spec(index, false);
+            let frame = frame_spec(index, false, true);
             assert_eq!(
                 frame.bezel_width,
                 preset.bezel_width.max(0),
@@ -302,7 +297,7 @@ mod tests {
     fn rotating_keeps_the_device_shell_and_swaps_the_screen() {
         let index = default_device_index();
         let preset = &presets()[index];
-        let frame = frame_spec(index, true);
+        let frame = frame_spec(index, true, true);
 
         assert_eq!(frame.screen_width, preset.height);
         assert_eq!(frame.screen_height, preset.width);
