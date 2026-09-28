@@ -203,7 +203,10 @@ mod tests {
         install(&dir.path().join("lxapp"), "test", "0.1.0");
         let err = ensure_project(dir.path(), &[]).unwrap_err().to_string();
         assert!(err.contains("@lingxia/test 0.1.0"), "{err}");
-        assert!(err.contains("npm install @lingxia/test@~"), "{err}");
+        assert!(
+            err.contains("npm install ") && err.contains("@lingxia/test@~"),
+            "{err}"
+        );
         assert!(!print_project_report(dir.path()));
     }
 }

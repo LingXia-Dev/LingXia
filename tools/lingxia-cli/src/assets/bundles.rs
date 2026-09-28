@@ -533,6 +533,8 @@ fn validate_browser_webui_metadata(metadata: &LxAppMetadata, path: &Path) -> Res
 fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
     let mut hasher = sha2::Sha256::new();
     hasher.update(b"bundle");
+    // The build output depends on the CLI that bundles it, not just the sources.
+    hasher.update(cli_build_identity().as_bytes());
     hasher.update(path_key(&plan.bundle_dir).as_bytes());
     hasher.update(hash_tree(
         &plan.bundle_dir,
@@ -540,6 +542,27 @@ fn hash_resource_bundle_inputs(plan: &ResourceBundlePlan) -> Result<String> {
     )?);
 
     Ok(sha256_hex(&hasher.finalize()))
+}
+
+/// The CLI build that produces bundles. Dirty builds share a version string, so
+/// they add the executable's size and modification time.
+fn cli_build_identity() -> String {
+    let version = env!("LINGXIA_BUILD_VERSION");
+    if !version.contains("-dirty") {
+        return version.to_string();
+    }
+    let stamp = std::env::current_exe()
+        .and_then(std::fs::metadata)
+        .map(|meta| {
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+                .map_or(0, |elapsed| elapsed.as_nanos());
+            format!("{}:{modified}", meta.len())
+        })
+        .unwrap_or_default();
+    format!("{version}+{stamp}")
 }
 
 pub(super) fn bundle_hashes(bundles: &[PreparedResourceBundle]) -> BTreeMap<String, String> {
