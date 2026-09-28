@@ -156,6 +156,73 @@ test("the runner's own timers are not reported as spec work", async () => {
   assert.match(recovered.message, /pending: an awaited promise that no timer/);
 });
 
+/** A Rong host object: callable, with its methods on its prototype only. */
+function hostObject(name, methods, properties = {}) {
+  const proto = Object.create(Function.prototype);
+  for (const method of methods) proto[method] = function () { return name; };
+  Object.defineProperty(proto, Symbol.toStringTag, { value: name });
+  const object = Object.setPrototypeOf(function () {}, proto);
+  for (const [key, value] of Object.entries(properties)) {
+    Object.defineProperty(proto, key, { get() { return value; } });
+  }
+  return object;
+}
+
+test("a live spec reads every host tier through rawAutomation() with its full surface; an abandoned spec's root refuses", async () => {
+  const surfaces = {
+    shell: ["pins", "setPin", "reorderPins"],
+    terminal: ["input", "newTab", "setMaximized", "snapshot", "split"],
+    lxapps: ["applink", "close", "current", "list", "open", "restart", "screenshot", "uninstall", "windows"],
+    device: ["get", "list", "set"],
+    browser: ["activate", "back", "click", "close", "current", "eval", "open", "tabs"],
+    desktop: ["displays", "doctor", "screenshot", "snapshot", "windows"],
+  };
+  const desktopPointer = hostObject("DesktopPointer", ["click", "move"]);
+  const hostTiers = Object.fromEntries(Object.entries(surfaces).map(([name, members]) => [
+    name,
+    hostObject(name, members, name === "desktop" ? { pointer: desktopPointer } : name === "browser" ? { cookies: hostObject("BrowserCookies", ["get", "set"]) } : {}),
+  ]));
+  installFakeHost(createWorld(), { hostTiers });
+  // The surface test's own reads: property reads and `typeof` per member.
+  const readMember = (record, name) => { try { return { unbuilt: false, value: record[name] }; } catch { return { unbuilt: true, value: undefined }; } };
+  const inspect = (target, members) => members
+    .map((name) => ({ name, ...readMember(target, name) }))
+    .filter((member) => member.unbuilt || typeof member.value !== "function")
+    .map((member) => member.name);
+  const seen = {};
+  let kept;
+  let lateRead;
+  let release;
+  const late = new Promise((resolve) => { release = resolve; });
+
+  spec("reads the surface", async () => {
+    for (const [name, members] of Object.entries(surfaces)) {
+      const tier = rawAutomation()[name];
+      seen[name] = { same: tier === hostTiers[name], broken: inspect(tier, members) };
+    }
+    seen.pointer = inspect(rawAutomation().desktop.pointer, ["click", "move"]);
+    seen.cookies = inspect(rawAutomation().browser.cookies, ["get", "set"]);
+    seen.lxapp = typeof rawAutomation().lxapp().eval;
+  });
+  spec("abandoned", { timeout: 20, forensics: false }, async () => {
+    kept = rawAutomation();
+    await late;
+    try { void kept.shell; lateRead = "read"; } catch (error) { lateRead = error.code; }
+  });
+  spec("after it", async () => { release(); });
+
+  const report = await run();
+  for (const [name] of Object.entries(surfaces)) {
+    assert.deepEqual(seen[name], { same: true, broken: [] }, name);
+  }
+  assert.deepEqual(seen.pointer, []);
+  assert.deepEqual(seen.cookies, []);
+  assert.equal(seen.lxapp, "function");
+  assert.deepEqual(report.cases.map((c) => c.status), ["passed", "timeout", "passed"]);
+  for (let i = 0; i < 5 && lateRead === undefined; i += 1) await new Promise((resolve) => setTimeout(resolve, 5));
+  assert.equal(lateRead, "E_AUTOMATION_PRIVILEGE", "the abandoned spec's handle refuses");
+});
+
 test("rawAutomation hands the host tiers out as the native objects", () => {
   const lxapps = { async list() { return []; } };
   installFakeHost(createWorld(), { lxapps });

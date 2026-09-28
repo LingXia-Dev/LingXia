@@ -234,13 +234,19 @@ export function trackAutomationRoot<T extends object>(root: T): T {
     get(target, prop) {
       checkGrant(grant);
       const value: unknown = Reflect.get(target, prop, target);
-      if (typeof value !== "function") {
-        // A host tier is handed out as the native object and cannot be
-        // fenced here once read: the run notes it, and stops rather than
-        // continue past a spec abandoned while holding one.
-        if (value && typeof value === "object") grant.unfenced.add(String(prop));
+      if (isAccessor(target, prop) || (value !== null && typeof value === "object")) {
+        // A host tier (`shell`, `lxapps`, `desktop`, …) comes from a getter.
+        // It is handed out as the native object, whatever `typeof` says (a
+        // Rong host object can be callable): wrapping it hides the methods
+        // on its prototype. It cannot be fenced here once read, so the run
+        // notes it, and stops rather than continue past a spec abandoned
+        // while holding one.
+        if (value !== null && (typeof value === "object" || typeof value === "function")) {
+          grant.unfenced.add(String(prop));
+        }
         return value;
       }
+      if (typeof value !== "function") return value;
       if (prop !== "lxapp") {
         return (...args: unknown[]) => {
           checkGrant(grant);
@@ -259,6 +265,15 @@ export function trackAutomationRoot<T extends object>(root: T): T {
       };
     },
   });
+}
+
+/** Whether `prop` of `target` (or its prototype chain) is a getter. */
+function isAccessor(target: object, prop: PropertyKey): boolean {
+  for (let owner: object | null = target; owner; owner = Object.getPrototypeOf(owner) as object | null) {
+    const descriptor = Object.getOwnPropertyDescriptor(owner, prop);
+    if (descriptor) return typeof descriptor.get === "function";
+  }
+  return false;
 }
 
 /** Put the test context's own timers and `fetch` back. */
