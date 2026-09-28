@@ -396,7 +396,7 @@ fn require_home() -> Result<PathBuf> {
     dirs::home_dir().ok_or_else(|| anyhow!("Unable to determine the user home directory"))
 }
 
-/// LingXia state under `home`. `home` stays the real home for `.claude` /
+/// LingXia state under `home`. `home` stays the real home for `.agents` /
 /// `.local/bin` assets; tests pass a temp home, so the `LINGXIA_HOME` override
 /// is ignored there to keep them hermetic.
 fn lingxia_state_root(home: &Path) -> PathBuf {
@@ -614,10 +614,14 @@ fn remove_from(home: &Path, name: &str) -> Result<()> {
         let Some(name) = source.file_name() else {
             continue;
         };
-        let target = home.join(".claude").join("skills").join(name);
+        let target = super::skill::skills_root(home).join(name);
         if target.exists() {
             ensure_skill_owned(&target, &installed.slug)?;
             fs::remove_dir_all(target)?;
+        }
+        let legacy = home.join(".claude").join("skills").join(name);
+        if skill_is_owned_by(&legacy, &installed.slug) {
+            fs::remove_dir_all(legacy)?;
         }
     }
     fs::remove_dir_all(installed.root)?;
@@ -818,7 +822,11 @@ fn assets_are_current(
         let Some(name) = source.file_name() else {
             return Ok(false);
         };
-        let target = home.join(".claude").join("skills").join(name);
+        let legacy = home.join(".claude").join("skills").join(name);
+        if skill_is_owned_by(&legacy, &template.slug) {
+            return Ok(false);
+        }
+        let target = super::skill::skills_root(home).join(name);
         if !skill_is_owned_by(&target, &template.slug) {
             return Ok(false);
         }
@@ -846,7 +854,12 @@ fn asset_targets(
             let name = skill
                 .file_name()
                 .ok_or_else(|| anyhow!("Template skill has no directory name"))?;
-            targets.insert(home.join(".claude").join("skills").join(name), ());
+            targets.insert(super::skill::skills_root(home).join(name), ());
+            // Retire only this provider's old copy in the same rollback transaction.
+            let legacy = home.join(".claude").join("skills").join(name);
+            if skill_is_owned_by(&legacy, &template.slug) {
+                targets.insert(legacy, ());
+            }
         }
     }
     Ok(targets.into_keys().collect())
@@ -877,7 +890,7 @@ fn validate_asset_ownership(
             let name = skill
                 .file_name()
                 .ok_or_else(|| anyhow!("Template skill has no directory name"))?;
-            let target = home.join(".claude").join("skills").join(name);
+            let target = super::skill::skills_root(home).join(name);
             if target.exists() {
                 ensure_skill_owned(&target, &template.slug)?;
             }
@@ -979,7 +992,7 @@ fn shell_quote(value: &str) -> String {
 }
 
 fn install_skills(home: &Path, template: &InstalledTemplate) -> Result<()> {
-    let skills_root = home.join(".claude").join("skills");
+    let skills_root = super::skill::skills_root(home);
     fs::create_dir_all(&skills_root)?;
     for skill in &template.manifest.skills {
         let source = resolve_owned_path(&template.root, skill, "skill")?;
@@ -1477,7 +1490,7 @@ mod tests {
         )
         .unwrap();
         let home = tempdir().unwrap();
-        let user_skill = home.path().join(".claude/skills/example");
+        let user_skill = home.path().join(".agents/skills/example");
         fs::create_dir_all(&user_skill).unwrap();
         fs::write(user_skill.join("SKILL.md"), "user\n").unwrap();
         let template = InstalledTemplate {
@@ -1488,12 +1501,34 @@ mod tests {
             commit: "test".to_owned(),
         };
 
+        let legacy = home.path().join(".claude/skills/example");
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join("SKILL.md"), "previous").unwrap();
+        fs::write(legacy.join(SKILL_OWNER_FILE), &template.slug).unwrap();
         assert!(sync_assets(home.path(), &template, None).is_err());
+        assert_eq!(
+            fs::read_to_string(legacy.join("SKILL.md")).unwrap(),
+            "previous"
+        );
         assert_eq!(
             fs::read_to_string(user_skill.join("SKILL.md")).unwrap(),
             "user\n"
         );
         assert!(!home.path().join(".local/bin/example").exists());
+        fs::remove_dir_all(&user_skill).unwrap();
+        sync_assets(home.path(), &template, None).unwrap();
+        assert!(!legacy.exists());
+        assert_eq!(
+            fs::read_to_string(user_skill.join("SKILL.md")).unwrap(),
+            "provider\n"
+        );
+        fs::create_dir_all(&legacy).unwrap();
+        fs::write(legacy.join(SKILL_OWNER_FILE), &template.slug).unwrap();
+        sync_assets(home.path(), &template, None).unwrap();
+        assert!(
+            !legacy.exists(),
+            "retire the old copy even when the new copy is current"
+        );
     }
 
     #[test]
@@ -1534,7 +1569,7 @@ mod tests {
         let launcher = launcher_path(&home.path().join(".local/bin"), "example");
         assert!(launcher.is_file());
         assert_eq!(
-            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md"))
+            fs::read_to_string(home.path().join(".agents/skills/example/SKILL.md"))
                 .unwrap()
                 .trim_end(),
             "first"
@@ -1556,7 +1591,7 @@ mod tests {
         let second = update_from(home.path(), "example").unwrap();
         assert_ne!(first.commit, second.commit);
         assert_eq!(
-            fs::read_to_string(home.path().join(".claude/skills/example/SKILL.md"))
+            fs::read_to_string(home.path().join(".agents/skills/example/SKILL.md"))
                 .unwrap()
                 .trim_end(),
             "second"
@@ -1574,12 +1609,12 @@ mod tests {
         git(source.path(), &["commit", "-q", "-m", "remove assets"]);
         update_from(home.path(), "example").unwrap();
         assert!(!launcher.exists());
-        assert!(!home.path().join(".claude/skills/example").exists());
+        assert!(!home.path().join(".agents/skills/example").exists());
 
         remove_from(home.path(), "example").unwrap();
         assert!(!home.path().join(".lingxia/templates/example").exists());
         assert!(!launcher.exists());
-        assert!(!home.path().join(".claude/skills/example").exists());
+        assert!(!home.path().join(".agents/skills/example").exists());
     }
 
     #[test]
@@ -1621,7 +1656,7 @@ mod tests {
         };
 
         sync_assets(home.path(), &template, None).unwrap();
-        let installed = home.path().join(".claude/skills/example/SKILL.md");
+        let installed = home.path().join(".agents/skills/example/SKILL.md");
         assert!(assets_are_current(home.path(), &template, Some(&template)).unwrap());
 
         fs::write(&installed, "edited by hand\n").unwrap();

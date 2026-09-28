@@ -103,13 +103,13 @@ lxdev lxapp nav to home
 
 LingXia 的深度参考以可移植的 markdown **技能**形式分发——决策树、每条 CLI 命令、页面编写、原生组件、`lx.*` 逻辑 API 与 Rust 接口，经过编排，让助手直接路由到所需章节。
 
-技能编译在 CLI 内部，写出的副本永远对应你正在运行的那个 `lingxia`。`lingxia new` 会把它写入 `~/.claude/skills/lingxia/`；克隆来的项目运行 `lingxia skill install`。之后任意一条命令只要发现磁盘上的副本与自己携带的不一致就会重写——升级之后如此，你自己编译一个 CLI 之后同样如此。
+技能编译在 CLI 内部，写出的副本永远对应你正在运行的那个 `lingxia`。`lingxia new` 会把它写入 `~/.agents/skills/lingxia/`；克隆来的项目运行 `lingxia skill install`。之后任意一条命令只要发现磁盘上的副本与自己携带的不一致就会重写——升级之后如此，你自己编译一个 CLI 之后同样如此。
 
 ```bash
 lingxia skill install       # 写入技能，并刷新本项目 AGENTS.md 中的指引
 lingxia version --verbose   # 末尾一行：skill: <path> (in sync)
 ```
 
-- **Claude Code / Claude Agent SDK** —— 自动发现 `~/.claude/skills/lingxia/SKILL.md`。
-- **OpenAI Codex CLI** —— 读取 `<project>/AGENTS.md`，`lingxia new` 已把它指向该技能。
-- **Cursor、Copilot 及其他读 markdown 的助手** —— 把工具指向 `~/.claude/skills/lingxia/SKILL.md`。
+按项目 `AGENTS.md` 的指引读取 `~/.agents/skills/lingxia/SKILL.md`。
+若助手需要显式注册 skill，在它的 skill 设置中添加 `~/.agents/skills/lingxia/`。
+CLI 成功写入新副本后，会删除旧的 `~/.claude/skills/lingxia/` 副本。

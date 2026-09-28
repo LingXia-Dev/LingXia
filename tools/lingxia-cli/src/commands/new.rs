@@ -352,8 +352,8 @@ fn select_template_provider(name: Option<&str>, yes: bool) -> Result<Option<Inst
 
 /// Set up AI tooling (the LingXia agent skill) in the freshly created project.
 ///
-/// Not a choice to make: the skill body goes to `~/.claude/skills/` (shared by
-/// every LingXia project, discovered by Claude Code) rather than being vendored
+/// Not a choice to make: the skill body goes to `~/.agents/skills/` (shared by
+/// every LingXia project, independent of agent tooling) rather than being vendored
 /// per repo, and the project gets a small, committable `AGENTS.md` pointer for
 /// tools that only read a project-level AGENTS.md. Both belong to the scaffold
 /// like any other generated file, and every later CLI run keeps the skill in

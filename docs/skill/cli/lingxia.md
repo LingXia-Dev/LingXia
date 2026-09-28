@@ -156,8 +156,9 @@ lingxia doctor --project   # this CLI vs the project's @lingxia/* packages
 
 ## `lingxia skill install`
 
-Writes the skill to `~/.claude/skills/lingxia/` and refreshes the pointer in
-the nearest `AGENTS.md` that has one. `lingxia new` and `lingxia upgrade` do
+Writes the skill to `~/.agents/skills/lingxia/` and refreshes the pointer in
+the nearest `AGENTS.md` that has one. The old Claude-specific copy is removed
+only after installation succeeds. `lingxia new` and `lingxia upgrade` do
 this themselves; afterwards every `lingxia` command keeps the copy in step
 (`--skip-skill` or `LINGXIA_SKIP_SKILL=1` turns that off, for CI).
 

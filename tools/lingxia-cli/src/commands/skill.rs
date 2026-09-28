@@ -43,9 +43,51 @@ pub enum Sync {
 /// asking for something that contains it -- `lingxia new`, `lingxia upgrade`.
 /// Every other run only corrects a copy that already exists, or writes one when
 /// a skills root is already there to receive it: a machine that has never run
-/// an agent does not grow a `~/.claude` because a build ran.
+/// an agent does not grow a `~/.agents` because a build ran.
 pub fn sync_home_skill(create_if_missing: bool) -> Result<Sync> {
-    sync(&user_destination()?, create_if_missing)
+    let home = home_dir()?;
+    let result = sync_for_home(&home, create_if_missing)?;
+    if !matches!(result, Sync::Skipped) {
+        refresh_pointer(
+            &std::env::current_dir()?,
+            &skills_root(&home).join(SKILL_DIR_NAME),
+        )?;
+    }
+    Ok(result)
+}
+
+pub(crate) fn skills_root(home: &Path) -> PathBuf {
+    home.join(".agents").join("skills")
+}
+
+fn sync_for_home(home: &Path, create_if_missing: bool) -> Result<Sync> {
+    let dest = skills_root(home).join(SKILL_DIR_NAME);
+    let legacy = home.join(".claude").join("skills").join(SKILL_DIR_NAME);
+    let result = sync(
+        &dest,
+        create_if_missing || legacy.join("SKILL.md").is_file(),
+    )?;
+    if !matches!(result, Sync::Skipped) {
+        remove_legacy_skill(&legacy)?;
+    }
+    Ok(result)
+}
+
+fn remove_legacy_skill(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.is_dir() => fs::remove_dir_all(path),
+        Ok(_) => fs::remove_file(path),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => Err(error),
+    }
+    .with_context(|| format!("Failed to remove the old skill at {}", path.display()))
+}
+
+fn refresh_pointer(cwd: &Path, dest: &Path) -> Result<()> {
+    if let Some(project_dir) = pointer_project(cwd) {
+        write_agents_pointer(&project_dir, dest)?;
+    }
+    Ok(())
 }
 
 fn sync(dest: &Path, create_if_missing: bool) -> Result<Sync> {
@@ -87,17 +129,14 @@ fn skills_root_exists(dest: &Path) -> bool {
 /// a pointer an older CLI wrote may name a command that no longer exists.
 pub fn install(cwd: &Path) -> Result<()> {
     let dest = user_destination()?;
-    match sync(&dest, true)? {
+    match sync_for_home(&home_dir()?, true)? {
         Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
         Sync::Rewritten { .. } => println!("Updated the LingXia skill at {}", dest.display()),
         Sync::Created | Sync::Skipped => {
             println!("Installed the LingXia skill to {}", dest.display())
         }
     }
-    if let Some(project_dir) = pointer_project(cwd) {
-        write_agents_pointer(&project_dir, &dest)?;
-    }
-    Ok(())
+    refresh_pointer(cwd, &dest)
 }
 
 /// The nearest directory at or above `cwd` whose `AGENTS.md` carries this
@@ -114,7 +153,7 @@ fn pointer_project(cwd: &Path) -> Option<PathBuf> {
 /// directory, a committable pointer in the project.
 pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
     let dest = user_destination()?;
-    match sync(&dest, true)? {
+    match sync_for_home(&home_dir()?, true)? {
         Sync::Current => println!("The LingXia skill at {} is current", dest.display()),
         _ => println!("Installed the LingXia skill to {}", dest.display()),
     }
@@ -123,10 +162,7 @@ pub fn install_for_new_project(project_dir: &Path) -> Result<()> {
 
 /// The home-directory skill, shared by every project.
 pub fn user_destination() -> Result<PathBuf> {
-    Ok(home_dir()?
-        .join(".claude")
-        .join("skills")
-        .join(SKILL_DIR_NAME))
+    Ok(skills_root(&home_dir()?).join(SKILL_DIR_NAME))
 }
 
 /// One line for `lingxia version --verbose`: where the skill is, and whether it
@@ -301,7 +337,6 @@ fn write_agents_pointer(project_dir: &Path, dest: &Path) -> Result<()> {
         }
     };
     fs::write(&path, body).with_context(|| format!("Failed to write {}", path.display()))?;
-    println!("Pointed {} at the skill", path.display());
     Ok(())
 }
 
@@ -324,13 +359,12 @@ fn agents_block(skill_ref: &str) -> String {
     format!(
         "{AGENTS_MARKER}\n\
 ## LingXia\n\n\
-This project uses the LingXia cross-platform app framework. The development\n\
-skill -- decision tree, recipes, CLI / component / native API references --\n\
-lives at:\n\n\
+Read the LingXia development skill before working on this host app or lxapp:\n\n\
     {skill_ref}/SKILL.md\n\n\
 If it is missing, run `lingxia skill install`. The `lingxia` CLI rewrites it\n\
 whenever it changes, so it always describes the CLI installed on this machine.\n\n\
-Start there. Sub-references are linked from that file using relative paths.\n\
+If your agent needs skills registered explicitly, add this directory in its\n\
+skill settings. Follow relative links from SKILL.md only as needed.\n\
 {AGENTS_MARKER}\n"
     )
 }
@@ -367,7 +401,7 @@ mod tests {
     use super::*;
 
     fn skill_dir(root: &Path) -> PathBuf {
-        root.join(".claude").join("skills").join(SKILL_DIR_NAME)
+        skills_root(root).join(SKILL_DIR_NAME)
     }
 
     #[test]
@@ -386,6 +420,38 @@ mod tests {
         assert!(matches!(sync(&dest, false).unwrap(), Sync::Created));
         assert!(dest.join("SKILL.md").is_file());
         assert!(matches!(sync(&dest, false).unwrap(), Sync::Current));
+    }
+
+    #[test]
+    fn an_old_install_moves_without_an_explicit_install_command() {
+        let home = TempDir::new().unwrap();
+        let old = home.path().join(".claude/skills/lingxia");
+        let other = home.path().join(".claude/skills/unrelated");
+        fs::create_dir_all(&old).unwrap();
+        fs::create_dir_all(&other).unwrap();
+        fs::write(old.join("SKILL.md"), "old").unwrap();
+        assert!(matches!(
+            sync_for_home(home.path(), false).unwrap(),
+            Sync::Created
+        ));
+        assert!(!old.exists());
+        assert!(other.is_dir());
+        assert!(skill_dir(home.path()).join("SKILL.md").is_file());
+        assert!(matches!(
+            sync_for_home(home.path(), false).unwrap(),
+            Sync::Current
+        ));
+    }
+
+    #[test]
+    fn a_failed_install_preserves_the_old_skill() {
+        let home = TempDir::new().unwrap();
+        let old = home.path().join(".claude/skills/lingxia");
+        fs::create_dir_all(&old).unwrap();
+        fs::write(old.join("SKILL.md"), "old").unwrap();
+        fs::write(home.path().join(".agents"), "not a directory").unwrap();
+        assert!(sync_for_home(home.path(), true).is_err());
+        assert_eq!(fs::read_to_string(old.join("SKILL.md")).unwrap(), "old");
     }
 
     #[test]
@@ -422,7 +488,7 @@ mod tests {
 
     #[test]
     fn the_pointer_names_the_install_command() {
-        let block = agents_block("~/.claude/skills/lingxia");
+        let block = agents_block("~/.agents/skills/lingxia");
         assert!(block.contains("run `lingxia skill install`."));
         assert!(!block.contains("--user"));
         assert!(!block.contains("npx"));

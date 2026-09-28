@@ -188,7 +188,7 @@ export const ui = {
         'Agent control for shipped products: appUse, computerUse, browserUse',
       ],
       setupNote:
-        'lingxia new or lingxia skill install writes it to ~/.claude/skills/lingxia/; every later command rewrites it whenever the two differ.',
+        'lingxia new or lingxia skill install writes it to ~/.agents/skills/lingxia/; every later command rewrites it whenever the two differ.',
       tools: 'Claude Code · OpenAI Codex CLI · Cursor · any markdown-reading agent',
       codexLabel: 'For Codex-style tools (writes AGENTS.md)',
     },
@@ -416,7 +416,7 @@ export const ui = {
         '交付产品的 agent 控制面：appUse、computerUse、browserUse',
       ],
       setupNote:
-        'lingxia new 或 lingxia skill install 会把它写入 ~/.claude/skills/lingxia/；之后任意命令发现两者不一致就重写。',
+        'lingxia new 或 lingxia skill install 会把它写入 ~/.agents/skills/lingxia/；之后任意命令发现两者不一致就重写。',
       tools: 'Claude Code · OpenAI Codex CLI · Cursor · 任意读 markdown 的助手',
       codexLabel: '面向 Codex 类工具（会写入 AGENTS.md）',
     },
