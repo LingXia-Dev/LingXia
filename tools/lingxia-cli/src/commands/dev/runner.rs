@@ -20,6 +20,11 @@ const RUNNER_ENV_ENV: &str = "LINGXIA_RUNNER_ENV";
 const RUNNER_DISPLAY_LANGUAGE_ENV: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const RUNNER_HEADLESS_ENV: &str = "LINGXIA_RUNNER_HEADLESS";
 const RUNNER_HEADLESS_ARG: &str = "--headless";
+/// `0` hides the simulated host capsule for this launch. A real host draws
+/// none on its home lxapp; the Runner matches that when the parent directory
+/// is that host.
+const RUNNER_CAPSULE_ENV: &str = "LINGXIA_RUNNER_CAPSULE";
+const RUNNER_CAPSULE_ARG: &str = "--capsule";
 /// Marks the child process as the LingXia Runner (vs a real host app). The core
 /// runtime injects `runner:true` into `__LX_BRIDGE_CFG` so the View bridge can
 /// expose `platform.isRunner()`; the Runner lacks host-declared surfaces like
@@ -458,6 +463,10 @@ fn launch_runner_for_lxapp(
     if let Some(language) = display_language.map(str::trim).filter(|s| !s.is_empty()) {
         command.env(RUNNER_DISPLAY_LANGUAGE_ENV, language);
     }
+    if runner_hides_capsule(lxapp_path)? {
+        command.env(RUNNER_CAPSULE_ENV, "0");
+        note_hidden_capsule();
+    }
     command.stdin(Stdio::null());
     command.stdout(Stdio::null());
     command.stderr(Stdio::null());
@@ -560,29 +569,92 @@ struct WindowsRunnerResourceLxAppPath {
     path: String,
 }
 
-fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunnerLxAppIdentity> {
+fn lxapp_manifest_path(lxapp_path: &Path) -> PathBuf {
     let dist_manifest = lxapp_path.join("dist").join("lxapp.json");
-    let manifest_path = if dist_manifest.exists() {
+    if dist_manifest.exists() {
         dist_manifest
     } else {
         lxapp_path.join("lxapp.json")
-    };
+    }
+}
+
+fn read_lxapp_app_id(lxapp_path: &Path) -> Result<String> {
+    let manifest_path = lxapp_manifest_path(lxapp_path);
     let content = std::fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
     let manifest: serde_json::Value = serde_json::from_str(&content)
         .with_context(|| format!("Invalid JSON in {}", manifest_path.display()))?;
-    let field = |name: &str| -> Result<String> {
-        manifest
-            .get(name)
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToOwned::to_owned)
-            .ok_or_else(|| anyhow!("Missing or empty \"{name}\" in {}", manifest_path.display()))
+    manifest_string_field(&manifest, &manifest_path, "appId")
+}
+
+fn manifest_string_field(
+    manifest: &serde_json::Value,
+    manifest_path: &Path,
+    name: &str,
+) -> Result<String> {
+    manifest
+        .get(name)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| anyhow!("Missing or empty \"{name}\" in {}", manifest_path.display()))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ParentHostConfig {
+    #[serde(default)]
+    app: Option<ParentHostApp>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ParentHostApp {
+    #[serde(default, rename = "homeAppId")]
+    home_app_id: Option<String>,
+}
+
+/// Hide the capsule when the directory above this lxapp is a host app whose
+/// `homeAppId` is this lxapp. One level only — a `lingxia.yaml` further up
+/// belongs to a different project.
+fn runner_hides_capsule(lxapp_path: &Path) -> Result<bool> {
+    let Some(parent) = lxapp_path.parent() else {
+        return Ok(false);
     };
+    let config_path = parent.join(crate::config::HOST_CONFIG_FILE);
+    if !config_path.is_file() {
+        return Ok(false);
+    }
+    let content = std::fs::read_to_string(&config_path)
+        .with_context(|| format!("Failed to read {}", config_path.display()))?;
+    let config: ParentHostConfig = serde_yaml_ng::from_str(&content)
+        .with_context(|| format!("Failed to parse {}", config_path.display()))?;
+    let Some(home_app_id) = config
+        .app
+        .and_then(|app| app.home_app_id)
+        .map(|id| id.trim().to_string())
+        .filter(|id| !id.is_empty())
+    else {
+        return Ok(false);
+    };
+    Ok(read_lxapp_app_id(lxapp_path)? == home_app_id)
+}
+
+fn note_hidden_capsule() {
+    println!(
+        "{} Capsule hidden (home lxapp of the parent app)",
+        "[runner]".cyan()
+    );
+}
+
+fn read_windows_runner_lxapp_identity(lxapp_path: &Path) -> Result<WindowsRunnerLxAppIdentity> {
+    let manifest_path = lxapp_manifest_path(lxapp_path);
+    let content = std::fs::read_to_string(&manifest_path)
+        .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
+    let manifest: serde_json::Value = serde_json::from_str(&content)
+        .with_context(|| format!("Invalid JSON in {}", manifest_path.display()))?;
     Ok(WindowsRunnerLxAppIdentity {
-        app_id: field("appId")?,
-        version: field("version")?,
+        app_id: manifest_string_field(&manifest, &manifest_path, "appId")?,
+        version: manifest_string_field(&manifest, &manifest_path, "version")?,
     })
 }
 
@@ -752,6 +824,10 @@ fn launch_windows_runner_for_lxapp(
     let resource_lxapp_paths = windows_runner_resource_lxapp_paths(lxapp_path, &identity)?;
     let exe_path = installed_windows_runner_exe_path()?;
     terminate_existing_windows_runner_processes(&exe_path, ws_url)?;
+    let hide_capsule = runner_hides_capsule(lxapp_path)?;
+    if hide_capsule {
+        note_hidden_capsule();
+    }
     let launch_args = windows_runner_launch_args(
         lxapp_path,
         &assets_dir,
@@ -763,6 +839,7 @@ fn launch_windows_runner_for_lxapp(
         display_language,
         runner_env,
         &resource_lxapp_paths,
+        hide_capsule,
     )?;
 
     #[cfg(target_os = "windows")]
@@ -906,6 +983,7 @@ fn windows_web_runner_launch_args(
     launch_args
 }
 
+#[allow(clippy::too_many_arguments)]
 fn windows_runner_launch_args(
     lxapp_path: &Path,
     assets_dir: &Path,
@@ -915,6 +993,7 @@ fn windows_runner_launch_args(
     display_language: Option<&str>,
     runner_env: crate::config::AppEnv,
     resource_lxapp_paths: &[WindowsRunnerResourceLxAppPath],
+    hide_capsule: bool,
 ) -> Result<Vec<String>> {
     let mut args = vec![
         "--lxapp-path".to_string(),
@@ -939,6 +1018,10 @@ fn windows_runner_launch_args(
     if !resource_lxapp_paths.is_empty() {
         args.push("--resource-lxapp-paths".to_string());
         args.push(serde_json::to_string(resource_lxapp_paths)?);
+    }
+    if hide_capsule {
+        args.push(RUNNER_CAPSULE_ARG.to_string());
+        args.push("0".to_string());
     }
     Ok(args)
 }
@@ -1626,6 +1709,7 @@ mod tests {
             Some("zh-CN"),
             crate::config::AppEnv::Dev,
             &resources,
+            false,
         )
         .unwrap();
 
@@ -1650,6 +1734,108 @@ mod tests {
                 .any(|pair| pair == ["--display-language", "zh-CN"])
         );
         assert!(args.iter().any(|arg| arg.contains("com.example.extra")));
+        assert!(!args.iter().any(|arg| arg == "--capsule"));
+    }
+
+    fn write_lxapp(dir: &std::path::Path, app_id: &str) {
+        fs::write(
+            dir.join("lxapp.json"),
+            format!(r#"{{"appId":"{app_id}","version":"0.0.1"}}"#),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn parent_host_home_lxapp_hides_the_capsule() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("lxapp");
+        fs::create_dir(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+        fs::write(
+            temp.path().join(HOST_CONFIG_FILE),
+            "app:\n  homeAppId: demo-home\n",
+        )
+        .unwrap();
+
+        assert!(super::runner_hides_capsule(&lxapp).unwrap());
+    }
+
+    #[test]
+    fn a_different_home_app_keeps_the_capsule() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("lxapp");
+        fs::create_dir(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+        fs::write(
+            temp.path().join(HOST_CONFIG_FILE),
+            "app:\n  homeAppId: other-app\n",
+        )
+        .unwrap();
+
+        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
+    }
+
+    #[test]
+    fn no_parent_host_keeps_the_capsule() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("lxapp");
+        fs::create_dir(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+
+        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
+    }
+
+    #[test]
+    fn a_host_two_levels_up_does_not_hide_the_capsule() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("pkg").join("lxapp");
+        fs::create_dir_all(&lxapp).unwrap();
+        write_lxapp(&lxapp, "demo-home");
+        fs::write(
+            temp.path().join(HOST_CONFIG_FILE),
+            "app:\n  homeAppId: demo-home\n",
+        )
+        .unwrap();
+
+        assert!(!super::runner_hides_capsule(&lxapp).unwrap());
+    }
+
+    #[test]
+    fn built_bundle_app_id_is_what_the_parent_host_matches() {
+        let temp = tempdir().unwrap();
+        let lxapp = temp.path().join("lxapp");
+        fs::create_dir_all(lxapp.join("dist")).unwrap();
+        write_lxapp(&lxapp, "project-id");
+        fs::write(
+            lxapp.join("dist").join("lxapp.json"),
+            r#"{"appId":"demo-home","version":"0.0.1"}"#,
+        )
+        .unwrap();
+        fs::write(
+            temp.path().join(HOST_CONFIG_FILE),
+            "app:\n  homeAppId: demo-home\n",
+        )
+        .unwrap();
+
+        assert!(super::runner_hides_capsule(&lxapp).unwrap());
+    }
+
+    #[test]
+    fn windows_runner_launch_args_hide_capsule_for_the_home_lxapp() {
+        let args = windows_runner_launch_args(
+            std::path::Path::new(r"D:\apps\home"),
+            std::path::Path::new(r"D:\apps\assets"),
+            std::path::Path::new(r"D:\sessions\state"),
+            "ws://127.0.0.1:39000/?token=abc",
+            None,
+            None,
+            crate::config::AppEnv::Dev,
+            &[],
+            true,
+        )
+        .unwrap();
+
+        assert!(args.windows(2).any(|pair| pair == ["--capsule", "0"]));
     }
 
     #[test]

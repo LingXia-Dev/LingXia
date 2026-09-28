@@ -80,6 +80,8 @@ lingxia dev --background --mock all        # answer from mocks/ (CI against mock
   the host or Runner, and the project's `@lingxia/*` packages are on different
   major.minor lines; the message names the fix. `LINGXIA_ALLOW_SKEW=1` turns
   it into a warning; `lingxia doctor --project` prints every version.
+- **Home lxapp.** If the parent directory's `lingxia.yaml` `homeAppId` is this
+  lxapp, the Runner starts with the capsule hidden.
 - **Devices.** Android and Harmony get reverse port forwarding. iOS devices
   connect over the LAN, so the device must reach the Mac; set
   `LINGXIA_DEV_HOST` to override the detected address.
