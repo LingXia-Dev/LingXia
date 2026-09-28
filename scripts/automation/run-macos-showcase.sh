@@ -7,8 +7,11 @@ timeout_seconds=${2:-600}
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 showcase_root="$repo_root/examples/lingxia-showcase"
 lxapp_root="$showcase_root/lxapp"
-lingxia="$repo_root/target/debug/lingxia"
-lxdev="$repo_root/target/debug/lxdev"
+# shellcheck source=../lib/cargo-target-dir.sh
+source "$repo_root/scripts/lib/cargo-target-dir.sh"
+cargo_target_dir=$(resolve_cargo_target_dir "$repo_root")
+lingxia="$cargo_target_dir/debug/lingxia"
+lxdev="$cargo_target_dir/debug/lxdev"
 
 case "$framework" in
   react|vue) frameworks=("$framework") ;;
@@ -83,8 +86,8 @@ for framework_index in "${!frameworks[@]}"; do
       'index($0, root) && /\/Contents\/MacOS\// { print $1 }')
   fi
 
-  (cd "$showcase_root" && "$lxdev" logs --json --limit 5000) > "$result_dir/session.jsonl"
-  error_logs=$(cd "$showcase_root" && "$lxdev" logs --level error --json --limit 1000)
+  (cd "$showcase_root" && "$lxdev" logs --jsonl --limit 5000) > "$result_dir/session.jsonl"
+  error_logs=$(cd "$showcase_root" && "$lxdev" logs --level error --jsonl --limit 1000)
   if [[ -n "$error_logs" ]]; then
     echo "Unexpected error-level macOS session logs:" >&2
     echo "$error_logs" >&2

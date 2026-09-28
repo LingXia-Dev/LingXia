@@ -10,6 +10,10 @@ ensure_lingxia() {
   fi
   echo "==> Building lingxia CLI from source" >&2
   ( cd "$root" && "$cargo" build -q -p lingxia-cli )
-  export LINGXIA_BIN="$root/target/debug/lingxia"
-  export PATH="$root/target/debug:$PATH"
+  # shellcheck source=cargo-target-dir.sh
+  source "$(dirname "${BASH_SOURCE[0]}")/cargo-target-dir.sh"
+  local target_dir
+  target_dir="$(resolve_cargo_target_dir "$root")"
+  export LINGXIA_BIN="$target_dir/debug/lingxia"
+  export PATH="$target_dir/debug:$PATH"
 }

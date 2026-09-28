@@ -289,8 +289,11 @@ for target in "${targets[@]}"; do
     (cd "$dir" && npm install)
   fi
 
-  if node -e "const p=require('$dir/package.json'); process.exit(p.scripts && p.scripts.build ? 0 : 1)" >/dev/null 2>&1; then
-    (cd "$dir" && npm run build)
+  # A bundled lxapp builds through the CLI under `build:lxapp`, kept out of
+  # `build` so the workspace-wide `npm run build` never compiles Rust.
+  build_script="$(node -p "const s=require('$dir/package.json').scripts||{}; s['build:lxapp']?'build:lxapp':(s.build?'build':'')")"
+  if [[ -n "$build_script" ]]; then
+    (cd "$dir" && npm run "$build_script")
   fi
 
   if [[ "$DRY_RUN" -eq 1 ]]; then

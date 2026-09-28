@@ -355,10 +355,10 @@ try {
             Invoke-SameRouteRelaunchStress
           }
           Write-Host "Collecting Windows session logs ($currentFramework)..."
-          & $lxdev @(Get-LxdevArguments @('logs', '--json', '--limit', '5000')) |
+          & $lxdev @(Get-LxdevArguments @('logs', '--jsonl', '--limit', '5000')) |
             Set-Content -LiteralPath (Join-Path $resultDirectory 'session.jsonl') -Encoding utf8
           if ($LASTEXITCODE -ne 0) { throw 'Failed to collect Windows session logs.' }
-          $errorLogs = (& $lxdev @(Get-LxdevArguments @('logs', '--level', 'error', '--json', '--limit', '1000')) | Out-String).Trim()
+          $errorLogs = (& $lxdev @(Get-LxdevArguments @('logs', '--level', 'error', '--jsonl', '--limit', '1000')) | Out-String).Trim()
           if ($LASTEXITCODE -ne 0) { throw 'Failed to inspect Windows error logs.' }
           $unexpected = Get-UnexpectedWindowsSessionErrors $errorLogs
           if ($unexpected) {

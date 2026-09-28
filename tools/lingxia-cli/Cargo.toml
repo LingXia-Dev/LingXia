@@ -57,7 +57,8 @@ tempfile = "3.27"
 flate2 = "1.1"
 tar = "0.4"
 zstd = "0.14"
-ctrlc = "3.5"
+# Unified with lxdev's in a workspace build anyway; SIGTERM/SIGHUP stop `lingxia dev` like Ctrl-C.
+ctrlc = { version = "3.5", features = ["termination"] }
 libc = "0.2"
 
 # Apple signing and API

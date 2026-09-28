@@ -330,7 +330,12 @@ struct RunnerBuildTool {
             args.append(features)
         }
 
-        let libDir = pathJoin(projectRoot, "target/\(targetTriple)/\(buildConfig)")
+        let targetDir = resolveCargoTargetDir(
+            projectRoot: projectRoot,
+            cargoPath: cargoPath,
+            baseEnvironment: baseEnvironment
+        )
+        let libDir = pathJoin(targetDir, "\(targetTriple)/\(buildConfig)")
 
         print("[runner-plugin] building Rust staticlib (\(targetTriple), \(buildConfig))")
         // Never fall back to a previously built staticlib: it silently drops
@@ -342,7 +347,11 @@ struct RunnerBuildTool {
             args: args,
             currentDir: projectRoot,
             baseEnvironment: baseEnvironment,
-            envOverrides: ["MACOSX_DEPLOYMENT_TARGET": macosDeploymentTarget]
+            // Pinned so cargo writes where the SDK manifest links from.
+            envOverrides: [
+                "MACOSX_DEPLOYMENT_TARGET": macosDeploymentTarget,
+                "CARGO_TARGET_DIR": targetDir,
+            ]
         )
 
         let src = try resolveBuiltStaticLibrary(libDir: libDir)
@@ -350,6 +359,36 @@ struct RunnerBuildTool {
         try copyIfChanged(from: src, to: dst)
         print("[runner-plugin] liblingxia.a updated: \(dst)")
         return dst
+    }
+
+    /// Mirrors `resolve_cargo_target_dir` in scripts/lib/cargo-target-dir.sh,
+    /// preferring the CLI-resolved dir the apple SDK manifest links from.
+    private static func resolveCargoTargetDir(
+        projectRoot: String,
+        cargoPath: String,
+        baseEnvironment: [String: String]
+    ) -> String {
+        let env = ProcessInfo.processInfo.environment
+        for key in ["LINGXIA_CARGO_TARGET_DIR", "CARGO_TARGET_DIR"] {
+            if let value = env[key], !value.isEmpty {
+                return normalizePath(value.hasPrefix("/") ? value : pathJoin(projectRoot, value))
+            }
+        }
+        if let output = try? runCommand(
+            executable: cargoPath,
+            args: ["metadata", "--format-version", "1", "--no-deps"],
+            currentDir: projectRoot,
+            baseEnvironment: baseEnvironment,
+            echoOutput: false
+        ),
+            // runCommand appends stderr (cargo warnings); the JSON is one stdout line.
+            let line = output.split(separator: "\n").first(where: { $0.hasPrefix("{") }),
+            let json = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any],
+            let targetDir = json["target_directory"] as? String, !targetDir.isEmpty
+        {
+            return normalizePath(targetDir)
+        }
+        return pathJoin(projectRoot, "target")
     }
 
     private static func syncBridgeRuntimeAsset(projectRoot: String, packageDir: String) throws {
@@ -424,7 +463,8 @@ struct RunnerBuildTool {
         args: [String],
         currentDir: String? = nil,
         baseEnvironment: [String: String],
-        envOverrides: [String: String] = [:]
+        envOverrides: [String: String] = [:],
+        echoOutput: Bool = true
     ) throws -> String {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
@@ -459,7 +499,7 @@ struct RunnerBuildTool {
         let stderrData = (try? Data(contentsOf: stderrURL)) ?? Data()
         let combined = stdoutData + stderrData
         let output = String(decoding: combined, as: UTF8.self)
-        if !output.isEmpty {
+        if echoOutput, !output.isEmpty {
             print(output, terminator: "")
         }
 

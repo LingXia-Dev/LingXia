@@ -260,7 +260,14 @@ try {
     Restore-Manifests
 }
 
-$CargoTargetDir = if ($env:CARGO_TARGET_DIR) { $env:CARGO_TARGET_DIR } else { Join-Path $RootDir "target" }
+# Same order as scripts/lib/cargo-target-dir.sh, so build.target-dir is honored.
+$CargoTargetDir = if ($env:CARGO_TARGET_DIR) {
+    if ([IO.Path]::IsPathRooted($env:CARGO_TARGET_DIR)) { $env:CARGO_TARGET_DIR } else { Join-Path $RootDir $env:CARGO_TARGET_DIR }
+} else {
+    $metadataDir = $null
+    try { $metadataDir = (Cargo-Metadata $RootDir).target_directory } catch {}
+    if ($metadataDir) { $metadataDir } else { Join-Path $RootDir "target" }
+}
 $RunnerExe = Join-Path $CargoTargetDir "$BuildProfile\lingxia-runner.exe"
 if (-not (Test-Path $RunnerExe -PathType Leaf)) {
     throw "Windows Runner executable not found after build: $RunnerExe"
