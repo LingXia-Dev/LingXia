@@ -21,7 +21,8 @@ static LANDSCAPE: AtomicBool = AtomicBool::new(false);
 static APPEARANCE: AtomicUsize = AtomicUsize::new(0);
 /// Whether the simulated host capsule is enabled (`lxdev runner set
 /// --capsule`). Default on: the capsule is real host chrome for every
-/// non-home lxapp, so hiding it is the opt-in.
+/// non-home lxapp. `LINGXIA_RUNNER_CAPSULE=0` starts it hidden when this
+/// lxapp is the parent host's home app.
 static CAPSULE_ENABLED: AtomicBool = AtomicBool::new(true);
 static BROWSER_HOST: OnceLock<lingxia_windows_sdk::WindowsHost> = OnceLock::new();
 static MORE_ACTION_TOKENS: OnceLock<Mutex<HashMap<u32, (String, String)>>> = OnceLock::new();
@@ -35,6 +36,7 @@ const ARG_RUNNER_DEVICE: &str = "--runner-device";
 const ARG_RUNNER_ENV: &str = "--runner-env";
 const ARG_DISPLAY_LANGUAGE: &str = "--display-language";
 const ARG_HEADLESS: &str = "--headless";
+const ARG_CAPSULE: &str = "--capsule";
 const ARG_RESOURCE_LXAPP_PATHS: &str = "--resource-lxapp-paths";
 const ENV_LXAPP_PATH: &str = "LINGXIA_LXAPP_PATH";
 const ENV_WEB_URL: &str = "LINGXIA_RUNNER_WEB_URL";
@@ -44,6 +46,7 @@ const ENV_RUNNER_DEVICE: &str = "LINGXIA_RUNNER_DEVICE";
 const ENV_RUNNER_ENV: &str = "LINGXIA_RUNNER_ENV";
 const ENV_DISPLAY_LANGUAGE: &str = "LINGXIA_RUNNER_DISPLAY_LANGUAGE";
 const ENV_HEADLESS: &str = "LINGXIA_RUNNER_HEADLESS";
+const ENV_CAPSULE: &str = "LINGXIA_RUNNER_CAPSULE";
 const ENV_RESOURCE_LXAPP_PATHS: &str = "LINGXIA_RESOURCE_LXAPP_PATHS";
 
 #[derive(Debug, serde::Deserialize)]
@@ -105,6 +108,7 @@ fn cloud_options() -> lingxia_cloud_client::CloudOptions {
 
 pub(crate) fn run() -> lingxia_windows_sdk::Result<()> {
     let asset_dir = install_launch_args_env();
+    apply_initial_capsule_setting();
     register_resource_lxapp_paths_from_env();
     lingxia::register_host_addon(Box::new(RunnerDevtoolAddon));
 
@@ -192,8 +196,26 @@ fn launch_arg_env_key(arg: &str) -> Option<&'static str> {
         ARG_RUNNER_ENV => Some(ENV_RUNNER_ENV),
         ARG_DISPLAY_LANGUAGE => Some(ENV_DISPLAY_LANGUAGE),
         ARG_HEADLESS => Some(ENV_HEADLESS),
+        ARG_CAPSULE => Some(ENV_CAPSULE),
         ARG_RESOURCE_LXAPP_PATHS => Some(ENV_RESOURCE_LXAPP_PATHS),
         _ => None,
+    }
+}
+
+/// `0` / `false` / `off` / `no` hide the capsule. Anything else leaves it shown.
+pub(crate) fn capsule_hidden_value(value: Option<&str>) -> bool {
+    value.is_some_and(|text| {
+        let normalized = text.trim().to_ascii_lowercase();
+        matches!(normalized.as_str(), "0" | "false" | "off" | "no")
+    })
+}
+
+fn apply_initial_capsule_setting() {
+    let hidden = std::env::var(ENV_CAPSULE)
+        .ok()
+        .is_some_and(|value| capsule_hidden_value(Some(&value)));
+    if hidden {
+        CAPSULE_ENABLED.store(false, Ordering::Release);
     }
 }
 
@@ -800,4 +822,24 @@ fn maintain_device_frame(home_app_id: String) {
             std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::capsule_hidden_value;
+
+    #[test]
+    fn capsule_off_values_hide_it() {
+        for value in ["0", "false", "off", "no", " OFF ", "False"] {
+            assert!(capsule_hidden_value(Some(value)), "{value}");
+        }
+    }
+
+    #[test]
+    fn capsule_stays_shown_unless_explicitly_hidden() {
+        assert!(!capsule_hidden_value(None));
+        for value in ["", "1", "true", "on", "yes"] {
+            assert!(!capsule_hidden_value(Some(value)), "{value}");
+        }
+    }
 }
