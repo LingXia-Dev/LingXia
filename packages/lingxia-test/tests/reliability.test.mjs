@@ -257,11 +257,11 @@ test('a spec that leaves the app under test closed does not fail the rest of the
   let running = true;
   const opened = [];
   const lxapps = {
-    async list() { return running ? [{ appid: 'demo-app', status: 'opened' }] : []; },
+    async list() { return running ? [{ appId: 'demo-app', status: 'opened' }] : []; },
     async open(options) {
-      opened.push(options.appid);
+      opened.push(options.appId);
       running = true;
-      return { appid: options.appid, path: 'pages/home/index' };
+      return { appId: options.appId, path: 'pages/home/index' };
     },
   };
   const { events } = installFakeHost(world, { control: {}, lxapps });
@@ -288,11 +288,11 @@ test('the run hands the app under test back running', async () => {
   let running = true;
   const opened = [];
   const lxapps = {
-    async list() { return running ? [{ appid: 'demo-app', status: 'opened' }] : []; },
+    async list() { return running ? [{ appId: 'demo-app', status: 'opened' }] : []; },
     async open(options) {
-      opened.push(options.appid);
+      opened.push(options.appId);
       running = true;
-      return { appid: options.appid, path: 'pages/home/index' };
+      return { appId: options.appId, path: 'pages/home/index' };
     },
   };
   const { events } = installFakeHost(world, { control: {}, lxapps });

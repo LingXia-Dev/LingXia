@@ -65,6 +65,7 @@ struct AppOpt {
 
 #[derive(FromJSObject)]
 struct OpenOpt {
+    #[js_name = "appId"]
     appid: String,
     path: Option<String>,
     channel: Option<String>,
@@ -72,6 +73,7 @@ struct OpenOpt {
 
 #[derive(Debug, Clone, IntoJSObject)]
 struct JSOpenResult {
+    #[js_name = "appId"]
     appid: String,
     path: String,
 }
@@ -101,14 +103,19 @@ impl JSLxAppManager {
     #[js_method]
     async fn list(&self, ctx: JSContext) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
-        to_js(&ctx, &lxapp::list_lxapps())
+        let apps = lxapp::list_lxapps()
+            .into_iter()
+            .map(|info| serde_json::to_value(info).map(crate::js_payload::runtime_info))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|err| auto_err(err.to_string()))?;
+        to_js(&ctx, &apps)
     }
 
     #[js_method]
     async fn current(&self, ctx: JSContext) -> JSResult<JSValue> {
         require_host_context(&ctx)?;
         let (appid, path, _) = lxapp::get_current_lxapp();
-        to_js(&ctx, &json!({ "appid": appid, "currentPage": path }))
+        to_js(&ctx, &json!({ "appId": appid, "currentPage": path }))
     }
 
     /// Inject an App Link (`lxdev host applink`). Resolves when accepted, not
@@ -633,7 +640,8 @@ impl JSBrowserDriver {
         let info = lingxia_browser::query_with_max_text(&tab, &options.css, max_text)
             .await
             .map_err(|err| auto_err(err.to_string()))?;
-        to_js(&ctx, &info)
+        let value = serde_json::to_value(info).map_err(|err| auto_err(err.to_string()))?;
+        json_to_js(&ctx, &crate::js_payload::page_query(value))
     }
 
     /// Wait for a condition: `{ visible: css }`, `{ exists: css }`,
@@ -654,7 +662,11 @@ impl JSBrowserDriver {
         let result = lingxia_browser::wait(&tab, condition, timeout)
             .await
             .map_err(|err| auto_err(err.to_string()))?;
-        to_js(&ctx, &result)
+        let mut value = serde_json::to_value(result).map_err(|err| auto_err(err.to_string()))?;
+        if let Some(element) = value.get_mut("element") {
+            *element = crate::js_payload::page_query(element.take());
+        }
+        json_to_js(&ctx, &value)
     }
 
     /// Click an element. With `waitNavigation`, awaits a navigation the click

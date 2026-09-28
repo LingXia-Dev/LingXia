@@ -44,8 +44,8 @@ export interface QueryMatch {
     top: number;
     width: number;
     height: number;
-    viewport_width?: number;
-    viewport_height?: number;
+    viewportWidth?: number;
+    viewportHeight?: number;
   };
   items?: QueryMatch[];
 }

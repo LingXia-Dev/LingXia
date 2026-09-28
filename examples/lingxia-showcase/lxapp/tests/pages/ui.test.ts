@@ -75,7 +75,7 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   const { app, defer } = bindFixture(t, "UI-TABBAR-001");
 
   const tabBar = async (): Promise<LxAppRuntimeTabBarInfo> => {
-    const state = (await app.info()).tab_bar;
+    const state = (await app.info()).tabBar;
     if (state === null) throw new Error('showcase TabBar is not declared');
     return state;
   };
@@ -105,21 +105,21 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   await ui.view.testId('tabbar-show').waitFor({ state: 'visible', timeout: 30_000 });
 
   const automaticDetail = await waitForTabBar(
-    ({ visibility, route_visible, effective_visible }) => (
-      visibility === 'auto' && !route_visible && !effective_visible
+    ({ visibility, routeVisible, effectiveVisible }) => (
+      visibility === 'auto' && !routeVisible && !effectiveVisible
     ),
     'automatic TabBar visibility on a non-tab route',
   );
-  expect(automaticDetail.selected_index).toBe(-1);
+  expect(automaticDetail.selectedIndex).toBe(-1);
 
   await ui.view.testId('tabbar-show').click();
   const forced = await waitForTabBar(
-    ({ visibility, route_visible, effective_visible }) => (
-      visibility === 'visible' && !route_visible && effective_visible
+    ({ visibility, routeVisible, effectiveVisible }) => (
+      visibility === 'visible' && !routeVisible && effectiveVisible
     ),
     'forced TabBar visibility on a non-tab route',
   );
-  expect(forced.effective_visible).toBeTruthy();
+  expect(forced.effectiveVisible).toBeTruthy();
 
   await app.logic.eval(async ({ lx }) => {
     await lx.tabBar.update({
@@ -137,9 +137,9 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   const styled = await waitForTabBar(
     (state) => (
       state.items[1]?.text === 'Automation'
-      && assetPath(state.items[1]?.icon_path).endsWith('/public/home.png')
+      && assetPath(state.items[1]?.iconPath).endsWith('/public/home.png')
       && state.items[1]?.badge === '7'
-      && state.items[1]?.red_dot === false
+      && state.items[1]?.redDot === false
     ),
     'TabBar text and badge update',
   );
@@ -163,13 +163,13 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     });
   });
   await waitForTabBar(
-    (state) => state.items[1]?.badge === null && state.items[1]?.red_dot === true,
+    (state) => state.items[1]?.badge === null && state.items[1]?.redDot === true,
     'TabBar badge replacement by a red dot',
   );
 
   await ui.view.testId('tabbar-hide').click();
   await waitForTabBar(
-    ({ visibility, effective_visible }) => visibility === 'hidden' && !effective_visible,
+    ({ visibility, effectiveVisible }) => visibility === 'hidden' && !effectiveVisible,
     'explicitly hidden TabBar',
   );
 
@@ -177,8 +177,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
     await lx.tabBar.update({ visibility: 'auto' });
   });
   await waitForTabBar(
-    ({ visibility, route_visible, effective_visible }) => (
-      visibility === 'auto' && !route_visible && !effective_visible
+    ({ visibility, routeVisible, effectiveVisible }) => (
+      visibility === 'auto' && !routeVisible && !effectiveVisible
     ),
     'restored automatic visibility on a non-tab route',
   );
@@ -187,8 +187,8 @@ spec("apply TabBar visibility, style, item, icon, badge, and red-dot updates", {
   const home = await app.page({ name: 'home' }, { timeout: 30_000 });
   await home.view.css('body').waitFor({ state: 'attached', timeout: 30_000 });
   await waitForTabBar(
-    ({ visibility, route_visible, effective_visible, selected_index }) => (
-      visibility === 'auto' && route_visible && effective_visible && selected_index === 0
+    ({ visibility, routeVisible, effectiveVisible, selectedIndex }) => (
+      visibility === 'auto' && routeVisible && effectiveVisible && selectedIndex === 0
     ),
     'automatic visibility after entering a tab route',
   );

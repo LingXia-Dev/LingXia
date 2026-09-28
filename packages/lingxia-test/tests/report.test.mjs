@@ -596,11 +596,11 @@ test("the report is named after the app under test", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
   globalThis.lx.automation().lxapp().info = async () => ({
-    appid: "acme-notes",
-    app_name: "Acme Notes",
+    appId: "acme-notes",
+    appName: "Acme Notes",
     version: "2.1.0",
-    release_type: "developer",
-    pages_count: 4,
+    releaseType: "developer",
+    pagesCount: 4,
   });
 
   spec("passes", async () => {
@@ -719,11 +719,11 @@ test("an app name cannot inject markup into the report", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world, { control: { platform: "<b>win</b>" } });
   globalThis.lx.automation().lxapp().info = async () => ({
-    appid: "evil",
-    app_name: 'Cats & Dogs <img src=x onerror=alert(1)>',
+    appId: "evil",
+    appName: 'Cats & Dogs <img src=x onerror=alert(1)>',
     version: "1.0.0",
-    release_type: "developer",
-    pages_count: 1,
+    releaseType: "developer",
+    pagesCount: 1,
   });
 
   spec("passes", async () => {

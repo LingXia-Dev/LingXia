@@ -19,7 +19,7 @@ async function waitForTabBar(
 ): Promise<LxAppRuntimeTabBarInfo> {
   return eventually(
     async () => {
-      const state = (await app.info()).tab_bar;
+      const state = (await app.info()).tabBar;
       if (state === null) throw new Error('showcase TabBar is not declared');
       return state;
     },

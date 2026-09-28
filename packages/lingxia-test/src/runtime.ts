@@ -442,7 +442,7 @@ async function reopenAppUnderTest(appId: string | undefined): Promise<{ appId: s
   try { root = automationRoot(); } catch { return undefined; }
   const status = async () => {
     const apps = await root.lxapps.list();
-    return apps.find((app) => app.appid === appId)?.status;
+    return apps.find((app) => app.appId === appId)?.status;
   };
   try {
     let current = await status();
@@ -457,7 +457,7 @@ async function reopenAppUnderTest(appId: string | undefined): Promise<{ appId: s
     return undefined;
   }
   try {
-    await root.lxapps.open({ appid: appId });
+    await root.lxapps.open({ appId });
     await relaunchHome(root.lxapp(appId));
     return { appId };
   } catch (error) {
@@ -1404,11 +1404,11 @@ async function describeSubject(): Promise<RunSubject | undefined> {
     try {
       const info = (await pinApp().info()) as unknown as Record<string, unknown>;
       return {
-        appid: asText(info.appid),
-        app_name: asText(info.app_name),
+        appid: asText(info.appId),
+        app_name: asText(info.appName),
         version: asText(info.version),
-        release_type: asText(info.release_type),
-        pages: typeof info.pages_count === "number" ? info.pages_count : undefined,
+        release_type: asText(info.releaseType),
+        pages: typeof info.pagesCount === "number" ? info.pagesCount : undefined,
       };
     } catch (error) {
       const message = errorMessage(error);

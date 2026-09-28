@@ -358,8 +358,8 @@ async function visibleBrowserViewportWidth(
 ): Promise<number | undefined> {
   try {
     const body = await browser.query({ css: 'body', maxText: 1 });
-    return body.exists && body.visible && body.rect && body.rect.viewport_width > 0
-      ? body.rect.viewport_width
+    return body.exists && body.visible && body.rect && body.rect.viewportWidth > 0
+      ? body.rect.viewportWidth
       : undefined;
   } catch (error) {
     if (String(error).includes('browser tab is not ready')) return undefined;
@@ -1096,7 +1096,7 @@ async function closeChatSurface(t: Fixture, app: TestApp): Promise<void> {
   }
 
   try {
-    const chat = (await manager.list()).find((candidate) => candidate.appid === 'lingxia-chat');
+    const chat = (await manager.list()).find((candidate) => candidate.appId === 'lingxia-chat');
     if (chat && chat.status !== 'closed') {
       await manager.close({ app: 'lingxia-chat' });
     }
@@ -2301,7 +2301,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
   let host = windowsHost(await desktop.windows());
   if (!host) throw new Error('visible LingXia host window was not found');
   const originalBounds = { ...host.bounds };
-  const originalPage = (await app.info()).current_page;
+  const originalPage = (await app.info()).currentPage;
   const originalPageName = (await app.pages()).find((page) => (
     originalPage?.startsWith(page.path)
   ))?.name;
@@ -2442,7 +2442,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
       'exact Todo main restored after closing promoted Chat',
     );
     expect(restoredAfterClose.id).toBe(baselineMain.id);
-    expect((await app.info()).current_page?.startsWith('pages/todo/index')).toBeTruthy();
+    expect((await app.info()).currentPage?.startsWith('pages/todo/index')).toBeTruthy();
     await expectExactMainPresentation(
       host,
       baselineMain,
@@ -2456,11 +2456,11 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     ), 'every root edge probe restored after closing promoted Chat');
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
-        candidate.appid === 'lingxia-chat'
+        candidate.appId === 'lingxia-chat'
       ));
       return chat?.status === 'closed'
-        && chat.current_page === null
-        && chat.page_stack.length === 0
+        && chat.currentPage === null
+        && chat.pageStack.length === 0
         ? true
         : undefined;
     }, 'promoted Chat runtime fully closed');
@@ -2577,7 +2577,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await selectRootHomeFromGuest(app, desktop, host, coldPins.length);
     await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
-      return info.current_page?.startsWith('pages/home/index')
+      return info.currentPage?.startsWith('pages/home/index')
         && candidate.activeMainId === 'lingxia-showcase'
         && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
         ? candidate
@@ -2648,11 +2648,11 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     ]);
     await waitForValue(async () => {
       const chat = (await automation.lxapps.list()).find((candidate) => (
-        candidate.appid === 'lingxia-chat'
+        candidate.appId === 'lingxia-chat'
       ));
       return chat?.status === 'closed'
-        && chat.current_page === null
-        && chat.page_stack.length === 0
+        && chat.currentPage === null
+        && chat.pageStack.length === 0
         ? true
         : undefined;
     }, 'native Chat close fully terminated its runtime');
@@ -2750,7 +2750,7 @@ pinnedWindowsHostTest('projects a pinned lxapp into a controllable sidebar works
     await selectRootHomeFromGuest(app, desktop, host, pinsAfterMenu.length);
     const afterSidebarClick = await waitForValue(async () => {
       const [info, candidate] = await Promise.all([app.info(), app.surfaceLayout()]);
-      return info.current_page?.startsWith('pages/home/index')
+      return info.currentPage?.startsWith('pages/home/index')
         && candidate.activeMainId === 'lingxia-showcase'
         && candidate.mainSwitcher.activeSurfaceId === 'lingxia-showcase'
         ? candidate
