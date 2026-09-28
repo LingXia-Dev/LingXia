@@ -176,10 +176,19 @@ pub(crate) struct DevServerState {
     companion: std::sync::OnceLock<Arc<super::companion::CompanionLink>>,
     /// Scenario owners with `function` rules installed in the companion.
     companion_owners: Mutex<std::collections::HashSet<String>>,
+    /// Orders run preflight, explicit scenario changes and terminal cleanup.
+    companion_scenario_lock: Mutex<()>,
     /// Mock selection owners the companion holds (`dev`, `test:<run>`).
     companion_mock_owners: Mutex<std::collections::HashSet<String>>,
+    /// Orders mock reset/selection changes and terminal cleanup.
+    companion_mock_lock: Mutex<()>,
+    /// Owners whose cleanup was rejected or timed out. A later test must not
+    /// run against companion state whose precedence is unknown.
+    companion_cleanup_failed: Mutex<std::collections::HashSet<String>>,
     /// Each watched lxapp's last valid `mocks/`.
     mocks: Mutex<Vec<super::mocks::AppMocks>>,
+    /// `--mock all` startup is held on a failed push until a reload succeeds.
+    mocks_gated: AtomicBool,
 }
 
 /// One `session.watch.pause` lease.
@@ -219,8 +228,12 @@ impl DevServerState {
             runtime_build: Mutex::new(None),
             companion: std::sync::OnceLock::new(),
             companion_owners: Mutex::new(std::collections::HashSet::new()),
+            companion_scenario_lock: Mutex::new(()),
             companion_mock_owners: Mutex::new(std::collections::HashSet::new()),
+            companion_mock_lock: Mutex::new(()),
+            companion_cleanup_failed: Mutex::new(std::collections::HashSet::new()),
             mocks: Mutex::new(Vec::new()),
+            mocks_gated: AtomicBool::new(false),
         }
     }
 
@@ -333,21 +346,32 @@ impl DevServerState {
         )
     }
 
-    /// Release Logic startup once every app's mocks have settled. An app whose
-    /// mocks fail to load runs without them; it never holds the others back.
+    /// Release Logic startup once every app's mocks have settled. Under
+    /// `--mock all`, an incomplete load must keep startup gated.
     fn push_all_mocks(&self) {
         let apps = self.lock_mocks().clone();
+        let mut failed = false;
         for app in apps {
             if let Err(error) = self.push_mocks(&app) {
+                failed = true;
                 eprintln!(
-                    "[lingxia dev] mocks of {} not loaded into the runtime; it runs without them: {error:#}",
+                    "[lingxia dev] mocks of {} not loaded into the runtime: {error:#}",
                     app.app_id
                 );
             }
         }
+        if failed && super::mocks::baseline() == Some(lingxia_control_protocol::mock::MockMode::All)
+        {
+            eprintln!(
+                "[lingxia dev] mock initialization failed; Logic stays gated under --mock all until mocks/ reloads cleanly"
+            );
+            self.mocks_gated.store(true, Ordering::SeqCst);
+            return;
+        }
+        self.mocks_gated.store(false, Ordering::SeqCst);
         if let Err(error) = self.runtime_request(
             lingxia_control_protocol::methods::session::network::MOCK_READY,
-            serde_json::json!({}),
+            serde_json::json!({ "baseline": super::mocks::baseline() }),
             Duration::from_secs(10),
         ) {
             eprintln!("[lingxia dev] mock initialization was not acknowledged: {error:#}");
@@ -401,9 +425,14 @@ impl DevServerState {
                 if handlers == 1 { "" } else { "s" }
             ),
         }
-        let mut mocks = self.lock_mocks();
-        mocks.retain(|app| app.app_id != app_id);
-        mocks.push(loaded);
+        {
+            let mut mocks = self.lock_mocks();
+            mocks.retain(|app| app.app_id != app_id);
+            mocks.push(loaded);
+        }
+        if result.is_some() && self.mocks_gated.load(Ordering::SeqCst) {
+            self.push_all_mocks();
+        }
     }
 
     /// `mocks/` (or its `index.ts`) is gone: the app has no mocks from now
@@ -657,8 +686,13 @@ impl DevServerState {
         };
         // A dev scenario and the live mock selection fail closed with the
         // connection, on both sides.
-        state.clear_companion_owner(lingxia_control_protocol::scenario::DEV_OWNER.to_string());
-        state.drop_companion_mock_owner(lingxia_control_protocol::mock::DEV_OWNER.to_string());
+        let companion = state.clone();
+        std::thread::spawn(move || {
+            companion
+                .clear_companion_owner(lingxia_control_protocol::scenario::DEV_OWNER.to_string());
+            companion
+                .drop_companion_mock_owner(lingxia_control_protocol::mock::DEV_OWNER.to_string());
+        });
         if !state.end_on_runtime_gone {
             return;
         }
@@ -720,43 +754,36 @@ impl DevServerState {
     /// Track `session.test` runs from the responses this server relays, so
     /// file-watch reloads can wait for the run instead of replacing the app
     /// under it.
-    fn observe_test_response(&self, method: &str, response: &DevSessionMessage) {
+    /// Track the active run; returns the companion owner of a run this
+    /// response ended, once per run.
+    fn observe_test_response(&self, method: &str, response: &DevSessionMessage) -> Option<String> {
         use lingxia_control_protocol::methods::session::test;
         if !matches!(method, test::START | test::POLL | test::CANCEL) {
-            return;
+            return None;
         }
         let DevSessionMessage::Response(response) = response else {
-            return;
+            return None;
         };
-        let Some(result) = response
+        let result = response
             .result
             .as_ref()
-            .filter(|_| response.error.is_none())
-        else {
-            return;
-        };
-        let Some(run_id) = result.get("run_id").and_then(serde_json::Value::as_str) else {
-            return;
-        };
+            .filter(|_| response.error.is_none())?;
+        let run_id = result.get("run_id").and_then(serde_json::Value::as_str)?;
         let running = result.get("state").and_then(serde_json::Value::as_str) == Some("running");
         self.settle_watch_leases(run_id, running);
-        let owner = lingxia_control_protocol::scenario::test_owner(run_id);
-        if !running {
-            self.clear_companion_owner(owner.clone());
-            self.drop_companion_mock_owner(owner);
-        } else if method == test::START {
-            self.hide_companion_dev_scenario(owner);
-        }
         let mut active = self.lock_active_test_run();
-        if method == test::START {
+        let ended = if method == test::START {
             if running {
                 *active = Some((run_id.to_string(), Instant::now()));
             }
-            return;
-        }
-        if active.as_ref().is_some_and(|(id, _)| id == run_id) {
+            !running
+        } else if active.as_ref().is_some_and(|(id, _)| id == run_id) {
             *active = running.then(|| (run_id.to_string(), Instant::now()));
-        }
+            !running
+        } else {
+            false
+        };
+        ended.then(|| lingxia_control_protocol::scenario::test_owner(run_id))
     }
 
     #[cfg(test)]
@@ -1549,7 +1576,17 @@ fn handle_client_connection(
         return Ok(());
     };
 
-    let _relay_guards = state.lock_for_relay(&method);
+    let relay_guards = state.lock_for_relay(&method);
+    if method == lingxia_control_protocol::methods::session::test::START
+        && let Some(reason) = state.companion_cleanup_error()
+    {
+        send_wire_message(
+            &mut websocket,
+            &DevSessionMessage::error(id, "companion_cleanup_unconfirmed", reason),
+        )?;
+        let _ = websocket.close(None);
+        return Ok(());
+    }
     let command_timeout = command_timeout(params.as_ref());
     let relayed_method = method.clone();
     let (result_tx, result_rx) = mpsc::channel::<DevSessionMessage>();
@@ -1567,8 +1604,16 @@ fn handle_client_connection(
 
     match result_rx.recv_timeout(command_timeout) {
         Ok(result) => {
-            state.observe_test_response(&relayed_method, &result);
-            send_wire_message(&mut websocket, &result)?;
+            let ended_owner = state.observe_test_response(&relayed_method, &result);
+            let sent = send_wire_message(&mut websocket, &result);
+            // Fallback for the host's own cleanup; not under the command
+            // lock, and never in the way of the run's result.
+            drop(relay_guards);
+            if let Some(owner) = ended_owner {
+                state.clear_companion_owner(owner.clone());
+                state.drop_companion_mock_owner(owner);
+            }
+            sent?;
         }
         Err(mpsc::RecvTimeoutError::Timeout) => {
             let _ = state.take_pending_result(&id);
