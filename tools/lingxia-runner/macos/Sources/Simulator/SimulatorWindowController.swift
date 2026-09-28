@@ -835,7 +835,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
     /// Re-apply the capsule setting to the live pill.
     func applyCapsuleEnabled() {
         let phoneChrome = Self.currentDeviceSize.usesPhoneChrome && webTarget == nil
-        floatingCapsuleContainer?.isHidden = !phoneChrome || !RunnerApp.shared.capsuleEnabled
+        floatingCapsuleContainer?.isHidden = !phoneChrome || !RunnerApp.shared.capsuleShown(for: appId)
     }
 
     /// Answer the runtime's capsule measurement with the floating pill's frame
@@ -949,7 +949,7 @@ public class SimulatorWindowController: NSWindowController, NSWindowDelegate {
         } else {
             systemStatusBar?.isHidden = false
             // navigationBar visibility is managed by updateNavigationBar
-            floatingCapsuleContainer?.isHidden = !RunnerApp.shared.capsuleEnabled
+            floatingCapsuleContainer?.isHidden = !RunnerApp.shared.capsuleShown(for: appId)
             if systemStatusBar == nil, phoneContentView != nil {
                 setupPhoneUIOverlay()
             } else {

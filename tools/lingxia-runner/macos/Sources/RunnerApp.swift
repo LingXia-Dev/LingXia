@@ -69,31 +69,20 @@ public class RunnerApp {
     private(set) var deviceSize: MobileDeviceSize = .defaultDevice
     private(set) var simulatedAppearance: RunnerAppearance = .system
     /// Whether the simulated host capsule is enabled. Default on: the capsule
-    /// is real host chrome for every non-home lxapp. `LINGXIA_RUNNER_CAPSULE=0`
-    /// starts it hidden when this lxapp is the parent host's home app.
-    private(set) var capsuleEnabled: Bool = RunnerApp.capsuleEnabledFromEnvironment()
+    /// is real host chrome for every non-home lxapp, so hiding it is the
+    /// opt-in for developing home-style products.
+    private(set) var capsuleEnabled: Bool = true
+    /// The enclosing host's home lxapp, when that is what `lingxia dev`
+    /// launched: like the real host, it gets no capsule.
+    private let hostHomeAppId: String? = ProcessInfo.processInfo
+        .environment["LINGXIA_RUNNER_HOST_HOME_APP_ID"]
+        .flatMap { $0.isEmpty ? nil : $0 }
     
     private init() {
         deviceOrientation = Self.defaultOrientation(for: selectedDeviceSize)
         RunnerUserAgentPolicy.shared.setProfile(selectedDeviceSize.browserProfile)
         RunnerSupport.PageChrome.setCapsuleRectProvider { [weak self] appId in
             self?.windowController?.capsuleRect(for: appId)
-        }
-    }
-
-    /// `0` / `false` / `off` / `no` hide the capsule. Anything else leaves it shown.
-    private static func capsuleEnabledFromEnvironment() -> Bool {
-        guard let raw = ProcessInfo.processInfo.environment["LINGXIA_RUNNER_CAPSULE"]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
-              !raw.isEmpty else {
-            return true
-        }
-        switch raw {
-        case "0", "false", "off", "no":
-            return false
-        default:
-            return true
         }
     }
 
@@ -160,6 +149,11 @@ public class RunnerApp {
         if let active = windowController {
             refreshCapsulePageChrome(for: active)
         }
+    }
+
+    /// Whether `appId`'s window draws the capsule.
+    func capsuleShown(for appId: String) -> Bool {
+        capsuleEnabled && appId != hostHomeAppId
     }
 
     func capsuleDidBecomeReady(_ controller: SimulatorWindowController) {
