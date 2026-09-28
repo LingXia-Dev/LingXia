@@ -6,9 +6,11 @@ export {
   subscribePageSnapshot,
   whenPageReady,
   type ActionMap,
+  type PageActions,
   type DeepReadonly,
   type Snapshot,
 } from "./shared/runtime.js";
+export { waitForPageState } from "./shared/startup.js";
 export {
   installPageChromeRuntime,
   type LxPageChrome,

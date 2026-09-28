@@ -3,11 +3,10 @@ import '../../app.css';
 import { LxNavigator, useLxPage } from '@lingxia/vue';
 import { computed, ref } from 'vue';
 
-type PageState = { greeting?: string };
-type PageActions = { greet(payload: { name: string }): void };
+import type { HomePage } from './contract';
 
-const { data, actions } = useLxPage<PageState, PageActions>();
-const greeting = computed(() => data?.greeting ?? '');
+const { data, actions } = useLxPage<HomePage['data'], HomePage['actions']>();
+const greeting = computed(() => data.greeting);
 const inputName = ref('');
 
 function handleSubmit() {

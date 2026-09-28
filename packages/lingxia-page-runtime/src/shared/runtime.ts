@@ -1,6 +1,12 @@
-import { type StateInfo } from "@lingxia/bridge";
+import { type StateInfo, type LxStream } from "@lingxia/bridge";
 
 export type ActionMap = Record<string, (...args: never[]) => unknown>;
+/** Unary actions always acknowledge completion; streams keep their stream handle. */
+export type PageActions<A extends ActionMap> = {
+  readonly [K in keyof A]: A[K] extends (...args: infer P) => infer R
+    ? (...args: P) => R extends LxStream<any, any> ? R : Promise<Awaited<R>>
+    : never;
+};
 export type Snapshot = Record<string, unknown>;
 
 /**
@@ -14,7 +20,7 @@ export type DeepReadonly<T> = T extends (...args: never[]) => unknown
     ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
     : T;
 export type Listener = () => void;
-type BridgeMode = "notify" | "call" | "stream";
+type BridgeMode = "call" | "stream";
 type PageBridgeMetadata = {
   __names: string[];
   __modes?: Record<string, BridgeMode>;
@@ -182,11 +188,11 @@ export function getPageSnapshot<TData = Snapshot>(): TData {
  * dependency. Built on first use — the page's action names arrive with its
  * bridge metadata, after the page module has evaluated.
  */
-export function getPageActions<TActions extends ActionMap>(): TActions {
-  if (actions) return actions as TActions;
+export function getPageActions<TActions extends ActionMap>(): PageActions<TActions> {
+  if (actions) return actions as PageActions<TActions>;
   const bridge = window.__pageBridge as PageBridgeMetadata | undefined;
   if (!bridge?.__names) {
-    return {} as TActions;
+    throw new Error("Page actions are not ready. Read useLxPage() during component setup/render, or getPage() after pageReady(); pass actions into shared helpers.");
   }
   const built: ActionMap = {};
   for (const name of bridge.__names) {
@@ -197,7 +203,7 @@ export function getPageActions<TActions extends ActionMap>(): TActions {
     }
   }
   actions = built;
-  return actions as TActions;
+  return actions as PageActions<TActions>;
 }
 
 function getOrCreatePageAction(
@@ -220,7 +226,8 @@ function resolvePageActionMode(
   name: string,
 ): BridgeMode {
   const mode = bridge.__modes?.[name];
-  return mode === "call" || mode === "stream" ? mode : "notify";
+  if (mode === "call" || mode === "stream") return mode;
+  throw new Error(`Invalid bridge mode for page action '${name}'; regenerate the page with the current CLI`);
 }
 
 function definePageBridgeAction(
@@ -251,8 +258,7 @@ function definePageBridgeAction(
       }
       return promise;
     }
-    bridge.raw.notify(name, payload);
-    return undefined;
+    throw new Error(`Invalid bridge mode for page action '${name}'`);
   }
 
   Object.assign(action, {

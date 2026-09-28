@@ -31,6 +31,7 @@ import {
   getPageSnapshot,
   subscribePageSnapshot,
   type ActionMap,
+  type PageActions,
   type DeepReadonly,
   type Snapshot,
 } from "@lingxia/page-runtime";
@@ -66,12 +67,13 @@ const readonlySnapshot = readonly(reactiveSnapshot);
  * The page mounts once its first state has arrived, so `data` is whole from
  * the first render. `data` is deep-reactive, readonly and updated in place, so
  * it may be destructured; keep editable state in a `ref` and send it with an
- * action. `actions` is one object for the page. Callable anywhere.
+ * action. Call during component setup; pass actions into shared helpers
+ * instead of reading at module load.
  */
 export function useLxPage<
   TData = Snapshot,
   TActions extends ActionMap = ActionMap,
->(): { data: DeepReadonly<TData>; actions: TActions } {
+>(): { data: DeepReadonly<TData>; actions: PageActions<TActions> } {
   if (!snapshotSubscribed) {
     snapshotSubscribed = true;
     syncSnapshot();

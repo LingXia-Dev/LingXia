@@ -66,7 +66,7 @@ export function __lx_define_page_bridge(name, mode) {
       }
       return promise;
     }
-    bridge.raw.notify(name, payload);
+    throw new Error(`Invalid bridge mode for page action '${name}'`);
   }
   fn.__logicFunc = true;
   fn.__funcName = name;

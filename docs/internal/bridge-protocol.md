@@ -737,11 +737,11 @@ LingXiaBridge.channel(route, input?, options?): Promise<NativeChannel<in, out>>
 
 ### 9.3 Generated Page Actions
 
-The CLI maps JS method shape to View wrapper behavior:
+The CLI maps generator shape to streaming; all ordinary actions are awaitable, independent of return syntax:
 
 | JS method shape | Generated View behavior |
 |---|---|
-| `void` or `Promise<void>` | `raw.notify()` |
+| `void` or `Promise<void>` | `raw.call()`; resolves when the action settles |
 | non-void return | `raw.call()` |
 | `async function*`, `AsyncIterable`, `AsyncIterator`, `AsyncGenerator` | `raw.stream()` |
 

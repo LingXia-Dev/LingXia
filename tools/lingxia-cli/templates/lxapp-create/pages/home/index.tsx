@@ -2,11 +2,10 @@ import React from 'react';
 import { LxNavigator, useLxPage } from '@lingxia/react';
 import '../../app.css';
 
-type PageState = { greeting: string };
-type PageActions = { greet(payload: { name: string }): void };
+import type { HomePage as HomeContract } from './contract';
 
 export default function HomePage() {
-  const { data, actions } = useLxPage<PageState, PageActions>();
+  const { data, actions } = useLxPage<HomeContract['data'], HomeContract['actions']>();
   const [name, setName] = React.useState('');
   const submit = () => name.trim() && actions.greet({ name: name.trim() });
 

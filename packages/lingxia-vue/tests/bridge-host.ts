@@ -3,3 +3,4 @@
 // tests/page-hooks.mjs.
 export { getHost, subscribeHost, type LxHost } from '../../lingxia-bridge/src/host';
 export type { LxBridgeError, LxChannel, LxStream } from '../../lingxia-bridge/src/index';
+export { renderPageFault } from '../../lingxia-bridge/src/error';

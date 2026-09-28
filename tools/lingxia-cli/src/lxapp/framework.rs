@@ -16,7 +16,6 @@ pub enum ProjectFramework {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PageActionMode {
-    Notify,
     Call,
     Stream,
 }
@@ -24,7 +23,6 @@ pub enum PageActionMode {
 impl PageActionMode {
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::Notify => "notify",
             Self::Call => "call",
             Self::Stream => "stream",
         }

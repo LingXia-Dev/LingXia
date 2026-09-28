@@ -10,6 +10,13 @@ function Page() {
   const { data, actions } = useLxPage<PageData, PageActions>();
   const title: string = data.title;
   void actions.save(title);
+  const syncActions = useLxPage<PageData, { count(): number; update(): void }>().actions;
+  const completion: Promise<number> = syncActions.count();
+  const updated: Promise<void> = syncActions.update();
+  void completion; void updated;
+  // @ts-expect-error A bridge call never returns its Logic value synchronously.
+  const immediate: number = syncActions.count();
+  void immediate;
   // @ts-expect-error the page's data is its own type, nothing more
   void data.missing;
   // Logic owns the data; the View reads it at every depth.
