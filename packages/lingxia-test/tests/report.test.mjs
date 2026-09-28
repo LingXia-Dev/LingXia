@@ -17,6 +17,159 @@ function decodeAttachment(attachments, name) {
   return Buffer.from(artifact.base64, "base64").toString("utf8");
 }
 
+test("a late equality difference survives truncated previews", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  spec("compares the full value", { id: "DIFF-LATE", forensics: false }, () => {
+    expect(`${"x".repeat(160)}a`).toEqual(`${"x".repeat(160)}b`);
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  const assertion = report.cases[0].assertions[0];
+  assert.equal(assertion.expected, assertion.actual, "preview truncation hides the unequal suffix");
+  assert.match(assertion.difference, /UTF-16 offset 160/);
+  assert.match(report.cases[0].error.difference, /UTF-16 offset 160/);
+  assert.match(decodeAttachment(attachments, "report.html"), /UTF-16 offset 160/);
+});
+
+test("report timeline preserves step, assertion and attachment order", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  spec("records the process", { id: "TRACE-ORDER", forensics: false }, async (t) => {
+    await t.step("prepare", async () => {
+      expect(1).toBe(1);
+      await t.attach("input.txt", "order-42");
+    });
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  const step = report.cases[0].steps[0];
+  assert.ok(step.sequence < step.assertions[0].sequence);
+  assert.ok(step.assertions[0].sequence < step.attachments[0].sequence);
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /Timeline &middot; 3 recorded events/);
+});
+
+test("passing attempt reports bounded network provenance and links timeline attachments", async () => {
+  let networkStart;
+  const { attachments } = installFakeHost(createWorld(), {
+    networkLog: () => [{ time: networkStart, kind: "fetch", method: "POST", url: "https://api.example/orders",
+      status: 201, durationMs: 12, source: "route", answeredBy: "rule 1 (orders:ready)" }],
+  });
+  spec("creates an order", { id: "TRACE-NETWORK", forensics: false }, async (t) => {
+    await t.step("create", async () => {
+      networkStart = Date.now();
+      await t.attach("order.json", { id: 42 });
+    });
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  const attempt = report.cases[0];
+  assert.equal(attempt.status, "passed");
+  assert.equal(attempt.network_calls[0].answeredBy, "rule 1 (orders:ready)");
+  assert.equal(attempt.network_calls[0].observed_during, "create");
+  assert.equal(attempt.steps[0].attachments[0].step, "create");
+  assert.ok(attempt.network_calls[0].at_ms >= 0);
+  const html = decodeAttachment(attachments, "report.html");
+  assert.match(html, /network <code>POST https:\/\/api\.example\/orders<\/code> &middot; 201 &middot; rule 1 \(orders:ready\)/);
+  assert.deepEqual(attempt.network_summary, { observed: 1, routed: 1, real: 0, limit_reached: false });
+  assert.match(html, /attached <a href="attachments\/TRACE-NETWORK\/attempt-0\/order\.json">order\.json<\/a>/);
+  assert.match(html, /1 network call started during this step/);
+  assert.match(html, /Time-window observation; this step is not proven to have caused the call/);
+});
+
+test("the network summary counts every call; only the latest 20 are listed", async () => {
+  const calls = (n) => Array.from({ length: n }, (_, i) => ({ time: Date.now(), kind: "fetch", method: "GET",
+    url: `https://api.example/${i}`, status: 200, durationMs: 1, source: i % 5 === 0 ? "route" : "network" }));
+  let count = 20;
+  const { attachments } = installFakeHost(createWorld(), { networkLog: (_since, limit) => calls(count).slice(-limit) });
+  spec("exactly twenty", { forensics: false }, () => {});
+  spec("twenty-five", { forensics: false }, () => { count = 25; });
+  await globalThis.__LINGXIA_TEST__.run();
+  const [twenty, more] = JSON.parse(decodeAttachment(attachments, "report.json")).cases;
+  assert.deepEqual(twenty.network_summary, { observed: 20, routed: 4, real: 16, limit_reached: false });
+  assert.deepEqual(more.network_summary, { observed: 25, routed: 5, real: 20, limit_reached: true });
+  assert.equal(more.network_calls.length, 20);
+});
+
+test("scoped nesting after await keeps its parent and overlapping top-level steps fail closed", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  spec("scoped nesting", { id: "STEP-NEST", forensics: false }, async (t) => {
+    await t.step("outer", async (step) => {
+      await Promise.resolve();
+      await step.step("inner", async () => { expect(1).toBe(1); });
+    });
+  });
+  spec("ambiguous overlap", { id: "STEP-OVERLAP", forensics: false }, async (t) => {
+    const first = t.step("A", async () => { await Promise.resolve(); expect(2).toBe(2); });
+    const second = t.step("B", async () => {});
+    await Promise.allSettled([first, second]);
+  });
+  spec("ambiguous sibling overlap", { id: "STEP-SIBLING", forensics: false }, async (t) => {
+    await t.step("outer", async (step) => {
+      const first = step.step("A", async () => { await Promise.resolve(); expect(3).toBe(3); });
+      const second = step.step("B", async () => {});
+      await Promise.allSettled([first, second]);
+    });
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const [nested, overlap, sibling] = JSON.parse(decodeAttachment(attachments, "report.json")).cases;
+  assert.equal(nested.status, "passed");
+  assert.equal(nested.steps[0].steps[0].name, "inner");
+  assert.equal(overlap.status, "failed", "catching the rejected step must not make the spec pass");
+  assert.match(overlap.error.message, /Overlapping t\.step/);
+  assert.deepEqual(overlap.steps.map((step) => step.name), ["A"]);
+  assert.equal(sibling.status, "failed");
+  assert.deepEqual(sibling.steps[0].steps.map((step) => step.name), ["A"]);
+});
+
+test("a caught step failure is the body's to handle; an unawaited child still fails the case", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  spec("caught top-level", { id: "STEP-CAUGHT-TOP", forensics: false }, async (t) => {
+    await t.step("top", async () => { throw new Error("top failed"); }).catch(() => {});
+  });
+  spec("caught child", { id: "STEP-CAUGHT", forensics: false }, async (t) => {
+    await t.step("outer", async (step) => {
+      await step.step("child", async () => { throw new Error("child failed"); }).catch(() => {});
+    });
+  });
+  spec("unawaited child", { id: "STEP-UNAWAITED", forensics: false }, async (t) => {
+    await t.step("outer", async (step) => {
+      void step.step("child", async () => {
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }).catch(() => {});
+    });
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const cases = JSON.parse(decodeAttachment(attachments, "report.json")).cases;
+  assert.equal(cases[0].status, "passed");
+  assert.equal(cases[0].steps[0].status, "failed", "the step row keeps its failure");
+  assert.equal(cases[1].status, "passed");
+  assert.equal(cases[2].status, "failed");
+  assert.match(cases[2].error.message, /without awaiting|still running/i);
+});
+
+test("requested network recording that cannot start fails the case through normal cleanup", async () => {
+  const { attachments, attempts } = installFakeHost(createWorld(), {
+    control: { recordNetwork: "1" }, attempts: true,
+  });
+  const commands = [];
+  globalThis.__LINGXIA_AUTOMATION_HOST__.networkRecord = (command) => {
+    commands.push(command);
+    if (command === "start") throw new Error("recorder unavailable");
+    return { name: "discarded partial recording" };
+  };
+  spec("needs a recording", { id: "RECORD-SETUP", forensics: false }, async () => {
+    throw new Error("body must not run");
+  });
+  spec("the run goes on", { forensics: false }, () => {});
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.equal(report.cases[0].status, "failed");
+  assert.match(report.cases[0].error.message, /network recording could not start/);
+  assert.equal(report.cases[1].status, "failed", "each case fails on its own setup");
+  assert.deepEqual(commands, ["start", "stop", "start", "stop"]);
+  assert.equal(attempts.open, undefined, "attempt cleanup still runs");
+});
+
 test("spec.fail treats a body rejection as the declared failure", async () => {
   const world = createWorld();
   const { attachments } = installFakeHost(world);
@@ -32,6 +185,23 @@ test("spec.fail treats a body rejection as the declared failure", async () => {
   assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "xfail"]);
   assert.equal(report.cases[0].error.message, "upstream 500");
   assert.equal(protocol.failed, 0);
+});
+
+test("a step failure the body observed never overrides spec.fail or a caught rejection", async () => {
+  const { attachments } = installFakeHost(createWorld());
+  spec.fail("fails in a step", { forensics: false }, async (t) => {
+    await t.step("submit", () => { throw new Error("known bug"); });
+  });
+  spec("rejection pinned", { forensics: false }, async (t) => {
+    await t.reject(() => t.step("submit", () => { throw new Error("refused"); }), { message: "refused" });
+  });
+  spec("rejection caught", { forensics: false }, async (t) => {
+    try { await t.step("submit", () => { throw new Error("refused"); }); } catch { /* expected */ }
+  });
+  await globalThis.__LINGXIA_TEST__.run();
+  const report = JSON.parse(decodeAttachment(attachments, "report.json"));
+  assert.deepEqual(report.cases.map((c) => c.status), ["xfail", "passed", "passed"], JSON.stringify(report.cases.map((c) => c.error)));
+  assert.equal(report.cases[1].steps.find((step) => step.name === "submit")?.status ?? report.cases[1].steps[0].steps[0].status, "failed");
 });
 
 test("t.skip stops the spec and reports it skipped with its reason", async () => {
@@ -252,6 +422,8 @@ test("failed specs attach forensics and report.html stays a single inlined file"
   const failed = report.cases[0];
   const paths = failed.attachments.map((item) => item.path);
   assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/failure.png"));
+  assert.equal(failed.attachments.find((item) => item.name === "failure.png").step, undefined);
+  assert.equal(failed.attachments.find((item) => item.name === "failure.png").purpose, "failure_evidence");
   assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/forensics.json"));
   assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/logs.txt"));
   assert.ok(paths.includes("attachments/fails-for-forensics/attempt-0/note.txt"));
@@ -262,6 +434,7 @@ test("failed specs attach forensics and report.html stays a single inlined file"
   assert.doesNotMatch(html, /cdn\.|unpkg|jsdelivr|https:\/\/fonts/);
   assert.match(html, /data:image\/png;base64,/);
   assert.match(html, /attachments\/fails-for-forensics\/attempt-0\/failure\.png/);
+  assert.match(html, /failure\.png &middot; failure evidence for this attempt/);
 });
 
 test("omits the log tail when the host has no ring", async () => {
@@ -656,7 +829,7 @@ test("a spec that never calls t.step still records what it did", async () => {
 
   assert.deepEqual(
     trace.map((entry) => `${entry.kind} ${entry.name} ${entry.detail}`),
-    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"]', "action logic.eval () => 1 + 1"],
+    ["action nav.relaunch home", 'action page.fill [data-testid="home-name"] value="Ada"', "action logic.eval () => 1 + 1"],
   );
   assert.ok(trace.every((entry) => entry.status === "passed"));
 

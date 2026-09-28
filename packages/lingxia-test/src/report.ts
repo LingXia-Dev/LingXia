@@ -1,5 +1,6 @@
 import { escapeHtml } from "./format.js";
 import type {
+  AttachmentRef,
   AssertionRecord,
   CaseRecord,
   JsonReport,
@@ -548,7 +549,7 @@ function renderSlowest(report: JsonReport): string {
   if (ranked.length < 2) return "";
   const max = ranked[0]!.duration_ms || 1;
   const rows = ranked.map((item) => `<tr>
-      <td><a href="#case-${escapeHtml(item.id)}">${escapeHtml(item.title)}</a></td>
+      <td><a href="#case-${escapeHtml(executionId(item))}">${escapeHtml(item.title)}${item.repeat === undefined ? "" : ` (repeat ${item.repeat})`}</a></td>
       <td class="num">${formatDuration(item.duration_ms)}</td>
       <td class="spark"><span style="width:${Math.max(2, Math.round((item.duration_ms / max) * 100))}%"></span></td>
     </tr>`).join("");
@@ -580,6 +581,7 @@ function renderSuite(suite: Suite): string {
 }
 
 function renderCase(item: CaseRecord, suiteName: string): string {
+  const repeatLabel = item.repeat === undefined ? "" : ` (repeat ${item.repeat})`;
   const assertions = flattenAssertions(item);
   const passedAsserts = assertions.filter((entry) => entry.passed).length;
   const failedAsserts = assertions.length - passedAsserts;
@@ -611,22 +613,25 @@ function renderCase(item: CaseRecord, suiteName: string): string {
     : "";
   const open = isBroken(item.status) ? " open" : "";
   const where = item.file ? ` &middot; ${escapeHtml(item.file)}${item.line ? `:${item.line}` : ""}` : "";
-  return `<details class="case ${tone(item.status)}" id="case-${escapeHtml(item.id)}"
+  return `<details class="case ${tone(item.status)}" id="case-${escapeHtml(executionId(item))}"
     data-status="${escapeHtml(item.status)}" data-search="${escapeHtml(search)}"${open}>
     <summary>
       <span class="badge ${tone(item.status)}">${item.flaky ? "flaky" : escapeHtml(STATUS_LABEL[item.status] ?? item.status)}</span>
-      <span class="case-title">${escapeHtml(item.title)}</span>
+      <span class="case-title">${escapeHtml(item.title + repeatLabel)}</span>
       <span class="case-time">${formatDuration(item.duration_ms)}</span>
     </summary>
     <div class="body">
       <p class="meta"><code>${escapeHtml(item.id)}</code>${where}${assertMeta}</p>
       ${renderCaseTags(item)}
+      ${item.scenario ? `<p class="meta">Scenario: ${escapeHtml(item.scenario.label)}</p>` : ""}
+      ${item.network_summary ? `<p class="meta">Logic calls observed: ${item.network_summary.observed} (${item.network_summary.routed} routed, ${item.network_summary.real} real)${item.network_summary.limit_reached ? `; latest ${item.network_calls?.length ?? 0} shown` : ""}</p>` : ""}
       ${covers}
       ${reason}
       ${error}
       ${renderCaseContract(item)}
-      ${item.attempts && item.attempts.length > 1 ? `<details><summary>${item.attempts.length} attempts</summary>${item.attempts.map(attempt => `<section><h4>Attempt ${(attempt.attempt ?? 0) + 1}: ${escapeHtml(attempt.status)}</h4>${renderError(attempt)}${renderSteps(attempt.steps)}${renderAttachments(attempt)}</section>`).join("")}</details>` : ""}
-      ${renderSteps(item.steps)}
+      ${renderTimeline(item)}
+      ${item.attempts && item.attempts.length > 1 ? `<details><summary>${item.attempts.length} attempts</summary>${item.attempts.map(attempt => `<section><h4>Attempt ${(attempt.attempt ?? 0) + 1}: ${escapeHtml(attempt.status)}</h4>${renderError(attempt)}${renderTimeline(attempt)}${renderSteps(attempt.steps, attempt)}${renderAttachments(attempt)}</section>`).join("")}</details>` : ""}
+      ${renderSteps(item.steps, item)}
       ${renderAssertions(item.assertions ?? [], "spec assertions")}
       ${empty}
       ${shots}
@@ -635,33 +640,100 @@ function renderCase(item: CaseRecord, suiteName: string): string {
   </details>`;
 }
 
+function executionId(item: CaseRecord): string {
+  return `${item.id}${item.repeat === undefined ? "" : `-repeat-${item.repeat}`}`;
+}
+
+/** `target · result · answered by` of one observed Logic call. */
+function describeCall(call: NonNullable<CaseRecord["network_calls"]>[number]): string {
+  const target = call.kind === "function" ? call.function ?? "" : `${call.method} ${call.url}`;
+  const result = call.kind === "function"
+    ? call.outcome ?? "pending"
+    : call.status === null ? call.error ?? "pending" : String(call.status);
+  return `<code>${escapeHtml(target)}</code> &middot; ${escapeHtml(result)} &middot; ${escapeHtml(call.answeredBy ?? call.source)}`;
+}
+
+function renderTimeline(item: CaseRecord): string {
+  const events: Array<{ sequence: number; at_ms: number; html: string }> = [];
+  const addAssertion = (entry: AssertionRecord) => {
+    if (entry.sequence === undefined) return;
+    const label = [entry.message, entry.target, entry.matcher].filter(Boolean).map((part) => escapeHtml(part!)).join(" &middot; ");
+    events.push({ sequence: entry.sequence, at_ms: entry.at_ms ?? 0,
+      html: `<span class="${entry.passed ? "pass" : "fail"}">${entry.passed ? "assert" : "assert failed"}</span> ${label} &middot; expected ${escapeHtml(entry.expected)}, actual ${escapeHtml(entry.actual)}${entry.difference ? ` &middot; ${escapeHtml(entry.difference)}` : ""}` });
+  };
+  const addAttachment = (entry: AttachmentRef) => {
+    if (entry.sequence === undefined) return;
+    events.push({ sequence: entry.sequence, at_ms: entry.at_ms ?? 0,
+      html: `attached <a href="${escapeHtml(entry.path)}">${escapeHtml(entry.name)}</a>${attachmentContext(entry)}` });
+  };
+  const walk = (steps: StepRecord[]) => {
+    for (const step of steps) {
+      if (step.sequence !== undefined) {
+        events.push({ sequence: step.sequence, at_ms: step.at_ms ?? 0,
+          html: `${step.kind === "action" ? "action" : "step"} ${escapeHtml(step.path)}${step.detail ? ` &middot; ${escapeHtml(step.detail)}` : ""}${step.repeat && step.repeat > 1 ? ` &times;${step.repeat}` : ""}` });
+      }
+      walk(step.steps ?? []);
+      for (const assertion of step.assertions ?? []) addAssertion(assertion);
+      for (const attachment of step.attachments ?? []) addAttachment(attachment);
+    }
+  };
+  walk(item.steps);
+  for (const assertion of item.assertions ?? []) addAssertion(assertion);
+  for (const attachment of item.attachments ?? []) addAttachment(attachment);
+  const calls = item.network_calls ?? [];
+  for (const [index, call] of calls.entries()) {
+    // After every recorded event with the same start time.
+    events.push({ sequence: Number.MAX_SAFE_INTEGER - calls.length + index, at_ms: call.at_ms ?? 0,
+      html: `network ${describeCall(call)}${call.observed_during ? ` &middot; started during ${escapeHtml(call.observed_during)}` : ""}` });
+  }
+  if (events.length === 0) return "";
+  events.sort((left, right) => left.at_ms - right.at_ms || left.sequence - right.sequence);
+  const rows = events.map((event) => `<li><code>+${event.at_ms}ms</code> ${event.html}</li>`).join("");
+  const notes = [
+    calls.length > 0 ? "Network calls are placed by request start time; &ldquo;started during&rdquo; is a time window, not proof the step caused the call." : "",
+    item.network_summary?.limit_reached ? `Only the latest ${calls.length} of ${item.network_summary.observed} network calls are shown.` : "",
+    item.trace_truncated ? "The action trace reached its record limit; later actions are omitted except failures." : "",
+  ].filter(Boolean).map((note) => `<p>${note}</p>`).join("");
+  return `<details class="panel trace"><summary>Timeline &middot; ${events.length} recorded events</summary><ol>${rows}</ol>${notes}</details>`;
+}
+
 /**
  * An artifact the reader cannot open from the report is an artifact they will
  * not look at, so images inline and text/JSON preview in place. Everything
  * else names the path the CLI wrote it to.
  */
 function renderAttachments(item: CaseRecord): string {
-  if (item.attachments.length === 0) return "";
-  const blocks = item.attachments.map((attachment) => {
+  return renderAttachmentRefs(item.attachments, item);
+}
+
+function renderAttachmentRefs(attachments: AttachmentRef[], item: CaseRecord): string {
+  if (attachments.length === 0) return "";
+  const blocks = attachments.map((attachment) => {
     const inlined = inlineFromAttachments(attachment.name, item);
     // The path is relative to the report, so the link opens the real file
     // whenever the report is read from the directory the CLI wrote it to.
     const link = `<a class="path" href="${escapeHtml(attachment.path)}">${escapeHtml(attachment.path)}</a>`;
+    const context = attachmentContext(attachment);
     if (inlined?.dataUrl) {
       return `<figure class="shot">
         <img alt="${escapeHtml(attachment.name)}" src="${inlined.dataUrl}" loading="lazy">
-        <figcaption>${escapeHtml(attachment.name)} &middot; ${link}</figcaption>
+        <figcaption>${escapeHtml(attachment.name)}${context} &middot; ${link}</figcaption>
       </figure>`;
     }
     if (inlined?.text !== undefined) {
       return `<details class="artifact">
-        <summary>${escapeHtml(attachment.name)} ${link}</summary>
+        <summary>${escapeHtml(attachment.name)}${context} ${link}</summary>
         <pre>${escapeHtml(inlined.text)}</pre>
       </details>`;
     }
-    return `<div class="artifact-path"><b>${escapeHtml(attachment.name)}</b> ${link}</div>`;
+    return `<div class="artifact-path"><b>${escapeHtml(attachment.name)}</b>${context} ${link}</div>`;
   });
   return `<div class="artifacts"><h4>artifacts</h4>${blocks.join("")}</div>`;
+}
+
+function attachmentContext(attachment: AttachmentRef): string {
+  if (attachment.purpose === "failure_evidence") return " &middot; failure evidence for this attempt";
+  return attachment.step ? ` &middot; in step ${escapeHtml(attachment.step)}` : " &middot; attempt artifact";
 }
 
 function renderError(item: CaseRecord): string {
@@ -673,6 +745,7 @@ function renderError(item: CaseRecord): string {
         <div class="side actual"><h4>actual</h4><pre>${escapeHtml(error.actual ?? "—")}</pre></div>
       </div>`
     : "";
+  const difference = error.difference ? `<p class="diff-hint">${escapeHtml(error.difference)}</p>` : "";
   const at = error.location ? `<p class="at">at ${escapeHtml(error.location)}</p>` : "";
   const inStep = error.step ? `<p class="at">in step <code>${escapeHtml(error.step)}</code></p>` : "";
   const failed = failedAt(error);
@@ -682,7 +755,7 @@ function renderError(item: CaseRecord): string {
   return `<div class="failure">
     <h3>${escapeHtml(error.name)}${error.matcher ? ` &middot; <code>${escapeHtml(error.matcher)}</code>` : ""}</h3>
     <pre class="message">${escapeHtml(error.message)}</pre>
-    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${at}${inStep}${stack}${renderScenario(error.scenario)}${renderNetwork(error.network)}
+    ${error.phase ? `<p>Phase: ${escapeHtml(error.phase)}</p>` : ""}${failed ? `<p class="at">${escapeHtml(failed)}</p>` : ""}${compare}${difference}${at}${inStep}${stack}${renderScenario(error.scenario)}${renderNetwork(error.network)}
   </div>`;
 }
 
@@ -753,7 +826,7 @@ export function failedAt(error: Pick<ReportError, "code" | "failedAction" | "pag
   return line;
 }
 
-function renderSteps(steps: StepRecord[]): string {
+function renderSteps(steps: StepRecord[], item: CaseRecord): string {
   if (steps.length === 0) return "";
   const total = Math.max(1, ...steps.map((step) => step.duration_ms));
   const items = steps.map((step) => {
@@ -771,22 +844,30 @@ function renderSteps(steps: StepRecord[]): string {
     return `<li class="step${action ? " action" : ""}">
       <div class="step-head">
         ${badge}${label}
-        <span class="step-time">${step.duration_ms}ms</span>
+        <span class="step-time">${step.duration_unknown ? "duration unknown" : `${step.duration_ms}ms`}</span>
         <span class="step-bar"><span style="width:${width}%"></span></span>
       </div>
-      ${err}${renderAssertions(step.assertions ?? [], "")}${renderSteps(step.steps ?? [])}
+      ${err}${renderAssertions(step.assertions ?? [], "")}${renderAttachmentRefs(step.attachments ?? [], item)}${renderObservedNetwork(step, item)}${renderSteps(step.steps ?? [], item)}
     </li>`;
   }).join("");
   return `<ul class="steps">${items}</ul>`;
+}
+
+function renderObservedNetwork(step: StepRecord, item: CaseRecord): string {
+  if (step.kind === "action") return "";
+  const calls = (item.network_calls ?? []).filter((call) => call.observed_during === step.path);
+  if (calls.length === 0) return "";
+  const rows = calls.map((call) => `<li>${describeCall(call)}</li>`).join("");
+  return `<details class="network"><summary>${calls.length} network call${calls.length === 1 ? "" : "s"} started during this step</summary><ul>${rows}</ul><p>Time-window observation; this step is not proven to have caused the call.</p></details>`;
 }
 
 function renderAssertions(assertions: AssertionRecord[], caption: string): string {
   if (assertions.length === 0) return "";
   const rows = assertions.map((entry) => `<tr class="${entry.passed ? "row-pass" : "row-fail"}">
       <td class="${entry.passed ? "pass" : "fail"}">${entry.passed ? "pass" : "fail"}</td>
-      <td><code>${escapeHtml(entry.matcher)}</code></td>
+      <td><code>${escapeHtml(entry.matcher)}</code>${entry.target ? `<div>${escapeHtml(entry.target)}</div>` : ""}${entry.message ? `<div>${escapeHtml(entry.message)}</div>` : ""}${entry.location ? `<small>${escapeHtml(entry.location)}</small>` : ""}</td>
       <td>${escapeHtml(entry.expected)}</td>
-      <td>${escapeHtml(entry.actual)}</td>
+      <td>${escapeHtml(entry.actual)}${entry.difference ? `<div class="diff-hint">${escapeHtml(entry.difference)}</div>` : ""}${entry.duration_ms === undefined ? "" : `<small>${entry.duration_ms}ms</small>`}</td>
     </tr>`).join("");
   return `<table class="assertions">
     ${caption ? `<caption>${escapeHtml(caption)}</caption>` : ""}
@@ -852,7 +933,8 @@ export function clearInline(): void {
 }
 
 function inlineFromAttachments(name: string, item: CaseRecord): Inlined | undefined {
-  return inlineStore.get(`${encodeURIComponent(item.id)}/attempt-${item.attempt ?? 0}`)?.get(name) ?? inlineStore.get(item.id)?.get(name);
+  const prefix = `${encodeURIComponent(item.id)}${item.repeat === undefined ? "" : `/repeat-${item.repeat}`}`;
+  return inlineStore.get(`${prefix}/attempt-${item.attempt ?? 0}`)?.get(name) ?? inlineStore.get(item.id)?.get(name);
 }
 
 export function dataUrl(mimeType: string, base64: string): string {

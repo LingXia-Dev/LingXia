@@ -31,7 +31,8 @@ spec('a routed device list follows the contract', {
   covers: ['CONTRACT-LIST'],
   app: SHOWCASE_APP_ID,
 }, async (t) => {
-  await t.app.network.route(`${BASE}/devices`, {
+  // A glob matches the whole URL, query included.
+  await t.app.network.route(`${BASE}/devices?*`, {
     json: { items: [{ id: 'd1', name: 'Office', room: null, kind: 'router' }], total: 1 },
   });
   const { status, body } = await fetchJson(t, `${BASE}/devices?page=1`);

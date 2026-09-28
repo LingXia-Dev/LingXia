@@ -148,10 +148,6 @@ class Validator {
       return [...viaRef, ...this.check(value, siblings, path, at, refs)];
     }
 
-    // 3.0 `nullable` widens `type` to null; it does not relax anything else,
-    // but a null value has nothing else to check.
-    if (value === null && this.context.dialect === "3.0" && node.nullable === true) return [];
-
     const typeIssue = this.checkType(value, node, path, at);
     if (typeIssue) return [typeIssue];
 

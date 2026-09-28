@@ -335,7 +335,7 @@ test("fixture nav waits for the landed page unless the caller picks waitUntil; i
 
 test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its cause", async () => {
   const world = createWorld();
-  installFakeHost(world);
+  const { events } = installFakeHost(world);
   world.app.nav.to = async () => {
     throw Object.assign(new Error("page did not become ready within 50ms"), { code: "E_AUTOMATION_TIMEOUT", data: { page: "slow" } });
   };
@@ -348,9 +348,13 @@ test("a driver timeout reaches the spec as E_TIMEOUT, the driver's code as its c
     seen.nav = await t.reject(() => t.app.nav.to({ page: "slow", timeout: 50 }), { code: "E_TIMEOUT" });
     seen.eval = await t.reject(() => t.app.logic.eval({ timeout: 100 }, () => 1), { code: "E_TIMEOUT" });
   });
+  spec("runs after a relaunch", () => {});
 
   const report = await globalThis.__LINGXIA_TEST__.run();
-  assert.equal(report.failed, 0, JSON.stringify(report.cases));
+  assert.deepEqual(report.cases.map((c) => c.status), ["failed", "passed"], JSON.stringify(report.cases));
+  assert.match(report.cases[0].error.message, /timed-out Logic eval may still run/);
+  assert.ok(events.some((e) => e.type === "diagnostic" && e.phase === "recovery" &&
+    /timed-out Logic eval may still run in the app; the next spec starts from a relaunched app/.test(e.message)));
   assert.equal(seen.nav.name, "TimeoutError");
   assert.equal(seen.nav.cause.code, "E_AUTOMATION_TIMEOUT");
   assert.deepEqual(seen.nav.data, { page: "slow", driverCode: "E_AUTOMATION_TIMEOUT" });

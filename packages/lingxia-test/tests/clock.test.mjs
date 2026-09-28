@@ -50,8 +50,8 @@ test("nests t.step in report.json and emits covers on case_started", async () =>
   const { events, attachments } = installFakeHost(world);
 
   spec("tab bar rejects a bad index", { covers: ["lx.tabBar.update"], id: "UI-TABBAR-001" }, async (t) => {
-    await t.step("outer", async () => {
-      await t.step("inner", async () => {
+    await t.step("outer", async (step) => {
+      await step.step("inner", async () => {
         expect(1).toBe(1);
       });
     });

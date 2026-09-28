@@ -45,6 +45,7 @@ export type {
   SpecOptions,
   SpecRequirements,
   SpecStart,
+  StepScope,
   TestApp,
   TestPage,
   PageContract,

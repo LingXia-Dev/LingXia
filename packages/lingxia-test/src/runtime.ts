@@ -5,7 +5,6 @@ import { formatValue } from "./format.js";
 import { attachText, resolveHost, warnVersionSkew, type ResolvedHost } from "./host.js";
 import { captureFrames, fileStem, isUnattributed, resolveOrigin, resolveOwner, slugTitle, type StackFrame } from "./ids.js";
 import { renderJUnit } from "./junit.js";
-import { watchDialogs } from "./dialogs.js";
 import { resetMocks } from "./mock.js";
 import { createRedactor } from "./redact.js";
 import { clearInline, countStatuses, renderHtml } from "./report.js";
@@ -35,6 +34,7 @@ import type {
   ProtocolReport,
   RunSubject,
   SpecStatus,
+  StepRecord,
   PageVisibility,
 } from "./report-types.js";
 import { SCREEN_LOCKED_NOTE, VISIBILITY_PROBE_BUDGET_MS, VISIBILITY_PROBE_SCRIPT, hiddenCause, pageVisibility } from "./locator.js";
@@ -50,6 +50,16 @@ import type { HostRunAutomation, LxAppDriver, ScenarioCall } from "@lingxia/type
 import { cancelTimersOf, describePending, installPendingTracker, pendingOf, restoreRawAuthority, revokeGrant, revokeRawAuthority, runnerClearTimeout, runnerSetTimeout, setPendingOwner, settleCallsOf, trackAutomationRoot, uninstallPendingTracker, type PendingWork } from "./pending.js";
 
 type Annotation = "default" | "skip" | "only" | "fixme" | "fail";
+
+function copyStepRecord(step: StepRecord): StepRecord {
+  return {
+    ...step,
+    steps: step.steps.map(copyStepRecord),
+    assertions: step.assertions.map((entry) => ({ ...entry })),
+    attachments: step.attachments.map((entry) => ({ ...entry })),
+    error: step.error ? { ...step.error } : undefined,
+  };
+}
 
 interface RegisteredSpec {
   title: string;
@@ -812,6 +822,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       timeout,
       redact,
       item.app ?? subject?.appid,
+      caseStarted,
     );
 
     if (reopened) {
@@ -822,17 +833,18 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     // Toasts are recorded and modals / action sheets answered for this spec
     // only; the attempt's end removes the watch whatever happens below.
-    let dialogWatch: ReturnType<typeof watchDialogs> = undefined;
     let dialogSetupError: unknown;
-    try { dialogWatch = watchDialogs(fixture.raw); }
+    try { await fixture.watchPrimaryDialogs(); }
     catch (error) { dialogSetupError = error ?? new Error("dialog watch failed"); }
 
     let status: SpecStatus = "passed";
     let error: unknown;
     let phase: "beforeEach" | "body" | "defer" | "forensics" | "timeout" = "body";
-    const recordingNetwork = recordNetwork && await startNetworkRecording(host);
-    if (ledger) {
-      await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS, "captureResponses timed out");
+    let recordingNetwork = false;
+    let recordingSetupError: unknown;
+    if (recordNetwork) {
+      try { await startNetworkRecording(host); recordingNetwork = true; }
+      catch (startError) { recordingSetupError = startError; }
     }
 
     const shouldRelaunch = item.start !== undefined || item.restoreProfile || forceRelaunchNext;
@@ -861,6 +873,11 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       // Each spec starts with fresh mock handler state, before its hooks.
       phase = "beforeEach";
       if (dialogSetupError !== undefined) throw dialogSetupError;
+      if (recordingSetupError !== undefined) throw recordingSetupError;
+      if (ledger) {
+        await within(Promise.resolve(fixture.raw.network.captureResponses()), CONTRACT_CALL_MS,
+          "captureResponses timed out");
+      }
       const mockNote = await resetMocks(fixture.raw, mockResetReasons).catch((error: unknown) =>
         `mock handler state was not reset: ${String((error as Error)?.message ?? error)}`);
       if (mockNote) await host.emit({ type: "diagnostic", phase: "mock", message: mockNote });
@@ -908,9 +925,7 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
 
     // A modal or action sheet with no answer queued fails the spec at once,
     // instead of leaving it waiting on a dialog nobody answers.
-    const unanswered = dialogWatch
-      ? dialogWatch.unanswered.then((message) => ({ unanswered: message }))
-      : new Promise<never>(() => {});
+    const unanswered = fixture.dialogFailure.then((message) => ({ unanswered: message }));
 
     try {
       const winner = await Promise.race([bodyResult, timer, unanswered]);
@@ -996,6 +1011,12 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const scenarioEvidence = status !== "passed" && status !== "skipped"
       ? await fixture.scenarioScope.report(SCENARIO_EVIDENCE_MS)
       : undefined;
+    const selectedScenario = fixture.scenarioScope.current;
+    if (selectedScenario) record.scenario = {
+      label: selectedScenario.label,
+      name: selectedScenario.raw.name,
+      variant: selectedScenario.raw.variant,
+    };
 
     phase = "defer";
     const deferErrors: unknown[] = [];
@@ -1050,9 +1071,11 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // never came.
     let dialogCleanupError: string | undefined;
     let unusedAnswers: string | undefined;
-    if (!stuck && dialogWatch) {
+    if (!stuck) {
       try {
-        unusedAnswers = await within(dialogWatch.end(fixture.raw), WEDGED_DEFER_BUDGET_MS, "dialog unwatch timed out");
+        const dialogs = await within(fixture.endDialogWatches(), WEDGED_DEFER_BUDGET_MS, "dialog unwatch timed out");
+        unusedAnswers = dialogs.unused.length > 0 ? dialogs.unused.join("; ") : undefined;
+        dialogCleanupError = dialogs.failures.length > 0 ? `dialog observation could not finish: ${dialogs.failures.join("; ")}` : undefined;
       } catch (error) {
         dialogCleanupError = `dialog observation could not finish: ${String(error)}`;
       }
@@ -1073,7 +1096,11 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     const reclaimFailures: string[] = dialogCleanupError ? [dialogCleanupError] : [];
     if (recordingNetwork) {
       const recordingError = await saveNetworkRecording(host, fixture, record.title);
-      if (recordingError !== undefined) reclaimFailures.push(`the network recording was not stopped: ${recordingError}`);
+      if (recordingError !== undefined) reclaimFailures.push(`the network recording could not be completed: ${recordingError}`);
+    } else if (recordingSetupError !== undefined) {
+      // Start may have reached the host before its acknowledgement failed.
+      try { host.networkRecord?.("stop", record.title); }
+      catch (stopError) { reclaimFailures.push(`the unconfirmed network recording could not be stopped: ${errorMessage(stopError)}`); }
     }
     try {
       reclaimFailures.push(...await within(fixture.reclaim(), RECLAIM_BUDGET_MS,
@@ -1129,7 +1156,16 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     // failure would, so `spec.fail({ expected: { code: 'E_OPENAPI_CONTRACT' } })`
     // can declare one.
     if (ledger) {
-      const checked = await checkContract(ledger, fixture, id, host);
+      let checked: Awaited<ReturnType<typeof checkContract>> = undefined;
+      try {
+        checked = await checkContract(ledger, fixture, id, host);
+      } catch (captureError) {
+        const message = `OpenAPI response capture failed: ${captureError instanceof Error ? captureError.message : String(captureError)}`;
+        if (error instanceof Error) error.message += `\n${message}`;
+        else error = new Error(message);
+        if (status === "passed") status = "failed";
+        fixture.failurePhase = "capture";
+      }
       if (checked) {
         record.contract = checked;
         if (checked.violations.length > 0 && status !== "skipped") {
@@ -1181,6 +1217,37 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
       }
     }
 
+    // Overlapping steps are a misuse even when the body swallowed the error,
+    // and never the failure `spec.fail` declared.
+    if (fixture.stepConflict) {
+      if (status === "passed" || status === "xfail" || status === "xpass") {
+        status = "failed";
+        error = fixture.stepConflict;
+        fixture.failurePhase = "body";
+      } else if (status === "failed" && error instanceof Error && error !== fixture.stepConflict) {
+        error.message += `\nAlso: ${fixture.stepConflict.message}`;
+      }
+    }
+
+    // A timed-out remote task may still run in the app: the case fails even
+    // if it caught the timeout, and the next spec starts from a relaunch.
+    if (fixture.remoteTimeoutKind) {
+      const reason = `a timed-out ${fixture.remoteTimeoutKind} may still run in the app`;
+      // An xfail may have declared this very timeout; the relaunch still applies.
+      if ((status === "passed" || status === "xpass") && !fixture.stepConflict) {
+        status = "failed";
+        error = new Error(`${reason}; the next spec starts from a relaunched app`);
+        fixture.failurePhase = "body";
+      }
+      forceRelaunchNext = true;
+      await host.emit({ type: "diagnostic", phase: "recovery",
+        message: `"${record.full_name}": ${reason}; the next spec starts from a relaunched app.` });
+    } else if (fixture.detachedInFlight()) {
+      forceRelaunchNext = true;
+      await host.emit({ type: "diagnostic", phase: "recovery",
+        message: `"${record.full_name}": a read t.waitFor gave up on is still running in the app; the next spec starts from a relaunched app.` });
+    }
+
     if (status !== "passed" && status !== "skipped") await collectEvidence();
     if (status === "skipped") record.reason = fixture.skipReason ?? record.reason;
     fixture.close();
@@ -1188,8 +1255,27 @@ async function runSpecs(listOnly: boolean): Promise<ProtocolReport> {
     record.duration_ms = Date.now() - caseStarted;
     // Copies: code of this spec that is still running cannot change a
     // finished record.
-    record.steps = [...fixture.steps];
-    record.assertions = [...fixture.assertions];
+    record.steps = fixture.steps.map(copyStepRecord);
+    record.assertions = fixture.assertions.map((entry) => ({ ...entry }));
+    if (fixture.traceTruncated) record.trace_truncated = true;
+    // Counted over the host's whole call log; only the latest are listed.
+    const attemptNetwork = networkCalls(host, caseStarted, SUMMARIZED_NETWORK_CALLS);
+    const recentNetwork = attemptNetwork.slice(-REPORTED_NETWORK_CALLS);
+    if (recentNetwork.length > 0) {
+      record.network_calls = recentNetwork.map((call) => {
+        const at_ms = Math.max(0, call.time - caseStarted);
+        const observed_during = observedStepAt(fixture.steps, at_ms);
+        return { ...call, at_ms,
+          ...(observed_during ? { observed_during } : {}),
+          ...(call.route ? { route: { ...call.route } } : {}) };
+      });
+      record.network_summary = {
+        observed: attemptNetwork.length,
+        routed: attemptNetwork.filter((call) => call.source === "route").length,
+        real: attemptNetwork.filter((call) => call.source === "network").length,
+        limit_reached: attemptNetwork.length > REPORTED_NETWORK_CALLS,
+      };
+    }
     if (fixture.observed.size > 0) record.observed = [...fixture.observed].sort();
     record.attachments = [...fixture.attachments];
     setExpectScope();
@@ -1475,16 +1561,28 @@ const RECORDED_SCENARIO = "network.scenario.json";
 
 /** Logic network calls a failed spec reports: the last 20 since it started. */
 const REPORTED_NETWORK_CALLS = 20;
+/** The host's call log bound: a summary counts every call it still holds. */
+const SUMMARIZED_NETWORK_CALLS = 200;
 
-function networkCalls(host: ResolvedHost, since: number): FailureNetworkCall[] {
+function networkCalls(host: ResolvedHost, since: number, limit = REPORTED_NETWORK_CALLS): FailureNetworkCall[] {
   if (!host.networkLog) return [];
   try {
-    const calls = host.networkLog(since, REPORTED_NETWORK_CALLS);
-    return Array.isArray(calls) ? (calls as FailureNetworkCall[]).slice(-REPORTED_NETWORK_CALLS) : [];
+    const calls = host.networkLog(since, limit);
+    return Array.isArray(calls) ? (calls as FailureNetworkCall[]).slice(-limit) : [];
   } catch {
     // The call log is evidence; it never replaces the failure.
     return [];
   }
+}
+
+/** Only a temporal association: app work can start during a step for unrelated reasons. */
+function observedStepAt(steps: StepRecord[], atMs: number): string | undefined {
+  for (const step of steps) {
+    if (step.kind === "action" || step.at_ms === undefined || step.duration_unknown) continue;
+    if (atMs < step.at_ms || atMs > step.at_ms + step.duration_ms) continue;
+    return observedStepAt(step.steps, atMs) ?? step.path;
+  }
+  return undefined;
 }
 
 /** How long a failed spec waits for its scenario's calls. */
@@ -1510,13 +1608,13 @@ function withFunctionCalls(calls: FailureNetworkCall[], functions: ScenarioCall[
 }
 
 /** `--record-network`: capture this spec's real Logic traffic. */
-async function startNetworkRecording(host: ResolvedHost): Promise<boolean> {
+async function startNetworkRecording(host: ResolvedHost): Promise<void> {
   try {
     host.networkRecord!("start");
-    return true;
   } catch (error) {
-    await host.emit({ type: "diagnostic", phase: "record-network", message: String((error as Error)?.message ?? error) });
-    return false;
+    const message = `network recording could not start: ${errorMessage(error)}`;
+    await host.emit({ type: "diagnostic", phase: "record-network", message });
+    throw new Error(message);
   }
 }
 
@@ -1531,8 +1629,7 @@ async function saveNetworkRecording(host: ResolvedHost, fixture: LiveFixture, ti
   try {
     if (scenario && typeof scenario === "object") await fixture.attachRaw(RECORDED_SCENARIO, scenario);
   } catch (error) {
-    // The recording stopped; only its copy in the report is missing.
-    await host.emit({ type: "diagnostic", phase: "record-network", message: errorMessage(error) });
+    return `network recording could not be attached: ${errorMessage(error)}`;
   }
   return undefined;
 }
@@ -1626,7 +1723,7 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
     const shot = await fixture.raw.page.screenshot();
     const payload = encodeScreenshot(shot);
     if (payload) {
-      await fixture.attachRaw("failure.png", payload);
+      await fixture.attachRaw("failure.png", payload, "failure_evidence");
     }
   } catch {
     // Screenshot is best-effort.
@@ -1657,11 +1754,11 @@ async function captureForensics(fixture: LiveFixture): Promise<FailurePage | und
     step: fixture.currentStepPath() ?? null,
     visibility: visibility ?? null,
   };
-  await fixture.attachRaw("forensics.json", forensics);
+  await fixture.attachRaw("forensics.json", forensics, "failure_evidence");
 
   const logs = await fixtureHostLogs();
   if (logs !== undefined) {
-    await fixture.attachRaw("logs.txt", logs);
+    await fixture.attachRaw("logs.txt", logs, "failure_evidence");
   }
   const page = toFailurePage(route);
   const hidden = hiddenCause(visibility?.note);
@@ -1733,12 +1830,12 @@ async function checkContract(
 ): Promise<NonNullable<CaseRecord["contract"]> | undefined> {
   let records;
   try {
-    records = await within(Promise.resolve(fixture.raw.network.responses({ since: contractSeq })), CONTRACT_CALL_MS,
+    records = await within(Promise.resolve(fixture.raw.network.responses({ since: contractSeq, waitMs: 2500 })), CONTRACT_CALL_MS,
       "reading captured responses timed out");
   } catch (readError) {
     await host.emit({ type: "diagnostic", phase: "contract",
       message: `${id}: captured responses could not be read: ${readError instanceof Error ? readError.message : String(readError)}` });
-    return undefined;
+    throw readError;
   }
   for (const record of records) contractSeq = Math.max(contractSeq, record.seq);
   if (records.length === 0) return undefined;

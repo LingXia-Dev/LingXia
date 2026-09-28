@@ -291,7 +291,8 @@ test("page.data() reads the bound instance's Logic data; page.actions invoke its
     seen.removed = [typeof t.app.logic.data, typeof t.app.logic.call];
     seen.thenable = typeof current.actions.then;
   });
-  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(result.status, "failed", JSON.stringify(result.error));
+  assert.match(result.error.message, /timed-out page action may still run/);
   const [homeId, devicesId] = seen.ids;
   assert.deepEqual(seen.ids, [homeId, devicesId, homeId, devicesId]);
   assert.deepEqual(seen.names, ["home", "devices"]);
@@ -323,6 +324,65 @@ test("page.data() reads the bound instance's Logic data; page.actions invoke its
   assert.ok(result.steps.some((step) => step.name === "page.action" && step.detail === `rename #${devicesId}`));
   // One row per call: the underlying eval is not traced twice.
   assert.ok(!names.includes("logic.eval"));
+});
+
+test("a caught View eval driver timeout fails its case and relaunches the next", async () => {
+  const world = createWorld();
+  world.app.page.eval = async () => {
+    throw Object.assign(new Error("page eval did not settle"), { code: "E_EVAL_TIMEOUT" });
+  };
+  installFakeHost(world);
+  spec("catches eval", { forensics: false }, async (t) => {
+    await t.reject(() => t.app.view.eval(() => 1), { code: "E_TIMEOUT" });
+  });
+  spec("later", { forensics: false }, () => {});
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.cases[0].status, "failed");
+  assert.match(report.cases[0].error.message, /timed-out View eval may still run/);
+  assert.equal(report.cases[1].status, "passed");
+});
+
+test("a caught page.data Logic timeout fails its case and relaunches the next", async () => {
+  const world = createWorld();
+  world.app.eval = async () => {
+    throw Object.assign(new Error("Logic eval did not settle"), { code: "E_EVAL_TIMEOUT" });
+  };
+  installFakeHost(world);
+  spec("catches page data", { forensics: false }, async (t) => {
+    const page = await t.app.page();
+    await t.reject(() => page.data(), { code: "E_TIMEOUT" });
+  });
+  spec("later", { forensics: false }, () => {});
+  const report = await globalThis.__LINGXIA_TEST__.run();
+  assert.equal(report.cases[0].status, "failed");
+  assert.match(report.cases[0].error.message, /timed-out Logic eval may still run/);
+  assert.equal(report.cases[1].status, "passed");
+});
+
+test("page.invoke refuses an exhausted local budget before dispatch", async () => {
+  const world = createWorld();
+  world.setAction("save", () => true);
+  installFakeHost(world);
+  const result = await runOne(async (t) => {
+    const page = await t.app.page();
+    await t.reject(() => page.invoke("save", { payload: { title: "draft" }, timeout: 0.5 }),
+      { code: "E_TIMEOUT", message: "was not dispatched" });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(world.actionCalls.length, 0);
+});
+
+test("sub-millisecond eval budgets refuse dispatch locally", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  const result = await runOne(async (t) => {
+    await t.reject(() => t.app.logic.eval({ timeout: 0.5 }, () => 1),
+      { code: "E_TIMEOUT", message: "was not dispatched" });
+    await t.reject(() => t.app.view.eval({ timeout: 0.5 }, () => 1),
+      { code: "E_TIMEOUT", message: "was not dispatched" });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
+  assert.equal(world.evaluated.length, 0);
 });
 
 test("page.actions take at most one JSON payload", async () => {
@@ -429,9 +489,20 @@ test("waitFor is clamped to the remaining spec budget", async () => {
   }, { timeout: 400 });
   // The wait's own failure, carrying its last value, beats the spec timer.
   assert.equal(result.status, "failed");
-  assert.match(result.error.message, /Clamped from 10000ms/);
+  assert.match(result.error.message, /timeout 10000ms was clamped to \d+ms, the time left in the spec's budget/);
   assert.match(result.error.message, /Last value: false/);
   assert.ok(Date.now() - started < 2_000);
+});
+
+test("a read the waitFor deadline dropped is not blamed as un-awaited", async () => {
+  const world = createWorld();
+  installFakeHost(world);
+  world.app.eval = () => new Promise((resolve) => setTimeout(() => resolve({ value: true }), 150));
+  const result = await runOne(async (t) => {
+    await t.reject(() => t.waitFor(() => t.app.logic.eval(() => true), { timeout: 40, interval: 5 }),
+      { code: "E_TIMEOUT" });
+  });
+  assert.equal(result.status, "passed", JSON.stringify(result.error));
 });
 
 test("waitFor refuses a positional acceptance callback", async () => {
